@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { gstinState } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -11,6 +12,7 @@ import { hmacSign } from "../../kernel/crypto";
 import { receipts, refundVouchers } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { getPatientSummaries, PatientError } from "../patients";
+import { counterState, getEncounter } from "../opd";
 import { loadOpdConfig, OpdError } from "../opd";
 import { DISCOUNT_CATEGORIES, TariffError, tariffHttpStatus } from "../tariff";
 import { feeQuote } from "./charge-rules";
@@ -84,7 +86,9 @@ import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
-import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoiceWithBalances } from "./invoices";
+import { encounterRefSpellings, getInvoice, invoiceSettlement, issueInvoice, listInvoices, liveInvoiceCharging, previewInvoiceWithBalances } from "./invoices";
+import { chargeOrphans } from "./daily-close";
+import type { ChargeOrphanRow } from "./daily-close";
 import { collectionWorklist } from "./worklist";
 import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
@@ -100,12 +104,45 @@ import type { BillingConfig } from "./config";
 import type { DayBook, Gstr1Row } from "./daily-close";
 import type { CreditNoteRow, IssueCreditNoteInput, IssueCreditNoteResult } from "./credit-notes";
 import type { InvoiceLineRow, InvoiceRow, IssueInvoiceResult, PricedDraft } from "./invoices";
+import type { EncounterFeeStatus } from "./fee-status";
 import type { AllocateReceiptResult, DueRow, MarkEnteredInErrorResult, PatientBalance, RecordReceiptResult, ReverseAllocationResult } from "./receipts";
 import type { IssueRefundVoucherResult, PayRefundVoucherResult, RequestRefundResult, RefundVoucherRow } from "./refunds";
 import type { MismatchRow, UploadSettlementResult } from "./recon";
 import type { CashierSessionRow } from "./sessions";
 import type { Settlement } from "./settlement";
 import type { PatientSummary } from "../patients";
+
+/**
+ * FD-28 — the visit facts the billing counter reads and nothing else. Deliberately NOT the encounter
+ * row: that carries the diagnosis and the ICD-10 code, which are a doctor's business and not a
+ * cashier's, and shipping the whole row would be the widening this route exists to avoid.
+ */
+type VisitFacts = {
+  visitNo: string;
+  serviceDate: string;
+  status: string;
+  /** The number the patient is holding on their slip. Null on a deferred visit that has not joined. */
+  tokenNo: number | null;
+  /** The department's code, so the counter spells the token exactly as the patient's slip does. */
+  departmentCode: string | null;
+  /**
+   * ═══ WHAT THE LEDGER SAYS ABOUT THIS VISIT'S FEE — ALREADY COMPUTED, PREVIOUSLY DISCARDED ═══
+   *
+   * Owner, 2026-09-12: *"if the visit was already charged then why … does the screen show UNPAID
+   * on the left panel?"* — on a visit whose consult fee was on a settled invoice.
+   *
+   * `counterState` has derived this since Plan 16c and the queue view has rendered it since RC-1:
+   * `free | settled | credit | unsettled`, a projection of the invoice ledger that "cannot drift
+   * from the money because it IS the money, read". This route already called `counterState` for
+   * the token — the verdict was in the same variable, one field away, and thrown away. The counter
+   * then painted its stamp from the PRICED DRAFT instead, and a draft is never paid, so the rail
+   * said UNPAID over a paid visit as a matter of arithmetic rather than of fact.
+   *
+   * Null only where the module is UNCONFIGURED, which is `encounterFeeStatuses`' own "no fee for a
+   * stamp to be a fact about" — the screen says nothing there rather than inventing a state.
+   */
+  feeStatus: EncounterFeeStatus | null;
+};
 import type { OpdConfig } from "../opd";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -448,6 +485,7 @@ type RefundVoucherListRow = Omit<RefundVoucherRow, "payeeIdRef">;
 type InvoiceDetail = { invoice: InvoiceRow; lines: InvoiceLineRow[]; settlement: Settlement };
 type InvoicePrint = {
   letterhead: OpdConfig["letterhead"];
+  supplierState: { code: string; name: string } | null;
   invoice: InvoiceRow;
   lines: InvoiceLineRow[];
   patient: PatientSummary | null;
@@ -504,6 +542,30 @@ export class BillingController {
    * somebody else's screen. `billing.invoice.read` is the right key: knowing who owes money is the
    * same authority as reading the invoice that says so.
    */
+  /**
+   * ═══ FD-33 — WHY IS THERE NO BILL AGAINST THIS TOKEN? (OWNER, 2026-09-13) ═══
+   *
+   * The day's visits that SHOULD carry a consultation charge and do not. A FREE REVISIT is absent by
+   * construction — `orphanScan` skips a visit whose fee service is null — so the owner's audit
+   * inverts into something answerable at a glance: a token MISSING from this list is legitimately
+   * unbilled; a token PRESENT on it is the leak.
+   *
+   * READ-ONLY. `chargeOrphans` and deliberately not `runDailyClose`, which claims the day and
+   * appends a `charge.orphan_flagged` per finding: an auditor refreshing a screen must not close the
+   * books, and must not be answered "already claimed, here is what the worker found at 23:59" when
+   * they are asking about 11am.
+   */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("charge-orphans")
+  async chargeOrphansRoute(@Query() query: unknown): Promise<{ items: ChargeOrphanRow[] }> {
+    const q = parsed(worklistQuery, query);
+    try {
+      return { items: await chargeOrphans(this.db, q.serviceDate) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("worklist")
   async worklist(
@@ -513,11 +575,36 @@ export class BillingController {
     return { items: await collectionWorklist(this.db, actor, q.serviceDate) };
   }
 
+  /**
+   * ═══ ASKED BY THE NUMBER ON THE SLIP, BECAUSE THAT IS THE SPELLING THE CASHIER HOLDS ═══
+   *
+   * Owner, 2026-09-15: the papers sheet, opened at `/billing` on a visit reached by typing
+   * `V2609150001`, listed no bills at all — on a visit the rail beside it was stamping PAID.
+   *
+   * 2026-09-12 canonicalised what `issueInvoice` STORES (`canonicalEncounterRef`, whose header is
+   * the whole argument). It did not canonicalise what a reader ASKS, and this route is the read the
+   * papers sheet makes: `listInvoices` compares the caller's string to `invoices.encounter_id`, so a
+   * visit number matched nothing and the answer was an empty list rather than a refusal — the shape
+   * an encounter with genuinely no bills returns, which is why nothing noticed.
+   *
+   * BOTH SPELLINGS, not the canonical one: that repair shipped no backfill, so rows keyed on a visit
+   * number are in production today and asking only the resolved id would lose them. The argument is
+   * in `encounterRefSpellings`, including why this is a plaster and what the actual repair is.
+   *
+   * The resolution is here rather than inside `listInvoices` deliberately: this is the boundary an
+   * outside string crosses, and it is exactly where `feeQuoteRoute` already performs the same act.
+   * Every internal caller of `listInvoices` passes an id it read out of a row, and a resolver in
+   * the shared reader would be a lookup those callers pay for and never need.
+   *
+   * `patientId` is NOT resolved alongside it, and that is not an omission: the merge chain is
+   * `getPatient`'s to walk and `invoices.patient_id` carries a real FK, so a patient reference that
+   * reaches this route is already a row id. The ambiguity being repaired belongs to the visit.
+   */
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("invoices")
   async invoices(@Query() query: unknown): Promise<{ items: InvoiceRow[] }> {
     const q = parsed(invoicesQuery, query);
-    return { items: await listInvoices(this.db, q) };
+    return { items: await listInvoices(this.db, { ...q, encounterId: await encounterRefSpellings(this.db, q.encounterId) }) };
   }
 
   @RequirePermission("billing.invoice.read", "hospital")
@@ -545,6 +632,8 @@ export class BillingController {
       const qrBody = `bil1.invoice.${id}`;
       return {
         letterhead: opd.letterhead,
+        // r.46: the supplier's state, read off its GSTIN (the letterhead only stores a valid one).
+        supplierState: opd.letterhead.gstin === undefined ? null : gstinState(opd.letterhead.gstin),
         invoice: found.invoice,
         lines: found.lines,
         patient: patient ?? null,
@@ -603,18 +692,104 @@ export class BillingController {
    * each trimmed, capped in count and length, empties dropped.
    */
   @RequirePermission("billing.invoice.read", "hospital")
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-28 — THE QUOTE CARRIES WHO AND WHICH TOKEN, BECAUSE THE COUNTER IS ENTERED BY ENCOUNTER
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: *"At /billing, left panel is failing to show patient picture thumbnail,
+   * neither the age, gender and phone number … there's no way a billing user would know, against
+   * which token number the billing needs to be done."*
+   *
+   * The cause is one fact with several symptoms. `/billing?encounterId=…` is the hand-off from the
+   * OPD desk and is how this counter is normally reached, but every box in its left rail is gated on
+   * a PICKED patient — so arriving by the front door left the rail blank: no name, no age, no dues,
+   * no token. The screen already knew the visit and could not say whose it was.
+   *
+   * ═══ WHY THE ANSWER IS THIS ROUTE AND NOT `GET /opd/visits/:id` ═══
+   *
+   * A cashier does NOT hold `opd.visits.read` and must not: FD-25's close pass removed the OPD
+   * strings from that role because `opd.visits.open` also opens `reclassify`, which changes the
+   * consult fee band — one actor could lower a fee and then collect it. This route is already the
+   * billing-scoped read of a visit, already guarded on `billing.invoice.read`, and already loads the
+   * encounter. So the two facts the counter is missing ride the answer it already asks for, and no
+   * permission moves.
+   *
+   * The PATIENT comes from `getPatientSummaries`, the same helper the printed invoice uses — so a
+   * sealed record shows its alias here exactly as it does on paper, the §14 rule is asked in the one
+   * place that owns it, and the disclosure is logged with a stated reason. This route never reads a
+   * name off `patients` directly; doing that is how the print renderer once leaked one.
+   *
+   * The TOKEN comes from `counterState`, which is PHI-free by construction and is the same
+   * projection the hall board reads — so the counter and the board cannot disagree about a number
+   * the patient is holding on a slip.
+   */
   @Get("visits/:encounterId/fee-quote")
   async feeQuoteRoute(
+    @CurrentActor() actor: Actor,
     @Param("encounterId") encounterId: string,
     @Query("coupon") coupon?: string | string[],
     // `string | string[]`, matching the schema: Nest hands back an array for a repeated parameter,
     // and an annotation narrower than the parser invites someone to "simplify" the union back out.
     @Query("referral") referral?: string | string[],
-  ): Promise<FeeQuote> {
+  ): Promise<FeeQuote & {
+    patient: PatientSummary | null; visit: VisitFacts | null;
+    alreadyBilled: { invoiceId: string; invoiceNo: string } | null;
+  }> {
     const couponCodes = parsed(feeQuoteCouponsQuery, coupon);
     const attributionCode = parsed(feeQuoteReferralQuery, referral);
     try {
-      return await feeQuote(this.db, encounterId, new Date(), { couponCodes, attributionCode });
+      const quote = await feeQuote(this.db, encounterId, new Date(), { couponCodes, attributionCode });
+      const encounter = await getEncounter(this.db, encounterId);
+      /*
+        `withContact` is an OPT-IN that writes its reason into the PHI access row. The counter needs
+        the number to telephone a patient whose bill is queried, and a disclosure whose purpose is
+        not recorded cannot be answered for later.
+      */
+      const [patient] = encounter === null ? [] : await getPatientSummaries(
+        this.db, actor, [encounter.patientId],
+        { withContact: { reason: "billing counter — the person being billed" } },
+      );
+      const state = await counterState(this.db, encounterId);
+      /*
+        ═══ THE STANDING BILL, NAMED BEFORE THE MONEY IS TAKEN AND NOT AFTER ═══
+
+        FD-27's duplicate guard (`invoices.ts`) is the authority and stays exactly where it is. What
+        it could not do is speak in time: it runs INSIDE the issue transaction, so the only way a
+        cashier learned the visit was already billed was to count the cash, press Take, and read
+        `duplicate_invoice_refused`. The owner did precisely that.
+
+        So the quote asks the guard's OWN question with the guard's OWN function, against the same
+        encounter key the guard uses — the screen cannot claim "already billed" on a different
+        basis from the refusal, which is how a warning and a guard start disagreeing.
+
+        Scoped to the visit's fee service because that is what the rail's stamp is a fact about; a
+        visit whose consult is billed is still open for a dressing or a lab test, and this must not
+        read as "this visit is closed".
+      */
+      /*
+        Asked with the ENCOUNTER'S OWN ID, never with the string the cashier typed. The ledger is
+        keyed canonically (`canonicalEncounterRef`) and this route is reached by either spelling —
+        a cashier types the visit number off the slip, the OPD desk deep-links the row id. Asking
+        with the raw parameter answered "no standing bill" for the visit-number road, which is the
+        road the owner was on and the one this whole repair is about.
+      */
+      const alreadyBilled = quote.feeServiceId === null || encounter === null
+        ? null
+        : await liveInvoiceCharging(this.db, encounter.id, [quote.feeServiceId]);
+      return {
+        ...quote,
+        alreadyBilled: alreadyBilled === null ? null : { invoiceId: alreadyBilled.id, invoiceNo: alreadyBilled.invoiceNo },
+        patient: patient ?? null,
+        visit: encounter === null ? null : {
+          visitNo: encounter.visitNo,
+          serviceDate: encounter.serviceDate,
+          status: encounter.status,
+          tokenNo: state?.tokenNo ?? null,
+          departmentCode: state?.departmentCode ?? null,
+          feeStatus: state?.feeStatus ?? null,
+        },
+      };
     } catch (e) {
       toHttp(e);
     }

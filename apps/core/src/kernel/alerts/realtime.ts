@@ -14,7 +14,16 @@ export const alertsTopicSpace: TopicSpace = {
   authorize: (userId, topic) => topic === `${ALERTS_TOPIC_PREFIX}:${userId}`,
 };
 
-export const ALERTS_REALTIME_NAMES = ["alert.raised"];
+/**
+ * PHASE O T3 — `alert.acknowledged` joins `alert.raised` so a second tab clears when the first
+ * one answers. Both payloads carry `userId`, so `alertsTopicsFor` routes the new name unchanged.
+ *
+ * `alert.read` is still NOT here, and that asymmetry is deliberate rather than an oversight: a
+ * read is a render and costs a stale badge for one 15 s tick, while an ACK is the act that stops
+ * an obligation's respond clock — two tabs disagreeing about whether somebody has taken a thing
+ * on is the disagreement that matters.
+ */
+export const ALERTS_REALTIME_NAMES = ["alert.raised", "alert.acknowledged"];
 
 export function alertsTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[] {
   const p = (e.payload ?? {}) as { userId?: string };

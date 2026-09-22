@@ -8,13 +8,13 @@ import { collectOrderKinds } from "../../src/kernel/orders/kinds";
 import { ORDERS_PLACE } from "../../src/kernel/orders/place";
 import { addMedicine, addSalt } from "../../src/modules/formulary";
 import { createStore, postMovement, registerItem } from "../../src/modules/materials";
-import { startConsultation } from "../../src/modules/opd/consultation";
+import { saveConsultNote, startConsultation } from "../../src/modules/opd/consultation";
 import { openVisit } from "../../src/modules/opd/encounters";
 import { registerOpdEncounterResolver } from "../../src/modules/opd/opd.module";
 import { issuePrescription } from "../../src/modules/opd/prescriptions";
 import { callNext } from "../../src/modules/opd/queue";
 import { recordVitals } from "../../src/modules/opd/vitals";
-import { activatePharmacyDefinitions, registerSaleItem } from "../../src/modules/pharmacy";
+import { activatePharmacyDefinitions, recordPharmacistRegistration, registerSaleItem } from "../../src/modules/pharmacy";
 import { upsertGstCategory } from "../../src/modules/tariff";
 import { issuePaidInvoice, seedBillingBase } from "./billing";
 import type { BillingBaseFixture } from "./billing";
@@ -36,6 +36,8 @@ export type PharmacyFixture = {
   decls: readonly OrderKindDecl[];
   registry: ModuleRegistry;
   pharmacist: { id: string; token: string; actor: Actor };
+  /** P2 — the pharmacist in charge: holds `pharmacy`, files `pharmacist`'s council registration, has none of their own. */
+  incharge: { id: string; token: string; actor: Actor };
   aide: { id: string; token: string; actor: Actor };
   clerk: { id: string; token: string; actor: Actor };
   vd: { id: string; token: string; actor: Actor };
@@ -75,14 +77,23 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
   await ensureRole(db, "pharmacy_assistant");
   for (const p of [
     "pharmacy.dispense.place", "pharmacy.dispense.read", "pharmacy.dispense.scheduled", "pharmacy.sale_items.manage",
+    "pharmacy.pharmacists.manage", "pharmacy.register.read",
     ORDERS_PLACE, "orders.read", "orders.cancel",
     "billing.invoice.issue", "billing.invoice.read", "billing.receipt.record", "billing.session.own",
+    "billing.credit_note.issue", "billing.refund.request",
+    // P19 — the walk-in counter.
+    "pharmacy.retail.sell", "patients.register", "pharmacy.downtime.enter",
     "patients.read", "formulary.read", "materials.stock.read", "opd.prescriptions.verify",
   ]) await grantPermissionToRole(db, registry, "pharmacy", p);
   for (const p of ["pharmacy.dispense.place", "pharmacy.dispense.read", "orders.read", "patients.read", "formulary.read"]) {
     await grantPermissionToRole(db, registry, "pharmacy_assistant", p);
   }
   const pharmacist = await mkUser(db, "ph.mehta", ["pharmacy"]);
+  const incharge = await mkUser(db, "ph.incharge", ["pharmacy"]);
+  // P2 — the Act's acts need a current registration; the pharmacist in charge files it (never its holder).
+  await withTx(db, (tx) => recordPharmacistRegistration(tx, incharge.actor, {
+    userId: pharmacist.id, council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-123456", validUntil: null,
+  }, MON));
   const aide = await mkUser(db, "aide.ravi", ["pharmacy_assistant"]);
   const clerk = await mkUser(db, "clerk", ["front_office"]);
   const vd = await mkUser(db, "vd", ["vitals_desk"]);
@@ -123,7 +134,7 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
 
   const patient = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB });
   const unregister = registerOpdEncounterResolver();
-  return { decls: collectOrderKinds(registry), registry, pharmacist, aide, clerk, vd, doctor, deptId, storeId, med, item, patient, base, unregister };
+  return { decls: collectOrderKinds(registry), registry, pharmacist, incharge, aide, clerk, vd, doctor, deptId, storeId, med, item, patient, base, unregister };
 }
 
 /** open → vitals → call → start → issue: the production path a prescription actually takes. */
@@ -131,7 +142,11 @@ export async function issueRx(
   db: Db,
   fx: PharmacyFixture,
   lines: RxLine[],
-  opts: { patientId?: string; at?: Date; overrides?: Omit<Parameters<typeof issuePrescription>[4], "lines">; payFee?: boolean } = {},
+  opts: {
+    patientId?: string; at?: Date; overrides?: Omit<Parameters<typeof issuePrescription>[4], "lines">; payFee?: boolean;
+    /** Coded in the consult BEFORE the prescription is issued, as a doctor codes one (P24's fourth book reads them). */
+    diagnoses?: { text: string; icd10Code: string }[];
+  } = {},
 ): Promise<{ encounter: EncounterRow; tokenNo: number | null; issued: IssuedPrescription }> {
   const at = opts.at ?? MON;
   const opened = await openVisit(db, fx.clerk.actor, { patientId: opts.patientId ?? fx.patient.id, departmentId: fx.deptId, doctorId: fx.doctor.doctorId }, at);
@@ -143,6 +158,7 @@ export async function issueRx(
   await recordVitals(db, fx.vd.actor, opened.encounter.id, ADULT_OK, at);
   await callNext(db, fx.doctor.actor, opened.sessionId, at);
   const started = await startConsultation(db, fx.doctor.actor, opened.encounter.id, at);
+  if (opts.diagnoses !== undefined) await saveConsultNote(db, fx.doctor.actor, started.encounter.id, { diagnoses: opts.diagnoses });
   const issued = await issuePrescription(db, fx.doctor.actor, testCfg, started.encounter.id, { lines, ...(opts.overrides ?? {}) }, new Date(at.getTime() + 60_000));
   return { encounter: started.encounter, tokenNo: opened.tokenNo, issued };
 }
@@ -174,7 +190,7 @@ export async function reissueRx(
 export async function stockIn(
   db: Db,
   fx: PharmacyFixture,
-  input: { itemId: string; batchNo: string; expiryDate?: string | null; mrpPaise?: number | null; mrpUom?: string | null; qtyBase: number; at?: Date },
+  input: { itemId: string; batchNo: string; expiryDate?: string | null; mrpPaise?: number | null; mrpUom?: string | null; qtyBase: number; at?: Date; resourceId?: string },
 ): Promise<string> {
   const HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
   const batchId = newId();
@@ -185,7 +201,7 @@ export async function stockIn(
     landedCostPaise: 500, ownership: "owned", createdBy: HEAD.id,
   });
   await withTx(db, (tx) => postMovement(tx, HEAD, {
-    resourceId: fx.storeId, batchId, qtyDelta: input.qtyBase, reason: "grn", refType: "test", refId: batchId, occurredAt: input.at ?? MON,
+    resourceId: input.resourceId ?? fx.storeId, batchId, qtyDelta: input.qtyBase, reason: "grn", refType: "test", refId: batchId, occurredAt: input.at ?? MON,
   }));
   return batchId;
 }

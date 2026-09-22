@@ -1,8 +1,11 @@
-import { Module, Global, Inject, OnModuleDestroy } from "@nestjs/common";
+import { Module, Global, Inject, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import type { Pool } from "pg";
 import { createDb, Db } from "./kernel/db/client";
 import { loadConfig, AppConfig } from "./kernel/config";
-import { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
+import { DiskDocumentStore } from "./kernel/documents/disk";
+import { warnIfDocumentRootUnwritable } from "./kernel/documents/boot-check";
+import type { DocumentStore } from "./kernel/documents/store";
+import { DB, DB_POOL, CONFIG, DOCUMENT_STORE, MODULE_REGISTRY } from "./kernel/tokens";
 import { ModuleRegistry } from "./kernel/modules/loader";
 import { ALL_MANIFESTS } from "./kernel/modules/manifests"; // ← PLAN 11d D2: the ONE manifest list
 import { PatientsModule } from "./modules/patients"; // ← imports the module's index — spec §4
@@ -18,10 +21,12 @@ import { WorkflowModule } from "./kernel/workflow/workflow.module";
 import { ApprovalsModule } from "./kernel/approvals/approvals.module";
 import { RealtimeModule } from "./kernel/realtime/realtime.module";
 import { AlertsModule } from "./kernel/alerts/alerts.module";
+import { ReachModule } from "./kernel/notify/reach.module";
 import { OpsModule } from "./kernel/ops/ops.module";
 import { SearchModule } from "./kernel/search/search.module";
 import { DeskModule } from "./kernel/desk/desk.module";
 import { InferenceModule } from "./kernel/inference/inference.module";
+import { CopilotModule } from "./kernel/copilot/copilot.module";
 import { ResourcesModule } from "./kernel/resources/resources.module";
 import { MaterialsModule } from "./modules/materials/materials.module";
 import { OtModule } from "./modules/ot/ot.module";
@@ -30,6 +35,7 @@ import { RadiologyModule } from "./modules/radiology/radiology.module";
 import { PcpndtModule } from "./modules/pcpndt/pcpndt.module";
 import { AerbModule } from "./modules/aerb/aerb.module";
 import { PrintingModule } from "./kernel/printing/printing.module";
+import { RosterModule } from "./modules/roster/roster.module";
 import { PharmacyModule } from "./modules/pharmacy/pharmacy.module";
 import { collectResourceKinds } from "./kernel/resources/kinds";
 import { collectOrderKinds } from "./kernel/orders/kinds";
@@ -41,7 +47,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule, SearchModule, DeskModule, InferenceModule, MembershipModule, PartnersModule, FormularyModule, ResourcesModule, MaterialsModule, OtModule, LabModule, RadiologyModule, PcpndtModule, AerbModule, PharmacyModule, PrintingModule], // ← PrintingModule (FD-24 T2 — the print relay's claim/report routes. A KERNEL module like `notify`: the counter, the cashier and the vitals bay all print, and none of them owns printing) // ← AerbModule (Plan 18c T1 — the AERB registers' routes. Its OWN module rather than part of radiology (D1) so the cath lab (63) and radiation oncology (64) file a licence and write a dose row without installing a department; the `pcpndt` precedent, one statute over); ← PharmacyModule (Plan 16c T1 — no controller yet: T2 mounts the first, the MaterialsModule/LabModule precedent); ← PcpndtModule (Plan 18a T6 — the statutory register's routes; its manifest shipped inert at T2 and this is the commit that mounts its controller. It is its OWN module rather than part of radiology (DD1) so 15b and 62 can install the register without installing a department); ← RadiologyModule (Plan 18a T3 — the placement route; the module seam shipped inert at T2 and this is the commit that mounts its first controller, the LabModule precedent); ← LabModule (Plan 17b T8 — the five lab controllers; the module seam shipped inert at Plan 17 T2 and this is the commit that mounts them); ← OtModule (Plan 15 T2 — no controller yet: T8 mounts the four, the MaterialsModule precedent); ← MaterialsModule (Plan 14 T2 — no controller yet: T8 mounts it, the ResourcesModule/MembershipModule precedent); ← ResourcesModule (Plan 13 T2 — no controller yet: T5 mounts it, the MembershipModule/PartnersModule precedent); ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, ReachModule, OpsModule, SearchModule, DeskModule, InferenceModule, CopilotModule, MembershipModule, PartnersModule, FormularyModule, ResourcesModule, MaterialsModule, OtModule, LabModule, RadiologyModule, PcpndtModule, AerbModule, PharmacyModule, PrintingModule, RosterModule], // ← RosterModule (PHASE R R1 — no controller yet: the screens are the S-series, gated on the owner's sign-off of the four design boards (plan §8); the MaterialsModule/PharmacyModule precedent) // ← CopilotModule (FD-COPILOT — the desk copilot's one door, `POST /copilot/ask`. A KERNEL module like `search` and `desk`: every seat's F2 bar asks through it, and no module owns the desk agent) // ← PrintingModule (FD-24 T2 — the print relay's claim/report routes. A KERNEL module like `notify`: the counter, the cashier and the vitals bay all print, and none of them owns printing) // ← AerbModule (Plan 18c T1 — the AERB registers' routes. Its OWN module rather than part of radiology (D1) so the cath lab (63) and radiation oncology (64) file a licence and write a dose row without installing a department; the `pcpndt` precedent, one statute over); ← PharmacyModule (Plan 16c T1 — no controller yet: T2 mounts the first, the MaterialsModule/LabModule precedent); ← PcpndtModule (Plan 18a T6 — the statutory register's routes; its manifest shipped inert at T2 and this is the commit that mounts its controller. It is its OWN module rather than part of radiology (DD1) so 15b and 62 can install the register without installing a department); ← RadiologyModule (Plan 18a T3 — the placement route; the module seam shipped inert at T2 and this is the commit that mounts its first controller, the LabModule precedent); ← LabModule (Plan 17b T8 — the five lab controllers; the module seam shipped inert at Plan 17 T2 and this is the commit that mounts them); ← OtModule (Plan 15 T2 — no controller yet: T8 mounts the four, the MaterialsModule precedent); ← MaterialsModule (Plan 14 T2 — no controller yet: T8 mounts it, the ResourcesModule/MembershipModule precedent); ← ResourcesModule (Plan 13 T2 — no controller yet: T5 mounts it, the MembershipModule/PartnersModule precedent); ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
@@ -52,6 +58,16 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
     },
     { provide: DB, useFactory: (b: DbBundle): Db => b.db, inject: [DB_BUNDLE] },
     { provide: DB_POOL, useFactory: (b: DbBundle): Pool => b.pool, inject: [DB_BUNDLE] },
+    /*
+      THE DOCUMENT STORE — one provider, so the owner's "R2 or S3 later" is a change to this line
+      and to nothing that injects it. Constructed from config rather than reading the env directly,
+      on the same reasoning as every other provider here: one place parses the environment.
+    */
+    {
+      provide: DOCUMENT_STORE,
+      useFactory: (cfg: AppConfig): DocumentStore => new DiskDocumentStore(cfg.documentStorePath),
+      inject: [CONFIG],
+    },
     {
       provide: MODULE_REGISTRY,
       useFactory: (): ModuleRegistry => {
@@ -98,12 +114,39 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
       },
     },
   ],
-  exports: [DB, DB_POOL, CONFIG, MODULE_REGISTRY],
+  /* DOCUMENT_STORE is EXPORTED, not merely provided. AppModule is @Global(), and a token that is
+     provided without being exported resolves in this module and nowhere else — PatientsController
+     lives in PatientsModule, so it failed to construct the moment anything booted the real graph.
+     Every narrow suite passed: they call the service functions directly and never build it. */
+  exports: [DB, DB_POOL, CONFIG, DOCUMENT_STORE, MODULE_REGISTRY],
 })
-export class AppModule implements OnModuleDestroy {
+export class AppModule implements OnModuleDestroy, OnModuleInit {
   private poolClosed = false;
 
-  constructor(@Inject(DB_POOL) private readonly pool: Pool) {}
+  constructor(
+    @Inject(DB_POOL) private readonly pool: Pool,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
+  ) {}
+
+  /*
+    DOCUMENT_STORE_PATH is set on no deployment and defaults to a path that exists nowhere, so
+    every slip photographed at /opd/slips is refused `unwritable` until an operator creates it —
+    and today the only place that shows is the desk, mid-patient. This says it at boot instead.
+
+    It WARNS and never refuses: an uncreated directory is a data state an operator can be halfway
+    through, and there is no safety edge — see kernel/documents/boot-check.ts. The try/catch is the
+    same rule the membership check follows: an advisory must not be able to stop the API for the
+    thing it is advising about.
+  */
+  async onModuleInit(): Promise<void> {
+    try {
+      await warnIfDocumentRootUnwritable(this.cfg.documentStorePath, {
+        warn: (m) => { console.warn(`documents: ${m}`); },
+      });
+    } catch {
+      // An advisory that cannot probe says nothing; it does not stop the hospital.
+    }
+  }
 
   async onModuleDestroy(): Promise<void> {
     // Own flag, not pg's pool.ended: that runtime property is missing from @types/pg

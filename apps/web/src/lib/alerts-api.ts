@@ -7,6 +7,8 @@ import { api } from "./api";
  * uncapped count — this file describes the shape, it does not re-derive it. `AlertRow` carries
  * no `userId` on the wire (identity-scoped by the auth token, D6) and no patient identity (L8).
  */
+export type AlertAckKind = "seen" | "owned" | "handed_over";
+
 export type WireAlert = {
   id: string;
   kind: string;
@@ -16,6 +18,18 @@ export type WireAlert = {
   refId: string | null;
   createdAt: string;
   readAt: string | null;
+  /**
+   * PHASE O T3 — the answer, if one was given. `readAt` says this browser rendered the row;
+   * these say a human took a position on it, which is the only thing that stops the obligation
+   * spine's respond clock. Optional on the wire: a tab left open across a deploy can briefly
+   * talk to an API that does not send them yet.
+   */
+  ackKind?: AlertAckKind | null;
+  acknowledgedAt?: string | null;
+  ownedUntil?: string | null;
+  ackNote?: string | null;
+  handedToUserId?: string | null;
+  ackExtensions?: number;
 };
 
 export type WireAlertsList = { items: WireAlert[]; unreadCount: number };
@@ -34,4 +48,32 @@ export function listAlerts(): Promise<WireAlertsList> {
  */
 export function markAlertRead(id: string, idempotencyKey: string): Promise<WireMarkReadResult> {
   return api("POST", `/alerts/${id}/read`, undefined, idempotencyKey);
+}
+
+/** `POST /alerts/:id/ack`'s body. `untilMinutes` is required for `owned` and refused above a day. */
+export type WireAckInput = {
+  kind: AlertAckKind;
+  untilMinutes?: number;
+  note?: string;
+  /** Exactly one of the two for `handed_over`. The bell sends the badge number (T9 ships a picker). */
+  handedToUserId?: string;
+  handedToStaffCode?: string;
+};
+
+/**
+ * `changed: false` is a real answer, not a failure: a second `seen`, or a glance over somebody's
+ * standing promise, reports the state that stands and writes nothing (R8).
+ */
+export type WireAckResult = {
+  alertId: string;
+  kind: AlertAckKind;
+  acknowledgedAt: string;
+  ownedUntil: string | null;
+  handedToUserId: string | null;
+  ackExtensions: number;
+  changed: boolean;
+};
+
+export function acknowledgeAlert(id: string, input: WireAckInput, idempotencyKey: string): Promise<WireAckResult> {
+  return api("POST", `/alerts/${id}/ack`, input, idempotencyKey);
 }

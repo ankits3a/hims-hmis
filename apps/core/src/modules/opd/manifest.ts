@@ -1,6 +1,7 @@
 import { opdAppointmentsDeskProvider, opdDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { opdSearchProviders } from "./search-providers";
+import { opdCopilotTools } from "./copilot-tools";
 
 /**
  * The OPD module's declared surface (spec §4): the fourteen `opd.*` permissions every route in the three
@@ -45,11 +46,73 @@ export const opdManifest: ModuleManifest = {
      * chain where the bay needs the last one. Held by `vitals_desk`, `nurse` and `doctor`.
      */
     "opd.vitals.history.read",
+    /**
+     * ═══ FD-27 — REPRINTING A DOCUMENT IS ITS OWN AUTHORITY, AND THIS IS THE FRESH ANSWER ═══
+     *
+     * `GET /print/jobs` and `POST /print/reprint` were guarded on `opd.visits.open`, borrowed
+     * because `/counter` was their only caller and `front_office` holds it. FD-25's close pass then
+     * REMOVED `opd.visits.open` from `cashier` — two reviewers found that it also opens
+     * `POST /opd/visits/:id/reclassify`, so one actor could lower a consult fee and then collect
+     * it — and closed with: *"If the print rail ever reaches this seat, the grant is a fresh
+     * question with a fresh answer."*
+     *
+     * The owner reached it on 2026-09-06: *"A user with Billing permission don't have any way to
+     * print the OPD prescription."* They are right, and the reason is that string. This is the
+     * fresh answer: a permission that authorises re-queueing a document that has ALREADY been
+     * produced for a visit, and nothing else. It opens no write on the visit, cannot reclassify a
+     * fee, and cannot open or abandon anything — so the cashier can hand a patient their paper
+     * again without the seat that takes the money also being able to change what it costs.
+     *
+     * It is not a PHI widening either: the renderer resolves the patient at render time and records
+     * the access against the requester, and every holder below already carries `patients.read`.
+     */
+    "opd.paper.reprint",
     "opd.queue.read", "opd.queue.operate", "opd.queue.transfer",
     "opd.consult", "opd.prescriptions.verify", "opd.display.read",
+    /**
+     * FD-30 / owner ruling 2026-09-12 — THE TRANSCRIPTION GRANT, AND IT PRESCRIBES NOTHING.
+     *
+     * *"Doctors have so tight schedule that they fail to enter his observation … they just write
+     * manually by pen on the prescription slip."* This authorises composing a DRAFT from that paper
+     * and nothing else. It cannot issue: `issuePrescription` is reached only through the doctor's
+     * own tap and refuses any actor without an `opd_doctors` profile for THIS encounter
+     * (`requireTreatingDoctor`), which is the check this permission deliberately does not touch.
+     *
+     * Separate from `opd.consult` for the obvious reason — `opd.consult` is the whole consultation
+     * surface, including issuing — and from `patients.update` because a draft is about the VISIT.
+     */
+    "opd.prescription.draft",
+    /**
+     * FD-31 / owner ruling 2026-09-12 — THE SECOND MODE, AND THE SHARPEST GRANT IN THIS FILE.
+     *
+     * *"I can't hire a human assistant for the doctor to scribe on behalf of the doctor"* — so in
+     * that mode nobody taps. This authorises the OPD Order Desk to send a prescription the doctor
+     * signed IN PEN, and it is separate from `opd.prescription.draft` precisely because drafting is
+     * inert and this is not: the row it creates feeds the pharmacy queue.
+     *
+     * WHAT IT STILL CANNOT DO. The prescriber is read from the ENCOUNTER, so this grant names no
+     * doctor; the allergy, severe-interaction and duplicate-salt gates all evaluate unchanged; and
+     * the dispense it produces CANNOT BE BILLED until a pharmacist has cross-confirmed the slip
+     * (`billDispense` → `slip_not_confirmed`). The clinical check moved to the pharmacist, who is a
+     * clinician; it did not disappear.
+     */
+    "opd.prescription.transcribe",
+    /**
+     * THE OPD DAY REPORT — owner request 2026-09-19. The hospital's day, department by department,
+     * and each department's patient list, as a screen, a spreadsheet and a printable letterhead.
+     * Held by the front-office supervisor, the medical superintendent and the owner. It carries
+     * patient names, so every department read is logged (`day_report.patients_listed`).
+     */
+    "opd.reports.read",
   ],
   // PLAN 11h T3 — doctors and departments on `opd.masters.read`, appointments on
   // `opd.appointments.read`. Patient confidentiality is NOT re-implemented here (DD1/DD3).
   search: opdSearchProviders,
+  /**
+   * FD-COPILOT — what the desk copilot may ask the OPD. Built in `./copilot-tools`, following the
+   * same style as `search` and `desk`: the arrays live in sibling files so this manifest stays a
+   * declaration rather than an implementation.
+   */
+  copilotTools: opdCopilotTools,
   subscriptions: [], // no dispatcher consumers in this plan; realtime rides the gateway's tail
 };

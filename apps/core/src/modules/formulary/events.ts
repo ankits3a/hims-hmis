@@ -26,6 +26,19 @@ export const saltAdded = defineEvent("salt.added", MODULE, z.object({
   saltId: id, name: z.string().min(1), drugClass: z.string().nullable(), aliases: z.array(z.string()),
 }));
 
+/**
+ * FORMULARY P22 — allergy classes added to a moiety by a named resolution. `added` is what this act
+ * added; `allergyClasses` is the moiety's list afterwards; `source` names the resolution and the rule.
+ */
+export const saltAllergyClassesAdopted = defineEvent("salt.allergy_classes_adopted", MODULE, z.object({
+  saltId: id, added: z.array(z.string().min(1)).min(1), allergyClasses: z.array(z.string().min(1)).min(1), source: z.string().min(1),
+}));
+
+/** FORMULARY P23 — a moiety's therapeutic class set by a named resolution, where none was recorded. */
+export const saltTherapeuticClassAdopted = defineEvent("salt.therapeutic_class_adopted", MODULE, z.object({
+  saltId: id, drugClass: z.string().min(1), source: z.string().min(1),
+}));
+
 export const saltUpdated = defineEvent("salt.updated", MODULE, z.object({
   saltId: id, changed: z.array(z.string()).min(1),
 }));
@@ -61,6 +74,17 @@ export const interactionUpdated = defineEvent("interaction.updated", MODULE, z.o
   interactionId: id, changed: z.array(z.string()).min(1),
 }));
 
+/**
+ * P24 — a moiety this diagnosis forbids. `icd10Prefix` is carried because the GRAIN is itself the
+ * clinical decision: `N18` and `N18.4` are different rulings about the same disease, and an audit
+ * that recorded only the moiety could not tell afterwards which one was adopted.
+ */
+export const drugDiseaseAdded = defineEvent("drug_disease.added", MODULE, z.object({
+  drugDiseaseId: id, saltId: id, icd10Prefix: z.string().min(3),
+  severity: z.enum(["severe", "moderate"]), source: z.string().min(1),
+  routeScope: z.literal("systemic_only").nullable(),
+}));
+
 /** T7's admission path. Defined here because the union of names is closed by this task (errors.ts). */
 export const stagingApproved = defineEvent("staging.approved", MODULE, z.object({
   stagingId: id, medicineId: id, name: z.string().min(1), sourceUrl: z.string().min(1),
@@ -71,13 +95,65 @@ export const stagingRejected = defineEvent("staging.rejected", MODULE, z.object(
 }));
 
 /**
+ * ═══ THE MAPPING LOOP (phase 2): A PHARMACIST SAYS WHAT A RELEASE SUBSTANCE IS ═══
+ *
+ * Both events carry what the projection DID, so a composition that moved under a product is never
+ * a silent side effect of a decision somebody else made. They also carry what the decision
+ * REPLACED (`fromStatus`, `fromSaltId`), because a correction is only auditable if the wrong answer
+ * is still on record.
+ *
+ * `agreedWithProposal` is the P&T committee's instrument for the drafter (ruling R1): the share of
+ * attestations that took the draft as offered, by basis. Null means no draft was on screen, which
+ * is a different fact from "disagreed".
+ *
+ * ONE event per decision, not one per moved product. Attesting amoxicillin trihydrate moves
+ * thousands of composition rows, and the importer's precedent (no per-row events for a catalogue
+ * write) applies. The retro-scan that `medicine.corrected` exists for is still a named deferral. It
+ * can find these products again from `sctid`, because every moved row keeps `derived_from`.
+ */
+const projection = z.object({
+  rowsMoved: z.number().int().nonnegative(),
+  medicinesMoved: z.number().int().nonnegative(),
+  /** Medicines left where they were because two of their components would name one moiety (E2). */
+  medicinesBlocked: z.number().int().nonnegative(),
+});
+const substanceStatus = z.enum(["pending", "mapped", "unmappable"]);
+
+export const substanceMapped = defineEvent("substance.mapped", MODULE, z.object({
+  substanceId: id, sctid: z.string().min(1), saltId: id,
+  fromStatus: substanceStatus, fromSaltId: id.nullable(),
+  /** True when the moiety was created in the same act ("create X and map"). */
+  createdMoiety: z.boolean(),
+  /** True when the pharmacist chose the substance's OWN release entry: "it is its own moiety". */
+  ownEntry: z.boolean(),
+  proposalId: id.nullable(), agreedWithProposal: z.boolean().nullable(),
+  /** Present exactly when a decided substance was changed. */
+  correctionReason: z.string().min(1).nullable(),
+  /**
+   * Formulary phase 3: the resolution this decision was adopted under, when it was adopted in bulk
+   * rather than decided by the actor on the worklist. Defaults to null so earlier payloads parse.
+   */
+  adoptedUnder: z.string().min(1).nullable().default(null),
+  projection,
+}));
+
+export const substanceRuledUnmappable = defineEvent("substance.ruled_unmappable", MODULE, z.object({
+  substanceId: id, sctid: z.string().min(1),
+  fromStatus: substanceStatus, fromSaltId: id.nullable(),
+  reason: z.string().min(1),
+  adoptedUnder: z.string().min(1).nullable().default(null),
+  projection,
+}));
+
+/**
  * The catalog, in source order. A later task that adds a `defineEvent` above adds it here too; the
  * membership precedent (`events.test.ts`) is what turns that convention into an assertion when a
  * task is allowed to own that file.
  */
 export const FORMULARY_EVENTS = [
-  saltAdded, saltUpdated,
+  saltAdded, saltUpdated, saltAllergyClassesAdopted, saltTherapeuticClassAdopted,
   medicineAdded, medicineUpdated, medicineCorrected,
-  interactionAdded, interactionUpdated,
+  interactionAdded, interactionUpdated, drugDiseaseAdded,
   stagingApproved, stagingRejected,
+  substanceMapped, substanceRuledUnmappable,
 ] as const;

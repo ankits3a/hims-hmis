@@ -10,6 +10,7 @@ import type { MaterialsError } from "./errors";
 import type { Pool } from "pg";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "../formulary";
 
 /**
  * PLAN 14 T5 — **A8 AND A9: THE LOCK, OBSERVED.**
@@ -57,7 +58,7 @@ describe("the stock ledger under contention (Plan 14 T5, A8 + A9)", () => {
   async function anItem(code: string): Promise<string> {
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
-      id: medicineId, brandName: `Brand ${medicineId}`, form: "tablet",
+      id: medicineId, brandName: `Brand ${medicineId}`, nameNormalized: normalizeDrugName(`Brand ${medicineId}`), form: "tablet",
       createdBy: HEAD.id, updatedBy: HEAD.id,
     });
     const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {

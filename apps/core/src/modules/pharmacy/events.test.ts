@@ -1,13 +1,14 @@
 import { PHARMACY_EVENTS, dispenseClaimed, dispenseHandedOver } from "./events";
 
 describe("the pharmacy event catalog (16c T1)", () => {
-  it("is nine events, all module pharmacy, names unique", () => {
-    expect(PHARMACY_EVENTS).toHaveLength(9);
+  it("is nineteen events, all module pharmacy, names unique (P2 added the register's two, P6 the return, P19 the walk-in sale's two, P19b its return, PD-5b the resolution, PD-D18 the shelf label, PD-9 the authorisation's two)", () => {
+    expect(PHARMACY_EVENTS).toHaveLength(19); // P2: +2, the register of pharmacists; P6: +1, dispense.line_returned; P19: +2; P19b: +1, retail.line_returned; PD-5b: +1, dispense.line_resolved; PD-D18: +1, shelf.location_set
     for (const e of PHARMACY_EVENTS) expect(e.module).toBe("pharmacy");
-    expect(new Set(PHARMACY_EVENTS.map((e) => e.name)).size).toBe(9);
+    expect(new Set(PHARMACY_EVENTS.map((e) => e.name)).size).toBe(19);
     expect(PHARMACY_EVENTS.map((e) => e.name).sort()).toEqual([
-      "dispense.billed", "dispense.cancelled", "dispense.claimed", "dispense.handed_over", "dispense.line_declined",
-      "dispense.picked", "dispense.queued", "dispense.verified", "substitution.recorded",
+      "authorisation.decided", "authorisation.requested", "dispense.billed", "dispense.cancelled", "dispense.claimed", "dispense.handed_over", "dispense.line_declined",
+      "dispense.line_resolved", "dispense.line_returned", "dispense.picked", "dispense.queued", "dispense.verified", "pharmacist.registered", "pharmacist.registration_ended",
+      "retail.licence_recorded", "retail.line_returned", "retail.sold", "shelf.location_set", "substitution.recorded",
     ]);
   });
 

@@ -14,6 +14,14 @@ import type { Db } from "../db/client";
 /** The surfaces that read a patient's record. Extended by each module that adds one. */
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
+  /**
+   * The desk's photograph of a paper slip, and they are TWO surfaces rather than one.
+   *
+   * Seeing that a document EXISTS on a patient's history and OPENING the prescription are different
+   * acts, and the access log is kept to answer "who looked at this patient's prescription". A single
+   * name would make a doctor who scrolled past a list indistinguishable from one who read the slip.
+   */
+  | "patient.documents" | "patient.document.image"
   | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit"
   /** PLAN 16c T3 — the dispensing counter's read of a dispense (its Rx lines): its own name, so the pharmacy's reads count apart from the consult's. */
   | "pharmacy.dispense"
@@ -77,6 +85,15 @@ export type PhiSurface =
    */
   | "print.claim" | "print.reprint"
   /**
+   * FD-28 — the same document, rendered to a SCREEN so it can be saved as a PDF. Its own name, on
+   * the same reasoning that separates `print.reprint` from `print.claim`: producing a patient's
+   * prescription on a monitor is the same disclosure as producing it on paper, and an enquiry asking
+   * "who saw this" must be able to tell the two apart — a saved PDF can be forwarded, and a sheet of
+   * paper is handed over once. Added because the relay is not installed anywhere yet, so a screen is
+   * currently the only way a patient gets their document at all.
+   */
+  | "print.view"
+  /**
    * FD-25 — A PHONE NUMBER HANDED TO A CLERK WHO HAS TO RING SOMEBODY.
    *
    * The appointment seat's rebooking rail answers "the doctor is away — who do I have to call?",
@@ -116,6 +133,21 @@ export type PhiSurface =
    * "what did they actually see" wrong, which is the only question it exists for.
    */
   | "opd.vitals_prestage"
+  /**
+   * ═══ FD-COPILOT — A CLERK ASKED THE DESK AGENT ABOUT SOMEBODY BY NAME ═══
+   *
+   * Its own name rather than a reuse of `opd.visit`, and the distinction is the one this log exists
+   * to make. `opd.visit` is a screen a clerk opened; this is a QUESTION a clerk typed — "has
+   * U00110012 been seen yet" — answered without any record being opened at all. The disclosure is
+   * small (are they here, have they seen the doctor, what is their token) and the act is different
+   * in kind: it is cheap, it leaves no other trace, and it can be repeated about anybody whose UHID
+   * somebody has. An enquiry asking "who was looking this patient up" must be able to see that.
+   *
+   * `counterState`, which produces the answer, deliberately reads no patient record and writes no
+   * row — right for a screen polling it every few seconds, and not enough when a person has
+   * deliberately asked about somebody by name.
+   */
+  | "copilot.visit_status"
   /**
    * ═══ PLAN 18a T3 / DD11 — THE FOUR IMAGING SURFACES, AND THIS IS AN APPEND AND NOTHING ELSE ═══
    *
@@ -172,7 +204,26 @@ export type PhiSurface =
    * one an enquiry would ask about — it is how a clerk with a legitimate reason to open ONE record
    * reaches the names of everyone who shares a phone with them.
    */
-  | "patient.linked";
+  | "patient.linked"
+  /**
+   * PHARMACY P9 — **THE SCHEDULE H1 REGISTER, and it is an APPEND to a union and nothing else.**
+   *
+   * Drugs and Cosmetics Rules 1945 r.65(3A): the register names the patient, the prescriber and the
+   * drug, and is produced to an inspector. Reading a month of it is the `aerb.dose_register` shape,
+   * a list of patients and what was given to them. It is its own name because a pharmacist opening
+   * one dispense and an inspector's copy of a month are different disclosures.
+   */
+  | "pharmacy.h1_register"
+  /**
+   * APPROVALS-UX — **THE APPROVER'S INBOX, and it is an APPEND to a union and nothing else.**
+   *
+   * `GET /approvals` now names the patient each request is about (display name under the reader's
+   * clearance, and the UHID), because a refund or a discount cannot be decided on an id. That makes
+   * it a list-of-patients read of the `billing.collection_worklist` shape, logged one row per
+   * distinct patient for the same reason. Its own name: an approver reading their queue is a
+   * different disclosure from opening a record, and an enquiry must be able to tell them apart.
+   */
+  | "approvals.worklist";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

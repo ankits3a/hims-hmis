@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Briefs — full page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+input{font:inherit}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+
+<header style="display: flex; align-items: center; gap: 14px; height: 48px; padding: 0 20px 0 12px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
+<sc-if value="{{ menuClosed }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ toggle }}" aria-label="Open the menu" style="width: 34px; height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; display: inline-flex; align-items: center; justify-content: center;">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 2.5h12v11H2zM6 2.5v11"></path></svg>
+</button>
+</sc-if>
+
+<div style="display: flex; align-items: center; gap: 8px;">
+<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0l7 7-7 7-7-7z" fill="#0e6b4e"></path></svg>
+<span style="font-size: 14px; font-weight: 700; letter-spacing: .14em;">DESK ONE</span>
+</div>
+<div style="font-size: 13px; color: #5c6f66; padding-left: 10px;">Doctor Desk · General Medicine · Unit II</div>
+<div style="flex-grow: 1;"></div>
+<div style="display: inline-flex; align-items: center; height: 26px; border: 1px solid #dfe7e1; border-radius: 5px; overflow: hidden; font-size: 12px;">
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 9px; background: rgba(14,107,78,.10); color: #0e6b4e; font-weight: 700; letter-spacing: .06em;">ON DUTY</span>
+<span style="padding: 0 10px; color: #5c6f66;">Unit II · Ward + admission day</span>
+</div>
+<div style="flex-grow: 1;"></div>
+<div style="font-size: 13px; color: #5c6f66;">Fri 18 Sep 2026 · 08:18</div>
+<button aria-label="3 alerts" style="position: relative; width: 34px; height: 34px; border: none; background: transparent; color: #132420; display: inline-flex; align-items: center; justify-content: center;">
+<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 13V8a4.5 4.5 0 019 0v5l1.5 1.5H3zM7.5 16.5h3"></path></svg>
+<span style="position: absolute; top: 1px; right: 1px; min-width: 15px; height: 15px; border-radius: 8px; background: #b23a30; color: #ffffff; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center;">3</span>
+</button>
+<button style="height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 12.5px;">command <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5c6f66; border: 1px solid #dfe7e1; border-radius: 3px; padding: 0 4px;">F8</span></button>
+<button style="display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px; border: none; background: transparent; color: #132420; font-size: 13px; font-weight: 600;">
+<span style="width: 30px; height: 30px; border-radius: 15px; background: #2f5e4e; color: #ffffff; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center;">AS</span>
+Dr. Anil Sharma
+</button>
+</header>
+
+<div style="flex-grow: 1; display: flex; min-height: 0;">
+
+<sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ true }}">
+<aside style="width: 208px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 14px 12px 12px; background: #f4f7f4; border-right: 1px solid #ecf1ed;">
+<button onClick="{{ toggle }}" aria-label="Open or close the menu" style="width: 34px; height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; display: inline-flex; align-items: center; justify-content: center;">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 2.5h12v11H2zM6 2.5v11"></path></svg>
+</button><div style="flex-grow: 1; display: flex; flex-direction: column; gap: 12px;">
+<sc-for list="{{ menu }}" as="g" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 1px;">
+<div style="padding: 4px 10px; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; color: #5c6f66;">{{ g.label }}</div>
+<sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+<a href="{{ it.href }}" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px; font-size: 13px; {{ it.style }}">
+<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ it.d }}"></path></svg>
+<span style="flex-grow: 1;">{{ it.name }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 700; color: #b23a30;">{{ it.n }}</span>
+</a>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<button style="display: flex; align-items: center; justify-content: space-between; height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 13px;">Command <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5c6f66; border: 1px solid #dfe7e1; border-radius: 3px; padding: 0 4px;">F8</span></button>
+<div style="padding: 12px 4px 0; font-size: 10px; font-weight: 600; letter-spacing: .06em; line-height: 14px; color: #5c6f66;">CRK<br>MEDICAL COLLEGE &amp; HOSPITAL</div>
+</aside>
+</sc-if>
+
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
+<div style="flex-grow: 1; display: grid; grid-template-columns: 440px minmax(0, 1fr); gap: 16px; padding: 14px 20px 12px 16px; min-height: 0;">
+
+<section style="display: flex; flex-direction: column; gap: 12px; min-width: 0;">
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<h1 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 600;">AI Briefs</h1>
+<span style="font-size: 13px; color: #5c6f66;">Every brief the desk prepared for you. Nothing is deleted; login briefs come here an hour after they were shown.</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+<button onClick="{{ f.pick }}" style="height: 32px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; {{ f.style }}">{{ f.label }}</button>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 10px; overflow: hidden;">
+<sc-for list="{{ briefs }}" as="b" hint-placeholder-count="6">
+<button onClick="{{ b.pick }}" style="display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 12px 16px; border: none; border-bottom: 1px solid #ecf1ed; text-align: left; color: #132420; {{ b.rowStyle }}">
+<span style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .08em; {{ b.kindStyle }}">{{ b.kind }}</span>
+<span style="font-size: 12px; color: #5c6f66;">{{ b.when }}</span>
+</span>
+<span style="font-size: 13.5px; font-weight: 600;">{{ b.title }}</span>
+<span style="font-size: 12.5px; color: #5c6f66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ b.line }}</span>
+</button>
+</sc-for>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 22px 26px; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 10px;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .08em; {{ sel.kindStyle }}">{{ sel.kind }}</span>
+<span style="font-size: 12.5px; color: #5c6f66;">{{ sel.when }}</span>
+</div>
+<h2 style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 600;">{{ sel.title }}</h2>
+<div style="font-size: 15px; line-height: 23px;">{{ sel.line }}</div>
+<sc-if value="{{ sel.moved }}" hint-placeholder-val="{{ true }}">
+<div style="align-self: flex-start; padding: 6px 10px; border-radius: 6px; background: #eef3ef; font-size: 12px; color: #5c6f66;">Shown highlighted on your dashboard 08:18 → 08:23 · stayed till 09:18 · then moved here</div>
+</sc-if>
+<div style="display: flex; flex-direction: column; border-top: 1px solid #ecf1ed;">
+<sc-for list="{{ sel.items }}" as="it" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: 64px minmax(0, 1fr) 190px; gap: 12px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #ecf1ed;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;">{{ it.bed }}</span>
+<span style="font-size: 13.5px;">{{ it.what }}</span>
+<span style="font-size: 12px; color: #5c6f66;">{{ it.src }}</span>
+</div>
+</sc-for>
+</div>
+<div style="font-size: 12px; color: #5c6f66;">Prepared from: Admissions · Nursing · Lab · Radiology. Every line opens the record it came from.</div>
+<div style="flex-grow: 1;"></div>
+<div style="display: flex; gap: 8px;">
+<a href="Tower.dc.html" style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid #dfe7e1; color: #132420; font-size: 13px; font-weight: 600;">← Dashboard</a>
+<button style="height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 13px;">Print</button>
+</div>
+</section>
+
+</div>
+
+<div style="display: flex; align-items: center; gap: 12px; height: 40px; margin: 0 20px 12px 16px; padding: 0 14px; border-radius: 8px; background: #132420;">
+<span style="width: 9px; height: 9px; border-radius: 5px; background: #35c48f;"></span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #9fc0b1;">ask —</span>
+<label for="ask-briefs" style="position: absolute; width: 1px; height: 1px; overflow: hidden;">Ask the copilot</label>
+<input id="ask-briefs" type="text" placeholder="&quot;pichhle hafte ke login briefs dikhao&quot;" style="flex-grow: 1; height: 30px; box-sizing: border-box; border: none; background: transparent; color: #d9efe4; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: #9fc0b1; border: 1px solid #2c443a; border-radius: 3px; padding: 1px 5px;">F2</span>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  state = { seen: false, team: false, agents: false, menu: true, tab: 'all' };
+  renderVals() {
+    const st = this.state || {};
+    const menuOpen = st.menu !== false;
+    const tab = st.tab || 'all';
+    const I = {
+      grid: 'M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z',
+      user: 'M8 8a3 3 0 100-6 3 3 0 000 6zM2.5 14c.6-2.8 2.8-4 5.5-4s4.9 1.2 5.5 4',
+      clock: 'M8 14A6 6 0 108 2a6 6 0 000 12zM8 4.5V8l2.5 1.5',
+      doc: 'M4 1.5h5.5l3 3v10H4zM9.5 1.5v3h3M6 8h4.5M6 10.5h4.5',
+      bed: 'M1.5 12.5v-8M1.5 9h13v3.5M14.5 9V7.5a2 2 0 00-2-2H6.5V9M4 7.2a1 1 0 100-2 1 1 0 000 2z',
+      chart: 'M2 14h12M4 14V8M8 14V3M12 14V6',
+      clip: 'M5 2.5h6v2H5zM4 3.5H3v11h10v-11h-1M5.5 8h5M5.5 10.5h5',
+      plus: 'M8 2v12M2 8h12',
+      board: 'M2 2.5h12v11H2zM2 6h12M6 6v7.5',
+      team: 'M6 7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 13.5c.4-2.4 2.2-3.5 4.5-3.5s4.1 1.1 4.5 3.5M11 7.3a2.2 2.2 0 000-4.4M12 10.2c1.4.4 2.3 1.5 2.5 3.3',
+      cal: 'M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3',
+      swap: 'M2 5.5h10L9.5 3M14 10.5H4L6.5 13',
+      cap: 'M1.5 6L8 3l6.5 3L8 9zM4 7.3v3.2c1 1 2.4 1.5 4 1.5s3-.5 4-1.5V7.3',
+      check: 'M2.5 2.5h11v11h-11zM5 8l2 2 4-4.5',
+      arrow: 'M2 8h11M9.5 4.5L13 8l-3.5 3.5',
+      exit: 'M6 2.5H2.5v11H6M6 8h8M11 5l3 3-3 3',
+      search: 'M7 12A5 5 0 107 2a5 5 0 000 10zM10.8 10.8L14 14',
+      spark: 'M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5 6.4 9.6 1.5 8l4.9-1.6z',
+      pulse: 'M1.5 8h3l2-5 3 10 2-5h3',
+      shield: 'M8 1.5l5.5 2V8c0 3.2-2.3 5.6-5.5 6.5C4.8 13.6 2.5 11.2 2.5 8V3.5zM5.5 8l1.8 1.8 3.2-3.6',
+      warn: 'M8 2l6.5 11.5h-13zM8 6.5v3.5M8 12v.3',
+      userplus: 'M6.5 8a3 3 0 100-6 3 3 0 000 6zM1.5 14c.5-2.8 2.5-4 5-4 1 0 1.9.2 2.7.6M12 9.5v5M9.5 12h5',
+    };
+    const on = 'background:#e3ede6;color:#132420;font-weight:600;', off = 'color:#132420;';
+    const mk = (name, d, href, n, active) => ({ name, d, href: href || '#', n: n || '', style: active ? on : off });
+    const age = this.props.sinceYouLeft ?? 'Just logged in';
+    const sinceGone = age === 'After 1 hour';
+    const menu = [
+      { label: 'DOCTOR DESK', items: [mk('Dashboard', I.grid, 'Tower.dc.html'), mk('My Patients', I.user, 'Beds.dc.html'), mk('My Rounds', I.clock, 'Round.dc.html'), mk('My OPD', I.doc, 'OpdDesk.dc.html')] },
+      { label: 'CLINICAL', items: [mk('Inpatients', I.bed, 'Beds.dc.html'), mk('OPD', I.user, 'OpdDesk.dc.html'), mk('Orders', I.clip), mk('Results', I.chart), mk('Notes', I.doc), mk('Procedures', I.plus)] },
+      { label: 'UNIT', items: [mk('Clocks Running', I.clock, 'UnitBoard.dc.html', '2'), mk('Unit Board', I.board, 'UnitBoard.dc.html', '8'), mk('Team', I.team, 'UnitBoard.dc.html'), mk('Roster', I.cal), mk('Handover', I.swap), mk('Teaching', I.cap)] },
+      { label: 'OPERATIONS', items: [mk('Tasks', I.check), mk('Referrals', I.arrow, '#', '1'), mk('Discharge', I.exit), mk('Investigations', I.search)] },
+      { label: 'AI', items: [mk('AI Briefs', I.spark, 'AiBriefs.dc.html', '', true), mk('Agent Activity', I.pulse), mk('Approvals', I.shield, 'Professor.dc.html', '3')] },
+    ];
+    const cGreen = 'background:#eef3ef;color:#2f5e4e;', cRed = 'background:#fdecea;color:#b23a30;';
+    const tiles = [
+      { v: '19', k: 'Inpatients in Unit II', d: I.bed, circle: cGreen },
+      { v: '4', k: 'Need review (by AI)', d: I.warn, circle: cRed },
+      { v: '6', k: 'New admissions on your take', d: I.userplus, circle: cGreen },
+      { v: '3', k: 'New results to review', d: I.doc, circle: cGreen },
+      { v: '3', k: 'Papers for your signature', d: I.shield, circle: cGreen },
+    ];
+    const chipRed = 'background:#fdecea;color:#b23a30;border:1px solid #f3c9c4;', chipAmb = 'background:#fdf3e3;color:#8a5a0b;border:1px solid #f0d9ae;', chipGrey = 'background:#eef3ef;color:#132420;border:1px solid #dfe7e1;';
+    const dRed = 'background:#b23a30;', dAmb = 'background:#dd8f1c;', dGrey = 'background:#5c6f66;', dGreen = 'background:#0e6b4e;';
+    const red = 'color:#b23a30;', amb = 'color:#8a5a0b;', ink = 'color:#132420;';
+    const all = [
+      { t: 'critical', kind: 'Critical', chip: chipRed, dot: dRed, name: 'Ramesh Kumar', meta: 'G-214 | 64 M | Sepsis (Day 4)', signal: 'Potassium 6.4 mmol/L', sigStyle: red, sub: 'Lab 7 min ago · with JR Pooja, silent 6 min · SR Neha at 08:22', verb: 'Review' },
+      { t: 'change', kind: 'Clinical change', chip: chipAmb, dot: dAmb, name: 'Sita Devi', meta: 'G-208 | 52 F | Pneumonia (Day 3)', signal: 'Temperature ↑ 99.1 → 102.2°F', sigStyle: red, sub: 'Over last 6 hours · NEWS2 5 → 7 · Sr. Rekha 08:00', verb: 'Review' },
+      { t: 'new', kind: 'No senior yet', chip: chipAmb, dot: dAmb, name: 'Vikram Joshi', meta: 'G-238 | 61 M | Acute pancreatitis', signal: 'Admitted 02:15 · 6-hour review passed', sigStyle: amb, sub: 'Clerked by JR Saurabh · SR Neha starts round 08:30', verb: 'Assign' },
+      { t: 'pending', kind: 'Result pending', chip: chipAmb, dot: dAmb, name: 'Mohan Singh', meta: 'G-219 | 58 M | CKD', signal: 'CT report available', sigStyle: amb, sub: 'No physician acknowledgement · 38 min · Dr. S. Iyer', verb: 'Open' },
+      { t: 'pending', kind: 'Your signature', chip: chipGrey, dot: dGreen, name: 'Anita Kumari', meta: 'G-225 | 47 F | Cellulitis', signal: 'Discharge summary ready', sigStyle: ink, sub: 'JR Pooja wrote · SR Neha checked · frees a bed for casualty', verb: 'Sign' },
+      { t: 'new', kind: 'New admission', chip: chipGrey, dot: dGrey, name: 'D. Thakur', meta: 'G-233 | 67 M | NSTEMI', signal: 'Admitted 01:30 · troponin critical 03:12', sigStyle: ink, sub: 'Acted on in 19 min by SR Karan · cardiology called', verb: 'Open' },
+      { t: 'change', kind: 'Clinical change', chip: chipAmb, dot: dAmb, name: 'Sunita Yadav', meta: 'G-204 | 38 F | Dengue (Day 3)', signal: 'Platelets 68k → 42k', sigStyle: amb, sub: 'Lab 07:50 · repeat ordered · no bleeding charted', verb: 'Review' },
+      { t: 'change', kind: 'Money', chip: chipGrey, dot: dGrey, name: 'Imran Ansari', meta: 'G-241 | 45 M | DKA (Day 2)', signal: 'PMJAY query due 14:00', sigStyle: ink, sub: 'Insurer wants the admission note · with SR Karan', verb: 'Open' },
+    ];
+    const rows = (tab === 'all' ? all : all.filter((r) => r.t === tab)).slice(0, 5);
+    const tOn = 'border:1px solid #0e6b4e;background:#ffffff;color:#132420;font-weight:600;', tOff = 'border:1px solid #ecf1ed;background:#f4f7f4;color:#132420;';
+    const bDark = 'background:#132420;color:#ffffff;', bRed = 'background:#f6c9c3;color:#8e2b22;', bGrey = 'background:#dfe7e1;color:#132420;';
+    const tabs = [
+      { id: 'all', label: 'All', n: '8', badge: bDark }, { id: 'critical', label: 'Critical', n: '1', badge: bRed },
+      { id: 'change', label: 'Clinical Change', n: '3', badge: bGrey }, { id: 'new', label: 'New', n: '2', badge: bGrey },
+      { id: 'pending', label: 'Pending', n: '2', badge: bGrey },
+    ].map((t) => ({ ...t, style: tab === t.id ? tOn : tOff, pick: () => this.setState({ tab: t.id }) }));
+    const overview = [
+      { v: '19 / 24', k: 'Occupied beds (Unit II)' }, { v: '6', k: 'Admissions (24h)' },
+      { v: '3', k: 'Discharge candidates' }, { v: '2', k: 'Waiting in casualty' },
+    ];
+    const BD = { s: 'background:#cfdcd3;', a: 'background:#dd8f1c;', r: 'background:#b23a30;', g: 'background:#0e6b4e;', e: 'background:#ffffff;border:1px dashed #9fb3a8;box-sizing:border-box;' };
+    const bedDots = 'ssaseaserssaesgesgasaeas'.split('').map((k) => ({ style: BD[k] }));
+    const shortcuts = [
+      { name: 'Write Note', d: I.doc, href: 'Round.dc.html' }, { name: 'Place Order', d: I.clip, href: '#' },
+      { name: 'View Results', d: I.chart, href: '#' }, { name: 'Discharge Summary', d: I.exit, href: 'Professor.dc.html' },
+    ];
+    const live = 'background:#0e6b4e;', later = 'background:#ffffff;border:2px solid #0e6b4e;box-sizing:border-box;';
+    const schedule = [
+      { at: '08:30', what: 'Ward Round – Unit II', note: '19 patients · AI brief ready', dot: live, titleStyle: 'color:#0e6b4e;', start: true },
+      { at: '11:00', what: 'Bedside Clinic · UG', note: 'Ward G-2 · batch C · 12 students', dot: later, titleStyle: '', start: false },
+      { at: '12:30', what: 'Casualty Review', note: 'Admission day · 2 waiting for beds', dot: later, titleStyle: '', start: false },
+      { at: '14:00', what: 'Unit Meeting', note: 'Faculty Room · mortality audit', dot: later, titleStyle: '', start: false },
+      { at: '16:00', what: 'Review Investigations', note: '6 pending results', dot: later, titleStyle: '', start: false },
+    ];
+    const g = 'background:#2fa36b;', o = 'background:#e79a1f;', b = 'background:#2f7fd1;', x = 'background:#9aa8a0;';
+    const dim = 'color:#5c6f66;', hot = 'color:#8a5a0b;';
+    const team = [
+      { role: 'Prof.', name: 'Dr. Anil Sharma (Unit Head)', where: 'Cabin', dot: g, holds: '3', holdStyle: ink },
+      { role: 'Assoc. Prof.', name: 'Dr. Priya Verma', where: 'Teaching', dot: o, holds: '0', holdStyle: dim },
+      { role: 'Asst. Prof.', name: 'Dr. Amit Kumar', where: 'On Ward', dot: g, holds: '1', holdStyle: ink },
+      { role: 'Senior Resident', name: 'Dr. Neha Jha', where: 'Ward', dot: g, holds: '2', holdStyle: ink },
+      { role: 'Senior Resident', name: 'Dr. Karan Mehta', where: 'Emergency', dot: b, holds: '1', holdStyle: ink },
+      { role: 'Junior Resident', name: 'Dr. Pooja Mishra', where: 'Ward', dot: g, holds: '3', holdStyle: hot },
+      { role: 'Junior Resident', name: 'Dr. Kriti Srivastava', where: 'Emergency', dot: b, holds: '1', holdStyle: ink },
+      { role: 'Junior Resident', name: 'Dr. Saurabh Choudhary', where: 'Off Duty', dot: x, holds: '2', holdStyle: hot },
+    ];
+    const agents = [
+      { at: '07:42', who: 'Investigation Agent', did: 'Read 43 new lab results · 1 critical, called to JR Pooja' },
+      { at: '07:45', who: 'Round Preparation Agent', did: 'Prepared 19 patient briefs' },
+      { at: '07:47', who: 'Roster Agent', did: 'Confirmed Unit II admission-day roster' },
+      { at: '07:49', who: 'Clinical Change Agent', did: 'Flagged 4 patients for review' },
+      { at: '08:00', who: 'Report Agent', did: "Sent Thursday's unit report to you and the HOD" },
+    ];
+    const pushed = st.pushed || {};
+    const bOff = 'background:#ffffff;color:#132420;border:1px solid #b9c9bf;', bDone = 'border:1px solid rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e;';
+    const late = 'background:#fdecea;border:1px solid #f3c9c4;', soon = 'background:#fdf3e3;border:1px solid #f0d9ae;', calm = 'background:#f4f7f4;border:1px solid #dfe7e1;';
+    const clocks = [
+      { id: 1, clock: '26 h', clockStyle: red, box: late, what: 'G-207 · discharge summary', who: 'JR Saurabh · off duty till 20:00', btn: 'Give to Pooja', after: 'Moved' },
+      { id: 2, clock: '3 min over', clockStyle: red, box: late, what: 'G-238 · senior review', who: 'SR Neha · round starts at bed 1, he is bed 21', btn: 'Send Amit', after: 'Amit told' },
+      { id: 3, clock: '1 h 10', clockStyle: amb, box: soon, what: 'Casualty · 2 wait for beds', who: 'SR Karan · 5 of your beds are free', btn: 'Allot beds', after: 'Allotted' },
+      { id: 4, clock: 'in 4 min', clockStyle: amb, box: soon, what: 'G-214 · K 6.4 unanswered', who: 'JR Pooja · climbs to SR Neha at 08:22', btn: 'Call Pooja', after: 'Called' },
+      { id: 5, clock: 'in 5 h 42', clockStyle: ink, box: calm, what: 'G-241 · PMJAY note', who: 'SR Karan · claim lapses at 14:00', btn: 'Nudge', after: 'Nudged' },
+    ].map((c) => ({ ...c, btn: pushed[c.id] ? c.after : c.btn, btnStyle: pushed[c.id] ? bDone : bOff, push: () => this.setState({ pushed: { ...pushed, [c.id]: true } }) }));
+    const green = 'color:#0e6b4e;';
+    const health = [
+      { k: 'Critical value → a doctor acting', v: '8 min', t: 'aim under 15', style: green },
+      { k: 'New admission seen by a senior in 6 h', v: '31 of 34', t: 'aim all', style: amb },
+      { k: 'Summaries signed within 24 h', v: '14 of 23', t: 'aim all', style: red },
+      { k: 'Average stay', v: '5.3 days', t: 'department 6.1', style: ink },
+      { k: 'OPD, Mon + Thu', v: '289 seen', t: 'median wait 38 min', style: ink },
+    ];
+    const sinceFresh = age === 'Just logged in' && !st.seen;
+    const sinceQuiet = !sinceGone && !sinceFresh;
+    const fsel = st.filter || 'All';
+    const fOn = 'border:1px solid #0e6b4e;background:#ffffff;color:#132420;font-weight:600;', fOff = 'border:1px solid #ecf1ed;background:#f4f7f4;color:#132420;';
+    const filters = ['All', 'Login briefs', 'Morning briefs', 'Round briefs'].map((f) => ({ label: f, style: fsel === f ? fOn : fOff, pick: () => this.setState({ filter: f }) }));
+    const kLogin = 'color:#8a5a0b;', kMorn = 'color:#0e6b4e;', kRound = 'color:#132420;';
+    const allBriefs = [
+      { id: 'l1', g: 'Login briefs', kind: 'LOGIN BRIEF', kindStyle: kLogin, when: 'Fri 18 Sep · 08:18', title: 'Since you left at 18:10', line: '6 admitted, 3 went home, no deaths. Nobody needs you this minute.', moved: true, items: [
+        { bed: 'G-233', what: 'D. Thakur, 67 M · NSTEMI · admitted 01:30', src: 'Admissions · JR Saurabh' }, { bed: 'G-238', what: 'Vikram Joshi, 61 M · acute pancreatitis · admitted 02:15', src: 'Admissions · JR Saurabh' },
+        { bed: 'G-244', what: 'Rekha Kumari, 24 F · OP poisoning, MLC · admitted 23:50', src: 'Admissions · police intimation sent' }, { bed: '+3', what: 'Three more admissions, all steady', src: 'Admissions' },
+        { bed: 'G-207', what: 'Went home Thu 11:40 · summary still owed', src: 'Discharge desk' } ] },
+      { id: 'm1', g: 'Morning briefs', kind: 'MORNING BRIEF', kindStyle: kMorn, when: 'Fri 18 Sep · 08:05', title: 'Your Unit II patients changed overnight', line: '1 critical potassium, 1 fever with NEWS2 5 → 7, 1 new admission without senior review, 3 results returned.', moved: false, items: [
+        { bed: 'G-214', what: 'Potassium 4.8 → 6.4 mmol/L, not haemolysed', src: 'Lab · validated 08:11' }, { bed: 'G-208', what: 'Temp 99.1 → 102.2°F · NEWS2 7', src: 'Nursing · Sr. Rekha 08:00' },
+        { bed: 'G-238', what: 'Admitted 02:15 · 6-hour senior review passed', src: 'Admissions' }, { bed: 'G-219', what: 'CT abdomen reported, unread', src: 'Radiology · Dr. S. Iyer 07:40' } ] },
+      { id: 'r1', g: 'Round briefs', kind: 'ROUND BRIEF', kindStyle: kRound, when: 'Fri 18 Sep · 07:45', title: '19 patient briefs for the 08:30 round', line: 'Bed order G-201 → G-244 · 5 beds changed since the last round.', moved: false, items: [
+        { bed: 'G-204', what: 'Platelets 68k → 42k', src: 'Lab 07:50' }, { bed: 'G-225', what: 'Afebrile 48 h · could go home', src: 'Nursing chart' }, { bed: 'G-231', what: 'Sugars in range 24 h', src: 'Nursing chart' } ] },
+      { id: 'l2', g: 'Login briefs', kind: 'LOGIN BRIEF', kindStyle: kLogin, when: 'Thu 17 Sep · 08:11', title: 'Since you left at 19:40', line: '2 admitted, 4 went home, no deaths. One paper waited for you.', moved: true, items: [
+        { bed: 'G-212', what: 'Admitted 22:05 · cellulitis', src: 'Admissions' }, { bed: 'G-229', what: 'Physiotherapy started', src: 'Nursing' } ] },
+      { id: 'm2', g: 'Morning briefs', kind: 'MORNING BRIEF', kindStyle: kMorn, when: 'Thu 17 Sep · 08:02', title: 'A quiet night in Unit II', line: 'No critical values. 2 results returned. OPD day: 38 booked.', moved: false, items: [
+        { bed: 'G-219', what: 'Creatinine 3.9 → 3.6', src: 'Lab 06:40' } ] },
+      { id: 'l3', g: 'Login briefs', kind: 'LOGIN BRIEF', kindStyle: kLogin, when: 'Wed 16 Sep · 08:20', title: 'Since you left at 17:55', line: '5 admitted on your take, 1 shifted to MICU, no deaths.', moved: true, items: [
+        { bed: 'MICU-4', what: 'Shanti Devi · shifted 03:10 · ventilated', src: 'ICU register' } ] },
+    ];
+    const list = fsel === 'All' ? allBriefs : allBriefs.filter((b) => b.g === fsel);
+    const selId = list.some((b) => b.id === st.brief) ? st.brief : list[0].id;
+    const briefs = list.map((b) => ({ ...b, rowStyle: b.id === selId ? 'background:#eef5f0;' : 'background:#ffffff;', pick: () => this.setState({ brief: b.id }) }));
+    const sel = allBriefs.find((b) => b.id === selId);
+    const teamOpen = !!st.team;
+    const agentsOpen = !!st.agents;
+    const agentsShort = agents.slice(-3).reverse();
+    return { filters, briefs, sel, sinceFresh, sinceQuiet, sinceSeen: () => this.setState({ seen: true }), menuClosed: !menuOpen, teamOpen, teamLabel: teamOpen ? 'Hide' : 'Show', teamChevron: teamOpen ? 'M3.5 10L8 5.5l4.5 4.5' : 'M3.5 6L8 10.5 12.5 6', toggleTeam: () => this.setState({ team: !teamOpen }), agentsOpen, agentsShort, agentsLabel: agentsOpen ? 'Hide' : 'Show', agentsChevron: agentsOpen ? 'M3.5 10L8 5.5l4.5 4.5' : 'M3.5 6L8 10.5 12.5 6', toggleAgents: () => this.setState({ agents: !agentsOpen }), menuOpen, toggle: () => this.setState({ menu: !menuOpen }), menu, tiles, tabs, rows, overview, bedDots, shortcuts, schedule, team, agents, clocks, health };
+  }
+}
+</script>
+</body>
+</html>

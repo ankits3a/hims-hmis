@@ -11,6 +11,7 @@ export * from "./billing";
 export * from "./worker";
 export * from "./alerts";
 export * from "./notifications";
+export * from "./reach";
 export * from "./retention";
 export * from "./ops";
 export * from "./search";
@@ -25,6 +26,14 @@ export * from "./membership";
 // pairs the OPD check suite reads. `modules/opd` reaches it only through read helpers (the
 // `listAllergies` precedent), never by importing these tables.
 export * from "./formulary";
+
+// The ICD-10 tabular list — the diagnosis catalogue the consult screen completes from and MRD
+// codes from. A pure reference table: nothing writes to it but the importer, and nothing foreign
+// keys to it, so it sits under no other schema in the dependency order.
+export * from "./clinical-coding";
+// The desk's photograph of a paper slip. The row is metadata and a storage key; the BYTES live
+// behind `kernel/documents` — a disk adapter now, an object store when the owner adds one.
+export * from "./documents";
 // PLAN 13 T1 — the resource registry, LAST because of dependency order. `opd.ts` above declares
 // BOTH its `room_id` foreign keys into `resources.id` (T6 repointed them; T7's `0033` dropped
 // `opd_rooms` entirely), so `opd.ts` depends on THIS file and not the other way round, and the
@@ -89,3 +98,11 @@ export * from "./aerb";
 // `auth.users` (who asked). It knows nothing of opd or billing: the counter, the vitals bay and the
 // cashier all enqueue through the same kernel, for the reason `notify` is a kernel and not a module.
 export * from "./printing";
+// PHASE R (R1) — the hospital's ORGANISATIONAL departments, beside `opd_departments` and never
+// instead of them (stress test S3): the intern year posts to Community Medicine, Anaesthesia,
+// Casualty and Forensic Medicine, and none of those four is a place a patient is given a token for.
+export * from "./org";
+// PHASE R (R1) — the roster's own vocabulary of DUTY. `roster.ts` reads `auth.roles` and nothing of
+// any department's: it is its own MANIFEST for the reason `aerb` is (D1) — the duty manager, the
+// on-call radiologist, the lab's critical ladder, every ward and every clinical unit owe it rows.
+export * from "./roster";

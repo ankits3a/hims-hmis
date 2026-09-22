@@ -78,7 +78,7 @@ describe("runNotifyPump — the send path (Plan 10 T4: D2/D3/D4/D6/D7)", () => {
       },
     ]);
     await db.insert(users).values({
-      id: USER_OWNER, username: "t4owner", fullName: "T4 Owner", passwordHash: "x", phone: PHONE_OWNER,
+      id: USER_OWNER, username: "t4owner", fullName: "T4 Owner", staffCode: "EMP-0001", passwordHash: "x", phone: PHONE_OWNER,
     });
   });
 
@@ -86,8 +86,12 @@ describe("runNotifyPump — the send path (Plan 10 T4: D2/D3/D4/D6/D7)", () => {
   function adapterSet(
     whatsapp: ChannelAdapter = fakeAdapter("whatsapp", calls),
     sms: ChannelAdapter = fakeAdapter("sms", calls),
+    // PHASE O T4: the set is a `Record<Channel, …>` and the union gained a third member, so the
+    // harness supplies one. Nothing in THIS file routes to it — every template here is a
+    // patient template and the patient ladder is still whatsapp → sms.
+    webPush: ChannelAdapter = fakeAdapter("web_push", calls),
   ): Record<Channel, ChannelAdapter> {
-    return { whatsapp, sms };
+    return { whatsapp, sms, web_push: webPush };
   }
 
   async function enqueueWelcome(
@@ -333,8 +337,41 @@ describe("runNotifyPump — the send path (Plan 10 T4: D2/D3/D4/D6/D7)", () => {
       expect(quietHoursDeferral(urgent, "patient", new Date("2026-08-21T17:30:00.000Z"))).toBeNull();
     });
 
-    it("staff and owner messages ignore the window — Phase 1 staff traffic is escalation-driven", () => {
-      expect(quietHoursDeferral(routine, "staff", new Date("2026-08-21T17:30:00.000Z"))).toBeNull();
+    /**
+     * ═══ PHASE O T4 AMENDED THIS, AND THE OLD ASSERTION IS RE-POINTED RATHER THAN DELETED ═══
+     *
+     * It read: *"staff and owner messages ignore the window — Phase 1 staff traffic is
+     * escalation-driven."* That was true of the traffic that existed: every staff message was
+     * an escalation, and an escalation at 23:00 is the point.
+     *
+     * T4's relay templates are not escalations. A `can_wait` obligation relayed to a nurse's
+     * personal phone at 02:00 is the noise that makes her mute the phone before the `now` one
+     * arrives — R9's failure arriving by a different road. So a ROUTINE staff message defers
+     * now, and the three legs that made the old sentence true are asserted separately below,
+     * each against the property that actually carries it.
+     */
+    it("an URGENT staff message still ignores the window — that is what keeps the `now` lane loud", () => {
+      expect(quietHoursDeferral(urgent, "staff", new Date("2026-08-21T17:30:00.000Z"))).toBeNull();
+    });
+
+    it("a ROUTINE staff message now DEFERS to 08:00 IST, as a routine patient one does", () => {
+      expect(quietHoursDeferral(routine, "staff", new Date("2026-08-21T17:30:00.000Z"))).toEqual(
+        new Date("2026-08-22T02:30:00.000Z"),
+      );
+    });
+
+    it("R9's two exempt seats are woken anyway — the night supervisor and the CMO", () => {
+      expect(
+        quietHoursDeferral(routine, "staff", new Date("2026-08-21T17:30:00.000Z"), { quietExempt: true }),
+      ).toBeNull();
+      // Not over-broad: the exemption is about the PERSON, so it does not quietly exempt the
+      // patient audience, whose window is D7's design law rather than a seat's property.
+      expect(
+        quietHoursDeferral(routine, "patient", new Date("2026-08-21T17:30:00.000Z"), { quietExempt: true }),
+      ).toEqual(new Date("2026-08-22T02:30:00.000Z"));
+    });
+
+    it("the OWNER audience still ignores the window entirely — one person, and the last rung", () => {
       expect(quietHoursDeferral(routine, "owner", new Date("2026-08-21T17:30:00.000Z"))).toBeNull();
     });
   });

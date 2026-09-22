@@ -13,19 +13,27 @@ import { registrationConfigured } from "../src/modules/patients";
 import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
-import { OPD_PHARMACY_STORE_CODE, PHARMACY_DEF_KEYS, listSaleItems } from "../src/modules/pharmacy";
+import {
+  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, RETAIL_PHARMACY_STORE_CODE, currentRegistration, gstSlabPlan,
+  listSaleItems, renewalDaysLeft, retailLicenceState,
+} from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
   OT_DEFINITION_KIND_VALUES, OT_GATE_DEF_KEY, activeDefinitionRow,
 } from "../src/modules/ot";
 import { availableQty, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
+import {
+  HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
+  ROSTER_RESOLVER_FLAG, departmentsWithoutPublishedCycle, livePeriodCount, publishedCycleCount,
+  rosterMasterCounts, unconfirmedTeams,
+} from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
   activeRegistrations, registeredMachines, registeredPersons,
 } from "../src/modules/pcpndt";
 import { istDayString } from "../src/kernel/approvals/cumulative";
-import { listInteractions, listSalts } from "../src/modules/formulary";
+import { catalogueCensus } from "../src/modules/formulary";
 import { SEED_CENSUS } from "./seed-formulary-interactions";
 import type { Db } from "../src/kernel/db/client";
 
@@ -110,7 +118,6 @@ export const isNotModelled = (r: Row): r is NotModelledRow => "runbook" in r;
 
 const LAB_ROLE_KEYS = ["lab_reception", "phlebotomist", "lab_technician", "pathologist"] as const;
 const LAB_RUNBOOK = "docs/runbooks/lab-go-live.md";
-const PHARMACY_RUNBOOK = "docs/runbooks/pharmacy-go-live.md";
 
 /** Today in IST, as the AERB register's date functions want it. */
 function istToday(): string {
@@ -168,6 +175,19 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "run: pnpm --filter @hmis/core seed:tariff",
     },
     {
+      gate: "G3", code: "supplier_gstin_on_invoice",
+      /**
+       * 2026-09-17 — RED until the letterhead carries the registered person's legal name and a valid
+       * GSTIN. A tax invoice without them does not meet CGST Rules r.46(a), and the pharmacy bills
+       * GST on every strip it sells. The owner gave both; the act is one command.
+       */
+      check: async (db) => {
+        const { letterhead } = await loadOpdConfig(db);
+        return letterhead.gstin !== undefined && letterhead.legalName !== undefined;
+      },
+      fix: 'put the trust\'s legal name and GSTIN on the letterhead: node dist/scripts/set-establishment-gst.js --gstin <GSTIN> --legal-name "<legal name>" --as <an opd_admin login> (dry run, then --apply)',
+    },
+    {
       gate: "G2", code: "patient_merge_registered",
       // §2b row 4 — duplicates minted during the paper-parallel pilot. Unregistered from Plan 05
       // until 2026-08-26, and every merge request threw `unknown_type` the whole time.
@@ -219,10 +239,25 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
        * That is the pharmacy item master's path and its own gap; this row is honest about covering
        * the book and not the mapping.
        */
-      check: async (db) => (
-        (await listSalts(db, { activeOnly: true })).length >= SEED_CENSUS.salts
-        && (await listInteractions(db)).length >= SEED_CENSUS.pairs
-      ),
+      /**
+       * ═══ IT COUNTS; IT DOES NOT MEASURE A PAGE ═══
+       *
+       * The predicate used to be `(await listSalts(...)).length` and `(await listInteractions(db)).length`
+       * — two unbounded reads whose LENGTH was the only thing wanted, which is the defect this row's
+       * own comment warns about (#175) wearing the clothes of a harmless statistic. Their bounded
+       * replacements are PAGES, and `(await pageSalts(db)).items.length` would report 50 for a
+       * catalogue of 3,283: this row would go RED on a correctly seeded hospital, or — worse, once
+       * somebody "fixed" it by raising the limit — go green on a number that is not the one it names.
+       *
+       * `catalogueCensus` asks the database to count, in one statement of scalar subqueries with no
+       * row crossing the wire. `interactions` and not `activeInteractions`, matching the deleted
+       * `listInteractions(db)`, which took no `activeOnly`: this row certifies the book was LOADED,
+       * and a pair a hospital has deliberately retired is still a pair the seed put there.
+       */
+      check: async (db) => {
+        const census = await catalogueCensus(db);
+        return census.activeSalts >= SEED_CENSUS.salts && census.interactions >= SEED_CENSUS.pairs;
+      },
       fix: "run: pnpm --filter @hmis/core seed:formulary — an empty interaction book answers \"no interactions\" to every prescription",
     },
     {
@@ -231,6 +266,130 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       // duties is the lab's central control, and one pair of hands holding every role satisfies none.
       check: async (db) => (await withTx(db, (tx) => usersHoldingRoleAtScope(tx, "admin", "hospital"))).length >= 2,
       fix: "§1.3: create a SECOND administrator at /admin/users — one pair of hands cannot hold DD11",
+    },
+    {
+      gate: "G1", code: "roster_masters_seeded",
+      /**
+       * PHASE R (R1) — **under `hospital`, and that placement is the finding, not an accident.**
+       *
+       * The roster is not a department (`standup-check.test.ts`'s classification map says so): it is
+       * a layer over every one of them. And this census has an invariant — *every census module that
+       * is not `hospital` has a go-live runbook* — whose exemption is `hospital` precisely because it
+       * holds *"the rows every department's opening rests on"*. `org_departments` and
+       * `roster_positions` are exactly that: no department's rota can be drafted, and no permission
+       * can be checked at a department's scope, until both lists exist. A `roster` module key here
+       * would have owed a runbook for a department that does not exist, or a second exemption.
+       *
+       * ONE row asking about BOTH lists, because a hospital with twenty-four departments and no
+       * positions and one with seventeen positions and no departments are equally unable to open,
+       * and two rows would have implied the census could be half green.
+       */
+      check: async (db) => {
+        const { departments, positions } = await rosterMasterCounts(db);
+        return departments > 0 && positions >= ROSTER_POSITIONS.length;
+      },
+      fix: "run `pnpm --filter @hmis/core seed:roster` (after `seed:roles` and `seed:opd`) — it seeds org_departments and the seventeen roster_positions, and is safe to re-run",
+    },
+    {
+      gate: "G4", code: "roster_units_confirmed",
+      /**
+       * PHASE R (R3) — **the row that stops our arithmetic being presented as the regulator's.**
+       *
+       * UG-MSR 2023 dropped the units table altogether. The 27 units `seed:units` writes are one
+       * unit per sanctioned senior resident — a good default, and NOT a number from the gazette
+       * (20-U §2, owner §10.2). So every seeded team lands inactive, and this row stays RED until a
+       * head of department has confirmed each one. It is under `hospital` for the reason the masters
+       * row is: a census MODULE owes a go-live runbook, and the roster is not a department.
+       */
+      /**
+       * **MEASURED, AND IT CHANGED THIS ROW — the same way it changed `radiology_devices_licensed`
+       * one module over.** Written the obvious way as *"nothing is unconfirmed"*, this read GREEN on
+       * a database with no teams at all: `unconfirmedTeams` returns `[]` when nothing has been
+       * seeded, and an empty list satisfies "none outstanding". A row that certifies a control
+       * nobody can exercise is worse than no row, and the fresh-database leg of
+       * `standup-check.test.ts` is what caught it — the guard written for exactly this, doing
+       * exactly its job.
+       *
+       * So the units must EXIST before their confirmation can be evidence of anything.
+       */
+      check: async (db) => {
+        const teams = await listTeams(db);
+        return teams.length > 0 && (await unconfirmedTeams(db)).length === 0;
+      },
+      fix: `each HOD confirms their department's units (seeded inactive by \`seed:roster\`; ${UNIT_COUNT} clinical units plus one night pool per unit-bearing department) — the establishment is this hospital's, not the NMC's, so a human ratifies it`,
+    },
+    {
+      gate: "G3", code: "take_is_continuous",
+      /**
+       * PHASE R (R7) — **V11's half that no constraint can hold.** A department's take windows may
+       * not OVERLAP, and an EXCLUDE says so; they may also not GAP, and absence is not a row, so
+       * nothing in the database can refuse one. A gap is an hour in which a department has nobody
+       * admitting, and the hospital finds out when an ambulance arrives.
+       *
+       * Green only when a published cycle EXISTS and has no hole — the emptiness lesson this file
+       * learned twice (`radiology_devices_licensed`, then `roster_units_confirmed`): a department
+       * with no cycle at all has no gaps, and that is not the same as being covered.
+       */
+      check: async (db) => {
+        const now = new Date();
+        const horizon = new Date(now.getTime() + HORIZON_DAYS * 86_400_000);
+        /**
+         * PHASE R (R10) — **THIS ROW USED TO READ GREEN ON THE EMPTINESS IT SAYS IT REFUSES.**
+         *
+         * It asked `listTeams(...)`, bound the answer to a variable called `cycles`, and refused
+         * only when the hospital had no TEAMS. `seed:roster` seeds the units (inactive), so that
+         * guard was satisfied from the first deploy — and `departmentsWithTakeGaps` iterates
+         * `roster_cycles WHERE status = 'published'`, which with nothing published returns `[]`.
+         * Empty gaps, row green, and every department admitting nobody.
+         *
+         * The comment above was already right and the code did not do it. That is the third time
+         * this file has learned the same lesson (`radiology_devices_licensed`, then
+         * `roster_units_confirmed`), so the population is now asked for BY NAME: a PUBLISHED CYCLE
+         * must exist before "no gaps" is evidence of anything.
+         */
+        /**
+         * R10, second pass: asking "is ANY cycle published?" was the same hole one level up.
+         * `departmentsWithTakeGaps` iterates published CYCLES, so a department with none
+         * contributes no gaps — publish Medicine's and Casualty still reads covered. The
+         * population is every department that runs units, and each must have a cycle.
+         */
+        // The hospital has published SOMETHING. On a fresh database there are no unit-bearing
+        // departments at all, and "every one of nothing has a cycle" is vacuously true — the same
+        // emptiness this row keeps producing, met here for the third time while fixing it.
+        if ((await publishedCycleCount(db)) === 0) return false;
+        // …and every department that runs units has one of its own.
+        if ((await departmentsWithoutPublishedCycle(db)).length > 0) return false;
+        return (await departmentsWithTakeGaps(db, now, horizon)).length === 0;
+      },
+      fix: "publish each unit-bearing department's take cycle (`publishCycle`) so every hour inside the ninety-day horizon has an admitting unit — `departmentsWithTakeGaps` names the holes",
+    },
+    {
+      gate: "G3", code: "resolver_has_a_roster",
+      /**
+       * PLAN 20 T7, and PHASE R (R10) — **the row for the state where the flag is on and every
+       * escalation has quietly fallen back.**
+       *
+       * `ROSTER_RESOLVER_ENABLED` switches the kernel's consumers from `usersHoldingRole` to the
+       * roster's own answer. V14 makes that safe when the flag is OFF: the answer is byte-identical
+       * to the static one. It also makes it safe when the flag is ON and a position is UNDECLARED —
+       * the resolver says `source: "static"` and falls back.
+       *
+       * What nothing covers is the middle: **flag ON, and not one roster published anywhere.** Every
+       * question then falls back, correctly and silently, and the hospital believes it has switched
+       * to a roster it has never published. Nobody is paged, because the fallback works.
+       *
+       * **RED UNTIL A ROSTER IS PUBLISHED, WHATEVER THE FLAG SAYS** — and the first draft of this
+       * row got that wrong. It was written asymmetric (green while the flag is off, red only for
+       * the lying combination), which reads well and breaks this census's own grammar: every G3 and
+       * G4 row is RED until an ACT, and two existing tests say so. A row that is green because a
+       * feature is switched OFF is a row that cannot tell "ready" from "not started".
+       *
+       * So the act is publishing a roster, the row is red until somebody performs it, and the flag
+       * appears in the FIX rather than in the verdict — where it tells a reader which of the two
+       * repairs they want.
+       */
+      check: async (db) => (await livePeriodCount(db, new Date())) > 0,
+      fix: `either publish a roster (a department's rota, via \`publishPeriods\`) or unset ${ROSTER_RESOLVER_FLAG} — with the flag on and nothing published, every on-call question falls back to role holders and nothing says so`,
     },
   ],
 
@@ -441,6 +600,11 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "§1.2: done by seed:pharmacy on every deploy — without it every claim refuses store_missing",
     },
     {
+      gate: "G2", code: "pharmacy_retail_store_present",
+      check: async (db) => (await findStoreByCode(db, RETAIL_PHARMACY_STORE_CODE)) !== undefined,
+      fix: "§9: done by seed:pharmacy on every deploy — without it the walk-in counter refuses retail_store_missing",
+    },
+    {
       gate: "G2", code: "pharmacy_definition_active",
       check: async (db) => {
         for (const key of PHARMACY_DEF_KEYS) {
@@ -499,10 +663,69 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "§2.5: GRN stock into PHARM-OPD with batch, expiry and the printed MRP per pack",
     },
     {
+      gate: "G3", code: "pharmacy_gst_slab_set",
+      /**
+       * PHARMACY P16 — RED until every active drug item has a GST slab and every sale item's tariff
+       * category matches it. A blank slab bills as exempt and reports no output tax; a stale
+       * category bills at the rate the item had when it was registered for sale. Red on an empty
+       * item master too (red until an act).
+       */
+      check: async (db) => {
+        const plan = await gstSlabPlan(db);
+        return plan.length > 0 && plan.every((p) => p.current !== null && !p.categoryStale);
+      },
+      fix: "§2.2: set each drug's GST slab — `set-drug-gst-slabs --as <pharmacist> --apply` fills blanks from the notification (5%; nil for the 36 listed drugs) and brings sale categories to their slab; /pharmacy/items shows the same list",
+    },
+    {
+      gate: "G3", code: "pharmacy_retail_licence",
+      /**
+       * PHARMACY P19 — RED until a Form 20/21 retail licence covering today is recorded for
+       * `PHARM-RETAIL`, and again from the day after it ends. Until then every walk-in sale refuses
+       * (`retail_licence_missing` / `retail_licence_lapsed`); the OPD counter is unaffected.
+       */
+      check: async (db) => (await retailLicenceState(db, new Date())).state === "current",
+      fix: "§9: the pharmacist in charge (or the owner, or the MS) records the retail store's Form 20 and Form 21 licence at /pharmacy/retail-licence — walk-in sales stay shut until it is recorded and current",
+    },
+    {
       gate: "G4", code: "pharmacist_council_number",
-      runbook: { file: PHARMACY_RUNBOOK, section: "## 1. Preconditions (owner / administrator)" },
-      fix: "§1: the pharmacist's state council registration number is NOT modelled anywhere in the schema. Keep the certificate in the counter's file; the census cannot check it.",
-    } as NotModelledRow,
+      /**
+       * PHARMACY P2 — NOT MODELLED UNTIL THE REGISTER EXISTED; A CHECK NOW. Green when at least one
+       * person who holds `pharmacy` has a current state council registration on file, because
+       * verify and a scheduled hand-over refuse everyone else (`pharmacist_not_registered`): a
+       * counter with role holders and no registrations cannot dispense a single Schedule H line.
+       */
+      check: async (db) => {
+        const holders = await withTx(db, (tx) => usersHoldingRoleAtScope(tx, PHARMACIST_ROLE, "hospital"));
+        const today = istDayString(new Date());
+        for (const userId of holders) {
+          if ((await currentRegistration(db, userId, today)) !== null) return true;
+        }
+        return false;
+      },
+      fix: "§1.10: the pharmacist in charge files each pharmacist's state council registration at /pharmacy/pharmacists (never their own) — verify and a Schedule H/H1 hand-over refuse anyone without one",
+    },
+    {
+      gate: "G4", code: "pharmacist_registration_not_lapsing",
+      /**
+       * PHARMACY P15 — RED while any `pharmacy` holder's current registration ends within
+       * REGISTRATION_RENEWAL_NOTICE_DAYS, and while nobody has one at all (red until an act). The act that turns it green is filing the renewed
+       * certificate; the day it lapses, verify refuses that pharmacist at the counter.
+       */
+      check: async (db) => {
+        const holders = await withTx(db, (tx) => usersHoldingRoleAtScope(tx, PHARMACIST_ROLE, "hospital"));
+        const today = istDayString(new Date());
+        // Red until an act (the census grammar): with nothing on file there is nothing to vouch for.
+        let anyCurrent = false;
+        for (const userId of holders) {
+          const reg = await currentRegistration(db, userId, today);
+          if (reg === null) continue;
+          anyCurrent = true;
+          if (reg.validUntil != null && renewalDaysLeft(today, reg.validUntil) !== null) return false;
+        }
+        return anyCurrent;
+      },
+      fix: "§1.10: file each pharmacist's council registration, and renew any that ends within 60 days, at /pharmacy/pharmacists (the register screen names who) — the day one lapses, verify refuses that pharmacist",
+    },
   ],
 
   /**
@@ -741,6 +964,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "18c §3: record the Radiological Safety Officer's appointment at /radiology/radiation-safety",
     },
   ],
+
 };
 
 export type RowResult = { module: string; gate: Gate; code: string; verdict: Verdict; fix: string; detail?: string };

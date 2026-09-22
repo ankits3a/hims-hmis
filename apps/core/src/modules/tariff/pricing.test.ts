@@ -285,3 +285,79 @@ describe("batchUnitPaise — pharmacy lines price from the batch (16c T0b)", () 
     expect(l!.regulatedClamp).toMatchObject({ boundApplied: "caller_cap", tariffPaise: 1250, capUnitPaise: 1000, batchUnitPaise: 1250 });
   });
 });
+
+/**
+ * PHARMACY P1 — A MEDICINE IS SOLD AT ITS PRINTED MRP, AND THE GST IS INSIDE IT.
+ *
+ * Phase doc `docs/superpowers/plans/2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md`. L1: an MRP
+ * is inclusive of all taxes (Legal Metrology). L2: an NPPA ceiling is notified before GST (DPCO). So
+ * on a `taxInclusive` line the patient pays exactly the charged amount, and the taxable value and the
+ * two heads are carved out of it.
+ */
+describe("taxInclusive — the charged amount already contains the GST (pharmacy P1)", () => {
+  const five: GstCategoryConfig = { category: "pharmacy_5", sacCode: "3004", exempt: false, rateBps: 500, specialRule: null, thresholdPaise: null };
+  const nil: GstCategoryConfig = { category: "pharmacy_exempt", sacCode: "3004", exempt: true, rateBps: 0, specialRule: null, thresholdPaise: null };
+  const ctx = makeCtx({
+    services: {
+      ...SERVICES,
+      "svc-rx-5": { id: "svc-rx-5", code: "RX-5", name: "Rx five", category: "pharmacy_5", regulated: false, active: true },
+      "svc-rx-nil": { id: "svc-rx-nil", code: "RX-NIL", name: "Rx nil", category: "pharmacy_exempt", regulated: false, active: true },
+    },
+    gst: { categories: { ...CATEGORIES, pharmacy_5: five, pharmacy_exempt: nil }, settings: { compositeHealthcareExempt: true, caSigned: false } },
+  });
+
+  it("bills a 12% strip at its printed MRP: ₹112.00 is ₹100.00 taxable and ₹6.00 + ₹6.00", () => {
+    const [l] = priceInvoiceLines(ctx, [{ lineId: "l1", serviceId: "svc-drug-e", qty: 1, batchUnitPaise: 11200, taxInclusive: true }]);
+    expect([l!.grossPaise, l!.taxableBasePaise, l!.gst.cgstPaise, l!.gst.sgstPaise, l!.netPaise]).toEqual([11200, 10000, 600, 600, 11200]);
+  });
+
+  it("bills a 5% item at its MRP, with equal halves carved out of it", () => {
+    const [l] = priceInvoiceLines(ctx, [{ lineId: "l1", serviceId: "svc-rx-5", qty: 10, batchUnitPaise: 1000, taxInclusive: true }]);
+    // ₹100.00 at 5%: 100 × 5 / 105 = 4.7619 of tax, 2.3810 a head.
+    expect([l!.grossPaise, l!.taxableBasePaise, l!.gst.cgstPaise, l!.gst.sgstPaise, l!.netPaise]).toEqual([10000, 9524, 238, 238, 10000]);
+  });
+
+  it("an exempt item and a composite supply charge the same amount with no tax in it", () => {
+    const [exempt] = priceInvoiceLines(ctx, [{ lineId: "l1", serviceId: "svc-rx-nil", qty: 1, batchUnitPaise: 5000, taxInclusive: true }]);
+    expect([exempt!.taxableBasePaise, exempt!.gst.cgstPaise, exempt!.netPaise, exempt!.gst.exemptReason]).toEqual([5000, 0, 5000, "category_exempt"]);
+    const [composite] = priceInvoiceLines(ctx, [{
+      lineId: "l2", serviceId: "svc-drug-e", qty: 1, batchUnitPaise: 5000, taxInclusive: true, supplyContext: "composite_healthcare",
+    }]);
+    expect([composite!.taxableBasePaise, composite!.gst.cgstPaise, composite!.netPaise]).toEqual([5000, 0, 5000]);
+  });
+
+  it("a discount comes off the inclusive amount, and the tax is carved out of what is left", () => {
+    const disc = priceInvoiceLines(makeCtx({ ...ctx, rules: [R_EMP10], tags: ["employee"] }), [
+      { lineId: "l1", serviceId: "svc-drug-e", qty: 1, batchUnitPaise: 11200, taxInclusive: true },
+    ])[0]!;
+    expect([disc.discountPaise, disc.taxableBasePaise, disc.gst.cgstPaise, disc.gst.sgstPaise, disc.netPaise]).toEqual([1120, 9000, 540, 540, 10080]);
+  });
+
+  it("a notified ceiling on a regulated service is converted to the inclusive basis before it bounds the price", () => {
+    // svc-drug-b: tariff 9000, MRP 10000, ceiling 8000 BEFORE GST. At 12% the lawful maximum is 8960.
+    const [l] = priceInvoiceLines(ctx, [{ lineId: "l1", serviceId: "svc-drug-b", qty: 1, taxInclusive: true }]);
+    expect([l!.unitPaise, l!.regulatedClamp?.boundApplied, l!.netPaise]).toEqual([8960, "ceiling", 8960]);
+    // Without the flag nothing changes: the exclusive engine clamps to 8000 and adds the tax on top.
+    const [old] = priceInvoiceLines(ctx, [{ lineId: "l2", serviceId: "svc-drug-b", qty: 1 }]);
+    expect([old!.unitPaise, old!.netPaise]).toEqual([8000, 8960]);
+  });
+
+  it("is refused on a line that is not a medicine", () => {
+    expect(thrownCode(() => priceInvoiceLines(ctx, [{ lineId: "l1", serviceId: "svc-proc", qty: 1, taxInclusive: true }])))
+      .toBe("tax_inclusive_not_allowed");
+  });
+
+  it("never charges more or less than the inclusive amount, and each half is within a paisa of the tax on the base", () => {
+    for (const rateBps of [500, 1200, 1800, 2800]) {
+      const cat: GstCategoryConfig = { category: "pharmacy", sacCode: "3004", exempt: false, rateBps, specialRule: null, thresholdPaise: null };
+      const c = makeCtx({ gst: { categories: { ...CATEGORIES, pharmacy: cat }, settings: { compositeHealthcareExempt: true, caSigned: false } } });
+      for (let paise = 0; paise <= 20000; paise += 7) {
+        const [l] = priceInvoiceLines(c, [{ lineId: "p", serviceId: "svc-drug-e", qty: 1, batchUnitPaise: paise, taxInclusive: true }]);
+        const exactHead = Math.floor((2 * l!.taxableBasePaise * rateBps + 20000) / 40000);
+        if (l!.netPaise !== paise || l!.gst.cgstPaise !== l!.gst.sgstPaise || Math.abs(exactHead - l!.gst.cgstPaise) > 1 || l!.taxableBasePaise < 0) {
+          throw new Error(`rate ${String(rateBps)} paise ${String(paise)}: ${JSON.stringify(l)}`);
+        }
+      }
+    }
+  });
+});

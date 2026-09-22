@@ -8,6 +8,27 @@ export const users = pgTable(
     id: text("id").primaryKey(),
     username: text("username").notNull(),
     fullName: text("full_name").notNull(),
+    /**
+     * ═══ FD-29 — THE STAFF ID (owner, 2026-09-06: *"We should have staff-ID in the schema"*) ═══
+     *
+     * `EMP-` + four digits, unique, held by EVERY member of staff — nurse, technician, cashier,
+     * front-office clerk, doctor. Before this column the only identifiers a person had in this
+     * system were a ULID and a LOGIN NAME, which is why paper and audit lines that must name a human
+     * had nothing better to print than `anshuman.prasad`. A login is half a credential; an employee
+     * number is what an institution actually issues.
+     *
+     * MINTED at `createUser` so it can never be missing, and OVERRIDABLE so a hospital that already
+     * runs an HR numbering scheme prints ITS number rather than a second one invented here.
+     *
+     * ═══ IT IS NOT `opd_doctors.code`, AND THE TWO ARE NOT DUPLICATES ═══
+     *
+     * A doctor has both, on purpose, the way a real medical college does: `staff_code` is their
+     * EMPLOYMENT identity (attendance, payroll, the ID card) and `opd_doctors.code` is their
+     * PRESCRIBER identity, which is what a clinical document names — the prescription prints
+     * `DR-0114`, not an employee number. They are 1:1 today and could be collapsed; that is a
+     * decision about what a hospital's paper should say, not a schema tidy-up, so it is left open.
+     */
+    staffCode: text("staff_code").notNull(),
     // Staff/owner external messaging (Plan 10). Normalized 10-digit Indian mobile — the SAME
     // convention as patients.phone (schema/patients.ts) — and NULLABLE: a phoneless owner simply
     // degrades to the in-app alert that already ships. No collection flow exists in this phase;
@@ -31,7 +52,7 @@ export const users = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("users_username_ux").on(t.username)],
+  (t) => [uniqueIndex("users_username_ux").on(t.username), uniqueIndex("users_staff_code_ux").on(t.staffCode)],
 );
 
 export const roles = pgTable("roles", {

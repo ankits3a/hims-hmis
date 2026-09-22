@@ -16,12 +16,24 @@ const rungSchema = z.object({
   toRole: z.string().min(1),
 });
 
+const ladderRungSchema = z.object({
+  atPercent: z.number().int().min(1).max(400),
+  toRole: z.string().min(1),
+});
+
 const specSchema = z.object({
   typeKey: z.string().regex(/^[a-z][a-z0-9_]*$/, "typeKey must be lowercase snake_case"),
   title: z.string().min(1),
   approverRole: z.string().min(1),
   closureSlaMinutes: z.number().int().positive(), // E-18: every request type names a closure SLA
   escalation: z.array(rungSchema).optional(),
+  /**
+   * PHASE O T1, both optional and both PASSED THROUGH UNTOUCHED when absent. `flow.test.ts`
+   * pins `pending.sla` as exactly `{ minutes, alerting }` for a type that supplies neither, and
+   * that pin holds because these are set only when supplied rather than defaulted here.
+   */
+  respondMinutes: z.number().int().positive().optional(),
+  ladder: z.array(ladderRungSchema).min(1).optional(),
   changeClass: z.enum(["A", "B", "C"]).default("C"),
 });
 
@@ -36,6 +48,10 @@ export function approvalFlowDefinition(spec: ApprovalFlowSpec): WorkflowDefiniti
   const sla: SlaSpec = { minutes: s.closureSlaMinutes, alerting: "active" };
   if (s.escalation && s.escalation.length > 0) {
     sla.escalation = s.escalation.map((r) => ({ afterMinutes: r.afterMinutes, toRole: r.toRole }));
+  }
+  if (s.respondMinutes !== undefined) sla.respondMinutes = s.respondMinutes;
+  if (s.ladder && s.ladder.length > 0) {
+    sla.ladder = s.ladder.map((r) => ({ atPercent: r.atPercent, toRole: r.toRole }));
   }
   return defineWorkflow({
     key: `${APPROVAL_DEF_PREFIX}${s.typeKey}`,

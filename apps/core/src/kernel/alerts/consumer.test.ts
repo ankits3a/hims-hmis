@@ -1,17 +1,23 @@
 import { desc, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
+import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../db/client";
 import {
-  alerts, configValidationReports, events, notifications, operatingModeChanges, patients,
-  workflowDefinitions, workflowInstances,
+  alerts, approvalTypes, approvals, configValidationReports, events, notifications,
+  operatingModeChanges, patients, workflowDefinitions, workflowInstances,
 } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { createUser } from "../auth/identity";
 import { assignRole, createRole } from "../auth/permissions";
 import { ModuleRegistry } from "../modules/loader";
+import { requestApproval } from "../approvals/requests";
+import { registerApprovalType } from "../approvals/types";
+import { approvalFlowDefinition } from "../approvals/flow";
+import { activateDefinition, createDraft } from "../workflow/definitions";
+import { seedSodPairs } from "../auth/sod";
 import { buildSubscriptionBus } from "../worker/jobs";
-import { escalationTriggered } from "../workflow/events";
+import { escalationTriggered, respondOverdue } from "../workflow/events";
 import { enqueueNotification } from "../notify/enqueue";
 import { runNotifyPump } from "../notify/pump";
 import { changeOperatingMode } from "../ops/mode";
@@ -48,6 +54,10 @@ const alwaysThrows = (channel: ChannelAdapter["channel"]): ChannelAdapter => ({
 const REFUSING_ADAPTERS: Record<ChannelAdapter["channel"], ChannelAdapter> = {
   whatsapp: alwaysThrows("whatsapp"),
   sms: alwaysThrows("sms"),
+  // PHASE O T4: the union gained `web_push`, so the map does too. N8 is a PATIENT ladder
+  // exhaustion and the patient ladder is still whatsapp → sms, so this leg is never reached —
+  // it refuses like the others so that a route to it would fail loudly rather than quietly.
+  web_push: alwaysThrows("web_push"),
 };
 
 type EscalationPayload = {
@@ -192,6 +202,14 @@ describe("kernel alerts consumer", () => {
       // front of a human declares a subscription rather than writing one.
       { event: "imaging.critical_overdue", consumer: ALERTS_CONSUMER },
       { event: "imaging.report_unread", consumer: ALERTS_CONSUMER },
+      // OBLIGATION SPINE T2: the SIXTH, and the one the approvals spine measured as missing (M2 /
+      // E4): filing an approval notified nobody, ever. Every holder of the approver role gets a
+      // row; the requester never does (O17: nobody decides what they filed).
+      { event: "approval.requested", consumer: ALERTS_CONSUMER },
+      // PHASE O T1 (2026-09-21): six -> SEVEN, read off the red run. The respond clock is the
+      // other half of the pair — `escalation.triggered` says the work is late, this says nobody
+      // has said anything — and its branch lands in `consumer.ts` in the same commit.
+      { event: "respond.overdue", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -220,6 +238,10 @@ describe("kernel alerts consumer", () => {
           "escalation.triggered", "notification.failed", "ops.mode_changed",
           // 18a-iii T5 — the two radiology chasers, on the same consumer.
           "imaging.critical_overdue", "imaging.report_unread",
+          // Obligation spine T2 — filing tells somebody.
+          "approval.requested",
+          // Obligation spine T1 — and this one says nobody has answered yet.
+          "respond.overdue",
         ],
       },
     ]);
@@ -787,5 +809,366 @@ describe("kernel alerts consumer", () => {
       expect(raisedJson).not.toMatch(/Asha|Devi/i);
       expect(raisedJson).not.toContain(ASHA_UHID);
     });
+  });
+
+  // ————————— Obligation spine T2: filing tells somebody (approvals spine M2 / handoff E4) —————————
+
+  /**
+   * The approvals spine measured (2026-09-20) that `approval.requested` reached NEITHER surface: an
+   * approver learned a request existed only by opening the screen and looking. These tests drive a
+   * REAL filing through `requestApproval` — a registered type on an active definition, a requester
+   * who is a real user, the request bound to Asha Devi with a note that NAMES her — and hand the
+   * stored event to the consumer exactly as the dispatcher would.
+   */
+  describe("approval.requested", () => {
+    const TYPE_KEY = "billing_discount_t2";
+    const APPROVER_ROLE = "billing_manager";
+    const DRAFTER: Actor = { type: "user", id: "01HDRAFTER000000000000000" };
+    const ALERT_KIND = "approval_requested";
+    const REF_TYPE = "approval";
+    let requester: string;
+
+    beforeEach(async () => {
+      await seedSodPairs(db);
+      const activator: Actor = { type: "user", id: await mkUser("t2activator") };
+      requester = await mkUser("t2cashier");
+      const def = approvalFlowDefinition({
+        typeKey: TYPE_KEY, title: "Discount (T2)", approverRole: APPROVER_ROLE, closureSlaMinutes: 240,
+      });
+      const { definitionId } = await createDraft(db, DRAFTER, def);
+      await activateDefinition(db, activator, definitionId);
+      await registerApprovalType(db, activator, {
+        typeKey: TYPE_KEY, title: "Discount (T2)", approverRole: APPROVER_ROLE, urgencyClass: "urgent",
+      });
+      await createRole(db, APPROVER_ROLE, "Billing Manager");
+      await createRole(db, DUTY_MANAGER_ROLE, "Duty Manager");
+      await createRole(db, OWNER_ROLE, "Owner");
+    });
+
+    /** Files for Asha and returns the stored `approval.requested` as the dispatcher would hand it over. */
+    const fileForAsha = async (): Promise<{ approvalId: string; event: DispatchedEvent }> => {
+      const { approvalId } = await withTx(db, (tx) =>
+        requestApproval(tx, { type: "user", id: requester }, {
+          typeKey: TYPE_KEY,
+          subject: { type: "invoice", id: newId() },
+          patientId,
+          amountPaise: 120_000,
+          // The note names her. It is not on the payload today; this fixture is what would catch
+          // the day somebody copies it there and the consumer renders it.
+          requestNote: `10% discount for ${ASHA_NAME}`,
+        }),
+      );
+      const rows = await db
+        .select({ eventId: events.eventId })
+        .from(events)
+        .where(eq(events.name, "approval.requested"))
+        .orderBy(desc(events.seq))
+        .limit(1);
+      return { approvalId, event: await readDispatched(rows[0]!.eventId) };
+    };
+
+    const alertRows = () =>
+      db.select({
+        userId: alerts.userId, kind: alerts.kind, title: alerts.title, body: alerts.body,
+        refType: alerts.refType, refId: alerts.refId,
+      }).from(alerts);
+
+    it("T2-1: filing raises one alert per holder of the approver role — never the requester, never a bystander", async () => {
+      const managerOne = await mkUser("t2manager1");
+      const managerTwo = await mkUser("t2manager2");
+      const bystander = await mkUser("t2bystander");
+      await assignRole(db, { userId: managerOne, roleKey: APPROVER_ROLE, scopeType: "hospital" });
+      await assignRole(db, { userId: managerTwo, roleKey: APPROVER_ROLE, scopeType: "hospital" });
+      // O17, segregation of duties: the cashier ALSO holds the approver role and must not be told
+      // to decide the thing they just filed.
+      await assignRole(db, { userId: requester, roleKey: APPROVER_ROLE, scopeType: "hospital" });
+
+      const { approvalId, event } = await fileForAsha();
+      expect(event.patientId).toBe(patientId); // the envelope carries her — the leak is one hop away
+      await handler(event);
+
+      const rows = await alertRows();
+      expect(rows.map((r) => r.userId).sort()).toEqual([managerOne, managerTwo].sort());
+      expect(rows.map((r) => r.userId)).not.toContain(requester);
+      expect(rows.map((r) => r.userId)).not.toContain(bystander);
+      for (const r of rows) {
+        expect(r).toMatchObject({ kind: ALERT_KIND, refType: REF_TYPE, refId: approvalId });
+        expect(r.title).toContain(TYPE_KEY);
+        expect(r.body).toContain(APPROVER_ROLE);
+        expect(r.body).toContain("urgent");
+      }
+
+      const raised = await db
+        .select({ payload: events.payload, patientId: events.patientId })
+        .from(events)
+        .where(eq(events.name, "alert.raised"));
+      expect(raised).toHaveLength(2);
+      expect(raised.map((r) => r.patientId)).toEqual([null, null]);
+      expect(raised.map((r) => (r.payload as { refId: string }).refId)).toEqual([approvalId, approvalId]);
+    });
+
+    it("T2-2: the SAME dispatched filing handed over twice yields one alert per recipient and one alert.raised each", async () => {
+      const manager = await mkUser("t2manager");
+      await assignRole(db, { userId: manager, roleKey: APPROVER_ROLE, scopeType: "hospital" });
+      const { event } = await fileForAsha();
+
+      const outcomes: string[] = [];
+      await handler(event);
+      outcomes.push("first: resolved");
+      try {
+        await handler(event);
+        outcomes.push("second: resolved");
+      } catch (err) {
+        outcomes.push(`second: threw ${(err as Error).message}`);
+      }
+      expect(outcomes).toEqual(["first: resolved", "second: resolved"]);
+
+      expect(await alertRows()).toHaveLength(1);
+      const raised = await db.select({ id: events.eventId }).from(events).where(eq(events.name, "alert.raised"));
+      expect(raised).toHaveLength(1);
+    });
+
+    it("T2-3 (GC6 mutant class): no column of any alert, and no alert.raised payload, carries Asha — not her name, UHID, phone or id", async () => {
+      const manager = await mkUser("t2manager");
+      await assignRole(db, { userId: manager, roleKey: APPROVER_ROLE, scopeType: "hospital" });
+      const { event } = await fileForAsha();
+      await handler(event);
+
+      // The fixture COULD have leaked: she is real, named, on the envelope, and in the note.
+      const patient = await db.select({ name: patients.name, uhid: patients.uhid }).from(patients).where(eq(patients.id, patientId));
+      expect(patient[0]).toEqual({ name: ASHA_NAME, uhid: ASHA_UHID });
+
+      const rows = await db.select().from(alerts);
+      expect(rows).toHaveLength(1);
+      const everyColumn = JSON.stringify(rows);
+      expect(everyColumn).not.toMatch(/Asha|Devi/i);
+      expect(everyColumn).not.toContain(ASHA_UHID);
+      expect(everyColumn).not.toContain(ASHA_PHONE);
+      expect(everyColumn).not.toContain(patientId);
+
+      const raised = await db
+        .select({ payload: events.payload, patientId: events.patientId })
+        .from(events)
+        .where(eq(events.name, "alert.raised"));
+      expect(raised).toHaveLength(1);
+      expect(raised[0]!.patientId).toBeNull();
+      const raisedJson = JSON.stringify(raised[0]!.payload);
+      expect(raisedJson).not.toMatch(/Asha|Devi/i);
+      expect(raisedJson).not.toContain(ASHA_UHID);
+      expect(raisedJson).not.toContain(patientId);
+    });
+
+    it("T2-4: an approver role nobody but the requester holds routes to the duty managers and SAYS so; with no duty manager, to the owners", async () => {
+      // Edge register A1: the fallback is recorded, never silent. The requester is the ONLY holder
+      // of the approver role, which after O17 is the same as no holder at all.
+      await assignRole(db, { userId: requester, roleKey: APPROVER_ROLE, scopeType: "hospital" });
+      const dutyManager = await mkUser("t2duty");
+      await assignRole(db, { userId: dutyManager, roleKey: DUTY_MANAGER_ROLE, scopeType: "hospital" });
+      const owner = await mkUser("t2owner");
+      await assignRole(db, { userId: owner, roleKey: OWNER_ROLE, scopeType: "hospital" });
+
+      const first = await fileForAsha();
+      await handler(first.event);
+      let rows = await alertRows();
+      expect(rows.map((r) => r.userId)).toEqual([dutyManager]);
+      expect(rows[0]!.body).toContain(APPROVER_ROLE);
+      expect(rows[0]!.body).toContain(DUTY_MANAGER_ROLE);
+
+      // Now the duty manager leaves too: the same filing, with nobody at either rung, reaches the owner.
+      await truncateAll(db);
+      await seedSodPairs(db);
+      const activator: Actor = { type: "user", id: await mkUser("t2activator2") };
+      requester = await mkUser("t2cashier2");
+      const def = approvalFlowDefinition({
+        typeKey: TYPE_KEY, title: "Discount (T2)", approverRole: APPROVER_ROLE, closureSlaMinutes: 240,
+      });
+      const { definitionId } = await createDraft(db, DRAFTER, def);
+      await activateDefinition(db, activator, definitionId);
+      await registerApprovalType(db, activator, {
+        typeKey: TYPE_KEY, title: "Discount (T2)", approverRole: APPROVER_ROLE, urgencyClass: "urgent",
+      });
+      await createRole(db, APPROVER_ROLE, "Billing Manager");
+      await createRole(db, DUTY_MANAGER_ROLE, "Duty Manager");
+      await createRole(db, OWNER_ROLE, "Owner");
+      await db.insert(patients).values({
+        id: patientId, uhid: ASHA_UHID, name: ASHA_NAME, sex: "female", administrativeGender: "female",
+        phone: ASHA_PHONE, createdBy: "seed", updatedBy: "seed",
+      });
+      const ownerTwo = await mkUser("t2owner2");
+      await assignRole(db, { userId: ownerTwo, roleKey: OWNER_ROLE, scopeType: "hospital" });
+
+      const second = await fileForAsha();
+      await handler(second.event);
+      rows = await alertRows();
+      expect(rows.map((r) => r.userId)).toEqual([ownerTwo]);
+      expect(rows[0]!.body).toContain(OWNER_ROLE);
+    });
+  });
+
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * PHASE O T1 — `respond.overdue`: THE SILENCE, NOT THE LATENESS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * A separate describe with its own fixtures, deliberately: the suite above is the record of six
+ * shipped branches whose behaviour V20 says does not move, and nothing here reaches into it.
+ */
+describe("kernel alerts consumer — respond.overdue (phase O T1)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let handler: Handler;
+  let instanceId: string;
+  let patientId: string;
+
+  const R_DEF_KEY = "ladder_flow";
+  const R_STATE = "open";
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => { await teardown(); });
+
+  const readDispatched = async (eventId: string): Promise<DispatchedEvent> => {
+    const rows = await db
+      .select({
+        seq: events.seq, eventId: events.eventId, name: events.name, payload: events.payload,
+        patientId: events.patientId, correlationId: events.correlationId, occurredAt: events.occurredAt,
+      })
+      .from(events).where(eq(events.eventId, eventId));
+    const row = rows[0]!;
+    return {
+      seq: Number(row.seq), eventId: row.eventId, name: row.name, payload: row.payload,
+      patientId: row.patientId, correlationId: row.correlationId, occurredAt: row.occurredAt,
+    };
+  };
+
+  const fireRespondOverdue = async (): Promise<DispatchedEvent> => {
+    const { eventId } = await withTx(db, (tx) =>
+      appendEvent(tx, respondOverdue.make({
+        actor: { type: "system", id: "workflow-timer" },
+        correlationId: instanceId,
+        // The envelope DOES carry her, exactly as the timer builds it — so the absence
+        // assertions below have a fixture that could have produced the leak (§3.14).
+        patientId,
+        payload: {
+          instanceId, defKey: R_DEF_KEY, state: R_STATE, respondMinutes: 30,
+          dueAt: new Date("2026-09-21T10:30:00.000Z").toISOString(),
+        },
+      })),
+    );
+    return readDispatched(eventId);
+  };
+
+  const seedAlertFor = async (userId: string, refType: string, refId: string): Promise<void> => {
+    await db.insert(alerts).values({
+      id: newId(), userId, kind: "escalation", title: "something", refType, refId,
+      sourceEventId: newId(),
+    });
+  };
+
+  beforeEach(async () => {
+    await truncateAll(db);
+    handler = alertsConsumer(db);
+
+    patientId = newId();
+    await db.insert(patients).values({
+      id: patientId, uhid: ASHA_UHID, name: ASHA_NAME, sex: "female",
+      administrativeGender: "female", phone: ASHA_PHONE, createdBy: "seed", updatedBy: "seed",
+    });
+    const definitionId = newId();
+    await db.insert(workflowDefinitions).values({
+      id: definitionId, defKey: R_DEF_KEY, version: 1, title: "Ladder flow", changeClass: "C",
+      definition: { key: R_DEF_KEY, states: [] }, draftedBy: "seed",
+    });
+    instanceId = newId();
+    await db.insert(workflowInstances).values({
+      id: instanceId, definitionId, defKey: R_DEF_KEY,
+      currentState: R_STATE, subjectType: "approval", subjectId: newId(), patientId,
+      stateEnteredAt: new Date(),
+    });
+  });
+
+  it("nudges exactly the people who were already told, once each, and appends alert.raised for each", async () => {
+    const told = await createUser(db, { username: "told1", fullName: "T", password: "p1234567" });
+    const alsoTold = await createUser(db, { username: "told2", fullName: "U", password: "p1234567" });
+    const neverTold = await createUser(db, { username: "quiet1", fullName: "Q", password: "p1234567" });
+    await seedAlertFor(told.id, "workflow_instance", instanceId);
+    await seedAlertFor(alsoTold.id, "workflow_instance", instanceId);
+    // Somebody else's obligation entirely — the not-over-broad half.
+    await seedAlertFor(neverTold.id, "workflow_instance", newId());
+
+    await handler(await fireRespondOverdue());
+
+    const raised = await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"));
+    expect(raised.map((r) => r.userId).sort()).toEqual([told.id, alsoTold.id].sort());
+    expect(raised[0]!.title).toBe("ladder_flow · open · no answer in 30 min");
+    expect(await db.select().from(events).where(eq(events.name, "alert.raised"))).toHaveLength(2);
+  });
+
+  it("finds the people told about an APPROVAL — T2 files against the approval row, not the instance", async () => {
+    const approver = await createUser(db, { username: "appr1", fullName: "A", password: "p1234567" });
+    const approvalId = newId();
+    await db.insert(approvalTypes).values({
+      typeKey: "billing_refund", title: "Billing Refund", defKey: "approval_billing_refund",
+      approverRole: "billing_manager", createdBy: "seed",
+    });
+    await db.insert(approvals).values({
+      id: approvalId, typeKey: "billing_refund", instanceId, requesterId: approver.id,
+      approverRole: "billing_manager", urgencyClass: "routine",
+      subjectType: "invoice", subjectId: newId(),
+    });
+    await seedAlertFor(approver.id, "approval", approvalId);
+
+    await handler(await fireRespondOverdue());
+
+    const raised = await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"));
+    expect(raised.map((r) => r.userId)).toEqual([approver.id]);
+    // The nudge points at the INSTANCE, which is what the event knows and what the timer owns.
+    expect(raised[0]!.refType).toBe("workflow_instance");
+    expect(raised[0]!.refId).toBe(instanceId);
+  });
+
+  it("nobody was ever told, so nobody is nudged — and nothing is invented from a role", async () => {
+    await createRole(db, DUTY_MANAGER_ROLE, "Duty Manager");
+    const dm = await createUser(db, { username: "dm9", fullName: "D", password: "p1234567" });
+    await assignRole(db, { userId: dm.id, roleKey: DUTY_MANAGER_ROLE, scopeType: "hospital" });
+
+    await handler(await fireRespondOverdue());
+
+    // The duty manager holds the role a resolver would have reached for. This event is about
+    // people who did not answer, and he was never asked.
+    expect(await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"))).toHaveLength(0);
+    expect(await db.select().from(events).where(eq(events.name, "alert.raised"))).toHaveLength(0);
+  });
+
+  it("a redelivery raises nothing further — the (source_event_id, user_id) pair is the unit", async () => {
+    const told = await createUser(db, { username: "told3", fullName: "T", password: "p1234567" });
+    await seedAlertFor(told.id, "workflow_instance", instanceId);
+    const e = await fireRespondOverdue();
+
+    await handler(e);
+    await handler(e);
+
+    expect(await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"))).toHaveLength(1);
+    expect(await db.select().from(events).where(eq(events.name, "alert.raised"))).toHaveLength(1);
+  });
+
+  it("GC6: the nudge names the flow and the minutes, and never the patient the envelope carries", async () => {
+    const told = await createUser(db, { username: "told4", fullName: "T", password: "p1234567" });
+    await seedAlertFor(told.id, "workflow_instance", instanceId);
+
+    const e = await fireRespondOverdue();
+    expect(e.patientId).toBe(patientId); // the leak is one property access away
+
+    await handler(e);
+
+    const [row] = await db.select().from(alerts).where(eq(alerts.kind, "respond_overdue"));
+    const text = `${row!.title} ${row!.body ?? ""}`;
+    expect(text).not.toContain(ASHA_NAME);
+    expect(text).not.toContain(ASHA_UHID);
+    expect(text).not.toContain(patientId);
+    const [raised] = await db.select().from(events).where(eq(events.name, "alert.raised"));
+    expect(JSON.stringify(raised!.payload)).not.toContain(patientId);
+    expect(raised!.patientId).toBeNull(); // fanned to a browser topic; it carries no patient
   });
 });

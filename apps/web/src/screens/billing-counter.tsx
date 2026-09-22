@@ -5,12 +5,18 @@ import { useTranslation } from "react-i18next";
 import { PatientPicker } from "../components/patient-picker";
 import { SubmitButton } from "../components/submit-button";
 import type { PatientPickerHit } from "../components/patient-picker";
+import { usePatientInHandOptional } from "../lib/patient-in-hand";
+import { DeskModal } from "../components/desk-modal";
+import { PapersSheet } from "./desk-one/papers";
+import { ageOf, initialsOf, sexLetter, tokenLabel } from "./desk-one/model";
+import { getPatientPhoto } from "../lib/patients-api";
+import { api } from "../lib/api";
 import { InvoicePrint } from "../components/invoice-print";
 import { MoneyInput } from "../components/money-input";
 import { TenderEditor } from "../components/tender-editor";
 import { fmtPaise, useDebounced } from "../lib/format";
 import {
-  billingErrorCode, billingErrorMessage, fetchFeeQuote, fetchInvoicePrint, issueInvoice, listDues,
+  billingErrorCode, billingErrorMessage, fetchFeeQuote, fetchInvoicePrint, issueInvoice,
   listServices, previewInvoice,
 } from "../lib/billing-api";
 import type {
@@ -18,11 +24,14 @@ import type {
 } from "../lib/billing-api";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { usePaletteOptional } from "../components/command-palette";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { listCoverages } from "../lib/patients-api";
 import type { WireCoverage } from "../lib/patients-api";
-import { fetchCurrentSession } from "../lib/billing-api";
+import { fetchCurrentSession, fetchPatientBalance } from "../lib/billing-api";
+import type { WireDueRow } from "../lib/billing-api";
 import type { TenderMode } from "../lib/billing-api";
 
 /**
@@ -124,15 +133,37 @@ function ErrorLine({ message, testId }: { message: string | null; testId: string
   return <p role="alert" data-testid={testId} className="text-sm text-red-600">{message}</p>;
 }
 
-export function BillingCounter(): React.ReactElement {
+export function BillingCounter({ seated = false }: { seated?: boolean } = {}): React.ReactElement {
   const { t } = useTranslation();
   const search = useSearch({ strict: false }) as { encounterId?: string };
+  /*
+    ═══ FD-26 — THE PATIENT WALKS HERE FROM THE BOOKING DESK ═══
+
+    `/billing` is one of three front-desk chairs now (`screens/desk-one/seat-shell.tsx`), and a
+    clerk who moves between them must not have to search for the person standing in front of them
+    again — that is the "three route changes per patient" FD-2 measured and FD-9 deleted.
+    `PatientPicker` has ALWAYS written the id into `PatientInHand` (`patient-picker.tsx:70-72`);
+    nothing has ever read it back here, so the write was half a mechanism.
+
+    OFF BY DEFAULT, and that default is what keeps this screen's 31 money tests valid unchanged:
+    they mount `<BillingCounter />` with no provider and no carrier, and see exactly what they saw.
+    Only the seat route passes `seated`.
+  */
+  const carrier = usePatientInHandOptional();
   /* While the palette is open the screen claims no key — `counter-figures.tsx`'s rule, and it is
      general rather than about Escape. Returns null outside a provider, as this suite mounts. */
   const palette = usePaletteOptional();
 
   const [patient, setPatient] = useState<PatientPickerHit | null>(null);
   const [encounterId, setEncounterId] = useState(search.encounterId ?? "");
+  /*
+    Once per mount. A ref rather than state because after the first attempt the cashier must be able
+    to clear the patient and have them STAY cleared — a re-render that re-adopted would make the
+    "issue another bill" reset (`:575`) impossible to complete.
+  */
+  const adopted = useRef(false);
+  /** FD-27 — the reprint sheet, opened from the header. See `headerActions`. */
+  const [papersOpen, setPapersOpen] = useState(false);
   const [lines, setLines] = useState<CounterLine[]>([]);
   const [serviceQuery, setServiceQuery] = useState("");
   const [tenders, setTenders] = useState<WireTender[]>([]);
@@ -193,7 +224,6 @@ export function BillingCounter(): React.ReactElement {
   /* FD-25 — the artboard's three keyed lanes; a nonce so pressing the same lane twice re-seeds. */
   const [lane, setLane] = useState<{ mode: TenderMode; amountPaise: number; nonce: number } | null>(null);
   const [log, setLog] = useState<AgentLine[]>([]);
-  const [answer, setAnswer] = useState<string | null>(null);
   // Line ids are per-counter and sequential: they are the key `discountApprovals` binds an approval
   // to, so they must be stable for the life of the draft and must not leak across bills.
   const lineSeq = useRef(0);
@@ -205,6 +235,32 @@ export function BillingCounter(): React.ReactElement {
   // ——— reads ———————————————————————————————————————————————————————————————————————————————
 
   // Debounced: an encounter id typed by hand must not fire a quote per keystroke.
+  /*
+    FD-26 — adopt the carried patient, once, and only when the route asked for it. The read is the
+    same `GET /patients/:id` the rest of the app uses; a refusal (a permission this cashier does not
+    hold, or a row merged away) releases the carrier rather than retrying, so a dead id cannot sit in
+    session storage being re-tried on every screen for the rest of the shift.
+  */
+  useEffect(() => {
+    if (!seated || carrier === null || adopted.current) return;
+    adopted.current = true;
+    const held = carrier.inHand;
+    if (held === null) return;
+    void api<{ patient: { id: string; uhid: string; name: string | null; alias: string | null; administrativeGender: string; dob: string | null } }>(
+      "GET", `/patients/${encodeURIComponent(held.patientId)}`,
+    ).then(
+      (detail) => {
+        const p = detail.patient;
+        setPatient((prev) => (prev !== null ? prev : {
+          id: p.id, uhid: p.uhid, name: p.name ?? p.alias ?? p.uhid,
+          administrativeGender: p.administrativeGender, dob: p.dob,
+        }));
+        if (held.encounterId !== null) setEncounterId((prev) => (prev === "" ? held.encounterId! : prev));
+      },
+      () => { carrier.release(); },
+    );
+  }, [seated, carrier]);
+
   const debouncedEncounterId = useDebounced(encounterId.trim(), PREVIEW_DEBOUNCE_MS);
   const feeQuote = useQuery({
     queryKey: ["billing", "fee-quote", debouncedEncounterId],
@@ -212,11 +268,42 @@ export function BillingCounter(): React.ReactElement {
     enabled: debouncedEncounterId !== "",
   });
 
+  /*
+    ═══ WHO THIS COUNTER IS ABOUT — ONE DEFINITION, AND EVERY CONSUMER READS IT ═══
+
+    FD-28 derived this HERE, beside the quote it reads from, rather than from `shown` below: `shown`
+    is declared after the quote's other consumers and a hook cannot be moved after them without
+    changing hook order. FD-28 named it for the one box that first needed it — the dues rail — and
+    that name is exactly why the defect below survived FD-28.
+
+    Owner, 2026-09-12: *"I entered Encounter number V2609120001, it shows Patient name and service
+    detail along with how much I need to collect … clicking 'Take 500' … error 'Pick a patient
+    before issuing a bill'."*
+
+    FD-28 taught the RAIL — the heading, the account box — to read whichever road the cashier
+    arrived by, and left `submit` and the coverage read still keyed on `patient`, the person a
+    cashier SEARCHED for. On `/billing?encounterId=…`, which is how the OPD desk hands a patient
+    over and how the owner walked in, nobody is searched for. So the counter named the person,
+    priced their visit, lit a button with their money on it, and then refused to issue on the
+    ground that nobody had been picked.
+
+    A name that says "dues" invites the next consumer to derive its own copy from `patient`, which
+    is what both of those did. This one names the FACT — the person the bill is for, by whichever
+    road the cashier arrived — so there is nothing left for a consumer to re-derive.
+  */
+  const resolvedPatientId = patient?.id ?? feeQuote.data?.patient?.id ?? null;
+
   /** THE screen's one polling read (K39). Dues move while the cashier is on another patient. */
+  /*
+    FD-28 — keyed on the RESOLVED person, not the picked one. Entered by `?encounterId=` nobody is
+    picked, so this read never fired and the rail said "pick a patient before issuing a bill" beside
+    a bill it was already pricing. `shownId` is declared above the quote's own consumers for that
+    reason; see `shown`.
+  */
   const dues = useQuery({
-    queryKey: ["billing", "dues", patient?.id ?? ""],
-    queryFn: () => listDues(patient?.id ?? ""),
-    enabled: patient !== null,
+    queryKey: ["billing", "balance", resolvedPatientId ?? ""],
+    queryFn: () => fetchPatientBalance(resolvedPatientId!),
+    enabled: resolvedPatientId !== null,
     refetchInterval: POLL_MS,
   });
 
@@ -302,10 +389,16 @@ export function BillingCounter(): React.ReactElement {
    * artboard's "East Central Railway · employee 41129" — and until now the build spec's conclusion
    * that the data did not exist was the reasonable reading, because nothing could reach it.
    */
+  /*
+    Keyed on the RESOLVED person (see `resolvedPatientId`). Keyed on the PICKED one this read never
+    fired on the `?encounterId=` road, so a panel patient the OPD desk handed over got no
+    Corporate/TPA card at all — the one surface that reads `patient_coverages` went blank on the
+    road the desk actually uses, and read as "this patient has no panel".
+  */
   const coverages = useQuery({
-    queryKey: ["patient-coverages", patient?.id ?? ""],
-    queryFn: () => listCoverages(patient?.id ?? ""),
-    enabled: patient !== null,
+    queryKey: ["patient-coverages", resolvedPatientId ?? ""],
+    queryFn: () => listCoverages(resolvedPatientId!),
+    enabled: resolvedPatientId !== null,
     staleTime: 60_000,
   });
 
@@ -326,14 +419,109 @@ export function BillingCounter(): React.ReactElement {
   // The fee line is SEEDED from the quote, once, and stays editable afterwards — a cashier who
   // removed it has removed it on purpose (a revisit carries no fee line at all, D8).
   const quote = feeQuote.data;
+
+  /*
+    ═══ FD-28 — WHO THE RAIL IS ABOUT, and the picked patient is only one of the two roads to it ═══
+
+    `/billing?encounterId=…` is the OPD desk's hand-off and the way this counter is normally reached.
+    On that road nobody is PICKED, so every box keyed on `patient` rendered "pick a patient first"
+    beside a bill it was already pricing. The quote now names the person (see the route's comment),
+    so the rail reads whichever road the cashier arrived by.
+
+    The picked patient WINS: a cashier who deliberately searched for somebody is making a statement,
+    and a stale `?encounterId=` in the URL must not overrule it.
+  */
+  /*
+    `administrativeGender` and `dob` are typed as present on both sources and are OPTIONAL here on
+    purpose: a `PatientPickerHit` is built from a search row, and a row that reaches this screen
+    without a sex crashed the whole counter on `sexLetter(undefined)` — measured, in this file's own
+    suite. A cashier losing the entire billing screen because a record has no sex recorded is a far
+    worse failure than the identity line being one letter short, so the absence is rendered, not
+    thrown on.
+  */
+  const shown: {
+    id: string; uhid: string; name: string | null;
+    administrativeGender?: string | null; dob?: string | null; phone?: string | null;
+  } | null = patient ?? quote?.patient ?? null;
+
+  /*
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+    FD-36 — WHEN THE TWO ROADS NAME TWO PEOPLE, THE SCREEN REFUSES TO DRAW ONE
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    Owner, 2026-09-13: *"I have a patient in hand, let's call him Ankit … in the Encounter Id field,
+    I input encounter Id of another patient, lets call him Abhay … It shows Abhay's encounter/visit
+    details under the Ankit."*
+
+    `shown` above and `resolvedPatientId` are FD-28's answer to the opposite case — entered by
+    `?encounterId=` with nobody picked, where the rail used to say "pick a patient before issuing a
+    bill" beside a bill it was already pricing. That fallback is right and stays. What it never
+    considered is DISAGREEMENT: with somebody picked AND a different encounter typed, `patient` wins
+    the rail, the heading, the face and the dues poll while `quote` fills the visit card and the fee
+    — one screen, two people, no warning.
+
+    FLIPPING THE PRECEDENCE WOULD BE THE SAME BUG FACING THE OTHER WAY: it silently retargets the
+    bill to whoever the encounter belongs to, while the cashier is looking at the person they
+    searched for. So this is a STATE, not a winner — the screen names both and the cashier says
+    which. It mirrors the server, which refuses the same pair with `patient_encounter_mismatch`
+    (FD-35) rather than rebinding the bill for anybody.
+
+    MERGE-SAFE BY CONSTRUCTION, and worth saying because the server half needed explicit care here:
+    both ids are already canonical. A `PatientPickerHit` comes from `searchPatients`, which returns
+    active rows only, and `quote.patient` comes from `getPatientSummaries`, which resolves the merge
+    chain before it answers. Two spellings of one merged person therefore arrive as one id and this
+    never fires on them.
+  */
+  const conflict = patient !== null && quote?.patient != null && patient.id !== quote.patient.id
+    ? { picked: patient, visitOf: quote.patient }
+    : null;
+
+  /*
+    THE FACE, read back rather than assumed. `hasPhoto` on a search hit is a snapshot from the moment
+    the row was searched; a photo taken at registration two minutes ago would be missed. A 404 is the
+    ordinary answer for a patient with no photo and is swallowed, exactly as Desk One swallows it.
+  */
+  const [photo, setPhoto] = useState<string | null>(null);
+  /* The same id as `resolvedPatientId` by construction (`shown` is `patient ?? quote.patient`), and
+     read from it rather than derived again — a second derivation is a second thing to forget. */
+  const shownId = resolvedPatientId;
+  useEffect(() => {
+    setPhoto(null);
+    if (shownId === null) return;
+    let live = true;
+    void getPatientPhoto(shownId).then(
+      (p) => { if (live) setPhoto(`data:${p.mimeType};base64,${p.imageBase64}`); },
+      () => { /* no photo on file is the common case, not an error worth showing a cashier */ },
+    );
+    return () => { live = false; };
+  }, [shownId]);
+
   useEffect(() => {
     if (quote === undefined) return;
     if (slipSeededFor === quote.encounterId) return;
     setSlipSeededFor(quote.encounterId);
     setAttributionCode(quote.attributionCode ?? "");
   }, [quote, slipSeededFor]);
+  /*
+    ═══ A FEE ALREADY ON A LIVE BILL IS NOT SEEDED INTO THE NEXT DRAFT ═══
+
+    Owner, 2026-09-12: the rail said UNPAID on a visit already charged, and pressing Take returned
+    *"invoice INV/26-27/000020 already charges this service on this visit"*.
+
+    The stamp was the lie the owner saw; THIS is what walked them into the refusal. The counter
+    pre-fills the visit's consult fee from the quote — correct on a visit that has not been billed,
+    and on one that has it builds a draft whose only line is guaranteed to be refused, prices it at
+    ₹500, and puts that figure on the button. The cashier can take the cash before the server ever
+    sees the draft.
+
+    So the seed asks what the server already told us: a fee on a LIVE invoice (not entered-in-error,
+    not fully credited — `liveInvoiceCharging`'s own definition) is not seeded again. The cashier can
+    still add the consult by hand, deliberately, and then gets the refusal with its sentence; what
+    they no longer get is a duplicate they never asked for.
+  */
   useEffect(() => {
     if (quote === undefined || quote.free) return;
+    if (quote.alreadyBilled != null) return;
     const feeServiceId = quote.feeServiceId;
     if (feeServiceId === null) return;
     const priced = quote.draft?.lines[0];
@@ -386,6 +574,14 @@ export function BillingCounter(): React.ReactElement {
     and `totals` stays null forever: a gate written on the priced figure alone would print nothing
     at all about collection on the one visit where the sentence is unarguably true.
   */
+  /*
+    ═══ WHAT THE LEDGER SAYS ABOUT THIS VISIT'S FEE ═══
+
+    Held apart from `collectablePaise` deliberately. They answer two questions that a cashier reads
+    as one and that diverge exactly when it matters: "what would this draft cost" (below) and "has
+    this visit's fee been paid" (here). The stamp asks the second and used to be told the first.
+  */
+  const visitMoneyStamp = quote?.visit?.feeStatus ?? null;
   const collectablePaise: number | null = payablePaise !== null
     ? payablePaise
     : quote?.free === true && lines.length === 0 ? 0 : null;
@@ -458,8 +654,26 @@ export function BillingCounter(): React.ReactElement {
   // ——— the write ————————————————————————————————————————————————————————————————————————————
 
   const submit = async (idemKey: string): Promise<void> => {
-    if (patient === null) {
+    /*
+      The RESOLVED person, not the picked one — the owner's 2026-09-12 refusal, and the reason
+      `resolvedPatientId` is named for the fact instead of for the dues box. The server requires
+      `patientId` on the body, so "resolved" has to hold all the way to the wire and not merely as
+      far as the rail's heading. It stays a refusal rather than becoming an assertion: reached with
+      no encounter typed and nobody searched for, there is genuinely no one to bill.
+    */
+    if (resolvedPatientId === null) {
       setError(t("billing.counter.pickPatientFirst"));
+      setErrorCode(null);
+      return;
+    }
+    /*
+      FD-36 — the two roads name two people, so there is no bill to issue. The SERVER refuses this
+      pair too (`patient_encounter_mismatch`, FD-35) and that is the load-bearing half; this one
+      exists so the cashier is told at the counter rather than after the money is counted, and so
+      the screen never sends a request it knows is contradictory.
+    */
+    if (conflict !== null) {
+      setError(t("billing.counter.conflictRefused"));
       setErrorCode(null);
       return;
     }
@@ -496,7 +710,7 @@ export function BillingCounter(): React.ReactElement {
 
     const body: WireIssueInvoiceBody = {
       draftId,
-      patientId: patient.id,
+      patientId: resolvedPatientId,
       lines: lineInputs,
     };
     if (encounterId.trim() !== "") body.encounterId = encounterId.trim();
@@ -536,7 +750,64 @@ export function BillingCounter(): React.ReactElement {
 
   // ——— the printed invoice REPLACES the counter (exactly one `.print-doc` is ever mounted) ———
 
+  /*
+    ═══ FD-COPILOT — DECLARED ABOVE THE EARLY RETURN, WHICH IS WHY IT READS A MIRROR ═══
+
+    `useCopilot` is a hook and the receipt branch below returns before the counter's own state is
+    computed, so calling it where that state lives would make it a CONDITIONAL hook — React's rule,
+    and the linter caught it. `admin-users.tsx:230` already solved this exact shape: a `useRef`
+    mirror, written each render where the values exist, read by the fallback.
+
+    The benefit and the panel are facts about the QUOTE ON THIS SCREEN, which no server was asked
+    about, so they stay as they were and answer when the copilot does not recognise the question.
+    One collision worth naming: `"why"` is captured by the benefit branch, so "why is this panel…"
+    answers about discounts. The server sees the question first now, which NARROWS that rather than
+    curing it; curing it belongs with the other chains.
+  */
+  const agentState = useRef<{
+    benefitPaise: number;
+    panel: WireCoverage | null;
+    duesCount: number;
+    shown: { name: string | null; uhid: string; phone?: string | null } | null;
+  }>({ benefitPaise: 0, panel: null, duesCount: 0, shown: null });
+
+  const copilot = useCopilot({
+    /*
+      The person this counter is actually about — `shown` is the RESOLVED one, which FD-36 made the
+      single source after two roads could name two people. Their name goes to the masker by value,
+      so a cashier who types it never sends it anywhere.
+    */
+    terms: () => {
+      const { shown: who } = agentState.current;
+      return [who?.name, who?.uhid, who?.phone].filter((x): x is string => typeof x === "string" && x !== "");
+    },
+    fallback: (question: string): string | null => {
+      const q = question.trim().toLowerCase();
+      if (q === "") return null;
+      const st = agentState.current;
+      if (q.includes("benefit") || q.includes("discount") || q.includes("why")) {
+        return st.benefitPaise === 0
+          ? t("billingSeat.agent.noBenefit")
+          : t("billingSeat.agent.benefit", { amount: fmtPaise(st.benefitPaise) });
+      }
+      if (q.includes("panel") || q.includes("corporate") || q.includes("tpa")) {
+        return st.panel === null
+          ? t("billingSeat.agent.noPanel")
+          : t("billingSeat.agent.panel", { payer: st.panel.payerName ?? "—", id: st.panel.employeeId ?? st.panel.beneficiaryId ?? "—" });
+      }
+      if (q.includes("owe") || q.includes("due") || q.includes("outstanding")) {
+        return t("billingSeat.agent.dues", { count: st.duesCount });
+      }
+      return null;
+    },
+  });
+
   if (issued !== null) {
+    /*
+      Still populated: `setIssued` does not clear the field, and the reset below only runs when the
+      cashier asks for the NEXT bill. So the visit this invoice belongs to is still named here.
+    */
+    const issuedEncounterId = encounterId.trim();
     return (
       <PaperScreen testId="billing-issued">
         <div style={{ flexGrow: 1, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -562,6 +833,44 @@ export function BillingCounter(): React.ReactElement {
             ))}
           </div>
           {print.data !== undefined && <InvoicePrint data={print.data} />}
+          {/*
+            ═══ FD-28 — THE BILL IS NOT THE ONLY PAPER THE PATIENT LEAVES WITH ═══
+
+            Owner, 2026-09-06: *"when the billing is done a invoice appears on the screen with 'print
+            invoice' text below. But what about OPD prescription print?"*
+
+            Right, and the gap was structural rather than a missing button: this screen knew about
+            exactly one document — the invoice it had just rendered from its own state. The
+            prescription sheet, the token slip and the payment receipt are all queued against the
+            same ENCOUNTER by the server, and nothing here had ever looked at them.
+
+            The papers sheet is where they live (FD-27), so this opens that rather than growing a
+            second list beside it. Shown only when the bill belongs to a visit: a counter sale has no
+            encounter and therefore no slips.
+          */}
+          {issuedEncounterId !== "" && (
+            <button
+              className="sec no-print"
+              type="button"
+              data-testid="issued-papers"
+              style={{ alignSelf: "flex-start" }}
+              onClick={() => { setPapersOpen(true); }}
+            >
+              {t("billingSeat.rail.papersForVisit")}
+            </button>
+          )}
+          <DeskModal
+            open={papersOpen}
+            onClose={() => { setPapersOpen(false); }}
+            title={t("billingSeat.rail.papersForVisit")}
+            titleId="issued-papers-title"
+            testId="issued-papers-sheet"
+            width={620}
+          >
+            {papersOpen && issuedEncounterId !== "" ? (
+              <PapersSheet encounterId={issuedEncounterId} when={null} />
+            ) : null}
+          </DeskModal>
           <button
             className="sec no-print"
             type="button"
@@ -615,56 +924,137 @@ export function BillingCounter(): React.ReactElement {
     .find((c) => c.kind === "corporate" || c.kind === "tpa" || c.kind === "cghs" || c.kind === "esic") ?? null;
   const panelPays = quote?.intendedPayer !== undefined && quote.intendedPayer !== "self";
 
-  const ask = (question: string): void => {
-    const q = question.trim().toLowerCase();
-    if (q === "") return;
-    if (q.includes("benefit") || q.includes("discount") || q.includes("why")) {
-      setAnswer(benefitPaise === 0
-        ? t("billingSeat.agent.noBenefit")
-        : t("billingSeat.agent.benefit", { amount: fmtPaise(benefitPaise) }));
-    } else if (q.includes("panel") || q.includes("corporate") || q.includes("tpa")) {
-      setAnswer(panel === null
-        ? t("billingSeat.agent.noPanel")
-        : t("billingSeat.agent.panel", { payer: panel.payerName ?? "—", id: panel.employeeId ?? panel.beneficiaryId ?? "—" }));
-    } else if (q.includes("owe") || q.includes("due") || q.includes("outstanding")) {
-      setAnswer(t("billingSeat.agent.dues", { count: (dues.data?.items ?? []).length }));
-    } else {
-      setAnswer(t("billingSeat.agent.scope"));
-    }
-  };
+  /*
+    ═══ FD-COPILOT — THIS COUNTER'S OWN STATE, NOW THE FALLBACK ═══
+
+    The benefit and the panel are facts about the QUOTE ON THIS SCREEN, which no server was asked
+    about, so they stay exactly as they were and run when the copilot does not recognise the
+    question. One consequence worth naming: `"why"` used to be captured by the benefit branch, so
+    "why is this panel…" answered about discounts. The server now sees the question first, and the
+    branch only gets what the catalog could not route — which narrows that collision rather than
+    curing it. Curing it belongs with the other nine chains.
+  */
+  /*
+    The mirror is filled HERE, where the values exist, and read by the fallback declared above the
+    early return. `admin-users.tsx` does exactly this for the same reason.
+  */
+  agentState.current = { benefitPaise, panel, duesCount: (dues.data?.dues ?? []).length, shown };
+
+  const headerActions = (
+    <>
+      {/*
+        ═══ FD-27 — THE CASHIER'S OWN DOOR TO THE PAPER ═══
+
+        Owner, 2026-09-06: *"A user with Billing permission don't have any way to print the OPD
+        prescription (A4 size) … if the patient comes back saying he lost the bill … can he print it
+        again?"* This seat mounts no Desk One, so the papers sheet the history rows open is not
+        reachable here — and this is the seat the owner named. It is the SAME component, opened on
+        the encounter this counter is already billing against.
+
+        Disabled with no encounter rather than hidden: a cashier looking for the reprint button
+        needs to find it and be told what it wants, not fail to find it and conclude it was never
+        built. That is the report this whole phase came from.
+      */}
+      <button
+        type="button"
+        className="sec"
+        data-testid="counter-papers"
+        disabled={encounterId.trim() === ""}
+        title={encounterId.trim() === "" ? "Name the visit first — papers belong to a visit" : "slips and bills for this visit, and a way to print them again"}
+        onClick={() => { setPapersOpen(true); }}
+      >
+        Their papers
+      </button>
+      <span className={session.data?.session == null ? "pill" : "pill on"} data-testid="drawer-pill">
+        {session.data?.session == null
+          ? t("billingSeat.header.noDrawer")
+          : t("billingSeat.header.drawerOpen", { float: fmtPaise(session.data.session.openingFloatPaise) })}
+      </span>
+      {/*
+        A PLAIN ANCHOR, NOT `<Link>`, and the reason is a test constraint recorded by FD-7: this
+        screen's suite renders it outside a `RouterProvider`, so a router-aware component here
+        throws. `/api/*` path separation is what makes the plain href land on the SPA, not the API.
+      */}
+      <a className="sec" style={{ textDecoration: "none" }} href="/counter/instruments">
+        {t("nav.counterInstruments")}
+      </a>
+    </>
+  );
 
   return (
     <PaperScreen testId="billing-seat">
       <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", padding: "18px 22px", gap: 14, minWidth: 0 }}>
-        <ScreenTitle
-          title={t("billing.counter.title")}
-          route="/billing"
-          actions={
-            <>
-              <span className={session.data?.session == null ? "pill" : "pill on"} data-testid="drawer-pill">
-                {session.data?.session == null
-                  ? t("billingSeat.header.noDrawer")
-                  : t("billingSeat.header.drawerOpen", { float: fmtPaise(session.data.session.openingFloatPaise) })}
-              </span>
-              {/*
-                A PLAIN ANCHOR, NOT `<Link>`, and the reason is a test constraint recorded by FD-7:
-                this screen's suite renders it outside a `RouterProvider`, so a router-aware
-                component here throws. `/api/*` path separation is what makes the plain href land on
-                the SPA rather than the API.
-              */}
-              <a className="sec" style={{ textDecoration: "none" }} href="/counter/instruments">
-                {t("nav.counterInstruments")}
-              </a>
-            </>
-          }
-        />
+        {/*
+          ═══ FD-26 — ONE HEADER, AND INSIDE A SEAT IT IS THE SEAT'S ═══
+
+          `ScreenTitle` exists because a `.pp` screen sits under the app header and needs to say
+          which screen it is. Inside a `SeatShell` there IS no app header — the frame's own 46px row
+          already reads `DESK ONE / Registration · Appointment · Billing · <clerk>` with Billing lit
+          — so drawing "Billing counter /billing" beneath it is a second title for one screen, which
+          is the two-headers defect FD-25 recorded and worked around by renaming a button.
+
+          The ACTIONS are not chrome and do not go: the drawer pill is a live money precondition and
+          the card-recognition door is reachable from nowhere else. They keep their row.
+        */}
+        {seated ? (
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 9 }}>
+            {headerActions}
+          </div>
+        ) : (
+          <ScreenTitle title={t("billing.counter.title")} route="/billing" actions={headerActions} />
+        )}
 
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
           {/* ═══ LEFT RAIL — who is paying, and what they already owe ═══ */}
           <div style={{ width: 290, flexShrink: 0, display: "flex", flexDirection: "column", gap: 13 }}>
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("billingSeat.rail.paying")}</span>
-              {patient === null ? (
+              {conflict !== null ? (
+                /*
+                  FD-36 — the blend, refused where it used to be drawn. Both people by name and
+                  UHID, and the two ways out: keep the person at the window and drop the visit, or
+                  bill the visit and drop the person. No third reading is offered, and nothing below
+                  this renders while it stands.
+                */
+                <div data-testid="patient-conflict" style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 9 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--red, #b42318)" }}>
+                    {t("billingSeat.rail.conflict.title")}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("billingSeat.rail.conflict.explain")}</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div>
+                      <span className="tag">{t("billingSeat.rail.conflict.inHand")}</span>
+                      <div data-testid="conflict-picked" style={{ fontSize: 13.5, fontWeight: 600 }}>
+                        {conflict.picked.name ?? "—"}{" "}
+                        <span className="mo" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--dim)" }}>{conflict.picked.uhid}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="tag">{t("billingSeat.rail.conflict.thisVisit")}</span>
+                      <div data-testid="conflict-visit" style={{ fontSize: 13.5, fontWeight: 600 }}>
+                        {conflict.visitOf.name ?? "—"}{" "}
+                        <span className="mo" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--dim)" }}>{conflict.visitOf.uhid}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                    <button
+                      className="sec"
+                      data-testid="conflict-keep-picked"
+                      onClick={() => { setEncounterId(""); }}
+                    >
+                      {t("billingSeat.rail.conflict.keepPicked", { name: conflict.picked.name ?? conflict.picked.uhid })}
+                    </button>
+                    <button
+                      className="sec"
+                      data-testid="conflict-use-visit"
+                      onClick={() => { setPatient(null); }}
+                    >
+                      {t("billingSeat.rail.conflict.useVisit", { name: conflict.visitOf.name ?? conflict.visitOf.uhid })}
+                    </button>
+                  </div>
+                </div>
+              ) : shown === null ? (
                 <div style={{ marginTop: 9 }}>
                   <p style={{ margin: "0 0 9px", color: "var(--faint)", fontSize: 12.5 }}>
                     {t("billing.counter.pickPatientFirst")}
@@ -672,9 +1062,41 @@ export function BillingCounter(): React.ReactElement {
                   <PatientPicker autoFocus onPick={setPatient} />
                 </div>
               ) : (
-                <div data-testid="paying-name" style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 16, fontWeight: 600, lineHeight: "20px" }}>{patient.name ?? "—"}</span>
-                  <span className="mo" style={{ fontSize: 12.5, color: "var(--dim)" }}>{patient.uhid}</span>
+                /*
+                  ═══ FD-28 — THE PERSON, AS THE REST OF THE APPLICATION DRAWS THEM ═══
+
+                  Owner, 2026-09-06: *"left panel is failing to show patient picture thumbnail,
+                  neither the age, gender and phone number. Copy that feature from other pages."*
+
+                  It showed a name and a UHID. Age and sex were on `PatientPickerHit` all along and
+                  simply were not rendered; the phone and the face were never fetched. The shape is
+                  the dossier's — a 44px square, then name, then the mono identity line — because a
+                  cashier and a registration clerk looking at the same person across two screens
+                  should not have to re-learn where to look.
+                */
+                <div data-testid="paying-name" style={{ marginTop: 9, display: "flex", gap: 11, alignItems: "flex-start" }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 6, background: "var(--wash)", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+                    border: "1px solid var(--line)",
+                  }}>
+                    {photo === null ? (
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dim)" }}>{initialsOf(shown.name ?? "")}</span>
+                    ) : (
+                      <img data-testid="paying-photo" src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span style={{ fontSize: 15.5, fontWeight: 600, lineHeight: "19px" }}>{shown.name ?? "—"}</span>
+                    <span className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }} data-testid="paying-identity">
+                      {ageOf(shown.dob ?? null) === "" ? "" : `${ageOf(shown.dob ?? null)} `}
+                      {shown.administrativeGender == null ? "" : sexLetter(shown.administrativeGender)}
+                      {" · "}{shown.uhid}
+                    </span>
+                    <span className="mo" style={{ fontSize: 11.5, color: shown.phone == null ? "var(--faint)" : "var(--dim)" }} data-testid="paying-phone">
+                      {shown.phone ?? t("billingSeat.rail.noPhone")}
+                    </span>
+                  </div>
                 </div>
               )}
               {/*
@@ -686,7 +1108,9 @@ export function BillingCounter(): React.ReactElement {
                 nesting the fee branch inside `patient !== null` hid it on exactly the road the
                 screen is reached by. Found by `fee-branch` going missing, not by looking.
               */}
-              {quote === undefined ? null : (
+              {/* FD-36 — `conflict` suppresses it: this card IS the half that was being read under
+                  the wrong person's name, and drawing it beside a refusal would keep the blend. */}
+              {quote === undefined || conflict !== null ? null : (
                 <>
                     <div style={{ marginTop: 12, padding: "11px 12px", background: "var(--wash)", borderRadius: 6 }}>
                       <span className="tag">{t("billingSeat.rail.thisVisit")}</span>
@@ -719,8 +1143,63 @@ export function BillingCounter(): React.ReactElement {
                         something is owed — and ₹0, the same mark Desk One draws for a free visit,
                         when the server's own figure says nothing is.
                       */}
-                      <div style={{ marginTop: 9, display: "flex", gap: 7, alignItems: "center" }}>
-                        {collectablePaise === 0 ? (
+                      {/*
+                        ═══ FD-28 — THE TOKEN NUMBER, WHICH THE STAMP HAS ALWAYS IMPLIED AND NEVER SAID ═══
+
+                        Owner, 2026-09-06: *"there's no way a billing user would know, against which
+                        token number the billing needs to be done as the user can't see it first
+                        hand in the panel."*
+
+                        A `token-stamp` reading UNPAID has been in this rail since FD-25 — with no
+                        token beside it. The patient is holding a slip that says PED-1 and the
+                        cashier had nothing on screen to match it against, so the only way to be sure
+                        they were billing the right visit was to read out an encounter id.
+
+                        `tokenLabel` is Desk One's, so the counter and the slip spell it the same
+                        way — the owner's ruling that a token reads by DEPARTMENT ("MED-4"), not by
+                        doctor. A deferred visit genuinely has no token yet and says so rather than
+                        printing a dash a cashier would read as a data error.
+                      */}
+                      <div style={{ marginTop: 9, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                        {quote.visit == null ? null : quote.visit.tokenNo === null ? (
+                          <span data-testid="visit-token-none" style={{ fontSize: 11, color: "var(--faint)" }}>
+                            {t("billingSeat.rail.noToken")}
+                          </span>
+                        ) : (
+                          <span className="mo" data-testid="visit-token" style={{ fontSize: 17, fontWeight: 700, letterSpacing: ".02em" }}>
+                            {tokenLabel(quote.visit.departmentCode, quote.visit.tokenNo)}
+                          </span>
+                        )}
+                        {/*
+                          ═══ THE MONEY STAMP IS THE LEDGER'S VERDICT, NOT THE DRAFT'S ARITHMETIC ═══
+
+                          Owner, 2026-09-12: *"that is showing that this specific visit/encounter id
+                          is unpaid … if the visit was already charged then why does the screen show
+                          UNPAID on the left panel?"*
+
+                          It read `collectablePaise` — the priced DRAFT in front of the cashier. A
+                          draft is never paid, so this branch could only ever say UNPAID, and it said
+                          it over a visit whose consult fee sat on a fully settled invoice. It was
+                          not reading the wrong number; it was answering a different question from
+                          the one the stamp appears to answer, which is worse, because the number was
+                          right and the sentence was false.
+
+                          `quote.visit.feeStatus` is the server's projection of the invoice ledger
+                          for THIS visit's fee — the same derivation the OPD queue has stamped tokens
+                          with since RC-1, so the two surfaces cannot disagree about one visit.
+
+                          The draft figure remains the fallback and only where the server states no
+                          verdict (billing unconfigured): a free visit still stamps ₹0 from the quote.
+                        */}
+                        {visitMoneyStamp === "settled" ? (
+                          <span className="stamp pd" data-testid="token-stamp">{t("billingSeat.rail.paidStamp")}</span>
+                        ) : visitMoneyStamp === "credit" ? (
+                          <span className="stamp un" data-testid="token-stamp">{t("billingSeat.rail.creditStamp")}</span>
+                        ) : visitMoneyStamp === "free" ? (
+                          <span className="stamp pd" data-testid="token-stamp">{fmtPaise(0)}</span>
+                        ) : visitMoneyStamp === "unsettled" ? (
+                          <span className="stamp un" data-testid="token-stamp">{t("billingSeat.rail.unpaidStamp")}</span>
+                        ) : collectablePaise === 0 ? (
                           <span className="stamp pd" data-testid="token-stamp">{fmtPaise(0)}</span>
                         ) : (
                           <span className="stamp un" data-testid="token-stamp">{t("billingSeat.rail.unpaidStamp")}</span>
@@ -729,18 +1208,90 @@ export function BillingCounter(): React.ReactElement {
                           <span className="stamp pd" data-testid="payer-stamp">{t("billingSeat.rail.panelStamp")}</span>
                         )}
                       </div>
+                      {/*
+                        The bill that already charges this visit's fee, NAMED — because "PAID" alone
+                        does not tell a cashier which paper the patient is holding, and because the
+                        refusal that used to be the only way to learn this arrived after the money
+                        was counted. The invoice number is the one the server would have quoted.
+                      */}
+                      {quote.alreadyBilled != null && (
+                        <p data-testid="already-billed" style={{ margin: "7px 0 0", fontSize: 11.5, color: "var(--faint)" }}>
+                          {t("billingSeat.rail.alreadyBilled", { invoiceNo: quote.alreadyBilled.invoiceNo })}
+                        </p>
+                      )}
+                      {quote.visit == null ? null : (
+                        <div className="mo" data-testid="visit-no" style={{ marginTop: 5, fontSize: 10.5, color: "var(--faint)" }}>
+                          {quote.visit.visitNo} · {quote.visit.serviceDate}
+                        </div>
+                      )}
                     </div>
                 </>
               )}
             </div>
 
+            {/*
+              FD-36 — "ON THEIR ACCOUNT" HAS NO ANTECEDENT WHILE TWO PEOPLE ARE ON THE SCREEN.
+
+              Found by screenshotting the refusal rather than by the test: the panel above had
+              stopped naming anybody, and a money figure was still sitting under the word "their".
+              It is the picked patient's balance, which is the SAME half-rendering the visit card
+              was — one person's fact drawn where the screen has refused to say who it is about.
+            */}
+            {conflict !== null ? null : (
             <div className="box" style={{ padding: 14 }}>
               <span className="tag">{t("billingSeat.rail.onTheirAccount")}</span>
               <div data-testid="dues-sidebar" style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
-                {patient === null && (
+                {resolvedPatientId === null && (
                   <p style={{ margin: 0, fontSize: 12, color: "var(--faint)" }}>{t("billing.counter.pickPatientFirst")}</p>
                 )}
-                {patient !== null && (dues.data?.items ?? []).length === 0 && (
+                {/*
+                  ═══ FD-28 — THE TOTAL, WHICH THIS BOX FETCHED AND NEVER ADDED UP ═══
+
+                  Owner, 2026-09-06: *"'On their Account' section in the left panel, looks like it is
+                  not fetching all the related information."*
+
+                  It was fetching every row and rendering each one's outstanding — and never the sum,
+                  which is the only figure a cashier says out loud before quoting today's. The
+                  dossier has led with the total since FD-14; this rail listed the parts and left the
+                  arithmetic to the person at the counter.
+
+                  Summed from the server's own per-row figures and nothing else. Each row is already
+                  floored at zero server-side, so one over-collected bill cannot mask another's dues.
+                */}
+                {resolvedPatientId !== null && (dues.data?.dues ?? []).length > 0 && (
+                  <>
+                    {/*
+                      THE SERVER'S TOTAL, not a client sum over the rows. `patientBalance` floors
+                      each bill at zero before adding, so one over-collected invoice cannot mask
+                      another's dues — arithmetic this screen has no business repeating, and the
+                      thesis it prints two boxes below: "every figure is the server's".
+                    */}
+                    <span className="mo" data-testid="dues-total" style={{ fontSize: 19, fontWeight: 600 }}>
+                      {fmtPaise(dues.data?.outstandingPaise ?? 0)}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                      {t("billingSeat.rail.totalOutstanding", { count: (dues.data?.dues ?? []).length })}
+                    </span>
+                  </>
+                )}
+                {/*
+                  ═══ THE ADVANCE, WHICH THIS RAIL HAS NEVER SHOWN AND IS THE HALF THAT CHANGES WHAT
+                      THE CASHIER SAYS ═══
+
+                  Dues and advances are ONE mechanism (owner ruling 2026-08-18) — the same receipt
+                  row pays a bill or banks a deposit. Reading only the dues half is what made this
+                  box look like it was "not fetching all the related information": a patient with
+                  ₹2,000 on deposit was asked for the full amount at the window.
+                */}
+                {(dues.data?.advancePaise ?? 0) > 0 && (
+                  <div data-testid="advance-held" style={{ marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--line2)" }}>
+                    <span className="mo" style={{ fontSize: 14, fontWeight: 600, color: "var(--green)" }}>
+                      {fmtPaise(dues.data?.advancePaise ?? 0)}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: "var(--dim)" }}> {t("billingSeat.rail.advanceHeld")}</span>
+                  </div>
+                )}
+                {resolvedPatientId !== null && (dues.data?.dues ?? []).length === 0 && (
                   <>
                     <span className="mo" style={{ fontSize: 19, fontWeight: 600 }}>{fmtPaise(0)}</span>
                     <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("billing.counter.noDues")}</span>
@@ -749,15 +1300,21 @@ export function BillingCounter(): React.ReactElement {
                     </p>
                   </>
                 )}
-                {(dues.data?.items ?? []).map((due) => (
+                {(dues.data?.dues ?? []).map((due: WireDueRow) => (
                   <div key={due.invoiceId} data-testid={`dues-row-${due.invoiceId}`} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12 }}>
                     <span className="mo" style={{ color: "var(--dim)" }}>{due.invoiceNo}</span>
                     <span style={{ color: "var(--faint)", fontSize: 11 }}>{due.serviceDay}</span>
+                    {due.creditExtended && (
+                      /* The wire has carried this since Plan 08 and the rail never showed it. A bill
+                         standing on CREDIT is a different conversation from one simply unpaid. */
+                      <span className="pill gd" style={{ height: 18 }} data-testid={`dues-credit-${due.invoiceId}`}>credit</span>
+                    )}
                     <span className="mo" style={{ marginLeft: "auto", fontWeight: 600 }}>{fmtPaise(due.outstandingPaise)}</span>
                   </div>
                 ))}
               </div>
             </div>
+            )}
 
             <div className="box" style={{ padding: 14 }}>
               <label className="tag" htmlFor="counter-encounter" style={{ display: "block", marginBottom: 5 }}>
@@ -1320,12 +1877,34 @@ export function BillingCounter(): React.ReactElement {
         </div>
       </div>
 
+      {/*
+        FD-27 — `DeskModal` rather than Desk One's `Sheet`: `.ovl` is a `.d1`-only selector with no
+        `.pp` twin (`desk-one.css:162`), so the desk's own overlay shell would render unpositioned
+        and unscrimmed on this screen. `DeskModal` is the `.pp` primitive and brings the dialog
+        semantics with it.
+      */}
+      <DeskModal
+        open={papersOpen}
+        onClose={() => { setPapersOpen(false); }}
+        title={`Papers for this visit`}
+        titleId="counter-papers-title"
+        testId="counter-papers-sheet"
+        width={620}
+      >
+        {papersOpen && encounterId.trim() !== "" ? (
+          <PapersSheet encounterId={encounterId.trim()} when={null} />
+        ) : null}
+      </DeskModal>
+
       <AgentDock
-        answer={answer}
+        answer={copilot.answer}
         log={log}
-        onAsk={ask}
+        onAsk={copilot.ask}
         placeholder={t("billingSeat.agent.placeholder")}
         idle={t("billingSeat.agent.idle")}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
       />
     </PaperScreen>
   );

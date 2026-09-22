@@ -41,7 +41,7 @@ describe("migration 0015 — the notifications outbox and the three columns besi
       createdBy: "u1", updatedBy: "u1",
     });
     await db.insert(users).values({
-      id: USER_A, username: "asha", fullName: "Asha K", passwordHash: "x",
+      id: USER_A, username: "asha", fullName: "Asha K", staffCode: "EMP-0001", passwordHash: "x",
     });
   });
 

@@ -1,13 +1,16 @@
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { withTx } from "../db/client";
-import { alerts } from "../db/schema";
+import { alerts, approvals } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { notificationFailed } from "../notify/events";
 import { modeChanged } from "../ops/events";
-import { escalationTriggered } from "../workflow/events";
+import { escalationTriggered, respondOverdue } from "../workflow/events";
+import { approvalRequested } from "../approvals/events";
 import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
 import { usersHoldingRole } from "../workflow/roles";
+import { escalationRecipients } from "../../modules/roster";
 import { alertRaised } from "./events";
 import type { Db } from "../db/client";
 import type { DispatchedEvent, Handler } from "../events/subscriptions";
@@ -35,6 +38,27 @@ const ALERT_KIND_MANUAL_NOTIFY = "manual_notify";
 /** D6: an ID, not an identity. The desk reaches the patient through permission-checked routes. */
 const MANUAL_NOTIFY_REF_TYPE = "patient";
 const ALERT_KIND_OPERATING_MODE = "operating_mode";
+/**
+ * ═══ PHASE O T1 — NOBODY HAS SAID ANYTHING YET ═══
+ *
+ * Distinct from `escalation`, which means the WORK is late. This means the SILENCE is: the
+ * respond clock ran out with no `seen` and no `owned`, and the same people are being asked
+ * again before the role ladder starts climbing over their heads.
+ */
+const ALERT_KIND_RESPOND_OVERDUE = "respond_overdue";
+/**
+ * ═══ OBLIGATION SPINE T2 — FILING TELLS SOMEBODY ═══
+ *
+ * `refId` is the APPROVAL row, not the workflow instance behind it: the approval is what an
+ * approver opens (`/approvals`), and the instance is a detail of how it is timed. The title and
+ * body are built from `typeKey`, `urgencyClass`, `approverRole` and `slaMinutes` — the structural
+ * fields — and from nothing else on the payload: `subjectId`, `amountPaise` and the cumulative
+ * snapshots stay on the inbox card behind a permission-checked route. GC6 as everywhere in this
+ * file, and mutant-enforced in `consumer.test.ts` (T2-3): the envelope carries the patient and
+ * the request note names her, one property access away.
+ */
+const ALERT_KIND_APPROVAL_REQUESTED = "approval_requested";
+const APPROVAL_REF_TYPE = "approval";
 /**
  * ═══ PLAN 18a-iii T5 / D7 — THE TWO RADIOLOGY CHASERS ═══
  *
@@ -103,6 +127,14 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === imagingReportUnread.name) {
       await handleImagingReportUnread(db, e);
+      return;
+    }
+    if (e.name === approvalRequested.name) {
+      await handleApprovalRequested(db, e);
+      return;
+    }
+    if (e.name === respondOverdue.name) {
+      await handleRespondOverdue(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -226,7 +258,12 @@ async function handleNotificationFailed(db: Db, e: DispatchedEvent): Promise<voi
     );
   }
 
-  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE));
+  // PHASE R (R6) — the destination is configuration now, resolved at the EVENT's own
+  // instant. With no `roster_escalation_targets` row this is exactly the duty manager's
+  // holders, as before; with one, it is whoever is ON as that position tonight.
+  const recipients = (await withTx(db, (tx) => escalationRecipients(
+    tx, "notification.failed", { fallbackRoleKey: DUTY_MANAGER_ROLE }, e.occurredAt,
+  ))).userIds;
 
   await raiseAlerts(db, e, recipients, {
     kind: ALERT_KIND_MANUAL_NOTIFY,
@@ -297,7 +334,12 @@ async function handleModeChanged(db: Db, e: DispatchedEvent): Promise<void> {
  */
 async function handleImagingCriticalOverdue(db: Db, e: DispatchedEvent): Promise<void> {
   const payload = imagingCriticalOverdue.payloadSchema.parse(e.payload);
-  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE));
+  // PHASE R (R6) — the destination is configuration now, resolved at the EVENT's own
+  // instant. With no `roster_escalation_targets` row this is exactly the duty manager's
+  // holders, as before; with one, it is whoever is ON as that position tonight.
+  const recipients = (await withTx(db, (tx) => escalationRecipients(
+    tx, "imaging.critical_overdue", { fallbackRoleKey: DUTY_MANAGER_ROLE }, e.occurredAt,
+  ))).userIds;
 
   await raiseAlerts(db, e, recipients, {
     kind: ALERT_KIND_IMAGING_CHASE,
@@ -319,7 +361,12 @@ async function handleImagingCriticalOverdue(db: Db, e: DispatchedEvent): Promise
  */
 async function handleImagingReportUnread(db: Db, e: DispatchedEvent): Promise<void> {
   const payload = imagingReportUnread.payloadSchema.parse(e.payload);
-  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE));
+  // PHASE R (R6) — the destination is configuration now, resolved at the EVENT's own
+  // instant. With no `roster_escalation_targets` row this is exactly the duty manager's
+  // holders, as before; with one, it is whoever is ON as that position tonight.
+  const recipients = (await withTx(db, (tx) => escalationRecipients(
+    tx, "imaging.report_unread", { fallbackRoleKey: DUTY_MANAGER_ROLE }, e.occurredAt,
+  ))).userIds;
 
   await raiseAlerts(db, e, recipients, {
     kind: ALERT_KIND_IMAGING_CHASE,
@@ -329,5 +376,115 @@ async function handleImagingReportUnread(db: Db, e: DispatchedEvent): Promise<vo
       + "its author has opened it. Check that the referring clinician has the result.",
     refType: IMAGING_CHASE_REF_TYPE,
     refId: payload.studyId,
+  });
+}
+
+/**
+ * ═══ OBLIGATION SPINE T2 — A FILED APPROVAL BECOMES A ROW IN FRONT OF EVERY APPROVER ═══
+ *
+ * Recipients are every holder of the approver role the filing snapshotted, MINUS THE REQUESTER:
+ * nobody is told to decide the thing they filed (phase-obligation-spine O17, segregation of
+ * duties), and a cashier who also holds `billing_manager` is the ordinary case in a small
+ * hospital, not an exotic one.
+ *
+ * A role nobody (else) holds is the case the spine measured as "the approvals nobody could
+ * answer" (PR #265). The invariant there stops a TYPE being registered into an empty room; this
+ * is the runtime leg for the day a role's last holder leaves. The fallback is the escalation
+ * ladder's own — duty managers, then owners — and it is SAID in the body (edge register A1: a
+ * fallback is recorded, never silent), because a duty manager who gets a billing request must be
+ * told it is not theirs by design. A durable fallback fact is T5's; until then the body is it.
+ *
+ * `raiseAlerts` is reused verbatim, so `(source_event_id, user_id)` idempotency and the
+ * won-insert-only `alert.raised` append come free, and the dispatcher's at-least-once redelivery
+ * adds nothing (T2-2).
+ */
+async function handleApprovalRequested(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = approvalRequested.payloadSchema.parse(e.payload);
+
+  const notRequester = (ids: string[]): string[] => ids.filter((id) => id !== payload.requesterId);
+
+  let recipients = notRequester(await withTx(db, (tx) => usersHoldingRole(tx, payload.approverRole)));
+  let fallbackRole: string | null = null;
+  if (recipients.length === 0) {
+    fallbackRole = DUTY_MANAGER_ROLE;
+    recipients = notRequester(await withTx(db, (tx) => usersHoldingRole(tx, DUTY_MANAGER_ROLE)));
+  }
+  if (recipients.length === 0) {
+    fallbackRole = OWNER_ROLE;
+    recipients = notRequester(await withTx(db, (tx) => usersHoldingRole(tx, OWNER_ROLE)));
+  }
+
+  const title = `Approval requested: ${payload.typeKey} (${payload.urgencyClass})`;
+  const waiting =
+    `A "${payload.typeKey}" request (${payload.urgencyClass}) is waiting for the ${payload.approverRole} role; ` +
+    `its closure budget is ${String(payload.slaMinutes)} minutes.`;
+  const body =
+    fallbackRole === null
+      ? waiting
+      : `${waiting} Nobody but the requester holds ${payload.approverRole}, so it is routed to the ${fallbackRole} role.`;
+
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_APPROVAL_REQUESTED,
+    title,
+    body,
+    refType: APPROVAL_REF_TYPE,
+    refId: payload.approvalId,
+  });
+}
+
+/**
+ * ═══ PHASE O T1 — THE RESPOND CLOCK RAN OUT, SO THE SAME PEOPLE ARE ASKED AGAIN ═══
+ *
+ * ═══ WHO IT GOES TO, AND WHY IT NEEDS NO RESOLVER ═══
+ *
+ * The people who already hold an alert about this obligation. That is not a placeholder for a
+ * proper addressee resolver (T5's) — it is the honest answer to the question this event asks.
+ * `respond.overdue` means *the people we told have not answered*, so the set it nudges is
+ * exactly the set we told, and re-deriving it from a role would silently nudge somebody who was
+ * never told in the first place. It also needs no roster call, which is what §1a asks of T1.
+ *
+ * ═══ AND IT CANNOT FIRE FOR SOMEBODY WHO ANSWERED ═══
+ *
+ * The filter that would look right here — "…whose alert is unacknowledged" — is not written,
+ * because an acknowledgement CANCELS the respond timer (`cancelTimersOfKind(…, "respond")`), so
+ * this event does not exist for an obligation somebody answered. Re-testing it here would be a
+ * second opinion about a fact the timer already settled, free to disagree with it.
+ *
+ * ═══ THE TWO REF SHAPES ═══
+ *
+ * T2 files an approval's alert against the APPROVAL row (that is what an approver opens) and
+ * every other alert against the workflow instance. `respond.overdue` knows only the instance, so
+ * both shapes are matched — the approval by its unique `instance_id`.
+ *
+ * Title and body from `defKey`, `state` and minutes, and from nothing else (GC6): the envelope
+ * carries the patient, and this row is one property access away from naming her.
+ */
+async function handleRespondOverdue(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = respondOverdue.payloadSchema.parse(e.payload);
+
+  const approvalRows = await db
+    .select({ id: approvals.id })
+    .from(approvals)
+    .where(eq(approvals.instanceId, payload.instanceId));
+  const refIds = [payload.instanceId, ...approvalRows.map((r) => r.id)];
+
+  const told = await db
+    .selectDistinct({ userId: alerts.userId })
+    .from(alerts)
+    .where(
+      and(
+        or(eq(alerts.refType, ALERT_REF_TYPE), eq(alerts.refType, APPROVAL_REF_TYPE)),
+        inArray(alerts.refId, refIds),
+      ),
+    );
+  const recipients = told.map((r) => r.userId);
+  if (recipients.length === 0) return; // nobody was ever told; there is nobody to nudge
+
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_RESPOND_OVERDUE,
+    title: `${payload.defKey} · ${payload.state} · no answer in ${String(payload.respondMinutes)} min`,
+    body: `Nobody has said they have this. Open it and mark it seen, or take it on, before it climbs.`,
+    refType: ALERT_REF_TYPE,
+    refId: payload.instanceId,
   });
 }

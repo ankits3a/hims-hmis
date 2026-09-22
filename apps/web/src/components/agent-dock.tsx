@@ -31,7 +31,7 @@ import { useEffect, useRef, useState } from "react";
 export type AgentLine = { at: string; text: string; kind: "did" | "ok" | "warn" | "err" };
 
 export function AgentDock(
-  { answer, log, onAsk, placeholder, idle, action }: {
+  { answer, log, onAsk, placeholder, idle, action, panel }: {
     answer: string | null;
     log: AgentLine[];
     onAsk: (question: string) => void;
@@ -53,6 +53,19 @@ export function AgentDock(
      * because a permanently-dead control is the keycap-that-lies rule wearing a different hat.
      */
     action?: { label: string; onAct: () => void; busy?: boolean };
+    /**
+     * ═══ FD-COPILOT — WHERE SOMETHING THE COPILOT *PRODUCED* ACTUALLY LANDS ═══
+     *
+     * The owner's second example was *"if the user ask to generate the day report, it should do it
+     * and give it to the user"*, and a bar that can only say a sentence cannot give anybody
+     * anything. The copilot's day-report tool hands back the report's own SECTIONS; without a slot
+     * to render them the answer was a sentence ABOUT a report, which is not a report.
+     *
+     * A generic slot rather than a report-shaped prop, because this bar is mounted on nine screens
+     * and must not learn what a day report is. What it knows is that a copilot may produce
+     * something, and that it belongs under the answer that announced it.
+     */
+    panel?: React.ReactNode;
   },
 ): React.ReactElement {
   const [draft, setDraft] = useState("");
@@ -99,7 +112,11 @@ export function AgentDock(
       style={{ position: "sticky", bottom: 0, zIndex: 5, flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}
     >
       {open ? (
-        <div style={{ borderBottom: "1px solid #24413631", maxHeight: 250 }}>
+        /*
+          The height opens up only when there is something to show. A bar that always reserved room
+          for a report would eat a third of the screen on every screen that never produces one.
+        */
+        <div style={{ borderBottom: "1px solid #24413631", maxHeight: panel === undefined ? 250 : 460, overflowY: "auto" }}>
           <div style={{ display: "flex", gap: 26, padding: "16px 18px", maxHeight: 250 }}>
             <div style={{ width: "44%", minWidth: 0 }}>
               <div className="tag" style={{ color: "var(--agent-dim)" }}>desk agent · answer</div>
@@ -131,6 +148,9 @@ export function AgentDock(
               </div>
             </div>
           </div>
+          {panel === undefined ? null : (
+            <div style={{ padding: "0 18px 16px" }}>{panel}</div>
+          )}
         </div>
       ) : null}
 

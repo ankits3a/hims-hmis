@@ -3,12 +3,14 @@ import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { isNull } from "drizzle-orm";
-import { opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
+import { opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import { loadOpdConfig } from "./config";
 import { getEncounter, moveEncounter } from "./encounters";
+import { recordComplaintUsage } from "./complaints";
 import { OpdError } from "./errors";
 import {
-  admissionRequested, consultationCompleted, consultationParked, consultationResumed, consultationStarted, referralIssued,
+  admissionRequested, consultFeeOverridden, consultationCompleted, consultationParked, consultationResumed,
+  consultationStarted, referralIssued,
 } from "./events";
 import { doctorForUser } from "./masters";
 import { markDone, markInConsult } from "./queue";
@@ -32,8 +34,26 @@ export type AdvisedTest = {
   pricePaise: number;
 };
 
+/** One diagnosis as the doctor committed it: their words, and the catalogue code if they picked one. */
+export type NoteDiagnosis = { text: string; icd10Code: string | null };
+
+/**
+ * THE TAG SEPARATOR, AND IT IS NOT A COMMA. `tag-field.tsx` learned this on the first realistic
+ * complaint: "fever since 3 days, worse at night" split into two tags, one of them a fragment.
+ * A doctor writes commas; nobody types " · ".
+ */
+export const DIAGNOSIS_SEPARATOR = " · ";
+
 export type ConsultNote = {
   chiefComplaint?: string | null;
+  /**
+   * THE STRUCTURED DIAGNOSES. When present they are the TRUTH and `diagnosis` / `icd10Code` are
+   * derived from them here — never sent by the client — so the display string and the coded rows
+   * cannot disagree with each other. A caller that sends `diagnosis` on its own still works and
+   * writes one uncoded row per tag; that is the older shape, not a second way to say the same
+   * thing in a different order.
+   */
+  diagnoses?: NoteDiagnosis[] | null;
   diagnosis?: string | null;
   icd10Code?: string | null; // §11.19-E fix 31: capturable at consult, not only at MRD coding
   advice?: string | null;
@@ -54,12 +74,66 @@ type NoteColumns = Partial<Pick<EncounterRow,
   "chiefComplaint" | "diagnosis" | "icd10Code" | "advice" | "admissionAdvised" | "referralTo" | "referralNote"
   | "advisedTests">>;
 
+/**
+ * The structured list a note writes, or null when the note says nothing about diagnoses at all.
+ * `[]` is a real answer — the doctor cleared the field — and must not be confused with "unchanged".
+ */
+export function diagnosesOf(note: ConsultNote | undefined): NoteDiagnosis[] | null {
+  if (note === undefined) return null;
+  if (note.diagnoses !== undefined && note.diagnoses !== null) return note.diagnoses;
+  if (note.diagnoses === null) return [];
+  if (note.diagnosis === undefined) return null;
+  if (note.diagnosis === null) return [];
+  /* The older shape: tags, no codes. Splitting here rather than at the call site means one reader. */
+  return note.diagnosis
+    .split(DIAGNOSIS_SEPARATOR).map((t) => t.trim()).filter((t) => t !== "")
+    .map((text) => ({ text, icd10Code: null }));
+}
+
+/**
+ * Rewrite one encounter's diagnosis rows to match the note. A REPLACE, not a merge: the field is a
+ * list the doctor edits whole, and a merge would leave a tag on the record that the doctor had
+ * deleted from the screen. Called inside the same transaction as the encounter update, so the
+ * display column and the coded rows can never land apart.
+ */
+async function writeDiagnosisRows(
+  tx: Tx, encounterId: string, note: ConsultNote | undefined,
+): Promise<void> {
+  /*
+    `diagnosesOf` — not a check on `diagnoses` alone. A caller that sends only the prose `diagnosis`
+    must still get rows, or the structured table quietly misses those encounters and every reader
+    that joins it (MRD, a claim, a diagnosis census) reports a blank where a diagnosis was written.
+    A table with readers and a path that does not write to it is the same defect in reverse.
+  */
+  const rows = diagnosesOf(note);
+  if (rows === null) return; // the note said nothing about diagnoses; leave what is there
+  await tx.delete(opdEncounterDiagnoses).where(eq(opdEncounterDiagnoses.encounterId, encounterId));
+  if (rows.length === 0) return;
+  await tx.insert(opdEncounterDiagnoses).values(rows.map((d, seq) => ({
+    encounterId, seq, text: d.text, icd10Code: d.icd10Code,
+  })));
+}
+
 function noteColumns(note: ConsultNote | undefined): NoteColumns {
   const patch: NoteColumns = {};
   if (note === undefined) return patch;
   if (note.chiefComplaint !== undefined) patch.chiefComplaint = note.chiefComplaint;
-  if (note.diagnosis !== undefined) patch.diagnosis = note.diagnosis;
-  if (note.icd10Code !== undefined) patch.icd10Code = note.icd10Code;
+  /*
+    ═══ THE DISPLAY COLUMNS ARE DERIVED, NEVER TAKEN FROM THE CALLER ═══
+
+    When the note carries structured diagnoses they decide both columns: `diagnosis` is the tags
+    joined, and `icd10Code` is the FIRST code present — the primary diagnosis, which is the one a
+    claim carries. A client that could send all three could send three that disagree, and the one a
+    reader believed would depend on which reader it was.
+  */
+  const structured = note.diagnoses === undefined ? null : diagnosesOf(note);
+  if (structured !== null) {
+    patch.diagnosis = structured.length === 0 ? null : structured.map((d) => d.text).join(DIAGNOSIS_SEPARATOR);
+    patch.icd10Code = structured.find((d) => d.icd10Code !== null)?.icd10Code ?? null;
+  } else {
+    if (note.diagnosis !== undefined) patch.diagnosis = note.diagnosis;
+    if (note.icd10Code !== undefined) patch.icd10Code = note.icd10Code;
+  }
   if (note.advice !== undefined) patch.advice = note.advice;
   if (note.admissionAdvised !== undefined) patch.admissionAdvised = note.admissionAdvised;
   if (note.referralTo !== undefined) patch.referralTo = note.referralTo;
@@ -103,6 +177,124 @@ export function registerConsultStartGuard(key: string, guard: ConsultStartGuard)
   };
 }
 
+/**
+ * ═══ FD-32 — THE SAME SHAPE, ONE DESK EARLIER (OWNER RULING 2026-09-13) ═══
+ *
+ * Owner: *"I can see a patient who got the token but has not been billed yet is visible in vitals
+ * dashboard. I think we must put a guard here. No patient should reach vitals desk until he has
+ * paid."*
+ *
+ * A SECOND REGISTRY RATHER THAN REUSING `consultStartGuards`, and the reason is the bypass. The two
+ * doors ask the same question of billing but answer a WAIVER differently: an emergency patient
+ * waved past the counter must still reach the nurse, and — the owner's own words — the warning
+ * travels with them to every desk after it. One registry shared between the doors would make
+ * "bypassed at vitals" silently mean "bypassed at consultation", which is a clinical decision
+ * nobody made. Two registries, two verdicts, one bypass column that each reads for itself.
+ *
+ * Dependency-inverted exactly as the consult registry is: OPD owns the registry and the thrown
+ * refusal, billing hands in a verdict function and imports no OPD internals. Keyed, so a second
+ * module init in one jest worker REPLACES rather than double-registers.
+ */
+export type VitalsStartGuard = ConsultStartGuard;
+
+const vitalsStartGuards = new Map<string, VitalsStartGuard>();
+
+/** Registers (or replaces) the vitals-door guard under `key`; returns the unregister function. */
+export function registerVitalsStartGuard(key: string, guard: VitalsStartGuard): () => void {
+  vitalsStartGuards.set(key, guard);
+  return () => {
+    vitalsStartGuards.delete(key);
+  };
+}
+
+/**
+ * Every registered verdict, first refusal wins — or `{ok:true}` when the door has already been
+ * opened for this visit: by the front desk at the counter, or (owner ruling 2026-09-20) by the bay
+ * itself on an emergency save, which stamps the same columns in the saver's name. The bypass is
+ * read HERE rather than inside each guard so that a module registering a new guard cannot forget to
+ * honour it, and so the audit answer to "who let this patient through" has exactly one place to
+ * look. The emergency save's own decision is NOT read here — `recordVitals` owns it, because a
+ * verdict function that could be told "this one is urgent" would be a guard with an argument for
+ * ignoring itself.
+ */
+export async function vitalsGateVerdict(
+  db: Db | Tx, encounter: EncounterRow,
+): Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }> {
+  if (encounter.feeBypassBy !== null && encounter.feeBypassReason !== null) return { ok: true };
+  for (const guard of vitalsStartGuards.values()) {
+    const verdict = await guard(db, encounter);
+    if (!verdict.ok) return verdict;
+  }
+  return { ok: true };
+}
+
+/**
+ * ══════════ THE DOCTOR OPENS THE TOKEN (OWNER RULING 2026-09-20) ══════════
+ *
+ * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
+ * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
+ * do it. But we need it to be built. Once the bill is paid then the token automatically moves to
+ * the display board in the queue towards the doctor consultation."*
+ *
+ * An unsettled token WAITS: `listQueue` holds it out of the callable order, `callNext` will not
+ * reach it, and the public board does not announce it. Two things release it and they are not
+ * alike — the money arriving is DERIVED (nothing is written; the ledger flips and the next read
+ * sees it, which is what "automatically" has to mean if it is never to be wrong), and this, which
+ * is a person deciding, and therefore written down.
+ *
+ * ═══ WHOSE DECISION, AND WHY IT IS NOT THE COUNTER'S ═══
+ *
+ * `requireTreatingDoctor`: the encounter's OWN doctor, the same rule the note, the park and the
+ * completion beside it already carry. A clerk may not seat a patient in a room they do not run,
+ * and a doctor down the corridor may not spend this doctor's session on someone else's unpaid
+ * patient. It is deliberately NOT `feeBypass*` — FD-32's waiver opens the bay, this opens the
+ * consulting room, and one column serving both would turn a nurse's emergency into a doctor's
+ * decision nobody made (the owner ruled exactly that, twice).
+ *
+ * ═══ AND IT DOES NOT MOVE ONE RUPEE ═══
+ *
+ * The invoice is still owed and still raised; `feeStatus` goes on saying `unsettled` and the ⚠
+ * mark goes on riding every desk this visit reaches. What is waived is the ORDER of paying and
+ * being seen, for one visit, by a named doctor, for a stated reason. First writer wins: the audit
+ * question is who opened the door, and a second call must not be able to re-answer it.
+ */
+export async function openUnpaidToken(
+  db: Db, actor: Actor, encounterId: string, reason: string, now: Date = new Date(),
+): Promise<{ encounter: EncounterRow; doctor: DoctorRow }> {
+  const current = await getEncounter(db, encounterId);
+  if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  const doctor = await requireTreatingDoctor(db, actor, current);
+  const trimmed = reason.trim();
+  if (trimmed.length < 3) {
+    throw new OpdError("reason_required", "say why this patient is being seen before the bill — it is shown at every desk after this one");
+  }
+  if (current.consultFeeOverrideBy !== null) return { encounter: current, doctor };
+  return withTx(db, async (tx) => {
+    const updated = await tx
+      .update(opdEncounters)
+      .set({ consultFeeOverrideBy: actor.id, consultFeeOverrideReason: trimmed, consultFeeOverrideAt: now })
+      .where(and(eq(opdEncounters.id, current.id), isNull(opdEncounters.consultFeeOverrideBy)))
+      .returning();
+    const encounter = updated[0] ?? current;
+    /*
+      THE EVENT IS THE LEDGER'S COPY. The columns answer "is this token open" on every read; the
+      event answers "when, and on whose word" for a month-end that asks why the day's collection is
+      short. Appended only on the write that actually landed — a second caller returns above and
+      appends nothing, so the ledger cannot say the door was opened twice.
+    */
+    if (updated.length > 0) {
+      await appendEvent(tx, consultFeeOverridden.make({
+        actor, patientId: encounter.patientId, encounterId: encounter.id, correlationId: encounter.workflowInstanceId,
+        payload: {
+          encounterId: encounter.id, patientId: encounter.patientId, doctorId: doctor.id,
+          serviceDate: encounter.serviceDate, reason: trimmed,
+        },
+      }));
+    }
+    return { encounter, doctor };
+  });
+}
+
 /** The encounter's newest queue entry (seq, never id — ledger §3.26) and its session's room: the doctor-day event fields. */
 async function entryWhere(tx: Tx, encounterId: string): Promise<{ sessionId: string; roomId: string | null; tokenNo: number }> {
   const entries = await tx
@@ -127,6 +319,20 @@ export async function startConsultation(
   for (const [key, guard] of consultStartGuards) {
     const verdict = await guard(db, current);
     if (!verdict.ok) {
+      /*
+        ═══ THE DOCTOR HAS ALREADY DECIDED (OWNER RULING 2026-09-20) ═══
+
+        Owner: *"It waits for bill to be paid until doctor opens the token from his dashboard
+        manually."* `openUnpaidToken` is that decision, written down with a name and a sentence on
+        it, and this is where it is spent.
+
+        IT EXCUSES ONE CODE AND NOT ONE GUARD. `fee_unsettled` is the money, and the money is the
+        only thing a doctor may decide to proceed without; a guard that starts refusing for a
+        clinical reason — a sealed patient, a closed session, a statute — must go on refusing a
+        doctor who has waived a BILL. Keying on the verdict rather than on the registry key is what
+        makes that true for guards this file has never heard of.
+      */
+      if (verdict.code === "fee_unsettled" && current.consultFeeOverrideBy !== null) continue;
       throw new OpdError(
         "consult_gate_refused",
         `consult start refused by ${key}: ${verdict.code}`,
@@ -270,13 +476,21 @@ export async function saveConsultNote(
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `the consult note needs in_consultation, not ${current.status}`);
   }
-  const rows = await db
-    .update(opdEncounters)
-    .set({ ...noteColumns(note), updatedBy: actor.id, updatedAt: now })
-    .where(and(eq(opdEncounters.id, encounterId), eq(opdEncounters.status, "in_consultation")))
-    .returning();
-  if (rows.length === 0) throw new OpdError("encounter_state_conflict", "encounter moved concurrently");
-  return { encounter: rows[0]! };
+  /*
+    ONE TRANSACTION, because the de-normalised `diagnosis` string on the encounter and the coded
+    rows beside it are two statements of the same fact. A note that wrote one and not the other
+    would leave a claim quoting a code the note does not carry, and nothing would ever say so.
+  */
+  return withTx(db, async (tx) => {
+    const rows = await tx
+      .update(opdEncounters)
+      .set({ ...noteColumns(note), updatedBy: actor.id, updatedAt: now })
+      .where(and(eq(opdEncounters.id, encounterId), eq(opdEncounters.status, "in_consultation")))
+      .returning();
+    if (rows.length === 0) throw new OpdError("encounter_state_conflict", "encounter moved concurrently");
+    await writeDiagnosisRows(tx, encounterId, note);
+    return { encounter: rows[0]! };
+  });
 }
 
 export type CompleteConsultationInput = {
@@ -309,6 +523,7 @@ export async function completeConsultation(
   if (input.testsOrderedReturnToday) {
     return withTx(db, async (tx) => {
       const encounter = await moveEncounter(tx, actor, current, "awaiting_results", patch, now);
+      await writeDiagnosisRows(tx, encounterId, input.note);
       await markDone(tx, encounterId, now);
       return { encounter };
     });
@@ -339,6 +554,28 @@ export async function completeConsultation(
     const encounter = await moveEncounter(
       tx, actor, current, "completed", { ...patch, consultCompletedAt: now, followUpDays, followUpExtended }, now,
     );
+    /*
+      BEFORE the event is appended, not after: `consultationCompleted` carries `icd10Code`, and that
+      value comes off the encounter row this patch just wrote. The rows and the column are derived
+      from the same list, so the event and the record agree by construction.
+    */
+    await writeDiagnosisRows(tx, encounterId, input.note);
+    /*
+      ═══ THE VOCABULARY LEARNS HERE, AND ONLY HERE ═══
+
+      Every complaint phrase on a COMPLETED consultation is counted, mapped or not — which is what
+      makes a doctor's own shorthand start being offered back to them, and what builds the worklist
+      of phrases nobody has mapped yet.
+
+      At completion rather than at save: the note autosaves on every blur, so counting there would
+      score a phrase by how often the doctor tabbed out of the box. A completion happens once per
+      encounter and is the honest unit. The same reasoning `curation.ts` gives for counting the
+      PRESCRIBING stream rather than every keystroke that touched a prescription.
+    */
+    const complaint = encounter.chiefComplaint ?? "";
+    if (complaint.trim() !== "") {
+      await recordComplaintUsage(tx, doctor.id, complaint.split(" · ").map((x) => x.trim()), now);
+    }
     await markDone(tx, encounterId, now);
     const where = await entryWhere(tx, encounterId);
     const issued = await tx

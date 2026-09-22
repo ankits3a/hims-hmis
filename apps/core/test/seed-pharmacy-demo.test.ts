@@ -12,7 +12,7 @@ import { testCfg } from "./helpers/opd";
 import { assertDemoDataAllowed, seedPharmacyDemo } from "../scripts/seed-pharmacy-demo";
 import { ensurePharmacyCounter } from "../scripts/seed-pharmacy";
 import { assignRole, grantPermissionToRole } from "../src/kernel/auth/permissions";
-import { listMedicines } from "../src/modules/formulary";
+import { medicineIdsByBrandNames } from "../src/modules/formulary";
 import { roleAssignments, stockBatches } from "../src/kernel/db/schema";
 import { availableQty, balances, findStoreByCode, listVendors } from "../src/modules/materials";
 import { listSaleItems } from "../src/modules/pharmacy";
@@ -68,6 +68,8 @@ describe("seed:pharmacy-demo — the synthetic catalogue and shelf", () => {
        it had to make. */
     expect(report.itemsCreated + report.itemsExisting).toBe(8);
     expect(report.saleItemsRegistered + report.saleItemsExisting).toBe(8);
+    /* PD-D18 — every demo item has a rack at the OPD counter. */
+    expect(report.racksSet + report.racksExisting).toBe(8);
     expect(report.medicinesCreated + report.medicinesExisting).toBe(8);
     expect(report.grnsPosted).toBe(2);
     expect(report.vendorCreated).toBe(true);
@@ -130,6 +132,7 @@ describe("seed:pharmacy-demo — the synthetic catalogue and shelf", () => {
     expect(second.medicinesExisting).toBe(8);
     expect(second.itemsCreated).toBe(0);
     expect(second.saleItemsRegistered).toBe(0);
+    expect({ set: second.racksSet, kept: second.racksExisting }).toEqual({ set: 0, kept: 8 });
     expect(second.saleItemsExisting).toBe(8);
     expect(second.vendorCreated).toBe(false);
     expect(second.grnsPosted).toBe(0);
@@ -168,7 +171,10 @@ describe("seed:pharmacy-demo — the synthetic catalogue and shelf", () => {
        seed's to change. So dispensing Crocin here would price at 12% and measure the fixture, not
        the seed. Pan 40 is one the seed itself created, so this is the seed's own null-slab
        behaviour end to end. */
-    const panMedicineId = (await listMedicines(db)).find((m) => m.brandName === "Pan 40")!.id;
+    /* The map is keyed by the LOWERCASED brand, so "Pan 40" is looked up as "pan 40". The `!` is
+       load-bearing: an absent key would mean the seed never created Pan 40, and the failure should
+       land here rather than as an opaque refusal three counter steps later. */
+    const panMedicineId = (await medicineIdsByBrandNames(db, ["Pan 40"])).get("pan 40")!;
     const { issued, tokenNo } = await issueRx(db, fx, [line({ drug: "Pan 40", medicineId: panMedicineId })]);
     const found = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
     if (found.kind !== "dispense") throw new Error("the seeded Rx did not reach the counter");

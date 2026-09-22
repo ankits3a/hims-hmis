@@ -13,7 +13,9 @@ import { ApprovalError, registerApprovalType } from "./types";
 import { requestApproval } from "./requests";
 import { approveRequest, rejectRequest } from "./decisions";
 import { listApprovals, getApproval } from "./worklist";
+import { withPeople } from "./people";
 import type { ApprovalRow } from "./worklist";
+import type { ApprovalListItem } from "./people";
 import type { Db } from "../db/client";
 
 /** Approvals errors → HTTP, defined once (Plan 03's toHttp convention). Anything unrecognized rethrows: a 500 is a genuine bug, loudly. */
@@ -102,11 +104,15 @@ export class ApprovalsController {
   async list(
     @CurrentActor() actor: Actor,
     @Query() query: unknown,
-  ): Promise<{ items: ApprovalRow[]; total: number }> {
+  ): Promise<{ items: ApprovalListItem[]; total: number }> {
     const parsed = worklistQuery.safeParse(query);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     try {
-      return await listApprovals(this.db, actor, parsed.data);
+      const listed = await listApprovals(this.db, actor, parsed.data);
+      // APPROVALS-UX — names, not ids: the requester, the decider, and the patient under this
+      // reader's clearance (people.ts). The read of patient names is logged there.
+      const reason = `approvals worklist (${parsed.data.status ?? "pending"}), ${String(listed.items.length)} rows`;
+      return { items: await withPeople(this.db, actor, listed.items, reason), total: listed.total };
     } catch (e) {
       toHttp(e);
     }

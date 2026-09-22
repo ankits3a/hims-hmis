@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the thirty-nine keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the forty-one keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
@@ -186,6 +186,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "mrd_officer",
       "nurse",
       "opd_admin",
+      "opd_scribe", // FD-30 — the OPD-door transcription seat (owner ruling 2026-09-12)
       "ot_incharge",
       "ot_nurse",
       "owner",
@@ -203,6 +204,9 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "pcpndt_incharge",
       "pharmacy",
       "pharmacy_assistant", // PLAN 16c T1 — the dispensing aide
+      // PHARMACY P17 — the pharmacist in charge. Without it the pharmacy staff roster naming them
+      // would be refused whole.
+      "pharmacy_incharge",
       "phlebotomist",
       /**
        * PLAN 18c T1, 2026-09-04 — the RSO, arriving here for FREE by the same derivation as the
@@ -238,7 +242,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(39); // 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
+    expect(KNOWN_ROLE_KEYS).toHaveLength(41); // P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

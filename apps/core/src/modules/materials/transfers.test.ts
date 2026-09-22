@@ -7,9 +7,12 @@ import { MaterialsError } from "./errors";
 import { registerItem } from "./items";
 import { createStore, findStoreByCode } from "./stores";
 import { balances, movementsFor, postMovements, recallBatch } from "./ledger";
-import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock } from "./transfers";
+import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
+import { setStoreCustodianRoles } from "./stores";
+import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "../formulary";
 
 /**
  * PLAN 14 T7 / DD9 — two-sided issue, and the discrepancy that is a row rather than an adjustment.
@@ -22,6 +25,8 @@ import type { Db } from "../../kernel/db/client";
  *     as the control, and the assertion is the SHORT receive.
  */
 const HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
+/** The receiving side's signature: never the issuer's (two signatures, DD9). */
+const KEEPER: Actor = { type: "user", id: "01HWARDKEEPER0000000000001" };
 const T0 = new Date("2026-08-27T06:00:00Z");
 
 describe("two-sided issue and receive (Plan 14 T7)", () => {
@@ -35,7 +40,7 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
   async function anItem(code = "CROC500"): Promise<string> {
     const medicineId = newId();
     await db.insert(formularyMedicines).values({
-      id: medicineId, brandName: `Brand ${medicineId}`, form: "tablet",
+      id: medicineId, brandName: `Brand ${medicineId}`, nameNormalized: normalizeDrugName(`Brand ${medicineId}`), form: "tablet",
       createdBy: HEAD.id, updatedBy: HEAD.id,
     });
     const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {
@@ -114,7 +119,7 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
     const lineId = lines[0]?.transferLineId ?? "";
 
     const { status, shortfalls } = await withTx(db, (tx) => receiveStock(
-      tx, HEAD, transferId, [{ lineId, qtyReceived: 7 }], T0,
+      tx, KEEPER, transferId, [{ lineId, qtyReceived: 7 }], T0,
     ));
 
     expect(status).toBe("discrepancy");
@@ -157,7 +162,7 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
       fromResourceId: main, toResourceId: ward, lines: [{ itemId, qtyBase: 10 }], occurredAt: T0,
     }));
     const { status } = await withTx(db, (tx) => receiveStock(
-      tx, HEAD, transferId, [{ lineId: lines[0]?.transferLineId ?? "", qtyReceived: 10 }], T0,
+      tx, KEEPER, transferId, [{ lineId: lines[0]?.transferLineId ?? "", qtyReceived: 10 }], T0,
     ));
     expect(status).toBe("received");
     const transit = await findStoreByCode(db, "IN-TRANSIT");
@@ -179,7 +184,7 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
       fromResourceId: main, toResourceId: ward, lines: [{ itemId, qtyBase: 10 }], occurredAt: T0,
     }));
     const { status } = await withTx(db, (tx) => receiveStock(
-      tx, HEAD, transferId, [{ lineId: lines[0]?.transferLineId ?? "", qtyReceived: 0 }], T0,
+      tx, KEEPER, transferId, [{ lineId: lines[0]?.transferLineId ?? "", qtyReceived: 0 }], T0,
     ));
     expect(status).toBe("discrepancy");
     const transit = await findStoreByCode(db, "IN-TRANSIT");
@@ -199,7 +204,7 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
       fromResourceId: main, toResourceId: ward, lines: [{ itemId, qtyBase: 10 }], occurredAt: T0,
     }));
     await expect(withTx(db, (tx) => receiveStock(
-      tx, HEAD, transferId, [{ lineId: lines[0]?.transferLineId ?? "", qtyReceived: 11 }], T0,
+      tx, KEEPER, transferId, [{ lineId: lines[0]?.transferLineId ?? "", qtyReceived: 11 }], T0,
     ))).rejects.toThrow(/more than was sent/);
   });
 
@@ -313,12 +318,12 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
     }));
     const lineId = lines[0]?.transferLineId ?? "";
     await expect(withTx(db, (tx) => receiveStock(
-      tx, HEAD, transferId, [{ lineId: newId(), qtyReceived: 1 }], T0,
+      tx, KEEPER, transferId, [{ lineId: newId(), qtyReceived: 1 }], T0,
     ))).rejects.toThrow(/is not on transfer/);
 
-    await withTx(db, (tx) => receiveStock(tx, HEAD, transferId, [{ lineId, qtyReceived: 10 }], T0));
+    await withTx(db, (tx) => receiveStock(tx, KEEPER, transferId, [{ lineId, qtyReceived: 10 }], T0));
     await expect(withTx(db, (tx) => receiveStock(
-      tx, HEAD, transferId, [{ lineId, qtyReceived: 10 }], T0,
+      tx, KEEPER, transferId, [{ lineId, qtyReceived: 10 }], T0,
     ))).rejects.toThrow(/cannot be received again/);
     // …and the stock moved exactly once.
     expect((await balances(db, { resourceId: ward }))[0]?.qtyOnHand).toBe(10);
@@ -532,5 +537,78 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
     }));
     expect(swept.lines).toEqual([expect.objectContaining({ batchId: dead, qtyIssued: 40 })]);
     expect((await balances(db, { resourceId: main, batchId: dead }))[0]?.qtyOnHand).toBe(0);
+  });
+
+  // ══════════════════ the transfer screen (materials transfers, 2026-09-17) ══════════════════
+
+  it("the issuer never receives their own transfer, and a store that names its keepers is received into only by one of them", async () => {
+    const itemId = await anItem();
+    const main = await aStore("MAIN");
+    const shelf = await aStore("PHARM-RETAIL");
+    const batchId = await aBatch(itemId, "B-001", "2028-06-30");
+    await withTx(db, (tx) => postMovements(tx, HEAD, [{ resourceId: main, batchId, qtyDelta: 100, reason: "grn", occurredAt: T0 }]));
+    await ensureRole(db, "pharmacy");
+    await ensureRole(db, "storekeeper");
+    const pharmacist = await mkUser(db, "ph.receiver", ["pharmacy"]);
+    const storekeeper = await mkUser(db, "store.keeper", ["storekeeper"]);
+    await withTx(db, (tx) => setStoreCustodianRoles(tx, HEAD, shelf, ["pharmacy", "pharmacy_assistant"]));
+    const { transferId, lines } = await withTx(db, (tx) => issueStock(tx, storekeeper.actor, {
+      fromResourceId: main, toResourceId: shelf, lines: [{ itemId, qtyBase: 20 }], occurredAt: T0,
+    }));
+    const receipt = [{ lineId: lines[0]?.transferLineId ?? "", qtyReceived: 20 }];
+
+    await expect(withTx(db, (tx) => receiveStock(tx, storekeeper.actor, transferId, receipt, T0)))
+      .rejects.toMatchObject({ code: "transfer_self_receipt" });
+    await expect(withTx(db, (tx) => receiveStock(tx, HEAD, transferId, receipt, T0)))
+      .rejects.toMatchObject({ code: "not_store_keeper" });
+    expect((await getTransfer(db, transferId))?.status).toBe("in_transit");
+
+    expect((await withTx(db, (tx) => receiveStock(tx, pharmacist.actor, transferId, receipt, T0))).status).toBe("received");
+    expect((await balances(db, { resourceId: shelf }))[0]?.qtyOnHand).toBe(20);
+    // A store that names no keepers is received into by anyone but the issuer.
+    const back = await withTx(db, (tx) => issueStock(tx, pharmacist.actor, {
+      fromResourceId: shelf, toResourceId: main, lines: [{ itemId, qtyBase: 10 }], occurredAt: T0,
+    }));
+    await withTx(db, (tx) => receiveStock(tx, storekeeper.actor, back.transferId, [{ lineId: back.lines[0]?.transferLineId ?? "", qtyReceived: 10 }], T0));
+  });
+
+  it("the worklist names the stores, the items, the batches and the people: what awaits receipt, and the latest moves", async () => {
+    const itemId = await anItem("PAN40");
+    const main = await aStore("MAIN");
+    const ward = await aStore("WARD-A");
+    const shelf = await aStore("PHARM-OPD");
+    const early = await aBatch(itemId, "P-EARLY", "2027-01-31");
+    await withTx(db, (tx) => postMovements(tx, HEAD, [{ resourceId: main, batchId: early, qtyDelta: 100, reason: "grn", occurredAt: T0 }]));
+    const issuer = await mkUser(db, "store.issuer", []);
+    const receiver = await mkUser(db, "ward.sister", []);
+    const t1 = await withTx(db, (tx) => issueStock(tx, issuer.actor, {
+      fromResourceId: main, toResourceId: ward, lines: [{ itemId, qtyBase: 30 }], note: "ward indent 12", occurredAt: T0,
+    }));
+    await withTx(db, (tx) => receiveStock(tx, receiver.actor, t1.transferId, [{ lineId: t1.lines[0]?.transferLineId ?? "", qtyReceived: 28 }], new Date(T0.getTime() + 60_000)));
+    const t2 = await withTx(db, (tx) => issueStock(tx, issuer.actor, {
+      fromResourceId: main, toResourceId: shelf, lines: [{ itemId, qtyBase: 20 }], occurredAt: new Date(T0.getTime() + 120_000),
+    }));
+
+    const all = await transferWorklist(db, {});
+    expect(all.awaiting.map((t) => t.id)).toEqual([t2.transferId]);
+    expect(all.recent.map((t) => [t.id, t.status])).toEqual([[t2.transferId, "in_transit"], [t1.transferId, "discrepancy"]]);
+    const [done] = all.recent.filter((t) => t.id === t1.transferId);
+    expect(done).toMatchObject({
+      ref: `TR-${t1.transferId.slice(-6)}`, note: "ward indent 12",
+      from: { id: main, code: "MAIN", name: "Store MAIN" }, to: { id: ward, code: "WARD-A", name: "Store WARD-A" },
+      issuedBy: { id: issuer.id, name: "store.issuer" }, receivedBy: { id: receiver.id, name: "ward.sister" },
+      issuedAt: T0.toISOString(), receivedAt: new Date(T0.getTime() + 60_000).toISOString(),
+      lines: [{
+        itemId, itemCode: "PAN40", itemName: "Item PAN40", baseUom: "tablet", batchId: early, batchNo: "P-EARLY",
+        expiryDate: "2027-01-31", qtyIssued: 30, qtyReceived: 28, discrepancyReason: "short_2",
+      }],
+    });
+    // One store's view: what is coming to it, and what it sent or received.
+    const forShelf = await transferWorklist(db, { storeId: shelf });
+    expect(forShelf.awaiting.map((t) => t.id)).toEqual([t2.transferId]);
+    expect(forShelf.recent.map((t) => t.id)).toEqual([t2.transferId]);
+    const forWard = await transferWorklist(db, { storeId: ward });
+    expect(forWard.awaiting).toEqual([]);
+    expect(forWard.recent.map((t) => t.id)).toEqual([t1.transferId]);
   });
 });

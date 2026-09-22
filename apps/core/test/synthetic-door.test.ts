@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { SYNTHETIC_DATA_KEY, assertSyntheticDataAllowed } from "../scripts/synthetic-door";
 import { assertDemoDataAllowed } from "../scripts/seed-lab-demo";
+import { assertPharmacyDayAllowed } from "../scripts/dev-pharmacy-standup";
 
 /**
  * PHASE 11i T5 / D5 — THE SYNTHETIC-DATA DOOR.
@@ -46,6 +47,19 @@ describe("the synthetic-data door (11i T5)", () => {
         { NODE_ENV: "production", ALLOW_DEMO_DATA: "yes", HMIS_SYNTHETIC_DATA_OK: "1" }, "hmis_uat",
       ),
     ).not.toThrow();
+  });
+
+  it("dev-pharmacy-standup (PD-0) writes synthetic PATIENTS, so it needs every door seed:lab-demo needs — and :5434", () => {
+    const open = { ALLOW_DEMO_DATA: "yes", HMIS_SYNTHETIC_DATA_OK: "1" };
+    const dev = "postgres://hmis:hmis@localhost:5433/hmis_pharmacy_desk_dev";
+    expect(() => assertPharmacyDayAllowed(open, dev)).not.toThrow();
+    expect(() => assertPharmacyDayAllowed({ ALLOW_DEMO_DATA: "yes" }, dev)).toThrow(new RegExp(SYNTHETIC_DATA_KEY));
+    expect(() => assertPharmacyDayAllowed({ HMIS_SYNTHETIC_DATA_OK: "1" }, dev)).toThrow(/ALLOW_DEMO_DATA/);
+    // UAT runs the production image: the door open lets it through, the door closed does not
+    expect(() => assertPharmacyDayAllowed({ ...open, NODE_ENV: "production" }, dev)).not.toThrow();
+    expect(() => assertPharmacyDayAllowed({ NODE_ENV: "production", ALLOW_DEMO_DATA: "yes" }, dev)).toThrow();
+    // and no key opens production's port
+    expect(() => assertPharmacyDayAllowed(open, "postgres://hmis:hmis@localhost:5434/hmis")).toThrow(/5434/);
   });
 
   it("seed:lab-catalogue keeps its `:5434` refusal, which no door opens", () => {

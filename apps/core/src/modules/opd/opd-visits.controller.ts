@@ -7,15 +7,20 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
-import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit, reclassifyVisit,
+import {
+  abandonVisit, counterState, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
+  patientTimeline, reEnterVisit, reclassifyVisit,
 } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
+import { feeMarksFor } from "./prestage";
 import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
 import { continuityDoctorFor } from "./continuity";
 import { suggestDepartments } from "./triage";
+import type { TriageChoice } from "./triage";
+import { typesafeClient } from "../../kernel/inference/typesafe";
 import type { TriageResult } from "./triage";
 import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
@@ -44,7 +49,31 @@ const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(
  * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
  * this patient has been", which is the diagnosis-shaped read this route exists not to be.
  */
-const triageBody = z.object({ text: z.string().min(1).max(400) });
+const triageBody = z.object({
+  text: z.string().min(1).max(400),
+  /**
+   * ═══ THE AGE, AND EXACTLY WHAT IT IS ALLOWED TO DO ═══
+   *
+   * `red-flags.ts` gates ONE rule on age — chest pain below 12 is not treated as cardiac — and this
+   * is how the desk supplies it. The screen already knows: it renders the age on the row it found.
+   *
+   * IT CAN ONLY EVER NARROW THAT ONE RULE, and absence fails SAFE (an unknown age flags). That
+   * bound is what makes a client-supplied value acceptable here: triage runs on every keystroke, so
+   * reading the DOB from the database per call would be a query per character, and the worst a
+   * wrong value can do is suppress the chest-pain flag for a patient it claims is a small child.
+   * Every other red flag is age-independent and unreachable from this field.
+   */
+  ageYears: z.number().int().min(0).max(130).optional(),
+  /**
+   * ═══ THE NAMES, AND THE ONE THING THEY ARE FOR ═══
+   *
+   * Masked out of the complaint before the model is asked — `triage.ts` — and used for nothing else:
+   * never matched, stored or echoed. Client-supplied is safe for the same reason the age is: the
+   * worst a wrong value can do is mask one word too many, or leave shapes-only masking in place,
+   * which is exactly what a desk that sends none gets. Capped because each becomes a pattern.
+   */
+  names: z.array(z.string().min(1).max(120)).max(4).optional(),
+});
 
 const continuityQuery = z.object({
   patientId: z.string().min(1),
@@ -77,6 +106,9 @@ const appointmentCreateBody = z.object({
 });
 const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional() });
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
+/* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
+   clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
+const feeBypassBody = z.object({ reason: z.string().max(500) });
 const visitOpenBody = z.object({
   patientId: z.string().min(1),
   departmentId: z.string().min(1),
@@ -201,7 +233,18 @@ const escalationBody = z.object({
 
 type AppointmentView = AppointmentRow & { patient: PatientSummary | null };
 type VisitListItem = EncounterRow & { patient: PatientSummary | null; queueEntry: QueueEntryRow | null };
-type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & { patient: PatientSummary | null };
+/**
+ * FD-32 — the visit read carries the two money marks as well, so the CONSULTATION and the OPD Order
+ * Desk wear the owner's warning from the same derivation the vitals bay uses (`feeMarksFor`). On
+ * consultation the pair that matters is the BYPASSED one: the fee gate already refuses an unpaid
+ * consult, so the patient a doctor actually meets unpaid is the one the front desk waved through —
+ * and the doctor should see whose decision that was and why.
+ */
+type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
+  patient: PatientSummary | null;
+  feeUnpaid: boolean;
+  feeBypass: { by: string; reason: string; at: Date } | null;
+};
 
 @Controller("opd")
 export class OpdVisitsController {
@@ -248,7 +291,20 @@ export class OpdVisitsController {
       b.text,
       departments.map((d) => ({ id: d.id, name: d.name })),
       this.config.triage,
+      undefined,
+      undefined,
+      { ageYears: b.ageYears ?? null, names: b.names ?? [] },
+      this.triageChoice(),
     );
+  }
+
+  /**
+   * Triage's FIRST model (owner, 2026-09-19: TypeSafe as priority, the chat model its fallback), or
+   * null with no key configured — and then `config.triage` answers alone, exactly as before.
+   */
+  private triageChoice(): TriageChoice | null {
+    const client = typesafeClient(this.config.triageChoice);
+    return client === null ? null : { client, minConfidence: this.config.triageChoice.minConfidence };
   }
 
   @RequirePermission("opd.visits.open", "hospital")
@@ -388,6 +444,37 @@ export class OpdVisitsController {
     }
   }
 
+  /**
+   * ═══ A SCANNED VISIT NUMBER → WHO IT IS, SO A HUMAN CAN CHECK BEFORE FILING ═══
+   *
+   * The desk outside the consultation room scans the QR in the slip's footer, which encodes exactly
+   * the visit number. Before anything is photographed against that visit, the operator must SEE who
+   * it matched — a slip filed against the wrong visit is a clinical-record error, and "the staff
+   * only ever press capture or retake" needs this one control more than the description implies.
+   *
+   * IT MUST BE DECLARED ABOVE `@Get("visits/:id")`. Nest matches in declaration order and `:id`
+   * would otherwise swallow `by-number` — the same trap `formulary/medicines/search` documents.
+   *
+   * `opd.visits.read` and no new permission: the front office, its supervisor, the vitals bay and
+   * the doctor all hold it, which is exactly the set of seats that might hold the paper.
+   */
+  @RequirePermission("opd.visits.read", "hospital")
+  @Get("visits/by-number/:visitNo")
+  async visitByNumber(
+    @CurrentActor() actor: Actor, @Param("visitNo") visitNo: string,
+  ): Promise<{ encounterId: string; patientId: string; visitNo: string; serviceDate: string; patient: unknown }> {
+    const encounter = await getEncounterByVisitNo(this.db, visitNo.trim());
+    if (!encounter) toHttp(new OpdError("unknown_encounter", `no visit numbered ${visitNo}`));
+    const [summary] = await getPatientSummaries(this.db, actor, [encounter.patientId]);
+    /* A sealed patient the caller may not see answers exactly as a visit that does not exist: a
+       visit number must not be a way to learn that a record exists. */
+    if (summary === undefined) toHttp(new OpdError("unknown_encounter", `no visit numbered ${visitNo}`));
+    return {
+      encounterId: encounter.id, patientId: encounter.patientId, visitNo: encounter.visitNo,
+      serviceDate: encounter.serviceDate, patient: summary,
+    };
+  }
+
   @RequirePermission("opd.visits.read", "hospital")
   @Get("visits")
   async visits(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: VisitListItem[] }> {
@@ -409,13 +496,33 @@ export class OpdVisitsController {
     };
   }
 
+  /**
+   * ═══ FD-32 — THE FRONT DESK'S BYPASS (OWNER RULING 2026-09-13) ═══
+   *
+   * *"In case of emergency or VIP patient, the front desk could enable the patient to bypass the
+   * billing."* `opd.visits.open` is that desk's own key — the seat that opens the visit is the seat
+   * that may wave it past the counter, and it is held by `front_office`, its supervisor and nobody
+   * downstream. Deliberately NOT the cashier's: a counter that can excuse its own collection is the
+   * separation this hospital draws everywhere else.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("visits/:id/fee-bypass")
+  async feeBypass(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+    const b = parsed(feeBypassBody, body);
+    try {
+      return { encounter: await grantFeeBypass(this.db, actor, id, b.reason) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("opd.visits.read", "hospital")
   @Get("visits/:id")
   async visit(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<VisitDetail> {
     const found = await getVisit(this.db, actor, id);
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
-    return { ...found, patient: summary ?? null };
+    return { ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)) };
   }
 
   /**

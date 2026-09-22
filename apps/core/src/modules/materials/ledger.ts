@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
-  stockBalances, stockBatches, stockLedger, stockReservations,
+  items, stockBalances, stockBatches, stockLedger, stockReservations,
 } from "../../kernel/db/schema";
 import { MaterialsError } from "./errors";
 import { batchRecalled } from "./events";
@@ -10,6 +10,7 @@ import { istDay } from "./grn";
 import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
+import { anyOfText } from "../../kernel/db/any-of";
 
 export type LedgerRow = typeof stockLedger.$inferSelect;
 export type BalanceRow = typeof stockBalances.$inferSelect;
@@ -17,7 +18,7 @@ export type BatchRow = typeof stockBatches.$inferSelect;
 export type ReservationRow = typeof stockReservations.$inferSelect;
 
 /** DD6's five reasons. The sign is the reason's business, not the caller's. */
-export type MovementReason = "grn" | "issue" | "receive" | "consume" | "return";
+export type MovementReason = "grn" | "issue" | "receive" | "consume" | "return" | "adjust";
 
 export type MovementInput = {
   resourceId: string;
@@ -359,11 +360,14 @@ export async function postMovements(
 async function sellableBatchRows(
   db: Db | Tx,
   resourceId: string,
-  itemId: string,
+  itemIds: readonly string[],
   asOf: Date,
-): Promise<{ batchId: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
+): Promise<{ itemId: string; batchId: string; batchNo: string; onHand: number; reserved: number; frozen: number; expiryDate: string | null }[]> {
+  if (itemIds.length === 0) return [];
   return db.select({
+    itemId: stockBalances.itemId,
     batchId: stockBalances.batchId,
+    batchNo: stockBatches.batchNo,
     onHand: stockBalances.qtyOnHand,
     reserved: stockBalances.qtyReserved,
     frozen: stockBalances.qtyFrozen,
@@ -373,7 +377,7 @@ async function sellableBatchRows(
     .innerJoin(stockBatches, eq(stockBatches.id, stockBalances.batchId))
     .where(and(
       eq(stockBalances.resourceId, resourceId),
-      eq(stockBalances.itemId, itemId),
+      anyOfText(stockBalances.itemId, itemIds),
       eq(stockBatches.recallStatus, "none"),
       /**
        * ═══ AND IT MUST NOT ALREADY BE EXPIRED (16c close review, second contract sweep) ═══
@@ -410,8 +414,181 @@ export async function availableQty(
   itemId: string,
   asOf: Date = new Date(),
 ): Promise<number> {
-  const rows = await sellableBatchRows(db, resourceId, itemId, asOf);
-  return rows.reduce((n, r) => n + Math.max(0, r.onHand - r.reserved - r.frozen), 0);
+  return (await availableQtyByItem(db, resourceId, [itemId], asOf)).get(itemId) ?? 0;
+}
+
+/**
+ * The same number for MANY items in one statement, keyed by item id; an item with no sellable stock
+ * is absent, and the caller reads that as zero.
+ *
+ * WHY IT EXISTS. The substitution dropdown asks this question once per candidate generic. One
+ * statement per candidate is a round trip per row of a list the pharmacist is waiting on, and the
+ * predicate — recall excluded, expiry excluded, reserved and frozen subtracted — is the exact
+ * predicate `availableQty` already carries. So `availableQty` BECOMES its one-item caller rather
+ * than a second copy: the `Math.max(0, onHand - reserved - frozen)` reduction exists in exactly one
+ * place, which is the property the 16c close review's expired-stock defect was about.
+ */
+export async function availableQtyByItem(
+  db: Db | Tx,
+  resourceId: string,
+  itemIds: readonly string[],
+  asOf: Date = new Date(),
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  for (const r of await sellableBatchRows(db, resourceId, wanted, asOf)) {
+    out.set(r.itemId, (out.get(r.itemId) ?? 0) + Math.max(0, r.onHand - r.reserved - r.frozen));
+  }
+  return out;
+}
+
+/**
+ * PHARMACY P12 — the leakage triangle's ISSUED leg.
+ *   - `ledgerQtyByIds`: the signed quantity of each named ledger row (a dispense line names its
+ *     `consume` row, so the triangle reads what the ledger moved, not what the line says).
+ *   - `consumptionRowsAt`: every `consume` row at one store in `[start, end)`, with the item code
+ *     and batch number, for "what left the shelf, and on whose paper".
+ *   - `refIdsWithMovementBetween`: the references a reason/refType pair touched in the window (a
+ *     return today on a line handed over last week).
+ */
+export async function ledgerQtyByIds(db: Db | Tx, ids: readonly string[]): Promise<Map<string, number>> {
+  const wanted = [...new Set(ids)].filter((id) => id !== "");
+  if (wanted.length === 0) return new Map();
+  const rows = await db.select({ id: stockLedger.id, qty: stockLedger.qtyDelta }).from(stockLedger).where(inArray(stockLedger.id, wanted));
+  return new Map(rows.map((r) => [r.id, r.qty] as const));
+}
+
+export async function consumptionRowsAt(
+  db: Db | Tx, resourceId: string, start: Date, end: Date,
+): Promise<{ id: string; itemId: string; itemCode: string; batchId: string; batchNo: string; units: number; refType: string | null; refId: string | null; actorId: string; occurredAt: Date }[]> {
+  const rows = await db.select({
+    id: stockLedger.id, itemId: stockLedger.itemId, itemCode: items.code, batchId: stockLedger.batchId, batchNo: stockBatches.batchNo,
+    delta: stockLedger.qtyDelta, refType: stockLedger.refType, refId: stockLedger.refId, actorId: stockLedger.actorId, occurredAt: stockLedger.occurredAt,
+  })
+    .from(stockLedger)
+    .innerJoin(items, eq(items.id, stockLedger.itemId))
+    .innerJoin(stockBatches, eq(stockBatches.id, stockLedger.batchId))
+    .where(and(
+      eq(stockLedger.resourceId, resourceId), eq(stockLedger.reason, "consume"),
+      sql`${stockLedger.occurredAt} >= ${start}`, sql`${stockLedger.occurredAt} < ${end}`,
+    ))
+    .orderBy(asc(stockLedger.seq));
+  return rows.map(({ delta, ...r }) => ({ ...r, units: -delta }));
+}
+
+export async function refIdsWithMovementBetween(
+  db: Db | Tx, reason: MovementReason, refType: string, start: Date, end: Date,
+): Promise<string[]> {
+  const rows = await db.selectDistinct({ refId: stockLedger.refId }).from(stockLedger).where(and(
+    eq(stockLedger.reason, reason), eq(stockLedger.refType, refType),
+    sql`${stockLedger.occurredAt} >= ${start}`, sql`${stockLedger.occurredAt} < ${end}`,
+  ));
+  return rows.map((r) => r.refId).filter((x): x is string => x !== null).sort();
+}
+
+/**
+ * PHARMACY P8 — the batches `fefoPick` would offer, per item, in its order, each with what it can
+ * still give (`on_hand − reserved − frozen`, and never below zero). The same query as the pick and
+ * `availableQtyByItem`, so a forecast over these rows and the pick can never disagree about which
+ * batch goes first.
+ */
+export async function sellableBatchesByItem(
+  db: Db | Tx,
+  resourceId: string,
+  itemIds: readonly string[],
+  asOf: Date = new Date(),
+): Promise<Map<string, { batchId: string; batchNo: string; expiryDate: string | null; available: number }[]>> {
+  const out = new Map<string, { batchId: string; batchNo: string; expiryDate: string | null; available: number }[]>();
+  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  for (const r of await sellableBatchRows(db, resourceId, wanted, asOf)) {
+    const available = Math.max(0, r.onHand - r.reserved - r.frozen);
+    if (available === 0) continue;
+    const list = out.get(r.itemId) ?? [];
+    list.push({ batchId: r.batchId, batchNo: r.batchNo, expiryDate: r.expiryDate, available });
+    out.set(r.itemId, list);
+  }
+  return out;
+}
+
+/**
+ * PHARMACY P8 — stock at ONE store whose expiry date has passed (IST) and which is still on hand:
+ * what has to come off that shelf into quarantine. The pick already refuses it; this is the list of
+ * what is physically still there. Earliest expiry first.
+ */
+export async function expiredStockAt(
+  db: Db | Tx, resourceId: string, asOf: Date = new Date(),
+): Promise<{ itemId: string; batchId: string; batchNo: string; expiryDate: string; onHand: number }[]> {
+  const rows = await db.select({
+    itemId: stockBalances.itemId,
+    batchId: stockBalances.batchId,
+    batchNo: stockBatches.batchNo,
+    expiryDate: stockBatches.expiryDate,
+    onHand: stockBalances.qtyOnHand,
+  })
+    .from(stockBalances)
+    .innerJoin(stockBatches, eq(stockBatches.id, stockBalances.batchId))
+    .where(and(
+      eq(stockBalances.resourceId, resourceId),
+      sql`${stockBalances.qtyOnHand} > 0`,
+      sql`${stockBatches.expiryDate} < ${istDay(asOf)}::date`,
+    ))
+    .orderBy(asc(stockBatches.expiryDate), asc(stockBatches.batchNo));
+  return rows.map((r) => ({ ...r, expiryDate: r.expiryDate as string }));
+}
+
+/**
+ * PHARMACY P6 — how much has come BACK against each reference: the sum of `return` rows whose
+ * `ref_type` is `refType`, keyed by `ref_id`, over the ids asked for. A counter's sales return
+ * names the dispense line it returns, so this is "already returned", and the next return is
+ * bounded by it.
+ */
+export async function returnedQtyByRef(
+  db: Db | Tx, refType: string, refIds: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const wanted = [...new Set(refIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  const rows = await db.select({
+    refId: stockLedger.refId,
+    qty: sql<string>`coalesce(sum(${stockLedger.qtyDelta}), 0)`,
+  }).from(stockLedger).where(and(
+    eq(stockLedger.reason, "return"),
+    eq(stockLedger.refType, refType),
+    inArray(stockLedger.refId, wanted),
+  )).groupBy(stockLedger.refId);
+  for (const r of rows) if (r.refId !== null) out.set(r.refId, Number(r.qty));
+  return out;
+}
+
+/**
+ * PHARMACY P4 — how much of each item this store CONSUMED in `[since, until)`, keyed by item id; an
+ * item with none is absent. Bounded by the item ids and the window. `occurred_at` is the injected
+ * instant (a downtime back-entry lands on the day it happened, which is the day the velocity is
+ * about), and only `consume` rows count: an issue to another store is a move, not a use.
+ */
+export async function consumedQtyByItem(
+  db: Db | Tx,
+  resourceId: string,
+  itemIds: readonly string[],
+  since: Date,
+  until: Date,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  if (wanted.length === 0) return out;
+  const rows = await db.select({
+    itemId: stockLedger.itemId,
+    used: sql<string>`coalesce(sum(-${stockLedger.qtyDelta}), 0)`,
+  }).from(stockLedger).where(and(
+    eq(stockLedger.resourceId, resourceId),
+    eq(stockLedger.reason, "consume"),
+    inArray(stockLedger.itemId, wanted),
+    sql`${stockLedger.occurredAt} >= ${since}`,
+    sql`${stockLedger.occurredAt} < ${until}`,
+  )).groupBy(stockLedger.itemId);
+  for (const r of rows) out.set(r.itemId, Number(r.used));
+  return out;
 }
 
 /**
@@ -447,7 +624,7 @@ export async function fefoPick(
   if (!Number.isSafeInteger(qtyBase) || qtyBase <= 0) {
     throw new MaterialsError("insufficient_stock", `a pick must be a positive integer, got ${String(qtyBase)}`);
   }
-  const rows = await sellableBatchRows(db, resourceId, itemId, asOf);
+  const rows = await sellableBatchRows(db, resourceId, [itemId], asOf);
 
   const picked: { batchId: string; qty: number }[] = [];
   let remaining = qtyBase;
@@ -645,6 +822,12 @@ export async function movementsFor(
 }
 
 /** The batch, or `undefined`. A read; `requireBatch` is the refusing form and is private. */
+/** PHARMACY P13 — the batches of an item printed with this number (any ownership), case-insensitive. */
+export async function batchesByNo(db: Db | Tx, itemId: string, batchNo: string): Promise<BatchRow[]> {
+  return db.select().from(stockBatches)
+    .where(and(eq(stockBatches.itemId, itemId), sql`lower(${stockBatches.batchNo}) = ${batchNo.trim().toLowerCase()}`));
+}
+
 export async function getBatch(db: Db | Tx, batchId: string): Promise<BatchRow | undefined> {
   const rows = await db.select().from(stockBatches).where(eq(stockBatches.id, batchId));
   return rows[0];

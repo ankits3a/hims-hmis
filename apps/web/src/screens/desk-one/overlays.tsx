@@ -1,9 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ageYearsOf, bookableToday, etaClock, LANES, LANE_TEXT, rs, vitalsAhead, waitMinutes } from "./model";
+import {
+  ageYearsOf, bookableToday, etaClock, LANES, LANE_TEXT, rs, SEAT_LABEL, SEAT_ROUTE, SEAT_STEPS, SEATS,
+  vitalsAhead, waitMinutes,
+} from "./model";
 import type { Lane } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
+import { PapersSheet } from "./papers";
+import { HistorySheet } from "./history-sheet";
+import { usePaletteOptional } from "../../components/command-palette";
 
 /**
  * ═══ THE OVERLAYS — five, and each one answers a question a clerk asks WITHOUT LEAVING ═══
@@ -22,13 +28,63 @@ export function Overlays(): React.ReactElement | null {
     case "queues": return <QueuesOverlay />;
     case "edit": return <EditOverlay />;
     case "schema": return <SchemaOverlay />;
+    case "papers": return <PapersOverlay />;
+    case "history": return <HistoryOverlay />;
   }
+}
+
+/** FD-28 — the whole visit history, one layer over the desk. See `history-sheet.tsx`. */
+function HistoryOverlay(): React.ReactElement {
+  const d = useDesk();
+  const p = d.s.person;
+  return (
+    <Sheet width={720}>
+      {p === null ? (
+        <div style={{ padding: "18px 20px" }} data-testid="history-empty">
+          <div style={{ fontSize: 15, fontWeight: 600 }}>Nobody in hand</div>
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--dim)" }}>
+            A history belongs to a person. Pick the patient first.
+          </p>
+        </div>
+      ) : (
+        <HistorySheet patientId={p.id} name={p.name} />
+      )}
+    </Sheet>
+  );
+}
+
+/**
+ * FD-27 — the papers sheet, wrapped in the same `Sheet` every other overlay uses.
+ *
+ * `papersFor` names the encounter; null means the visit in hand. If neither exists there is nothing
+ * to show, and the honest thing is to say so rather than render an empty sheet a clerk will read as
+ * a failure — the common case is a clerk who opened it before picking anybody.
+ */
+function PapersOverlay(): React.ReactElement {
+  const d = useDesk();
+  const chosen = d.s.papersFor ?? (d.s.visit === null ? null : { encounterId: d.s.visit.encounterId, when: null });
+  return (
+    <Sheet width={620}>
+      {chosen === null ? (
+        <div style={{ padding: "18px 20px" }} data-testid="papers-empty">
+          <div style={{ fontSize: 15, fontWeight: 600 }}>No visit in hand</div>
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--dim)", lineHeight: "17px" }}>
+            Papers belong to a visit. Pick the patient, then open a row of their history — every past
+            visit carries its own slips and bills, and each one can be handed over again.
+          </p>
+        </div>
+      ) : (
+        <PapersSheet encounterId={chosen.encounterId} when={chosen.when} />
+      )}
+    </Sheet>
+  );
 }
 
 function Sheet({ width, children }: { width: number; children: React.ReactNode }): React.ReactElement {
   const d = useDesk();
   return (
-    <div className="ovl" onClick={(e) => { if (e.target === e.currentTarget) d.patch({ overlay: null }); }}>
+    /* FD-27 — `papersFor` dies with the sheet. See the Escape handler in `desk-one.tsx` for why. */
+    <div className="ovl" onClick={(e) => { if (e.target === e.currentTarget) d.patch({ overlay: null, papersFor: null }); }}>
       <div
         className="box"
         style={{ width, maxHeight: "80vh", overflowY: "auto", boxShadow: "0 24px 70px rgba(19,36,32,.35)" }}
@@ -45,6 +101,7 @@ function Sheet({ width, children }: { width: number; children: React.ReactNode }
 function Palette(): React.ReactElement {
   const d = useDesk();
   const navigate = useNavigate();
+  const hospitalMenu = usePaletteOptional();
   const { s } = d;
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -54,10 +111,28 @@ function Palette(): React.ReactElement {
     { label: "register a new patient", key: "F4", run: () => { d.patch({ overlay: null }); d.startEnrolment(); } },
   ];
   if (s.person !== null) {
-    all.push({ label: "go to the appointment stage", run: () => d.goto("appointment") });
-    all.push({ label: "go to billing", run: () => d.goto("bill") });
-    all.push({ label: "book a future appointment", run: () => { d.patch({ tab: "future", overlay: null }); d.goto("appointment"); } });
+    /*
+      FD-26 — a stage jump is only offered by a seat that HAS the stage. Offering "go to billing" on
+      the registration chair would land the clerk on `done` via `stageForSeat`, which reads as the
+      screen ignoring them. The sibling-seat rows below are the honest version of that door.
+    */
+    const has = (stage: "appointment" | "bill"): boolean =>
+      d.seat === "counter" || SEAT_STEPS[d.seat].some((x) => x.stage === stage);
+    if (has("appointment")) {
+      all.push({ label: "go to the appointment stage", run: () => d.goto("appointment") });
+      all.push({ label: "book a future appointment", run: () => { d.patch({ tab: "future", overlay: null }); d.goto("appointment"); } });
+    }
+    if (has("bill")) all.push({ label: "go to billing", run: () => d.goto("bill") });
     all.push({ label: "amend this record (audited)", run: () => d.patch({ overlay: "edit" }) });
+    /*
+      FD-27 — the reprint door, reachable by NAME rather than only by clicking a history row. "They
+      lost the bill" is a sentence a clerk says before they think about which visit it was, and the
+      palette is where this desk turns a sentence into a screen.
+    */
+    all.push({
+      label: "their papers — reprint a slip or a bill",
+      run: () => d.patch({ overlay: "papers", papersFor: null }),
+    });
   }
   all.push({ label: "every line in the building", key: "Q", run: () => d.patch({ overlay: "queues" }) });
   all.push({ label: `counter lane — ${d.canSetFlow ? "change it" : "who set it"}`, run: () => d.patch({ overlay: "flow" }) });
@@ -74,10 +149,43 @@ function Palette(): React.ReactElement {
   all.push({ label: "open a cash drawer (leaves the desk)", run: () => { d.patch({ overlay: null }); void navigate({ to: "/billing/session" }); } });
   all.push({ label: "design schema & elements", run: () => d.patch({ overlay: "schema" }) });
 
+  /*
+    ═══ FD-26 — A SEAT OWNS THE VIEWPORT, SO THE PALETTE HAS TO BE THE WAY OUT OF IT ═══
+
+    `/counter` renders no app nav and never needed one: one person, one screen, all day. The three
+    seats inherit that — `staticData.fullViewport` on all four — so the same F8 palette has to carry
+    what the nav bar used to: the sibling chairs, and the rest of the hospital.
+
+    `/counter` gets NEITHER row. It is not a seat, so "go to the booking desk" is a stage there and
+    already listed above; and its own door to the wider app has been the palette's `my figures` and
+    `cash drawer` rows since FD-9.
+  */
+  if (d.seat !== "counter") {
+    for (const other of SEATS) {
+      if (other === d.seat) continue;
+      all.push({
+        label: `go to the ${SEAT_LABEL[other].toLowerCase()} desk (the patient comes with you)`,
+        run: () => { d.patch({ overlay: null }); void navigate({ to: SEAT_ROUTE[other] as "/counter" }); },
+      });
+    }
+  }
+  /*
+    The whole hospital, by name, gated by the same `can()` the nav bar used. `Optional` because the
+    desk-one suites mount no provider; with none, the row simply is not offered rather than
+    exploding — and `/counter`'s own tests are the harness that proves that path.
+  */
+  if (hospitalMenu !== null) {
+    all.push({
+      label: "the rest of the hospital — search every screen and patient",
+      run: () => { d.patch({ overlay: null }); hospitalMenu.open(); },
+    });
+  }
+
   const acts = all.filter((a) => q === "" || a.label.toLowerCase().includes(q.toLowerCase()));
 
   return (
-    <div className="ovl" onClick={(e) => { if (e.target === e.currentTarget) d.patch({ overlay: null }); }}>
+    /* FD-27 — `papersFor` dies with the sheet. See the Escape handler in `desk-one.tsx` for why. */
+    <div className="ovl" onClick={(e) => { if (e.target === e.currentTarget) d.patch({ overlay: null, papersFor: null }); }}>
       <div className="box" style={{ width: 540, overflow: "hidden", boxShadow: "0 24px 70px rgba(19,36,32,.35)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 15px", borderBottom: "1px solid var(--line)" }}>
           <span className="mo" style={{ color: "var(--faint)" }}>›</span>

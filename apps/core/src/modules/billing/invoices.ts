@@ -9,6 +9,7 @@ import { withTx } from "../../kernel/db/client";
 import { loadEnv } from "../../kernel/config";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
+import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { getEncounter } from "../opd";
 import { resolvePatientId } from "../patients";
@@ -231,6 +232,66 @@ async function creditedPaiseOf(exec: Db | Tx, invoiceId: string): Promise<number
   return total;
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-27 — IS A **LIVE** INVOICE ALREADY CHARGING ONE OF THESE SERVICES ON THIS ENCOUNTER?
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-06: *"how are we tackling creation of duplicate invoice (different invoice number
+ * for same patient) by mistake."* MEASURED against the running preview before writing a line: four
+ * POSTs to `/billing/invoices` for one encounter produced THREE invoices —
+ * `INV/26-27/000003`, `000004`, `000005`, ₹500 each, inside one second. The idempotency key caught
+ * the replay (that is the double-click, and it was already safe); every request carrying a FRESH
+ * key minted a new number. Nothing at any layer refused: there is no unique index on
+ * `invoices.encounter_id` — `invoices_invoice_no_unique` is the only unique constraint on the table.
+ *
+ * ═══ WHY THIS IS NOT `feeCovered`, WHICH LOOKS LIKE THE SAME QUESTION ═══
+ *
+ * `gate.ts`'s `feeCovered` asks *"may this patient be seen?"* and answers YES for an invoice that is
+ * `settled`. A credit note counts toward `coveredPaise` (`settlement.ts:13`), so an invoice that has
+ * been fully REVERSED still reads `settled` and therefore still reads "covered". Gating the WRITE on
+ * that predicate would refuse the one re-issue that is always legitimate: the clerk credit-noted the
+ * duplicate and now has to raise the correct bill. So this asks a narrower question — is there an
+ * invoice for this service that is neither entered-in-error nor fully credited — and the two
+ * predicates are deliberately NOT shared.
+ *
+ * ═══ WHY IT IS SCOPED TO SERVICES AND NOT TO THE ENCOUNTER ═══
+ *
+ * "One invoice per visit" would be wrong and would break real billing: a dressing, a lab test and an
+ * X-ray on the same visit are separate, legitimate bills. What is never legitimate is charging the
+ * SAME service on the same visit twice, and that is all this refuses.
+ */
+export async function liveInvoiceCharging(
+  exec: Db | Tx,
+  encounterId: string,
+  serviceIds: readonly string[],
+): Promise<{ id: string; invoiceNo: string; serviceId: string } | null> {
+  if (serviceIds.length === 0) return null;
+  const rows = await exec
+    .select({
+      id: invoices.id,
+      invoiceNo: invoices.invoiceNo,
+      netPayablePaise: invoices.netPayablePaise,
+      serviceId: invoiceLines.serviceId,
+    })
+    .from(invoices)
+    .innerJoin(invoiceLines, eq(invoiceLines.invoiceId, invoices.id))
+    .where(and(eq(invoices.encounterId, encounterId), inArray(invoiceLines.serviceId, [...serviceIds])));
+  if (rows.length === 0) return null;
+  const dead = await enteredInErrorDocIds(exec, "invoice", [...new Set(rows.map((r) => r.id))]);
+  for (const row of rows) {
+    if (dead.has(row.id)) continue;
+    /*
+      FULLY CREDITED IS NOT LIVE. `>=` and not `===` deliberately: a correction credit note may net
+      slightly above the invoice after rounding, and a bill reversed by more than its own value is
+      certainly not still charging anybody.
+    */
+    if (await creditedPaiseOf(exec, row.id) >= row.netPayablePaise) continue;
+    return { id: row.id, invoiceNo: row.invoiceNo, serviceId: row.serviceId };
+  }
+  return null;
+}
+
 /** The invoice's derived settlement — `settlementState` fed from the ledger (D1). */
 export async function invoiceSettlement(exec: Db | Tx, invoiceId: string): Promise<Settlement> {
   const rows = await exec
@@ -294,11 +355,18 @@ export async function getInvoice(
 /** Arrival order is `seq`, never the id — ULIDs are not insertion-ordered (§3.26). */
 export async function listInvoices(
   exec: Db | Tx,
-  filters: { patientId?: string; encounterId?: string } = {},
+  filters: { patientId?: string; encounterId?: string | string[] } = {},
 ): Promise<InvoiceRow[]> {
   const conditions = [];
   if (filters.patientId !== undefined) conditions.push(eq(invoices.patientId, filters.patientId));
-  if (filters.encounterId !== undefined) conditions.push(eq(invoices.encounterId, filters.encounterId));
+  /*
+    `string | string[]` because ONE VISIT CAN HAVE TWO KEYS IN THIS COLUMN and no backfill has ever
+    reconciled them — see `encounterRefSpellings`, which is what builds the array. Internal callers
+    hold a row id and pass the bare string; the route that takes a reference from outside passes
+    both spellings of it.
+  */
+  if (Array.isArray(filters.encounterId)) conditions.push(inArray(invoices.encounterId, filters.encounterId));
+  else if (filters.encounterId !== undefined) conditions.push(eq(invoices.encounterId, filters.encounterId));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   return exec.select().from(invoices).where(where).orderBy(asc(invoices.seq));
 }
@@ -326,6 +394,97 @@ export async function listInvoices(
  */
 export type { EncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 export { registerEncounterResolver, registeredEncounterPrefixes } from "../../kernel/episodes/encounter-resolvers";
+
+/**
+ * ═══ ONE SPELLING OF A VISIT REACHES THE LEDGER, AND IT IS THE CANONICAL ONE ═══
+ *
+ * Owner, 2026-09-12: a visit billed twice, ₹1000 collected, and the counter still stamping UNPAID.
+ * The stamp was reading the ledger correctly by then — the LEDGER was keyed on a string no reader
+ * looks for.
+ *
+ * `invoices.encounter_id` is plain text with no FK (house precedent), and the counter sends
+ * whatever the cashier typed. A cashier types the VISIT NUMBER — `V2609120001`, the thing printed
+ * on the patient's slip — because that is the only spelling they are ever shown. `getEncounter`
+ * accepts it, so pricing, the patient resolution and the invoice all succeeded; the row then stored
+ * that display string, while every projection over the ledger keys on `opd_encounters.id`:
+ *
+ *   - `encounterFeeStatuses` — the token stamp on the OPD queue AND the counter's own rail
+ *   - `feeGate` — the consult gate. MEASURED on the preview: the guard saw ZERO invoices for a
+ *     visit that had been paid twice, so the patient pays and the doctor's door stays shut.
+ *   - `daily-close`'s uncharged-visit sweep
+ *
+ * None of them is wrong. They agree with each other and with the schema; the writer was the odd one
+ * out, and it was writing whatever it was handed.
+ *
+ * THE CANONICAL REFERENCE IS WHATEVER `getEncounter` RESOLVES TO, and the test for "is this an OPD
+ * visit" is that reader answering — not a prefix. Prefix matching is the WRONG instrument here and
+ * choosing it cost a round trip: OPD registers `V` itself (`opd.module.ts`), so a visit number
+ * matches a registered prefix, and "a registered prefix keeps its own spelling" left `V2609120001`
+ * exactly as it came. The resolver contract returns `{patientId, intendedPayer}` and no id, so it
+ * cannot answer this question at all; `getEncounter` can, and already accepts both spellings —
+ * that acceptance is why the counter worked and the ledger did not.
+ *
+ * Another module's episode number (the OT's `D…`) fails `VISIT_NO_RE` and matches no
+ * `opd_encounters.id`, so it resolves to nothing and is returned untouched — that module owns its
+ * own spelling. An id that resolves to nothing anywhere is likewise left exactly as it came, so the
+ * refusal further down still names what the caller actually sent.
+ */
+async function canonicalEncounterRef(db: Db, encounterId: string | undefined): Promise<string | undefined> {
+  if (encounterId === undefined) return undefined;
+  const encounter = await getEncounter(db, encounterId);
+  return encounter === null ? encounterId : encounter.id;
+}
+
+/**
+ * ═══ THE SAME QUESTION FROM THE READ SIDE, WHERE ONE SPELLING IS NOT ENOUGH ═══
+ *
+ * Owner, 2026-09-15, on a paid visit reached at `/billing` by typing `V2609150001`: *"when I
+ * clicked on 'Their Papers' … I see a popup with no encounter/visit related files. This visit is
+ * paid but I see no related papers."* The same sentence as 2026-09-12, one layer over.
+ *
+ * Everything above is about the WRITER. It made the ledger store one reference; it never asked
+ * whether a READER may spell the question the other way. `GET /billing/invoices?encounterId=`
+ * compares the caller's string to the stored column directly, so the papers sheet asked about a
+ * real, paid visit by the only identifier its cashier is ever shown and was answered, in a 200,
+ * with an empty list — while the rail one panel over, which DOES resolve (`feeQuoteRoute`), stamped
+ * that same visit PAID in the same breath.
+ *
+ * ═══ WHY A READER GETS BOTH SPELLINGS AND A WRITER GETS ONE ═══
+ *
+ * A writer must choose, or the ledger goes back to holding two keys for one visit. A reader must
+ * not, and this is the difference: **`canonicalEncounterRef` shipped in #200 with no backfill.**
+ * The owner's 2026-09-12 report — a visit billed twice, ₹1000 collected, the counter still stamping
+ * UNPAID — is direct evidence that rows keyed on a visit number exist in production right now.
+ * Resolving the reference and asking only the resolved id would find every new bill and LOSE every
+ * legacy one: the reported defect traded for a quieter one on older visits, which is the worse of
+ * the two because nobody would ever report it.
+ *
+ * So the read asks for EVERY SPELLING THE RESOLVED VISIT HAS, and there are exactly two of them:
+ * `opd_encounters.id` and `opd_encounters.visit_no`, both `NOT NULL` and the second uniquely
+ * indexed. That is strictly additive — it can only ever find more rows than the raw compare did,
+ * never fewer — and both belong to ONE visit by construction, so this widens the answer about a
+ * single encounter and never the set of encounters answerable.
+ *
+ * **DERIVED FROM THE RESOLVED ROW, NOT FROM THE CALLER'S STRING**, and the difference is a defect I
+ * wrote first and the suite caught: `[resolved, asGiven]` is only ever two entries when the caller
+ * spelled it the OLD way. Ask with the row id — which is how the OPD desk deep-links this counter,
+ * `/billing?encounterId=…` — and that set collapses to one, so the legacy row stays invisible on
+ * precisely the road the hospital uses most. The visit has two names whichever one you called it by.
+ *
+ * **IT IS A READ-SIDE PLASTER OVER A DATA DEFECT, AND IT IS NOT THE REPAIR.** A legacy row stays
+ * invisible to `feeGate`, `encounterFeeStatuses` and `daily-close`, which key on
+ * `opd_encounters.id` alone — so a patient who paid can still be refused at the doctor's door. The
+ * repair for that is a backfill over `invoices.encounter_id`, an irreversible host mutation and the
+ * owner's call, not a route's.
+ */
+export async function encounterRefSpellings(db: Db, encounterId: string | undefined): Promise<string[] | undefined> {
+  if (encounterId === undefined) return undefined;
+  const encounter = await getEncounter(db, encounterId);
+  /* Resolved to nothing — another module's episode number, or a typo. Left exactly as it came, so
+     the refusal further down still names what the caller actually sent. */
+  if (encounter === null) return [encounterId];
+  return [encounter.id, encounter.visitNo];
+}
 
 async function resolveEncounter(
   db: Db,
@@ -919,6 +1078,14 @@ export async function issueInvoice(
   now: Date = new Date(),
 ): Promise<IssueInvoiceResult> {
   const cfg = await loadBillingConfig(db);
+  /*
+    Resolved BEFORE anything is written and used for every mention of the visit below — the row, the
+    duplicate lock and guard, the event scopes, the fee-status hook and the realtime nudge. Rebinding
+    `input` itself is deliberate: leaving the raw string in scope beside a canonical one is how the
+    two get mixed at the next edit, and a lock taken on one spelling while the row stores the other
+    is a duplicate guard that does not guard. See `canonicalEncounterRef`.
+  */
+  input = { ...input, encounterId: await canonicalEncounterRef(db, input.encounterId) };
   const { priced: draft, benefits } = await priceDraftWithBenefits(db, input, now);
   const { totals } = draft;
 
@@ -972,6 +1139,36 @@ export async function issueInvoice(
 
   try {
     return await withTx(db, async (tx) => {
+      /*
+        ═══ FD-27 — THE DUPLICATE-BILL GUARD, AND WHY IT IS HERE RATHER THAN ON THE SCREEN ═══
+
+        The screen already stops a DOUBLE CLICK (`SubmitButton`'s synchronous ref latch) and the
+        route already stops a RETRY (`withIdempotency`). Neither stops the case the owner actually
+        described: the clerk bills, loses the screen, and bills again — a genuinely repeated human
+        action carrying a genuinely fresh key. Measured on the preview: three invoice numbers on one
+        encounter. A warning on the screen would not have stopped it either, because the second clerk
+        at the second counter never saw the first screen.
+
+        THE LOCK IS PART OF THE GUARD, NOT DECORATION. Without it the check is a read and two
+        concurrent issues both pass it before either inserts — the exact race the guard exists for,
+        at the two-counter hospital it exists for. `pg_advisory_xact_lock` is the house pattern
+        (`lab/desk.ts:319`, `opd/encounters.ts:447`, `kernel/ops/mode.ts:131`) and it is taken on the
+        ENCOUNTER, which is the thing being double-billed. It is released with the transaction.
+
+        Scoped to encounter-bearing invoices: a bill with no encounter (the cashier's counter sale)
+        has no visit to be duplicated against, and locking a null would serialise every one of them.
+      */
+      if (input.encounterId !== undefined) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice:${input.encounterId}`}))`);
+        const standing = await liveInvoiceCharging(tx, input.encounterId, draft.lines.map((l) => l.serviceId));
+        if (standing !== null) {
+          throw new BillingError(
+            "duplicate_invoice_refused",
+            `invoice ${standing.invoiceNo} already charges this service on this visit — credit-note it first if it is wrong`,
+            { invoiceId: standing.id, invoiceNo: standing.invoiceNo, serviceId: standing.serviceId, encounterId: input.encounterId },
+          );
+        }
+      }
       const invoiceId = newId();
       const invoiceNo = await nextDocNo(tx, cfg, "invoice", now);
 
@@ -1252,6 +1449,49 @@ export async function issueInvoice(
           encounterId: input.encounterId, invoiceId,
           via: creditBlock !== null ? "credit_extended" : "invoice",
         }, now);
+      }
+
+      /*
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+        FD-27 — THE RECEIPT FINALLY HAS A PRODUCER
+        ═══════════════════════════════════════════════════════════════════════════════════════════
+
+        `opd_payment_receipt` has been a DECLARED document with a renderer, a destination and ZERO
+        enqueue call sites since FD-24, which said so on its own face: *"FD-24 declared the kind
+        ahead of its producer; the plan assigns it to BILLING's settle path, so it is DEFERRED
+        rather than broken."* This is that settle path, and this is the producer.
+
+        Measured before writing it — `select document, count(*) from print_jobs group by 1` on the
+        preview: nine token slips, nine prescriptions, ZERO receipts across nine visits. The
+        artboard's promise, "prints the receipt and stamps the token PAID", has never been served.
+
+        ONLY WHEN MONEY ACTUALLY MOVED. A credit-extended invoice hands the patient nothing to
+        carry, and a ₹0 exempt visit has no payment to acknowledge; printing "Payment received ₹0"
+        at a counter is worse than printing nothing. `allocatedPaise` is the money taken HERE — a
+        bill cleared from a deposit taken last week is not a payment this counter received.
+
+        IT RIDES THE TRANSACTION, exactly as the token slip rides the visit's (`opd/encounters.ts`):
+        a rolled-back invoice queues no paper, and queued paper belongs to an invoice that exists.
+        The dedupe key is the RECEIPT's, so a retried request queues one receipt and not two — and a
+        deliberate reprint goes through `POST /print/reprint`, which mints a fresh row on purpose.
+
+        R7 keeps it safe: printing is advisory. This is one INSERT with `on conflict do nothing`,
+        no I/O, no renderer, no printer. The relay does all of that, later and elsewhere.
+      */
+      if (input.encounterId !== undefined && receiptId !== null && allocatedPaise > 0) {
+        await enqueuePrintJob(tx, {
+          document: "opd_payment_receipt",
+          params: {
+            encounterId: input.encounterId,
+            amountPaise: allocatedPaise,
+            mode: input.receipt?.tenders[0]?.mode ?? "cash",
+            ...(receiptNo === null ? {} : { receiptNo }),
+          },
+          dedupeKey: `receipt:${receiptId}`,
+          patientId: input.patientId,
+          encounterId: input.encounterId,
+          requestedBy: actor.type === "user" ? actor.id : null,
+        });
       }
 
       return {

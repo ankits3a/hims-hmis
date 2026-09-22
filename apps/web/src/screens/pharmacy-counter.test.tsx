@@ -93,6 +93,185 @@ describe("PharmacyCounter (16c T3)", () => {
     expect(screen.getByText(/Dispense no\. P2608170001/)).toBeInTheDocument();
   });
 
+  /**
+   * PHARMACY P3 — a line whose medicine has a component nobody reviewed says so, beside the
+   * schedule. The flag is optional on the wire: an older server sends none and nothing is shown.
+   */
+  it("P3 — marks a line the checks could see only in part, and says nothing when the server does not", async () => {
+    const d = dispense("claimed");
+    const lines = [d.lines[0]!, { ...d.lines[1]!, partlyChecked: true }];
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "claimed", dispenseNo: null, scheduled: false, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: { ...d, lines } },
+      "GET /api/pharmacy/dispenses/d1/lines/0/alternatives": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/dispenses/d1/lines/1/alternatives": { status: 200, body: { items: [] } },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    const line1 = (await screen.findByText(/2\. Azee 500/)).closest("li")!;
+    const chip = within(line1).getByTestId("line-partly-checked-1");
+    expect(chip).toHaveTextContent("Checked only in part");
+    expect(chip).toHaveAttribute("title", expect.stringContaining("not yet reviewed"));
+    const line0 = screen.getByText(/1\. Crocin 500/).closest("li")!;
+    expect(within(line0).queryByTestId("line-partly-checked-0")).toBeNull();
+  });
+
+  /**
+   * PHARMACY P5 — a paid dispense that cannot be collected: the counter cancels it with a refund.
+   * The button waits for a reason, the request carries the class and an idempotency key, and the
+   * answer names the credit note the patient takes to billing.
+   */
+  it("P5 — cancels a billed dispense with a refund, and says which credit note was raised", async () => {
+    let current = dispense("billed", { invoiceId: "inv-1", dispenseNo: "P2608170001" });
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "billed", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": () => ({ status: 200, body: current }),
+      "POST /api/pharmacy/dispenses/d1/refund": () => {
+        current = dispense("cancelled", { invoiceId: "inv-1", dispenseNo: "P2608170001", cancelReason: "batch expired before collection" });
+        return { status: 201, body: { dispense: current, creditNoteId: "cn-1", creditNoteNo: "CN-2608-0001", refundApprovalId: "ap-1" } };
+      },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    const form = await screen.findByTestId("refund-form");
+    const submit = within(form).getByRole("button", { name: "Cancel & request refund" });
+    expect(submit).toBeDisabled();
+    await userEvent.type(within(form).getByRole("textbox", { name: "Reason" }), "batch expired before collection");
+    await userEvent.click(submit);
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/refund")).toEqual([
+      { reason: "batch expired before collection", reasonClass: "genuine" },
+    ]));
+    const call = vi.mocked(fetch).mock.calls.find(([input, init]) => init?.method === "POST" && String(input).endsWith("/refund"));
+    expect(new Headers(call?.[1]?.headers).get("idempotency-key")).not.toBeNull();
+    expect(await screen.findByRole("status")).toHaveTextContent("Credit note CN-2608-0001 raised; the refund waits for approval at billing.");
+    expect(screen.queryByTestId("refund-form")).toBeNull();
+  });
+
+  /**
+   * PHARMACY P6 — a sealed pack comes back after the hand-over. The button waits for a quantity,
+   * the sealed attestation and a reason; the body carries only the lines with a quantity.
+   */
+  it("P6 — accepts a sealed return with its quantity, attestation and reason", async () => {
+    const current = dispense("handed_over", { invoiceId: "inv-1", dispenseNo: "P2608170001" });
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "handed_over", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: current },
+      "GET /api/pharmacy/dispenses/d1/label": { status: 200, body: { dispenseNo: "P2608170001", status: "handed_over", patient: { display: "Sita Devi", uhid: PATIENT.uhid }, handedOverAt: "2026-08-17T04:40:00.000Z", lines: [] } },
+      "POST /api/pharmacy/dispenses/d1/returns": { status: 201, body: { dispense: current, creditNoteId: "cn-2", creditNoteNo: "CN-2608-0002", refundApprovalId: "ap-2" } },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    const form = await screen.findByTestId("return-form");
+    const submit = within(form).getByRole("button", { name: "Accept return" });
+    await userEvent.type(within(form).getByRole("textbox", { name: "Return qty, line 1" }), "10");
+    await userEvent.type(within(form).getByRole("textbox", { name: "Reason for the return" }), "doctor changed the medicine");
+    expect(submit).toBeDisabled(); // not yet attested
+    await userEvent.click(within(form).getByRole("checkbox", { name: "I have inspected it: sealed and intact" }));
+    await userEvent.click(submit);
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/returns")).toEqual([{
+      lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "doctor changed the medicine", reasonClass: "genuine",
+    }]));
+    expect(await screen.findByRole("status")).toHaveTextContent("Return accepted. Credit note CN-2608-0002 raised");
+  });
+
+  /**
+   * PHARMACY P10 — THE PATIENT'S BILL, FROM THE COUNTER. The invoice is billing's own printed document;
+   * the counter adds what a chemist's bill carries and billing's lines do not: each pack's batch and
+   * expiry, and who dispensed it. The counter steps aside while the bill is on screen, because only
+   * one printable document may be mounted at a time.
+   */
+  it("P10 — prints the bill with each pack's batch and expiry, then goes back to the counter", async () => {
+    const current = dispense("billed", { invoiceId: "inv-9", dispenseNo: "P2608170001" });
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "billed", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: current },
+      "GET /api/pharmacy/dispenses/d1/label": { status: 200, body: {
+        dispenseNo: "P2608170001", status: "billed", patient: { display: "Sita Devi", uhid: PATIENT.uhid }, handedOverAt: null,
+        lines: [
+          { lineIdx: 0, drug: "Calpol 500", strength: "500 mg", form: "tablet", qtyBase: 15, unit: "tablet", packs: null, batchNo: "CP-7", expiryDate: "2027-03-31", directions: "", substitutedFor: "Crocin 500" },
+          { lineIdx: 1, drug: "Azee 500", strength: "500 mg", form: "tablet", qtyBase: 3, unit: "tablet", packs: null, batchNo: "AZ-1", expiryDate: "2027-06-30", directions: "", substitutedFor: null },
+        ],
+        pharmacist: { name: "Kavita Joshi", council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-123456" },
+      } },
+      "GET /api/billing/invoices/inv-9/print": { status: 200, body: {
+        letterhead: { name: "CRKM Charitable Hospital", addressLines: ["Pune"] },
+        invoice: {
+          id: "inv-9", invoiceNo: "INV/26-27/000901", patientId: "p1", encounterId: "e1", tariffVersionId: "tv", intendedPayer: "self",
+          buyerGstin: null, buyerLegalName: null, grossPaise: 30000, discountPaise: 0, taxableBasePaise: 26786, cgstPaise: 1607, sgstPaise: 1607,
+          rawTotalPaise: 30000, roundingPaise: 0, netPayablePaise: 30000, creditExtended: false, creditReason: null, creditApprovalId: null,
+          issuedBy: "u", issuedAt: "2026-08-17T04:30:00.000Z", serviceDay: "2026-08-17", seq: 901,
+        },
+        lines: [],
+        patient: { requestedId: "p1", id: "p1", uhid: PATIENT.uhid, name: "Sita Devi", alias: null, restricted: false, administrativeGender: "female", dob: null },
+        settlement: { state: "settled", outstandingPaise: 0 },
+        qrPayload: "bil1.invoice.inv-9.sig",
+      } },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    await userEvent.click(await screen.findByRole("button", { name: "Print bill" }));
+
+    expect(await screen.findByTestId("invoice-no")).toHaveTextContent("INV/26-27/000901");
+    const calpol = await screen.findByTestId("bill-batch-0");
+    expect(calpol).toHaveTextContent("Calpol 500 500 mg tablet (for Crocin 500)");
+    expect(calpol).toHaveTextContent("CP-7");
+    expect(calpol).toHaveTextContent("03/2027");
+    expect(calpol).toHaveTextContent("15 tablet");
+    expect(screen.getByTestId("bill-batch-1")).toHaveTextContent("AZ-106/2027");
+    expect(screen.getByTestId("bill-dispensed-by")).toHaveTextContent("Dispensed by Kavita Joshi · Reg. MSPC-123456");
+    // The counter stepped aside: its own controls are not on screen with the bill.
+    expect(screen.queryByTestId("refund-form")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Back to the counter" }));
+    expect(await screen.findByTestId("refund-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("invoice-no")).toBeNull();
+  });
+
+  it("P10 — offers no bill before there is one", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "picked", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: dispense("picked", { dispenseNo: "P2608170001" }) },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    expect(await screen.findByText(/Allergies:/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Print bill" })).toBeNull();
+  });
+
+  /** PHARMACY P13 — the pack in hand is scanned before the pick; a wrong pack is said at once and never sent. */
+  it("P13 — a scanned pack is checked as it is scanned, and the pick carries only the scan that matched", async () => {
+    const current = dispense("verified", { dispenseNo: "P2608170001", orderId: "o1" });
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "verified", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: current },
+      "GET /api/pharmacy/dispenses/d1/lines/0/scan": { status: 200, body: { itemCode: "CROC500", batchNo: "CR-2", expiryDate: "2027-12-31" } },
+      "GET /api/pharmacy/dispenses/d1/lines/1/scan": { status: 409, body: { code: "scan_wrong_item", message: "no" } },
+      "POST /api/pharmacy/dispenses/d1/pick": { status: 201, body: dispense("picked", { dispenseNo: "P2608170001" }) },
+      "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 200, body: { lines: [], totals: { grossPaise: 0, discountPaise: 0, cgstPaise: 0, sgstPaise: 0, rawTotalPaise: 0, netPayablePaise: 0, roundingPaise: 0 } } },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    await userEvent.type(await screen.findByRole("textbox", { name: "Scan pack 1" }), "(01)08901234567897(17)271231(10)CR-2{enter}");
+    expect(await screen.findByTestId("scan-ok-0")).toHaveTextContent("CROC500 · CR-2 · 2027-12-31");
+    await userEvent.type(screen.getByRole("textbox", { name: "Scan pack 2" }), "8909876543217{enter}");
+    expect(await screen.findByTestId("scan-bad-1")).toHaveTextContent("This pack is a different medicine — put it back");
+
+    // The wrong pack is still in hand: no pick until its scan is cleared.
+    const pickButton = screen.getByRole("button", { name: "Pick from shelf" });
+    expect(pickButton).toBeDisabled();
+    await userEvent.type(screen.getByRole("textbox", { name: "Dispense fewer 2" }), "2");
+    await userEvent.type(screen.getByRole("textbox", { name: "Why fewer? 2" }), "only two left in the strip");
+    await userEvent.clear(screen.getByRole("textbox", { name: "Scan pack 2" }));
+    expect(screen.queryByTestId("scan-bad-1")).toBeNull();
+    await userEvent.click(pickButton);
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/pick")).toEqual([{
+      lines: [
+        { lineIdx: 0, scan: "(01)08901234567897(17)271231(10)CR-2" },
+        { lineIdx: 1, qtyBase: 2, pickNote: "only two left in the strip" },
+      ],
+    }]));
+  });
+
   it("a refusal code from verify reads as the locale's sentence, and the queue offers today's rows", async () => {
     mockRoutes({
       "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "queued", dispenseNo: null, scheduled: false, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
@@ -105,7 +284,7 @@ describe("PharmacyCounter (16c T3)", () => {
     await userEvent.click(await screen.findByText(/Sita Devi/));
     await userEvent.type(await screen.findByRole("textbox", { name: "Qty 2" }), "3");
     await userEvent.click(screen.getByRole("button", { name: "Verify & place order" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Recorded allergy, not overridden by the prescriber");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Recorded allergy that no prescriber has overridden");
   });
 
   it("T4 — pick, bill at the previewed payable, hand over with the token, and print labels", async () => {
@@ -120,6 +299,7 @@ describe("PharmacyCounter (16c T3)", () => {
       "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("billed", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1" }); return { status: 201, body: current }; },
       "POST /api/pharmacy/dispenses/d1/handover": () => { current = dispense("handed_over", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1", identityConfirmedVia: "token" }); return { status: 201, body: current }; },
       "GET /api/pharmacy/dispenses/d1/label": { status: 200, body: { dispenseNo: "P2608170001", status: "handed_over", patient: { display: "Sita Devi", uhid: PATIENT.uhid }, handedOverAt: "2026-08-17T04:40:00.000Z",
+        pharmacist: { name: "Rohit Mehta", council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-123456" },
         lines: [{ lineIdx: 0, drug: "Crocin 500", strength: "500 mg", form: "tablet", qtyBase: 20, unit: "tablet", packs: "2 strip", batchNo: "CR-EARLY", expiryDate: "2027-01-31", directions: "1 tab · TDS · 5 days", substitutedFor: null }] } },
     });
     renderWithProviders(<PharmacyCounter />);
@@ -134,6 +314,8 @@ describe("PharmacyCounter (16c T3)", () => {
     await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/handover")).toEqual([{ identity: { via: "token", value: "14" } }]));
     expect(await screen.findByTestId("label-0")).toHaveTextContent("Crocin 500 500 mg tablet");
     expect(screen.getByTestId("label-0")).toHaveTextContent("Batch CR-EARLY · Exp 2027-01-31");
+    // P2 — the pharmacist the dispense was verified by, with the registration current then.
+    expect(screen.getByTestId("label-pharmacist-0")).toHaveTextContent("Dispensed by Rohit Mehta · Reg. MSPC-123456");
   });
   /**
    * THE REQUIRED FIELD SAYS SO IN THE CONTROL, RATHER THAN AS "API 400" AFTER THE CLICK.

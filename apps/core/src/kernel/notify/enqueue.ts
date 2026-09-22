@@ -39,6 +39,16 @@ export type EnqueueNotificationInput = {
   refId?: string | null;
   /** `null` = due immediately; the reminder sets `slotStart − 24 h` (D13). */
   scheduledFor?: Date | null;
+  /**
+   * PHASE O T4 — WHERE ON THE TEMPLATE'S LADDER THIS ROW STARTS. Defaults to 0, which is every
+   * caller that shipped before T4 and every patient message: the ladder is walked from the top.
+   *
+   * The channel ladder needs otherwise. `runReachLadder` has already decided WHICH channel this
+   * relay is for — from the person's own ladder, which may be short or in a different order —
+   * and the pump reads the channel as `template.channels[row.rung]`. Without this the relay's
+   * decision would be discarded and re-derived from the template's first entry.
+   */
+  rung?: number;
 };
 
 /** The system actor on every event this file appends. */
@@ -121,6 +131,7 @@ export async function enqueueNotification(
       occurredAt: input.occurredAt,
       expiresAt,
       scheduledFor: input.scheduledFor ?? null,
+      ...(input.rung === undefined ? {} : { rung: input.rung }),
     })
     // GC15 / N6: at-least-once is the dispatcher's contract and this is how the gateway absorbs
     // it. A redelivered event re-computes the same dedupe key, wins nothing, and returns null.

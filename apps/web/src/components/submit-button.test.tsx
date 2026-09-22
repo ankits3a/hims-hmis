@@ -170,7 +170,11 @@ const WRITE_LANES: Record<string, number> = {
   // must not double-post, so it mounts SubmitButton like the other three.
   "screens/billing-session": 4, // open-submit, close-submit, confirm-close, recount-submit
   "screens/billing-office": 5, // refund-request-submit, issue-submit, pay-submit, recon-submit, eie-confirm-submit
-  "components/alerts-bell": 1, // mark-read — Plan 08.5 T5 / D11: the bell mounts SubmitButton prospectively
+  // PHASE O T3 (2026-09-21) — 1 -> 4, read off the red run. The bell gained the three ANSWERS
+  // beside the read: seen, own-30m, hand-over. Each posts to `/alerts/:id/ack`, and an ack is
+  // exactly the class this convention exists for — a double-tap on "Own" would burn one of the
+  // two extensions G5 allows, so the second tap must not reach the wire.
+  "components/alerts-bell": 4, // mark-read, ack-seen, ack-own, ack-handover
 };
 
 /**
@@ -218,7 +222,7 @@ describe("the single-submit convention across the billing screens", () => {
     expect(counted).toEqual(KEYED_WRITES);
   });
 
-  it("every one of the fourteen write lanes mounts a SubmitButton — the sweep above cannot be satisfied by deleting the buttons", () => {
+  it("every write lane in the census mounts a SubmitButton — the sweep above cannot be satisfied by deleting the buttons", () => {
     const counted: Record<string, number> = {};
     for (const name of Object.keys(WRITE_LANES)) {
       const src = screenSource(name);

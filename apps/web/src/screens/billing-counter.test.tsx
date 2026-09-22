@@ -132,8 +132,17 @@ const SERVICES = {
   ],
 };
 
+/**
+ * FD-28 — the rail reads `GET /billing/patients/:id/balance`, not `/dues`. Dues and advances are ONE
+ * mechanism (owner ruling 2026-08-18) and the rail was reading half of it: it summed nothing and
+ * never showed money the patient had already deposited. The route change is why the polling test
+ * below names `/balance`; the PROPERTY it guards — a second GET on the interval — is unchanged.
+ */
 const DUES = {
-  items: [
+  patientId: "p-1",
+  advancePaise: 20000,
+  outstandingPaise: 45000,
+  dues: [
     {
       invoiceId: "inv-9", invoiceNo: "INV/26-27/000009", patientId: "p-1", uhid: "HMS0000001234",
       name: "Asha Devi", alias: null, restricted: false, serviceDay: "2026-08-14",
@@ -211,7 +220,8 @@ const BASE_ROUTES: Record<string, Handler> = {
   "GET /api/patients/search": { status: 200, body: { items: [SEARCH_HIT] } },
   "GET /api/billing/visits/enc-1/fee-quote": { status: 200, body: QUOTE_NEW },
   "POST /api/billing/invoices/preview": { status: 200, body: FEE_DRAFT },
-  "GET /api/billing/patients/p-1/dues": { status: 200, body: { items: [] } },
+  /* FD-28 — the rail reads the BALANCE (rows + both totals), not `/dues`. */
+  "GET /api/billing/patients/p-1/balance": { status: 200, body: { patientId: "p-1", advancePaise: 0, outstandingPaise: 0, dues: [] } },
 };
 
 describe("BillingCounter", () => {
@@ -534,7 +544,7 @@ describe("BillingCounter", () => {
         status: 200,
         body: { ok: true, patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null } },
       },
-      "GET /api/billing/patients/p-1/dues": { status: 200, body: DUES },
+      "GET /api/billing/patients/p-1/balance": { status: 200, body: DUES },
     });
 
     // waitFor cannot drive vitest's fake clock (it gates on a global `jest`) — hand-flush instead.
@@ -555,17 +565,17 @@ describe("BillingCounter", () => {
     await flush();
     await flush();
 
-    expect(callsTo("GET", "/api/billing/patients/p-1/dues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance")).toHaveLength(1);
     expect(screen.getByTestId("dues-row-inv-9")).toHaveTextContent("₹450.00");
 
     // NEGATIVE CONTROL: well inside the window, nothing refetches — so the second GET below is the
     // interval firing and not a re-render, a remount or a query invalidation.
     await flush(14_000);
-    expect(callsTo("GET", "/api/billing/patients/p-1/dues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance")).toHaveLength(1);
 
     await flush(1_500);
     await flush();
-    expect(callsTo("GET", "/api/billing/patients/p-1/dues").length).toBeGreaterThan(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance").length).toBeGreaterThan(1);
   });
 
   it("K38: the invoice POST carries INTEGER PAISE throughout, and a 400 pan_required reveals the PAN / Form 60 fields for the retry", async () => {
@@ -758,6 +768,21 @@ describe("BillingCounter", () => {
 
     await user.click(screen.getByRole("button", { name: "Print invoice" }));
     expect(printSpy).toHaveBeenCalledTimes(1);
+
+    /*
+      ═══ FD-28 — THE BILL IS NOT THE ONLY PAPER THE PATIENT LEAVES WITH ═══
+
+      Owner, 2026-09-06: *"when the billing is done a invoice appears on the screen with 'print
+      invoice' text below. But what about OPD prescription print?"* Right, and the gap was
+      structural: this screen knew about exactly ONE document — the invoice it had just rendered
+      from its own state — while the prescription sheet, the token slip and the payment receipt are
+      all queued by the server against the same encounter, and nothing here had ever looked at them.
+    */
+    await user.click(screen.getByTestId("issued-papers"));
+    const sheet = await screen.findByTestId("issued-papers-sheet");
+    expect(sheet).toHaveAttribute("role", "dialog");
+    /* Asked about the visit this invoice belongs to, not some other one. */
+    expect(callsTo("GET", "/api/print/jobs").some((c) => c.url.includes("enc-1"))).toBe(true);
   });
 
   /* ══════════════════════════════════════════════════════════════════════════════════════════
@@ -1376,6 +1401,454 @@ describe("BillingCounter", () => {
 
     fireEvent.keyDown(window, { key: "3" });
     await waitFor(() => { expect(modeNow()).toBe("card"); });
+  });
+
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-27 — THE CASHIER'S OWN DOOR TO THE PAPER
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: *"A user with Billing permission don't have any way to print the OPD
+   * prescription … can he print it again?"* They could not, twice over: this seat mounts no Desk
+   * One, so the papers sheet the history rows open is unreachable here, and `cashier` held no
+   * permission that opened `GET /print/jobs` at all.
+   *
+   * The permission half is guarded in `apps/core` (`opd.paper.reprint`, and the seed census moved
+   * with it). This is the wiring half, and it is asserted HERE rather than only in `seats.test.tsx`
+   * because that suite mounts the DESK — it would stay green with this seat's button missing.
+   */
+  it("FD-27: the counter offers Their papers for the visit it is billing, and refuses to guess one", async () => {
+    mockRoutes({});
+    searchState.current = {};
+    const { unmount } = renderWithProviders(<BillingCounter />);
+    /*
+      DISABLED, NOT HIDDEN, with no encounter. A cashier hunting for the reprint button has to find
+      it and be told what it wants — not fail to find it and conclude it was never built, which is
+      the report this whole phase came from.
+    */
+    await waitFor(() => { expect(screen.getByTestId("counter-papers")).toBeDisabled(); });
+    expect(screen.queryByTestId("counter-papers-sheet")).not.toBeInTheDocument();
+    unmount();
+
+    searchState.current = { encounterId: "enc-77" };
+    mockRoutes({
+      "GET /api/print/jobs": { status: 200, body: { jobs: [
+        { id: "j-rx", document: "opd_prescription", status: "printed", attempts: 1, lastError: null, printedAt: "2026-09-01T05:00:00.000Z", createdAt: "2026-09-01T04:59:00.000Z" },
+      ] } },
+      "GET /api/billing/invoices": { status: 200, body: { items: [] } },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup({ delay: null });
+    await waitFor(() => { expect(screen.getByTestId("counter-papers")).toBeEnabled(); });
+    await user.click(screen.getByTestId("counter-papers"));
+
+    const sheet = await screen.findByTestId("counter-papers-sheet");
+    expect(sheet).toHaveAttribute("role", "dialog");
+    /* The A4 sheet the owner named, offered whatever its status — not only when it FAILED. */
+    expect(await screen.findByTestId("papers-reprint-opd_prescription")).toBeInTheDocument();
+    /* And it asked about the encounter this counter is billing, not some other one. */
+    expect(callsTo("GET", "/api/print/jobs").some((c) => c.url.includes("enc-77"))).toBe(true);
+  });
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * THE SHEET IS OPENED WITH THE NUMBER ON THE SLIP, AND THE SERVER IS WHAT RESOLVES IT
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-15, at `/billing` on `V2609150001`: *"I see a popup with no encounter/visit
+   * related files. This visit is paid but I see no related papers."*
+   *
+   * The defect was entirely in `apps/core` — both reads compared the cashier's string to a column
+   * holding `opd_encounters.id` — and both routes now resolve the reference and ask for every
+   * spelling the visit has. **This test cannot see that defect and is not trying to:** `mockRoutes`
+   * answers by PATH, so a key nothing matches and a key that matches everything are the same green
+   * here. That is exactly why the repair is proved in `billing.e2e` and `printing.e2e` instead.
+   *
+   * What it pins is the DIVISION OF LABOUR the repair chose, which is the thing a later change
+   * could quietly undo: this field takes a visit reference in EITHER spelling, and the counter is
+   * entitled to hand that reference straight to both reads. Someone "helpfully" gating the button
+   * on a row-id shape, or resolving in the browser first, would break the cashier's only road back
+   * — the number printed on the patient's slip is all they ever hold.
+   */
+  it("the papers sheet is opened with the visit NUMBER the cashier typed, on both reads", async () => {
+    searchState.current = {};
+    mockRoutes({
+      "GET /api/print/jobs": { status: 200, body: { jobs: [
+        { id: "j-rcpt", document: "opd_payment_receipt", status: "queued", attempts: 0, lastError: null, printedAt: null, createdAt: "2026-09-15T04:59:00.000Z" },
+      ] } },
+      "GET /api/billing/invoices": { status: 200, body: { items: [] } },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(screen.getByLabelText("Encounter"), "V2609150001");
+    await waitFor(() => { expect(screen.getByTestId("counter-papers")).toBeEnabled(); });
+    await user.click(screen.getByTestId("counter-papers"));
+    await screen.findByTestId("counter-papers-sheet");
+
+    /* BOTH halves of the sheet, because the owner's report was that BOTH were empty. */
+    expect(callsTo("GET", "/api/print/jobs").some((c) => c.url.includes("V2609150001"))).toBe(true);
+    expect(callsTo("GET", "/api/billing/invoices").some((c) => c.url.includes("V2609150001"))).toBe(true);
+  });
+
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-28 — THE LEFT RAIL, ENTERED THE WAY THIS COUNTER IS ACTUALLY ENTERED
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: *"At /billing, left panel is failing to show patient picture thumbnail,
+   * neither the age, gender and phone number … there's no way a billing user would know, against
+   * which token number the billing needs to be done."*
+   *
+   * One cause, several symptoms. `/billing?encounterId=…` is the OPD desk's hand-off and the road
+   * this screen is normally reached by, and EVERY box in the rail was gated on a PICKED patient — so
+   * arriving by the front door left it blank beside a bill the screen was already pricing. The quote
+   * now names the person and the token (`billing.controller.ts`'s fee-quote route), and the rail
+   * reads whichever road the cashier arrived by.
+   *
+   * The fixture below therefore picks NOBODY. That is the whole test: every assertion is about what
+   * an un-picked counter can say.
+   */
+  it("FD-28: entered by encounterId with nobody picked, the rail still names the person, their age, sex and phone, and the token", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: {
+            id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false,
+            administrativeGender: "female", dob: "1975-04-02", phone: "9835041772",
+          },
+          visit: { visitNo: "V2609060003", serviceDate: "2026-09-06", status: "registered", tokenNo: 2, departmentCode: "MED" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await waitFor(() => { expect(screen.getByTestId("paying-name")).toHaveTextContent("Asha Devi"); });
+    expect(screen.getByTestId("paying-identity")).toHaveTextContent("HMS0000001234");
+    /* Age and sex were on the wire all along and simply were not drawn. */
+    expect(screen.getByTestId("paying-identity")).toHaveTextContent("F");
+    expect(screen.getByTestId("paying-phone")).toHaveTextContent("9835041772");
+    /*
+      THE TOKEN, SPELLED THE WAY THE PATIENT'S SLIP SPELLS IT. `tokenLabel` is Desk One's, and the
+      owner's ruling is that a token reads by DEPARTMENT — "MED-2", never by doctor. A counter and a
+      slip that disagreed about the number would be worse than no number at all.
+    */
+    expect(screen.getByTestId("visit-token")).toHaveTextContent("MED-2");
+    expect(screen.getByTestId("visit-no")).toHaveTextContent("V2609060003");
+  });
+
+  /**
+   * ═══ FD-28 — THE ROAD THE WRITE NEVER TOOK ═══
+   *
+   * Owner, 2026-09-12: *"When I entered Encounter number V2609120001, it shows Patient name and
+   * service detail along with how much I need to collect … clicking 'Take 500' … error 'Pick a
+   * patient before issuing a bill'."*
+   *
+   * FD-28 taught the RAIL to read whichever road the cashier arrived by — `shown`, `duesPatientId`
+   * — and left `submit` reading the PICKED patient alone. So the counter named the person, priced
+   * their visit, lit the button with their money on it, and then refused to issue on the ground
+   * that nobody had been picked. Every write test in this file calls `pickPatient` first, including
+   * the ones that set `?encounterId=`, so the suite could not see it: the guard was only ever
+   * evaluated with `patient` already non-null.
+   *
+   * This test picks NOBODY. It is the whole point.
+   */
+  it("FD-28: entered by encounterId alone, the bill ISSUES against the person the quote named — nobody is picked twice", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: {
+            id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false,
+            administrativeGender: "female", dob: "1975-04-02", phone: "9835041772",
+          },
+          visit: { visitNo: "V2609120001", serviceDate: "2026-09-12", status: "registered", tokenNo: 2, departmentCode: "MED" },
+        },
+      },
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+
+    /* The rail resolved the person from the visit — this half FD-28 already shipped. */
+    await waitFor(() => { expect(screen.getByTestId("paying-name")).toHaveTextContent("Asha Devi"); });
+    /* And the picker is gone, which is the screen's own claim that it does not need one. */
+    expect(screen.queryByLabelText("Search")).toBeNull();
+
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => { expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"); });
+
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
+    await clickIssue(user);
+
+    await waitFor(() => { expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1); });
+    const body = bodiesOf("POST", "/api/billing/invoices")[0]!;
+    /*
+      The id comes from the QUOTE, and it is the encounter's own patient — the server requires
+      `patientId` and would 400 without it, so "resolved" has to mean resolved all the way to the
+      wire, not merely as far as the rail's heading.
+    */
+    expect(body.patientId).toBe("p-1");
+    expect(body.encounterId).toBe("enc-1");
+    /* And nothing was refused on the way: the counter said nothing about picking anybody. */
+    expect(screen.queryByTestId("counter-error")).toBeNull();
+  });
+
+  /**
+   * ═══ THE STAMP WAS ANSWERING A DIFFERENT QUESTION FROM THE ONE IT APPEARS TO ANSWER ═══
+   *
+   * Owner, 2026-09-12: *"it shows … 'This Visit New Rs 500, Unpaid' … I click payment method as cash
+   * and click 'Take Rs 500.00', the screen shows error 'invoice INV/26-27/000020 already charges
+   * this service on this visit' … if the visit was already charged then why does the screen show
+   * UNPAID on the left panel?"*
+   *
+   * The stamp read `collectablePaise` — the priced DRAFT on screen. A draft is never paid, so that
+   * branch could only ever print UNPAID; on a visit whose fee was on a settled invoice it printed a
+   * falsehood while the number beside it was perfectly correct. The ledger's own verdict now rides
+   * the quote (`visit.feeStatus`), which is the same projection the OPD queue stamps tokens with.
+   */
+  it("FD-28 (the stamp): a visit whose fee is already SETTLED reads PAID — the ledger's verdict, not the draft's arithmetic", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: { visitNo: "V2609120001", serviceDate: "2026-09-12", status: "registered", tokenNo: 2, departmentCode: "MED", feeStatus: "settled" },
+          alreadyBilled: { invoiceId: "inv-20", invoiceNo: "INV/26-27/000020" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    /*
+      ANCHORED. `toHaveTextContent("PAID")` is a SUBSTRING match and "UNPAID" contains "PAID", so the
+      loose form passes against the very state this test exists to reject — measured, on the parent.
+    */
+    await waitFor(() => { expect(screen.getByTestId("token-stamp")).toHaveTextContent(/^PAID$/); });
+    /* And it NAMES the bill — "PAID" alone does not say which paper the patient is holding. */
+    expect(screen.getByTestId("already-billed")).toHaveTextContent("INV/26-27/000020");
+  });
+
+  /**
+   * The stamp was the lie the owner SAW; this is what walked them into the refusal. The counter
+   * pre-fills the visit's consult fee from the quote — right on an unbilled visit, and on a billed
+   * one a draft whose only line the server is guaranteed to refuse, priced at ₹500 and printed on
+   * the button. The cashier can take the cash before the server ever sees it.
+   */
+  it("FD-28 (the draft): a fee already on a live bill is NOT seeded into the next draft", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: { visitNo: "V2609120001", serviceDate: "2026-09-12", status: "registered", tokenNo: 2, departmentCode: "MED", feeStatus: "settled" },
+          alreadyBilled: { invoiceId: "inv-20", invoiceNo: "INV/26-27/000020" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await waitFor(() => { expect(screen.getByTestId("already-billed")).toBeInTheDocument(); });
+    /* The visit and its fee are still STATED — the box is not blanked, it is told the truth. */
+    expect(screen.getByTestId("fee-amount")).toHaveTextContent("₹560.00");
+    /* … and nothing is queued to charge again. */
+    expect(screen.queryByTestId("line-row-fee")).toBeNull();
+    expect(screen.getByText("Add at least one line before issuing")).toBeInTheDocument();
+  });
+
+  /** The unbilled visit is unchanged: the fee still seeds and the stamp still reads UNPAID. */
+  it("FD-28 (the stamp): an UNSETTLED visit still reads UNPAID and still seeds its fee", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: { visitNo: "V2609120003", serviceDate: "2026-09-12", status: "registered", tokenNo: 3, departmentCode: "MED", feeStatus: "unsettled" },
+          alreadyBilled: null,
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await waitFor(() => { expect(screen.getByTestId("token-stamp")).toHaveTextContent("UNPAID"); });
+    expect(await screen.findByTestId("line-row-fee")).toBeInTheDocument();
+    expect(screen.queryByTestId("already-billed")).toBeNull();
+  });
+
+  it("FD-28: a deferred visit has no token yet and says so, rather than printing a dash", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: { visitNo: "V1", serviceDate: "2026-09-06", status: "registered", tokenNo: null, departmentCode: "MED" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+    await waitFor(() => { expect(screen.getByTestId("visit-token-none")).toBeInTheDocument(); });
+    expect(screen.queryByTestId("visit-token")).not.toBeInTheDocument();
+  });
+
+  /**
+   * Owner: *"'On their Account' section in the left panel, looks like it is not fetching all the
+   * related information."* It was reading `/dues` — the rows only — so it printed each bill's
+   * outstanding, summed nothing, and never showed the ADVANCE. Dues and advances are ONE mechanism
+   * (owner ruling 2026-08-18); `/balance` returns both sides and both totals on the same permission.
+   */
+  it("FD-28: the account box shows the SERVER's total, the advance held, and the credit flag", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-1/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null, phone: null },
+          visit: null,
+        },
+      },
+      "GET /api/billing/patients/p-1/balance": { status: 200, body: DUES },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    /*
+      45000, the SERVER's `outstandingPaise` — not a client sum over the rows. `patientBalance`
+      floors each bill at zero before adding, so one over-collected invoice cannot mask another's
+      dues, and this screen's own thesis is that every figure on it is the server's.
+    */
+    await waitFor(() => { expect(screen.getByTestId("dues-total")).toHaveTextContent("₹450.00"); });
+    expect(screen.getByTestId("advance-held")).toHaveTextContent("₹200.00");
+    /* The wire has carried `creditExtended` since Plan 08 and the rail never drew it. */
+    expect(screen.getByTestId("dues-credit-inv-9")).toBeInTheDocument();
+  });
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-36 — ONE SCREEN, TWO PEOPLE: THE COUNTER REFUSES TO DRAW THE BLEND
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-13: *"I have a patient in hand, let's call him Ankit … in the Encounter Id
+   * field, I input encounter Id of another patient, lets call him Abhay … It shows Abhay's
+   * encounter/visit details under the Ankit."*
+   *
+   * FD-28's `patient?.id ?? feeQuote.data?.patient?.id` is right for the case it was written for —
+   * entered by `?encounterId=` with nobody picked. This is the case it did not consider, and the
+   * screen drew half of each person with no warning.
+   *
+   * THE ASSERTIONS ARE BOTH HALVES ON PURPOSE. That the refusal appears is the easy half; that the
+   * VISIT CARD IS GONE is the one that matters, because the visit card under the picked patient's
+   * name IS the defect. A fix that added a banner and left the card would satisfy a lazier test and
+   * would still be showing Abhay's fee under Ankit's name.
+   */
+  it("FD-36 — a picked patient and somebody else's encounter: both are named, nothing is blended, and nothing can be billed", async () => {
+    const user = userEvent.setup();
+    mockRoutes({
+      ...BASE_ROUTES,
+      /* enc-9 belongs to Abhay. The cashier has Asha Devi (p-1) in hand from the picker. */
+      "GET /api/billing/visits/enc-9/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_NEW,
+          encounterId: "enc-9",
+          patient: {
+            requestedId: "p-9", id: "p-9", uhid: "HMS0000009999", name: "Abhay Kumar", alias: null,
+            restricted: false, administrativeGender: "male", dob: null, phone: null,
+          },
+          visit: null,
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await pickPatient(user);
+    fireEvent.change(screen.getByLabelText("Encounter"), { target: { value: "enc-9" } });
+
+    const conflict = await screen.findByTestId("patient-conflict");
+    expect(conflict).toBeInTheDocument();
+    /* BOTH people, by name and UHID — a cashier cannot choose between two rows they cannot tell apart. */
+    expect(screen.getByTestId("conflict-picked")).toHaveTextContent("Asha Devi");
+    expect(screen.getByTestId("conflict-picked")).toHaveTextContent("HMS0000001234");
+    expect(screen.getByTestId("conflict-visit")).toHaveTextContent("Abhay Kumar");
+    expect(screen.getByTestId("conflict-visit")).toHaveTextContent("HMS0000009999");
+
+    /* THE BLEND IS GONE: no identity line, and above all no visit card under the wrong name. */
+    expect(screen.queryByTestId("paying-name")).toBeNull();
+    expect(screen.queryByTestId("fee-branch")).toBeNull();
+    expect(screen.queryByTestId("fee-amount")).toBeNull();
+    /*
+      …and no money under the word "their". FOUND BY SCREENSHOTTING THE REFUSAL, not by this test:
+      the account box kept rendering the PICKED patient's balance under a heading that had stopped
+      naming anybody. Same half-rendering as the visit card, one box lower.
+    */
+    expect(screen.queryByTestId("dues-sidebar")).toBeNull();
+
+    /* And no bill can leave while it stands — asserted by the absence of a POST, not by the copy. */
+    await clickIssue(user);
+    expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(0);
+    expect(screen.getByTestId("counter-error")).toHaveTextContent("two different people");
+  });
+
+  /* The way out, both directions — a refusal a cashier cannot act on is a dead end, not a guard. */
+  it("FD-36 — clearing the visit keeps the person in hand; dropping the person bills the visit's patient", async () => {
+    const user = userEvent.setup();
+    const abhay = {
+      requestedId: "p-9", id: "p-9", uhid: "HMS0000009999", name: "Abhay Kumar", alias: null,
+      restricted: false, administrativeGender: "male", dob: null, phone: null,
+    };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-9/fee-quote": {
+        status: 200,
+        body: { ...QUOTE_NEW, encounterId: "enc-9", patient: abhay, visit: null },
+      },
+      "GET /api/billing/patients/p-9/balance": {
+        status: 200, body: { patientId: "p-9", advancePaise: 0, outstandingPaise: 0, dues: [] },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+
+    await pickPatient(user);
+    fireEvent.change(screen.getByLabelText("Encounter"), { target: { value: "enc-9" } });
+    await screen.findByTestId("patient-conflict");
+
+    // KEEP THE PERSON: the encounter is cleared, and Asha is the counter's subject again.
+    await user.click(screen.getByTestId("conflict-keep-picked"));
+    expect(await screen.findByTestId("paying-name")).toHaveTextContent("Asha Devi");
+    expect(screen.queryByTestId("patient-conflict")).toBeNull();
+
+    // …and back into the conflict, to take the other road out.
+    fireEvent.change(screen.getByLabelText("Encounter"), { target: { value: "enc-9" } });
+    await screen.findByTestId("patient-conflict");
+
+    // BILL THE VISIT: the picked patient is dropped and the quote's patient takes the rail —
+    // which is FD-28's fallback doing exactly the job it was written for.
+    await user.click(screen.getByTestId("conflict-use-visit"));
+    expect(await screen.findByTestId("paying-name")).toHaveTextContent("Abhay Kumar");
+    expect(screen.queryByTestId("patient-conflict")).toBeNull();
+    expect(await screen.findByTestId("fee-branch")).toBeInTheDocument();
   });
 
 });

@@ -31,7 +31,9 @@ export type WireRoom = {
 };
 
 export type WireDoctor = {
-  id: string; userId: string; displayName: string; registrationNo: string | null; departmentId: string;
+  /* FD-29 — `code` is the DOCTOR ID the prescription letterhead prints. NOT NULL server-side: it is
+     minted at creation, so the screen never has to handle a doctor without one. */
+  id: string; userId: string; displayName: string; code: string; registrationNo: string | null; departmentId: string;
   specialty: string | null; active: boolean;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 };
@@ -169,7 +171,16 @@ export type WireSkipReason = (typeof SKIP_REASONS)[number];
 export type WireQueueEntryView = WireQueueEntry & {
   position: number | null;
   queueClass: OpdQueueClass | null;
-  encounter: { id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string };
+  encounter: {
+    id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
+    /**
+     * OWNER RULING 2026-09-20 — the two sentences that explain an unpaid token. `feeBypassReason`
+     * is the front desk's or the bay's (FD-32: why this patient reached the nurse unbilled);
+     * `consultFeeOverrideReason` is the doctor's own, and its presence is what put an unsettled
+     * token back in the callable order. Optional on the wire: an older server sends neither.
+     */
+    feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
+  };
   patient: WirePatientSummary | null;
   /**
    * RC-4 T3 — THE PAID STAMP, AND IT WAS ALREADY ON THE WIRE. **Third time this series.**
@@ -208,8 +219,15 @@ export type WireQueueView = {
   current: WireQueueEntryView | null; inConsult: WireQueueEntryView[];
   /** The tokens that fell out after the skip cap — newest first. `counts.left` counts them; this names them. */
   left: WireQueueEntryView[];
+  /**
+   * OWNER RULING 2026-09-20 — waiting, vitals done, fee unsettled, nobody has opened them: held out
+   * of `ordered` (so `callNext` cannot reach them and the hall's board never announces them) and
+   * listed here for the one screen that may act on them, the treating doctor's. Defaulted to `[]`
+   * by every reader: a tab talking to an older server must show no group rather than crash.
+   */
+  heldForPayment?: WireQueueEntryView[];
   waitingVitals: number;
-  counts: { waiting: number; called: number; inConsult: number; done: number; left: number };
+  counts: { waiting: number; called: number; inConsult: number; done: number; left: number; heldForPayment?: number };
 };
 
 /**
@@ -232,6 +250,31 @@ export type WireInteractionHit = {
 
 export type WireDuplicateHit = {
   moiety: string; lineIndex: number; hard: boolean; against: WireHitAgainst;
+  /** FORMULARY P23 — a second agent of this therapeutic class, beside `with`. Absent on a same-moiety duplicate. */
+  drugClass?: string; with?: string;
+};
+
+/**
+ * FORMULARY P24 — what the patient's own coded DIAGNOSIS forbids.
+ *
+ * Deliberately NOT part of `WireRxNotice`. That union is discriminated by `"severity" in hit`, and
+ * a drug-disease hit carries a severity too — folding it in would make every one of them render as
+ * an interaction. It travels in its own field and the screen renders it in its own block.
+ */
+export type WireDrugDiseaseAlternative = { moiety: string; label: string };
+
+export type WireDrugDiseaseHit = {
+  severity: "severe" | "moderate";
+  lineIndex: number;
+  moiety: string;
+  icd10Prefix: string;
+  icd10Title: string;
+  diagnosis: { code: string; text: string; codedOn: string };
+  note: string;
+  /** Already VETTED by the server against this patient — an offer here is safe to show (D6). */
+  alternatives: WireDrugDiseaseAlternative[];
+  /** The diagnosis is over a year old, which is why a severe rule arrived as a notice. */
+  stale: boolean;
 };
 
 /** A soft hit is either kind: the screen renders them together and never gates on them (DD3). */
@@ -548,10 +591,25 @@ export function getContinuity(
  * trusted too much.
  */
 export type WireTriageSuggestion = { departmentId: string; reason: string };
-export type WireTriage = { suggestions: WireTriageSuggestion[]; source: "model" | "keywords" };
+/** Set when the desk must NOT book: an emergency, refusing rather than ranking. See `red-flags.ts`. */
+export type WireRedFlag = { reasonKey: string; matched: string };
+export type WireTriage = {
+  suggestions: WireTriageSuggestion[];
+  source: "model" | "keywords";
+  redFlag?: WireRedFlag;
+};
 
-export function triage(text: string): Promise<WireTriage> {
-  return api("POST", "/opd/triage", { text });
+/**
+ * `names` are the patient names the desk is holding, sent so the server can MASK them out of the
+ * complaint before a model is asked (`modules/opd/triage.ts`) — a name has no shape the server could
+ * find on its own. They are used for nothing else.
+ */
+export function triage(text: string, ageYears: number | null = null, names: string[] = []): Promise<WireTriage> {
+  return api("POST", "/opd/triage", {
+    text,
+    ...(ageYears === null ? {} : { ageYears }),
+    ...(names.length === 0 ? {} : { names }),
+  });
 }
 
 /** The future lane. `date` is an IST calendar date; the server refuses a slot it has already passed. */
@@ -664,6 +722,15 @@ export type WirePreStage = {
   sealed: boolean;
   required: WireVitalKey[];
   notRoutine: WireVitalKey[];
+  /**
+   * FD-32 / owner ruling 2026-09-13 — *"A symbol to symbolize in the vital dashboard that the user
+   * has not yet paid."* The LEDGER's answer, not the draft's: false on an unconfigured hospital,
+   * which has no fee policy to warn about. `feeBypass` is the front desk's waiver carried as the
+   * clerk's own sentence, so each desk shows WHY rather than a bare icon — and it never clears
+   * `feeUnpaid`, because a bypass waives the ORDER of payment and not the fee.
+   */
+  feeUnpaid: boolean;
+  feeBypass: { by: string; reason: string; at: string } | null;
   last: {
     vitalsId: string; recordedAt: string; serviceDate: string;
     heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
@@ -707,7 +774,13 @@ export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & 
   unlockReasons?: Partial<Record<WireVitalKey, WireUnlockReason>>;
 };
 export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrinking_adult" | "probe_error"; value: number; suggestion?: number; message: string };
-export type WireVitalsSaveResult = { vitals: WireVitals; flags: WireDangerFlag[]; encounter: WireEncounter };
+/**
+ * `feeWaived` — FD-32 + the 20-Sep ruling: TRUE when this save was the emergency one AND it is what
+ * opened the fee gate. The bay says so on the green banner rather than saving in silence, because
+ * the person who pressed the button has just put their name on a waiver the counter and the doctor
+ * will both see. Optional on the wire: an older server does not send it.
+ */
+export type WireVitalsSaveResult = { vitals: WireVitals; flags: WireDangerFlag[]; encounter: WireEncounter; feeWaived?: boolean };
 export function postVitals(encounterId: string, body: WireVitalsPostBody): Promise<WireVitalsSaveResult> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`, body);
 }
@@ -844,4 +917,55 @@ export function rescheduleAppointment(
  */
 export function cancelAppointment(appointmentId: string, reason: string): Promise<{ appointment: WireAppointment }> {
   return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/cancel`, { reason });
+}
+
+/**
+ * ═══ FD-30 — THE TRANSCRIPTION DRAFT (OWNER RULING 2026-09-12: DRAFT THEN CONFIRM) ═══
+ *
+ * The scribe at the OPD door types what the doctor wrote in pen; the treating doctor taps to issue.
+ * `WireRxLine` is reused verbatim rather than copied — a draft whose shape could drift from the
+ * prescription's is a slip the doctor's tap would refuse for a reason nobody could see.
+ */
+export type WireRxDraft = {
+  id: string;
+  encounterId: string;
+  patientId: string;
+  lines: WireRxLine[];
+  note: string | null;
+  status: "pending" | "issued" | "discarded";
+  draftedBy: string;
+  draftedAt: string;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  issuedPrescriptionId: string | null;
+};
+
+export function fetchRxDraft(encounterId: string): Promise<{ draft: WireRxDraft | null }> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft`);
+}
+
+export function saveRxDraft(
+  encounterId: string, body: { lines: WireRxLine[]; note?: string | null },
+): Promise<WireRxDraft> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft`, body);
+}
+
+export function discardRxDraft(encounterId: string): Promise<{ draft: WireRxDraft | null }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/discard`, {});
+}
+
+/**
+ * THE TAP. Overrides ride HERE and never on the draft: clearing an allergy conflict, a severe
+ * interaction or a duplicate salt is a clinical judgement recorded against the prescriber who made
+ * it, so the warnings surface at the doctor's screen and the reasons are typed there.
+ */
+export function issueRxDraft(
+  encounterId: string,
+  overrides: {
+    overrides?: { lineIndex: number; substance: string; reason: string }[];
+    interactionOverrides?: { lineIndex: number; reason: string; saltPair?: [string, string] }[];
+    duplicateOverrides?: { lineIndex: number; reason: string; moiety?: string }[];
+  } = {},
+): Promise<{ prescriptionId: string; version: number; draftId: string }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/issue`, overrides);
 }

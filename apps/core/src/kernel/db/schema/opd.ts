@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigserial, boolean, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
+  bigserial, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
 } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
@@ -76,6 +76,24 @@ export const opdDoctors = pgTable(
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(), // users.id — plain text (see header)
     displayName: text("display_name").notNull(), // shown on displays, slips, e-Rx
+    /**
+     * ═══ FD-29 — THE DOCTOR ID THE PRESCRIPTION PRINTS (owner, 2026-09-06) ═══
+     *
+     * *"As a medical Institution with college, there's no need of mentioning Dr. Name and their
+     * registration number. Only Dr. ID is required."* The A4 letterhead had been printing the name
+     * and the council number because THIS COLUMN DID NOT EXIST — `DR-0114` appeared in five design
+     * canvases and nowhere in the schema, and a sheet cannot print a field the system does not hold.
+     *
+     * MINTED, NOT REQUIRED OF THE ADMIN: `nextDoctorCode` assigns `DR-` + four digits at creation,
+     * so no doctor is ever without one and no clerk has to invent a numbering scheme. It is
+     * OVERRIDABLE through `updateDoctor` for a hospital that already issues faculty numbers of its
+     * own — which a medical college does. Unique, because a shared id on a prescription identifies
+     * nobody.
+     *
+     * NOT `registrationNo`, which stays: that is the NMC/state-council number, it is a different
+     * fact about a different authority, and the e-Rx still prints it.
+     */
+    code: text("code").notNull(),
     registrationNo: text("registration_no"), // NMC/state council registration — printed on the e-Rx
     departmentId: text("department_id").notNull().references(() => opdDepartments.id),
     specialty: text("specialty"),
@@ -85,7 +103,11 @@ export const opdDoctors = pgTable(
     updatedBy: text("updated_by").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("opd_doctors_user_ux").on(t.userId), index("opd_doctors_department_idx").on(t.departmentId)],
+  (t) => [
+    uniqueIndex("opd_doctors_user_ux").on(t.userId),
+    uniqueIndex("opd_doctors_code_ux").on(t.code),
+    index("opd_doctors_department_idx").on(t.departmentId),
+  ],
 );
 
 /** Weekly availability template. Times are IST 'HH:MM'. Slots are derived, never materialised (slots.ts). */
@@ -120,6 +142,22 @@ export const opdDoctorLeaves = pgTable(
     toDate: date("to_date", { mode: "string" }).notNull(), // inclusive
     reason: text("reason").notNull(),
     status: text("status").notNull().default("scheduled"), // 'scheduled' | 'cancelled'
+    /**
+     * PHASE R (R4) — **THE ABSENCE THIS ROW PROJECTS.**
+     *
+     * `staff_absences` is the system of record for who is away, for EVERY member of staff; this
+     * table is the OPD's own view of the subset that belongs to a consultant with a clinic. The
+     * link is here rather than on the absence because the absence knows nothing of OPD — the
+     * roster reaches into no module (plan §2.4) — and because a cancel on either side must be able
+     * to find the other. NULL on rows written before this phase.
+     *
+     * **PLAIN TEXT, NOT A FOREIGN KEY, and for a structural reason rather than laziness.**
+     * `org_departments` references `opd_departments`, and `roster.ts` references `org.ts`; a real
+     * FK here would close the loop `opd → roster → org → opd`, and a cycle between drizzle table
+     * modules resolves to `undefined` at load time rather than failing loudly. `opd_doctors.user_id`
+     * is the precedent three columns up, for the same reason.
+     */
+    absenceId: text("absence_id"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     cancelledBy: text("cancelled_by"),
@@ -296,6 +334,55 @@ export const opdEncounters = pgTable(
      * validating it where the money is decided keeps the desk fast and the guard in one place.
      */
     attributionCode: text("attribution_code"),
+    /**
+     * ═══ FD-32 — PAY BEFORE VITALS, AND THE DOOR THAT OPENS ANYWAY (OWNER RULING 2026-09-13) ═══
+     *
+     * Owner: *"No patient should reach vitals desk until he has paid. However, in case of emergency
+     * or VIP patient, the front desk could enable the patient to bypass the billing with a warning
+     * sign/disclaimer/notification on each desk where the patient goes."*
+     *
+     * So the guard is not a lock — it is a door with a named person's hand on it. `feeBypassBy` is
+     * that person, `feeBypassReason` is what they typed, and neither is nullable-by-accident: the
+     * bypass exists only where all three are set together.
+     *
+     * TWO DOORS WRITE THESE COLUMNS, AND ONLY TWO (owner ruling 2026-09-20): the front desk's
+     * `POST /opd/visits/:id/fee-bypass`, where a clerk types the sentence, and the vitals bay's
+     * emergency save, which stamps a fixed one in the nurse's name rather than put a text box
+     * between a collapsing patient and their first BP. First writer wins in both.
+     *
+     * ON THE ENCOUNTER AND NOT ON A CONFIG FLAG, deliberately. A hospital-wide "skip billing" switch
+     * is a switch somebody leaves on; this is per-visit, per-patient, and carries the name of the
+     * person who opened it to every desk downstream. The marker the owner asked for on the vitals
+     * bay, the consultation and the OPD Order Desk is rendered FROM THESE COLUMNS, so the warning
+     * and the authority that created it can never drift apart.
+     *
+     * It does NOT mean "free". The fee is still owed and the bill is still raised; what was waived
+     * is the ORDER of the two, which is why nothing here touches the ledger.
+     */
+    feeBypassBy: text("fee_bypass_by"),
+    feeBypassReason: text("fee_bypass_reason"),
+    feeBypassAt: timestamp("fee_bypass_at", { withTimezone: true }),
+    /**
+     * ═══ THE DOCTOR'S DOOR, AND IT IS A DIFFERENT DOOR (OWNER RULING 2026-09-20) ═══
+     *
+     * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
+     * until doctor opens the token from his dashboard manually … once the bill is paid then the
+     * token automatically moves to the display board in the queue towards the doctor consultation."*
+     *
+     * So an unsettled token WAITS — held out of the callable queue and off the public board — and
+     * exactly two things release it: the money arriving (derived, never stored: `feeStatus` flips
+     * the moment the ledger does), or the doctor deciding to see the patient anyway. These three
+     * columns are that second thing, and they are SEPARATE from `feeBypass*` on purpose: FD-32's
+     * waiver opens the vitals bay, this opens the consulting room, and one column serving both
+     * would make a nurse's emergency into a doctor's decision nobody made.
+     *
+     * The reason is mandatory for the same reason the clerk's is: "emergency" and "the chairman's
+     * guest" are different facts with different consequences, and only a sentence can tell them
+     * apart. First writer wins; the fee stays owed either way.
+     */
+    consultFeeOverrideBy: text("consult_fee_override_by"),
+    consultFeeOverrideReason: text("consult_fee_override_reason"),
+    consultFeeOverrideAt: timestamp("consult_fee_override_at", { withTimezone: true }),
     // Consultation record (T7) — nullable until the doctor writes it.
     chiefComplaint: text("chief_complaint"),
     diagnosis: text("diagnosis"),
@@ -361,6 +448,259 @@ export const opdEncounters = pgTable(
     index("opd_encounters_status_idx").on(t.status),
   ],
 );
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE COMPLAINT VOCABULARY — MANY PHRASINGS, ONE MEANING, AND THE DOCTOR'S WORDS UNTOUCHED
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14: *"how are we tackling 'chest pain', 'pain in chest', 'tight chest', 'heavy
+ * chest', 'seene me dard', 'chhaati me dard'? Are we mapping different phrases with common meaning?
+ * And is our system learning vocabulary of doctor?"*
+ *
+ * Measured before any of this: the answer was NO to both. The suggester read 64 English strings
+ * built at module load from `knowledge.json` — zero Devanagari, zero romanised Hindi, no synonyms —
+ * and nothing ever wrote to it. A doctor typing `seene me dard` five hundred times got no
+ * suggestion on the five hundred and first.
+ *
+ * ═══ THE SHAPE IS THE ONE THIS LANE HAS USED THREE TIMES ═══
+ *
+ * Diagnosis keeps the doctor's words AND an ICD-10 code. An allergy keeps the words and an allergen
+ * class. A prescription line keeps the words and a medicine id. In every case the free text is what
+ * is stored and shown, and the code is what a machine may reason about. A complaint gets the same
+ * treatment: `opd_encounters.chief_complaint` still holds exactly what the doctor typed — nothing
+ * here changes that, and `TagField`'s law is untouched — and a CONCEPT is what the syndrome matcher
+ * and the worklist read.
+ *
+ * ═══ THE CONCEPT IS NOT STORED ON THE ENCOUNTER, AND THAT IS DELIBERATE ═══
+ *
+ * It is RESOLVED from the term wherever it is needed. Storing it would freeze a mapping that is
+ * still being learnt: map `seene me dard` next month and every note written before it would
+ * silently disagree with every note written after. Resolution at read time means a mapping improves
+ * the past as well as the future, which is what a vocabulary that is still growing requires.
+ */
+export const opdComplaintConcepts = pgTable(
+  "opd_complaint_concepts",
+  {
+    /** A stable key, e.g. `chest_pain`. Referenced by terms and by nothing that a doctor types. */
+    key: text("key").primaryKey(),
+    /** What a human calls it on the mapping screen. Never shown in place of the doctor's words. */
+    label: text("label").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+/**
+ * One surface form. `chest pain`, `seene me dard` and `सीने में दर्द` are three rows of one concept.
+ *
+ * ═══ ROMANISED HINDI IS STORED, NOT TRANSLITERATED ═══
+ *
+ * There is no standard romanisation: `seene`, `sine` and `seenay` are all things a doctor types,
+ * and an algorithm that mapped one would miss the others while inventing forms nobody uses. So each
+ * spelling is a ROW, and the ones that matter are discovered from what doctors actually type
+ * (`opd_complaint_term_usage`) rather than imagined in advance.
+ */
+export const opdComplaintTerms = pgTable(
+  "opd_complaint_terms",
+  {
+    id: text("id").primaryKey(),
+    conceptKey: text("concept_key").notNull().references(() => opdComplaintConcepts.key),
+    term: text("term").notNull(),
+    /** `en` | `hi` (Devanagari) | `hinglish` (Hindi in Latin letters). Shown on the mapping screen. */
+    script: text("script").notNull(),
+    /** `seed` — shipped; `mapped` — a human mapped it off the worklist. Never a machine alone. */
+    source: text("source").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** One surface form means ONE thing. Two concepts claiming `cough` is a coin toss at every keystroke. */
+    uniqueIndex("opd_complaint_terms_term_ux").using("btree", sql`lower(${t.term})`),
+    index("opd_complaint_terms_concept_idx").on(t.conceptKey),
+    check("opd_complaint_terms_script_ck", sql`${t.script} in ('en', 'hi', 'hinglish')`),
+    check("opd_complaint_terms_source_ck", sql`${t.source} in ('seed', 'mapped')`),
+  ],
+);
+
+/**
+ * ═══ WHAT THIS HOSPITAL ACTUALLY TYPES — THE LEARNING, AND IT NEEDS NO MODEL ═══
+ *
+ * `curation.ts` already states the philosophy this tree believes in: *the prescribing stream is the
+ * worklist* — coverage grows along the path of actual use rather than by somebody trying to type an
+ * entire pharmacopoeia in. The same move here. Every complaint tag on a COMPLETED consultation is
+ * counted, and the suggester ranks by it.
+ *
+ * Two things follow, and the second is the one that answers the owner's question:
+ *
+ *   · A phrase a doctor uses is offered back to them, whether or not anyone has mapped it. That is
+ *     the vocabulary learning, with no NLP at all — `seene me dard` is suggested on the 51st use
+ *     because it was used fifty times, not because a machine understood it.
+ *   · The most-used terms with NO concept become a ranked worklist. The synonym sets then grow from
+ *     real use, most-frequent first, exactly as `unresolvedTop` grows the formulary.
+ *
+ * COUNTED ON COMPLETION, ONCE. The note autosaves on every blur, so counting there would inflate a
+ * phrase by however many times the doctor tabbed out of the box. A completed consultation happens
+ * once per encounter and is the honest unit.
+ */
+export const opdComplaintTermUsage = pgTable(
+  "opd_complaint_term_usage",
+  {
+    /** Lower-cased surface form, exactly as the doctor committed it apart from case. */
+    term: text("term").notNull(),
+    /** Whose habit this is. The hospital's total is the sum across doctors. */
+    doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
+    uses: integer("uses").notNull().default(0),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.term, t.doctorId] }),
+    /** The worklist reads "most used across the hospital", which is this index. */
+    index("opd_complaint_term_usage_uses_idx").on(t.uses),
+  ],
+);
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE ADVICE LIBRARY — THE ONE FIELD THE PATIENT READS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner's own idea, 2026-09-14: *"a prefilled template saved as a module."* Every other field on
+ * the consult screen is read by staff. Advice is read by the patient, at home, tomorrow morning —
+ * it prints on the e-Rx (`rx-print.tsx`) — and that is what shapes this table.
+ *
+ * ═══ WHO OWNS A TEMPLATE: THE HOSPITAL, AND ALSO EACH DOCTOR ═══
+ *
+ * Owner ruling: a shared library with the doctor's own favourites floated to the top. So
+ * `owner_user_id` is NULL for a hospital row and the doctor's id for their own — one table, two
+ * scopes, and the list a doctor sees is their rows first and then everyone's. A per-doctor-only
+ * design was rejected for a measured reason and not a taste: the list is empty on day one and
+ * every new doctor starts cold.
+ *
+ * ═══ BOTH SCRIPTS ARE STORED; THE DOCTOR CHOOSES WHICH ONE GOES ON THE SLIP ═══
+ *
+ * Owner ruling: *"Doctor chooses the language per template"* — each template offers its English and
+ * its Hindi side by side and tapping inserts only the one tapped. So both live on the row and
+ * NEITHER is a translation performed at print time.
+ *
+ * The i18n layer cannot help here and it is worth being exact about why: `rx.advice` translates the
+ * LABEL, and `encounter.advice` is printed verbatim as the value. A patient who reads only
+ * Devanagari gets nothing from a translated label above English prose. The script has to be in the
+ * stored string, which is why it is in this table.
+ *
+ * Either column may be null and at least one must not be: a doctor's own template may be written
+ * in one script only, and a half-filled row is more useful than no row. The field then offers one
+ * button instead of two. What is refused is a row with no text in either script.
+ */
+export const opdAdviceTemplates = pgTable(
+  "opd_advice_templates",
+  {
+    id: text("id").primaryKey(),
+    /** NULL = the hospital's shared library. Otherwise the `users.id` who saved it. */
+    ownerUserId: text("owner_user_id"),
+    /** The short label on the chip — what the doctor scans for, never what is printed. */
+    title: text("title").notNull(),
+    /**
+     * ═══ THE TYPED KEYWORD, AND WHY IT MUST NOT START INSIDE A WORD ═══
+     *
+     * Owner, 2026-09-14, asked for Raycast-style snippets: type `;rest` in the advice box and the
+     * template expands where the caret is. Null for a template that is only ever TAPPED, which
+     * every seeded row is.
+     *
+     * Expansion fires WHILE THE DOCTOR TYPES, so a keyword of `rest` would detonate inside "rest
+     * and fluids", "arrest" and "restrict". `keywordProblem` (web `lib/snippets.ts`) requires a
+     * leading `;`, `/` or `\` and the service refuses anything else — the check is on both sides
+     * because the browser's is a courtesy and this one is the rule.
+     *
+     * Unique per owner, case-folded: two of a doctor's own snippets answering to `;uri` is a
+     * coin toss about which one expands, and the doctor would never find out which.
+     */
+    keyword: text("keyword"),
+    /**
+     * BOTH ARE NULLABLE AND AT LEAST ONE MUST BE PRESENT — see the CHECK below.
+     *
+     * The first cut had `text_en NOT NULL`, which quietly asserted that every template is written
+     * in English first. A doctor who writes their advice in Hindi — for a field the PATIENT reads,
+     * in a hospital where most patients read Devanagari — would have had it stored in the English
+     * column and offered back under an "English" button. The column would have been lying about
+     * its own contents, and nothing would ever have said so.
+     */
+    textEn: text("text_en"),
+    textHi: text("text_hi"),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** The list is read as "mine, then the hospital's", which is this index in that order. */
+    index("opd_advice_templates_owner_idx").on(t.ownerUserId, t.title),
+    /** A template with no text at all is not a template. One script is enough; none is not. */
+    check("opd_advice_templates_text_ck", sql`${t.textEn} is not null or ${t.textHi} is not null`),
+    /**
+     * One keyword per owner, case-folded, and NULLs do not collide — Postgres treats them as
+     * distinct, which is what lets every tapped-only template leave the column empty.
+     */
+    uniqueIndex("opd_advice_templates_keyword_ux")
+      .on(t.ownerUserId, sql`lower(${t.keyword})`)
+      .where(sql`${t.keyword} is not null`),
+  ],
+);
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE DIAGNOSES OF ONE ENCOUNTER — ONE ROW EACH, AND EACH ONE KEEPS ITS OWN CODE
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, 2026-09-14: the diagnosis field takes SEVERAL tags — a primary diagnosis and the
+ * comorbidities beside it, which is how an OPD note actually reads ("Acute URI · Type 2 DM · HTN").
+ *
+ * ═══ WHY THIS IS A TABLE WHEN CHIEF COMPLAINT IS NOT ═══
+ *
+ * `TagField` deliberately changed no schema for chief complaint: the tags join with " · " into the
+ * column that was already there, and nothing downstream — the print, the e-Rx, the timeline, the
+ * MRD coder's screen — learns a new shape. That works because a complaint is only ever WORDS.
+ *
+ * A diagnosis is words AND A CODE, and the two must stay married. Three tags of which the second
+ * and third carry codes cannot be stored as two parallel " · " strings: the moment one tag is
+ * free-typed the lists are different lengths and every reader has to guess the pairing. That is
+ * the parallel-array defect this tree keeps finding, and here it would put one patient's ICD-10
+ * code against another patient's diagnosis on a claim.
+ *
+ * So the structured truth lives here, one row per diagnosis, `seq` in the order the doctor wrote
+ * them — and `opd_encounters.diagnosis` / `.icd10_code` are still written as the de-normalised
+ * DISPLAY values, so every existing reader is untouched. Normalise for the data, de-normalise for
+ * the document: the reader that needs the pairing joins this table, and the print does not have to.
+ *
+ * ═══ NO FOREIGN KEY TO `icd10_codes`, ON PURPOSE ═══
+ *
+ * `icd10_code` is nullable and unconstrained. A doctor may write a diagnosis this catalogue has
+ * never heard of — the same law the drug field keeps — and a reference table able to REFUSE one
+ * would turn a foreign standard's coverage into a clinical constraint. Null is the ordinary case
+ * for a free-typed tag, not an error.
+ */
+export const opdEncounterDiagnoses = pgTable(
+  "opd_encounter_diagnoses",
+  {
+    encounterId: text("encounter_id").notNull().references(() => opdEncounters.id),
+    /** 0-based, the order the doctor committed them. `seq` 0 is the primary diagnosis. */
+    seq: integer("seq").notNull(),
+    /** EXACTLY what the doctor committed — the field never rewrites the doctor's words. */
+    text: text("text").notNull(),
+    /** The catalogue code when the tag was PICKED; null when it was typed. */
+    icd10Code: text("icd10_code"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.encounterId, t.seq] }),
+    /** MRD and every claim count by code, so the code is the one thing read across encounters. */
+    index("opd_encounter_diagnoses_code_idx").on(t.icd10Code),
+  ],
+);
+
 
 /** Queue rows. seq is the arrival order (bigserial — never the ULID id). One live row per encounter at a time. */
 export const opdQueueEntries = pgTable(
@@ -622,7 +962,30 @@ export const opdPrescriptions = pgTable(
      */
     interactionOverrides: jsonb("interaction_overrides").notNull().default(sql`'[]'::jsonb`),
     duplicateOverrides: jsonb("duplicate_overrides").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * P24 — and the same law for the fourth axis. A doctor who prescribes a drug this patient's
+     * recorded DISEASE forbids types why, and that reason is the record: it says a clinician saw
+     * the diagnosis, weighed it, and decided anyway. Defaults to `[]` like its two neighbours.
+     */
+    drugDiseaseOverrides: jsonb("drug_disease_overrides").notNull().default(sql`'[]'::jsonb`),
     status: text("status").notNull().default("active"), // 'active' | 'superseded'
+    /**
+     * ═══ FD-31 — TYPED FROM A PAPER SLIP, AND BY WHOM (OWNER RULING 2026-09-12) ═══
+     *
+     * NULL is the ordinary prescription: the treating doctor entered it themselves and `issued_by`
+     * is that doctor. NON-NULL means the OPD Order Desk typed it off a slip the doctor signed in
+     * pen — `doctor_id` is still the prescriber of record, because the doctor DID prescribe; what
+     * changed is only who operated the keyboard.
+     *
+     * A COLUMN AND NOT A DERIVED PREDICATE. "Transcribed" could be computed as `issued_by` not
+     * matching the doctor's user id, but that is a join and a comparison at every reader, and the
+     * pharmacy's bill gate must not depend on getting it right — one reader with the predicate
+     * inverted would bill a transcription as if a doctor had keyed it. The precedent is one module
+     * over: `orders.ordering_clinician_id` is a separate column from `ordered_by_id` for exactly
+     * this reason, and its comment says so ("a nurse keying a consultant's verbal order is the
+     * normal case").
+     */
+    transcribedBy: text("transcribed_by"),
     issuedBy: text("issued_by").notNull(),
     issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -639,5 +1002,68 @@ export const opdPrescriptions = pgTable(
     index("opd_prescriptions_issued_by_at_idx").on(t.issuedBy, t.issuedAt),
     uniqueIndex("opd_prescriptions_encounter_version_ux").on(t.encounterId, t.version),
     index("opd_prescriptions_patient_idx").on(t.patientId),
+  ],
+);
+
+/**
+ * ═══ THE PAPER SLIP, TRANSCRIBED — AND INERT UNTIL A DOCTOR TOUCHES IT ═══
+ *
+ * Owner ruling, 2026-09-12: *"Go with draft then confirm, doctor taps to issue."*
+ *
+ * The problem it answers, in the owner's words: *"doctors have so tight schedule that they fail to
+ * enter his observation on the operating system. They just write manually by pen on the
+ * prescription slip."* A scribe at the OPD door transcribes what the doctor wrote; the doctor
+ * issues it.
+ *
+ * ═══ WHY THIS IS A SEPARATE TABLE AND NOT A `status` ON `opd_prescriptions` ═══
+ *
+ * Because a draft must be UNREACHABLE by everything downstream, and a status column is a filter
+ * that every reader has to remember. `pharmacy/queue.ts` enqueues a dispense from an
+ * `opd_prescriptions` row; `verify.ts` loads one by id; the FHIR bundle, the QR and the printed
+ * sheet all read that table. A draft sharing it would be one forgotten `WHERE status <> 'draft'`
+ * away from being dispensed — and the forgetting would be silent. Here there is no such clause to
+ * forget: nothing downstream joins this table at all, and a draft becomes real only by passing
+ * through `issuePrescription`, which is where `requireTreatingDoctor` and every safety check live.
+ *
+ * ═══ NO `doctor_id` COLUMN, DELIBERATELY ═══
+ *
+ * A draft names no prescriber. The prescriber is decided at ISSUE time and only by the encounter's
+ * own treating doctor being the actor — storing an intended one here would be a claim the scribe
+ * is not authorised to make, and it would be the first stone of an on-behalf path. The encounter
+ * already says whose patient this is.
+ */
+export const opdPrescriptionDrafts = pgTable(
+  "opd_prescription_drafts",
+  {
+    id: text("id").primaryKey(),
+    encounterId: text("encounter_id").notNull().references(() => opdEncounters.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** RxLine[] — the SAME shape `opd_prescriptions.lines` carries, so issuing is a hand-off. */
+    lines: jsonb("lines").notNull(),
+    /** What the scribe could not read, or what the doctor should look at. Free text, never a line. */
+    note: text("note"),
+    /** 'pending' | 'issued' | 'discarded'. One PENDING row per encounter (partial unique index). */
+    status: text("status").notNull().default("pending"),
+    draftedBy: text("drafted_by").notNull(),
+    draftedAt: timestamp("drafted_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The doctor who issued or discarded it, and when. Null while pending. */
+    resolvedBy: text("resolved_by"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    /**
+     * The prescription this draft became. The whole medico-legal chain — *typed by Priya, issued by
+     * Dr Rao* — is recoverable from here, which is why `opd_prescriptions` needs no new column:
+     * `issued_by` there is the DOCTOR (it always was), and `drafted_by` here is the scribe.
+     */
+    issuedPrescriptionId: text("issued_prescription_id"),
+  },
+  (t) => [
+    /**
+     * ONE PENDING DRAFT PER ENCOUNTER, enforced by the database rather than by a read-then-write.
+     * Two scribes at one door, or a double submit, would otherwise leave two pending slips and the
+     * doctor would issue whichever they happened to be shown.
+     */
+    uniqueIndex("opd_rx_drafts_pending_ux").on(t.encounterId).where(sql`status = 'pending'`),
+    index("opd_rx_drafts_patient_idx").on(t.patientId),
+    index("opd_rx_drafts_drafted_by_at_idx").on(t.draftedBy, t.draftedAt),
   ],
 );

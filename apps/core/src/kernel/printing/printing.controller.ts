@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Inject, Post, Query } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
@@ -10,6 +10,7 @@ import { enqueuePrintJob } from "./enqueue";
 import { withTx } from "../db/client";
 import { renderDocument } from "./render";
 import { getPatient } from "../../modules/patients";
+import { getEncounter } from "../../modules/opd";
 import { recordPhiAccess } from "../phi/audit";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
@@ -309,19 +310,73 @@ export class PrintingController {
    * the patient. This is the read the screen polls to say so.
    *
    * It is scoped to ONE ENCOUNTER, deliberately: this is the desk asking about the patient in front
-   * of it, not a queue browser. `opd.visits.open` is the permission because opening the visit is
-   * what queued the paper — anyone who may create the slip may see whether it printed.
+   * of it, not a queue browser. The permission WAS `opd.visits.open` — "anyone who may create the
+   * slip may see whether it printed" — and FD-27 narrowed it to `opd.paper.reprint`; the argument
+   * is in `modules/opd/manifest.ts`. This sentence said the old thing for four commits after the
+   * decorator below said the new one.
    */
   @Get("jobs")
-  @RequirePermission("opd.visits.open", "hospital")
+  /* FD-27 — narrowed off `opd.visits.open`; the whole argument is in `modules/opd/manifest.ts`. */
+  @RequirePermission("opd.paper.reprint", "hospital")
   async jobsFor(@CurrentActor() actor: Actor, @Query("encounterId") encounterId: string): Promise<{
     jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null; createdAt: string }[];
   }> {
     if (typeof encounterId !== "string" || encounterId.trim() === "") return { jobs: [] };
+
+    /**
+     * ═══ THE VISIT NUMBER IS A SPELLING OF THIS KEY, AND IT IS THE ONLY ONE A CASHIER HOLDS ═══
+     *
+     * Owner, 2026-09-15, at `/billing` on a visit reached by typing `V2609150001`: *"I see a popup
+     * with no encounter/visit related files. This visit is paid but I see no related papers."*
+     *
+     * `print_jobs.encounter_id` stores `opd_encounters.id` — a ULID that appears on no screen and
+     * no slip. The number the patient is holding is `visit_no`, so that is what gets typed, and
+     * this route compared it to the stored column directly: two documents were queued for the
+     * visit, and the answer was `{ jobs: [] }`.
+     *
+     * **AN EMPTY LIST IS ALSO THIS ROUTE'S REFUSAL** — a sealed patient and an unknown encounter
+     * both get it (07a DD2, below) — so the wrong answer and the deliberate one are the same bytes.
+     * That is why a green suite never saw this, and it is the reason the repair is a resolution
+     * rather than a new error: nothing about what this route REFUSES changes.
+     *
+     * `getEncounter` is the one implementation of "either spelling of an OPD visit" (it is what
+     * billing's `canonicalEncounterRef` calls, and what OPD's own resolver calls), so the kernel
+     * borrows it rather than growing a second `VISIT_NO_RE` that can drift from it. This file
+     * already reaches into `modules/patients` for `getPatient` for the same reason: the decision
+     * belongs to the module that owns the row, and a copy of it here would be a second authority on
+     * a question that must have one answer.
+     *
+     * ═══ BOTH SPELLINGS, BECAUSE THIS COLUMN ALSO HOLDS THE OLD ONE ═══
+     *
+     * `opd/encounters.ts` has always enqueued with `encounter.id`. **`billing/invoices.ts` has
+     * not:** the payment receipt rides the invoice transaction and takes `input.encounterId`, which
+     * before #200 was whatever the cashier typed. So a receipt queued for a visit billed by its
+     * number carries `V…` here, #200 shipped no backfill, and resolving the caller's reference to
+     * ask only the resolved id would lose exactly the document the owner is looking for on an older
+     * paid visit. Asking both is strictly additive — it can only ever find more rows than the raw
+     * compare did — and both belong to ONE visit, so this widens the answer about a single
+     * encounter and never the set of encounters answerable.
+     *
+     * The pair comes from the RESOLVED ROW (`id` and `visit_no`, both `NOT NULL`), not from
+     * `[resolved, asGiven]`: that second shape is two entries only when the caller spelled it the
+     * old way, so deep-linking this route with the row id — which is what `/billing?encounterId=…`
+     * does — would collapse it to one and hide the legacy row on the commonest road. A visit has
+     * two names whichever of them you called it by.
+     *
+     * RESOLVED FIRST, GATED AFTER. A reference that resolves to nothing is left exactly as it came
+     * and finds no rows, so an unknown visit still gets the refusal shape; the §14 gate below is
+     * UNCHANGED in effect — it reads the subjects of the rows found, so it now decides about the
+     * same visit whichever spelling asked. A resolver placed after a confidentiality check is how a
+     * check stops covering half its callers, and the suite asserts the sealed refusal through the
+     * NEW spelling for exactly that reason.
+     */
+    const encounter = await getEncounter(this.db, encounterId);
+    const encounterKeys = encounter === null ? [encounterId] : [encounter.id, encounter.visitNo];
+
     const rows = await this.db
       .select()
       .from(printJobs)
-      .where(eq(printJobs.encounterId, encounterId))
+      .where(inArray(printJobs.encounterId, encounterKeys))
       .orderBy(desc(printJobs.createdAt));
 
     /**
@@ -391,7 +446,8 @@ export class PrintingController {
    * why a reprint after a name correction hands over the CORRECTED name.
    */
   @Post("reprint")
-  @RequirePermission("opd.visits.open", "hospital")
+  /* FD-27 — narrowed off `opd.visits.open`; the whole argument is in `modules/opd/manifest.ts`. */
+  @RequirePermission("opd.paper.reprint", "hospital")
   async reprint(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ id: string | null }> {
     const { jobId, reason } = reprintBody.parse(body);
     const rows = await this.db.select().from(printJobs).where(eq(printJobs.id, jobId));
@@ -474,6 +530,76 @@ export class PrintingController {
       });
     }
     return { id };
+  }
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-28 — THE SAME DOCUMENT, TO A SCREEN, BECAUSE THERE IS NO PRINTER YET
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, 2026-09-06: *"enable and add the feature of browser based printing as a 'Save as pdf' as
+   * direct printing isn't available because the machine isn't available."*
+   *
+   * That is the honest state: the relay is written and installed nowhere, so every job this system
+   * has ever produced is still sitting at `queued` and no patient has been handed a slip. A hospital
+   * cannot wait for a printer purchase to give somebody their prescription sheet.
+   *
+   * ═══ THE SAME RENDERER, NOT A SECOND ONE — WHICH IS THE WHOLE DESIGN ═══
+   *
+   * `renderDocument` is exactly what `POST /print/claim` hands the relay. Serving it here means the
+   * PDF a clerk saves today and the paper that comes off the thermal head next month are the SAME
+   * DOCUMENT, byte for byte, from one template. The tempting alternative — re-implementing each slip
+   * as a React component for the browser — is two renderers for one piece of paper, and they drift:
+   * the first correction to a fee line, a letterhead or the Devanagari block lands in one of them.
+   *
+   * ═══ IT IS A READ OF A DOCUMENT ABOUT A PATIENT, SO IT CARRIES THE REPRINT ROUTE'S OWN GATE ═══
+   *
+   * Same permission (`opd.paper.reprint`), same `getPatient` §14 decision, same indistinguishable
+   * `null` for sealed-and-absent, same PHI row — because producing the document on a SCREEN is the
+   * same disclosure as producing it on PAPER. A route that rendered a confidential patient's slip
+   * to anyone who could guess a job id would be the FD-25 hole reopened through a different door.
+   *
+   * The surface is logged as `print.view` rather than `print.reprint`: an enquiry asking "who saw
+   * this patient's prescription" should be able to tell a saved PDF from a second sheet of paper.
+   */
+  @Get("jobs/:id/document")
+  @RequirePermission("opd.paper.reprint", "hospital")
+  async renderForScreen(
+    @CurrentActor() actor: Actor,
+    @Param("id") jobId: string,
+  ): Promise<{ html: string; title: string; page: { widthMm: number; heightMm: number | null } } | null> {
+    const rows = await this.db.select().from(printJobs).where(eq(printJobs.id, jobId));
+    const original = rows[0];
+    if (original === undefined) return null;
+
+    const visible = original.patientId === null
+      ? null
+      : await getPatient(this.db, actor, original.patientId);
+    if (original.patientId !== null && visible === null) return null;
+
+    const rendered = await renderDocument(
+      this.db,
+      original.document as Parameters<typeof renderDocument>[1],
+      original.params as Record<string, unknown>,
+      new Date(),
+      actor,
+    );
+    if (rendered === null) return null;
+
+    if (original.patientId !== null && visible !== null) {
+      await recordPhiAccess(this.db, {
+        actor,
+        patientId: visible.patient.id,
+        surface: "print.view",
+        encounterId: original.encounterId,
+        sealed: visible.patient.isConfidential,
+        reason: [
+          `viewed ${original.document} on screen (job ${original.id})`,
+          visible.breakGlass === null ? null : `break-glass ${visible.breakGlass.id}: ${visible.breakGlass.reason}`,
+        ].filter((x) => x !== null).join(" · "),
+      });
+    }
+    return { html: rendered.html, title: rendered.title, page: rendered.page };
   }
 
   /**

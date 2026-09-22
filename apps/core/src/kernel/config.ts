@@ -30,6 +30,13 @@ export function requireEnv(name: string): string {
  * required-only-when-selected via a zod refinement at that point, not here. */
 const notifyProviderSchema = z.enum(["console"]);
 export type NotifyProvider = z.infer<typeof notifyProviderSchema>;
+/**
+ * PHASE O T4 — A SECOND PROVIDER KNOB, BECAUSE PUSH NEEDS NOTHING BOUGHT. WhatsApp and SMS wait
+ * on a BSP contract and a DLT header; Chrome push needs three generated keys and is the channel
+ * RO-4 asked for first. One knob would have made the hospital wait for the purchases.
+ */
+const notifyPushProviderSchema = z.enum(["console", "webpush"]);
+export type NotifyPushProvider = z.infer<typeof notifyPushProviderSchema>;
 
 const configSchema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -45,6 +52,18 @@ const configSchema = z.object({
   // run since yesterday must never make the worker read stale (D7/D9). Defaulted here so no
   // .env changes anywhere — the hard-fail-on-missing rule is untouched, nothing new is required.
   WORKER_STALE_AFTER_MS: z.coerce.number().int().positive().default(60000),
+  /**
+   * ═══ WHERE A PHOTOGRAPHED SLIP'S BYTES LIVE ═══
+   *
+   * Owner ruling, 2026-09-14: disk now, Cloudflare R2 or S3 later. The DEFAULT is a path beside the
+   * database's own data rather than inside the repo, because a document written into a checkout is
+   * a document lost at the next deploy — and it is a path an operator can mount, back up and move,
+   * which is the whole point of it not being in Postgres.
+   *
+   * This is NOT a secret and belongs in the deploy environment. When the object-store adapter
+   * arrives it takes its own keys; this one stays for the disk fallback.
+   */
+  DOCUMENT_STORE_PATH: z.string().trim().min(1).default("/var/lib/hmis/documents"),
   // D9: the six sweeps' cadences. Every key defaults in this schema, so no .env change is
   // needed anywhere (server or CI) — Plan 08.5 flag 8. The daily jobs' IST clock instants
   // (guardians 00:05 / no-shows 23:55 / daily-close 23:59) are CODE CONSTANTS beside their
@@ -59,6 +78,16 @@ const configSchema = z.object({
   // require a value or a new .env entry anywhere (server or CI).
   WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
+  NOTIFY_PUSH_PROVIDER: notifyPushProviderSchema.default("console"),
+  /**
+   * PHASE O T4 — the channel ladder's cadence. A minute, not five: the `now` lane's patience is
+   * five minutes, and a sweep that ran every five could spend the whole of it before noticing.
+   */
+  WORKER_REACH_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  WEB_PUSH_VAPID_PUBLIC_KEY: z.string().default(""),
+  WEB_PUSH_VAPID_PRIVATE_KEY: z.string().default(""),
+  /** `mailto:` or an https URL — the push services require a way to contact the sender. */
+  WEB_PUSH_VAPID_SUBJECT: z.string().default(""),
   /*
    * PHASE 11i T3 (§2b row 22) — WHICH BOX AM I LOOKING AT.
    *
@@ -122,6 +151,76 @@ const configSchema = z.object({
    * for the bad network day, not for the good one.
    */
   TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
+  /*
+   * TRIAGE'S FIRST MODEL: TYPESAFE (owner, 2026-09-19 — "priority", the chat model above its
+   * fallback). Its own keys rather than the copilot's, for the reason the COPILOT_* block gives: two
+   * jobs that happen to share a provider, which a hospital may want on and off separately. All
+   * optional; unset, triage runs exactly as before. `modules/opd/triage-choice.ts` carries the
+   * measurement behind the model version and the 0.6 line.
+   */
+  TRIAGE_TYPESAFE_API_KEY: z.string().min(1).optional(),
+  TRIAGE_TYPESAFE_BASE_URL: z.string().url().default("https://api.typesafe.ai/v1"),
+  TRIAGE_TYPESAFE_MODEL: z.string().min(1).default("jev-1.13.0"),
+  TRIAGE_TYPESAFE_TIMEOUT_MS: z.coerce.number().int().positive().default(1000),
+  TRIAGE_TYPESAFE_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
+  /**
+   * ═══ FD-COPILOT — THE DESK COPILOT'S INTENT ROUTER ═══
+   *
+   * Its own keys rather than a reuse of `TRIAGE_*`, because the two are different jobs that happen
+   * to speak the same protocol: triage suggests a department to a clerk who can overrule it, and
+   * this decides which TOOL runs against a patient's record. A hospital may reasonably want one on
+   * and the other off, or the same model at two different budgets, and one shared key would make
+   * that a code change.
+   *
+   * ALL FOUR DEFAULTED OR OPTIONAL — the B1 scar the blocks above and below carry: no `.env` entry
+   * is required anywhere, on the server or in CI, and with `COPILOT_BASE_URL`/`COPILOT_API_KEY`
+   * unset the copilot answers from its phrasebook alone and the desk never learns the difference
+   * except in the long tail of phrasings.
+   *
+   * Measured on this box, 2026-09-17, on the real routing prompt over eight counter questions in
+   * English, Hinglish and Devanagari, including the owner's own two:
+   *
+   *     groq  openai/gpt-oss-120b   8/8 correct   356-571 ms   ← default
+   *
+   * Cheaper than triage per call: the prompt is a menu of five tool names and one masked sentence,
+   * and the reply is a dozen tokens. Only a question the phrasebook misses is ever sent, so spend
+   * is proportional to novelty rather than to traffic.
+   */
+  COPILOT_BASE_URL: z.string().url().optional(),
+  COPILOT_API_KEY: z.string().min(1).optional(),
+  COPILOT_MODEL: z.string().min(1).default("openai/gpt-oss-120b"),
+  /*
+   * SHORTER THAN TRIAGE'S SIX SECONDS, and deliberately. Triage runs while a clerk is still typing
+   * a complaint and has something else to look at; this runs after they have pressed Enter and are
+   * watching an empty answer box. 3 s is ~5x the worst call observed above, and a miss is an
+   * ordinary outcome — the desk says it did not understand, which is true and instant.
+   */
+  COPILOT_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+  /*
+   * ═══ THE COPILOT'S FIRST MODEL: TYPESAFE (owner, 2026-09-19 — "priority", the chat model above
+   * is its fallback) ═══
+   *
+   * A classifier handed the tool menu itself: it returns one of the tools, or "none", and how sure
+   * it is. `kernel/copilot/choice-route.ts` carries the measurement. Same B1 scar as every block
+   * here: no key is required anywhere, and with COPILOT_TYPESAFE_API_KEY unset the router runs
+   * exactly as it did before this block existed.
+   *
+   * THE MODEL IS A VERSION, NEVER AN ALIAS. `jev-latest` moves when the vendor ships, and the
+   * confidence line below was measured against 1.13.0 — moving is a config change made on purpose,
+   * after re-measuring.
+   *
+   * TIMEOUT 1 s: p90 was 350 ms on a warm connection and ~680 ms cold. It is shorter than the chat
+   * model's 3 s because the chat model is still behind it — a slow classifier must leave the clerk
+   * time for the fallback, not spend it.
+   *
+   * MIN CONFIDENCE 0.6: at or above it, 61 of 64 counter questions were answered and none wrong;
+   * below it, the question goes to the chat model.
+   */
+  COPILOT_TYPESAFE_API_KEY: z.string().min(1).optional(),
+  COPILOT_TYPESAFE_BASE_URL: z.string().url().default("https://api.typesafe.ai/v1"),
+  COPILOT_TYPESAFE_MODEL: z.string().min(1).default("jev-1.13.0"),
+  COPILOT_TYPESAFE_TIMEOUT_MS: z.coerce.number().int().positive().default(1000),
+  COPILOT_TYPESAFE_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -252,16 +351,31 @@ export type AppConfig = {
   breakGlassTtlMinutes: number;
   tempRoleMaxTtlMinutes: number;
   workerStaleAfterMs: number;
+  documentStorePath: string;
   workerDispatchIntervalMs: number;
   workerTimersIntervalMs: number;
   workerTempRolesIntervalMs: number;
   workerDailyTickMs: number;
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
+  notifyPushProvider: NotifyPushProvider;
+  workerReachIntervalMs: number;
+  /**
+   * The three VAPID keys, or NULL when push is on the console sink. Null-or-complete rather
+   * than three independent nullable strings: two keys out of three is not a usable
+   * configuration, and `adaptersFor` should not have to re-check what the parse already knows.
+   */
+  webPushVapid: { publicKey: string; privateKey: string; subject: string } | null;
   /** 11i T3 — "UAT", "TRAINING", …; `null` on production, where the key is never set. */
   environmentLabel: string | null;
   /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
   triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
+  /** 2026-09-19 — triage's FIRST model, a classifier (TypeSafe). Null key ⇒ skipped, `triage` above answers. */
+  triageChoice: { baseUrl: string; apiKey: string | null; model: string; timeoutMs: number; minConfidence: number };
+  /** FD-COPILOT — the desk copilot's intent router. Null ⇒ phrasebook only, which is a supported way to run. */
+  copilot: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
+  /** 2026-09-19 — the router's FIRST model, a classifier (TypeSafe). Null key ⇒ skipped, `copilot` above answers. */
+  copilotChoice: { baseUrl: string; apiKey: string | null; model: string; timeoutMs: number; minConfidence: number };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -298,6 +412,43 @@ export type AppConfig = {
   couponIssuanceEnabled: boolean;
 };
 
+/**
+ * PHASE O T4 — REFUSED AT BOOT, NOT DISCOVERED AT SEND TIME.
+ *
+ * `NOTIFY_PUSH_PROVIDER=webpush` with a missing key is a deployment that starts, looks healthy,
+ * and drops every push on the floor at 02:00 with a stack trace nobody is reading. The boot
+ * refusal is the cheap half of `boot-check-warn-vs-refuse`: this is a CONFIGURATION defect the
+ * operator can fix in thirty seconds, and no amount of running will reveal it.
+ *
+ * The console sink ignores the keys entirely, so a hospital that has not generated them yet
+ * boots normally — which is every hospital until somebody runs `web-push generate-vapid-keys`.
+ */
+function vapidFrom(parsed: {
+  NOTIFY_PUSH_PROVIDER: NotifyPushProvider;
+  WEB_PUSH_VAPID_PUBLIC_KEY: string;
+  WEB_PUSH_VAPID_PRIVATE_KEY: string;
+  WEB_PUSH_VAPID_SUBJECT: string;
+}): { publicKey: string; privateKey: string; subject: string } | null {
+  if (parsed.NOTIFY_PUSH_PROVIDER !== "webpush") return null;
+  const missing = (
+    [
+      ["WEB_PUSH_VAPID_PUBLIC_KEY", parsed.WEB_PUSH_VAPID_PUBLIC_KEY],
+      ["WEB_PUSH_VAPID_PRIVATE_KEY", parsed.WEB_PUSH_VAPID_PRIVATE_KEY],
+      ["WEB_PUSH_VAPID_SUBJECT", parsed.WEB_PUSH_VAPID_SUBJECT],
+    ] as const
+  ).filter(([, v]) => v.trim() === "").map(([k]) => k);
+  if (missing.length > 0) {
+    throw new Error(
+      `NOTIFY_PUSH_PROVIDER=webpush requires ${missing.join(", ")} — set them or leave the provider on "console"`,
+    );
+  }
+  return {
+    publicKey: parsed.WEB_PUSH_VAPID_PUBLIC_KEY,
+    privateKey: parsed.WEB_PUSH_VAPID_PRIVATE_KEY,
+    subject: parsed.WEB_PUSH_VAPID_SUBJECT,
+  };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (env === process.env) loadEnv();
   const parsed = configSchema.parse(env);
@@ -310,6 +461,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     breakGlassTtlMinutes: parsed.BREAK_GLASS_TTL_MINUTES,
     tempRoleMaxTtlMinutes: parsed.TEMP_ROLE_MAX_TTL_MINUTES,
     workerStaleAfterMs: parsed.WORKER_STALE_AFTER_MS,
+    documentStorePath: parsed.DOCUMENT_STORE_PATH,
     environmentLabel: parsed.HMIS_ENVIRONMENT_LABEL === "" ? null : parsed.HMIS_ENVIRONMENT_LABEL,
     workerDispatchIntervalMs: parsed.WORKER_DISPATCH_INTERVAL_MS,
     workerTimersIntervalMs: parsed.WORKER_TIMERS_INTERVAL_MS,
@@ -317,11 +469,34 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerDailyTickMs: parsed.WORKER_DAILY_TICK_MS,
     workerNotifyIntervalMs: parsed.WORKER_NOTIFY_INTERVAL_MS,
     notifyProvider: parsed.NOTIFY_PROVIDER,
+    notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
+    workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
+    webPushVapid: vapidFrom(parsed),
     triage: {
       baseUrl: parsed.TRIAGE_BASE_URL ?? null,
       apiKey: parsed.TRIAGE_API_KEY ?? null,
       model: parsed.TRIAGE_MODEL,
       timeoutMs: parsed.TRIAGE_TIMEOUT_MS,
+    },
+    triageChoice: {
+      baseUrl: parsed.TRIAGE_TYPESAFE_BASE_URL,
+      apiKey: parsed.TRIAGE_TYPESAFE_API_KEY ?? null,
+      model: parsed.TRIAGE_TYPESAFE_MODEL,
+      timeoutMs: parsed.TRIAGE_TYPESAFE_TIMEOUT_MS,
+      minConfidence: parsed.TRIAGE_TYPESAFE_MIN_CONFIDENCE,
+    },
+    copilot: {
+      baseUrl: parsed.COPILOT_BASE_URL ?? null,
+      apiKey: parsed.COPILOT_API_KEY ?? null,
+      model: parsed.COPILOT_MODEL,
+      timeoutMs: parsed.COPILOT_TIMEOUT_MS,
+    },
+    copilotChoice: {
+      baseUrl: parsed.COPILOT_TYPESAFE_BASE_URL,
+      apiKey: parsed.COPILOT_TYPESAFE_API_KEY ?? null,
+      model: parsed.COPILOT_TYPESAFE_MODEL,
+      timeoutMs: parsed.COPILOT_TYPESAFE_TIMEOUT_MS,
+      minConfidence: parsed.COPILOT_TYPESAFE_MIN_CONFIDENCE,
     },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,

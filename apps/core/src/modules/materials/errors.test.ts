@@ -224,7 +224,8 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
   it("NOTHING in the union answers 5xx — the Plan 09 / Plan 13 / M1 lesson, asserted", () => {
     const statuses = declaredCodes().map((c) => materialsHttpStatus(c as MaterialsErrorCode));
     expect(statuses.every((s) => s >= 400 && s < 500)).toBe(true);
-    expect([...new Set(statuses)].sort()).toEqual([404, 409]);
+    // 14c: `permission_denied` answers 403, the route guard's own status, for the act's own check.
+    expect([...new Set(statuses)].sort()).toEqual([403, 404, 409]);
   });
 
   /**

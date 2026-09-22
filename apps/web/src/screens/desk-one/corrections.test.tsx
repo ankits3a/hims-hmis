@@ -159,7 +159,7 @@ async function holdFirstHit(): Promise<void> {
   await user.type(screen.getByPlaceholderText("mobile · name · UHID"), "Ramesh");
   await waitFor(() => expect(screen.getAllByRole("button", { name: /this is them/i })[0]).toBeInTheDocument());
   await user.click(screen.getAllByRole("button", { name: /this is them/i })[0]!);
-  await waitFor(() => expect(screen.getByPlaceholderText(/seene mein dard/)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByTestId("complaint")).toBeInTheDocument());
 }
 
 afterEach(() => { setToken(null); });
@@ -342,7 +342,7 @@ describe("FD-15: changing the doctor from the bill", () => {
     expect(calls.abandons[0]!.reason).toContain("doctor changed");
 
     // back at the appointment, with the SAME person — nothing re-typed, no second UHID
-    await waitFor(() => expect(screen.getByPlaceholderText(/seene mein dard/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("complaint")).toBeInTheDocument());
     expect(screen.getByText("Ramesh Kumar")).toBeInTheDocument();
   });
 

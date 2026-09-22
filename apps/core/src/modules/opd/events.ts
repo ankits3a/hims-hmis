@@ -359,6 +359,17 @@ export const queueSkipUndone = defineEvent("queue.skip_undone", MODULE, z.object
   wasLeft: z.boolean(),
 }));
 
+/**
+ * OWNER RULING 2026-09-20 — the doctor opened an unsettled token from their own dashboard. NOT
+ * `...where`: the decision is made about a VISIT and can be made before the token is called, so
+ * the session/room/token fields would be a snapshot of a queue position the act does not depend on.
+ * The reason travels in the payload because a month-end asking why the day's collection is short
+ * wants the sentence, not a join.
+ */
+export const consultFeeOverridden = defineEvent("consultation.fee_overridden", MODULE, z.object({
+  encounterId: id, patientId: id, doctorId: id, serviceDate: isoDate, reason: z.string().min(1),
+}));
+
 export const consultationStarted = defineEvent("consultation.started", MODULE, z.object({
   encounterId: id, patientId: id, departmentId: id, ...where,
 }));
@@ -410,6 +421,13 @@ export const prescriptionIssued = defineEvent("prescription.issued", MODULE, z.o
    */
   interactionOverrideCount: z.number().int().nonnegative().default(0),
   duplicateOverrideCount: z.number().int().nonnegative().default(0),
+  /**
+   * FORMULARY PHASE 3 — the lines the checks could see only in part at issue time: a component no
+   * pharmacist had reviewed. Recorded because the live answer changes with the next attestation,
+   * and a retro-scan of what was issued before a decision needs the answer as it stood. Defaults to
+   * empty so every payload written before it still parses.
+   */
+  unreviewedLineIndexes: z.array(z.number().int().nonnegative()).default([]),
 }));
 
 export const referralIssued = defineEvent("referral.issued", MODULE, z.object({
@@ -426,4 +444,28 @@ export const rxQrSignatureFailed = defineEvent("qr.signature_failed", MODULE, z.
   reason: z.enum(["malformed", "invalid_signature", "stale_version", "unknown_prescription"]),
   payloadPrefix: z.string(),
   patientId: z.string().optional(), // only when the signature verified
+}));
+
+/**
+ * THE OPD DAY REPORT — A DEPARTMENT'S PATIENT LIST LEFT THE SYSTEM (owner request 2026-09-19).
+ *
+ * The hospital summary is integers and is not logged. The department list is names, ages and
+ * addresses, so every pull writes this row BEFORE the rows are returned — `kernel/search/audit.ts`'s
+ * reasoning: a log of the exports that finished cannot answer for the ones that did not. `format`
+ * says whether it went to a screen, a spreadsheet or a printable sheet; `rows` says how much.
+ */
+export const dayReportPatientsListed = defineEvent("day_report.patients_listed", MODULE, z.object({
+  /** The day the reader anchored on — the picked day, or today for "this week"/"this month". */
+  date: isoDate,
+  /**
+   * 2026-09-20 — the report grew weeks and months, so the row says which DAYS were listed. `period`
+   * defaults and `from`/`to` are optional so the rows written before this change still parse as what
+   * they were: single days, anchored on `date`.
+   */
+  period: z.enum(["day", "week", "month"]).default("day"),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  departmentId: id,
+  format: z.enum(["screen", "csv", "document"]),
+  rows: z.number().int().nonnegative(),
 }));

@@ -5,19 +5,31 @@ import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { placeOrder } from "../../kernel/orders/place";
 import { transition } from "../../kernel/workflow/instances";
-import { listMedicines, resolveMedicines } from "../formulary";
-import { availableQty, listItems, releaseReservation } from "../materials";
+import { equivalentMedicines, isEquivalentMedicine, medicinesByIds } from "../formulary";
+import { availableQtyByItem, listItems, releaseReservation } from "../materials";
 import { getEncounter, getPrescription, runRxChecks } from "../opd";
 import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
-import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, substitutionRecorded } from "./events";
+import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
+import { requireRegisteredPharmacist } from "./pharmacists";
+import { authorisedKeysFor } from "./authorisation-reads";
+import { gstCategoryMap } from "./bill";
+import { lastKnownQuote, quoteItem } from "./quote";
+import type { Quote } from "./quote";
+import type { GstCategoryMap } from "./bill";
+import { refusalKey, refusalsOf, refusalsOn } from "./refusals";
+import type { Refusals } from "./refusals";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
+import { searchShelfAt } from "./retail";
 import { getSaleItem } from "./sale-items";
+import { shelfByMedicine } from "./shelf";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
-import type { AllergyOverride, RxLine, RxOverride } from "../opd";
-import type { DispenseView } from "./queue";
+import type { RxLine } from "../opd";
+import type { DispenseRow, DispenseView } from "./queue";
+import type { RxCheckOutcome } from "../opd";
+import type { RetailShelfEntry } from "./retail";
 
 export type Alternative = { medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number };
 
@@ -31,38 +43,174 @@ export async function alternativesFor(db: Db, dispenseId: string, lineIdx: numbe
   const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
   if (line === undefined) throw new PharmacyError("unknown_line", `line ${String(lineIdx)} not found`);
   if (line.dispensedMedicineId === null || (line.rxLine as RxLine).noSubstitution || !PHARMACY_SUBSTITUTION_ENABLED) return [];
-  const all = await listMedicines(db, { activeOnly: true });
-  const from = all.find((m) => m.id === line.dispensedMedicineId);
-  if (from === undefined) return [];
-  const resolvedAll = await resolveMedicines(db, all.map((m) => m.id));
-  const saltSet = (id: string): string => (resolvedAll.get(id)?.salts ?? []).map((s) => s.saltId).sort().join("|");
-  const wanted = saltSet(from.id);
-  if (wanted === "") return [];
-  const drugItems = await listItems(db, { class: "drug", active: true });
-  const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
-  const out: Alternative[] = [];
-  for (const m of all) {
-    if (m.id === from.id) continue;
-    if (saltSet(m.id) !== wanted || (m.strengthLabel ?? "") !== (from.strengthLabel ?? "") || m.form !== from.form || m.routeClass !== from.routeClass) continue;
-    // R-3 — what this counter may not dispense, it may not offer either (close review, §8.5 pass 1)
-    if (m.scheduleFlag !== null && (REFUSED_FLAGS as readonly string[]).includes(m.scheduleFlag)) continue;
-    const item = itemByMedicine.get(m.id);
-    if (item === undefined) continue;
-    const sale = await getSaleItem(db, item.id);
-    if (sale === undefined || !sale.active) continue;
-    // What the substitution dropdown PROMISES must be what the pick can deliver: a generic offered
-    // as "50 available" whose fifty are expired sends the pharmacist down a path that ends in
-    // `short_stock` after the substitution is already recorded. One definition, `availableQty`.
-    const available = d.storeResourceId === null ? 0 : await availableQty(db, d.storeResourceId, item.id);
-    out.push({ medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form, itemId: item.id, itemCode: item.code, available });
+  /**
+   * THE SHELF IS THE UNIVERSE. This used to read every medicine in the catalogue and resolve every
+   * one of their compositions, then loop the result in JS. At the national catalogue's 103,383 rows
+   * that read does not merely cost a heap — it THROWS `08P01` on the wire, because drizzle emits
+   * one bind parameter per id and the protocol counts them in an Int16 (`kernel/db/any-of.ts`).
+   * What the counter can offer was never more than what it stocks, so that is what it asks about.
+   */
+  const shelf = await shelfByMedicine(db);
+  const candidates = await equivalentMedicines(db, line.dispensedMedicineId, { among: [...shelf.keys()] });
+  // R-3 — what this counter may not dispense, it may not offer either (close review, §8.5 pass 1).
+  const offered = candidates.filter((m) => m.scheduleFlag === null || !(REFUSED_FLAGS as readonly string[]).includes(m.scheduleFlag));
+  if (offered.length === 0) return [];
+  // Every candidate came FROM the shelf, so its entry is present by construction.
+  const entries = offered.map((m) => ({ m, e: shelf.get(m.id) as NonNullable<ReturnType<typeof shelf.get>> }));
+  /**
+   * What the substitution dropdown PROMISES must be what the pick can deliver: a generic offered as
+   * "50 available" whose fifty are expired sends the pharmacist down a path that ends in
+   * `short_stock` after the substitution is already recorded. One definition, and it is now asked
+   * once for the whole list rather than once per candidate.
+   */
+  const available = d.storeResourceId === null
+    ? new Map<string, number>()
+    : await availableQtyByItem(db, d.storeResourceId, entries.map((x) => x.e.item.id));
+  return entries.map(({ m, e }) => ({
+    medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form,
+    itemId: e.item.id, itemCode: e.item.code, available: available.get(e.item.id) ?? 0,
+  }));
+}
+
+/**
+ * ═══ PD-7 C3 — THE EQUIVALENTS, EACH ALREADY PUT TO THIS PATIENT'S CHECK ═══
+ *
+ * Every alternative is run through `runRxChecks` for THIS patient with the line swapped to it, and
+ * judged by `refusalsOf` — the function `verifyDispense` refuses with — so "blocked" on the sheet is
+ * exactly what the check will refuse, named by book. `not_checked` is a line the books could see
+ * only in part (PD-D13: never drawn as clear).
+ *
+ * MEASURED: an equivalent has the same salt set by construction, so its verdict is almost always the
+ * original line's. The run is still per alternative because the allergy book also matches brand
+ * names, and because that sameness is `isEquivalentMedicine`'s to keep, not this function's to
+ * assume. The price difference the phase doc asked for is NOT here: the bill's price is billing's
+ * `min(batch MRP, ceiling, contract)`, decided at the bill, and this desk does no price arithmetic
+ * (DEFERRED to C7, which can ask billing's preview).
+ */
+/** `about` is what the line says; `key` is the hit's identity, which a PD-9 authorisation names. */
+export type AlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string; key: string };
+
+/** A line's refusals as the sheet and the line say them: which book, about what. */
+function blocksOf(r: Refusals): AlternativeBlock[] {
+  return [
+    ...r.allergy.map((x) => ({ book: "allergy" as const, about: x.substance, key: refusalKey("allergy", x) })),
+    ...r.interaction.map((x) => ({ book: "interaction" as const, about: x.note, key: refusalKey("interaction", x) })),
+    ...r.duplicate.map((x) => ({ book: "duplicate" as const, about: x.moiety, key: refusalKey("duplicate", x) })),
+    ...r.drugDisease.map((x) => ({ book: "drug_disease" as const, about: x.icd10Title, key: refusalKey("drug_disease", x) })),
+  ];
+}
+export type CheckedAlternative = Alternative & {
+  check: { verdict: "clear" | "not_checked" | "blocked"; blocks: AlternativeBlock[] };
+  /** What the bill will ask for it: its first-to-expire sellable batch, priced as the bill prices (`quote.ts`). */
+  quote: Quote | null;
+};
+
+export async function checkedAlternativesFor(db: Db, actor: Actor, dispenseId: string, lineIdx: number, now: Date): Promise<CheckedAlternative[]> {
+  const alternatives = await alternativesFor(db, dispenseId, lineIdx);
+  if (alternatives.length === 0) return [];
+  const d = await getDispenseRow(db, dispenseId);
+  const rx = await getPrescription(db, actor, d.prescriptionId);
+  if (rx === null) {
+    throw new PharmacyError("permission_denied", "this ticket is a sealed record — its checks are read by a pharmacist who may read it", { reason: "patient_restricted" });
+  }
+  const open = (await linesOf(db, dispenseId)).filter((l) => l.status === "open");
+  const target = open.findIndex((l) => l.lineIdx === lineIdx);
+  const medicines = await medicinesByIds(db, [
+    ...open.map((l) => l.dispensedMedicineId), ...alternatives.map((a) => a.medicineId),
+  ].filter((x): x is string => x !== null));
+  const authorised = await authorisedKeysFor(db, dispenseId);
+  const gst = await gstCategoryMap(db);
+  const out: CheckedAlternative[] = [];
+  for (const alt of alternatives) {
+    const checkLines: RxLine[] = open.map((l) => {
+      const rxLine = l.rxLine as RxLine;
+      const id = l.lineIdx === lineIdx ? alt.medicineId : l.dispensedMedicineId;
+      return id === null ? rxLine : { ...rxLine, medicineId: id, drug: medicines.get(id)?.brandName ?? rxLine.drug };
+    });
+    const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
+    const blocks = blocksOf(refusalsOn(refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set(), authorised), lineIdx));
+    const partly = outcome.unreviewedLineIndexes.includes(target) || outcome.unresolvedLineIndexes.includes(target);
+    const quote = d.storeResourceId === null ? null : await quoteItem(db, gst, d.storeResourceId, alt.itemId, now);
+    out.push({ ...alt, check: { verdict: blocks.length > 0 ? "blocked" : partly ? "not_checked" : "clear", blocks }, quote });
   }
   return out;
+}
+
+/**
+ * ═══ C3b — THE TICKET'S OWN LINES, PUT TO THE SAME CHECK AT THE CLAIM ═══
+ *
+ * Found walking C3: an allergy recorded after the issue sat silent on its line until the last tick
+ * fired verify — after the strips were in hand. This asks `refusalsOf` about the lines as they
+ * stand, so the line can say "the check will stop this" before anyone walks to the shelf. Only a
+ * CLAIMED ticket is asked: after verify the check has spoken, and a declined line is not handed
+ * over. A line nobody placed is `unplaced` — its reading is judged at the check (PD-5b), not here.
+ */
+export type LinePrecheck = { lineIdx: number; verdict: "clear" | "not_checked" | "blocked" | "unplaced"; blocks: AlternativeBlock[] };
+
+type DispenseLineRow = Awaited<ReturnType<typeof linesOf>>[number];
+
+/**
+ * The ticket's open lines as they stand — or with ONE line given a different medicine (the one the
+ * pharmacist is about to hand over: a substitute, a reading) — put to `refusalsOf`, authorisations
+ * included. The pre-check reads it; PD-9's request reads it to confirm the refusal it names is real.
+ */
+export async function ticketRefusals(
+  db: Db, actor: Actor, dispenseId: string, now: Date, instead: { lineIdx: number; medicineId: string } | null = null,
+): Promise<{ d: DispenseRow; doctorId: string; open: DispenseLineRow[]; outcome: RxCheckOutcome; refused: Refusals }> {
+  const d = await getDispenseRow(db, dispenseId);
+  const rx = await getPrescription(db, actor, d.prescriptionId);
+  if (rx === null) {
+    throw new PharmacyError("permission_denied", "this ticket is a sealed record — its checks are read by a pharmacist who may read it", { reason: "patient_restricted" });
+  }
+  const open = (await linesOf(db, dispenseId)).filter((l) => l.status === "open");
+  const medicineOf = (l: DispenseLineRow): string | null => (instead !== null && l.lineIdx === instead.lineIdx ? instead.medicineId : l.dispensedMedicineId);
+  const medicines = await medicinesByIds(db, open.map(medicineOf).filter((x): x is string => x !== null));
+  const checkLines: RxLine[] = open.map((l) => {
+    const rxLine = l.rxLine as RxLine;
+    const id = medicineOf(l);
+    return id === null ? rxLine : { ...rxLine, medicineId: id, drug: medicines.get(id)?.brandName ?? rxLine.drug };
+  });
+  const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
+  const refused = refusalsOf(outcome, (i) => open[i]!.lineIdx, rx, new Set(), await authorisedKeysFor(db, dispenseId));
+  return { d, doctorId: rx.doctorId, open, outcome, refused };
+}
+
+export async function precheckTicket(db: Db, actor: Actor, dispenseId: string, now: Date): Promise<{ lines: LinePrecheck[] }> {
+  const row = await getDispenseRow(db, dispenseId);
+  if (row.status !== "claimed") return { lines: [] };
+  const { open, outcome, refused } = await ticketRefusals(db, actor, dispenseId, now);
+  if (open.length === 0) return { lines: [] };
+  return {
+    lines: open.map((l, i): LinePrecheck => {
+      if (l.dispensedMedicineId === null) return { lineIdx: l.lineIdx, verdict: "unplaced", blocks: [] };
+      const blocks = blocksOf(refusalsOn(refused, l.lineIdx));
+      const partly = outcome.unreviewedLineIndexes.includes(i) || outcome.unresolvedLineIndexes.includes(i);
+      return { lineIdx: l.lineIdx, verdict: blocks.length > 0 ? "blocked" : partly ? "not_checked" : "clear", blocks };
+    }),
+  };
+}
+
+/**
+ * PD-5b — what a line the catalogue could not place may be read as: this ticket's own shelf,
+ * searched by name, code or a scanned pack, Schedule X never offered (R-3, `searchShelfAt`). Only
+ * for such a line — a line the doctor named, or the catalogue placed from the words, has a medicine
+ * already, and anything else in its place is a substitution (`alternativesFor`, with consent).
+ */
+export async function placementsFor(db: Db, dispenseId: string, lineIdx: number, q: string, now: Date): Promise<RetailShelfEntry[]> {
+  const d = await getDispenseRow(db, dispenseId);
+  const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
+  if (line === undefined) throw new PharmacyError("unknown_line", `line ${String(lineIdx)} not found`);
+  if (line.status !== "open" || line.dispensedMedicineId !== null || d.storeResourceId === null) return [];
+  return searchShelfAt(db, d.storeResourceId, q, now);
 }
 
 export type VerifyLineInput = {
   lineIdx: number;
   qtyBase: number;
-  /** D6 — a generic substitution: a different formulary medicine, same salts, strength and route. */
+  /**
+   * D6 — a generic substitution: a different formulary medicine, same salts, strength and route.
+   * PD-5b — on a line the catalogue could not place, the medicine the pharmacist reads it as.
+   */
   dispensedMedicineId?: string;
   patientConsent?: boolean;
 };
@@ -79,13 +227,26 @@ export type VerifyInput = { lines: VerifyLineInput[] };
  * `runRxChecks` takes `RxLine[]` and resolves id-first, so the lines it sees here carry the
  * DISPENSED medicine id. An allergy or a severe interaction that the prescriber did not override
  * at issue time blocks the verify by code; one the prescriber did override is shown and passes —
- * the counter re-runs the doctor's decision, it does not re-make it.
+ * the counter re-runs the doctor's decision, it does not re-make it. PD-5b added the other two
+ * books issue gates — a hard duplicate and a severe drug×disease hit — for the cases where the
+ * decision could not have been made at issue (see the block below the interaction refusal).
  *
  * ═══ D6 — GENERIC SUBSTITUTION IS A SET EQUALITY, NOT A JUDGEMENT ═══
  *
  * Same salt-id set, same strength label, same form, same route class, `noSubstitution` false,
  * consent captured. Anything else is `substitution_not_allowed` and the pharmacist declines the
  * line instead — a different moiety is a new prescription (doc 16 §3.1a), which is the doctor's.
+ *
+ * ═══ PD-5b — A LINE NOBODY PLACED IS RESOLVED, NOT SUBSTITUTED ═══
+ *
+ * A line whose words the catalogue could not match (no `dispensedMedicineId` after the claim) has no
+ * medicine to substitute FOR. Naming one is reading the doctor's words, which is the pharmacist's
+ * act: no equivalence to prove and no consent to capture, and `noSubstitution` does not forbid it —
+ * "only what I wrote" is what a resolution tries to honour. It is NOT a lighter gate: the medicine
+ * chosen is judged below exactly as a prescribed one is (stocked, sellable, Schedule X refused) and
+ * the books re-run on it (D9), so an allergy the prescriber never saw stops it here. The line records
+ * `resolved` and `dispense.line_resolved` names who read it. Whether a line is "unplaced" is decided
+ * by the claim's own resolution — never by the shape of this body.
  */
 export async function verifyDispense(
   db: Db,
@@ -106,13 +267,21 @@ export async function verifyDispense(
 
   const lines = await linesOf(db, dispenseId);
   const byIdx = new Map(input.lines.map((l) => [l.lineIdx, l]));
-  const medicines = new Map((await listMedicines(db)).map((m) => [m.id, m]));
+  /**
+   * The medicines THIS dispense names — the lines' own, plus any substitute the edit asks for. The
+   * only reads of this map are `.get(dispensedMedicineId)` and `.get(wanted)`, so the set is
+   * provably complete, and it is bounded by the prescription rather than by the catalogue.
+   */
+  const medicines = await medicinesByIds(db, [
+    ...lines.map((l) => l.dispensedMedicineId),
+    ...input.lines.map((l) => l.dispensedMedicineId ?? null),
+  ].filter((x): x is string => x !== null));
   const drugItems = await listItems(db, { class: "drug", active: true });
   const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
 
   type Settled = {
     line: (typeof lines)[number]; qtyBase: number; dispensedMedicineId: string; itemId: string; serviceId: string;
-    substitution: { from: string; to: string } | null; scheduleFlag: string | null;
+    substitution: { from: string; to: string } | null; resolvedHere: boolean; scheduleFlag: string | null;
   };
   const settled: Settled[] = [];
   let substitutions = 0;
@@ -126,19 +295,24 @@ export async function verifyDispense(
     }
     let dispensedMedicineId = line.dispensedMedicineId;
     let substitution: { from: string; to: string } | null = null;
+    let resolvedHere = false;
     const wanted = edit?.dispensedMedicineId;
-    if (wanted !== undefined && wanted !== dispensedMedicineId) {
+    if (wanted !== undefined && dispensedMedicineId === null) {
+      if (!medicines.has(wanted)) throw new PharmacyError("unresolved_medicine", `unknown medicine on line ${String(line.lineIdx + 1)}`, { lineIdx: line.lineIdx });
+      dispensedMedicineId = wanted;
+      resolvedHere = true;
+    } else if (wanted !== undefined && dispensedMedicineId !== null && wanted !== dispensedMedicineId) {
       if (!PHARMACY_SUBSTITUTION_ENABLED) throw new PharmacyError("substitution_not_allowed", "substitution is switched off", { lineIdx: line.lineIdx });
       if (rxLine.noSubstitution) throw new PharmacyError("substitution_not_allowed", `line ${String(line.lineIdx + 1)} is marked no-substitution by the prescriber`, { lineIdx: line.lineIdx });
-      if (dispensedMedicineId === null) throw new PharmacyError("unresolved_medicine", `line ${String(line.lineIdx + 1)} (${rxLine.drug}) did not resolve to a medicine; a substitute needs a resolved original`, { lineIdx: line.lineIdx });
       const from = medicines.get(dispensedMedicineId);
       const to = medicines.get(wanted);
       if (from === undefined || to === undefined) throw new PharmacyError("unresolved_medicine", `unknown medicine on line ${String(line.lineIdx + 1)}`, { lineIdx: line.lineIdx });
-      const resolvedPair = await resolveMedicines(db, [from.id, to.id]);
-      const saltSet = (id: string): string => (resolvedPair.get(id)?.salts ?? []).map((s) => s.saltId).sort().join("|");
-      const same = saltSet(from.id) !== "" && saltSet(from.id) === saltSet(to.id)
-        && (from.strengthLabel ?? "") === (to.strengthLabel ?? "") && from.form === to.form && from.routeClass === to.routeClass;
-      if (!same) {
+      /**
+       * THE SAME PREDICATE THE DROPDOWN OFFERS FROM. This was a hand-written JS conjunction and
+       * `alternativesFor` was another, and nothing asserted that the two agreed — so a counter
+       * could be offered a substitution this gate then refused. One definition, asked twice.
+       */
+      if (!await isEquivalentMedicine(db, from.id, to.id)) {
         throw new PharmacyError(
           "substitution_not_allowed",
           `${to.brandName} is not a generic equivalent of ${from.brandName} (same salts, strength, form and route) — a different medicine is a new prescription`,
@@ -176,32 +350,49 @@ export async function verifyDispense(
         { lineIdx: line.lineIdx, scheduleFlag },
       );
     }
-    settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, scheduleFlag });
+    settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, resolvedHere, scheduleFlag });
   }
   if (settled.length === 0) throw new PharmacyError("nothing_to_dispense", "every line is declined — cancel the dispense instead");
 
   // ── D9: the re-check, on what will be handed over ──
   const checkLines: RxLine[] = settled.map((s) => ({ ...(s.line.rxLine as RxLine), medicineId: s.dispensedMedicineId, drug: medicines.get(s.dispensedMedicineId)?.brandName ?? (s.line.rxLine as RxLine).drug }));
   const outcome = await runRxChecks(db, d.patientId, checkLines, now, { excludeEncounterId: d.encounterId });
-  const allergyOverrides = (rx.allergyOverrides ?? []) as AllergyOverride[];
-  const interactionOverrides = (rx.interactionOverrides ?? []) as RxOverride[];
   const origIdx = (checkIdx: number): number => settled[checkIdx]!.line.lineIdx;
-  const allergyBlocks = outcome.allergyMatches.filter((m) => !allergyOverrides.some((o) => o.lineIndex === origIdx(m.lineIndex) && o.substance === m.substance));
-  if (allergyBlocks.length > 0) {
+  /**
+   * The four books' refusals, in `refusalsOf`'s one definition (PD-7 C3 asks the same function
+   * before a substitute is chosen). A reading here (PD-5b) is the only way a NEW hard duplicate can
+   * reach this check, and a reading's moieties or a diagnosis coded after the issue are the ways a
+   * severe drug×disease hit can arrive unruled-on — see `refusals.ts` (E35–E37).
+   */
+  const readHere = new Set(settled.filter((s) => s.resolvedHere).map((s) => s.line.lineIdx));
+  /* PD-9 — a refusal the prescriber has authorised from the counter is not a refusal. */
+  const refused = refusalsOf(outcome, origIdx, rx, readHere, await authorisedKeysFor(db, d.id));
+  if (refused.allergy.length > 0) {
     throw new PharmacyError(
       "allergy_block",
-      `the patient is recorded allergic to ${allergyBlocks.map((m) => m.substance).join(", ")} and the prescriber did not override it — back to the doctor`,
-      { hits: allergyBlocks.map((m) => ({ lineIdx: origIdx(m.lineIndex), substance: m.substance })) },
+      `the patient is recorded allergic to ${refused.allergy.map((m) => m.substance).join(", ")} and the prescriber did not override it — back to the doctor`,
+      { hits: refused.allergy },
     );
   }
-  const samePair = (a: readonly [string, string], b: readonly [string, string]): boolean => (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
-  const severe = outcome.interactions.filter((h) => h.severity === "severe");
-  const interactionBlocks = severe.filter((h) => !interactionOverrides.some((o) => o.lineIndex === origIdx(h.lineIndex) && o.saltPair !== undefined && samePair(o.saltPair, h.saltPair)));
-  if (interactionBlocks.length > 0) {
+  if (refused.interaction.length > 0) {
     throw new PharmacyError(
       "interaction_block",
-      `a severe interaction the prescriber did not override: ${interactionBlocks.map((h) => h.note).join("; ")} — back to the doctor`,
-      { hits: interactionBlocks.map((h) => ({ lineIdx: origIdx(h.lineIndex), saltPair: h.saltPair, note: h.note })) },
+      `a severe interaction the prescriber did not override: ${refused.interaction.map((h) => h.note).join("; ")} — back to the doctor`,
+      { hits: refused.interaction.map(({ lineIdx, saltPair, note }) => ({ lineIdx, saltPair, note })) },
+    );
+  }
+  if (refused.duplicate.length > 0) {
+    throw new PharmacyError(
+      "duplicate_block",
+      `${[...new Set(refused.duplicate.map((h) => h.moiety))].join(", ")} is already on this prescription — the doctor's words cannot be read as a second one; choose another or decline the line`,
+      { hits: refused.duplicate },
+    );
+  }
+  if (refused.drugDisease.length > 0) {
+    throw new PharmacyError(
+      "drug_disease_block",
+      `${refused.drugDisease.map((h) => `${h.moiety} with ${h.icd10Title}`).join("; ")}: contraindicated by a diagnosis this patient carries, and no prescriber has ruled on it — back to the doctor, or decline the line`,
+      { hits: refused.drugDisease },
     );
   }
   const scheduled = settled.some((s) => s.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(s.scheduleFlag));
@@ -211,17 +402,33 @@ export async function verifyDispense(
     const placed = await placeOrder(tx, actor, decls, {
       kind: "medication", patientId: d.patientId, encounterNo: encounter.visitNo, serviceDate: istDateOf(now),
       orderingClinicianId: rx.doctorId, priority: "routine", placedAt: now,
+      /* PD-2 — the number the ticket was queued with; a ticket queued before PD-2 has none and is numbered here. */
+      ...(d.dispenseNo === null ? {} : { preallocatedOrderNo: d.dispenseNo }),
       items: settled.map((s) => ({ serviceId: s.serviceId })),
     });
+    /*
+      P2 — THE PHARMACY ACT'S QUALIFICATION, after the permission. `placeOrder` has just asserted
+      the permission to place the order (a login that may not is refused there, as before); this
+      asks whether the person holds a current state council registration. A refusal rolls the
+      order back with everything else in this transaction.
+    */
+    const registration = await requireRegisteredPharmacist(tx, actor, now);
     for (const [i, s] of settled.entries()) {
       await tx.update(pharmacyDispenseLines).set({
         qtyBase: s.qtyBase, dispensedMedicineId: s.dispensedMedicineId, itemId: s.itemId, orderItemId: placed.itemIds[i]!,
         scheduleFlag: s.scheduleFlag,
         ...(s.substitution === null ? {} : { substitutionType: "generic", consentBy: actor.id, consentAt: now }),
+        ...(s.resolvedHere ? { substitutionType: "resolved" } : {}),
       }).where(eq(pharmacyDispenseLines.id, s.line.id));
+      if (s.resolvedHere) {
+        await appendEvent(tx, lineResolved.make({
+          occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+          payload: { dispenseId: d.id, lineIdx: s.line.lineIdx, patientId: d.patientId, doctorId: rx.doctorId, dispensedMedicineId: s.dispensedMedicineId, resolvedBy: actor.id },
+        }));
+      }
       if (s.substitution !== null) {
         await appendEvent(tx, substitutionRecorded.make({
-          actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+          occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
           payload: { dispenseId: d.id, lineIdx: s.line.lineIdx, patientId: d.patientId, doctorId: rx.doctorId, orderedMedicineId: s.substitution.from, dispensedMedicineId: s.substitution.to, consentBy: actor.id },
         }));
       }
@@ -233,11 +440,14 @@ export async function verifyDispense(
     if (won.length === 0) throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} moved while verifying`);
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "verified", actor);
     await appendEvent(tx, dispenseVerified.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, dispenseNo: placed.orderNo, orderId: placed.orderId, patientId: d.patientId, encounterId: d.encounterId,
         lineCount: settled.length, declinedCount, scheduled,
         allergyHits: outcome.allergyMatches.length, interactionHits: outcome.interactions.length, substitutions,
+        // P3: "0 hits" is only as good as what the checks could see.
+        partlyCheckedLineIdxs: outcome.unreviewedLineIndexes.map(origIdx),
+        pharmacistRegNo: registration.registrationNo,
       },
     }));
   });
@@ -268,7 +478,7 @@ export async function declineLine(
     if (line.orderItemId !== null) await advanceOrderItem(tx, actor, decls, line.orderItemId, "cancelled", { reason: trimmed, at: now });
     if (line.reservationId !== null) await releaseReservation(tx, actor, line.reservationId);
     await appendEvent(tx, dispenseLineDeclined.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, lineIdx, patientId: d.patientId, reason: trimmed },
     }));
   });
@@ -324,9 +534,28 @@ export async function cancelDispense(
     }
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "cancelled", actor);
     await appendEvent(tx, dispenseCancelled.make({
-      actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+      occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, patientId: d.patientId, fromStatus: d.status, reason: trimmed, reservationsReleased: released },
     }));
   });
   return getDispense(db, actor, d.id, now);
+}
+
+
+
+
+/**
+ * The line AS WRITTEN, quoted: from this store's shelf when it holds any, else from the item's most
+ * recent batch (`lastKnown`), else null — a medicine this hospital has never received has no price.
+ * It is what the co-pilot's "saves ₹x a strip" is measured against.
+ */
+export async function writtenQuoteFor(db: Db, dispenseId: string, lineIdx: number, now: Date, gst?: GstCategoryMap): Promise<Quote | null> {
+  const d = await getDispenseRow(db, dispenseId);
+  const line = (await linesOf(db, dispenseId)).find((l) => l.lineIdx === lineIdx);
+  if (line === undefined || line.dispensedMedicineId === null) return null;
+  const itemId = line.itemId ?? (await shelfByMedicine(db)).get(line.dispensedMedicineId)?.item.id ?? null;
+  if (itemId === null) return null;
+  const categories = gst ?? await gstCategoryMap(db);
+  const onShelf = d.storeResourceId === null ? null : await quoteItem(db, categories, d.storeResourceId, itemId, now);
+  return onShelf ?? lastKnownQuote(db, categories, itemId, now);
 }

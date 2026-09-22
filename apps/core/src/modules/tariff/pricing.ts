@@ -1,7 +1,7 @@
 import { TariffError } from "./errors";
-import { assertPaise } from "./money";
+import { assertPaise, inclusiveOf, inclusiveTaxHead } from "./money";
 import { runContest } from "./contest";
-import { computeGst } from "./gst";
+import { computeGst, flatExemption } from "./gst";
 import type { InvoiceLineInput, PricedLine, PricingContext, RegulatedClamp } from "./types";
 
 /** PURE + SYNCHRONOUS (§7, §18): no I/O, no clock, no randomness — same ctx+lines in, same PricedLine[] out. */
@@ -22,6 +22,26 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
     }
     assertPaise(line.batchUnitPaise, `line ${line.lineId}: batchUnitPaise`);
   }
+  const taxInclusive = line.taxInclusive === true;
+  if (taxInclusive && !svc.category.startsWith("pharmacy")) {
+    throw new TariffError("tax_inclusive_not_allowed", `line ${line.lineId}: ${line.serviceId} is "${svc.category}", and only a medicine is priced inclusive of its GST`);
+  }
+  /*
+    L2: a ceiling notified before GST, on this line's basis, and the rate that carves the tax out.
+    Read here only for an inclusive line, so every other line keeps its refusal order exactly. An
+    exempt category or a composite supply carries no tax: its ceiling stands as notified.
+  */
+  let inclusiveRateBps: number | null = null;
+  if (taxInclusive) {
+    const early = ctx.gst.categories[svc.category];
+    if (!early) throw new TariffError("gst_config_missing", `no gst_config row for category "${svc.category}"`);
+    if (early.specialRule !== null) {
+      // An amount-dependent exemption cannot be known before the tax is carved out of the amount.
+      throw new TariffError("gst_config_invalid", `category "${early.category}" has a special rule, and a tax-inclusive line cannot carry one`);
+    }
+    inclusiveRateBps = flatExemption(early, ctx.gst.settings, line) === null ? early.rateBps : null;
+  }
+  const lineCeiling = (ceiling: number): number => (inclusiveRateBps === null ? ceiling : inclusiveOf(ceiling, inclusiveRateBps));
   const versionPaise = ctx.tariff.items[line.serviceId];
   if (versionPaise === undefined && line.batchUnitPaise === undefined) {
     throw new TariffError("tariff_item_missing", `line ${line.lineId}: no price for ${line.serviceId} in version ${ctx.tariff.versionId}`);
@@ -49,7 +69,7 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
     }
     const bounds: { boundApplied: "mrp" | "ceiling"; value: number }[] = [];
     if (rp.mrpPaise !== null) bounds.push({ boundApplied: "mrp", value: rp.mrpPaise });
-    if (rp.ceilingPaise !== null) bounds.push({ boundApplied: "ceiling", value: rp.ceilingPaise });
+    if (rp.ceilingPaise !== null) bounds.push({ boundApplied: "ceiling", value: lineCeiling(rp.ceilingPaise) });
     for (const b of bounds) {
       if (b.value < unitPaise) {
         unitPaise = b.value;
@@ -90,15 +110,20 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
 
   const { candidates, winner } = runContest(ctx, line, grossPaise);
   const discountPaise = winner?.amountPaise ?? 0;
-  const taxableBasePaise = grossPaise - discountPaise;
+  const chargedPaise = grossPaise - discountPaise;
   // Engine-side belt on D2's "candidates are pre-capped at gross": ctx.sources is an open plugin
   // array (Plan 09 registers more) — a source proposing an over-gross winner must fail LOUDLY
   // here, never flow a negative or fractional base into GST (M3).
-  assertPaise(taxableBasePaise, "taxable base");
+  assertPaise(chargedPaise, "taxable base");
 
+  // P1: an inclusive line's tax comes OUT of the charged amount; `computeGst` still decides whether
+  // there is any tax at all, so an exempt or composite line keeps its reason.
   const cfg = ctx.gst.categories[svc.category];
   if (!cfg) throw new TariffError("gst_config_missing", `no gst_config row for category "${svc.category}"`);
-  const gst = computeGst({ cfg, settings: ctx.gst.settings, line, taxableBasePaise, qty: line.qty });
+  const head = inclusiveRateBps === null ? 0 : inclusiveTaxHead(chargedPaise, inclusiveRateBps);
+  const taxableBasePaise = chargedPaise - 2 * head;
+  const computed = computeGst({ cfg, settings: ctx.gst.settings, line, taxableBasePaise, qty: line.qty });
+  const gst = inclusiveRateBps !== null && !computed.exempt ? { ...computed, cgstPaise: head, sgstPaise: head } : computed;
 
   return {
     lineId: line.lineId, serviceId: svc.id, serviceName: svc.name, category: svc.category,

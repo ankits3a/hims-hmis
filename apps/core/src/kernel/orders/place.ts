@@ -1,7 +1,7 @@
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../auth/permissions";
 import { orderItems, orders } from "../db/schema";
-import { nextEpisodeNo } from "../episodes/series";
+import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../episodes/series";
 import { resolveEncounterByPrefix } from "../episodes/encounter-resolvers";
 import { appendEvent } from "../events/append";
 import { OrderError } from "./errors";
@@ -50,6 +50,14 @@ type PlaceOrderBase = {
   protocolRef?: string | null;
   /** The CLINICAL instant, which may precede `created_at` on a paper backfill (E13). */
   placedAt?: Date;
+  /**
+   * PD-2 (owner ruling 2026-09-19) — a number the placing module ALREADY minted from this kind's own
+   * series, for a document that needed its number before the order existed: the pharmacy calls a
+   * ticket by its P-number from the moment it is queued, and the medication order placed at the
+   * check must carry that number rather than mint a second one. Checked against the kind's series
+   * shape; the `order_no` UNIQUE constraint is what stops a number being used twice.
+   */
+  preallocatedOrderNo?: string;
   items: readonly PlaceOrderItemInput[];
 };
 
@@ -171,7 +179,19 @@ export async function placeOrder(
    * CALLER's service date. This phase adds no counter. `nextEpisodeNo`'s single-winner
    * `UPDATE … RETURNING` is what makes two concurrent placements distinct (A7).
    */
-  const orderNo = await nextEpisodeNo(tx, decl.seriesKey, input.serviceDate);
+  let orderNo: string;
+  if (input.preallocatedOrderNo === undefined) {
+    orderNo = await nextEpisodeNo(tx, decl.seriesKey, input.serviceDate);
+  } else {
+    const own = new RegExp(`^${EPISODE_SERIES[decl.seriesKey]}\\d{6}\\d{${String(EPISODE_SERIAL_DIGITS)}}$`);
+    if (!own.test(input.preallocatedOrderNo)) {
+      throw new OrderError(
+        "invalid_order_no",
+        `"${input.preallocatedOrderNo}" is not a number from the ${decl.kind} series (${EPISODE_SERIES[decl.seriesKey]}YYMMDDnnnn)`,
+      );
+    }
+    orderNo = input.preallocatedOrderNo;
+  }
 
   const orderId = newId();
   const placedAt = input.placedAt ?? new Date();

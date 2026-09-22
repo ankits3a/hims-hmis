@@ -1,5 +1,6 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
+import { formularyMedicines } from "../../kernel/db/schema";
 import {
   addInteraction, addMedicine, addSalt, updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
@@ -229,4 +230,82 @@ describe("formulary resolution (Plan 16a T3)", () => {
     const [pair] = await listInteractionsAmong(db, [diclofenac, warfarin]);
     expect(pair!.routeScope).toBe("systemic_only");
   });
+  /**
+   * ═══ THE STORED KEY AND THE TYPESCRIPT NORMALIZER MUST AGREE, OR THE SAFETY HALF GOES QUIET ═══
+   *
+   * `name_normalized` is filled by `normalizeDrugName` at every write site, and ONCE in SQL — the
+   * backfill in migration 0095, for rows that existed before the column. `resolve.ts`'s own header
+   * says why that is the dangerous shape: "§2.54 is the entry that says two copies of one fact
+   * drift by construction. The drift would be silent and one-directional: a brand with a hyphen
+   * would resolve in one path and not the other, and the half that stops resolving is the SAFETY
+   * half."
+   *
+   * This is the answer to that objection, and it has to be a test rather than an argument. The
+   * corpus is adversarial on purpose: every character class the normalizer touches — the punctuation
+   * it strips, doubled spaces, leading and trailing space, and case.
+   */
+  it("the stored key and the TypeScript normalizer agree on every shape the normalizer touches", async () => {
+    const { saltId } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "amoxicillin" }));
+    const brands = [
+      "Augmentin-625",
+      "Co.Amoxiclav (625)",
+      "Amox  /  Clav",
+      "  Crocin , 500  ",
+      "PARACETAMOL",
+      "A-Ret 0.025%",
+    ];
+    for (const brandName of brands) {
+      await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+        brandName, form: "tablet", routeClass: "systemic", salts: [{ saltId }],
+      }));
+    }
+
+    const rows = await db.select({
+      brandName: formularyMedicines.brandName, stored: formularyMedicines.nameNormalized,
+    }).from(formularyMedicines);
+
+    expect(rows).toHaveLength(brands.length);
+    for (const row of rows) {
+      expect(row.stored).toBe(normalizeDrugName(row.brandName));
+    }
+  });
+
+  /**
+   * AND THE RESOLVER MUST USE IT. A doctor types "Augmentin 625"; the catalogue holds
+   * "Augmentin (625)". Those are one drug and the normalizer is what says so — but only if the
+   * WHERE clause reads the stored key rather than the raw brand name.
+   *
+   * THE PAIR IS CHOSEN, NOT ASSUMED. `normalizeDrugName` REMOVES `. , ( ) - /` — it does not
+   * substitute a space for them — so "Augmentin (625)" normalizes to "augmentin 625" (the space
+   * survives the brackets) while "Augmentin-625" normalizes to "augmentin625" and does NOT match
+   * "Augmentin 625". The first version of this test asserted the hyphen case and failed, correctly.
+   * That is also exactly what the 51 colliding groups on the real catalogue look like: `A-Pan` and
+   * `Apan` collapse together, `A-Pan` and `A Pan` do not.
+   */
+  it("resolves a brand written with punctuation the stored key strips", async () => {
+    const { saltId } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "amoxicillin" }));
+    await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+      brandName: "Augmentin (625)", form: "tablet", routeClass: "systemic", salts: [{ saltId }],
+    }));
+
+    const out = await resolveDrugTexts(db, ["Augmentin 625"]);
+    expect(out.get("Augmentin 625")?.brandName).toBe("Augmentin (625)");
+    expect(out.get("Augmentin 625")?.salts.map((s) => s.moiety)).toEqual(["amoxicillin"]);
+  });
+
+  /** A RENAME RE-NORMALIZES. Otherwise the row keeps resolving under its OLD name, silently. */
+  it("re-normalizes when a brand is renamed, so the row resolves under the new name and not the old", async () => {
+    const { saltId } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "amoxicillin" }));
+    const { medicineId } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+      brandName: "Novamox-500", form: "capsule", routeClass: "systemic", salts: [{ saltId }],
+    }));
+    await withTx(db, (tx) => updateMedicine(tx, PHARMACIST, medicineId, { brandName: "Mox 500" }));
+
+    expect((await resolveDrugTexts(db, ["Mox 500"])).get("Mox 500")?.brandName).toBe("Mox 500");
+    // The OLD name, spelled the way that DID resolve before the rename — "Novamox-500" normalizes
+    // to "novamox500", which is the stored key that has just been replaced. Asserting the
+    // space-spelled "Novamox 500" instead would pass vacuously: it never matched either.
+    expect((await resolveDrugTexts(db, ["Novamox-500"])).get("Novamox-500")).toBeNull();
+  });
+
 });

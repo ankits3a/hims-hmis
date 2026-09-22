@@ -1,5 +1,7 @@
 export type BillingErrorCode =
   | "billing_not_configured" | "invalid_paise" | "unsettled_issue_refused"
+  /** FD-27 — a LIVE invoice already charges one of these services on this visit. */
+  | "duplicate_invoice_refused"
   | "credit_permission_required" | "credit_approval_required" | "outstanding_cap_exceeded"
   | "discount_approval_missing" | "approval_subject_mismatch"
   | "change_exceeds_surplus" | "change_without_cash"

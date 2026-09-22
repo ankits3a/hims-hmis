@@ -282,6 +282,19 @@ export function putPatientPhoto(patientId: string, imageBase64: string): Promise
   return api("PUT", `/patients/${encodeURIComponent(patientId)}/photo`, { imageBase64 });
 }
 
+/** A slip or report photographed against a patient (FD, `/opd/slips`). `kind` is the server's vocabulary. */
+export type WirePatientDocument = {
+  id: string; encounterId: string | null; kind: string; mimeType: string; byteSize: number; note: string | null; capturedBy: string; capturedAt: string;
+};
+export async function listPatientDocuments(patientId: string): Promise<WirePatientDocument[]> {
+  const { items } = await api<{ items: WirePatientDocument[] }>("GET", `/patients/${patientId}/documents`);
+  return items;
+}
+/** The bytes. Opening one writes a PHI-access row against the reader, on the server. */
+export function getPatientDocument(documentId: string): Promise<{ mimeType: string; imageBase64: string }> {
+  return api("GET", `/patients/documents/${documentId}`);
+}
+
 export function getPatientPhoto(patientId: string): Promise<{ mimeType: string; imageBase64: string }> {
   return api("GET", `/patients/${encodeURIComponent(patientId)}/photo`);
 }
@@ -315,4 +328,50 @@ export type WireCoverage = {
 
 export function listCoverages(patientId: string): Promise<{ items: WireCoverage[] }> {
   return api("GET", `/patients/${encodeURIComponent(patientId)}/coverages`);
+}
+
+/**
+ * ═══ THE ALLERGY REGISTER, AS EVERY SEAT SHOULD READ IT ═══
+ *
+ * `patient_allergies` is APPEND-ONLY: a correction is a `status` of `entered_in_error`, never a
+ * delete, and `GET /patients/:id/allergies` returns every row. So the filter is the caller's
+ * responsibility on every surface, and getting it wrong prints an allergen the hospital has
+ * formally retracted — `render.ts` calls that "the safety-critical line on the page".
+ *
+ * `activeAllergies` exists so that filter is written ONCE. Three screens had each declared their
+ * own `AllergyRow` and their own filter before this (patient-detail, opd-consult, and the
+ * prescription renderer's server-side twin); this is the shared shape, and new callers take it
+ * rather than minting a fourth.
+ */
+export type WireAllergy = {
+  id: string;
+  substance: string;
+  reaction: string | null;
+  severity: "mild" | "moderate" | "severe" | null;
+  status: "active" | "entered_in_error";
+};
+
+export function listAllergies(patientId: string): Promise<{ items: WireAllergy[] }> {
+  return api("GET", `/patients/${encodeURIComponent(patientId)}/allergies`);
+}
+
+/** ACTIVE only — see the type's header. A retracted row is history, never a warning. */
+export function activeAllergies(items: readonly WireAllergy[] | undefined): WireAllergy[] {
+  return (items ?? []).filter((a) => a.status === "active");
+}
+
+/**
+ * `source` names WHERE the hospital learnt it, and the bay is not registration: a nurse asking the
+ * patient at the vitals desk is a different provenance from a clerk copying a form, and the column
+ * exists to keep them apart.
+ */
+export function addAllergy(
+  patientId: string,
+  body: {
+    substance: string; reaction?: string; severity: "mild" | "moderate" | "severe";
+    /* The server's own enum (`allergyBody`), which already named the bay before a bay could use it. */
+    source: "registration" | "vitals" | "consult";
+  },
+): Promise<unknown> {
+  return api("POST", `/patients/${encodeURIComponent(patientId)}/allergies`, body);
 }

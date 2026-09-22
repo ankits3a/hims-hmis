@@ -40,7 +40,7 @@ describe("registration service", () => {
     // inserted rather than the actor swapped, so the test keeps asserting against the SAME actor
     // it has always used and the diff stays about the permission.
     await db.insert(users).values({
-      id: userId, username: `u-${userId}`, fullName: "Clerk", passwordHash: "x",
+      id: userId, username: `u-${userId}`, fullName: "Clerk", staffCode: `EMP-${userId}`, passwordHash: "x",
     }).onConflictDoNothing();
     await createRole(db, "deceased_writer", "Deceased writer");
     await grantPermissionToRole(db, reg, "deceased_writer", "patients.deceased.write");

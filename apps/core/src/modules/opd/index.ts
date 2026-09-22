@@ -11,7 +11,14 @@ export { OPD_VISIT_DEF_KEY, OPD_VISIT_DEFINITION_JSON, OPD_VISIT_STATES, opdVisi
 export type { OpdVisitState } from "./workflow-def";
 export { parkConsultation, registerConsultStartGuard, resumeConsultation } from "./consultation";
 export type { ConsultStartGuard } from "./consultation";
-export { getEncounter, getVisit, listVisits, patientTimeline } from "./encounters";
+/*
+  FD-28 — `counterState` is exported for BILLING. It is the PHI-free projection of a visit (status,
+  service date, fee status, token) and the billing counter needs the token so a cashier entered by
+  `?encounterId=` can say which slip they are billing against. Additive: `getVisit` ships vitals,
+  prescriptions and the diagnosis and is the wrong read for a money seat, which is exactly why this
+  narrower one exists.
+*/
+export { counterState, getEncounter, getVisit, listVisits, patientTimeline } from "./encounters";
 export type { EncounterRow, QueueEntryRow, TimelineItem } from "./encounters";
 // ── PLAN 17a T4 / DD15 — the lab walk-in, opened by the module that owns visits (spec §4) ──
 export { LAB_DEPARTMENT_CODE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
@@ -22,6 +29,13 @@ export type { AdvisedTest } from "./consultation";
 // `verifyPrescriptionQr` is the scanner's door; `runRxChecks` re-runs the issue-time checks on the
 // RESOLVED medicines at dispense time (16c D9) — it is bound to a patient, not to a consult.
 export { getPrescription, listPrescriptions, matchAllergies, runRxChecks, verifyPrescriptionQr } from "./prescriptions";
+/* `isCurrent` under its telling name: the pharmacy asks the same question about a prior course
+   ("is the patient still on this?") that the duplicate check asks (`patient-rail.ts`). */
+export { isCurrent as isCurrentDose } from "./rx-checks";
+export { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
+export { registerVitalsStartGuard, vitalsGateVerdict } from "./consultation";
+export type { VitalsStartGuard } from "./consultation";
+export type { DraftRow, SaveDraftInput } from "./prescription-drafts";
 export type {
   AllergyMatch, AllergyOverride, RxCheckOutcome, RxNotice, RxOverride, RxVerifyReason, RxVerifyResult,
 } from "./prescriptions";
@@ -33,7 +47,14 @@ export type { PrescriptionRow } from "./encounters";
 export type { RxLine } from "./fhir";
 export { classifyVisit } from "./visit-type";
 export type { VisitType } from "./visit-type";
-export { loadOpdConfig } from "./config";
+/**
+ * PHASE R (R1) — `DEFAULT_DEPARTMENTS` joins the declared interface, ADDITIVELY and read-only.
+ * The roster's own department master must cover every clinic the OPD opens, and the census that
+ * proves it (`modules/roster/masters.test.ts`) may only see another module through this file
+ * (spec §4). A transcription of the twelve into the roster would be a copy that goes stale the
+ * first time somebody adds a thirteenth — which is the exact defect the census exists to catch.
+ */
+export { DEFAULT_DEPARTMENTS, loadOpdConfig } from "./config";
 export type { OpdConfig } from "./config";
 export { orderQueue, nextInQueue, classOf } from "./queue-engine";
 export { SKIP_REASONS } from "./skip-reasons";

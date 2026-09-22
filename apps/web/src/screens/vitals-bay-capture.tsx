@@ -365,7 +365,7 @@ export function tileDeltaOf(k: TileKey, tile: Tile, pre: WirePreStage | null): T
   return { serviceDate: last.serviceDate, from: String(was), delta: signed(round1(op - was)), hot: false };
 }
 
-export type SavedBanner = { who: string; doctorName: string; flags: WireDangerFlag[]; amended: boolean; rest?: string };
+export type SavedBanner = { who: string; doctorName: string; flags: WireDangerFlag[]; amended: boolean; rest?: string; feeWaived?: boolean };
 
 export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, onSaved, onKeys, resetKey, onCommitted, initialTakes, protocol, onBusy }: {
   row: WireBenchRow; preStage: WirePreStage | null; ranges: WireDangerRanges | null; lane: Lane; driver?: DeviceDriver;
@@ -641,6 +641,14 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
           setMissing(body.detail.missing.map((k) => (k === "sbp" || k === "dbp" ? "bp" : k)));
           return;
         }
+        /*
+          THE FEE GATE, SAID IN THE NURSE'S LANGUAGE AND NAMING THE WAY THROUGH. The server sends
+          `the vitals desk is gated: fee_unsettled` — a code with a preposition in front of it, and
+          in English whatever the desk is set to. The owner read exactly that off a real screen with
+          the red button beside the one he had pressed. The message is translated here and it says
+          what to do: bill it, or press the emergency save if the patient cannot wait for that.
+        */
+        if (body?.code === "consult_gate_refused") { setError(t("vitalsBay.capture.feeGate")); return; }
       }
       setError(opdErrorMessage(e));
     } finally {
@@ -890,6 +898,14 @@ export function SavedBannerView({ banner, onDismiss }: { banner: SavedBanner; on
         <p data-testid="rest-banner" style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t("vitalsBay.rest.sent", { who: banner.who, time: banner.rest })}</p>
       ) : (
         <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--green)" }}>✓ {t(banner.amended ? "vitalsBay.saved.amended" : "vitalsBay.saved.title", { who: banner.who, doctor: banner.doctorName })}</p>
+      )}
+      {banner.feeWaived === true && (
+        /*
+          THE WAIVER, SAID OUT LOUD AT THE BAY. The ⚠ mark rides the pre-stage to every desk after
+          this one; this line is for the person who just created it — they pressed a button to
+          take a patient past the counter and are owed a sentence saying that is what happened.
+        */
+        <p data-testid="saved-fee-waived" style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: "var(--gold)" }}>⚠ {t("vitalsBay.saved.feeWaived")}</p>
       )}
       {dangers.length > 0 && <p data-testid="saved-danger" style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: "var(--red)" }}>{t("vitalsBay.saved.danger", { vitals: dangers.map((f) => `${f.vital} ${f.value}`).join(", ") })}</p>}
       {notices.length > 0 && <p data-testid="saved-notice" style={{ margin: 0, fontSize: 12.5, color: "var(--gold)" }}>{t("vitalsBay.saved.notice", { vitals: notices.map((f) => `${f.vital} ${f.value}`).join(", ") })}</p>}

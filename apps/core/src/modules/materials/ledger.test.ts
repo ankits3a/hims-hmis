@@ -14,6 +14,7 @@ import {
 } from "./ledger";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { normalizeDrugName } from "../formulary";
 
 /**
  * PLAN 14 T5 — the stock ledger, and the stores it keys on.
@@ -49,7 +50,7 @@ describe("the stock ledger (Plan 14 T5)", () => {
     if (cls === "drug") {
       medicineId = newId();
       await db.insert(formularyMedicines).values({
-        id: medicineId, brandName: `Brand ${medicineId}`, form: "tablet",
+        id: medicineId, brandName: `Brand ${medicineId}`, nameNormalized: normalizeDrugName(`Brand ${medicineId}`), form: "tablet",
         createdBy: HEAD.id, updatedBy: HEAD.id,
       });
     }

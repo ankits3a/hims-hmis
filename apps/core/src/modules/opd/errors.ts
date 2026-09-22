@@ -3,12 +3,24 @@ export type OpdErrorCode =
   | "unknown_department" | "department_inactive" | "duplicate_department_code"
   | "unknown_room" | "duplicate_room_code"
   | "unknown_doctor" | "doctor_inactive" | "unknown_user" | "user_already_doctor" | "doctor_department_mismatch"
+  // FD-29 — the doctor id the prescription prints. Both fall through `opdStatus` to 400, which
+  // is right for each: a blank or over-long id is a malformed request, and the exhausted case
+  // is reached only at ten thousand doctors, where the caller's answer is to supply one.
+  | "invalid_doctor_code" | "doctor_code_exhausted"
   | "not_a_doctor" | "not_your_patient"
   | "invalid_schedule" | "unknown_schedule" | "unknown_leave" | "leave_not_scheduled" | "invalid_leave_range"
   | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"
   | "appointment_state_conflict" | "appointment_not_today"
   | "unknown_encounter" | "encounter_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
+  // The co-pilot's syndrome key. A key the knowledge file does not hold is a CLIENT error with a
+  // domain name, not a 500 — the screen sends what a previous build's suggest route gave it.
+  | "unknown_syndrome"
+  // The advice library. `unknown_advice_template` maps to 404 by the `unknown_` rule and is
+  // deliberately also what a doctor gets for another doctor's row: not-found and not-yours must
+  // answer identically, or the code becomes a way to probe whose template an id belongs to.
+  | "unknown_advice_template" | "advice_template_incomplete" | "advice_keyword_invalid"
+  | "unknown_complaint_concept" | "complaint_term_invalid" | "complaint_term_already_mapped"
   | "call_conflict" | "unknown_queue_entry" | "queue_entry_state_conflict" | "invalid_transfer"
   | "invalid_vitals" | "vitals_incomplete"
   // VD-1 T2 — the sanity gates. `vitals_gate` carries `detail.gates[]` (key, kind, value, and a
@@ -31,10 +43,17 @@ export type OpdErrorCode =
   | "unknown_vitals" | "vitals_state_conflict"
   | "invalid_follow_up_days" | "extension_cap_reached" | "reason_required"
   | "allergy_conflict" | "override_reason_required" | "empty_prescription" | "unknown_prescription"
+  // FD-30 — the transcription draft (owner ruling 2026-09-12, draft-then-confirm). `unknown_draft`
+  // rides the `unknown_*` rule to 404 deliberately: a doctor tapping issue on a slip a colleague
+  // just discarded is asking for something that is no longer there, not sending a bad request.
+  | "unknown_draft"
+  // FD-31 — 403 through `opdStatus`'s own rule, like `registration_not_permitted` beside it: the
+  // request is well formed and the account simply may not do this.
+  | "transcription_not_permitted"
   // PLAN 16a T5 — the hard-warning grammar EXTENDS rather than forks (DD3): these two carry their
   // hits in `detail` and are cleared by an override with a reason, exactly as `allergy_conflict` is.
   // A severe interaction, and the same moiety twice on one slip under two brand names.
-  | "interaction_conflict" | "duplicate_salt_conflict"
+  | "interaction_conflict" | "duplicate_salt_conflict" | "drug_disease_conflict"
   // 17d T4 — a SECOND open laboratory walk-in for one patient on one day. Scoped to the lab door,
   // never to `openVisitInTx`: OPD legitimately opens a second visit the same day, and the lab is
   // the case where it is always a mistake — a walk-in is one draw, and tests remembered on the way

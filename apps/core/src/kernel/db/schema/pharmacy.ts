@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
+  bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { users } from "./auth";
 import { invoiceLines, invoices } from "./billing";
 import { formularyMedicines } from "./formulary";
 import { items, stockBatches, stockLedger, stockReservations } from "./materials";
@@ -92,6 +93,20 @@ export const pharmacyDispenses = pgTable(
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     pickedBy: text("picked_by"),
     pickedAt: timestamp("picked_at", { withTimezone: true }),
+    /**
+     * ═══ FD-31 — THE PHARMACIST SAW THE SLIP (OWNER RULING 2026-09-12) ═══
+     *
+     * Owner: *"the pharmacist will cross confirm the prescription slip (either the photo capture of
+     * prescription or physical prescription slip) before generating the medicine bill."*
+     *
+     * Set only on a dispense whose prescription was TRANSCRIBED (`opd_prescriptions.transcribed_by`
+     * is not null). On a doctor-entered Rx there is nothing to cross-confirm — the prescriber
+     * operated the keyboard — and demanding the ceremony there would train a pharmacist to click it
+     * without looking, which is how a real control becomes a habit. `billDispense` refuses while it
+     * is null on a transcribed one; the WINDOW is the bill, per the owner's sentence, not the claim.
+     */
+    slipConfirmedBy: text("slip_confirmed_by"),
+    slipConfirmedAt: timestamp("slip_confirmed_at", { withTimezone: true }),
     invoiceId: text("invoice_id").references(() => invoices.id),
     billedAt: timestamp("billed_at", { withTimezone: true }),
     handedOverBy: text("handed_over_by"),
@@ -181,23 +196,276 @@ export const pharmacyRegH1 = pgTable(
   {
     seq: bigserial("seq", { mode: "number" }).notNull(),
     id: text("id").primaryKey(),
-    dispenseLineId: text("dispense_line_id").notNull().references(() => pharmacyDispenseLines.id),
+    /** The counter's line, or (P19) null when `retail_line_id` names a walk-in sale's line. Exactly one is set. */
+    dispenseLineId: text("dispense_line_id").references(() => pharmacyDispenseLines.id),
+    retailLineId: text("retail_line_id").references(() => pharmacyRetailSaleLines.id),
     dispensedAt: timestamp("dispensed_at", { withTimezone: true }).notNull(),
     patientId: text("patient_id").notNull().references(() => patients.id),
     patientName: text("patient_name").notNull(),
     patientAddress: text("patient_address"),
     prescriberName: text("prescriber_name").notNull(),
     prescriberRegNo: text("prescriber_reg_no"),
+    /**
+     * PHARMACY P19 — Rule 65(3) asks for the prescriber's name AND ADDRESS. A walk-in's prescriber
+     * practises elsewhere, so the address is copied from the prescription. Null on counter rows,
+     * whose prescriber practises at this hospital.
+     */
+    prescriberAddress: text("prescriber_address"),
     drugName: text("drug_name").notNull(),
     medicineId: text("medicine_id").references(() => formularyMedicines.id),
     batchNo: text("batch_no").notNull(),
     qtyBase: integer("qty_base").notNull(),
     unit: text("unit").notNull(),
     recordedBy: text("recorded_by").notNull(),
+    /**
+     * PHARMACY P2 — the state council registration number of the pharmacist who handed the drug
+     * over, as it stood at that moment. Null on rows written before the register existed.
+     */
+    pharmacistRegNo: text("pharmacist_reg_no"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("pharmacy_reg_h1_dispensed_idx").on(t.dispensedAt),
     check("pharmacy_reg_h1_qty_ck", sql`${t.qtyBase} > 0`),
+    check("pharmacy_reg_h1_one_source_ck", sql`(${t.dispenseLineId} is null) <> (${t.retailLineId} is null)`),
+  ],
+);
+
+/**
+ * PHARMACY P2 — THE REGISTER OF PHARMACISTS: WHO MAY DO WHAT THE PHARMACY ACT RESERVES.
+ *
+ * The Pharmacy Act 1948 §42 reserves dispensing to a registered pharmacist. A ROLE says what a
+ * login may touch; it says nothing about whether the person holds a state pharmacy council
+ * registration, and on this deployment `pharmacy` is also held by a login that is not a pharmacist.
+ * This table is that fact. Phase doc `docs/superpowers/plans/2026-09-16-phase-pharmacy-p2-pharmacist-register.md`.
+ *
+ * ═══ A ROW IS NEVER EDITED ═══
+ *
+ * A renewal ends the current row and records a new one, and a mistake is ended with a reason, so the
+ * register shows its own history. `ended_*` are the only columns ever written after the insert, and
+ * all three are written together or not at all.
+ *
+ * ═══ ONE CURRENT ROW PER PERSON, AND PER CERTIFICATE ═══
+ *
+ * Two partial unique indexes over the rows not yet ended: a person cannot hold two current
+ * registrations here, and one council's number cannot be current on two people.
+ */
+export const pharmacyPharmacistRegistrations = pgTable(
+  "pharmacy_pharmacist_registrations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    /** The state pharmacy council that issued it, as written on the certificate. */
+    council: text("council").notNull(),
+    registrationNo: text("registration_no").notNull(),
+    /** Councils renew periodically; null for a registration with no end date on the certificate. */
+    validUntil: date("valid_until", { mode: "string" }),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endedBy: text("ended_by").references(() => users.id),
+    endReason: text("end_reason"),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_pharmacist_reg_current_user_ux").on(t.userId).where(sql`${t.endedAt} is null`),
+    uniqueIndex("pharmacy_pharmacist_reg_current_no_ux")
+      .using("btree", sql`lower(${t.council})`, sql`lower(${t.registrationNo})`)
+      .where(sql`${t.endedAt} is null`),
+    check("pharmacy_pharmacist_reg_ended_ck",
+      sql`(${t.endedAt} is null) = (${t.endedBy} is null) and (${t.endedAt} is null) = (${t.endReason} is null)`),
+    check("pharmacy_pharmacist_reg_not_self_ck", sql`${t.recordedBy} <> ${t.userId}`),
+    check("pharmacy_pharmacist_reg_text_ck", sql`btrim(${t.council}) <> '' and btrim(${t.registrationNo}) <> ''`),
+  ],
+);
+
+/**
+ * ═══ PHARMACY P19 — WALK-IN RETAIL SALES ═══
+ *
+ * Phase doc `docs/superpowers/plans/2026-09-17-phase-pharmacy-p19-retail-sales.md`. A walk-in sale is
+ * not a dispense: it has no visit and no prescriber in this hospital, so it places no order. It
+ * shares the ledger, the price rule, billing and the H1 register with the counter.
+ *
+ * The licence (R-2): no sale to the public without a current Form 20/21 licence for the retail
+ * store. A row is never edited; a renewal or a correction is a new row and the latest row is the
+ * licence.
+ */
+export const pharmacyRetailLicences = pgTable(
+  "pharmacy_retail_licences",
+  {
+    id: text("id").primaryKey(),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    /** Form 20: retail sale of drugs other than those in Schedules C, C1 and X. */
+    form20No: text("form20_no").notNull(),
+    /** Form 21: retail sale of drugs in Schedules C and C1, other than Schedule X. */
+    form21No: text("form21_no").notNull(),
+    validFrom: date("valid_from", { mode: "string" }).notNull(),
+    validTo: date("valid_to", { mode: "string" }).notNull(),
+    /** The registered pharmacist named on the licence, as printed. */
+    pharmacistInCharge: text("pharmacist_in_charge").notNull(),
+    note: text("note"),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pharmacy_retail_licences_store_idx").on(t.storeResourceId, t.recordedAt),
+    check("pharmacy_retail_licences_dates_ck", sql`${t.validTo} >= ${t.validFrom}`),
+    check("pharmacy_retail_licences_text_ck",
+      sql`btrim(${t.form20No}) <> '' and btrim(${t.form21No}) <> '' and btrim(${t.pharmacistInCharge}) <> ''`),
+  ],
+);
+
+/**
+ * One walk-in sale: sold, billed and handed over in one act. The outside prescription's fields are
+ * present exactly when a line is Schedule H or H1 (`scheduled`).
+ *
+ * PHARMACY P20 — the same record holds a PAPER DISPENSE entered after an outage (`channel`
+ * `downtime`): the medicine left on paper, at either counter, while the screens were dark, and it
+ * can no longer be attached to an order. Its `sold_at` is the time written on the sheet, `sold_by`
+ * is the pharmacist who handed it over, `entered_by` is who typed it in, and the kit sheet it was
+ * written on is named, once. A walk-in sale needs the retail licence; an OPD counter sheet does not.
+ */
+export const pharmacyRetailSales = pgTable(
+  "pharmacy_retail_sales",
+  {
+    id: text("id").primaryKey(),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    /** `walk_in` (P19) or `downtime` (P20). */
+    channel: text("channel").notNull().default("walk_in"),
+    licenceId: text("licence_id").references(() => pharmacyRetailLicences.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** The customer was registered by this sale. */
+    registeredHere: boolean("registered_here").notNull().default(false),
+    scheduled: boolean("scheduled").notNull(),
+    rxPrescriberName: text("rx_prescriber_name"),
+    rxPrescriberRegNo: text("rx_prescriber_reg_no"),
+    rxPrescriberAddress: text("rx_prescriber_address"),
+    rxDate: date("rx_date", { mode: "string" }),
+    /** The photo, filed on the customer's record as `outside_prescription`. */
+    rxDocumentId: text("rx_document_id"),
+    invoiceId: text("invoice_id").notNull().references(() => invoices.id),
+    /** The seller's council registration number when a scheduled line was sold (P2). */
+    pharmacistRegNo: text("pharmacist_reg_no"),
+    soldBy: text("sold_by").notNull().references(() => users.id),
+    soldAt: timestamp("sold_at", { withTimezone: true }).notNull(),
+    /** P20 — who entered the row; the seller for a walk-in sale. */
+    enteredBy: text("entered_by").references(() => users.id),
+    /** P20 — the downtime kit sheet (a `receipt` form) the paper dispense was written on. */
+    downtimeKitId: text("downtime_kit_id"),
+    downtimeSerial: integer("downtime_serial"),
+    downtimeDesk: text("downtime_desk"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_retail_sales_invoice_ux").on(t.invoiceId),
+    uniqueIndex("pharmacy_retail_sales_sheet_ux").on(t.downtimeKitId, t.downtimeSerial).where(sql`${t.downtimeKitId} is not null`),
+    check("pharmacy_retail_sales_channel_ck", sql`${t.channel} in ('walk_in', 'downtime')`),
+    check("pharmacy_retail_sales_licence_ck", sql`${t.channel} <> 'walk_in' or ${t.licenceId} is not null`),
+    check(
+      "pharmacy_retail_sales_sheet_ck",
+      sql`(${t.channel} = 'downtime') = (${t.downtimeKitId} is not null and ${t.downtimeSerial} is not null and ${t.downtimeDesk} is not null and ${t.enteredBy} is not null)`,
+    ),
+    index("pharmacy_retail_sales_sold_idx").on(t.soldAt),
+    index("pharmacy_retail_sales_patient_idx").on(t.patientId),
+    check(
+      "pharmacy_retail_sales_rx_ck",
+      sql`not ${t.scheduled} or (${t.rxPrescriberName} is not null and ${t.rxPrescriberRegNo} is not null and ${t.rxPrescriberAddress} is not null and ${t.rxDate} is not null and ${t.rxDocumentId} is not null and ${t.pharmacistRegNo} is not null)`,
+    ),
+  ],
+);
+
+export const pharmacyRetailSaleLines = pgTable(
+  "pharmacy_retail_sale_lines",
+  {
+    id: text("id").primaryKey(),
+    saleId: text("sale_id").notNull().references(() => pharmacyRetailSales.id),
+    lineIdx: integer("line_idx").notNull(),
+    medicineId: text("medicine_id").notNull().references(() => formularyMedicines.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    qtyBase: integer("qty_base").notNull(),
+    ledgerEntryId: text("ledger_entry_id").notNull().references(() => stockLedger.id),
+    invoiceLineId: text("invoice_line_id").notNull().references(() => invoiceLines.id),
+    unitPaise: bigint("unit_paise", { mode: "number" }).notNull(),
+    priceWinner: text("price_winner").notNull(),
+    scheduleFlag: text("schedule_flag"),
+    fefoOverride: boolean("fefo_override").notNull().default(false),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_retail_sale_lines_idx_ux").on(t.saleId, t.lineIdx),
+    index("pharmacy_retail_sale_lines_batch_idx").on(t.batchId),
+    check("pharmacy_retail_sale_lines_qty_ck", sql`${t.qtyBase} > 0`),
+    check("pharmacy_retail_sale_lines_winner_ck", sql`${t.priceWinner} in ('batch_mrp', 'ceiling', 'tariff')`),
+    check("pharmacy_retail_sale_lines_schedule_ck", sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'OTC')`),
+  ],
+);
+
+/**
+ * ═══ PD-D18 — WHERE THE DRUG IS, PER COUNTER'S STORE ═══
+ *
+ * The pharmacist's slowest act is the walk to the shelf, and nothing recorded where to walk: `items`
+ * has no bin, and a bin is not an item's fact anyway — the same strip sits on rack 3 at the OPD
+ * counter and in a drawer at the retail one. So it is keyed by (store, item), set by whoever manages
+ * the counter's items (`pharmacy.sale_items.manage`), and printed on the line beside the batch.
+ *
+ * A LABEL, not a structure: "R-12", "rack 3 · shelf 2", "fridge". A counter that later wants aisles
+ * and bays can parse its own labels; a schema that guessed the hierarchy would be wrong for most.
+ * Clearing a location deletes the row — "unknown" is the absence of a row, never an empty string.
+ */
+export const pharmacyShelfLocations = pgTable(
+  "pharmacy_shelf_locations",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    location: text("location").notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_shelf_locations_store_item_ux").on(t.storeResourceId, t.itemId),
+    check("pharmacy_shelf_locations_label_ck", sql`length(btrim(${t.location})) between 1 and 24 and ${t.location} = btrim(${t.location})`),
+  ],
+);
+
+/**
+ * ═══ PD-9 — THE PRESCRIBER AUTHORISES WHAT THE CHECK WOULD REFUSE (owner ruling 2026-09-19) ═══
+ *
+ * "The doctor must authorise dispensing against a recorded allergy." The check refuses a line the
+ * four books stop and no prescriber override covers (an allergy recorded after the issue is the
+ * common case). The counter used to be able only to send the patient back. Now the pharmacist ASKS
+ * the prescribing doctor — by name, not a role — and the doctor authorises or declines with a reason;
+ * an authorisation clears exactly that refusal on exactly that line, and nothing else.
+ *
+ * Addressed to a PERSON (`prescriber_user_id`), because the ruling is "the doctor", not "a doctor":
+ * the generic approvals engine routes to a role, which would let any doctor decide. The hit is named
+ * by `book` + `about` (the allergy's substance, the pair, the moiety, the ruling) — so a substitute
+ * or a reading carrying the same substance on the same line is covered, and a different one is not.
+ * `decided_by <> requested_by` is the lab's `same_actor` rule, held by the database.
+ */
+export const pharmacyAuthorisations = pgTable(
+  "pharmacy_authorisations",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    dispenseId: text("dispense_id").notNull().references(() => pharmacyDispenses.id),
+    lineIdx: integer("line_idx").notNull(),
+    book: text("book").notNull(),
+    about: text("about").notNull(),
+    prescriberUserId: text("prescriber_user_id").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    requestNote: text("request_note"),
+    status: text("status").notNull().default("pending"),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionReason: text("decision_reason"),
+  },
+  (t) => [
+    index("pharmacy_authorisations_prescriber_idx").on(t.prescriberUserId, t.status),
+    uniqueIndex("pharmacy_authorisations_one_open_ux").on(t.dispenseId, t.lineIdx, t.book, t.about).where(sql`${t.status} = 'pending'`),
+    check("pharmacy_authorisations_book_ck", sql`${t.book} in ('allergy', 'interaction', 'duplicate', 'drug_disease')`),
+    check("pharmacy_authorisations_status_ck", sql`${t.status} in ('pending', 'authorised', 'declined')`),
+    check("pharmacy_authorisations_decided_ck", sql`(${t.status} = 'pending') = (${t.decidedBy} is null and ${t.decidedAt} is null and ${t.decisionReason} is null)`),
+    check("pharmacy_authorisations_reason_ck", sql`${t.decisionReason} is null or length(btrim(${t.decisionReason})) >= 3`),
+    check("pharmacy_authorisations_same_actor_ck", sql`${t.decidedBy} is null or ${t.decidedBy} <> ${t.requestedBy}`),
   ],
 );

@@ -31,6 +31,14 @@ export const dispenseVerified = defineEvent("dispense.verified", MODULE, z.objec
   lineCount: z.number().int().positive(), declinedCount: z.number().int().nonnegative(), scheduled: z.boolean(),
   allergyHits: z.number().int().nonnegative(), interactionHits: z.number().int().nonnegative(),
   substitutions: z.number().int().nonnegative(),
+  /** P2 — the verifying pharmacist's state council registration number. Null on payloads written before P2. */
+  pharmacistRegNo: z.string().min(1).nullable().default(null),
+  /**
+   * PHARMACY P3 — the lines whose checks could see only part of the medicine (a component nobody
+   * had reviewed), as they stood at the verify. Without it, `allergyHits: 0` read as "checked and
+   * clean". Defaults to empty so earlier payloads still parse.
+   */
+  partlyCheckedLineIdxs: z.array(z.number().int().nonnegative()).default([]),
 }));
 
 export const dispenseLineDeclined = defineEvent("dispense.line_declined", MODULE, z.object({
@@ -43,10 +51,46 @@ export const substitutionRecorded = defineEvent("substitution.recorded", MODULE,
   orderedMedicineId: id, dispensedMedicineId: id, consentBy: id,
 }));
 
+/**
+ * PD-5b — a line the catalogue could not place, read as a medicine by the pharmacist at the check.
+ * Not a substitution: nothing the doctor named was replaced, so there is no consent to name. The
+ * resolver is named because a person, not the catalogue, decided what the doctor's words meant.
+ */
+export const lineResolved = defineEvent("dispense.line_resolved", MODULE, z.object({
+  dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id, doctorId: id,
+  dispensedMedicineId: id, resolvedBy: id,
+}));
+
+/**
+ * PD-D18 — where an item sits in a counter's store was set, replaced or (`location: null`) cleared.
+ * Master data a pharmacist walks by, so a change to it is on the record with who made it.
+ */
+export const shelfLocationSet = defineEvent("shelf.location_set", MODULE, z.object({
+  storeResourceId: id, itemId: id, location: z.string().min(1).nullable(),
+}));
+
+/**
+ * PD-9 (owner ruling 2026-09-19) — the counter asked the PRESCRIBER to authorise one refusal on one
+ * line, and the prescriber decided. Ids and the book only: the substance and the reasons live on the
+ * row, which the ticket and the doctor read under their own gates.
+ */
+export const authorisationRequested = defineEvent("authorisation.requested", MODULE, z.object({
+  authorisationId: id, dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id,
+  book: z.enum(["allergy", "interaction", "duplicate", "drug_disease"]), prescriberUserId: id, requestedBy: id,
+}));
+export const authorisationDecided = defineEvent("authorisation.decided", MODULE, z.object({
+  authorisationId: id, dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id,
+  status: z.enum(["authorised", "declined"]), decidedBy: id,
+}));
+
 /** D2 — every line holds a reservation on the ledger; a FEFO override is named, never silent. */
 export const dispensePicked = defineEvent("dispense.picked", MODULE, z.object({
   dispenseId: id, patientId: id,
-  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), batchId: id, qtyBase: z.number().int().positive(), fefoOverride: z.boolean() })).min(1),
+  lines: z.array(z.object({
+    lineIdx: z.number().int().nonnegative(), batchId: id, qtyBase: z.number().int().positive(), fefoOverride: z.boolean(),
+    /** P13 — the pack was scanned and matched the line's item. Absent on older events. */
+    scanned: z.boolean().default(false),
+  })).min(1),
 }));
 
 export const dispenseBilled = defineEvent("dispense.billed", MODULE, z.object({
@@ -57,14 +101,94 @@ export const dispenseBilled = defineEvent("dispense.billed", MODULE, z.object({
 export const dispenseHandedOver = defineEvent("dispense.handed_over", MODULE, z.object({
   dispenseId: id, dispenseNo: id, patientId: id, encounterId: id, handedOverBy: id,
   ledgerEntryIds: z.array(id).min(1), h1RegisterRows: z.number().int().nonnegative(), identityConfirmedVia: z.enum(["token", "phone_last4"]).nullable(),
+  /**
+   * P2 — the handing-over pharmacist's registration number, when they have one. A dispense with no
+   * scheduled line may be handed over by the aide, who has none, so it is nullable by design.
+   */
+  pharmacistRegNo: z.string().min(1).nullable().default(null),
 }));
 
 export const dispenseCancelled = defineEvent("dispense.cancelled", MODULE, z.object({
   dispenseId: id, patientId: id, fromStatus: z.string().min(1), reason: z.string().min(1), reservationsReleased: z.number().int().nonnegative(),
+  /**
+   * P5 — a BILLED dispense is cancelled with the refund credit note it raised and the refund approval
+   * it filed. Null for a dispense cancelled before the bill, and on payloads written before P5.
+   */
+  creditNoteId: id.nullable().default(null),
+  refundApprovalId: id.nullable().default(null),
+}));
+
+/** P2 — a state council registration was filed for a pharmacist (a renewal names the row it ended). */
+export const pharmacistRegistered = defineEvent("pharmacist.registered", MODULE, z.object({
+  registrationId: id, userId: id, council: z.string().min(1), registrationNo: z.string().min(1),
+  validUntil: z.string().nullable(), supersededId: id.nullable(),
+}));
+
+/** P2 — a registration stopped being current, with the reason. */
+export const pharmacistRegistrationEnded = defineEvent("pharmacist.registration_ended", MODULE, z.object({
+  registrationId: id, userId: id, reason: z.string().min(1),
+}));
+
+/**
+ * P6 — a sealed pack came back after the hand-over: restocked, credited, its refund requested. The
+ * attestation that it was sealed and intact is the pharmacist's, and it is recorded here.
+ */
+export const dispenseLineReturned = defineEvent("dispense.line_returned", MODULE, z.object({
+  dispenseId: id, patientId: id,
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
+  sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
+  creditNoteId: id, refundApprovalId: id,
+}));
+
+/**
+ * P19 — a walk-in sale: stock consumed, invoice issued and paid, H1 rows written, in one act. The
+ * customer was registered by the sale when `registeredHere`.
+ */
+export const retailSold = defineEvent("retail.sold", MODULE, z.object({
+  saleId: id, patientId: id, invoiceId: id, storeResourceId: id,
+  /** P20 — null for a paper dispense at the OPD counter, which sells under the hospital's licence. */
+  licenceId: id.nullable(),
+  registeredHere: z.boolean(), scheduled: z.boolean(), h1RegisterRows: z.number().int().nonnegative(),
+  lines: z.array(z.object({
+    lineIdx: z.number().int().nonnegative(), medicineId: id, itemId: id, batchId: id,
+    qtyBase: z.number().int().positive(), scheduleFlag: z.string().nullable(), ledgerEntryId: id, fefoOverride: z.boolean(),
+  })).min(1),
+  netPaise: z.number().int().nonnegative(),
+  pharmacistRegNo: z.string().min(1).nullable(),
+  /**
+   * P20 — `downtime` for a paper dispense entered after an outage: `soldAt` is the time on the
+   * sheet, `soldBy` who handed it over, and a clinical hit is recorded here rather than refused.
+   */
+  channel: z.enum(["walk_in", "downtime"]).default("walk_in"),
+  soldAt: z.string().min(1).nullable().default(null),
+  soldBy: id.nullable().default(null),
+  sheet: z.object({ kitId: id, serial: z.number().int().positive(), desk: z.string().min(1) }).nullable().default(null),
+  checkHits: z.object({ allergies: z.number().int().nonnegative(), severeInteractions: z.number().int().nonnegative() })
+    .default({ allergies: 0, severeInteractions: 0 }),
+}));
+
+/**
+ * P19b — sealed packs of a walk-in sale (or of a paper dispense) came back: restocked into the
+ * sale's store, credited, the refund requested. The sale stays as it was; this event is the record.
+ */
+export const retailLineReturned = defineEvent("retail.line_returned", MODULE, z.object({
+  saleId: id, patientId: id, storeResourceId: id, channel: z.enum(["walk_in", "downtime"]),
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
+  sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
+  creditNoteId: id, refundApprovalId: id,
+}));
+
+/** P19 — a Form 20/21 retail licence was recorded for a store. */
+export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODULE, z.object({
+  licenceId: id, storeResourceId: id, form20No: z.string().min(1), form21No: z.string().min(1),
+  validFrom: z.string().min(1), validTo: z.string().min(1),
 }));
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
-  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded,
+  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, shelfLocationSet,
+  authorisationRequested, authorisationDecided,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
+  pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
+  retailSold, retailLicenceRecorded, retailLineReturned,
 ] as const;

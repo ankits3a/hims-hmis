@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Who is on now — the hospital's board</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+input{font:inherit}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1180px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+
+<header style="display: flex; align-items: center; gap: 14px; height: 48px; flex-shrink: 0; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
+<div style="display: flex; align-items: center; gap: 8px;">
+<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0l7 7-7 7-7-7z" fill="#0e6b4e"></path></svg>
+<span style="font-size: 14px; font-weight: 700; letter-spacing: .14em;">DESK ONE</span>
+</div>
+<div style="font-size: 13px; color: #5c6f66; padding-left: 10px;">Who is on now · Casualty, the front desk, the duty manager and every ward read this same board</div>
+<div style="flex-grow: 1;"></div>
+<a href="Main.dc.html" style="font-size: 13px; font-weight: 600;">Unit II's roster</a>
+</header>
+
+<div style="flex-grow: 1; display: flex; min-height: 0;">
+<main style="flex-grow: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 20px;">
+
+<div style="display: flex; align-items: flex-end; gap: 16px;">
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px;">
+<h1 style="margin: 0; font-size: 22px; line-height: 28px; font-weight: 700;">{{ clockLine }}</h1>
+<div style="color: #5c6f66;">{{ clockNote }}</div>
+</div>
+<div style="display: inline-flex; height: 36px; border: 1px solid #dfe7e1; border-radius: 6px; overflow: hidden; background: #ffffff; font-size: 12.5px;">
+<sc-for list="{{ times }}" as="t" hint-placeholder-count="3">
+<button onClick="{{ t.pick }}" style="padding: 0 14px; border: none; border-right: 1px solid #dfe7e1; {{ t.style }}">{{ t.label }}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; overflow: hidden;">
+<div style="display: flex; gap: 12px; padding: 8px 14px; background: #f8faf8; border-bottom: 1px solid #dfe7e1; font-size: 11px; font-weight: 600; letter-spacing: .08em; color: #5c6f66;">
+<span style="width: 170px;">DEPARTMENT</span>
+<span style="width: 150px;">UNIT ON TAKE</span>
+<span style="width: 290px;">IN THE BUILDING</span>
+<span style="width: 190px;">FACULTY ON CALL</span>
+<span style="flex-grow: 1;">IF IT OVERFLOWS</span>
+</div>
+<sc-for list="{{ depts }}" as="d" hint-placeholder-count="10">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 14px; border-bottom: 1px solid #ecf1ed; {{ d.rowStyle }}">
+<span style="width: 170px; font-weight: 600;">{{ d.name }}</span>
+<div style="width: 150px; display: flex; flex-direction: column;">
+<span style="font-size: 15px; font-weight: 700; {{ d.unitStyle }}">{{ d.unit }}</span>
+<span style="font-size: 11.5px; color: #5c6f66;">{{ d.till }}</span>
+</div>
+<div style="width: 290px; display: flex; flex-direction: column; gap: 1px;">
+<sc-for list="{{ d.here }}" as="p" hint-placeholder-count="2">
+<div style="display: flex; align-items: center; gap: 8px;">
+<span style="width: 26px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; color: #5c6f66;">{{ p.g }}</span>
+<span style="flex-grow: 1; {{ p.style }}">{{ p.n }}</span>
+<a href="#" aria-label="Call" style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 24px; border-radius: 5px; border: 1px solid #dfe7e1; color: #0e6b4e;">
+<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h3l1 3-1.7 1.2a8 8 0 004 4L10.5 9l3 1v3a1 1 0 01-1 1A10.5 10.5 0 012 3.5a1 1 0 011-1z"></path></svg>
+</a>
+</div>
+</sc-for>
+</div>
+<div style="width: 190px; display: flex; flex-direction: column;">
+<span>{{ d.fac }}</span>
+<span style="font-size: 11.5px; color: #5c6f66;">{{ d.facNote }}</span>
+</div>
+<span style="flex-grow: 1; font-size: 12.5px; color: #5c6f66;">{{ d.backup }}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 11px; font-weight: 600; letter-spacing: .08em; color: #5c6f66;">NOT UNITS, BUT YOU WILL NEED THEM</span>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;">
+<sc-for list="{{ services }}" as="s" hint-placeholder-count="8">
+<div style="display: flex; flex-direction: column; gap: 1px; padding: 9px 12px; border-radius: 8px; background: #ffffff; border: 1px solid #dfe7e1;">
+<span style="font-size: 11.5px; color: #5c6f66;">{{ s.role }}</span>
+<span style="font-weight: 600;">{{ s.who }}</span>
+<span style="font-size: 11.5px; color: #5c6f66;">{{ s.note }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex-grow: 1;"></div>
+<div style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border-radius: 8px; background: #132420;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #9fc0b1;">ask —</span>
+<label for="ask-on" style="position: absolute; width: 1px; height: 1px; overflow: hidden;">Ask the copilot</label>
+<input id="ask-on" type="text" placeholder="&quot;ortho mein abhi on call kaun hai?&quot;   &quot;which surgery unit admits tomorrow night?&quot;" style="flex-grow: 1; height: 30px; box-sizing: border-box; border: none; outline: none; background: transparent; color: #d9efe4; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;">
+</div>
+</main>
+
+<aside style="width: 340px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 20px 0;">
+<div style="background: #ffffff; border: 1px solid #132420; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 9px;">
+<span style="font-size: 15px; font-weight: 700;">Holes in the next 24 hours</span>
+<sc-for list="{{ holes }}" as="h" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 3px; padding: 10px; border-radius: 6px; {{ h.box }}">
+<span style="font-size: 12px; color: #5c6f66;">{{ h.when }}</span>
+<span style="font-size: 13px; line-height: 18px;">{{ h.text }}</span>
+<span style="font-size: 12.5px; font-weight: 600; {{ h.ownStyle }}">{{ h.own }}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 14px; font-weight: 700;">When the screens are dark</span>
+<span style="font-size: 12.5px; line-height: 18px;">This board prints itself for every ward and for casualty at <span style="font-weight: 600;">20:00</span> and <span style="font-weight: 600;">08:00</span>, with phone numbers. Power cut, network down, server down — the paper on the wall is never more than twelve hours old.</span>
+<span style="font-size: 12px; color: #5c6f66;">Last printed 20:00 · 14 copies · all collected</span>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 14px; font-weight: 700;">A patient arriving now</span>
+<span style="font-size: 12.5px; line-height: 18px;">is admitted under the unit shown here <span style="font-weight: 600;">for the minute they reached casualty</span> — not the minute the clerk finished typing. A 07:55 arrival entered at 08:10 still belongs to last night's unit.</span>
+</div>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const t = st.t ?? 0;
+    const T = [
+      { label: '02:40 tonight', line: 'Friday 9 October, 02:40', note: 'It is past midnight, and Thursday’s units are still on take. They hand over at 08:00, not at 12.' },
+      { label: '09:30 this morning', line: 'Friday 9 October, 09:30', note: 'Friday’s units took over at 08:00. Last night’s residents are resting and cannot be called.' },
+      { label: '22:00 tonight', line: 'Friday 9 October, 22:00', note: 'The night team is in. Friday’s units stay on take until 08:00 on Saturday.' },
+    ];
+    const times = T.map((x, i) => ({
+      label: x.label, pick: () => this.setState({ t: i }),
+      style: i === t ? 'background:#132420;color:#ffffff;font-weight:600;' : 'background:#ffffff;color:#132420;',
+    }));
+    const night = t !== 1;
+    const thu = t === 0;
+    const P = (g, n) => ({ g, n, style: '' });
+    const till = thu ? 'Thursday’s take · till 08:00' : 'Friday’s take · till Sat 08:00';
+    const D = (name, a, b) => {
+      const x = thu ? a : b;
+      const single = !!a.single;
+      return {
+        name, unit: x.unit, till: single ? 'one unit · every day' : till,
+        unitStyle: 'color:#132420;', rowStyle: '',
+        here: (night ? x.night : x.day).map((q) => P(q[0], q[1])),
+        fac: x.fac, facNote: night ? 'at home · comes in when called' : 'in the hospital',
+        backup: single ? 'General Medicine’s unit on take covers' : x.backup + ' is the backup unit',
+      };
+    };
+    const depts = [
+      D('General Medicine',
+        { unit: 'Unit IV', fac: 'Dr. S. P. Tripathi', night: [['SR', 'Dr. Aditi Deshmukh'], ['JR', 'Dr. Yusuf Qureshi'], ['JR', 'Dr. Tanvi Shah']], backup: 'Unit III' },
+        { unit: 'Unit V', fac: 'Dr. Leena George', day: [['SR', 'Dr. Harsh Vardhan'], ['JR', 'Dr. Nidhi Agarwal']], night: [['SR', 'Dr. Harsh Vardhan'], ['JR', 'Dr. Om Prakash'], ['JR', 'Dr. Sana Parveen']], backup: 'Unit IV' }),
+      D('General Surgery',
+        { unit: 'Unit IV', fac: 'Dr. B. N. Rathore', night: [['SR', 'Dr. Kunal Mehta'], ['JR', 'Dr. Ishita Roy']], backup: 'Unit III' },
+        { unit: 'Unit V', fac: 'Dr. Salma Hussain', day: [['SR', 'Dr. Dev Malhotra'], ['JR', 'Dr. Pranav Iyer']], night: [['SR', 'Dr. Dev Malhotra'], ['JR', 'Dr. Ruchi Pandey']], backup: 'Unit IV' }),
+      D('Orthopaedics',
+        { unit: 'Unit II', fac: 'Dr. Neha Saxena', night: [['SR', 'Dr. Pooja Mishra'], ['JR', 'Dr. Sandeep Yadav']], backup: 'Unit I' },
+        { unit: 'Unit III', fac: 'Dr. G. S. Bedi', day: [['SR', 'Dr. Bhavna Solanki'], ['JR', 'Dr. Vikas Nanda']], night: [['SR', 'Dr. Bhavna Solanki'], ['JR', 'Dr. Tenzin Dorje']], backup: 'Unit II' }),
+      D('Obstetrics & Gynaecology',
+        { unit: 'Unit IV', fac: 'Dr. Usha Raghavan', night: [['SR', 'Dr. Fatima Sayed'], ['JR', 'Dr. Anjali Thakur'], ['JR', 'Dr. Divya Reddy']], backup: 'Unit III' },
+        { unit: 'Unit I', fac: 'Dr. Madhuri Kale', day: [['SR', 'Dr. Swati Bhatt'], ['JR', 'Dr. Komal Jain']], night: [['SR', 'Dr. Swati Bhatt'], ['JR', 'Dr. Rhea Fernandes'], ['JR', 'Dr. Payal Goswami']], backup: 'Unit IV' }),
+      D('Paediatrics',
+        { unit: 'Unit II', fac: 'Dr. Vinod Chawla', night: [['SR', 'Dr. Joseph Mathew'], ['JR', 'Dr. Shreya Das']], backup: 'Unit I' },
+        { unit: 'Unit III', fac: 'Dr. Nandini Rao', day: [['SR', 'Dr. Zoya Mirza'], ['JR', 'Dr. Karan Sethi']], night: [['SR', 'Dr. Zoya Mirza'], ['JR', 'Dr. Lakshmi Narayan']], backup: 'Unit II' }),
+      D('ENT',
+        { unit: 'Unit II', fac: 'Dr. Prakash Dubey', night: [['JR', 'Dr. Mehul Patel']], backup: 'Unit I' },
+        { unit: 'Unit I', fac: 'Dr. Anita Lobo', day: [['SR', 'Dr. Rajat Kapoor'], ['JR', 'Dr. Simran Kaur']], night: [['JR', 'Dr. Simran Kaur']], backup: 'Unit II' }),
+      D('Ophthalmology',
+        { unit: 'Unit II', fac: 'Dr. Hemant Vyas', night: [['JR', 'Dr. Pallavi Hegde']], backup: 'Unit I' },
+        { unit: 'Unit I', fac: 'Dr. Sarita Oberoi', day: [['SR', 'Dr. Nikhil Bose'], ['JR', 'Dr. Arpita Sen']], night: [['JR', 'Dr. Arpita Sen']], backup: 'Unit II' }),
+      D('Psychiatry',
+        { single: true, unit: 'Unit I', fac: 'Dr. Rohini Kamath', night: [['SR', 'Dr. Abhay Rana']] },
+        { single: true, unit: 'Unit I', fac: 'Dr. Rohini Kamath', day: [['SR', 'Dr. Abhay Rana']], night: [['SR', 'Dr. Abhay Rana']] }),
+      D('Dermatology',
+        { single: true, unit: 'Unit I', fac: 'Dr. Vandana Puri', night: [['SR', 'Dr. Ketan Desai']] },
+        { single: true, unit: 'Unit I', fac: 'Dr. Vandana Puri', day: [['SR', 'Dr. Ketan Desai']], night: [['SR', 'Dr. Ketan Desai']] }),
+    ];
+    const services = [
+      { role: 'Casualty medical officer', who: night ? 'Dr. Vivek Tiwari' : 'Dr. Shalini Bose', note: 'in casualty' },
+      { role: 'Anaesthetist on call', who: night ? 'Dr. Geeta Pillai' : 'Dr. Manoj Sinha', note: night ? 'in the building · emergency theatre' : 'OT complex' },
+      { role: 'Radiologist on call', who: 'Dr. Suresh Menon', note: night ? 'reports from home · CT tech in-house' : 'in the department' },
+      { role: 'Pathologist for critical values', who: 'Dr. Asha Kulkarni', note: night ? 'on call · lab tech in-house' : 'central lab' },
+      { role: 'Blood bank medical officer', who: night ? 'Dr. Naveen Joshi' : 'Dr. Rekha Nanda', note: 'blood bank' },
+      { role: 'Duty manager', who: night ? 'Mr. Alok Srivastava' : 'Ms. Priya Chatterjee', note: 'the last step of every ladder' },
+      { role: 'Nursing supervisor', who: night ? 'Sr. Mary Thomas' : 'Sr. Lata Pawar', note: night ? 'night · whole hospital' : 'day' },
+      { role: 'Pharmacist on duty', who: night ? 'Mr. Irfan Sheikh' : 'Ms. Deepa Agarwal', note: '24-hour counter' },
+    ];
+    const holes = t === 0 ? [
+      { when: 'Sat 10 Oct, 20:00', text: 'Orthopaedics Unit I takes on Saturday and has no SR for the night: Dr. Tarun Walia went on sick leave this evening.', own: 'Asked: Dr. Bhavna (Unit II) · waiting for her yes', ownStyle: 'color:#8a5a0b;', box: 'background:#fffaf1;border:1px solid #f0d9ae;' },
+      { when: 'Fri 9 Oct, 08:00', text: 'Paediatrics hands over at 08:00. Friday’s roster is published and complete.', own: 'Nothing to do', ownStyle: 'color:#0e6b4e;', box: 'background:#f6faf7;border:1px solid #cfe9dd;' },
+    ] : [
+      { when: 'Sat 10 Oct, 20:00', text: 'Orthopaedics Unit I, Saturday night: Dr. Bhavna (Unit II) said yes, the HOD approved at 08:40.', own: 'Closed', ownStyle: 'color:#0e6b4e;', box: 'background:#f6faf7;border:1px solid #cfe9dd;' },
+    ];
+    return { times, clockLine: T[t].line, clockNote: T[t].note, depts, services, holes };
+  }
+}
+</script>
+</body>
+</html>

@@ -30,7 +30,7 @@ export type { BlacklistReason } from "./config";
 // ── T3 — the item master, UoM conversion, barcodes and price regulations ──
 export {
   addBarcode, addItemUom, effectiveRegulation, getItem, itemUomRows, itemsByIds, listItems,
-  registerItem, resolveBarcode, setPriceRegulation, updateItem,
+  registerItem, resolveBarcode, setPriceRegulation, updateItem, uomsByItems,
 } from "./items";
 export type { ItemBarcodeRow, ItemRow, ItemUomRow, ItemWithUoms, PriceRegulationRow, RegisterItemInput } from "./items";
 /** DD7's one place a multiplier is applied. Pure; T6's gate and 16c's dispense both read it. */
@@ -48,11 +48,12 @@ export type {
 } from "./vendors";
 
 // ── T5 — stores, and the stock ledger: movements, balances under lock, FEFO, reservations, recall ──
-export { createStore, ensureTransitStore, findStoreByCode, listStores, requireStore } from "./stores";
+export { createStore, ensureTransitStore, findStoreByCode, listStores, requireStore, setStoreCustodianRoles, storeCustodianRoles } from "./stores";
 export type { StoreRow } from "./stores";
 export {
-  availableQty, balances, batchLocations, consumeReservation, fefoPick, getBatch, movementsFor, postMovement,
-  postMovements, recallBatch, releaseReservation, reserveStock,
+  availableQty, availableQtyByItem, balances, batchLocations, consumeReservation, consumedQtyByItem, fefoPick, getBatch, movementsFor, postMovement, returnedQtyByRef,
+  consumptionRowsAt, ledgerQtyByIds, refIdsWithMovementBetween, batchesByNo,
+  postMovements, recallBatch, releaseReservation, reserveStock, expiredStockAt, sellableBatchesByItem,
 } from "./ledger";
 export type { BalanceRow, BatchRow, LedgerRow, MovementInput, MovementReason, ReservationRow } from "./ledger";
 
@@ -66,9 +67,9 @@ export type { CaptureLine, GrnLineRow, GrnRow, GrnWithLines } from "./grn";
 
 // ── T7 — two-sided issue, discrepancies, and the consignment.deployed consumer ──
 export {
-  getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock,
+  getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist,
 } from "./transfers";
-export type { IssueLine, TransferLineRow, TransferRow, TransferWithLines } from "./transfers";
+export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
 /**
  * DD13's half of the interface Plan 15 imports: it appends `consignmentDeployed` (exported above,
  * from T2) and reads `consumptionsFor` to compose the discharge bill.
@@ -82,4 +83,11 @@ export type { ConsumptionRow } from "./consumption";
 export { MaterialsController } from "./materials.controller";
 export { MaterialsModule } from "./materials.module";
 export { expiringBatches, sweepBatchExpiry, thresholdToAnnounce } from "./expiry";
+/** Plan 14c, first slice — blind counts and the variance register. No adjustment (runbook O1). */
+/** Plan 14c, second slice — booking a count's variance with a second key. */
+export { ADJUSTMENT_REASONS, listAdjustments, postAdjustments, requestCountAdjustment } from "./adjustments";
+export type { AdjustmentReason, AdjustmentView } from "./adjustments";
+export { STOCK_ADJUSTMENT_APPROVAL_TYPE } from "./approval-types";
+export { cancelCount, closeCount, countSheet, countVariancesBetween, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
+export type { CountFlag, CountHeader, CountReview, CountReviewLine, CountSheet, CountSheetLine, CountStatus, SubmitCountInput } from "./counts";
 export type { ExpiringBatch } from "./expiry";

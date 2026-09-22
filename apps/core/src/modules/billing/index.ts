@@ -37,6 +37,8 @@ export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceR
 export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise } from "./receipts";
 export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
 export { issueCreditNote, listCreditNotes } from "./credit-notes";
+/** PHARMACY P12 — the leakage triangle's billed leg (read-only). */
+export { creditedInvoiceLineIdsBetween, invoiceLineCredits } from "./credit-notes";
 export type { IssueCreditNoteInput, IssueCreditNoteResult, CreditNoteKind } from "./credit-notes";
 export { requestRefund, issueRefundVoucher, payRefundVoucher } from "./refunds";
 export type { RefundKind, RefundMethod, RefundVoucherRow } from "./refunds";
@@ -53,7 +55,8 @@ export type { InvoiceTotals, TaxSummaryRow } from "./totals";
 export { creditShare } from "./credit-share";
 export { settlementState } from "./settlement";
 export type { Settlement, SettlementState } from "./settlement";
-export { runDailyClose, dayBook, gstr1Summary } from "./daily-close";
+export { runDailyClose, dayBook, gstr1Summary, chargeOrphans } from "./daily-close";
+export type { ChargeOrphanRow } from "./daily-close";
 export type { DayBook, Gstr1Row, DailyCloseResult } from "./daily-close";
 export { registerBillingApprovalTypes, BILLING_APPROVAL_TYPES } from "./approval-types";
 export { loadBillingConfig } from "./config";

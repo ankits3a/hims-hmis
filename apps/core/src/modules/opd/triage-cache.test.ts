@@ -48,8 +48,13 @@ describe("the triage cache — the same question is not paid for twice", () => {
   it("answers the second identical complaint without asking the gateway again", async () => {
     const cache = createTriageCache();
     const g = gateway([0]);
-    const first = await suggestDepartments("seene mein dard", DEPTS, CONFIG, g.fetch, cache);
-    const second = await suggestDepartments("Seene  Mein Dard", DEPTS, CONFIG, g.fetch, cache);
+    /*
+      Knee pain rather than chest pain since red flags landed: "seene mein dard" now STOPS the
+      router before the model is reached, so it can never exercise a cache the model fills. The
+      casing and spacing difference between the two calls is the point of the test and is kept.
+    */
+    const first = await suggestDepartments("ghutne mein dard", DEPTS, CONFIG, g.fetch, cache);
+    const second = await suggestDepartments("Ghutne  Mein Dard", DEPTS, CONFIG, g.fetch, cache);
 
     expect(g.calls()).toBe(1);
     expect(second).toEqual(first);

@@ -8,6 +8,7 @@ import { fetchCurrentSession, openCashSession, billingErrorMessage } from "../li
 import { useRealtime } from "../lib/realtime";
 import { useAuth } from "../lib/auth";
 import { istClock, istDateLabel } from "./desk-one/model";
+import { OpdReportPanel } from "../components/opd-report-panel";
 import "../styles/paper-pine.css";
 import "./dashboard.css";
 
@@ -404,7 +405,7 @@ export function Desk(): React.ReactElement {
           level in: "the app is broken" and "my account has no access" go to different people, and a
           blank page cannot tell them apart. It fires only after the fetch resolves.
         */}
-        {!desk.isPending && cards.length === 0 ? <p className="bandnote">{t("desk.empty")}</p> : null}
+        {!desk.isPending && cards.length === 0 && !can("opd.reports.read") ? <p className="bandnote">{t("desk.empty")}</p> : null}
 
       </div>
 
@@ -426,6 +427,12 @@ export function Desk(): React.ReactElement {
           </div>
         );
       })}
+
+      {/*
+        THE OPD DAY REPORT (owner, 2026-09-19): *"an option in the dashboard to download the day
+        report"*. Shown to whoever may pull it; the server refuses everyone else regardless.
+      */}
+      {can("opd.reports.read") ? <OpdReportPanel /> : null}
 
       {!hasSchemeCards ? null : (
         <div className="band">

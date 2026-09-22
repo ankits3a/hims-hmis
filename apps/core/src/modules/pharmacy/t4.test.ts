@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
@@ -8,12 +8,14 @@ import { allocations, events, orderItems, pharmacyRegH1, stockBalances, stockLed
 import { invoiceSettlement, reverseAllocation } from "../billing";
 import { setPriceRegulation } from "../materials";
 import { billDispense, previewDispenseBill } from "./bill";
+import { confirmSlip, listQueue } from "./queue";
+import { opdPrescriptions } from "../../kernel/db/schema";
 import { claimDispense, findAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { getDispense } from "./queue";
-import { verifyDispense } from "./verify";
+import { declineLine, verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { Db } from "../../kernel/db/client";
 import type { DispenseView } from "./queue";
@@ -54,6 +56,33 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
   }
   const twoLines = () => [line({ drug: "Crocin 500", medicineId: fx.med.crocin }), line({ drug: "Azee 500", medicineId: fx.med.azithro, frequency: "OD", durationDays: 3 })];
 
+  /**
+   * PHARMACY P3 — THE PHARMACIST IS TOLD WHICH LINES THE CHECKS COULD SEE ONLY IN PART.
+   *
+   * The verify step re-runs the prescription checks, and its permanent record used to say
+   * "allergyHits: 0, interactionHits: 0" for a medicine whose component no one had reviewed, when
+   * the checks had nothing to find with. The counter line now says so, and so does the record.
+   * Azithromycin is made a release entry nobody decided (a `source_ref`, no mapped substance).
+   */
+  it("P3 — a line whose medicine has a component nobody reviewed is marked at the counter and in the verified record", async () => {
+    await db.execute(sql`update formulary_salts set source_ref = '999000001' where lower(name) = 'azithromycin'`);
+    const v = await verified(twoLines(), [20, 3]);
+    expect(v.lines.map((l) => [l.lineIdx, l.partlyChecked])).toEqual([[0, false], [1, true]]);
+    const [ev] = await db.select().from(events).where(eq(events.name, "dispense.verified"));
+    expect(ev?.payload).toMatchObject({ allergyHits: 0, interactionHits: 0, partlyCheckedLineIdxs: [1] });
+    // A claimed line, before any verify, says the same thing about the medicine it will hand over.
+    const { issued } = await issueRx(db, fx, twoLines());
+    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
+    if (r.kind !== "dispense") throw new Error("no dispense");
+    const claimed = await claimDispense(db, fx.pharmacist.actor, { dispenseId: r.dispense.id, door: "rx_qr" }, MON2);
+    expect(claimed.lines.map((l) => l.partlyChecked)).toEqual([false, true]);
+    // With the first line declined, the record still names the prescription's line 2, not the check's line 1.
+    await declineLine(db, fx.pharmacist.actor, fx.decls, r.dispense.id, 0, "patient has paracetamol at home", MON2);
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, r.dispense.id, { lines: [{ lineIdx: 1, qtyBase: 3 }] }, MON2);
+    const records = await db.select().from(events).where(eq(events.name, "dispense.verified"));
+    expect(records.map((e) => (e.payload as { partlyCheckedLineIdxs: number[] }).partlyCheckedLineIdxs)).toEqual([[1], [1]]);
+  });
+
   it("pick takes the EARLIEST-expiring batch, holds a reservation per line, and moves the envelope to in_progress", async () => {
     const v = await verified(twoLines(), [20, 3]);
     const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2);
@@ -84,19 +113,26 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
     expect(partial.lines[0]).toMatchObject({ batchId: azeeBatch, qtyBase: 6 });
   });
 
-  it("R-1 — the bill prices each line from its batch: MRP per tablet where nothing caps it, the NPPA ceiling where it is lower; totals to the paisa", async () => {
+  it("R-1 + P1 — the bill prices each line from its batch at the printed MRP, GST inside it; the NPPA ceiling plus its GST where that is lower; totals to the paisa", async () => {
     const v = await verified(twoLines(), [20, 3]);
     await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2);
     const preview = await previewDispenseBill(db, fx.pharmacist.actor, v.id, MON2);
-    // Crocin: 20 × 1200 = 24000 gross, 12% GST → 26880. Azee: 3 × 1000 (ceiling, not the 1500 MRP) = 3000, 5% → 3150.
-    expect(preview.lines.map((l) => [l.unitPaise, l.grossPaise, l.netPaise])).toEqual([[1200, 24000, 26880], [1000, 3000, 3150]]);
-    expect(preview.lines[1]!.regulatedClamp).toMatchObject({ boundApplied: "caller_cap", capUnitPaise: 1000, batchUnitPaise: 1500 });
-    expect(preview.totals.rawTotalPaise).toBe(30030);
+    /*
+      PHARMACY P1 (phase doc 2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md). This row used to pin
+      Crocin at ₹268.80 for twenty tablets whose printed MRP is ₹240.00: the 12% was added ON TOP of an
+      MRP that already contains it (L1). The patient now pays the MRP, and the tax is carved out of it.
+      Azee's ceiling is ₹10.00 a tablet BEFORE GST (L2), so at 5% the lawful maximum is ₹10.50, still
+      below its ₹15.00 MRP: the net is unchanged at ₹31.50, now stated as an inclusive ₹10.50 a tablet.
+    */
+    expect(preview.lines.map((l) => [l.unitPaise, l.grossPaise, l.taxableBasePaise, l.gst.cgstPaise, l.gst.sgstPaise, l.netPaise]))
+      .toEqual([[1200, 24000, 21428, 1286, 1286, 24000], [1050, 3150, 3000, 75, 75, 3150]]);
+    expect(preview.lines[1]!.regulatedClamp).toMatchObject({ boundApplied: "caller_cap", capUnitPaise: 1050, batchUnitPaise: 1500 });
+    expect(preview.totals.rawTotalPaise).toBe(27150);
 
     const b = await billDispense(db, fx.pharmacist.actor, v.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
     expect(b.status).toBe("billed");
     expect(b.invoiceId).not.toBeNull();
-    expect(b.lines.map((l) => [l.unitPaise, l.priceWinner])).toEqual([[1200, "batch_mrp"], [1000, "ceiling"]]);
+    expect(b.lines.map((l) => [l.unitPaise, l.priceWinner])).toEqual([[1200, "batch_mrp"], [1050, "ceiling"]]);
     expect(b.lines.every((l) => l.invoiceLineId !== null)).toBe(true);
     const [ev] = await db.select().from(events).where(eq(events.name, "dispense.billed"));
     expect(ev?.payload).toMatchObject({ invoiceId: b.invoiceId, netPaise: preview.totals.netPayablePaise });
@@ -375,5 +411,100 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
     // At MON2 (2026-08-17) all three batches are live: 100 late + 40 early + 40 mid. CR-MID is
     // expired by the WALL clock and by nothing else, so a 140 here is the reader's clock winning.
     expect(v.lines[0]!.available).toBe(180);
+  });
+});
+
+/**
+ * ═══ FD-31 — A TRANSCRIBED SLIP IS NOT BILLED UNTIL A PHARMACIST HAS SEEN IT ═══
+ *
+ * Owner ruling, 2026-09-12, for the hospital that cannot staff an assistant for every doctor:
+ * *"the staff outside the doctor room types the medicine prescribed by the doctor then the pharmacy
+ * department would be notified about the upcoming job. However, the pharmacist will cross confirm
+ * the prescription slip (either the photo capture of prescription or physical prescription slip)
+ * before generating the medicine bill."*
+ *
+ * The job reaching the counter is the EASY half and it already worked — `prescription.issued`
+ * enqueues a dispense however the prescription came to exist. The half that needed building is the
+ * refusal, and the rows below are about the refusal: that it fires, that it fires at the BILL and
+ * not earlier, that confirming clears it, and — the one a future edit is most likely to get wrong —
+ * that it does NOT fire on an ordinary doctor-keyed prescription.
+ */
+describe("FD-31 — the pharmacist cross-confirms a transcribed slip before billing", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: PharmacyFixture;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => {
+    await truncateAll(db);
+    fx = await seedPharmacyBase(db);
+    await openSessionFor(db, { id: fx.pharmacist.id }, 0);
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", expiryDate: "2027-12-31", qtyBase: 100, mrpPaise: 12000 });
+  });
+  afterEach(() => { fx.unregister(); });
+
+  /** Marks the issued Rx as typed from paper — the state `opd.prescription.transcribe` produces. */
+  async function transcribed(prescriptionId: string): Promise<void> {
+    await db.update(opdPrescriptions).set({ transcribedBy: "u-order-desk" }).where(eq(opdPrescriptions.id, prescriptionId));
+  }
+
+  async function pickedDispense(): Promise<{ id: string; prescriptionId: string }> {
+    const { issued } = await issueRx(db, fx, [line({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
+    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
+    if (r.kind !== "dispense") throw new Error("no dispense");
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: r.dispense.id, door: "rx_qr" }, MON2);
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, r.dispense.id, { lines: [{ lineIdx: 0, qtyBase: 10 }] }, MON2);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, r.dispense.id, {}, MON2);
+    return { id: r.dispense.id, prescriptionId: issued.prescriptionId };
+  }
+
+  it("refuses the BILL until the slip is confirmed, then bills once it is", async () => {
+    const d = await pickedDispense();
+    await transcribed(d.prescriptionId);
+
+    /* The job is AT THE COUNTER either way — the notification never depended on who typed it. */
+    /* The IST calendar day of MON2, spelled here rather than imported: `opd/time` is another
+       module's internal and the lint rule forbids reaching past its `index.ts` (spec §4). */
+    const serviceDate = new Date(MON2.getTime() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+    const queue = await listQueue(db, fx.pharmacist.actor, { serviceDate });
+    const row = queue.find((q) => q.dispenseId === d.id);
+    expect(row).toMatchObject({ transcribedBy: "u-order-desk", slipConfirmedBy: null });
+
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, d.id, MON2);
+    await expect(billDispense(db, fx.pharmacist.actor, d.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2))
+      .rejects.toMatchObject({ code: "slip_not_confirmed" });
+
+    /* The pharmacist has the paper (or the photo) in hand and says so. */
+    const confirmed = await confirmSlip(db, fx.pharmacist.actor, d.id, MON2);
+    expect(confirmed.slipConfirmedBy).toBe(fx.pharmacist.id);
+
+    const billed = await billDispense(db, fx.pharmacist.actor, d.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+    expect(billed.status).toBe("billed");
+  });
+
+  /**
+   * THE ROW A FUTURE EDIT IS MOST LIKELY TO BREAK. If the gate ever fires on a doctor-keyed
+   * prescription, every pharmacist in the hospital learns to click the confirmation without
+   * looking — and the control is then worth nothing where it actually matters.
+   */
+  it("does NOT fire on a doctor-keyed prescription, and confirming one is refused rather than recorded", async () => {
+    const d = await pickedDispense();
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, d.id, MON2);
+    const billed = await billDispense(db, fx.pharmacist.actor, d.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+    expect(billed.status).toBe("billed");
+
+    const d2 = await pickedDispense();
+    await expect(confirmSlip(db, fx.pharmacist.actor, d2.id, MON2))
+      .rejects.toMatchObject({ code: "dispense_not_in_state" });
+  });
+
+  it("the attestation keeps the FIRST pharmacist's name — confirming twice does not reassign it", async () => {
+    const d = await pickedDispense();
+    await transcribed(d.prescriptionId);
+    const first = await confirmSlip(db, fx.pharmacist.actor, d.id, MON2);
+    const again = await confirmSlip(db, fx.aide.actor, d.id, MON2);
+    expect(again.slipConfirmedBy).toBe(first.slipConfirmedBy);
+    expect(again.slipConfirmedBy).toBe(fx.pharmacist.id);
   });
 });

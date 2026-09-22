@@ -93,6 +93,114 @@ export function stepIndex(stage: Stage): number {
   return i < 0 ? 0 : i;
 }
 
+/* ══════════ FD-26 · seats ══════════ */
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-26 — THE SAME DESK, SHOWN ONE STAGE AT A TIME, BECAUSE THE HOSPITAL STAFFS THREE CHAIRS
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The owner's instruction, 2026-09-06: *"just like Desk One screen which has all three screens in
+ * one URL, we need to have the same 3 screen but on different URL too… Just mimic the Desk One
+ * screen but bifurcated in three. Don't change the UX or UI, keep as it is… the current build has
+ * made it worse."*
+ *
+ * FD-25 answered the same instruction by BUILDING THREE MORE SCREENS — `registration.tsx`,
+ * `appointment.tsx` — each a fresh re-draw of a stage Desk One already had. Screenshots of the
+ * shipped result are what "worse" means, and they are worth writing down because a copy always
+ * looks cheap on the day it is written:
+ *
+ *   · `/registration`'s hit row lost the initials tile, the `restricted` pill, the FD-11
+ *     district / on-file-since line that exists to tell eight Ramesh Kumars apart, the first-row
+ *     ring and the Enter binding. Its duplicate panel lost "this is them" ENTIRELY, so a clerk who
+ *     recognised the duplicate had no door but "register anyway".
+ *   · `/registration` grew a doctor dropdown INSIDE the registration form — the exact thing the
+ *     owner rejected by name in FD-8 ("the appointment is a STAGE, not a field").
+ *   · `/appointment` dropped the whole WALK-IN half. The owner's "(Walkin/Future)" is that half
+ *     asked for back.
+ *   · All three sat under the app nav, which on this deployment wraps to three rows and, with the
+ *     mode banner and a screen-title row, spends ~200px before the work starts.
+ *
+ * A SEAT IS A PROJECTION OF DESK ONE, NOT A FOURTH COPY. One component, one prop. `counter` is the
+ * identity: every branch downstream reads `seat === "counter" ? <what shipped> : <the seat's>`, so
+ * the screen the owner signed off is textually unchanged and a revert pair on any seat branch
+ * leaves `/counter` green.
+ */
+export type Seat = "counter" | "registration" | "appointment" | "billing";
+
+export const SEATS: readonly Seat[] = ["registration", "appointment", "billing"];
+
+/** The steps a seat draws in its flow strip, and the only stages it may show. */
+export const SEAT_STEPS: Record<Seat, readonly { stage: Stage; label: string }[]> = {
+  counter: STEPS,
+  registration: [{ stage: "register", label: "Register" }],
+  appointment: [{ stage: "appointment", label: "Appointment" }],
+  billing: [{ stage: "bill", label: "Bill" }],
+};
+
+/** Where each seat lives, so a desk can consume `?new` against its OWN route rather than `/counter`. */
+export const SEAT_ROUTE: Record<Seat, string> = {
+  counter: "/counter",
+  registration: "/registration",
+  appointment: "/appointment",
+  billing: "/billing",
+};
+
+/** What the header calls each seat. `counter` is the one that names all three, because it is all three. */
+export const SEAT_LABEL: Record<Seat, string> = {
+  counter: "Desk One",
+  registration: "Registration",
+  appointment: "Appointment",
+  billing: "Billing",
+};
+
+/** Where a stage sits in the desk's one-way flow. `find` and `done` are the ends and unordered. */
+const FLOW_ORDER: readonly Stage[] = ["register", "appointment", "bill"];
+
+/**
+ * ═══ WHAT A SEAT DOES WITH A STAGE IT DOES NOT HAVE, AND WHY IT IS NOT ONE ANSWER ═══
+ *
+ * The desk proposes stages by NAME — `hold` proposes `appointment`, `assign` proposes `bill`,
+ * `enrol` proposes `appointment` — and those names are Desk One's flow, not the seat's. A seat has
+ * exactly one working stage, so every proposal is either behind it, on it, or past it, and the
+ * three mean different things:
+ *
+ *   BEHIND  → the seat's own stage. The billing chair being handed a patient (`hold` proposes
+ *             `appointment`) means "this person is in front of me" and the honest landing is the
+ *             bill, not a screen saying the job is finished before it started.
+ *   ON      → itself.
+ *   PAST    → `done`. The registration chair that just enrolled somebody (`enrol` proposes
+ *             `appointment`) HAS finished; the patient walks to the booking desk.
+ *
+ * Collapsing the first two into `done` was the first version of this function and it was wrong in
+ * the direction that hurts: it made the billing seat unable to hold a patient at all.
+ *
+ * `counter` short-circuits to the identity, and that is asserted directly in the suite rather than
+ * left to follow from the table below — a table gets edited and an identity does not.
+ */
+export function stageForSeat(seat: Seat, proposed: Stage): Stage {
+  if (seat === "counter") return proposed;
+  if (proposed === "find" || proposed === "done") return proposed;
+  const mine = SEAT_STEPS[seat][0];
+  if (mine === undefined) return "done";
+  const here = FLOW_ORDER.indexOf(mine.stage);
+  const there = FLOW_ORDER.indexOf(proposed);
+  return there > here ? "done" : mine.stage;
+}
+
+/** True when this seat runs the named stage at all. The palette and `startEnrolment` ask it. */
+export function seatHasStage(seat: Seat, stage: Stage): boolean {
+  return seat === "counter" || SEAT_STEPS[seat].some((s) => s.stage === stage);
+}
+
+/** `stepIndex`, but over the seat's own list. Identical to `stepIndex` for `counter`. */
+export function seatStepIndex(seat: Seat, stage: Stage): number {
+  const steps = SEAT_STEPS[seat];
+  if (stage === "done") return steps.length;
+  const i = steps.findIndex((s) => s.stage === stage);
+  return i < 0 ? 0 : i;
+}
+
 /* ══════════ the token's three states ══════════ */
 
 export type TokenState =

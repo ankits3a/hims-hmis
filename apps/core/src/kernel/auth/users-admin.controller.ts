@@ -70,6 +70,8 @@ export type AdminUserView = {
   id: string;
   username: string;
   fullName: string;
+  /** FD-29 — the hospital's employee number for this person. Minted at creation, never null. */
+  staffCode: string;
   active: boolean;
   hasPin: boolean;
   mustChangePassword: boolean;
@@ -370,6 +372,7 @@ export class UsersAdminController {
         id: users.id,
         username: users.username,
         fullName: users.fullName,
+        staffCode: users.staffCode,
         active: users.active,
         pinHash: users.pinHash,
         mustChangePassword: users.mustChangePassword,
@@ -398,6 +401,7 @@ export class UsersAdminController {
         id: r.id,
         username: r.username,
         fullName: r.fullName,
+        staffCode: r.staffCode,
         active: r.active,
         hasPin: r.pinHash !== null,
         mustChangePassword: r.mustChangePassword,

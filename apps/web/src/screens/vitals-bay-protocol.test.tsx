@@ -39,7 +39,7 @@ const ROW_S: WireBenchRow = { ...ROW_B, encounterId: "E-S", entryId: "Q-S", toke
 const ROW_C: WireBenchRow = { ...ROW_B, encounterId: "E-C", entryId: "Q-C", tokenNo: 125, seq: 3,
   patient: { ...ROW_B.patient!, requestedId: "P-C", id: "P-C", uhid: "UH-26-00125", name: "Kamla", dob: "1980-01-01" } };
 const PRE = (patientId: string, last: WirePreStage["last"] = null): WirePreStage =>
-  ({ patientId, ageYears: 55, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: [...ADULT.required], notRoutine: [], last, carryCandidates: [], expectedFlags: [] });
+  ({ patientId, ageYears: 55, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: [...ADULT.required], notRoutine: [], last, carryCandidates: [], expectedFlags: [], feeUnpaid: false, feeBypass: null });
 const JUNE = { vitalsId: "V0", recordedAt: "2026-06-11T04:00:00.000Z", serviceDate: "2026-06-11", heightCm: 151, weightKg: 62, sbp: 132, dbp: 84, pulse: 78, rr: 16, spo2: 98, tempC: 36.8, muacCm: null };
 
 type Call = { key: string; body: unknown };

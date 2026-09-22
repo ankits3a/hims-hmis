@@ -116,6 +116,9 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
       // rather than `toMatchObject` on purpose: a payload that grew a field nobody decided to add
       // should fail here, which is exactly what it did when these two landed.
       interactionOverrideCount: 0, duplicateOverrideCount: 0,
+      // Formulary phase 3, decided: the lines checked only in part (empty here, since these lines
+      // resolve to nothing). Pinned with its value in `test/formulary-mapping-safety.test.ts`.
+      unreviewedLineIndexes: [],
     });
 
     await expect(issuePrescription(db, dra.actor, testCfg, enc.id, { lines: [] }, MON3))

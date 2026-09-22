@@ -4,7 +4,7 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
-import { CONFIG, DB } from "../../kernel/tokens";
+import { CONFIG, DB, DOCUMENT_STORE } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { SodViolationError } from "../../kernel/auth/sod";
 import { ApprovalError } from "../../kernel/approvals/types";
@@ -23,6 +23,10 @@ import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssuranc
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { searchPatients } from "./search";
 import { getPatientPhoto, storePatientPhoto } from "./photos";
+import {
+  captureDocument, listDocuments, markDocumentEnteredInError, readDocument,
+} from "./documents";
+import type { DocumentStore } from "../../kernel/documents/store";
 import { addAllergy, listAllergies, markAllergyEnteredInError } from "./allergies";
 import { effectiveGuardianAuthority, endGuardian, linkGuardian, updateGuardianAuthority } from "./guardians";
 import { patientGuardians } from "../../kernel/db/schema";
@@ -32,7 +36,7 @@ import { createMergeRequest, executeMerge, executeUnmerge, getMergeRequest, requ
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
-const NOT_FOUND_CODES = new Set(["patient_not_found", "unknown_merge_request", "allergy_not_found", "guardian_not_found"]);
+const NOT_FOUND_CODES = new Set(["patient_not_found", "unknown_merge_request", "allergy_not_found", "guardian_not_found", "document_not_found"]);
 /**
  * PLAN 22c-A — CLOSE REVIEW m8. The two privacy-write denials are FORBIDDEN, not BAD REQUEST.
  * They fell through `toHttp`'s default and arrived as 400s, indistinguishable — to a client or to
@@ -44,6 +48,9 @@ const CONFLICT_CODES = new Set([
   "patient_not_active", "merge_same_patient", "merge_already_requested", "merge_not_requested",
   "merge_not_executed", "approval_not_granted", "unmerge_already_requested", "unmerge_not_requested",
   "allergy_not_active", "guardian_not_active",
+  /* The stored bytes no longer match the hash taken at capture. The RECORD is wrong, not the
+     server, so this is a conflict a human must resolve rather than a 500 to page somebody with. */
+  "document_corrupt",
   // PLAN 22c-A T7 — an assurance move that is not an increase is a STATE conflict, not a malformed
   // body: the caller asked for a level the record is already at or above. Found by the full core
   // suite, which the narrow runs had not reached.
@@ -67,7 +74,9 @@ function toHttp(e: unknown): never {
     }
     if (NOT_FOUND_CODES.has(e.code)) throw new NotFoundException(e.message);
     if (FORBIDDEN_CODES.has(e.code)) throw new ForbiddenException(e.message);
-    if (e.code === "photo_too_large") throw new PayloadTooLargeException(e.message);
+    /* 413 beside the photo's, and for the same reason: the request was fine and the FILE was big.
+       A 400 tells a client to fix its body when what it must fix is its downscaling. */
+    if (e.code === "photo_too_large" || e.code === "document_too_large") throw new PayloadTooLargeException(e.message);
     if (CONFLICT_CODES.has(e.code)) throw new ConflictException(e.message);
     throw new BadRequestException(e.message);
   }
@@ -256,11 +265,34 @@ const assuranceBody = z.object({
 
 const searchQuery = z.object({ q: z.string(), limit: z.coerce.number().int().positive().max(50).optional() });
 const photoBody = z.object({ imageBase64: z.string().min(1) });
+/**
+ * The desk's photograph of a paper slip. `imageBase64` rather than multipart for the same reason
+ * the patient photo uses it: this tree has no multipart surface at all, and one JSON body keeps the
+ * capture on the same auth, error and logging path as every other write.
+ *
+ * `kind` is an enum here AND checked in the service — the route because a client should be told
+ * which kinds exist, the service because a body can reach it without passing through this schema.
+ */
+const documentBody = z.object({
+  imageBase64: z.string().min(1),
+  mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]),
+  kind: z.enum(["outside_prescription", "consult_prescription", "outside_report"]),
+  encounterId: z.string().max(64).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+});
 const allergyBody = z.object({
   substance: z.string().min(1).max(200),
   reaction: z.string().max(500).optional(),
   severity: severityEnum.optional(),
   source: z.enum(["registration", "vitals", "consult"]),
+  /**
+   * The coded allergen, set only when the seat PICKED one from `/opd/cds/complete/allergen`.
+   * Nullable and optional: free text is legal on this field and always was, and an uncoded row is
+   * still matched by token exactly as before. What the code buys is a block that a typo cannot
+   * silence — see the header on `patient_allergies.allergen_class`.
+   */
+  saltId: z.string().max(64).nullable().optional(),
+  allergenClass: z.string().max(120).nullable().optional(),
 });
 const reasonBody = z.object({ reason: z.string().min(1) });
 const guardianPatchBody = z.object({
@@ -288,6 +320,9 @@ export class PatientsController {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(CONFIG) private readonly cfg: AppConfig,
+    /* The byte store behind a photographed slip. Injected, so "R2 or S3 later" changes one
+       provider in `app.module.ts` and nothing here. */
+    @Inject(DOCUMENT_STORE) private readonly documents: DocumentStore,
   ) {}
 
   // ——— literal-segment routes FIRST (Nest matches in declaration order) ———
@@ -561,6 +596,79 @@ export class PatientsController {
   async qrReissue(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     try {
       return await reissueQrCard(this.db, this.cfg, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * ═══ THE SLIP THE DESK PHOTOGRAPHS ═══
+   *
+   * Owner, 2026-09-14. `patients.update` and NO new permission — the same grant `POST
+   * /patients/:id/allergies` uses, and held by exactly the seats that would photograph a slip: the
+   * front office and its supervisor, the vitals bay, lab reception, MRD and the doctor.
+   *
+   * The CLIENT downscales. A 413 says so rather than a 400, because the request was well formed and
+   * the file was large — and a server that silently re-encoded would be deciding how legible a
+   * prescription is.
+   */
+  @RequirePermission("patients.update", "hospital")
+  @Post(":id/documents")
+  async postDocument(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ documentId: string }> {
+    const b = parsed(documentBody, body);
+    const bytes = Buffer.from(b.imageBase64, "base64");
+    try {
+      return await withTx(this.db, (tx) => captureDocument(tx, this.documents, actor, id, {
+        encounterId: b.encounterId ?? null, kind: b.kind, mimeType: b.mimeType, bytes, note: b.note ?? null,
+      }));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** What is filed against this patient, newest first. A PHI read: gated and logged in the service. */
+  @RequirePermission("patients.read", "hospital")
+  @Get(":id/documents")
+  async getDocuments(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    try {
+      return { items: await listDocuments(this.db, actor, id) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * The bytes. A SECOND PHI read with its own surface, because opening the prescription is a
+   * different act from seeing that it exists — and the access log is kept to answer which happened.
+   *
+   * Returned as base64 in JSON rather than as an image response, matching `getPhoto`: it keeps the
+   * route on the same auth and error path, and the browser renders it from a data URI.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get("documents/:documentId")
+  async getDocument(
+    @CurrentActor() actor: Actor, @Param("documentId") documentId: string,
+  ): Promise<{ mimeType: string; imageBase64: string }> {
+    try {
+      const doc = await readDocument(this.db, this.documents, actor, documentId);
+      return { mimeType: doc.mimeType, imageBase64: doc.bytes.toString("base64") };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** E-8: a slip filed against the wrong patient is corrected, never deleted. */
+  @RequirePermission("patients.update", "hospital")
+  @Post("documents/:documentId/entered-in-error")
+  async documentError(
+    @CurrentActor() actor: Actor, @Param("documentId") documentId: string, @Body() body: unknown,
+  ): Promise<{ ok: true }> {
+    const b = parsed(reasonBody, body);
+    try {
+      await withTx(this.db, (tx) => markDocumentEnteredInError(tx, actor, documentId, b.reason));
+      return { ok: true };
     } catch (e) {
       toHttp(e);
     }

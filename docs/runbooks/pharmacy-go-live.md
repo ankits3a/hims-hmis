@@ -79,16 +79,20 @@ It declares six pharmacy rows. Five are checkable; the sixth says itself that it
 | 7 | **An ACTIVATED tariff version resolves today.** `previewDispenseBill` and `billDispense` both load a pricing context and throw `version_not_active` without one — and `seed-tariff` deliberately creates none | `select id, status, effective_from from tariff_versions where status = 'activated'` returns a row covering today |
 | 8 | **The pharmacist can open a cashier drawer** (`billing.session.own`); billing refuses a tender with no open session | they can open a session at `/billing` |
 | 9 | A CA has signed the GST rows | `select ca_signed from gst_settings where id = 'main'` → `true` |
-| 10 | The pharmacist's state council registration number is on file | **the census CANNOT check this** — it is not modelled anywhere in the schema. Keep the certificate in the counter's file. |
+| 10 | Every pharmacist who will verify or hand over Schedule H/H1 has a current state council registration on file (pharmacy P2) | census row **`pharmacist_council_number`**. The pharmacist in charge files each colleague's registration at `/pharmacy/pharmacists`; nobody files their own. **Without one, the counter's verify and every scheduled hand-over refuse with `pharmacist_not_registered`**, and the label prints the number. A login that holds `pharmacy` but is not a pharmacist (on this deployment `admin`) stays unregistered, and so cannot verify. That is the Act, not a fault. **Renewals (P15):** census row **`pharmacist_registration_not_lapsing`** is red while any registration ends within 60 days, and the register screen marks who ("renew within N days"). File the renewed certificate before the date, because the day after it, verify refuses that pharmacist. |
 
-> **§1.9 IS BLOCKED ON AN OWNER RULING AS OF 2026-09-06 — DO NOT SET PHARMACY GST RATES YET.**
-> The four `pharmacy*` `gst_config` rows are seeded `exempt: true` beside a
-> `DEV PLACEHOLDER — CA sign-off required (§19)` comment. While they stay exempt the counter bills
-> exactly the printed MRP, which is the correct amount to the patient. **`pricing.ts` computes
-> `netPaise = taxableBase + cgst + sgst` — GST ADDED ON TOP — and the taxable base for a pharmacy
-> line is the printed MRP, which is tax-inclusive by statute. So signing a non-zero rate into those
-> rows before the treatment question is settled makes the counter charge ABOVE the printed MRP.**
-> Owner ruling R-2 answered *which slab*; it never asked inclusive-versus-exclusive.
+> **§1.9 WAS BLOCKED ON THE INCLUSIVE-VERSUS-EXCLUSIVE QUESTION. RESOLVED 2026-09-16 (pharmacy P1,
+> `docs/superpowers/plans/2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md`).**
+> - The counter now prices every line **inclusive of GST**. The patient pays the printed MRP (or the
+>   NPPA ceiling plus its GST, where that is lower), and the taxable value and CGST/SGST are carved
+>   out of that amount.
+> - Setting a real rate on a `pharmacy*` row no longer charges above the MRP; it only makes the
+>   invoice report the tax that is inside the price.
+> - **What remains for the CA is the rates themselves**: which slab each medicine is in, and the
+>   `ca_signed` flag.
+> - The treatment is the statute's (Legal Metrology: an MRP includes all taxes; DPCO: a ceiling is
+>   notified before GST), taken under the owner's 2026-09-16 instruction to follow the Indian
+>   standard.
 
 ## 2. Master data — and it is FOUR people, not one
 
@@ -128,23 +132,33 @@ The previous version of this table was headed "(chief pharmacist)". **Three of i
 > chose and multiply it back before you accept it: ₹7.08 × 12 = ₹84.96, ₹7.09 × 12 = ₹85.08. Neither
 > is ₹85, and which one the hospital sells at is a decision, not a rounding.
 
-**2.2 THE GST SLAB IS SET BY NO SCREEN, AND A NULL SLAB IS SILENTLY EXEMPT.** `/materials/items`
-collects neither `gst_rate_bps` nor HSN — 207 lines, zero occurrences of either. `createItem` writes
-`gstRateBps: null`, and `gstCategoryFor`'s `?? 0` maps null to the `pharmacy_exempt` category. The
-only writer is `PATCH /materials/items/:id`. Read back what you actually have:
+**2.2 THE GST SLAB (P16).** Since 22 September 2025, medicines (HSN 3003/3004) are **5%**, and the 36
+drugs listed in Notification 9/2025-Central Tax (Rate), Lists 3 and 4, are **nil**. A combination is
+nil only if every ingredient is on the list. Supplements sold as wellness products (HSN 2106) are
+18% and are classified in the item master, not by this rule.
 
-```sql
-select code, gst_rate_bps from items where class = 'drug' order by code;
+`/pharmacy/items` shows every drug item against that rule. It lists slabs that are blank, slabs
+that differ, and sale items still billing at the rate they had when they were registered. **Apply**
+fills the blanks and brings the sale items back to their slab; ticking the box also replaces the
+slabs that differ. The same from a shell, dry run first:
+
+```bash
+node dist/scripts/set-drug-gst-slabs.js --as <a pharmacist login>            # prints the plan
+node dist/scripts/set-drug-gst-slabs.js --as <a pharmacist login> --apply    # writes it
 ```
 
-**Leave it null until the owner rules** (§1.9). A null slab bills exactly the printed MRP.
+Census row **`pharmacy_gst_slab_set`** is red until every active drug item has a slab and every
+sale item follows it. The bill carves the GST out of the MRP, so a slab never changes what the
+patient pays; it changes what the invoice reports as tax. **Show the CA the list before go-live.**
+A blank slab still bills as exempt.
 
 > **"N available" is not a raw stock count.** It is what the pick will actually honour: recalled
 > batches and batches whose printed expiry has PASSED are excluded, and reserved and frozen
 > quantities are subtracted. So the counter's figure is legitimately SMALLER than
 > `select sum(qty_on_hand)`, and the difference is expired or recalled stock still physically on the
 > shelf. If the two disagree by a lot at go-live, look for expired batches to quarantine — not for a
-> bug. **The census row `pharmacy_batch_in_stock` currently uses the RAW balance**, so it can read
+> bug. `/pharmacy/reorder` lists them by batch under **"Expired, still on the shelf"**. Its
+> near-expiry table lists the batches that will expire before the counter sells them (P8). **The census row `pharmacy_batch_in_stock` currently uses the RAW balance**, so it can read
 > green on a box where the counter still refuses every line.
 
 ## 3. The seat drill (pharmacist + aide, 20 minutes, one real prescription)
@@ -195,13 +209,38 @@ select code, gst_rate_bps from items where class = 'drug' order by code;
 > **3.10 A BATCH CAN EXPIRE BETWEEN THE BILL AND THE COLLECTION, AND THE COUNTER NOW REFUSES IT.**
 > Because a billed dispense is never swept, a patient who pays at 21:00 on a batch's last valid day
 > and collects the next morning meets `batch_expired_before_collection`. The stock stays on the
-> shelf, the dispense stays `billed` — **and the bill is already PAID, with no way to cancel it from
-> this counter.** Quarantine the strip and send the patient to the billing desk for a credit note.
-> The refund path is 16d's; this is the honest state until it lands.
+> shelf and the dispense stays `billed`, **and the bill is already PAID.**
+> - Quarantine the strip.
+> - Then, since pharmacy P5, **cancel the dispense with a refund** from the billed dispense's red
+>   panel: reason, and "genuine".
+> - That one act frees the reserved stock, credits the invoice in full, and files the refund request.
+> - The patient takes the credit-note number to billing, where an approver approves the refund and
+>   the cashier pays the voucher.
+> - If the patient still wants the medicine, scan the prescription again. That starts a fresh
+>   dispense, which picks from a batch still in date.
+> - Only a registered pharmacist (P2) holding `billing.credit_note.issue` and
+>   `billing.refund.request` can do it.
 
-## 4. What refuses, and why — all 33 codes
+> **3.11 A SEALED PACK COMES BACK (pharmacy P6, doc 16 O-7).**
+> - Open the handed-over dispense.
+> - Enter the quantity per line in base units: whole strips only.
+> - Tick "sealed and intact" only after you have inspected the pack yourself.
+> - Give the reason and press **Accept return**.
+> - The pack goes back into `PHARM-OPD` on its own batch, and the invoice is credited for exactly
+>   that quantity; tax and any discount are pro-rated.
+> - The refund request goes to billing's approver, and the patient takes the credit-note number to
+>   the billing desk.
+> - Refused:
+>   - after 7 days;
+>   - a cut strip;
+>   - a cold-chain, frozen or narcotic item;
+>   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
+>   - more than was dispensed, net of earlier returns.
 
-`errors.ts` declares 33; the table here used to name 13, and the drill above provokes several of the
+## 4. What refuses, and why — all 77 codes
+
+`errors.ts` declares 77, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
 `apps/web/src/lib/error-strings.test.ts`.
@@ -221,17 +260,37 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `substitution_not_allowed` | the prescriber marked `noSubstitution` | dispense as written, or call the doctor |
 | `consent_required` | a generic substitution without the patient's consent ticked | ask, then tick |
 | `allergy_block` · `interaction_block` | the re-check hit something the prescriber did not override | back to the doctor |
+| `authorisation_not_needed` | the doctor was asked to authorise a refusal the check does not raise on that line | ask about the refusal the line actually shows |
+| `authorisation_not_pending` · `unknown_authorisation` | the request was already decided, or does not exist | read the decision on the ticket |
+| `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
+| `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |
 | `store_missing` | `seed-pharmacy` did not run | §1.2 |
 | `scheduled_needs_pharmacist` | the aide tried to complete an H/H1 dispense | call the pharmacist |
 | `identity_confirmation_required` · `identity_mismatch` | a scheduled hand-over without, or with a wrong, token / phone last-4 | ask the person |
+| `pharmacist_not_registered` | verify, or a Schedule H/H1 hand-over, by a login with no current state council registration on file (P2) | the pharmacist in charge files it at `/pharmacy/pharmacists`; until then a registered pharmacist does the act |
+| `self_registration` · `not_a_pharmacist_role` · `invalid_registration` · `registration_expired` · `registration_in_use` · `registration_ended` | filing or ending a registration: one's own, for someone without the `pharmacy` role, a blank or malformed field, a lapsed certificate, a number already on file for someone else, or a row already ended | a colleague files it; assign the role first; file the renewed certificate; end the wrong row first |
 | `nothing_to_dispense` | every line is declined | cancel the dispense instead |
 | `batch_not_saleable` | the named batch cannot be sold | pick again |
 | `short_stock` | the earliest IN-DATE batch cannot cover the line; the message gives both numbers | partial with a reason, or name a batch that covers it |
 | `batch_expired` | a batch was NAMED and its printed expiry has passed | quarantine it; pick again without naming a batch |
-| **`batch_expired_before_collection`** | in date at the pick, expired before the patient collected | §3.10 — quarantine, and the billing desk raises a credit note |
+| **`batch_expired_before_collection`** | in date at the pick, expired before the patient collected | §3.10 — quarantine; cancel with a refund at the counter (P5), then scan the Rx again if the patient still wants it |
+| `reason_required` | a paid dispense cancelled with no reason the refund approver can read | type the reason |
+| `return_window_closed` · `return_not_sealed` · `return_cut_strip` · `return_not_accepted` · `return_short_expiry` · `return_exceeds_dispensed` | a sales return outside O-7: more than 7 days after the hand-over (or the walk-in sale), not attested sealed, a cut strip, a cold-chain/frozen/narcotic item, a batch too near expiry or recalled, or more than was dispensed or sold | §3.11 (counter), §9 (walk-in) — refuse the return; quarantine a short-dated or recalled batch |
 | `fefo_override_unavailable` | a named batch is the wrong item, is recalled, or cannot cover the quantity | check the carton, or let FEFO choose |
+| `slip_not_confirmed` | the prescription was typed from the doctor's paper slip and nobody has checked it against the slip | check the lines against the slip (the photo on the visit, or the patient's paper), confirm, then bill |
+| `invalid_day` · `invalid_range` | the counter's day (P7) or the H1 register's period (P9) is not a real date, runs backwards, or covers more than 31 days | choose the date or the month again |
+| `scan_unknown` · `scan_wrong_item` · `scan_batch_unknown` · `scan_batch_mismatch` | a pack scanned at the pick (P13): a code no item carries, another medicine's pack, a batch the counter does not hold, or a printed expiry that disagrees with the books | register the barcode at `/materials/items`, or pick without scanning; put the wrong pack back; check the GRN |
 | `invoice_not_settled` | the money moved BACK after billing — a reversed allocation or a credit note | send the patient to the billing desk; the drug does not leave unpaid |
+| `retail_licence_missing` · `retail_licence_lapsed` · `invalid_retail_licence` | the walk-in counter (P19) has no Form 20/21 licence recorded, or none covering today; or the licence form was incomplete or its dates run backwards | §9 — the pharmacist in charge records the (renewed) licence |
+| `retail_store_missing` | `seed-pharmacy` did not create `PHARM-RETAIL` | §1.2 |
+| `prescription_required` · `invalid_prescription` | a walk-in Schedule H/H1 line with no outside prescription captured; or the prescriber's name, registration number or address is blank, or the date is after today | §9 — capture the prescription, or remove the line |
+| `registration_not_permitted` · `duplicate_suspected` | registering a walk-in customer without `patients.register`; or someone already registered closely matches | find the customer by mobile or UHID; pick the match, or confirm they are someone new |
+| `unknown_retail_sale` | the walk-in sale id, or the bill number typed to take a pack back, does not resolve | re-open it from the day's list, or read the number off the bill again (a counter dispense's bill is returned at the counter, §3.11) |
+| `document_store_unavailable` | the prescription photo could not be written: the document store (`DOCUMENT_STORE_PATH`) is not writable. Nothing was sold | IT: in production the image owns `/var/lib/hmis/documents` and the `hmis_prod_documents` volume is mounted there; check the mount (the API logs a `DOCUMENT_STORE_PATH is not writable` warning at boot), then sell again |
+| `sheet_invalid` · `sheet_already_entered` | a paper dispense (P20) scanned from something that is not a downtime kit's receipt sheet, or a sheet already entered | §10 — scan the QR on the receipt sheet; open the entry already made |
+| `invalid_dispense_time` · `not_in_downtime` · `backfill_window_closed` | the time on the sheet is in the future, before the kit was printed, outside a declared outage, or more than 7 days ago | §10 — check the time written on the sheet; an older sheet is an incident for the pharmacist in charge |
+| `batch_required` · `unknown_pharmacist` | a paper line without its batch, or a person named as handing it over who is not pharmacy staff | copy the batch from the sheet; name the pharmacist who was on duty |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:
 `version_not_active` (§1.7) · `no_open_session` (§1.8) · `billing_not_configured` ·
@@ -240,17 +299,19 @@ movement itself, which is why the pharmacy layer never needed its own recall che
 
 ## 5. The pilot window
 
-Run the counter beside the existing process, not instead of it. The module emits nine events and
-**nothing in the system reads any of them**, so the harvest is a daily query, not a dashboard.
+Run the counter beside the existing process, not instead of it. The counter's own line
+(P7, `GET /pharmacy/summary`) shows the day: handed over, waits, backlog, declines, refunds,
+returns. The reorder list (P4, P8) is the stock-out and near-expiry view. Everything else below is
+still a daily query.
 
 | harvest | why it matters |
 |---|---|
-| `dispense.queued` vs `dispense.handed_over`, same day | prescriptions that reached the counter and never left it |
-| `dispense.line_declined` grouped by reason | what the shelf does not carry — the replenishment list nobody has yet |
+| `dispense.queued` vs `dispense.handed_over`, same day (the day strip's "not collected N of M", P14) | prescriptions that reached the counter and never left it |
+| `dispense.line_declined` grouped by reason | what the shelf does not carry. The day strip names the top reason, and `/pharmacy/reorder` is the list |
 | `dispense.cancelled` with an expiry reason | abandoned picks; if this is high, the 30-minute sweep is surprising people |
 | `batch_expired_before_collection` refusals | paid-and-uncollected; each one is a credit note somebody must raise |
 | `short_stock` refusals per item | the stock-out list |
-| `material.consumed` vs `stock_balances` | the ledger and the shelf agreeing |
+| a **blind count** of `PHARM-OPD` each week (`/materials/counts`, scheduled by the materials head, counted by a storekeeper) | the ledger and the shelf agreeing, line by line, with sales during the count reconciled. A variance is booked only after the medical superintendent approves it (the head asks on the count's review; the MS decides in the approvals inbox; the head books it) |
 
 **Close the window when the last three are empty for a week.**
 
@@ -271,7 +332,7 @@ is a GATE: the phase is not complete until every row carries a date and an initi
 | 8 | pharmacist opened a cashier drawer (§1.8) | | | |
 | 9 | formulary medicines classified (§2.1) | | | |
 | 10 | drug items created (§2.2) | | | |
-| 11 | `gst_rate_bps` READ BACK and left null pending the ruling (§2.2) | | | |
+| 11 | `gst_rate_bps` set from the CA's slab list and READ BACK (§2.2) | | | |
 | 12 | sale items registered (§2.3) | | | |
 | 13 | NPPA ceilings recorded where they apply (§2.4) | | | |
 | 14 | GRN captured / QC'd / posted (§2.5a–c) | | | |
@@ -297,7 +358,9 @@ No migration is reversed and no table is dropped.
 1. Remove `PharmacyModule` from `apps/core/src/app.module.ts` and `pharmacyManifest` from
    `kernel/modules/manifests.ts`, then deploy. Every `/pharmacy/*` route 404s and the nav links go
    with them.
-2. **Do NOT drop `pharmacy_reg_h1`.** It is the Schedule H1 register — a statutory record under the
+2. **Do NOT drop `pharmacy_reg_h1`, `pharmacy_retail_sales`, `pharmacy_retail_sale_lines` or
+   `pharmacy_retail_licences`.** The walk-in tables are sale records and the H1 register now holds
+   walk-in rows too. **Do NOT drop `pharmacy_reg_h1`.** It is the Schedule H1 register — a statutory record under the
    Drugs and Cosmetics Rules that a Drugs Inspector may ask for years later. The same holds for
    `pharmacy_dispenses`, `pharmacy_dispense_lines` and every `stock_ledger` row the counter wrote:
    they are the medical and financial record of medicine that reached a patient.
@@ -307,23 +370,141 @@ No migration is reversed and no table is dropped.
 
 ## 8. Not in 16c (do not look for it)
 
-IPD indents and ward stock; NDPS and Schedule X custody; **returns, refunds and credit notes** (which
-§3.10 now needs); cold chain; antimicrobial stewardship; the doctor ping on a held line; walk-in
-retail and outside prescriptions; repeat dispensing; home delivery; counts; the Replenishment
-automation; realtime on the counter (it polls every 10 s).
+IPD indents and ward stock; NDPS and Schedule X custody; returns of cold-chain, frozen and
+narcotic items (sealed ambient packs come back since P6, §3.11, and at the walk-in counter since
+P19b, §9; a billed dispense never collected is cancelled with a refund since P5, §3.10); cold chain;
+antimicrobial stewardship; the doctor ping on a held line; repeat dispensing; home delivery; a Replenishment agent
+that ORDERS (P4 and P8 give the reorder list, a read that proposes and moves nothing); realtime on
+the counter (it polls every 10 s).
 
-**No READ surface for the H1 register.** `pharmacy_reg_h1` is written by `handOver` and read by
-nothing — no route, no screen, no export. Until 16d it is read with `psql`, and that is the only way
-to answer an inspector.
+**The H1 register has a reader since P9.** `/pharmacy/registers/h1` shows a month of it, in the
+order the entries were written, and prints it with the rule, the period, a line for the drug licence
+number and the pharmacist's signature. It needs `pharmacy.register.read` (the `pharmacy` role, the
+pharmacist in charge, the medical superintendent and the owner). Every patient it shows is logged as
+a PHI access.
 
-**No patient's copy of the pharmacy invoice.** `billDispense` issues a real invoice with real tax
-heads and `daily-close` folds it into GSTR-1, so the tax side is intact — but no screen in the
-application renders an already-issued invoice, and `kernel/printing/enqueue.ts` declares four
-documents, none of them an invoice. §3.10 makes this worse rather than better: a patient who has paid
-and cannot collect needs a document showing what they paid for.
+**Who prints the unredacted copy (P17).** A sealed patient's name and address print only for
+holders of `pharmacy.register.read_sealed`:
+- the pharmacist in charge (role `pharmacy_incharge`, held with `pharmacy`), who is named on the
+  drug licence and produces the register to the inspector;
+- the medical superintendent;
+- the owner.
+Every sealed row they read is logged as a sealed access. Other pharmacists see the alias, marked
+"sealed record". To let the `admin` login print it, give `admin` the `owner` role at `/admin/users`.
+
+**The patient's copy of the bill is printed at the counter since P10.** A billed or handed-over
+dispense shows **Print bill**. It opens billing's own printed invoice (letterhead, lines, tax heads,
+settlement, signed QR) with a batch table added (drug, batch, expiry, quantity) and "Dispensed by …
+· Reg. …". The counter steps aside while the bill is on screen. `billing.invoice.read`, which
+`pharmacy` already holds, is the grant it uses. For a patient who paid and could not collect (§3.10),
+the same bill shows what was paid, and the credit note is billing's.
 
 **Careful with "the Expiry Watchman":** the automation that WATCHES SHELF STOCK for approaching
-expiry and raises alerts is not in 16c. But three expiry behaviours ARE, and they are not it — FEFO
+expiry and raises ALERTS is not in 16c. The reorder screen READS it (P8): what will expire at the
+counter before it sells, and expired stock still on the shelf. But three expiry behaviours ARE, and they are not it — FEFO
 excludes already-expired batches from every pick (§3.5), `sweepExpiredPharmacyPicks` cancels
 abandoned PICK RESERVATIONS after 30 minutes, and hand over refuses a batch that expired after it was
 picked (§3.10). Do not read this line as "16c does nothing about expiry".
+
+## 9. The walk-in retail counter (P19)
+
+Doc 16 §3.1b and register row R-174. A walk-in sale is not a dispense: it has no visit and no doctor
+in this hospital, so it places no order. It uses the same stock ledger, price rule, GST slab, billing,
+register of pharmacists and H1 register as the counter. Phase doc
+`docs/superpowers/plans/2026-09-17-phase-pharmacy-p19-retail-sales.md`.
+
+| step | who | where | done when |
+|---|---|---|---|
+| 9.1 | `seed-pharmacy.js` (every deploy) creates the `PHARM-RETAIL` store, kept by `pharmacy` and `pharmacy_assistant` | deploy | census row **`pharmacy_retail_store_present`** green |
+| 9.2 | **Record the retail licence**: the Form 20 and Form 21 numbers, valid from and to, and the pharmacist in charge named on it. A renewal is a new entry | **`pharmacy_incharge`**, the MS or the owner | `/pharmacy/retail-licence` | census row **`pharmacy_retail_licence`** green; the counter's banner goes away |
+| 9.3 | Stock the shelf: post the goods receipt into `PHARM-RETAIL` as §2 step 5c does for `PHARM-OPD`, or send it from the main store at **Stock transfers** and have a pharmacist confirm what arrived there (the storekeeper who sent it cannot, and only pharmacy staff receive into a pharmacy store). The OPD counter's shelf is never sold from | **`storekeeper`** sends; **`pharmacy`** confirms | `/materials/grn` or `/materials/transfers` | the walk-in screen shows "N available" |
+| 9.4 | Sell | **`pharmacy`** | `/pharmacy/retail` | a paid bill, printed from the sale |
+
+**Until 9.2 is done every walk-in sale refuses** (`retail_licence_missing`), and the day after the
+licence ends it refuses again (`retail_licence_lapsed`). Selling to the public without a Form 20/21
+licence is an offence under the Drugs and Cosmetics Act 1940 §18(c). The OPD counter is unaffected.
+
+**At the counter:**
+- **Every bill names a registered person.** Find the customer by mobile or UHID, or register them
+  there (name, sex, age, mobile). A close match is shown and never attached automatically: pick it,
+  or confirm the customer is someone new. There is no anonymous sale, because the cash limit is
+  counted per person per day.
+- **Unscheduled and OTC medicines** sell without a prescription.
+- **Schedule H and H1** sell only on a prescription the customer brings. Type the prescriber's name,
+  registration number and address and the prescription's date, and photograph it; the photo is filed
+  on the customer's record. Only a pharmacist with a current council registration completes such a
+  sale. Stamp the paper prescription as dispensed. Every H1 line is written to the H1 register with
+  the outside prescriber's name and address.
+- **Schedule X** is not sold here.
+- **A customer recorded allergic** to a line, or a severe interaction with their current medicines,
+  refuses the sale: refer them to their prescriber. There is no override at this counter.
+- Each line takes one batch, earliest in-date first. A quantity the first batch cannot cover is
+  refused with what it holds: sell less, or add a second line.
+
+**A sealed pack comes back (P19b).** At `/pharmacy/retail`, under "Take back a sealed pack", type the
+bill number and find the sale. The rules are the counter's (§3.11), counted from the time of the sale:
+- within **7 days**, sealed and intact (inspect it and tick the box), in whole strips;
+- never a cold-chain, frozen or narcotic item, and never a batch recalled or under 30 days to expiry
+  (quarantine it instead);
+- never more than was sold on the line, less what already came back. The screen shows both numbers.
+
+Say why, and whose reason it is: the customer no longer needs it, or the counter sold the wrong item.
+Only a pharmacist with a current council registration accepts it. The pack goes back on the shelf it
+was sold from, a credit note is raised for exactly that quantity, and the refund waits for billing's
+approval; the cashier pays it by voucher. **A return does not need a current retail licence**: it
+sells nothing, and a restocked pack cannot be sold again until the licence is current. The H1
+register keeps its row, as at the counter; the return is recorded against the sale.
+
+A paper dispense (§10) is returned the same way, by its bill number, into the counter it left from.
+
+**The leakage report (P12) reads either counter** since P19b. At `/pharmacy/leakage`, choose
+"Walk-in retail (PHARM-RETAIL)" to see a walk-in bill whose stock and money do not agree (it is named
+by its bill number), and stock that left the walk-in shelf with no sale behind it. A paper dispense
+is a sold line in its counter's report, not stock "consumed outside a dispense".
+
+## 10. Paper dispenses after an outage (P20)
+
+When the duty manager declares **downtime** at `/ops/mode`, the counters keep working on paper.
+- **Before an outage.** Keep a downtime kit printed from `/ops/downtime-kit` at each counter, with
+  **receipt** sheets for the desks `pharmacy-counter` and `pharmacy-retail`. Every sheet carries a
+  serial and a signed QR.
+- **During the outage.** Write each dispense on its own receipt sheet:
+  - the patient's name and UHID (or name, age and mobile);
+  - each medicine with its **batch** and quantity;
+  - the time;
+  - who handed it over;
+  - the amount and how it was paid;
+  - for Schedule H/H1, the prescriber's name, registration number and address, and the
+    prescription's date.
+
+  Keep the cash with the sheets.
+- **After recovery**, at `/pharmacy/downtime` (**`pharmacy`**, permission `pharmacy.downtime.enter`),
+  enter each sheet within **7 days**:
+  1. Scan the sheet's QR. The screen says which desk it came from, or that it was already entered.
+  2. Choose the counter the medicine left from, and type the time on the sheet.
+  3. Name who handed it over.
+  4. Find or register the customer.
+  5. Add each line with the batch written on the sheet.
+  6. For Schedule H/H1, add the prescription details and a photo of the sheet or prescription.
+  7. Enter what was paid. Stamp the sheet "entered" and file it.
+
+**What the entry does:**
+- Stock leaves the named batch **at the time on the sheet**.
+- The H1 register is written with that date and the handing-over pharmacist's registration number.
+- The invoice is issued **at entry**, with a number from the day of entry. The sheet's serial is a
+  reconciliation key, not an invoice number.
+
+**What it refuses:**
+- a sheet that is not a kit receipt;
+- a sheet entered twice;
+- a time outside the declared outage, before the kit was printed, or in the future;
+- a batch that had expired by the time on the sheet;
+- a Schedule H/H1 line without its prescription, or handed over by someone with no council
+  registration that day;
+- a walk-in counter sheet with no retail licence that day.
+
+**What it only records:** an allergy or interaction the entry finds. The medicine has already been
+taken, so the pharmacist in charge follows up with the patient.
+
+**A queued OPD prescription that was dispensed on paper** stays in the counter's queue. Cancel it
+there with the reason "dispensed on paper, sheet N", so it is not dispensed twice.

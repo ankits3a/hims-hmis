@@ -1,0 +1,461 @@
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
+import { beforeEach, describe, expect, it } from "vitest";
+import { AuthProvider } from "../../lib/auth";
+import { setToken } from "../../lib/api";
+import { router } from "../../router";
+import { stubFetch } from "../../test-utils";
+import "../../lib/i18n";
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-26 — THE THREE SEATS, DRIVEN THROUGH THE REAL ROUTER
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * This file REPLACES `screens/registration.test.tsx` (14 tests) and `screens/appointment.test.tsx`
+ * (33), which went with the screens they guarded. It does not re-express all 47: most of what they
+ * asserted — the duplicate gate, the guardian rule, the routing proposal, the slot board, the day's
+ * book — is now Desk One's markup and is already guarded by the ten suites under this directory,
+ * which the seats mount unchanged. Re-asserting it here would be a second copy of the tests to
+ * match the second copy of the screens that was just deleted.
+ *
+ * WHAT IS NOT COVERED ANYWHERE ELSE, AND IS THEREFORE WHAT THIS FILE IS: the WIRING. `model.test.ts`
+ * proves `stageForSeat` as a function, and `routing-rules.test.tsx` exists in this directory because
+ * this lane has already been bitten once by exactly that gap — `walk-in-routing.ts` had passing unit
+ * tests throughout the entire period the feature did not exist for a single user, because nothing
+ * imported it. "Is it wired" is the only question a pure test cannot answer.
+ *
+ * Every test below drives `router` at a real path.
+ */
+
+const PATIENT = {
+  id: "p-1", uhid: "U00110012", name: "Ramesh Kumar", phone: "9100000000",
+  administrativeGender: "male", dob: "1984-01-01", isConfidential: false, hasPhoto: false,
+  district: "Kanpur Nagar", registeredOn: "2020-12-01T00:00:00.000Z", matchedOn: ["name"],
+};
+
+function mount(at: string, extra: Record<string, unknown> = {}): void {
+  stubFetch({
+    "GET /api/auth/me": {
+      actor: { type: "user", id: "u1" },
+      permissions: {
+        /*
+          FD-28 — `opd.visits.read` added: it is what `GET /opd/patients/:id/timeline` requires and
+          what `front_office` actually holds, so a fixture without it was modelling a clerk who does
+          not exist. The seat WITHOUT it is asserted deliberately, in its own test below.
+        */
+        hospital: [
+          "opd.visits.open", "opd.visits.read", "patients.register",
+          "opd.appointments.manage", "billing.invoice.issue",
+        ],
+        scoped: { department: {}, floor: {} },
+      },
+    },
+    "GET /api/ops/mode": { mode: "commissioning" },
+    "GET /api/alerts": { items: [] },
+    "GET /api/patients/search": { items: [PATIENT] },
+    "GET /api/patients/p-1": {
+      patient: {
+        id: "p-1", uhid: "U00110012", name: "Ramesh Kumar", alias: null,
+        administrativeGender: "male", dob: "1984-01-01", phone: "9100000000", addressLine: "12 Mall Road",
+      },
+    },
+    "GET /api/patients/abha/capability": { configured: false, canRecord: true, canCreate: false, canVerify: false, reason: "t" },
+    "GET /api/opd/config": { flow: "queue_first_token_first", locked: false },
+    "GET /api/opd/departments": { items: [{ id: "d-1", name: "Cardiology", code: "CARD" }] },
+    "GET /api/opd/queues/summary": { items: [] },
+    "GET /api/opd/continuity": { anchor: null },
+    "GET /api/opd/doctors": { items: [] },
+    "GET /api/opd/appointments": { items: [] },
+    "GET /api/billing/session/current": { session: null },
+    "GET /api/me/desk": { stats: [] },
+    "GET /api/membership/recognition": { card: null, coupons: [] },
+    ...extra,
+  });
+  setToken("t-1");
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <AuthProvider>
+        <RouterProvider router={router} history={createMemoryHistory({ initialEntries: [at] })} />
+      </AuthProvider>
+    </QueryClientProvider>,
+  );
+}
+
+/** Search, then take the top hit — the two acts the find stage exists for. */
+async function hold(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.type(screen.getByPlaceholderText("mobile · name · UHID"), "Ramesh");
+  await waitFor(() => expect(screen.getAllByText("U00110012").length).toBeGreaterThan(0), { timeout: 3000 });
+  await user.keyboard("{Enter}");
+}
+
+/** The router is a module singleton, so every test must navigate rather than trust the history. */
+async function go(to: string): Promise<void> {
+  await act(async () => { await router.navigate({ to: to as "/counter" }); });
+}
+
+beforeEach(() => {
+  try { sessionStorage.clear(); } catch { /* a harness with no storage is still a valid harness */ }
+});
+
+describe("FD-26 · a seat IS Desk One", () => {
+  it("all three routes mount the desk, and each says which chair it is", async () => {
+    mount("/registration");
+    for (const [path, seat] of [["/registration", "registration"], ["/appointment", "appointment"]] as const) {
+      await go(path);
+      await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+      expect(screen.getByTestId("desk-one")).toHaveAttribute("data-seat", seat);
+    }
+    /*
+      `/billing` is the ruled exception: the cashier keeps its own body inside the seat frame, so it
+      mounts `SeatShell` rather than the desk. It still carries `data-seat`, which is the attribute
+      the global F4 handler reads.
+    */
+    await go("/billing");
+    await waitFor(() => expect(screen.getByTestId("seat-shell")).toBeInTheDocument());
+    expect(screen.getByTestId("seat-shell")).toHaveAttribute("data-seat", "billing");
+  });
+
+  it("`/counter` is NOT a seat — it keeps the sentence, not the three buttons", async () => {
+    mount("/counter");
+    await go("/counter");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    expect(screen.getByTestId("desk-one")).toHaveAttribute("data-seat", "counter");
+    /*
+      THE GUARD ON THE OWNER'S "DO NOT INTERFERE WITH DESK ONE". Every desk-one suite mounts
+      `<DeskOne />` with no prop, so all of them stay green whatever the seat arms do — including if
+      a branch were written the wrong way round. This asserts the counter arm directly.
+    */
+    expect(screen.queryByTestId("seat-to-registration")).not.toBeInTheDocument();
+    expect(screen.getByText(/Registration · Appointment · Billing/)).toBeInTheDocument();
+  });
+
+  it("a seat draws ONE step in the flow strip; the counter still draws three", async () => {
+    mount("/counter");
+    await go("/counter");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+    await waitFor(() => expect(screen.getByTestId("flow-strip")).toBeInTheDocument(), { timeout: 3000 });
+    expect(screen.getAllByTestId(/^flow-dot-/)).toHaveLength(3);
+
+    await go("/registration");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toHaveAttribute("data-seat", "registration"));
+    await hold(user);
+    await waitFor(() => expect(screen.getByTestId("flow-strip")).toBeInTheDocument(), { timeout: 3000 });
+    expect(screen.getAllByTestId(/^flow-dot-/)).toHaveLength(1);
+    expect(screen.getByTestId("flow-dot-register")).toBeInTheDocument();
+  });
+});
+
+describe("FD-26 · how a clerk leaves a screen that owns the viewport", () => {
+  it("the seat switcher is in the header, names all three, and marks the one you are on", async () => {
+    mount("/appointment");
+    await go("/appointment");
+    await waitFor(() => expect(screen.getByTestId("seat-to-appointment")).toBeInTheDocument());
+    expect(screen.getByTestId("seat-to-registration")).toHaveTextContent("Registration");
+    expect(screen.getByTestId("seat-to-billing")).toHaveTextContent("Billing");
+    /*
+      `aria-current="page"` and nothing else: a clerk who cannot see the lit pill must still be told
+      which chair they are in, and this is the one seat control a screen reader can read.
+    */
+    expect(screen.getByTestId("seat-to-appointment")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("seat-to-registration")).not.toHaveAttribute("aria-current");
+  });
+
+  it("clicking a sibling chair navigates there", async () => {
+    mount("/registration");
+    await go("/registration");
+    await waitFor(() => expect(screen.getByTestId("seat-to-appointment")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("seat-to-appointment"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/appointment"));
+  });
+
+  /*
+    THE SHELL RENDERS NOTHING UNDER A SEAT, and this is the FD-11 defect by name rather than a
+    preference: `.d1` is `position: fixed; inset: 0`, so without `staticData.fullViewport` the app
+    header and every nav link sit UNDERNEATH it — invisible, unclickable, and still in the tab order.
+    A keyboard user tabs into a menu they cannot see. `shell-nav.test.tsx` pins the same property for
+    `/counter`; this is the three seats inheriting it.
+  */
+  it("no app chrome renders beneath a seat — not hidden, absent", async () => {
+    mount("/registration");
+    await go("/registration");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(screen.queryByRole("contentinfo")).not.toBeInTheDocument();
+  });
+});
+
+describe("FD-26 · the patient survives the walk between chairs", () => {
+  it("holding somebody on one seat puts their ID — and only their ID — into the carrier", async () => {
+    mount("/appointment");
+    await go("/appointment");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+
+    await waitFor(() => expect(sessionStorage.getItem("hmis.inHand")).not.toBeNull(), { timeout: 3000 });
+    const held = JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}") as Record<string, unknown>;
+    expect(held.patientId).toBe("p-1");
+    /*
+      NEVER A NAME. `lib/patient-in-hand.tsx`'s ruling, asserted here because this is the first
+      writer added since it was made: a cached name outlives a merge and the record does not, so a
+      label carried between screens is how a wrong-patient event becomes invisible.
+    */
+    expect(JSON.stringify(held)).not.toContain("Ramesh");
+  });
+
+  it("`/counter` writes NOTHING to the carrier — one clerk, one mount, no walk to survive", async () => {
+    mount("/counter");
+    await go("/counter");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+    await waitFor(() => expect(screen.getByTestId("flow-strip")).toBeInTheDocument());
+    expect(sessionStorage.getItem("hmis.inHand")).toBeNull();
+  });
+
+  it("arriving at a seat with somebody in the carrier seats them without a second search", async () => {
+    sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-1", encounterId: null }));
+    mount("/appointment");
+    await go("/appointment");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    /* The dossier fills from the id alone — no search box was touched. */
+    await waitFor(() => expect(screen.getByText("Ramesh Kumar")).toBeInTheDocument(), { timeout: 3000 });
+    /* The dossier prints age, sex and UHID as one mono line, so match the line rather than the id. */
+    expect(screen.getByText(/U00110012/)).toBeInTheDocument();
+  });
+});
+
+describe("FD-26 · the booking chair keeps what only it could do", () => {
+  /*
+    The rebooking rail is the one capability FD-25's `/appointment` had that Desk One's stage did
+    not, and the reason that screen was allowed to exist: `listNeedsRebooking(true)` is the only
+    caller anywhere of the audited, PHI-logged `contact=true` opt-in. It was ported rather than
+    deleted with the screen — and it is asserted HERE because a component that renders on no route
+    is the shape of defect this whole file exists to catch.
+  */
+  it("the rebooking rail is on the booking chair's future tab, and lists who to ring", async () => {
+    mount("/appointment", {
+      "GET /api/opd/appointments": {
+        items: [{
+          id: "a-9", patientId: "p-1", doctorId: "doc-1", serviceDate: "2999-01-01",
+          slotStart: "2999-01-01T04:30:00.000Z", status: "needs_rebooking",
+          patient: { name: "Ramesh Kumar", alias: null, phone: "9100000000" },
+        }],
+      },
+    });
+    await go("/appointment");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+    await waitFor(() => expect(screen.getByText("future appointment")).toBeInTheDocument(), { timeout: 3000 });
+    await user.click(screen.getByText("future appointment"));
+
+    const rail = await screen.findByTestId("rebooking-rail", undefined, { timeout: 3000 });
+    /* The NUMBER is the point of the rail — a name without one is not a call anybody can make. */
+    expect(within(rail).getByText("9100000000")).toBeInTheDocument();
+  });
+
+  it("and it is NOT on the counter — a list of other people to telephone is not counter work", async () => {
+    mount("/counter", {
+      "GET /api/opd/appointments": {
+        items: [{
+          id: "a-9", patientId: "p-1", doctorId: "doc-1", serviceDate: "2999-01-01",
+          slotStart: "2999-01-01T04:30:00.000Z", status: "needs_rebooking",
+          patient: { name: "Ramesh Kumar", alias: null, phone: "9100000000" },
+        }],
+      },
+    });
+    await go("/counter");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+    await waitFor(() => expect(screen.getByText("future appointment")).toBeInTheDocument(), { timeout: 3000 });
+    await user.click(screen.getByText("future appointment"));
+    await waitFor(() => expect(screen.getByTestId("book-department")).toBeInTheDocument(), { timeout: 3000 });
+    expect(screen.queryByTestId("rebooking-rail")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-27 — "I LOST MY BILL AND MY PRESCRIPTION". Owner, 2026-09-06.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Before this, the answer was no — measured, not assumed. The only reprint control in the whole
+ * application lived inside `StageDone` and rendered ONLY for a job the server had recorded as
+ * FAILED, so a slip that printed perfectly and was then lost on the bus had no control at all. It
+ * also required `s.visit`, which only `walkIn()` sets, so it was gone the moment the desk cleared.
+ *
+ * These tests are the door, and the FIRST one is the one that matters: the history strip was
+ * already holding the `encounterId` of every past visit and spending it on a React key.
+ */
+describe("FD-27 · the papers a patient lost", () => {
+  const HISTORY = {
+    items: [{
+      encounterId: "e-old", serviceDate: "2026-09-01", departmentName: "Cardiology",
+      doctorName: "Dr Anil Desai", status: "completed",
+    }],
+  };
+  const JOBS = {
+    jobs: [
+      { id: "j-tok", document: "opd_token_slip", status: "printed", attempts: 1, lastError: null, printedAt: "2026-09-01T05:00:00.000Z", createdAt: "2026-09-01T04:59:00.000Z" },
+      { id: "j-rx", document: "opd_prescription", status: "printed", attempts: 1, lastError: null, printedAt: "2026-09-01T05:00:00.000Z", createdAt: "2026-09-01T04:59:00.000Z" },
+    ],
+  };
+
+  async function openPapers(): Promise<ReturnType<typeof userEvent.setup>> {
+    await go("/counter");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+    await waitFor(() => expect(screen.getAllByTestId("history-row").length).toBeGreaterThan(0), { timeout: 3000 });
+    await user.click(screen.getAllByTestId("history-row")[0]!);
+    await waitFor(() => expect(screen.getByTestId("papers-sheet")).toBeInTheDocument(), { timeout: 3000 });
+    return user;
+  }
+
+  it("a PAST visit's row opens its papers — the encounterId it was holding is now a door", async () => {
+    mount("/counter", {
+      "GET /api/opd/patients/p-1/timeline": HISTORY,
+      "GET /api/print/jobs": JOBS,
+      "GET /api/billing/invoices": { items: [] },
+    });
+    await openPapers();
+    /*
+      A SLIP THAT PRINTED CORRECTLY STILL OFFERS A REPRINT, and that is the whole inversion. The
+      patient in front of the clerk did not lose their paper because the printer failed.
+    */
+    expect(screen.getByTestId("papers-job-opd_token_slip")).toHaveTextContent("printed");
+    expect(screen.getByTestId("papers-reprint-opd_token_slip")).toBeInTheDocument();
+    expect(screen.getByTestId("papers-reprint-opd_prescription")).toBeInTheDocument();
+  });
+
+  it("pressing print again asks the server for a NEW job, so who reprinted it stays answerable", async () => {
+    const posted: unknown[] = [];
+    mount("/counter", {
+      "GET /api/opd/patients/p-1/timeline": HISTORY,
+      "GET /api/print/jobs": JOBS,
+      "GET /api/billing/invoices": { items: [] },
+      "POST /api/print/reprint": (init?: RequestInit) => {
+        posted.push(JSON.parse(String(init?.body ?? "{}")));
+        return { id: "j-new" };
+      },
+    });
+    const user = await openPapers();
+    await user.click(screen.getByTestId("papers-reprint-opd_token_slip"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    /* The job id of the row pressed — not the document name, and not the newest job blindly. */
+    expect(posted[0]).toEqual({ jobId: "j-tok" });
+    expect(await screen.findByTestId("papers-note")).toHaveTextContent("token slip");
+  });
+
+  it("the bills raised for that visit are listed and openable as the printed document", async () => {
+    mount("/counter", {
+      "GET /api/opd/patients/p-1/timeline": HISTORY,
+      "GET /api/print/jobs": { jobs: [] },
+      "GET /api/billing/invoices": {
+        items: [{
+          id: "inv-1", invoiceNo: "INV/26-27/000042", patientId: "p-1", encounterId: "e-old",
+          tariffVersionId: "t1", intendedPayer: "self", buyerGstin: null, buyerLegalName: null,
+          grossPaise: 50000, discountPaise: 0, taxableBasePaise: 50000, cgstPaise: 0, sgstPaise: 0,
+          rawTotalPaise: 50000, roundingPaise: 0, netPayablePaise: 50000,
+          creditExtended: false, creditReason: null, creditApprovalId: null,
+          issuedBy: "u1", issuedAt: "2026-09-01T05:00:00.000Z", serviceDay: "2026-09-01", seq: 42,
+        }],
+      },
+    });
+    await openPapers();
+    expect(screen.getByTestId("papers-invoice-INV/26-27/000042")).toHaveTextContent("₹500");
+    expect(screen.getByTestId("papers-show-INV/26-27/000042")).toBeInTheDocument();
+  });
+
+  it("a visit that queued nothing says so, rather than rendering an empty box a clerk reads as broken", async () => {
+    mount("/counter", {
+      "GET /api/opd/patients/p-1/timeline": HISTORY,
+      "GET /api/print/jobs": { jobs: [] },
+      "GET /api/billing/invoices": { items: [] },
+    });
+    await openPapers();
+    expect(screen.getByTestId("papers-no-jobs")).toBeInTheDocument();
+    expect(screen.getByTestId("papers-no-bills")).toBeInTheDocument();
+  });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-28 — THREE VISITS, AND A DOOR TO THE REST. Owner, 2026-09-06.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * *"the user can't see full history of the patient … Show maximum 3 history followed by a 'See More'
+ * link/button … Only if the registration user has permission to see the full history."*
+ *
+ * The server has always sent up to FIFTY visits; the rail cut them to five with one client-side
+ * `.slice`. So nothing was fetched that was not already paid for — everything past the fifth was
+ * simply discarded on arrival.
+ */
+describe("FD-28 · the history rail", () => {
+  const FIVE = {
+    items: Array.from({ length: 5 }, (_, i) => ({
+      encounterId: `e-${String(i)}`, serviceDate: `2026-09-0${String(i + 1)}`,
+      departmentName: "Cardiology", doctorName: "Dr Anil Desai", status: "completed",
+      prescriptionLineCount: 0,
+    })),
+  };
+
+  async function holdWithHistory(perms?: string[]): Promise<ReturnType<typeof userEvent.setup>> {
+    mount("/registration", {
+      "GET /api/opd/patients/p-1/timeline": FIVE,
+      ...(perms === undefined ? {} : {
+        "GET /api/auth/me": {
+          actor: { type: "user", id: "u1" },
+          permissions: { hospital: perms, scoped: { department: {}, floor: {} } },
+        },
+      }),
+    });
+    await go("/registration");
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await hold(user);
+    await waitFor(() => expect(screen.getAllByTestId("history-row").length).toBeGreaterThan(0), { timeout: 3000 });
+    return user;
+  }
+
+  it("shows three, not five, and says how many there are behind the button", async () => {
+    await holdWithHistory();
+    expect(screen.getAllByTestId("history-row")).toHaveLength(3);
+    expect(screen.getByTestId("history-see-more")).toHaveTextContent("5");
+  });
+
+  it("See more opens the whole history without leaving the desk — the patient stays in the column", async () => {
+    const user = await holdWithHistory();
+    await user.click(screen.getByTestId("history-see-more"));
+    await waitFor(() => expect(screen.getByTestId("history-sheet")).toBeInTheDocument());
+    expect(screen.getAllByTestId("history-full-row")).toHaveLength(5);
+    /*
+      THE DESK IS STILL UNDERNEATH. The owner asked for "a full page"; on this screen a page means a
+      NAVIGATION, and a navigation drops the person in hand — the defect FD-9 deleted three routes to
+      fix. The dossier is still mounted behind the sheet, which is what makes this an overlay.
+    */
+    expect(screen.getByTestId("desk-one")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/registration");
+  });
+
+  /*
+    THE PERMISSION GATE THE OWNER ASKED FOR, asserted from the side that can go wrong silently. The
+    timeline route is `opd.visits.read`; a clerk without it must never be OFFERED the button, because
+    a button that answers 403 is worse than no button.
+  */
+  it("a clerk without opd.visits.read is not offered the button at all", async () => {
+    await holdWithHistory(["patients.register", "opd.appointments.manage", "billing.invoice.issue"]);
+    expect(screen.getAllByTestId("history-row").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("history-see-more")).not.toBeInTheDocument();
+  });
+});

@@ -21,19 +21,22 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
+import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
-import { Registration } from "./screens/registration";
-import { AppointmentSeat } from "./screens/appointment";
+import { SeatShell } from "./screens/desk-one/seat-shell";
 import { CounterFigures } from "./screens/counter-figures";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
+import { MyReach } from "./screens/my-reach";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
+import { SlipCapture } from "./screens/slip-capture";
 import { VitalsBay } from "./screens/vitals-bay";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
+import { OpdScribe } from "./screens/opd-scribe";
 import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
@@ -48,6 +51,8 @@ import { FormularyAdmin } from "./screens/formulary-admin";
 import { MaterialsItems } from "./screens/materials-items";
 import { MaterialsVendors } from "./screens/materials-vendors";
 import { MaterialsGrn } from "./screens/materials-grn";
+import { MaterialsCounts } from "./screens/materials-counts";
+import { MaterialsTransfers } from "./screens/materials-transfers";
 import { PartnerReceivables } from "./screens/partner-receivables";
 import { PartnerPnl } from "./screens/partner-pnl";
 import { OtList } from "./screens/ot-list";
@@ -56,7 +61,16 @@ import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
 import { PharmacyCounter } from "./screens/pharmacy-counter";
+import { PharmacyAuthorise } from "./screens/pharmacy-authorise";
+import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
 import { PharmacyItems } from "./screens/pharmacy-items";
+import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
+import { PharmacyReorder } from "./screens/pharmacy-reorder";
+import { PharmacyH1Register } from "./screens/pharmacy-h1-register";
+import { PharmacyLeakage } from "./screens/pharmacy-leakage";
+import { PharmacyRetail } from "./screens/pharmacy-retail";
+import { PharmacyRetailLicence } from "./screens/pharmacy-retail-licence";
+import { PharmacyDowntime } from "./screens/pharmacy-downtime";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -154,12 +168,22 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // screen is deleted and the bay serves the path, exactly as the registration seat took
   // `/counter`: "keep the new design not the old one."
   { to: "/opd/vitals", label: "nav.opdVitals", permission: "opd.vitals.record", group: "opd" },
+  /*
+    THE SLIP DESK — the seat outside the consultation room. `patients.update` and no new permission
+    (owner, 2026-09-14): the same grant that lets a seat record an allergy, held by the front office,
+    its supervisor, the vitals bay, lab reception, MRD and the doctor.
+  */
+  { to: "/opd/slips", label: "nav.slipCapture", permission: "patients.update", group: "opd" },
   { to: "/opd/consult", label: "nav.opdConsult", permission: "opd.consult", group: "opd" },
   { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read", group: "opd" },
+  // FD-30 / owner ruling 2026-09-12 — the OPD door: the paper slip, transcribed for the doctor's tap.
+  { to: "/opd/scribe", label: "nav.opdScribe", permission: "opd.prescription.draft", group: "opd" },
   { to: "/billing", label: "nav.billing", permission: "billing.invoice.issue", group: "billing" },
   { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read", group: "billing" },
   { to: "/billing/session", label: "nav.billingSession", permission: "billing.session.own", group: "billing" },
   { to: "/billing/office", label: "nav.billingOffice", permission: "billing.reports.read", group: "billing" },
+  // PHARMACY P12 — the leakage triangle, beside the back office that reviews it.
+  { to: "/pharmacy/leakage", label: "nav.pharmacyLeakage", permission: "billing.reports.read", group: "billing" },
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
@@ -175,6 +199,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
   // the counter would make it look like part of a shift.
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
+  // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
+  { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -218,6 +244,10 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
    * `apps/core/test/nav-parity.test.ts`, so the next divergence fails a suite instead of a role.
    */
   { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read", group: "stores" },
+  // PLAN 14c, first slice — blind counts; the counter's grant opens it, the head's shows the review.
+  { to: "/materials/counts", label: "nav.materialsCounts", permission: "materials.counts.perform", group: "stores" },
+  // 2026-09-17 — stock transfers: the stores send, the receiving store confirms. Read opens it.
+  { to: "/materials/transfers", label: "nav.materialsTransfers", permission: "materials.stock.read", group: "stores" },
   /**
    * PLAN 15 T8 — the mini-OT. Each path and permission matches `otManifest.menu`'s own entry
    * exactly, which is where the authoritative pairing lives and which `nav-parity.test.ts` now
@@ -250,7 +280,20 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
   // PLAN 16c T5 — the dispense counter beside the OPD stations it serves; sale items with the stores.
   { to: "/pharmacy/counter", label: "nav.pharmacyCounter", permission: "pharmacy.dispense.read", group: "opd" },
+  // PHASE PD — the pharmacy desk: one ticket in hand, one screen. Beside the counter until it replaces it (PD-D7).
+  { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "opd" },
   { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
+  // PHARMACY P2 — the register of pharmacists, beside the pharmacy's other master data.
+  { to: "/pharmacy/pharmacists", label: "nav.pharmacyPharmacists", permission: "pharmacy.pharmacists.manage", group: "stores" },
+  // PHARMACY P4 — the reorder list: what the counter will run out of, and where it can come from.
+  { to: "/pharmacy/reorder", label: "nav.pharmacyReorder", permission: "pharmacy.dispense.read", group: "stores" },
+  // PHARMACY P9 — the Schedule H1 register, the pharmacist's statutory read.
+  { to: "/pharmacy/registers/h1", label: "nav.pharmacyH1", permission: "pharmacy.register.read", group: "stores" },
+  // PHARMACY P19 — the walk-in retail counter, and the licence that opens it.
+  { to: "/pharmacy/retail", label: "nav.pharmacyRetail", permission: "pharmacy.retail.sell", group: "opd" },
+  { to: "/pharmacy/retail-licence", label: "nav.pharmacyRetailLicence", permission: "pharmacy.retail.manage", group: "stores" },
+  // PHARMACY P20 — entering what left on paper while the screens were dark.
+  { to: "/pharmacy/downtime", label: "nav.pharmacyDowntime", permission: "pharmacy.downtime.enter", group: "stores" },
 ];
 
 /**
@@ -540,6 +583,24 @@ const staffReportsRoute = createRoute({
 });
 
 /**
+ * THE OPD DAY REPORT, department by department (owner, 2026-09-19). The dashboard panel links here
+ * with the day it was showing, so the screen opens on the same day rather than jumping to today.
+ */
+const opdDayReportRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/opd-day",
+  validateSearch: (search: Record<string, unknown>): { date?: string; period?: "day" | "week" | "month" } => ({
+    date: typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date) ? search.date : undefined,
+    period: search.period === "week" || search.period === "month" || search.period === "day" ? search.period : undefined,
+  }),
+  component: function OpdDayReportRoute() {
+    const { date, period } = opdDayReportRoute.useSearch();
+    /* Both halves or neither: a period without its anchor would silently read as today. */
+    return <OpdReportScreen initial={date === undefined ? undefined : { period: period ?? "day", date }} />;
+  },
+});
+
+/**
  * ═══ FD-9 / THE OWNER'S RULING, 2026-09-03 — DESK ONE *IS* `/counter`, AND IT IS THE ONLY DOOR ═══
  *
  * *"LOOK CLAUDE, remove the old design.. let's start from fresh because things are not landing what
@@ -575,43 +636,60 @@ const staffReportsRoute = createRoute({
  * navigation out of it (the palette's "my figures") still works. Signing out lives in the dock.
  */
 /**
- * ═══ FD-25 — `/registration` IS BACK, AND IT IS THE OTHER HALF OF FD-9'S RULING ═══
+ * ═══ FD-26 — `/registration` IS A DESK ONE SEAT, NOT A SCREEN OF ITS OWN ═══
  *
- * The long comment below records why FD-9 deleted this route: one person served a walk-in by
- * walking between three screens, losing the patient in hand at every hop, so the three became
- * stages of one session at `/counter`. Nothing about that has been reversed — Desk One is still
- * here, still the single-seat door, and still where this design system lives.
+ * The long comment above records why FD-9 deleted this route: one person served a walk-in by walking
+ * between three screens, losing the patient in hand at every hop, so the three became stages of one
+ * session at `/counter`. FD-25 brought the route back for a hospital that staffs three chairs, and
+ * built a NEW SCREEN behind it. The owner saw the result and rejected it on 2026-09-06:
  *
- * What changed is the staffing. The hospital now runs three seats, and the FD-8 measurement records
- * both shapes as authorised: three users = three routes, one user = Desk One's stages. This route
- * serves a clerk who holds `patients.register` and NOT billing — somebody who should never be shown
- * a cash drawer, and for whom Desk One's five stages are three stages of somebody else's job.
+ *   *"just like Desk One screen which has all three screens in one URL, we need to have the same 3
+ *   screen but on different URL too… Just mimic the Desk One screen but bifurcated in three. Don't
+ *   change the UX or UI, keep as it is… the current build has made it worse."*
  *
- * IT IS NOT A SECOND NAME FOR DESK ONE, which is the defect FD-9's deletion was about. Different
- * permission, different person, different screen. `shell-nav.test.tsx` pins that a holder of both
- * grants is offered each exactly once.
+ * So the ROUTE stays and the SCREEN goes: `registration.tsx` is deleted and this path mounts
+ * `DeskOne` projected to one stage. What the copy had lost, measured against the original in a
+ * browser, is itemised in `screens/desk-one/model.ts`'s `Seat` block — the tell-apart line, the
+ * restricted pill, "this is them" on a duplicate, and a doctor dropdown inside the registration form
+ * that FD-8 had already had removed by name.
  *
- * NO `staticData.fullViewport`, DELIBERATELY, AND NOT WHAT THE BUILD PLAN PROPOSED. Desk One earns
- * the full viewport because it IS the application for the person using it — `.d1` is
- * `position: fixed; inset: 0` and the shell must not render chrome underneath it (the FD-11
- * invisible-but-tabbable defect). This screen wears `.pp` INSIDE the shell: it is one seat of three
- * and its clerk still needs the nav to reach a patient record, the appointment book and their own
- * figures. See `components/paper-screen.tsx` for the whole argument, including why the artboard's
- * own header bar is rendered as a screen title rather than as a second header.
+ * IT IS STILL NOT A SECOND NAME FOR DESK ONE, which is the defect FD-9's deletion was about.
+ * Different permission, different person, one stage instead of five. `shell-nav.test.tsx` pins that
+ * a holder of both grants is offered each exactly once and that `/counter` is not a fourth row.
+ *
+ * ═══ AND IT OWNS THE VIEWPORT NOW, WHICH REVERSES THIS ROUTE'S OWN PREVIOUS ARGUMENT ═══
+ *
+ * The paragraph that stood here said the opposite — "NO `staticData.fullViewport`, DELIBERATELY" —
+ * on the reasoning that a seat clerk is one of three and needs the nav to reach the rest of the
+ * application. That reasoning was sound and its result was not: on this deployment the nav wraps to
+ * three rows and, with the mode banner and a screen-title row, spends about 200px before the work
+ * starts, which is most of what the owner called worse. The owner was asked directly and ruled that
+ * the seats own the whole screen exactly as Desk One does.
+ *
+ * The need the old paragraph named is real and is met differently: the header's breadcrumb becomes
+ * three buttons (the seat switcher), the patient in hand travels with the clerk, F8 opens the
+ * application's own command palette over every screen and patient the person may see, and Sign out
+ * lives in the dock. See `screens/desk-one/seat-shell.tsx` and `desk-one.tsx`'s header.
  */
 const registrationRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/registration",
   /*
     `?new=true`, the same one-shot shape `counterDeskRoute` takes below and for the same caller: the
-    global F4 chord, meaning "a new patient is in front of me". This screen ALSO binds F4 locally
-    (in the capture phase, so it wins over the global handler and a clerk mid-registration is not
-    yanked to Desk One), so the search parameter is only how the key arrives from ELSEWHERE.
+    global F4 chord, meaning "a new patient is in front of me". The desk consumes it with a
+    replace-navigate against THIS route (`SEAT_ROUTE[seat]`), so a second press retriggers.
   */
   validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
     new: search.new === true || search.new === "true" ? true : undefined,
   }),
-  component: Registration,
+  /*
+    FD-26 — the seats own the viewport for the same reason `/counter` does, and the paragraph above
+    records why the opposite was tried first. `.d1` is `position: fixed; inset: 0`; without this the
+    shell renders its header and every nav link UNDERNEATH it — invisible, unclickable, and still in
+    the tab order, which is the FD-11 defect by name.
+  */
+  staticData: { fullViewport: true },
+  component: function RegistrationSeat() { return <DeskOne seat="registration" />; },
 });
 
 /**
@@ -624,15 +702,24 @@ const registrationRoute = createRoute({
  *
  * The two are not duplicates. This one is organised around ONE PATIENT — who is this, when can they
  * come, book it — and it carries the rebooking rail, which is the only surface in the product that
- * answers "the doctor is away, who do I have to call?". That rail is the reason the route exists;
- * everything else on it is available somewhere else.
+ * answers "the doctor is away, who do I have to call?".
  *
- * No `staticData.fullViewport`: one seat of three, inside the shell. See `registrationRoute` above.
+ * ═══ FD-26 — IT IS DESK ONE'S APPOINTMENT STAGE NOW, AND THAT IS THE OWNER'S "(Walkin/Future)" ═══
+ *
+ * FD-25's screen booked FUTURE slots and nothing else: the walk-in half — the complaint box, the
+ * triage-ranked department board, the wait bars, the per-doctor assign — simply was not on it, so
+ * the chair whose whole job is "who does this person see" could not answer it. The owner named both
+ * halves when asking for the seats. Desk One's stage has always had both, so the route mounts it.
+ *
+ * The rebooking rail was the one thing the deleted screen had that the stage did not, so it was
+ * PORTED rather than deleted with it — `screens/desk-one/rebooking-rail.tsx`, mounted on this seat
+ * only. `staticData.fullViewport`, like the other two: see `registrationRoute` above.
  */
 const appointmentRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/appointment",
-  component: AppointmentSeat,
+  staticData: { fullViewport: true },
+  component: function AppointmentSeat() { return <DeskOne seat="appointment" />; },
 });
 
 const counterDeskRoute = createRoute({
@@ -671,6 +758,16 @@ const counterDeskRoute = createRoute({
  * which is why `nav-parity.test.ts` still passes — the bay has always required the same grant as
  * the screen it replaces.
  */
+/**
+ * FD — the desk outside the consultation room: scan the slip's QR, see whose visit it matched, and
+ * photograph the paper. See `slip-capture.tsx` for why the read-back is not optional.
+ */
+const slipCaptureRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/slips",
+  component: SlipCapture,
+});
+
 const vitalsBayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/vitals",
@@ -712,7 +809,24 @@ const mergeRoute = createRoute({
 const approvalsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/approvals",
+  // PHASE O T3 — the alerts bell deep-links one card: `/approvals?focus=<approvalId>`. The inbox
+  // scrolls to it and marks it, so a reader who tapped a bell lands on the thing the bell was
+  // about instead of on a list they then have to search.
+  validateSearch: (search: Record<string, unknown>): { focus?: string } => ({
+    focus: typeof search.focus === "string" ? search.focus : undefined,
+  }),
   component: ApprovalsInbox,
+});
+
+/**
+ * PHASE O T4 — a person's own reach settings. NO NAV ROW, deliberately: it is linked from the
+ * alerts bell's footer, and a settings page somebody visits twice a year does not earn a line
+ * of chrome on every seat's sidebar for ever. The caddy SPA census gains it; the nav one does not.
+ */
+const myReachRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/me/reach",
+  component: MyReach,
 });
 
 const opdAdminRoute = createRoute({
@@ -777,10 +891,108 @@ const pharmacyCounterRoute = createRoute({
   component: PharmacyCounter,
 });
 
+/**
+ * PHASE PD — THE PHARMACY DESK (PD-3). Two paths, one screen: `/pharmacy/desk` with nobody in hand,
+ * and `/pharmacy/desk/<dispense id>` with a ticket in hand, so the owner's queue can open a ticket in
+ * a new tab and a reload keeps the patient at the window (PD-D7). Full viewport, as `/counter` is:
+ * `.d1` owns the screen. `/pharmacy/counter` stays until the desk replaces it, then redirects.
+ */
+const pharmacyDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/desk",
+  staticData: { fullViewport: true },
+  component: function PharmacyDeskIdle() { return <PharmacyDesk ticketId={null} />; },
+});
+
+const pharmacyDeskTicketRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/desk/$ticketId",
+  staticData: { fullViewport: true },
+  component: function PharmacyDeskTicket() {
+    const { ticketId } = pharmacyDeskTicketRoute.useParams();
+    return <PharmacyDesk ticketId={ticketId} />;
+  },
+});
+
+/**
+ * PD-9 (owner ruling 2026-09-19) — where the PRESCRIBER reads the pharmacy's request and decides it.
+ * Reached from the request on the doctor's own desk; the server lets nobody else read or decide it.
+ */
+const pharmacyAuthoriseRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/authorisations/$authorisationId",
+  component: function PharmacyAuthoriseRoute() {
+    const { authorisationId } = pharmacyAuthoriseRoute.useParams();
+    return <PharmacyAuthorise authorisationId={authorisationId} />;
+  },
+});
+
 const pharmacyItemsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/items",
   component: PharmacyItems,
+});
+
+/** PHARMACY P2 — the register of pharmacists. Path matches `pharmacyManifest.menu`. */
+const pharmacyPharmacistsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/pharmacists",
+  component: PharmacyPharmacists,
+});
+
+/** PHARMACY P4 — the reorder list. Path matches `pharmacyManifest.menu`. */
+const pharmacyReorderRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/reorder",
+  component: PharmacyReorder,
+});
+
+/** PLAN 14c, first slice — stock counts. Path matches `materialsManifest.menu`. */
+const materialsCountsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/counts",
+  component: MaterialsCounts,
+});
+
+/** 2026-09-17 — stock transfers. Path matches `materialsManifest.menu`. */
+const materialsTransfersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/transfers",
+  component: MaterialsTransfers,
+});
+
+/** PHARMACY P12 — the leakage triangle. Path matches `pharmacyManifest.menu`. */
+const pharmacyLeakageRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/leakage",
+  component: PharmacyLeakage,
+});
+
+/** PHARMACY P9 — the Schedule H1 register. Path matches `pharmacyManifest.menu`. */
+const pharmacyH1RegisterRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/registers/h1",
+  component: PharmacyH1Register,
+});
+
+/** PHARMACY P19 — the walk-in retail counter and its licence. Paths match `pharmacyManifest.menu`. */
+const pharmacyRetailRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/retail",
+  component: PharmacyRetail,
+});
+
+const pharmacyRetailLicenceRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/retail-licence",
+  component: PharmacyRetailLicence,
+});
+
+/** PHARMACY P20 — paper dispenses. Path matches `pharmacyManifest.menu`. */
+const pharmacyDowntimeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/downtime",
+  component: PharmacyDowntime,
 });
 
 const labDeskRoute = createRoute({
@@ -881,6 +1093,17 @@ const opdConsultRoute = createRoute({
   component: OpdConsult,
 });
 
+/**
+ * FD-30 — the OPD-door scribe. No search parameters: the visit is TYPED OR SCANNED into the screen's
+ * own box (one input, both roads — the prescription QR encodes exactly the visit number), so there
+ * is no deep link to validate and no state to carry between patients.
+ */
+const opdScribeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/scribe",
+  component: OpdScribe,
+});
+
 const opdDisplayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/display",
@@ -891,6 +1114,19 @@ const opdDisplayRoute = createRoute({
   component: OpdDisplay,
 });
 
+/**
+ * ═══ FD-26 — THE CASHIER KEEPS ITS BODY AND PUTS ON DESK ONE'S FRAME (OWNER RULING) ═══
+ *
+ * The other two seats ARE Desk One, projected to one stage. This one is not, and the owner ruled it
+ * so on 2026-09-06 when the trade was put to them: Desk One's bill stage renders the fee the server
+ * quoted and takes one tender, while `billing-counter.tsx` builds lines, discounts them against an
+ * approval id, mixes and part-pays tenders, extends credit, captures PAN / Form 60, reads
+ * `patient_coverages` for the corporate card, shows package balances and prints the invoice.
+ * *"Desk One's frame, all money controls kept."*
+ *
+ * `SeatShell` is that frame and `BillingCounter` is untouched — which is the property that matters,
+ * because its 31 tests are the only instrument over money that already ships.
+ */
 const billingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/billing",
@@ -899,7 +1135,14 @@ const billingRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { encounterId?: string } => ({
     encounterId: typeof search.encounterId === "string" ? search.encounterId : undefined,
   }),
-  component: BillingCounter,
+  staticData: { fullViewport: true },
+  component: function BillingSeat() {
+    return (
+      <SeatShell seat="billing">
+        <BillingCounter seated />
+      </SeatShell>
+    );
+  },
 });
 
 // One ledger, one screen (T14): dues and advances are the same instrument, so they share a route.
@@ -1050,8 +1293,8 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
+      indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      opdDeskRoute, opdConsultRoute, opdScribeRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
@@ -1068,6 +1311,7 @@ export const router = createRouter({
       // and the one carrying the rebooking rail. `caddyfile-parity.test.ts` pins the count and joins
       // this task's Files list — MEASURED against the tree, never predicted from arithmetic.
       appointmentRoute,
+      slipCaptureRoute,
       vitalsBayRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's
@@ -1091,7 +1335,8 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyItemsRoute,
+      pharmacyCounterRoute, pharmacyDeskRoute, pharmacyDeskTicketRoute, pharmacyAuthoriseRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
+      pharmacyRetailRoute, pharmacyRetailLicenceRoute, pharmacyDowntimeRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since
       // 2 September and the desk PCs have them bookmarked. Removed in the release after the

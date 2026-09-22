@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
+import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
+import { UnpaidMark } from "../components/unpaid-mark";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
-  WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
+  WireDrugDiseaseHit, WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
   WireRxHistoryItem, WireVitalsHistoryItem,
   WireAdvisedTest, WirePriceListRow,
 } from "../lib/opd-api";
@@ -19,12 +21,22 @@ import { useRealtime } from "../lib/realtime";
 import { RxPrint } from "../components/rx-print";
 import { flagTone, provisionalResultsForEncounter, resultsForEncounter } from "../lib/lab-api";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
-import { DrugCombobox } from "../components/drug-combobox";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
+import { DrugField } from "../components/drug-field";
+import { SigPanel } from "../components/sig-panel";
+import type { SigPatch } from "../components/sig-panel";
+import { TagField, splitTags } from "../components/tag-field";
+import { useSnippets } from "../lib/use-snippets";
+import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
+import type { SnippetContext } from "../lib/snippets";
 import { ConsultScribe } from "../components/consult-scribe";
+import { completeComplaint, fetchRegimen, suggestSyndromes } from "../lib/cds-api";
+import type { WireCard, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
 
 /**
@@ -54,17 +66,46 @@ import { TabStrip } from "../components/desk-fields";
 const POLL_MS = 15_000;
 
 const ROUTE_OPTIONS = ["oral", "iv", "im", "sc", "topical", "inhaled", "other"] as const;
-const FREQUENCY_OPTIONS = ["OD", "BD", "TDS", "QID", "HS", "SOS", "STAT", "other"] as const;
 
 type VisitDetail = {
   encounter: WireEncounter;
+  /* FD-32 — the owner's warning, from the same derivation the vitals bay uses. */
+  feeUnpaid?: boolean;
+  feeBypass?: { by: string; reason: string; at: string } | null;
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
+  /** The CODED diagnoses. `encounter.diagnosis` is the display string and carries no codes. */
+  diagnoses: { text: string; icd10Code: string | null }[];
   patient: WirePatientSummary | null;
 };
 type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
-type AllergyRow = { id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string };
+/** `GET /opd/advice-templates` — the hospital's library, with this doctor's own on top. */
+type WireAdviceTemplate = {
+  id: string; title: string; keyword: string | null;
+  textEn: string | null; textHi: string | null; mine: boolean;
+};
+/** `GET /opd/cds/complete/allergen` — a rule class, or a moiety out of the formulary. */
+type WireAllergenHit = {
+  term: string; kind: "class" | "moiety"; allergenClass: string | null; saltId: string | null; blocks: string[];
+};
+/** `GET /opd/cds/complete/diagnosis` — one row of the ICD-10 typeahead. */
+type WireIcd10Hit = { code: string; description: string; chapterNo: number; codeMatch: boolean };
+type AllergyRow = {
+  id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string;
+  /**
+   * The PROVENANCE, and it was on the wire all along — `listAllergies` selects the whole row and
+   * this type simply never declared these. Striking a contrast reaction radiology recorded from an
+   * actual administration is a different act from striking your own mis-tap of thirty seconds ago,
+   * and the confirmation says which one the doctor is about to do.
+   */
+  source: string; recordedAt: string; correctionReason: string | null;
+};
+/** `GET /patients/:id/documents` — metadata only; the bytes are their own request. */
+type WireDocument = {
+  id: string; encounterId: string | null; kind: string; mimeType: string;
+  byteSize: number; note: string | null; capturedBy: string; capturedAt: string;
+};
 type AllergyMatch = { lineIndex: number; substance: string };
 type AllergyOverride = AllergyMatch & { reason: string };
 type Active = { encounterId: string; patientId: string; summary: WirePatientSummary | null };
@@ -142,7 +183,11 @@ type WirePrecheck = {
   interactions: WireInteractionHit[];
   duplicates: WireDuplicateHit[];
   notices: WireRxNotice[];
+  /** P24. Optional: an older server sends nothing, and the screen then says nothing. */
+  drugDisease?: WireDrugDiseaseHit[];
   unresolvedLineIndexes: number[];
+  /** Formulary phase 3. Optional: an older server sends nothing, and the screen then says nothing. */
+  unreviewedLineIndexes?: number[];
 };
 type WireCoverage = { coverage: number; noticeEnabled: boolean };
 
@@ -151,11 +196,27 @@ type WireCoverage = { coverage: number; noticeEnabled: boolean };
 type NoteState = { chiefComplaint: string; diagnosis: string; icd10Code: string; advice: string };
 const EMPTY_NOTE: NoteState = { chiefComplaint: "", diagnosis: "", icd10Code: "", advice: "" };
 
-function noteBodyOf(n: NoteState): Record<string, string | null> {
+/**
+ * ═══ THE DIAGNOSIS GOES UP AS A LIST, AND THE CODES RIDE WITH THEIR OWN WORDS ═══
+ *
+ * `TagField` hands back one joined string, which is all a complaint ever needs. A diagnosis needs
+ * the code too, so the screen keeps a term -> code map of every suggestion it has been SHOWN
+ * (`icdByTerm`) and pairs them back up here.
+ *
+ * Matching on the text rather than on "which row was tapped" is deliberate and is the more correct
+ * of the two: a doctor who types "Fever, unspecified" in full has named exactly the code a doctor
+ * who tapped it named, and there is no reason the record should say otherwise. A tag the map does
+ * not know is uncoded — which is the ordinary case for a doctor's own words, not a failure.
+ *
+ * `diagnosis` and `icd10Code` are NOT sent: the server derives both from this list, so there is one
+ * statement of the fact rather than three that can disagree.
+ */
+function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>): Record<string, unknown> {
   return {
     chiefComplaint: orNull(n.chiefComplaint),
-    diagnosis: orNull(n.diagnosis),
-    icd10Code: orNull(n.icd10Code),
+    diagnoses: splitTags(n.diagnosis).map((text) => ({
+      text, icd10Code: icdByTerm.get(text.toLowerCase()) ?? null,
+    })),
     advice: orNull(n.advice),
   };
 }
@@ -164,7 +225,9 @@ export function OpdConsult(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   /** PLAN 07d T1 — which of the three histories the tab is showing. Drives the lazy fetches below. */
-  const [historyView, setHistoryView] = useState<"visits" | "rx" | "vitals">("visits");
+  const [historyView, setHistoryView] = useState<"visits" | "rx" | "vitals" | "documents">("visits");
+  /** The document the doctor has opened. Null until they ask — the bytes are a second PHI read. */
+  const [openDocumentId, setOpenDocumentId] = useState<string | null>(null);
   /** PLAN 07d T5 — the tests the doctor has advised this consultation. Saved with the note. */
   const [advisedTests, setAdvisedTests] = useState<WireAdvisedTest[]>([]);
   const [testQuery, setTestQuery] = useState("");
@@ -172,11 +235,65 @@ export function OpdConsult(): React.ReactElement {
 
   const [active, setActive] = useState<Active | null>(null);
   const [tab, setTab] = useState<"note" | "rx" | "history">("note");
+  /*
+    ═══ THE CO-PILOT (owner, 2026-09-14) ═══
+    *"when doctor starts to write chief complaints, he don't need to type much, just tap and select"*
+    — so the suggestions live UNDER the complaint field, appear as it is typed, and decide nothing.
+  */
+  const [hits, setHits] = useState<WireSyndromeHit[]>([]);
+  const [regimen, setRegimen] = useState<WireRegimen | null>(null);
+  const [cdsError, setCdsError] = useState<string | null>(null);
   // THE SKIP DIALOG — open on the entry being skipped, because a reason belongs to one token.
+  /*
+    ═══ THE ALLERGY THE DOCTOR LEARNS IN THE ROOM (owner, 2026-09-14) ═══
+    The panel could only ever SHOW allergies. A doctor who is told "penicillin gave him a rash"
+    mid-consultation had nowhere to put it — and it is the one fact every guardrail on this screen
+    reads. `patients.update` is already the doctor's grant, so this adds a field, not an authority.
+  */
+  const [allergyOpen, setAllergyOpen] = useState(false);
+  const [allergyText, setAllergyText] = useState("");
+  const [allergySeverity, setAllergySeverity] = useState<"mild" | "moderate" | "severe">("moderate");
+  const [allergyError, setAllergyError] = useState<string | null>(null);
+  /*
+    ═══ THE PICKED ALLERGEN, AND THE WARNING WHEN NOTHING WAS PICKED ═══
+
+    `allergyPick` is the coded allergen the doctor chose; it is CLEARED the moment they type again,
+    exactly as the drug field clears `medicineId` — a code left behind after the words changed is a
+    block recorded against a substance nobody named.
+
+    `allergyKnown` is the server's answer about the TYPED text: false means the prescription guard
+    will find no rule for it. The field says so and saves anyway. Free text is legal here and must
+    stay so — "the red syrup gave him a rash" is worth recording — but a doctor who writes
+    `pencilin` and is told nothing has no way to know the penicillin block will never fire.
+  */
+  /* The advice library. Fetched once per panel — it is the hospital's list, not the patient's. */
+  const [adviceSaveOpen, setAdviceSaveOpen] = useState(false);
+  const [adviceSaveTitle, setAdviceSaveTitle] = useState("");
+  const [adviceSaveKeyword, setAdviceSaveKeyword] = useState("");
+  const [adviceRefOpen, setAdviceRefOpen] = useState(false);
+  const [adviceSaveError, setAdviceSaveError] = useState<string | null>(null);
+  /* The allergy being struck, and the reason the correction requires (E-8). */
+  const [allergyStriking, setAllergyStriking] = useState<AllergyRow | null>(null);
+  const [allergyStrikeReason, setAllergyStrikeReason] = useState("");
+  const [allergyStrikeError, setAllergyStrikeError] = useState<string | null>(null);
+  const [showCorrectedAllergies, setShowCorrectedAllergies] = useState(false);
+  const [allergyPick, setAllergyPick] = useState<WireAllergenHit | null>(null);
+  const [allergyHits, setAllergyHits] = useState<WireAllergenHit[]>([]);
+  const [allergyKnown, setAllergyKnown] = useState(true);
   const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
   const [skipNote, setSkipNote] = useState("");
+  /* OWNER RULING 2026-09-20 — the held token this doctor is deciding about, and the sentence for it. */
+  const [openingUnpaid, setOpeningUnpaid] = useState<WireQueueEntryView | null>(null);
+  const [unpaidReason, setUnpaidReason] = useState("");
   const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
+  /*
+    Every ICD-10 row the diagnosis field has offered, by its description. A ref rather than state:
+    nothing renders from it, and re-rendering the consult panel on every keystroke of a typeahead
+    is exactly the cost the typeahead exists to avoid. It grows for the life of the panel and is
+    cleared with it — a few hundred short strings at the very most.
+  */
+  const icdByTerm = useRef(new Map<string, string>());
   const [noteSaved, setNoteSaved] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
@@ -190,10 +307,46 @@ export function OpdConsult(): React.ReactElement {
   const [interactionReasons, setInteractionReasons] = useState<string[]>([]);
   const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
   /** Soft hits. They never gate anything and the panel is dismissible. */
+  /**
+   * ═══ WHICH PRODUCT A PICKED LINE ACTUALLY HOLDS (P27) ═══
+   *
+   * The line stores `medicineId` and the drug's NAME, and shows only the name — so two lines
+   * reading "Paracetamol" could be the 500 and the 650 and the screen would not say which. The
+   * owner's reference UI prints the shorthand under the name for exactly this reason:
+   * `[500 mg | Tablet | D0230]`.
+   *
+   * Kept beside the form rather than in it, because it is DISPLAY and nothing reads it back: the
+   * prescription posts `medicineId`, and the server resolves the product from that. Keyed on the
+   * field array's own row id, not the index, so removing a line does not slide one row's shorthand
+   * onto another.
+   *
+   * Its lifetime is deliberately the same as `medicineId`'s: set on a pick, dropped the moment the
+   * text is typed over, and gone when the panel resets — a reopened draft carries neither
+   * (`medicineId: null` on that path), so neither is shown, which is the honest state.
+   *
+   * THE `resetPanel` CLEAR IS HOUSEKEEPING, AND NO TEST GUARDS IT — said here rather than implied
+   * by a green suite. An assertion was written for it and then removed for being unfailable: the
+   * panel UNMOUNTS on completion, so the shorthand is absent afterwards whether or not the state
+   * was cleared. It cannot leak onto the next patient either, because `useFieldArray` mints new row
+   * ids on reset and a stale entry keyed by an old one can never be read. The clear stops the map
+   * growing across a session; it is not load-bearing, and claiming a test for it would be worse
+   * than having none.
+   */
+  const [shorthand, setShorthand] = useState<Record<string, { strength: string | null; form: string; code: string | null }>>({});
   const [notices, setNotices] = useState<WireRxNotice[]>([]);
   const [noticesDismissed, setNoticesDismissed] = useState(false);
+  /** P24 — soft drug-disease hits, shown beside the notices; the severe ones go to the dialog. */
+  const [diseaseNotices, setDiseaseNotices] = useState<WireDrugDiseaseHit[]>([]);
+  const [diseaseHits, setDiseaseHits] = useState<WireDrugDiseaseHit[]>([]);
+  const [diseaseReasons, setDiseaseReasons] = useState<string[]>([]);
   /** Line indexes the formulary could not resolve — the coverage-gated hint reads this (DD5). */
   const [unresolvedLines, setUnresolvedLines] = useState<number[]>([]);
+  /**
+   * Formulary phase 3: lines the server checked only in part, because a component is one pharmacy
+   * has not reviewed (no drug class, no interaction pairs). Not coverage-gated like the hint above:
+   * it is not a guess about the formulary, it is the server saying what it could not see.
+   */
+  const [unreviewedLines, setUnreviewedLines] = useState<number[]>([]);
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [rxPrint, setRxPrint] = useState<WireRxPrint | null>(null);
   const [followUp, setFollowUp] = useState("");
@@ -202,7 +355,7 @@ export function OpdConsult(): React.ReactElement {
   const [referralTo, setReferralTo] = useState("");
   const [referralNote, setReferralNote] = useState("");
 
-  const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE)));
+  const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map())));
   /** The PARSED lines of a refused submission — never `getValues()`, whose durationDays is a string (§3.19). */
   const pendingLines = useRef<RxLineValues[]>([]);
   const loadedNoteFor = useRef<string | null>(null);
@@ -220,10 +373,20 @@ export function OpdConsult(): React.ReactElement {
 
   const config = useQuery({ queryKey: ["opd", "config"], queryFn: () => api<WireOpdConfig>("GET", "/opd/config") });
   /*
-   * PLAN 16a T6's whole-formulary fetch is GONE. It pulled every branded medicine, unpaginated,
-   * on every consultation — safe only while the table was empty. The drug field now queries
-   * `/formulary/suggest` for what the doctor is actually typing (`DrugCombobox`), and design law 1
-   * still holds at the transport layer: if that request fails, the field is a plain text box.
+   * PLAN 16a T6's whole-formulary fetch is GONE. It pulled every branded medicine, unpaginated, on
+   * every consultation — safe only while the table was empty. After the owner's catalogue import
+   * that is 103,383 rows and ~15 MB on every load of this screen: measured, not feared.
+   *
+   * TWO SEARCH ROUTES NOW EXIST AND THIS SCREEN USES ONE. `/formulary/suggest` (#186) reads the
+   * NRCeS generic tier and deliberately fills the NAME only; `/formulary/medicines/search` reads
+   * the imported catalogue — brands included — and fills the name AND the `medicineId` that the
+   * interaction, duplicate and allergy checks need in order to say anything at all. The owner's
+   * ruling of 2026-09-14 is one drug list feeding one safety layer, so the field is `DrugField`
+   * over the second. `DrugCombobox` and its suite stay in the tree, unwired, until that
+   * duplication is settled deliberately rather than by a rebase.
+   *
+   * Design law 1 still holds at the transport layer: if that request fails, the field is a plain
+   * text box and free typing is legal.
    */
   /**
    * DD5 — the client NEVER re-derives the threshold. It reads `noticeEnabled` and nothing else, and
@@ -267,6 +430,19 @@ export function OpdConsult(): React.ReactElement {
   */
   const leftQueue = view?.left ?? [];
   /*
+    ═══ THE TOKENS WITH THE CASHIER (OWNER RULING 2026-09-20) ═══
+
+    *"It waits for bill to be paid until doctor opens the token from his dashboard manually.
+    Currently the doctor have no screen to do it."* This is that screen. They are waiting, their
+    vitals are charted, and their fee is unsettled — so the server keeps them out of `ordered`,
+    `callNext` cannot reach them and the hall's board never announces them. The doctor sees them
+    anyway, because the whole ruling is that THIS person decides, patient by patient.
+
+    `?? []` is not defensive habit: a tab left open across the deploy that adds the field talks to a
+    server that does not send it, and the right answer there is no group rather than a crash.
+  */
+  const heldForPayment = view?.heldForPayment ?? [];
+  /*
     A ROW IS HELD ONLY IF THE SERVER SAID SO, IN WORDS. The field is typed `string | null`, and the
     one moment it is neither is the deploy window: a tab talking to the previous build gets a queue
     view with no `parkedAt` at all, and `!== null` would read every patient in consultation as
@@ -300,6 +476,17 @@ export function OpdConsult(): React.ReactElement {
   });
   // §14 / D-37: a hidden confidential record answers 404 — restricted mode, never a crash.
   const restricted = patient.isError && patient.error instanceof ApiError && patient.error.status === 404;
+  /*
+    THE ADVICE LIBRARY. No patient in the key and no patient in the request: a template is the
+    doctor's words about a CONDITION, not about a person, so this is cached for the session rather
+    than refetched per patient.
+  */
+  const adviceTemplates = useQuery({
+    queryKey: ["opd", "advice-templates"],
+    queryFn: () => api<{ items: WireAdviceTemplate[] }>("GET", "/opd/advice-templates"),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const allergies = useQuery({
     queryKey: ["patient-allergies", patientId ?? ""],
     queryFn: () => api<{ items: AllergyRow[] }>("GET", `/patients/${patientId ?? ""}/allergies`),
@@ -335,6 +522,26 @@ export function OpdConsult(): React.ReactElement {
     enabled: patientId !== null && historyView === "vitals",
   });
 
+  /*
+    ═══ THE SLIP THE DESK PHOTOGRAPHED ═══
+
+    Owner, 2026-09-14: the desk outside the room photographs the paper prescription, and the doctor
+    sees it here. The LIST is metadata only — what exists, when, and how big; opening one is a
+    separate request because the bytes are a separate PHI read with its own access-log surface.
+    Scrolling past a list of slips and reading a patient's prescription are different acts, and the
+    log is kept to answer which one happened.
+  */
+  const documents = useQuery({
+    queryKey: ["patient-documents", patientId ?? ""],
+    queryFn: () => api<{ items: WireDocument[] }>("GET", `/patients/${patientId ?? ""}/documents`),
+    enabled: patientId !== null && historyView === "documents",
+  });
+  const openDocument = useQuery({
+    queryKey: ["patient-document", openDocumentId ?? ""],
+    queryFn: () => api<{ mimeType: string; imageBase64: string }>("GET", `/patients/documents/${openDocumentId ?? ""}`),
+    enabled: openDocumentId !== null,
+  });
+
   /**
    * PLAN 07d T5 / DD4 + spike S2 — THE PRICED SERVICE CATALOGUE, FLAT AND SEARCHABLE.
    *
@@ -362,6 +569,7 @@ export function OpdConsult(): React.ReactElement {
   const vitalsRows = visit.data?.vitals ?? [];
   const latestVitals: WireVitals | null = vitalsRows.length === 0 ? null : vitalsRows[vitalsRows.length - 1]!;
   const activeAllergies = (allergies.data?.items ?? []).filter((a) => a.status === "active");
+  const correctedAllergies = (allergies.data?.items ?? []).filter((a) => a.status === "entered_in_error");
   const dob = patient.data?.patient.dob ?? null;
   const ageYears = dob !== null ? ageYearsAt(dob, new Date()) : null;
   const timelineItems = timeline.data?.items ?? [];
@@ -376,9 +584,18 @@ export function OpdConsult(): React.ReactElement {
       icd10Code: encounter.icd10Code ?? "",
       advice: encounter.advice ?? "",
     };
+    /*
+      REHYDRATE THE CODES BEFORE THE NOTE IS TOUCHED. `encounter.diagnosis` is the display string
+      and carries no codes; the visit read returns the coded rows beside it precisely so that
+      reopening a note and changing one word does not send back uncoded tags and replace the
+      coding. Seeding the map here is the client half of that seam.
+    */
+    for (const d of visit.data?.diagnoses ?? []) {
+      if (d.icd10Code !== null) icdByTerm.current.set(d.text.toLowerCase(), d.icd10Code);
+    }
     setNote(next);
-    lastSavedNote.current = JSON.stringify(noteBodyOf(next));
-  }, [encounter]);
+    lastSavedNote.current = JSON.stringify(noteBodyOf(next, icdByTerm.current));
+  }, [encounter, visit.data]);
 
   const rxForm = useForm<RxFormInput, unknown, RxFormValues>({
     resolver: zodResolver(rxSchema),
@@ -386,9 +603,117 @@ export function OpdConsult(): React.ReactElement {
   });
   const lines = useFieldArray({ control: rxForm.control, name: "lines" });
 
+  /*
+    ═══ FD-30 — THE DOOR'S SLIP, AND THE TAP THAT ISSUES IT (OWNER RULING 2026-09-12) ═══
+
+    Keyed on the encounter in hand, so a doctor moving down the bench never sees the previous
+    patient's slip. `retry: false` because a visit with no draft is the ordinary case and a 404 is
+    the ordinary answer — retrying it three times would put three requests behind every consult.
+  */
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const draft = useQuery({
+    queryKey: ["opd", "rx-draft", active?.encounterId ?? ""],
+    queryFn: () => fetchRxDraft(active!.encounterId),
+    enabled: active?.encounterId !== undefined,
+    retry: false,
+  });
+
+  const issueTheDraft = async (): Promise<void> => {
+    const encounterId = active?.encounterId;
+    if (encounterId === undefined || draftBusy) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await issueRxDraft(encounterId);
+      await queryClient.invalidateQueries({ queryKey: ["opd", "rx-draft", encounterId] });
+      await queryClient.invalidateQueries({ queryKey: ["opd", "rx-history"] });
+    } catch (e) {
+      /*
+        A REFUSED TAP IS A CLINICAL ANSWER, and the draft is deliberately still there afterwards
+        (`issueDraft` marks it issued only after the prescription exists). The doctor's next act is
+        to load it into the editor, where the override dialogs are — which is what the message says.
+      */
+      const body = e instanceof ApiError ? (e.body as { message?: string } | null) : null;
+      setDraftError(`${body?.message ?? (e instanceof Error ? e.message : String(e))} — ${t("opdConsult.draft.refusedHint")}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  };
+
+  const discardTheDraft = async (): Promise<void> => {
+    const encounterId = active?.encounterId;
+    if (encounterId === undefined || draftBusy) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await discardRxDraft(encounterId);
+      await queryClient.invalidateQueries({ queryKey: ["opd", "rx-draft", encounterId] });
+    } catch (e) {
+      setDraftError(String(e));
+    } finally {
+      setDraftBusy(false);
+    }
+  };
+
+  /**
+   * ONE READ PER PAUSE, NOT ONE PER KEYSTROKE. The route is a keyword match over eight syndromes
+   * and costs nothing, but a request per character would still put the network in front of a
+   * doctor's typing — 250 ms after they stop is invisible to a human and is one call.
+   *
+   * It sends the complaint and NOTHING about the patient: this read sees no PHI at all, which is
+   * why it can be this eager in the first place.
+   */
+  useEffect(() => {
+    const q = note.chiefComplaint.trim();
+    if (q.length < 3) { setHits([]); return; }
+    const timer = setTimeout(() => {
+      void suggestSyndromes(q)
+        .then((r) => { setHits(r.items); })
+        .catch(() => { setHits([]); }); // an advisor that fails is silent, never an error the doctor must dismiss
+    }, 250);
+    return () => { clearTimeout(timer); };
+  }, [note.chiefComplaint]);
+
+  /** Tapping a syndrome asks the server to build it FOR THIS PATIENT — weight, age, allergies and all. */
+  const openRegimen = async (key: string, pregnant?: boolean): Promise<void> => {
+    if (active === null) return;
+    setCdsError(null);
+    try {
+      setRegimen(await fetchRegimen(key, active.encounterId, pregnant));
+    } catch (e) {
+      setRegimen(null);
+      setCdsError(opdErrorMessage(e));
+    }
+  };
+
+  /**
+   * ═══ 1-TAP: THE FORM IS FILLED, THE PRESCRIPTION IS NOT ISSUED ═══
+   *
+   * It writes the draft into the prescription form and moves the doctor to it. Nothing is sent:
+   * `issuePrescription` still runs every allergy, interaction and duplicate check at issue time,
+   * and a line the co-pilot refused to dose carries the REASON in its dose field rather than a
+   * number — so a doctor who taps fill and issues without reading still cannot print a dose that
+   * nobody stands behind.
+   */
+  const fillFromRegimen = (): void => {
+    if (regimen === null) return;
+    const lines = regimen.regimen.lines.map((l) => ({
+      drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
+      durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
+      instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: null,
+    }));
+    rxForm.reset({ lines: lines.length === 0 ? [EMPTY_LINE] : lines });
+    setTab("rx");
+  };
+
   const resetPanel = (): void => {
     loadedNoteFor.current = null;
-    lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE));
+    /* The map is the PATIENT'S, not the screen's — carrying it to the next patient would attach one
+       patient's ICD-10 code to another's identically-worded diagnosis. `resetPanel` has forgotten
+       newly-added state before (the T6 allergy fields); this is the line that stops it happening. */
+    icdByTerm.current = new Map();
+    lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map()));
     setNote(EMPTY_NOTE);
     setNoteSaved(false);
     setNoteError(null);
@@ -412,15 +737,23 @@ export function OpdConsult(): React.ReactElement {
     setDuplicateHits([]);
     setInteractionReasons([]);
     setDuplicateReasons([]);
+    setShorthand({});
     setNotices([]);
     setNoticesDismissed(false);
+    setDiseaseNotices([]);
+    setDiseaseHits([]);
+    setDiseaseReasons([]);
     setUnresolvedLines([]);
+    setUnreviewedLines([]);
     setFollowUp("");
     setTestsOrdered(false);
     setAdmissionAdvised(false);
     setReferralTo("");
     setReferralNote("");
     setTab("note");
+    setHits([]);
+    setRegimen(null);
+    setCdsError(null);
     rxForm.reset({ lines: [EMPTY_LINE] });
   };
 
@@ -450,6 +783,206 @@ export function OpdConsult(): React.ReactElement {
    * what a skip usually means — a default that is right most of the time is what keeps a reason
    * field from becoming a shrug — and every other reason is one click away.
    */
+  /*
+    THE ALLERGY TYPEAHEAD'S ONE REQUEST, DEBOUNCED. Same shape as `TagField`'s: a 120 ms pause, and
+    a guard on `asked` so a slow answer to an old prefix cannot overwrite a newer one. Three
+    characters is the floor — `pe` would return a fifth of the moiety table.
+  */
+  const allergyAsked = useRef("");
+  useEffect(() => {
+    const q = allergyText.trim();
+    allergyAsked.current = q;
+    if (!allergyOpen || q.length < 3) { setAllergyHits([]); setAllergyKnown(true); return; }
+    let live = true;
+    const timer = setTimeout(() => {
+      void api<{ items: WireAllergenHit[]; known: boolean }>(
+        "GET", `/opd/cds/complete/allergen?q=${encodeURIComponent(q)}`,
+      )
+        .then((r) => {
+          if (!live || allergyAsked.current !== q) return;
+          setAllergyHits(r.items);
+          setAllergyKnown(r.known);
+        })
+        /* Design law 1 at the transport layer: a field whose suggester is down is a plain text box
+           that still saves. It must NOT start warning about every allergy because a route is 500. */
+        .catch(() => { if (live) { setAllergyHits([]); setAllergyKnown(true); } });
+    }, 120);
+    return () => { live = false; clearTimeout(timer); };
+  }, [allergyText, allergyOpen]);
+
+  /**
+   * ═══ TAPPING A TEMPLATE APPENDS; IT NEVER REPLACES ═══
+   *
+   * A doctor builds advice out of two or three of these plus a line of their own, so the text lands
+   * at the end of what is already there. Replacing would throw away typing on a mis-tap, and this
+   * box is the one the patient reads.
+   *
+   * The SCRIPT is the doctor's choice per template (owner ruling, 2026-09-14) — whichever button
+   * they press is the string that goes in, and it goes in verbatim. Nothing translates at print
+   * time: `rx-print.tsx` prints `encounter.advice` exactly as stored, so the script has to be in
+   * the stored value or it never reaches the patient.
+   */
+  /**
+   * ═══ WHAT A PLACEHOLDER RESOLVES AGAINST: THE PATIENT IN THE CHAIR ═══
+   *
+   * This is the whole reason a snippet is worth more here than in a generic tool. Raycast's
+   * placeholders come from the machine — clipboard, date, uuid. These come from the record open on
+   * the screen, so `{weight}` is the number the bay charted this morning and `{date+7}` is the
+   * follow-up the doctor is about to say out loud.
+   *
+   * Everything here is ALREADY FETCHED for the panel. A snippet adds no request and no permission;
+   * it reads what the doctor is already looking at.
+   */
+  const snippetContext: SnippetContext = {
+    patient: patient.data === undefined ? null : {
+      name: patient.data.patient.name,
+      uhid: patient.data.patient.uhid,
+      ageYears,
+      sex: patient.data.patient.administrativeGender,
+    },
+    vitals: latestVitals === null ? null : {
+      weightKg: latestVitals.weightKg, heightCm: latestVitals.heightCm,
+      sbp: latestVitals.sbp, dbp: latestVitals.dbp, pulse: latestVitals.pulse,
+      spo2: latestVitals.spo2, tempC: latestVitals.tempC,
+    },
+    note: { complaint: note.chiefComplaint, diagnosis: note.diagnosis },
+    doctor: { name: me.data?.displayName ?? null },
+    now: new Date(),
+  };
+
+  /**
+   * Every snippet this doctor can TYPE. A template with both scripts is offered under its keyword
+   * in English and under `keyword.hi` in Hindi — one stored keyword and a documented suffix, rather
+   * than a second column or a guess about which script the doctor meant.
+   */
+  const typedSnippets = (adviceTemplates.data?.items ?? []).flatMap((tpl) => {
+    if (tpl.keyword === null || tpl.keyword === "") return [];
+    const out: { keyword: string; body: string }[] = [];
+    if (tpl.textEn !== null) out.push({ keyword: tpl.keyword, body: tpl.textEn });
+    if (tpl.textHi !== null) out.push({ keyword: `${tpl.keyword}.hi`, body: tpl.textHi });
+    return out;
+  });
+
+  const adviceSnippets = useSnippets({
+    value: note.advice,
+    onChange: (next) => { setNote((n) => ({ ...n, advice: next })); },
+    snippets: typedSnippets,
+    context: snippetContext,
+  });
+
+  const appendAdvice = (body: string): void => {
+    /*
+      A TAPPED template goes through the same engine as a typed keyword, so `{name}` and `{date+7}`
+      resolve either way. One path, so a template cannot behave differently depending on how the
+      doctor reached for it — which is the kind of difference nobody discovers until a slip is wrong.
+    */
+    const { text } = expandSnippet(body, snippetContext);
+    setNote((n) => ({ ...n, advice: n.advice.trim() === "" ? text : `${n.advice.trim()}\n${text}` }));
+  };
+
+  /**
+   * Save what is in the box as one of MY templates. The script is decided by what was written, not
+   * by a dropdown: Devanagari goes to the Hindi column and anything else to the English one. A
+   * doctor who writes their advice in Hindi must not have it filed under an English button — the
+   * first cut of this table had `text_en NOT NULL` and would have done exactly that.
+   */
+  const saveAdviceTemplate = async (): Promise<void> => {
+    const title = adviceSaveTitle.trim();
+    const text = note.advice.trim();
+    if (title === "" || text === "") return;
+    setAdviceSaveError(null);
+    try {
+      const devanagari = /[\u0900-\u097F]/.test(text);
+      await api("POST", "/opd/advice-templates", {
+        title,
+        keyword: adviceSaveKeyword.trim() === "" ? null : adviceSaveKeyword.trim(),
+        textEn: devanagari ? null : text,
+        textHi: devanagari ? text : null,
+      });
+      setAdviceSaveTitle("");
+      setAdviceSaveKeyword("");
+      setAdviceSaveOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["opd", "advice-templates"] });
+    } catch (e) {
+      setAdviceSaveError(opdErrorMessage(e));
+    }
+  };
+
+  /**
+   * ═══ STRIKING A WRONG ALLERGY — A CORRECTION, NOT A DELETE ═══
+   *
+   * Owner, 2026-09-14: *"I added a wrong allergy to the patient. Now I cannot delete it."* The
+   * route to fix it has existed since E-8 and is on `patient-detail.tsx` — it was simply not on the
+   * screen where the mistake is MADE, so a doctor had to leave a consultation to undo a mis-tap.
+   * That asymmetry arrived with "record an allergy in the room": the writer shipped and the
+   * corrector did not.
+   *
+   * IT IS NOT A DELETE AND MUST NOT BECOME ONE. `patient-detail.tsx` already states the rule —
+   * allergies are append-only with an entered-in-error correction. The row keeps who struck it,
+   * when and why, and an allergy that was claimed and withdrawn is exactly what the next clinician
+   * needs to see if the patient turns out to have reacted after all. A row that can vanish tells
+   * them nothing at all.
+   *
+   * The doctor loses nothing by it: `activeAllergies` and the co-pilot's own read both filter on
+   * `status === "active"`, so a struck allergy stops warning immediately — which is the whole of
+   * what "delete" was being asked for.
+   *
+   * The REASON is mandatory server-side (E-8) and the button stays disabled without one. No new
+   * permission: `patients.update` is the same grant that let the doctor add it.
+   */
+  const strikeAllergy = async (): Promise<void> => {
+    const target = allergyStriking;
+    const reason = allergyStrikeReason.trim();
+    if (target === null || reason === "" || patientId === null) return;
+    setAllergyStrikeError(null);
+    try {
+      await api("POST", `/patients/${patientId}/allergies/${target.id}/entered-in-error`, { reason });
+      setAllergyStriking(null);
+      setAllergyStrikeReason("");
+      await queryClient.invalidateQueries({ queryKey: ["patient-allergies", patientId] });
+      /*
+        THE SAME SEAM `addAllergy` HAS. The co-pilot's danger cards are computed FROM the allergy
+        list, so a strike that did not re-ask would leave a red card on screen naming an allergy
+        the record no longer holds — and the doctor would be reading a warning about nothing while
+        believing it current.
+      */
+      if (regimen !== null) await openRegimen(regimen.regimen.syndrome.key, regimen.facts.pregnant ?? undefined);
+    } catch (e) {
+      setAllergyStrikeError(opdErrorMessage(e));
+    }
+  };
+
+  const addAllergy = async (): Promise<void> => {
+    const substance = allergyText.trim();
+    if (substance === "" || patientId === null) return;
+    setAllergyError(null);
+    try {
+      /* `source: "consult"` is one of the three the route accepts, and it is the true one: this
+         allergy was learnt at the consultation, not at registration and not at the bay. */
+      /*
+        THE CODE RIDES ONLY WHEN IT BELONGS TO THESE WORDS. `allergyPick` is cleared on every
+        keystroke, so a doctor who picks "Penicillins / Beta-Lactams" and then edits the text saves
+        free text — never the class they had stopped agreeing with.
+      */
+      const picked = allergyPick !== null && allergyPick.term.toLowerCase() === substance.toLowerCase()
+        ? { saltId: allergyPick.saltId, allergenClass: allergyPick.allergenClass }
+        : {};
+      await api("POST", `/patients/${patientId}/allergies`, {
+        substance, severity: allergySeverity, source: "consult", ...picked,
+      });
+      setAllergyText("");
+      setAllergyPick(null);
+      setAllergyHits([]);
+      setAllergyKnown(true);
+      setAllergyOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["patient-allergies", patientId] });
+      /* The co-pilot's cards are computed FROM the allergy list, so a new allergy re-asks for them. */
+      if (regimen !== null) await openRegimen(regimen.regimen.syndrome.key, regimen.facts.pregnant ?? undefined);
+    } catch (e) {
+      setAllergyError(opdErrorMessage(e));
+    }
+  };
+
   const skipCurrent = (): void => {
     if (current === null) return;
     setQueueError(null);
@@ -485,6 +1018,27 @@ export function OpdConsult(): React.ReactElement {
       await invalidateQueue();
     } catch (err) {
       setQueueError(opdErrorMessage(err));
+    }
+  };
+
+  /**
+   * THE DOCTOR OPENS AN UNPAID TOKEN. One POST, and then the queue is re-read rather than patched
+   * locally: the server decides what is held, and a rail that moved the row itself would be a
+   * second opinion about the ledger. A refusal (`reason_required`, `not_your_patient`) lands on the
+   * rail's own error line, where the token is.
+   */
+  const confirmOpenUnpaid = async (): Promise<void> => {
+    const entry = openingUnpaid;
+    if (entry === null) return;
+    setQueueError(null);
+    try {
+      await api("POST", `/opd/visits/${entry.encounter.id}/consult/open-unpaid`, { reason: unpaidReason.trim() });
+      setOpeningUnpaid(null);
+      setUnpaidReason("");
+      await invalidateQueue();
+    } catch (e) {
+      setOpeningUnpaid(null);
+      setQueueError(opdErrorMessage(e));
     }
   };
 
@@ -567,7 +1121,7 @@ export function OpdConsult(): React.ReactElement {
     if (active === null) return;
     setNoteError(null);
     try {
-      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note), advisedTests: next });
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current), advisedTests: next });
     } catch (e) {
       setNoteError(opdErrorMessage(e));
     }
@@ -575,7 +1129,7 @@ export function OpdConsult(): React.ReactElement {
 
   const saveNote = async (): Promise<void> => {
     if (active === null) return;
-    const body = noteBodyOf(note);
+    const body = noteBodyOf(note, icdByTerm.current);
     const key = JSON.stringify(body);
     if (key === lastSavedNote.current) return;
     setNoteError(null);
@@ -595,6 +1149,7 @@ export function OpdConsult(): React.ReactElement {
     overrides?: AllergyOverride[],
     interactionOverrides?: { lineIndex: number; reason: string; saltPair: [string, string] }[],
     duplicateOverrides?: { lineIndex: number; reason: string; moiety: string }[],
+    drugDiseaseOverrides?: { lineIndex: number; reason: string; moiety: string; icd10Prefix: string }[],
   ): Promise<void> => {
     if (active === null) return;
     setRxError(null);
@@ -613,18 +1168,24 @@ export function OpdConsult(): React.ReactElement {
     if (overrides !== undefined) body.overrides = overrides;
     if (interactionOverrides !== undefined) body.interactionOverrides = interactionOverrides;
     if (duplicateOverrides !== undefined) body.duplicateOverrides = duplicateOverrides;
+    if (drugDiseaseOverrides !== undefined) body.drugDiseaseOverrides = drugDiseaseOverrides;
     try {
       const issued = await api<{
         prescriptionId: string; version: number;
         notices?: WireRxNotice[];
+        unreviewedLineIndexes?: number[];
       }>("POST", `/opd/visits/${active.encounterId}/prescriptions`, body);
       setMatches(null);
       setReasons([]);
       setInteractionHits([]);
       setDuplicateHits([]);
+      setDiseaseHits([]);
+      setDiseaseReasons([]);
       setOverrideError(null);
       // Soft hits survive a successful issue: they are what the doctor should still know about.
       setNotices(issued.notices ?? []);
+      // The issue's own answer: when no hard warning paused it, the pre-check's was never shown.
+      setUnreviewedLines(issued.unreviewedLineIndexes ?? []);
       setNoticesDismissed(false);
       const print = await api<WireRxPrint>("GET", `/opd/prescriptions/${issued.prescriptionId}/print`);
       setRxPrint(print);
@@ -633,7 +1194,7 @@ export function OpdConsult(): React.ReactElement {
       if (e instanceof ApiError) {
         const errBody = e.body as {
           code?: string;
-          detail?: { matches?: AllergyMatch[]; hits?: WireRxNotice[] };
+          detail?: { matches?: AllergyMatch[]; hits?: WireRxNotice[]; diseaseHits?: WireDrugDiseaseHit[] };
         } | null;
         // The allergy hard-warning is a DOMAIN answer carrying the matched lines, not a failure.
         if (errBody?.code === "allergy_conflict" && Array.isArray(errBody.detail?.matches)) {
@@ -659,6 +1220,13 @@ export function OpdConsult(): React.ReactElement {
           const hits = errBody.detail.hits.filter((h): h is WireDuplicateHit => !isInteractionHit(h));
           setDuplicateHits(hits);
           setDuplicateReasons(hits.map(() => ""));
+          setOverrideError(null);
+          return;
+        }
+        if (errBody?.code === "drug_disease_conflict" && Array.isArray(errBody.detail?.diseaseHits)) {
+          const hits = errBody.detail.diseaseHits;
+          setDiseaseHits(hits);
+          setDiseaseReasons(hits.map(() => ""));
           setOverrideError(null);
           return;
         }
@@ -693,15 +1261,22 @@ export function OpdConsult(): React.ReactElement {
       setNotices(pre.notices);
       setNoticesDismissed(false);
       setUnresolvedLines(pre.unresolvedLineIndexes);
+      setUnreviewedLines(pre.unreviewedLineIndexes ?? []);
       const severe = pre.interactions.filter((h) => h.severity === "severe");
       const hardDuplicates = pre.duplicates.filter((h) => h.hard);
-      if (pre.allergyMatches.length > 0 || severe.length > 0 || hardDuplicates.length > 0) {
+      // P24 — severe goes to the dialog; the rest sits with the notices, offer and all.
+      const disease = pre.drugDisease ?? [];
+      const severeDisease = disease.filter((h) => h.severity === "severe");
+      setDiseaseNotices(disease.filter((h) => h.severity !== "severe"));
+      if (pre.allergyMatches.length > 0 || severe.length > 0 || hardDuplicates.length > 0 || severeDisease.length > 0) {
         setMatches(pre.allergyMatches.length > 0 ? pre.allergyMatches : null);
         setReasons(pre.allergyMatches.map(() => ""));
         setInteractionHits(severe);
         setInteractionReasons(severe.map(() => ""));
         setDuplicateHits(hardDuplicates);
         setDuplicateReasons(hardDuplicates.map(() => ""));
+        setDiseaseHits(severeDisease);
+        setDiseaseReasons(severeDisease.map(() => ""));
         setOverrideError(null);
         return;
       }
@@ -710,6 +1285,7 @@ export function OpdConsult(): React.ReactElement {
       // M5 — but the stale hint indexes go: pointing the amber "not in formulary" note at a row
       // whose line has since changed is worse than showing nothing.
       setUnresolvedLines([]);
+      setUnreviewedLines([]);
     }
     await postRx(values.lines);
   });
@@ -719,11 +1295,37 @@ export function OpdConsult(): React.ReactElement {
    * mirroring the server's rule exactly. The three-character minimum is checked here so the doctor
    * is told in the dialog rather than by a round trip — and the server checks it again regardless.
    */
+  /**
+   * ═══ THE ONE-TAP SWITCH (P24 T7) ═══
+   *
+   * The offer has already been vetted by the server against THIS patient (D6), so what arrives here
+   * is safe to put on a button. One tap rewrites the line and clears its `medicineId` — the id
+   * named the drug being replaced, and leaving it would have the checks reason about the drug the
+   * doctor just abandoned.
+   *
+   * It does NOT re-submit. The doctor sees the line change and decides; the next Issue re-runs
+   * every check server-side anyway (design law 2). A switch that submitted on the doctor's behalf
+   * would be the co-pilot flying the plane.
+   */
+  const applySwitch = (lineIndex: number, offer: { moiety: string; label: string }): void => {
+    rxForm.setValue(`lines.${String(lineIndex)}.drug` as `lines.${number}.drug`, offer.label);
+    rxForm.setValue(`lines.${String(lineIndex)}.medicineId` as `lines.${number}.medicineId`, null);
+    setDiseaseHits([]);
+    setDiseaseReasons([]);
+    setDiseaseNotices([]);
+    setOverrideError(null);
+  };
+
+  /** The dialog carries four kinds now; only the allergy-only case may call itself an allergy. */
+  const allergyOnly = matches !== null
+    && interactionHits.length === 0 && duplicateHits.length === 0 && diseaseHits.length === 0;
+
   const confirmOverride = async (): Promise<void> => {
     const allReasons = [
       ...(matches === null ? [] : reasons.slice(0, matches.length)),
       ...interactionReasons.slice(0, interactionHits.length),
       ...duplicateReasons.slice(0, duplicateHits.length),
+      ...diseaseReasons.slice(0, diseaseHits.length),
     ];
     if (allReasons.length === 0) return;
     if (allReasons.some((r) => r.trim().length < 3)) {
@@ -741,11 +1343,17 @@ export function OpdConsult(): React.ReactElement {
     const duplicateOverrides = duplicateHits.map((h, i) => ({
       lineIndex: h.lineIndex, reason: (duplicateReasons[i] ?? "").trim(), moiety: h.moiety,
     }));
+    // P24 — the override names the MOIETY and the RULING, because N18 and N18.4 are two decisions.
+    const drugDiseaseOverrides = diseaseHits.map((h, i) => ({
+      lineIndex: h.lineIndex, reason: (diseaseReasons[i] ?? "").trim(),
+      moiety: h.moiety, icd10Prefix: h.icd10Prefix,
+    }));
     await postRx(
       pendingLines.current,
       overrides.length > 0 ? overrides : undefined,
       interactionOverrides.length > 0 ? interactionOverrides : undefined,
       duplicateOverrides.length > 0 ? duplicateOverrides : undefined,
+      drugDiseaseOverrides.length > 0 ? drugDiseaseOverrides : undefined,
     );
   };
 
@@ -767,7 +1375,7 @@ export function OpdConsult(): React.ReactElement {
     setCompleteError(null);
     const body: Record<string, unknown> = {
       note: {
-        ...noteBodyOf(note),
+        ...noteBodyOf(note, icdByTerm.current),
         admissionAdvised,
         referralTo: orNull(referralTo),
         referralNote: orNull(referralNote),
@@ -807,18 +1415,34 @@ export function OpdConsult(): React.ReactElement {
     apology — a doctor who asks something this screen cannot see is told so in one sentence, and can
     stop wondering whether the silence meant "no".
   */
-  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
-  const agentState = useRef({ view, activeAllergies, latestVitals, advisedTests, restricted });
-  agentState.current = { view, activeAllergies, latestVitals, advisedTests, restricted };
+  const agentState = useRef({ view, activeAllergies, latestVitals, advisedTests, restricted, patient: patient.data?.patient ?? null });
+  agentState.current = { view, activeAllergies, latestVitals, advisedTests, restricted, patient: patient.data?.patient ?? null };
 
-  const ask = useCallback((question: string): void => {
+  /*
+    ═══ FD-COPILOT — THE DOCK NOW HAS REACH, AND THE PARAGRAPH ABOVE STILL HOLDS ═══
+
+    That header's rule — *"the dock reads, it never infers"* — is unchanged and is the reason this
+    chain survives intact rather than being replaced. What changed is what happens to a question it
+    cannot see: it used to end at `agent.cannot`, and now it goes to the copilot first, which can
+    answer from the hospital's own readers under THIS doctor's own permissions.
+
+    Nothing model-written reaches a prescriber by this route. The model, when one is configured,
+    picks a TOOL NAME from a closed menu; the tool runs a real query; the sentence comes from the
+    locale file. The five branches below still answer everything about the screen itself — the
+    queue, the allergies on file, what Bay One charted, what the doctor has typed — and those are
+    exactly the questions no server was asked.
+
+    The doctor's own seat (the toggles, the pre-read, the pending pile) is the brainstorm at
+    `docs/superpowers/brainstorms/2026-09-17-doctor-copilot/`. This is only its T2: reach.
+  */
+  const localAnswer = useCallback((question: string): string | null => {
     const q = question.toLowerCase();
     const st = agentState.current;
     const lines = rxForm.getValues("lines").filter((l) => l.drug.trim() !== "");
 
-    const answer = ((): string => {
+    return ((): string | null => {
       if (/queue|waiting|next|token|katar|line/.test(q)) {
         const v = st.view;
         if (v === null) return t("opdConsult.agent.noQueue");
@@ -853,12 +1477,22 @@ export function OpdConsult(): React.ReactElement {
           ? t("opdConsult.agent.noAdvised")
           : t("opdConsult.agent.advised", { count: st.advisedTests.length });
       }
-      return t("opdConsult.agent.cannot");
+      return null;
     })();
-
-    setAgentAnswer(answer);
-    setAgentLog((l) => logged(l, question));
   }, [rxForm, t]);
+
+  const copilot = useCopilot({
+    /*
+      The patient in the room, masked BY VALUE before anything could leave. A doctor types the name
+      of the person in front of them more readily than their UHID, and this screen knows it.
+    */
+    terms: () => {
+      const p = agentState.current.patient;
+      return [p?.name, p?.uhid].filter((x): x is string => typeof x === "string" && x !== "");
+    },
+    fallback: localAnswer,
+    onNote: (text) => { setAgentLog((l) => logged(l, text)); },
+  });
 
   // ——— this screen's OWN shortcuts; lib/keyboard.tsx owns the global ones and is NOT touched ———
 
@@ -1169,6 +1803,52 @@ export function OpdConsult(): React.ReactElement {
             {ordered.map((e) => queueRow(e, "waiting"))}
           </ul>
           {/*
+            ═══ WAITING FOR THE BILL — THE GROUP THE OWNER ASKED FOR (2026-09-20) ═══
+
+            Below the live queue and above the ones who left, because that is where they are in the
+            day: ready, charted, and stopped by money. Each row carries the sentence that explains
+            why it has no bill — the bay's or the front desk's own words — and one button, which is
+            this doctor deciding to see them anyway.
+          */}
+          {heldForPayment.length > 0 && (
+            <>
+              <h2 className="tag" data-testid="held-queue-title" style={{ margin: "8px 0 0" }}>
+                {t("opdConsult.heldQueue", { n: heldForPayment.length })}
+              </h2>
+              <p style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.heldQueueHint")}</p>
+              <ul data-testid="held-queue" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {heldForPayment.map((e) => (
+                  <li
+                    key={e.id} data-testid={`held-row-${e.id}`} className="drow"
+                    style={{
+                      display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, padding: "8px 10px", fontSize: 12.5,
+                      background: "var(--gold-soft)", boxShadow: "inset 3px 0 0 var(--gold)",
+                    }}
+                  >
+                    <span className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
+                    <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
+                    {(e.danger || e.encounter.dangerFlagged) && (
+                      <span data-testid={`held-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
+                    )}
+                    <span className="pill rd" style={{ fontWeight: 700 }}>{t("opd.feeStatus.unsettled")}</span>
+                    <button
+                      type="button" data-testid={`open-unpaid-${e.id}`} className="sec"
+                      style={{ padding: "3px 10px", fontSize: 12 }}
+                      onClick={() => { setOpeningUnpaid(e); setUnpaidReason(""); }}
+                    >
+                      {t("opdConsult.openUnpaid")}
+                    </button>
+                    {typeof e.encounter.feeBypassReason === "string" && e.encounter.feeBypassReason !== "" && (
+                      <span data-testid={`held-why-${e.id}`} style={{ flexBasis: "100%", fontSize: 11, color: "var(--dim)" }}>
+                        {t("opdConsult.heldWhy", { reason: e.encounter.feeBypassReason })}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {/*
             ═══ LEFT THE QUEUE — THE GROUP THAT DID NOT EXIST ═══
 
             Three skips and the token is `left`, which until now meant gone from every screen in the
@@ -1231,17 +1911,228 @@ export function OpdConsult(): React.ReactElement {
 
                 {!restricted && (
                   <div style={{ paddingTop: 7 }}>
+                    {/*
+                    FD-32 / owner 2026-09-13 — beside the allergies, because both are things the
+                    doctor must see BEFORE prescribing. The fee gate already refuses an unpaid
+                    consult, so a patient who reaches this chair unpaid was waved through by the
+                    front desk on purpose: the mark names the clerk's reason rather than accusing
+                    the patient.
+                  */}
+                  <UnpaidMark unpaid={visit.data?.feeUnpaid ?? false} bypass={visit.data?.feeBypass ?? null} />
                     <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.allergies")}</h3>
-                    <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
                       {activeAllergies.length === 0 && (
                         <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noAllergies")}</span>
                       )}
+                      {/*
+                        ═══ EVERY CHIP CAN BE STRUCK, AND STRIKING IS NOT DELETING ═══
+
+                        The ✕ reads as "remove" to the doctor and behaves like it — the chip goes,
+                        the warnings stop. What it actually posts is the E-8 entered-in-error
+                        correction, so the row keeps who struck it, when and why. `patient-detail`
+                        has had this since E-8; the consult screen is where the mistake is MADE.
+                      */}
                       {activeAllergies.map((a) => (
-                        <span key={a.id} data-testid={`allergy-chip-${a.id}`} className="pill rd" style={{ fontWeight: 600 }}>
+                        <span key={a.id} data-testid={`allergy-chip-${a.id}`} className="pill rd" style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}>
                           {a.substance}
+                          <button
+                            type="button" data-testid={`allergy-strike-${a.id}`}
+                            aria-label={t("opdConsult.allergyRemoveOne", { substance: a.substance })}
+                            onClick={() => {
+                              setAllergyStriking(a);
+                              setAllergyStrikeReason("");
+                              setAllergyStrikeError(null);
+                            }}
+                            style={{
+                              border: "none", background: "none", cursor: "pointer", padding: 0,
+                              lineHeight: 1, fontSize: 13, color: "inherit", opacity: 0.7,
+                            }}
+                          >
+                            ×
+                          </button>
                         </span>
                       ))}
+                      {!allergyOpen && (
+                        <button
+                          type="button" className="sec" data-testid="allergy-add"
+                          style={{ height: 25, fontSize: 11.5, padding: "0 9px" }}
+                          onClick={() => { setAllergyOpen(true); setAllergyError(null); }}
+                        >
+                          {t("opdConsult.addAllergy")}
+                        </button>
+                      )}
                     </div>
+                    {allergyOpen && (
+                      <div data-testid="allergy-form" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6 }}>
+                        {/*
+                          ═══ AUTOCOMPLETE, AUTOCORRECT, AND A WARNING — BECAUSE A TYPO IS SILENT ═══
+
+                          Owner, 2026-09-14, asked for autocomplete and autocorrect on the field the
+                          doctor can already type into. It is more than convenience: the prescription
+                          guard matches a recorded allergy on word tokens, so `pencilin` matches no
+                          rule and the penicillin block never fires for that patient again.
+
+                          Picking records the CLASS, which fires the rule by identity. Typing still
+                          saves — free text is legal on this field and must stay so — but the line
+                          under the box says when the guard will find nothing.
+                        */}
+                        <div style={{ position: "relative", width: 220 }}>
+                          <input
+                            id="allergy-substance" aria-label={t("opdConsult.allergySubstance")}
+                            value={allergyText} autoComplete="off"
+                            onChange={(e) => {
+                              setAllergyText(e.target.value);
+                              setAllergyPick(null); // the code belonged to the OLD words
+                            }}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addAllergy(); } }}
+                            className="in" style={{ width: "100%", height: 30, fontSize: 12.5 }}
+                            placeholder={t("opdConsult.allergyPlaceholder")}
+                          />
+                          {allergyHits.length > 0 && (
+                            <ul
+                              data-testid="allergy-hits"
+                              style={{
+                                position: "absolute", zIndex: 5, top: 32, left: 0, right: 0, margin: 0,
+                                padding: 0, listStyle: "none", background: "var(--paper)",
+                                border: "1px solid var(--line)", borderRadius: 5, maxHeight: 180, overflowY: "auto",
+                              }}
+                            >
+                              {allergyHits.map((h) => (
+                                <li key={`${h.kind}-${h.term}`}>
+                                  <button
+                                    type="button" data-testid={`allergy-hit-${h.term}`}
+                                    onMouseDown={(e) => { e.preventDefault(); }}
+                                    onClick={() => {
+                                      setAllergyText(h.term);
+                                      setAllergyPick(h);
+                                      setAllergyHits([]);
+                                      setAllergyKnown(true);
+                                    }}
+                                    style={{
+                                      display: "block", width: "100%", textAlign: "left", padding: "4px 7px",
+                                      border: "none", background: "none", cursor: "pointer", fontSize: 12,
+                                    }}
+                                  >
+                                    <span style={{ fontWeight: 600 }}>{h.term}</span>
+                                    {h.blocks.length > 0 && (
+                                      <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--faint)" }}>
+                                        {t("opdConsult.allergyBlocks", { list: h.blocks.slice(0, 4).join(", ") })}
+                                      </span>
+                                    )}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <select
+                          aria-label={t("opdConsult.allergySeverity")} value={allergySeverity}
+                          onChange={(e) => { setAllergySeverity(e.target.value as "mild" | "moderate" | "severe"); }}
+                          className="in" style={{ width: 120, height: 30, fontSize: 12.5 }}
+                        >
+                          <option value="mild">{t("opdConsult.severity.mild")}</option>
+                          <option value="moderate">{t("opdConsult.severity.moderate")}</option>
+                          <option value="severe">{t("opdConsult.severity.severe")}</option>
+                        </select>
+                        <button type="button" className="sec grn" data-testid="allergy-save" style={{ height: 30, fontSize: 12 }} onClick={() => void addAllergy()}>
+                          {t("opdConsult.allergySave")}
+                        </button>
+                        <button type="button" className="sec" style={{ height: 30, fontSize: 12 }} onClick={() => { setAllergyOpen(false); setAllergyText(""); setAllergyError(null); }}>
+                          {t("opdConsult.cancel")}
+                        </button>
+                        <ErrorLine message={allergyError} />
+                        {!allergyKnown && allergyText.trim() !== "" && (
+                          <p data-testid="allergy-unknown" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--gold)" }}>
+                            {t("opdConsult.allergyUnknown")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/*
+                      ═══ THE CONFIRMATION SAYS WHAT IS BEING STRUCK AND WHERE IT CAME FROM ═══
+
+                      A doctor undoing their own mis-tap of thirty seconds ago and a doctor striking
+                      a contrast reaction radiology recorded from an actual administration are doing
+                      two very different things, and only the provenance line tells them apart. Both
+                      are allowed and both are audited — `patient-detail` has never restricted this
+                      either — but the second one should not happen by accident.
+
+                      The reason is mandatory (E-8) and the button is disabled without it. Typing
+                      three words is cheap; a struck safety record with no stated reason is not.
+                    */}
+                    {allergyStriking !== null && (
+                      <div
+                        data-testid="allergy-strike-form" role="alertdialog" aria-label={t("opdConsult.allergyRemoveTitle", { substance: allergyStriking.substance })}
+                        style={{
+                          marginTop: 7, padding: "8px 10px", borderRadius: 6,
+                          border: "1px solid var(--red)", background: "var(--red-soft)",
+                          display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
+                        }}
+                      >
+                        <p style={{ margin: 0, flexBasis: "100%", fontSize: 12.5, fontWeight: 600 }}>
+                          {t("opdConsult.allergyRemoveTitle", { substance: allergyStriking.substance })}
+                        </p>
+                        <p data-testid="allergy-strike-provenance" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--dim)" }}>
+                          {t("opdConsult.allergyRemoveProvenance", {
+                            source: t(`opdConsult.allergySource.${allergyStriking.source}`, { defaultValue: allergyStriking.source }),
+                            when: new Date(allergyStriking.recordedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
+                          })}
+                        </p>
+                        <p style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--dim)" }}>
+                          {t("opdConsult.allergyRemoveKept")}
+                        </p>
+                        <input
+                          id="allergy-strike-reason" aria-label={t("opdConsult.allergyRemoveReason")}
+                          value={allergyStrikeReason} onChange={(e) => { setAllergyStrikeReason(e.target.value); }}
+                          className="in" style={{ width: 260, height: 28, fontSize: 12 }}
+                          placeholder={t("opdConsult.allergyRemoveReasonPlaceholder")}
+                        />
+                        <button
+                          type="button" className="sec rd" data-testid="allergy-strike-confirm"
+                          style={{ height: 28, fontSize: 11.5 }}
+                          disabled={allergyStrikeReason.trim() === ""}
+                          onClick={() => void strikeAllergy()}
+                        >
+                          {t("opdConsult.allergyRemoveConfirm")}
+                        </button>
+                        <button
+                          type="button" className="sec" style={{ height: 28, fontSize: 11.5 }}
+                          onClick={() => { setAllergyStriking(null); setAllergyStrikeReason(""); setAllergyStrikeError(null); }}
+                        >
+                          {t("opdConsult.cancel")}
+                        </button>
+                        <ErrorLine message={allergyStrikeError} />
+                      </div>
+                    )}
+
+                    {/*
+                      STRUCK ONES ARE HIDDEN, NOT GONE. Default-hidden keeps the chip row clean; the
+                      toggle exists so a doctor can see that a correction happened — otherwise the
+                      next person re-records the same wrong allergy, having no way to know it was
+                      considered and withdrawn.
+                    */}
+                    {correctedAllergies.length > 0 && (
+                      <div style={{ marginTop: 5 }}>
+                        <button
+                          type="button" data-testid="allergy-corrected-toggle"
+                          onClick={() => { setShowCorrectedAllergies((v) => !v); }}
+                          style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "var(--faint)", textDecoration: "underline" }}
+                        >
+                          {t("opdConsult.allergyCorrectedToggle", { count: correctedAllergies.length })}
+                        </button>
+                        {showCorrectedAllergies && (
+                          <ul data-testid="allergy-corrected" style={{ listStyle: "none", margin: "4px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                            {correctedAllergies.map((a) => (
+                              <li key={a.id} data-testid={`allergy-corrected-${a.id}`} style={{ fontSize: 11.5, color: "var(--faint)" }}>
+                                <s>{a.substance}</s>
+                                {a.correctionReason !== null && <span> — {a.correctionReason}</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1291,40 +2182,364 @@ export function OpdConsult(): React.ReactElement {
                       setNote((n) => ({ ...n, chiefComplaint: n.chiefComplaint.trim() === "" ? text : `${n.chiefComplaint.trim()} ${text}` }));
                     }} />
                     <div>
-                      <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-chief">{t("opdConsult.chiefComplaint")}</label>
-                      <textarea
-                        id="note-chief" rows={2}
+                      {/*
+                        THE COMPLAINT IS TAGS NOW (owner, 2026-09-14), and the stored value is still
+                        a plain comma-joined string — `opd_encounters.chief_complaint`, the printed
+                        slip, the timeline and the MRD coder's screen all see exactly what they saw
+                        before. `Enter` commits the doctor's own words verbatim; `→` accepts the
+                        ghost; a tap takes the suggestion; `×` removes a tag.
+                      */}
+                      <TagField
+                        id="note-chief"
+                        label={t("opdConsult.chiefComplaint")}
                         value={note.chiefComplaint}
-                        onChange={(e) => setNote((n) => ({ ...n, chiefComplaint: e.target.value }))}
-                        className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
+                        onChange={(next) => { setNote((n) => ({ ...n, chiefComplaint: next })); }}
+                        suggest={async (q) => {
+                          const r = await completeComplaint(q);
+                          /*
+                            THE HINT SAYS WHERE A SUGGESTION CAME FROM, which is how a doctor sees
+                            the field learning rather than being told it does. A phrase they have
+                            written before is marked with how often; one nobody has mapped yet shows
+                            nothing, and is offered anyway — that is the point of counting use.
+                          */
+                          return {
+                            items: r.items.map((i) => ({
+                              term: i.term,
+                              hint: i.mine > 0 ? t("opdConsult.complaintUsedByYou", { count: i.mine }) : null,
+                            })),
+                            ghost: r.ghost,
+                          };
+                        }}
+                        placeholder={t("opdConsult.complaintPlaceholder")}
+                        hint={t("opdConsult.complaintHint")}
                       />
+                      {/*
+                        THE SUGGESTIONS SIT UNDER THE FIELD THEY CAME FROM, and they are chips
+                        rather than a dropdown: a dropdown steals the caret and a doctor mid-sentence
+                        loses their place. Tapping decides nothing — it opens a card to be read.
+                      */}
+                      {hits.length > 0 && (
+                        <div data-testid="cds-hits" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                          <span className="tag" style={{ alignSelf: "center" }}>{t("cds.suggests")}</span>
+                          {hits.map((h) => (
+                            <button
+                              key={h.key} type="button" className="sec" data-testid={`cds-hit-${h.key}`}
+                              style={{ padding: "3px 10px", fontSize: 12 }}
+                              onClick={() => void openRegimen(h.key)}
+                            >
+                              {h.name}
+                              <span className="mo" style={{ marginLeft: 6, fontSize: 10, color: "var(--faint)" }}>{h.icd10 ?? ""}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <ErrorLine message={cdsError} />
+                      {regimen !== null && (
+                        <div data-testid="cds-regimen" className="box" style={{ marginTop: 8, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 9 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                            <strong style={{ fontSize: 13.5 }}>{regimen.regimen.syndrome.name}</strong>
+                            <span className="pill" data-testid="cds-band">{t(`cds.band.${regimen.regimen.band}`)}</span>
+                            {/*
+                              THE FACTS THE DOSES WERE COMPUTED FROM, ON SCREEN. A millilitre with no
+                              visible weight beside it is a number a doctor cannot check, and this is
+                              the one screen where checking it matters.
+                            */}
+                            <span className="mo" data-testid="cds-facts" style={{ fontSize: 10.5, color: "var(--faint)" }}>
+                              {regimen.facts.weightKg === null ? t("cds.noWeight") : `${regimen.facts.weightKg} kg`}
+                              {regimen.facts.ageYears === null ? "" : ` · ${regimen.facts.ageYears}y`}
+                            </span>
+                            <button type="button" className="sec" style={{ marginLeft: "auto", padding: "2px 9px", fontSize: 11.5 }} onClick={() => { setRegimen(null); }}>
+                              {t("opdConsult.dismiss")}
+                            </button>
+                          </div>
+
+                          {regimen.cards.map((c: WireCard, i) => (
+                            <div
+                              key={`${c.kind}-${String(i)}`} data-testid={`cds-card-${c.kind}`} role={c.severity === "red" ? "alert" : undefined}
+                              style={{
+                                padding: "7px 9px", borderRadius: 6, fontSize: 12,
+                                background: c.severity === "red" ? "var(--red-soft)" : c.severity === "amber" ? "var(--gold-soft)" : "var(--paper-2, transparent)",
+                                border: `1px solid ${c.severity === "red" ? "var(--red)" : c.severity === "amber" ? "var(--gold-line)" : "var(--line)"}`,
+                              }}
+                            >
+                              <strong>{c.title}</strong>
+                              <div style={{ color: "var(--dim)" }}>{c.detail}</div>
+                              {c.kind === "pregnancy_unknown" && (
+                                <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
+                                  <button type="button" className="sec" data-testid="cds-pregnant-yes" style={{ padding: "2px 9px", fontSize: 11.5 }}
+                                    onClick={() => void openRegimen(regimen.regimen.syndrome.key, true)}>{t("cds.pregnantYes")}</button>
+                                  <button type="button" className="sec" data-testid="cds-pregnant-no" style={{ padding: "2px 9px", fontSize: 11.5 }}
+                                    onClick={() => void openRegimen(regimen.regimen.syndrome.key, false)}>{t("cds.pregnantNo")}</button>
+                                </div>
+                              )}
+                              {c.alternatives.length > 0 && (
+                                <div className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>{t("cds.instead")}: {c.alternatives.join(", ")}</div>
+                              )}
+                            </div>
+                          ))}
+
+                          <ul data-testid="cds-lines" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+                            {regimen.regimen.lines.map((l) => (
+                              <li key={`${l.band}-${String(l.seq)}`} data-testid={`cds-line-${String(l.seq)}`} style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "baseline", fontSize: 12.5 }}>
+                                <span style={{ fontWeight: 600 }}>{l.drugLabel}</span>
+                                <span className="mo" data-testid={`cds-dose-${String(l.seq)}`} style={{ color: l.dose.state === "computed" ? "var(--green)" : "var(--gold)" }}>
+                                  {l.rx.dose}
+                                </span>
+                                <span style={{ color: "var(--faint)", fontSize: 11.5 }}>{l.rx.frequency}{l.rx.durationDays === null ? "" : ` · ${l.rx.durationDays}d`}</span>
+                                {l.substitutedFor !== undefined && <span className="pill rd" data-testid={`cds-swap-${String(l.seq)}`}>{t("cds.swapped")}</span>}
+                              </li>
+                            ))}
+                          </ul>
+
+                          <button type="button" className="pri" data-testid="cds-fill" style={{ alignSelf: "flex-start", padding: "4px 13px", fontSize: 12.5 }} onClick={() => { fillFromRegimen(); }}>
+                            {t("cds.fill", { n: regimen.regimen.lines.length })}
+                          </button>
+                        </div>
+                      )}
                     </div>
+                    {/*
+                      ═══ THE DIAGNOSIS IS TAGS, AND ITS CODE COMES FROM THE CATALOGUE ═══
+
+                      Owner, 2026-09-14, chose SEVERAL tags over one value: an OPD note reads
+                      "Acute URI · Type 2 DM · HTN", and a primary diagnosis with its comorbidities
+                      beside it is what a coder, a claim and the next doctor all need.
+
+                      The suggester is the ICD-10-CM tabular list the owner supplied — 74,044
+                      assignable codes — and it completes what is TYPED, so it works whether or not
+                      the co-pilot is on, exactly as the drug field does. What the co-pilot gates is
+                      the syndrome chips above, which propose a diagnosis nobody typed.
+
+                      The same keystroke contract as the complaint: Enter commits the doctor's own
+                      words verbatim, the forward key accepts the completion, a tap chooses the row.
+                      A doctor's own phrase is a legal diagnosis and always was.
+                    */}
+                    <TagField
+                      id="note-diagnosis"
+                      label={t("opdConsult.diagnosis")}
+                      value={note.diagnosis}
+                      onChange={(next) => { setNote((n) => ({ ...n, diagnosis: next })); }}
+                      suggest={async (q) => {
+                        const r = await api<{ items: WireIcd10Hit[] }>(
+                          "GET", `/opd/cds/complete/diagnosis?q=${encodeURIComponent(q)}`,
+                        );
+                        /* Remember what was OFFERED, so the tag can be paired with its code on save. */
+                        for (const i of r.items) icdByTerm.current.set(i.description.toLowerCase(), i.code);
+                        /*
+                          NO GHOST. The complaint field ghosts the remainder of a prefix match
+                          because its vocabulary is seventy short words. A ghost of "Acute upper
+                          respiratory infection, unspecified" behind three typed letters is a line
+                          of text the doctor did not write, arriving under their cursor.
+                        */
+                        return { items: r.items.map((i) => ({ term: i.description, hint: i.code })), ghost: null };
+                      }}
+                      placeholder={t("opdConsult.diagnosisPlaceholder")}
+                      hint={t("opdConsult.diagnosisHint")}
+                    />
                     <div>
-                      <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-diagnosis">{t("opdConsult.diagnosis")}</label>
-                      <textarea
-                        id="note-diagnosis" rows={2}
-                        value={note.diagnosis}
-                        onChange={(e) => setNote((n) => ({ ...n, diagnosis: e.target.value }))}
-                        className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
-                      />
-                    </div>
-                    <div>
+                      {/*
+                        THE CODE FIELD STAYS, AND IS NOW A READING RATHER THAN A SECOND PLACE TO TYPE.
+
+                        Owner ruling 1: sharpen the screen the doctor has, do not replace it — so the
+                        field does not vanish. But a code typed here and a code carried by a tag are
+                        two statements of one fact, and the day they disagree nothing would say which
+                        is the diagnosis. A doctor who knows the code types it into the field ABOVE:
+                        the typeahead matches codes as well as prose, so `J06.9` finds its own row.
+                      */}
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-icd10">{t("opdConsult.icd10Code")}</label>
                       <input
-                        id="note-icd10"
-                        value={note.icd10Code}
-                        onChange={(e) => setNote((n) => ({ ...n, icd10Code: e.target.value }))}
-                        className="in mo" style={{ width: "100%", height: 34, fontSize: 13 }}
+                        id="note-icd10" readOnly data-testid="note-icd10"
+                        /*
+                          THE FALLBACK IS FOR NOTES WRITTEN BEFORE THIS TABLE EXISTED. An encounter
+                          coded by the old single input has `icd10Code` on the row and no diagnosis
+                          rows at all, so the map yields nothing for its tags. Showing the stored
+                          code is the honest rendering of that record; showing an empty box would
+                          report a note as uncoded when it is not.
+                        */
+                        value={(() => {
+                          const fromTags = splitTags(note.diagnosis)
+                            .map((x) => icdByTerm.current.get(x.toLowerCase()))
+                            .filter((c): c is string => c !== undefined);
+                          return fromTags.length > 0 ? fromTags.join(" · ") : note.icd10Code;
+                        })()}
+                        className="in mo" style={{ width: "100%", height: 34, fontSize: 13, background: "var(--paper-2, transparent)", color: "var(--dim)" }}
                       />
+                      <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.icd10Hint")}</p>
                     </div>
                     <div>
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-advice">{t("opdConsult.advice")}</label>
+                      {/*
+                        ═══ THE ADVICE BOX EXPANDS SNIPPETS AS THE DOCTOR TYPES ═══
+
+                        Typing `;rest` replaces it in place with the template's text, placeholders
+                        already resolved against THIS patient — the weight the bay charted, the
+                        follow-up date seven days out. Tab then walks the blanks the snippet left.
+
+                        Tab is intercepted only while blanks are outstanding, and the LAST Tab is
+                        deliberately let through so the gesture ends by leaving the field. Escape
+                        abandons the blanks and hands Tab straight back.
+                      */}
                       <textarea
-                        id="note-advice" rows={2}
+                        id="note-advice" rows={3}
+                        ref={adviceSnippets.ref as React.RefObject<HTMLTextAreaElement>}
                         value={note.advice}
-                        onChange={(e) => setNote((n) => ({ ...n, advice: e.target.value }))}
+                        onChange={(e) => { adviceSnippets.onChangeValue(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
+                        onKeyDown={adviceSnippets.onKeyDown}
+                        onBlur={adviceSnippets.onBlur}
                         className="in" style={{ width: "100%", height: "auto", padding: "7px 9px", fontSize: 13 }}
                       />
+                      {adviceSnippets.stops.length > 0 && (
+                        <p data-testid="advice-stops" style={{ margin: "3px 0 0", fontSize: 11, color: "var(--gold)" }}>
+                          {t("opdConsult.snippetStops", {
+                            n: adviceSnippets.stops.length - adviceSnippets.stopIndex - 1,
+                            label: adviceSnippets.stops[adviceSnippets.stopIndex]?.label ?? "",
+                          })}
+                        </p>
+                      )}
+                      {/*
+                        ═══════════════════════════════════════════════════════════════════════════
+                        THE ADVICE LIBRARY — AND THE ONLY FIELD ON THIS SCREEN THE PATIENT READS
+                        ═══════════════════════════════════════════════════════════════════════════
+
+                        Owner's own idea, 2026-09-14: *"a prefilled template saved as a module"*, in
+                        a shared library with the doctor's own favourites on top.
+
+                        TWO BUTTONS PER TEMPLATE, NOT ONE. Owner ruling: the doctor chooses the
+                        language per template. Whichever they press is the string that is stored and
+                        the string that prints — `rx-print.tsx` prints `encounter.advice` verbatim,
+                        so a translated LABEL above English prose gives a patient who reads only
+                        Devanagari nothing at all. The script has to be in the value.
+
+                        Tapping APPENDS. A doctor builds advice from two or three of these plus a
+                        line of their own, and replacing would throw away typing on a mis-tap.
+                      */}
+                      <div data-testid="advice-library" style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6, alignItems: "center" }}>
+                        {(adviceTemplates.data?.items ?? []).map((tpl) => (
+                          <span
+                            key={tpl.id} data-testid={`advice-tpl-${tpl.id}`}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 4px 2px 8px",
+                              border: `1px solid ${tpl.mine ? "var(--green)" : "var(--line)"}`, borderRadius: 999, fontSize: 11.5,
+                            }}
+                          >
+                            <span style={{ color: "var(--dim)" }}>{tpl.title}</span>
+                            {/* The keyword sits ON the chip, which is how a doctor learns it without being taught. */}
+                            {tpl.keyword !== null && tpl.keyword !== "" && (
+                              <span className="mo" data-testid={`advice-tpl-${tpl.id}-kw`} style={{ fontSize: 10, color: "var(--faint)" }}>{tpl.keyword}</span>
+                            )}
+                            {tpl.textEn !== null && (
+                              <button
+                                type="button" data-testid={`advice-tpl-${tpl.id}-en`}
+                                onClick={() => { appendAdvice(tpl.textEn!); }}
+                                className="sec" style={{ height: 21, padding: "0 7px", fontSize: 10.5 }}
+                              >
+                                EN
+                              </button>
+                            )}
+                            {tpl.textHi !== null && (
+                              <button
+                                type="button" data-testid={`advice-tpl-${tpl.id}-hi`}
+                                onClick={() => { appendAdvice(tpl.textHi!); }}
+                                className="sec" style={{ height: 21, padding: "0 7px", fontSize: 10.5 }}
+                              >
+                                हिं
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {!adviceSaveOpen && note.advice.trim() !== "" && (
+                          <button
+                            type="button" className="sec" data-testid="advice-save-open"
+                            style={{ height: 23, fontSize: 11 }}
+                            onClick={() => { setAdviceSaveOpen(true); setAdviceSaveError(null); }}
+                          >
+                            {t("opdConsult.adviceSaveAsTemplate")}
+                          </button>
+                        )}
+                      </div>
+                      {adviceSaveOpen && (
+                        <div data-testid="advice-save-form" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, alignItems: "center" }}>
+                          <input
+                            id="advice-title" aria-label={t("opdConsult.adviceTemplateTitle")}
+                            value={adviceSaveTitle} onChange={(e) => { setAdviceSaveTitle(e.target.value); }}
+                            className="in" style={{ width: 200, height: 28, fontSize: 12 }}
+                            placeholder={t("opdConsult.adviceTemplateTitlePlaceholder")}
+                          />
+                          <input
+                            id="advice-keyword" aria-label={t("opdConsult.adviceKeyword")}
+                            value={adviceSaveKeyword} onChange={(e) => { setAdviceSaveKeyword(e.target.value); }}
+                            className="in mo" style={{ width: 120, height: 28, fontSize: 12 }}
+                            placeholder=";rest"
+                          />
+                          <button
+                            type="button" className="sec grn" data-testid="advice-save" style={{ height: 28, fontSize: 11.5 }}
+                            disabled={keywordProblem(adviceSaveKeyword) !== null}
+                            onClick={() => void saveAdviceTemplate()}
+                          >
+                            {t("opdConsult.adviceSave")}
+                          </button>
+                          <button type="button" className="sec" style={{ height: 28, fontSize: 11.5 }} onClick={() => { setAdviceSaveOpen(false); setAdviceSaveTitle(""); setAdviceSaveError(null); }}>
+                            {t("opdConsult.cancel")}
+                          </button>
+                          <ErrorLine message={adviceSaveError} />
+                          {/*
+                            THE KEYWORD RULE, SAID WHERE IT IS BROKEN. Expansion fires while the
+                            doctor types, so a keyword that can occur inside a word would detonate in
+                            the middle of ordinary prose. The server refuses it too; this is the half
+                            that tells the person typing, before they have saved anything.
+                          */}
+                          {keywordProblem(adviceSaveKeyword) !== null && (
+                            <p data-testid="advice-keyword-problem" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--gold)" }}>
+                              {t(`opdConsult.adviceKeywordProblem.${keywordProblem(adviceSaveKeyword) ?? ""}`)}
+                            </p>
+                          )}
+                          {unknownTokensIn(note.advice).length > 0 && (
+                            <p data-testid="advice-unknown-tokens" style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: "var(--gold)" }}>
+                              {t("opdConsult.snippetUnknownTokens", { list: unknownTokensIn(note.advice).join(", ") })}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/*
+                        ═══ THE KEYWORD CHARACTER REFERENCE ═══
+
+                        Rendered FROM `PLACEHOLDERS`, the same list the resolver runs, so the panel a
+                        doctor reads and the engine that runs can never drift. Each row shows what it
+                        would produce FOR THIS PATIENT right now — a reference that says "{weight}"
+                        teaches less than one that says "{weight} → 62".
+                      */}
+                      <div style={{ marginTop: 5 }}>
+                        <button
+                          type="button" data-testid="snippet-ref-toggle"
+                          onClick={() => { setAdviceRefOpen((v) => !v); }}
+                          style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "var(--faint)", textDecoration: "underline" }}
+                        >
+                          {t("opdConsult.snippetReference")}
+                        </button>
+                        {adviceRefOpen && (
+                          <div data-testid="snippet-ref" style={{ marginTop: 4, border: "1px solid var(--line)", borderRadius: 5, padding: "6px 8px" }}>
+                            <p style={{ margin: "0 0 5px", fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.snippetReferenceHint")}</p>
+                            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "2px 12px" }}>
+                              {PLACEHOLDERS.map((ph) => {
+                                const preview = ph.resolve(snippetContext);
+                                return (
+                                  <li key={ph.token} data-testid={`snippet-ref-${ph.token}`} style={{ fontSize: 11 }}>
+                                    <span className="mo" style={{ fontWeight: 600 }}>{`{${ph.token}}`}</span>
+                                    <span style={{ color: "var(--faint)" }}> — {ph.describe}</span>
+                                    {preview !== null && <span className="mo" style={{ color: "var(--green)" }}> → {preview}</span>}
+                                  </li>
+                                );
+                              })}
+                              {PLACEHOLDER_FORMS.map((f) => (
+                                <li key={f.token} style={{ fontSize: 11 }}>
+                                  <span className="mo" style={{ fontWeight: 600 }}>{f.token}</span>
+                                  <span style={{ color: "var(--faint)" }}> — {f.describe}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     {noteSaved && <p data-testid="note-saved" style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--green)" }}>{t("opdConsult.noteSaved")}</p>}
                     <ErrorLine message={noteError} />
@@ -1334,11 +2549,77 @@ export function OpdConsult(): React.ReactElement {
 
                 {tab === "rx" && (
                 <div role="tabpanel" id="tabpanel-rx" aria-labelledby="tab-rx">
+                  {/*
+                    ═══ FD-30 — THE SLIP THE DOOR TRANSCRIBED, WAITING FOR THIS DOCTOR'S TAP ═══
+
+                    Owner ruling 2026-09-12: draft then confirm. It sits ABOVE the editor because on
+                    a visit that has one it is the first thing to decide — issue it, edit it, or
+                    throw it away — and below the editor it is a panel the doctor scrolls past after
+                    already typing the same lines by hand.
+
+                    TWO ROADS OUT, DELIBERATELY. "Issue" is the tap the ruling asks for and it is the
+                    common case. "Load into the editor" exists because the tap can be REFUSED — an
+                    allergy conflict, a severe interaction, a duplicate salt — and clearing one needs
+                    the override dialogs this screen already owns. Duplicating those here would be a
+                    second implementation of a clinical decision; handing the lines down to the
+                    editor is the same doctor, the same checks, one panel lower.
+                  */}
+                  {draft.data?.draft != null && (
+                    <div className="box" data-testid="rx-draft" style={{ marginBottom: 13, padding: 12, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
+                      <span className="tag">{t("opdConsult.draft.heading")}</span>
+                      <ul style={{ margin: "7px 0 0", paddingLeft: 18, fontSize: 12.5 }}>
+                        {draft.data.draft.lines.map((l, i) => (
+                          <li key={i} data-testid={`rx-draft-line-${String(i)}`}>
+                            <strong>{l.drug}</strong>{l.dose === "" ? "" : ` · ${l.dose}`} · {l.route} · {l.frequency}
+                            {l.durationDays === null ? "" : ` · ${String(l.durationDays)}d`}
+                            {l.instructions === null || l.instructions === "" ? "" : ` — ${l.instructions}`}
+                          </li>
+                        ))}
+                      </ul>
+                      {draft.data.draft.note !== null && draft.data.draft.note !== "" && (
+                        <p data-testid="rx-draft-note" style={{ margin: "7px 0 0", fontSize: 12 }}>{draft.data.draft.note}</p>
+                      )}
+                      <ErrorLine message={draftError} />
+                      <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap" }}>
+                        <button type="button" className="pri" data-testid="rx-draft-issue" disabled={draftBusy} onClick={() => { void issueTheDraft(); }}>
+                          {t("opdConsult.draft.issue")}
+                        </button>
+                        <button
+                          type="button" className="sec" data-testid="rx-draft-load"
+                          onClick={() => {
+                            /* Into the editor exactly as typed, so the doctor edits and issues by the
+                               ordinary road — every check and every override dialog unchanged. */
+                            const d = draft.data?.draft;
+                            if (d == null) return;
+                            rxForm.reset({
+                              lines: d.lines.map((l) => ({
+                                drug: l.drug, dose: l.dose, route: l.route, frequency: l.frequency,
+                                durationDays: l.durationDays === null ? "" : String(l.durationDays),
+                                instructions: l.instructions ?? "", noSubstitution: l.noSubstitution, medicineId: null,
+                              })),
+                            });
+                          }}
+                        >
+                          {t("opdConsult.draft.load")}
+                        </button>
+                        <button type="button" className="sec" data-testid="rx-draft-discard" disabled={draftBusy} onClick={() => { void discardTheDraft(); }}>
+                          {t("opdConsult.draft.discard")}
+                        </button>
+                      </div>
+                      <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--faint)" }}>{t("opdConsult.draft.who")}</p>
+                    </div>
+                  )}
                   <FormProvider {...rxForm}>
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (
-                        <div key={f.id} data-testid={`rx-row-${String(i)}`} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 9, padding: "11px 0", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <Fragment key={f.id}>
+                        {/*
+                          A LINE IS Drug · Dose · Route, then the sig panel — the ONLY control for
+                          how often, food timing, days and the note (see components/sig-panel.tsx
+                          for why the Frequency select and the Days and Instructions boxes went).
+                        */}
+                        <div data-testid={`rx-row-${String(i)}`} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9, padding: "11px 0 9px", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
+                          <div style={{ flex: "2 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
                             {/*
                               THE DRUG FIELD IS NOW A COMBOBOX over the CLINICAL DRUG tier —
                               molecule and strength, no brand. It replaces a plain TextField plus a
@@ -1352,43 +2633,105 @@ export function OpdConsult(): React.ReactElement {
                               `modules/formulary/suggest.ts` for why that is the safe choice while
                               the catalogue is uncurated.
                             */}
-                            <DrugCombobox
-                              name={`lines.${String(i)}.drug`}
-                              medicineIdName={`lines.${String(i)}.medicineId`}
-                              label={t("opdConsult.drug")}
-                              testId={`rx-drug-${String(i)}`}
+                            {/*
+                              ═══ THE TYPEAHEAD REPLACED A `<select>` OF THE WHOLE CATALOGUE ═══
+
+                              Owner, 2026-09-14: autocomplete must work whether or not the co-pilot
+                              is on. It also HAD to replace the picker: after the catalogue import
+                              that dropdown is 103,383 options and a 15 MB payload on every load of
+                              this screen — measured, not feared.
+
+                              Free typing is untouched and always legal (16a design law 1). Picking
+                              a row fills the name AND the id, which is what turns a line into one
+                              the interaction and duplicate checks can reason about; typing over it
+                              clears the id again, exactly as the old field did.
+                            */}
+                            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor={`rx-drug-${String(i)}`}>
+                              {t("opdConsult.drug")}
+                            </label>
+                            <DrugField
+                              inputId={`rx-drug-${String(i)}`}
+                              value={rxForm.watch(`lines.${i}.drug`)}
+                              placeholder={t("opdConsult.drugPlaceholder")}
+                              onText={(text) => {
+                                rxForm.setValue(`lines.${i}.drug`, text, { shouldDirty: true });
+                                if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
+                                  rxForm.setValue(`lines.${i}.medicineId`, null);
+                                  /* The id and the shorthand go together: what is shown must not
+                                     outlive the pick it describes. */
+                                  setShorthand((m) => {
+                                    const { [f.id]: dropped, ...rest } = m;
+                                    return dropped === undefined ? m : rest;
+                                  });
+                                }
+                              }}
+                              onPick={(hit) => {
+                                rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
+                                rxForm.setValue(`lines.${i}.medicineId`, hit.id);
+                                setShorthand((m) => ({ ...m, [f.id]: { strength: hit.strength, form: hit.form, code: hit.code } }));
+                              }}
                             />
                             {/*
                               DD5 — the hint renders ONLY when the server says coverage is high
                               enough. Below the threshold it would fire on almost every line and
                               become wallpaper, which is worse than silence.
                             */}
+                            {shorthand[f.id] !== undefined && (
+                              <span
+                                data-testid={`rx-shorthand-${String(i)}`}
+                                className="mo"
+                                style={{ fontSize: 10.5, color: "var(--faint)" }}
+                              >
+                                {`[${[
+                                  shorthand[f.id]?.strength ?? null,
+                                  shorthand[f.id]?.form ?? null,
+                                  shorthand[f.id]?.code ?? null,
+                                ].filter((x) => x !== null && x !== "").join(" | ")}]`}
+                              </span>
+                            )}
                             {noticeEnabled && unresolvedLines.includes(i) && (
                               <p data-testid={`rx-uncovered-${String(i)}`} style={{ margin: 0, fontSize: 11, color: "var(--gold)" }}>
                                 {t("opdConsult.notInFormulary")}
                               </p>
                             )}
                           </div>
-                          <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} />
-                          <SelectField
-                            name={`lines.${String(i)}.route`}
-                            label={t("opdConsult.route")}
-                            options={ROUTE_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.routeOption.${r}`) }))}
-                          />
-                          <SelectField
-                            name={`lines.${String(i)}.frequency`}
-                            label={t("opdConsult.frequency")}
-                            options={FREQUENCY_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.frequencyOption.${r}`) }))}
-                          />
-                          <TextField name={`lines.${String(i)}.durationDays`} label={t("opdConsult.durationDays")} type="number" />
-                          <TextField name={`lines.${String(i)}.instructions`} label={t("opdConsult.instructions")} />
-                          <CheckboxField name={`lines.${String(i)}.noSubstitution`} label={t("opdConsult.noSubstitution")} />
-                          {lines.fields.length > 1 && (
-                            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12, alignSelf: "end" }} onClick={() => lines.remove(i)}>
-                              {t("opdConsult.removeLine")}
-                            </button>
-                          )}
+                          <div style={{ flex: "1 1 130px", minWidth: 0 }}>
+                            <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} />
+                          </div>
+                          <div style={{ flex: "1 1 130px", minWidth: 0 }}>
+                            <SelectField
+                              name={`lines.${String(i)}.route`}
+                              label={t("opdConsult.route")}
+                              options={ROUTE_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.routeOption.${r}`) }))}
+                            />
+                          </div>
+                          <div style={{ flex: "0 1 auto", display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start", paddingTop: 22 }}>
+                            <CheckboxField name={`lines.${String(i)}.noSubstitution`} label={t("opdConsult.noSubstitution")} />
+                            {lines.fields.length > 1 && (
+                              <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => lines.remove(i)}>
+                                {t("opdConsult.removeLine")}
+                              </button>
+                            )}
+                          </div>
                         </div>
+                        <SigPanel
+                          lineIndex={i}
+                          frequency={rxForm.watch(`lines.${i}.frequency`)}
+                          instructions={rxForm.watch(`lines.${i}.instructions`)}
+                          durationDays={String(rxForm.watch(`lines.${i}.durationDays`) ?? "")}
+                          frequencyError={rxForm.formState.errors.lines?.[i]?.frequency?.message}
+                          daysError={rxForm.formState.errors.lines?.[i]?.durationDays?.message}
+                          onPatch={(patch: SigPatch) => {
+                            /* Straight into the line's own fields — the panel stores nothing. */
+                            /* Re-checked only once the doctor has tried to issue: an error must clear
+                               as they fix it, but must not appear under a box they have just opened. */
+                            const opts = { shouldDirty: true, shouldValidate: rxForm.formState.isSubmitted };
+                            if (patch.frequency !== undefined) rxForm.setValue(`lines.${i}.frequency`, patch.frequency, opts);
+                            if (patch.instructions !== undefined) rxForm.setValue(`lines.${i}.instructions`, patch.instructions, opts);
+                            if (patch.durationDays !== undefined) rxForm.setValue(`lines.${i}.durationDays`, patch.durationDays, opts);
+                          }}
+                        />
+                        </Fragment>
                       ))}
                       <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
                         <button type="button" className="sec" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => lines.append(EMPTY_LINE)}>
@@ -1403,18 +2746,68 @@ export function OpdConsult(): React.ReactElement {
                     prescription, duplicates across route classes. They are data: dismissible, never
                     a gate, and they carry the in-system-only honesty line (design law 10).
                   */}
-                  {notices.length > 0 && !noticesDismissed && (
+                  {(notices.length > 0 || diseaseNotices.length > 0 || unreviewedLines.length > 0) && !noticesDismissed && (
                     <div data-testid="rx-notices" className="box" style={{ marginTop: 11, display: "flex", flexDirection: "column", gap: 5, padding: "10px 12px", fontSize: 12.5, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
                       {notices.map((hit, i) => (
                         <p key={`${String(hit.lineIndex)}-${String(i)}`} data-testid={`rx-notice-${String(i)}`} style={{ margin: 0 }}>
                           {isInteractionHit(hit)
                             ? t("opdConsult.noticeInteraction", { n: hit.lineIndex + 1, note: hit.note })
-                            : t("opdConsult.noticeDuplicate", { n: hit.lineIndex + 1, moiety: hit.moiety })}
+                            : hit.drugClass !== undefined
+                              ? t("opdConsult.noticeDuplicateClass", {
+                                n: hit.lineIndex + 1, moiety: hit.moiety, with: hit.with ?? "",
+                                cls: t(`opdConsult.therapyClass_${hit.drugClass}`, { defaultValue: hit.drugClass }),
+                              })
+                              : t("opdConsult.noticeDuplicate", { n: hit.lineIndex + 1, moiety: hit.moiety })}
                           {" "}
                           <span style={{ color: "var(--dim)" }}>{againstLabel(hit)}</span>
                         </p>
                       ))}
+                      {/*
+                        FORMULARY PHASE 3 — the checks above could see these lines only in part. One
+                        sentence for all of them rather than one per line: it is the same fact.
+                      */}
+                      {unreviewedLines.length > 0 && (
+                        <p data-testid="rx-unreviewed" style={{ margin: 0 }}>
+                          {t("opdConsult.partlyChecked", {
+                            count: unreviewedLines.length,
+                            lines: unreviewedLines.map((i) => String(i + 1)).join(", "),
+                          })}
+                        </p>
+                      )}
                       <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
+                      {/*
+                        P24 — a soft drug-disease hit: the book rated it moderate, OR it rests on a
+                        diagnosis over a year old and was downgraded for that reason (`stale`). The
+                        date is shown either way, because a doctor judging a 2019 code needs to see
+                        that it is a 2019 code.
+                      */}
+                      {diseaseNotices.map((h, i) => (
+                        <div key={`dxn-${String(h.lineIndex)}-${h.icd10Prefix}`} data-testid={`rx-disease-notice-${String(i)}`}>
+                          <p style={{ margin: 0 }}>
+                            {t("opdConsult.diseaseNotice", { n: h.lineIndex + 1, moiety: h.moiety, title: h.icd10Title, note: h.note })}{" "}
+                            <span style={{ color: "var(--dim)" }}>
+                              {h.stale
+                                ? t("opdConsult.diseaseStale", { code: h.diagnosis.code, on: h.diagnosis.codedOn })
+                                : t("opdConsult.diseaseCodedOn", { code: h.diagnosis.code, on: h.diagnosis.codedOn })}
+                            </span>
+                          </p>
+                          {h.alternatives.length > 0 && (
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, alignItems: "center" }}>
+                              <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsult.switchTo")}</span>
+                              {h.alternatives.map((a) => (
+                                <button
+                                  key={a.moiety} type="button" className="sec"
+                                  data-testid={`disease-notice-switch-${String(i)}-${a.moiety}`}
+                                  style={{ padding: "2px 10px", fontSize: 11.5 }}
+                                  onClick={() => { applySwitch(h.lineIndex, a); }}
+                                >
+                                  {a.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                       <button type="button" className="sec" style={{ alignSelf: "flex-start", padding: "2px 10px", fontSize: 11.5 }} onClick={() => setNoticesDismissed(true)}>
                         {t("opdConsult.dismiss")}
                       </button>
@@ -1432,7 +2825,7 @@ export function OpdConsult(): React.ReactElement {
                     has been unable to see since this application shipped.
                   */}
                   <div style={{ marginBottom: 10, display: "flex", gap: 6 }} role="group" aria-label={t("opdConsult.historyView")}>
-                    {(["visits", "rx", "vitals"] as const).map((v) => (
+                    {(["visits", "rx", "vitals", "documents"] as const).map((v) => (
                       <button
                         key={v}
                         type="button"
@@ -1486,6 +2879,69 @@ export function OpdConsult(): React.ReactElement {
                               </li>
                             ))}
                           </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/*
+                    ═══ THE PAPER THE DESK PHOTOGRAPHED, WHERE THE DOCTOR LOOKS FOR IT ═══
+
+                    Owner, 2026-09-14. The list is METADATA — a doctor scanning for "did they bring
+                    the outside prescription" needs when and what, not four megabytes of JPEG for
+                    every visit. Opening one is a deliberate second request, which is also what
+                    keeps the access log honest about who actually read a prescription.
+                  */}
+                  {historyView === "documents" && (
+                    <div data-testid="document-history" style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5 }}>
+                      {documents.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
+                      {!documents.isPending && (documents.data?.items ?? []).length === 0 && (
+                        <p data-testid="no-documents" style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noDocuments")}</p>
+                      )}
+                      {(documents.data?.items ?? []).map((d) => (
+                        <div key={d.id} data-testid={`document-${d.id}`} style={{ borderBottom: "1px solid var(--line)", paddingBottom: 5 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "baseline" }}>
+                            <span style={{ fontWeight: 600 }}>{t(`opdConsult.documentKind.${d.kind}`, { defaultValue: d.kind })}</span>
+                            <span className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>
+                              {new Date(d.capturedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                            </span>
+                            {d.note !== null && <span style={{ color: "var(--dim)" }}>{d.note}</span>}
+                            <button
+                              type="button" className="sec" data-testid={`document-open-${d.id}`}
+                              style={{ marginLeft: "auto", height: 24, fontSize: 11 }}
+                              onClick={() => { setOpenDocumentId(openDocumentId === d.id ? null : d.id); }}
+                            >
+                              {openDocumentId === d.id ? t("opdConsult.documentHide") : t("opdConsult.documentOpen")}
+                            </button>
+                          </div>
+                          {openDocumentId === d.id && (
+                            <div style={{ marginTop: 6 }}>
+                              {openDocument.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
+                              {openDocument.isError && (
+                                <p role="alert" data-testid={`document-error-${d.id}`} style={{ margin: 0, color: "var(--red)", fontWeight: 600 }}>
+                                  {t("opdConsult.documentUnreadable")}
+                                </p>
+                              )}
+                              {openDocument.data !== undefined && openDocument.data.mimeType !== "application/pdf" && (
+                                <img
+                                  data-testid={`document-image-${d.id}`}
+                                  src={`data:${openDocument.data.mimeType};base64,${openDocument.data.imageBase64}`}
+                                  alt={t("opdConsult.documentAlt")}
+                                  style={{ maxWidth: "100%", border: "1px solid var(--line)", borderRadius: 4 }}
+                                />
+                              )}
+                              {openDocument.data !== undefined && openDocument.data.mimeType === "application/pdf" && (
+                                <a
+                                  data-testid={`document-pdf-${d.id}`}
+                                  href={`data:application/pdf;base64,${openDocument.data.imageBase64}`}
+                                  target="_blank" rel="noreferrer"
+                                  style={{ fontSize: 12, color: "var(--green)" }}
+                                >
+                                  {t("opdConsult.documentOpenPdf")}
+                                </a>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1687,8 +3143,17 @@ export function OpdConsult(): React.ReactElement {
 
       {/* the allergy hard-warning: a reason per matched line, then the re-post carries them (K48) */}
       <DeskModal
-        open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0}
-        title={t("opdConsult.overrideTitle")} titleId="override-title" testId="override-dialog"
+        open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0}
+        /*
+          THE TITLE MUST NAME WHAT IS ACTUALLY IN THE DIALOG. A browser walk at 400 px found this
+          reading "Allergy conflict" over a drug-disease warning, above a hint that told the doctor
+          the patient "is recorded as allergic to the substances below" — for a patient with no
+          allergy at all. It has been imprecise since the interaction and duplicate kinds joined
+          (P16a); the fourth kind is what made it visibly false. The allergy wording is kept for the
+          allergy-only case, which is the commonest one and the one it was written for.
+        */
+        title={allergyOnly ? t("opdConsult.overrideTitle") : t("opdConsult.overrideTitleChecks")}
+        titleId="override-title" testId="override-dialog"
         onClose={() => {
           setMatches(null);
           setReasons([]);
@@ -1696,11 +3161,15 @@ export function OpdConsult(): React.ReactElement {
           setInteractionReasons([]);
           setDuplicateHits([]);
           setDuplicateReasons([]);
+          setDiseaseHits([]);
+          setDiseaseReasons([]);
           setOverrideError(null);
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-          <p style={{ margin: 0, fontSize: 12.5 }}>{t("opdConsult.overrideHint")}</p>
+          <p style={{ margin: 0, fontSize: 12.5 }}>
+            {allergyOnly ? t("opdConsult.overrideHint") : t("opdConsult.overrideHintChecks")}
+          </p>
           {(matches ?? []).map((m, i) => (
             <div key={`${String(m.lineIndex)}-${m.substance}`}>
               <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`override-reason-${String(i)}`}>
@@ -1749,7 +3218,45 @@ export function OpdConsult(): React.ReactElement {
               />
             </div>
           ))}
-          {(interactionHits.length > 0 || duplicateHits.length > 0) && (
+          {/*
+            P24 — the fourth kind, in the same dialog and the same reason input as its three
+            neighbours, plus the one thing the others cannot offer: a vetted alternative. The label
+            names the DIAGNOSIS and the date it was coded, so the doctor is overriding a fact they
+            can see rather than a verdict they cannot.
+          */}
+          {diseaseHits.map((h, i) => (
+            <div key={`dx-${String(h.lineIndex)}-${h.icd10Prefix}`}>
+              <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`disease-reason-${String(i)}`}>
+                {t("opdConsult.diseaseHit", { n: h.lineIndex + 1, moiety: h.moiety, title: h.icd10Title, note: h.note })}{" "}
+                <span style={{ fontWeight: 400, color: "var(--dim)" }}>
+                  {t("opdConsult.diseaseCodedOn", { code: h.diagnosis.code, on: h.diagnosis.codedOn })}
+                </span>
+              </label>
+              <input
+                id={`disease-reason-${String(i)}`}
+                data-testid={`disease-reason-${String(i)}`}
+                value={diseaseReasons[i] ?? ""}
+                onChange={(e) => setDiseaseReasons((rs) => rs.map((r, j) => (j === i ? e.target.value : r)))}
+                className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+              />
+              {h.alternatives.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsult.switchTo")}</span>
+                  {h.alternatives.map((a) => (
+                    <button
+                      key={a.moiety} type="button" className="sec"
+                      data-testid={`disease-switch-${String(i)}-${a.moiety}`}
+                      style={{ padding: "2px 10px", fontSize: 11.5 }}
+                      onClick={() => { applySwitch(h.lineIndex, a); }}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {(interactionHits.length > 0 || duplicateHits.length > 0 || diseaseHits.length > 0) && (
             <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
           )}
           <ErrorLine message={overrideError} />
@@ -1758,6 +3265,51 @@ export function OpdConsult(): React.ReactElement {
       </DeskModal>
 
       {/* THE ONLY `.print-doc` RENDER SITE ON THIS SCREEN — one nullable state, one mount. */}
+      {/*
+        ═══ SEEING A PATIENT BEFORE THE BILL — THE DOCTOR'S OWN SENTENCE (OWNER RULING 2026-09-20) ═══
+
+        A reason, typed, mandatory — the same rule the front desk's waiver carries (FD-32) and for
+        the same argument: "emergency" and "the chairman's guest" are different facts with different
+        consequences, and only a sentence tells them apart. The button is disabled until there is
+        one, and the server refuses an empty one too (`reason_required`), so the doctor learns it
+        from the screen rather than from an error. The line about the bill is there because this
+        dialog is the last moment anybody can believe the fee has been waived: it has not been.
+      */}
+      <DeskModal
+        open={openingUnpaid !== null}
+        title={t("opdConsult.openUnpaidTitle", { token: openingUnpaid?.tokenNo ?? "" })}
+        titleId="open-unpaid-title" testId="open-unpaid-dialog" width={460}
+        onClose={() => { setOpeningUnpaid(null); }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.openUnpaidHint")}</p>
+          <div>
+            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="open-unpaid-reason">
+              {t("opdConsult.openUnpaidReason")}
+            </label>
+            <input
+              id="open-unpaid-reason" data-testid="open-unpaid-reason" value={unpaidReason}
+              onChange={(ev) => { setUnpaidReason(ev.target.value); }}
+              className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
+            />
+          </div>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.openUnpaidStillOwed")}</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 7 }}>
+            <button type="button" className="sec" style={{ padding: "4px 13px", fontSize: 12.5 }} onClick={() => { setOpeningUnpaid(null); }}>
+              {t("opdConsult.cancel")}
+            </button>
+            <button
+              type="button" className="pri" data-testid="open-unpaid-confirm"
+              style={{ padding: "4px 13px", fontSize: 12.5 }}
+              disabled={unpaidReason.trim().length < 3}
+              onClick={() => void confirmOpenUnpaid()}
+            >
+              {t("opdConsult.openUnpaidConfirm")}
+            </button>
+          </div>
+        </div>
+      </DeskModal>
+
       {/*
         ═══ THE SKIP DIALOG — SIX BUTTONS AND A BOX, AND IT IS NOT OPTIONAL ═══
 
@@ -1833,7 +3385,10 @@ export function OpdConsult(): React.ReactElement {
         rather than a failure.
       */}
       <AgentDock
-        answer={agentAnswer} log={agentLog} onAsk={ask}
+        answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
         placeholder={t("opdConsult.askPlaceholder")} idle={t("opdConsult.agentIdle")}
       />
     </PaperScreen>

@@ -15,6 +15,7 @@ import {
 } from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
 import { updateBillingConfig } from "./config";
+import { issueCreditNote } from "./credit-notes";
 import {
   CREDIT_APPROVAL_SUBJECT, CREDIT_APPROVAL_TYPE, CREDIT_EXTEND_PERMISSION, DISCOUNT_APPROVAL_SUBJECT,
   DISCOUNT_APPROVAL_TYPE, discountSubjectId, getInvoice, invoiceSettlement, issueInvoice, listInvoices,
@@ -560,5 +561,127 @@ describe("issueInvoice: the one-transaction issue (D2)", () => {
     const tenders = await db.select().from(receiptTenders);
     expect(tenders).toHaveLength(1);
     expect(tenders[0]).toMatchObject({ mode: "card", amountPaise: 50_000, refText: "CARD-AUTH-77", expectedNetPaise: 49_250 });
+  });
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-27 — THE DUPLICATE BILL. Owner, 2026-09-06.
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * *"how are we tackling creation of duplicate invoice (different invoice number for same patient)
+   * by mistake."* The honest answer before this block was: we were not. Measured against the running
+   * preview API — four POSTs, one encounter, THREE invoice numbers, `INV/26-27/000003` through
+   * `000005`, ₹500 each, inside one second. There is no unique index on `invoices.encounter_id`;
+   * `invoices_invoice_no_unique` is the table's only unique constraint.
+   *
+   * The idempotency key was never the missing piece — it caught the replay then and still does. What
+   * it cannot catch is a genuinely repeated human action carrying a genuinely fresh key, which is
+   * exactly the case the owner described.
+   *
+   * THE THREE TESTS THAT SAY THE GUARD IS NOT TOO WIDE MATTER AS MUCH AS THE ONE THAT SAYS IT BITES.
+   * A guard that blocked a re-issue after a correction, or a second service on the same visit, would
+   * be worse than the duplicate: it would stop a clerk doing the right thing at a counter with a
+   * queue behind them, and there would be no way round it.
+   */
+  test("FD-27: a second LIVE invoice for the same service on the same visit is refused, and it names the one already standing", async () => {
+    const cashier = await cashierWithSession("cashier-dupe");
+    const patientId = await mkTestPatient();
+    const encounterId = await shapeEncounter(patientId, "self");
+
+    const first = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId, encounterId,
+      lines: [{ lineId: "L1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }, NOW);
+    expect(first.invoiceNo).toBe("INV/26-27/000001");
+
+    // A FRESH draft id and a fresh idempotency key — this is the clerk billing again, not a retry.
+    await expect(issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId, encounterId,
+      lines: [{ lineId: "L1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }, NOW)).rejects.toMatchObject({ code: "duplicate_invoice_refused" });
+
+    /*
+      THE REFUSAL NAMES THE STANDING BILL. A bare "duplicate" leaves the clerk with a patient in
+      front of them and nothing to say; the invoice number is what lets them find it, read it back,
+      and decide whether to credit-note it or hand it over.
+    */
+    await expect(issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId, encounterId,
+      lines: [{ lineId: "L1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }, NOW)).rejects.toMatchObject({ detail: { invoiceNo: "INV/26-27/000001" } });
+
+    // And the money is where it should be: ONE invoice, not three.
+    const rows = await db.select().from(invoices).where(eq(invoices.encounterId, encounterId));
+    expect(rows).toHaveLength(1);
+  });
+
+  test("FD-27: a DIFFERENT service on the same visit is not a duplicate — a dressing after a consult still bills", async () => {
+    const cashier = await cashierWithSession("cashier-second-service");
+    const patientId = await mkTestPatient();
+    const encounterId = await shapeEncounter(patientId, "self");
+
+    await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId, encounterId,
+      lines: [{ lineId: "L1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }, NOW);
+
+    const second = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId, encounterId,
+      lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 56_000 }] },
+    }, NOW);
+    expect(second.invoiceNo).toBe("INV/26-27/000002");
+
+    const rows = await db.select().from(invoices).where(eq(invoices.encounterId, encounterId));
+    expect(rows).toHaveLength(2);
+  });
+
+  test("FD-27: once the wrong bill is credit-noted it is no longer live, and the correct one may be raised", async () => {
+    const cashier = await cashierWithSession("cashier-reissue");
+    const manager = await mkManager("manager-reissue");
+    const patientId = await mkTestPatient();
+    const encounterId = await shapeEncounter(patientId, "self");
+
+    const wrong = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId, encounterId,
+      lines: [{ lineId: "L1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }, NOW);
+
+    await issueCreditNote(db, manager.actor, {
+      invoiceId: wrong.invoiceId, kind: "correction", reason: "raised in error — re-billing correctly",
+    }, NOW);
+
+    /*
+      THIS IS THE ASSERTION THE GUARD WAS DESIGNED AROUND, and it is why `liveInvoiceCharging` is a
+      NEW predicate rather than a second caller of `gate.ts`'s `feeCovered`. A credit note counts
+      toward `coveredPaise` (`settlement.ts:13`), so a fully reversed invoice still reads `settled`
+      and `feeCovered` still answers true — gating the write on that would have locked the counter
+      out of the one correction that is always legitimate.
+    */
+    const reissued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId, encounterId,
+      lines: [{ lineId: "L1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }, NOW);
+    expect(reissued.invoiceNo).toBe("INV/26-27/000002");
+  });
+
+  test("FD-27: a counter sale with NO encounter is never a duplicate — there is no visit to double-bill", async () => {
+    const cashier = await cashierWithSession("cashier-no-encounter");
+    const patientId = await mkTestPatient();
+
+    for (const expected of ["INV/26-27/000001", "INV/26-27/000002"]) {
+      const r = await issueInvoice(db, cashier.actor, {
+        draftId: newId(), patientId,
+        lines: [{ lineId: "L1", serviceId: base.consultNewServiceId, qty: 1 }],
+        receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+      }, NOW);
+      expect(r.invoiceNo).toBe(expected);
+    }
   });
 });

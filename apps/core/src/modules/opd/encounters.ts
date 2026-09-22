@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
-  opdDepartments, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals,
+  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals,
 } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
@@ -837,7 +837,10 @@ export async function getVisit(
   db: Db,
   actor: Actor,
   encounterId: string,
-): Promise<{ encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[]; prescriptions: PrescriptionRow[] } | null> {
+): Promise<{
+  encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[];
+  prescriptions: PrescriptionRow[]; diagnoses: { text: string; icd10Code: string | null }[];
+} | null> {
   // PLAN 07a T1 FOLLOW-UP — this route was the FOURTH instance of the same hole and the first fix
   // missed it. It returns the encounter's diagnosis and ICD-10 code AND the visit's vitals AND its
   // prescriptions; only the patient's NAME was protected, by `getPatientSummaries` aliasing it in
@@ -854,7 +857,21 @@ export async function getVisit(
   const queueEntries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(asc(opdQueueEntries.seq));
   const vitals = await db.select().from(opdVitals).where(eq(opdVitals.encounterId, encounterId)).orderBy(asc(opdVitals.recordedAt));
   const prescriptions = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, encounterId)).orderBy(asc(opdPrescriptions.version));
-  return { encounter, queueEntries, vitals, prescriptions };
+  /*
+    ═══ THE DIAGNOSES COME BACK CODED, OR REOPENING THE NOTE SILENTLY STRIPS THE CODES ═══
+
+    `encounter.diagnosis` is the de-normalised display string and the codes are not in it. A screen
+    that loaded only that string, then saved the note again after the doctor changed one word,
+    would send back tags with no codes and the coded rows would be REPLACED by uncoded ones. Both
+    ends would be individually correct and the record would lose the coding on an ordinary edit.
+    Returning the rows is what closes that seam.
+  */
+  const diagnoses = (await db
+    .select({ text: opdEncounterDiagnoses.text, icd10Code: opdEncounterDiagnoses.icd10Code })
+    .from(opdEncounterDiagnoses)
+    .where(eq(opdEncounterDiagnoses.encounterId, encounterId))
+    .orderBy(asc(opdEncounterDiagnoses.seq)));
+  return { encounter, queueEntries, vitals, prescriptions, diagnoses };
 }
 
 /**
@@ -875,6 +892,13 @@ export type CounterState = {
   everJoined: boolean;
   /** The latest entry's token, whatever its state — the number the clerk reads out. */
   tokenNo: number | null;
+  /**
+   * FD-28 — the department's CODE, because a token reads by department ("MED-4", "PED-1") on the
+   * owner's ruling and `tokenLabel` needs it to spell one. It is resolved HERE rather than by the
+   * caller so that the billing counter — whose cashier holds no `opd.masters.read` and therefore
+   * cannot list departments — can still print the same label the patient's slip carries.
+   */
+  departmentCode: string | null;
 };
 
 /**
@@ -899,21 +923,80 @@ export async function findVisitByToken(db: Db, filter: { serviceDate: string; to
   return hit === undefined ? null : (byId.get(hit.encounterId) ?? null);
 }
 
+/**
+ * ═══ FD-32 — THE FRONT DESK OPENS THE DOOR, AND SIGNS FOR IT (OWNER RULING 2026-09-13) ═══
+ *
+ * Owner: *"in case of emergency or VIP patient, the front desk could enable the patient to bypass
+ * the billing with a warning sign/disclaimer/notification on each desk where the patient goes."*
+ *
+ * THE REASON IS MANDATORY AND IT IS NOT A CHECKBOX. "Emergency" and "VIP" are different facts with
+ * different consequences — one is clinical urgency and the other is a commercial courtesy — and a
+ * two-value dropdown would let the second hide inside the first. The clerk types what happened, and
+ * that sentence is what every downstream desk is shown.
+ *
+ * IT DOES NOT WAIVE THE FEE. The bill is still owed and still raised; what is waived is the ORDER,
+ * which is why this writes nothing to the ledger and `fee_status` keeps saying `unsettled` until
+ * the money actually lands. A bypass that silently marked a visit paid would be a hole in the day's
+ * collection, not a courtesy.
+ *
+ * IDEMPOTENT AND NOT RE-ASSIGNABLE: the first clerk's name and reason stand. A second call is a
+ * no-op rather than an overwrite, because the audit question is who opened the door FIRST.
+ *
+ * ═══ AND THE BAY HOLDS THE SAME HANDLE IN AN EMERGENCY (OWNER RULING 2026-09-20) ═══
+ *
+ * `Db | Tx`, because `recordVitals` calls this INSIDE the save's transaction when the emergency
+ * button walks a patient through a shut fee gate: the waiver and the chart land together or not at
+ * all. Nothing else changes — same column, same first-writer-wins rule, same sentence carried to
+ * every desk — which is the point. A second mechanism for "who let this patient past the counter"
+ * would be a second answer to the audit question, and there is only one.
+ */
+export async function grantFeeBypass(
+  db: Db | Tx, actor: Actor, encounterId: string, reason: string, now: Date = new Date(),
+): Promise<EncounterRow> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required", "a bypass is a person's decision");
+  const trimmed = reason.trim();
+  if (trimmed.length < 3) {
+    throw new OpdError("reason_required", "say why this patient may pass the counter — it is shown at every desk after this one");
+  }
+  const enc = await getEncounter(db, encounterId);
+  if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  if (enc.feeBypassBy !== null) return enc;
+  const updated = await db
+    .update(opdEncounters)
+    .set({ feeBypassBy: actor.id, feeBypassReason: trimmed, feeBypassAt: now })
+    .where(and(eq(opdEncounters.id, enc.id), isNull(opdEncounters.feeBypassBy)))
+    .returning();
+  return updated[0] ?? enc;
+}
+
 export async function counterState(db: Db, encounterId: string): Promise<CounterState | null> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) return null;
   const entries = await db.select({ tokenNo: opdQueueEntries.tokenNo, seq: opdQueueEntries.seq })
     .from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(desc(opdQueueEntries.seq)).limit(1);
   const feeStatus = (await encounterFeeStatuses(db, [encounter])).get(encounter.id) ?? null;
+  const dept = encounter.departmentId === null ? [] : await db
+    .select({ code: opdDepartments.code })
+    .from(opdDepartments)
+    .where(eq(opdDepartments.id, encounter.departmentId));
   return {
     encounterId, status: encounter.status, serviceDate: encounter.serviceDate, feeStatus,
     everJoined: entries.length > 0, tokenNo: entries[0]?.tokenNo ?? null,
+    departmentCode: dept[0]?.code ?? null,
   };
 }
 
 export async function listVisits(
   db: Db,
-  filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string },
+  /**
+   * `patientId` added by FD-COPILOT. The desk copilot answers "has this patient been seen today?" —
+   * one patient, one day — and without this filter the only way to ask was to fetch the whole day
+   * and filter in memory, against a default cap of 200 rows. On a quiet morning that is merely
+   * wasteful; on a busy one it silently TRUNCATES, and the copilot would answer "no visit today"
+   * about somebody sitting in the waiting room. A filter the database can apply is the difference
+   * between a right answer and a plausible one.
+   */
+  filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string },
   limit = 200,
 ): Promise<EncounterRow[]> {
   const clauses = [
@@ -921,6 +1004,7 @@ export async function listVisits(
     filter.departmentId === undefined ? undefined : eq(opdEncounters.departmentId, filter.departmentId),
     filter.doctorId === undefined ? undefined : eq(opdEncounters.doctorId, filter.doctorId),
     filter.serviceDate === undefined ? undefined : eq(opdEncounters.serviceDate, filter.serviceDate),
+    filter.patientId === undefined ? undefined : eq(opdEncounters.patientId, filter.patientId),
   ].filter((c) => c !== undefined);
   return db.select().from(opdEncounters).where(clauses.length === 0 ? undefined : and(...clauses)).orderBy(asc(opdEncounters.openedAt)).limit(limit);
 }

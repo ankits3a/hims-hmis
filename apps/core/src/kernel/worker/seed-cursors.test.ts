@@ -6,6 +6,7 @@ import { runDispatchCycle } from "../events/dispatcher";
 import { withTx, Db } from "../db/client";
 import { ALERTS_CONSUMER } from "../alerts/consumer";
 import { NOTIFY_CONSUMER } from "../notify/consumer";
+import { OBLIGATIONS_CONSUMER } from "../obligations/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
@@ -66,7 +67,7 @@ describe("seedCursors", () => {
    * wired a phase early: without a seeded cursor the consumer's first cycle after Plan 15 ships
    * would start from zero and re-walk every event the hospital has ever emitted.
    */
-  it("enumerates workerConsumers(db)'s keys — the kernel two, partners, materials, the OT's two, radiology's, pharmacy's and the lab's, and no others", async () => {
+  it("enumerates workerConsumers(db)'s keys — the kernel THREE, partners, materials, the OT's two, radiology's, pharmacy's and the lab's, and no others", async () => {
     const seeded = await seedCursors(db);
     // PLAN 15 T2 / A5 — the fifth. It joins for the reason D10 gives every entry here: a consumer
     // whose cursor is not seeded starts from zero and re-reads the WHOLE subscribed backlog on its
@@ -109,6 +110,20 @@ describe("seedCursors", () => {
          * recorded here with its reason exactly as Plan 15 recorded T2-f and 18a recorded F14.
          */
         LAB_INTERFACE_CONSUMER,
+        /**
+         * PHASE O T1 — THE NINTH, and the FOURTH consumer census a task has moved. Found by CI
+         * rather than by the lane: the whole `test/` directory and five `src/kernel` directories
+         * ran green, and this census lives in `src/kernel/worker`, which none of them covered.
+         * The named-array shape §1a warns about, in the one directory the sweep left out —
+         * recorded here with its reason exactly as Plan 15 recorded T2-f, 18a recorded F14 and
+         * 17-E T7b recorded its own.
+         *
+         * Its unseeded cursor would replay every `alert.acknowledged` since T3, cancelling
+         * respond timers on obligations that were answered weeks ago. Those timers are long
+         * cancelled, so the replay is harmless — by luck, not by construction, which is exactly
+         * the reason every entry above gives for being here.
+         */
+        OBLIGATIONS_CONSUMER,
       ].sort());
   });
 

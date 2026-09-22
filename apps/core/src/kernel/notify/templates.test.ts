@@ -16,7 +16,7 @@ describe("the notification template registry (D8)", () => {
     }
   });
 
-  it("ships D8's five catalog templates plus the lab's and imaging's report-ready notices, nothing else", () => {
+  it("ships D8's five catalog templates plus the lab's and imaging's notices and T4's three relays, nothing else", () => {
     expect(Object.keys(notificationTemplates).sort()).toEqual([
       "appointment_confirmed",
       "appointment_reminder",
@@ -26,8 +26,68 @@ describe("the notification template registry (D8)", () => {
       /** PLAN 17 §9.2 F3 / 17b T7 — the fourth kernel edit of the lab's build (spike S7). */
       "patient_lab_report_ready",
       "patient_welcome",
+      // PHASE O T4 (2026-09-21): 7 -> 10, read off the red run. The channel ladder's three —
+      // the `now` relay, the `today`/`can_wait` relay, and R9's coalescing digest.
+      "staff_alert_digest",
+      "staff_alert_relay_later",
+      "staff_alert_relay_now",
       "staff_escalation",
     ]);
+  });
+
+  /**
+   * ═══ PHASE O T4 / V6 — WHAT THE THREE RELAYS MAY NOT SAY, WITH A FIXTURE THAT COULD SAY IT ═══
+   *
+   * These bodies LEAVE THE HOSPITAL: a push sits on a lock screen in a shared house, a WhatsApp
+   * message sits in a chat backup, an SMS sits with a telecom operator. O10 and R10 give the
+   * whole permitted vocabulary — kind, lane, remaining minutes, a link — and an amount travels
+   * as a BAND or not at all.
+   *
+   * §3.14: an absence assertion whose fixture could never have produced the thing proves
+   * nothing. So the params below carry a patient's name, her UHID, a rupee amount and a
+   * diagnosis, in fields a careless template would interpolate — and the rendered bodies are
+   * asserted to contain none of them, in BOTH languages.
+   */
+  it("V6: a relay body carries kind, lane, minutes and a link — never a patient, a rupee or a diagnosis", () => {
+    const leaky = {
+      kind: "escalation",
+      lane: "now",
+      remainingMinutes: "12",
+      link: "/approvals?focus=ap-9",
+      // None of these is a declared param. Every one of them is a field that exists on the
+      // payloads these relays are built from, one property access away.
+      patientName: "Asha Devi",
+      uhid: "HMIS-00004242-7",
+      amountPaise: 125000,
+      amountRupees: "₹1,250",
+      diagnosis: "pulmonary tuberculosis",
+      staffName: "Dr Bala Ramesh",
+    };
+    for (const key of ["staff_alert_relay_now", "staff_alert_relay_later", "staff_alert_digest"]) {
+      const template = notificationTemplates[key]!;
+      for (const lang of ["en", "hi"] as const) {
+        const body = template.render[lang](leaky);
+        for (const forbidden of ["Asha Devi", "HMIS-00004242-7", "125000", "1,250", "tuberculosis", "Bala Ramesh"]) {
+          expect(body).not.toContain(forbidden);
+        }
+        // …and it is not empty, which is the way an absence assertion passes for free.
+        expect(body.length).toBeGreaterThan(10);
+        expect(body).toContain("/approvals?focus=ap-9");
+      }
+    }
+  });
+
+  it("the `now` relay is URGENT and the `later` one is ROUTINE — that is the whole of quiet hours", () => {
+    // Two templates rather than one with a variable word, and this is why: `quietHoursDeferral`
+    // branches on urgency, so a single template could not both wake somebody at 02:00 for a
+    // `now` obligation and hold a `can_wait` one until morning.
+    expect(notificationTemplates.staff_alert_relay_now!.urgency).toBe("urgent");
+    expect(notificationTemplates.staff_alert_relay_later!.urgency).toBe("routine");
+    expect(notificationTemplates.staff_alert_digest!.urgency).toBe("routine");
+    for (const key of ["staff_alert_relay_now", "staff_alert_relay_later", "staff_alert_digest"]) {
+      expect(notificationTemplates[key]!.audience).toBe("staff");
+      expect(notificationTemplates[key]!.class).toBe("transactional");
+    }
   });
 
   /**

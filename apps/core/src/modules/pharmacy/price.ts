@@ -1,4 +1,5 @@
 import { mrpPerBaseUnit } from "../materials";
+import { inclusiveOf } from "../tariff";
 import { PharmacyError } from "./errors";
 import type { UomRow } from "../materials";
 
@@ -28,6 +29,12 @@ export type BatchPriceInput = {
   batch: { mrpPaise: number | null; mrpUom: string | null };
   /** The item's price regulation effective on the dispense date, or none. `mrpUom` is the ceiling's pack. */
   regulation: { ceilingPaise: number | null; mrpUom: string | null } | null;
+  /**
+   * PHARMACY P1 — the GST rate the line will be taxed at, in basis points (0 when the category is
+   * exempt). REQUIRED, not defaulted: the MRP is printed inclusive of GST (L1) and a ceiling is
+   * notified before it (L2), and comparing the two without the rate is the defect this field closes.
+   */
+  taxRateBps: number;
 };
 
 export type BatchPriceWinner = "batch_mrp" | "ceiling";
@@ -40,7 +47,10 @@ export type BatchPrice = {
   /** Which of the two batch-grain terms is the lower. The tariff may still undercut both at the bill. */
   winner: BatchPriceWinner;
   mrpPaisePerBase: number | null;
+  /** The ceiling as notified: before GST (L2). */
   ceilingPaisePerBase: number | null;
+  /** The same ceiling on the MRP's basis, `floor(ceiling × (1 + rate))`: the term actually compared. */
+  ceilingInclusivePaisePerBase: number | null;
 };
 
 function perBaseOrNull(uoms: readonly UomRow[], paise: number | null, uom: string | null): number | null {
@@ -52,26 +62,40 @@ function perBaseOrNull(uoms: readonly UomRow[], paise: number | null, uom: strin
   }
 }
 
+/**
+ * The two batch-grain terms per base unit, AS PRINTED AND AS NOTIFIED: no rate, no comparison. The
+ * stock ledger's `material.consumed` event records these, and it has no business knowing a tax.
+ */
+export function batchTermsPerBase(input: Omit<BatchPriceInput, "taxRateBps">): {
+  mrpPaisePerBase: number | null; ceilingPaisePerBase: number | null;
+} {
+  return {
+    mrpPaisePerBase: perBaseOrNull(input.uoms, input.batch.mrpPaise, input.batch.mrpUom),
+    ceilingPaisePerBase: input.regulation === null
+      ? null
+      : perBaseOrNull(input.uoms, input.regulation.ceilingPaise, input.regulation.mrpUom),
+  };
+}
+
 export function priceForBatch(input: BatchPriceInput): BatchPrice {
-  const mrpPaisePerBase = perBaseOrNull(input.uoms, input.batch.mrpPaise, input.batch.mrpUom);
-  const ceilingPaisePerBase = input.regulation === null
-    ? null
-    : perBaseOrNull(input.uoms, input.regulation.ceilingPaise, input.regulation.mrpUom);
-  if (mrpPaisePerBase === null && ceilingPaisePerBase === null) {
+  const { mrpPaisePerBase, ceilingPaisePerBase } = batchTermsPerBase(input);
+  const ceilingInclusivePaisePerBase = ceilingPaisePerBase === null ? null : inclusiveOf(ceilingPaisePerBase, input.taxRateBps);
+  if (mrpPaisePerBase === null && ceilingInclusivePaisePerBase === null) {
     throw new PharmacyError(
       "price_unknown",
       "this batch carries no MRP that divides into its base unit and no notified ceiling — it cannot be sold until one is recorded",
       { mrpPaise: input.batch.mrpPaise, mrpUom: input.batch.mrpUom },
     );
   }
+  const terms = { mrpPaisePerBase, ceilingPaisePerBase, ceilingInclusivePaisePerBase };
   if (mrpPaisePerBase === null) {
-    const c = ceilingPaisePerBase as number;
-    return { batchUnitPaise: c, capUnitPaise: c, winner: "ceiling", mrpPaisePerBase, ceilingPaisePerBase };
+    const c = ceilingInclusivePaisePerBase as number;
+    return { batchUnitPaise: c, capUnitPaise: c, winner: "ceiling", ...terms };
   }
-  if (ceilingPaisePerBase === null || ceilingPaisePerBase >= mrpPaisePerBase) {
-    return { batchUnitPaise: mrpPaisePerBase, capUnitPaise: mrpPaisePerBase, winner: "batch_mrp", mrpPaisePerBase, ceilingPaisePerBase };
+  if (ceilingInclusivePaisePerBase === null || ceilingInclusivePaisePerBase >= mrpPaisePerBase) {
+    return { batchUnitPaise: mrpPaisePerBase, capUnitPaise: mrpPaisePerBase, winner: "batch_mrp", ...terms };
   }
-  return { batchUnitPaise: mrpPaisePerBase, capUnitPaise: ceilingPaisePerBase, winner: "ceiling", mrpPaisePerBase, ceilingPaisePerBase };
+  return { batchUnitPaise: mrpPaisePerBase, capUnitPaise: ceilingInclusivePaisePerBase, winner: "ceiling", ...terms };
 }
 
 /**

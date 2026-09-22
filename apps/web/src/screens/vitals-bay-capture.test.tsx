@@ -50,11 +50,11 @@ const ROW_K: WireBenchRow = { ...ROW_A, encounterId: "E-K", entryId: "Q-K", toke
 const PRE_A: WirePreStage = {
   patientId: "P-A", ageYears: 55, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "sbp", "dbp", "pulse", "spo2", "tempC"], notRoutine: [],
   last: { vitalsId: "V-A0", recordedAt: "2026-06-11T04:00:00.000Z", serviceDate: "2026-06-11", heightCm: 151, weightKg: 62, sbp: 132, dbp: 84, pulse: 78, rr: 16, spo2: 98, tempC: 36.8, muacCm: null },
-  carryCandidates: ["heightCm"], expectedFlags: [],
+  carryCandidates: ["heightCm"], expectedFlags: [], feeUnpaid: false, feeBypass: null
 };
 const PRE_B: WirePreStage = { patientId: "P-B", ageYears: 61, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: PRE_A.required, notRoutine: [], last: null, carryCandidates: [],
-  expectedFlags: [{ vital: "sbp", value: 172, bound: "max", limit: 180, severity: "danger" }] };
-const PRE_K: WirePreStage = { patientId: "P-K", ageYears: 4, band: "child_1_5", ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: { tempC: { max: 37.9 } }, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"], last: null, carryCandidates: [], expectedFlags: [] };
+  expectedFlags: [{ vital: "sbp", value: 172, bound: "max", limit: 180, severity: "danger" }], feeUnpaid: false, feeBypass: null };
+const PRE_K: WirePreStage = { patientId: "P-K", ageYears: 4, band: "child_1_5", ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: { tempC: { max: 37.9 } }, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"], last: null, carryCandidates: [], expectedFlags: [], feeUnpaid: false, feeBypass: null };
 
 type Posted = { path: string; body: unknown };
 function stubBay(rows: WireBenchRow[], onVitals: (body: unknown, path: string) => Response, posted: Posted[] = []): void {
@@ -178,6 +178,44 @@ describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked"
     expect(body.readings.spo2.held).toEqual([68, 68, 40]);   // every hold stays in the log; only the confirmed 68 was charted
     expect(body.emergency).toBe(true);
     await waitFor(() => expect(screen.getByTestId("saved-danger").textContent).toContain("spo2 68"));
+  });
+
+  /**
+   * ═══ THE BILLING GATE AT THE BAY, AND THE WAY THROUGH IT (OWNER RULING 2026-09-20) ═══
+   *
+   * Owner, off a live screen: *"I am getting `the vitals desk is gated: fee_unsettled` for the
+   * Emergency Vitals case as well."* Two defects in one sentence — the emergency save was refused
+   * like any other (server side), and the refusal handed a person a code (this side). Both halves
+   * are in this one flow, in the order the bay meets them: the ordinary save is refused in words
+   * that name the red button, and the red button then lands and says what it cost.
+   */
+  it("an unbilled patient: Save is refused in words, Save NOW (emergency) goes through and says the fee is still due", async () => {
+    const posted: Posted[] = [];
+    stubBay([ROW_B], (body) => ((body as { emergency?: boolean }).emergency === true
+      ? new Response(JSON.stringify({ vitals: { id: "V-NEW" }, flags: [], encounter: { id: "E" }, feeWaived: true }), { status: 200, headers: { "Content-Type": "application/json" } })
+      : refused("consult_gate_refused", { guard: "billing_fee_gate", door: "vitals", code: "fee_unsettled" })), posted);
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+
+    fireEvent.click(screen.getByTestId("save"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    /* A sentence, and it names the door that IS open — never `fee_unsettled` at a person. */
+    await waitFor(() => expect(screen.getByTestId("capture-error").textContent).toContain("Not billed yet"));
+    expect(screen.getByTestId("capture-error").textContent).toContain("emergency");
+    expect(screen.queryByTestId("saved-banner")).not.toBeInTheDocument();
+
+    /* The numbers she already took are still on the tiles: the refusal cost her no re-typing. */
+    expect(screen.getByTestId("value-bp").textContent).toBe("120/80");
+
+    fireEvent.click(screen.getByTestId("save-emergency"));
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect((posted[1]!.body as { emergency: boolean }).emergency).toBe(true);
+    /* And the bay does not waive billing in silence — the person who pressed it is told. */
+    await waitFor(() => expect(screen.getByTestId("saved-fee-waived").textContent).toContain("fee is still due"));
   });
 
   it("a chip cycles not-asked → yes → no → not-asked, and only an ASKED chip is posted", async () => {

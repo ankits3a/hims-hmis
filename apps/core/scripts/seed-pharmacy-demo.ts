@@ -2,12 +2,12 @@ import { eq } from "drizzle-orm";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { roleAssignments, users } from "../src/kernel/db/schema";
-import { addMedicine, addSalt, listMedicines, listSalts } from "../src/modules/formulary";
+import { addMedicine, addSalt, medicineIdsByBrandNames, saltIdsByNames } from "../src/modules/formulary";
 import {
   activateVendor, addVendorDocument, availableQty, balances, captureGrn, findStoreByCode, listGrns,
   listItems, listVendors, postGrn, registerItem, registerVendor, runGateQc,
 } from "../src/modules/materials";
-import { getSaleItem, registerSaleItem } from "../src/modules/pharmacy";
+import { getSaleItem, registerSaleItem, setShelfLocation, shelfLocationsFor } from "../src/modules/pharmacy";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../src/kernel/db/client";
 
@@ -77,6 +77,7 @@ import type { Db, Tx } from "../src/kernel/db/client";
  * approval needs a real `owner` role-holder. Both are commissioning gaps in other modules; putting
  * a private copy of either in here would be inventing a production path in a demo script. Run the
  * runbook's §3 drill by hand against this shelf, and see `docs/runbooks/pharmacy-go-live.md` §1.7.
+ * On a DEV database the day is `scripts/dev-pharmacy-standup.ts` (phase PD, PD-0).
  */
 
 /** The demo book. Eight medicines an Indian OPD dispenses, and every one earns its place. */
@@ -96,6 +97,8 @@ type DemoMedicine = {
   schedule: "OTC" | "H" | "H1" | "X";
   /** The item's code; its sale service becomes `RX-<code>`. */
   code: string;
+  /** PD-D18 — where it sits at the OPD counter. Schedule H1 and X in their own cabinets, as a pharmacy keeps them. */
+  rack: string;
   /** Paise per STRIP. Must divide by the strip multiplier — see `uom.ts:145`. */
   mrpPaisePerStrip: number;
   /** Paise per BASE UNIT (per tablet). QC rule 6 rejects an MRP below this. */
@@ -112,14 +115,14 @@ type DemoMedicine = {
  * on the shelf so the refusal can be SEEN.
  */
 const MEDICINES: readonly DemoMedicine[] = [
-  { brand: "Crocin 500", salt: "paracetamol", strength: "500 mg", form: "tablet", schedule: "OTC", code: "CROC500", mrpPaisePerStrip: 12000, unitCostPaise: 700 },
-  { brand: "Calpol 500", salt: "paracetamol", strength: "500 mg", form: "tablet", schedule: "OTC", code: "CALP500", mrpPaisePerStrip: 9000, unitCostPaise: 550 },
-  { brand: "Mox 500", salt: "amoxicillin", strength: "500 mg", form: "capsule", schedule: "H", code: "MOX500", mrpPaisePerStrip: 8500, unitCostPaise: 500 },
-  { brand: "Azee 500", salt: "azithromycin", strength: "500 mg", form: "tablet", schedule: "H1", code: "AZEE500", mrpPaisePerStrip: 15000, unitCostPaise: 900 },
-  { brand: "Alprax 0.5", salt: "alprazolam", strength: "0.5 mg", form: "tablet", schedule: "X", code: "ALPX050", mrpPaisePerStrip: 4500, unitCostPaise: 250 },
-  { brand: "Cetzine 10", salt: "cetirizine", strength: "10 mg", form: "tablet", schedule: "OTC", code: "CETZ010", mrpPaisePerStrip: 3500, unitCostPaise: 180 },
-  { brand: "Pan 40", salt: "pantoprazole", strength: "40 mg", form: "tablet", schedule: "H", code: "PAN040", mrpPaisePerStrip: 11000, unitCostPaise: 620 },
-  { brand: "Glycomet 500", salt: "metformin", strength: "500 mg", form: "tablet", schedule: "H", code: "GLYC500", mrpPaisePerStrip: 6000, unitCostPaise: 340 },
+  { brand: "Crocin 500", salt: "paracetamol", strength: "500 mg", form: "tablet", schedule: "OTC", code: "CROC500", rack: "R-1 · S-2", mrpPaisePerStrip: 12000, unitCostPaise: 700 },
+  { brand: "Calpol 500", salt: "paracetamol", strength: "500 mg", form: "tablet", schedule: "OTC", code: "CALP500", rack: "R-1 · S-3", mrpPaisePerStrip: 9000, unitCostPaise: 550 },
+  { brand: "Mox 500", salt: "amoxicillin", strength: "500 mg", form: "capsule", schedule: "H", code: "MOX500", rack: "R-2 · S-1", mrpPaisePerStrip: 8500, unitCostPaise: 500 },
+  { brand: "Azee 500", salt: "azithromycin", strength: "500 mg", form: "tablet", schedule: "H1", code: "AZEE500", rack: "H1 cabinet", mrpPaisePerStrip: 15000, unitCostPaise: 900 },
+  { brand: "Alprax 0.5", salt: "alprazolam", strength: "0.5 mg", form: "tablet", schedule: "X", code: "ALPX050", rack: "X locked cabinet", mrpPaisePerStrip: 4500, unitCostPaise: 250 },
+  { brand: "Cetzine 10", salt: "cetirizine", strength: "10 mg", form: "tablet", schedule: "OTC", code: "CETZ010", rack: "R-3 · S-1", mrpPaisePerStrip: 3500, unitCostPaise: 180 },
+  { brand: "Pan 40", salt: "pantoprazole", strength: "40 mg", form: "tablet", schedule: "H", code: "PAN040", rack: "R-3 · S-2", mrpPaisePerStrip: 11000, unitCostPaise: 620 },
+  { brand: "Glycomet 500", salt: "metformin", strength: "500 mg", form: "tablet", schedule: "H", code: "GLYC500", rack: "R-4 · S-1", mrpPaisePerStrip: 6000, unitCostPaise: 340 },
 ] as const;
 
 const STRIP_MULTIPLIER = 10;
@@ -148,6 +151,8 @@ export type PharmacyDemoReport = {
   medicinesCreated: number; medicinesExisting: number;
   itemsCreated: number; itemsExisting: number;
   saleItemsRegistered: number; saleItemsExisting: number;
+  /** PD-D18 — rack labels written, and ones already there (a label changed at the desk is never overwritten). */
+  racksSet: number; racksExisting: number;
   vendorCreated: boolean; grnsPosted: number; grnsSkipped: number;
   batchesOnShelf: number; sellableUnits: number; expiredUnitsOnShelf: number;
 };
@@ -209,7 +214,11 @@ export function assertDemoDataAllowed(
 }
 
 async function ensureSalts(db: Db, actor: Actor, report: PharmacyDemoReport): Promise<Map<string, string>> {
-  const byName = new Map((await listSalts(db)).map((s) => [s.name.toLowerCase(), s.id]));
+  /* ASK ABOUT THE EIGHT MOIETIES THIS SEED KNOWS, not about every moiety there is. The map is keyed
+     by the LOWERCASED name, and `SALTS` is written lowercase, so `byName.has(salt.name)` reads the
+     same as it did when the map was built from a full `listSalts`. No `activeOnly` here on purpose:
+     a moiety somebody deactivated still OCCUPIES its name, and re-creating it would collide. */
+  const byName = await saltIdsByNames(db, SALTS.map((s) => s.name));
   for (const salt of SALTS) {
     if (byName.has(salt.name)) { report.saltsExisting += 1; continue; }
     const { saltId } = await withTx(db, (tx: Tx) => addSalt(tx, actor, { name: salt.name, drugClass: salt.drugClass }));
@@ -222,7 +231,9 @@ async function ensureSalts(db: Db, actor: Actor, report: PharmacyDemoReport): Pr
 async function ensureMedicines(
   db: Db, actor: Actor, salts: Map<string, string>, report: PharmacyDemoReport,
 ): Promise<Map<string, string>> {
-  const existing = new Map((await listMedicines(db)).map((m) => [m.brandName.toLowerCase(), m.id]));
+  /* Same shape, same reason: the eight brands this seed would create, not the catalogue. An
+     existing row is ADOPTED rather than duplicated, and adopting requires only these names. */
+  const existing = await medicineIdsByBrandNames(db, MEDICINES.map((m) => m.brand));
   const byBrand = new Map<string, string>();
   for (const med of MEDICINES) {
     const found = existing.get(med.brand.toLowerCase());
@@ -281,6 +292,18 @@ async function ensureSaleItems(db: Db, actor: Actor, items: Map<string, string>,
  * `search` on `listVendors` is a fuzzy LIKE over name OR code, so the exact `.code` comparison is
  * required rather than optional — a substring hit on some other vendor would make this seed adopt it.
  */
+/** PD-D18 — each demo item's rack at the OPD counter, written only where none is recorded yet. */
+async function ensureRacks(db: Db, actor: Actor, storeId: string, items: Map<string, string>, now: Date, report: PharmacyDemoReport): Promise<void> {
+  const existing = await shelfLocationsFor(db, storeId, [...items.values()]);
+  for (const med of MEDICINES) {
+    const itemId = items.get(med.code);
+    if (itemId === undefined) continue;
+    if (existing.has(itemId)) { report.racksExisting += 1; continue; }
+    await setShelfLocation(db, actor, { storeResourceId: storeId, itemId, location: med.rack }, now);
+    report.racksSet += 1;
+  }
+}
+
 async function ensureVendor(db: Db, actor: Actor, now: Date, report: PharmacyDemoReport): Promise<string> {
   const found = (await listVendors(db, { search: VENDOR_CODE }))
     .find((v) => v.code.toLowerCase() === VENDOR_CODE.toLowerCase());
@@ -379,7 +402,7 @@ async function ensureGrn(
 export async function seedPharmacyDemo(db: Db, now: Date = new Date()): Promise<PharmacyDemoReport> {
   const report: PharmacyDemoReport = {
     saltsCreated: 0, saltsExisting: 0, medicinesCreated: 0, medicinesExisting: 0,
-    itemsCreated: 0, itemsExisting: 0, saleItemsRegistered: 0, saleItemsExisting: 0,
+    itemsCreated: 0, itemsExisting: 0, saleItemsRegistered: 0, saleItemsExisting: 0, racksSet: 0, racksExisting: 0,
     vendorCreated: false, grnsPosted: 0, grnsSkipped: 0,
     batchesOnShelf: 0, sellableUnits: 0, expiredUnitsOnShelf: 0,
   };
@@ -402,6 +425,7 @@ export async function seedPharmacyDemo(db: Db, now: Date = new Date()): Promise<
   const medicines = await ensureMedicines(db, pharmacist, salts, report);
   const items = await ensureItems(db, materialsHead, medicines, report);
   await ensureSaleItems(db, pharmacist, items, report);
+  await ensureRacks(db, pharmacist, store.id, items, now, report);
 
   const vendorId = await ensureVendor(db, materialsHead, now, report);
   await ensureGrn(db, materialsHead, vendorId, store.id, items, FRESH_CHALLAN, now, report);

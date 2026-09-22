@@ -26,6 +26,8 @@ export type WireAdminUser = {
   id: string;
   username: string;
   fullName: string;
+  /** FD-29 — the employee number. Minted server-side at creation, so never absent. */
+  staffCode: string;
   active: boolean;
   hasPin: boolean;
   mustChangePassword: boolean;

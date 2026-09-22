@@ -3,8 +3,8 @@ import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { resources, sodPairs } from "../src/kernel/db/schema";
-import { createStore } from "../src/modules/materials";
-import { OPD_PHARMACY_STORE_CODE, activatePharmacyDefinitions } from "../src/modules/pharmacy";
+import { createStore, requireStore, setStoreCustodianRoles, storeCustodianRoles } from "../src/modules/materials";
+import { OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE, activatePharmacyDefinitions } from "../src/modules/pharmacy";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../src/kernel/db/client";
 
@@ -22,7 +22,15 @@ import type { Db, Tx } from "../src/kernel/db/client";
  */
 const activator: Actor = { type: "user", id: "seed-pharmacy" };
 
-export type PharmacySeedResult = { storeId: string; created: string[]; found: string[]; definitions: { activated: string[]; alreadyActive: string[] } };
+export type PharmacySeedResult = {
+  storeId: string; created: string[]; found: string[];
+  /** 14c — the store's custodian roles were written on this run (a new store, or one seeded before them). */
+  custodiansSet: boolean;
+  definitions: { activated: string[]; alreadyActive: string[] };
+};
+
+/** 14c — the pharmacy's own staff keep `PHARM-OPD`, so a blind count of it never goes to them. */
+export const PHARMACY_CUSTODIAN_ROLES = ["pharmacy", "pharmacy_assistant"] as const;
 
 async function findStore(exec: Tx, code: string, siteId = "main"): Promise<string | undefined> {
   const rows = await exec.select({ id: resources.id }).from(resources)
@@ -31,19 +39,41 @@ async function findStore(exec: Tx, code: string, siteId = "main"): Promise<strin
   return rows[0]?.id;
 }
 
+/**
+ * PHARMACY P19 (R-174) — the walk-in retail counter's store, beside the OPD counter's. Created on
+ * every deploy; it sells nothing until its Form 20/21 licence is recorded.
+ */
+const PHARMACY_STORES = [
+  { code: OPD_PHARMACY_STORE_CODE, name: "OPD pharmacy counter" },
+  { code: RETAIL_PHARMACY_STORE_CODE, name: "Walk-in retail pharmacy" },
+] as const;
+
 export async function ensurePharmacyCounter(db: Db, actor: Actor): Promise<PharmacySeedResult> {
   const created: string[] = [];
   const found: string[] = [];
-  const storeId = await withTx(db, async (tx) => {
-    const existing = await findStore(tx, OPD_PHARMACY_STORE_CODE);
-    if (existing !== undefined) { found.push(OPD_PHARMACY_STORE_CODE); return existing; }
-    const { resourceId } = await createStore(tx, actor, { code: OPD_PHARMACY_STORE_CODE, name: "OPD pharmacy counter" });
-    created.push(OPD_PHARMACY_STORE_CODE);
-    return resourceId;
-  });
+  const storeIds: string[] = [];
+  let custodiansSet = false;
+  for (const store of PHARMACY_STORES) {
+    const id = await withTx(db, async (tx) => {
+      const existing = await findStore(tx, store.code);
+      if (existing !== undefined) { found.push(store.code); return existing; }
+      const { resourceId } = await createStore(tx, actor, { code: store.code, name: store.name });
+      created.push(store.code);
+      return resourceId;
+    });
+    storeIds.push(id);
+    const set = await withTx(db, async (tx) => {
+      const have = storeCustodianRoles(await requireStore(tx, id));
+      if (PHARMACY_CUSTODIAN_ROLES.every((r) => have.includes(r))) return false;
+      await setStoreCustodianRoles(tx, actor, id, [...have, ...PHARMACY_CUSTODIAN_ROLES]);
+      return true;
+    });
+    custodiansSet = custodiansSet || set;
+  }
+  const storeId = storeIds[0]!;
   if ((await db.select({ k: sodPairs.pairKey }).from(sodPairs).limit(1)).length === 0) await seedSodPairs(db);
   const definitions = await activatePharmacyDefinitions(db, actor);
-  return { storeId, created, found, definitions };
+  return { storeId, created, found, custodiansSet, definitions };
 }
 
 async function main(): Promise<void> {

@@ -4,18 +4,20 @@ import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
-import { completeConsultation, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
+import { completeConsultation, openUnpaidToken, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
 import {
   getPrescriptionPrint, issuePrescription, listPrescriptions, precheckPrescription, verifyPrescriptionQr,
 } from "./prescriptions";
+import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 import { SKIP_REASONS } from "./skip-reasons";
 import { boardSnapshot, callNext, listQueue, skipCalled, summaryByDoctor, undoSkip } from "./queue";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
 import type { IssuedPrescription, RxPrecheckResult, RxPrintData, RxVerifyResult } from "./prescriptions";
+import type { DraftRow } from "./prescription-drafts";
 import type { BoardItem, DoctorSummary, QueueView } from "./queue";
 import type { SessionRow } from "./sessions";
 import type { AppConfig } from "../../kernel/config";
@@ -33,6 +35,8 @@ const transferBody = z.object({
 });
 const queueQuery = z.object({ doctorId: z.string().min(1), serviceDate: z.string().max(10).optional() });
 const sessionStatusBody = z.object({ status: z.enum(["in", "out", "closed"]) });
+/** The doctor's sentence for seeing a patient before the bill — shown at every desk after this one. */
+const openUnpaidBody = z.object({ reason: z.string().max(500) });
 /**
  * THE SKIP NOW STATES ITS REASON (owner, 2026-09-13). `reason` is REQUIRED, so the shipped client
  * that posted an empty body gets a 400 rather than writing a reasonless skip — which is the right
@@ -44,6 +48,19 @@ const sessionStatusBody = z.object({ status: z.enum(["in", "out", "closed"]) });
 const skipBody = z.object({ reason: z.enum(SKIP_REASONS), note: z.string().max(500).nullish() });
 const consultNoteBody = z.object({
   chiefComplaint: z.string().max(2000).nullable().optional(),
+  /**
+   * THE DIAGNOSES, AS A LIST. Bounded for the same reason `advisedTests` is: an unbounded array on
+   * a request body is a body somebody can make arbitrarily large. Twelve is a consultation's worth
+   * of a primary diagnosis and its comorbidities.
+   *
+   * `diagnosis` and `icd10Code` below are still accepted — an older caller writing prose is a
+   * caller that still works — but when `diagnoses` is present the server DERIVES both from it and
+   * ignores what was sent, so the display string and the coded rows cannot be made to disagree.
+   */
+  diagnoses: z.array(z.object({
+    text: z.string().min(1).max(300),
+    icd10Code: z.string().max(20).nullable(),
+  })).max(12).nullable().optional(),
   diagnosis: z.string().max(2000).nullable().optional(),
   icd10Code: z.string().max(20).nullable().optional(),
   advice: z.string().max(4000).nullable().optional(),
@@ -103,6 +120,33 @@ const prescriptionBody = z.object({
 });
 /** The pre-check takes the lines alone: nothing is written, so nothing else is needed. */
 const precheckBody = z.object({ lines: z.array(rxLineBody) });
+/**
+ * FD-30 — the transcription. The SAME `rxLineBody` the prescription takes, because the draft is
+ * handed to `issuePrescription` unchanged and a draft that could hold a line the issue route would
+ * refuse is a slip the doctor cannot tap.
+ *
+ * NO OVERRIDE ARRAYS. A scribe cannot pre-clear an allergy conflict, a severe interaction or a
+ * duplicate salt: clearing one is a clinical judgement with a mandatory reason recorded against the
+ * prescriber. The warnings surface at the doctor's tap and the reasons are typed there.
+ */
+const draftBody = z.object({
+  lines: z.array(rxLineBody),
+  note: z.string().max(2000).nullish(),
+});
+/** The tap. Overrides ride HERE, with the doctor, for the reason `draftBody` states. */
+const issueDraftBody = z.object({
+  overrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), substance: z.string().max(200), reason: z.string().max(500),
+  })).optional(),
+  interactionOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    saltPair: z.tuple([z.string().min(1), z.string().min(1)]).optional(),
+  })).optional(),
+  duplicateOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    moiety: z.string().min(1).max(200).optional(),
+  })).optional(),
+});
 const verifyBody = z.object({ payload: z.string().min(1).max(500) });
 
 @Controller("opd")
@@ -214,6 +258,30 @@ export class OpdQueueController {
 
   // ——— the consultation ———
 
+  /**
+   * ═══ THE DOCTOR OPENS AN UNSETTLED TOKEN (OWNER RULING 2026-09-20) ═══
+   *
+   * *"It waits for bill to be paid until doctor opens the token from his dashboard manually.
+   * Currently the doctor have no screen to do it. But we need it to be built."*
+   *
+   * `opd.consult` and NO new permission: this is not a new authority but the one every doctor
+   * already holds over their own session, and `openUnpaidToken` refuses anybody who is not this
+   * encounter's treating doctor (`requireTreatingDoctor`, the same rule as the note, the park and
+   * the completion). A permission of its own would be a second name for a grant that exists, and
+   * `seed-roles.ts` pins the count. Deliberately not the cashier's and not the front desk's: a
+   * counter that can excuse its own collection is the separation this hospital draws everywhere.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/consult/open-unpaid")
+  async openUnpaid(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+    const b = parsed(openUnpaidBody, body);
+    try {
+      return { encounter: (await openUnpaidToken(this.db, actor, id, b.reason)).encounter };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/start")
   async start(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
@@ -282,6 +350,99 @@ export class OpdQueueController {
     const b = parsed(prescriptionBody, body);
     try {
       return await issuePrescription(this.db, actor, this.cfg, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— FD-30: the paper slip, transcribed then confirmed (owner ruling 2026-09-12) ———
+
+  /**
+   * The scribe composes. `opd.prescription.draft` authorises THIS and nothing else — see the
+   * manifest's entry, and `prescription-drafts.ts` for why a draft is inert by construction rather
+   * than by a status check somebody has to remember.
+   */
+  @RequirePermission("opd.prescription.draft", "hospital")
+  @Post("visits/:id/prescription-draft")
+  async draft(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<DraftRow> {
+    const b = parsed(draftBody, body);
+    try {
+      return await saveDraft(this.db, actor, id, { lines: b.lines, note: b.note ?? null });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * BOTH SEATS READ IT — the scribe re-opens what they typed, the doctor reads it before tapping —
+   * and `RequirePermission` takes exactly ONE string, so the pair is made in the ROLE MODEL rather
+   * than here: `doctor` holds `opd.prescription.draft` beside `opd.consult` (see `seed-roles.ts`).
+   * Guarding this on `opd.consult` instead would have been the same decision pointing the other
+   * way and would have shut out the seat that wrote the slip.
+   */
+  @RequirePermission("opd.prescription.draft", "hospital")
+  @Get("visits/:id/prescription-draft")
+  async readDraft(@Param("id") id: string): Promise<{ draft: DraftRow | null }> {
+    try {
+      return { draft: await getPendingDraft(this.db, id) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Taken off the list — by the doctor who will not issue it, or the scribe who mis-keyed it. */
+  @RequirePermission("opd.prescription.draft", "hospital")
+  @Post("visits/:id/prescription-draft/discard")
+  async discard(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ draft: DraftRow | null }> {
+    try {
+      return { draft: await discardDraft(this.db, actor, id) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * ═══ THE TAP ═══
+   *
+   * `opd.consult`, which a scribe does not hold — and even holding it would not be enough:
+   * `issueDraft` calls the shipped `issuePrescription` with THIS actor, and
+   * `requireTreatingDoctor` inside it refuses anyone without an `opd_doctors` profile for this
+   * encounter. The permission is the outer door; the guard is the lock, and the lock is the one
+   * every other prescription in the hospital passes through.
+   */
+  /**
+   * ═══ FD-31 — THE DESK SENDS IT, BECAUSE THERE IS NO ASSISTANT TO WAIT FOR ═══
+   *
+   * Owner, 2026-09-12: *"the staff outside the doctor room types the medicine prescribed by the
+   * doctor then the pharmacy department would be notified about the upcoming job. However, the
+   * pharmacist will cross confirm the prescription slip … before generating the medicine bill."*
+   *
+   * The prescriber of record is taken from the ENCOUNTER, never from this caller, so no clerk can
+   * name a doctor the patient did not see. `issuePrescription` re-asserts
+   * `opd.prescription.transcribe` itself — this decorator is the outer door and that assertion is
+   * the lock, for the reason `walk-in.ts` gives: one `@RequirePermission` silently replaces another.
+   */
+  @RequirePermission("opd.prescription.transcribe", "hospital")
+  @Post("visits/:id/prescription-draft/transcribe")
+  async transcribeDraft(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<IssuedPrescription & { draftId: string }> {
+    const b = parsed(issueDraftBody, body ?? {});
+    try {
+      return await issueDraft(this.db, actor, this.cfg, id, b, new Date(), "paper_slip");
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/prescription-draft/issue")
+  async issueDraftRoute(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<IssuedPrescription & { draftId: string }> {
+    const b = parsed(issueDraftBody, body ?? {});
+    try {
+      return await issueDraft(this.db, actor, this.cfg, id, b);
     } catch (e) {
       toHttp(e);
     }

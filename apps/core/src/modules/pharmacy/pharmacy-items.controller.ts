@@ -1,10 +1,13 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { idSchema, parsed, toHttp } from "./pharmacy-http";
 import { listSaleItems, registerSaleItem, saleItemCandidates, setSaleItemActive } from "./sale-items";
+import { setShelfLocation } from "./shelf-locations";
+import { applyGstSlabPlan, gstSlabPlan } from "./gst-slab";
+import type { GstSlabPlanRow } from "./gst-slab";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { SaleItemView } from "./sale-items";
@@ -26,6 +29,29 @@ export class PharmacyItemsController {
     return { items: await listSaleItems(this.db, { ...(search === undefined ? {} : { search }) }) };
   }
 
+  /** P16 — every drug item's slab against the notification, and whether its sale category follows it. */
+  @RequirePermission("pharmacy.sale_items.manage", "hospital")
+  @Get("gst-plan")
+  async gstPlan(): Promise<{ items: GstSlabPlanRow[] }> {
+    try {
+      return { items: await gstSlabPlan(this.db) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P16 — apply the plan: blanks filled, stale categories synced, and differing slabs replaced only when asked. */
+  @RequirePermission("pharmacy.sale_items.manage", "hospital")
+  @Post("gst-plan/apply")
+  async applyGstPlan(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ slabsSet: number; categoriesSynced: number }> {
+    const b = parsed(z.object({ overwrite: z.boolean().optional() }), body ?? {});
+    try {
+      return await applyGstSlabPlan(this.db, actor, await gstSlabPlan(this.db), { overwrite: b.overwrite === true });
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
   @RequirePermission("pharmacy.sale_items.manage", "hospital")
   @Get("candidates")
   async candidates(@Query("search") search?: string): Promise<{ items: { id: string; code: string; name: string; baseUom: string; gstRateBps: number | null }[] }> {
@@ -39,6 +65,22 @@ export class PharmacyItemsController {
     const { itemId } = parsed(registerBody, body);
     try {
       return await withTx(this.db, (tx) => registerSaleItem(tx, actor, itemId));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PD-D18 — where this item sits in a counter's store. The same permission that decides what the
+   * counter sells decides where it sits; the aide who picks reads the label, and does not set it.
+   * An empty `location` clears it.
+   */
+  @RequirePermission("pharmacy.sale_items.manage", "hospital")
+  @Put(":itemId/location")
+  async setLocation(@CurrentActor() actor: Actor, @Param("itemId") itemId: string, @Body() body: unknown): Promise<{ location: string | null }> {
+    const input = parsed(z.object({ storeResourceId: idSchema, location: z.string().max(200) }), body);
+    try {
+      return await setShelfLocation(this.db, actor, { storeResourceId: input.storeResourceId, itemId, location: input.location }, new Date());
     } catch (e) {
       return toHttp(e);
     }

@@ -20,6 +20,7 @@ import { dayMonthIst, monthYearIst } from "../../lib/format";
 import { SubmitButton } from "../../components/submit-button";
 import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components/desk-fields";
 import { EMPTY_COVERAGE, formNeedsGuardian, useDesk } from "./session";
+import { RebookingRail } from "./rebooking-rail";
 import type { CoverageDraft, Person } from "./session";
 
 /**
@@ -973,14 +974,22 @@ function StageAppointment(): React.ReactElement {
           whose origin is hidden gets trusted too much.
         */}
         <input
+          data-testid="complaint"
           className="in complaint"
           style={{ height: 46, marginTop: 10, fontSize: 15 }}
-          placeholder="seene mein dard · fever · knee pain · sugar-BP · बुखार…"
+          /*
+            The examples are ORDINARY OPD complaints on purpose. This read "seene mein dard · fever
+            · knee pain · sugar-BP · बुखार" until red flags landed — that is, it invited the clerk to
+            practise on a cardiac emergency, and every demo of this screen taught somebody that
+            chest pain is a thing you book an appointment for. It is now the first thing the brake
+            stops, so it has no business being the placeholder.
+          */
+          placeholder="bukhar · khansi · ghutne mein dard · aankh mein dard · sugar-BP…"
           value={s.complaint}
           onChange={(e) => { d.patch({ complaint: e.target.value }); d.runTriage(e.target.value); }}
         />
         <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {["seene mein dard", "bukhar", "ghutne mein dard", "sugar BP", "khansi"].map((x) => (
+          {["bukhar", "khansi", "ghutne mein dard", "aankh mein dard", "sugar BP"].map((x) => (
             <button key={x} className="pill" onClick={() => { d.patch({ complaint: x }); d.runTriage(x); }}>{x}</button>
           ))}
           {s.triageBusy ? <span className="tag">ranking…</span> : null}
@@ -991,13 +1000,54 @@ function StageAppointment(): React.ReactElement {
           )}
         </div>
 
-        {pick === null ? (
+        {/*
+          ═══════════════════════════════════════════════════════════════════════════════════════
+          THE BRAKE, AND IT COMES BEFORE EVERY OTHER OUTCOME ON THIS STAGE
+          ═══════════════════════════════════════════════════════════════════════════════════════
+
+          Owner, 2026-09-17: *"my front desk staff are non medico background and so they would rely
+          on the operating system to suggest them doctor/department."* A doctor overrides a bad
+          suggestion; a clerk with no clinical training follows it, because following it is the
+          point of the tool.
+
+          So when the server flags an emergency there is NO proposal, NO doctor, and NO assign
+          button — `suggestions` comes back empty by construction and this branch renders instead of
+          all of them. It is deliberately not a red-tinted version of the normal card with the
+          button still on it: a button that is present is a button that gets pressed.
+        */}
+        {s.triage?.redFlag != null ? (
+          <AgentLine>
+            <b>{t(s.triage.redFlag.reasonKey)}</b>{" "}
+            {t("opdTriage.redFlag.action")}
+          </AgentLine>
+        ) : pick === null ? (
           <AgentLine>
             No department has a doctor on today's board. Nothing can be seated until the supervisor opens a session.
           </AgentLine>
         ) : pickDoctor === null ? (
           <AgentLine>
-            {suggested ? <><b>{pick.departmentName}</b> fits the complaint, but nobody there is on today's board.</> : "Nobody in the shortest department is on today's board — try another."}
+            {/*
+              ═══ THREE OUTCOMES, BECAUSE THE OLD TWO BLAMED THE ROSTER FOR A ROUTING FAILURE ═══
+
+              Owner, 2026-09-17, on the live screen: he typed "aankh me dard" and was told *"Nobody
+              in the shortest department is on today's board"*. The roster was fine — Ophthalmology
+              had doctors. The complaint had simply matched nothing, the seat fell back to the
+              shortest department, and then reported on THAT. A clerk reading it goes looking for a
+              roster fault that does not exist.
+
+              The fix in the table (`triage.ts`, all twelve departments) makes the empty ranking
+              rarer; it does not make it impossible, and a sentence that lies whenever routing fails
+              is a defect on its own. So the three cases are now separate: a department WAS
+              suggested; a complaint was typed and matched NOTHING; or no complaint was typed at all
+              and the shortest line is simply empty.
+            */}
+            {suggested ? (
+              <><b>{pick.departmentName}</b> fits the complaint, but nobody there is on today's board.</>
+            ) : s.complaint.trim() !== "" ? (
+              <>I could not match <b>{s.complaint.trim()}</b> to a department — pick one above. (<b>{pick.departmentName}</b> has the shortest line and nobody on today's board either.)</>
+            ) : (
+              "Nobody in the shortest department is on today's board — try another."
+            )}
           </AgentLine>
         ) : (
           <>
@@ -1400,6 +1450,30 @@ function FutureTab(): React.ReactElement {
         <span style={{ fontSize: 11, color: "var(--faint)" }}>asked mid-walk-in — hold the slot, then fall straight back to today</span>
       </div>
 
+      {/*
+        FD-26 — THE BOOKING CHAIR'S OWN RAIL, and the only thing FD-25's `/appointment` had that this
+        stage did not. It is here rather than on `/counter` for the reason its own file gives, and it
+        drives the controls already on this tab: a click sets the doctor and the day and marks the
+        booking as the one being moved, so the grid below is the confirmation. See `rebooking-rail.tsx`.
+      */}
+      {d.seat !== "appointment" ? null : (
+        <RebookingRail
+          onMove={(row) => {
+            setDepartmentId("");
+            setDoctorId(row.doctorId);
+            setDate(row.serviceDate);
+            /*
+              THE HELD SLOT DIES WITH THE DAY IT BELONGED TO. Every other road that moves this board
+              clears it, and this row moves the doctor AND the day in one click — a pick carried
+              across belongs to a board nobody is looking at any more.
+            */
+            setPicked(null);
+            setMoving({ id: row.id, who: row.who, was: slotClock(row.slotStart) });
+            d.note(`moving ${row.who}'s booking — pick a new time`, "warn");
+          }}
+        />
+      )}
+
       <div style={{ marginTop: 16, display: "flex", gap: 11, alignItems: "flex-end" }}>
         <div style={{ width: 200 }}>
           <div className="tag" style={{ marginBottom: 5 }}>department</div>
@@ -1581,10 +1655,18 @@ function FutureTab(): React.ReactElement {
         <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
           <span className="tag">the day's slots</span>
           <div style={{ display: "flex", gap: 11, marginLeft: "auto" }}>
-            {([["free", "var(--card)", "var(--line)"], ["taken", "var(--wash)", "var(--line)"], ["yours", "var(--green)", "var(--green)"]] as const).map(
-              ([label, bg, border]) => (
+            {/*
+              FD-26 — TAKEN IS DASHED, and that is an accessibility fix carried over from
+              `components/slot-board.tsx` rather than a preference. Free and taken differed only in
+              FILL, by one wash step: invisible on a dim counter monitor and invisible to a clerk
+              with any red-green deficiency. Dashed is a difference in SHAPE, which survives both —
+              and "a greyed slot that might be either is how a desk double-books" is this file's own
+              sentence about why the three states must look like three states.
+            */}
+            {([["free", "var(--card)", "var(--line)", "solid"], ["taken", "var(--wash)", "var(--line)", "dashed"], ["yours", "var(--green)", "var(--green)", "solid"]] as const).map(
+              ([label, bg, border, style]) => (
                 <span key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--dim)" }}>
-                  <span style={{ width: 11, height: 11, borderRadius: 3, background: bg, border: `1px solid ${border}` }} />
+                  <span style={{ width: 11, height: 11, borderRadius: 3, background: bg, border: `1px ${style} ${border}` }} />
                   {label}
                 </span>
               ),
@@ -1615,7 +1697,8 @@ function FutureTab(): React.ReactElement {
                 className="mo"
                 style={{
                   height: 30, fontSize: 11.5, padding: "0 10px", borderRadius: 6,
-                  border: `1px solid ${isPicked ? "var(--green)" : "var(--line)"}`,
+                  /* Dashed for a slot nobody can take — see the legend's note above. */
+                  border: `1px ${unavailable && !isPicked ? "dashed" : "solid"} ${isPicked ? "var(--green)" : "var(--line)"}`,
                   background: isPicked ? "var(--green)" : unavailable ? "var(--wash)" : "var(--card)",
                   color: isPicked ? "#fff" : unavailable ? "var(--faint)" : "var(--ink)",
                   fontWeight: isPicked ? 700 : 400,
@@ -2530,6 +2613,25 @@ function StageDone(): React.ReactElement {
 
       <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 13, borderTop: "1px solid var(--line)" }}>
         <button className="pri" onClick={d.clearDesk}>next patient <span className="kb dk">Esc</span></button>
+        {/*
+          ═══ FD-27 — A DOOR TO THE PAPER, ON THE STAGE WHERE THE PAPER IS HANDED OVER ═══
+
+          Owner, 2026-09-06: *"A user with appointment priviledge don't have a way to print the
+          token."* They were right, and `PrintStatus` above is why: it reports, and it offers an
+          action ONLY when a job has FAILED. Everything else — a slip that jammed after printing, a
+          patient who wants a second copy, a clerk who is not sure it came out — had no control.
+          This is not a second print mechanism; it opens the same papers sheet the history rows do,
+          for the visit in hand.
+        */}
+        {v === null ? null : (
+          <button
+            className="sec"
+            data-testid="done-papers"
+            onClick={() => d.patch({ overlay: "papers", papersFor: null })}
+          >
+            print the paper again
+          </button>
+        )}
         <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--faint)", alignSelf: "center" }}>
           Esc scrubs the desk — nothing bleeds into the next person
         </span>

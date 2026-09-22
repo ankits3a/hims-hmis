@@ -37,6 +37,7 @@
     "import:nrces": "tsx scripts/import-nrces-formulary.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",
+    "seed:roster": "tsx scripts/seed-roster.ts",
     "backfill:facts": "tsx scripts/backfill-facts.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
     "seed:pharmacy-demo": "tsx scripts/seed-pharmacy-demo.ts",
@@ -56,6 +57,7 @@
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
+    "web-push": "3.6.7",
     "ws": "^8.18.0",
     "zod": "^4.0.0"
   },
@@ -66,6 +68,7 @@
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "@types/supertest": "^6.0.0",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.13",
     "drizzle-kit": "^0.30.0",
     "fast-check": "^3.23.0",

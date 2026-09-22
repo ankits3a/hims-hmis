@@ -35,16 +35,72 @@ export type FormularyErrorCode =
   /** DD8 — the medicine's OWN salts interact, and admission needs an explicit acknowledgement. */
   | "intra_fdc_interaction"
   /** T7 — a staging row already approved or rejected cannot be admitted a second time. */
-  | "staging_not_pending";
+  | "staging_not_pending"
+  /**
+   * ADDED AFTER 16a, UNDER THE UNION'S OWN RULE. The closure above says a later task needing a
+   * code this union does not carry "has found a PLAN DEFECT and reports it, it does not widen the
+   * union and it does not borrow a neighbouring code" — so this widens it, and says why.
+   *
+   * `reads.ts`'s id-keyed readers REFUSE a list longer than `MAX_IDS` rather than truncating it: a
+   * short map silently drops a dispense line's medicine and blanks a brand on a printed label.
+   * That refusal needed a name and none of the six above means "you asked for too many at once".
+   * Borrowing `unknown_medicine` would tell a caller the catalogue lacks a row it has — exactly
+   * the misleading refusal that `unknown_interaction`'s note above exists to prevent.
+   */
+  | "too_many_ids"
+  /*
+   * ═══ THE MAPPING LOOP'S REFUSALS (phase 2, 2026-09-16) — WIDENED UNDER THE SAME RULE ═══
+   *
+   * `mapping.ts` is new surface: a pharmacist attesting which curated moiety a release substance
+   * is. None of the codes above says any of the six things it must be able to refuse, and each
+   * neighbour would mislead. `unknown_salt` for a missing SUBSTANCE sends a curator hunting through
+   * the wrong table, and `staging_not_pending` for an already-mapped substance names a different
+   * queue altogether.
+   */
+  /** The release substance does not exist. */
+  | "unknown_substance"
+  /** A draft id that is not a draft FOR THIS substance. Agreement with a draft must never be claimed by accident. */
+  | "unknown_proposal"
+  /**
+   * Only a person attests. A drafter proposes, a human decides: `kernel/orders/place.ts`'s
+   * `agent_cannot_order`, applied to the formulary. Checked before anything is read.
+   */
+  | "attester_not_user"
+  /**
+   * The target is a RELEASE IMAGE, the importer's verbatim copy of a substance. Mapping a substance
+   * onto a copy of itself records that a decision was made while deciding nothing.
+   */
+  | "release_image_target"
+  /** A plain attestation found the substance already decided. Changing it is a CORRECTION, which needs a reason. */
+  | "substance_already_decided"
+  /** A correction was asked for on a substance nobody has decided yet. */
+  | "substance_not_decided"
+  /**
+   * Formulary phase 3: a bulk adoption that was malformed before any state was read: no resolution
+   * named, the same substance twice, or a decision of an unknown kind.
+   */
+  | "invalid_adoption"
+  /** FORMULARY P22 — an allergy class the prescribing check does not know (`allergy-classes.ts`). */
+  | "invalid_allergy_class";
 
-const NOT_FOUND_CODES = new Set<FormularyErrorCode>(["unknown_salt", "unknown_medicine", "unknown_interaction"]);
+const NOT_FOUND_CODES = new Set<FormularyErrorCode>([
+  "unknown_salt", "unknown_medicine", "unknown_interaction", "unknown_substance", "unknown_proposal",
+]);
+/** A request this module could not have served whatever the database held. */
+const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids", "invalid_adoption", "invalid_allergy_class"]);
+/** The caller is the wrong KIND of actor for the act, whatever it holds. */
+const FORBIDDEN_CODES = new Set<FormularyErrorCode>(["attester_not_user"]);
 
 /**
- * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
- * NOTHING here answers 5xx, which is the property the counter-side lesson above is about.
+ * 404 for a thing that is not there, 409 for a state conflict the caller can act on,
+ * 400 for a request that was malformed before the state was consulted, 403 for an actor who may
+ * never perform the act. NOTHING here answers 5xx, which is the property the counter-side lesson
+ * above is about.
  */
 export function formularyHttpStatus(code: FormularyErrorCode): number {
   if (NOT_FOUND_CODES.has(code)) return 404;
+  if (BAD_REQUEST_CODES.has(code)) return 400;
+  if (FORBIDDEN_CODES.has(code)) return 403;
   return 409;
 }
 

@@ -64,6 +64,133 @@ describe("OpdAdmin", () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * ═══ THE COMPLAINT VOCABULARY'S CURATION LOOP ═══
+   *
+   * Owner, 2026-09-14, asked whether phrasings of one meaning are mapped and whether the system
+   * learns the doctor's words. Both do; this tab is where the second feeds the first — the phrases
+   * doctors actually wrote that the co-pilot does not recognise, most used first.
+   *
+   * The proposer fills the form in. It never submits it: a mapping changes what the co-pilot
+   * considers for every doctor afterwards, and `chest_tightness` reaching asthma while `chest_pain`
+   * reaches nothing is a clinical distinction a person signs for.
+   */
+  const VOCAB = {
+    "GET /api/opd/vocabulary/unmapped": { items: [
+      { term: "chaati me dard", uses: 12, lastUsedAt: NOW_ISO },
+      { term: "ghabrahat", uses: 3, lastUsedAt: NOW_ISO },
+    ] },
+    "GET /api/opd/vocabulary/concepts": { items: [
+      { key: "chest_pain", label: "Chest pain" },
+      { key: "cough", label: "Cough" },
+    ] },
+    "GET /api/opd/vocabulary/propose": { items: [
+      { conceptKey: "chest_pain", label: "Chest pain", score: 0.78, because: "shares a word" },
+    ] },
+    "POST /api/opd/vocabulary/map": { termId: "ct-new" },
+    "POST /api/opd/vocabulary/concepts": { key: "giddiness" },
+  };
+
+  async function openVocab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(await screen.findByRole("tab", { name: "Complaint words" }));
+  }
+
+  it("the vocabulary tab lists what the hospital typed and nobody has mapped, most used first", async () => {
+    stubFetch({ ...MASTERS, ...VOCAB });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await openVocab(user);
+
+    /*
+      Ordered by the server; the screen does not re-sort, so one order exists everywhere. The
+      assertion is on the MAP BUTTONS rather than the rows, because `DeskTR` renders only its
+      children and would drop a `data-testid` on the row without saying so.
+    */
+    await screen.findByTestId("vocab-map-chaati me dard");
+    const buttons = screen.getAllByTestId(/^vocab-map-/);
+    expect(buttons.map((b) => b.getAttribute("data-testid"))).toEqual([
+      "vocab-map-chaati me dard", "vocab-map-ghabrahat",
+    ]);
+    /* The count is what makes this a worklist rather than a list: 12 uses, so it is worth mapping. */
+    expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
+  it("a proposal FILLS the form and the curator is the one who submits it", async () => {
+    stubFetch({ ...MASTERS, ...VOCAB });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await openVocab(user);
+
+    await user.click(await screen.findByTestId("vocab-map-chaati me dard"));
+    await user.click(await screen.findByTestId("vocab-proposal-chest_pain"));
+
+    /* Tapping the proposal has posted NOTHING — it only chose the meaning in the form. */
+    expect(callsTo("POST", "/api/opd/vocabulary/map")).toHaveLength(0);
+    expect(screen.getByLabelText("Existing meaning")).toHaveValue("chest_pain");
+
+    await user.click(screen.getByTestId("vocab-confirm"));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/vocabulary/map")).toHaveLength(1); });
+    expect(bodyOf("POST", "/api/opd/vocabulary/map")).toEqual({
+      term: "chaati me dard", conceptKey: "chest_pain", script: "hinglish",
+    });
+  });
+
+  it("the script defaults to Devanagari for a Devanagari phrase, and Hinglish otherwise", async () => {
+    /* The one of the three that IS detectable. The other two look alike to a machine, so the
+       default is what a curator on this screen types most and they change it when it is wrong. */
+    stubFetch({
+      ...MASTERS, ...VOCAB,
+      "GET /api/opd/vocabulary/unmapped": { items: [{ term: "सीने में जकड़न", uses: 4, lastUsedAt: NOW_ISO }] },
+    });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await openVocab(user);
+
+    await user.click(await screen.findByTestId("vocab-map-सीने में जकड़न"));
+    expect(screen.getByLabelText("Script")).toHaveValue("hi");
+  });
+
+  it("a phrase that fits no existing meaning gets a NEW one, created before it is mapped", async () => {
+    stubFetch({ ...MASTERS, ...VOCAB });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await openVocab(user);
+
+    await user.click(await screen.findByTestId("vocab-map-ghabrahat"));
+    await user.type(screen.getByLabelText("New meaning"), "Giddiness");
+    await user.click(screen.getByTestId("vocab-confirm"));
+
+    /* The concept first, then the mapping onto the key the server derived — the curator never
+       types an identifier, so two people cannot invent two keys for one meaning. */
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/vocabulary/concepts")).toHaveLength(1); });
+    expect(bodyOf("POST", "/api/opd/vocabulary/concepts")).toEqual({ label: "Giddiness" });
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/vocabulary/map")).toHaveLength(1); });
+    expect(bodyOf("POST", "/api/opd/vocabulary/map")).toMatchObject({ term: "ghabrahat", conceptKey: "giddiness" });
+  });
+
+  it("choosing neither a meaning nor a new label maps nothing, and says why", async () => {
+    stubFetch({ ...MASTERS, ...VOCAB });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await openVocab(user);
+
+    await user.click(await screen.findByTestId("vocab-map-ghabrahat"));
+    await user.click(screen.getByTestId("vocab-confirm"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Choose a meaning/);
+    expect(callsTo("POST", "/api/opd/vocabulary/map")).toHaveLength(0);
+  });
+
+  it("an empty worklist says the vocabulary is complete rather than rendering a bare table", async () => {
+    stubFetch({ ...MASTERS, ...VOCAB, "GET /api/opd/vocabulary/unmapped": { items: [] } });
+    renderWithProviders(<OpdAdmin />);
+    const user = userEvent.setup();
+    await openVocab(user);
+
+    expect(await screen.findByTestId("vocab-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId(/^vocab-map-/)).toBeNull();
+  });
+
   it("lists the departments from GET /opd/departments and posts { code, name } for a new one", async () => {
     stubFetch({ ...MASTERS, "POST /api/opd/departments": { departmentId: "dep-3" } });
     renderWithProviders(<OpdAdmin />);
