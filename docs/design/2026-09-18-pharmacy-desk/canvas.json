@@ -1,0 +1,102 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Desk.dc.html": {
+      "h": 1024,
+      "is_interactive": true,
+      "title": "Pharmacy Desk \u2014 one ticket, one screen",
+      "w": 1512,
+      "x": 0,
+      "y": 0
+    },
+    "Counter.dc.html": {
+      "h": 1024,
+      "is_interactive": true,
+      "title": "Dispense desk \u2014 the whole flow",
+      "w": 1440,
+      "x": 1520,
+      "y": 1344
+    },
+    "Day.dc.html": {
+      "h": 920,
+      "title": "The counter day",
+      "w": 1440,
+      "x": 4560,
+      "y": 1344
+    },
+    "Main.dc.html": {
+      "h": 1024,
+      "is_interactive": true,
+      "title": "Counter \u2014 the first screen",
+      "w": 1440,
+      "x": 0,
+      "y": 1344
+    },
+    "Refusals.dc.html": {
+      "h": 920,
+      "title": "How the counter says no",
+      "w": 1440,
+      "x": 6080,
+      "y": 1344
+    },
+    "Shelf.dc.html": {
+      "h": 880,
+      "title": "The shelf",
+      "w": 1440,
+      "x": 3040,
+      "y": 1344
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-18T17:30:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "focused",
+    "file": "Desk.dc.html"
+  },
+  "notes": {
+    "n1": {
+      "color": "green",
+      "text": "This board is live \u2014 press Play, or use the Tweaks panel to jump between the five stages.\n\nIdle: scan, or search, or take a ticket from the line on the right.\nFound: the left column lists his visits \u2014 the one marked \"seen\" opens the ticket.\nWorking: tick each drug off the shelf. The \u22ef on a line opens substitute; the \u22ef on the Alprazolam line opens the authorisation request.\nPayment: the right column has become the bill.\n\nQ opens the whole line as a popup. S shows the scribe's photograph.",
+      "w": 400,
+      "x": 1592,
+      "y": 0
+    },
+    "n2": {
+      "color": "gray",
+      "text": "Every figure on these boards comes from an endpoint that already ships: GET /pharmacy/summary, /pharmacy/queue and /pharmacy/reorder.\n\nToday /pharmacy/summary answers seventeen figures and the counter shows them as one line of text under the title.",
+      "w": 400,
+      "x": 7600,
+      "y": 1344
+    },
+    "t1": {
+      "kind": "title1",
+      "maxW": 1512,
+      "text": "The pharmacy desk",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "t2": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "Set aside \u2014 the first exploration",
+      "w": 240,
+      "x": 0,
+      "y": 1044
+    }
+  },
+  "order": [
+    "Desk.dc.html",
+    "Main.dc.html",
+    "Counter.dc.html",
+    "Shelf.dc.html",
+    "Day.dc.html",
+    "Refusals.dc.html"
+  ],
+  "pages": [],
+  "title": "Pharmacy Counter"
+}

@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The dispense desk — one patient, six steps</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4f7f4; }
+  a { color: #0e6b4e; text-decoration: none; }
+  a:hover { color: #0a5039; }
+  .pp { --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+        --dim:#5c6f66; --wash:#eef3ef; --green:#0e6b4e; --green-soft:rgba(14,107,78,.08);
+        --green-line:rgba(14,107,78,.35); --gold:#dd8f1c; --gold-ink:#9a6208;
+        --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45); --red:#b23a30;
+        --red-soft:rgba(178,58,48,.08); --red-line:rgba(178,58,48,.4); --agent:#132420;
+        --agent-fg:#d9efe4; --agent-dim:#9dbdae; --mint:#35c48f; }
+  .pp * { box-sizing: border-box; }
+  .pp button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+  .pp input, .pp select { font: inherit; color: inherit; }
+  .pp .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .pp .tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+             letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .pp .kb { display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px;
+            padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); background: var(--card);
+            font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: var(--dim); }
+  .pp .pill { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px;
+              font-size: 10.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card);
+              color: var(--dim); white-space: nowrap; }
+  .pp .pill.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+  .pp .pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }
+  .pp .pill.rd { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+  .pp .stamp { display: inline-flex; padding: 2px 10px; border-radius: 4px; font-family: "IBM Plex Mono", monospace;
+               font-size: 10.5px; font-weight: 700; letter-spacing: .14em; }
+  .pp .stamp.un { border: 2px solid var(--gold); color: var(--gold-ink); }
+  .pp .stamp.pd { border: 2px solid var(--green); color: var(--green); }
+  .pp .in { height: 38px; border-radius: 6px; border: 1px solid var(--line); background: var(--card);
+            padding: 0 12px; font-size: 13.5px; }
+  .pp .in:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+</style>
+</helmet>
+<div class="pp" style="width: 1440px; height: 1024px; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 13.5px/19px 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; overflow: hidden;">
+
+  <header style="display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 18px; background: var(--card); border-bottom: 1px solid var(--line); flex-shrink: 0;">
+    <a href="Main.dc.html" class="pill" style="height: 26px; text-decoration: none;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+      Counter
+    </a>
+    <div style="display: flex; align-items: baseline; gap: 9px;">
+      <span style="font-size: 14px; font-weight: 600;">Dispense desk</span>
+      <span class="tag">PHARM-OPD · window 2</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line);">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5c6f66" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 100 14 7 7 0 000-14zM20 20l-4-4"/></svg>
+      <label for="find" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Find a prescription</label>
+      <input id="find" type="text" placeholder="Scan the slip, or type a UHID, a visit number or a name" style="width: 330px; border: none; outline: none; background: none; font-size: 12.5px;">
+      <span class="kb">/</span>
+    </div>
+    <span class="pill gd" style="height: 26px;">9 waiting</span>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--green-soft); border: 1px solid var(--green-line); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700;">KJ</div>
+      <div style="line-height: 14px;">
+        <div style="font-size: 12px; font-weight: 600;">Kavita Joshi</div>
+        <div class="tag" style="font-size: 9px;">Pharmacist · Reg 41892</div>
+      </div>
+    </div>
+  </header>
+
+  <div style="display: flex; flex-grow: 1; min-height: 0;">
+
+    <aside aria-label="The queue" style="width: 280px; flex-shrink: 0; border-right: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 13px 14px 11px 14px; border-bottom: 1px solid var(--line2);">
+        <span class="tag" style="flex-grow: 1;">The queue · 9 waiting</span>
+        <button class="pill" style="height: 22px; font-size: 10px;">Oldest first</button>
+      </div>
+      <div style="flex-grow: 1; overflow-y: auto;">
+        <sc-for list="{{queue}}" as="q" hint-placeholder-count="8">
+          <button style="{{q.style}}">
+            <span class="mo" style="width: 50px; flex-shrink: 0; font-size: 11.5px; color: var(--dim);">{{q.no}}</span>
+            <span style="flex-grow: 1; min-width: 0;">
+              <span style="display: block; font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{q.name}}</span>
+              <span style="display: block; font-size: 11px; color: var(--dim);">{{q.lines}}</span>
+            </span>
+            <sc-if value="{{q.flag}}" hint-placeholder-val="{{true}}">
+              <span class="{{q.flagClass}}">{{q.flag}}</span>
+            </sc-if>
+            <span class="mo" style="font-size: 11.5px; color: {{q.tone}}; width: 32px; text-align: right; flex-shrink: 0;">{{q.wait}}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="padding: 11px 14px; border-top: 1px solid var(--line2); display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 11.5px; color: var(--dim); flex-grow: 1;">The queue never leaves the screen.</span>
+        <span class="kb">⇧⏎</span>
+        <span style="font-size: 11px; color: var(--dim);">next</span>
+      </div>
+    </aside>
+
+    <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
+
+      <div style="padding: 15px 20px 0 20px;">
+        <div style="display: flex; align-items: flex-start; gap: 14px;">
+          <div style="flex-grow: 1; min-width: 0;">
+            <div style="display: flex; align-items: baseline; gap: 11px;">
+              <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.012em;">Ramkishan Yadav</h1>
+              <span class="mo" style="font-size: 12.5px; color: var(--dim);">CRK-0024518 · 58 M</span>
+              <span class="pill rd">Allergy: sulfonamides</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap;">
+              <span class="pill mo">{{dispenseNo}}</span>
+              <span class="{{statusClass}}">{{statusLabel}}</span>
+              <span class="pill rd">Schedule H1 on line 3</span>
+              <span style="font-size: 12px; color: var(--dim);">Rx v2 · Dr A. Salunke · General Medicine · 11:04</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0;">
+            <span class="{{stampClass}}">{{stampText}}</span>
+            <span class="mo" style="font-size: 12px; color: var(--dim);">{{money}}</span>
+          </div>
+        </div>
+      </div>
+
+      <nav aria-label="Where this dispense is" style="display: flex; align-items: center; gap: 0; padding: 14px 20px 13px 20px;">
+        <sc-for list="{{steps}}" as="s" hint-placeholder-count="6">
+          <button onClick="{{s.go}}" aria-current="{{s.cur}}" style="{{s.style}}">
+            <span style="{{s.dotStyle}}">{{s.n}}</span>
+            <span>{{s.label}}</span>
+          </button>
+        </sc-for>
+      </nav>
+
+      <div style="flex-grow: 1; min-height: 0; overflow-y: auto; padding: 0 20px 18px 20px; display: flex; flex-direction: column; gap: 11px;">
+
+        <sc-if value="{{showBanner}}" hint-placeholder-val="{{true}}">
+          <div style="{{bannerStyle}}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;" aria-hidden="true"><path d="M12 3l9 16H3zM12 9v5M12 17h.01"/></svg>
+            <div style="flex-grow: 1;">
+              <div style="font-size: 12.5px; font-weight: 600;">{{bannerTitle}}</div>
+              <div style="font-size: 12px; line-height: 17px; margin-top: 2px;">{{bannerBody}}</div>
+            </div>
+            <button class="pill" style="height: 26px; flex-shrink: 0;">{{bannerAct}}</button>
+          </div>
+        </sc-if>
+
+        <sc-for list="{{lines}}" as="l" hint-placeholder-count="3">
+          <section style="{{l.cardStyle}}">
+            <div style="display: flex; align-items: flex-start; gap: 12px; padding: 13px 15px;">
+              <span class="mo" style="width: 18px; flex-shrink: 0; font-size: 12px; color: var(--dim); padding-top: 2px;">{{l.n}}</span>
+              <div style="flex-grow: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="font-size: 14.5px; font-weight: 600;">{{l.title}}</span>
+                  <span class="{{l.schedClass}}">{{l.sched}}</span>
+                  <sc-if value="{{l.substituted}}" hint-placeholder-val="{{true}}">
+                    <span class="pill on">substituted</span>
+                  </sc-if>
+                  <sc-if value="{{l.unchecked}}" hint-placeholder-val="{{true}}">
+                    <span class="pill gd">books could not read this line</span>
+                  </sc-if>
+                </div>
+                <div style="font-size: 12.5px; color: var(--dim); margin-top: 4px;">{{l.rx}}</div>
+                <sc-if value="{{l.note}}" hint-placeholder-val="{{true}}">
+                  <div style="{{l.noteStyle}}">{{l.note}}</div>
+                </sc-if>
+                <sc-if value="{{l.batch}}" hint-placeholder-val="{{true}}">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-top: 9px; flex-wrap: wrap;">
+                    <span class="pill mo">{{l.batch}}</span>
+                    <span class="pill mo">{{l.expiry}}</span>
+                    <span class="{{l.scanClass}}">{{l.scanText}}</span>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex-shrink: 0; width: 176px;">
+                <sc-if value="{{l.showQty}}" hint-placeholder-val="{{true}}">
+                  <div style="display: flex; align-items: center; gap: 7px;">
+                    <label for="{{l.qtyId}}" class="tag">Qty</label>
+                    <input id="{{l.qtyId}}" class="in mo" type="text" value="{{l.qty}}" style="width: 66px; height: 34px; text-align: right;">
+                    <span style="font-size: 12px; color: var(--dim);">{{l.uom}}</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{l.priced}}" hint-placeholder-val="{{true}}">
+                  <div style="text-align: right;">
+                    <div class="mo" style="font-size: 15px; font-weight: 600;">{{l.amount}}</div>
+                    <div class="tag" style="font-size: 9px;">{{l.priceNote}}</div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{l.showActs}}" hint-placeholder-val="{{true}}">
+                  <div style="display: flex; gap: 6px;">
+                    <button class="pill">Substitute</button>
+                    <button class="pill rd">Decline</button>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </section>
+        </sc-for>
+
+      </div>
+
+      <div style="{{actionStyle}}">
+        <div style="flex-grow: 1; min-width: 0;">
+          <div class="tag">{{actTag}}</div>
+          <div style="font-size: 13px; margin-top: 3px; line-height: 18px;">{{actSays}}</div>
+        </div>
+
+        <sc-if value="{{showScan}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 13px; border-radius: 6px; border: 1px solid var(--green-line); background: var(--green-soft); flex-shrink: 0;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0e6b4e" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2M8 8v8M12 8v8M16 8v8"/></svg>
+            <label for="scan" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Scan the pack</label>
+            <input id="scan" class="mo" type="text" placeholder="Scan the pack" style="width: 250px; height: 38px; border: none; outline: none; background: none; font-size: 12.5px;">
+          </div>
+        </sc-if>
+
+        <sc-if value="{{showTender}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <sc-for list="{{tenders}}" as="t" hint-placeholder-count="3">
+              <button onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+            </sc-for>
+            <label for="amt" class="tag">Taken</label>
+            <input id="amt" class="in mo" type="text" value="151.00" style="width: 92px; text-align: right;">
+          </div>
+        </sc-if>
+
+        <sc-if value="{{showIdentity}}" hint-placeholder-val="{{false}}">
+          <div style="display: flex; align-items: center; gap: 9px; flex-shrink: 0;">
+            <div>
+              <label for="idv" class="tag">Ask him, do not read it off the screen</label>
+              <div style="display: flex; align-items: center; gap: 7px; margin-top: 4px;">
+                <select id="idv" class="in" style="width: 136px;">
+                  <option>Last 4 of phone</option>
+                  <option>Token number</option>
+                </select>
+                <input id="idval" class="in mo" type="text" placeholder="____" style="width: 84px; letter-spacing: .2em;">
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <button onClick="{{advance}}" style="{{primaryStyle}}">
+          {{primaryLabel}}
+          <span class="kb" style="border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.12); color: #d6ece1;">⏎</span>
+        </button>
+      </div>
+
+    </main>
+
+    <aside aria-label="Checks and context" style="width: 340px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; overflow-y: auto;">
+
+      <div style="padding: 14px 15px 12px 15px; border-bottom: 1px solid var(--line2);">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="tag" style="flex-grow: 1;">What the four books found</span>
+          <span class="pill gd">2 of 3 lines read</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; margin-top: 11px;">
+          <sc-for list="{{checks}}" as="c" hint-placeholder-count="4">
+            <div style="display: flex; align-items: flex-start; gap: 9px;">
+              <span style="{{c.dot}}"></span>
+              <div style="flex-grow: 1;">
+                <div style="font-size: 12.5px; font-weight: 500;">{{c.name}}</div>
+                <div style="font-size: 11.5px; color: var(--dim); line-height: 16px;">{{c.said}}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top: 12px; padding: 9px 11px; border-radius: 6px; background: var(--agent); color: var(--agent-fg); font-size: 11.5px; line-height: 16px;">
+          Clavulanic acid has no attested moiety in this hospital&#39;s formulary, so line 1 was not read by any of the four books. <b style="color: #fff;">That is a gap in our data, not a clean result.</b>
+        </div>
+      </div>
+
+      <div style="padding: 13px 15px; border-bottom: 1px solid var(--line2);">
+        <div class="tag">What he is already taking</div>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 9px;">
+          <sc-for list="{{current}}" as="m" hint-placeholder-count="3">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <span style="flex-grow: 1; font-size: 12.5px;">{{m.drug}}</span>
+              <span class="mo" style="font-size: 11px; color: var(--dim);">{{m.since}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="padding: 13px 15px; border-bottom: 1px solid var(--line2);">
+        <div class="tag">The bill</div>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 9px;">
+          <sc-for list="{{billRows}}" as="b" hint-placeholder-count="4">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <span style="flex-grow: 1; font-size: 12.5px; color: {{b.tone}};">{{b.what}}</span>
+              <span class="mo" style="font-size: 12.5px; color: {{b.tone}};">{{b.amount}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line2);">
+          <span style="flex-grow: 1; font-size: 13px; font-weight: 600;">Payable</span>
+          <span class="mo" style="font-size: 17px; font-weight: 600;">{{money}}</span>
+        </div>
+        <p style="margin: 8px 0 0 0; font-size: 11px; color: var(--dim); line-height: 16px;">Printed MRP is tax inclusive, so GST at 5% (₹7.19) sits inside the ₹151.00 — it is never added on top.</p>
+      </div>
+
+      <div style="padding: 13px 15px;">
+        <div class="tag">Who touched it</div>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 9px;">
+          <sc-for list="{{trail}}" as="t" hint-placeholder-count="4">
+            <div style="display: flex; align-items: baseline; gap: 9px;">
+              <span class="mo" style="font-size: 11px; color: var(--dim); width: 34px; flex-shrink: 0;">{{t.at}}</span>
+              <span style="flex-grow: 1; font-size: 12px; line-height: 17px;">{{t.what}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 20px; background: var(--agent); flex-shrink: 0;">
+    <span class="tag" style="color: var(--mint);">Counter copilot</span>
+    <span style="flex-grow: 1; font-size: 12.5px; color: var(--agent-fg);">{{agentSays}}</span>
+    <button style="display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 5px; background: var(--mint); color: #0b2018; font-size: 11.5px; font-weight: 700;">{{agentAct}}</button>
+    <button class="pill" style="height: 26px; background: transparent; border-color: #2c443a; color: var(--agent-dim);">Not now</button>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1024}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 1, tender: 'upi' };
+  }
+
+  renderVals() {
+    const i = this.state.step;
+    const STEPS = ['Queue', 'Claim', 'Verify', 'Pick', 'Bill', 'Hand over'];
+
+    const steps = STEPS.map((label, n) => {
+      const done = n < i;
+      const cur = n === i;
+      return {
+        label: label,
+        n: String(n + 1),
+        cur: cur,
+        go: () => this.setState({ step: n }),
+        style: 'display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 13px 0 9px;'
+          + ' border-radius: 6px; font-size: 12.5px; margin-right: 6px;'
+          + (cur ? ' background: var(--ink); color: #eaf5ef; font-weight: 600;'
+                 : done ? ' background: var(--green-soft); color: var(--green); font-weight: 500;'
+                        : ' color: var(--dim); font-weight: 500; border: 1px solid var(--line);'),
+        dotStyle: 'display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;'
+          + ' border-radius: 50%; font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 700;'
+          + (cur ? ' background: rgba(255,255,255,.16); color: #eaf5ef;'
+                 : done ? ' background: var(--green); color: #f2faf6;'
+                        : ' background: var(--wash); color: var(--dim);')
+      };
+    });
+
+    const q = (no, name, lines, wait, tone, flag, flagClass, sel) => ({
+      no: no, name: name, lines: lines, wait: wait, tone: tone, flag: flag, flagClass: flagClass,
+      style: 'display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px;'
+        + ' border-bottom: 1px solid var(--line2);' + (sel ? ' background: var(--wash);' : '')
+    });
+    const queue = [
+      q('P-0418', 'Ramkishan Yadav', '3 lines · Dr Salunke', '14m', 'var(--red)', 'H1', 'pill rd', true),
+      q('P-0419', 'Fatima Ansari', '1 line · Dr Rao', '11m', 'var(--gold-ink)', '', '', false),
+      q('P-0420', 'Devendra Pal', '5 lines · Dr Salunke', '9m', 'var(--gold-ink)', 'subs', 'pill gd', false),
+      q('P-0421', 'Kanta Bai', '2 lines · Dr Mishra', '7m', 'var(--dim)', '', '', false),
+      q('P-0422', 'Shyam Sundar Jha', '4 lines · Dr Rao', '5m', 'var(--dim)', '', '', false),
+      q('P-0423', 'Nasreen Khatoon', '1 line · Dr Mishra', '4m', 'var(--dim)', '', '', false),
+      q('P-0424', 'Bhola Prasad', '2 lines · Dr Salunke', '2m', 'var(--dim)', '', '', false),
+      q('P-0425', 'Meera Kumari', '3 lines · Dr Rao', '1m', 'var(--dim)', '', '', false)
+    ];
+
+    const statuses = [
+      { label: 'in the queue', cls: 'pill gd' },
+      { label: 'in the queue', cls: 'pill gd' },
+      { label: 'claimed by you', cls: 'pill' },
+      { label: 'verified', cls: 'pill on' },
+      { label: 'picked · stock held', cls: 'pill on' },
+      { label: 'handed over', cls: 'pill on' }
+    ];
+    const status = statuses[i];
+
+    const line = (o) => Object.assign({
+      n: '', title: '', sched: '', schedClass: 'pill', rx: '', note: '', noteStyle: '',
+      batch: '', expiry: '', scanText: '', scanClass: 'pill', substituted: false, unchecked: false,
+      showQty: false, qty: '', uom: '', qtyId: '', priced: false, amount: '', priceNote: '',
+      showActs: false,
+      cardStyle: 'background: var(--card); border: 1px solid var(--line); border-radius: 8px;'
+    }, o);
+
+    const soft = 'margin-top: 8px; font-size: 12px; line-height: 17px; padding: 8px 10px; border-radius: 6px;';
+    const declinedCard = 'background: var(--card); border: 1px solid var(--red-line); border-radius: 8px;';
+
+    const l1 = {
+      n: '1', title: 'Amoxyclav 625 mg tablet', sched: 'H', schedClass: 'pill',
+      rx: 'Prescribed Augmentin 625 · 1 tablet twice a day · 5 days · after food',
+      substituted: true, unchecked: true,
+      note: 'Augmentin is not stocked here. Amoxyclav 625 (Cipla) carries the same salts, strength, form and route, so the equality holds. He agreed to the generic.',
+      noteStyle: soft + ' background: var(--green-soft); color: var(--ink);'
+    };
+    const l2 = {
+      n: '2', title: 'Pantoprazole 40 mg tablet', sched: 'H', schedClass: 'pill',
+      rx: 'Prescribed Pan 40 · 1 tablet before breakfast · 5 days'
+    };
+    const l3 = {
+      n: '3', title: 'Alprazolam 0.5 mg tablet', sched: 'H1', schedClass: 'pill rd',
+      rx: 'Prescribed Alzolam 0.5 · 1 tablet at night · 5 days'
+    };
+
+    let lines;
+    if (i <= 1) {
+      lines = [
+        line(Object.assign({}, l1, { note: 'Augmentin 625 is not stocked here. There is an equal generic on the shelf.', noteStyle: soft + ' background: var(--wash); color: var(--dim);', substituted: false })),
+        line(l2), line(l3)
+      ];
+    } else if (i === 2) {
+      lines = [
+        line(Object.assign({}, l1, { showQty: true, qty: '10', uom: 'tablets', qtyId: 'q1', showActs: true })),
+        line(Object.assign({}, l2, {
+          cardStyle: declinedCard,
+          note: 'Nothing sellable on the shelf. The main store holds 1,400 — that is a two-person transfer, not a pick. Declining tells him now instead of at the window in ten minutes.',
+          noteStyle: soft + ' background: var(--red-soft); color: var(--ink);',
+          showQty: true, qty: '0', uom: 'tablets', qtyId: 'q2', showActs: true
+        })),
+        line(Object.assign({}, l3, {
+          note: 'Schedule H1. The register row is written when he takes it, not now, and he will be asked to confirm who he is.',
+          noteStyle: soft + ' background: var(--gold-soft); color: var(--ink);',
+          showQty: true, qty: '5', uom: 'tablets', qtyId: 'q3', showActs: true
+        }))
+      ];
+    } else if (i === 3) {
+      lines = [
+        line(Object.assign({}, l1, {
+          batch: 'AMC-4471', expiry: 'expires 21 Oct 2026', scanText: 'scanned ✓', scanClass: 'pill on',
+          showQty: true, qty: '10', uom: 'tablets', qtyId: 'q1',
+          note: 'Earliest in-date batch on the shelf. FEFO chose it; the scan agreed.',
+          noteStyle: soft + ' background: var(--wash); color: var(--dim);'
+        })),
+        line(Object.assign({}, l2, {
+          cardStyle: 'background: var(--wash); border: 1px solid var(--line); border-radius: 8px; opacity: .62;',
+          note: 'Declined — not stocked. It is on the bill as nothing and on the day report as a decline.',
+          noteStyle: soft + ' background: transparent; color: var(--dim); padding-left: 0;'
+        })),
+        line(Object.assign({}, l3, {
+          batch: 'ALP-1187', expiry: 'expires 14 Mar 2027', scanText: 'waiting for the scan', scanClass: 'pill gd',
+          showQty: true, qty: '5', uom: 'tablets', qtyId: 'q3',
+          note: 'Scan the strip before it leaves the shelf. A wrong item refuses the pick outright — it does not warn.',
+          noteStyle: soft + ' background: var(--gold-soft); color: var(--ink);'
+        }))
+      ];
+    } else {
+      lines = [
+        line(Object.assign({}, l1, {
+          batch: 'AMC-4471', expiry: 'expires 21 Oct 2026', scanText: 'scanned ✓', scanClass: 'pill on',
+          priced: true, amount: '₹145.00', priceNote: '10 × ₹14.50 batch MRP'
+        })),
+        line(Object.assign({}, l2, {
+          cardStyle: 'background: var(--wash); border: 1px solid var(--line); border-radius: 8px; opacity: .62;',
+          priced: true, amount: '—', priceNote: 'declined'
+        })),
+        line(Object.assign({}, l3, {
+          batch: 'ALP-1187', expiry: 'expires 14 Mar 2027', scanText: 'scanned ✓', scanClass: 'pill on',
+          priced: true, amount: '₹6.00', priceNote: '5 × ₹1.20 batch MRP'
+        }))
+      ];
+    }
+
+    const banners = {
+      2: { on: true, title: 'One line cannot be filled here', body: 'Pantoprazole 40 is out at this window. Tell him now, decline the line, and raise the transfer — the main store holds 1,400.', act: 'Raise transfer', style: 'red' },
+      4: { on: true, title: 'Money changes what this screen may do', body: 'Once the bill is settled the stock is held for him with no timer, and a paid dispense can only be undone by a refund — which needs a permission this seat does not hold.', act: 'Who can refund?', style: 'gold' },
+      5: { on: true, title: 'Ask him who he is. Do not read it to him.', body: 'The box below is deliberately empty. A prefilled identity box is the second confirmation already answered, and for a Schedule H1 drug that confirmation is the control.', act: 'Why', style: 'gold' }
+    };
+    const b = banners[i] || { on: false, title: '', body: '', act: '', style: 'gold' };
+    const bannerStyle = 'display: flex; align-items: flex-start; gap: 11px; padding: 11px 13px; border-radius: 8px;'
+      + (b.style === 'red'
+        ? ' background: var(--red-soft); border: 1px solid var(--red-line); color: var(--red);'
+        : ' background: var(--gold-soft); border: 1px solid var(--gold-line); color: var(--gold-ink);');
+
+    const acts = [
+      { tag: 'Step 1 · claim', says: 'Claiming mints the dispense number and the medication order, and takes him out of everybody else&#39;s queue.', primary: 'Claim P-0418' },
+      { tag: 'Step 1 · claim', says: 'Claiming mints the dispense number and the medication order, and takes him out of everybody else&#39;s queue.', primary: 'Claim P-0418' },
+      { tag: 'Step 2 · verify', says: 'Two lines to fill, one to decline. Verify settles every line at once — after this the quantities are the hospital&#39;s answer, not the doctor&#39;s request.', primary: 'Verify 3 lines' },
+      { tag: 'Step 3 · pick', says: 'One strip still to scan. The pick will not go through while a scan is refused.', primary: 'Pick 2 lines' },
+      { tag: 'Step 4 · bill', says: 'MRP is tax inclusive. Short payment is refused by billing, not by this screen.', primary: 'Take ₹151.00' },
+      { tag: 'Step 5 · hand over', says: 'This writes the Schedule H1 register row, consumes the stock and closes the visit.', primary: 'Hand over' }
+    ];
+    const a = acts[i];
+
+    const tenders = ['cash', 'upi', 'card'].map((t) => ({
+      label: t === 'upi' ? 'UPI' : t.charAt(0).toUpperCase() + t.slice(1),
+      pick: () => this.setState({ tender: t }),
+      style: 'display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 6px; font-size: 12.5px;'
+        + (this.state.tender === t
+          ? ' border: 1px solid var(--green-line); background: var(--green-soft); color: var(--green); font-weight: 600;'
+          : ' border: 1px solid var(--line); background: var(--card); color: var(--dim); font-weight: 500;')
+    }));
+
+    const checks = [
+      { name: 'Allergy', said: 'Sulfonamides on file. None of these three is a sulfonamide.', dot: 'width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-top: 6px; flex-shrink: 0;' },
+      { name: 'Interaction', said: 'Alprazolam against his current medicines — nothing severe.', dot: 'width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-top: 6px; flex-shrink: 0;' },
+      { name: 'Duplicate therapy', said: 'No second drug of the same class.', dot: 'width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-top: 6px; flex-shrink: 0;' },
+      { name: 'Drug against diagnosis', said: 'His coded diagnoses are E11.9 and I10. Nothing on this Rx is contraindicated in either.', dot: 'width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-top: 6px; flex-shrink: 0;' }
+    ];
+
+    const current = [
+      { drug: 'Metformin 500 mg · twice a day', since: 'since Mar' },
+      { drug: 'Amlodipine 5 mg · at night', since: 'since Jan' },
+      { drug: 'Atorvastatin 10 mg · at night', since: 'since Jan' }
+    ];
+
+    const billRows = [
+      { what: 'Amoxyclav 625 × 10', amount: '₹145.00', tone: 'var(--ink)' },
+      { what: 'Pantoprazole 40 — declined', amount: '—', tone: 'var(--dim)' },
+      { what: 'Alprazolam 0.5 × 5', amount: '₹6.00', tone: 'var(--ink)' }
+    ];
+
+    const trailAll = [
+      { at: '11:04', what: 'Dr A. Salunke issued Rx v2 and it arrived in the queue.' },
+      { at: '11:42', what: 'You claimed it. Dispense P-0418, medication order minted.' },
+      { at: '11:43', what: 'You verified 2 lines and declined Pantoprazole 40 — not stocked.' },
+      { at: '11:44', what: 'You picked AMC-4471 and ALP-1187. Stock reserved, not yet consumed.' },
+      { at: '11:46', what: 'Invoice CRK/25-26/P/8841 issued. ₹151.00 taken by UPI.' },
+      { at: '11:47', what: 'Handed over. H1 register row 2,318 written against your registration.' }
+    ];
+    const trail = trailAll.slice(0, Math.max(1, i + 1));
+
+    const agentByStep = [
+      { says: 'Augmentin is not stocked. I found one equal generic on the shelf — same salts, strength, form, route.', act: 'Show it' },
+      { says: 'Augmentin is not stocked. I found one equal generic on the shelf — same salts, strength, form, route.', act: 'Show it' },
+      { says: 'Pantoprazole is out here and the main store holds 1,400. I have drafted the transfer note for 200.', act: 'Send it' },
+      { says: 'The Alprazolam strip has not been scanned. Two other windows also picked from ALP-1187 today.', act: 'Show batch' },
+      { says: 'He paid by UPI last three visits. I have selected UPI and filled ₹151.00.', act: 'Undo' },
+      { says: 'Label printed, H1 row written. Sealed returns on this bill close at 11:47 on 25 Sep.', act: 'Next patient' }
+    ];
+    const ag = agentByStep[i];
+
+    return {
+      queue: queue,
+      steps: steps,
+      lines: lines,
+      dispenseNo: i === 0 ? 'not yet numbered' : 'P-0418',
+      statusLabel: status.label,
+      statusClass: status.cls,
+      stampClass: i >= 5 ? 'stamp pd' : i >= 4 ? 'stamp pd' : 'stamp un',
+      stampText: i >= 5 ? 'COLLECTED' : i >= 4 ? 'PAID' : 'UNPAID',
+      money: '₹151.00',
+      showBanner: b.on,
+      bannerTitle: b.title,
+      bannerBody: b.body,
+      bannerAct: b.act,
+      bannerStyle: bannerStyle,
+      actTag: a.tag,
+      actSays: a.says,
+      primaryLabel: a.primary,
+      primaryStyle: 'display: inline-flex; align-items: center; justify-content: center; gap: 9px; height: 46px;'
+        + ' padding: 0 22px; border-radius: 6px; background: var(--green); color: #f2faf6; font-size: 14px;'
+        + ' font-weight: 600; border: 1px solid var(--green); flex-shrink: 0;',
+      actionStyle: 'display: flex; align-items: center; gap: 16px; padding: 13px 20px; background: var(--card);'
+        + ' border-top: 1px solid var(--line); flex-shrink: 0; min-height: 72px;',
+      advance: () => this.setState({ step: (i + 1) % 6 }),
+      showScan: i === 3,
+      showTender: i === 4,
+      showIdentity: i === 5,
+      tenders: tenders,
+      checks: checks,
+      current: current,
+      billRows: billRows,
+      trail: trail,
+      agentSays: ag.says,
+      agentAct: ag.act
+    };
+  }
+}
+</script>
+</body>
+</html>

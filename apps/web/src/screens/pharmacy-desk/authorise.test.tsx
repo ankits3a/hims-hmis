@@ -73,6 +73,8 @@ describe("the counter asks the prescriber (PD-9)", () => {
     }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const row = await screen.findByTestId("desk-line-0");
+    await screen.findByTestId("desk-line-0-precheck");
+    await userEvent.click(within(row).getByRole("button", { name: /What else for/ }));
     await userEvent.click(await within(row).findByRole("button", { name: "Ask Dr Sen to authorise" }));
     await userEvent.type(within(row).getByRole("textbox", { name: "What Dr Sen should know" }), "tolerated last year");
     await userEvent.click(within(row).getByRole("button", { name: "Send to Dr Sen" }));

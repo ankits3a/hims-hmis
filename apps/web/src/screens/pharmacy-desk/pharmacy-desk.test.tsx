@@ -310,8 +310,13 @@ describe("PharmacyDesk (PD-3)", () => {
     await screen.findByTestId("queue-row-d1");
     const drawn = new Set([...document.querySelectorAll(".kb")].map((k) => k.textContent));
     // No palette provider in the harness, so F8 is not drawn; with one, F8 is drawn and bound.
-    // F2 (PD-7 C8) is bound in the dock and proven to focus the ask box in `ask.test.tsx`.
-    expect([...drawn].sort()).toEqual(["Esc", "F2", "Q", "⏎"].sort());
+    // F2 (PD-7 C8) is bound in the dock and proven to focus the ask box in `ask.test.tsx`; S opens the
+    // slip (slip.test), B the FEFO batch & shelf sheet (fefo.test), 1-4 the tenders (bill.test).
+    expect([...drawn].sort()).toEqual(["1-4", "B", "Esc", "F2", "Q", "S", "⏎"].sort());
+    // the idle legend, in the board's order
+    const legend = [...screen.getByTestId("desk-keys").querySelectorAll(".kb")].map((k) => k.textContent);
+    expect(legend).toEqual(["Q", "S", "B", "1-4", "F2", "Esc"]);
+    expect(screen.getByTestId("desk-keys")).toHaveTextContent("batch & shelf");
   });
 });
 

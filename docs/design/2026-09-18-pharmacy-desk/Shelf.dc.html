@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The shelf — what to order, what to move back, what is dead</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4f7f4; }
+  a { color: #0e6b4e; text-decoration: none; }
+  a:hover { color: #0a5039; }
+  .pp { --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+        --dim:#5c6f66; --wash:#eef3ef; --green:#0e6b4e; --green-soft:rgba(14,107,78,.08);
+        --green-line:rgba(14,107,78,.35); --gold:#dd8f1c; --gold-ink:#9a6208;
+        --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45); --red:#b23a30;
+        --red-soft:rgba(178,58,48,.08); --red-line:rgba(178,58,48,.4); --agent:#132420;
+        --agent-fg:#d9efe4; --agent-dim:#9dbdae; --mint:#35c48f; }
+  .pp * { box-sizing: border-box; }
+  .pp button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+  .pp .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .pp .tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+             letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .pp .pill { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px;
+              font-size: 10.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card);
+              color: var(--dim); white-space: nowrap; }
+  .pp .pill.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+  .pp .pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }
+  .pp .pill.rd { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+</style>
+</helmet>
+<div class="pp" style="width: 1440px; height: 880px; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 13.5px/19px 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; overflow: hidden;">
+
+  <header style="display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 20px; background: var(--card); border-bottom: 1px solid var(--line); flex-shrink: 0;">
+    <a href="Main.dc.html" class="pill" style="height: 26px; text-decoration: none;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+      Counter
+    </a>
+    <div style="display: flex; align-items: baseline; gap: 9px;">
+      <span style="font-size: 14px; font-weight: 600;">The shelf</span>
+      <span class="tag">PHARM-OPD · 18 Sep, 11:42</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <span style="font-size: 12px; color: var(--dim);">Nothing on this page moves stock. Every act here is two people.</span>
+    <button class="pill" style="height: 28px;">Print requisition</button>
+  </header>
+
+  <div style="flex-grow: 1; min-height: 0; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px;">
+
+    <section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+      <sc-for list="{{tiles}}" as="t" hint-placeholder-count="4">
+        <div style="{{t.style}}">
+          <div class="tag" style="font-size: 9px;">{{t.label}}</div>
+          <div class="mo" style="margin-top: 7px; font-size: 24px; line-height: 26px; font-weight: 600; letter-spacing: -.02em; color: {{t.tone}};">{{t.value}}</div>
+          <div style="margin-top: 3px; font-size: 11.5px; color: var(--dim);">{{t.note}}</div>
+        </div>
+      </sc-for>
+    </section>
+
+    <section style="background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--line2);">
+        <h2 style="margin: 0; font-size: 13.5px; font-weight: 600;">What to bring from the main store</h2>
+        <span style="flex-grow: 1; font-size: 12px; color: var(--dim);">Under three days of this window&#39;s own use, topped up to seven, in whole issue packs — measured over the last thirty days.</span>
+        <button class="pill on" style="height: 26px;">Raise all 6 transfers</button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 96px 92px 96px 104px 128px 150px; gap: 0; padding: 8px 16px; background: var(--wash); border-bottom: 1px solid var(--line2);">
+        <span class="tag">Item</span>
+        <span class="tag" style="text-align: right;">On shelf</span>
+        <span class="tag" style="text-align: right;">30-day use</span>
+        <span class="tag" style="text-align: right;">Cover</span>
+        <span class="tag" style="text-align: right;">Suggest</span>
+        <span class="tag" style="text-align: right;">From</span>
+        <span class="tag" style="text-align: right;">&nbsp;</span>
+      </div>
+      <sc-for list="{{reorder}}" as="r" hint-placeholder-count="6">
+        <div style="display: grid; grid-template-columns: 1fr 96px 92px 96px 104px 128px 150px; gap: 0; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line2);">
+          <div style="min-width: 0; display: flex; align-items: center; gap: 9px;">
+            <span class="{{r.cls}}">{{r.status}}</span>
+            <span style="font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{r.item}}</span>
+          </div>
+          <span class="mo" style="text-align: right; font-size: 12.5px; color: {{r.stockTone}};">{{r.onShelf}}</span>
+          <span class="mo" style="text-align: right; font-size: 12.5px; color: var(--dim);">{{r.used}}</span>
+          <span class="mo" style="text-align: right; font-size: 12.5px; color: {{r.coverTone}};">{{r.cover}}</span>
+          <span class="mo" style="text-align: right; font-size: 12.5px; font-weight: 600;">{{r.suggest}}</span>
+          <span style="text-align: right; font-size: 12px; color: var(--dim);">{{r.from}}</span>
+          <span style="text-align: right;"><button class="pill" style="height: 24px;">{{r.act}}</button></span>
+        </div>
+      </sc-for>
+      <div style="padding: 10px 16px; font-size: 11.5px; color: var(--dim);">Cover counts only what a pick would honour. Expired, recalled, reserved and frozen stock is not cover — which is why ORS reads two days with 140 sachets on the shelf.</div>
+    </section>
+
+    <div style="display: flex; gap: 16px;">
+
+      <section style="flex-grow: 1; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--line2);">
+          <h2 style="margin: 0; font-size: 13.5px; font-weight: 600;">Will not sell in time</h2>
+          <span style="flex-grow: 1; font-size: 12px; color: var(--dim);">Ninety days out, at this window&#39;s pace, soonest first.</span>
+        </div>
+        <sc-for list="{{expiring}}" as="e" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid var(--line2);">
+            <div style="flex-grow: 1; min-width: 0;">
+              <div style="font-size: 13px; font-weight: 500;">{{e.drug}}</div>
+              <div class="mo" style="font-size: 11.5px; color: var(--dim); margin-top: 2px;">{{e.batch}}</div>
+            </div>
+            <div style="text-align: right; width: 148px; flex-shrink: 0;">
+              <div class="mo" style="font-size: 12.5px; color: {{e.tone}};">{{e.unsold}}</div>
+              <div style="font-size: 11px; color: var(--dim);">{{e.pace}}</div>
+            </div>
+            <span class="{{e.cls}}" style="width: 88px; justify-content: center; flex-shrink: 0;">{{e.verdict}}</span>
+          </div>
+        </sc-for>
+        <div style="padding: 10px 16px; font-size: 11.5px; color: var(--dim);">&#8220;Sells first&#8221; is reassurance, not a task — the pick already takes the earliest date. &#8220;Move back&#8221; is the only row that needs a person.</div>
+      </section>
+
+      <section style="width: 512px; flex-shrink: 0; background: var(--card); border: 1px solid var(--red-line); border-radius: 8px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--line2); background: var(--red-soft);">
+          <h2 style="margin: 0; font-size: 13.5px; font-weight: 600; color: var(--red);">Dead on the shelf</h2>
+          <span style="flex-grow: 1; font-size: 12px; color: var(--red);">Past its date, still in the balance.</span>
+          <button class="pill rd" style="height: 26px;">Quarantine all</button>
+        </div>
+        <sc-for list="{{dead}}" as="d" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid var(--line2);">
+            <div style="flex-grow: 1; min-width: 0;">
+              <div style="font-size: 13px; font-weight: 500;">{{d.drug}}</div>
+              <div class="mo" style="font-size: 11.5px; color: var(--dim); margin-top: 2px;">{{d.batch}}</div>
+            </div>
+            <span class="mo" style="font-size: 12.5px; color: var(--red); width: 76px; text-align: right;">{{d.qty}}</span>
+            <span class="pill rd" style="width: 92px; justify-content: center;">{{d.age}}</span>
+          </div>
+        </sc-for>
+        <div style="padding: 11px 16px; font-size: 11.5px; color: var(--dim); line-height: 16px;">Every pick already refuses these, so nobody at the window will ever notice them. They only leave the count when somebody names the batch and moves it to quarantine.</div>
+      </section>
+
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":880}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const card = 'background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;';
+    const cardRed = 'background: var(--card); border: 1px solid var(--red-line); border-radius: 8px; padding: 12px 14px;';
+    const tiles = [
+      { label: 'Out of stock', value: '2', note: 'with patients waiting on both', tone: 'var(--red)', style: cardRed },
+      { label: 'Below three days', value: '4', note: 'reorder before the evening OPD', tone: 'var(--gold-ink)', style: card },
+      { label: 'Inside ninety days', value: '7', note: '2 will not sell in time', tone: 'var(--gold-ink)', style: card },
+      { label: 'Past date, on shelf', value: '6', note: 'strips across 3 batches', tone: 'var(--red)', style: cardRed }
+    ];
+
+    const r = (item, status, cls, onShelf, stockTone, used, cover, coverTone, suggest, from, act) =>
+      ({ item: item, status: status, cls: cls, onShelf: onShelf, stockTone: stockTone, used: used,
+         cover: cover, coverTone: coverTone, suggest: suggest, from: from, act: act });
+
+    const reorder = [
+      r('Pantoprazole 40 mg tablet', 'out', 'pill rd', '0', 'var(--red)', '1,240', '0 days', 'var(--red)', '24 strips', 'Main store', 'Transfer'),
+      r('ORS sachet, 21.8 g', 'out', 'pill rd', '140', 'var(--gold-ink)', '2,100', '2 days', 'var(--red)', '18 boxes', 'Main store', 'Transfer'),
+      r('Amoxyclav 625 mg tablet', 'reorder', 'pill gd', '180', 'var(--ink)', '1,860', '2.9 days', 'var(--gold-ink)', '22 strips', 'Main store', 'Transfer'),
+      r('Paracetamol 650 mg tablet', 'reorder', 'pill gd', '620', 'var(--ink)', '6,300', '2.9 days', 'var(--gold-ink)', '52 strips', 'Main store', 'Transfer'),
+      r('Azithromycin 500 mg tablet', 'reorder', 'pill gd', '40', 'var(--ink)', '420', '2.8 days', 'var(--gold-ink)', '6 strips', 'Main store', 'Transfer'),
+      r('Metformin 500 mg tablet', 'enough', 'pill on', '900', 'var(--ink)', '2,700', '10 days', 'var(--green)', '—', '—', 'Watch'),
+      r('Cetirizine 10 mg tablet', 'no use', 'pill', '300', 'var(--dim)', '0', '—', 'var(--dim)', '—', '—', 'Return?')
+    ];
+
+    const e = (drug, batch, unsold, pace, tone, verdict, cls) =>
+      ({ drug: drug, batch: batch, unsold: unsold, pace: pace, tone: tone, verdict: verdict, cls: cls });
+    const expiring = [
+      e('Amoxyclav 625 mg tablet', 'AMC-4471 · expires 21 Oct · 180 on hand', '118 unsold', 'sells ~62 by then', 'var(--gold-ink)', 'move back', 'pill gd'),
+      e('Metformin 500 mg tablet', 'MET-8120 · expires 28 Nov · 900 on hand', '0 unsold', 'clears with 180 to spare', 'var(--green)', 'sells first', 'pill on'),
+      e('Cetirizine 10 mg tablet', 'CET-0904 · expires 02 Dec · 300 on hand', '300 unsold', 'no use at this window', 'var(--red)', 'move back', 'pill gd'),
+      e('Azithromycin 500 mg tablet', 'AZI-2209 · expires 03 Nov · 40 on hand', '0 unsold', 'clears in 3 days', 'var(--green)', 'sells first', 'pill on'),
+      e('Pantoprazole 40 mg tablet', 'PAN-7731 · expires 09 Dec · 0 on hand', '—', 'nothing left to sell', 'var(--dim)', 'sells first', 'pill on')
+    ];
+
+    const dead = [
+      { drug: 'Cefixime 200 mg tablet', batch: 'CFX-3320 · expired 16 Sep', qty: '30 tabs', age: '2 days' },
+      { drug: 'Ranitidine 150 mg tablet', batch: 'RAN-1180 · expired 31 Aug', qty: '20 tabs', age: '18 days' },
+      { drug: 'Salbutamol respule 2.5 mg', batch: 'SAL-6612 · expired 31 Jul', qty: '10 units', age: '49 days' }
+    ];
+
+    return { tiles: tiles, reorder: reorder, expiring: expiring, dead: dead };
+  }
+}
+</script>
+</body>
+</html>

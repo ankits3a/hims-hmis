@@ -1,0 +1,255 @@
+<title>Pharmacy Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --ground: #eef2ee; --surface: #ffffff; --ink: #132420; --dim: #4f6b60; --line: #d6e0d9;
+    --pine: #0e6b4e; --pine-ink: #ffffff; --pine-wash: #e2efe8; --gold-ink: #9a6208; --gold-wash: #fbf1df;
+    --frame: #c9d6ce;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #0e1714; --surface: #15221d; --ink: #e2ebe5; --dim: #97ada2; --line: #26372f;
+      --pine: #5cc49b; --pine-ink: #0b1a14; --pine-wash: #1a3129; --gold-ink: #e7b660; --gold-wash: #2c2415;
+      --frame: #2c3f36;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #0e1714; --surface: #15221d; --ink: #e2ebe5; --dim: #97ada2; --line: #26372f;
+    --pine: #5cc49b; --pine-ink: #0b1a14; --pine-wash: #1a3129; --gold-ink: #e7b660; --gold-wash: #2c2415;
+    --frame: #2c3f36;
+  }
+  body {
+    background: var(--ground); color: var(--ink);
+    font: 14px/1.5 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  }
+  .wrap { padding-inline: clamp(16px, 3vw, 32px); padding-block: 20px 40px; display: grid; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+  h1 { margin: 0; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -.01em; text-wrap: balance; }
+  .sub { color: var(--dim); font-size: 12.5px; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+
+  nav { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+  .group { display: grid; gap: 6px; }
+  .glabel { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tab, .seg button, .zoom {
+    font: inherit; font-size: 12.5px; cursor: pointer; border: 1px solid var(--line); background: var(--surface);
+    color: var(--ink); padding: 5px 11px; border-radius: 5px;
+  }
+  .tab:hover, .seg button:hover, .zoom:hover { border-color: var(--pine); }
+  .tab[aria-selected="true"] { background: var(--pine); border-color: var(--pine); color: var(--pine-ink); font-weight: 600; }
+  :focus-visible { outline: 2px solid var(--pine); outline-offset: 2px; }
+
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .bar h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .seg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .seg .glabel { margin-right: 4px; }
+  .seg button { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; }
+  .seg button[aria-pressed="true"] { background: var(--pine-wash); border-color: var(--pine); color: var(--pine); font-weight: 600; }
+  .zoom { margin-left: auto; }
+
+  .note {
+    max-width: 68ch; white-space: pre-wrap; font-size: 13px; line-height: 1.55;
+    background: var(--gold-wash); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px;
+  }
+  .note b { color: var(--gold-ink); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 2px; }
+
+  .viewport { overflow-x: auto; }
+  .fit { position: relative; border: 1px solid var(--frame); border-radius: 4px; overflow: hidden; background: #f4f7f4; }
+  .board { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Pharmacy Desk</h1>
+    <span class="sub">design canvas · 18 Sep 2026 · six boards, three clickable</span>
+  </header>
+  <nav id="nav" aria-label="Boards"></nav>
+  <div class="bar">
+    <h2 id="btitle"></h2>
+    <div id="tweaks" class="seg"></div>
+    <button id="zoom" class="zoom" type="button"></button>
+  </div>
+  <div id="note" class="note"></div>
+  <div class="viewport"><div id="fit" class="fit"><div id="board" class="board"></div></div></div>
+</div>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(() => {
+  const { boards, notes } = JSON.parse(document.getElementById('data').textContent);
+  const $ = (id) => document.getElementById(id);
+  const byId = Object.fromEntries(boards.map((b) => [b.id, b]));
+
+  // ---- the canvas runtime, reduced to what these boards use ----
+  class DCLogic {
+    constructor(props) { this.props = props || {}; this.state = {}; }
+    setState(patch) { Object.assign(this.state, typeof patch === 'function' ? patch(this.state) : patch); paint(); }
+  }
+  const ONE = /^\{\{\s*([^}]+?)\s*\}\}$/;
+  const resolve = (expr, scope) => {
+    if (expr === 'true') return true;
+    if (expr === 'false') return false;
+    return expr.split('.').reduce((o, k) => (o == null ? undefined : o[k]), scope);
+  };
+  const interp = (s, scope) => s.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, e) => { const v = resolve(e, scope); return v == null ? '' : String(v); });
+
+  function render(node, scope, out) {
+    for (const n of node.childNodes) {
+      if (n.nodeType === 3) { out.appendChild(document.createTextNode(interp(n.data, scope))); continue; }
+      if (n.nodeType !== 1) continue;
+      const tag = n.localName;
+      if (tag === 'sc-if') {
+        const m = (n.getAttribute('value') || '').match(ONE);
+        if (m && resolve(m[1], scope)) render(n, scope, out);
+        continue;
+      }
+      if (tag === 'sc-for') {
+        const m = (n.getAttribute('list') || '').match(ONE);
+        const list = (m && resolve(m[1], scope)) || [];
+        const as = n.getAttribute('as') || 'item';
+        list.forEach((item, i) => { const s = Object.create(scope); s[as] = item; s.$index = i; render(n, s, out); });
+        continue;
+      }
+      const el = n.namespaceURI === 'http://www.w3.org/1999/xhtml'
+        ? document.createElement(tag) : document.createElementNS(n.namespaceURI, n.tagName);
+      for (const a of n.attributes) {
+        if (a.name.startsWith('hint-')) continue;
+        const m = a.value.match(ONE);
+        if (a.name.startsWith('on')) {
+          const fn = m ? resolve(m[1], scope) : null;
+          if (typeof fn === 'function') el.addEventListener(a.name.slice(2), (e) => {
+            if (el.localName === 'a') e.preventDefault();
+            fn(e);
+          });
+          continue;
+        }
+        if (m) {
+          const v = resolve(m[1], scope);
+          if (a.name.startsWith('aria-')) { if (v != null) el.setAttribute(a.name, String(v)); continue; }
+          if (v === false || v == null) continue;
+          el.setAttribute(a.name, v === true ? '' : String(v));
+          if (a.name === 'checked') el.checked = true;
+          continue;
+        }
+        el.setAttribute(a.name, interp(a.value, scope));
+      }
+      render(n.localName === 'template' ? n.content : n, scope, el);
+      out.appendChild(el);
+    }
+  }
+
+  // ---- mounting ----
+  const host = $('board');
+  const shadow = host.attachShadow({ mode: 'open' });
+  let cur = null;      // { board, inst, tpl, style, vals }
+  let fitMode = true;
+  const tweakVals = {}; // per board: { propName: value }
+
+  function mount(id) {
+    const b = byId[id];
+    const props = {};
+    for (const [k, spec] of Object.entries(b.props)) if (!k.startsWith('$')) props[k] = (tweakVals[id] || {})[k] ?? spec.default;
+    const Component = new Function('DCLogic', `${b.code}\nreturn Component;`)(DCLogic);
+    const tpl = document.createElement('template');
+    tpl.innerHTML = b.markup;
+    const style = document.createElement('style');
+    style.textContent = b.css + '\n*:focus-visible{outline:2px solid #0e6b4e;outline-offset:2px}';
+    cur = { board: b, inst: new Component(props), tpl, style, vals: {} };
+    paint();
+    size();
+  }
+  function paint() {
+    if (!cur) return;
+    const vals = cur.inst.renderVals();
+    cur.vals = vals;
+    const frag = document.createDocumentFragment();
+    render(cur.tpl.content, Object.assign(Object.create(null), vals), frag);
+    shadow.replaceChildren(cur.style, frag);
+  }
+  function size() {
+    if (!cur) return;
+    const { w, h } = cur.board;
+    const avail = $('fit').parentElement.clientWidth - 2;
+    const s = fitMode ? Math.min(1, avail / w) : 1;
+    host.style.width = w + 'px'; host.style.height = h + 'px';
+    host.style.transform = `scale(${s})`;
+    $('fit').style.width = (w * s + 2) + 'px'; $('fit').style.height = (h * s + 2) + 'px';
+    $('zoom').textContent = fitMode ? `Actual size (${Math.round(s * 100)}% now)` : 'Fit to window';
+  }
+
+  // ---- chrome ----
+  const groups = [
+    { label: 'The pharmacy desk', ids: ['Desk'] },
+    { label: 'Set aside — the first exploration', ids: ['Main', 'Counter', 'Shelf', 'Day', 'Refusals'] }
+  ];
+  let active = 'Desk';
+  function show(id) {
+    active = id;
+    const b = byId[id];
+    document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.id === id)));
+    $('btitle').textContent = b.title;
+    const n = notes[id] || notes._rest;
+    $('note').innerHTML = '';
+    const lab = document.createElement('b'); lab.textContent = id === 'Desk' ? 'How to walk it' : 'Where the figures come from';
+    $('note').append(lab, n);
+    drawTweaks();
+    mount(id);
+  }
+  function drawTweaks() {
+    const b = byId[active];
+    const box = $('tweaks'); box.replaceChildren();
+    for (const [k, spec] of Object.entries(b.props)) {
+      if (k.startsWith('$') || spec.editor !== 'enum') continue;
+      const lab = document.createElement('span'); lab.className = 'glabel'; lab.textContent = spec.section || k;
+      box.append(lab);
+      const val = (tweakVals[active] || {})[k] ?? spec.default;
+      for (const opt of spec.options) {
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.id = `tw-${active}-${k}-${opt}`; btn.textContent = opt;
+        btn.setAttribute('aria-pressed', String(opt === val));
+        btn.onclick = () => { (tweakVals[active] ||= {})[k] = opt; drawTweaks(); mount(active); };
+        box.append(btn);
+      }
+    }
+  }
+  for (const g of groups) {
+    const wrap = document.createElement('div'); wrap.className = 'group';
+    const lab = document.createElement('span'); lab.className = 'glabel'; lab.textContent = g.label;
+    const tabs = document.createElement('div'); tabs.className = 'tabs'; tabs.setAttribute('role', 'tablist');
+    for (const id of g.ids) {
+      const t = document.createElement('button');
+      t.type = 'button'; t.className = 'tab'; t.id = `tab-${id}`; t.dataset.id = id; t.setAttribute('role', 'tab');
+      t.textContent = byId[id].title;
+      t.onclick = () => show(id);
+      tabs.append(t);
+    }
+    wrap.append(lab, tabs); $('nav').append(wrap);
+  }
+  $('zoom').onclick = () => { fitMode = !fitMode; size(); };
+  addEventListener('resize', size);
+
+  // Links between boards ("Counter.dc.html") switch tabs.
+  shadow.addEventListener('click', (e) => {
+    const a = e.composedPath().find((x) => x.localName === 'a');
+    const href = a && a.getAttribute('href');
+    if (!href) return;
+    e.preventDefault();
+    const m = href.match(/([A-Za-z]+)\.dc\.html$/);
+    if (m && byId[m[1]]) show(m[1]);
+  });
+  // The Desk board's keys: Q the whole line, B batch & shelf, S the slip, Esc to close.
+  addEventListener('keydown', (e) => {
+    const t = e.composedPath()[0];
+    if (t && /^(input|textarea|select)$/i.test(t.localName)) return;
+    const v = cur && cur.vals; if (!v) return;
+    const fn = e.key === 'q' || e.key === 'Q' ? v.openQueue : e.key === 'b' || e.key === 'B' ? v.openBatch : e.key === 's' || e.key === 'S' ? v.openSlip : e.key === 'Escape' ? v.shut : null;
+    if (typeof fn === 'function') { e.preventDefault(); fn(); }
+  });
+
+  show('Desk');
+})();
+</script>

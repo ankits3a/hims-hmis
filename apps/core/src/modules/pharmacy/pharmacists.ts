@@ -58,6 +58,16 @@ export async function currentRegistration(db: Db | Tx, userId: string, today: st
 }
 
 /**
+ * The desk header's "registered · PCI <no>": the ACTING person's own current registration, or null —
+ * a read, never a gate (the gate is `requireRegisteredPharmacist`, at the acts the Act reserves).
+ */
+export async function myRegistration(db: Db | Tx, actor: Actor, now: Date): Promise<Pick<PharmacistRegistration, "council" | "registrationNo" | "validUntil"> | null> {
+  if (actor.type !== "user") return null;
+  const reg = await currentRegistration(db, actor.id, istDateOf(now));
+  return reg === null ? null : { council: reg.council, registrationNo: reg.registrationNo, validUntil: reg.validUntil };
+}
+
+/**
  * THE GATE. The acts the Act reserves call this with the acting person: a login without a current
  * registration is refused, whatever role it holds. Returns the registration so the caller can put
  * its number on the record it writes.

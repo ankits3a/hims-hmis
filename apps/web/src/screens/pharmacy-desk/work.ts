@@ -189,3 +189,136 @@ export function addDays(day: string, n: number): string {
 export function istToday(at: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 }
+
+/**
+ * ═══ THE DESK BOARD'S FEFO BATCH & SHELF CHIP ═══
+ *
+ * Under every drug that has stock, one chip names the batch that goes out and the rack it sits on.
+ * The server sends the sellable batches nearest-expiry first (`sellableBatchesByItem`, the order the
+ * pick itself uses), so the top row IS FEFO; choosing another names it to the pick as `batchId`,
+ * which the server records as a FEFO override.
+ */
+export type Pack = { uom: string; multiplier: number };
+
+/** The pack the shelf counts in — the largest unit above the base ("strip" of 10), or null for loose stock. */
+export function packOf(item: { uoms: readonly { uom: string; toBaseMultiplier: number }[] } | null | undefined): Pack | null {
+  const packs = (item?.uoms ?? []).filter((u) => u.toBaseMultiplier > 1).sort((a, b) => b.toBaseMultiplier - a.toBaseMultiplier);
+  const top = packs[0];
+  return top === undefined ? null : { uom: top.uom, multiplier: top.toBaseMultiplier };
+}
+
+function unit(uom: string, n: number): string {
+  return n === 1 || /s$/i.test(uom) ? uom : `${uom}s`;
+}
+
+/** A base quantity in the pack's words — "1 strip", "2 strips + 5" — or null when there is no pack. */
+export function inPacks(qtyBase: number, pack: Pack | null): string | null {
+  if (pack === null || qtyBase < pack.multiplier) return null;
+  const whole = Math.floor(qtyBase / pack.multiplier);
+  const rest = qtyBase % pack.multiplier;
+  return `${String(whole)} ${unit(pack.uom, whole)}${rest === 0 ? "" : ` + ${String(rest)}`}`;
+}
+
+/** The qty column: strips on top, base units under ("1 strip" / "10 tablets"); loose stock is the count and its unit. */
+export function qtyLabels(qtyBase: number | null, pack: Pack | null, baseUom: string): { main: string; sub: string } {
+  if (qtyBase === null) return { main: "—", sub: baseUom };
+  const packs = inPacks(qtyBase, pack);
+  return packs === null ? { main: String(qtyBase), sub: unit(baseUom, qtyBase) } : { main: packs, sub: `${String(qtyBase)} ${unit(baseUom, qtyBase)}` };
+}
+
+/** `2026-10-21` → `21 Oct 2026`, as the board prints an expiry. */
+export function expiryLabel(iso: string | null): string {
+  if (iso === null) return "—";
+  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+}
+
+/** Days from `today` to `expiry` (both `YYYY-MM-DD`), negative once past. */
+export function daysLeft(today: string, expiry: string): number {
+  return Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+}
+
+/** A batch is SOON when it dies inside the prescribed course, or inside 90 days. */
+export const SOON_DAYS = 90;
+export function expiresSoon(line: WireDispenseLine, batch: WireBatch, today: string): boolean {
+  if (batch.expiryDate === null) return false;
+  const course = line.rxLine.durationDays ?? 0;
+  return batch.expiryDate < addDays(today, Math.max(course, SOON_DAYS));
+}
+
+/** The batch the line will be given from: the one chosen, else FEFO's first. */
+export function chosenBatch(line: WireDispenseLine, tick: Tick | undefined): WireBatch | undefined {
+  const batches = line.batches ?? [];
+  const id = tick?.batchId ?? null;
+  return (id === null ? undefined : batches.find((b) => b.batchId === id)) ?? batches[0];
+}
+
+export type BatchRow = { batch: WireBatch; fefo: boolean; chosen: boolean; days: number | null; soon: boolean; onHand: string };
+export function batchRows(line: WireDispenseLine, tick: Tick | undefined, today: string): BatchRow[] {
+  const pack = packOf(line.item);
+  const chosen = chosenBatch(line, tick);
+  return (line.batches ?? []).map((b, i) => ({
+    batch: b, fefo: i === 0, chosen: b.batchId === chosen?.batchId,
+    days: b.expiryDate === null ? null : daysLeft(today, b.expiryDate),
+    soon: expiresSoon(line, b, today),
+    onHand: inPacks(b.available, pack) ?? `${String(b.available)} ${unit(line.item?.baseUom ?? "", b.available)}`.trim(),
+  }));
+}
+
+/**
+ * The batch printed on a pack's GS1 code — `(10)` bracketed, or raw AIs back to back — or null. The
+ * server reads the same code again at the pick and is the judge; this only routes the scan.
+ */
+export function scanBatchOf(raw: string): string | null {
+  let s = raw.trim();
+  if (/^\][A-Za-z]\d/.test(s)) s = s.slice(3);
+  if (s.startsWith("(")) {
+    const m = /\(10\)([^(]*)/.exec(s);
+    return m === null || m[1]!.trim() === "" ? null : m[1]!.trim();
+  }
+  const GS = String.fromCharCode(29);
+  const FIXED: Record<string, number> = { "01": 14, "11": 6, "13": 6, "15": 6, "17": 6 };
+  let i = 0;
+  if (!s.startsWith("01")) return null;
+  while (i < s.length) {
+    const ai = s.slice(i, i + 2);
+    const fixed = FIXED[ai];
+    if (fixed !== undefined) { i += 2 + fixed; }
+    else if (ai === "10" || ai === "21") {
+      const end = s.indexOf(GS, i + 2);
+      const v = s.slice(i + 2, end === -1 ? s.length : end).trim();
+      if (ai === "10") return v === "" ? null : v;
+      i = end === -1 ? s.length : end;
+    } else return null;
+    if (s[i] === GS) i += 1;
+  }
+  return null;
+}
+
+/**
+ * ONE SCAN BOX FOR THE TICKET. A pack scanned at the ticket goes to the line whose batch it carries;
+ * a code with no batch goes to the line in focus, else the first open line not yet ticked. The pick
+ * judges the pack (`scan_wrong_item`, `scan_batch_unknown`) and a refusal lands on that line.
+ */
+export function routeScan(
+  code: string, lines: readonly WireDispenseLine[], ticks: Readonly<Record<number, Tick>>, focus: number | null,
+): { lineIdx: number; batchId: string | null } | null {
+  const open = lines.filter((l) => l.status === "open" && l.pickedBatch == null && blockedFor(l, ticks[l.lineIdx]) === null);
+  const batchNo = scanBatchOf(code);
+  if (batchNo !== null) {
+    const hits = open.filter((l) => (l.batches ?? []).some((b) => b.batchNo.toLowerCase() === batchNo.toLowerCase()));
+    const hit = hits.find((l) => ticks[l.lineIdx]?.ticked !== true) ?? hits[0];
+    if (hit !== undefined) {
+      const b = (hit.batches ?? []).find((x) => x.batchNo.toLowerCase() === batchNo.toLowerCase())!;
+      return { lineIdx: hit.lineIdx, batchId: b.batchId === hit.batches?.[0]?.batchId ? null : b.batchId };
+    }
+  }
+  const focused = open.find((l) => l.lineIdx === focus && ticks[l.lineIdx]?.ticked !== true);
+  const next = focused ?? open.find((l) => ticks[l.lineIdx]?.ticked !== true);
+  return next === undefined ? null : { lineIdx: next.lineIdx, batchId: ticks[next.lineIdx]?.batchId ?? null };
+}
+
+/** The salt under the doctor's brand: the server's composition, each salt with a capital. */
+export function saltLabel(salt: string | null | undefined): string | null {
+  if (salt == null || salt.trim() === "") return null;
+  return salt.split(" + ").map((s) => (s === "" ? s : s[0]!.toUpperCase() + s.slice(1))).join(" + ");
+}

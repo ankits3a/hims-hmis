@@ -241,6 +241,11 @@ describe("the OPD dispense counter over HTTP (16c T5)", () => {
       .send({ council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-999" })).expect(403);
     expect((self.body as { code?: string }).code).toBe("self_registration");
     await as(fx.aide.token)(request(server()).get("/pharmacy/pharmacists")).expect(403);
+    // The desk header's pill: the caller's OWN registration, readable by anyone who reads the counter.
+    const mine = await as(fx.pharmacist.token)(request(server()).get("/pharmacy/pharmacists/me")).expect(200);
+    expect((mine.body as { registration: { registrationNo: string } | null }).registration?.registrationNo).toBe("MSPC-123456");
+    expect((await as(fx.aide.token)(request(server()).get("/pharmacy/pharmacists/me")).expect(200)).body).toEqual({ registration: null });
+    await as(fx.clerk.token)(request(server()).get("/pharmacy/pharmacists/me")).expect(403);
 
     const filed = await as(fx.pharmacist.token)(request(server()).post(`/pharmacy/pharmacists/${fx.incharge.id}/registrations`)
       .send({ council: "Maharashtra State Pharmacy Council", registrationNo: "MSPC-999", validUntil: "2030-12-31" })).expect(201);

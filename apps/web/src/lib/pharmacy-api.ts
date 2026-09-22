@@ -82,6 +82,8 @@ export type WireDispenseLine = {
   batches?: WireBatch[];
   /** PD-4 — once picked, the batch it was given from. Absent from an older server. */
   pickedBatch?: { batchNo: string; expiryDate: string | null } | null;
+  /** The salt(s) of the medicine the doctor wrote ("Amoxicillin + Clavulanic acid"). Absent from an older server. */
+  salt?: string | null;
 };
 export type WireBatch = { batchId: string; batchNo: string; expiryDate: string | null; available: number };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
@@ -287,6 +289,10 @@ export type WirePharmacist = {
   /** P15 — days left once inside the renewal window; absent from an older server. */
   renewalDueInDays?: number | null;
 };
+/** The desk header's pill: the caller's OWN current registration, or null. 404 from an older server. */
+export async function fetchMyRegistration(): Promise<{ registration: { council: string; registrationNo: string; validUntil: string | null } | null }> {
+  return api("GET", "/pharmacy/pharmacists/me");
+}
 export async function fetchPharmacists(): Promise<WirePharmacist[]> {
   const { items } = await api<{ items: WirePharmacist[] }>("GET", "/pharmacy/pharmacists");
   return items;
