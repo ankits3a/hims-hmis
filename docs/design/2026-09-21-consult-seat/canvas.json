@@ -1,0 +1,62 @@
+{
+  "artboards": [
+    {
+      "file": "Today.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 900,
+      "h": 760
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 1000,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "is_interactive": true
+    },
+    {
+      "file": "Complaint.dc.html",
+      "x": 0,
+      "y": 1030,
+      "w": 820,
+      "h": 660,
+      "is_interactive": true
+    },
+    {
+      "file": "Agent.dc.html",
+      "x": 920,
+      "y": 1030,
+      "w": 920,
+      "h": 680,
+      "is_interactive": true
+    },
+    {
+      "file": "TapMap.dc.html",
+      "x": 1940,
+      "y": 1030,
+      "w": 880,
+      "h": 900
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -150,
+      "w": 620,
+      "text": "Doctor's seat — tap, tap, done\n\nTHREE ARTBOARDS ARE LIVE: the seat (walk a whole consultation, switch patients in the rail), the complaint chips, and the F2 agent (tap the four questions).\n\nMatched to the running app: IBM Plex Sans/Mono, hospital green #0e6b4e, gold for held-or-review, red for danger, paper #f4f7f4, and the shipped .pri/.sec/.pill/.box geometry."
+    },
+    {
+      "id": "spine",
+      "x": 1000,
+      "y": 940,
+      "w": 460,
+      "text": "Walk it: tap two complaints -> Assess -> tap the syndrome -> read the cards -> Accept -> follow-up -> Complete. The counter in the header is the instrument; 7 taps, nothing typed.\n\nThen switch to Rekha in the rail and walk the same visit: the allergy swap fires, the pregnancy question is raised, and the QTc meter catches what the swap introduced."
+    }
+  ],
+  "launch": {
+    "view": "focused",
+    "file": "Main.dc.html"
+  }
+}
