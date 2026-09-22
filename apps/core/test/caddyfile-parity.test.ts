@@ -406,8 +406,15 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // PHARMACY P12 — 59 -> 60 with `/pharmacy/leakage`.
     // PHARMACY P19 — 60 -> 62 with `/pharmacy/retail` and `/pharmacy/retail-licence`.
     // PHARMACY P20 — 62 -> 63 with `/pharmacy/downtime`.
-    expect(routes).toHaveLength(63); // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    // 2026-09-17 — 63 -> 64 with `/materials/transfers`, the stock transfer screen.
+    // PHASE PD, PD-3 — 64 -> 66 with `/pharmacy/desk` and `/pharmacy/desk/$ticketId`, the pharmacy
+    // desk and a ticket in hand. Measured from the failing run: `Received length: 66`.
+    // PD-9 — 66 -> 67 with `/pharmacy/authorisations/$authorisationId`, where the prescriber decides.
+    // OPD DAY REPORT (owner, 2026-09-19) — 67 -> 68 with `/reports/opd-day`, the department-wise day.
+    // Measured from the failing run: `Received length: 68`.
+    expect(routes).toHaveLength(69); // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     expect(routes).toContain("/opd/slips");
+    expect(routes).toContain("/reports/opd-day");
     expect(routes).toContain("/radiology/radiation-safety");
     /*
       FD-9 recorded the deletion of both as negative assertions. FD-25 reverses ONE of them.

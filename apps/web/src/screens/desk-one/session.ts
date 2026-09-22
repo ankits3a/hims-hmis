@@ -193,7 +193,15 @@ export type Session = {
   photo: string | null;
   complaint: string;
   /** The server's department ranking for `complaint`, and whether a model or the table produced it. */
-  triage: { departmentIds: string[]; source: "model" | "keywords" } | null;
+  /**
+   * `redFlag` set means the desk MUST NOT BOOK — `departmentIds` is empty by construction, because
+   * a red flag refuses to route rather than ranking Casualty first (see `red-flags.ts`).
+   */
+  triage: {
+    departmentIds: string[];
+    source: "model" | "keywords";
+    redFlag: { reasonKey: string; matched: string } | null;
+  } | null;
   triageBusy: boolean;
   tab: "now" | "future";
   visit: Visit | null;

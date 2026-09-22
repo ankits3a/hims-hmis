@@ -729,6 +729,111 @@
       "when": 1789632288063,
       "tag": "0103_pharmacy_paper_dispenses",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1789647718084,
+      "tag": "0104_formulary_salt_allergy_classes",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1789672518116,
+      "tag": "0105_formulary_drug_disease",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1789817242893,
+      "tag": "0106_pharmacy_shelf_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1789826618273,
+      "tag": "0107_pharmacy_authorisations",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1789929376096,
+      "tag": "0108_roster_masters",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1789932304784,
+      "tag": "0109_roster_periods",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1789971700727,
+      "tag": "0110_roster_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1789974219500,
+      "tag": "0111_staff_absences",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1789986436793,
+      "tag": "0112_roster_escalation_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1789988178115,
+      "tag": "0113_roster_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1789993995168,
+      "tag": "0114_opd_consult_fee_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1790001810869,
+      "tag": "0115_obligation_alert_acknowledgement",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1790005055432,
+      "tag": "0116_obligation_ladder_and_respond",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1790010420913,
+      "tag": "0117_obligation_reach",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1790013286277,
+      "tag": "0118_roster_requirements_rules",
+      "breakpoints": true
     }
   ]
 }

@@ -51,6 +51,38 @@ export const substitutionRecorded = defineEvent("substitution.recorded", MODULE,
   orderedMedicineId: id, dispensedMedicineId: id, consentBy: id,
 }));
 
+/**
+ * PD-5b — a line the catalogue could not place, read as a medicine by the pharmacist at the check.
+ * Not a substitution: nothing the doctor named was replaced, so there is no consent to name. The
+ * resolver is named because a person, not the catalogue, decided what the doctor's words meant.
+ */
+export const lineResolved = defineEvent("dispense.line_resolved", MODULE, z.object({
+  dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id, doctorId: id,
+  dispensedMedicineId: id, resolvedBy: id,
+}));
+
+/**
+ * PD-D18 — where an item sits in a counter's store was set, replaced or (`location: null`) cleared.
+ * Master data a pharmacist walks by, so a change to it is on the record with who made it.
+ */
+export const shelfLocationSet = defineEvent("shelf.location_set", MODULE, z.object({
+  storeResourceId: id, itemId: id, location: z.string().min(1).nullable(),
+}));
+
+/**
+ * PD-9 (owner ruling 2026-09-19) — the counter asked the PRESCRIBER to authorise one refusal on one
+ * line, and the prescriber decided. Ids and the book only: the substance and the reasons live on the
+ * row, which the ticket and the doctor read under their own gates.
+ */
+export const authorisationRequested = defineEvent("authorisation.requested", MODULE, z.object({
+  authorisationId: id, dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id,
+  book: z.enum(["allergy", "interaction", "duplicate", "drug_disease"]), prescriberUserId: id, requestedBy: id,
+}));
+export const authorisationDecided = defineEvent("authorisation.decided", MODULE, z.object({
+  authorisationId: id, dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id,
+  status: z.enum(["authorised", "declined"]), decidedBy: id,
+}));
+
 /** D2 — every line holds a reservation on the ledger; a FEFO override is named, never silent. */
 export const dispensePicked = defineEvent("dispense.picked", MODULE, z.object({
   dispenseId: id, patientId: id,
@@ -154,7 +186,8 @@ export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODU
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
-  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded,
+  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, shelfLocationSet,
+  authorisationRequested, authorisationDecided,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
   retailSold, retailLicenceRecorded, retailLineReturned,

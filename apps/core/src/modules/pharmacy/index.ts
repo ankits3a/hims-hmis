@@ -111,3 +111,4 @@ export type {
 /** P19b — a sealed pack back at the walk-in counter, found by its bill. */
 export { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 export type { RetailReturnInput, RetailReturnResult } from "./retail-returns";
+export { setShelfLocation, shelfLocationsFor } from "./shelf-locations";

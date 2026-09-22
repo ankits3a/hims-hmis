@@ -67,9 +67,9 @@ export type { CaptureLine, GrnLineRow, GrnRow, GrnWithLines } from "./grn";
 
 // ── T7 — two-sided issue, discrepancies, and the consignment.deployed consumer ──
 export {
-  getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock,
+  getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist,
 } from "./transfers";
-export type { IssueLine, TransferLineRow, TransferRow, TransferWithLines } from "./transfers";
+export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
 /**
  * DD13's half of the interface Plan 15 imports: it appends `consignmentDeployed` (exported above,
  * from T2) and reads `consumptionsFor` to compose the discharge bill.

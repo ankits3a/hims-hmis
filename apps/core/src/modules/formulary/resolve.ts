@@ -1,11 +1,13 @@
 import { and, eq, sql } from "drizzle-orm";
 import {
-  formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
+  formularyDrugDisease, formularyInteractions, formularyMedicineSalts, formularyMedicines, formularySalts,
 } from "../../kernel/db/schema";
 import type { Db } from "../../kernel/db/client";
+import type { DrugDiseaseAlternative } from "../../kernel/db/schema";
 import { anyOfText } from "../../kernel/db/any-of";
 
-export type SaltRef = { saltId: string; moiety: string; drugClass: string | null };
+/** `allergyClasses` (P22) is what the allergy check reads beside `drugClass`; absent means none. */
+export type SaltRef = { saltId: string; moiety: string; drugClass: string | null; allergyClasses?: readonly string[] };
 export type ResolvedDrug = {
   medicineId: string | null;
   brandName: string | null;
@@ -62,14 +64,14 @@ export function normalizeDrugName(raw: string): string {
   return raw.toLowerCase().replace(/[.,()\-/]/g, "").replace(/\s+/g, " ").trim();
 }
 
-type SaltRow = { id: string; name: string; aliases: string[]; drugClass: string | null };
+type SaltRow = { id: string; name: string; aliases: string[]; drugClass: string | null; allergyClasses: string[] };
 
 async function activeSalts(db: Db): Promise<SaltRow[]> {
   const rows = await db.select({
     id: formularySalts.id, name: formularySalts.name,
-    aliases: formularySalts.aliases, drugClass: formularySalts.drugClass,
+    aliases: formularySalts.aliases, drugClass: formularySalts.drugClass, allergyClasses: formularySalts.allergyClasses,
   }).from(formularySalts).where(eq(formularySalts.active, true));
-  return rows.map((r) => ({ ...r, aliases: r.aliases ?? [] }));
+  return rows.map((r) => ({ ...r, aliases: r.aliases ?? [], allergyClasses: r.allergyClasses ?? [] }));
 }
 
 /**
@@ -94,15 +96,17 @@ async function activeSalts(db: Db): Promise<SaltRow[]> {
 async function mappedMoieties(db: Db, saltIds: string[]): Promise<Map<string, SaltRef>> {
   const out = new Map<string, SaltRef>();
   if (saltIds.length === 0) return out;
-  const res = await db.execute<{ entry_id: string; id: string; name: string; drug_class: string | null }>(sql`
-    select entry.id as entry_id, m.id, m.name, m.drug_class
+  const res = await db.execute<{ entry_id: string; id: string; name: string; drug_class: string | null; allergy_classes: string[] | null }>(sql`
+    select entry.id as entry_id, m.id, m.name, m.drug_class, m.allergy_classes
       from formulary_salts entry
       join formulary_substances sub on sub.sctid = entry.source_ref and sub.mapping_status = 'mapped'
       join formulary_salts m on m.id = sub.salt_id
      where entry.id = any(${sql.param([...new Set(saltIds)])}::text[])
        and m.id <> entry.id
   `);
-  for (const r of res.rows) out.set(r.entry_id, { saltId: r.id, moiety: r.name, drugClass: r.drug_class });
+  for (const r of res.rows) {
+    out.set(r.entry_id, { saltId: r.id, moiety: r.name, drugClass: r.drug_class, allergyClasses: r.allergy_classes ?? [] });
+  }
   return out;
 }
 
@@ -152,7 +156,7 @@ async function compositionOf(
     ? []
     : await db.select({
       id: formularySalts.id, name: formularySalts.name,
-      aliases: formularySalts.aliases, drugClass: formularySalts.drugClass,
+      aliases: formularySalts.aliases, drugClass: formularySalts.drugClass, allergyClasses: formularySalts.allergyClasses,
     }).from(formularySalts).where(anyOfText(formularySalts.id, referenced));
   const byId = new Map(allSalts.map((s) => [s.id, s]));
   for (const row of rows) {
@@ -173,7 +177,7 @@ async function compositionOf(
     */
     if (salt === undefined) continue;
     const list = out.get(row.medicineId) ?? [];
-    list.push({ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass });
+    list.push({ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass, allergyClasses: salt.allergyClasses ?? [] });
     out.set(row.medicineId, list);
   }
   const mapped = await mappedMoieties(db, referenced);
@@ -328,7 +332,7 @@ export async function resolveDrugTexts(db: Db, texts: string[]): Promise<Map<str
     if (salt !== undefined) {
       out.set(text, {
         medicineId: null, brandName: null, routeClass: null,
-        salts: [{ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass }],
+        salts: [{ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass, allergyClasses: salt.allergyClasses }],
       });
     }
     // 4. nothing else. No substring, no distance — the entry stays `null` (DD2).
@@ -372,6 +376,61 @@ export async function listInteractionsAmong(db: Db, saltIds: string[]): Promise<
     saltAId: r.saltAId, saltBId: r.saltBId,
     severity: r.severity === "moderate" ? "moderate" : "severe",
     note: r.note,
+    routeScope: r.routeScope === "systemic_only" ? "systemic_only" : null,
+  }));
+}
+
+/** P24 — one adopted rule: what this moiety does to a patient carrying this diagnosis. */
+export type DrugDiseaseRow = {
+  saltId: string;
+  /** The prefix that matched, kept so the alert can say WHICH ruling fired: `N18` or `N18.4`. */
+  icd10Prefix: string;
+  icd10Title: string;
+  severity: "severe" | "moderate";
+  note: string;
+  alternatives: DrugDiseaseAlternative[];
+  routeScope: "systemic_only" | null;
+};
+
+/**
+ * ═══ THE RULES THAT REACH THESE MOIETIES AND THESE DIAGNOSIS CODES ═══
+ *
+ * The join is a PREFIX match, done in Postgres and not in JavaScript, because the grain is per
+ * rule: `N18.4` and `N18.3` are two rulings about one disease and only the code can say which one
+ * a patient is in. `unnest` rather than a chain of ORs — a patient may carry a dozen diagnoses and
+ * the query shape should not change with the count.
+ *
+ * Codes are upper-cased here because the catalogue stores them upper-case and the column's CHECK
+ * pins the prefix the same way; a lower-case code from anywhere would otherwise match nothing and
+ * report a clean bill of health, which is the worst possible way for this to fail.
+ */
+export async function listDrugDiseaseFor(
+  db: Db, saltIds: string[], icd10Codes: string[],
+): Promise<DrugDiseaseRow[]> {
+  const salts = [...new Set(saltIds)].filter((id) => id !== "");
+  const codes = [...new Set(icd10Codes.map((c) => c.trim().toUpperCase()))].filter((c) => c !== "");
+  if (salts.length === 0 || codes.length === 0) return [];
+  const rows = await db.select({
+    saltId: formularyDrugDisease.saltId,
+    icd10Prefix: formularyDrugDisease.icd10Prefix,
+    icd10Title: formularyDrugDisease.icd10Title,
+    severity: formularyDrugDisease.severity,
+    note: formularyDrugDisease.note,
+    alternatives: formularyDrugDisease.alternatives,
+    routeScope: formularyDrugDisease.routeScope,
+  }).from(formularyDrugDisease).where(and(
+    eq(formularyDrugDisease.active, true),
+    anyOfText(formularyDrugDisease.saltId, salts),
+    sql`exists (select 1 from unnest(${sql.param(codes)}::text[]) as c
+                 where c like ${formularyDrugDisease.icd10Prefix} || '%')`,
+  ));
+  return rows.map((r) => ({
+    saltId: r.saltId,
+    icd10Prefix: r.icd10Prefix,
+    icd10Title: r.icd10Title,
+    severity: r.severity === "moderate" ? "moderate" : "severe",
+    note: r.note,
+    alternatives: r.alternatives,
     routeScope: r.routeScope === "systemic_only" ? "systemic_only" : null,
   }));
 }

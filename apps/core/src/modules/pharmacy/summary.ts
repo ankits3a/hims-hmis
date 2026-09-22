@@ -3,6 +3,7 @@ import { events, pharmacyDispenses, pharmacyRegH1 } from "../../kernel/db/schema
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { isIsoDate } from "./config";
 import { PharmacyError } from "./errors";
+import { openOnDay } from "./queue";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -46,8 +47,6 @@ export type CounterSummary = {
   scan: { pickedLines: number; scannedLines: number };
 };
 
-const OPEN = ["queued", "claimed", "verified", "picked", "billed"] as const;
-
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -68,9 +67,9 @@ export async function counterSummary(db: Db, day: string): Promise<CounterSummar
   }).from(pharmacyDispenses).where(and(gte(pharmacyDispenses.handedOverAt, start), lt(pharmacyDispenses.handedOverAt, end)));
 
   const openRows = await db.select({ status: pharmacyDispenses.status, n: sql<number>`count(*)::int` })
-    .from(pharmacyDispenses).where(inArray(pharmacyDispenses.status, [...OPEN])).groupBy(pharmacyDispenses.status);
+    .from(pharmacyDispenses).where(openOnDay(day)).groupBy(pharmacyDispenses.status);
   const open = { queued: 0, claimed: 0, verified: 0, picked: 0, billed: 0 };
-  for (const r of openRows) open[r.status as (typeof OPEN)[number]] = r.n;
+  for (const r of openRows) open[r.status as keyof typeof open] = r.n;
 
   const evs = await db.select({ name: events.name, payload: events.payload }).from(events).where(and(
     eq(events.module, "pharmacy"),

@@ -16,6 +16,8 @@ import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { useRealtime } from "../lib/realtime";
 import { PaperScreen } from "../components/paper-screen";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 
@@ -483,7 +485,6 @@ export function VitalsBay(): React.ReactElement {
   const [trail, setTrail] = useState<Amended | null>(null);
   const [keys, setKeys] = useState({ typed: 0, device: 0 });
   const [log, setLog] = useState<AgentLine[]>([]);
-  const [answer, setAnswer] = useState<string | null>(null);
   const note = useCallback((text: string, kind: AgentLine["kind"] = "did"): void => {
     setLog((prev) => logged(prev, text, kind));
   }, []);
@@ -637,7 +638,7 @@ export function VitalsBay(): React.ReactElement {
   const onSaved = useCallback((result: WireVitalsSaveResult, row: WireBenchRow) => {
     const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
       : row.patient.restricted ? (row.patient.alias ?? t("vitalsBay.bench.restricted")) : (row.patient.name ?? row.patient.uhid);
-    setBanner({ who, doctorName: row.doctorName, flags: result.flags, amended: false });
+    setBanner({ who, doctorName: row.doctorName, flags: result.flags, amended: false, feeWaived: result.feeWaived === true });
     setTrail(null);
     releaseFirstTake(row.encounterId);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
@@ -694,27 +695,38 @@ export function VitalsBay(): React.ReactElement {
     No model behind it, like every other dock in this application: it answers from the bench, the
     band and the pre-stage that are already on screen, and each answer names where it came from.
   */
-  const ask = useCallback((question: string): void => {
+  /*
+    ═══ FD-COPILOT — THE BAY'S OWN STATE, NOW THE FALLBACK ═══
+
+    The escalation state and the required vitals are facts about the PATIENT ON THIS BENCH, which
+    no server was asked, so they stay as they were and answer when the copilot does not recognise
+    the question. Note `"wait"` here and `queue_depth`'s cues overlap: the copilot answers "kitna
+    wait hai" about the hospital's queues now, and "bench"/"next" still reach this bay's own count.
+  */
+  const localAnswer = useCallback((question: string): string | null => {
     const q = question.trim().toLowerCase();
-    if (q === "") return;
+    if (q === "") return null;
     if (q.includes("bump") || q.includes("class") || q.includes("danger") || q.includes("escal")) {
       const view = protocol.view;
-      setAnswer(view === null || view.state === "none"
+      return view === null || view.state === "none"
         ? t("vitalsBay.agent.noEscalation")
-        : t("vitalsBay.agent.escalation", { state: view.state }));
-    } else if (q.includes("muac") || q.includes("band") || q.includes("required") || q.includes("owe")) {
-      setAnswer(preStage === null
+        : t("vitalsBay.agent.escalation", { state: view.state });
+    }
+    if (q.includes("muac") || q.includes("band") || q.includes("required") || q.includes("owe")) {
+      return preStage === null
         ? t("vitalsBay.agent.noPatient")
         : t("vitalsBay.agent.required", {
           band: t(`vitalsBay.band.${preStage.band}`),
           vitals: preStage.required.map((k) => t(`vitalsBay.vital.${k}`)).join(", "),
-        }));
-    } else if (q.includes("bench") || q.includes("wait") || q.includes("next")) {
-      setAnswer(t("vitalsBay.agent.bench", { count: rows.length }));
-    } else {
-      setAnswer(t("vitalsBay.agent.scope"));
+        });
     }
+    if (q.includes("bench") || q.includes("wait") || q.includes("next")) {
+      return t("vitalsBay.agent.bench", { count: rows.length });
+    }
+    return null;
   }, [protocol.view, preStage, rows.length, t]);
+
+  const copilot = useCopilot({ fallback: localAnswer });
 
   /*
     ONE VIEWPORT, AND THE DOCK IS INSIDE IT. `height` rather than `minHeight` because a bay monitor
@@ -844,11 +856,14 @@ export function VitalsBay(): React.ReactElement {
       </div>
 
       <AgentDock
-        answer={answer}
+        answer={copilot.answer}
         log={log}
-        onAsk={ask}
+        onAsk={copilot.ask}
         placeholder={t("vitalsBay.agent.placeholder")}
         idle={t("vitalsBay.agent.idle")}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
       />
     </PaperScreen>
   );

@@ -14,6 +14,7 @@ import { buildSubscriptionBus, registerAllJobs } from "../src/kernel/worker/jobs
 import { ALERTS_CONSUMER, alertsConsumer } from "../src/kernel/alerts/consumer";
 import { alertsManifest } from "../src/kernel/alerts/manifest";
 import { NOTIFY_CONSUMER, notifyConsumer } from "../src/kernel/notify/consumer";
+import { OBLIGATIONS_CONSUMER, obligationsConsumer } from "../src/kernel/obligations/consumer";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { runDueTimers } from "../src/kernel/workflow/timers";
 import { runDispatchCycle } from "../src/kernel/events/dispatcher";
@@ -112,6 +113,12 @@ const THE_EIGHTEEN = [
   "flagLateSurgeons",
   "runDailyClose",
   "runNotifyPump",
+  /**
+   * PHASE O T4 — THE CHANNEL LADDER, an `every(60_000)` INTERVAL job registered immediately
+   * after the pump, which is where `jobs.ts` puts it — so it sits there here too, and this
+   * array stays the REGISTRATION order rather than an alphabetical one.
+   */
+  "runReachLadder",
   "createEventPartitions",
   // PLAN 07c T8 — the THIRTEENTH, a `dailyIst("02:00")` job: the per-user daily rollup the
   // six-period briefs are served from. Registered between the partition creator and the retention
@@ -170,6 +177,16 @@ const THE_EIGHTEEN = [
    */
   "sweepCriticalChaser",
   "sweepUnreadWatchman",
+  /**
+   * PHASE R (R7) — the NINETEENTH, `dailyIst("01:30")`, and the roster's first scheduled job. It
+   * rolls the duty-window horizon forward; idempotent, so a double run changes nothing.
+   */
+  "sweepRosterWindows",
+  /**
+   * PHASE R (R9) — the TWENTIETH, `dailyIst("02:10")`. It drafts next month for every unit on the
+   * 20th and no-ops on every other day, so it heartbeats daily and works monthly.
+   */
+  "runMonthlyProposals",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -381,9 +398,14 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // array is `.sort()`ed above, so it lands after `notification.failed`.
         // 18a-iii T5 / D7: the radiology chasers are the alerts consumer's FOURTH and FIFTH
         // subscriptions. `.sort()` above puts them first — `imaging.` precedes `escalation.`.
+        // Obligation spine T2: `approval.requested` is the alerts consumer's SIXTH subscription —
+        // filing tells every holder of the approver role. Sorted, it lands first.
+        // PHASE O T1: `respond.overdue` is the alerts consumer's SEVENTH subscription — the
+        // silence beside the lateness. Sorted, it lands last.
         ["kernel.alerts", [
+          "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
-          "notification.failed", "ops.mode_changed",
+          "notification.failed", "ops.mode_changed", "respond.overdue",
         ].sort()],
         [
           "kernel.notify",
@@ -410,6 +432,16 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
          * builds the pairs from the registry instead of importing them (#158 — an empty grep is
          * evidence about the search). The suite is what named it.
          */
+        /**
+         * PHASE O T1 — THE OBLIGATION SPINE'S FIRST WIRE, and it is here rather than in
+         * `ALL_MANIFESTS` because `obligationsManifest` is worker-only, the `notify` shape:
+         * one subscription, no permission, no route. `.sort()` puts `kernel.obligations`
+         * between `kernel.notify` and `lab.interface_status`.
+         *
+         * An acknowledgement stops the RESPOND clock and only that clock. A handover
+         * deliberately stops nothing (G6).
+         */
+        ["kernel.obligations", ["alert.acknowledged"]],
         ["lab.interface_status", ["interface.down", "interface.restored"]],
         // PLAN 14 T7 / DD13 — THE FOURTH WIRE, and the first one that subscribes to an event NOTHING
         // IN THIS BUILD PUBLISHES YET. `consignment.deployed` is DEFINED by `modules/materials`
@@ -487,13 +519,23 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       expect(() =>
         buildSubscriptionBus(registry, { [NOTIFY_CONSUMER]: notifyConsumer(workerDb) }),
       ).toThrow(/kernel\.alerts/);
-      // PLAN 09 T6: the same both-directions proof for the third wire. Pass the two kernel
-      // handlers and omit `partners.accrual` and the worker refuses to boot — which is what makes
+      // PHASE O T1: the same both-directions proof for the obligation spine's wire. Pass the two
+      // shipped kernel handlers, omit `kernel.obligations`, and the worker refuses to boot — the
+      // mechanism that stops "an ack stops the respond clock" being shipped as a dead consumer.
+      expect(() =>
+        buildSubscriptionBus(registry, {
+          [ALERTS_CONSUMER]: alertsConsumer(workerDb),
+          [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
+        }),
+      ).toThrow(/kernel\.obligations/);
+      // PLAN 09 T6: the same both-directions proof for the third wire. Pass the KERNEL handlers
+      // and omit `partners.accrual` and the worker refuses to boot — which is what makes
       // "declare the subscriptions and the handler in ONE commit" a mechanism rather than a habit.
       expect(() =>
         buildSubscriptionBus(registry, {
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
+          [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
         }),
       ).toThrow(/partners\.accrual/);
     } finally {
@@ -501,7 +543,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the eighteen jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the twenty-one jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -518,7 +560,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
       registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
 
-      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these eighteen, in
+      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these twenty, in
       // registration order — not "at least", not "these among others".
       expect(scheduler.jobs()).toEqual(THE_EIGHTEEN);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.

@@ -2,6 +2,7 @@ import type { OrderKindDecl } from "../orders/kinds";
 import type { ResourceKindDecl } from "../resources/kinds";
 import type { SearchProvider } from "../search/types";
 import type { DeskProvider } from "../desk/types";
+import type { CopilotToolDecl } from "../copilot/types";
 
 export type ModuleManifest = {
   key: string;
@@ -67,4 +68,22 @@ export type ModuleManifest = {
    * runtime, which is a way to claim a kind no boot-time collector would ever see refuse.
    */
   orderKinds?: readonly OrderKindDecl[];
+  /**
+   * FD-COPILOT — the things the DESK COPILOT can do with this module's data. OPTIONAL for the same
+   * reason `search`, `resourceKinds`, `desk` and `orderKinds` are, and it is the same seam solving
+   * the same problem a FIFTH time: every existing manifest stays valid unchanged.
+   * `kernel/copilot/catalog.ts`'s `collectCopilotTools` collects these from `registry.all()` exactly
+   * as `collectProviders` does, and refuses at BOOT on a permission no manifest declares — plus one
+   * refusal of its own, on an intent two manifests claim, because the router's whole job is to name
+   * an intent and two claimants leave "which tool runs" with no answer.
+   *
+   * A module owns what the copilot can say about it. When the lab wants "is this specimen back
+   * yet?" answered, that ships with the lab and the kernel learns nothing about specimens — which is
+   * what makes a copilot over a whole hospital tractable rather than a kernel that knows everything.
+   *
+   * `readonly`, following `orderKinds` and `resourceKinds` rather than `search` and `desk`, for the
+   * reason they give: a mutable field lets a consumer push a tool onto a manifest's declaration list
+   * at runtime, which is a way to claim an intent that no boot-time collector would ever see refuse.
+   */
+  copilotTools?: readonly CopilotToolDecl[];
 };

@@ -8,6 +8,7 @@ import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
 import { alertsManifest } from "../alerts/manifest";
 import { notifyManifest } from "../notify/manifest";
+import { obligationsManifest } from "../obligations/manifest";
 import { opsManifest } from "../ops/manifest";
 import { patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
@@ -75,6 +76,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   alertsManifest,
   opsManifest,
   notifyManifest,
+  obligationsManifest, // PHASE O T1 — worker-only, the `notify` shape
   membershipManifest,
   partnersManifest,
   formularyManifest,
@@ -182,13 +184,16 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "radiology",
       // PLAN 16c T1 — appended, so the twenty above keep the order they were installed in.
       "pharmacy",
+      // PHASE R (R1) — appended. Every department will owe the roster rows and it reaches into none
+      // of them (D1), so nothing above depends on where it sits.
+      "roster",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(22); // PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(23); // PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(22);
+    expect(registry.all()).toHaveLength(23);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -201,7 +206,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly seven enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly eight enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -307,8 +312,20 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      appended `aerb` to the array and left the sentence saying six, which is the one thing
     //      every note from (1d) onward is written to prevent. The assertion below now checks the
     //      sentence against the array, so the next note cannot be the same apology.
+    // (1j) PHASE R — the TWENTY-THIRD, `roster`, and it is APP-ONLY. **DECIDED IN R5, which the plan
+    //      (§5) left the question to: the worker does NOT install it, and it is worth saying why
+    //      rather than leaving the absence to look like an oversight.**
+    //
+    //      R6 moves the worker's alert and timer consumers onto `whoIsOn`. That is a FUNCTION over
+    //      tables, and the worker already has the same database — so what it needs is the tables,
+    //      which migrations give it, not the manifest. A manifest carries permissions, a menu and
+    //      SUBSCRIPTIONS; the roster declares no subscription and no job of its own until R7's
+    //      nightly window extension and R9's monthly draft, and each of those is named in the
+    //      scheduler census by the task that adds it. Installing it in the worker today would
+    //      install nothing the worker uses and would make the (1b) count say something untrue about
+    //      what the worker does.
     const appOnly = allKeys.filter((k) => !workerKeys.includes(k));
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb"]);
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
@@ -337,7 +354,12 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //     matching handler a BOOT ERROR by design. The handler exists only in `worker.module.ts`'s
     //     `workerConsumers`, so `notifyManifest` may be installed ONLY where that handler is —
     //     installing it in `app.module.ts` would stop the api at startup.
-    expect(workerKeys.filter((k) => !allKeys.includes(k))).toEqual(["notify"]);
+    // PHASE O T1 — `obligations` joins `notify` on this side of the difference, and for exactly
+    // the reason (2) gives: its only declaration is one subscription whose handler exists solely
+    // in `workerConsumers`, so installing it in `app.module.ts` would stop the api at startup.
+    // It moves to `ALL_MANIFESTS` when it first serves an api route — T5's chain management and
+    // T6's ledger reads are the first such things.
+    expect(workerKeys.filter((k) => !allKeys.includes(k))).toEqual(["notify", "obligations"]);
 
     // Everything else is shared, and this is the assertion that makes the two lines above a
     // STATEMENT of the difference rather than a licence for any difference at all.
@@ -377,6 +399,6 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PLAN 16c T3 — the pharmacy's `prescription.issued` consumer; installed in both processes.
       "pharmacy",
     ]);
-    expect(workerKeys).toHaveLength(16);
+    expect(workerKeys).toHaveLength(17); // PHASE O T1: 16 -> 17, `obligations`, read off the red run
   });
 });

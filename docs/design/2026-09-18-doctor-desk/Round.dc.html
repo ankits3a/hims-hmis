@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Round — one bed</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+textarea{font:inherit}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 390px; height: 1300px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 14px; line-height: 20px;">
+
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: #132420; color: #d9efe4;">
+<a href="Beds.dc.html" style="display: inline-flex; align-items: center; height: 44px; color: #d9efe4; font-size: 13px; font-weight: 500;">‹ Beds</a>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .1em;">ROUND · BED 4 OF 19</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9fc0b1;">saved on phone</div>
+</div>
+
+<div style="flex-grow: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+<h1 style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 600;">Ramesh Kumar <span style="font-size: 14px; font-weight: 400; color: #5c6f66;">· 64 M</span></h1>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 700;">G-214</div>
+</div>
+<div style="font-size: 12.5px; color: #5c6f66;">Sepsis, urinary source · day 4 · under Unit II, Prof. A. Sharma · allergy: sulfa</div>
+
+<div style="display: flex; flex-direction: column; gap: 0; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px;">
+<div style="padding: 10px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66; border-bottom: 1px solid #ecf1ed;">SINCE YOU LAST SAW HIM · THU 17:40</div>
+<sc-for list="{{ changes }}" as="c" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 1px; padding: 10px 12px; border-bottom: 1px solid #ecf1ed;">
+<div style="font-size: 14px; font-weight: 600; {{ c.style }}">{{ c.fact }}</div>
+<div style="font-size: 12px; color: #5c6f66;">{{ c.src }}</div>
+</div>
+</sc-for>
+<div style="padding: 10px 12px; font-size: 12px; color: #5c6f66;">Every line is a row somebody entered. Tap a line to open it. The copilot wrote none of them.</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px;">
+<sc-for list="{{ vitals }}" as="v" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 6px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: .08em; color: #5c6f66;">{{ v.k }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 700; {{ v.style }}">{{ v.v }}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="display: flex; flex-direction: column; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px;">
+<div style="padding: 10px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66; border-bottom: 1px solid #ecf1ed;">OWED ON THIS BED</div>
+<sc-for list="{{ tasks }}" as="t" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #ecf1ed;">
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px;">
+<div style="font-size: 13.5px; font-weight: 600;">{{ t.what }}</div>
+<div style="font-size: 12px; color: #5c6f66;">{{ t.owner }}</div>
+</div>
+<button onClick="{{ t.give }}" style="height: 44px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 600; {{ t.btnStyle }}">{{ t.btn }}</button>
+</div>
+</sc-for>
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px;">
+<span style="font-size: 12.5px; color: #5c6f66;">Meropenem day 2 of 3 · day 4 needs Prof. Sharma</span>
+<button style="height: 44px; padding: 0 12px; border-radius: 6px; border: 1px solid #0e6b4e; background: #ffffff; color: #0e6b4e; font-size: 13px; font-weight: 600;">Ask him</button>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px;">
+<div style="display: flex; align-items: center; justify-content: space-between;">
+<label for="round-note" style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">ROUND NOTE</label>
+<span style="font-size: 12px; color: #5c6f66;">Drafting is off · you write</span>
+</div>
+<textarea id="round-note" rows="3" placeholder="Speak or type. Hindi, English or both." style="box-sizing: border-box; width: 100%; border: 1px solid #dfe7e1; border-radius: 6px; padding: 10px; font-size: 14px; color: #132420; background: #f9fbf9; resize: none;"></textarea>
+<div style="display: flex; gap: 8px;">
+<button style="flex-grow: 1; height: 44px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; color: #132420; font-size: 13px; font-weight: 500;">Pull today's vitals + labs in</button>
+<button style="height: 44px; padding: 0 16px; border-radius: 6px; border: 1px solid #0e6b4e; background: #0e6b4e; color: #f2faf6; font-size: 13px; font-weight: 600;">Sign note</button>
+</div>
+</div>
+
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 12px 12px; background: #ffffff; border-top: 1px solid #dfe7e1;">
+<a href="Round.dc.html" style="display: flex; flex-direction: column; justify-content: center; height: 52px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; color: #132420;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5c6f66;">‹ PREVIOUS</span>
+<span style="font-size: 13px; font-weight: 600;">G-208 Sita Devi</span>
+</a>
+<a href="Round.dc.html" style="display: flex; flex-direction: column; justify-content: center; align-items: flex-end; height: 52px; padding: 0 12px; border-radius: 6px; background: #0e6b4e; color: #f2faf6;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #cfe9dd;">NEXT ›</span>
+<span style="font-size: 13px; font-weight: 600;">G-219 Mohan Singh</span>
+</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1300}}'>
+class Component extends DCLogic {
+  state = { given: {} };
+  renderVals() {
+    const given = (this.state && this.state.given) || {};
+    const red = 'color:#b23a30;', ink = 'color:#132420;', amber = 'color:#8a5a0b;';
+    const changes = [
+      { fact: 'Potassium 4.8 → 6.4 mmol/L', src: 'Lab · validated 08:11 by S. Rao · not haemolysed · you acknowledged 08:18', style: red },
+      { fact: 'BP 108/64 → 92/58 · pulse 112', src: 'Nursing vitals 08:00 by Sr. Rekha', style: red },
+      { fact: 'Urine 310 ml in 12 h · about 0.4 ml/kg/h', src: 'Intake-output chart · night shift', style: amber },
+      { fact: 'Blood culture: gram-negative bacilli, preliminary', src: 'Microbiology 06:50 · sensitivity tomorrow', style: ink },
+      { fact: 'Creatinine 1.7 → 2.1', src: 'Lab · validated 08:11', style: amber },
+    ];
+    const vitals = [
+      { k: 'BP', v: '92/58', style: red }, { k: 'PULSE', v: '112', style: red }, { k: 'TEMP', v: '100.8', style: ink },
+      { k: 'SpO₂', v: '95', style: ink }, { k: 'NEWS2', v: '8', style: red },
+    ];
+    const done = 'border:1px solid rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e;';
+    const open = 'border:1px solid #dfe7e1;background:#ffffff;color:#132420;';
+    const tasks = [
+      { id: 'ecg', what: '12-lead ECG now', who: 'JR Pooja' },
+      { id: 'rpt', what: 'Repeat potassium in 2 h', who: 'JR Pooja' },
+      { id: 'neph', what: 'Nephrology call', who: 'SR Karan' },
+    ].map((t) => ({
+      what: t.what,
+      owner: given[t.id] ? 'With ' + t.who + ' · lands on their list now · you see when it is done' : 'Nobody has it yet',
+      btn: given[t.id] ? 'Given' : 'Give to ' + t.who,
+      btnStyle: given[t.id] ? done : open,
+      give: () => this.setState({ given: { ...given, [t.id]: true } }),
+    }));
+    return { changes, vitals, tasks };
+  }
+}
+</script>
+</body>
+</html>

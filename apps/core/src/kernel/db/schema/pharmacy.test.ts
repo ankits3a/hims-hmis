@@ -9,7 +9,10 @@ import { openVisit } from "../../../modules/opd/encounters";
 import { issuePrescription } from "../../../modules/opd/prescriptions";
 import { callNext } from "../../../modules/opd/queue";
 import { recordVitals } from "../../../modules/opd/vitals";
-import { pharmacyDispenseLines, pharmacyDispenses, pharmacyRegH1 } from "./index";
+import { pharmacyAuthorisations, pharmacyDispenseLines, pharmacyDispenses, pharmacyRegH1, pharmacyShelfLocations } from "./index";
+import { MON2 as PMON2, issueRx, line as rxLineOf, seedPharmacyBase } from "../../../../test/helpers/pharmacy";
+import { findAtCounter } from "../../../modules/pharmacy/claim";
+import type { PharmacyFixture } from "../../../../test/helpers/pharmacy";
 import type { Db } from "../client";
 
 const MON = new Date("2026-08-17T04:00:00.000Z");
@@ -96,5 +99,81 @@ describe("the pharmacy schema (16c T1, migration 0056)", () => {
     const rows = await db.select().from(pharmacyRegH1);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.qtyBase).toBe(3);
+  });
+});
+
+/**
+ * PD-D18 — `pharmacy_shelf_locations`, migration 0106: one label per (counter's store, item), and the
+ * label is a real, trimmed, short word — "unknown" is the ABSENCE of a row, never an empty label.
+ */
+describe("pharmacy_shelf_locations (PD-D18, migration 0106)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: PharmacyFixture;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => { await truncateAll(db); fx = await seedPharmacyBase(db); });
+  afterEach(() => { fx.unregister(); });
+
+  const row = (over: Partial<typeof pharmacyShelfLocations.$inferInsert> = {}): typeof pharmacyShelfLocations.$inferInsert =>
+    ({ id: newId(), storeResourceId: fx.storeId, itemId: fx.item.crocin, location: "R-12", setBy: "u", ...over });
+
+  it("holds one label per store and item", async () => {
+    await db.insert(pharmacyShelfLocations).values(row());
+    await expect(db.insert(pharmacyShelfLocations).values(row({ location: "R-13" }))).rejects.toThrow(/pharmacy_shelf_locations_store_item_ux/);
+    await db.insert(pharmacyShelfLocations).values(row({ itemId: fx.item.calpol, location: "rack 3 · shelf 2" }));
+    expect((await db.select().from(pharmacyShelfLocations).where(eq(pharmacyShelfLocations.storeResourceId, fx.storeId))).map((r) => r.location).sort())
+      .toEqual(["R-12", "rack 3 · shelf 2"]);
+  });
+
+  it.each([[""], ["   "], [" R-12"], ["R-12 "], ["X".repeat(25)]])("refuses the label %j", async (location: string) => {
+    await expect(db.insert(pharmacyShelfLocations).values(row({ location }))).rejects.toThrow(/pharmacy_shelf_locations_label_ck/);
+  });
+});
+
+/**
+ * PD-9 — `pharmacy_authorisations`, migration 0107: what the database itself refuses, under the code
+ * that refuses it first — the lab's `same_actor` rule, a decision without a reason, and a second open
+ * request for one hit.
+ */
+describe("pharmacy_authorisations (PD-9, migration 0107)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: PharmacyFixture;
+  let dispenseId: string;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => {
+    await truncateAll(db);
+    fx = await seedPharmacyBase(db);
+    const { issued } = await issueRx(db, fx, [rxLineOf({ drug: "Crocin 500", medicineId: fx.med.crocin })]);
+    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, PMON2);
+    if (r.kind !== "dispense") throw new Error("expected a dispense");
+    dispenseId = r.dispense.id;
+  });
+  afterEach(() => { fx.unregister(); });
+
+  const row = (over: Partial<typeof pharmacyAuthorisations.$inferInsert> = {}): typeof pharmacyAuthorisations.$inferInsert => ({
+    id: newId(), dispenseId, lineIdx: 0, book: "allergy", about: "Paracetamol", prescriberUserId: "dr", requestedBy: "ph", requestedAt: PMON2, ...over,
+  });
+
+  it("holds one OPEN request per hit; a decided one does not count", async () => {
+    await db.insert(pharmacyAuthorisations).values(row());
+    await expect(db.insert(pharmacyAuthorisations).values(row())).rejects.toThrow(/pharmacy_authorisations_one_open_ux/);
+    await db.insert(pharmacyAuthorisations).values(row({ status: "declined", decidedBy: "dr", decidedAt: PMON2, decisionReason: "not safe" }));
+  });
+
+  it("refuses a decision by the person who asked, a decision with no reason, and decision fields on an open request", async () => {
+    await expect(db.insert(pharmacyAuthorisations).values(row({ status: "authorised", decidedBy: "ph", decidedAt: PMON2, decisionReason: "fine by me" })))
+      .rejects.toThrow(/pharmacy_authorisations_same_actor_ck/);
+    await expect(db.insert(pharmacyAuthorisations).values(row({ status: "authorised", decidedBy: "dr", decidedAt: PMON2, decisionReason: "ok" })))
+      .rejects.toThrow(/pharmacy_authorisations_reason_ck/);
+    await expect(db.insert(pharmacyAuthorisations).values(row({ status: "authorised" })))
+      .rejects.toThrow(/pharmacy_authorisations_decided_ck/);
+    await expect(db.insert(pharmacyAuthorisations).values(row({ decidedBy: "dr", decidedAt: PMON2, decisionReason: "fine" })))
+      .rejects.toThrow(/pharmacy_authorisations_decided_ck/);
+    await expect(db.insert(pharmacyAuthorisations).values(row({ book: "vibes" }))).rejects.toThrow(/pharmacy_authorisations_book_ck/);
   });
 });

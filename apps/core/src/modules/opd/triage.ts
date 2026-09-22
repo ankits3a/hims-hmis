@@ -23,8 +23,15 @@
  * exactly as `proposeWalkIn` proposes and never applies.
  */
 
+import { assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
+import { chooseDepartments, departmentOptions } from "./triage-choice";
+import type { ChoiceClient } from "../../kernel/inference/types";
 import { defaultTriageCache, triageCacheKey } from "./triage-cache";
 import type { TriageCache } from "./triage-cache";
+
+import { rankBook } from "./complaint-ranker";
+import { redFlagFor } from "./red-flags";
+import type { RedFlag } from "./red-flags";
 
 /** A department as the hospital actually has it. The model sees these and nothing else. */
 export type TriageDepartment = { id: string; name: string };
@@ -39,6 +46,26 @@ export type TriageResult = {
   suggestions: TriageSuggestion[];
   /** `"model"` or `"keywords"` — the seat SAYS which, because advice whose origin is hidden is trusted too much. */
   source: "model" | "keywords";
+  /**
+   * ═══ SET WHEN THE DESK MUST NOT BOOK AT ALL ═══
+   *
+   * `red-flags.ts` carries the reasoning. When this is present `suggestions` is EMPTY by
+   * construction: a red flag refuses to route rather than ranking Casualty first, because ranking
+   * offers a choice and this is not a choice a non-medico clerk should be handed.
+   */
+  redFlag?: RedFlag;
+};
+
+/** What the desk knows about the patient when the complaint is typed. All of it may be absent. */
+export type TriagePatient = {
+  ageYears: number | null;
+  /**
+   * The names the desk holds for this patient — the found record, the enrolment form, the guardian
+   * — supplied so they can be MASKED before the model is asked, and used for nothing else. A name
+   * has no shape a pattern can find, so the one surface that knows it supplies it by value. Absent,
+   * the guarantee covers identifier shapes only.
+   */
+  names?: readonly string[];
 };
 
 /**
@@ -54,10 +81,130 @@ const KEYWORDS: { keys: string[]; departments: string[]; label: string }[] = [
   { keys: ["pregnan", "garbh", "period", "गर्भ"], departments: ["Obstetrics & Gynaecology"], label: "antenatal / gynae" },
   { keys: ["child", "baccha", "बच्च", "teeka", "vaccin"], departments: ["Paediatrics"], label: "child illness / vaccination" },
   { keys: ["sugar", "bp", "pressure", "diabet", "शुगर"], departments: ["General Medicine", "Cardiology"], label: "BP / sugar follow-up" },
+  /*
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+    THE OTHER SEVEN DEPARTMENTS, added 2026-09-17 after the owner hit the hole on the live screen
+    ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+    Owner, testing `/appointment`: *"I wrote 'aankh me dard', but the system showed 'Nobody in the
+    shortest department is on today's board'… there's a doctor in ophthalmology and still the agent
+    failed to pick the department."*
+
+    The seven rows above reach FIVE of the twelve departments `DEFAULT_DEPARTMENTS` seeds. `aankh`
+    matched nothing, the ranker returned an empty list, the seat fell back to "the shortest
+    department" and told the clerk the ROSTER was empty — a sentence about a fault that did not
+    exist, describing a routing failure that did. Half the hospital was unreachable by complaint and
+    nothing said so, because a table that returns nothing looks exactly like a complaint nobody
+    recognises.
+
+    `triage.test.ts` now carries a CENSUS over `DEFAULT_DEPARTMENTS`: a department no complaint can
+    reach fails the build. That is what makes this list maintainable rather than merely longer.
+
+    ═══ WHY THE KEYS LOOK OVER-SPELLED ═══
+
+    The matcher is `q.includes(key)`, so a key matches inside any longer word. Two of the obvious
+    short keys are actively dangerous here and both are spelled around rather than shortened:
+      - `"ear"` would route **heart** pain to ENT.
+      - `"tension"` would route **hypertension** to Psychiatry.
+    Both are among the commonest complaints in this book, and both have a test.
+  */
+  {
+    keys: ["aankh", "ankh", "आँख", "आंख", "eye", "vision", "nazar", "नज़र", "dikhai", "motiyabind", "मोतियाबिंद", "chashm"],
+    departments: ["Ophthalmology"], label: "eye",
+  },
+  {
+    // `ear pain` / `earache` rather than `ear` — see the note above about heart.
+    keys: ["kaan", "कान", "ear pain", "earache", "gala", "gale", "गला", "throat", "naak", "नाक", "sunai", "tonsil", "sinus"],
+    departments: ["ENT"], label: "ear / nose / throat",
+  },
+  {
+    keys: ["daant", "dant", "दाँत", "दांत", "tooth", "teeth", "masuda", "मसूड़ा", "cavity", "dental"],
+    departments: ["Dental"], label: "teeth / gums",
+  },
+  {
+    keys: ["khujli", "खुजली", "skin", "twacha", "त्वचा", "rash", "daane", "दाने", "phunsi", "daad", "fungal", "pimple", "eczema"],
+    departments: ["Dermatology"], label: "skin",
+  },
+  {
+    // `tanav` rather than `tension` — see the note above about hypertension.
+    keys: ["neend", "नींद", "sleep", "depress", "anxiety", "ghabrahat", "घबराहट", "tanav", "तनाव", "mansik", "मानसिक", "nasha", "panic"],
+    departments: ["Psychiatry"], label: "sleep / mood / mind",
+  },
+  {
+    keys: ["hernia", "bawaseer", "बवासीर", "piles", "gaanth", "ganth", "गांठ", "fistula", "appendix", "phoda", "फोड़ा", "lump"],
+    departments: ["General Surgery"], label: "lump / piles / hernia",
+  },
+  {
+    // `rehab` catches "stroke rehabilitation"; bare `stroke` is deliberately absent, because an
+    // acute stroke is an emergency for Medicine and must not be routed to a physiotherapy bench.
+    keys: ["physio", "rehab", "exercise", "akadan", "stiffness", "lakwa", "लकवा"],
+    departments: ["Physiotherapy"], label: "physiotherapy / rehabilitation",
+  },
 ];
 
 /** The deterministic ranking. Pure, synchronous, and the answer whenever the model cannot be reached. */
 export function keywordRank(text: string, departments: TriageDepartment[]): TriageSuggestion[] {
+  const table = tableRank(text, departments);
+  if (table.length > 0) return table;
+
+  /*
+    ═══ THE HARVESTED BOOK ANSWERS WHAT THE TABLE HAS NEVER SEEN ═══
+
+    Table FIRST and the book only when the table is silent, which is a deliberate ordering rather
+    than a hedge:
+
+      - The table is fourteen hand-written rows whose every key was chosen so a clerk can be told
+        why, and it is the ONLY half that reads Devanagari — the harvested book is romanised (five
+        Devanagari characters across 782 variants, measured). Letting the book override it would
+        trade a curated answer for a scored one.
+      - The book is 82 syndromes of owner-supplied regional vocabulary. It is what lets
+        "thehuna me dard ba" and "motiyabind" reach a department at all, which no list written here
+        was ever going to cover.
+
+    So this is a pure ADDITION: every complaint the table answered before, it still answers
+    identically, and the gap it used to fall into now has something in it. `rankBook` returns null
+    rather than guessing, so a complaint neither half recognises still produces an empty list and
+    the seat still says so honestly.
+  */
+  const book = rankBook(text);
+  if (book === null) return [];
+
+  /*
+    ═══ IF THE PRIMARY DEPARTMENT IS NOT IN THIS HOSPITAL, THE BOOK SAYS NOTHING ═══
+
+    Found by an existing test, and it was a genuine defect. At a hospital with no Obs & Gynae, an
+    antenatal complaint fell through to the entry's SECONDARY department — Paediatrics, which the
+    book lists because of the newborn — and the seat cheerfully proposed sending a pregnant woman
+    to the children's OPD.
+
+    A secondary department means "also consider", never "instead of". So the book's strongest claim
+    has to exist here or the book abstains and the seat falls back to what it does when nothing is
+    recognised. The harvest already folded 34 specialities onto the twelve this hospital seeds;
+    this is the case where a hospital has DEACTIVATED one of its own, and the honest answer is that
+    we have nowhere to send them rather than somewhere wrong.
+  */
+  const primary = book.departments[0];
+  if (primary === undefined) return [];
+  if (!departments.some((x) => x.name.toLowerCase() === primary.department.toLowerCase())) return [];
+
+  const out: TriageSuggestion[] = [];
+  for (const d of book.departments) {
+    const dept = departments.find((x) => x.name.toLowerCase() === d.department.toLowerCase());
+    if (dept === undefined || out.some((o) => o.departmentId === dept.id)) continue;
+    /*
+      The reason NAMES THE WORD THAT DECIDED IT where there is one. "eye — from 'motiyabind'" is
+      something a clerk can repeat to a patient and disagree with; a bare department name is not.
+    */
+    out.push({
+      departmentId: dept.id,
+      reason: book.because.length > 0 ? `${book.label} — from "${book.because[0] ?? ""}"` : book.label,
+    });
+  }
+  return out;
+}
+
+/** The hand-written floor, unchanged. Kept as its own function so its behaviour stays testable alone. */
+function tableRank(text: string, departments: TriageDepartment[]): TriageSuggestion[] {
   const q = text.trim().toLowerCase();
   if (q === "") return [];
   const out: TriageSuggestion[] = [];
@@ -141,8 +288,14 @@ export function parseSuggestions(raw: string, departments: TriageDepartment[]): 
   return out;
 }
 
+/** TypeSafe, when configured, and the confidence it must reach before its answer is used. */
+export type TriageChoice = { client: ChoiceClient; minConfidence: number };
+
 /**
- * Ask the model, and fall back to the table on ANY failure.
+ * Ask the models, and fall back to the table on ANY failure.
+ *
+ * Two models in order (owner, 2026-09-19: "typesafe as priority and the groq as fallback") —
+ * `triage-choice.ts` carries the measurement. Either may be absent; both absent is the table alone.
  *
  * `fetchImpl` is injected so the tests drive every branch — success, timeout, refusal, garbage —
  * without a network. The real caller passes nothing.
@@ -153,11 +306,50 @@ export async function suggestDepartments(
   config: TriageConfig,
   fetchImpl: typeof fetch = fetch,
   cache: TriageCache = defaultTriageCache,
+  patient: TriagePatient = { ageYears: null },
+  choice: TriageChoice | null = null,
 ): Promise<TriageResult> {
+  /*
+    ═══ THE BRAKE RUNS FIRST, AND IT RETURNS BEFORE ANYTHING ELSE CAN ═══
+
+    Before the keyword table, before the cache, and — deliberately — before the model. Three
+    reasons, in order of how much each costs if ignored:
+
+      1. A red flag must not depend on a provider being reachable. `askModel`'s timeout is an
+         ordinary outcome, which is the right shape for choosing between Ophthalmology and ENT and
+         completely the wrong shape for an emergency.
+      2. It must not be cacheable against a complaint string alone: the same words are an emergency
+         at 55 and not at 6, and `triageCacheKey` knows nothing about the patient.
+      3. It is instant and free, and a clerk who has typed "saans nahi aa rahi" should not watch a
+         spinner.
+
+    `suggestions` is left EMPTY rather than filled with Casualty. See `red-flags.ts`: this refuses,
+    it does not rank.
+  */
+  const redFlag = redFlagFor(text, patient.ageYears);
+  if (redFlag !== undefined && redFlag !== null) {
+    return { suggestions: [], source: "keywords", redFlag };
+  }
+
   const keywords = keywordRank(text, departments);
-  if (config.baseUrl === null || config.apiKey === null || text.trim() === "" || departments.length === 0) {
+  const chat = config.baseUrl !== null && config.apiKey !== null ? { ...config, baseUrl: config.baseUrl, apiKey: config.apiKey } : null;
+  if ((chat === null && choice === null) || text.trim() === "" || departments.length === 0) {
     return { suggestions: keywords, source: "keywords" };
   }
+
+  /*
+   * ═══ NOTHING THAT NAMES THE PATIENT LEAVES THIS PROCESS ═══
+   *
+   * The plan series' law — "identified PHI never enters an inference request — any stage, any
+   * locus, ever" — which this path broke until 2026-09-19: the complaint went to the provider
+   * verbatim, and a clerk who typed "Ramesh ji ko bukhar, 98765 43210" sent both. The complaint is
+   * masked with the copilot's own masker: identifier SHAPES always, and the names the desk holds by
+   * value, whole or by their parts, because a clerk says "Ramesh" and the record says "Ramesh Kumar".
+   *
+   * Everything local — the brake above, the keyword table — reads the complaint as typed. Only what
+   * leaves is masked, and the cache below is keyed on that, so it never holds a name either.
+   */
+  const masked = maskQuestion(text, nameTerms(patient.names ?? []), { wholeWords: true }).masked;
 
   /*
    * ═══ FD-11 — THE SAME QUESTION IS NOT PAID FOR TWICE ═══
@@ -169,8 +361,11 @@ export async function suggestDepartments(
    * Neither trades anything away. `triage-cache.ts` carries the reasoning for what is NOT done —
    * short-circuiting the model on a keyword hit was measured and is wrong — and for the rule that
    * a keyword fallback is never stored, so a transient 429 cannot pin the degraded answer.
+   *
+   * Keyed on the MASKED complaint: the answer depends only on what the model saw, so "Ramesh ko
+   * bukhar" and "Suresh ko bukhar" are one question and one call.
    */
-  const key = triageCacheKey(text, departments);
+  const key = triageCacheKey(masked, departments);
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
 
@@ -180,7 +375,7 @@ export async function suggestDepartments(
     return already;
   }
 
-  const pending = askModel(text, departments, { ...config, baseUrl: config.baseUrl, apiKey: config.apiKey }, fetchImpl, keywords);
+  const pending = askModels(masked, departments, chat, choice, fetchImpl, keywords);
   cache.inflight.set(key, pending);
   try {
     const result = await pending;
@@ -191,8 +386,62 @@ export async function suggestDepartments(
   }
 }
 
-/** The call itself. Split out so `suggestDepartments` reads as the caching policy it now is. */
+/**
+ * Each name whole, and each of its words: the clerk types what the patient is called at the
+ * counter, which is rarely the registered name in full. One-letter initials are dropped — an "R"
+ * would mask every standalone r in the complaint and protect nobody.
+ */
+function nameTerms(names: readonly string[]): string[] {
+  const terms = new Set<string>();
+  for (const name of names) {
+    const whole = name.trim();
+    if (whole === "") continue;
+    terms.add(whole);
+    for (const part of whole.split(/[\s.,]+/)) {
+      if ([...part].length >= 2) terms.add(part);
+    }
+  }
+  return [...terms];
+}
+
+/**
+ * TypeSafe first; the chat model when TypeSafe is unsure, unreachable or absent; the table when
+ * neither answers. Split out so `suggestDepartments` reads as the caching policy it is.
+ */
+async function askModels(
+  /** Already masked by the caller. */
+  masked: string,
+  departments: TriageDepartment[],
+  chat: (TriageConfig & { baseUrl: string; apiKey: string }) | null,
+  choice: TriageChoice | null,
+  fetchImpl: typeof fetch,
+  keywords: TriageSuggestion[],
+): Promise<TriageResult> {
+  const table: TriageResult = { suggestions: keywords, source: "keywords" };
+
+  if (choice !== null) {
+    /*
+      THE LAST GATE, on everything TypeSafe would be sent: the masked complaint and the options it
+      is offered. The same content would go to the chat model, so a refusal here refuses both.
+    */
+    try {
+      assertNoIdentifiers(JSON.stringify([masked, departmentOptions(departments).options]));
+    } catch {
+      return table;
+    }
+    const picked = await chooseDepartments(masked, departments, choice.client, choice.minConfidence);
+    // Sure it is none of our departments: the table's answer stands, and the chat model is not asked to overrule it.
+    if (picked === "none") return table;
+    if (picked !== "unsure") return { suggestions: picked, source: "model" };
+  }
+
+  if (chat === null) return table;
+  return askModel(masked, departments, chat, fetchImpl, keywords);
+}
+
+/** The chat model's call — TypeSafe's fallback since 2026-09-19, and triage's only model before it. */
 async function askModel(
+  /** Already masked by the caller. The gate below checks rather than trusts that. */
   text: string,
   departments: TriageDepartment[],
   // Narrowed: `suggestDepartments` has already refused the unconfigured case above.
@@ -200,6 +449,19 @@ async function askModel(
   fetchImpl: typeof fetch,
   keywords: TriageSuggestion[],
 ): Promise<TriageResult> {
+  const prompt = buildPrompt(text, departments);
+  /*
+    THE LAST GATE, on the exact string that goes on the wire — the whole prompt, department list
+    included, because `mask.ts` is right that a masker cannot be its own witness. A refusal costs
+    the model call and nothing else: the clerk gets the keyword table, which is what every other
+    failure here already gives them. `IdentifierLeak` carries only a length, never the text.
+  */
+  try {
+    assertNoIdentifiers(prompt);
+  } catch {
+    return { suggestions: keywords, source: "keywords" };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
   try {
@@ -221,7 +483,7 @@ async function askModel(
          */
         stream: false,
         temperature: 0,
-        messages: [{ role: "user", content: buildPrompt(text, departments) }],
+        messages: [{ role: "user", content: prompt }],
       }),
       signal: controller.signal,
     });

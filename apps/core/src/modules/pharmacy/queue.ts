@@ -1,15 +1,26 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
-import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
+import { nextEpisodeNo } from "../../kernel/episodes/series";
+import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { medicinesByIds, unreviewedSaltIds } from "../formulary";
-import { availableQty, itemsByIds, itemUomRows } from "../materials";
+import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
+import { istDateOf } from "./config";
+import { gstCategoryMap } from "./bill";
+import { quoteItem } from "./quote";
+import type { Quote } from "./quote";
 import { dispenseQueued } from "./events";
 import { PharmacyError } from "./errors";
+import { shelfChecks } from "./precheck";
 import { getSaleItem } from "./sale-items";
+import { shelfLocationsFor } from "./shelf-locations";
+import { authorisationsOf } from "./authorisation-reads";
+import { getDoctor } from "../opd";
+import type { ShelfCheck } from "./precheck";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RxLine } from "../opd";
@@ -49,8 +60,16 @@ export async function enqueueDispense(
     }
   }
   const dispenseId = newId();
+  /*
+    PD-2 — OWNER RULING 2026-09-19: the ticket's P-number is minted HERE, when it is queued, so the
+    queue can call a person by it from the first minute. The medication order placed at the check
+    carries this same number (`placeOrder`'s `preallocatedOrderNo`), so one dispense has one number
+    from the window to the bill. A ticket cancelled while waiting keeps its number — a gap in the
+    series is an explained gap, never a reused number.
+  */
+  const dispenseNo = await nextEpisodeNo(tx, "pharmacy_dispense", istDateOf(now));
   await tx.insert(pharmacyDispenses).values({
-    id: dispenseId, prescriptionId: input.prescriptionId, prescriptionVersion: input.prescriptionVersion,
+    id: dispenseId, dispenseNo, prescriptionId: input.prescriptionId, prescriptionVersion: input.prescriptionVersion,
     patientId: input.patientId, encounterId: input.encounterId, status: "queued", createdBy: actor.id, createdAt: now,
   });
   await appendEvent(tx, dispenseQueued.make({
@@ -80,7 +99,11 @@ export type QueueRow = {
   dispenseNo: string | null;
   scheduled: boolean;
   lineCount: number;
+  /** What the doctor wrote, in order — the board's queue rows name the drugs, not a count. */
+  drugs: string[];
   createdAt: Date;
+  /** The IST day the ticket was queued — an earlier day's ticket carried over says so (`listQueue`). */
+  queuedOn: string;
   claimedAt: Date | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
   /**
@@ -94,15 +117,66 @@ export type QueueRow = {
   transcribedBy: string | null;
   /** Set once a pharmacist has cross-confirmed the slip. `billDispense` refuses while it is null. */
   slipConfirmedBy: string | null;
+  /**
+   * ═══ PD-1 / PD-D9 — A CLAIMED TICKET NAMES ITS HOLDER ═══
+   *
+   * The claim is exclusive and always was; what was missing is that every OTHER pharmacist learnt
+   * so only by being refused. The row stays on their list — the owner wants it seen and marked, not
+   * hidden — and says whose it is, so "Vikas has this" is read off the list rather than off a 409.
+   */
+  claimedBy: string | null;
+  claimedByName: string | null;
+  /**
+   * PD-7 / C1 — for a WAITING ticket, what the shelf can do with it before anybody claims it
+   * (`precheck.ts`). Null once claimed: the ticket's own lines are the truth from then on.
+   */
+  shelf: ShelfCheck | null;
 };
 
-/** The counter's portal list: today's dispenses that are not finished, oldest first. Names are alias-safe. */
-export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: string }): Promise<QueueRow[]> {
+/** Full names for a set of user ids — the `leakage.ts` read, one query for a page. */
+export async function userNames(db: Db | Tx, ids: readonly (string | null)[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids.filter((id): id is string => id !== null))];
+  if (wanted.length === 0) return new Map();
+  const rows = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, wanted));
+  return new Map(rows.map((u) => [u.id, u.fullName]));
+}
+
+/**
+ * How many IST days an UNTOUCHED ticket stays on the live queue, the asked-for day included. DECIDED
+ * 2026-09-20 under the owner's standing rule: an OPD prescription nobody has collected in three days
+ * has almost always been filled elsewhere. It is still found by scanning the prescription or by the
+ * UHID; it only stops crowding the list.
+ */
+export const QUEUED_CARRY_DAYS = 3;
+
+/** Every state a ticket can be open in. Started or PAID tickets stay listed until they close, whatever their day. */
+const OPEN_STATES = ["queued", "claimed", "verified", "picked", "billed"] as const;
+
+/**
+ * THE one definition of "on the counter's line on `serviceDate`": open, queued on or before the day,
+ * and — if nobody has touched it — queued within `QUEUED_CARRY_DAYS`. The line and the day summary's
+ * open counts both read it, so the header never counts a ticket the line does not show.
+ */
+export function openOnDay(serviceDate: string): SQL {
+  const queuedOn = sql`(${pharmacyDispenses.createdAt} at time zone 'Asia/Kolkata')::date`;
+  return and(
+    inArray(pharmacyDispenses.status, [...OPEN_STATES]),
+    sql`${queuedOn} <= ${serviceDate}::date`,
+    sql`(${pharmacyDispenses.status} <> 'queued' or ${queuedOn} > ${serviceDate}::date - ${QUEUED_CARRY_DAYS}::int)`,
+  )!;
+}
+
+/**
+ * The counter's portal list, oldest first. Names are alias-safe.
+ *
+ * It was "the tickets CREATED on the day", so at midnight IST a ticket in a pharmacist's hands — and
+ * one the patient had PAID for and not collected — fell off the desk with its stock still reserved and
+ * its money still taken (measured on production, 2026-09-20). Now: every open ticket queued on or
+ * before the day, except that an untouched one leaves after `QUEUED_CARRY_DAYS`.
+ */
+export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: string }, now: Date = new Date()): Promise<QueueRow[]> {
   const rows = await db.select().from(pharmacyDispenses)
-    .where(and(
-      sql`(${pharmacyDispenses.createdAt} at time zone 'Asia/Kolkata')::date = ${filter.serviceDate}::date`,
-      sql`${pharmacyDispenses.status} not in ('handed_over', 'cancelled')`,
-    ))
+    .where(openOnDay(filter.serviceDate))
     .orderBy(asc(pharmacyDispenses.createdAt));
   if (rows.length === 0) return [];
   const counts = await db.select({ dispenseId: pharmacyDispenseLines.dispenseId, n: sql<number>`count(*)::int` })
@@ -110,6 +184,21 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
     .where(inArray(pharmacyDispenseLines.dispenseId, rows.map((r) => r.id)))
     .groupBy(pharmacyDispenseLines.dispenseId);
   const countById = new Map(counts.map((c) => [c.dispenseId, c.n]));
+  /**
+   * The DRUGS on each waiting ticket (the board's queue rows name them: "Augmentin 625, Pan 40,
+   * Alzolam 0.5"). One query for the page, as the counts are: a pharmacist reads the line to decide
+   * which ticket to take, and "4 lines" does not tell them whether the shelf can serve it.
+   */
+  const drugRows = await db.select({ dispenseId: pharmacyDispenseLines.dispenseId, lineIdx: pharmacyDispenseLines.lineIdx, rxLine: pharmacyDispenseLines.rxLine })
+    .from(pharmacyDispenseLines)
+    .where(inArray(pharmacyDispenseLines.dispenseId, rows.map((r) => r.id)))
+    .orderBy(asc(pharmacyDispenseLines.lineIdx));
+  const drugsById = new Map<string, string[]>();
+  for (const r of drugRows) {
+    const list = drugsById.get(r.dispenseId) ?? [];
+    list.push((r.rxLine as RxLine).drug);
+    drugsById.set(r.dispenseId, list);
+  }
   /* ONE query for the whole page, not one per row: the counter's list is polled. */
   const rxRows = await db
     .select({ id: opdPrescriptions.id, transcribedBy: opdPrescriptions.transcribedBy })
@@ -118,16 +207,22 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
   const transcribedByRx = new Map(rxRows.map((r) => [r.id, r.transcribedBy]));
   const summaries = await getPatientSummaries(db, actor, rows.map((r) => r.patientId));
   const byRequested = new Map(summaries.map((s) => [s.requestedId, s]));
+  const holders = await userNames(db, rows.map((r) => r.claimedBy));
+  const checks = await shelfChecks(db, rows.filter((r) => r.status === "queued").map((r) => ({ dispenseId: r.id, prescriptionId: r.prescriptionId })), now);
   const out: QueueRow[] = [];
   for (const r of rows) {
     const s = byRequested.get(r.patientId);
     if (s === undefined) continue; // not visible to this actor — not on their list
     out.push({
       dispenseId: r.id, status: r.status, dispenseNo: r.dispenseNo, scheduled: r.scheduled,
-      lineCount: countById.get(r.id) ?? 0, createdAt: r.createdAt, claimedAt: r.claimedAt,
+      lineCount: countById.get(r.id) ?? 0, drugs: drugsById.get(r.id) ?? [],
+      createdAt: r.createdAt, queuedOn: istDateOf(r.createdAt), claimedAt: r.claimedAt,
       patient: { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted },
       transcribedBy: transcribedByRx.get(r.prescriptionId) ?? null,
       slipConfirmedBy: r.slipConfirmedBy,
+      claimedBy: r.claimedBy,
+      claimedByName: r.claimedBy === null ? null : (holders.get(r.claimedBy) ?? null),
+      shelf: checks.get(r.id) ?? null,
     });
   }
   return out;
@@ -145,6 +240,16 @@ export type DispenseLineView = {
   dispensedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null } | null;
   item: { id: string; code: string; name: string; baseUom: string; uoms: UomRow[] } | null;
   saleable: boolean;
+  /** PD-D18 — where this item sits in the counter's store ("R-12"), or null when nobody has said. */
+  location: string | null;
+  /**
+   * PD-9 — every request to the prescriber about this line, oldest first: what was asked, and what the
+   * doctor decided and why. `about` is the hit's identity (`refusalKey`), the same the line's refusal carries.
+   */
+  authorisations: {
+    id: string; book: string; about: string; status: string; requestNote: string | null;
+    decisionReason: string | null; requestedAt: Date; decidedAt: Date | null;
+  }[];
   /** At the counter's store: on hand minus reserved minus frozen, in base units. `null` before the claim names a store. */
   available: number | null;
   batchId: string | null;
@@ -154,6 +259,12 @@ export type DispenseLineView = {
   invoiceLineId: string | null;
   unitPaise: number | null;
   priceWinner: string | null;
+  /**
+   * What the bill will ask for this line's own medicine, from the batch the pick would take
+   * (`quote.ts`) — so the counter can answer "how much will this be?" before a strip is pulled.
+   * Null when the shelf cannot fill it. The bill at payment is still billing's, never this.
+   */
+  quote: Quote | null;
   fefoOverride: boolean;
   pickNote: string | null;
   /**
@@ -163,9 +274,21 @@ export type DispenseLineView = {
    * formulary's one predicate (`unreviewedSaltIds`), so it clears the moment the substance is decided.
    */
   partlyChecked: boolean;
+  /**
+   * PD-4 / PD-D3 / E8 — the batches the pick would draw from, earliest expiry first, while the line
+   * is still OPEN. The right column of the desk shows the batch the pharmacist will give and warns
+   * at the TICK — where another batch can still be chosen — when it dies inside the course, rather
+   * than at the hand-over, where it is a refund. `availableQty`'s predicate, one definition.
+   */
+  batches: { batchId: string; batchNo: string; expiryDate: string | null; available: number }[];
+  /** PD-4 — once picked, the batch the line was GIVEN from, which the desk prints beside it. */
+  pickedBatch: { batchNo: string; expiryDate: string | null } | null;
 };
 
+
 export type DispenseView = {
+  /** The ticket at today's shelf prices, before the bill exists (`quote.ts`): the server's own sum. */
+  quotedTotalPaise: number;
   id: string;
   status: string;
   dispenseNo: string | null;
@@ -183,6 +306,19 @@ export type DispenseView = {
   billedAt: Date | null;
   handedOverAt: Date | null;
   cancelReason: string | null;
+  /** PD-1 — who holds it, so a pharmacist who opens somebody else's ticket is told whose it is. */
+  claimedBy: string | null;
+  claimedByName: string | null;
+  /**
+   * PD-8 / E28 — typed from the doctor's paper (FD-31), by whom, and whether a pharmacist has
+   * cross-confirmed the slip. The queue row carried these; the ticket did not, so the desk could
+   * only learn the slip was owed from `billDispense`'s refusal — at the till, the worst moment.
+   */
+  transcribedBy: string | null;
+  transcribedByName: string | null;
+  slipConfirmedBy: string | null;
+  /** PD-9 — the doctor who wrote this prescription, whom the counter asks to authorise. */
+  prescriberName: string | null;
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
   allergies: { substance: string; severity: string | null }[];
   lines: DispenseLineView[];
@@ -254,11 +390,36 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);
+  const [rxRow] = await db.select({ transcribedBy: opdPrescriptions.transcribedBy, doctorId: opdPrescriptions.doctorId }).from(opdPrescriptions).where(eq(opdPrescriptions.id, d.prescriptionId));
+  const prescriber = rxRow === undefined ? null : await getDoctor(db, rxRow.doctorId);
+  const asked = await authorisationsOf(db, d.id);
+  const transcribedBy = rxRow?.transcribedBy ?? null;
+  const names = await userNames(db, [d.claimedBy, transcribedBy]);
+  const openItems = lines.filter((l) => l.status === "open" && l.itemId !== null).map((l) => l.itemId as string);
+  /* PD-D18 — the shelf label for each item, in THIS dispense's store. */
+  const locations = d.storeResourceId === null || itemIds.length === 0 ? new Map<string, string>() : await shelfLocationsFor(db, d.storeResourceId, itemIds);
+  const batchesByItem = d.storeResourceId === null || openItems.length === 0
+    ? new Map<string, DispenseLineView["batches"]>()
+    : await sellableBatchesByItem(db, d.storeResourceId, openItems, now);
+  /**
+   * One quote per ITEM on the ticket, asked once for the whole view (it is polled). A line the shelf
+   * cannot fill has none, and is left out of the running total — a number the server adds up, because
+   * the desk does no arithmetic on money.
+   */
+  const quotes = new Map<string, Quote>();
+  if (d.storeResourceId !== null) {
+    const gst = await gstCategoryMap(db);
+    for (const itemId of [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))]) {
+      const q = await quoteItem(db, gst, d.storeResourceId, itemId, now);
+      if (q !== null) quotes.set(itemId, q);
+    }
+  }
   const views: DispenseLineView[] = [];
   for (const l of lines) {
     const om = l.orderedMedicineId === null ? undefined : medicines.get(l.orderedMedicineId);
     const dm = l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId);
     const item = l.itemId === null ? undefined : items.get(l.itemId);
+    const picked = l.batchId === null ? undefined : await getBatch(db, l.batchId);
     let uoms: UomRow[] = [];
     let saleable = false;
     let available: number | null = null;
@@ -285,17 +446,32 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
       dispensedMedicine: dm === undefined ? null : { id: dm.id, brandName: dm.brandName, strengthLabel: dm.strengthLabel, form: dm.form, scheduleFlag: dm.scheduleFlag },
       item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms },
-      saleable, available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
+      saleable, location: l.itemId === null ? null : (locations.get(l.itemId) ?? null), available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
+      quote: item === undefined ? null : (quotes.get(item.id) ?? null),
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
+      batches: l.status === "open" && l.itemId !== null && l.batchId === null ? (batchesByItem.get(l.itemId) ?? []) : [],
+      pickedBatch: picked === undefined ? null : { batchNo: picked.batchNo, expiryDate: picked.expiryDate },
+      authorisations: asked.filter((a) => a.lineIdx === l.lineIdx).map((a) => ({
+        id: a.id, book: a.book, about: a.about, status: a.status, requestNote: a.requestNote,
+        decisionReason: a.decisionReason, requestedAt: a.requestedAt, decidedAt: a.decidedAt,
+      })),
     });
   }
   return {
+    /* What the ticket comes to at today's shelf prices, over the quantities the check is made against. */
+    quotedTotalPaise: views.reduce((n, v) => n + (v.quote === null || v.qtyBase === null ? 0 : v.quote.unitPaise * v.qtyBase), 0),
     id: d.id, status: d.status, dispenseNo: d.dispenseNo, orderId: d.orderId, prescriptionId: d.prescriptionId,
     prescriptionVersion: d.prescriptionVersion, encounterId: d.encounterId, storeResourceId: d.storeResourceId,
     scheduled: d.scheduled, invoiceId: d.invoiceId, identityConfirmedVia: d.identityConfirmedVia,
     claimedAt: d.claimedAt, verifiedAt: d.verifiedAt, pickedAt: d.pickedAt, billedAt: d.billedAt, handedOverAt: d.handedOverAt,
+    claimedBy: d.claimedBy,
+    claimedByName: names.get(d.claimedBy ?? "") ?? null,
+    transcribedBy,
+    transcribedByName: names.get(transcribedBy ?? "") ?? null,
+    slipConfirmedBy: d.slipConfirmedBy,
+    prescriberName: prescriber?.displayName ?? null,
     cancelReason: d.cancelReason,
     patient: { id: summary.id, uhid: summary.uhid, name: summary.name, alias: summary.alias, restricted: summary.restricted },
     allergies: allergies.map((a) => ({ substance: a.substance, severity: (a as { severity?: string | null }).severity ?? null })),

@@ -19,6 +19,8 @@ import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
 import { continuityDoctorFor } from "./continuity";
 import { suggestDepartments } from "./triage";
+import type { TriageChoice } from "./triage";
+import { typesafeClient } from "../../kernel/inference/typesafe";
 import type { TriageResult } from "./triage";
 import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
@@ -47,7 +49,31 @@ const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(
  * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
  * this patient has been", which is the diagnosis-shaped read this route exists not to be.
  */
-const triageBody = z.object({ text: z.string().min(1).max(400) });
+const triageBody = z.object({
+  text: z.string().min(1).max(400),
+  /**
+   * ═══ THE AGE, AND EXACTLY WHAT IT IS ALLOWED TO DO ═══
+   *
+   * `red-flags.ts` gates ONE rule on age — chest pain below 12 is not treated as cardiac — and this
+   * is how the desk supplies it. The screen already knows: it renders the age on the row it found.
+   *
+   * IT CAN ONLY EVER NARROW THAT ONE RULE, and absence fails SAFE (an unknown age flags). That
+   * bound is what makes a client-supplied value acceptable here: triage runs on every keystroke, so
+   * reading the DOB from the database per call would be a query per character, and the worst a
+   * wrong value can do is suppress the chest-pain flag for a patient it claims is a small child.
+   * Every other red flag is age-independent and unreachable from this field.
+   */
+  ageYears: z.number().int().min(0).max(130).optional(),
+  /**
+   * ═══ THE NAMES, AND THE ONE THING THEY ARE FOR ═══
+   *
+   * Masked out of the complaint before the model is asked — `triage.ts` — and used for nothing else:
+   * never matched, stored or echoed. Client-supplied is safe for the same reason the age is: the
+   * worst a wrong value can do is mask one word too many, or leave shapes-only masking in place,
+   * which is exactly what a desk that sends none gets. Capped because each becomes a pattern.
+   */
+  names: z.array(z.string().min(1).max(120)).max(4).optional(),
+});
 
 const continuityQuery = z.object({
   patientId: z.string().min(1),
@@ -265,7 +291,20 @@ export class OpdVisitsController {
       b.text,
       departments.map((d) => ({ id: d.id, name: d.name })),
       this.config.triage,
+      undefined,
+      undefined,
+      { ageYears: b.ageYears ?? null, names: b.names ?? [] },
+      this.triageChoice(),
     );
+  }
+
+  /**
+   * Triage's FIRST model (owner, 2026-09-19: TypeSafe as priority, the chat model its fallback), or
+   * null with no key configured — and then `config.triage` answers alone, exactly as before.
+   */
+  private triageChoice(): TriageChoice | null {
+    const client = typesafeClient(this.config.triageChoice);
+    return client === null ? null : { client, minConfidence: this.config.triageChoice.minConfidence };
   }
 
   @RequirePermission("opd.visits.open", "hospital")

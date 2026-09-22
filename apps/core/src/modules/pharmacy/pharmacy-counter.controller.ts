@@ -7,14 +7,22 @@ import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { closingFor } from "./closing";
+import type { Closing } from "./closing";
+import { patientRail } from "./patient-rail";
+import type { PatientRail } from "./patient-rail";
 import { confirmSlip, getDispense, listQueue } from "./queue";
+import type { Quote } from "./quote";
 import { billDispense, previewDispenseBill } from "./bill";
 import { handOverDispense } from "./handover";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { checkPickScan } from "./scan";
-import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
+import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
 import { cancelBilledDispense } from "./refund";
+import { authorisationDetail, decideAuthorisation, requestAuthorisation } from "./authorisations";
+import type { AuthorisationDetail } from "./authorisations";
+import type { AuthorisationRow } from "./authorisation-reads";
 import { reorderAdvice } from "./replenishment";
 import { acceptReturn } from "./returns";
 import { h1Register } from "./registers";
@@ -32,7 +40,8 @@ import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import type { FindResult } from "./claim";
 import type { DispenseView, QueueRow } from "./queue";
-import type { Alternative } from "./verify";
+import type { CheckedAlternative, LinePrecheck } from "./verify";
+import type { RetailShelfEntry } from "./retail";
 import type { PricedDraft } from "../billing";
 import type { LabelData } from "./label";
 
@@ -127,11 +136,109 @@ export class PharmacyCounterController {
     }
   }
 
+  /** WHAT CLOSED (the board's three boxes): the ticket, the money as the invoice and receipt record it, the registers. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/closing")
+  async closing(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<Closing> {
+    try {
+      return await closingFor(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * WHO IS AT THE WINDOW (the board's left rail) — read ONCE when the ticket is opened, never polled:
+   * it records a PHI access, and `getDispense` is on a fifteen-second poll.
+   */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/patient")
+  async patientRail(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PatientRail> {
+    try {
+      return await patientRail(this.db, actor, id, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** PD-7 C3 — each equivalent comes back already put to this patient's check (`checkedAlternativesFor`). */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("dispenses/:id/lines/:idx/alternatives")
-  async alternatives(@Param("id") id: string, @Param("idx") idx: string): Promise<{ items: Alternative[] }> {
+  async alternatives(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string): Promise<{ items: CheckedAlternative[]; written: Quote | null }> {
     try {
-      return { items: await alternativesFor(this.db, id, Number(idx)) };
+      const now = new Date();
+      /* `written` — the line as the doctor wrote it, quoted — is what the co-pilot's "saves ₹x a strip" is measured against. */
+      const items = await checkedAlternativesFor(this.db, actor, id, Number(idx), now);
+      return { items, written: items.length === 0 ? null : await writtenQuoteFor(this.db, id, Number(idx), now) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PD-9 (owner ruling 2026-09-19) — ask THE PRESCRIBER to authorise one refusal on one line. The
+   * counter's permission to ask; the Act's registration inside (`requestAuthorisation`).
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/lines/:idx/authorisations")
+  async askPrescriber(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string, @Body() body: unknown): Promise<AuthorisationRow> {
+    const lineIdx = parsed(z.object({ idx: z.coerce.number().int().nonnegative() }), { idx }).idx;
+    const input = parsed(z.object({
+      book: z.enum(["allergy", "interaction", "duplicate", "drug_disease"]), about: z.string().min(1).max(200),
+      note: z.string().max(500).optional(), medicineId: idSchema.optional(),
+    }), body);
+    try {
+      return await requestAuthorisation(this.db, actor, { dispenseId: id, lineIdx, ...input }, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** PD-9 — the request as the prescriber reads it. The doctor's permission; the prescriber alone inside. */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("authorisations/:id")
+  async authorisation(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<AuthorisationDetail> {
+    try {
+      return await authorisationDetail(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** PD-9 — the prescriber authorises or declines, with a reason. */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("authorisations/:id/decision")
+  async decide(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<AuthorisationRow> {
+    const input = parsed(z.object({ authorise: z.boolean(), reason: z.string().max(500) }), body);
+    try {
+      return await decideAuthorisation(this.db, actor, id, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** C3b — the ticket's own lines, put to the check before anyone walks to the shelf (`precheckTicket`). */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/precheck")
+  async precheck(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ lines: LinePrecheck[] }> {
+    try {
+      return await precheckTicket(this.db, actor, id, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PD-5b — what a line the catalogue could not place may be read as. The counter's own permission,
+   * not the downtime clerk's (`/pharmacy/downtime/shelf`): the search is part of working a ticket,
+   * and the act that places the line is still verify's, by a registered pharmacist.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("dispenses/:id/lines/:idx/shelf")
+  async shelf(@Param("id") id: string, @Param("idx") idx: string, @Query("q") q?: string): Promise<{ items: RetailShelfEntry[] }> {
+    const input = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), q: z.string().max(200).default("") }), { idx, q });
+    try {
+      return { items: await placementsFor(this.db, id, input.idx, input.q, new Date()) };
     } catch (e) {
       return toHttp(e);
     }

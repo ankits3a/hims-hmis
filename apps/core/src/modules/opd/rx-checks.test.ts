@@ -1,5 +1,5 @@
 import {
-  checkDuplicateSalt, checkInteractions, isCurrent, matchAllergiesSaltAware,
+  checkDuplicateClass, checkDuplicateSalt, checkInteractions, isCurrent, matchAllergiesSaltAware,
 } from "./rx-checks";
 import type { PriorRx, RxCheckLine } from "./rx-checks";
 import type { InteractionPair, ResolvedDrug } from "../formulary";
@@ -28,7 +28,7 @@ const daysAgo = (n: number): Date => new Date(NOW.getTime() - n * 24 * 60 * 60 *
 
 function drug(
   brandName: string | null,
-  salts: { saltId: string; moiety: string; drugClass: string | null }[],
+  salts: { saltId: string; moiety: string; drugClass: string | null; allergyClasses?: readonly string[] }[],
   routeClass: "systemic" | "topical" | null = "systemic",
 ): ResolvedDrug {
   return { medicineId: brandName === null ? null : `M-${brandName}`, brandName, routeClass, salts };
@@ -131,6 +131,107 @@ describe("rx-checks: salt-aware allergy matching (Plan 16a T4)", () => {
       { substance: "dust", resolution: null },
       { substance: "   ", resolution: null },
     ])).toEqual([]);
+  });
+});
+
+/**
+ * FORMULARY P22 — the allergy classes of the owner's clinical master, on the prescribing check.
+ *
+ * The doctor's allergen picker records the bundle's own class name ("Penicillins / Beta-Lactams") as
+ * both the substance and `allergenClass`. Neither string is a moiety or a `drug_class`, so until P22
+ * the hard warning never fired for a PICKED class allergy. Each moiety now carries the classes it
+ * belongs to for allergy purposes, adopted by resolution from the clinical master (corrected where
+ * the reference over-reaches).
+ */
+describe("rx-checks: allergy classes (formulary P22)", () => {
+  const MOX = { saltId: "S-AMOX2", moiety: "amoxicillin", drugClass: null, allergyClasses: ["penicillin"] };
+  const CEFALEXIN = { saltId: "S-CFX", moiety: "cefalexin", drugClass: null, allergyClasses: ["penicillin"] };
+  const CEFUROXIME = { saltId: "S-CFU", moiety: "cefuroxime", drugClass: null };
+  const SMX = { saltId: "S-SMX", moiety: "sulfamethoxazole", drugClass: null, allergyClasses: ["sulfonamide_antibiotic"] };
+  const FUROSEMIDE = { saltId: "S-FURO", moiety: "furosemide", drugClass: null };
+  const NAPROXEN = { saltId: "S-NAP", moiety: "naproxen", drugClass: null, allergyClasses: ["nsaid"] };
+  const ETORICOXIB = { saltId: "S-ETO", moiety: "etoricoxib", drugClass: null };
+  const CODEINE = { saltId: "S-COD", moiety: "codeine", drugClass: null, allergyClasses: ["opioid_morphinan"] };
+  const FENTANYL = { saltId: "S-FEN", moiety: "fentanyl", drugClass: null };
+  const PROXY = { saltId: "S-PXM", moiety: "proxymetacaine", drugClass: null, allergyClasses: ["ester_local_anaesthetic"] };
+  const ROSU = { saltId: "S-ROS", moiety: "rosuvastatin", drugClass: null, allergyClasses: ["statin"] };
+  const picked = (cls: string) => ({ substance: cls, resolution: null, allergenClass: cls });
+  const typed = (text: string) => ({ substance: text, resolution: null, allergenClass: null });
+
+  it("a PICKED class warns on every member, a same-side-chain cephalosporin included, and on nothing else", () => {
+    const lines = [
+      line(0, "Mox 500", drug("Mox 500", [MOX])),
+      line(1, "Sporidex 500", drug("Sporidex 500", [CEFALEXIN])),
+      line(2, "Zinnat 500", drug("Zinnat 500", [CEFUROXIME])),
+    ];
+    expect(matchAllergiesSaltAware(lines, [picked("Penicillins / Beta-Lactams")]).map((m) => m.lineIndex)).toEqual([0, 1]);
+    expect(matchAllergiesSaltAware([line(0, "Crocin", drug("Crocin", [ROSU]))], [picked("Statins")])).toHaveLength(1);
+    expect(matchAllergiesSaltAware([line(0, "Paracaine", drug("Paracaine", [PROXY]))], [picked("Ester Local Anesthetics")])).toHaveLength(1);
+  });
+
+  it("typed words that name a class reach it, whatever the plural or the spelling", () => {
+    const cases: [string, typeof MOX][] = [
+      ["Penicillins", MOX], ["beta-lactam", MOX], ["Sulpha drugs", SMX], ["sulfa", SMX],
+      ["NSAIDs", NAPROXEN], ["Opioids", CODEINE], ["opiates", CODEINE], ["statins", ROSU],
+    ];
+    for (const [text, salt] of cases) {
+      expect([text, matchAllergiesSaltAware([line(0, "X 1", drug("X 1", [salt]))], [typed(text)]).length]).toEqual([text, 1]);
+    }
+  });
+
+  it("does not warn where the reference over-reached: loop diuretics under sulfa, fentanyl under opioids, a coxib under AERD", () => {
+    expect(matchAllergiesSaltAware([line(0, "Lasix 40", drug("Lasix 40", [FUROSEMIDE]))], [picked("Sulfonamides (Sulfa)")])).toEqual([]);
+    expect(matchAllergiesSaltAware([line(0, "Fentanyl inj", drug("Fentanyl inj", [FENTANYL]))], [picked("Opioids")])).toEqual([]);
+    expect(matchAllergiesSaltAware([line(0, "Etoshine 90", drug("Etoshine 90", [ETORICOXIB]))], [picked("NSAIDs / Aspirin (AERD)")])).toEqual([]);
+  });
+
+  it("a class word inside a longer phrase, or an unknown picked class, matches nothing by class", () => {
+    const lines = [line(0, "Mox 500", drug("Mox 500", [MOX]))];
+    expect(matchAllergiesSaltAware(lines, [typed("penicillin rash as a child")])).toEqual([]);
+    expect(matchAllergiesSaltAware(lines, [{ substance: "Latex", resolution: null, allergenClass: "Latex" }])).toEqual([]);
+  });
+});
+
+/**
+ * FORMULARY P23 — duplicate therapy by CLASS, from the clinical master's `therapeutic_subclass_groups`
+ * (one agent each of PPIs, ACE inhibitors, ARBs, statins, systemic NSAIDs). A notice, never a gate:
+ * a switch between two statins overlaps for a day on purpose.
+ */
+describe("rx-checks: duplicate therapy classes (formulary P23)", () => {
+  const ATOR = { saltId: "S-ATOR", moiety: "atorvastatin", drugClass: "statin" };
+  const ROSU = { saltId: "S-ROSU", moiety: "rosuvastatin", drugClass: "statin" };
+  const PANTO = { saltId: "S-PAN", moiety: "pantoprazole", drugClass: "ppi" };
+  const OMEP = { saltId: "S-OME", moiety: "omeprazole", drugClass: "ppi" };
+  const ETORI = { saltId: "S-ETO", moiety: "etoricoxib", drugClass: "nsaid" };
+  const GTN = { saltId: "S-GTN", moiety: "glyceryl trinitrate", drugClass: "nitrate" };
+  const ISMN = { saltId: "S-ISMN", moiety: "isosorbide mononitrate", drugClass: "nitrate" };
+
+  it("a second agent of a class in one prescription is a notice naming the class and the agent already there", () => {
+    const lines = [line(0, "Lipitor 10", drug("Lipitor 10", [ATOR])), line(1, "Rosuvas 10", drug("Rosuvas 10", [ROSU]))];
+    expect(checkDuplicateClass(lines, [], NOW)).toEqual([{
+      moiety: "rosuvastatin", drugClass: "statin", with: "atorvastatin", lineIndex: 1, hard: false,
+      against: { scope: "in_rx", lineIndex: 0 },
+    }]);
+  });
+
+  it("against a current prior course as well, and never against an expired one", () => {
+    const lines = [line(0, "Omez 20", drug("Omez 20", [OMEP]))];
+    const current = priorRx("rx-1", daysAgo(3), [{ drug: "Pan 40", durationDays: 30, resolution: drug("Pan 40", [PANTO]) }]);
+    const expired = priorRx("rx-0", daysAgo(40), [{ drug: "Pan 40", durationDays: 10, resolution: drug("Pan 40", [PANTO]) }]);
+    expect(checkDuplicateClass(lines, [current, expired], NOW)).toEqual([expect.objectContaining({
+      moiety: "omeprazole", drugClass: "ppi", with: "pantoprazole", hard: false,
+      against: expect.objectContaining({ scope: "prior", prescriptionId: "rx-1" }),
+    })]);
+  });
+
+  it("is quiet for the same moiety, a gel beside a tablet, low-dose aspirin, and a class outside the five", () => {
+    const quiet = (a: RxCheckLine, b: RxCheckLine) => checkDuplicateClass([a, b], [], NOW);
+    expect(quiet(line(0, "Lipitor 10", drug("Lipitor 10", [ATOR])), line(1, "Storvas 10", drug("Storvas 10", [ATOR])))).toEqual([]);
+    expect(quiet(line(0, "Volini gel", drug("Volini gel", [DICLOFENAC], "topical")), line(1, "Etoshine 90", drug("Etoshine 90", [ETORI])))).toEqual([]);
+    expect(quiet(line(0, "Ecosprin 75", drug("Ecosprin 75", [ASPIRIN])), line(1, "Etoshine 90", drug("Etoshine 90", [ETORI])))).toEqual([]);
+    expect(quiet(line(0, "Sorbitrate", drug("Sorbitrate", [GTN])), line(1, "Monotrate", drug("Monotrate", [ISMN])))).toEqual([]);
+    // Two systemic NSAIDs are the duplication the class exists for.
+    expect(quiet(line(0, "Voveran 50", drug("Voveran 50", [DICLOFENAC])), line(1, "Etoshine 90", drug("Etoshine 90", [ETORI])))).toHaveLength(1);
   });
 });
 

@@ -237,9 +237,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 71 codes
+## 4. What refuses, and why — all 77 codes
 
-`errors.ts` declares 71, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 77, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -260,6 +260,10 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `substitution_not_allowed` | the prescriber marked `noSubstitution` | dispense as written, or call the doctor |
 | `consent_required` | a generic substitution without the patient's consent ticked | ask, then tick |
 | `allergy_block` · `interaction_block` | the re-check hit something the prescriber did not override | back to the doctor |
+| `authorisation_not_needed` | the doctor was asked to authorise a refusal the check does not raise on that line | ask about the refusal the line actually shows |
+| `authorisation_not_pending` · `unknown_authorisation` | the request was already decided, or does not exist | read the decision on the ticket |
+| `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
+| `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |
 | `store_missing` | `seed-pharmacy` did not run | §1.2 |
 | `scheduled_needs_pharmacist` | the aide tried to complete an H/H1 dispense | call the pharmacist |
@@ -413,7 +417,7 @@ register of pharmacists and H1 register as the counter. Phase doc
 |---|---|---|---|
 | 9.1 | `seed-pharmacy.js` (every deploy) creates the `PHARM-RETAIL` store, kept by `pharmacy` and `pharmacy_assistant` | deploy | census row **`pharmacy_retail_store_present`** green |
 | 9.2 | **Record the retail licence**: the Form 20 and Form 21 numbers, valid from and to, and the pharmacist in charge named on it. A renewal is a new entry | **`pharmacy_incharge`**, the MS or the owner | `/pharmacy/retail-licence` | census row **`pharmacy_retail_licence`** green; the counter's banner goes away |
-| 9.3 | Stock the shelf: post the goods receipt into `PHARM-RETAIL` as §2 step 5c does for `PHARM-OPD`. There is no transfer screen yet; a transfer from the main store goes through `POST /materials/transfers`. The OPD counter's shelf is never sold from | **`storekeeper`** | `/materials/grn` | the walk-in screen shows "N available" |
+| 9.3 | Stock the shelf: post the goods receipt into `PHARM-RETAIL` as §2 step 5c does for `PHARM-OPD`, or send it from the main store at **Stock transfers** and have a pharmacist confirm what arrived there (the storekeeper who sent it cannot, and only pharmacy staff receive into a pharmacy store). The OPD counter's shelf is never sold from | **`storekeeper`** sends; **`pharmacy`** confirms | `/materials/grn` or `/materials/transfers` | the walk-in screen shows "N available" |
 | 9.4 | Sell | **`pharmacy`** | `/pharmacy/retail` | a paid bill, printed from the sale |
 
 **Until 9.2 is done every walk-in sale refuses** (`retail_licence_missing`), and the day after the

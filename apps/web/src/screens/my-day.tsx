@@ -5,6 +5,8 @@ import { downloadReportCsv, fetchBrief, fetchReport, periodsFor, todayIst } from
 import type { WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 
@@ -172,20 +174,36 @@ export function MyDay(): React.ReactElement {
     screen and on the paper already, but "is this the close or a draft" is the question somebody asks
     at 21:00 with a printout in their hand, and it deserves a sentence rather than a badge.
   */
-  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
-  const ask = (question: string): void => {
+
+  /*
+    ═══ FD-COPILOT — WHAT THIS SCREEN KNOWS ABOUT ITSELF, NOW THE FALLBACK ═══
+
+    Two of these three branches are about the DOCUMENT rather than the day: whether it is closed,
+    and who signs it. No server was asked those and none could answer them better. They run when
+    the copilot does not recognise the question.
+
+    The third branch is the one that changed hands. "How many sections are there" used to be
+    answered by counting what this screen had already fetched; now the copilot's own `my_day_report`
+    tool answers it — and RETURNS THE ROWS, which this branch never could.
+  */
+  const localAnswer = (question: string): string | null => {
     const q = question.toLowerCase();
-    const answer = /closed|provisional|final|draft|lock/.test(q)
-      ? t(provisional ? "myDay.agent.provisional" : "myDay.agent.closed")
-      : /sign|print|paper|document|hand ?over/.test(q)
-        ? t("myDay.agent.signature")
-        : /section|report|day|figure|what|how many|total/.test(q)
-          ? (sections.length === 0 ? t("myDay.agent.empty") : t("myDay.agent.sections", { count: sections.length, date }))
-          : t("myDay.agent.cannot");
-    setAgentAnswer(answer);
-    setAgentLog((l) => logged(l, question));
+    if (/closed|provisional|final|draft|lock/.test(q)) {
+      return t(provisional ? "myDay.agent.provisional" : "myDay.agent.closed");
+    }
+    if (/sign|print|paper|document|hand ?over/.test(q)) return t("myDay.agent.signature");
+    if (/section|report|day|figure|what|how many|total/.test(q)) {
+      return sections.length === 0 ? t("myDay.agent.empty") : t("myDay.agent.sections", { count: sections.length, date });
+    }
+    return null;
   };
+
+  const copilot = useCopilot({
+    fallback: localAnswer,
+    onNote: (text) => { setAgentLog((l) => logged(l, text)); },
+    date,
+  });
 
   return (
     <PaperScreen testId="my-day" style={{ padding: "18px 22px", gap: 14 }}>
@@ -270,8 +288,11 @@ export function MyDay(): React.ReactElement {
       {/* `no-print` on the dock: the agent is not part of the document being filed. */}
       <div className="no-print">
         <AgentDock
-          answer={agentAnswer} log={agentLog} onAsk={ask}
+          answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
           placeholder={t("myDay.askPlaceholder")} idle={t("myDay.agentIdle")}
+          panel={copilot.report === null ? undefined : (
+            <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+          )}
         />
       </div>
     </PaperScreen>

@@ -119,7 +119,7 @@ export function PharmacyCounter(): React.ReactElement {
       const out: Record<number, WireAlternative[]> = {};
       for (const l of inHand.lines) {
         if (l.status !== "open" || l.dispensedMedicine === null || l.rxLine.noSubstitution) continue;
-        try { out[l.lineIdx] = await fetchAlternatives(inHand.id, l.lineIdx); } catch { out[l.lineIdx] = []; }
+        try { out[l.lineIdx] = (await fetchAlternatives(inHand.id, l.lineIdx)).items; } catch { out[l.lineIdx] = []; }
       }
       if (live) setAlts(out);
     })();
@@ -143,7 +143,8 @@ export function PharmacyCounter(): React.ReactElement {
       const r = await findAtCounter(q);
       if (r.kind === "dispense") { take(r.dispense); setQ(""); return; }
       if (r.kind === "patients") { setCandidates(r); return; }
-      setNote(t(r.reason === "qr_invalid" ? "pharmacyCounter.qrInvalid" : r.reason === "no_prescription_today" ? "pharmacyCounter.noRx" : "pharmacyCounter.notFound"));
+      // PD-3 / E3b — a sealed patient's signed slip is not "not found"; this reader may not open it.
+      setNote(t(r.reason === "restricted" ? "pharmacyErrors.permission_denied" : r.reason === "qr_invalid" ? "pharmacyCounter.qrInvalid" : r.reason === "no_prescription_today" ? "pharmacyCounter.noRx" : "pharmacyCounter.notFound"));
     } catch (e) {
       setError(pharmacyErrorText(e, t));
     }

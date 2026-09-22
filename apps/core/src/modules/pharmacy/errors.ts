@@ -123,6 +123,20 @@ export const PHARMACY_ERROR_CODES = [
   "batch_required",
   /** The person named as handing the medicine over is not pharmacy staff. */
   "unknown_pharmacist",
+  // ── PD-5b: a line the pharmacist read, and the two books only a new moiety can trip ──
+  /** The medicine chosen for a line nobody could place repeats a moiety already on the prescription. */
+  "duplicate_block",
+  /** A diagnosis the patient carries rules the medicine out and no prescriber ruled on it (a reading, or a code added after issue). */
+  "drug_disease_block",
+  // ── PD-D18: where the drug is ──
+  /** A shelf label longer than the line can print (24 characters). */
+  "invalid_shelf_location",
+  // ── PD-9: the prescriber authorises what the check would refuse ──
+  /** The check raises no such refusal on that line — there is nothing for the doctor to authorise. */
+  "authorisation_not_needed",
+  /** The request was already authorised or declined. */
+  "authorisation_not_pending",
+  "unknown_authorisation",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -210,6 +224,12 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   backfill_window_closed: 409,
   batch_required: 400,
   unknown_pharmacist: 409,
+  duplicate_block: 409,
+  drug_disease_block: 409,
+  invalid_shelf_location: 400,
+  authorisation_not_needed: 409,
+  authorisation_not_pending: 409,
+  unknown_authorisation: 404,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

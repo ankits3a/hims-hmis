@@ -103,6 +103,8 @@ const saltPatchBody = z.object({
   name: name.optional(), aliases: z.array(z.string().min(1).max(200)).max(50).optional(),
   drugClass: z.string().min(1).max(200).nullish(), atcCode: z.string().min(1).max(20).nullish(),
   active: z.boolean().optional(),
+  /** P22 — the moiety's allergy classes, replaced whole; `updateSalt` refuses a class the check does not know. */
+  allergyClasses: z.array(z.string().min(1).max(60)).max(10).optional(),
 });
 const medicineCreateBody = z.object({
   brandName: name, form: z.string().min(1).max(100), routeClass: routeClass.default("systemic"),

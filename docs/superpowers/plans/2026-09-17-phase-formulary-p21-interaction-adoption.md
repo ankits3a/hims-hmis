@@ -91,3 +91,40 @@ Micromedex) holds. The hospital should still license one; this adoption is a flo
 - **G6PD, pregnancy and lactation, QTc, renal/dialysis, lab and vitals rules.** Each needs a
   patient fact or a feed that prescribing does not read yet.
 - **The monograph and FAQ text.** It is not fit to show a clinician as it stands.
+
+## 7. P21b — THE OWNER'S CLINICAL MATRIX, 18 RULES (2026-09-17 evening)
+
+- **The source.** The owner re-issued `hmis_clinical_master`'s rule file (made with Gemini) as 18
+  class rules. Each rule has substance lists, mechanism, action and a suggested switch. The copy
+  and its sha256 are at `/opt/hmis-context/clinical-matrix-2026-09-17b/`.
+- **Owner, the same evening:** *"I don't want to buy a dataset"*. The RFQ PR (#233) was closed. The
+  hospital's book stays hospital-curated and adopted by resolution. DDInter stays an internal
+  benchmark (ruling of the afternoon).
+- **What was added.** 230 pairs (169 severe), under `clinical_matrix#DDI_0xx`. That is everything
+  the ten rules above and the starter seed did not already hold:
+  - edoxaban, and etoricoxib (moderate), with anticoagulants;
+  - labetalol and esmolol with non-DHP CCBs;
+  - potassium citrate with ACEi/ARBs;
+  - lovastatin and cobicistat with CYP3A4 inhibitors;
+  - digoxin with P-gp inhibitors;
+  - PDE5 inhibitors with nitrates, nicorandil included;
+  - methotrexate with NSAIDs (severe, as the seed rules) and with penicillins (moderate);
+  - lithium with NSAIDs, thiazides and ACEi/ARBs;
+  - SSRIs/SNRIs with tramadol, linezolid and MAO-B inhibitors, and dextromethorphan (moderate);
+  - opioids with benzodiazepines and Z-drugs;
+  - tetracyclines, and sucralfate, zinc and ferrous ascorbate, with quinolones;
+  - theophylline and aminophylline with CYP1A2 inhibitors;
+  - warfarin and acenocoumarol with CYP2C9 inhibitors;
+  - xanthine-oxidase inhibitors with azathioprine and mercaptopurine;
+  - acenocoumarol with paracetamol;
+  - aspirin with P2Y12 inhibitors (moderate).
+- **Departures from the matrix.** Each is written in the rule file's header and pinned by the list
+  test: diltiazem and spironolactone with digoxin, penicillins with methotrexate, dextromethorphan
+  and etoricoxib are `moderate`; paracetamol × isoniazid stays `moderate`.
+- **The book is now 387 pairs, 291 severe.** All **138 names are moieties** on
+  `hmis_formulary_prodlike` (read-only query).
+- **Tests.** The list test was red against the old book (1 of 3). Mutants B1–B5 (a severity each, a
+  duplicate pair, azithromycin restored) were each predicted to fail 1 test, and each did.
+- **Not built: the matrix's "one-tap switch"** (for example, offer paracetamol 650 mg in place of the
+  NSAID). The note already names the alternative. A structured suggestion on the consult screen is a
+  CDS/OPD UI item for a later phase.

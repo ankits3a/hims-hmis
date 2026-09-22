@@ -59,6 +59,7 @@
     "vitalsBay": "Vitals bay",
     "labReports": "Report centre",
     "pharmacyCounter": "Dispense counter",
+    "pharmacyDesk": "Pharmacy desk",
     "pharmacyItems": "Pharmacy sale items",
     "pharmacyPharmacists": "Pharmacists",
     "pharmacyReorder": "Reorder list",
@@ -72,7 +73,9 @@
     "pharmacyLeakage": "Pharmacy leakage",
     "pharmacyRetail": "Walk-in sales",
     "pharmacyRetailLicence": "Retail licence",
-    "pharmacyDowntime": "Paper dispenses"
+    "pharmacyDowntime": "Paper dispenses",
+    "materialsTransfers": "Stock transfers",
+    "opdDayReport": "OPD report"
   },
   "palette": {
     "title": "Search",
@@ -254,15 +257,170 @@
   },
   "inbox": {
     "title": "Approvals",
-    "empty": "Nothing pending for your roles",
-    "approve": "Approve",
-    "reject": "Reject",
-    "note": "Decision note (mandatory)",
-    "requested": "requested",
+    "lead": "Requests from your staff that need your yes or no.",
+    "tabs": {
+      "waiting": "Waiting for you",
+      "decided": "Decided recently"
+    },
+    "loading": "Loading…",
+    "loadFailed": "Could not load the approvals. Check the connection and try again.",
+    "retry": "Try again",
+    "empty": {
+      "title": "Nothing waiting for you",
+      "body": "When someone asks for a discount, a refund or any other approval, it will appear here."
+    },
+    "emptyDecided": "Nothing has been decided yet.",
     "urgency": {
-      "routine": "Routine",
       "urgent": "Urgent",
       "emergency": "Emergency"
+    },
+    "askedBy": "Asked by {{name}}",
+    "someone": "a staff member",
+    "age": {
+      "justNow": "just now",
+      "minutes": "{{count}} min ago",
+      "hours": "{{count}} h ago",
+      "yesterday": "yesterday",
+      "days_one": "{{count}} day ago",
+      "days_other": "{{count}} days ago"
+    },
+    "uhid": "UHID {{uhid}}",
+    "openPatient": "Open patient record",
+    "sameDay": {
+      "patient": "Also asked for this patient the same day: {{other}} more (approved or still waiting) — {{total}} in all with this one.",
+      "payee": "Also asked for this payee the same day: {{other}} more (approved or still waiting) — {{total}} in all with this one."
+    },
+    "approve": "Approve",
+    "reject": "Reject",
+    "ownRequest": "You asked for this one, so someone else has to approve it.",
+    "cannotDecide": "You can see these requests, but your login cannot approve or reject them.",
+    "confirm": {
+      "approveTitle": "Approve this request?",
+      "rejectTitle": "Reject this request?",
+      "noteLabel": "Note — saved with your decision",
+      "reasonLabel": "Why are you rejecting it?",
+      "reasonPlaceholder": "Pick a reason above, or type your own",
+      "reasonHint": "The person who asked will see this reason.",
+      "cancel": "Cancel",
+      "close": "Close",
+      "saving": "Saving…",
+      "approvePresets": {
+        "asRequested": "Approved as requested",
+        "oneTime": "Approved — one time only",
+        "checked": "Approved — I have checked the papers"
+      },
+      "rejectPresets": {
+        "tooHigh": "Amount is too high",
+        "unclear": "Reason is not clear — please explain",
+        "talkFirst": "Talk to me first",
+        "policy": "Not as per hospital policy",
+        "duplicate": "Duplicate request"
+      }
+    },
+    "done": {
+      "approved": "Approved — {{what}}",
+      "rejected": "Rejected — {{what}}"
+    },
+    "decided": {
+      "approvedBy": "Approved by {{name}}",
+      "rejectedBy": "Rejected by {{name}}",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "errors": {
+      "ownRequest": "You asked for this one, so someone else has to approve it.",
+      "notAllowed": "Your login is not allowed to decide approvals. Ask the administrator for access.",
+      "alreadyDecided": "Someone has already decided this one. The list has been refreshed.",
+      "wrongRole": "This request is waiting for a different role, so your login cannot decide it.",
+      "noteRequired": "Please write a short reason.",
+      "gone": "This request no longer exists. The list has been refreshed.",
+      "network": "Could not save your decision. Check the connection and try again."
+    },
+    "unknownKind": {
+      "label": "Approval request",
+      "explain": "This kind of request has no description on this screen yet."
+    },
+    "kinds": {
+      "billing_discount": {
+        "label": "Discount",
+        "ask": "Discount of {{amount}} on {{patient}}'s bill",
+        "explain": "More than the counter may give without your approval."
+      },
+      "billing_clearance_discount": {
+        "label": "Discount to settle dues",
+        "ask": "Discount of {{amount}} to settle {{patient}}'s unpaid dues",
+        "explain": "Part of an unpaid bill is written off so the patient can clear the rest."
+      },
+      "billing_credit_extension": {
+        "label": "Pay later (credit)",
+        "ask": "Let {{patient}} pay the rest of the bill later",
+        "explain": "The bill is issued now and the balance is collected later — more credit than the counter may give."
+      },
+      "billing_refund": {
+        "label": "Refund",
+        "ask": "Refund {{amount}} to {{patient}}",
+        "explain": "Money goes back to the patient."
+      },
+      "billing_variance": {
+        "label": "Cash count mismatch",
+        "ask": "Accept a cashier's closing cash count that does not match",
+        "explain": "At closing, the cash in a drawer did not match what the system expected. Approving accepts the count."
+      },
+      "lab_release_unpaid": {
+        "label": "Unpaid lab report",
+        "ask": "Give {{patient}}'s lab report with {{amount}} still unpaid",
+        "explain": "The report is held until the bill is paid. Approving lets the lab hand it over now."
+      },
+      "patient_merge": {
+        "label": "Merge duplicate records",
+        "ask": "Join {{patient}}'s two records into one",
+        "explain": "The same person was registered twice. Approving merges the two records."
+      },
+      "patient_unmerge": {
+        "label": "Undo a merge",
+        "ask": "Separate {{patient}}'s merged records again",
+        "explain": "Two records were joined by mistake. Approving splits them back apart."
+      },
+      "materials_stock_adjustment": {
+        "label": "Stock correction",
+        "ask": "Correct the store's stock after a physical count",
+        "explain": "The count found more or less stock than the system shows. Approving corrects the stock."
+      },
+      "materials_near_expiry_acceptance": {
+        "label": "Stock that expires soon",
+        "ask": "Accept a delivery of items that expire soon",
+        "explain": "The supplier sent items with a short shelf life. Approving lets the store accept them."
+      },
+      "materials_vendor_bank_change": {
+        "label": "Supplier bank change",
+        "ask": "Change the bank account a supplier is paid into",
+        "explain": "Future payments go to the new account. Confirm it with the supplier by phone before approving."
+      },
+      "imaging_definition_publish": {
+        "label": "Radiology settings",
+        "ask": "Put new radiology settings into use",
+        "explain": "Scan types, safety checks or critical-result rules change for everyone once approved."
+      },
+      "ot_definition_publish": {
+        "label": "OT settings",
+        "ask": "Put new operation theatre settings into use",
+        "explain": "OT criteria, surgeon privileges, deposit rules or recovery limits change once approved."
+      },
+      "ot_deposit_exception": {
+        "label": "Short deposit",
+        "ask": "Go ahead with {{patient}}'s day-care surgery with the deposit {{amount}} short",
+        "explain": "The patient has paid less than the deposit required before surgery."
+      },
+      "tariff_revision": {
+        "label": "Price list change",
+        "ask": "Put a new price list (tariff) into use",
+        "explain": "New prices for hospital services take effect once approved."
+      },
+      "membership_grace_honor": {
+        "label": "Membership card",
+        "ask": "Give {{patient}} member benefits on a card missing from the member list",
+        "explain": "The card is not in the member list. Approving gives the benefit this time."
+      }
     }
   },
   "opd": {
@@ -687,12 +845,23 @@
     "notInFormulary": "Not in formulary — advanced checks unavailable",
     "noticeInteraction": "Line {{n}}: {{note}}",
     "noticeDuplicate": "Line {{n}}: already contains {{moiety}}",
+    "noticeDuplicateClass": "Line {{n}}: {{moiety}} is a second {{cls}}, with {{with}}",
+    "therapyClass_ppi": "proton pump inhibitor",
+    "therapyClass_ace_inhibitor": "ACE inhibitor",
+    "therapyClass_arb": "angiotensin receptor blocker",
+    "therapyClass_statin": "statin",
+    "therapyClass_nsaid": "NSAID",
     "interactionHit": "Line {{n}}: {{note}}",
     "duplicateHit": "Line {{n}}: repeats {{moiety}}",
     "hitAgainstLine": "(with line {{n}})",
     "hitAgainstPrior": "(prescribed {{days}} days ago)",
     "hitAgainstAssumed": "(prescribed {{days}} days ago — may no longer be current)",
     "inSystemOnly": "Checked against in-system prescriptions only",
+    "diseaseHit": "Line {{n}}: {{moiety}} is contraindicated in {{title}} — {{note}}",
+    "diseaseNotice": "Line {{n}}: {{moiety}} with {{title}} — {{note}}",
+    "diseaseCodedOn": "(recorded {{code}} on {{on}})",
+    "diseaseStale": "(recorded {{code}} on {{on}} — over a year ago, so this is a note and not a block)",
+    "switchTo": "Switch to:",
     "partlyChecked_one": "Line {{lines}}: checked only in part. A component is not yet reviewed by pharmacy, so its allergy class and interactions could not be checked.",
     "partlyChecked_other": "Lines {{lines}}: checked only in part. A component of each is not yet reviewed by pharmacy, so its allergy class and interactions could not be checked.",
     "dismiss": "Dismiss",
@@ -738,6 +907,8 @@
     "issue": "Issue & print",
     "overrideTitle": "Allergy conflict",
     "overrideHint": "This patient is recorded as allergic to the substances below. Record a reason for each line to issue anyway.",
+    "overrideTitleChecks": "Prescribing warnings",
+    "overrideHintChecks": "Record a reason for each warning below to issue anyway.",
     "overrideMatch": "Line {{n}}: {{substance}}",
     "overrideReasonRequired": "A reason is required for every conflict",
     "overrideConfirm": "Override and issue",
@@ -846,7 +1017,7 @@
       "who": "Typed at the door from the paper slip. It is not a prescription until you issue it.",
       "refusedHint": "load it into the editor below to resolve this and issue."
     },
-    "drugPlaceholder": "type 3 letters — e.g. par, amox, clav",
+    "drugPlaceholder": "name, strength or code — e.g. par, para 500, amox clav, D0230",
     "complaintPlaceholder": "type a symptom, press Enter to add it",
     "complaintHint": "Enter adds exactly what you typed · → completes the suggestion · × removes a tag",
     "addAllergy": "+ Add allergy",
@@ -876,6 +1047,15 @@
     "bringBack": "Bring back",
     "leftQueue": "Left the queue ({{n}})",
     "leftQueueHint": "Three skips takes a token out of the queue. The visit is still open — bring them back and they keep their turn.",
+    "heldQueue": "Waiting for the bill ({{n}})",
+    "heldQueueHint": "Ready for you, but the fee is not paid. They are not called and the hall board does not show them. Pay at the counter, or open one yourself.",
+    "heldWhy": "Sent through without paying: {{reason}}",
+    "openUnpaid": "See without payment",
+    "openUnpaidTitle": "Token {{token}} — see before the bill?",
+    "openUnpaidHint": "This puts the token back in your queue and lets you start the consultation although the fee is unpaid.",
+    "openUnpaidReason": "Why (shown at every desk after this one)",
+    "openUnpaidStillOwed": "The fee is still owed and the bill is still raised — only the order changes.",
+    "openUnpaidConfirm": "Open the token",
     "skipReason": {
       "absent": "Not at the door when called",
       "stepped_out": "Stepped out, back shortly",
@@ -1338,7 +1518,15 @@
     "markRead": "Mark read",
     "justNow": "Just now",
     "minutesAgo": "{{n}}m ago",
-    "hoursAgo": "{{n}}h ago"
+    "hoursAgo": "{{n}}h ago",
+    "seen": "Seen",
+    "own": "Own {{n}}m",
+    "handOver": "Hand over",
+    "handOverPrompt": "Staff code of the person taking this on",
+    "open": "Open",
+    "acknowledged": "Seen by you",
+    "owned": "Yours",
+    "handedOver": "Handed over"
   },
   "opsMode": {
     "title": "Operating mode",
@@ -1709,7 +1897,9 @@
     "already_requested": "That line's variance is already asked for or booked",
     "invalid_adjustment_reason": "That reason does not fit the direction: 'found' books stock on, the loss reasons write it off",
     "adjustment_unapproved": "Nothing is booked until the medical superintendent approves the request",
-    "unknown_adjustment": "That adjustment does not exist"
+    "unknown_adjustment": "That adjustment does not exist",
+    "transfer_self_receipt": "You sent this transfer. Someone at the receiving store confirms it.",
+    "not_store_keeper": "Only the receiving store's own staff confirm what reached it."
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -1988,6 +2178,9 @@
     "nextStep": "Please go to the vitals desk next."
   },
   "desk": {
+    "pharmacy": {
+      "authorise": "The pharmacy is waiting on you"
+    },
     "title": "My desk",
     "live": "Live",
     "offline": "Not live — figures may be stale",
@@ -2209,6 +2402,66 @@
       "drill": "Drilling shows the patient rows behind the figures. It needs a reason of at least eight characters, and the reason is written to the audit log with your name against it.",
       "cannot": "I cannot answer that from this screen. I can tell you what the brief says, what period it covers, and what drilling costs."
     }
+  },
+  "dayReport": {
+    "band": "OPD report",
+    "bandNote": "The whole hospital, by department — today, this week or this month",
+    "title": "OPD report",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "otherDay": "Another day",
+    "consulted": "Consulted",
+    "consultedHint": "Consultations the doctor completed on this day.",
+    "new": "New",
+    "newHint": "First consultation at the hospital — no consultation on any earlier day, in any department.",
+    "revisit": "Revisit",
+    "revisitHint": "A returning patient on the free follow-up of an earlier consultation in the same department.",
+    "renewal": "Renewal",
+    "renewalHint": "A returning patient paying a fresh consultation fee: the follow-up period is over, or it is their first visit to this department.",
+    "booked": "Booked",
+    "bookedHint": "Appointments booked for these dates and not cancelled or moved.",
+    "stillOpen_one": "Day in progress · {{count}} patient still being seen",
+    "stillOpen_other": "Day in progress · {{count}} patients still being seen",
+    "inProgress": "Day in progress — figures may still change",
+    "pdf": "Download PDF",
+    "csv": "Download CSV",
+    "preparing": "Preparing…",
+    "pdfHint": "PDF opens the print window — choose “Save as PDF”.",
+    "popupBlocked": "Your browser blocked the report window. Allow pop-ups for this site, then press Download PDF again.",
+    "failed": "The report could not be prepared. Please try again.",
+    "loadFailed": "The day's figures could not be loaded. Please refresh the page.",
+    "byDepartment": "Department-wise report",
+    "forbidden": "Your account cannot open the OPD day report. Ask the administrator if you need it.",
+    "backToDesk": "Back to your desk",
+    "people_one": "{{count}} patient was consulted; {{fresh}} came to the hospital for the first time. A patient seen in two departments is counted in each department's row.",
+    "people_other": "{{count}} different patients were consulted; {{fresh}} came to the hospital for the first time. A patient seen in two departments is counted in each department's row.",
+    "noDepartments": "No OPD department is set up yet.",
+    "noPatients": "No consultation was completed in this department on this day.",
+    "seePatients": "See patients",
+    "hidePatients": "Hide patients",
+    "total": "Total",
+    "sealed": "Confidential",
+    "col": {
+      "department": "Department",
+      "stillOpen": "Still open",
+      "download": "Download",
+      "time": "Time",
+      "patient": "Patient",
+      "uhid": "UHID",
+      "age": "Age",
+      "sex": "Sex",
+      "address": "Address",
+      "type": "Type",
+      "doctor": "Doctor",
+      "date": "Date"
+    },
+    "thisWeek": "This week",
+    "thisMonth": "This month",
+    "pickPeriod": "Choose the period",
+    "periodInProgress": "Period not over — figures may still change",
+    "weekRule": "Monday to Saturday. A Sunday is not part of a week, so its consultations are listed separately.",
+    "sundayExcluded_one": "{{count}} consultation on {{day}} is not counted here: a week runs Monday to Saturday.",
+    "sundayExcluded_other": "{{count}} consultations on {{day}} are not counted here: a week runs Monday to Saturday."
   },
   "assurance": {
     "self_declared": "Self declared",
@@ -3189,6 +3442,7 @@
       "readDevice": "read device",
       "held": "held out of the chart: {{values}}",
       "missing": "Still needed: {{tiles}}",
+      "feeGate": "Not billed yet — the counter has not taken this visit's fee. Bill it at the counter, or press “Save & send NOW (emergency)” if this cannot wait.",
       "save": "Save & send",
       "saveNow": "Save & send NOW (emergency)",
       "keys": "{{typed}} keys · {{device}} device reads",
@@ -3249,6 +3503,7 @@
     "saved": {
       "title": "Saved {{who}} — sent to {{doctor}}'s board",
       "amended": "Amended {{who}} — {{doctor}}'s board refreshed",
+      "feeWaived": "Saved without a bill — emergency. The fee is still due: the counter and the doctor are both shown this.",
       "danger": "DANGER flagged: {{vitals}}",
       "notice": "Told the doctor ahead of the call: {{vitals}}",
       "dismiss": "dismiss"
@@ -3446,6 +3701,12 @@
     "consent_required": "Capture the patient’s consent to the substitute",
     "allergy_block": "Recorded allergy that no prescriber has overridden — do not hand it over; back to the doctor",
     "interaction_block": "A severe interaction that no prescriber has overridden — do not hand it over; back to the doctor",
+    "duplicate_block": "The medicine you chose repeats one already on this prescription, and the doctor never ruled on that — choose another, or decline the line",
+    "drug_disease_block": "A diagnosis this patient carries rules this medicine out, and no prescriber has ruled on it — back to the doctor, or decline the line",
+    "invalid_shelf_location": "A shelf label is at most 24 characters — “R-12”, “rack 3 · shelf 2”",
+    "authorisation_not_needed": "The check raises no such refusal on that line — there is nothing for the doctor to authorise",
+    "authorisation_not_pending": "This request was already decided",
+    "unknown_authorisation": "No such request",
     "qty_required": "Every line needs a quantity, and a reason is required",
     "store_missing": "The OPD pharmacy store is not set up",
     "not_found": "Not found",
@@ -3593,6 +3854,375 @@
     "printBill": "Print bill",
     "backToCounter": "Back to the counter",
     "scanPack": "Scan pack"
+  },
+  "pharmacyDesk": {
+    "wordmark": "PHARMACY DESK",
+    "where": "OPD counter",
+    "thisDesk": "this desk",
+    "waiting": "{{count}} waiting",
+    "command": "⌘ command",
+    "nobody": "nobody in hand",
+    "nobodyHint": "Scan the slip, or take the next ticket from the line. The patient you take stays in this column until Esc.",
+    "day": {
+      "title": "your day",
+      "handedOver": "handed over",
+      "money": "money taken",
+      "declined": "lines declined",
+      "inLine": "in the line now"
+    },
+    "keys": {
+      "title": "keys",
+      "q": "the whole line",
+      "f8": "command",
+      "enter": "find what is in the field",
+      "esc": "close, then clear the desk"
+    },
+    "sealedRecord": "sealed record",
+    "years": "{{n}}y",
+    "benefitHeld": "✓ {{plan}}",
+    "benefitLapsed": "{{plan}} · lapsed",
+    "owes": "owes {{amount}}",
+    "alreadyTaking": "already taking",
+    "visits": "visits",
+    "sinceDay": "since {{day}}",
+    "rxLines_one": "1 line",
+    "rxLines_other": "{{count}} lines",
+    "sex": {
+      "female": "F",
+      "male": "M",
+      "other": "—"
+    },
+    "noAllergy": "no allergy recorded",
+    "allergy": "allergy · {{substance}}",
+    "flow": {
+      "check": "check the prescription",
+      "collect": "collect from the shelf",
+      "money": "take the money",
+      "done": "done",
+      "handOver": "hand it over"
+    },
+    "clear": "clear desk",
+    "line_one": "the line · one ticket",
+    "line_other": "the line · {{count}} tickets",
+    "lineEmpty": "Nobody is waiting.",
+    "queuedYesterday": "yesterday",
+    "closed": {
+      "ticket": "the ticket",
+      "money": "the money",
+      "registers": "the registers",
+      "ticketBody_one": "{{label}} closed {{at}}. Claimed {{claimed}} by {{who}}. One line.",
+      "ticketBody_other": "{{label}} closed {{at}}. Claimed {{claimed}} by {{who}}. {{count}} lines.",
+      "substituted_one": "One was substituted with consent.",
+      "substituted_other": "{{count}} were substituted with consent.",
+      "declined_one": "One was declined.",
+      "declined_other": "{{count}} were declined.",
+      "moneyBody": "Invoice {{invoice}} · receipt {{receipt}} · {{amount}} by {{modes}}.",
+      "change": "{{amount}} handed back.",
+      "tax": "CGST {{cgst}} + SGST {{sgst}} inside the MRP.",
+      "noMoney": "Nothing was charged for this ticket.",
+      "h1_one": "One Schedule H1 row written.",
+      "h1_other": "{{count}} Schedule H1 rows written.",
+      "noH1": "No Schedule H1 row was owed.",
+      "batches_one": "Stock consumed from one batch.",
+      "batches_other": "Stock consumed from {{count}} batches."
+    },
+    "copilot": {
+      "offer": "{{written}} is not on this shelf. {{offer}} is the same salt, strength, form and route — {{n}} here, {{price}}. I have put it to this patient's allergies, interactions, duplicates and diagnoses: clear.",
+      "saving": "It saves {{amount}} a {{pack}}.",
+      "short": "Only {{n}} here, short of the {{want}} written.",
+      "blockedOnly": "{{written}} is not on this shelf, and every equivalent here is stopped by the check. This one goes back to the doctor.",
+      "none": "{{written}} is not on this shelf and nothing here is the same medicine. Decline the line, or place it by hand.",
+      "dock": "{{written}} is out — {{offer}} is the same medicine, {{n}} on the shelf",
+      "act": "Give {{offer}}"
+    },
+    "lineFoot": "A ticket you take is marked claimed for everyone, with your name on it. Nobody else spends a minute on it.",
+    "heldBy": "{{name}} has this",
+    "yours": "yours",
+    "slipToConfirm": "slip to confirm",
+    "overlayTitle": "Every ticket at this counter",
+    "close": "close",
+    "openInTabFor": "Open {{who}}'s ticket in a tab",
+    "openInTab": "Open in a tab",
+    "openMine": "Open (yours)",
+    "overlayFoot": "Opening a ticket here claims it and starts it in a new tab, so this window keeps the patient it already has. A ticket somebody else holds cannot be opened — it says who has it.",
+    "loading": "Opening the ticket…",
+    "whichPatient": "several people match — which one is at the window?",
+    "cancelledTitle": "{{who}}'s ticket was cancelled",
+    "theirsTitle": "{{name}} has {{who}}'s ticket",
+    "theirsHint": "It is being worked at another window. Ask {{name}} before you touch it.",
+    "anotherPharmacist": "another pharmacist",
+    "claimedByYou": "claimed by you",
+    "notYoursTitle": "{{who}}'s ticket is not yours yet",
+    "notYoursHint_one": "One line on the prescription. Take it to start working it.",
+    "notYoursHint_other": "{{count}} lines on the prescription. Take it to start working it.",
+    "takeIt": "Take this ticket",
+    "doneTitle": "{{who}} has their medicine.",
+    "lines_one": "one line",
+    "lines_other": "{{count}} lines",
+    "nextTicket": "next ticket",
+    "ticket": "Ticket {{label}}",
+    "ticketFor": "Ticket for {{who}}",
+    "h1On": "Schedule H1 on line {{lines}}",
+    "rxVersion": "prescription v{{version}}",
+    "settled": "{{n}} of {{of}} settled",
+    "wrote": "what the doctor wrote",
+    "giving": "what you are giving",
+    "qty": "qty",
+    "idleTitle": "Whose prescription is in your hand?",
+    "idleHint": "Scan it. Typing is the fallback, not the plan — a scanned slip cannot be the wrong patient.",
+    "findLabel": "slip QR · token · UHID · name",
+    "findPlaceholder": "T-14 · U00110012 · Ramesh",
+    "find": {
+      "button": "Find",
+      "qrInvalid": "That code is not a prescription this hospital signed.",
+      "noRx": "No prescription today for that patient.",
+      "notFound": "Nobody found for that."
+    },
+    "unresolved": "the catalogue could not place this line",
+    "generic": "generic · consent taken",
+    "scheduleX": "Schedule X — not at this counter",
+    "notChecked": "the books could not read this line",
+    "notCheckedCount_one": "One line the books could read only in part — no warning there is not a clean result",
+    "notCheckedCount_other": "{{count}} lines the books could read only in part — no warning there is not a clean result",
+    "declined": "declined — {{reason}}",
+    "sealedRefused": "A sealed record — a pharmacist cleared to read sealed records, or break-glass, must take this ticket.",
+    "dock": "counter agent",
+    "dockQuiet": "watching the line — nothing to report yet",
+    "log": {
+      "claimed": "took {{who}}'s ticket",
+      "verified": "checked the prescription — ticket {{no}}",
+      "collected_one": "holding one line for 30 minutes",
+      "collected_other": "holding {{count}} lines for 30 minutes",
+      "collectedUntil_one": "holding one line until {{time}}",
+      "collectedUntil_other": "holding {{count}} lines until {{time}}",
+      "declined": "declined line {{line}}: {{reason}}",
+      "billed": "took {{amount}} by {{modes}}",
+      "handedOver": "handed over to {{who}}",
+      "draftClaimOnly": "saved as a draft — your claim stays",
+      "draftHeld": "saved as a draft — the strips are held until {{time}}",
+      "slipConfirmed": "confirmed the slip against the paper"
+    },
+    "status": {
+      "claimed": "claimed",
+      "verified": "checked",
+      "picked": "collected",
+      "billed": "billed"
+    },
+    "collecting": "Checking the prescription and holding the strips…",
+    "tickLabel": "Collected: {{line}}",
+    "noSubstitution": "no substitution",
+    "givenShort": "given short — {{reason}}",
+    "givenFrom": "given from {{batch}} · exp {{expiry}}",
+    "fromBatch": "batch {{batch}} · exp {{expiry}} · {{n}} here",
+    "scanned": "scanned",
+    "blocked": {
+      "unresolved": "The catalogue could not place this line. Decline it, or choose what it is.",
+      "not_stocked": "Not stocked at this counter. Decline it with the reason the patient will be told.",
+      "not_saleable": "This item is not registered for sale. Decline it; the item master needs it registered.",
+      "empty": "None on the shelf. Decline it, or give an equivalent.",
+      "schedule_x": "Schedule X is not dispensed at this counter."
+    },
+    "advice": {
+      "firstShort": "The earliest batch {{batch}} holds {{n}} and this line wants {{qty}} — one batch per line.",
+      "take": "take {{batch}}",
+      "give": "give {{n}}",
+      "diesInCourse": "Batch {{batch}} expires {{expiry}}, before the {{days}}-day course ends."
+    },
+    "partialWhy": "giving {{n}} of {{of}} — why?",
+    "partialPlaceholder": "only this much on the shelf · patient asked for less",
+    "scanLabel": "Scan the pack for {{line}}",
+    "scanPlaceholder": "scan the pack — ⏎ ticks the line",
+    "declineWhy": "Why is {{line}} declined?",
+    "declinePlaceholder": "out of stock · patient has it at home · not stocked here",
+    "declineIt": "Decline",
+    "qtyLabel": "Quantity for {{line}}",
+    "ceiling": "at the DPCO ceiling · pack says {{mrp}} a {{pack}}",
+    "eachRate": "{{amount}} each",
+    "ofPrescribed": "of {{of}}",
+    "lineMenu": "What else for {{line}}",
+    "bill": {
+      "title": "the bill · live",
+      "paid": "PAID",
+      "unpaid": "UNPAID",
+      "declined": "declined",
+      "soFar": "so far",
+      "soFarWhy": "Today's shelf price for the batch each line would come from. The bill is made when the strips are collected, and a contract price can still lower it.",
+      "notYet": "Priced when the strips are collected — a medicine is priced by the batch it comes from, so there is no honest amount before that.",
+      "discount": "discount",
+      "cgst": "CGST (inside the MRP)",
+      "sgst": "SGST (inside the MRP)",
+      "rounding": "rounding",
+      "took": "taken",
+      "toCollect": "to collect",
+      "memberNotApplied": "{{plan}} is on this patient's file and NOT on this bill. The counter cannot apply it — settle it with billing before taking the money.",
+      "inside": "CGST and SGST are inside the printed MRP, never added to it. The pricing engine decided every line; this desk does no arithmetic.",
+      "noDrawer": "Your cash drawer is not open, and no money can be taken without it — UPI and card included.",
+      "openDrawer": "open a drawer (leaves the desk)",
+      "takeMoney": "take the money",
+      "tender": "how they are paying",
+      "mode": {
+        "cash": "Cash",
+        "upi": "UPI",
+        "card": "Card",
+        "split": "Split"
+      },
+      "tendered": "tendered",
+      "cashPart": "cash part",
+      "upiPart": "UPI part",
+      "change": "change due",
+      "received": "Received",
+      "receivedAmount": "Received {{amount}}",
+      "draft": "Save draft",
+      "heldUntil": "A draft keeps your claim and the strips you have pulled. They stay held until {{time}}, then go back on the shelf on their own.",
+      "holdEnded": "The hold ended at {{time}}. The counter puts the strips back and cancels this ticket within a minute — collect again if the patient is still here.",
+      "stillOpen": "A line is still open. Tick it or decline it — then it is priced and the money can be taken.",
+      "draftNothingHeld": "A draft keeps your claim. Nothing is held on the shelf until the lines are collected.",
+      "networkRetry": "The connection dropped before the answer came back. Press again — it is the same payment, and it cannot be charged twice.",
+      "upiRef": "UPI reference (UTR)",
+      "upiRefHint": "12 digits on their phone's receipt",
+      "cardRef": "card approval code",
+      "cardRefHint": "on the terminal's slip"
+    },
+    "handover": {
+      "title": "hand it over",
+      "via": "who is collecting",
+      "token": "token number",
+      "phone": "last 4 of phone",
+      "value": "what they say",
+      "placeholder": "ask — do not read it to them",
+      "noId": "No scheduled drug on this ticket; no identity check at the window.",
+      "button": "Handed over"
+    },
+    "sub": {
+      "saves": "saves {{amount}} a {{pack}}",
+      "each": "{{amount}} each",
+      "title": "Give something else for {{drug}}",
+      "rule": "Only the same salt, strength, form and route can stand in — the server refuses anything else, so this list is the whole choice.",
+      "noSubstitution": "The doctor wrote no substitution on this line — only the medicine named can be given.",
+      "loading": "Reading the shelf…",
+      "none": "Nothing on this shelf is a generic equivalent of {{drug}}. Decline the line, with what the patient will be told.",
+      "same": "same salt, strength, form and route",
+      "onShelf": "{{n}} on the shelf",
+      "consent": "I told the patient it is a different brand of the same medicine, and they agreed.",
+      "consentWhy": "The server will not record a generic substitution without this — it is the patient's consent, not a formality.",
+      "checkedAtVerify": "Each one was just checked against this patient's allergies, interactions and diagnoses. The check runs again when the prescription is checked, and a clash stops it there.",
+      "put": "Put it on the ticket",
+      "putNamed": "Put {{brand}} on the ticket",
+      "cancel": "Cancel",
+      "insteadOf": "instead of {{brand}}",
+      "undo": "undo",
+      "check": {
+        "clear": "clear for this patient",
+        "not_checked": "the books could not read all of it — not a clear result",
+        "blocked": "stopped by the check: {{why}}"
+      },
+      "book": {
+        "allergy": "allergy",
+        "interaction": "severe interaction",
+        "duplicate": "already prescribed",
+        "drug_disease": "ruled out by"
+      },
+      "open": "give an equivalent"
+    },
+    "rack": {
+      "ask": "where is it?",
+      "input": "Where {{drug}} sits",
+      "placeholder": "R-12 · rack 3 · fridge",
+      "cancel": "cancel",
+      "change": "change where it sits"
+    },
+    "res": {
+      "open": "choose what it is",
+      "title": "Choose what “{{drug}}” is",
+      "rule": "Read the doctor's words as one medicine on this counter's shelf. Nothing the doctor named is being replaced, so no consent is asked.",
+      "noSubstitution": "The doctor wrote no substitution: choose exactly the medicine written, or decline the line.",
+      "search": "Search this counter's shelf",
+      "placeholder": "a brand or a code, or scan the pack",
+      "prompt": "Type a brand or a code, or scan the pack.",
+      "loading": "Reading the shelf…",
+      "none": "Nothing on this shelf is named “{{q}}” — the search reads brand names and codes, not salts. Try the brand you would give; decline the line only if the medicine is not here.",
+      "checkedAtVerify": "Allergies and interactions are checked on what you choose when the prescription is checked; a clash stops it there.",
+      "put": "Put it on the ticket",
+      "putNamed": "Put {{brand}} on the ticket",
+      "cancel": "Cancel",
+      "chosen": "you chose it",
+      "undo": "undo"
+    },
+    "precheck": {
+      "blocked": "The check will stop this line: {{why}}. Decline it, or back to the doctor — before anyone walks to the shelf."
+    },
+    "ask": {
+      "label": "Ask the counter agent",
+      "placeholder": "ask — kitni Mox 500 bachi hai",
+      "dismiss": "Dismiss the answer",
+      "onTicket": "On this ticket: {{items}}.",
+      "batchItem": "{{name}} — batch {{batch}}, expires {{expiry}}"
+    },
+    "auth": {
+      "theDoctor": "the prescribing doctor",
+      "ask": "Ask {{doctor}} to authorise",
+      "noteLabel": "What {{doctor}} should know",
+      "notePlaceholder": "e.g. tolerated it last year, rash only",
+      "send": "Send to {{doctor}}",
+      "waiting": "Waiting for {{doctor}} to authorise — keep serving the line; the ticket stays yours.",
+      "authorised": "{{doctor}} authorised it: {{reason}}",
+      "declined": "{{doctor}} declined: {{reason}} — decline the line, or ask the doctor to change the prescription."
+    },
+    "say": {
+      "title": "Say to the patient",
+      "own": "say it in the doctor's words — {{words}}",
+      "notGiven": "And what you are not giving",
+      "why": "tell them why, in your words — {{reason}}"
+    },
+    "slip": {
+      "title": "What the scribe photographed",
+      "see": "See the slip",
+      "typedBy": "typed from paper by {{name}}",
+      "owed": "Typed from the doctor's paper by {{name}}. Check every line against the slip before you collect — the bill will not issue until you confirm it.",
+      "confirm": "Confirmed against the slip",
+      "loading": "Opening the photograph…",
+      "none": "No photograph of this visit's slip was filed. Confirm against the paper in the patient's hand.",
+      "unreadable": "The photograph cannot be shown on this deployment — the document store is not set up. Confirm against the paper in the patient's hand.",
+      "alt": "The doctor's handwritten prescription, as photographed at the desk",
+      "rule": "Opening this writes a PHI-access row against your name. The photograph is what the doctor signed; the typed lines are what the hospital acts on. Where they disagree, the doctor settles it — not this counter."
+    },
+    "shelf": {
+      "allOn": "all on shelf",
+      "short": "{{names}} short",
+      "notStocked": "not stocked: {{names}}",
+      "unplaceable_one": "a line to place",
+      "unplaceable_other": "{{count}} lines to place",
+      "scheduleX": "Schedule X — not at this counter"
+    },
+    "agent": {
+      "checked_one": "One ticket waiting. I have checked its lines against this shelf —",
+      "checked_other": "{{count}} tickets waiting. I have checked every line against this shelf —",
+      "complete_one": "one is complete",
+      "complete_other": "{{count}} are complete",
+      "incomplete_one": "one is missing something",
+      "incomplete_other": "{{count}} are missing something",
+      "refused_one": "one cannot be dispensed here",
+      "refused_other": "{{count}} cannot be dispensed here",
+      "show": "Show the line"
+    }
+  },
+  "pharmacyAuthorise": {
+    "title": "The pharmacy asks you to authorise",
+    "lead": "You wrote this prescription. The check at the pharmacy stops this line, and only you can authorise dispensing it — or decline.",
+    "loading": "Reading the request…",
+    "book": {
+      "allergy": "recorded allergy",
+      "interaction": "severe interaction",
+      "duplicate": "already prescribed",
+      "drug_disease": "ruled out by a diagnosis"
+    },
+    "thePharmacist": "The pharmacist",
+    "reason": "Your reason",
+    "reasonPlaceholder": "Why it is safe to give — or why it is not",
+    "authorise": "Authorise dispensing",
+    "decline": "Decline",
+    "authorised": "You authorised it: {{reason}}",
+    "declined": "You declined: {{reason}}"
   },
   "appointmentSeat": {
     "title": "Appointment",
@@ -4220,6 +4850,22 @@
     "unreviewed": "not yet reviewed by pharmacy",
     "unreviewedTitle": "A component of this product has not been reviewed by pharmacy, so an allergy class or an interaction on that component cannot be checked."
   },
+  "sigDrawer": {
+    "frequency": "How often",
+    "timing": "With food",
+    "duration": "For how long",
+    "days": "{{n}} days",
+    "other": "Other",
+    "frequencyPlaceholder": "e.g. 1-0-0, every 6 hours, once a week",
+    "daysUnit": "days",
+    "notePlaceholder": "Anything else — e.g. with milk",
+    "timingOption": {
+      "afterFood": "After food",
+      "beforeFood": "Before food",
+      "withFood": "With food",
+      "emptyStomach": "Empty stomach"
+    }
+  },
   "pharmacyH1": {
     "title": "Schedule H1 register",
     "rule": "Drugs and Cosmetics Rules, 1945, rule 65(3A)",
@@ -4490,5 +5136,138 @@
     "recent": "Entered sheets",
     "noneYet": "No paper dispense entered yet.",
     "row": "{{desk}} #{{serial}} · {{when}} · bill {{invoice}} · {{amount}}"
+  },
+  "materialsTransfers": {
+    "title": "Stock transfers",
+    "intro": "The stores send stock to a counter or a ward, and the receiving store confirms what reached it. Batches are picked earliest expiry first. Whatever is not confirmed stays in transit and on the discrepancy list.",
+    "store": "Store",
+    "allStores": "All stores",
+    "send": "Send stock",
+    "from": "From",
+    "to": "To",
+    "choose": "Choose…",
+    "itemSearch": "Item name or code",
+    "find": "Find",
+    "noItem": "No item matches.",
+    "add": "Add",
+    "remove": "Remove",
+    "pickSource": "choose the source store to see stock",
+    "available": "{{qty}} {{unit}} available",
+    "qty": "Quantity, {{code}}",
+    "note": "Note",
+    "issue": "Issue stock",
+    "sent": "Sent {{ref}} to {{to}}. It is in transit until the receiving store confirms it.",
+    "awaiting": "Awaiting receipt",
+    "noneAwaiting": "Nothing is in transit.",
+    "sentBy": "sent by {{name}} at {{time}}",
+    "receivedBy": "received by {{name}} at {{time}}",
+    "lineSent": "{{qty}} {{unit}} sent",
+    "lineOf": "{{got}} of {{sent}} {{unit}}",
+    "receivedQty": "Received, batch {{batch}}",
+    "short": "{{qty}} short",
+    "confirm": "Confirm receipt",
+    "receivedAll": "{{ref}} received in full.",
+    "receivedShort": "{{ref}} received with a shortfall of {{short}}. It stays on the discrepancy list for the materials head.",
+    "recent": "Recent transfers",
+    "noneRecent": "No transfer yet.",
+    "s_in_transit": "In transit",
+    "s_received": "Received",
+    "s_discrepancy": "Short"
+  },
+  "opdTriage": {
+    "redFlag": {
+      "chestPain": "Chest pain — this may be a cardiac emergency.",
+      "breathless": "Breathlessness — this may be an emergency.",
+      "unconscious": "Unconscious or unresponsive — this is an emergency.",
+      "bleeding": "Heavy bleeding — this is an emergency.",
+      "convulsion": "Fits or convulsions — this is an emergency.",
+      "poisoning": "Possible poisoning or overdose — this is an emergency.",
+      "trauma": "Serious injury — this is an emergency.",
+      "stroke": "Possible stroke — this is an emergency.",
+      "babyBlue": "A baby who is blue or not feeding — this is an emergency.",
+      "pregnancyBleeding": "Bleeding in pregnancy — this is an emergency.",
+      "action": "Do not book an appointment. Take the patient to Casualty now and tell the duty doctor.",
+      "bleedingInternal": "Bleeding from inside — vomiting or coughing blood, or black stools.",
+      "burns": "A burn — this needs to be seen now.",
+      "envenomation": "A bite or sting — this needs treatment now, not an appointment.",
+      "torsion": "Sudden severe pain in the testicle — this is time-critical.",
+      "neonatalJaundice": "A newborn turning yellow — this is an emergency."
+    }
+  },
+  "copilot": {
+    "answer": {
+      "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
+      "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
+      "failed": "I could not get an answer just now. Try the screen for this.",
+      "notUnderstood": "I did not understand that. I can tell you whether a patient has been seen, how the queues look, what a patient owes, and I can pull your day report.",
+      "noTool": "I understood the question, but nothing here answers it yet.",
+      "dayReport": "Your day report for {{date}} — {{sections}} sections, ready below.",
+      "dayReportProvisional": "Your day so far on {{date}} — {{sections}} sections, ready below. The day has not closed, so these figures can still change.",
+      "dayReportEmpty": "Nothing recorded under your name on {{date}} yet.",
+      "visitSeen": "Yes — seen by the doctor, and the visit is closed. Token {{token}}.",
+      "visitInConsult": "With the doctor right now. Token {{token}}.",
+      "visitAwaitingResults": "Seen by the doctor, now waiting on test results before the visit closes. Token {{token}}.",
+      "visitWaiting": "Not yet — waiting in the queue on token {{token}}.",
+      "visitRegistered": "Not yet — registered, but not in a queue yet.",
+      "visitAbandoned": "That visit was abandoned. Token {{token}}.",
+      "visitUnknownPatient": "I could not find that patient.",
+      "visitNoneToday": "That patient has no visit on {{date}}.",
+      "visitUnknown": "I could not find that visit.",
+      "queueShortest": "Shortest open line is {{doctor}} — {{waiting}} waiting, about {{minutes}} minutes.",
+      "queueNoneOpen": "No doctor is holding a clinic today.",
+      "stockOnShelf": "{{name}}: {{qty}} {{uom}} on the shelf. The next sale takes batch {{batch}}, expiring {{expiry}}.",
+      "stockEmpty": "{{name}} is on the shelf list, but none can be sold now — out, expired, recalled or held for tickets.",
+      "stockSeveral": "{{n}} on this shelf match: {{items}}.",
+      "stockNotFound": "Nothing on this shelf is called “{{term}}”, and no salt by that name is on it.",
+      "stockNeedName": "Which medicine? Ask with its name — “kitni Mox 500 bachi hai”.",
+      "uncollected": "Paid and not yet collected ({{n}}): {{items}}.",
+      "uncollectedNone": "Nothing is paid and waiting to be collected.",
+      "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})"
+    },
+    "report": {
+      "title": "Your day — {{date}}",
+      "provisional": "provisional",
+      "download": "Download CSV",
+      "downloadFailed": "The download did not start. Try again, or use My Day.",
+      "dismiss": "Close",
+      "emptySection": "Nothing in this section."
+    }
+  },
+  "reach": {
+    "title": "How you are reached",
+    "lead": "Which language, which channels, and whether this browser may notify you.",
+    "loading": "Loading…",
+    "failed": "Could not load your settings.",
+    "language": {
+      "title": "Language",
+      "en": "English",
+      "hi": "हिन्दी"
+    },
+    "ladder": {
+      "title": "Channels, in order",
+      "lead": "When an alert goes unanswered, the next channel is tried.",
+      "atLeastOne": "Keep at least one channel — otherwise nothing can reach you."
+    },
+    "channel": {
+      "web_push": "Browser",
+      "whatsapp": "WhatsApp",
+      "sms": "SMS"
+    },
+    "push": {
+      "title": "Browser notifications",
+      "notConfigured": "Browser notifications are not switched on for this hospital yet.",
+      "unsupported": "This browser cannot show notifications. On an iPhone, add the app to the home screen first.",
+      "denied": "You have blocked notifications for this site. Change it in your browser's site settings.",
+      "on_one": "On, in {{count}} browser.",
+      "on_other": "On, in {{count}} browsers.",
+      "off": "Off in this browser.",
+      "turnOn": "Turn on here",
+      "turnOff": "Turn off here",
+      "unknownBrowser": "An unnamed browser"
+    },
+    "consent": {
+      "none": "You have not yet been asked to consent to messages outside the app.",
+      "given": "You have consented to messages outside the app."
+    }
   }
 }

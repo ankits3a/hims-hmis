@@ -142,6 +142,22 @@ export const opdDoctorLeaves = pgTable(
     toDate: date("to_date", { mode: "string" }).notNull(), // inclusive
     reason: text("reason").notNull(),
     status: text("status").notNull().default("scheduled"), // 'scheduled' | 'cancelled'
+    /**
+     * PHASE R (R4) — **THE ABSENCE THIS ROW PROJECTS.**
+     *
+     * `staff_absences` is the system of record for who is away, for EVERY member of staff; this
+     * table is the OPD's own view of the subset that belongs to a consultant with a clinic. The
+     * link is here rather than on the absence because the absence knows nothing of OPD — the
+     * roster reaches into no module (plan §2.4) — and because a cancel on either side must be able
+     * to find the other. NULL on rows written before this phase.
+     *
+     * **PLAIN TEXT, NOT A FOREIGN KEY, and for a structural reason rather than laziness.**
+     * `org_departments` references `opd_departments`, and `roster.ts` references `org.ts`; a real
+     * FK here would close the loop `opd → roster → org → opd`, and a cycle between drizzle table
+     * modules resolves to `undefined` at load time rather than failing loudly. `opd_doctors.user_id`
+     * is the precedent three columns up, for the same reason.
+     */
+    absenceId: text("absence_id"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     cancelledBy: text("cancelled_by"),
@@ -329,9 +345,14 @@ export const opdEncounters = pgTable(
      * that person, `feeBypassReason` is what they typed, and neither is nullable-by-accident: the
      * bypass exists only where all three are set together.
      *
+     * TWO DOORS WRITE THESE COLUMNS, AND ONLY TWO (owner ruling 2026-09-20): the front desk's
+     * `POST /opd/visits/:id/fee-bypass`, where a clerk types the sentence, and the vitals bay's
+     * emergency save, which stamps a fixed one in the nurse's name rather than put a text box
+     * between a collapsing patient and their first BP. First writer wins in both.
+     *
      * ON THE ENCOUNTER AND NOT ON A CONFIG FLAG, deliberately. A hospital-wide "skip billing" switch
      * is a switch somebody leaves on; this is per-visit, per-patient, and carries the name of the
-     * clerk who opened it to every desk downstream. The marker the owner asked for on the vitals
+     * person who opened it to every desk downstream. The marker the owner asked for on the vitals
      * bay, the consultation and the OPD Order Desk is rendered FROM THESE COLUMNS, so the warning
      * and the authority that created it can never drift apart.
      *
@@ -341,6 +362,27 @@ export const opdEncounters = pgTable(
     feeBypassBy: text("fee_bypass_by"),
     feeBypassReason: text("fee_bypass_reason"),
     feeBypassAt: timestamp("fee_bypass_at", { withTimezone: true }),
+    /**
+     * ═══ THE DOCTOR'S DOOR, AND IT IS A DIFFERENT DOOR (OWNER RULING 2026-09-20) ═══
+     *
+     * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
+     * until doctor opens the token from his dashboard manually … once the bill is paid then the
+     * token automatically moves to the display board in the queue towards the doctor consultation."*
+     *
+     * So an unsettled token WAITS — held out of the callable queue and off the public board — and
+     * exactly two things release it: the money arriving (derived, never stored: `feeStatus` flips
+     * the moment the ledger does), or the doctor deciding to see the patient anyway. These three
+     * columns are that second thing, and they are SEPARATE from `feeBypass*` on purpose: FD-32's
+     * waiver opens the vitals bay, this opens the consulting room, and one column serving both
+     * would make a nurse's emergency into a doctor's decision nobody made.
+     *
+     * The reason is mandatory for the same reason the clerk's is: "emergency" and "the chairman's
+     * guest" are different facts with different consequences, and only a sentence can tell them
+     * apart. First writer wins; the fee stays owed either way.
+     */
+    consultFeeOverrideBy: text("consult_fee_override_by"),
+    consultFeeOverrideReason: text("consult_fee_override_reason"),
+    consultFeeOverrideAt: timestamp("consult_fee_override_at", { withTimezone: true }),
     // Consultation record (T7) — nullable until the doctor writes it.
     chiefComplaint: text("chief_complaint"),
     diagnosis: text("diagnosis"),
@@ -920,6 +962,12 @@ export const opdPrescriptions = pgTable(
      */
     interactionOverrides: jsonb("interaction_overrides").notNull().default(sql`'[]'::jsonb`),
     duplicateOverrides: jsonb("duplicate_overrides").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * P24 — and the same law for the fourth axis. A doctor who prescribes a drug this patient's
+     * recorded DISEASE forbids types why, and that reason is the record: it says a clinician saw
+     * the diagnosis, weighed it, and decided anyway. Defaults to `[]` like its two neighbours.
+     */
+    drugDiseaseOverrides: jsonb("drug_disease_overrides").notNull().default(sql`'[]'::jsonb`),
     status: text("status").notNull().default("active"), // 'active' | 'superseded'
     /**
      * ═══ FD-31 — TYPED FROM A PAPER SLIP, AND BY WHOM (OWNER RULING 2026-09-12) ═══

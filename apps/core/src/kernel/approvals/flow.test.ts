@@ -108,3 +108,36 @@ describe("approvalFlowDefinition", () => {
     expect(def.states.filter((s) => s.terminal)).toHaveLength(2);
   });
 });
+
+describe("approvalFlowDefinition — the ladder and respond passthrough (phase O T1)", () => {
+  it("passes a ladder and a respond clock into the pending state's sla, unchanged", () => {
+    const def = approvalFlowDefinition({
+      typeKey: "billing_refund",
+      title: "Billing Refund",
+      approverRole: "billing_manager",
+      closureSlaMinutes: 240,
+      respondMinutes: 30,
+      ladder: [{ atPercent: 70, toRole: "billing_manager" }, { atPercent: 100, toRole: "owner" }],
+    });
+    expect(def.states.find((s) => s.name === "pending")?.sla).toEqual({
+      minutes: 240, alerting: "active", respondMinutes: 30,
+      ladder: [{ atPercent: 70, toRole: "billing_manager" }, { atPercent: 100, toRole: "owner" }],
+    });
+  });
+
+  it("a type that supplies neither still emits exactly { minutes, alerting } — the shipped pin", () => {
+    const def = approvalFlowDefinition({
+      typeKey: "discount_override", title: "Discount Override",
+      approverRole: "billing_head", closureSlaMinutes: 45,
+    });
+    expect(def.states.find((s) => s.name === "pending")?.sla).toEqual({ minutes: 45, alerting: "active" });
+  });
+
+  it("a ladder and an escalation chain together are refused by defineWorkflow, through this builder", () => {
+    expect(() => approvalFlowDefinition({
+      typeKey: "both", title: "Both", approverRole: "r", closureSlaMinutes: 60,
+      escalation: [{ afterMinutes: 10, toRole: "a" }],
+      ladder: [{ atPercent: 100, toRole: "b" }],
+    })).toThrow(WorkflowValidationError);
+  });
+});

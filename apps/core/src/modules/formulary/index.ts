@@ -67,7 +67,24 @@ export type { AdoptionItem, AdoptionReport } from "./adoption";
 /** P21 — interaction pairs adopted from a reference under a named resolution. */
 export { adoptInteractions } from "./interaction-adoption";
 export type { InteractionAdoptionReport, InteractionRule } from "./interaction-adoption";
+/**
+ * P22 — allergy classes: the vocabulary the prescribing check reads (pure), and the memberships
+ * adopted from the clinical master under a named resolution.
+ */
+export { ALLERGY_CLASSES, adoptAllergyClasses, allergyClassKeys } from "./allergy-classes";
+export type { AllergyClassAdoptionReport, AllergyClassEntry, AllergyClassKey } from "./allergy-classes";
+/** P23 — therapeutic classes for duplicate-therapy notices, adopted under a named resolution. */
+export { THERAPEUTIC_DUPLICATE_CLASSES, adoptTherapeuticClasses } from "./therapeutic-classes";
+export type { TherapeuticClassAdoptionReport, TherapeuticClassEntry } from "./therapeutic-classes";
 export type {
   AttestTarget, MappingDecision, ProjectionResult, ProposalBasis, ProposalInput, ProposalWriteResult,
   WorklistItem, WorklistProposal, WorklistStatus,
 } from "./mapping";
+
+/** P24 — what a patient's diagnosis forbids, adopted from a reference under a named resolution. */
+export { adoptDrugDisease } from "./drug-disease-adoption";
+export type { DrugDiseaseAdoptionReport, DrugDiseaseRule } from "./drug-disease-adoption";
+export { listDrugDiseaseFor } from "./resolve";
+export type { DrugDiseaseRow } from "./resolve";
+/** The offer a drug-disease alert carries. Declared with the table; the checks read it here. */
+export type { DrugDiseaseAlternative } from "../../kernel/db/schema";

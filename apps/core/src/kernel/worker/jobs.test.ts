@@ -136,6 +136,7 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
     workerTimersIntervalMs: 20_000,
     workerTempRolesIntervalMs: 60_000,
     workerNotifyIntervalMs: 5000,
+    workerReachIntervalMs: 60_000, // PHASE O T4
     // 1 000, chosen so it cannot be confused with the pump's own 300 000 fallback: if this test
     // passes, no fallback could have produced the result.
     notifyStuckAfterMs: 1000,
@@ -297,6 +298,7 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     workerTimersIntervalMs: NINE_HOURS_MS,
     workerTempRolesIntervalMs: NINE_HOURS_MS,
     workerNotifyIntervalMs: NINE_HOURS_MS,
+    workerReachIntervalMs: 60_000, // PHASE O T4
     notifyStuckAfterMs: 300_000,
     retentionEnabled: false,
     retentionEventsMonths: 120,
@@ -352,7 +354,7 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // nothing. T5 did not read it, and found this file, that file and `alerts.yml`'s three places by
     // going red instead. The tax is identical either way; the difference is whether it is paid once
     // or discovered three times.
-    expect(specs).toHaveLength(18);
+    expect(specs).toHaveLength(21); // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );

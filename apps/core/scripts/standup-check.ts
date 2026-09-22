@@ -23,6 +23,11 @@ import {
 } from "../src/modules/ot";
 import { availableQty, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
+import {
+  HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
+  ROSTER_RESOLVER_FLAG, departmentsWithoutPublishedCycle, livePeriodCount, publishedCycleCount,
+  rosterMasterCounts, unconfirmedTeams,
+} from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
   activeRegistrations, registeredMachines, registeredPersons,
@@ -261,6 +266,130 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       // duties is the lab's central control, and one pair of hands holding every role satisfies none.
       check: async (db) => (await withTx(db, (tx) => usersHoldingRoleAtScope(tx, "admin", "hospital"))).length >= 2,
       fix: "§1.3: create a SECOND administrator at /admin/users — one pair of hands cannot hold DD11",
+    },
+    {
+      gate: "G1", code: "roster_masters_seeded",
+      /**
+       * PHASE R (R1) — **under `hospital`, and that placement is the finding, not an accident.**
+       *
+       * The roster is not a department (`standup-check.test.ts`'s classification map says so): it is
+       * a layer over every one of them. And this census has an invariant — *every census module that
+       * is not `hospital` has a go-live runbook* — whose exemption is `hospital` precisely because it
+       * holds *"the rows every department's opening rests on"*. `org_departments` and
+       * `roster_positions` are exactly that: no department's rota can be drafted, and no permission
+       * can be checked at a department's scope, until both lists exist. A `roster` module key here
+       * would have owed a runbook for a department that does not exist, or a second exemption.
+       *
+       * ONE row asking about BOTH lists, because a hospital with twenty-four departments and no
+       * positions and one with seventeen positions and no departments are equally unable to open,
+       * and two rows would have implied the census could be half green.
+       */
+      check: async (db) => {
+        const { departments, positions } = await rosterMasterCounts(db);
+        return departments > 0 && positions >= ROSTER_POSITIONS.length;
+      },
+      fix: "run `pnpm --filter @hmis/core seed:roster` (after `seed:roles` and `seed:opd`) — it seeds org_departments and the seventeen roster_positions, and is safe to re-run",
+    },
+    {
+      gate: "G4", code: "roster_units_confirmed",
+      /**
+       * PHASE R (R3) — **the row that stops our arithmetic being presented as the regulator's.**
+       *
+       * UG-MSR 2023 dropped the units table altogether. The 27 units `seed:units` writes are one
+       * unit per sanctioned senior resident — a good default, and NOT a number from the gazette
+       * (20-U §2, owner §10.2). So every seeded team lands inactive, and this row stays RED until a
+       * head of department has confirmed each one. It is under `hospital` for the reason the masters
+       * row is: a census MODULE owes a go-live runbook, and the roster is not a department.
+       */
+      /**
+       * **MEASURED, AND IT CHANGED THIS ROW — the same way it changed `radiology_devices_licensed`
+       * one module over.** Written the obvious way as *"nothing is unconfirmed"*, this read GREEN on
+       * a database with no teams at all: `unconfirmedTeams` returns `[]` when nothing has been
+       * seeded, and an empty list satisfies "none outstanding". A row that certifies a control
+       * nobody can exercise is worse than no row, and the fresh-database leg of
+       * `standup-check.test.ts` is what caught it — the guard written for exactly this, doing
+       * exactly its job.
+       *
+       * So the units must EXIST before their confirmation can be evidence of anything.
+       */
+      check: async (db) => {
+        const teams = await listTeams(db);
+        return teams.length > 0 && (await unconfirmedTeams(db)).length === 0;
+      },
+      fix: `each HOD confirms their department's units (seeded inactive by \`seed:roster\`; ${UNIT_COUNT} clinical units plus one night pool per unit-bearing department) — the establishment is this hospital's, not the NMC's, so a human ratifies it`,
+    },
+    {
+      gate: "G3", code: "take_is_continuous",
+      /**
+       * PHASE R (R7) — **V11's half that no constraint can hold.** A department's take windows may
+       * not OVERLAP, and an EXCLUDE says so; they may also not GAP, and absence is not a row, so
+       * nothing in the database can refuse one. A gap is an hour in which a department has nobody
+       * admitting, and the hospital finds out when an ambulance arrives.
+       *
+       * Green only when a published cycle EXISTS and has no hole — the emptiness lesson this file
+       * learned twice (`radiology_devices_licensed`, then `roster_units_confirmed`): a department
+       * with no cycle at all has no gaps, and that is not the same as being covered.
+       */
+      check: async (db) => {
+        const now = new Date();
+        const horizon = new Date(now.getTime() + HORIZON_DAYS * 86_400_000);
+        /**
+         * PHASE R (R10) — **THIS ROW USED TO READ GREEN ON THE EMPTINESS IT SAYS IT REFUSES.**
+         *
+         * It asked `listTeams(...)`, bound the answer to a variable called `cycles`, and refused
+         * only when the hospital had no TEAMS. `seed:roster` seeds the units (inactive), so that
+         * guard was satisfied from the first deploy — and `departmentsWithTakeGaps` iterates
+         * `roster_cycles WHERE status = 'published'`, which with nothing published returns `[]`.
+         * Empty gaps, row green, and every department admitting nobody.
+         *
+         * The comment above was already right and the code did not do it. That is the third time
+         * this file has learned the same lesson (`radiology_devices_licensed`, then
+         * `roster_units_confirmed`), so the population is now asked for BY NAME: a PUBLISHED CYCLE
+         * must exist before "no gaps" is evidence of anything.
+         */
+        /**
+         * R10, second pass: asking "is ANY cycle published?" was the same hole one level up.
+         * `departmentsWithTakeGaps` iterates published CYCLES, so a department with none
+         * contributes no gaps — publish Medicine's and Casualty still reads covered. The
+         * population is every department that runs units, and each must have a cycle.
+         */
+        // The hospital has published SOMETHING. On a fresh database there are no unit-bearing
+        // departments at all, and "every one of nothing has a cycle" is vacuously true — the same
+        // emptiness this row keeps producing, met here for the third time while fixing it.
+        if ((await publishedCycleCount(db)) === 0) return false;
+        // …and every department that runs units has one of its own.
+        if ((await departmentsWithoutPublishedCycle(db)).length > 0) return false;
+        return (await departmentsWithTakeGaps(db, now, horizon)).length === 0;
+      },
+      fix: "publish each unit-bearing department's take cycle (`publishCycle`) so every hour inside the ninety-day horizon has an admitting unit — `departmentsWithTakeGaps` names the holes",
+    },
+    {
+      gate: "G3", code: "resolver_has_a_roster",
+      /**
+       * PLAN 20 T7, and PHASE R (R10) — **the row for the state where the flag is on and every
+       * escalation has quietly fallen back.**
+       *
+       * `ROSTER_RESOLVER_ENABLED` switches the kernel's consumers from `usersHoldingRole` to the
+       * roster's own answer. V14 makes that safe when the flag is OFF: the answer is byte-identical
+       * to the static one. It also makes it safe when the flag is ON and a position is UNDECLARED —
+       * the resolver says `source: "static"` and falls back.
+       *
+       * What nothing covers is the middle: **flag ON, and not one roster published anywhere.** Every
+       * question then falls back, correctly and silently, and the hospital believes it has switched
+       * to a roster it has never published. Nobody is paged, because the fallback works.
+       *
+       * **RED UNTIL A ROSTER IS PUBLISHED, WHATEVER THE FLAG SAYS** — and the first draft of this
+       * row got that wrong. It was written asymmetric (green while the flag is off, red only for
+       * the lying combination), which reads well and breaks this census's own grammar: every G3 and
+       * G4 row is RED until an ACT, and two existing tests say so. A row that is green because a
+       * feature is switched OFF is a row that cannot tell "ready" from "not started".
+       *
+       * So the act is publishing a roster, the row is red until somebody performs it, and the flag
+       * appears in the FIX rather than in the verdict — where it tells a reader which of the two
+       * repairs they want.
+       */
+      check: async (db) => (await livePeriodCount(db, new Date())) > 0,
+      fix: `either publish a roster (a department's rota, via \`publishPeriods\`) or unset ${ROSTER_RESOLVER_FLAG} — with the flag on and nothing published, every on-call question falls back to role holders and nothing says so`,
     },
   ],
 
@@ -835,6 +964,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "18c §3: record the Radiological Safety Officer's appointment at /radiology/radiation-safety",
     },
   ],
+
 };
 
 export type RowResult = { module: string; gate: Gate; code: string; verdict: Verdict; fix: string; detail?: string };

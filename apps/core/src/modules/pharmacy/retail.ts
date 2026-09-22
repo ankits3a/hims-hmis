@@ -11,7 +11,7 @@ import {
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../billing";
-import { medicinesByIds } from "../formulary";
+import { medicinesByIds, resolveDrugTexts } from "../formulary";
 import {
   MaterialsError, availableQty, availableQtyByItem, balances, fefoPick, findStoreByCode, getBatch, itemsByIds, postMovements,
   requireStore, resolveBarcode, returnedQtyByRef,
@@ -220,13 +220,13 @@ function refused(flag: string | null): boolean {
  */
 export async function searchRetailShelf(db: Db, actor: Actor, q: string, now: Date): Promise<RetailShelfEntry[]> {
   await requirePermission(db, actor, SELL, "searching the retail shelf");
-  return searchShelfAt(db, await retailStore(db), q, now);
+  return searchShelfAt(db, (await retailStore(db)).id, q, now);
 }
 
 /** P20 — the same search at either counter's store, for a paper dispense. */
 export async function searchCounterShelf(db: Db, actor: Actor, storeCode: string, q: string, now: Date): Promise<RetailShelfEntry[]> {
   await requirePermission(db, actor, DOWNTIME_ENTER, "searching a counter's shelf");
-  return searchShelfAt(db, await counterStore(db, storeCode), q, now);
+  return searchShelfAt(db, (await counterStore(db, storeCode)).id, q, now);
 }
 
 async function counterStore(db: Db, storeCode: string): Promise<StoreRow> {
@@ -259,7 +259,11 @@ export async function counterBatches(db: Db, actor: Actor, storeCode: string, it
   return out.sort((a, b) => (a.expiryDate ?? "9999").localeCompare(b.expiryDate ?? "9999") || a.batchNo.localeCompare(b.batchNo));
 }
 
-async function searchShelfAt(db: Db, store: StoreRow, q: string, now: Date): Promise<RetailShelfEntry[]> {
+/**
+ * The one shelf search, at a store named by id — the retail counter's, a paper dispense's, or (PD-5b)
+ * the store a claimed ticket is served from. Each caller asks its own permission; this asks none.
+ */
+export async function searchShelfAt(db: Db, storeId: string, q: string, now: Date): Promise<RetailShelfEntry[]> {
   const text = q.trim();
   if (text === "") return [];
   const shelf = await shelfByMedicine(db);
@@ -274,16 +278,35 @@ async function searchShelfAt(db: Db, store: StoreRow, q: string, now: Date): Pro
     ? e.item.code.toLowerCase().includes(needle) || e.item.name.toLowerCase().includes(needle)
     : e.item.id === scanned.itemId);
   const medicines = await medicinesByIds(db, entries.slice(0, 200).map((e) => e.medicineId));
-  const offered = entries
+  let offered = entries
     .map((e) => ({ e, m: medicines.get(e.medicineId) }))
     .filter((x): x is { e: typeof x.e; m: MedicineWithSalts } => x.m !== undefined && !refused(x.m.scheduleFlag))
     .filter((x) => scanned !== null || x.m.brandName.toLowerCase().includes(needle) || x.e.item.code.toLowerCase().includes(needle) || x.e.item.name.toLowerCase().includes(needle))
     .slice(0, SHELF_LIMIT);
+  /*
+    NO PRODUCT IS CALLED THAT — IS IT A SALT? A pharmacist types "paracetamol" and the shelf holds
+    Calpol and Crocin; a name-only search answered nothing, and the desk's resolve sheet told them to
+    decline a medicine that was on the shelf (PD-5b's walk). Only when no product matches by name, so
+    a brand the person typed is never widened to everything sharing its salt. The formulary's own
+    exact resolver decides what counts as a salt (its name or a recorded alias) — no second matcher.
+  */
+  if (offered.length === 0 && scanned === null) {
+    const salts = (await resolveDrugTexts(db, [text])).get(text)?.salts ?? [];
+    if (salts.length > 0) {
+      const wanted = new Set(salts.map((x) => x.saltId));
+      const onShelf = await medicinesByIds(db, [...shelf.keys()]);
+      offered = [...shelf.values()]
+        .map((e) => ({ e, m: onShelf.get(e.medicineId) }))
+        .filter((x): x is { e: typeof x.e; m: MedicineWithSalts } => x.m !== undefined && !refused(x.m.scheduleFlag))
+        .filter((x) => x.m.salts.some((ms) => wanted.has(ms.saltId)))
+        .slice(0, SHELF_LIMIT);
+    }
+  }
   if (scanned !== null && gs1 !== null && gs1.batch !== null && offered.length > 0) {
-    const scan = await resolveScan(db, store.id, 0, scanned.itemId, text);
+    const scan = await resolveScan(db, storeId, 0, scanned.itemId, text);
     scanned.batchId = scan.batchId;
   }
-  const available = await availableQtyByItem(db, store.id, offered.map((x) => x.e.item.id), now);
+  const available = await availableQtyByItem(db, storeId, offered.map((x) => x.e.item.id), now);
   return offered.map(({ e, m }) => ({
     medicineId: m.id, brandName: m.brandName, strengthLabel: m.strengthLabel, form: m.form, scheduleFlag: m.scheduleFlag,
     itemId: e.item.id, itemCode: e.item.code, itemName: e.item.name, baseUom: e.item.baseUom,

@@ -941,9 +941,17 @@ export async function findVisitByToken(db: Db, filter: { serviceDate: string; to
  *
  * IDEMPOTENT AND NOT RE-ASSIGNABLE: the first clerk's name and reason stand. A second call is a
  * no-op rather than an overwrite, because the audit question is who opened the door FIRST.
+ *
+ * ═══ AND THE BAY HOLDS THE SAME HANDLE IN AN EMERGENCY (OWNER RULING 2026-09-20) ═══
+ *
+ * `Db | Tx`, because `recordVitals` calls this INSIDE the save's transaction when the emergency
+ * button walks a patient through a shut fee gate: the waiver and the chart land together or not at
+ * all. Nothing else changes — same column, same first-writer-wins rule, same sentence carried to
+ * every desk — which is the point. A second mechanism for "who let this patient past the counter"
+ * would be a second answer to the audit question, and there is only one.
  */
 export async function grantFeeBypass(
-  db: Db, actor: Actor, encounterId: string, reason: string, now: Date = new Date(),
+  db: Db | Tx, actor: Actor, encounterId: string, reason: string, now: Date = new Date(),
 ): Promise<EncounterRow> {
   if (actor.type !== "user") throw new OpdError("user_actor_required", "a bypass is a person's decision");
   const trimmed = reason.trim();
@@ -980,7 +988,15 @@ export async function counterState(db: Db, encounterId: string): Promise<Counter
 
 export async function listVisits(
   db: Db,
-  filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string },
+  /**
+   * `patientId` added by FD-COPILOT. The desk copilot answers "has this patient been seen today?" —
+   * one patient, one day — and without this filter the only way to ask was to fetch the whole day
+   * and filter in memory, against a default cap of 200 rows. On a quiet morning that is merely
+   * wasteful; on a busy one it silently TRUNCATES, and the copilot would answer "no visit today"
+   * about somebody sitting in the waiting room. A filter the database can apply is the difference
+   * between a right answer and a plausible one.
+   */
+  filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string },
   limit = 200,
 ): Promise<EncounterRow[]> {
   const clauses = [
@@ -988,6 +1004,7 @@ export async function listVisits(
     filter.departmentId === undefined ? undefined : eq(opdEncounters.departmentId, filter.departmentId),
     filter.doctorId === undefined ? undefined : eq(opdEncounters.doctorId, filter.doctorId),
     filter.serviceDate === undefined ? undefined : eq(opdEncounters.serviceDate, filter.serviceDate),
+    filter.patientId === undefined ? undefined : eq(opdEncounters.patientId, filter.patientId),
   ].filter((c) => c !== undefined);
   return db.select().from(opdEncounters).where(clauses.length === 0 ? undefined : and(...clauses)).orderBy(asc(opdEncounters.openedAt)).limit(limit);
 }

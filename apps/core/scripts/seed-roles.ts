@@ -166,6 +166,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * months of history cannot be asked.
        */
       "staff.reports.history.year",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the person who runs the counter
+       * closes the day with it. Every department read is logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
     ],
   },
   {
@@ -440,6 +445,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.items.read",
       "materials.stock.read",
       "materials.grn.qc",
+      // THE TRANSFER SCREEN (2026-09-17) — the dispensary acknowledges what the stores sent to its
+      // shelf; `receiveStock` refuses the issuer and anyone who does not keep the destination.
+      "materials.stock.receive",
       // PLAN 16c T1 — THE DISPENSING COUNTER, +11. The four `pharmacy.*` strings are the counter's
       // own; `orders.place/read/cancel` because the claim PLACES the `medication` order (D1, the
       // `lab_reception` shape); and the four billing strings `lab_reception` holds for the same
@@ -700,6 +708,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // once — the approvals engine's own governance. It belongs with the role that already holds
       // the activator key, and nowhere below it.
       "approvals.types.manage",
+      // ─── THE APPROVALS SPINE, owner ruling R1 of 2026-09-20 ───
+      //
+      // The owner opened `/approvals` and reported: *"It lacks action button."* It does not. The
+      // screen renders "you cannot decide this" wherever `approvals.requests.decide` is absent, and
+      // this role held `approvals.types.manage` — the authority to define what an approval IS —
+      // and neither of the two strings that let a person answer one. The role could write the rules
+      // of a queue it could not open.
+      //
+      // R3 of the same day makes the owner the LAST RUNG of every money type's escalation ladder.
+      // A last rung that cannot read the request is not a rung, so R1 is what makes R3 reachable:
+      // the pair is granted together, or the ladder dead-ends one step below the top.
+      //
+      // THIS NARROWS THE 2026-08-26 MINIMUM-NECESSARY RULING, and the narrowing is deliberate. An
+      // approval carries its subject's name, so deciding one means reading one. `patients.read`
+      // itself is still NOT granted below — the approval carries its own subject, and the right to
+      // decide about one patient is not the right to browse the register.
+      "approvals.requests.read",
+      "approvals.requests.decide",
       // ─── GROUP B, 2026-08-26: the owner can finally see the money ───
       //
       // This role held three `workflow.*` strings and could not open a single invoice, dues ledger
@@ -736,6 +762,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        */
       "staff.reports.read",
       "staff.reports.history.full",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the day by department, and each
+       * department's patient list, on the letterhead and as a spreadsheet. Every department read is
+       * logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
+      /**
+       * PHASE R (R1) — THE ROSTER, to READ. The owner sees who is meant to be on; the owner does
+       * not make the rota (the MS does), for the reason the owner does not write prescriptions.
+       */
+      "roster.read",
       // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
       // licensee answers for the register.
       "pharmacy.register.read",
@@ -778,6 +815,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "staff.reports.read",
       /** OWNER RULING 2026-09-14 — hospital-level governance is not a one-year question. */
       "staff.reports.history.full",
+      /**
+       * THE OPD DAY REPORT — owner request and ruling 2026-09-19: the day by department, and each
+       * department's patient list, on the letterhead and as a spreadsheet. Every department read is
+       * logged (`day_report.patients_listed`).
+       */
+      "opd.reports.read",
+      /**
+       * PHASE R (R1) — THE ROSTER. The medical superintendent is the authority a clinical roster
+       * answers to, so the MS may draft one, PUBLISH one (the governed act, D3) and read them all.
+       * The MS holds these at HOSPITAL scope, which satisfies every department's check; the people
+       * who will draft day to day — a unit's senior resident, its head, the nursing superintendent —
+       * get their strings, scoped to their own department, with their roles in phase R's successors.
+       * Until then a roster can exist only because the MS made it, which is the right default for a
+       * thing that decides who is woken at 02:00.
+       */
+      "roster.periods.manage",
+      "roster.periods.publish",
+      "roster.read",
       "auth.elevation.review",
       // ─── The merge approver's kit, owner ruling 2026-08-26 ───
       //
@@ -995,6 +1050,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // else scheduled. The act keeps the scheduler and the store's custodians off the sheet.
       "materials.counts.manage",
       "materials.counts.perform",
+      // ─── THE APPROVALS SPINE, 2026-09-20: the same defect as the owner's, one store over ───
+      //
+      // `materials_head` is the `approverRole` on `materials_near_expiry_acceptance` and held
+      // neither string that lets a person answer one, so that type was unanswerable by anybody: the
+      // engine routes it to this role, the worklist is scoped to the roles the reader holds, and no
+      // holder of this role could see the queue. The failure mode is SILENCE, not a refusal — the
+      // request sits in a list nobody can open — which is why it went unreported while the owner's
+      // identical defect was noticed the day somebody looked at the screen.
+      //
+      // This mints no authority the model had not already assigned: naming a role as `approverRole`
+      // IS the grant of that decision. The pair only makes the assignment reachable. The invariant
+      // in `test/seed-roles.test.ts` now fails if any future type names a role that cannot answer it.
+      "approvals.requests.read",
+      "approvals.requests.decide",
     ],
   },
   {

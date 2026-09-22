@@ -13,6 +13,7 @@ import { collectOrderKinds } from "../orders/kinds";
 import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
+import { runReachLadder } from "../notify/reach";
 import { createEventPartitions } from "./partitions";
 import { retentionSweep } from "../retention/sweep";
 import { istDayString } from "../approvals/cumulative";
@@ -23,6 +24,7 @@ import { sweepExpiredPicks } from "../../modules/pharmacy";
 import { sweepCriticalChaser, sweepUnreadWatchman } from "../../modules/radiology";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
+import { runMonthlyProposals, sweepRosterWindows } from "../../modules/roster";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -125,6 +127,8 @@ export type JobIntervals = Pick<
   // `CENSUS_INTERVALS` in `scheduler.test.ts` is the one that found it. Production is unaffected
   // because `worker.ts` passes the whole `AppConfig`, which satisfies the wider Pick structurally.
   | "workerNotifyIntervalMs"
+  // PHASE O T4 — the channel ladder's own cadence, separate from the pump's.
+  | "workerReachIntervalMs"
   // Plan 11a R0-2: NOT a cadence — the pump's STUCK WINDOW (`NOTIFY_STUCK_AFTER_MS`, default
   // 300 000). config.ts:62 parsed it and config.ts:101 exposed `cfg.notifyStuckAfterMs`, and
   // NOBODY READ IT: the registration below said `runNotifyPump(db, { now })`, so the pump always
@@ -186,6 +190,10 @@ export type JobIntervals = Pick<
  * green on exactly one machine in the world and red on CI for six consecutive commits. The
  * caller resolves config; this function is handed the three numbers it actually uses.
  */
+const ROSTER_WINDOWS_IST = "01:30";
+/** After the window sweep, and long before anybody opens a clinic. */
+const ROSTER_PROPOSALS_IST = "02:10";
+
 export function registerAllJobs(
   scheduler: Scheduler,
   db: Db,
@@ -284,6 +292,21 @@ export function registerAllJobs(
     run: async (now) => {
       await runNotifyPump(db, { now, stuckAfterMs: intervals.notifyStuckAfterMs });
     },
+  });
+  /**
+   * PHASE O T4 — THE CHANNEL LADDER. Separate job and separate cadence from the pump, because
+   * they answer different questions: the pump asks *is there anything to send*, and this asks
+   * *has anybody failed to answer for long enough that it should get louder*. Folding it into
+   * the pump would have tied the loudness decision to the outbox's drain rate.
+   *
+   * It only ever WRITES to the outbox; the pump is still the only thing that sends. So a reach
+   * sweep that runs while the provider is on the console sink is not wasted — the rows are
+   * there, with their dedupe keys, and go out on the day the keys are generated.
+   */
+  scheduler.register({
+    name: "runReachLadder",
+    every: intervals.workerReachIntervalMs,
+    run: async (now) => { await runReachLadder(db, now); },
   });
   // Plan 11a D5: THE EIGHTH JOB, and it needs no interval key — `dailyIst` registrations take
   // their instant from a code constant above, which is why this one does NOT widen `JobIntervals`
@@ -457,5 +480,35 @@ export function registerAllJobs(
     name: "sweepUnreadWatchman",
     dailyIst: RADIOLOGY_UNREAD_WATCHMAN_IST,
     run: async (now) => { await sweepUnreadWatchman(db, now); },
+  });
+  /**
+   * PHASE R (R7) — the NINETEENTH, and the roster's first scheduled job.
+   *
+   * The duty-window horizon is rolling (ninety days), so something must roll it. `dailyIst("01:30")`
+   * is after IST midnight — so "today" is the day it extends from — and long before any clinic
+   * opens. It is idempotent: re-materialising a stretch supersedes the old rows and writes the new
+   * ones identically, so a double run changes nothing.
+   *
+   * **AND THE CENSUS TAX IS SEVEN SITES, WHICH THE COMMENT IN `worker-runtime.e2e.test.ts` HAD TO
+   * CORRECT TWICE** — four, then five, then seven. Its own conclusion is the instruction that was
+   * followed here: *a `toHaveLength` grep cannot find a census expressed as a NAMED ARRAY, so run
+   * the whole `test/` directory.* Every number this registration moved was read off a failing run.
+   */
+  scheduler.register({
+    name: "sweepRosterWindows",
+    dailyIst: ROSTER_WINDOWS_IST,
+    run: async (now) => { await sweepRosterWindows(db, now); },
+  });
+
+  /**
+   * PHASE R (R9) — the monthly draft. Registered DAILY and returning early on every day but the
+   * 20th, because the scheduler has `every(ms)` and `dailyIst` and no monthly cadence; adding one
+   * would mean editing `scheduler.ts` — a file every lane shares — to serve one caller. Idempotent:
+   * a unit that already has next month is skipped, so a double run drafts nothing twice.
+   */
+  scheduler.register({
+    name: "runMonthlyProposals",
+    dailyIst: ROSTER_PROPOSALS_IST,
+    run: async (now) => { await runMonthlyProposals(db, now); },
   });
 }

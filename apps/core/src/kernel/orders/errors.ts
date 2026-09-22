@@ -49,6 +49,8 @@ export type OrderErrorCode =
   | "patient_encounter_mismatch"
   /** An order with no items. There is nothing for a department to do. */
   | "no_items"
+  /** PD-2 — a pre-minted number that is not from this kind's own series. */
+  | "invalid_order_no"
   // ─── ADVANCE refusals: `advanceOrderItem` (T4) ───
   /** No item with that id. */
   | "unknown_item"

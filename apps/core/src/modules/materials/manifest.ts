@@ -90,6 +90,8 @@ export const materialsManifest: ModuleManifest = {
     { label: "Goods receipt", path: "/materials/grn", permission: "materials.stock.read" },
     /** 14c, first slice — the counter's sheets and, for the head, scheduling and review on the same screen. */
     { label: "Stock counts", path: "/materials/counts", permission: "materials.counts.perform" },
+    /** 2026-09-17 — the stores send, the receiving store confirms; read opens it, the acts check their own grants. */
+    { label: "Stock transfers", path: "/materials/transfers", permission: "materials.stock.read" },
   ],
   permissions: [
     "materials.items.read",

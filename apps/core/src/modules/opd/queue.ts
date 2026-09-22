@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
@@ -39,9 +39,94 @@ function toState(row: QueueEntryRow): QueueEntryState {
   };
 }
 
-/** What every read surface needs from one session's live rows: who is being served, who is next, how many wait. */
-function summarise(entries: QueueEntryRow[], callsMade: number, cfg: OpdConfig, now: Date): { nowServing: number | null; next: number[]; waitingCount: number } {
+/**
+ * ══════════ THE TOKEN THAT WAITS FOR ITS BILL (OWNER RULING 2026-09-20) ══════════
+ *
+ * Owner: *"It waits for bill to be paid until doctor opens the token from his dashboard manually …
+ * once the bill is paid then the token automatically moves to the display board in the queue
+ * towards the doctor consultation."*
+ *
+ * The entry ids of WAITING tokens whose consultation fee is `unsettled` and whose doctor has not
+ * opened them. They are held out of the callable order, out of `callNext`, and off the public
+ * board — a patient who has not paid is not announced to the hall and is not the next one in.
+ *
+ * ═══ DERIVED, NEVER STORED, AND THAT IS WHAT MAKES "AUTOMATICALLY" TRUE ═══
+ *
+ * There is no `held` column and there must not be one. `encounterFeeStatuses` IS the invoice
+ * ledger, read (its own header: *"it cannot drift from the money because it IS the money"*), so
+ * the instant a receipt lands the very next read of this function returns a smaller set and the
+ * token is in the order and on the board. A stored flag would need somebody to remember to clear
+ * it, and the day it was forgotten a paid patient would sit in a corridor while the board called
+ * numbers past them.
+ *
+ * ═══ AND IT HOLDS ONLY WHAT IT KNOWS ═══
+ *
+ * `unsettled` and nothing else. `free` (a revisit inside its window), `settled`, `credit` and
+ * `null` — the hospital that has not configured billing at all — are not held: the same four
+ * answers `feeGate` gives, from the same projection, so the queue and the consulting-room door can
+ * never disagree about who has paid.
+ */
+async function heldForPaymentIds(exec: Db | Tx, entries: QueueEntryRow[]): Promise<Set<string>> {
   const waiting = entries.filter((r) => r.status === "waiting");
+  if (waiting.length === 0) return new Set();
+  /*
+    ═══ THE CANDIDATE QUERY IS A JOIN, NOT AN 18,000-ID `IN` LIST — AND IT IS WHY THIS IS AFFORDABLE ═══
+
+    MEASURED, not assumed: the first cut of this function selected every waiting encounter by id and
+    handed the lot to `encounterFeeStatuses`, and `perf-opd-queue.test.ts` put the public board at
+    **1,034 ms against its 500 ms ceiling** (baseline ~225 ms) on the 300-doctor, 18,000-token
+    fixture. A board a TV polls every fifteen seconds cannot cost a second.
+
+    So the DATABASE narrows the set, not the process. A waiting token can only be unpaid if somebody
+    waved this visit past the counter — that is what FD-32's gate at the vitals bay means: without a
+    `fee_bypass_by`, an unpaid patient never reaches `waiting` at all, because they cannot get their
+    vitals charted. `fee_bypass_by IS NOT NULL AND consult_fee_override_by IS NULL` is therefore the
+    whole candidate population, it is two null checks on an indexed join, and in a real hospital it
+    returns a handful of rows on a board carrying hundreds. Re-measured on the same fixture with the
+    join in place: **fastest 304 ms against the 500 ms ceiling** (the un-held baseline is ~225 ms),
+    and that ~80 ms is the price of scanning a 200,000-row encounter table for the two nulls — a
+    cost that falls with the size of the hospital, not with the size of the queue.
+
+    THE BOUNDARY THIS DRAWS, SAID OUT LOUD: a visit that PAID and then had its receipt voided is
+    unpaid with no waiver on it, and is NOT held here. It is not silently seen either — the fee gate
+    at `startConsultation` refuses it exactly as it did before this ruling, so the doctor gets a
+    sentence at the door rather than a hidden row. Holding that case too would cost the ledger read
+    this comment exists to avoid.
+  */
+  const candidates = await exec
+    .selectDistinct({ id: opdEncounters.id, visitType: opdEncounters.visitType })
+    .from(opdEncounters)
+    .innerJoin(opdQueueEntries, eq(opdQueueEntries.encounterId, opdEncounters.id))
+    .where(and(
+      inArray(opdQueueEntries.sessionId, [...new Set(waiting.map((r) => r.sessionId))]),
+      eq(opdQueueEntries.status, "waiting"),
+      isNotNull(opdEncounters.feeBypassBy),
+      isNull(opdEncounters.consultFeeOverrideBy),
+    ));
+  if (candidates.length === 0) return new Set();
+  /*
+    AND THE HANDFUL IS CHECKED AGAINST THE MONEY. A waiver is not a debt: the patient may have paid
+    at the counter ten minutes later, and `encounterFeeStatuses` — the invoice ledger, read — is the
+    only thing that knows. `unsettled` and nothing else holds: `free`, `settled`, `credit` and the
+    unconfigured hospital's `null` all pass, which are the same four answers `feeGate` gives, from
+    the same projection, so the queue and the consulting-room door cannot disagree about who paid.
+  */
+  const statuses = await encounterFeeStatuses(exec, candidates);
+  const unpaid = new Set(candidates.filter((c) => statuses.get(c.id) === "unsettled").map((c) => c.id));
+  if (unpaid.size === 0) return new Set();
+  return new Set(waiting.filter((r) => unpaid.has(r.encounterId)).map((r) => r.id));
+}
+
+/** What every read surface needs from one session's live rows: who is being served, who is next, how many wait. */
+function summarise(
+  entries: QueueEntryRow[], callsMade: number, cfg: OpdConfig, now: Date, held: ReadonlySet<string> = new Set(),
+): { nowServing: number | null; next: number[]; waitingCount: number; heldForPaymentCount: number } {
+  /*
+    A HELD TOKEN IS NOT WAITING — not in the count, not in `next`, not on the hall's screen. It is
+    counted separately so the staff surfaces can say "and three are with the cashier", which is a
+    fact a desk must act on and the public board must never show.
+  */
+  const waiting = entries.filter((r) => r.status === "waiting" && !held.has(r.id));
   const ordered = orderQueue(waiting.map(toState), now, { perkEveryNth: cfg.perkEveryNth }, callsMade);
   /*
     A PARKED TOKEN IS NOT BEING SERVED, and this is the line where that has to be said. The fallback
@@ -53,12 +138,25 @@ function summarise(entries: QueueEntryRow[], callsMade: number, cfg: OpdConfig, 
   */
   const serving = entries.find((r) => r.status === "called")
     ?? entries.find((r) => r.status === "in_consult" && r.parkedAt === null);
-  return { nowServing: serving?.tokenNo ?? null, next: ordered.slice(0, BOARD_NEXT).map((x) => x.tokenNo), waitingCount: waiting.length };
+  return {
+    nowServing: serving?.tokenNo ?? null, next: ordered.slice(0, BOARD_NEXT).map((x) => x.tokenNo),
+    waitingCount: waiting.length, heldForPaymentCount: entries.filter((r) => r.status === "waiting" && held.has(r.id)).length,
+  };
 }
 
 export type QueueEntryView = QueueEntryRow & {
   position: number | null; queueClass: QueueClass | null;
-  encounter: { id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string };
+  encounter: {
+    id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
+    /**
+     * OWNER RULING 2026-09-20 — the two sentences that explain an unpaid token, carried to the
+     * doctor's rail because "why is this person here without a bill" is the question the ruling
+     * asks the doctor to answer. `feeBypassReason` is the bay's or the front desk's (FD-32);
+     * `consultFeeOverrideReason` is a doctor's own, and its presence is what puts an unsettled
+     * token back in the callable order.
+     */
+    feeBypassReason: string | null; consultFeeOverrideReason: string | null;
+  };
   patient: PatientSummary | null;
   /**
    * RC-1 T3 / D1 — the token's stamp, DERIVED from the invoice ledger by `encounterFeeStatuses`
@@ -83,7 +181,20 @@ export type QueueView = {
    * three times and did not come).
    */
   left: QueueEntryView[];
-  waitingVitals: number; counts: { waiting: number; called: number; inConsult: number; done: number; left: number };
+  /**
+   * ═══ THE TOKENS WITH THE CASHIER (OWNER RULING 2026-09-20) ═══
+   *
+   * Waiting, vitals done, fee `unsettled`, doctor has not opened them: out of `ordered` (so
+   * `callNext` cannot reach them and the board does not announce them) and HERE, where the
+   * doctor's own screen shows them. Not hidden — the whole point of the ruling is that the doctor
+   * can see who is stuck at the counter and decide, patient by patient, to see them anyway.
+   *
+   * In arrival order, not engine order: they hold no queue position to argue about, and the one a
+   * doctor is looking for is the one who has been waiting longest.
+   */
+  heldForPayment: QueueEntryView[];
+  waitingVitals: number;
+  counts: { waiting: number; called: number; inConsult: number; done: number; left: number; heldForPayment: number };
 };
 
 /** The doctor-day queue as the desk and the consultation screen read it: the engine's order, with the facts each row needs. */
@@ -113,6 +224,7 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
       encounter: {
         id: encounter.id, patientId: encounter.patientId, visitType: encounter.visitType,
         dangerFlagged: encounter.dangerFlagged, status: encounter.status,
+        feeBypassReason: encounter.feeBypassReason, consultFeeOverrideReason: encounter.consultFeeOverrideReason,
       },
       patient: summaryByPatient.get(encounter.patientId) ?? null,
       feeStatus: feeStatuses.get(encounter.id) ?? null,
@@ -120,7 +232,14 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
   };
 
   const byId = new Map(rows.map((r) => [r.id, r] as const));
-  const ordered = orderQueue(rows.filter((r) => r.status === "waiting").map(toState), now, { perkEveryNth: cfg.perkEveryNth }, session.callsMade)
+  /*
+    THE HOLD IS APPLIED BEFORE THE ENGINE RUNS, not after it. Ordering the held tokens and then
+    dropping them would leave the positions the doctor reads with holes in them — "3 of 7" with
+    four rows on the screen — and the engine's perk-every-nth counter would advance for patients
+    nobody can call. The queue the doctor sees is the queue the doctor can act on.
+  */
+  const held = await heldForPaymentIds(db, rows);
+  const ordered = orderQueue(rows.filter((r) => r.status === "waiting" && !held.has(r.id)).map(toState), now, { perkEveryNth: cfg.perkEveryNth }, session.callsMade)
     .map((state, i) => toView(byId.get(state.id)!, i + 1, classOf(state, now)));
   const called = rows.find((r) => r.status === "called");
   const count = (status: string): number => rows.filter((r) => r.status === status).length;
@@ -131,8 +250,14 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
     // Newest first: the row a doctor is hunting for is the one that just fell out. No position and
     // no class — a left row is not in the ordering, and giving it one would say it was.
     left: rows.filter((r) => r.status === "left").sort((a, b) => b.seq - a.seq).map((r) => toView(r, null, null)),
+    // No position and no class: a held token is not in the ordering, and giving it one would say it was.
+    heldForPayment: rows.filter((r) => held.has(r.id)).sort((a, b) => a.seq - b.seq).map((r) => toView(r, null, null)),
     waitingVitals: count("waiting_vitals"),
-    counts: { waiting: count("waiting"), called: count("called"), inConsult: count("in_consult"), done: count("done"), left: count("left") },
+    counts: {
+      waiting: rows.filter((r) => r.status === "waiting" && !held.has(r.id)).length,
+      called: count("called"), inConsult: count("in_consult"), done: count("done"), left: count("left"),
+      heldForPayment: held.size,
+    },
   };
 }
 
@@ -154,7 +279,14 @@ export async function callNext(db: Db, actor: Actor, sessionId: string, now: Dat
     if (session.status === "out") throw new OpdError("doctor_out");
     const live = await tx.select().from(opdQueueEntries).where(and(eq(opdQueueEntries.sessionId, sessionId), inArray(opdQueueEntries.status, ["waiting", "called"])));
     if (live.some((r) => r.status === "called")) throw new OpdError("call_conflict", "a token is already called — start or skip it first");
-    const head = nextInQueue(live.filter((r) => r.status === "waiting").map(toState), now, { perkEveryNth: cfg.perkEveryNth }, session.callsMade);
+    /*
+      THE HOLD IS RE-READ INSIDE THE LOCK, not carried in from the screen that clicked. Between the
+      doctor reading the rail and pressing "call next", a receipt can land (the token becomes
+      callable) or a void can reverse one (it stops being) — and the authority on which of those is
+      true right now is the ledger, in this transaction, under the session row lock.
+    */
+    const held = await heldForPaymentIds(tx, live);
+    const head = nextInQueue(live.filter((r) => r.status === "waiting" && !held.has(r.id)).map(toState), now, { perkEveryNth: cfg.perkEveryNth }, session.callsMade);
     if (!head) return { entry: null, encounter: null };
     const updated = await tx.update(opdQueueEntries)
       .set({ status: "called", calledAt: now, callCount: sql`${opdQueueEntries.callCount} + 1` })
@@ -363,9 +495,15 @@ export async function boardSnapshot(db: Db, serviceDate: string, roomIds?: strin
       roomIds === undefined ? undefined : inArray(opdQueueSessions.roomId, roomIds),
     ));
   const entriesBySession = await liveEntriesBySession(db, rows.map((r) => r.session.id));
+  /*
+    ONE batched hold for the whole board rather than one per session: the TV in the hall polls this,
+    and `encounterFeeStatuses` costs the same fixed handful of queries for four hundred tokens as
+    for four. The board itself says NOTHING about money — a held token is simply not announced.
+  */
+  const held = await heldForPaymentIds(db, [...entriesBySession.values()].flat());
   return rows
     .map((r): BoardItem => {
-      const { nowServing, next, waitingCount } = summarise(entriesBySession.get(r.session.id) ?? [], r.session.callsMade, cfg, now);
+      const { nowServing, next, waitingCount } = summarise(entriesBySession.get(r.session.id) ?? [], r.session.callsMade, cfg, now, held);
       return {
         sessionId: r.session.id, roomId: r.session.roomId, roomCode: r.roomCode, doctorId: r.session.doctorId,
         doctorName: r.doctorName, departmentName: r.departmentName, status: r.session.status as SessionStatus,
@@ -383,6 +521,8 @@ export async function boardSnapshot(db: Db, serviceDate: string, roomIds?: strin
 export type DoctorSummary = {
   doctor: DoctorRow; sessionId: string | null; status: SessionStatus | "none"; waitingCount: number;
   waitingVitalsCount: number; nowServing: number | null; scheduledToday: boolean; roomCode: string | null;
+  /** OWNER RULING 2026-09-20 — waiting, vitals done, fee unsettled, doctor has not opened them. */
+  heldForPaymentCount: number;
   /**
    * ═══ FD-7 T8 — THE BOARD DID NOT KNOW ABOUT LEAVE, AT ALL ═══
    *
@@ -426,6 +566,8 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
     .where(and(inArray(opdQueueSessions.doctorId, doctorIds), eq(opdQueueSessions.serviceDate, serviceDate)));
   const sessionByDoctor = new Map(sessions.map((s) => [s.doctorId, s] as const));
   const entriesBySession = await liveEntriesBySession(db, sessions.map((s) => s.id));
+  // The same batched hold the board takes, over the whole department's live rows (see `heldForPaymentIds`).
+  const held = await heldForPaymentIds(db, [...entriesBySession.values()].flat());
 
   // One batched read of the day's templates — the same predicate sessions.roomForDoctorDay uses, for many doctors at once.
   const weekday = istWeekday(serviceDate);
@@ -472,11 +614,14 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
     .map((doctor): DoctorSummary => {
       const session = sessionByDoctor.get(doctor.id);
       const entries = session === undefined ? [] : entriesBySession.get(session.id) ?? [];
-      const { nowServing, waitingCount } = summarise(entries, session?.callsMade ?? 0, cfg, now);
+      const { nowServing, waitingCount, heldForPaymentCount } = summarise(entries, session?.callsMade ?? 0, cfg, now, held);
       const room = session?.roomId ?? scheduledRoom.get(doctor.id) ?? null;
       return {
         doctor, sessionId: session?.id ?? null, status: (session?.status as SessionStatus | undefined) ?? "none",
         waitingCount, waitingVitalsCount: entries.filter((r) => r.status === "waiting_vitals").length,
+        // The desk's own figure: tokens ready for the doctor and stuck at the cashier. A staff
+        // screen acts on it (send them to pay); the public board never sees it.
+        heldForPaymentCount,
         nowServing,
         // A doctor on leave is NOT scheduled today, whatever the weekly template says.
         scheduledToday: scheduledRoom.has(doctor.id) && !onLeave.has(doctor.id),

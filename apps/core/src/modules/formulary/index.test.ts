@@ -44,17 +44,23 @@ import * as formulary from "./index";
 
 /** Sorted by `Array.prototype.sort`'s default UTF-16 order, so SCREAMING and Pascal names lead. */
 const SURFACE = [
+  "ALLERGY_CLASSES", // P22 — the allergy class vocabulary the prescribing check reads
   "FORMULARY_EVENTS",
   "FormularyError",
   "MAX_IDS",
   "MAX_SUGGESTIONS",
   "MIN_QUERY_CHARS",
+  "THERAPEUTIC_DUPLICATE_CLASSES", // P23 — the classes the duplicate-therapy notice knows
   "addInteraction",
   "addMedicine",
   "addSalt",
   "admitStaging",
+  "adoptAllergyClasses", // P22 — allergy class memberships adopted under a named resolution
   "adoptDecisions",
+  "adoptDrugDisease", // P24 — what a diagnosis forbids, adopted under a named resolution
   "adoptInteractions", // P21 — interaction pairs adopted under a named resolution
+  "adoptTherapeuticClasses", // P23 — therapeutic classes adopted under a named resolution
+  "allergyClassKeys", // P22 — pure: the classes an allergy record names
   "attestSubstance",
   "catalogueCensus",
   "countSalts",
@@ -63,6 +69,7 @@ const SURFACE = [
   "formularyManifest",
   "getStagingRow",
   "isEquivalentMedicine",
+  "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
   "listInteractionsAmong",
   "medicineExists",
   "medicineIdsByBrandNames",

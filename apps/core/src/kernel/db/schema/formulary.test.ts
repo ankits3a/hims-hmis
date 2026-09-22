@@ -35,7 +35,8 @@ const AUDIT = { createdBy: "t", updatedBy: "t" };
  *    here asks the database what formulary tables EXIST. The completeness leg below does ask.
  */
 const CENSUS: Record<string, string[]> = {
-  formulary_salts: ["active", "aliases", "atc_code", "created_at", "created_by", "drug_class", "id", "name", "product_count", "source_ref", "updated_at", "updated_by"],
+  // Formulary P22 (0104): `allergy_classes`, the allergy classes the prescribing check reads.
+  formulary_salts: ["active", "aliases", "allergy_classes", "atc_code", "created_at", "created_by", "drug_class", "id", "name", "product_count", "source_ref", "updated_at", "updated_by"],
   formulary_medicines: ["active", "brand_name", "code", "created_at", "created_by", "form", "id", "name_normalized", "route_class", "salt_rank", "schedule_flag", "source_ref", "staging_id", "strength_label", "updated_at", "updated_by"],
   formulary_medicine_salts: ["derived_from", "medicine_id", "salt_id", "source", "strength"],
   formulary_interactions: ["active", "created_at", "created_by", "id", "note", "route_scope", "salt_a_id", "salt_b_id", "severity", "source", "updated_at", "updated_by"],
@@ -46,6 +47,8 @@ const CENSUS: Record<string, string[]> = {
   formulary_substances: ["active", "adopted_under", "created_at", "created_by", "id", "mapped_at", "mapped_by", "mapping_status", "name", "salt_id", "sctid", "source", "synonyms", "updated_at", "updated_by"],
   // Formulary phase 2: the drafter's advice to the pharmacist (never read by a check).
   formulary_mapping_proposals: ["basis", "created_at", "drafted_by", "evidence", "id", "moiety_name", "substance_id"],
+  // Formulary P24 (0105): what the patient's DIAGNOSIS forbids, keyed on an ICD-10 code PREFIX.
+  formulary_drug_disease: ["active", "alternatives", "created_at", "created_by", "icd10_prefix", "icd10_title", "id", "note", "route_scope", "salt_id", "severity", "source", "updated_at", "updated_by"],
 };
 
 describe("the formulary tables (Plan 16a T1)", () => {

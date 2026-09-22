@@ -5,6 +5,8 @@ import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { api } from "../lib/api";
@@ -900,7 +902,6 @@ export function PatientDetail(): React.ReactElement {
   const { t } = useTranslation();
 
   const [log] = useState<AgentLine[]>([]);
-  const [answer, setAnswer] = useState<string | null>(null);
 
   const patientQuery = useQuery({
     queryKey: ["patient", patientId],
@@ -908,32 +909,54 @@ export function PatientDetail(): React.ReactElement {
   });
 
   /**
-   * WHAT THE AGENT CAN HONESTLY SAY ABOUT THIS RECORD. Everything comes from the row already
-   * fetched, so the answer is instant and cannot be wrong in a way the screen is not. No model, no
-   * lookup: a question it does not recognise says so rather than inventing an answer about a
-   * patient.
+   * ═══ FD-COPILOT — THIS RECORD'S OWN FACTS, NOW THE FALLBACK RATHER THAN THE WHOLE ═══
+   *
+   * Unchanged in what it answers, demoted in when it runs. `useCopilot` asks the server first —
+   * which can say whether this patient has been seen today, what they owe, how the queues look —
+   * and these four branches answer afterwards, for the questions that are about the ROW ON THIS
+   * SCREEN and which no server was asked. A DOB and an ABHA number are exactly that.
    */
-  const ask = (question: string): void => {
+  const localAnswer = (question: string): string | null => {
     const q = question.trim().toLowerCase();
-    if (q === "") return;
+    if (q === "") return null;
     const row = patientQuery.data?.patient;
-    if (row === undefined) return;
+    if (row === undefined) return null;
     if (q.includes("age") || q.includes("dob") || q.includes("born")) {
-      setAnswer(row.dob === null
+      return row.dob === null
         ? "No date of birth on this record. — from the patient row."
-        : `Date of birth ${String(row.dob).slice(0, 10)}${row.dobEstimated ? " (estimated from an age given at the counter)" : ""}. — from the patient row.`);
-    } else if (q.includes("phone") || q.includes("mobile")) {
-      setAnswer(`${row.phone ?? "No mobile"}${row.altPhone === null ? "" : ` · alternate ${row.altPhone}`}. — from the patient row.`);
-    } else if (q.includes("abha")) {
-      setAnswer(row.abhaNumber === null && row.abhaAddress === null
-        ? "No ABHA recorded. It can be added at registration or here. — from the patient row."
-        : `ABHA ${row.abhaNumber ?? row.abhaAddress ?? ""} · ${row.abhaVerificationStatus}. — from the patient row.`);
-    } else if (q.includes("uhid") || q.includes("number")) {
-      setAnswer(`UHID ${row.uhid}${row.legacyUhid === null ? "" : `; the old paper file is ${row.legacyUhid}`}. — from the patient row.`);
-    } else {
-      setAnswer("I answer from this patient's record only — UHID, date of birth, contact, ABHA. I cannot look anything else up from here.");
+        : `Date of birth ${String(row.dob).slice(0, 10)}${row.dobEstimated ? " (estimated from an age given at the counter)" : ""}. — from the patient row.`;
     }
+    if (q.includes("phone") || q.includes("mobile")) {
+      return `${row.phone ?? "No mobile"}${row.altPhone === null ? "" : ` · alternate ${row.altPhone}`}. — from the patient row.`;
+    }
+    if (q.includes("abha")) {
+      return row.abhaNumber === null && row.abhaAddress === null
+        ? "No ABHA recorded. It can be added at registration or here. — from the patient row."
+        : `ABHA ${row.abhaNumber ?? row.abhaAddress ?? ""} · ${row.abhaVerificationStatus}. — from the patient row.`;
+    }
+    if (q.includes("uhid") || q.includes("number")) {
+      return `UHID ${row.uhid}${row.legacyUhid === null ? "" : `; the old paper file is ${row.legacyUhid}`}. — from the patient row.`;
+    }
+    return null;
   };
+
+  /*
+    ═══ THE NAME-MASKING GAP, CLOSED ON THE ONE SCREEN THAT CAN CLOSE IT ═══
+
+    The server masks identifiers by SHAPE and names by VALUE, from a list the screen supplies —
+    because a name has no shape a pattern can find. `opd-appointments` could pass none: its rows
+    live in children. THIS screen holds the patient row, so a clerk who types "has Asha been seen"
+    here gets that word masked to a placeholder before the question could reach a router. The
+    alias is passed too: a confidential record renders under one, and masking only the real name
+    would leave the alias standing.
+  */
+  const copilotTerms = (): string[] => {
+    const row = patientQuery.data?.patient;
+    if (row === undefined) return [];
+    return [row.name, row.uhid, row.phone, row.altPhone].filter((x): x is string => typeof x === "string" && x !== "");
+  };
+
+  const copilot = useCopilot({ terms: copilotTerms, fallback: localAnswer });
 
   if (!patientQuery.data) return <div className="p-6">{t("app.loading")}</div>;
 
@@ -980,11 +1003,14 @@ export function PatientDetail(): React.ReactElement {
       </div>
 
       <AgentDock
-        answer={answer}
+        answer={copilot.answer}
         log={log}
-        onAsk={ask}
+        onAsk={copilot.ask}
         placeholder={t("patient.askPlaceholder")}
         idle={t("patient.agentIdle")}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
       />
     </PaperScreen>
   );

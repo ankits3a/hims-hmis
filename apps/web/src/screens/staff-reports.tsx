@@ -6,6 +6,8 @@ import { periodsFor, todayIst } from "../lib/desk-api";
 import type { WireBrief, WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
+import { useCopilot } from "../lib/use-copilot";
+import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 
@@ -59,23 +61,32 @@ export function StaffReports(): React.ReactElement {
     somebody types a reason that goes into the audit log under their own name. An agent that summarised
     patient rows would be the drill without the reason.
   */
-  const [agentAnswer, setAgentAnswer] = useState<string | null>(null);
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
-  const ask = (question: string): void => {
+  /*
+    ═══ FD-COPILOT — THIS SCREEN'S OWN SCOPE, NOW THE FALLBACK ═══
+
+    The DD14 refusal is the branch that matters and it is unchanged: asking this screen to show the
+    ROWS behind a figure is declined, deliberately, and that refusal must not be reachable around
+    by asking the copilot instead. It cannot be — the copilot has no tool that returns another
+    person's rows, and `staff.reports.drill` is a permission on a different route.
+  */
+  const localAnswer = (question: string): string | null => {
     const q = question.toLowerCase();
     const b = brief.data;
-    const answer = subject === ""
-      ? t("staffReports.agent.noSubject")
-      : /drill|patient|row|detail|behind/.test(q)
-        ? t("staffReports.agent.drill")
-        : /brief|figure|summary|say|period|week/.test(q)
-          ? (b === undefined || b.clauses.length === 0
-            ? t("staffReports.agent.empty")
-            : t("staffReports.agent.brief", { count: b.clauses.length, from: b.from, to: b.to }))
-          : t("staffReports.agent.cannot");
-    setAgentAnswer(answer);
-    setAgentLog((l) => logged(l, question));
+    if (subject === "") return t("staffReports.agent.noSubject");
+    if (/drill|patient|row|detail|behind/.test(q)) return t("staffReports.agent.drill");
+    if (/brief|figure|summary|say|period|week/.test(q)) {
+      return b === undefined || b.clauses.length === 0
+        ? t("staffReports.agent.empty")
+        : t("staffReports.agent.brief", { count: b.clauses.length, from: b.from, to: b.to });
+    }
+    return null;
   };
+
+  const copilot = useCopilot({
+    fallback: localAnswer,
+    onNote: (text) => { setAgentLog((l) => logged(l, text)); },
+  });
 
   return (
     <PaperScreen testId="staff-reports" style={{ padding: "18px 22px", gap: 14 }}>
@@ -207,7 +218,10 @@ export function StaffReports(): React.ReactElement {
       )}
 
       <AgentDock
-        answer={agentAnswer} log={agentLog} onAsk={ask}
+        answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
+        panel={copilot.report === null ? undefined : (
+          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+        )}
         placeholder={t("staffReports.askPlaceholder")} idle={t("staffReports.agentIdle")}
       />
     </PaperScreen>

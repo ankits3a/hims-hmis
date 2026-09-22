@@ -398,3 +398,74 @@ export const pharmacyRetailSaleLines = pgTable(
     check("pharmacy_retail_sale_lines_schedule_ck", sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'OTC')`),
   ],
 );
+
+/**
+ * ═══ PD-D18 — WHERE THE DRUG IS, PER COUNTER'S STORE ═══
+ *
+ * The pharmacist's slowest act is the walk to the shelf, and nothing recorded where to walk: `items`
+ * has no bin, and a bin is not an item's fact anyway — the same strip sits on rack 3 at the OPD
+ * counter and in a drawer at the retail one. So it is keyed by (store, item), set by whoever manages
+ * the counter's items (`pharmacy.sale_items.manage`), and printed on the line beside the batch.
+ *
+ * A LABEL, not a structure: "R-12", "rack 3 · shelf 2", "fridge". A counter that later wants aisles
+ * and bays can parse its own labels; a schema that guessed the hierarchy would be wrong for most.
+ * Clearing a location deletes the row — "unknown" is the absence of a row, never an empty string.
+ */
+export const pharmacyShelfLocations = pgTable(
+  "pharmacy_shelf_locations",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    location: text("location").notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_shelf_locations_store_item_ux").on(t.storeResourceId, t.itemId),
+    check("pharmacy_shelf_locations_label_ck", sql`length(btrim(${t.location})) between 1 and 24 and ${t.location} = btrim(${t.location})`),
+  ],
+);
+
+/**
+ * ═══ PD-9 — THE PRESCRIBER AUTHORISES WHAT THE CHECK WOULD REFUSE (owner ruling 2026-09-19) ═══
+ *
+ * "The doctor must authorise dispensing against a recorded allergy." The check refuses a line the
+ * four books stop and no prescriber override covers (an allergy recorded after the issue is the
+ * common case). The counter used to be able only to send the patient back. Now the pharmacist ASKS
+ * the prescribing doctor — by name, not a role — and the doctor authorises or declines with a reason;
+ * an authorisation clears exactly that refusal on exactly that line, and nothing else.
+ *
+ * Addressed to a PERSON (`prescriber_user_id`), because the ruling is "the doctor", not "a doctor":
+ * the generic approvals engine routes to a role, which would let any doctor decide. The hit is named
+ * by `book` + `about` (the allergy's substance, the pair, the moiety, the ruling) — so a substitute
+ * or a reading carrying the same substance on the same line is covered, and a different one is not.
+ * `decided_by <> requested_by` is the lab's `same_actor` rule, held by the database.
+ */
+export const pharmacyAuthorisations = pgTable(
+  "pharmacy_authorisations",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    dispenseId: text("dispense_id").notNull().references(() => pharmacyDispenses.id),
+    lineIdx: integer("line_idx").notNull(),
+    book: text("book").notNull(),
+    about: text("about").notNull(),
+    prescriberUserId: text("prescriber_user_id").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    requestNote: text("request_note"),
+    status: text("status").notNull().default("pending"),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionReason: text("decision_reason"),
+  },
+  (t) => [
+    index("pharmacy_authorisations_prescriber_idx").on(t.prescriberUserId, t.status),
+    uniqueIndex("pharmacy_authorisations_one_open_ux").on(t.dispenseId, t.lineIdx, t.book, t.about).where(sql`${t.status} = 'pending'`),
+    check("pharmacy_authorisations_book_ck", sql`${t.book} in ('allergy', 'interaction', 'duplicate', 'drug_disease')`),
+    check("pharmacy_authorisations_status_ck", sql`${t.status} in ('pending', 'authorised', 'declined')`),
+    check("pharmacy_authorisations_decided_ck", sql`(${t.status} = 'pending') = (${t.decidedBy} is null and ${t.decidedAt} is null and ${t.decisionReason} is null)`),
+    check("pharmacy_authorisations_reason_ck", sql`${t.decisionReason} is null or length(btrim(${t.decisionReason})) >= 3`),
+    check("pharmacy_authorisations_same_actor_ck", sql`${t.decidedBy} is null or ${t.decidedBy} <> ${t.requestedBy}`),
+  ],
+);

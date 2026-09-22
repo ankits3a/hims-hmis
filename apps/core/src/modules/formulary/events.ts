@@ -26,6 +26,19 @@ export const saltAdded = defineEvent("salt.added", MODULE, z.object({
   saltId: id, name: z.string().min(1), drugClass: z.string().nullable(), aliases: z.array(z.string()),
 }));
 
+/**
+ * FORMULARY P22 — allergy classes added to a moiety by a named resolution. `added` is what this act
+ * added; `allergyClasses` is the moiety's list afterwards; `source` names the resolution and the rule.
+ */
+export const saltAllergyClassesAdopted = defineEvent("salt.allergy_classes_adopted", MODULE, z.object({
+  saltId: id, added: z.array(z.string().min(1)).min(1), allergyClasses: z.array(z.string().min(1)).min(1), source: z.string().min(1),
+}));
+
+/** FORMULARY P23 — a moiety's therapeutic class set by a named resolution, where none was recorded. */
+export const saltTherapeuticClassAdopted = defineEvent("salt.therapeutic_class_adopted", MODULE, z.object({
+  saltId: id, drugClass: z.string().min(1), source: z.string().min(1),
+}));
+
 export const saltUpdated = defineEvent("salt.updated", MODULE, z.object({
   saltId: id, changed: z.array(z.string()).min(1),
 }));
@@ -59,6 +72,17 @@ export const interactionAdded = defineEvent("interaction.added", MODULE, z.objec
 
 export const interactionUpdated = defineEvent("interaction.updated", MODULE, z.object({
   interactionId: id, changed: z.array(z.string()).min(1),
+}));
+
+/**
+ * P24 — a moiety this diagnosis forbids. `icd10Prefix` is carried because the GRAIN is itself the
+ * clinical decision: `N18` and `N18.4` are different rulings about the same disease, and an audit
+ * that recorded only the moiety could not tell afterwards which one was adopted.
+ */
+export const drugDiseaseAdded = defineEvent("drug_disease.added", MODULE, z.object({
+  drugDiseaseId: id, saltId: id, icd10Prefix: z.string().min(3),
+  severity: z.enum(["severe", "moderate"]), source: z.string().min(1),
+  routeScope: z.literal("systemic_only").nullable(),
 }));
 
 /** T7's admission path. Defined here because the union of names is closed by this task (errors.ts). */
@@ -127,9 +151,9 @@ export const substanceRuledUnmappable = defineEvent("substance.ruled_unmappable"
  * task is allowed to own that file.
  */
 export const FORMULARY_EVENTS = [
-  saltAdded, saltUpdated,
+  saltAdded, saltUpdated, saltAllergyClassesAdopted, saltTherapeuticClassAdopted,
   medicineAdded, medicineUpdated, medicineCorrected,
-  interactionAdded, interactionUpdated,
+  interactionAdded, interactionUpdated, drugDiseaseAdded,
   stagingApproved, stagingRejected,
   substanceMapped, substanceRuledUnmappable,
 ] as const;

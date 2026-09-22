@@ -73,6 +73,13 @@ export const formularySalts = pgTable(
     name: text("name").notNull(),
     aliases: jsonb("aliases").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     drugClass: text("drug_class"),
+    /**
+     * FORMULARY P22 — the allergy classes this moiety belongs to (`formulary/allergy-classes.ts` names
+     * the vocabulary). A list, because a class is about cross-reactivity, not therapy: cefalexin is a
+     * cephalosporin and sits in the penicillin allergy class for its shared side chain. The prescribing
+     * check reads it beside `drugClass`.
+     */
+    allergyClasses: jsonb("allergy_classes").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     atcCode: text("atc_code"),
     /** The bundle's `substance_sctid` — see `formulary_medicines.source_ref`. */
     sourceRef: text("source_ref"),
@@ -629,5 +636,95 @@ export const formularyStaging = pgTable(
   (t) => [
     check("formulary_staging_kind_ck", sql`${t.kind} in ('medicine')`),
     check("formulary_staging_status_ck", sql`${t.status} in ('pending', 'approved', 'rejected')`),
+  ],
+);
+
+/**
+ * ═══ WHAT THE PATIENT'S DIAGNOSIS FORBIDS — THE FOURTH SAFETY AXIS (formulary P24) ═══
+ *
+ * Phase doc `docs/superpowers/plans/2026-09-17-phase-formulary-p24-drug-disease.md`.
+ *
+ * Three axes were already built: moiety × moiety (`formulary_interactions`), moiety × allergy
+ * (`formulary_salts.allergy_classes`) and moiety × moiety-of-the-same-class (`drug_class`). This
+ * one asks the question the other three cannot: what does this patient's own DISEASE forbid.
+ *
+ * ═══ THE KEY IS A CODE PREFIX, NOT A CATEGORY ═══
+ *
+ * A diagnosis is recorded as a full dotted code (`J45.909`). A rule names a PREFIX of one, matched
+ * with `like prefix || '%'`, and three characters is only the DEFAULT grain — not the law.
+ *
+ * Measured against the released catalogue, three characters is wrong twice:
+ *
+ *   `H40`  glaucoma       anticholinergics threaten the ANGLE-CLOSURE eye (H40.03, H40.06, H40.2x
+ *                         — 47 codes) and are safe in OPEN-ANGLE disease (H40.1x — 112 codes, and
+ *                         the commoner illness). Keyed at `H40` the rule fires on the majority.
+ *   `N18`  kidney disease metformin is FIRST-LINE at stages 1 and 2 (N18.1, N18.2). The lactic
+ *                         acidosis hazard is stage 4 and beyond (N18.4, N18.5, N18.6). Keyed at
+ *                         `N18` the rule refuses the correct drug to a stage-1 patient.
+ *
+ * Asthma has no such fork — a non-selective beta-blocker is dangerous at every severity — so `J45`
+ * stays three characters. The grain is a clinical decision per rule, which is why it is data.
+ *
+ * A false alert costs more than a missing one: it teaches the prescriber to clear the dialog
+ * without reading it, and the true alert is then cleared the same way.
+ *
+ * ═══ NO FOREIGN KEY TO `icd10_codes`, FOR THE THIRD TIME ═══
+ *
+ * `opd_encounter_diagnoses.icd10_code` has none and `formulary_salts` has none, for the same
+ * reason: a foreign standard's coverage must never become a clinical constraint. `icd10Title` is
+ * the catalogue's own words COPIED at adoption, so the alert reads the same after a release
+ * changes its wording — adopting a new release is a decision with a date on it.
+ */
+export type DrugDiseaseAlternative = {
+  /** A moiety name in THIS formulary, so the offer can be resolved and re-checked before it shows. */
+  moiety: string;
+  /** What the prescriber reads: "Amlodipine 5 mg". */
+  label: string;
+};
+
+export const formularyDrugDisease = pgTable(
+  "formulary_drug_disease",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    saltId: text("salt_id").notNull().references(() => formularySalts.id),
+    /** Uppercase and dotted, 3-7 characters: `J45`, `N18.4`, `H40.2`. A PREFIX of the diagnosis. */
+    icd10Prefix: text("icd10_prefix").notNull(),
+    /** The catalogue's words for that prefix, copied at adoption. Part of the alert. */
+    icd10Title: text("icd10_title").notNull(),
+    /** 'severe' → hard warning with an override reason. 'moderate' → a soft notice, never a gate. */
+    severity: text("severity").notNull(),
+    /** One clinical line. This text IS the alert a doctor reads, so it is notNull. */
+    note: text("note").notNull(),
+    /**
+     * The safer drugs this book offers in its place. EMPTY IS ORDINARY: a rule that has no safe
+     * alternative says so, and the alert then carries its prose and no button.
+     *
+     * Never rendered straight from here. The book contradicts itself on purpose — its `I50` rule
+     * offers carvedilol, which its own `J45` rule forbids — so an offer is re-checked against THIS
+     * patient before it is shown, and one that raises a hit of its own is not shown at all.
+     */
+    alternatives: jsonb("alternatives").$type<DrugDiseaseAlternative[]>().notNull().default([]),
+    /** Where the rule came from — a dataset name, a curator's ruling, `resolution:<ref> (<rule>)`. */
+    source: text("source").notNull(),
+    /** 'systemic_only' or null (all routes) — a diclofenac gel does not perforate an ulcer. */
+    routeScope: text("route_scope"),
+    active: boolean("active").notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("formulary_drug_disease_ux").on(t.saltId, t.icd10Prefix),
+    /** The check reads by prefix for every diagnosis the patient carries. */
+    index("formulary_drug_disease_prefix_idx").on(t.icd10Prefix),
+    check("formulary_drug_disease_severity_ck", sql`${t.severity} in ('severe', 'moderate')`),
+    check(
+      "formulary_drug_disease_prefix_ck",
+      sql`${t.icd10Prefix} ~ '^[A-Z][A-Z0-9]{2}([.][A-Z0-9]{1,3})?$'`,
+    ),
+    check("formulary_drug_disease_note_ck", sql`length(btrim(${t.note})) > 0`),
+    check("formulary_drug_disease_title_ck", sql`length(btrim(${t.icd10Title})) > 0`),
+    check(
+      "formulary_drug_disease_route_scope_ck",
+      sql`${t.routeScope} is null or ${t.routeScope} = 'systemic_only'`,
+    ),
   ],
 );

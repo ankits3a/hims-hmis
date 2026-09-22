@@ -974,14 +974,22 @@ function StageAppointment(): React.ReactElement {
           whose origin is hidden gets trusted too much.
         */}
         <input
+          data-testid="complaint"
           className="in complaint"
           style={{ height: 46, marginTop: 10, fontSize: 15 }}
-          placeholder="seene mein dard · fever · knee pain · sugar-BP · बुखार…"
+          /*
+            The examples are ORDINARY OPD complaints on purpose. This read "seene mein dard · fever
+            · knee pain · sugar-BP · बुखार" until red flags landed — that is, it invited the clerk to
+            practise on a cardiac emergency, and every demo of this screen taught somebody that
+            chest pain is a thing you book an appointment for. It is now the first thing the brake
+            stops, so it has no business being the placeholder.
+          */
+          placeholder="bukhar · khansi · ghutne mein dard · aankh mein dard · sugar-BP…"
           value={s.complaint}
           onChange={(e) => { d.patch({ complaint: e.target.value }); d.runTriage(e.target.value); }}
         />
         <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {["seene mein dard", "bukhar", "ghutne mein dard", "sugar BP", "khansi"].map((x) => (
+          {["bukhar", "khansi", "ghutne mein dard", "aankh mein dard", "sugar BP"].map((x) => (
             <button key={x} className="pill" onClick={() => { d.patch({ complaint: x }); d.runTriage(x); }}>{x}</button>
           ))}
           {s.triageBusy ? <span className="tag">ranking…</span> : null}
@@ -992,13 +1000,54 @@ function StageAppointment(): React.ReactElement {
           )}
         </div>
 
-        {pick === null ? (
+        {/*
+          ═══════════════════════════════════════════════════════════════════════════════════════
+          THE BRAKE, AND IT COMES BEFORE EVERY OTHER OUTCOME ON THIS STAGE
+          ═══════════════════════════════════════════════════════════════════════════════════════
+
+          Owner, 2026-09-17: *"my front desk staff are non medico background and so they would rely
+          on the operating system to suggest them doctor/department."* A doctor overrides a bad
+          suggestion; a clerk with no clinical training follows it, because following it is the
+          point of the tool.
+
+          So when the server flags an emergency there is NO proposal, NO doctor, and NO assign
+          button — `suggestions` comes back empty by construction and this branch renders instead of
+          all of them. It is deliberately not a red-tinted version of the normal card with the
+          button still on it: a button that is present is a button that gets pressed.
+        */}
+        {s.triage?.redFlag != null ? (
+          <AgentLine>
+            <b>{t(s.triage.redFlag.reasonKey)}</b>{" "}
+            {t("opdTriage.redFlag.action")}
+          </AgentLine>
+        ) : pick === null ? (
           <AgentLine>
             No department has a doctor on today's board. Nothing can be seated until the supervisor opens a session.
           </AgentLine>
         ) : pickDoctor === null ? (
           <AgentLine>
-            {suggested ? <><b>{pick.departmentName}</b> fits the complaint, but nobody there is on today's board.</> : "Nobody in the shortest department is on today's board — try another."}
+            {/*
+              ═══ THREE OUTCOMES, BECAUSE THE OLD TWO BLAMED THE ROSTER FOR A ROUTING FAILURE ═══
+
+              Owner, 2026-09-17, on the live screen: he typed "aankh me dard" and was told *"Nobody
+              in the shortest department is on today's board"*. The roster was fine — Ophthalmology
+              had doctors. The complaint had simply matched nothing, the seat fell back to the
+              shortest department, and then reported on THAT. A clerk reading it goes looking for a
+              roster fault that does not exist.
+
+              The fix in the table (`triage.ts`, all twelve departments) makes the empty ranking
+              rarer; it does not make it impossible, and a sentence that lies whenever routing fails
+              is a defect on its own. So the three cases are now separate: a department WAS
+              suggested; a complaint was typed and matched NOTHING; or no complaint was typed at all
+              and the shortest line is simply empty.
+            */}
+            {suggested ? (
+              <><b>{pick.departmentName}</b> fits the complaint, but nobody there is on today's board.</>
+            ) : s.complaint.trim() !== "" ? (
+              <>I could not match <b>{s.complaint.trim()}</b> to a department — pick one above. (<b>{pick.departmentName}</b> has the shortest line and nobody on today's board either.)</>
+            ) : (
+              "Nobody in the shortest department is on today's board — try another."
+            )}
           </AgentLine>
         ) : (
           <>

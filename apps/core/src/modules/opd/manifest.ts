@@ -1,6 +1,7 @@
 import { opdAppointmentsDeskProvider, opdDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { opdSearchProviders } from "./search-providers";
+import { opdCopilotTools } from "./copilot-tools";
 
 /**
  * The OPD module's declared surface (spec §4): the fourteen `opd.*` permissions every route in the three
@@ -96,9 +97,22 @@ export const opdManifest: ModuleManifest = {
      * clinician; it did not disappear.
      */
     "opd.prescription.transcribe",
+    /**
+     * THE OPD DAY REPORT — owner request 2026-09-19. The hospital's day, department by department,
+     * and each department's patient list, as a screen, a spreadsheet and a printable letterhead.
+     * Held by the front-office supervisor, the medical superintendent and the owner. It carries
+     * patient names, so every department read is logged (`day_report.patients_listed`).
+     */
+    "opd.reports.read",
   ],
   // PLAN 11h T3 — doctors and departments on `opd.masters.read`, appointments on
   // `opd.appointments.read`. Patient confidentiality is NOT re-implemented here (DD1/DD3).
   search: opdSearchProviders,
+  /**
+   * FD-COPILOT — what the desk copilot may ask the OPD. Built in `./copilot-tools`, following the
+   * same style as `search` and `desk`: the arrays live in sibling files so this manifest stays a
+   * declaration rather than an implementation.
+   */
+  copilotTools: opdCopilotTools,
   subscriptions: [], // no dispatcher consumers in this plan; realtime rides the gateway's tail
 };
