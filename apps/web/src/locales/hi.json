@@ -4246,7 +4246,13 @@
       "label": "मात्रा, {{uom}} में",
       "done": "हो गया"
     },
-    "declineTitle": "{{line}} मना करें"
+    "declineTitle": "{{line}} मना करें",
+    "header": {
+      "registered": "पंजीकृत · {{no}}",
+      "notRegistered": "पंजीकृत नहीं — जाँच नहीं कर सकते",
+      "drawerOpen": "दराज़ खुली · फ़्लोट {{float}}",
+      "noDrawer": "दराज़ नहीं — पैसे लेने के लिए एक खोलें"
+    }
   },
   "pharmacyAuthorise": {
     "title": "फ़ार्मेसी आपसे अनुमति माँग रही है",

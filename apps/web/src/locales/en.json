@@ -4246,7 +4246,13 @@
       "label": "quantity, in {{uom}}",
       "done": "Done"
     },
-    "declineTitle": "Decline {{line}}"
+    "declineTitle": "Decline {{line}}",
+    "header": {
+      "registered": "registered · {{no}}",
+      "notRegistered": "not registered — cannot verify",
+      "drawerOpen": "drawer open · float {{float}}",
+      "noDrawer": "no drawer — open one to take money"
+    }
   },
   "pharmacyAuthorise": {
     "title": "The pharmacy asks you to authorise",
