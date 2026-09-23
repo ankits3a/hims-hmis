@@ -161,7 +161,7 @@ measured against the IDF scorer on our own complaints first.
 | Asset | Where | What it configures in the consult |
 |---|---|---|
 | NRCES medicines: 10,303 generics and about 103k brands | `/opt/hmis-context/nrces-2026-09/`; formulary tables in main | Drug search, brand → generic, the composition line under the brand (as Healthray shows it) |
-| `prescribing_defaults` (10,303 rows: frequency, food relation, default days, dispense quantity, indications) | `cds-bundle.sql` (clinical master 2026-09-17) | **Rx line pre-fill.** Picking a drug fills its sig, so most lines need zero typing. Also auto quantity |
+| `prescribing_defaults` (10,303 rows: frequency, food relation, default days, dispense quantity, indications) and `clinical_knowledge` (10,303 rows, 43 columns: direction of use, paediatric use, renal and hepatic adjustment, side effects, counselling, Beers criteria, LASA, ATC/DDD) | `hmis_clinical_master-2026-09-17.sql` | **The right columns, but the content is filled by drug class, not by drug. See §5.1 before using any of it** |
 | `ddi_rules`, `cyp`, allergy cross-reactivity, drug–disease (ICD-10 contraindications) | Adopted into the formulary (P21, P21b, P22) | The existing safety checks |
 | `amsp_antimicrobial_rules` (WHO AWaRe category, ICMR tier, maximum empirical days, mandatory culture order) | Clinical master | **Antimicrobial policy on the Rx line.** Healthray only links to a policy document; we can enforce it at the line, for example by warning on days over the limit |
 | `pregnancy_trimester_matrix` | Clinical master | Gynaecology profile: a trimester-aware check when the pregnancy flag is on |
@@ -170,10 +170,66 @@ measured against the IDF scorer on our own complaints first.
 | `dpco_jan_aushadhi_index`, NLEM 2022 (`scripts/data/nlem-2022.ts`), drug schedules (H, H1, X) | Clinical master; scripts | Cost and NLEM badge on the line; schedule rules on the print; the Jan Aushadhi alternative |
 | ICD-10 catalogue (74k codes) | `cds/icd10.ts` | The diagnosis section |
 
+### 5.1 The dose, frequency and instruction tables, measured (2026-09-23)
+
+The owner pointed to the dose, frequency and instruction tables he supplied. I loaded
+`/opt/hmis-context/cds-bundle/hmis_clinical_master-2026-09-17.sql` into SQLite and measured it.
+
+**Every field is filled, and the columns are exactly the ones the consult needs.** Every column
+is filled on all 10,303 generics. The schema is a good model for our own rule tables.
+
+**But the content repeats a few class-level templates. It is not written for each drug:**
+
+| Column (10,303 rows each) | Distinct values |
+|---|---|
+| `clinical_knowledge.pediatric_child_use` | **7** |
+| `clinical_knowledge.direction_of_use` | 6 |
+| `clinical_knowledge.renal_dose_adjustment` | 8 |
+| `clinical_knowledge.common_side_effects` | 6 |
+| `prescribing_defaults.default_frequency` | 7 |
+| `prescribing_defaults.default_dispense_qty` | 9 |
+| `prescribing_defaults.common_indications` | 8 |
+
+**What the paediatric column actually holds:**
+- **7,830 rows (76%)** hold one sentence: "Pediatric dosage must be determined strictly based on child
+  age and body weight in consultation with a qualified pediatrician."
+- **413 rows** hold the ibuprofen text ("Pediatric safe: 10–15 mg/kg… max 60 mg/kg/day"). That text
+  is also on **codeine + paracetamol** and **oxycodone + paracetamol**. Codeine is contraindicated
+  under 12 years. It is also on naproxen, diclofenac + metaxalone, and an ibuprofen IV infusion.
+- **617 rows** hold the amoxicillin/azithromycin text. That text is also on vancomycin, cefazolin,
+  penicillin G, cefotaxime and erythromycin, whose doses differ.
+- **359 eye products** hold a text about diagnostic tonometry and a numbed cornea. That text
+  describes a local anaesthetic. It is on **brimonidine** (contraindicated under 2 years),
+  timolol, pilocarpine, gentamicin and ketorolac drops.
+
+**The frequency defaults have the same problem.** Paracetamol suspension defaults to
+"1-0-1 (BD) or SOS". For fever, paracetamol is given every 4 to 6 hours as needed, not twice a day.
+
+**The syndrome regimens** (`clinical_syndromes_regimens.pediatric_regimen_json`) are written for a
+single 14 kg child, for example "3.5 mL (for 14kg: 12.5 mg/kg)". They are examples, not rules that
+scale with weight.
+
+**What this means (D10, DECIDED on the owner's accuracy priority):**
+- **Keep the schema; the content is a draft that must be reviewed.** No field from these two
+  tables pre-fills an Rx line, a print or a warning as a fact until it has been reviewed for that
+  drug.
+- **Promotion is per drug and signed.** A curator (§11 item 2) and, for doses, the Pharmacy &
+  Therapeutics committee (§11.1) promote a row. The row then records the reviewer, the date and the
+  source.
+- **Start with what is prescribed.** Review the ~300 starter-list generics
+  (`scripts/data/pharmacy-starter-list.csv`) plus the drugs our doctors actually prescribe. That
+  is a few hundred rows, not 10,303.
+- **The agent can do the first pass** (the NRCES drafts of 2026-09-16 did this for mappings). An
+  agent drafts the per-drug text with its source. A person signs. The agent never signs.
+- **Unreviewed rows still help as prompts.** The generic paediatric sentence can show as "no
+  reviewed paediatric dose — dose manually". It is honest, and it never looks like a dose.
+
 **Gaps in the data for the specialty order the owner chose:**
-- **Paediatrics:** `prescribing_defaults` has no weight-based dose (mg/kg), no maximum dose and no
-  syrup strength rounding. Paediatric dosing needs a new rule set, sourced (IAP drug formulary or
-  similar) and signed by a doctor. This is the largest data task in the three specialties.
+- **Paediatrics:** the columns exist, but only 1,030 rows carry any mg/kg text, and those come from
+  two class templates (above). A structured rule (mg/kg per dose and per day, maximum doses, age
+  bands, available strengths for rounding) must be built per drug from the §11.1 sources, starting
+  with the most-prescribed paediatric drugs. This is the largest data task across the three
+  specialties.
 - **Ophthalmology:** eye drop sigs (drops per eye, which eye, taper over weeks) do not fit the
   `1-0-1` grammar. The Rx line needs a **site** (right eye / left eye / both) and a **taper**
   (Healthray shows two dose lines for one drug).
@@ -433,7 +489,7 @@ follow them.
 
 | Step | Deliverable | Shared files it touches |
 |---|---|---|
-| **C0** | Engine: section definitions, catalogs in three tiers, profiles (department plus doctor), a versioned visit-entry store with audit. General medicine re-platformed. Summary page and previous consultations inline. Previous RX. Rx pre-fill from `prescribing_defaults` | Schema, one migration, `router.tsx`, locales, and `opd` (which many modules import) |
+| **C0** | Engine: section definitions, catalogs in three tiers, profiles (department plus doctor), a versioned visit-entry store with audit. General medicine re-platformed. Summary page and previous consultations inline. Previous RX. Rx pre-fill from REVIEWED rows only (§5.1) | Schema, one migration, `router.tsx`, locales, and `opd` (which many modules import) |
 | **C1** | Groups and full-visit templates; the catalog curator screen; the live summary strip; calculators | the `opd` module |
 | **C2** | Ophthalmology profile, the eye-site and taper Rx line, the spectacle print | a migration |
 | **C3** | The work-up mode toggle with the optometrist seat (the first use of the toggle) | the queue states in `opd` |
