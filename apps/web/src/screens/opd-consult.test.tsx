@@ -3078,6 +3078,73 @@ describe("OpdConsult — the clinical co-pilot", () => {
       ["Levocetirizine + Ambroxol Pediatric Syrup", null],
     ]);
   });
+
+  /*
+   * ═══ CONSULT V2 PR 3 — the suggestions follow the copilot (owner, 2026-09-23, round 4) ═══
+   * Open copilot → they sit in its column. Folded → at the head of the tab, labelled so. Never both.
+   * Each is a dashed chip that one tap accepts; nothing is entered silently.
+   */
+  const TESTS = { items: [{ serviceId: "svc-cbc", code: "CBC", name: "CBC", pricePaise: 30000, mine: 3, hospital: 9 }] };
+
+  it("S1: with the copilot OPEN the suggestions are in its column and not inline; a diagnosis chip adds the diagnosis with its code", async () => {
+    mockRoutes(cdsRoutes({ "GET /api/opd/cds/suggest/tests": { status: 200, body: TESTS } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    const pane = await screen.findByTestId("copilot-suggestions-pane");
+    expect(within(screen.getByTestId("copilot-panel")).getByTestId("copilot-suggestions-pane")).toBe(pane);
+    expect(screen.queryByTestId("copilot-suggestions-inline")).toBeNull();
+    await user.click(within(pane).getByTestId("sug-dx-SYN_URI_01"));
+    // the diagnosis is now a tag, and its ICD-10 code rides with it
+    await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J06.9"); });
+    // complaint + diagnosis → the tests advised before for it, asked with the diagnosis and nothing about the patient
+    const chip = await within(screen.getByTestId("copilot-suggestions-pane")).findByTestId("sug-test-svc-cbc");
+    const url = decodeURIComponent(callsTo("GET", "/api/opd/cds/suggest/tests").at(-1)!.url);
+    expect(url).toContain("J06.9");
+    expect(url).not.toContain("p-1");
+    expect(chip).toHaveTextContent("CBC");
+    // … and the medicines for it, from the regimen book, one tap away
+    expect(await within(screen.getByTestId("copilot-suggestions-pane")).findByTestId("sug-rx-fill")).toHaveTextContent("Add these 2");
+  });
+
+  it("S2: with the copilot FOLDED the same suggestions come inline at the head of the tab, labelled so — and a tap accepts, nothing earlier", async () => {
+    sessionStorage.setItem("hmis.consult.right", "false");
+    mockRoutes(cdsRoutes({ "GET /api/opd/cds/suggest/tests": { status: 200, body: TESTS } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    expect(screen.getByTestId("copilot-panel")).toHaveAttribute("data-state", "closed");
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    const inline = await screen.findByTestId("copilot-suggestions-inline");
+    expect(inline).toHaveTextContent(/COPILOT IS FOLDED/);
+    expect(screen.queryByTestId("copilot-suggestions-pane")).toBeNull();
+    // nothing was entered by the suggestion appearing
+    expect(screen.getByTestId("note-icd10")).toHaveValue("");
+    await user.click(within(inline).getByTestId("sug-dx-SYN_URI_01"));
+    await user.click(await within(screen.getByTestId("copilot-suggestions-inline")).findByTestId("sug-rx-fill"));
+    // the regimen's medicines are on the Rx now
+    expect(await screen.findByDisplayValue("Paracetamol Oral Suspension 250mg/5ml")).toBeInTheDocument();
+  });
+
+  it("S3: autocomplete everywhere — examination offers the hospital's list and the doctor's own words; ↓ Enter takes a row, Enter alone takes the typed words", async () => {
+    mockRoutes(cdsRoutes({
+      "GET /api/opd/cds/complete/term": { status: 200, body: { items: [{ term: "Pallor ++ on palms", uses: 4 }] } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: /Examination/ }));
+    const box = screen.getByTestId("exam-own-general");
+    await user.type(box, "pall");
+    const list = await screen.findByRole("listbox", { name: /general/i });
+    expect(await within(list).findByText("Pallor ++ on palms")).toBeInTheDocument(); // the doctor's own, first
+    expect(within(list).getByText("Pallor absent")).toBeInTheDocument();          // the hospital's list
+    expect(callsTo("GET", "/api/opd/cds/complete/term").at(-1)!.url).toContain("field=exam_general");
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(await screen.findByTestId("exam-general-Pallor ++ on palms")).toHaveAttribute("aria-pressed", "true");
+    await user.type(box, "Koilonychia{Enter}");
+    expect(await screen.findByTestId("exam-general-Koilonychia")).toHaveAttribute("aria-pressed", "true");
+    await user.type(box, "pall{Escape}");
+    expect(screen.queryByRole("listbox", { name: /general/i })).toBeNull();
+  });
 });
 
 /**
