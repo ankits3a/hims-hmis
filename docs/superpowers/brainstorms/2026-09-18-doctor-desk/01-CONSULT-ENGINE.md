@@ -73,6 +73,32 @@ for the non-AI basics of a doctor's desk. They are not the design target.
      is the base unit (tablets, mL, units).
    - **D14 (DECIDED, auditable).** When an alternative was offered, the visit records
      "alternative offered: X; doctor kept Y". It is an audit row, not a warning to the doctor.
+8. **The patient brief comes before the consult** (owner, 2026-09-23). The owner's reference is
+   the `OpdDesk.dc.html` board of the 2026-09-18 canvas; a copy is at
+   `/opt/hmis-context/reference/2026-09-23-healthray-doctor-opd/owner-doctor-opd-desk-brief.png`.
+   - **Call next** fills the middle column with the called patient's **brief**:
+     - the chief complaint **as told at the front desk, in the patient's words**, with who typed
+       it and when
+     - vitals, with who took them and where
+     - allergies
+     - a concise note of the last consultation
+     - lab and radiology results since then, in brief
+     - current medicines from the last prescription, with the pharmacy's refill record
+   - **Start consultation** sits under the brief. It opens the consult with the desk complaint
+     already turned into chips. The patient does not repeat it, and the doctor has the picture
+     before the patient walks in.
+   - The left lane keeps Call next, Skip and Park. Start moves under the brief.
+   - **Measured gap (main at `3813a80c`).** Desk One captures a complaint (`session.complaint`),
+     but uses it **only to rank departments** (`opd/triage.ts`, `opd-visits.controller.ts`
+     line 70). It is never saved on the visit. `opd_encounters.chief_complaint` holds only what
+     the doctor types. **Carrying it through needs a new column on the visit (a migration) and
+     the desk sending it.**
+   - **D15 (DECIDED).** The desk's words are stored exactly as typed, with the author and the
+     time, in their own field. They are never merged into the doctor's `chief_complaint`. The
+     doctor's chips start from them but are the doctor's own entry. This is auditable: we always
+     know who said what.
+   - **D16 (DECIDED).** The brief shows only recorded facts: "Nothing on this card is a
+     suggestion." Copilot suggestions stay in the right pane.
 
 ---
 
