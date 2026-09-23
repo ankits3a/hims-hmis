@@ -27,9 +27,10 @@ import { useCopilot } from "../lib/use-copilot";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import {
-  ConsultSidebar, CopilotPanel, ExamSection, NotesSection, PatientBrief, SavedClock, StockAlternativeCard, StockTag,
-  SummaryView, TreatmentSection, WorkStrip, useDoctorStock, useSessionToggle,
+  BellIcon, ConsultSidebar, CopilotPanel, ExamSection, NewTabIcon, NotesSection, PatientBrief, ReferPanel, SavedClock,
+  StockAlternativeCard, StockTag, SummaryView, TreatmentSection, VitalsTab, WorkStrip, useDoctorStock, useSessionToggle,
 } from "./opd-consult-v2";
+import { recallToken, releaseLease, takeLease } from "../lib/opd-api";
 import type { WorkRow } from "./opd-consult-v2";
 import type { WireExamFinding } from "../lib/opd-api";
 import type { AgentLine } from "../components/agent-dock";
@@ -236,7 +237,7 @@ function v2BodyOf(v: V2State, on: boolean): Record<string, unknown> {
     diagnosisKind: v.diagnosisKind, rxStockChoices: v.rxStockChoices,
   };
 }
-type TabId = "summary" | "note" | "exam" | "rx" | "treat" | "notes" | "history";
+type TabId = "summary" | "vitals" | "note" | "exam" | "rx" | "treat" | "notes" | "history";
 
 /**
  * ═══ THE DIAGNOSIS GOES UP AS A LIST, AND THE CODES RIDE WITH THEIR OWN WORDS ═══
@@ -263,7 +264,7 @@ function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>): Record<string
   };
 }
 
-export function OpdConsult(): React.ReactElement {
+export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } = {}): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   /** PLAN 07d T1 — which of the three histories the tab is showing. Drives the lazy fetches below. */
@@ -349,6 +350,13 @@ export function OpdConsult(): React.ReactElement {
   const rightOpenRef = useRef(rightOpen);
   useEffect(() => { rightOpenRef.current = rightOpen; }, [rightOpen]);
   const [agentAutoFocus, setAgentAutoFocus] = useState(false);
+  /** D17 — this tab's own token; the lease says whether it may write. "none" = no lease service answered, so nothing is gated. */
+  const tabToken = useRef<string>(
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `tab-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`,
+  );
+  const [lease, setLease] = useState<"none" | "mine" | "other">("none");
+  const readOnly = lease === "other";
+  const leaseBody = (): Record<string, string> => (lease === "mine" ? { leaseToken: tabToken.current } : {});
   /** Zero-stock lines the doctor has already answered (Use or Keep), keyed by the medicine written. */
   const [stockAnswered, setStockAnswered] = useState<Record<string, true>>({});
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -416,6 +424,8 @@ export function OpdConsult(): React.ReactElement {
   const [admissionAdvised, setAdmissionAdvised] = useState(false);
   const [referralTo, setReferralTo] = useState("");
   const [referralNote, setReferralNote] = useState("");
+  const [referOpen, setReferOpen] = useState(false);
+  const [referDone, setReferDone] = useState<string | null>(null);
 
   const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map())));
   /** The PARSED lines of a refused submission — never `getValues()`, whose durationDays is a string (§3.19). */
@@ -973,6 +983,17 @@ export function OpdConsult(): React.ReactElement {
     await queryClient.invalidateQueries({ queryKey: ["opd", "queue"] });
   };
 
+  const recallOf = async (e: WireQueueEntryView): Promise<void> => {
+    setQueueError(null);
+    try {
+      await recallToken(e.id);
+      setAgentLog((l) => logged(l, t("opdConsultV2.recalledLog", { token: e.tokenNo }), "ok"));
+      await invalidateQueue();
+    } catch (err) {
+      setQueueError(opdErrorMessage(err));
+    }
+  };
+
   const callNext = async (): Promise<void> => {
     if (view === null) return;
     setQueueError(null);
@@ -1307,6 +1328,24 @@ export function OpdConsult(): React.ReactElement {
     }
   };
 
+  /*
+    CONSULT V2 — `/opd/consult/:encounterId`, opened from a card's new-tab icon. A patient already in
+    consultation (seated elsewhere, parked, or with a saved draft) opens here once the line has loaded;
+    a patient who is only CALLED shows the brief as usual. D17 decides which tab may write.
+  */
+  const focusedOnce = useRef(false);
+  useEffect(() => {
+    if (focusEncounterId === undefined || focusedOnce.current || view === null) return;
+    const hit = inConsult.find((e) => e.encounterId === focusEncounterId);
+    if (hit !== undefined && active?.encounterId !== focusEncounterId) {
+      focusedOnce.current = true;
+      void openEntry(hit);
+    } else if (current?.encounterId === focusEncounterId) {
+      focusedOnce.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs until the focused patient is found, once
+  }, [focusEncounterId, view]);
+
   const setSessionStatus = async (status: SessionStatusInput): Promise<void> => {
     if (view === null) return;
     setQueueError(null);
@@ -1315,6 +1354,39 @@ export function OpdConsult(): React.ReactElement {
       await invalidateQueue();
     } catch (e) {
       setQueueError(opdErrorMessage(e));
+    }
+  };
+
+  /* D17 — take the lease when a patient opens here, renew it every 20 s, give it back when the tab lets go. */
+  const activeEncounterId = active?.encounterId ?? null;
+  useEffect(() => {
+    if (activeEncounterId === null) { setLease("none"); return; }
+    let stop = false;
+    const token = tabToken.current;
+    const beat = async (): Promise<void> => {
+      try {
+        const r = await takeLease(activeEncounterId, token);
+        if (!stop) setLease(r.held ? "mine" : "other");
+      } catch {
+        if (!stop) setLease("none");
+      }
+    };
+    void beat();
+    const id = setInterval(() => { void beat(); }, 20_000);
+    return () => {
+      stop = true;
+      clearInterval(id);
+      void releaseLease(activeEncounterId, token).catch(() => undefined);
+    };
+  }, [activeEncounterId]);
+  const takeOverEditing = async (): Promise<void> => {
+    if (activeEncounterId === null) return;
+    try {
+      const r = await takeLease(activeEncounterId, tabToken.current, true);
+      setLease(r.held ? "mine" : "other");
+      if (r.held) await queryClient.invalidateQueries({ queryKey: ["opd", "visit", activeEncounterId] });
+    } catch (e) {
+      setNoteError(opdErrorMessage(e));
     }
   };
 
@@ -1331,7 +1403,7 @@ export function OpdConsult(): React.ReactElement {
     if (active === null) return;
     setNoteError(null);
     try {
-      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current), ...v2BodyOf(v2, v2On.current), advisedTests: next });
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current), ...v2BodyOf(v2, v2On.current), advisedTests: next, ...leaseBody() });
       setSavedAt(new Date());
     } catch (e) {
       setNoteError(opdErrorMessage(e));
@@ -1340,12 +1412,13 @@ export function OpdConsult(): React.ReactElement {
 
   const saveNote = async (opts?: { force?: boolean; v2?: V2State }): Promise<void> => {
     if (active === null) return;
+    if (readOnly) return; // D17: a read-only tab writes nothing
     const body = { ...noteBodyOf(note, icdByTerm.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current) };
     const key = JSON.stringify(body);
     if (key === lastSavedNote.current && opts?.force !== true) return;
     setNoteError(null);
     try {
-      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, body);
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...body, ...leaseBody() });
       lastSavedNote.current = key;
       setNoteSaved(true);
       setSavedAt(new Date());
@@ -1638,6 +1711,7 @@ export function OpdConsult(): React.ReactElement {
       note: {
         ...noteBodyOf(note, icdByTerm.current),
         ...v2BodyOf(v2, v2On.current),
+        ...leaseBody(),
         admissionAdvised,
         referralTo: orNull(referralTo),
         referralNote: orNull(referralNote),
@@ -1920,6 +1994,25 @@ export function OpdConsult(): React.ReactElement {
       <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
       <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
       <VisitTypeBadge visitType={e.encounter.visitType} size="sm" testId={`queue-visit-type-${e.id}`} />
+      {/*
+        CONSULT V2 (owner, 2026-09-23) — the alarm says a called token again on the corridor board; the
+        box-and-arrow opens this patient in a new browser tab (D17: only one tab edits at a time).
+      */}
+      {mode === "called" && (
+        <button type="button" className="sec" data-testid={`queue-recall-${e.id}`} aria-label={t("opdConsultV2.recall", { token: e.tokenNo })}
+          title={e.callCount > 1 ? t("opdConsultV2.recalledTimes", { n: e.callCount - 1 }) : t("opdConsultV2.recall", { token: e.tokenNo })}
+          style={{ padding: "2px 6px", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11 }}
+          onClick={() => void recallOf(e)}>
+          <BellIcon />{e.callCount > 1 ? <span className="mo">{e.callCount - 1}</span> : null}
+        </button>
+      )}
+      {mode !== "left" && (
+        <a href={`/opd/consult/${e.encounterId}`} target="_blank" rel="noopener noreferrer" data-testid={`queue-newtab-${e.id}`}
+          aria-label={t("opdConsultV2.openNewTab")} title={t("opdConsultV2.openNewTab")}
+          style={{ display: "inline-flex", alignItems: "center", padding: "2px 4px", color: "var(--dim)" }}>
+          <NewTabIcon />
+        </a>
+      )}
       {e.queueClass !== null && <span className="tag">{t(`opd.queueClass.${e.queueClass}`)}</span>}
       {(e.danger || e.encounter.dangerFlagged) && (
         <span data-testid={`queue-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
@@ -2167,6 +2260,16 @@ export function OpdConsult(): React.ReactElement {
 
           {active !== null && (
             <div data-testid="patient-panel" style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+              {/* D17 — another tab holds the pen: this one reads, and may take it over (audited). */}
+              {readOnly && (
+                <div data-testid="lease-readonly" role="status" className="box" style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
+                  <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{t("opdConsultV2.lease.other")}</span>
+                  <button type="button" className="pri" data-testid="lease-takeover" style={{ padding: "3px 12px", fontSize: 12.5 }} onClick={() => void takeOverEditing()}>
+                    {t("opdConsultV2.lease.takeover")}
+                  </button>
+                </div>
+              )}
+              <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 13 }}>
               <header className="box" style={{ padding: "13px 15px", display: "flex", flexDirection: "column", gap: 5 }}>
                 {restricted ? (
                   <>
@@ -2428,7 +2531,9 @@ export function OpdConsult(): React.ReactElement {
                   {latestVitals !== null && (
                     <>
                       {/* Bay One's own numbers, in Bay One's mono, so the two screens read as one record. */}
-                      <p data-testid="panel-vitals" className="mo" style={{ margin: 0, fontSize: 13 }}>
+                      <p data-testid="panel-vitals" className="mo" role="button" tabIndex={0} title={t("opdConsultV2.vitals.open")}
+                        onClick={() => { setTab("vitals"); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("vitals"); } }}
+                        style={{ margin: 0, fontSize: 13, cursor: "pointer", textDecoration: "underline dotted" }}>
                         BP {latestVitals.sbp ?? "—"}/{latestVitals.dbp ?? "—"} · P {latestVitals.pulse ?? "—"} · SpO₂ {latestVitals.spo2 ?? "—"}%
                       </p>
                       {latestVitals.dangerFlags.map((f) => (
@@ -2456,6 +2561,7 @@ export function OpdConsult(): React.ReactElement {
                   onChange={setTab}
                   options={[
                     ["summary", t("opdConsultV2.tabs.summary")],
+                    ["vitals", t("opdConsultV2.tabs.vitals")],
                     ["note", t("opdConsult.tabs.note")],
                     ["exam", t("opdConsultV2.tabs.exam")],
                     ["rx", t("opdConsult.tabs.rx")],
@@ -2468,6 +2574,15 @@ export function OpdConsult(): React.ReactElement {
 
                 {tab === "summary" && (
                   <div role="tabpanel" id="tabpanel-summary" aria-labelledby="tab-summary"><SummaryView rows={workRows} onGo={goToSection} /></div>
+                )}
+                {tab === "vitals" && active !== null && (
+                  <div role="tabpanel" id="tabpanel-vitals" aria-labelledby="tab-vitals">
+                    <VitalsTab
+                      key={active.encounterId} encounterId={active.encounterId} patientId={active.patientId}
+                      today={vitalsRows as unknown as Parameters<typeof VitalsTab>[0]["today"]}
+                      onChanged={() => { void queryClient.invalidateQueries({ queryKey: ["opd", "visit", active.encounterId] }); }}
+                    />
+                  </div>
                 )}
                 {tab === "exam" && (
                   <div role="tabpanel" id="tabpanel-exam" aria-labelledby="tab-exam">
@@ -2886,6 +3001,18 @@ export function OpdConsult(): React.ReactElement {
 
                 {tab === "rx" && (
                 <div role="tabpanel" id="tabpanel-rx" aria-labelledby="tab-rx">
+                  {/* The copilot folded away? Its stock suggestions come inline instead (owner, 2026-09-23). */}
+                  {!rightOpen && stockAlerts.length > 0 && (
+                    <div data-testid="inline-stock-alts" style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12, padding: 10, borderRadius: 8, background: "var(--agent)" }}>
+                      {stockAlerts.map((a) => (
+                        <StockAlternativeCard
+                          key={`inline-${String(a.index)}-${a.stock.medicineId}`} drug={a.drug} stock={a.stock}
+                          onUse={(medicineId, label) => { pickAlternative(a.index, a.stock.medicineId, medicineId, label); }}
+                          onKeep={() => { keepWritten(a.stock); }}
+                        />
+                      ))}
+                    </div>
+                  )}
                   {/*
                     ═══ FD-30 — THE SLIP THE DOOR TRANSCRIBED, WAITING FOR THIS DOCTOR'S TAP ═══
 
@@ -3470,6 +3597,12 @@ export function OpdConsult(): React.ReactElement {
                     className="in" style={{ width: "100%", height: 34, fontSize: 13 }}
                   />
                 </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button type="button" className="sec" data-testid="refer-open" style={{ padding: "3px 12px", fontSize: 12.5 }} onClick={() => { setReferDone(null); setReferOpen(true); }}>
+                    {t("opdConsultV2.refer.open")}
+                  </button>
+                  {referDone === null ? null : <span data-testid="refer-done" style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>{referDone}</span>}
+                </div>
                 {/* Ctrl+Enter does this too — the Keymap's "commit, a chord because it is the irreversible one". */}
                 <button type="button" className="pri" style={{ alignSelf: "flex-start" }} onClick={() => void complete()}>
                   {rxWaiting ? t("opdConsult.issueAndComplete") : t("opdConsult.complete")}
@@ -3483,6 +3616,7 @@ export function OpdConsult(): React.ReactElement {
                 </button>
                 <ErrorLine message={completeError} />
               </div>
+              </fieldset>
             </div>
           )}
         </main>
@@ -3715,6 +3849,32 @@ export function OpdConsult(): React.ReactElement {
             </button>
           </div>
         </div>
+      </DeskModal>
+
+      {/* CONSULT V2 — refer: another department's doctor (a new visit in that line), or out with a letter. */}
+      <DeskModal
+        open={referOpen && active !== null} title={t("opdConsultV2.refer.title")} titleId="refer-title" testId="refer-dialog" width={480}
+        onClose={() => { setReferOpen(false); }}
+      >
+        {active !== null && (
+          <ReferPanel
+            encounterId={active.encounterId}
+            patientName={patient.data?.patient.name ?? patientLabel(active.summary)}
+            doctorName={me.data?.displayName ?? ""}
+            onInternal={(r) => {
+              setReferralTo(r.where);
+              setReferralNote(r.why);
+              setReferDone(t("opdConsultV2.refer.doneInternal", { token: r.tokenNo, where: r.where }));
+              setAgentLog((l) => logged(l, t("opdConsultV2.refer.doneInternal", { token: r.tokenNo, where: r.where }), "ok"));
+              setReferOpen(false);
+            }}
+            onExternal={(to, note) => {
+              setReferralTo(to);
+              setReferralNote(note);
+              setReferDone(t("opdConsultV2.refer.doneExternal", { to }));
+            }}
+          />
+        )}
       </DeskModal>
 
       <DeskModal

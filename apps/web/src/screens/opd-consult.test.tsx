@@ -3999,3 +3999,116 @@ describe("Consult v2", () => {
     expect(screen.queryByTestId("stock-alt-m-telma")).toBeNull();
   });
 });
+
+/**
+ * ═══ CONSULT V2, PART TWO (owner, 2026-09-23, rounds 4–5; 01-CONSULT-ENGINE.md §1.1 item 9) ═══
+ * Recall on the board, a patient in a new tab, one tab editing at a time (D17), the Vitals tab, the referral.
+ */
+describe("Consult v2 — part two", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+    setToken("t-1");
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-1/reminder": { status: 200, body: { reminder: null } },
+      ...over,
+    };
+  }
+
+  it("P1: the called card carries an alarm that re-announces the token on the board", async () => {
+    mockRoutes(routes({ "POST /api/opd/queues/entries/qe-cur/recall": { status: 201, body: { entry: { ...CURRENT, callCount: 2 } } } }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await user.click(await screen.findByTestId("queue-recall-qe-cur"));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/recall")).toHaveLength(1); });
+    expect(screen.queryByTestId("queue-recall-qe-a")).toBeNull(); // only a CALLED token can be recalled
+  });
+
+  it("P2: every card opens its patient in a new tab", async () => {
+    mockRoutes(routes());
+    renderWithProviders(<OpdConsult />);
+    const link = await screen.findByTestId("queue-newtab-qe-cur");
+    expect(link).toHaveAttribute("href", "/opd/consult/enc-1");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("P3: D17 — when another tab holds the lease this tab is read-only, writes nothing, and can take over", async () => {
+    let takeover = false;
+    mockRoutes(routes({
+      "POST /api/opd/visits/enc-1/consult/lease": () => ({ status: 201, body: takeover
+        ? { held: true, until: NOW_ISO, holderIsMe: true, tookOver: true }
+        : { held: false, until: NOW_ISO, holderIsMe: false, tookOver: false } }),
+      "POST /api/opd/visits/enc-1/consult/lease/release": { status: 201, body: { released: false } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    expect(await screen.findByTestId("lease-readonly")).toBeInTheDocument();
+    expect(screen.getByLabelText("Advice")).toBeDisabled();
+    await user.click(screen.getByTestId("save-draft"));
+    expect(callsTo("PUT", "/api/opd/visits/enc-1/consult/note")).toHaveLength(0);
+
+    takeover = true;
+    await user.click(screen.getByTestId("lease-takeover"));
+    await waitFor(() => { expect(screen.queryByTestId("lease-readonly")).toBeNull(); });
+    expect(bodiesOf("POST", "/api/opd/visits/enc-1/consult/lease").at(-1)).toMatchObject({ takeover: true });
+    await user.click(screen.getByTestId("save-draft"));
+    await waitFor(() => { expect(callsTo("PUT", "/api/opd/visits/enc-1/consult/note")).toHaveLength(1); });
+    expect(typeof bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note")[0]!.leaseToken).toBe("string");
+  });
+
+  it("P4: the banner's vitals open the Vitals tab — a new reading records the doctor; a correction needs a reason and keeps the original", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/patients/p-1/vitals": { status: 200, body: { items: [
+        { vitalsId: "old-1", encounterId: "enc-0", serviceDate: "2026-08-10", recordedAt: "2026-08-10T04:00:00.000Z", sbp: 150, dbp: 95, pulse: 80, rr: 16, spo2: 98, tempC: 37, band: "adult", dangerFlags: [], status: "active", recordedByName: "Sr. Kavita", amendmentReason: null },
+      ] } },
+      "POST /api/opd/visits/enc-1/vitals": { status: 201, body: { vitals: VITALS_LATEST, flags: [] } },
+      "POST /api/opd/vitals/vit-2/amend": { status: 201, body: { vitals: VITALS_LATEST, flags: [], superseded: "vit-2" } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(await screen.findByTestId("panel-vitals"));
+    expect(screen.getByRole("tab", { name: "Vitals" })).toHaveAttribute("aria-selected", "true");
+    const tab = screen.getByTestId("vitals-tab");
+    expect(await within(tab).findByText("Sr. Kavita")).toBeInTheDocument(); // the earlier reading, and who took it
+
+    await user.clear(within(tab).getByTestId("vital-sbp"));
+    await user.type(within(tab).getByTestId("vital-sbp"), "150");
+    await user.click(within(tab).getByTestId("vital-save"));
+    await waitFor(() => { expect(bodiesOf("POST", "/api/opd/visits/enc-1/vitals").at(-1)).toMatchObject({ sbp: 150 }); });
+
+    await user.click(within(tab).getByTestId("vital-fix-vit-2"));
+    expect(within(tab).getByTestId("vital-save")).toBeDisabled(); // no reason, no correction
+    await user.type(within(tab).getByTestId("vital-reason"), "cuff too small");
+    await user.click(within(tab).getByTestId("vital-save"));
+    await waitFor(() => { expect(bodiesOf("POST", "/api/opd/vitals/vit-2/amend").at(-1)).toMatchObject({ reason: "cuff too small" }); });
+  });
+
+  it("P5: refer to a doctor here puts the patient in that line, and the completion carries the referral", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/departments": { status: 200, body: { items: [{ id: "dep-2", name: "Paediatrics" }] } },
+      "GET /api/opd/doctors": { status: 200, body: { items: [{ id: "doc-9", displayName: "Dr Gupta", departmentId: "dep-2", active: true }] } },
+      "POST /api/opd/visits/enc-1/refer": { status: 201, body: { encounterId: "enc-77", tokenNo: 3, visitNo: "V77", visitType: "new" } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByTestId("refer-open"));
+    const dialog = await screen.findByTestId("refer-dialog");
+    await user.selectOptions(within(dialog).getByTestId("refer-dept"), "dep-2");
+    await user.selectOptions(await within(dialog).findByTestId("refer-doctor"), await within(dialog).findByRole("option", { name: "Dr Gupta" }));
+    await user.type(within(dialog).getByTestId("refer-reason"), "wheeze, assess asthma");
+    await user.click(within(dialog).getByTestId("refer-send"));
+    await waitFor(() => { expect(bodiesOf("POST", "/api/opd/visits/enc-1/refer").at(-1)).toEqual({ departmentId: "dep-2", doctorId: "doc-9", reason: "wheeze, assess asthma", note: null }); });
+    expect(await screen.findByTestId("refer-done")).toHaveTextContent("token 3 in Paediatrics · Dr Gupta");
+    expect(screen.getByLabelText("Referred to")).toHaveValue("Paediatrics · Dr Gupta");
+  });
+});

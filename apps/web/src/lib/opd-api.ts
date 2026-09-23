@@ -687,6 +687,11 @@ export type WireVitalsHistoryItem = {
   tempC: number | null;
   band: string;
   dangerFlags: unknown[];
+  /** Consult v2 — who took it, and whether it was later corrected. Optional: an older server sends none. */
+  weightKg?: number | null;
+  status?: string;
+  recordedByName?: string;
+  amendmentReason?: string | null;
 };
 
 // ——— VD-2 T1 — the bench, the pre-stage reader, and the escalation state, on the wire ———
@@ -1005,4 +1010,22 @@ export async function putReminder(patientId: string, text: string): Promise<Wire
 }
 export async function clearReminder(patientId: string): Promise<void> {
   await api("POST", `/opd/patients/${patientId}/reminder/clear`);
+}
+
+/** Consult v2 part two — the edit lease (D17), recall, and the internal referral. */
+export type WireLease = { held: boolean; until: string | null; holderIsMe: boolean; tookOver: boolean };
+export async function takeLease(encounterId: string, token: string, takeover = false): Promise<WireLease> {
+  return api<WireLease>("POST", `/opd/visits/${encounterId}/consult/lease`, takeover ? { token, takeover: true } : { token });
+}
+export async function releaseLease(encounterId: string, token: string): Promise<void> {
+  await api("POST", `/opd/visits/${encounterId}/consult/lease/release`, { token });
+}
+export async function recallToken(entryId: string): Promise<void> {
+  await api("POST", `/opd/queues/entries/${entryId}/recall`);
+}
+export type WireReferResult = { encounterId: string; tokenNo: number; visitNo: string; visitType: string };
+export async function referInternally(
+  encounterId: string, body: { departmentId: string; doctorId: string; reason: string; note: string | null },
+): Promise<WireReferResult> {
+  return api<WireReferResult>("POST", `/opd/visits/${encounterId}/refer`, body);
 }
