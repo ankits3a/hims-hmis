@@ -6,6 +6,9 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { DIAGNOSIS_KINDS, EXAM_GROUPS, completeConsultation, openUnpaidToken, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { activeReminder, clearReminder, setReminder } from "./reminders";
+import { acquireEditLease, releaseEditLease } from "./lease";
+import type { LeaseAnswer } from "./lease";
+import { referInternally } from "./referral";
 import type { ReminderView } from "./reminders";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -14,7 +17,7 @@ import {
 } from "./prescriptions";
 import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 import { SKIP_REASONS } from "./skip-reasons";
-import { boardSnapshot, callNext, listQueue, skipCalled, summaryByDoctor, undoSkip } from "./queue";
+import { boardSnapshot, callNext, listQueue, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
@@ -97,8 +100,14 @@ const consultNoteBody = z.object({
     keptMedicineId: z.string().min(1).max(64),
     chosen: z.enum(["swap", "keep"]),
   })).max(30).nullable().optional(),
+  leaseToken: z.string().min(8).max(64).optional(),
 });
 const reminderBody = z.object({ text: z.string().trim().min(1).max(300) });
+const leaseBody = z.object({ token: z.string().min(8).max(64), takeover: z.boolean().optional() });
+const referBody = z.object({
+  departmentId: z.string().min(1).max(64), doctorId: z.string().min(1).max(64),
+  reason: z.string().trim().min(3).max(300), note: z.string().max(2000).nullish(),
+});
 const consultCompleteBody = z.object({
   note: consultNoteBody.optional(),
   testsOrderedReturnToday: z.boolean(),
@@ -248,6 +257,17 @@ export class OpdQueueController {
     }
   }
 
+  /** CONSULT V2 — the alarm on a called card: the board says the same token again (`recallCalled`). */
+  @RequirePermission("opd.queue.operate", "hospital")
+  @Post("queues/entries/:entryId/recall")
+  async recall(@CurrentActor() actor: Actor, @Param("entryId") entryId: string): Promise<{ entry: QueueEntryRow }> {
+    try {
+      return await recallCalled(this.db, actor, entryId);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("opd.queue.operate", "hospital")
   @Post("queues/entries/:entryId/skip")
   async skip(@CurrentActor() actor: Actor, @Param("entryId") entryId: string, @Body() body: unknown): Promise<{ entry: QueueEntryRow }> {
@@ -380,6 +400,43 @@ export class OpdQueueController {
   async clearReminderRoute(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ cleared: boolean }> {
     try {
       return await clearReminder(this.db, actor, patientId);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** D17 — the writing tab's lease: take, renew (the heartbeat), or take over. */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/consult/lease")
+  async lease(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<LeaseAnswer> {
+    const b = parsed(leaseBody, body);
+    try {
+      return await acquireEditLease(this.db, actor, id, b.token, { takeover: b.takeover === true });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/consult/lease/release")
+  async leaseRelease(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ released: boolean }> {
+    const b = parsed(leaseBody, body);
+    try {
+      return await releaseEditLease(this.db, actor, id, b.token);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** CONSULT V2 — refer to another department's doctor: a new visit in that line, no re-registration. */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/refer")
+  async refer(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ encounterId: string; tokenNo: number; visitNo: string; visitType: string }> {
+    const b = parsed(referBody, body);
+    try {
+      return await referInternally(this.db, actor, id, b);
     } catch (e) {
       toHttp(e);
     }
