@@ -26,7 +26,7 @@ for the non-AI basics of a doctor's desk. They are not the design target.
 3. **Coding:** ICD-10 is the primary code. An ICD-11 or SNOMED CT map comes later, for ABDM.
 4. **Work-up before the doctor.** Eventually the optometrist, the antenatal nurse and the paediatric
    nurse each fill whole sections before the doctor sees the patient. **For now the work-up is
-   vitals only.** There will be **a toggle to switch the work-up mode on and off** (§8).
+   vitals only.** ~~A toggle to switch the work-up mode on and off (§8).~~ **Superseded by §1.1 item 5: department screens, no toggle.**
 5. **The Doctor Desk brainstorm is unparked.**
 6. **Standing product frame, restated:** *"we are building Agentic AI based hospital operating
    system that will use AI agent as human copilot and so we have to design the software
