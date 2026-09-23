@@ -46,6 +46,12 @@ export { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./sta
 export type { StagingRow } from "./staging";
 
 export { searchMedicines } from "./search";
+/**
+ * The CDS regimen fill's door: a composition (moieties + strengths + form) to ONE catalogue
+ * product — a stocked one first, else a generic — or null. Exact, never nearest. See `products.ts`.
+ */
+export { MAX_PRODUCT_SPECS, matchProducts } from "./products";
+export type { FormClass, ProductMatch, ProductSpec } from "./products";
 export type { MedicineHit } from "./search";
 /**
  * PHASE 2 — THE MAPPING LOOP. `attestSubstance` and `ruleSubstanceUnmappable` are the only writers

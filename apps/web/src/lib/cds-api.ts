@@ -25,6 +25,13 @@ export type WireDoseVerdict =
 export type WireRxDraft = {
   drug: string; dose: string; route: string; frequency: string;
   durationDays: number | null; instructions: string; noSubstitution: boolean;
+  /** The catalogue medicine the server resolved for this line — set exactly as a drug-field pick sets it. */
+  medicineId: string | null;
+};
+
+/** The product behind `rx.medicineId`: a stocked one if the counter sells it, else the generic. */
+export type WireRegimenProduct = {
+  medicineId: string; name: string; form: string; strength: string | null; code: string | null; stocked: boolean;
 };
 
 export type WireRegimenLine = {
@@ -32,6 +39,9 @@ export type WireRegimenLine = {
   sig: string; duration: string | null;
   dose: WireDoseVerdict; substitutedFor?: string; substitutionReason?: string;
   rx: WireRxDraft;
+  product: WireRegimenProduct | null;
+  /** A drug line no catalogue product matched: it fills as free text and asks the doctor to pick. */
+  needsPick: boolean;
 };
 
 export type WireCard = {
