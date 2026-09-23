@@ -76,7 +76,7 @@ would give us the look without the capability.
 
 ```
 Catalog item   ── hospital master → department list → the doctor's own entries
-     │            (curated)          (admin)           (grows from use; the admin can prune)
+     │            (curated)          (curators)        (private to the doctor until promoted)
      ▼
 Section def    ── kind (chips | grid | eye-grid | vitals | table-per-visit | free note)
      │            items come from a catalog; each item carries detail questions
@@ -101,8 +101,9 @@ Visit record   ── one entry per section item: value, detail answers,
   "uncoded", and uncoded is counted and shown to the curator. A test can never be entered as a
   diagnosis, because the investigation and diagnosis catalogs are separate kinds.
 - **D4. The doctor's own catalog is private until promoted.** The doctor's typed items stay in
-  their own list. A curator (the admin or the department head) promotes them to the department
-  list. This is the fix for Healthray's junk chips. The curator screen already exists as a pattern
+  their own list and appear on no one else's screen. A curator promotes them to the department
+  list. Per the owner's ruling (§11), the curators are the department head, a medical-records
+  officer and the admin. This is the fix for Healthray's junk chips. The curator screen already exists as a pattern
   in the formulary (a mapping proposal that a person signs).
 - **D5. Groups and templates are catalog items too.** A group is a set of items within one section,
   for example a CBC+LFT profile or a "NAD" systemic exam. A full-visit template is a set of groups
