@@ -48,6 +48,7 @@ const SURFACE = [
   "FORMULARY_EVENTS",
   "FormularyError",
   "MAX_IDS",
+  "MAX_PRODUCT_SPECS", // the CDS regimen fill's bound: one regimen, not a catalogue
   "MAX_SUGGESTIONS",
   "MIN_QUERY_CHARS",
   "THERAPEUTIC_DUPLICATE_CLASSES", // P23 — the classes the duplicate-therapy notice knows
@@ -71,6 +72,7 @@ const SURFACE = [
   "isEquivalentMedicine",
   "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
   "listInteractionsAmong",
+  "matchProducts", // the CDS regimen fill: a composition to one stocked-or-generic product, exact
   "medicineExists",
   "medicineIdsByBrandNames",
   "medicinesByIds",

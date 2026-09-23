@@ -842,6 +842,7 @@
   },
   "opdConsult": {
     "pickFromFormulary": "Pick from formulary",
+    "regimenUnmatched": "Not matched — pick from the list so the checks can see it",
     "notInFormulary": "Not in formulary — advanced checks unavailable",
     "noticeInteraction": "Line {{n}}: {{note}}",
     "noticeDuplicate": "Line {{n}}: already contains {{moiety}}",

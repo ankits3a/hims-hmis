@@ -14,6 +14,8 @@ export type { BuiltLine, BuiltRegimen, DoseVerdict, PatientBand, PatientFacts } 
 export { cardsFor } from "./guardrails";
 export type { Card } from "./guardrails";
 export { durationDaysOf, frequencyOf, toRxDraft } from "./rx";
+/** Each regimen label as a composition, so the fill can carry a real medicine (2026-09-23). */
+export { productSpecFor } from "./products";
 export type { RxDraftLine } from "./rx";
 export { completeComplaint, complaintVocabulary, ghostFor } from "./vocabulary";
 export type { ComplaintTerm } from "./vocabulary";

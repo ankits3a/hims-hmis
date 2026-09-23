@@ -842,6 +842,7 @@
   },
   "opdConsult": {
     "pickFromFormulary": "फ़ॉर्मुलरी से चुनें",
+    "regimenUnmatched": "मेल नहीं — सूची से चुनें ताकि जाँच इसे देख सके",
     "notInFormulary": "फ़ॉर्मुलरी में नहीं — उन्नत जाँच उपलब्ध नहीं",
     "noticeInteraction": "पंक्ति {{n}}: {{note}}",
     "noticeDuplicate": "पंक्ति {{n}}: पहले से {{moiety}} शामिल है",
