@@ -8,7 +8,7 @@
 <body>
 <x-dc>
 <helmet>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
 <style>
 body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
 button{font:inherit;cursor:pointer}
@@ -55,7 +55,33 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </div>
 </section>
 
-<div style="display: flex; flex-grow: 1; min-height: 0;">
+<div style="display: flex; flex-grow: 1; min-height: 0; height: 807px">
+<sc-if value="{{ railOpen }}" hint-placeholder-val="{{ false }}">
+<aside style="width: 236px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 8px; padding: 10px;">
+<div style="display: flex; align-items: center; gap: 6px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">THE LINE · 3 WAITING</span>
+<div style="flex-grow: 1;"></div>
+<button type="button" onClick="{{ toggleRail }}" aria-label="Hide the line" style="width: 30px; height: 30px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">«</button>
+</div>
+<div style="padding: 8px 10px; border-radius: 6px; border: 1.5px solid #0e6b4e; font-size: 12px; font-weight: 600; color: #0e6b4e;">Session: In · seeing patients</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;">
+<button type="button" style="height: 34px; border-radius: 6px; border: 1px solid rgba(221,143,28,.45); background: rgba(221,143,28,.10); color: #8a5a10; font-size: 12px; font-weight: 600;">Park patient</button>
+<button type="button" style="height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12px;">Skip</button>
+</div>
+<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08);"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Ramesh Patel</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-12</span></div><div style="font-size: 11.5px; color: #0e6b4e; font-weight: 600;">REVISIT · in consult</div></div>
+<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid #dfe7e1;"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Sunita Devi</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-13</span></div><div style="font-size: 11.5px; color: #5c6f66;">NEW · waiting 38 min</div></div>
+<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid #dfe7e1;"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Imran Khan</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-14</span></div><div style="font-size: 11.5px; color: #5c6f66;">RENEWAL · waiting 22 min</div></div>
+<div style="font-size: 11px; color: #5c6f66;">Call next is on the line screen, after Complete.</div>
+</aside>
+</sc-if>
+<sc-if value="{{ railShut }}" hint-placeholder-val="{{ true }}">
+<aside style="width: 52px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0;">
+<button type="button" onClick="{{ toggleRail }}" aria-label="Show the line" style="width: 36px; height: 36px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">»</button>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700;">3</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; letter-spacing: .1em; color: #5c6f66; writing-mode: vertical-rl;">WAITING · LONGEST 38 MIN</span>
+<span style="width: 10px; height: 10px; border-radius: 5px; background: #0e6b4e;" title="Session: In"></span>
+</aside>
+</sc-if>
 <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
 <nav style="display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 0;">
 <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="10">
@@ -246,7 +272,7 @@ class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = {
-      tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
+      railOpen: false, tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
       complaints: ['Headache', 'Giddiness'],
       exam: props.filled ? ['Conscious, oriented', 'Pallor absent', 'No pedal oedema', 'CVS: S1 S2 normal, no murmur', 'Fundus: AV nicking'] : [],
       dx: props.filled ? ['I10', 'E78.5'] : [], dxKind: props.filled ? 'Final' : 'Provisional',
@@ -335,6 +361,7 @@ class Component extends DCLogic {
     const usual = ['Fever', 'Cough', 'Chest pain', 'Breathlessness', 'Palpitations', 'Blurred vision'].filter((u) => s.complaints.indexOf(u) < 0).map((u) => ({ label: u, add: () => this.set({ complaints: s.complaints.concat([u]) }) }));
     const copy = { complaints: 'Desk words carried in as two chips. Suggested next: examination.', exam: 'Dashed chips are suggestions from BP and your usual findings.', dx: 'Essential hypertension fits BP today and 12 Aug. LDL 162 suggests hyperlipidaemia.', inv: 'Lipid and RFT were done 19 Sep — repeat is not needed yet.', rx: 'Telmisartan continued. BP still high: consider adding amlodipine 5 mg.', treat: 'Nothing billed yet.', advice: 'Salt advice suggested for hypertension.', notes: 'Reminder carried from the last visit.', summary: 'Check every section before Complete.' };
     return {
+      railOpen: s.railOpen, railShut: !s.railOpen, toggleRail: () => this.setState({ railOpen: !s.railOpen }),
       savedLine: s.drafted ? 'Draft saved ' + s.saved : 'Autosaved ' + s.saved,
       saveDraft: () => this.set({ drafted: true }),
       strip, summary, tabs, on, examGroups, dxList, invGroups, rxLines, rxSug, treatChips, adviceGroups, fuChips, noteBoxes, complaintChips, usual,
