@@ -383,6 +383,22 @@ export const opdEncounters = pgTable(
     consultFeeOverrideBy: text("consult_fee_override_by"),
     consultFeeOverrideReason: text("consult_fee_override_reason"),
     consultFeeOverrideAt: timestamp("consult_fee_override_at", { withTimezone: true }),
+    /**
+     * ═══ THE PATIENT'S OWN WORDS, AS TOLD AT THE FRONT DESK (owner, 2026-09-23) ═══
+     *
+     * Owner: *"If the patient has given his chief complaint on the front desk, the system will carry
+     * the chief complain on the doctors desk too so that the patient doesn't have to repeat the same
+     * chief complaint."* Desk One has asked "what brings them in?" since FD-8, but only to rank
+     * departments — the answer was thrown away the moment the visit opened.
+     *
+     * KEPT APART FROM `chiefComplaint`, deliberately (D15). That column is the DOCTOR's entry; this
+     * is what a clerk typed, exactly as typed, with whose hands and when. The consult seeds its tags
+     * from it, but seeding is the doctor's act, so the record always says who said what. Written
+     * once, at open, from the acting user on the SERVER — the client never names the author.
+     */
+    deskComplaint: text("desk_complaint"),
+    deskComplaintBy: text("desk_complaint_by"),
+    deskComplaintAt: timestamp("desk_complaint_at", { withTimezone: true }),
     // Consultation record (T7) — nullable until the doctor writes it.
     chiefComplaint: text("chief_complaint"),
     diagnosis: text("diagnosis"),

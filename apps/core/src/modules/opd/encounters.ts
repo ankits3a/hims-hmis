@@ -5,7 +5,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
-  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals,
+  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals, users,
 } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
@@ -47,6 +47,12 @@ export type OpenVisitInput = {
    * money rule in two places. What this buys is that the cashier does not have to re-type it.
    */
   attributionCode?: string;
+  /**
+   * The patient's own words from the front desk's "what brings them in?" (owner, 2026-09-23). Only
+   * the TEXT comes from the client; the author and the time are stamped here from the actor and the
+   * clock, so a browser cannot put words in another clerk's mouth. See `opdEncounters.deskComplaint`.
+   */
+  deskComplaint?: string;
   appointment?: { id: string; slotStart: Date }; // set only by appointments.checkIn (T4)
   /**
    * RC-1 T3 / D4 — `bill_first` is a DEFERRED QUEUE JOIN, not a reordered transaction. The visit
@@ -66,6 +72,32 @@ export type OpenVisitDeferredResult = {
   encounter: EncounterRow; queueEntry: null; tokenNo: null; sessionId: null; roomId: string | null;
   visitType: VisitType; doctorScheduledToday: boolean;
 };
+
+/**
+ * The cap matches the triage body's (`opd-visits.controller.ts`, `triageBody.text.max(400)`): the
+ * desk cannot have typed more into the box that feeds both. Enforced here as well as on the route
+ * because the service has callers that are not the route.
+ */
+export const DESK_COMPLAINT_MAX = 400;
+export function normaliseDeskComplaint(raw: string | undefined): string | null {
+  const t = (raw ?? "").trim();
+  return t === "" ? null : t.slice(0, DESK_COMPLAINT_MAX);
+}
+
+/**
+ * What the consult shows above its complaint field: the words, the clerk by NAME, and when. The
+ * name is resolved here rather than on the client because the consult has no staff directory and
+ * should not need one to say who spoke. `null` — never an empty object — when the desk typed
+ * nothing, so a screen's "is there anything to show?" is one comparison.
+ */
+export async function deskComplaintFor(
+  db: Db, encounter: { deskComplaint: string | null; deskComplaintBy: string | null; deskComplaintAt: Date | null },
+): Promise<{ text: string; by: string; at: Date } | null> {
+  if (encounter.deskComplaint === null || encounter.deskComplaintBy === null || encounter.deskComplaintAt === null) return null;
+  const [u] = await db.select({ fullName: users.fullName, username: users.username }).from(users).where(eq(users.id, encounter.deskComplaintBy));
+  const by = (u?.fullName ?? "").trim() !== "" ? u!.fullName : (u?.username ?? "").trim() !== "" ? u!.username : encounter.deskComplaintBy;
+  return { text: encounter.deskComplaint, by, at: encounter.deskComplaintAt };
+}
 
 /** Db-first: resolves the patient and its merge chain through the patients module, then runs openVisitInTx on its own transaction. */
 export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput & { join: "defer" }, now?: Date): Promise<OpenVisitDeferredResult>;
@@ -109,6 +141,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   const a = anchorRows[0];
   const visitType = classifyVisit(a && a.consultCompletedAt ? { consultCompletedAt: a.consultCompletedAt, followUpDays: a.followUpDays ?? 7 } : null, now);
 
+  const deskWords = normaliseDeskComplaint(input.deskComplaint);
   const encounterId = newId();
   // The visit number, allocated once per encounter. A same-day re-entry after results does NOT
   // come back through here — it appends an opd_queue_entries row against THIS encounter — so
@@ -124,6 +157,11 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     // Trimmed, and an empty string is stored as NULL: "" is not a slip, and a blank code reaching
     // the fee quote would be a lookup for a partner that cannot exist.
     attributionCode: (input.attributionCode ?? "").trim() === "" ? null : input.attributionCode!.trim(),
+    // Words and author travel together or not at all: a blank complaint must not leave a name
+    // standing behind nothing, which would read on the consult as "the desk said: (nothing)".
+    ...(deskWords === null
+      ? {}
+      : { deskComplaint: deskWords, deskComplaintBy: actor.id, deskComplaintAt: now }),
     openedBy: actor.id, openedAt: now, updatedBy: actor.id, updatedAt: now,
   }).returning();
 

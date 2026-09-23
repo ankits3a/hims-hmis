@@ -680,6 +680,8 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         doctorId: chosen.doctor.id,
         join: lane === "F3" ? "defer" : "queue",
         ...(s.attributionCode === "" ? {} : { attributionCode: s.attributionCode }),
+        // The patient's words go WITH the visit, so the doctor does not ask again (2026-09-23).
+        ...(s.complaint.trim() === "" ? {} : { deskComplaint: s.complaint.trim() }),
       }, newIdempotencyKey());
       const wait = waitMinutes(chosen);
       setS((prev) => ({
@@ -718,7 +720,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, `assignment REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.person, s.attributionCode, queues, summaries.data, lane, patch, qc, seat]);
+  }, [s.person, s.attributionCode, s.complaint, queues, summaries.data, lane, patch, qc, seat]);
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════════════════

@@ -8,7 +8,7 @@ import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import {
-  abandonVisit, counterState, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
+  abandonVisit, counterState, deskComplaintFor, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
   patientTimeline, reEnterVisit, reclassifyVisit,
 } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
@@ -109,6 +109,13 @@ const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reaso
 /* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
    clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
 const feeBypassBody = z.object({ reason: z.string().max(500) });
+/**
+ * `encounters.ts`'s `DESK_COMPLAINT_MAX`, written as a literal ON PURPOSE: this module is part of an
+ * import cycle through `encounters.ts`, so the imported const is still undefined when these zod
+ * schemas are built at load time (measured: zod threw inside its own error formatter). The desk
+ * complaint test pins the two to the same behaviour.
+ */
+const DESK_COMPLAINT_MAX = 400;
 const visitOpenBody = z.object({
   patientId: z.string().min(1),
   departmentId: z.string().min(1),
@@ -119,6 +126,8 @@ const visitOpenBody = z.object({
   /** FD-7 T9 / R4 — the partner slip, captured where the patient hands it over. `.max(64)` matches
    *  `issueInvoiceBody.attributionCode` exactly, so a code the desk accepts cannot be one billing refuses. */
   attributionCode: z.string().min(1).max(64).optional(),
+  /** The patient's words from the desk (2026-09-23). Text only — the author is the actor. */
+  deskComplaint: z.string().max(DESK_COMPLAINT_MAX).optional(),
 });
 /**
  * PLAN 07b T6 — the walk-in body. It is `visitOpenBody` with the patient made a UNION rather than a
@@ -137,6 +146,8 @@ const walkInBody = z.object({
   referrerName: z.string().max(200).optional(),
   /** FD-7 T9 / R4 — see `visitOpenBody`. The walk-in is where the front desk actually opens a visit. */
   attributionCode: z.string().min(1).max(64).optional(),
+  /** See `visitOpenBody.deskComplaint` — and this is the route Desk One actually sends it on. */
+  deskComplaint: z.string().max(DESK_COMPLAINT_MAX).optional(),
   acknowledgedDuplicates: z.boolean().optional(),
   // RC-1 T3 / D4 — bill-first defers the QUEUE JOIN, never the doctor: the visit opens with its
   // assignment, the token arrives with POST /opd/visits/:id/join-queue after the money.
@@ -244,6 +255,8 @@ type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
   patient: PatientSummary | null;
   feeUnpaid: boolean;
   feeBypass: { by: string; reason: string; at: Date } | null;
+  /** What the front desk heard, by whom and when — `null` when nothing was typed (D15). */
+  deskComplaint: { text: string; by: string; at: Date } | null;
 };
 
 @Controller("opd")
@@ -522,7 +535,10 @@ export class OpdVisitsController {
     const found = await getVisit(this.db, actor, id);
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
-    return { ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)) };
+    return {
+      ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)),
+      deskComplaint: await deskComplaintFor(this.db, found.encounter),
+    };
   }
 
   /**

@@ -123,6 +123,8 @@ export type WireEncounter = {
   departmentId: string | null; doctorId: string | null; appointmentId: string | null; serviceDate: string;
   visitType: OpdVisitType; intendedPayer: string; referralSource: string | null; referrerName: string | null;
   chiefComplaint: string | null; diagnosis: string | null; icd10Code: string | null; advice: string | null;
+  /** The front desk's record of the patient's words (D15) — kept apart from the doctor's `chiefComplaint`. Optional: an older server sends none. */
+  deskComplaint?: string | null; deskComplaintBy?: string | null; deskComplaintAt?: string | null;
   admissionAdvised: boolean; referralTo: string | null; referralNote: string | null;
   followUpDays: number | null; followUpExtended: boolean; dangerFlagged: boolean;
   consultStartedAt: string | null; consultCompletedAt: string | null;
@@ -508,6 +510,11 @@ export type WireWalkInBody = {
   intendedPayer?: string;
   referralSource?: string;
   referrerName?: string;
+  /**
+   * The patient's own words from "what brings them in?" (owner, 2026-09-23). Only the text: the
+   * server stamps who typed it and when from the session, and the consult shows it to the doctor.
+   */
+  deskComplaint?: string;
   acknowledgedDuplicates?: boolean;
   /** RC-1 CLOSE M2 — bill-first defers the queue join; a caller that sends "defer" reads WireWalkInDeferredResult. */
   join?: "queue" | "defer";
