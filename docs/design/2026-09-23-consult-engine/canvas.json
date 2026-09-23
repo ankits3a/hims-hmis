@@ -1,0 +1,16 @@
+{"v":3,"createdOnFiles":{"v":1,"at":"2026-09-23T11:40:00Z"},"title":"Consult Engine","launch":{"view":"canvas"},"pages":[],
+"boards":{
+"Main.dc.html":{"x":0,"y":0,"w":1440,"h":940,"title":"1 · General medicine consult","is_interactive":true},
+"Ophthal.dc.html":{"x":1520,"y":0,"w":1440,"h":900,"title":"2 · Ophthalmology, after the optometrist"},
+"Profiles.dc.html":{"x":0,"y":1060,"w":1280,"h":820,"title":"3 · Layout builder: admin default, doctor overlay","is_interactive":true},
+"Curator.dc.html":{"x":1360,"y":1060,"w":1280,"h":760,"title":"4 · Curator: doctors' own entries","is_interactive":true},
+"Workup.dc.html":{"x":0,"y":2000,"w":900,"h":640,"title":"5 · Work-up mode toggle","is_interactive":true},
+"PrintShare.dc.html":{"x":980,"y":2000,"w":1280,"h":820,"title":"6 · Print and share","is_interactive":true}
+},
+"order":["Main.dc.html","Ophthal.dc.html","Profiles.dc.html","Curator.dc.html","Workup.dc.html","PrintShare.dc.html"],
+"notes":{
+"title":{"x":0,"y":-320,"text":"Consult engine — the doctor's screen as settings, not code","kind":"title1","maxW":2960},
+"walk":{"x":3040,"y":0,"w":420,"fill":"green","text":"Walk board 1:\n• Tap complaints; set how long and how bad on the right. The summary strip updates.\n• Examination: dashed chips are copilot suggestions — one tap accepts.\n• Rx: a green source means a reviewed, signed default; brown means no reviewed dose yet.\n• Previous visits → Copy Rx to today: the copied line re-runs the checks.\n• Switch to Teleconsult: the Rx shows the legal lists.\n• The TAPS counter is the speed instrument."},
+"why":{"x":3040,"y":620,"w":420,"fill":"orange","text":"Owner's five tests on every board: accuracy, speed, auditable, compliant, dashboard UX.\n\nComment on any board to rule on it."}
+},
+"designSystems":[]}

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Print and share</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+input{font:inherit}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; padding: 24px; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 28px 32px; display: flex; flex-direction: column; gap: 12px; font-size: 12.5px;">
+<sc-if value="{{ showHeader }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; justify-content: space-between; border-bottom: 2px solid #132420; padding-bottom: 10px;">
+<div><div style="font-size: 18px; font-weight: 700;">[HOSPITAL NAME]</div><div style="color: #5c6f66;">[Address · phone]</div></div>
+<div style="text-align: right;"><div style="font-weight: 700;">Dr. A. Mehta, MD</div><div style="color: #5c6f66;">Reg. No. [STATE COUNCIL / NUMBER]</div></div>
+</div>
+</sc-if>
+<div style="display: flex; gap: 24px; color: #5c6f66;"><span>Ramesh Patel · 45Y M · UHID 000429</span><span>23 Sep 2026 · {{ modeLine }}</span></div>
+<div><strong>{{ lblComplaints }}</strong> Headache (1 week, moderate) · Giddiness</div>
+<div><strong>{{ lblExam }}</strong> Pallor absent · CVS S1 S2 normal · BP 152/96</div>
+<div><strong>{{ lblDx }}</strong> Essential hypertension (I10)</div>
+<div style="font-size: 20px; font-weight: 700;">℞</div>
+<div style="display: grid; grid-template-columns: 24px minmax(0, 2fr) minmax(0, 1fr) minmax(0, .6fr); gap: 6px;">
+<span>1</span><span><strong>TELMISARTAN</strong> 40 mg tablet</span><span>{{ sig1 }}</span><span>30 days</span>
+<span>2</span><span><strong>PARACETAMOL</strong> 650 mg tablet</span><span>{{ sig2 }}</span><span>3 days</span>
+</div>
+<div><strong>{{ lblAdvice }}</strong> {{ advice }}</div>
+<div><strong>{{ lblFu }}</strong> 21 Oct 2026</div>
+<div style="flex-grow: 1;"></div>
+<div style="display: flex; justify-content: space-between; align-items: end; color: #5c6f66;"><span>Signed QR · verify at the pharmacy</span><span>Signature</span></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">PRINT</span>
+<div style="display: flex; border: 1px solid #dfe7e1; border-radius: 6px; overflow: hidden; width: max-content;">
+<button type="button" onClick="{{ setEn }}" style="{{ enStyle }}">English</button>
+<button type="button" onClick="{{ setHi }}" style="{{ hiStyle }}">हिन्दी</button>
+</div>
+<button type="button" onClick="{{ flipHeader }}" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px; text-align: left;">{{ headerLabel }}</button>
+<div style="font-size: 12px; color: #5c6f66;">Formats in this profile: Rx · investigation slip · certificate. Ophthalmology adds the glasses Rx; paediatrics the vaccination card; obstetrics the ANC card.</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">SHARE</span>
+<div style="display: flex; gap: 8px;">
+<span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 6px; background: #132420; color: #ffffff; font-size: 12.5px; font-weight: 600;">WhatsApp</span>
+<span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; font-size: 12.5px;">SMS</span>
+<span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; font-size: 12.5px;">Email</span>
+<span style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; font-size: 12.5px;">Referring doctor</span>
+</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">+91 98•••• 4410</div>
+<div style="{{ consentStyle }}">{{ consentText }}</div>
+<button type="button" onClick="{{ giveConsent }}" style="height: 36px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 13px; font-weight: 600;">{{ sendLabel }}</button>
+<div style="font-size: 12px; color: #5c6f66;">Each send is logged: channel, number, time, who sent it.</div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { hi: false, header: true, consent: false, sent: false }; }
+  renderVals() {
+    const s = this.state;
+    const seg = (on) => 'height: 32px; padding: 0 14px; border: 0; font-size: 12.5px; ' + (on ? 'background: #132420; color: #ffffff; font-weight: 600;' : 'background: #ffffff; color: #5c6f66;');
+    return {
+      showHeader: s.header,
+      modeLine: 'Walk-in',
+      lblComplaints: s.hi ? 'शिकायत:' : 'Complaints:', lblExam: s.hi ? 'जाँच:' : 'Examination:', lblDx: s.hi ? 'निदान:' : 'Diagnosis:',
+      lblAdvice: s.hi ? 'सलाह:' : 'Advice:', lblFu: s.hi ? 'अगली बार:' : 'Follow-up:',
+      sig1: s.hi ? '1-0-0 नाश्ते के बाद' : '1-0-0 after breakfast', sig2: s.hi ? 'ज़रूरत पर, खाने के बाद' : 'SOS, after food',
+      advice: s.hi ? 'नमक दिन में 5 ग्राम से कम।' : 'Salt under 5 g a day.',
+      enStyle: seg(!s.hi), hiStyle: seg(s.hi),
+      setEn: () => this.setState({ hi: false }), setHi: () => this.setState({ hi: true }),
+      flipHeader: () => this.setState({ header: !s.header }),
+      headerLabel: s.header ? 'Header and footer: printed · tap for pre-printed pad' : 'Header and footer: hidden (pre-printed pad)',
+      consentText: s.consent ? 'Consent to receive on WhatsApp recorded 23 Sep 10:58 (DPDP Act).' : 'No consent on record for WhatsApp. Ask the patient first.',
+      consentStyle: 'font-size: 12.5px; ' + (s.consent ? 'color: #0e6b4e;' : 'color: #8a5a10;'),
+      sendLabel: s.sent ? 'Sent · logged' : (s.consent ? 'Send Rx' : 'Patient agrees · record consent'),
+      giveConsent: () => this.setState(s.consent ? { sent: true } : { consent: true })
+    };
+  }
+}
+</script>
+</body>
+</html>
