@@ -131,6 +131,19 @@ for the non-AI basics of a doctor's desk. They are not the design target.
        in progress, and it gives the history room.
    - **Allergies can only be added or deleted (owner, round 5).** There is no edit. Delete is
      "entered in error": the entry is struck and kept, as the allergy model already does.
+   - **Patient history: both ways (owner, round 6).**
+     - **A History button** in the consultation header lists every visit with its date, visit ID,
+       visit type and diagnosis. It can be filtered by year and by date. Picking a visit shows its
+       record tab by tab (vitals, complaints, examination, diagnosis, lab & radiology,
+       prescription, treatment, advice, notes). It is **read only**: a signed visit cannot be edited.
+     - **View history in each tab.** Below the current entries is a separator line with a centred
+       "View history" button. It expands that same section from earlier visits, one collapsible
+       row per visit (date plus visit ID, the newest open). The doctor compares without leaving the
+       tab.
+     - **D18 (DECIDED).** History honours the sealed-record and PHI rules exactly as the existing
+       history endpoints do. Every opening of another visit's record is logged as a read, as PHI
+       access already is. Internal comments from other doctors' visits are shown; doctor notes
+       follow their own visibility rule.
    - **Autocomplete everywhere.** Every text field that takes clinical terms suggests as the
      doctor types and turns the choice into a chip or tag: complaints, examination, diagnosis,
      tests, drugs, advice, treatment and allergies. Free text stays allowed; it becomes the
