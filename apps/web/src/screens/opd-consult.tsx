@@ -33,6 +33,7 @@ import {
 } from "./opd-consult-v2";
 import { recallToken, releaseLease, takeLease } from "../lib/opd-api";
 import type { WorkRow } from "./opd-consult-v2";
+import { CopilotSuggestions, TermInput } from "./opd-consult-suggest";
 import type { WireExamFinding } from "../lib/opd-api";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
@@ -920,6 +921,29 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     }));
     rxForm.reset({ lines: lines.length === 0 ? [EMPTY_LINE] : lines });
     setTab("rx");
+  };
+
+  /**
+   * CONSULT V2 PR 3 — the copilot's suggestions in ONE element, mounted in the copilot column when it is
+   * open and at the head of the Note or Rx tab when it is folded (owner, round 4). Never both.
+   */
+  const suggestionsFor = (variant: "pane" | "inline"): React.ReactElement | null => {
+    if (active === null) return null;
+    return (
+      <CopilotSuggestions
+        variant={variant} hits={hits}
+        diagnoses={splitTags(note.diagnosis).map((text) => ({ text, icd10: icdByTerm.current.get(text.toLowerCase()) ?? null }))}
+        onAddDx={(name, icd10) => {
+          if (icd10 !== null) icdByTerm.current.set(name.toLowerCase(), icd10);
+          setNote((n) => (splitTags(n.diagnosis).some((x) => x.toLowerCase() === name.toLowerCase()) ? n : { ...n, diagnosis: joinTags([...splitTags(n.diagnosis), name]) }));
+        }}
+        advised={advisedTests}
+        onAddTest={(test) => { if (!advisedTests.some((a) => a.serviceId === test.serviceId)) void saveAdvised([...advisedTests, test]); }}
+        regimen={regimen}
+        onOpenRegimen={(key) => { if (regimen?.regimen.syndrome.key !== key) void openRegimen(key); }}
+        onFillRx={fillFromRegimen}
+      />
+    );
   };
 
   const resetPanel = (): void => {
@@ -2577,6 +2601,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   marked={{ note: tabHas("note"), exam: tabHas("exam"), rx: tabHas("rx"), treat: tabHas("treat"), notes: tabHas("notes") }}
                 />
 
+                {!rightOpen && (tab === "note" || tab === "rx") && suggestionsFor("inline")}
+
                 {tab === "summary" && (
                   <div role="tabpanel" id="tabpanel-summary" aria-labelledby="tab-summary"><SummaryView rows={workRows} onGo={goToSection} /></div>
                 )}
@@ -2828,6 +2854,17 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                     </div>
                     <div>
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-advice">{t("opdConsult.advice")}</label>
+                      {/* CONSULT V2 PR 3 — advice autocompletes too: a template by its title or its words, or the doctor's own line. */}
+                      <div style={{ marginBottom: 6 }}>
+                        <TermInput
+                          id="advice-find" testId="advice-find" label={t("opdConsultV3.adviceFind")} placeholder={t("opdConsultV3.adviceFind")}
+                          local={(adviceTemplates.data?.items ?? []).flatMap((tpl) => [tpl.title, ...(tpl.textEn === null ? [] : [tpl.textEn])])}
+                          onAdd={(term) => {
+                            const tpl = (adviceTemplates.data?.items ?? []).find((x) => x.title.toLowerCase() === term.toLowerCase());
+                            appendAdvice(tpl === undefined ? term : (tpl.textEn ?? tpl.textHi ?? tpl.title));
+                          }}
+                        />
+                      </div>
                       {/*
                         ═══ THE ADVICE BOX EXPANDS SNIPPETS AS THE DOCTOR TYPES ═══
 
@@ -3925,13 +3962,17 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
           />
         )}
       >
-        {stockAlerts.length === 0 ? undefined : stockAlerts.map((a) => (
-          <StockAlternativeCard
-            key={`${String(a.index)}-${a.stock.medicineId}`} drug={a.drug} stock={a.stock}
-            onUse={(medicineId, label) => { pickAlternative(a.index, a.stock.medicineId, medicineId, label); }}
-            onKeep={() => { keepWritten(a.stock); }}
-          />
-        ))}
+        {(() => {
+          const sug = suggestionsFor("pane");
+          const alts = stockAlerts.map((a) => (
+            <StockAlternativeCard
+              key={`${String(a.index)}-${a.stock.medicineId}`} drug={a.drug} stock={a.stock}
+              onUse={(medicineId, label) => { pickAlternative(a.index, a.stock.medicineId, medicineId, label); }}
+              onKeep={() => { keepWritten(a.stock); }}
+            />
+          ));
+          return sug === null && alts.length === 0 ? undefined : <>{sug}{alts}</>;
+        })()}
       </CopilotPanel>
     </PaperScreen>
   );

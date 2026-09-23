@@ -5481,5 +5481,17 @@
       },
       "close": "Close"
     }
+  },
+  "opdConsultV3": {
+    "suggestions": "Copilot suggestions",
+    "folded": "COPILOT IS FOLDED — SUGGESTIONS SHOW HERE",
+    "dxHead": "LIKELY DIAGNOSES FROM THE COMPLAINTS",
+    "testsHead": "TESTS ADVISED BEFORE FOR THIS DIAGNOSIS",
+    "testsWhy": "Advised by you {{mine}}×, by the hospital {{hospital}}× for this diagnosis",
+    "rxFor": "Medicines for {{name}}",
+    "rxHead": "MEDICINES FOR {{name}} · STOCK ON EACH",
+    "rxFill": "+ Add these {{n}} to the prescription",
+    "addOwn": "Add “{{term}}” as your own entry",
+    "adviceFind": "Find advice — a template or your own line"
   }
 }
