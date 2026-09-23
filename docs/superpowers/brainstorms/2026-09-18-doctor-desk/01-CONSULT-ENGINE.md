@@ -224,6 +224,65 @@ scale with weight.
 - **Unreviewed rows still help as prompts.** The generic paediatric sentence can show as "no
   reviewed paediatric dose — dose manually". It is honest, and it never looks like a dose.
 
+### 5.2 The first review pass: 350 starter-list drugs (2026-09-23; drafts, unsigned)
+
+The owner ruled that the data review and the screens run in parallel, and that Sonnet does the
+data review. The results are outside git, in `/opt/hmis-context/drug-review-2026-09-23/`:
+`drafts/all-350.json`, `INSTRUCTIONS.md`, `rematch.py` and `fda_label.py`.
+
+**How it was done:**
+- Five Sonnet reviewers took 70 drugs each.
+- Each drug got an adult dose, a structured paediatric dose, renal and hepatic notes, a direction
+  for the patient, its telemedicine list, and a verdict on the master row.
+- The sources are US FDA labels fetched from DailyMed (375 citations, every set-id well formed) and
+  17 other citations (WHO, EMA, MSF).
+- **197 of 350 drugs carry at least one block from model knowledge.** Those blocks are flagged, and
+  the signer checks them first.
+
+**A defect of my own, found and fixed during the run.** The batch builder matched master rows by
+the first ingredient and the strength numbers. That paired 96 single drugs with combination
+products. It also matched cloxacillin to dicloxacillin and prednisolone 10 mg to
+methylprednisolone 100 mg, because each first name is a substring of the second. The owner's data
+was never at fault. `rematch.py` re-matches strictly: the same number of ingredients, whole-word
+names, whole-number strengths, and the same form. It matched **295 of 350**; 55 have no master row.
+One Sonnet pass re-judged the 199 drugs that had been judged against the wrong row.
+
+**The owner's master, judged against the correct rows (295 drugs):**
+
+| Field | wrong | boilerplate | correct |
+|---|---|---|---|
+| frequency, food relation, duration | 144 | 79 | 72 |
+| direction of use | 23 | 215 | 57 |
+| paediatric text | 70 | 200 | 25 |
+
+**187 of 295 drugs have at least one wrong field. Only 10 have all three right.** The 199 re-judged
+rows collapse into 11 template combinations. The dominant fault is "1-0-1 (BD) after food × 5
+days" applied to everything. The most dangerous cases found:
+- methotrexate (weekly, not daily)
+- levothyroxine (once a day, empty stomach, lifelong)
+- vitamin D3 60,000 IU (weekly)
+- zolpidem (once at night)
+- diazepam rescue and midazolam (single dose)
+- clopidogrel after a stent (5 days)
+- rifampicin (empty stomach, 6 months)
+- nevirapine (the 14-day lead-in is missing)
+- miltefosine (28 days)
+- tramadol + paracetamol tagged "paediatric safe"
+- atropine and prednisolone eye drops carrying an anaesthetic's text
+
+**Open for the signers:**
+1. **US labels versus Indian practice.** Ethambutol is drafted "not under 13 years" from the US
+   label, but the NTEP uses it in children by weight. For paediatrics, the IAP formulary and the
+   national programme guidelines outrank a US label (§11.1).
+2. **Paracetamol maximum daily dose is inconsistent.** One draft says 60 mg/kg/day and another
+   75. The P&T committee sets one hospital rule.
+3. **Telemedicine lists are mostly model judgement** (List B on 183 drugs looks high). A doctor
+   confirms them.
+4. **15 drugs have no source** (no US label).
+
+**Next.** These rows are loaded into the curator (board 4) as proposals. Each signature promotes
+one row, per D10.
+
 **Gaps in the data for the specialty order the owner chose:**
 - **Paediatrics:** the columns exist, but only 1,030 rows carry any mg/kg text, and those come from
   two class templates (above). A structured rule (mg/kg per dose and per day, maximum doses, age
