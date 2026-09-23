@@ -412,7 +412,9 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // PD-9 — 66 -> 67 with `/pharmacy/authorisations/$authorisationId`, where the prescriber decides.
     // OPD DAY REPORT (owner, 2026-09-19) — 67 -> 68 with `/reports/opd-day`, the department-wise day.
     // Measured from the failing run: `Received length: 68`.
-    expect(routes).toHaveLength(69); // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    // CONSULT V2 (owner, 2026-09-23) — 69 -> 70 with `/opd/consult/$encounterId`, one patient in its own browser tab.
+    // Measured from the failing run: `Received length: 70`.
+    expect(routes).toHaveLength(70); // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     expect(routes).toContain("/opd/slips");
     expect(routes).toContain("/reports/opd-day");
     expect(routes).toContain("/radiology/radiation-safety");

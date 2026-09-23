@@ -1,4 +1,5 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { onTestFinished } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { todayIst } from "../lib/opd-api";
@@ -2596,6 +2597,15 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
   }
 
   it("W1: a patient held mid-consultation is ON the rail, with how long they have been held", async () => {
+    /*
+      THE CLOCK IS PINNED to fifteen minutes after `PARKED_AT`. The fixture reads the real clock once, when
+      the file is collected, and the screen reads it again when this test renders; on a loaded box a
+      minute can pass between the two and the row honestly says "16 min" (found 2026-09-23 in a full run).
+      Only `Date` is faked, so the screen's timers and user-event are untouched.
+    */
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(Date.parse(PARKED_AT) + 15 * 60_000 + 5_000));
+    onTestFinished(() => { vi.useRealTimers(); });
     mockRoutes(withInConsult([PARKED]));
     renderWithProviders(<OpdConsult />);
 
@@ -4160,6 +4170,30 @@ describe("Consult v2 — patient history both ways", () => {
     expect(within(browser).getByTestId("history-lines")).toHaveTextContent("general: Pallor present");
     expect(within(browser).queryAllByRole("textbox")).toHaveLength(0); // nothing here can be edited
     await waitFor(() => { expect(callsTo("GET", "/api/opd/visits/enc-0").length).toBeGreaterThan(0); }); // a logged visit read
+  });
+
+  it("H3: the History browser is a real modal — a dialog, focus trapped both ways, Esc or Close dismisses it, focus goes back to History", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const button = screen.getByTestId("history-open");
+    await user.click(button);
+    const dialog = await screen.findByRole("dialog", { name: "Patient history — read only" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    const tabbables = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])")];
+    tabbables.at(-1)!.focus();
+    await user.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(tabbables[0]);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(tabbables.at(-1));
+    await user.keyboard("{Escape}");
+    await waitFor(() => { expect(screen.queryByTestId("history-dialog")).toBeNull(); });
+    expect(button).toHaveFocus();
+    await user.click(button);
+    await user.click(await screen.findByTestId("history-dialog-close"));
+    await waitFor(() => { expect(screen.queryByTestId("history-dialog")).toBeNull(); });
+    expect(button).toHaveFocus();
   });
 
   it("H2: 'View history' at a tab's foot opens that section from earlier visits, the newest open", async () => {

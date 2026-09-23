@@ -5478,7 +5478,8 @@
         "treat": "Treatment",
         "advice": "Advice",
         "notes": "Notes"
-      }
+      },
+      "close": "Close"
     }
   }
 }

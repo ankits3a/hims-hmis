@@ -40,6 +40,9 @@ export function DeskModal({
   children,
   width = 560,
   testId,
+  trapFocus = false,
+  closeLabel,
+  centred = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -48,6 +51,17 @@ export function DeskModal({
   children: React.ReactNode;
   width?: number;
   testId?: string;
+  /**
+   * CONSULT V2 (owner, 2026-09-23) — the History popup asked for a real modal: focus TRAPPED, a Close
+   * button, centred. Opt-in, and only in the complete form the header above demands: Tab from the last
+   * focusable wraps to the first, Shift+Tab from the first wraps to the last, and focus that has
+   * escaped the panel is brought back. Escape still closes, so a keyboard user is never locked in.
+   */
+  trapFocus?: boolean;
+  /** Renders a Close button in the header with this label. */
+  closeLabel?: string;
+  /** Centre the panel vertically as well as horizontally. */
+  centred?: boolean;
 }): React.ReactElement | null {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
@@ -80,6 +94,19 @@ export function DeskModal({
     (first ?? panel)?.focus();
 
     const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Tab" && trapFocus && panel !== null) {
+        const focusables = [...panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])',
+        )];
+        if (focusables.length === 0) { e.preventDefault(); panel.focus(); return; }
+        const first = focusables[0]!;
+        const last = focusables[focusables.length - 1]!;
+        const at = document.activeElement;
+        if (!(at instanceof HTMLElement) || !panel.contains(at)) { e.preventDefault(); first.focus(); return; }
+        if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); return; }
+        if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); return; }
+        return;
+      }
       if (e.key !== "Escape") return;
       e.preventDefault();
       /*
@@ -107,13 +134,14 @@ export function DeskModal({
       window.removeEventListener("keydown", onKey);
       returnTo.current?.focus();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `trapFocus` is fixed for a dialog's life
   }, [open]);
 
   if (!open) return null;
   return (
     <div
       style={{
-        position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "flex-start",
+        position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: centred ? "center" : "flex-start",
         justifyContent: "center", padding: "6vh 16px", background: "rgba(19, 36, 32, .38)",
       }}
       /* A click on the ground closes; a click on the panel must not bubble into it. */
@@ -125,7 +153,16 @@ export function DeskModal({
         {...(testId === undefined ? {} : { "data-testid": testId })}
         style={{ width: "100%", maxWidth: width, maxHeight: "88vh", overflowY: "auto", padding: "18px 20px", boxShadow: "0 18px 48px rgba(19,36,32,.22)" }}
       >
-        <h2 id={titleId} style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>{title}</h2>
+        {closeLabel === undefined ? (
+          <h2 id={titleId} style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700 }}>{title}</h2>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px" }}>
+            <h2 id={titleId} style={{ margin: 0, fontSize: 16, fontWeight: 700, flexGrow: 1 }}>{title}</h2>
+            <button type="button" className="sec" data-testid={testId === undefined ? undefined : `${testId}-close`} style={{ padding: "3px 12px", fontSize: 12.5 }} onClick={onClose}>
+              {closeLabel}
+            </button>
+          </div>
+        )}
         {children}
       </div>
     </div>
