@@ -12,22 +12,22 @@
 <style>
 body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
 button{font:inherit;cursor:pointer}
-input{font:inherit}
+input,select{font:inherit}
 a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </style>
 </helmet>
-<div style="width: 1440px; height: 940px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+<div style="width: 1440px; height: 980px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
 
 <header style="display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
 <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .16em;">CONSULT</div>
-<div style="font-size: 13px; color: #5c6f66;">General Medicine · OPD-3 · Dr. A. Mehta</div>
-<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; border: 1px solid #dfe7e1; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .1em; color: #5c6f66;">PROFILE GEN-MED v3 + MY LAYOUT</span>
+<div style="font-size: 13px; color: #5c6f66;">Dr. A. Mehta · OPD-3</div>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: #132420; color: #f2faf6; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .1em;">GENERAL MEDICINE SCREEN · FROM YOUR DEPARTMENT</span>
 <div style="flex-grow: 1;"></div>
 <div style="display: flex; border: 1px solid #dfe7e1; border-radius: 6px; overflow: hidden;">
 <button type="button" onClick="{{ setWalkin }}" style="{{ walkinStyle }}">Walk-in</button>
 <button type="button" onClick="{{ setTele }}" style="{{ teleStyle }}">Teleconsult · video</button>
 </div>
-<div style="display: flex; align-items: baseline; gap: 6px; padding: 0 10px; height: 34px; align-items: center; border-radius: 6px; background: #eef3ef;">
+<div style="display: flex; gap: 6px; padding: 0 10px; height: 34px; align-items: center; border-radius: 6px; background: #eef3ef;">
 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .12em; color: #5c6f66;">TAPS</span>
 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700;">{{ taps }}</span>
 </div>
@@ -35,54 +35,68 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 
 <div style="display: flex; flex-grow: 1; min-height: 0;">
 
-<aside style="width: 232px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column;">
-<div style="display: flex; gap: 6px; padding: 12px 12px 8px;">
-<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 4px; background: #0e6b4e; color: #ffffff; font-size: 12px; font-weight: 600;">Today 14</span>
-<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 4px; border: 1px solid #dfe7e1; font-size: 12px; color: #5c6f66;">Done 9</span>
-<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 4px; border: 1px solid #dfe7e1; font-size: 12px; color: #5c6f66;">All</span>
+<aside style="width: 244px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<label for="sess" style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">MY SESSION</label>
+<select id="sess" value="{{ session }}" onChange="{{ pickSession }}" style="{{ sessStyle }}">
+<option value="in">In · seeing patients</option>
+<option value="out">Out · stepped away</option>
+<option value="closed">Closed · done for the day</option>
+<option value="not_started">Not started</option>
+</select>
+<div style="font-size: 11.5px; color: #5c6f66;">{{ sessNote }}</div>
 </div>
-<div style="padding: 0 12px 8px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">THE LINE</div>
-<div style="display: flex; flex-direction: column; gap: 6px; padding: 0 10px;">
-<div style="padding: 10px; border-radius: 8px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08);">
-<div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Ramesh Patel</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-12</span></div>
-<div style="font-size: 11.5px; color: #5c6f66;">45Y M · revisit · in consult</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;">
+<button type="button" onClick="{{ callNext }}" style="height: 38px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Call next</button>
+<button type="button" onClick="{{ skip }}" style="height: 38px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Skip</button>
+<button type="button" onClick="{{ start }}" style="height: 38px; border-radius: 6px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08); color: #0e6b4e; font-size: 12.5px; font-weight: 600;">Start consult</button>
+<button type="button" onClick="{{ park }}" style="height: 38px; border-radius: 6px; border: 1px solid rgba(221,143,28,.45); background: rgba(221,143,28,.10); color: #8a5a10; font-size: 12.5px; font-weight: 600;">Park patient</button>
 </div>
-<div style="padding: 10px; border-radius: 8px; border: 1px solid #dfe7e1;">
-<div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Sunita Devi</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-13</span></div>
-<div style="font-size: 11.5px; color: #5c6f66;">38Y F · new · vitals done</div>
-<div style="margin-top: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #dd8f1c; font-weight: 600;">WAITING 34 MIN</div>
+<div style="padding: 8px 10px; border-radius: 6px; background: #132420; color: #d9efe4; font-size: 11.5px;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: .14em; color: #7fa392;">CORRIDOR DISPLAY NOW SHOWS</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700;">{{ displayLine }}</div>
 </div>
-<div style="padding: 10px; border-radius: 8px; border: 1px solid #dfe7e1;">
-<div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Imran Khan</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-14</span></div>
-<div style="font-size: 11.5px; color: #5c6f66;">61Y M · revisit · vitals done</div>
-<div style="margin-top: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #5c6f66;">WAITING 18 MIN</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">THE LINE · {{ waitingCount }} WAITING</div>
+<sc-for list="{{ line }}" as="p" hint-placeholder-count="4">
+<div style="{{ p.box }}">
+<div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">{{ p.name }}</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">{{ p.token }}</span></div>
+<div style="font-size: 11.5px; color: #5c6f66;">{{ p.sub }}</div>
+<div style="{{ p.stateStyle }}">{{ p.state }}</div>
 </div>
-<div style="padding: 10px; border-radius: 8px; border: 1px dashed #dfe7e1; color: #8ea69a;">
-<div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Kavya R.</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-15</span></div>
-<div style="font-size: 11.5px;">29Y F · at the vitals bay</div>
-</div>
-</div>
+</sc-for>
 </aside>
 
 <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
 
-<section style="display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
+<section style="display: flex; flex-direction: column; gap: 8px; padding: 12px 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
+<div style="display: flex; align-items: center; gap: 16px;">
 <div>
 <div style="font-size: 17px; font-weight: 700;">Ramesh Patel</div>
 <div style="font-size: 12px; color: #5c6f66;">UHID 000429 · 45Y M · Cash · 4th visit · last 12 Aug</div>
 </div>
-<span style="display: inline-flex; align-items: center; height: 23px; padding: 0 9px; border-radius: 4px; background: rgba(178,58,48,.08); border: 1px solid rgba(178,58,48,.4); color: #b23a30; font-size: 10.5px; font-weight: 600;">ALLERGY · PENICILLIN</span>
-<span style="display: inline-flex; align-items: center; height: 23px; padding: 0 9px; border-radius: 4px; background: rgba(221,143,28,.10); border: 1px solid rgba(221,143,28,.45); color: #8a5a10; font-size: 10.5px; font-weight: 600;">REMINDER · prefers generic medicines</span>
 <div style="flex-grow: 1;"></div>
 <div style="display: flex; gap: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">
 <span style="color: #b23a30; font-weight: 700;">BP 152/96</span><span>P 88</span><span>SpO₂ 97</span><span>72 kg</span><span>BMI 24.9</span>
 </div>
-</section>
-
-<section style="padding: 10px 20px; background: #eef3ef; border-bottom: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px;">
-<div style="display: flex; gap: 10px;"><span style="width: 92px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: #0e6b4e; padding-top: 2px;">COMPLAINTS</span><span>{{ sumComplaints }}</span></div>
-<div style="display: flex; gap: 10px;"><span style="width: 92px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: #0e6b4e; padding-top: 2px;">EXAMINATION</span><span>{{ sumExam }}</span></div>
-<div style="display: flex; gap: 10px;"><span style="width: 92px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: #0e6b4e; padding-top: 2px;">RX</span><span>{{ sumRx }}</span></div>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #b23a30;">ALLERGIES</span>
+<sc-for list="{{ allergies }}" as="a" hint-placeholder-count="1">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px 0 10px; border-radius: 13px; background: rgba(178,58,48,.08); border: 1px solid rgba(178,58,48,.4); color: #b23a30; font-size: 12px; font-weight: 600;">{{ a.name }}<button type="button" onClick="{{ a.remove }}" aria-label="Mark allergy entered in error" style="width: 20px; height: 20px; border-radius: 10px; border: 0; background: transparent; color: #b23a30; font-size: 13px; line-height: 1;">×</button></span>
+</sc-for>
+<div style="position: relative;">
+<label for="alg" style="position: absolute; left: -9999px;">Add allergy</label>
+<input id="alg" value="{{ algQ }}" onInput="{{ typeAlg }}" placeholder="+ Add allergy" style="height: 28px; width: 200px; border-radius: 14px; border: 1px dashed rgba(178,58,48,.4); padding: 0 12px; background: #ffffff; font-size: 12.5px;">
+<sc-if value="{{ algOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 32px; left: 0; width: 240px; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; box-shadow: 0 6px 18px rgba(19,36,32,.12); z-index: 5; padding: 4px;">
+<sc-for list="{{ algSug }}" as="s" hint-placeholder-count="3">
+<button type="button" onClick="{{ s.add }}" style="display: block; width: 100%; text-align: left; height: 32px; padding: 0 10px; border: 0; background: transparent; font-size: 12.5px;">{{ s.label }}</button>
+</sc-for>
+</div>
+</sc-if>
+</div>
+<span style="display: inline-flex; align-items: center; height: 23px; padding: 0 9px; border-radius: 4px; background: rgba(221,143,28,.10); border: 1px solid rgba(221,143,28,.45); color: #8a5a10; font-size: 10.5px; font-weight: 600;">REMINDER · prefers generic medicines</span>
+</div>
 </section>
 
 <nav style="display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 0;">
@@ -91,83 +105,72 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </sc-for>
 </nav>
 
-<div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 14px 20px;">
+<div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 14px 20px; display: flex; flex-direction: column; gap: 14px;">
 
-<sc-if value="{{ isComplaints }}" hint-placeholder-val="{{ true }}">
-<div style="display: flex; flex-direction: column; gap: 12px;">
-<div style="display: flex; gap: 8px; align-items: center;">
-<label for="cq" style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">SEARCH</label>
-<input id="cq" placeholder="Type or tap below — your most-used first" style="flex-grow: 1; height: 38px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 12px; background: #ffffff;">
-<button type="button" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Groups ▾</button>
-</div>
-<div style="display: flex; flex-wrap: wrap; gap: 8px;">
-<sc-for list="{{ complaintChips }}" as="c" hint-placeholder-count="10">
-<button type="button" onClick="{{ c.toggle }}" style="{{ c.style }}">{{ c.label }}</button>
-</sc-for>
-</div>
-<div style="font-size: 12px; color: #5c6f66;">Your own chips are marked · and show only on your screen until a curator promotes them.</div>
-</div>
-</sc-if>
-
-<sc-if value="{{ isExam }}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{ isConsult }}" hint-placeholder-val="{{ true }}">
 <div style="display: flex; flex-direction: column; gap: 14px;">
-<div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">GENERAL EXAMINATION · MANDATORY IN THIS DEPARTMENT</div>
-<div style="display: flex; flex-wrap: wrap; gap: 8px;">
-<sc-for list="{{ examChips }}" as="c" hint-placeholder-count="8">
-<button type="button" onClick="{{ c.toggle }}" style="{{ c.style }}">{{ c.label }}</button>
-</sc-for>
-</div>
-<div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">SYSTEMIC EXAMINATION</div>
-<div style="display: flex; flex-wrap: wrap; gap: 8px;">
-<sc-for list="{{ sysChips }}" as="c" hint-placeholder-count="6">
-<button type="button" onClick="{{ c.toggle }}" style="{{ c.style }}">{{ c.label }}</button>
-</sc-for>
-</div>
-<div style="font-size: 12px; color: #5c6f66;">Dashed chips are the copilot's suggestions. One tap accepts; they are saved as the doctor's entry only after that tap.</div>
-</div>
-</sc-if>
 
-<sc-if value="{{ isRx }}" hint-placeholder-val="{{ false }}">
-<div style="display: flex; flex-direction: column; gap: 8px;">
-<div style="display: grid; grid-template-columns: 34px minmax(0,2.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,.7fr) minmax(0,.6fr) minmax(0,1.6fr); gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: #8ea69a; padding: 0 10px;">
-<span>#</span><span>MEDICINE</span><span>DOSE</span><span>WHEN</span><span>DAYS</span><span>QTY</span><span>SOURCE OF THE SIG</span>
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">CHIEF COMPLAINTS</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+<sc-for list="{{ complaints }}" as="c" hint-placeholder-count="2">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 12px; border-radius: 16px; background: #0e6b4e; color: #ffffff; font-size: 13px; font-weight: 600;">{{ c.label }}<button type="button" onClick="{{ c.remove }}" aria-label="Remove complaint" style="width: 22px; height: 22px; border-radius: 11px; border: 0; background: rgba(255,255,255,.18); color: #ffffff; font-size: 13px; line-height: 1;">×</button></span>
+</sc-for>
+<label for="cq" style="position: absolute; left: -9999px;">Add complaint</label>
+<input id="cq" placeholder="Type a complaint — your words are learnt" style="flex-grow: 1; min-width: 220px; height: 32px; border-radius: 16px; border: 1px solid #dfe7e1; padding: 0 12px; background: #ffffff;">
 </div>
-<sc-for list="{{ rxLines }}" as="r" hint-placeholder-count="3">
-<div style="display: grid; grid-template-columns: 34px minmax(0,2.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,.7fr) minmax(0,.6fr) minmax(0,1.6fr); gap: 8px; align-items: center; padding: 10px; border-radius: 8px; background: #ffffff; border: 1px solid #dfe7e1;">
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="font-size: 12px; color: #5c6f66; align-self: center;">Your usual:</span>
+<sc-for list="{{ usual }}" as="u" hint-placeholder-count="5">
+<button type="button" onClick="{{ u.add }}" style="height: 28px; padding: 0 10px; border-radius: 14px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">{{ u.label }}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 14px;">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">DIAGNOSIS · ICD-10 STORED · ICD-11 SHOWN</span>
+<sc-for list="{{ dxList }}" as="d" hint-placeholder-count="3">
+<button type="button" onClick="{{ d.pick }}" style="{{ d.style }}">
+<span style="display: flex; justify-content: space-between; gap: 8px;"><span style="font-weight: 600;">{{ d.name }}</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">{{ d.codes }}</span></span>
+<span style="display: block; font-size: 11.5px; opacity: .8;">{{ d.why }}</span>
+</button>
+</sc-for>
+</div>
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">SUGGESTED DRUGS FOR {{ dxShort }} · STOCK FROM THE PHARMACY</span>
+<sc-for list="{{ drugSug }}" as="s" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid #dfe7e1;">
+<div style="flex-grow: 1;"><div style="font-weight: 600;">{{ s.name }}</div><div style="font-size: 11.5px; color: #5c6f66;">{{ s.sig }}</div></div>
+<span style="{{ s.stockStyle }}">{{ s.stock }}</span>
+<button type="button" onClick="{{ s.add }}" style="{{ s.addStyle }}">{{ s.addLabel }}</button>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">RX</span>
+<div style="flex-grow: 1;"></div>
+<span style="font-size: 11.5px; color: #5c6f66;">In stock = sellable now (expired and quarantined batches excluded)</span>
+</div>
+<sc-for list="{{ rx }}" as="r" hint-placeholder-count="2">
+<div style="display: grid; grid-template-columns: 26px minmax(0, 2.2fr) minmax(0, .7fr) minmax(0, 1fr) minmax(0, .5fr) minmax(0, 1fr); gap: 8px; align-items: center; padding: 9px 10px; border-radius: 8px; border: 1px solid #ecf1ed;">
 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #8ea69a;">{{ r.n }}</span>
 <div><div style="font-weight: 600;">{{ r.name }}</div><div style="font-size: 11.5px; color: #5c6f66; font-style: italic;">{{ r.generic }}</div></div>
 <span style="font-family: 'IBM Plex Mono', monospace;">{{ r.dose }}</span>
-<span>{{ r.when }}</span>
-<span>{{ r.days }}</span>
-<span style="font-family: 'IBM Plex Mono', monospace;">{{ r.qty }}</span>
-<span style="{{ r.srcStyle }}">{{ r.src }}</span>
+<span style="font-size: 12.5px;">{{ r.when }}</span>
+<span style="font-size: 12.5px;">{{ r.days }}</span>
+<span style="{{ r.stockStyle }}">
+<sc-if value="{{ r.out }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-label="Out of stock, see alternative" style="vertical-align: -2px; margin-right: 4px;"><path d="M7 7h11l-3-3"></path><path d="M17 17H6l3 3"></path></svg></sc-if>{{ r.stock }}</span>
 </div>
 </sc-for>
-<div style="display: flex; gap: 8px; margin-top: 4px;">
-<button type="button" onClick="{{ copyPrev }}" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Previous Rx → today (checks run again)</button>
-<button type="button" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Rx sets ▾</button>
-<button type="button" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Same days for all</button>
-</div>
 <sc-if value="{{ tele }}" hint-placeholder-val="{{ false }}">
 <div style="padding: 10px 12px; border-radius: 8px; background: rgba(221,143,28,.10); border: 1px solid rgba(221,143,28,.45); font-size: 12.5px;">Teleconsult · video · follow-up. Lists O, A and B allowed. Schedule X and NDPS drugs are blocked on this visit.</div>
 </sc-if>
 </div>
-</sc-if>
 
-<sc-if value="{{ isPrev }}" hint-placeholder-val="{{ false }}">
-<div style="display: flex; flex-direction: column; gap: 10px;">
-<div style="padding: 12px 14px; border-radius: 8px; background: #ffffff; border: 1px solid #dfe7e1;">
-<div style="display: flex; align-items: center; gap: 10px;">
-<strong>12 Aug 2026 · Dr. A. Mehta</strong><span style="font-size: 12px; color: #5c6f66;">Essential hypertension (I10)</span>
-<div style="flex-grow: 1;"></div>
-<button type="button" onClick="{{ copyPrev }}" style="height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08); color: #0e6b4e; font-size: 12px; font-weight: 600;">Copy Rx to today</button>
-<button type="button" style="height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12px;">Print again</button>
-</div>
-<div style="margin-top: 6px; font-size: 12.5px; color: #5c6f66;">BP 148/94 · Telmisartan 40 mg 1-0-0 × 30 days · Advice: salt under 5 g a day · Follow-up 4 weeks</div>
-</div>
-<div style="padding: 12px 14px; border-radius: 8px; background: #ffffff; border: 1px solid #dfe7e1; color: #5c6f66;">
-<strong style="color: #132420;">03 Jun 2026 · Dr. A. Mehta</strong> · Headache, raised BP · 2 attachments
-</div>
 </div>
 </sc-if>
 
@@ -179,6 +182,7 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 
 <footer style="display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #ffffff; border-top: 1px solid #dfe7e1;">
 <button type="button" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Visit templates ▾</button>
+<button type="button" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Previous Rx → today</button>
 <button type="button" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">More: certificate, consent, admit…</button>
 <div style="flex-grow: 1;"></div>
 <span style="font-size: 12px; color: #5c6f66;">Ctrl+⏎ completes</span>
@@ -186,140 +190,125 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </footer>
 </main>
 
-<aside style="width: 300px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column;">
-<div style="padding: 14px; border-bottom: 1px solid #dfe7e1;">
-<div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">DETAIL · {{ detailTitle }}</div>
-<sc-if value="{{ hasDetail }}" hint-placeholder-val="{{ true }}">
-<div style="margin-top: 10px; display: flex; flex-direction: column; gap: 10px;">
-<div style="font-size: 12px; color: #5c6f66;">Since</div>
-<div style="display: flex; flex-wrap: wrap; gap: 6px;">
-<sc-for list="{{ durations }}" as="d" hint-placeholder-count="5">
-<button type="button" onClick="{{ d.pick }}" style="{{ d.style }}">{{ d.label }}</button>
-</sc-for>
-</div>
-<div style="font-size: 12px; color: #5c6f66;">Severity</div>
-<div style="display: flex; gap: 6px;">
-<sc-for list="{{ severities }}" as="d" hint-placeholder-count="3">
-<button type="button" onClick="{{ d.pick }}" style="{{ d.style }}">{{ d.label }}</button>
-</sc-for>
-</div>
-</div>
-</sc-if>
-<sc-if value="{{ noDetail }}" hint-placeholder-val="{{ false }}">
-<div style="margin-top: 8px; font-size: 12.5px; color: #5c6f66;">Tap a complaint to add how long and how bad.</div>
-</sc-if>
-</div>
-
-<div style="margin: 14px; padding: 14px; border-radius: 8px; background: #132420; color: #d9efe4; display: flex; flex-direction: column; gap: 10px;">
+<aside style="width: 310px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 12px; padding: 14px;">
+<div style="padding: 14px; border-radius: 8px; background: #132420; color: #d9efe4; display: flex; flex-direction: column; gap: 10px;">
 <div style="display: flex; align-items: center; gap: 8px;">
 <span style="width: 8px; height: 8px; border-radius: 4px; background: #35c48f;"></span>
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .14em;">COPILOT · PROACTIVE ON</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .14em;">COPILOT</span>
 </div>
-<div style="font-size: 12.5px; line-height: 18px;">BP is high today and was high on 12 Aug. The complaints match <strong>Essential hypertension (I10)</strong>.</div>
-<div style="font-size: 11px; color: #7fa392;">Why: rare words "headache", "giddiness" · your last diagnosis · vitals rule, reviewed</div>
-<button type="button" onClick="{{ acceptDx }}" style="height: 34px; border-radius: 6px; border: 1px solid #35c48f; background: transparent; color: #d9efe4; font-size: 12.5px; font-weight: 600;">{{ dxLabel }}</button>
-<div style="font-size: 11px; color: #7fa392;">Picked from our ICD-10 list by Jev (0.82). No LLM was called.</div>
+<div style="font-size: 12.5px; line-height: 18px;">Headache and giddiness with BP 152/96, high on 12 Aug too. Suggested: <strong>Essential hypertension</strong>.</div>
+<div style="font-size: 11px; color: #7fa392;">Why: your past diagnoses for these words · vitals rule (reviewed). Picked from our list; no LLM called.</div>
 </div>
+
+<sc-if value="{{ showAlt }}" hint-placeholder-val="{{ true }}">
+<div style="padding: 14px; border-radius: 8px; border: 1.5px solid rgba(221,143,28,.6); background: rgba(221,143,28,.08); display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; align-items: center; gap: 8px; color: #8a5a10;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h11l-3-3"></path><path d="M17 17H6l3 3"></path></svg>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .12em;">OUT OF STOCK · AN ALTERNATIVE</span>
+</div>
+<div style="font-size: 12.5px;"><strong>Amlong 5</strong> (amlodipine 5 mg) · 0 in the pharmacy.</div>
+<div style="font-size: 12.5px;">Same salt, same strength: <strong>Stamlo 5</strong> · 240 tablets in stock.</div>
+<div style="display: flex; gap: 6px;">
+<button type="button" onClick="{{ swap }}" style="flex-grow: 1; height: 34px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Use Stamlo 5</button>
+<button type="button" onClick="{{ keep }}" style="flex-grow: 1; height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Keep Amlong 5</button>
+</div>
+<div style="font-size: 11px; color: #5c6f66;">Either choice is fine. The visit records what was offered and what was kept.</div>
+</div>
+</sc-if>
+<sc-if value="{{ altDone }}" hint-placeholder-val="{{ false }}">
+<div style="padding: 12px 14px; border-radius: 8px; border: 1px solid #dfe7e1; font-size: 12px; color: #5c6f66;">{{ altNote }}</div>
+</sc-if>
 </aside>
 
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = {
-      tab: 'complaints', taps: 0, tele: false,
-      complaints: ['Headache'], focus: 'Headache',
-      detail: { Headache: { since: '1 week', sev: 'Moderate' } },
-      exam: ['Pallor absent'], sys: [], ghostsTaken: [],
-      rxFromPrev: false, dxAccepted: false
+      tab: 'consult', taps: 0, tele: false, session: 'in', called: 'T-12', seated: 'T-12', parked: [],
+      allergies: ['Penicillin'], algQ: '',
+      complaints: ['Headache', 'Giddiness'], dx: 'I10',
+      rx: ['telmi'], altChoice: null
     };
   }
-  tap(patch) { this.setState(Object.assign({ taps: this.state.taps + 1 }, patch)); }
-  chip(label, on, ghost, own) {
-    const base = 'height: 34px; padding: 0 12px; border-radius: 17px; font-size: 13px; ';
-    if (on) return base + 'border: 1px solid #0e6b4e; background: #0e6b4e; color: #ffffff; font-weight: 600;';
-    if (ghost) return base + 'border: 1.5px dashed #0e6b4e; background: rgba(14,107,78,.08); color: #0e6b4e;';
-    return base + 'border: 1px solid #dfe7e1; background: #ffffff; color: #132420;' + (own ? ' font-style: italic;' : '');
-  }
-  toggleIn(key, label) {
-    const cur = this.state[key];
-    const next = cur.indexOf(label) >= 0 ? cur.filter((x) => x !== label) : cur.concat([label]);
-    const patch = {}; patch[key] = next;
-    if (key === 'complaints') patch.focus = label;
-    this.tap(patch);
-  }
+  tap(p) { this.setState(Object.assign({ taps: this.state.taps + 1 }, p)); }
   renderVals() {
     const s = this.state;
-    const tabDefs = [
-      ['summary', 'Summary'], ['complaints', 'Complaints'], ['history', 'History'], ['vitals', 'Vitals'],
-      ['exam', 'Examination 🔒'], ['dx', 'Diagnosis 🔒'], ['inv', 'Investigations'], ['rx', 'Rx'],
-      ['advice', 'Advice'], ['fu', 'Follow-up'], ['notes', 'Notes'], ['prev', 'Previous visits']
+    const sessText = { in: 'The corridor board calls your patients.', out: 'Board shows "Doctor away". Your line keeps its order.', closed: 'No more calls today. Waiting patients are told.', not_started: 'Board shows "Session not started".' };
+    const sessColor = { in: '#0e6b4e', out: '#8a5a10', closed: '#b23a30', not_started: '#5c6f66' };
+    const people = [
+      { token: 'T-12', name: 'Ramesh Patel', sub: '45Y M · revisit' },
+      { token: 'T-13', name: 'Sunita Devi', sub: '38Y F · new · waiting 34 min' },
+      { token: 'T-14', name: 'Imran Khan', sub: '61Y M · revisit · waiting 18 min' },
+      { token: 'T-15', name: 'Kavya R.', sub: '29Y F · at the vitals bay' }
     ];
-    const tabs = tabDefs.map(([id, label]) => ({
-      label: label.replace(' 🔒', ' ·'),
-      pick: () => this.setState({ tab: id }),
-      style: 'height: 32px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; ' + (s.tab === id
-        ? 'border: 1px solid #0e6b4e; background: rgba(14,107,78,.08); color: #0e6b4e; font-weight: 600;'
-        : 'border: 1px solid #dfe7e1; background: #ffffff; color: #132420;')
-    }));
-    const cList = ['Headache', 'Giddiness', 'Fever', 'Cough', 'Chest pain', 'Breathlessness', 'Body ache', 'Burning micturition', 'Neck pain', 'Palpitations · mine'];
-    const complaintChips = cList.map((l) => ({ label: l, toggle: () => this.toggleIn('complaints', l.replace(' · mine', '')), style: this.chip(l, s.complaints.indexOf(l.replace(' · mine', '')) >= 0, false, l.indexOf('mine') > 0) }));
-    const eList = ['Pallor absent', 'No icterus', 'No cyanosis', 'No clubbing', 'No lymphadenopathy', 'No pedal oedema', 'Dehydrated', 'Obese'];
-    const ghostsExam = ['No pedal oedema'];
-    const examChips = eList.map((l) => {
-      const on = s.exam.indexOf(l) >= 0;
-      return { label: l, toggle: () => this.toggleIn('exam', l), style: this.chip(l, on, !on && ghostsExam.indexOf(l) >= 0, false) };
+    const line = people.map((p) => {
+      const parked = s.parked.indexOf(p.token) >= 0;
+      const seated = s.seated === p.token; const called = s.called === p.token && !seated;
+      const state = parked ? 'PARKED' : seated ? 'IN CONSULT' : called ? 'CALLED · ON THE BOARD' : 'WAITING';
+      return Object.assign({}, p, {
+        state,
+        stateStyle: 'margin-top: 4px; font-family: \'IBM Plex Mono\', monospace; font-size: 10.5px; font-weight: 600; ' + (parked ? 'color: #8a5a10;' : seated || called ? 'color: #0e6b4e;' : 'color: #8ea69a;'),
+        box: 'padding: 9px 10px; border-radius: 8px; ' + (seated ? 'border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08);' : parked ? 'border: 1px dashed rgba(221,143,28,.6);' : 'border: 1px solid #dfe7e1;')
+      });
     });
-    const sList = ['CVS S1 S2 normal, no murmur', 'RS clear, NVBS', 'P/A soft, non-tender', 'CNS no focal deficit', 'Fundus: AV nicking', 'Carotid bruit'];
-    const ghostsSys = ['CVS S1 S2 normal, no murmur', 'Fundus: AV nicking'];
-    const sysChips = sList.map((l) => {
-      const on = s.sys.indexOf(l) >= 0;
-      return { label: l, toggle: () => this.toggleIn('sys', l), style: this.chip(l, on, !on && ghostsSys.indexOf(l) >= 0, false) };
-    });
-    const reviewed = 'font-size: 11.5px; color: #0e6b4e; font-weight: 600;';
-    const manual = 'font-size: 11.5px; color: #8a5a10; font-weight: 600;';
-    const rxLines = [
-      { n: '01', name: 'Telmisartan 40 mg tablet', generic: 'TELMISARTAN', dose: '1-0-0', when: 'After breakfast', days: '30', qty: '30', src: 'Reviewed default · P&T 12 Sep', srcStyle: reviewed },
-      { n: '02', name: 'Paracetamol 650 mg tablet', generic: 'PARACETAMOL', dose: 'SOS', when: 'After food', days: '3', qty: '6', src: 'Reviewed default · P&T 12 Sep', srcStyle: reviewed }
+    const nextWaiting = people.find((p) => p.token !== s.seated && p.token !== s.called && s.parked.indexOf(p.token) < 0);
+    const tabDefs = [['consult', 'Consult'], ['history', 'History'], ['exam', 'Examination'], ['inv', 'Investigations'], ['advice', 'Advice'], ['fu', 'Follow-up'], ['notes', 'Notes'], ['prev', 'Previous visits']];
+    const tabs = tabDefs.map(([id, label]) => ({ label, pick: () => this.setState({ tab: id }),
+      style: 'height: 32px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; ' + (s.tab === id ? 'border: 1px solid #0e6b4e; background: rgba(14,107,78,.08); color: #0e6b4e; font-weight: 600;' : 'border: 1px solid #dfe7e1; background: #ffffff; color: #132420;') }));
+    const algAll = ['Penicillin', 'Sulfa drugs (sulfonamides)', 'Aspirin / NSAIDs', 'Iodinated contrast', 'Peanut', 'Latex', 'Cephalosporins', 'Egg'];
+    const q = s.algQ.trim().toLowerCase();
+    const algSug = q ? algAll.filter((a) => a.toLowerCase().indexOf(q) >= 0 && s.allergies.indexOf(a) < 0).slice(0, 5).map((a) => ({ label: a, add: () => this.tap({ allergies: s.allergies.concat([a]), algQ: '' }) })) : [];
+    const allergies = s.allergies.map((a) => ({ name: a, remove: () => this.tap({ allergies: s.allergies.filter((x) => x !== a) }) }));
+    const complaints = s.complaints.map((c) => ({ label: c, remove: () => this.tap({ complaints: s.complaints.filter((x) => x !== c) }) }));
+    const usual = ['Fever', 'Cough', 'Chest pain', 'Breathlessness', 'Body ache', 'Palpitations'].filter((u) => s.complaints.indexOf(u) < 0).map((u) => ({ label: u, add: () => this.tap({ complaints: s.complaints.concat([u]) }) }));
+    const hasHeadGid = s.complaints.indexOf('Headache') >= 0;
+    const dxDefs = [
+      { id: 'I10', name: 'Essential hypertension', codes: 'I10 · BA00', why: 'BP high today and on 12 Aug · your usual for these words' },
+      { id: 'G44.2', name: 'Tension-type headache', codes: 'G44.2 · 8A81', why: 'Headache without fever' },
+      { id: 'H81.1', name: 'Benign paroxysmal vertigo', codes: 'H81.1 · AB31.2', why: 'Giddiness · ask about position change' }
     ];
-    if (s.rxFromPrev) rxLines.push({ n: '03', name: 'Amlodipine 5 mg tablet', generic: 'AMLODIPINE', dose: '— dose manually', when: '—', days: '—', qty: '—', src: 'No reviewed dose yet', srcStyle: manual });
-    const durations = ['Today', '3 days', '1 week', '1 month', 'Longer'].map((l) => {
-      const d = s.detail[s.focus] || {};
-      return { label: l, pick: () => { const det = Object.assign({}, s.detail); det[s.focus] = Object.assign({}, d, { since: l }); this.tap({ detail: det }); }, style: this.chip(l, d.since === l, false, false) };
-    });
-    const severities = ['Mild', 'Moderate', 'Severe'].map((l) => {
-      const d = s.detail[s.focus] || {};
-      return { label: l, pick: () => { const det = Object.assign({}, s.detail); det[s.focus] = Object.assign({}, d, { sev: l }); this.tap({ detail: det }); }, style: this.chip(l, d.sev === l, false, false) };
-    });
-    const sumComplaints = s.complaints.length ? s.complaints.map((c) => { const d = s.detail[c]; return d ? c + ' (' + [d.since, d.sev].filter(Boolean).join(', ') + ')' : c; }).join(' · ') : '—';
-    const other = {
-      summary: 'Summary: this visit read back section by section, with a count for each.',
-      history: 'History: past medical and surgical, family, personal, current medicines. Carried from the last visit; edit what changed.',
-      vitals: 'Vitals from the bay at 10:42 by Nurse Asha. The doctor may add a second reading. Calculators: BMI, BSA, eGFR, waist–hip ratio.',
-      dx: 'Diagnosis: provisional or final, ICD-10 only. Uncoded entries are counted for the curator.',
-      inv: 'Investigations: lab, radiology and ECG, with order sets. Sent to the lab desk and billed there.',
-      advice: 'Advice: general and dietary, English and Hindi.',
-      fu: 'Follow-up: a date, booked from here into the appointment book.',
-      notes: 'Notes: doctor note (off the print by default), internal comment (never printed), patient reminder (sticky across visits).'
+    const dxList = (hasHeadGid ? dxDefs : dxDefs.slice(0, 1)).map((d) => ({ name: d.name, codes: d.codes, why: d.why, pick: () => this.tap({ dx: d.id }),
+      style: 'text-align: left; padding: 8px 10px; border-radius: 8px; font-size: 13px; ' + (s.dx === d.id ? 'border: 1px solid #0e6b4e; background: #0e6b4e; color: #ffffff;' : 'border: 1.5px dashed #0e6b4e; background: rgba(14,107,78,.06); color: #132420;') }));
+    const catalog = {
+      telmi: { name: 'Telma 40', generic: 'TELMISARTAN 40 mg tablet', dose: '1-0-0', when: 'After breakfast', days: '30', stock: 1240 },
+      amlo: { name: 'Amlong 5', generic: 'AMLODIPINE 5 mg tablet', dose: '0-0-1', when: 'After dinner', days: '30', stock: 0 },
+      stamlo: { name: 'Stamlo 5', generic: 'AMLODIPINE 5 mg tablet', dose: '0-0-1', when: 'After dinner', days: '30', stock: 240 },
+      pcm: { name: 'Dolo 650', generic: 'PARACETAMOL 650 mg tablet', dose: 'SOS', when: 'After food', days: '3', stock: 3600 }
     };
+    const fmt = (n) => (n === 0 ? '0 in stock' : n.toLocaleString('en-IN') + ' in stock');
+    const stockStyle = (n) => 'font-family: \'IBM Plex Mono\', monospace; font-size: 11.5px; font-weight: 600; white-space: nowrap; ' + (n === 0 ? 'color: #8a5a10;' : 'color: #0e6b4e;');
+    const sugIds = s.dx === 'I10' ? ['telmi', 'amlo'] : ['pcm'];
+    const drugSug = sugIds.map((id) => { const d = catalog[id]; const on = s.rx.indexOf(id) >= 0 || (id === 'amlo' && s.rx.indexOf('stamlo') >= 0);
+      return { name: d.name + ' · ' + d.generic.toLowerCase(), sig: d.dose + ' · ' + d.when + ' · ' + d.days + ' days · reviewed default', stock: fmt(d.stock), stockStyle: stockStyle(d.stock),
+        add: () => { if (!on) this.tap({ rx: s.rx.concat([id]) }); }, addLabel: on ? 'On Rx' : 'Add',
+        addStyle: 'height: 30px; padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 600; ' + (on ? 'border: 1px solid #dfe7e1; background: #eef3ef; color: #5c6f66;' : 'border: 0; background: #0e6b4e; color: #ffffff;') }; });
+    const rx = s.rx.map((id, i) => { const d = catalog[id]; return { n: String(i + 1).padStart(2, '0'), name: d.name, generic: d.generic, dose: d.dose, when: d.when, days: d.days, stock: fmt(d.stock), out: d.stock === 0, stockStyle: stockStyle(d.stock) }; });
+    const hasOut = s.rx.indexOf('amlo') >= 0;
+    const other = { history: 'History: past medical and surgical, family, personal, current medicines.', exam: 'Examination: general, systemic and local chips.', inv: 'Investigations: lab, radiology and ECG, with order sets.', advice: 'Advice: general and dietary, English and Hindi.', fu: 'Follow-up: a date, booked into the appointment book.', notes: 'Notes: doctor note, internal comment, patient reminder.', prev: 'Previous visits: each earlier visit in full; copy its Rx to today.' };
     return {
       taps: s.taps, tele: s.tele,
       walkinStyle: 'height: 32px; padding: 0 12px; border: 0; font-size: 12.5px; ' + (s.tele ? 'background: #ffffff; color: #5c6f66;' : 'background: #132420; color: #ffffff; font-weight: 600;'),
       teleStyle: 'height: 32px; padding: 0 12px; border: 0; font-size: 12.5px; ' + (s.tele ? 'background: #132420; color: #ffffff; font-weight: 600;' : 'background: #ffffff; color: #5c6f66;'),
-      setWalkin: () => this.setState({ tele: false }), setTele: () => this.setState({ tele: true, tab: 'rx' }),
-      tabs, complaintChips, examChips, sysChips, rxLines, durations, severities,
-      isComplaints: s.tab === 'complaints', isExam: s.tab === 'exam', isRx: s.tab === 'rx', isPrev: s.tab === 'prev',
-      isOther: ['complaints', 'exam', 'rx', 'prev'].indexOf(s.tab) < 0, otherText: other[s.tab] || '',
-      sumComplaints,
-      sumExam: s.exam.concat(s.sys).join(' · ') || '—',
-      sumRx: rxLines.map((r) => r.generic + ' ' + r.dose).join(' · '),
-      detailTitle: (s.focus || '').toUpperCase(), hasDetail: !!s.focus && s.complaints.indexOf(s.focus) >= 0, noDetail: !(s.focus && s.complaints.indexOf(s.focus) >= 0),
-      copyPrev: () => this.tap({ rxFromPrev: true, tab: 'rx' }),
-      acceptDx: () => this.tap({ dxAccepted: true }),
-      dxLabel: s.dxAccepted ? 'Accepted · saved as your entry' : 'Accept diagnosis'
+      setWalkin: () => this.setState({ tele: false }), setTele: () => this.setState({ tele: true }),
+      session: s.session, pickSession: (e) => this.tap({ session: e.target.value }), sessNote: sessText[s.session],
+      sessStyle: 'height: 38px; border-radius: 6px; border: 1.5px solid ' + sessColor[s.session] + '; padding: 0 10px; background: #ffffff; color: ' + sessColor[s.session] + '; font-weight: 600;',
+      displayLine: s.session !== 'in' ? (s.session === 'out' ? 'OPD-3 · DOCTOR AWAY' : s.session === 'closed' ? 'OPD-3 · CLOSED' : 'OPD-3 · NOT STARTED') : (s.called ? s.called + ' → OPD-3' : 'OPD-3 · —'),
+      waitingCount: line.filter((p) => p.state === 'WAITING').length, line,
+      callNext: () => { if (nextWaiting && s.session === 'in') this.tap({ called: nextWaiting.token }); },
+      skip: () => { if (nextWaiting) this.tap({ called: nextWaiting.token }); },
+      start: () => this.tap({ seated: s.called }),
+      park: () => { if (s.seated) this.tap({ parked: s.parked.concat([s.seated]), seated: null }); },
+      allergies, algQ: s.algQ, typeAlg: (e) => this.setState({ algQ: e.target.value }), algOpen: algSug.length > 0, algSug,
+      tabs, isConsult: s.tab === 'consult', isOther: s.tab !== 'consult', otherText: other[s.tab] || '',
+      complaints, usual, dxList, dxShort: (dxDefs.find((d) => d.id === s.dx) || {}).name || '', drugSug, rx,
+      showAlt: hasOut && !s.altChoice, altDone: !!s.altChoice,
+      altNote: s.altChoice === 'swap' ? 'Swapped to Stamlo 5. Recorded: offered Stamlo 5, used Stamlo 5.' : 'Kept Amlong 5. Recorded: offered Stamlo 5, doctor kept Amlong 5.',
+      swap: () => this.tap({ rx: s.rx.map((x) => (x === 'amlo' ? 'stamlo' : x)), altChoice: 'swap' }),
+      keep: () => this.tap({ altChoice: 'keep' })
     };
   }
 }

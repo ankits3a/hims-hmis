@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Department screens</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 900px; height: 640px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .16em;">EACH DOCTOR GETS THE SCREEN OF THEIR DEPARTMENT · NOTHING TO PICK</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.6fr); gap: 0; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; overflow: hidden;">
+<div style="padding: 9px 14px; background: #eef3ef; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: #5c6f66;">DOCTOR</div>
+<div style="padding: 9px 14px; background: #eef3ef; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: #5c6f66;">REGISTERED UNDER</div>
+<div style="padding: 9px 14px; background: #eef3ef; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .12em; color: #5c6f66;">SCREEN THEY SEE</div>
+<div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Dr. A. Mehta</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">General Medicine</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">General medicine: complaints, examination, diagnosis, Rx</div>
+<div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Dr. P. Singh</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Orthopaedics</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">General medicine + local examination, procedures, X-ray order</div>
+<div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Dr. S. Rao</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Ophthalmology</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Eye screen: each-eye grids, refraction, slit lamp, glasses Rx</div>
+<div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Dr. N. Gupta</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Paediatrics</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Child screen: age in Y-M-D, weight dosing, growth, vaccines</div>
+<div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Dr. R. Iyer</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Obstetrics &amp; Gynaecology</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">OBG screen: LMP → EDD, G P L A, antenatal sheet, Form F</div>
+<div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Dr. F. Khan</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Dental</div><div style="padding: 10px 14px; border-top: 1px solid #ecf1ed;">Dental screen: tooth chart, procedures per tooth</div>
+</div>
+<div style="padding: 12px 14px; border-radius: 8px; background: #ffffff; border: 1px solid #dfe7e1; font-size: 12.5px;"><strong>A doctor in two departments</strong> (for example General Medicine and Diabetology) sees the screen of the department the visit was booked under.</div>
+<div style="font-size: 12px; color: #5c6f66;">Every screen keeps the same queue controls, allergies, complaint chips, copilot pane and stock counts. Only the clinical sections change.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":900,"height":640}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
