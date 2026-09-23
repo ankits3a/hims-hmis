@@ -16,26 +16,14 @@ input,select{font:inherit}
 a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </style>
 </helmet>
-<div style="width: 1440px; height: 980px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
-
-<header style="display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
-<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .16em;">CONSULT</div>
-<div style="font-size: 13px; color: #5c6f66;">Dr. A. Mehta · OPD-3</div>
-<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: #132420; color: #f2faf6; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .1em;">GENERAL MEDICINE SCREEN · FROM YOUR DEPARTMENT</span>
-<div style="flex-grow: 1;"></div>
-<div style="display: flex; border: 1px solid #dfe7e1; border-radius: 6px; overflow: hidden;">
-<button type="button" onClick="{{ setWalkin }}" style="{{ walkinStyle }}">Walk-in</button>
-<button type="button" onClick="{{ setTele }}" style="{{ teleStyle }}">Teleconsult · video</button>
+<div style="width: 1440px; height: 980px; box-sizing: border-box; display: flex; flex-direction: row; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+<aside style="width: 244px; flex-shrink: 0; height: 100%; box-sizing: border-box; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px;">
+<div style="display: flex; align-items: center; gap: 10px; height: 52px; margin: -12px -10px 4px; padding: 0 14px; border-bottom: 1px solid #ecf1ed;">
+<span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 7px; background: #0e6b4e; color: #ffffff; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700;">CRK</span>
+<div style="flex-grow: 1; min-width: 0;"><div style="font-size: 12.5px; font-weight: 700; line-height: 15px;">CRK Medical College</div><div style="font-size: 10.5px; color: #5c6f66; line-height: 13px;">&amp; Hospital · HMIS</div></div>
+<a href="Consult.dc.html" aria-label="Minimise the sidebar" style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; border: 1px solid #dfe7e1; font-size: 14px; color: #132420;">«</a>
 </div>
-<div style="display: flex; gap: 6px; padding: 0 10px; height: 34px; align-items: center; border-radius: 6px; background: #eef3ef;">
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .12em; color: #5c6f66;">TAPS</span>
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700;">{{ taps }}</span>
-</div>
-</header>
 
-<div style="display: flex; flex-grow: 1; min-height: 0;">
-
-<aside style="width: 244px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px;">
 <div style="display: flex; flex-direction: column; gap: 4px;">
 <label for="sess" style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">MY SESSION</label>
 <select id="sess" value="{{ session }}" onChange="{{ pickSession }}" style="{{ sessStyle }}">
@@ -64,6 +52,25 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </div>
 </sc-for>
 </aside>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
+
+<header style="display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .16em;">CONSULT</div>
+<div style="font-size: 13px; color: #5c6f66;">Dr. A. Mehta · OPD-3</div>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: #132420; color: #f2faf6; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .1em;">GENERAL MEDICINE SCREEN · FROM YOUR DEPARTMENT</span>
+<div style="flex-grow: 1;"></div>
+<div style="display: flex; border: 1px solid #dfe7e1; border-radius: 6px; overflow: hidden;">
+<button type="button" onClick="{{ setWalkin }}" style="{{ walkinStyle }}">Walk-in</button>
+<button type="button" onClick="{{ setTele }}" style="{{ teleStyle }}">Teleconsult · video</button>
+</div>
+<div style="display: flex; gap: 6px; padding: 0 10px; height: 34px; align-items: center; border-radius: 6px; background: #eef3ef;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .12em; color: #5c6f66;">TAPS</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700;">{{ taps }}</span>
+</div>
+</header>
+
+<div style="display: flex; flex-grow: 1; min-height: 0;">
+
 
 <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
 
@@ -276,6 +283,7 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </sc-if>
 </aside>
 
+</div>
 </div>
 </div>
 </x-dc>

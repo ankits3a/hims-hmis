@@ -16,7 +16,36 @@ input,textarea{font:inherit}
 a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </style>
 </helmet>
-<div style="width: 1440px; height: 1000px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; display: flex; flex-direction: row; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+<sc-if value="{{ railOpen }}" hint-placeholder-val="{{ false }}">
+<aside style="width: 236px; flex-shrink: 0; height: 100%; box-sizing: border-box; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 8px; padding: 10px;">
+<div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 4px; border-bottom: 1px solid #ecf1ed; margin: -10px -10px 4px; padding-left: 14px; padding-right: 10px;">
+<span style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 7px; background: #0e6b4e; color: #ffffff; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700;">CRK</span>
+<div style="flex-grow: 1; min-width: 0;"><div style="font-size: 12.5px; font-weight: 700; line-height: 15px;">CRK Medical College</div><div style="font-size: 10.5px; color: #5c6f66; line-height: 13px;">&amp; Hospital · HMIS</div></div>
+<button type="button" onClick="{{ toggleRail }}" aria-label="Hide the sidebar" style="width: 30px; height: 30px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">«</button>
+</div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">THE LINE · 3 WAITING</span>
+<div style="padding: 8px 10px; border-radius: 6px; border: 1.5px solid #0e6b4e; font-size: 12px; font-weight: 600; color: #0e6b4e;">Session: In · seeing patients</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;">
+<button type="button" style="height: 34px; border-radius: 6px; border: 1px solid rgba(221,143,28,.45); background: rgba(221,143,28,.10); color: #8a5a10; font-size: 12px; font-weight: 600;">Park patient</button>
+<button type="button" style="height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12px;">Skip</button>
+</div>
+<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08);"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Ramesh Patel</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-12</span></div><div style="font-size: 11.5px; color: #0e6b4e; font-weight: 600;">REVISIT · in consult</div></div>
+<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid #dfe7e1;"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Sunita Devi</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-13</span></div><div style="font-size: 11.5px; color: #5c6f66;">NEW · waiting 38 min</div></div>
+<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid #dfe7e1;"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Imran Khan</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-14</span></div><div style="font-size: 11.5px; color: #5c6f66;">RENEWAL · waiting 22 min</div></div>
+<div style="font-size: 11px; color: #5c6f66;">Call next is on the line screen, after Complete.</div>
+</aside>
+</sc-if>
+<sc-if value="{{ railShut }}" hint-placeholder-val="{{ true }}">
+<aside style="width: 52px; flex-shrink: 0; height: 100%; box-sizing: border-box; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0;">
+<span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 7px; background: #0e6b4e; color: #ffffff; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; margin-bottom: 6px;">CRK</span>
+<button type="button" onClick="{{ toggleRail }}" aria-label="Show the sidebar" style="width: 36px; height: 36px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">»</button>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700;">3</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; letter-spacing: .1em; color: #5c6f66; writing-mode: vertical-rl;">WAITING · LONGEST 38 MIN</span>
+<span style="width: 10px; height: 10px; border-radius: 5px; background: #0e6b4e;" title="Session: In"></span>
+</aside>
+</sc-if>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
 
 <header style="display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
 <a href="Main.dc.html" style="font-size: 12.5px;">← The line</a>
@@ -56,32 +85,6 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </section>
 
 <div style="display: flex; flex-grow: 1; min-height: 0; height: 807px">
-<sc-if value="{{ railOpen }}" hint-placeholder-val="{{ false }}">
-<aside style="width: 236px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 8px; padding: 10px;">
-<div style="display: flex; align-items: center; gap: 6px;">
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">THE LINE · 3 WAITING</span>
-<div style="flex-grow: 1;"></div>
-<button type="button" onClick="{{ toggleRail }}" aria-label="Hide the line" style="width: 30px; height: 30px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">«</button>
-</div>
-<div style="padding: 8px 10px; border-radius: 6px; border: 1.5px solid #0e6b4e; font-size: 12px; font-weight: 600; color: #0e6b4e;">Session: In · seeing patients</div>
-<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;">
-<button type="button" style="height: 34px; border-radius: 6px; border: 1px solid rgba(221,143,28,.45); background: rgba(221,143,28,.10); color: #8a5a10; font-size: 12px; font-weight: 600;">Park patient</button>
-<button type="button" style="height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12px;">Skip</button>
-</div>
-<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08);"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Ramesh Patel</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-12</span></div><div style="font-size: 11.5px; color: #0e6b4e; font-weight: 600;">REVISIT · in consult</div></div>
-<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid #dfe7e1;"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Sunita Devi</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-13</span></div><div style="font-size: 11.5px; color: #5c6f66;">NEW · waiting 38 min</div></div>
-<div style="padding: 9px 10px; border-radius: 8px; border: 1px solid #dfe7e1;"><div style="display: flex; justify-content: space-between;"><strong style="font-size: 13px;">Imran Khan</strong><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px;">T-14</span></div><div style="font-size: 11.5px; color: #5c6f66;">RENEWAL · waiting 22 min</div></div>
-<div style="font-size: 11px; color: #5c6f66;">Call next is on the line screen, after Complete.</div>
-</aside>
-</sc-if>
-<sc-if value="{{ railShut }}" hint-placeholder-val="{{ true }}">
-<aside style="width: 52px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0;">
-<button type="button" onClick="{{ toggleRail }}" aria-label="Show the line" style="width: 36px; height: 36px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">»</button>
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700;">3</span>
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; letter-spacing: .1em; color: #5c6f66; writing-mode: vertical-rl;">WAITING · LONGEST 38 MIN</span>
-<span style="width: 10px; height: 10px; border-radius: 5px; background: #0e6b4e;" title="Session: In"></span>
-</aside>
-</sc-if>
 <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
 <nav style="display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 0;">
 <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="10">
@@ -264,6 +267,7 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </div>
 </sc-if>
 </aside>
+</div>
 </div>
 </div>
 </x-dc>
