@@ -3008,6 +3008,57 @@ describe("OpdConsult — the clinical co-pilot", () => {
     expect((doses[1] as HTMLInputElement).value).toBe("— dose needs review");
     expect((doses[1] as HTMLInputElement).value).not.toMatch(/\d\s*m[lg]/i);
   });
+
+  /**
+   * ═══ A FILLED LINE CARRIES THE MEDICINE (production, prescription 01M36QQXMD7DKKHZ7MF2ZC1N8W) ═══
+   *
+   * Every regimen-filled line used to post `medicineId: null`, so the pharmacy and the issue-time
+   * checks saw free text. The server now names a product per line; the fill must carry its id
+   * exactly as a drug-field pick does, show the pick's shorthand, and mark a line nothing matched.
+   */
+  it("P6: the fill posts each line's server-resolved medicineId, and marks the line nothing matched", async () => {
+    const matched = {
+      ...REGIMEN,
+      regimen: {
+        ...REGIMEN.regimen,
+        lines: [
+          line({
+            rx: { drug: "Calpol 250 Suspension", dose: "2 mL (87.5 mg)", route: "oral", frequency: "SOS", durationDays: 3, instructions: "Antipyresis", noSubstitution: false, medicineId: "m-calpol" },
+            product: { medicineId: "m-calpol", name: "Calpol 250 Suspension", form: "Oral suspension", strength: "250/5 mg/ml", code: null, stocked: true },
+            needsPick: false,
+          }),
+          line({
+            seq: 2, drugLabel: "Levocetirizine + Ambroxol Pediatric Syrup",
+            dose: { state: "fixed", basis: "2.5 mL At Bedtime" },
+            rx: { drug: "Levocetirizine + Ambroxol Pediatric Syrup", dose: "2.5 mL At Bedtime", route: "oral", frequency: "HS", durationDays: 5, instructions: "", noSubstitution: false, medicineId: null },
+            product: null, needsPick: true,
+          }),
+        ],
+      },
+    };
+    mockRoutes(cdsRoutes({
+      "GET /api/opd/cds/regimen": { status: 200, body: matched },
+      "POST /api/opd/visits/enc-1/prescriptions": { status: 201, body: { prescriptionId: "rx-1", version: 1, qrPayload: "rx1.x", allergyOverrideCount: 0 } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    await user.click(await screen.findByTestId("cds-hit-SYN_URI_01"));
+    await user.click(await screen.findByTestId("cds-fill"));
+
+    expect(await screen.findByTestId("rx-shorthand-0")).toHaveTextContent("[250/5 mg/ml | Oral suspension]");
+    expect(screen.queryByTestId("rx-unmatched-0")).toBeNull();
+    expect(screen.getByTestId("rx-unmatched-1")).toHaveTextContent("Not matched — pick from the list");
+
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    const path = "/api/opd/visits/enc-1/prescriptions";
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    const posted = bodiesOf("POST", path)[0]! as { lines: { drug: string; medicineId: string | null }[] };
+    expect(posted.lines.map((l) => [l.drug, l.medicineId])).toEqual([
+      ["Calpol 250 Suspension", "m-calpol"],
+      ["Levocetirizine + Ambroxol Pediatric Syrup", null],
+    ]);
+  });
 });
 
 /**

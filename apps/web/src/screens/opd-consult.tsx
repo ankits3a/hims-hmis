@@ -345,6 +345,12 @@ export function OpdConsult(): React.ReactElement {
    * than having none.
    */
   const [shorthand, setShorthand] = useState<Record<string, { strength: string | null; form: string; code: string | null }>>({});
+  /**
+   * Rows a regimen filled that NO catalogue product matched, by field-array row id. The line is
+   * still legal free text; the cue says the checks cannot see it until the doctor picks. It goes
+   * the moment a pick lands on that row, and with the panel.
+   */
+  const [needsPick, setNeedsPick] = useState<Record<string, true>>({});
   const [notices, setNotices] = useState<WireRxNotice[]>([]);
   const [noticesDismissed, setNoticesDismissed] = useState(false);
   /** P24 — soft drug-disease hits, shown beside the notices; the severe ones go to the dialog. */
@@ -620,6 +626,23 @@ export function OpdConsult(): React.ReactElement {
     defaultValues: { lines: [EMPTY_LINE] },
   });
   const lines = useFieldArray({ control: rxForm.control, name: "lines" });
+  /* The regimen fill's marks, applied to the rows `reset` just minted (see `fillFromRegimen`). */
+  const pendingFillMarks = useRef<{ shorthand: { strength: string | null; form: string; code: string | null } | null; needsPick: boolean }[] | null>(null);
+  useEffect(() => {
+    const marks = pendingFillMarks.current;
+    if (marks === null || lines.fields.length !== Math.max(marks.length, 1)) return;
+    pendingFillMarks.current = null;
+    const nextShorthand: Record<string, { strength: string | null; form: string; code: string | null }> = {};
+    const nextNeedsPick: Record<string, true> = {};
+    marks.forEach((m, i) => {
+      const id = lines.fields[i]?.id;
+      if (id === undefined) return;
+      if (m.shorthand !== null) nextShorthand[id] = m.shorthand;
+      if (m.needsPick) nextNeedsPick[id] = true;
+    });
+    setShorthand(nextShorthand);
+    setNeedsPick(nextNeedsPick);
+  }, [lines.fields]);
   /* The label follows what Complete will do: "Issue & complete" while written rows are un-issued. */
   const rxWaiting = (() => { const k = rowsKey(rxForm.watch("lines")); return k !== "" && k !== issuedRowsKey; })();
 
@@ -716,12 +739,27 @@ export function OpdConsult(): React.ReactElement {
    * number — so a doctor who taps fill and issues without reading still cannot print a dose that
    * nobody stands behind.
    */
+  /*
+    ═══ A FILLED LINE CARRIES THE MEDICINE, AS A PICK DOES (production, 2026-09-23) ═══
+
+    It used to fill `medicineId: null` on every line, so a regimen-filled prescription reached the
+    pharmacy — and the issue-time allergy, interaction and duplicate checks — as free text none of
+    them could resolve. The server now names the product per line and this carries its id, the
+    shorthand a pick would show, and — for a line nothing matched — a quiet cue to pick one.
+
+    The row ids those two maps are keyed on do not exist until `reset` has rendered, so the marks
+    wait in a ref for the next `fields` and are applied there, keyed by id like every pick is.
+  */
   const fillFromRegimen = (): void => {
     if (regimen === null) return;
     const lines = regimen.regimen.lines.map((l) => ({
       drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
       durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
-      instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: null,
+      instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: l.rx.medicineId ?? null,
+    }));
+    pendingFillMarks.current = regimen.regimen.lines.map((l) => ({
+      shorthand: l.product == null || l.rx.medicineId == null ? null : { strength: l.product.strength, form: l.product.form, code: l.product.code },
+      needsPick: l.needsPick === true,
     }));
     rxForm.reset({ lines: lines.length === 0 ? [EMPTY_LINE] : lines });
     setTab("rx");
@@ -758,6 +796,7 @@ export function OpdConsult(): React.ReactElement {
     setInteractionReasons([]);
     setDuplicateReasons([]);
     setShorthand({});
+    setNeedsPick({});
     setNotices([]);
     setNoticesDismissed(false);
     setDiseaseNotices([]);
@@ -2726,6 +2765,10 @@ export function OpdConsult(): React.ReactElement {
                                 rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
                                 rxForm.setValue(`lines.${i}.medicineId`, hit.id);
                                 setShorthand((m) => ({ ...m, [f.id]: { strength: hit.strength, form: hit.form, code: hit.code } }));
+                                setNeedsPick((m) => {
+                                  const { [f.id]: dropped, ...rest } = m;
+                                  return dropped === undefined ? m : rest;
+                                });
                               }}
                             />
                             {/*
@@ -2745,6 +2788,11 @@ export function OpdConsult(): React.ReactElement {
                                   shorthand[f.id]?.code ?? null,
                                 ].filter((x) => x !== null && x !== "").join(" | ")}]`}
                               </span>
+                            )}
+                            {needsPick[f.id] === true && (
+                              <p data-testid={`rx-unmatched-${String(i)}`} style={{ margin: 0, fontSize: 11, color: "var(--gold)" }}>
+                                {t("opdConsult.regimenUnmatched")}
+                              </p>
                             )}
                             {noticeEnabled && unresolvedLines.includes(i) && (
                               <p data-testid={`rx-uncovered-${String(i)}`} style={{ margin: 0, fontSize: 11, color: "var(--gold)" }}>

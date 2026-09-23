@@ -14,6 +14,8 @@ import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
 import { ageYearsAt } from "./time";
 import { listVitals } from "./vitals";
+import { productsForRegimen } from "./regimen-products";
+import type { ProductMatch } from "../formulary";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -49,6 +51,14 @@ const regimenQuery = z.object({
   /** Tri-state on purpose: absent means UNANSWERED, which is not the same as `false`. */
   pregnant: z.enum(["true", "false"]).optional(),
 });
+
+/** A regimen line as the screen receives it: the draft carries the product's id, as a drug-field pick does. */
+export type RegimenLineOut = BuiltLine & {
+  rx: RxDraftLine & { medicineId: string | null };
+  product: ProductMatch | null;
+  /** A drug line no catalogue product matched: it fills as free text and the screen asks for a pick. */
+  needsPick: boolean;
+};
 
 @Controller("opd/cds")
 export class OpdCdsController {
@@ -161,7 +171,7 @@ export class OpdCdsController {
   async regimen(
     @CurrentActor() actor: Actor, @Query() query: unknown,
   ): Promise<{
-    regimen: Omit<BuiltRegimen, "lines"> & { lines: (BuiltLine & { rx: RxDraftLine })[] };
+    regimen: Omit<BuiltRegimen, "lines"> & { lines: RegimenLineOut[] };
     cards: Card[];
     facts: { weightKg: number | null; ageYears: number | null; allergies: string[]; pregnant: boolean | null };
   }> {
@@ -199,8 +209,29 @@ export class OpdCdsController {
       const regimen = buildRegimen(q.syndromeKey, facts);
       if (regimen === null) throw new OpdError("unknown_syndrome", `unknown syndrome ${q.syndromeKey}`);
       /* The prescription draft rides the line it came from, so the screen fills a form rather than
-         parsing prose in a browser — one implementation, under test, for every client. */
-      const lines = regimen.lines.map((l) => ({ ...l, rx: toRxDraft(l) }));
+         parsing prose in a browser — one implementation, under test, for every client.
+
+         ═══ AND IT CARRIES THE MEDICINE, NOT ONLY ITS NAME (production, 2026-09-23) ═══
+         A filled line used to reach issue as free text with no `medicineId`, and every check that
+         keys on a resolution — moiety and class allergy, interaction, duplicate, drug-disease —
+         had nothing to reason about. Each line now names the catalogue product it means, resolved
+         HERE (a stocked product first, else the generic; `formulary/products.ts` has the rule), and
+         the draft carries its id exactly as a pick in the drug field would. A stocked product's
+         own name replaces the label, because that is what the counter will hand over; a generic
+         keeps the bundle's label, which says the same thing in words a patient can read. No
+         product is `needsPick`: the line stays free text and the screen asks the doctor to pick. */
+      const products = await productsForRegimen(this.db, regimen.lines);
+      const lines = regimen.lines.map((l, i): RegimenLineOut => {
+        const product = products[i] ?? null;
+        const draft = toRxDraft(l);
+        const named = product !== null && product.stocked && l.dose.state !== "blocked";
+        return {
+          ...l,
+          product,
+          needsPick: product === null && l.dose.state !== "advice_only" && l.dose.state !== "blocked",
+          rx: { ...draft, drug: named ? product.name : draft.drug, medicineId: product?.medicineId ?? null },
+        };
+      });
       return { regimen: { ...regimen, lines }, cards: cardsFor(regimen, facts, sex), facts: { weightKg, ageYears, allergies, pregnant } };
     } catch (e) {
       toHttp(e);
