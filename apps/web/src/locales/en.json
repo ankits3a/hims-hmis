@@ -5497,7 +5497,16 @@
       "revisit": "Revisit · free follow-up",
       "renewal": "Renewal · fresh fee due"
     },
-    "completeShort": "Complete"
+    "completeShort": "Complete",
+    "deskHeard": "Heard at the desk — tap to add:",
+    "deskHeardFrom": "From the desk's words: \"{{words}}\"",
+    "rxDays": "{{n}} days",
+    "rxEdit": "Edit",
+    "rxFold": "Done",
+    "more": "More",
+    "moreActions": "More actions",
+    "vitalsAt": "Recorded at {{at}}",
+    "dangerShort": "Danger"
   },
   "opdConsultV3": {
     "suggestions": "Copilot suggestions",

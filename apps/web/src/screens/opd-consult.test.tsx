@@ -3891,8 +3891,12 @@ describe("OpdConsult — the desk complaint and the visit type", () => {
 
   const DESK = { text: "pair mein jhunjhuni, raat ko zyada", by: "Anita Sharma", at: "2026-08-18T04:32:00.000Z" };
 
-  it("D1: the desk's words are shown with who typed them and when, and seed the complaint tags", async () => {
-    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, deskComplaint: DESK } } });
+  it("D1: the desk's words are shown verbatim with who and when — and only the complaints the vocabulary RECOGNISES are offered, as taps", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, deskComplaint: DESK } },
+      "GET /api/opd/cds/recognise/complaint": { status: 200, body: { items: [{ conceptKey: "paresthesia", label: "Tingling of feet", matched: "pair mein jhunjhuni" }] } },
+    });
     const user = userEvent.setup();
     await openPanel(user);
 
@@ -3900,9 +3904,29 @@ describe("OpdConsult — the desk complaint and the visit type", () => {
     expect(line).toHaveTextContent("pair mein jhunjhuni, raat ko zyada");
     expect(line).toHaveTextContent("Anita Sharma");
     expect(line).toHaveTextContent("10:02"); // 04:32 UTC is 10:02 IST
-    // split on the comma the clerk typed: two tags the doctor can remove one at a time
-    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("pair mein jhunjhuni");
-    expect(screen.getByTestId("note-chief-tag-1")).toHaveTextContent("raat ko zyada");
+    // the owner's walk: sentence fragments are NEVER entered as complaints — nothing is in the field yet
+    expect(screen.queryByTestId("note-chief-tag-0")).not.toBeInTheDocument();
+    const offer = await screen.findByTestId("desk-heard-paresthesia");
+    expect(offer).toHaveTextContent("Tingling of feet");
+    expect(screen.queryByText("raat ko zyada", { selector: "[data-testid^=desk-heard]" })).toBeNull();
+    // the doctor's tap is what enters it
+    await user.click(offer);
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("Tingling of feet");
+    expect(screen.queryByTestId("desk-heard-paresthesia")).not.toBeInTheDocument();
+  });
+
+  it("D1b: a desk sentence the vocabulary recognises nothing in offers nothing", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, deskComplaint: DESK } },
+      "GET /api/opd/cds/recognise/complaint": { status: 200, body: { items: [] } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await screen.findByTestId("desk-complaint");
+    await waitFor(() => { expect(callsTo("GET", "/api/opd/cds/recognise/complaint").length).toBeGreaterThan(0); });
+    expect(screen.queryByTestId("desk-heard")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("note-chief-tag-0")).not.toBeInTheDocument();
   });
 
   it("D2: a note the doctor already wrote is never overwritten by the desk's words", async () => {
@@ -4070,10 +4094,13 @@ describe("Consult v2", () => {
     await waitFor(() => { expect(screen.getByTestId("agent-ask")).toHaveFocus(); });
   });
 
-  it("V4: the desk's words are already chips, and 'your work so far' shows them on EVERY tab", async () => {
-    mockRoutes(routes());
+  it("V4: a desk complaint the doctor TAPS becomes a chip, and 'your work so far' shows it on EVERY tab", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/cds/recognise/complaint": { status: 200, body: { items: [{ conceptKey: "headache", label: "Sar mein dard aur chakkar", matched: "sar mein dard" }] } },
+    }));
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(await screen.findByTestId("desk-heard-headache"));
     const strip = await screen.findByTestId("work-strip");
     await waitFor(() => { expect(within(strip).getByTestId("work-complaints")).toHaveTextContent("Sar mein dard aur chakkar"); });
     await user.click(screen.getByRole("tab", { name: "Examination" }));
@@ -4167,6 +4194,38 @@ describe("Consult v2", () => {
         { offeredMedicineId: "m-stamlo", keptMedicineId: "m-stamlo", chosen: "swap" },
       ]);
     }, { timeout: 3000 });
+  });
+
+  it("V10: a finished line folds to its CARD when the doctor adds another — name and sig on the card, the stock tag at its corner, a tap opens it", async () => {
+    mockRoutes(routes({
+      "GET /api/formulary/medicines/search": { status: 200, body: V2_DRUGS },
+      "GET /api/pharmacy/doctor/stock": { status: 200, body: { items: [{ medicineId: "m-amlong", available: 0, unit: "tablet", alternatives: [] }] } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "amlo");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-amlong"));
+    await user.click(screen.getByTestId("sig-0-days-5"));
+    await user.click(screen.getByRole("button", { name: "Add line" }));
+    const head = await screen.findByTestId("rx-card-head-0");
+    expect(head).toHaveTextContent(/5 days/);
+    expect(head).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("rx-fields-0")).toHaveStyle({ display: "none" });
+    expect(within(screen.getByTestId("rx-card-0")).getByTestId("rx-stock-0")).toHaveTextContent("0 in stock");
+    await user.click(head);
+    expect(screen.getByTestId("rx-fields-0")).not.toHaveStyle({ display: "none" });
+  });
+
+  it("V11: the voice scribe is a small mic in the complaint's header row, and Save draft and Refer are also in the header's ⋯ menu", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    expect(screen.getByTestId("scribe-hold")).toBeInTheDocument();
+    expect(screen.queryByText("Voice scribe")).toBeNull(); // no longer a titled full-width block
+    await user.click(screen.getByTestId("header-more"));
+    await user.click(within(screen.getByTestId("header-more-menu")).getByTestId("more-save-draft"));
+    await waitFor(() => { expect(callsTo("PUT", "/api/opd/visits/enc-1/consult/note")).toHaveLength(1); });
   });
 
   it("V9: unknown stock (the pharmacy is not open) shows NO tag — never a zero", async () => {

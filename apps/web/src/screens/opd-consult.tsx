@@ -47,7 +47,7 @@ import { useSnippets } from "../lib/use-snippets";
 import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
 import type { SnippetContext } from "../lib/snippets";
 import { ConsultScribe } from "../components/consult-scribe";
-import { completeComplaint, fetchRegimen, suggestSyndromes } from "../lib/cds-api";
+import { completeComplaint, fetchRegimen, recogniseComplaint, suggestSyndromes } from "../lib/cds-api";
 import type { WireCard, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
 
@@ -670,24 +670,15 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (encounter === null || loadedNoteFor.current === encounter.id) return;
     loadedNoteFor.current = encounter.id;
     /*
-      ═══ THE DESK'S WORDS SEED AN EMPTY COMPLAINT, AND NEVER A WRITTEN ONE (2026-09-23) ═══
+      ═══ THE DESK'S WORDS ARE A RECORDED FACT, NOT THE DOCTOR'S ENTRY (owner's walk, 2026-09-23) ═══
 
-      The patient told the front desk why they came; the doctor should not have to ask again. So an
-      EMPTY complaint starts as the desk's words, split on the commas the clerk typed into tags the
-      doctor can keep or remove. A complaint the doctor has already written wins outright — a
-      reopened note must read as the doctor left it.
-
-      `lastSavedNote` is taken from the UNSEEDED note on purpose: the seed is not yet the doctor's
-      entry, so the first save the doctor causes (any blur, or Complete) is what makes it one. The
-      desk's own record stays in `desk_complaint`, untouched, whatever the doctor does here.
+      Splitting the desk's sentence at commas put fragments like "ek hafte se. Subah zyada." into
+      the complaint. The sentence is now shown verbatim above the field, and the complaints the
+      hospital's vocabulary RECOGNISES in it are offered as dashed suggestions the doctor taps
+      (`deskHeard`, below). Nothing is entered until the doctor taps; nothing unrecognised is offered.
     */
-    const desk = visit.data?.deskComplaint ?? null;
-    const written = encounter.chiefComplaint ?? "";
-    const seeded = written.trim() === "" && desk !== null
-      ? joinTags(desk.text.split(/[,;\n]/).map((x) => x.trim()).filter((x) => x !== ""))
-      : written;
     const next: NoteState = {
-      chiefComplaint: seeded,
+      chiefComplaint: encounter.chiefComplaint ?? "",
       diagnosis: encounter.diagnosis ?? "",
       icd10Code: encounter.icd10Code ?? "",
       advice: encounter.advice ?? "",
@@ -714,7 +705,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       || loadedV2.internalComment !== "" || loadedV2.diagnosisKind !== null || loadedV2.rxStockChoices.length > 0;
     setV2(loadedV2);
     setStockAnswered(Object.fromEntries(loadedV2.rxStockChoices.map((c) => [c.chosen === "keep" ? c.keptMedicineId : c.offeredMedicineId, true as const])));
-    lastSavedNote.current = JSON.stringify({ ...noteBodyOf({ ...next, chiefComplaint: written }, icdByTerm.current), ...v2BodyOf(loadedV2, v2On.current) });
+    lastSavedNote.current = JSON.stringify({ ...noteBodyOf(next, icdByTerm.current), ...v2BodyOf(loadedV2, v2On.current) });
   }, [encounter, visit.data]);
 
   const rxForm = useForm<RxFormInput, unknown, RxFormValues>({
@@ -744,6 +735,18 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
 
   // ——— CONSULT V2: stock beside each medicine, and the alternative at zero (D13, D14) ———
   const watchedLines = rxForm.watch("lines");
+  /* the complaints the vocabulary recognises in the desk's sentence — offered, never entered */
+  const deskText = visit.data?.deskComplaint?.text ?? "";
+  const deskHeard = useQuery({
+    queryKey: ["opd", "desk-heard", deskText], enabled: deskText.trim() !== "", staleTime: 60_000,
+    queryFn: () => recogniseComplaint(deskText),
+  });
+  /** The Rx line being edited; every other FINISHED line (drug and days) shows as its card. */
+  const [rxOpen, setRxOpen] = useState<number | null>(null);
+  const rxFolded = (i: number): boolean => {
+    const l = watchedLines[i];
+    return rxOpen !== i && l !== undefined && l.drug.trim() !== "" && String(l.durationDays ?? "").trim() !== "";
+  };
   const stockByMedicine = useDoctorStock(watchedLines.map((l) => l.medicineId ?? ""));
   const stockAlerts = watchedLines.flatMap((l, index) => {
     const id = l.medicineId ?? "";
@@ -957,6 +960,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   };
 
   const resetPanel = (): void => {
+    setRxOpen(null);
     loadedNoteFor.current = null;
     /* The map is the PATIENT'S, not the screen's — carrying it to the next patient would attach one
        patient's ICD-10 code to another's identically-worded diagnosis. `resetPanel` has forgotten
@@ -1392,6 +1396,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     patient is now brought back as a brief with Resume consultation under it, never an empty chair.
   */
   const [briefEntry, setBriefEntry] = useState<WireQueueEntryView | null>(null);
+  /** The header's ⋯ menu — Save draft and Refer stay reachable where the header has no room (<900px). */
+  const [moreOpen, setMoreOpen] = useState(false);
   const activeToken: number | null = active === null ? null
     : ([...inConsult, ...(current === null ? [] : [current])].find((e) => e.encounterId === active.encounterId)?.tokenNo ?? null);
   const seatedNow = inConsult.find((e) => parkedSince(e) === null) ?? null;
@@ -2044,6 +2050,13 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       </span>
       <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
       <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
+      {/* the danger mark sits WITH the badges and says what it is (owner's walk: a lone ⚠ read as nothing) */}
+      {(e.danger || e.encounter.dangerFlagged) && (
+        <span data-testid={`queue-danger-${e.id}`} title={t("opdConsult.danger")} aria-label={t("opdConsult.danger")}
+          className="mo" style={{ display: "inline-flex", alignItems: "center", height: 19, padding: "0 5px", borderRadius: 4, border: "1px solid var(--red-line)", background: "var(--red-soft)", color: "var(--red)", fontSize: 10, fontWeight: 700 }}>
+          ⚠ {t("opdConsultV2.dangerShort")}
+        </span>
+      )}
       <VisitTypeBadge visitType={e.encounter.visitType} size="sm" testId={`queue-visit-type-${e.id}`} />
       {/*
         CONSULT V2 (owner, 2026-09-23) — the alarm says a called token again on the corridor board; the
@@ -2065,9 +2078,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         </a>
       )}
       {e.queueClass !== null && <span className="tag">{t(`opd.queueClass.${e.queueClass}`)}</span>}
-      {(e.danger || e.encounter.dangerFlagged) && (
-        <span data-testid={`queue-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
-      )}
       {e.reEntry && <span className="pill" data-testid={`queue-reentry-${e.id}`}>{t("opdConsult.reEntry")}</span>}
       {mode === "parked" && (
         <span data-testid={`queue-parked-${e.id}`} className="pill" style={{ color: "var(--gold)", fontWeight: 600 }}>
@@ -2300,6 +2310,18 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 <span className="cx-short" aria-hidden="true">{t("opdConsultV2.completeShort")}</span>
               </button>
             </>
+          )}
+          {active !== null && (
+            <div className="cx-more-wrap" style={{ position: "relative" }}>
+              <button type="button" className="cx-hbtn cx-more" data-testid="header-more" aria-haspopup="menu" aria-expanded={moreOpen}
+                aria-label={t("opdConsultV2.moreActions")} onClick={() => { setMoreOpen(!moreOpen); }}>⋯</button>
+              {moreOpen && (
+                <div role="menu" data-testid="header-more-menu" className="cx-more-menu">
+                  <button type="button" role="menuitem" data-testid="more-save-draft" onClick={() => { setMoreOpen(false); void saveNote({ force: true }); }}>{t("opdConsultV2.saveDraft")}</button>
+                  <button type="button" role="menuitem" data-testid="more-refer" onClick={() => { setMoreOpen(false); setReferDone(null); setReferOpen(true); }}>{t("opdConsultV2.refer.open")}</button>
+                </div>
+              )}
+            </div>
           )}
           <button type="button" className="cx-hbtn cx-mob" data-testid="mob-copilot" aria-label={t("opdConsultV2.showCopilot")}
             onClick={() => { setRightOpen(true); }}>F2</button>
@@ -2725,7 +2747,34 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         })}
                       </p>
                     )}
-                    <div>
+                    {(() => {
+                      const have = new Set(splitTags(note.chiefComplaint).map((x) => x.toLowerCase()));
+                      const offer = (deskHeard.data?.items ?? []).filter((h) => !have.has(h.label.toLowerCase()));
+                      return offer.length === 0 ? null : (
+                        <div data-testid="desk-heard" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsultV2.deskHeard")}</span>
+                          {offer.map((h) => (
+                            <button key={h.conceptKey} type="button" data-testid={`desk-heard-${h.conceptKey}`}
+                              title={t("opdConsultV2.deskHeardFrom", { words: h.matched })}
+                              onClick={() => { setNote((n) => ({ ...n, chiefComplaint: joinTags([...splitTags(n.chiefComplaint), h.label]) })); }}
+                              style={{ height: 28, padding: "0 11px", borderRadius: 14, border: "1.5px dashed var(--green)", background: "var(--green-soft)", color: "var(--green)", fontSize: 12.5, cursor: "pointer" }}>
+                              + {h.label}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                    <div style={{ position: "relative" }}>
+                      {/*
+                        THE SCRIBE IS A SMALL MIC IN THE CHIEF COMPLAINT'S HEADER ROW (owner, Consult
+                        Engine boards). It still inserts a SUGGESTION into the field and never writes
+                        past it; its transcript opens as a small card under the button.
+                      */}
+                      <div style={{ position: "absolute", top: -4, right: 0, zIndex: 3 }}>
+                        <ConsultScribe compact onInsert={(text) => {
+                          setNote((n) => ({ ...n, chiefComplaint: n.chiefComplaint.trim() === "" ? text : `${n.chiefComplaint.trim()} ${text}` }));
+                        }} />
+                      </div>
                       {/*
                         THE COMPLAINT IS TAGS NOW (owner, 2026-09-14), and the stored value is still
                         a plain comma-joined string — `opd_encounters.chief_complaint`, the printed
@@ -2841,14 +2890,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         </div>
                       )}
                     </div>
-                    {/*
-                      THE SCRIBE IS A SMALL CONTROL UNDER THE COMPLAINT now (owner, 2026-09-23: the
-                      boards open the tab on the complaint, not on a dictation box). It still inserts a
-                      SUGGESTION into the field above and never writes past it.
-                    */}
-                    <ConsultScribe onInsert={(text) => {
-                      setNote((n) => ({ ...n, chiefComplaint: n.chiefComplaint.trim() === "" ? text : `${n.chiefComplaint.trim()} ${text}` }));
-                    }} />
                     </>)}
                     {tab === "dx" && (<>
                     {/*
@@ -3204,13 +3245,37 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (
                         <div key={f.id} className="cx-rxcard" data-testid={`rx-card-${String(i)}`} style={{ marginTop: 14 }}>
+                        <StockTag stock={stockByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-stock-${String(i)}`} />
+                        {(() => {
+                          /*
+                            THE LINE AS A CARD (the Consult Engine board): name, strength, the sig in one
+                            line. A finished line folds to this card when the doctor moves to another;
+                            its fields stay mounted (the form owns them) and a tap opens them again.
+                          */
+                          const l = watchedLines[i];
+                          if (l === undefined || l.drug.trim() === "") return null;
+                          const days = String(l.durationDays ?? "").trim();
+                          return (
+                            <button type="button" data-testid={`rx-card-head-${String(i)}`} onClick={() => { setRxOpen(rxFolded(i) ? i : null); /* folded → open it; open → Done folds it */ }}
+                              aria-expanded={!rxFolded(i)}
+                              style={{ display: "flex", width: "100%", alignItems: "baseline", gap: 10, border: 0, background: "transparent", padding: "0 90px 0 0", textAlign: "left", cursor: "pointer", color: "var(--ink)" }}>
+                              <span className="mo" style={{ fontSize: 12, color: "var(--faint)" }}>{String(i + 1).padStart(2, "0")}</span>
+                              <span style={{ fontWeight: 700, fontSize: 13.5 }}>{l.drug}</span>
+                              {l.dose.trim() !== "" && <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{l.dose}</span>}
+                              <span className="mo" style={{ fontSize: 12.5 }}>{l.frequency}</span>
+                              {days !== "" && <span style={{ fontSize: 12.5 }}>{t("opdConsultV2.rxDays", { n: days })}</span>}
+                              {l.instructions.trim() !== "" && <span style={{ fontSize: 12, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{l.instructions}</span>}
+                              <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--green)", textDecoration: "underline", flexShrink: 0 }}>{rxFolded(i) ? t("opdConsultV2.rxEdit") : t("opdConsultV2.rxFold")}</span>
+                            </button>
+                          );
+                        })()}
+                        <div data-testid={`rx-fields-${String(i)}`} onFocusCapture={() => { if (rxOpen !== i) setRxOpen(i); }} style={rxFolded(i) ? { display: "none" } : { marginTop: watchedLines[i]?.drug.trim() ? 10 : 0 }}>
                         {/*
                           A LINE IS Drug · Dose · Route, then the sig panel — the ONLY control for
                           how often, food timing, days and the note (see components/sig-panel.tsx
                           for why the Frequency select and the Days and Instructions boxes went).
                         */}
                         <div data-testid={`rx-row-${String(i)}`} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9 }}>
-                          <StockTag stock={stockByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-stock-${String(i)}`} />
                           <div style={{ flex: "2 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
                             {/*
                               THE DRUG FIELD IS NOW A COMBOBOX over the CLINICAL DRUG tier —
@@ -3333,9 +3398,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           }}
                         />
                         </div>
+                        </div>
                       ))}
                       <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
-                        <button type="button" className="sec" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => lines.append(EMPTY_LINE)}>
+                        <button type="button" className="sec" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => { setRxOpen(lines.fields.length); lines.append(EMPTY_LINE); }}>
                           {t("opdConsult.addLine")}
                         </button>
                         <button type="submit" className="pri">{t("opdConsult.issue")}</button>

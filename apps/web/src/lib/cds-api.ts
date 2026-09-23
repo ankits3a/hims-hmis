@@ -85,5 +85,10 @@ export type WireComplaintSuggestion = {
 };
 export type WireComplete = { items: WireComplaintSuggestion[]; ghost: string | null };
 
+/** The desk's sentence → the complaints the vocabulary recognises in it (exact phrasings only, by label). */
+export type WireRecognised = { conceptKey: string; label: string; matched: string };
+export const recogniseComplaint = (text: string): Promise<{ items: WireRecognised[] }> =>
+  api("GET", `/opd/cds/recognise/complaint?text=${encodeURIComponent(text.slice(0, 500))}`);
+
 export const completeComplaint = (q: string): Promise<WireComplete> =>
   api("GET", `/opd/cds/complete/complaint?q=${encodeURIComponent(q)}`);

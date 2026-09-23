@@ -156,8 +156,10 @@ function fmtTime(iso: string): string {
 
 function linesOf(rx: WireRxHistoryItem | undefined): string[] {
   if (rx === undefined) return [];
-  return (rx.lines as unknown as { drug: string; dose?: string; frequency?: string }[])
-    .map((l) => [l.drug, l.dose, l.frequency].filter((x) => typeof x === "string" && x !== "").join(" · "));
+  /* The drug's NAME leads every line — "40 mg · 1-0-0" alone told the doctor nothing (owner's walk). */
+  return rx.lines
+    .map((l) => [l.drug, l.dose, l.frequency].filter((x): x is string => typeof x === "string" && x.trim() !== "").join(" · "))
+    .filter((line) => line !== "");
 }
 
 /**
@@ -245,7 +247,9 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
                 </div>
               ))}
             </div>
-            <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--dim)" }}>{t("opdConsultV2.vitalsBy", { by: v.recordedByName ?? "—", at: fmtTime(v.recordedAt) })}</p>
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--dim)" }}>{v.recordedByName === null || v.recordedByName === undefined || v.recordedByName.trim() === ""
+              ? t("opdConsultV2.vitalsAt", { at: fmtTime(v.recordedAt) })
+              : t("opdConsultV2.vitalsBy", { by: v.recordedByName, at: fmtTime(v.recordedAt) })}</p>
           </div>
         )}
         <div className="cx-brief-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 18, borderTop: "1px solid var(--line2)", paddingTop: 12 }}>
@@ -447,17 +451,12 @@ export function StockTag({ stock, testId }: { stock: WireDoctorStock | undefined
   return (
     <span data-testid={testId} className="mo" title={zero ? t("opdConsultV2.stockZeroTitle") : t("opdConsultV2.stockTitle")}
       style={{
-        position: "absolute", top: -9, right: 10, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 10.5, fontWeight: 600, lineHeight: "18px",
+        position: "absolute", top: -9, right: 10, height: 18, whiteSpace: "nowrap", padding: "0 7px", borderRadius: 9, fontSize: 10.5, fontWeight: 600, lineHeight: "18px",
         ...(zero
           ? { background: "rgba(221,143,28,.14)", border: "1px solid rgba(221,143,28,.5)", color: "#8a5a10" }
           : { background: "rgba(14,107,78,.07)", border: "1px solid rgba(14,107,78,.22)", color: "#3f6b5b" }),
       }}>
-      {zero ? (
-        <>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ verticalAlign: -1, marginRight: 3 }}><path d="M7 7h11l-3-3" /><path d="M17 17H6l3 3" /></svg>
-          {t("opdConsultV2.stockZero")}
-        </>
-      ) : `${stock.available.toLocaleString("en-IN")}${unit}`}
+      {zero ? t("opdConsultV2.stockZero") : `${stock.available.toLocaleString("en-IN")}${unit}`}
     </span>
   );
 }
@@ -468,8 +467,8 @@ export function StockAlternativeCard({ drug, stock, onUse, onKeep }: {
 }): React.ReactElement {
   const { t } = useTranslation();
   return (
-    <div data-testid={`stock-alt-${stock.medicineId}`} style={{ padding: 12, borderRadius: 8, border: "1.5px solid rgba(221,143,28,.6)", background: "rgba(221,143,28,.10)", color: "var(--agent-fg)", display: "flex", flexDirection: "column", gap: 7 }}>
-      <span className="mo" style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#f0c26a" }}>{t("opdConsultV2.altHead", { drug })}</span>
+    <div data-testid={`stock-alt-${stock.medicineId}`} style={{ padding: 12, borderRadius: 8, border: "1.5px solid rgba(221,143,28,.6)", background: "rgba(221,143,28,.08)", color: "var(--ink)", display: "flex", flexDirection: "column", gap: 7 }}>
+      <span className="mo" style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#8a5a10" }}>{t("opdConsultV2.altHead", { drug })}</span>
       {stock.alternatives.length === 0 ? (
         <span style={{ fontSize: 12 }}>{t("opdConsultV2.altNone")}</span>
       ) : stock.alternatives.map((a) => (

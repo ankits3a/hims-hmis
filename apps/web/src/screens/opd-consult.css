@@ -153,3 +153,26 @@
   .cx-tabs [role="tablist"] { flex-wrap: nowrap; overflow-x: auto; }
   .cx-head .cx-title { display: none; }
 }
+
+/* ——— step 5 (main-session review) ——— */
+/* the tab bar is ONE row at every width: it scrolls sideways with faded edges rather than wrapping */
+.cx-tabs [role="tablist"] {
+  flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%);
+  padding: 0 14px 0 2px !important; gap: 5px !important;
+}
+.cx-tabs [role="tablist"]::-webkit-scrollbar { display: none; }
+.cx-tabs [role="tab"] { padding: 0 10px; flex: none; }
+.cx-tabs { padding-left: 16px; padding-right: 16px; }
+
+/* the header's ⋯ overflow: shown only where Refer and Save draft are hidden */
+.cx-head .cx-more { display: none; padding: 0 10px; font-size: 16px; line-height: 1; }
+.cx-more-menu {
+  position: absolute; top: 40px; right: 0; z-index: 30; min-width: 170px; padding: 4px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 22px rgba(19,36,32,.16);
+  display: flex; flex-direction: column;
+}
+.cx-more-menu button { text-align: left; height: 34px; padding: 0 12px; border: 0; background: transparent; border-radius: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
+.cx-more-menu button:hover { background: var(--wash); }
+@media (max-width: 899px) { .cx-head .cx-more { display: inline-flex; align-items: center; } }

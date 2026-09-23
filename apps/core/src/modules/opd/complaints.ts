@@ -332,6 +332,48 @@ export async function createComplaintConcept(
   return { key };
 }
 
+/**
+ * ═══ THE DESK'S SENTENCE → THE COMPLAINTS IT NAMES (owner's walk, 2026-09-23) ═══
+ *
+ * The front desk types the patient's own words — "Sar mein dard aur chakkar, ek hafte se". Splitting
+ * that at commas and calling the pieces complaints put sentence fragments in the doctor's field. The
+ * consult now OFFERS only what this hospital's vocabulary recognises in those words, as suggestions
+ * the doctor taps; the sentence itself stays shown verbatim above the field (D15/D16).
+ *
+ * Every run of one to four consecutive words is looked up EXACTLY (`conceptsForTerms`), the longest
+ * run first, so "seene me dard" wins over "dard". A word used by a longer match is not reused. Output
+ * is one row per concept, in the order the patient said them. Nothing fuzzy, nothing invented: a
+ * sentence that names nothing known yields nothing.
+ */
+export async function recognisedComplaintConcepts(
+  db: Db, text: string,
+): Promise<{ conceptKey: string; label: string; matched: string }[]> {
+  const words = text.toLowerCase().normalize("NFC").split(/[^\p{L}\p{M}\p{N}]+/u).filter((w) => w !== "").slice(0, 60);
+  if (words.length === 0) return [];
+  const grams: { start: number; len: number; text: string }[] = [];
+  for (let len = 4; len >= 1; len--) {
+    for (let start = 0; start + len <= words.length; start++) grams.push({ start, len, text: words.slice(start, start + len).join(" ") });
+  }
+  const known = await conceptsForTerms(db, grams.map((g) => g.text));
+  if (known.size === 0) return [];
+  const used = new Set<number>();
+  const hits: { start: number; conceptKey: string; matched: string }[] = [];
+  for (const g of grams) {
+    const key = known.get(g.text);
+    if (key === undefined) continue;
+    const span = Array.from({ length: g.len }, (_, k) => g.start + k);
+    if (span.some((k) => used.has(k))) continue;
+    span.forEach((k) => { used.add(k); });
+    hits.push({ start: g.start, conceptKey: key, matched: g.text });
+  }
+  const labels = new Map((await listComplaintConcepts(db)).map((c) => [c.key, c.label]));
+  const seen = new Set<string>();
+  return hits
+    .sort((a, b) => a.start - b.start)
+    .filter((h) => labels.has(h.conceptKey) && !seen.has(h.conceptKey) && (seen.add(h.conceptKey), true))
+    .map((h) => ({ conceptKey: h.conceptKey, label: labels.get(h.conceptKey)!, matched: h.matched }));
+}
+
 export async function listComplaintConcepts(db: Db): Promise<{ key: string; label: string }[]> {
   return db
     .select({ key: opdComplaintConcepts.key, label: opdComplaintConcepts.label })

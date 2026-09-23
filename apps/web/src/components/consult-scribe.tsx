@@ -51,7 +51,15 @@ type Phase =
   | { kind: "ready"; text: string }
   | { kind: "off"; message: string };
 
-export function ConsultScribe({ onInsert }: { onInsert: (text: string) => void }): React.ReactElement {
+export function ConsultScribe({ onInsert, compact = false }: {
+  onInsert: (text: string) => void;
+  /**
+   * The consult screen's form (owner, 2026-09-23 — the Consult Engine boards): a small mic button in
+   * the Chief complaint's header row, not a full-width block. The transcript and any message open as
+   * a small card under the button; the behaviour is identical.
+   */
+  compact?: boolean;
+}): React.ReactElement {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const recorder = useRef<MediaRecorder | null>(null);
@@ -138,9 +146,12 @@ export function ConsultScribe({ onInsert }: { onInsert: (text: string) => void }
   }, []);
 
   return (
-    <div data-testid="scribe" data-phase={phase.kind} className="box" style={{ padding: "11px 13px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-        <span className="tag">{t("opdConsult.scribe.title")}</span>
+    <div data-testid="scribe" data-phase={phase.kind} className={compact ? undefined : "box"}
+      style={compact
+        ? { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, maxWidth: 380 }
+        : { padding: "11px 13px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", justifyContent: compact ? "flex-end" : undefined }}>
+        {!compact && <span className="tag">{t("opdConsult.scribe.title")}</span>}
         {/*
           PUSH-TO-HOLD. `onPointerDown`/`onPointerUp` for the mouse and pen, and the keyboard's own
           hold semantics for Space and Enter — a control a doctor can only operate with a mouse is
@@ -148,13 +159,21 @@ export function ConsultScribe({ onInsert }: { onInsert: (text: string) => void }
         */}
         <button
           type="button" data-testid="scribe-hold" className={phase.kind === "recording" ? "pri" : "sec"}
-          style={{ padding: "3px 12px", fontSize: 12.5 }}
+          style={compact
+            ? { display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 9px", fontSize: 11.5, borderRadius: 13 }
+            : { padding: "3px 12px", fontSize: 12.5 }}
+          title={compact ? t("opdConsult.scribe.title") : undefined}
           onPointerDown={() => { void start(); }}
           onPointerUp={stop}
           onPointerLeave={stop}
           onKeyDown={(e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); void start(); } }}
           onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); stop(); } }}
         >
+          {compact && (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" />
+            </svg>
+          )}
           {t(phase.kind === "recording" ? "opdConsult.scribe.listening" : "opdConsult.scribe.hold")}
         </button>
         {phase.kind === "recording" && (

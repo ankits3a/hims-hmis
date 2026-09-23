@@ -6,7 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { rankSyndromes } from "../cds";
 import {
   conceptsForTerms, createComplaintConcept, expandComplaintForMatching, mapComplaintTerm, proposeConceptFor,
-  recordComplaintUsage, suggestComplaints, unmappedComplaintTerms,
+  recognisedComplaintConcepts, recordComplaintUsage, suggestComplaints, unmappedComplaintTerms,
 } from "./complaints";
 import type { Db } from "../../kernel/db/client";
 
@@ -268,5 +268,21 @@ describe("the complaint vocabulary", () => {
   it("Q13: the proposer offers nothing rather than a bad guess", async () => {
     expect(await proposeConceptFor(db, "")).toEqual([]);
     expect(await proposeConceptFor(db, "zzzqqq")).toEqual([]);
+  });
+
+  /* ────────────── the desk's sentence → the complaints it names (owner's walk, 2026-09-23) ────────────── */
+
+  it("Q14: a desk sentence yields the KNOWN complaints it names, by label, in the order spoken — and never a fragment", async () => {
+    const got = await recognisedComplaintConcepts(db, "Bukhar teen din se, khansi bhi. Seene me dard raat ko.");
+    expect(got).toEqual([
+      { conceptKey: "fever", label: "Fever", matched: "bukhar" },
+      { conceptKey: "cough", label: "Cough", matched: "khansi" },
+      { conceptKey: "chest_pain", label: "Chest pain", matched: "seene me dard" },
+    ]);
+  });
+
+  it("Q15: a sentence naming nothing known yields nothing — the field is not seeded with guesses", async () => {
+    expect(await recognisedComplaintConcepts(db, "mera mobile kho gaya, ek hafte se")).toEqual([]);
+    expect(await recognisedComplaintConcepts(db, "   ")).toEqual([]);
   });
 });

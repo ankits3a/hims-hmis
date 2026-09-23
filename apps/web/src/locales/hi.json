@@ -5497,7 +5497,16 @@
       "revisit": "दोबारा विज़िट · निःशुल्क फ़ॉलो-अप",
       "renewal": "नवीनीकरण · नई फ़ीस देय"
     },
-    "completeShort": "पूर्ण"
+    "completeShort": "पूर्ण",
+    "deskHeard": "डेस्क पर बताया — जोड़ने के लिए टैप करें:",
+    "deskHeardFrom": "डेस्क के शब्दों से: \"{{words}}\"",
+    "rxDays": "{{n}} दिन",
+    "rxEdit": "बदलें",
+    "rxFold": "हो गया",
+    "more": "और",
+    "moreActions": "और विकल्प",
+    "vitalsAt": "{{at}} पर दर्ज",
+    "dangerShort": "ख़तरा"
   },
   "opdConsultV3": {
     "suggestions": "कोपायलट सुझाव",
