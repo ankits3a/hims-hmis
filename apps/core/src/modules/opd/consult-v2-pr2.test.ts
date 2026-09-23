@@ -4,7 +4,7 @@ import {
   activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg,
 } from "../../../test/helpers/opd";
 import { events, opdEncounters, opdQueueEntries, opdVitals } from "../../kernel/db/schema";
-import { openVisit } from "./encounters";
+import { getVisit, openVisit, patientTimeline } from "./encounters";
 import { amendVitals, recordVitals } from "./vitals";
 import { patientVitalsHistory } from "./history";
 import { callNext } from "./queue";
@@ -103,6 +103,15 @@ describe("consult v2 — recall, vitals in the room, the edit lease, the referra
     expect(orig.recordedByName).not.toBe("");
     const fixed = hist.find((h) => h.vitalsId !== bay!.id)!;
     expect(fixed).toMatchObject({ status: "active", sbp: 128, amendmentReason: "cuff too small on first reading" });
+  });
+
+  it("HISTORY (D18): the timeline names each visit by its number, and a past visit's read returns the v2 sections — logged as a visit read", async () => {
+    const id = await inConsult();
+    await ctl.note(dra.actor, id, { examination: [{ group: "general", text: "Pallor absent" }], treatment: ["Nebulisation"], diagnosisKind: "final" });
+    const tl = await patientTimeline(db, dra.actor, patientId);
+    expect(tl[0]!.visitNo).toMatch(/\S/);
+    const v = await getVisit(db, dra.actor, id);
+    expect(v!.encounter).toMatchObject({ examination: [{ group: "general", text: "Pallor absent" }], treatment: ["Nebulisation"], diagnosisKind: "final" });
   });
 
   it("D17: one tab holds the lease; the other is refused, cannot write, and may take over — which is recorded", async () => {

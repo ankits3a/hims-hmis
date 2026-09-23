@@ -4112,3 +4112,66 @@ describe("Consult v2 — part two", () => {
     expect(screen.getByLabelText("Referred to")).toHaveValue("Paediatrics · Dr Gupta");
   });
 });
+
+/** ROUND 6 / D18 — patient history both ways: the read-only browser, and "View history" at a tab's foot. */
+describe("Consult v2 — patient history both ways", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+    setToken("t-1");
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const PAST = [
+    { encounterId: "enc-0", visitNo: "V-2025-0042", serviceDate: "2025-11-02", openedAt: "2025-11-02T04:00:00.000Z", status: "completed", visitType: "new",
+      doctorId: "doc-1", doctorName: "Dr Meera Rao", departmentId: "dep-1", departmentName: "Medicine", diagnosis: "Essential hypertension", icd10Code: "I10", prescriptionLineCount: 1, dangerFlagged: false },
+    { encounterId: "enc-00", visitNo: "V-2026-0007", serviceDate: "2026-06-12", openedAt: "2026-06-12T04:00:00.000Z", status: "completed", visitType: "revisit",
+      doctorId: "doc-1", doctorName: "Dr Meera Rao", departmentId: "dep-1", departmentName: "Medicine", diagnosis: "Tension headache", icd10Code: "G44.2", prescriptionLineCount: 0, dangerFlagged: false },
+  ];
+  const pastVisit = (id: string, exam: string): Record<string, unknown> => ({
+    encounter: { ...ENCOUNTER, id, visitNo: id, status: "completed", chiefComplaint: "headache", examination: [{ group: "general", text: exam }], treatment: [] },
+    vitals: [], prescriptions: [], diagnoses: [{ text: "Essential hypertension", icd10Code: "I10" }], deskComplaint: null,
+  });
+  function routes(): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/patients/p-1/timeline": { status: 200, body: { items: [...PAST.slice().reverse()] } },
+      "GET /api/opd/visits/enc-0": { status: 200, body: pastVisit("enc-0", "Pallor present") },
+      "GET /api/opd/visits/enc-00": { status: 200, body: pastVisit("enc-00", "No pedal oedema") },
+      "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-1/reminder": { status: 200, body: { reminder: null } },
+    };
+  }
+
+  it("H1: the History button opens a read-only browser — year chips filter the visits, and a picked visit reads by section", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByTestId("history-open"));
+    const browser = await screen.findByTestId("history-browser");
+    expect(within(browser).getByTestId("history-visit-enc-0")).toHaveTextContent("V-2025-0042");
+    await user.click(within(browser).getByTestId("history-year-2025"));
+    expect(within(browser).queryByTestId("history-visit-enc-00")).toBeNull();
+    await user.click(within(browser).getByTestId("history-visit-enc-0"));
+    await user.click(await within(browser).findByTestId("history-sec-exam"));
+    expect(within(browser).getByTestId("history-lines")).toHaveTextContent("general: Pallor present");
+    expect(within(browser).queryAllByRole("textbox")).toHaveLength(0); // nothing here can be edited
+    await waitFor(() => { expect(callsTo("GET", "/api/opd/visits/enc-0").length).toBeGreaterThan(0); }); // a logged visit read
+  });
+
+  it("H2: 'View history' at a tab's foot opens that section from earlier visits, the newest open", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Examination" }));
+    expect(callsTo("GET", "/api/opd/visits/enc-00")).toHaveLength(0); // nothing is read until asked
+    await user.click(screen.getByTestId("history-foot-exam-toggle"));
+    const newest = await screen.findByTestId("section-history-enc-00");
+    expect(newest).toHaveAttribute("open");
+    await waitFor(() => { expect(newest).toHaveTextContent("general: No pedal oedema"); });
+    expect(screen.getByTestId("section-history-enc-0")).not.toHaveAttribute("open");
+  });
+});

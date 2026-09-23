@@ -1048,7 +1048,8 @@ export async function listVisits(
 }
 
 export type TimelineItem = {
-  encounterId: string; serviceDate: string; openedAt: Date; status: string; visitType: string;
+  /** CONSULT V2 (owner, 2026-09-23) — the History browser lists each visit by its number, the one printed on the slip. */
+  encounterId: string; visitNo: string; serviceDate: string; openedAt: Date; status: string; visitType: string;
   doctorId: string | null; doctorName: string | null; departmentId: string | null; departmentName: string | null;
   diagnosis: string | null; icd10Code: string | null; prescriptionLineCount: number; dangerFlagged: boolean;
 };
@@ -1090,7 +1091,7 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
       .where(and(inArray(opdPrescriptions.encounterId, encounterIds), eq(opdPrescriptions.status, "active")));
   const lineCounts = new Map(rx.map((r) => [r.encounterId, Array.isArray(r.lines) ? r.lines.length : 0] as const));
   return rows.map((r) => ({
-    encounterId: r.encounter.id, serviceDate: r.encounter.serviceDate, openedAt: r.encounter.openedAt,
+    encounterId: r.encounter.id, visitNo: r.encounter.visitNo, serviceDate: r.encounter.serviceDate, openedAt: r.encounter.openedAt,
     status: r.encounter.status, visitType: r.encounter.visitType,
     doctorId: r.encounter.doctorId, doctorName: r.doctorName,
     departmentId: r.encounter.departmentId, departmentName: r.departmentName,

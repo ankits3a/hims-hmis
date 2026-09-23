@@ -5457,6 +5457,28 @@
       "letterRe": "Re: {{patient}}",
       "doneInternal": "Referred — token {{token}} in {{where}}",
       "doneExternal": "Referral letter to {{to}}"
+    },
+    "history": {
+      "button": "History",
+      "title": "Patient history — read only",
+      "sections": "Sections",
+      "all": "All",
+      "date": "On a date",
+      "none": "No earlier visits.",
+      "pick": "Pick a visit on the left.",
+      "view": "View history",
+      "hide": "Hide history",
+      "sec": {
+        "vitals": "Vitals",
+        "complaints": "Complaints",
+        "exam": "Examination",
+        "dx": "Diagnosis",
+        "inv": "Lab & radiology",
+        "rx": "Prescription",
+        "treat": "Treatment",
+        "advice": "Advice",
+        "notes": "Notes"
+      }
     }
   }
 }
