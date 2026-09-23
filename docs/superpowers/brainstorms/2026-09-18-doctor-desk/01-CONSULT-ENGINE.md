@@ -320,7 +320,7 @@ overwrites. The sealed-record model and the `permission_denied` rules apply as t
   profile**: Rx, spectacle prescription, ANC card, vaccination card, investigation slip,
   certificate. Label style (font, bold, visibility, uppercase) is set per section in the profile,
   as Healthray does.
-- **Print options:** language (English and Hindi first), hide header and footer (for pre-printed
+- **Print options:** language (English and Hindi only — owner ruling), hide header and footer (for pre-printed
   pads), hide patient details.
 - **Share:** WhatsApp, SMS, email, and send to the referring doctor. The WhatsApp rail already
   carries lab reports (`reach`). Sharing requires the patient's consent on record (DPDP Act 2023),
@@ -346,16 +346,85 @@ overwrites. The sealed-record model and the `permission_denied` rules apply as t
 
 ---
 
-## 11. Open questions for the owner
+## 11. Owner rulings on the open questions (2026-09-23, second round)
 
-1. **Doctor overlay limits.** Can a doctor hide a section the admin marked mandatory for the
-   department? Proposed: no. Mandatory sections stay; the doctor may reorder and collapse them.
-2. **Who curates the catalogs:** the department head, a medical-records officer, or the admin?
-   This decides who promotes a doctor's own chips to the department list (D4).
-3. **Paediatric dosing source.** Which formulary do we adopt and have a doctor sign (IAP or
-   another)? This touches clinical liability, so it may count as law.
-4. **Print languages beyond English and Hindi.** Which ones, for example Gujarati or Marathi?
-5. **Teleconsult.** Is it in scope for this phase? It carries its own prescribing law.
+1. **Doctor overlay limits: RULED.** A doctor cannot hide a section that the admin marked
+   mandatory. The doctor may only reorder or collapse it.
+2. **Catalog curation: RULED.** Three roles curate: the department head, a medical-records officer
+   and the admin. **A doctor's own entries are private.** They can be used on that doctor's screen
+   only and are never shown to another doctor until one of the three curators promotes them to the
+   department list (D4). *(The owner's sentence reads "it will reflect in other's until one of them
+   promotes them". It is read here as "will NOT reflect", because the purpose he states is keeping
+   junk out. Confirm at the canvas.)* Every promotion records who promoted, when, and from which
+   doctor's entry.
+3. **Paediatric dosing source: RULED "follow what top hospital standards are".** See §11.1.
+4. **Print languages: RULED.** English and Hindi only.
+5. **Teleconsult: RULED in scope.** Legal limits apply, following the standards of top hospitals.
+   See §11.2.
+
+### 11.1 Paediatric dosing — DECIDED on the standard practice of Indian corporate hospitals
+
+These decisions follow what Indian corporate hospitals do, and what NABH asks for in its standards
+on the management of medication.
+
+- **The hospital formulary is approved by a Pharmacy & Therapeutics (Drugs & Therapeutics)
+  committee.** A paediatric dose rule enters the system only through that committee's sign-off. In
+  the system, that sign-off is a named approver on each rule, with a date and a version.
+- **Sources, in order of precedence:**
+  1. **IAP Drug Formulary** (Indian Academy of Pediatrics). It is the Indian primary reference.
+  2. **BNF for Children** as the cross-check where IAP is silent.
+  3. The **Harriet Lane Handbook** or the **Lexicomp Pediatric & Neonatal Dosage Handbook** for
+     neonatal and special cases.
+  4. Every rule cites its source and page or edition.
+- **A rule holds:**
+  - dose per kg per dose, and per day
+  - frequency
+  - **maximum single dose and maximum daily dose**, never exceeding the adult dose
+  - age bands (neonate / infant / child / adolescent)
+  - the available strengths, so the dose is rounded to a measurable syrup volume or tablet fraction
+  - renal adjustment where it applies
+- **The weight used is today's measured weight.** A weight older than the rule's allowed age (for
+  example 30 days for an infant) forces a re-weigh or an explicit override with a reason.
+- **An override above the maximum is a hard stop with a reason and a second signature**, the same
+  pattern as today's interaction override.
+- **Licensing.** The IAP formulary, BNFc and Lexicomp are copyrighted. The rule set is built by
+  doctors transcribing into our own table with a source citation, or through a licence. **A licence
+  is money, so it is an owner ruling.** It is left open until the canvas.
+
+### 11.2 Teleconsult — DECIDED on the Telemedicine Practice Guidelines 2020 and the practice of top hospitals
+
+The Telemedicine Practice Guidelines of 2020 were issued by the Board of Governors in supersession
+of the Medical Council of India and are now held under the NMC. Large hospital teleconsult services
+follow them.
+
+- **Identity.** The doctor's name and registration number are shown to the patient and printed on
+  every Rx. The patient's identity is verified and recorded (name, age, and an ID or ABHA). For a
+  minor, the guardian's identity is recorded too.
+- **Consent.** If the patient starts the teleconsult, consent is implied. If the hospital or doctor
+  starts it, explicit consent is recorded. Either way, the consent is stored on the visit.
+- **Mode is recorded:** video, audio or text. It controls what may be prescribed.
+- **Drug lists are enforced on the Rx grid for teleconsult visits:**
+  - **List O:** over-the-counter medicines and similar. Allowed in any mode.
+  - **List A:** medicines safe on a first consult. Allowed on a **video** first consult, and as a
+    re-fill on follow-up.
+  - **List B:** add-on medicines. Allowed only on a follow-up for a condition already diagnosed
+    in person.
+  - **Prohibited list:** Schedule X drugs and NDPS narcotic and psychotropic drugs. These can never
+    be prescribed by teleconsult.
+
+  Each formulary item carries its telemedicine list. An unlisted drug on a teleconsult is blocked
+  with a reason. This must be checked against the formulary's drug schedules
+  (`scripts/data/drug-schedules.ts`).
+- **First consult or follow-up** is derived from the patient's history with this doctor. It is not
+  typed.
+- **Emergencies.** The teleconsult screen always offers "advise in-person or emergency visit".
+  Using it ends the teleconsult with a referral record.
+- **Records.** The teleconsult is kept in the patient's record like any visit (the guidelines ask
+  for at least 3 years). It includes the mode, the consent and a copy of the Rx sent.
+- **Sending the Rx** uses the share rail of §9, with consent under the DPDP Act, and each send is
+  logged.
+- **The same engine serves it.** Teleconsult is a visit mode, not a separate screen. The profile
+  hides sections that need a physical examination, or marks them "not examined (teleconsult)".
 
 ---
 
