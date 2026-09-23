@@ -126,6 +126,10 @@ export type WireEncounter = {
   /** The front desk's record of the patient's words (D15) — kept apart from the doctor's `chiefComplaint`. Optional: an older server sends none. */
   deskComplaint?: string | null; deskComplaintBy?: string | null; deskComplaintAt?: string | null;
   admissionAdvised: boolean; referralTo: string | null; referralNote: string | null;
+  /** Consult v2 (migration 0120). Optional: an older server sends none of them. */
+  examination?: WireExamFinding[] | null; treatment?: string[] | null;
+  doctorNote?: string | null; internalComment?: string | null;
+  diagnosisKind?: "provisional" | "final" | null; rxStockChoices?: unknown;
   followUpDays: number | null; followUpExtended: boolean; dangerFlagged: boolean;
   consultStartedAt: string | null; consultCompletedAt: string | null;
   abandonedAt: string | null; abandonReason: string | null;
@@ -975,4 +979,30 @@ export function issueRxDraft(
   } = {},
 ): Promise<{ prescriptionId: string; version: number; draftId: string }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/issue`, overrides);
+}
+
+// ——— Consult v2 (owner, 2026-09-23) ———
+
+export type WireExamFinding = { group: "general" | "systemic" | "local"; text: string };
+
+/** `GET /pharmacy/doctor/stock` — sellable count per medicine; `available: null` means the pharmacy is not open (show nothing). */
+export type WireDoctorStockAlternative = { medicineId: string; brandName: string; strengthLabel: string | null; available: number; unit: string };
+export type WireDoctorStock = { medicineId: string; available: number | null; unit: string | null; alternatives: WireDoctorStockAlternative[] };
+
+export async function fetchDoctorStock(medicineIds: readonly string[]): Promise<WireDoctorStock[]> {
+  if (medicineIds.length === 0) return [];
+  const q = new URLSearchParams({ medicineIds: [...new Set(medicineIds)].join(",") });
+  return (await api<{ items: WireDoctorStock[] }>("GET", `/pharmacy/doctor/stock?${q.toString()}`)).items;
+}
+
+/** The patient reminder — a sticky note every doctor sees on every visit until it is cleared. */
+export type WireReminder = { id: string; text: string; setBy: string; setByName: string; setAt: string };
+export async function fetchReminder(patientId: string): Promise<WireReminder | null> {
+  return (await api<{ reminder: WireReminder | null }>("GET", `/opd/patients/${patientId}/reminder`)).reminder;
+}
+export async function putReminder(patientId: string, text: string): Promise<WireReminder> {
+  return (await api<{ reminder: WireReminder }>("PUT", `/opd/patients/${patientId}/reminder`, { text })).reminder;
+}
+export async function clearReminder(patientId: string): Promise<void> {
+  await api("POST", `/opd/patients/${patientId}/reminder/clear`);
 }

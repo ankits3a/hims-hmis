@@ -5336,5 +5336,87 @@
       "none": "You have not yet been asked to consent to messages outside the app.",
       "given": "You have consented to messages outside the app."
     }
+  },
+  "opdConsultV2": {
+    "add": "Add",
+    "allergyList": "Allergy: {{list}}",
+    "altHead": "{{drug}} · 0 in stock",
+    "altNone": "Nothing of the same composition is on the pharmacy shelf.",
+    "altWaiting": "An out-of-stock medicine has an alternative waiting",
+    "autosaved": "Autosaved {{at}}",
+    "draftSaved": "Draft saved {{at}}",
+    "count": "{{n}} entered",
+    "edit": "Edit",
+    "doctorNote": "Doctor note",
+    "doctorNoteWho": "Part of the clinical record · not printed",
+    "internalComment": "Internal comment",
+    "internalCommentWho": "For staff and the next doctor · never printed",
+    "reminder": "Patient reminder",
+    "reminderWho": "Sticky · shows on every visit until cleared (empty it to clear)",
+    "reminderLine": "Reminder: {{text}}",
+    "exam": {
+      "general": "General examination",
+      "systemic": "Systemic examination",
+      "local": "Local examination",
+      "own": "Your own finding for {{group}}",
+      "ownPlaceholder": "Type a finding and press Enter"
+    },
+    "firstVisit": "First consultation here.",
+    "lastConsult": "Last consultation",
+    "lastLine": "{{date}} · {{doctor}} · {{dx}} · {{n}} medicines prescribed",
+    "noDx": "no diagnosis written",
+    "hideCopilot": "Minimise the copilot",
+    "showCopilot": "Show the copilot",
+    "hideLine": "Minimise the line",
+    "showLine": "Show the line",
+    "keep": "Keep what I wrote",
+    "use": "Use",
+    "kind": {
+      "label": "Diagnosis is",
+      "provisional": "Provisional",
+      "final": "Final"
+    },
+    "noDeskWords": "Nothing was typed at the front desk.",
+    "noMeds": "Nothing prescribed here before.",
+    "nothingEntered": "Nothing entered",
+    "notYet": "— not yet",
+    "nothingSuggestion": "Nothing on this card is a suggestion. It is what the front desk, the vitals bay and the last visit already recorded.",
+    "onNow": "On now · the last prescription",
+    "pulse": "PULSE",
+    "temp": "TEMP",
+    "weight": "WEIGHT",
+    "saveDraft": "Save draft",
+    "sec": {
+      "complaints": "Complaints",
+      "exam": "Examination",
+      "dx": "Diagnosis",
+      "inv": "Lab & radio",
+      "rx": "Prescription",
+      "treat": "Treatment",
+      "advice": "Advice",
+      "notes": "Notes"
+    },
+    "stockTitle": "Sellable stock in the OPD pharmacy",
+    "stockZero": "0 in stock ⇄",
+    "stockZeroTitle": "None in the pharmacy — see the copilot for an alternative",
+    "summaryTitle": "Consultation summary — what will be saved",
+    "tabs": {
+      "summary": "Summary",
+      "exam": "Examination",
+      "treat": "Treatment",
+      "notes": "Notes"
+    },
+    "treatmentHead": "Treatment given in the room",
+    "treatmentOwn": "Add a treatment",
+    "typedBy": "Typed by {{by}} at {{at}} · the patient's words, not a summary",
+    "vitalsBy": "Recorded by {{by}} at {{at}}",
+    "vt": {
+      "new": "New patient · first visit to this department",
+      "revisit": "Revisit · free follow-up · last seen {{date}}",
+      "renewal": "Renewal · follow-up window lapsed (last seen {{date}}) · fresh fee"
+    },
+    "waitingVertical": "WAITING",
+    "whyCame": "Why the patient came · as told at the front desk",
+    "workSoFar": "Your work so far · stays here on every tab"
   }
 }

@@ -31,7 +31,7 @@ import { useEffect, useRef, useState } from "react";
 export type AgentLine = { at: string; text: string; kind: "did" | "ok" | "warn" | "err" };
 
 export function AgentDock(
-  { answer, log, onAsk, placeholder, idle, action, panel }: {
+  { answer, log, onAsk, placeholder, idle, action, panel, variant = "bar", autoFocus = false }: {
     answer: string | null;
     log: AgentLine[];
     onAsk: (question: string) => void;
@@ -66,6 +66,16 @@ export function AgentDock(
      * something, and that it belongs under the answer that announced it.
      */
     panel?: React.ReactNode;
+    /**
+     * ═══ CONSULT V2 (owner, 2026-09-23) — THE SAME AGENT, DOCKED AT THE FOOT OF A SIDE PANEL ═══
+     *
+     * `bar` is the footer every other screen mounts, unchanged. `panel` is the consult's right
+     * column: the answer and the log fill the column and the ask box sits at its bottom edge. The
+     * behaviour, the F2 binding and what it may answer are the same — only the placement differs.
+     */
+    variant?: "bar" | "panel";
+    /** Focus the ask box on mount — the consult sets it when F2 opened a minimised panel. */
+    autoFocus?: boolean;
   },
 ): React.ReactElement {
   const [draft, setDraft] = useState("");
@@ -97,6 +107,54 @@ export function AgentDock(
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); };
   }, []);
+  useEffect(() => { if (autoFocus) askRef.current?.focus(); }, [autoFocus]);
+
+  if (variant === "panel") {
+    return (
+      <div data-testid="agent-dock" style={{ display: "flex", flexDirection: "column", flexGrow: 1, minHeight: 0, background: "var(--agent)", color: "var(--agent-fg)" }}>
+        <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div>
+            <div className="tag" style={{ color: "var(--agent-dim)" }}>answer</div>
+            <div data-testid="agent-ticker" style={{ marginTop: 6, fontSize: 12.5, lineHeight: "18px", color: answer === null ? "var(--agent-dim)" : "var(--agent-fg)" }}>
+              {answer ?? idle}
+            </div>
+          </div>
+          {panel === undefined ? null : <div>{panel}</div>}
+          <div>
+            <div className="tag" style={{ color: "var(--agent-dim)" }}>what happened on this screen</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+              {log.length === 0 ? (
+                <span style={{ fontSize: 11, color: "var(--agent-dim)" }}>Nothing yet.</span>
+              ) : log.map((line, i) => (
+                <div key={`${line.at}-${String(i)}`} style={{ display: "flex", gap: 8, fontSize: 11.5 }}>
+                  <span className="mo" style={{ color: "var(--agent-dim)", flexShrink: 0 }}>{line.at}</span>
+                  <span style={{ color: line.kind === "err" ? "#ff9d94" : line.kind === "warn" ? "#f0c26a" : line.kind === "ok" ? "var(--mint)" : "var(--agent-fg)" }}>{line.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {action === undefined ? null : (
+          <button className="agdo" type="button" data-testid="agent-action" disabled={action.busy === true} onClick={action.onAct}
+            style={{ margin: "0 14px 8px", opacity: action.busy === true ? 0.5 : 1 }}>
+            {action.label}
+          </button>
+        )}
+        <form
+          style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 12px", borderTop: "1px solid #24413655" }}
+          onSubmit={(e) => { e.preventDefault(); onAsk(draft); setDraft(""); }}
+        >
+          <input
+            ref={askRef} data-testid="agent-ask" value={draft}
+            onChange={(e) => { setDraft(e.target.value); }}
+            placeholder={placeholder}
+            style={{ flexGrow: 1, minWidth: 0, height: 32, borderRadius: 6, border: "1px solid #24413655", background: "#0c1f1a", color: "var(--agent-fg)", padding: "0 10px", fontSize: 12 }}
+          />
+          <span className="kb dk">F2</span>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div

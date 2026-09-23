@@ -255,9 +255,15 @@ export function TogglePills<K extends string>(
  * Selection and focus travel together, or the roving tabindex above is a decoration.
  */
 export function TabStrip<T extends string>(
-  { label, value, onChange, options, testId }: {
+  { label, value, onChange, options, testId, marked }: {
     label: string; value: T; onChange: (v: T) => void;
     options: readonly (readonly [T, string])[]; testId?: string;
+    /**
+     * Consult v2 — tabs that already hold something get a small dot. `aria-hidden`, so a tab's
+     * accessible name stays its label: a name that changed as the doctor typed would move under a
+     * screen reader and under every role query.
+     */
+    marked?: Partial<Record<T, boolean>>;
   },
 ): React.ReactElement {
   /*
@@ -333,6 +339,7 @@ export function TabStrip<T extends string>(
           onClick={() => { onChange(v); }}
         >
           {l}
+          {marked?.[v] === true ? <span aria-hidden="true" data-testid={`tab-dot-${v}`} style={{ marginLeft: 5, color: "var(--green)" }}>•</span> : null}
         </button>
       ))}
     </div>
