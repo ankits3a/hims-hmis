@@ -99,6 +99,41 @@ for the non-AI basics of a doctor's desk. They are not the design target.
      know who said what.
    - **D16 (DECIDED).** The brief shows only recorded facts: "Nothing on this card is a
      suggestion." Copilot suggestions stay in the right pane.
+9. **Fourth round (owner, 2026-09-23, after the three-column boards).**
+   - **Refer.** The doctor can refer the patient to another department or to a named doctor.
+     - An internal referral puts the patient in that department's line (or that doctor's line)
+       with the reason and the referring doctor's note. The patient does not re-register.
+     - An external referral prints a referral letter.
+     - **OPEN (money: owner ruling).** Whether an internal referral is charged a fresh consultation
+       fee, or is free the same day. Until he rules, it follows the existing tariff with no
+       special case, and the desk sees it.
+   - **Recall a no-show.** Each called patient's card in the left lane has an alarm icon.
+     Clicking it re-announces the token on the corridor display board ("Token 13, OPD-3, please
+     come in"). Every recall is logged, with a count. Skip stays as it is.
+   - **Open in a new tab.** Each card in the left lane has an "open in new tab" icon. The new
+     browser tab opens that patient's brief, or their saved draft if one exists.
+     - **Start consultation** shows for a patient not yet seen.
+     - **Resume consultation** shows for a parked patient or one with a draft.
+     - **D17 (DECIDED).** One visit can be open for editing in only one place at a time. A second
+       tab opens read-only, with a "Take over editing here" button. That prevents two tabs saving
+       over each other.
+   - **Suggestions keep flowing inside the tabs.** When the right copilot panel is minimised,
+     the same suggestions appear inline, in the tab being worked on:
+     - complaints → diagnosis suggestions
+     - complaints + diagnosis → lab and radiology suggestions, and Rx suggestions (with stock)
+
+     Suggestions are always dashed chips that one tap accepts. They are never entered silently.
+   - **The doctor can edit vitals.**
+     - A new reading is added with the doctor's name and the time.
+     - A bay reading can be corrected: the original is kept and struck through, with who
+       corrected it and why. It is never overwritten (audit).
+   - **The doctor can add, edit and delete allergies.** Delete is "entered in error", which
+     strikes the entry and keeps it, as the allergy model already works. Edit is a strike plus a
+     new entry.
+   - **Autocomplete everywhere.** Every text field that takes clinical terms suggests as the
+     doctor types and turns the choice into a chip or tag: complaints, examination, diagnosis,
+     tests, drugs, advice, treatment and allergies. Free text stays allowed; it becomes the
+     doctor's own private entry (D4).
 
 ---
 
