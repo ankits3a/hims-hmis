@@ -35,6 +35,45 @@ for the non-AI basics of a doctor's desk. They are not the design target.
    compliant] *and user experience of the dashboard."* Every design decision below is checked
    against these five (§10).
 
+### 1.1 Owner rulings, third round (2026-09-23, after the boards)
+
+1. **Keep the queue controls of today's consult screen, and link them to the corridor display.**
+   - The session status drop-down stays: **In / Out / Closed / Not started**. The owner compares
+     it to "Available / Away" in a chat tool.
+   - The buttons stay: **Call next, Skip, Start consultation, Park patient**.
+   - They drive the display board, as they do now (`opd/queue.ts`, `realtime.ts`).
+2. **Keep allergies.** The list stays, with "+ Add allergy" and suggestions while typing, as in
+   production.
+3. **Keep the complaint chips.** Each chip has an × to remove it. As chips build up, the screen
+   suggests diagnoses and drugs, as it does today. The doctor's vocabulary keeps learning from use.
+   *(Accuracy note: the owner calls this the "embedded vector". What runs is IDF token scoring over
+   the doctor's usage and the syndrome book, not a vector embedding. See §4.1. The behaviour he
+   wants is kept either way.)*
+4. **Show ICD-10 and ICD-11 codes.** ICD-10 stays the stored code. ICD-11 is shown beside it
+   through a map. WHO publishes an official ICD-10 → ICD-11 mapping table. Loading it is a data
+   task; we don't hold it yet.
+5. **No work-up mode. §8 is withdrawn.** Each department has its own screen, **switched on
+   automatically by the department the doctor is registered under**: general medicine,
+   orthopaedics, gynaecology, paediatrics, ophthalmology, dental and so on. A doctor never picks a
+   screen.
+   - **D11 (DECIDED).** If a doctor sits in two departments, the screen follows the department of
+     the visit, not the doctor. Each visit is booked under one department.
+   - **D12 (DECIDED).** Staff who fill sections before the doctor (an optometrist, for example)
+     are part of that department's screen design, not a separate mode. For now only vitals are
+     filled before the doctor, as today.
+6. **The copilot stays in the right pane**, as drawn on board 1.
+7. **Stock on the prescription.**
+   - Every medicine the copilot suggests, and every line on the Rx, shows **how many units the
+     pharmacy has in stock**, beside the medicine.
+   - At **0 in stock**, a small icon marks the line, and the right pane suggests an **alternative**
+     (same salt and strength first, then the same class).
+   - **The doctor may ignore it.** The line stays as written, and nothing blocks the prescription.
+   - **D13 (DECIDED).** The count is **sellable stock**: the pharmacy's FEFO available quantity,
+     which excludes expired and quarantined batches. It is not the raw quantity on hand. The unit
+     is the base unit (tablets, mL, units).
+   - **D14 (DECIDED, auditable).** When an alternative was offered, the visit records
+     "alternative offered: X; doctor kept Y". It is an audit row, not a warning to the doctor.
+
 ---
 
 ## 2. What the Healthray benchmark taught us
@@ -414,9 +453,11 @@ overwrites. The sealed-record model and the `permission_denied` rules apply as t
 
 ---
 
-## 8. The work-up mode toggle
+## 8. The work-up mode toggle — WITHDRAWN by the owner, 2026-09-23 (§1.1 item 5)
 
-- **What it does.** When off (today), the work-up seat fills only vitals, as the vitals bay does
+*This section is kept for the record only. Department screens replace the toggle.*
+
+- **What it did.** When off (today), the work-up seat fills only vitals, as the vitals bay does
   now. When on, the work-up role for that department fills the sections its profile assigns to it
   (optometrist, antenatal nurse or paediatric nurse), and the queue line gains a "work-up done"
   state before the doctor.
@@ -551,7 +592,7 @@ follow them.
 | **C0** | Engine: section definitions, catalogs in three tiers, profiles (department plus doctor), a versioned visit-entry store with audit. General medicine re-platformed. Summary page and previous consultations inline. Previous RX. Rx pre-fill from REVIEWED rows only (§5.1) | Schema, one migration, `router.tsx`, locales, and `opd` (which many modules import) |
 | **C1** | Groups and full-visit templates; the catalog curator screen; the live summary strip; calculators | the `opd` module |
 | **C2** | Ophthalmology profile, the eye-site and taper Rx line, the spectacle print | a migration |
-| **C3** | The work-up mode toggle with the optometrist seat (the first use of the toggle) | the queue states in `opd` |
+| **C3** | Department screen routing: the doctor's registered department (or the visit's department) picks the screen automatically; stock counts and the zero-stock alternative on the Rx (replaces the withdrawn work-up toggle) | the `opd` module; `pharmacy` read via its index |
 | **C4** | Paediatrics: weight-based dosing rules (after the owner answers question 3), growth charts, IAP immunisation | a migration; data |
 | **C5** | Gynaecology: obstetric calculators, antenatal sheet, the PCPNDT link, the trimester check | `pcpndt` via its index |
 | **C6** | Share (WhatsApp, SMS, email) with consent; the actions menu; the ICD-11 / SNOMED map | `reach`; a migration |
