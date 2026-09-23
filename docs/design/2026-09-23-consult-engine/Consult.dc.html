@@ -66,7 +66,7 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </div>
 <div style="display: flex; align-items: center; gap: 6px; position: relative;">
 <sc-for list="{{ allergies }}" as="a" hint-placeholder-count="1">
-<span style="display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 9px; border-radius: 13px; background: rgba(178,58,48,.08); border: 1px solid rgba(178,58,48,.4); color: #b23a30; font-size: 11.5px; font-weight: 600;">{{ a.name }}<button type="button" onClick="{{ a.edit }}" aria-label="Edit allergy" style="height: 20px; padding: 0 5px; border: 0; background: transparent; color: #b23a30; font-size: 11px; text-decoration: underline;">edit</button><button type="button" onClick="{{ a.remove }}" aria-label="Delete allergy (entered in error)" style="width: 20px; height: 20px; border-radius: 10px; border: 0; background: transparent; color: #b23a30;">×</button></span>
+<span style="display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 9px; border-radius: 13px; background: rgba(178,58,48,.08); border: 1px solid rgba(178,58,48,.4); color: #b23a30; font-size: 11.5px; font-weight: 600;">{{ a.name }}<button type="button" onClick="{{ a.remove }}" aria-label="Delete allergy (entered in error)" style="width: 20px; height: 20px; border-radius: 10px; border: 0; background: transparent; color: #b23a30;">×</button></span>
 </sc-for>
 <label for="alg2" style="position: absolute; left: -9999px;">Add allergy</label>
 <input id="alg2" value="{{ algQ }}" onInput="{{ typeAlg }}" placeholder="+ Add allergy" style="height: 26px; width: 150px; border-radius: 13px; border: 1px dashed rgba(178,58,48,.4); padding: 0 10px; background: #ffffff; font-size: 12px;">
@@ -79,8 +79,8 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </sc-if>
 </div>
 <div style="flex-grow: 1;"></div>
-<button type="button" onClick="{{ openVitals }}" title="Edit or add a reading" style="display: flex; gap: 12px; align-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; border: 1px dashed #dfe7e1; border-radius: 6px; background: #ffffff; padding: 4px 8px;">
-<span style="{{ bpStyle }}">BP {{ bp }}</span><span>P 88</span><span>SpO₂ 97</span><span>72 kg</span><span>BMI 24.9</span><span style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; color: #0e6b4e; text-decoration: underline;">edit</span>
+<button type="button" onClick="{{ goVitals }}" title="Open the Vitals tab" style="display: flex; gap: 12px; align-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; border: 1px dashed #dfe7e1; border-radius: 6px; background: #ffffff; padding: 4px 8px;">
+<span style="{{ bpStyle }}">BP {{ bp }}</span><span>P 88</span><span>SpO₂ 97</span><span>72 kg</span><span>BMI 24.9</span><span style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; color: #0e6b4e; text-decoration: underline;">vitals ›</span>
 </button>
 </section>
 
@@ -107,18 +107,6 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </nav>
 
 <div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 14px 20px;">
-<sc-if value="{{ vitalsOpen }}" hint-placeholder-val="{{ false }}">
-<div style="margin-bottom: 12px; background: #ffffff; border: 1.5px solid #0e6b4e; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
-<div style="font-weight: 700;">Vitals · bay reading 10:14 by Sr. Kavita</div>
-<div style="display: flex; gap: 10px; align-items: end; flex-wrap: wrap;">
-<div style="display: flex; flex-direction: column; gap: 3px;"><label for="bpin" style="font-size: 11.5px; color: #5c6f66;">BP (new reading)</label><input id="bpin" value="{{ bpDraft }}" onInput="{{ typeBp }}" style="height: 34px; width: 110px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 8px; font-family: 'IBM Plex Mono', monospace;"></div>
-<div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;"><label for="why" style="font-size: 11.5px; color: #5c6f66;">Why (for a correction)</label><input id="why" placeholder="Repeated after 10 min rest" style="height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 8px;"></div>
-<button type="button" onClick="{{ saveVitals }}" style="height: 34px; padding: 0 14px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Add reading</button>
-<button type="button" onClick="{{ closeVitals }}" style="height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Close</button>
-</div>
-<div style="font-size: 12px; color: #5c6f66;">{{ vitalsNote }}</div>
-</div>
-</sc-if>
 <sc-if value="{{ referOpen }}" hint-placeholder-val="{{ false }}">
 <div style="margin-bottom: 12px; background: #ffffff; border: 1.5px solid #132420; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
 <div style="font-weight: 700;">Refer Ramesh Patel</div>
@@ -142,6 +130,33 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
 <sc-for list="{{ inlineChips }}" as="c" hint-placeholder-count="3">
 <button type="button" onClick="{{ c.add }}" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1.5px dashed #0e6b4e; background: #ffffff; color: #0e6b4e; font-size: 12.5px;">+ {{ c.label }}</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.vitals }}" hint-placeholder-val="{{ false }}">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: baseline; gap: 10px;"><span style="font-weight: 700; font-size: 15px;">Today's vitals</span><span style="font-size: 12px; color: #5c6f66;">{{ vNowBy }}</span></div>
+<div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px;">
+<sc-for list="{{ vFields }}" as="f" hint-placeholder-count="7">
+<div style="display: flex; flex-direction: column; gap: 3px;">
+<label for="{{ f.id }}" style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: .12em; color: #5c6f66;">{{ f.k }}</label>
+<input id="{{ f.id }}" value="{{ f.v }}" onInput="{{ f.type }}" style="{{ f.style }}">
+</div>
+</sc-for>
+</div>
+<div style="display: flex; gap: 8px; align-items: center;">
+<label for="vwhy" style="font-size: 12px; color: #5c6f66;">Reason, if correcting the bay's reading</label>
+<input id="vwhy" placeholder="Repeated after 10 min rest" style="flex-grow: 1; height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 10px;">
+<button type="button" onClick="{{ saveVitals }}" style="height: 34px; padding: 0 14px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Save reading</button>
+</div>
+<div style="font-size: 12px; color: #0e6b4e;">{{ vitalsNote }}</div>
+<div style="border-top: 1px solid #dfe7e1; padding-top: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">EARLIER READINGS</div>
+<div style="display: grid; grid-template-columns: 1.6fr repeat(6, minmax(0, 1fr)); gap: 6px 10px; font-size: 12.5px;">
+<span style="color: #8ea69a; font-size: 11px;">DATE · BY</span><span style="color: #8ea69a; font-size: 11px;">BP</span><span style="color: #8ea69a; font-size: 11px;">PULSE</span><span style="color: #8ea69a; font-size: 11px;">SpO₂</span><span style="color: #8ea69a; font-size: 11px;">TEMP</span><span style="color: #8ea69a; font-size: 11px;">WEIGHT</span><span style="color: #8ea69a; font-size: 11px;">SUGAR</span>
+<sc-for list="{{ vHist }}" as="h" hint-placeholder-count="3">
+<span style="{{ h.whenStyle }}">{{ h.when }}</span><span style="{{ h.bpStyle }}">{{ h.bp }}</span><span style="font-family: 'IBM Plex Mono', monospace;">{{ h.p }}</span><span style="font-family: 'IBM Plex Mono', monospace;">{{ h.spo2 }}</span><span style="font-family: 'IBM Plex Mono', monospace;">{{ h.t }}</span><span style="font-family: 'IBM Plex Mono', monospace;">{{ h.wt }}</span><span style="font-family: 'IBM Plex Mono', monospace;">{{ h.sugar }}</span>
 </sc-for>
 </div>
 </div>
@@ -366,7 +381,7 @@ class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = {
-      railOpen: false, copOpen: true, referOpen: false, referPick: null, referSent: false, vitalsOpen: false, bp: '152/96', bpDraft: '', vitalsNote: '', allergies: ['Penicillin'], algQ: '', cQ: '', tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
+      railOpen: false, copOpen: true, referOpen: false, referPick: null, referSent: false, vit: { bp: '152/96', p: '88', spo2: '97', t: '98.4', wt: '72', ht: '170', sugar: '118' }, vitCorrected: false, vitalsNote: '', allergies: ['Penicillin'], algQ: '', cQ: '', tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
       complaints: ['Headache', 'Giddiness'],
       exam: props.filled ? ['Conscious, oriented', 'Pallor absent', 'No pedal oedema', 'CVS: S1 S2 normal, no murmur', 'Fundus: AV nicking'] : [],
       dx: props.filled ? ['I10', 'E78.5'] : [], dxKind: props.filled ? 'Final' : 'Provisional',
@@ -385,8 +400,8 @@ class Component extends DCLogic {
   }
   renderVals() {
     const s = this.state;
-    const tabIds = ['summary', 'complaints', 'exam', 'dx', 'inv', 'rx', 'treat', 'advice', 'notes'];
-    const names = { summary: 'Summary', complaints: 'Complaints', exam: 'Examination', dx: 'Diagnosis', inv: 'Lab & radiology', rx: 'Prescription', treat: 'Treatment', advice: 'Advice & follow-up', notes: 'Notes' };
+    const tabIds = ['summary', 'vitals', 'complaints', 'exam', 'dx', 'inv', 'rx', 'treat', 'advice', 'notes'];
+    const names = { summary: 'Summary', vitals: 'Vitals', complaints: 'Complaints', exam: 'Examination', dx: 'Diagnosis', inv: 'Lab & radiology', rx: 'Prescription', treat: 'Treatment', advice: 'Advice & follow-up', notes: 'Notes' };
     const catalog = {
       telmi: { name: 'Telma 40', generic: 'TELMISARTAN 40 mg tablet', dose: '1-0-0', when: 'After breakfast', days: 30, stock: 1240, unit: 'tab' },
       amlo: { name: 'Amlong 5', generic: 'AMLODIPINE 5 mg tablet', dose: '0-0-1', when: 'After dinner', days: 30, stock: 0, unit: 'tab' },
@@ -453,18 +468,27 @@ class Component extends DCLogic {
     ];
     const complaintChips = s.complaints.map((c) => ({ label: c, remove: () => this.set({ complaints: s.complaints.filter((x) => x !== c) }) }));
     const usual = ['Fever', 'Cough', 'Chest pain', 'Breathlessness', 'Palpitations', 'Blurred vision'].filter((u) => s.complaints.indexOf(u) < 0).map((u) => ({ label: u, add: () => this.set({ complaints: s.complaints.concat([u]) }) }));
-    const copy = { complaints: 'Desk words carried in as two chips. Suggested next: examination.', exam: 'Dashed chips are suggestions from BP and your usual findings.', dx: 'Essential hypertension fits BP today and 12 Aug. LDL 162 suggests hyperlipidaemia.', inv: 'Lipid and RFT were done 19 Sep — repeat is not needed yet.', rx: 'Telmisartan continued. BP still high: consider adding amlodipine 5 mg.', treat: 'Nothing billed yet.', advice: 'Salt advice suggested for hypertension.', notes: 'Reminder carried from the last visit.', summary: 'Check every section before Complete.' };
+    const copy = { vitals: 'BP is high today and was high on 12 Aug. A repeat after rest is advised before changing treatment.', complaints: 'Desk words carried in as two chips. Suggested next: examination.', exam: 'Dashed chips are suggestions from BP and your usual findings.', dx: 'Essential hypertension fits BP today and 12 Aug. LDL 162 suggests hyperlipidaemia.', inv: 'Lipid and RFT were done 19 Sep — repeat is not needed yet.', rx: 'Telmisartan continued. BP still high: consider adding amlodipine 5 mg.', treat: 'Nothing billed yet.', advice: 'Salt advice suggested for hypertension.', notes: 'Reminder carried from the last visit.', summary: 'Check every section before Complete.' };
     return {
       openRefer: () => this.setState({ referOpen: true, referSent: false }), closeRefer: () => this.setState({ referOpen: false }),
       referOpen: s.referOpen,
       referTo: ['Cardiology', 'Nephrology · Dr. R. Menon', 'Endocrinology', 'Ophthalmology (fundus)', 'External hospital'].map((l) => ({ label: l, pick: () => this.setState({ referPick: l }), style: this.chip(s.referPick === l, false) })),
       referSendLabel: s.referSent ? 'Referred to ' + s.referPick + ' · logged' : (s.referPick ? 'Refer to ' + s.referPick : 'Pick where to refer'),
       sendRefer: () => { if (s.referPick) this.set({ referSent: true }); },
-      vitalsOpen: s.vitalsOpen, openVitals: () => this.setState({ vitalsOpen: true }), closeVitals: () => this.setState({ vitalsOpen: false }),
-      bp: s.bp, bpDraft: s.bpDraft, typeBp: (e) => this.setState({ bpDraft: e.target.value }), vitalsNote: s.vitalsNote,
-      bpStyle: s.bp === '152/96' ? 'color: #8a5a10; font-weight: 700;' : 'font-weight: 700;',
-      saveVitals: () => { if (s.bpDraft.trim()) this.set({ bp: s.bpDraft.trim(), vitalsNote: 'Added ' + s.bpDraft.trim() + ' by Dr. A. Mehta. The bay reading 152/96 is kept in the record.', bpDraft: '' }); },
-      allergies: s.allergies.map((a) => ({ name: a, remove: () => this.set({ allergies: s.allergies.filter((x) => x !== a) }), edit: () => this.setState({ algQ: a }) })),
+      goVitals: () => this.setState({ tab: 'vitals' }),
+      bp: s.vit.bp, bpStyle: (parseInt(s.vit.bp, 10) >= 140 ? 'color: #8a5a10; font-weight: 700;' : 'font-weight: 700;'),
+      vNowBy: s.vitCorrected ? 'Bay One 10:14 by Sr. Kavita · corrected by Dr. A. Mehta' : 'Bay One 10:14 by Sr. Kavita',
+      vFields: [['bp', 'BP', 'mmHg'], ['p', 'PULSE', ''], ['spo2', 'SpO₂ %', ''], ['t', 'TEMP °F', ''], ['wt', 'WEIGHT kg', ''], ['ht', 'HEIGHT cm', ''], ['sugar', 'SUGAR mg/dL', '']].map(([k, label]) => ({ id: 'v_' + k, k: label, v: s.vit[k],
+        type: (e) => this.setState({ vit: Object.assign({}, s.vit, { [k]: e.target.value }) }),
+        style: 'height: 36px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 8px; font-family: \'IBM Plex Mono\', monospace; font-size: 14px; font-weight: 600;' + (k === 'bp' && parseInt(s.vit.bp, 10) >= 140 ? ' color: #8a5a10;' : '') })),
+      saveVitals: () => this.set({ vitCorrected: true, vitalsNote: 'Saved by Dr. A. Mehta. The bay\'s original reading stays in the record, marked corrected.' }),
+      vitalsNote: s.vitalsNote,
+      vHist: [
+        { when: '23 Sep 10:14 · Sr. Kavita (bay)', bp: '152/96', p: '88', spo2: '97', t: '98.4', wt: '72', sugar: '118' },
+        { when: '12 Aug 11:02 · Sr. Kavita', bp: '148/94', p: '84', spo2: '98', t: '98.2', wt: '73', sugar: '—' },
+        { when: '03 Jun 09:40 · Sr. Asha', bp: '142/90', p: '80', spo2: '98', t: '98.6', wt: '74', sugar: '126' }
+      ].map((h, i) => Object.assign({}, h, { whenStyle: 'font-size: 12px; color: #5c6f66;' + (i === 0 && s.vitCorrected ? ' text-decoration: line-through;' : ''), bpStyle: 'font-family: \'IBM Plex Mono\', monospace;' + (parseInt(h.bp, 10) >= 140 ? ' color: #8a5a10; font-weight: 700;' : '') })),
+      allergies: s.allergies.map((a) => ({ name: a, remove: () => this.set({ allergies: s.allergies.filter((x) => x !== a) }) })),
       algQ: s.algQ, typeAlg: (e) => this.setState({ algQ: e.target.value }),
       algSug: (s.algQ.trim() ? ['Penicillin', 'Amoxicillin', 'Sulfa drugs (sulfonamides)', 'Aspirin / NSAIDs', 'Iodinated contrast', 'Cephalosporins', 'Peanut', 'Latex'].filter((a) => a.toLowerCase().indexOf(s.algQ.trim().toLowerCase()) >= 0 && s.allergies.indexOf(a) < 0).slice(0, 5) : []).map((a) => ({ label: a, add: () => this.set({ allergies: s.allergies.concat([a]), algQ: '' }) })),
       algOpen: !!s.algQ.trim(),

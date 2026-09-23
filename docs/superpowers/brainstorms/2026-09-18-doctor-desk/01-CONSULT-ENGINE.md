@@ -123,13 +123,14 @@ for the non-AI basics of a doctor's desk. They are not the design target.
      - complaints + diagnosis → lab and radiology suggestions, and Rx suggestions (with stock)
 
      Suggestions are always dashed chips that one tap accepts. They are never entered silently.
-   - **The doctor can edit vitals.**
-     - A new reading is added with the doctor's name and the time.
-     - A bay reading can be corrected: the original is kept and struck through, with who
-       corrected it and why. It is never overwritten (audit).
-   - **The doctor can add, edit and delete allergies.** Delete is "entered in error", which
-     strikes the entry and keeps it, as the allergy model already works. Edit is a strike plus a
-     new entry.
+   - **Vitals get their own tab (owner, round 5).** Clicking the vitals in the banner opens it.
+     - At the top: today's vitals, editable. A new reading records the doctor and the time.
+     - A correction keeps the bay's original, struck through, with who corrected it and why.
+     - Below a separator: every earlier reading, with its date and who took it.
+     - The owner offered a popup or a tab. The tab was chosen because it doesn't cover the work
+       in progress, and it gives the history room.
+   - **Allergies can only be added or deleted (owner, round 5).** There is no edit. Delete is
+     "entered in error": the entry is struck and kept, as the allergy model already does.
    - **Autocomplete everywhere.** Every text field that takes clinical terms suggests as the
      doctor types and turns the choice into a chip or tag: complaints, examination, diagnosis,
      tests, drugs, advice, treatment and allergies. Free text stays allowed; it becomes the
