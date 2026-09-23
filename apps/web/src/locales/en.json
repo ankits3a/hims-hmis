@@ -5404,7 +5404,8 @@
       "summary": "Summary",
       "exam": "Examination",
       "treat": "Treatment",
-      "notes": "Notes"
+      "notes": "Notes",
+      "vitals": "Vitals"
     },
     "treatmentHead": "Treatment given in the room",
     "treatmentOwn": "Add a treatment",
@@ -5417,6 +5418,45 @@
     },
     "waitingVertical": "WAITING",
     "whyCame": "Why the patient came · as told at the front desk",
-    "workSoFar": "Your work so far · stays here on every tab"
+    "workSoFar": "Your work so far · stays here on every tab",
+    "vitals": {
+      "today": "Today's vitals · a new reading records you and the time",
+      "correcting": "Correcting a reading · the original is kept, struck through",
+      "reason": "Why is it being corrected?",
+      "saveNew": "Save as a new reading",
+      "saveFix": "Save correction",
+      "correct": "Correct",
+      "because": "corrected: {{reason}}",
+      "earlier": "Earlier readings",
+      "none": "No earlier readings.",
+      "open": "Open the Vitals tab"
+    },
+    "recall": "Recall token {{token}} on the board",
+    "recalledTimes": "Recalled {{n}} times",
+    "recalledLog": "Token {{token}} recalled on the board",
+    "openNewTab": "Open this patient in a new tab",
+    "lease": {
+      "other": "This consultation is being edited in another tab. This tab is read-only.",
+      "takeover": "Take over editing here"
+    },
+    "refer": {
+      "open": "Refer…",
+      "title": "Refer the patient",
+      "internal": "To a doctor here",
+      "external": "Outside this hospital",
+      "department": "Department",
+      "doctor": "Doctor",
+      "reason": "Reason (at least 3 characters)",
+      "note": "Note for the doctor",
+      "feeNote": "The patient joins that doctor's line without registering again. The fee follows the hospital's tariff; the front desk sees the visit as usual.",
+      "send": "Refer",
+      "to": "Refer to (doctor / hospital)",
+      "letter": "Letter",
+      "print": "Print referral letter",
+      "letterTitle": "Referral letter",
+      "letterRe": "Re: {{patient}}",
+      "doneInternal": "Referred — token {{token}} in {{where}}",
+      "doneExternal": "Referral letter to {{to}}"
+    }
   }
 }

@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { VisitTypeBadge } from "../components/visit-type-badge";
-import { clearReminder, fetchDoctorStock, fetchReminder, putReminder } from "../lib/opd-api";
+import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
 import type {
   WireDoctorStock, WireExamFinding, WireRxHistoryItem, WireTimelineItem, WireVitals,
 } from "../lib/opd-api";
@@ -463,4 +463,259 @@ export function SavedClock({ at, draft }: { at: Date | null; draft: boolean }): 
   if (at === null) return null;
   const hhmmss = at.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   return <span data-testid="saved-clock" className="mo" style={{ fontSize: 11, color: "var(--green)" }}>{draft ? t("opdConsultV2.draftSaved", { at: hhmmss }) : t("opdConsultV2.autosaved", { at: hhmmss })}</span>;
+}
+
+// ═══ PART TWO (owner, 2026-09-23, rounds 4–5) ═══
+
+// ——— the Vitals tab: today's reading editable, a correction never overwrites, every earlier reading below ———
+
+type VitalKey = "sbp" | "dbp" | "pulse" | "spo2" | "tempC" | "weightKg" | "heightCm" | "rr";
+const VITAL_FIELDS: { key: VitalKey; label: string; unit: string }[] = [
+  { key: "sbp", label: "BP sys", unit: "mmHg" }, { key: "dbp", label: "BP dia", unit: "mmHg" }, { key: "pulse", label: "Pulse", unit: "/min" },
+  { key: "spo2", label: "SpO₂", unit: "%" }, { key: "tempC", label: "Temp", unit: "°C" }, { key: "rr", label: "RR", unit: "/min" },
+  { key: "weightKg", label: "Weight", unit: "kg" }, { key: "heightCm", label: "Height", unit: "cm" },
+];
+type VitalsLike = Partial<Record<VitalKey, number | null>> & { recordedAt: string; recordedByName?: string; status?: string; amendmentReason?: string | null };
+
+/** Gold, never red: red is the danger-flag rule's own colour, and this is a glance, not a rule. */
+export function abnormal(v: Partial<Record<VitalKey, number | null>>): Set<VitalKey> {
+  const out = new Set<VitalKey>();
+  if ((v.sbp ?? 0) >= 140) out.add("sbp");
+  if ((v.dbp ?? 0) >= 90) out.add("dbp");
+  if (v.pulse != null && (v.pulse > 100 || v.pulse < 50)) out.add("pulse");
+  if (v.spo2 != null && v.spo2 < 94) out.add("spo2");
+  if (v.tempC != null && v.tempC >= 38) out.add("tempC");
+  return out;
+}
+
+function readingLine(v: VitalsLike): React.ReactElement {
+  const hi = abnormal(v);
+  const parts: [VitalKey | "bp", string][] = [
+    ["bp", v.sbp == null ? "BP —" : `BP ${String(v.sbp)}/${String(v.dbp ?? "—")}`],
+    ["pulse", `P ${String(v.pulse ?? "—")}`], ["spo2", `SpO₂ ${String(v.spo2 ?? "—")}`], ["tempC", `T ${String(v.tempC ?? "—")}`],
+    ...(v.weightKg == null ? [] : [["weightKg", `${String(v.weightKg)} kg`] as [VitalKey, string]]),
+  ];
+  return (
+    <span className="mo" style={{ display: "inline-flex", gap: 12, flexWrap: "wrap" }}>
+      {parts.map(([k, text]) => (
+        <span key={k} style={{ color: (k === "bp" ? hi.has("sbp") || hi.has("dbp") : hi.has(k as VitalKey)) ? "var(--gold)" : undefined, fontWeight: 600 }}>{text}</span>
+      ))}
+    </span>
+  );
+}
+
+export function VitalsTab({ encounterId, patientId, today, onChanged }: {
+  encounterId: string; patientId: string; today: (VitalsLike & { id: string })[]; onChanged: () => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const rows = today;
+  const current = rows.filter((r) => r.status !== "superseded").at(-1);
+  const seed = (): Record<VitalKey, string> => Object.fromEntries(VITAL_FIELDS.map((f) => [f.key, current?.[f.key] == null ? "" : String(current[f.key])])) as Record<VitalKey, string>;
+  const [form, setForm] = useState<Record<VitalKey, string>>(seed);
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const history = useQuery({
+    queryKey: ["opd", "vitals-history", patientId],
+    queryFn: () => api<{ items: (VitalsLike & { vitalsId: string; encounterId: string; serviceDate: string })[] }>("GET", `/opd/patients/${patientId}/vitals`),
+  });
+  const earlier = (history.data?.items ?? []).filter((h) => h.encounterId !== encounterId).slice().reverse();
+  const values = (): Record<string, number | null> => Object.fromEntries(VITAL_FIELDS.map((f) => [f.key, form[f.key].trim() === "" ? null : Number(form[f.key])]));
+  const submit = async (): Promise<void> => {
+    setErr(null); setBusy(true);
+    try {
+      if (fixing === null) await api("POST", `/opd/visits/${encounterId}/vitals`, values());
+      else await api("POST", `/opd/vitals/${fixing}/amend`, { ...values(), reason: reason.trim() });
+      setFixing(null); setReason("");
+      onChanged();
+      await history.refetch();
+    } catch (e) {
+      const body = (e as { body?: { message?: unknown } }).body;
+      setErr(typeof body?.message === "string" ? body.message : e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div data-testid="vitals-tab" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="box" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <span className="tag">{fixing === null ? t("opdConsultV2.vitals.today") : t("opdConsultV2.vitals.correcting")}</span>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+          {VITAL_FIELDS.map((f) => (
+            <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--dim)" }}>
+              {f.label} ({f.unit})
+              <input data-testid={`vital-${f.key}`} className="in mo" inputMode="decimal" value={form[f.key]}
+                onChange={(e) => { const v = e.target.value; setForm((cur) => ({ ...cur, [f.key]: v })); }}
+                style={{ height: 32, fontSize: 13, color: abnormal({ [f.key]: form[f.key] === "" ? null : Number(form[f.key]) }).has(f.key) ? "var(--gold)" : undefined }} />
+            </label>
+          ))}
+        </div>
+        {fixing !== null && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+            {t("opdConsultV2.vitals.reason")}
+            <input data-testid="vital-reason" className="in" value={reason} onChange={(e) => { setReason(e.target.value); }} style={{ height: 32, fontSize: 13 }} />
+          </label>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" className="pri" data-testid="vital-save" disabled={busy || (fixing !== null && reason.trim() === "")} onClick={() => void submit()}
+            style={{ padding: "3px 14px", fontSize: 12.5 }}>{fixing === null ? t("opdConsultV2.vitals.saveNew") : t("opdConsultV2.vitals.saveFix")}</button>
+          {fixing !== null && <button type="button" className="sec" onClick={() => { setFixing(null); setReason(""); setForm(seed()); }} style={{ padding: "3px 12px", fontSize: 12 }}>{t("opdConsult.cancel")}</button>}
+        </div>
+        {err === null ? null : <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--red)" }}>{err}</p>}
+        <ul data-testid="vitals-today" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {rows.map((r) => (
+            <li key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, textDecoration: r.status === "superseded" ? "line-through" : undefined, color: r.status === "superseded" ? "var(--faint)" : undefined }}>
+              {readingLine(r)}
+              <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{t("opdConsultV2.vitalsBy", { by: r.recordedByName ?? "—", at: fmtTime(r.recordedAt) })}</span>
+              {r.amendmentReason != null && <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsultV2.vitals.because", { reason: r.amendmentReason })}</span>}
+              {r.status !== "superseded" && (
+                <button type="button" className="sec" data-testid={`vital-fix-${r.id}`} style={{ marginLeft: "auto", padding: "1px 9px", fontSize: 11.5 }}
+                  onClick={() => { setFixing(r.id); setForm(Object.fromEntries(VITAL_FIELDS.map((f) => [f.key, r[f.key] == null ? "" : String(r[f.key])])) as Record<VitalKey, string>); }}>
+                  {t("opdConsultV2.vitals.correct")}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: 0 }} />
+      <div className="box" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <span className="tag">{t("opdConsultV2.vitals.earlier")}</span>
+        {earlier.length === 0 ? <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsultV2.vitals.none")}</span> : (
+          <ul data-testid="vitals-earlier" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+            {earlier.map((h) => (
+              <li key={h.vitalsId} style={{ display: "flex", gap: 10, fontSize: 12.5, textDecoration: h.status === "superseded" ? "line-through" : undefined, color: h.status === "superseded" ? "var(--faint)" : undefined }}>
+                <span className="mo" style={{ width: 132, flexShrink: 0, color: "var(--dim)" }}>{h.serviceDate} {fmtTime(h.recordedAt)}</span>
+                {readingLine(h)}
+                <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{h.recordedByName ?? ""}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ——— refer: to another department's doctor, or out with a letter ———
+
+type WireDept = { id: string; name: string; active?: boolean };
+type WireDoc = { id: string; displayName: string; departmentId: string; active: boolean };
+
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
+export function ReferPanel({ encounterId, patientName, doctorName, onInternal, onExternal }: {
+  encounterId: string; patientName: string; doctorName: string;
+  onInternal: (r: { tokenNo: number; where: string; why: string }) => void;
+  onExternal: (to: string, note: string) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [kind, setKind] = useState<"internal" | "external">("internal");
+  const [dept, setDept] = useState("");
+  const [doc, setDoc] = useState("");
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const [to, setTo] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const depts = useQuery({ queryKey: ["opd", "departments"], queryFn: () => api<{ items: WireDept[] }>("GET", "/opd/departments") });
+  const docs = useQuery({
+    queryKey: ["opd", "doctors", dept], enabled: dept !== "",
+    queryFn: () => api<{ items: WireDoc[] }>("GET", `/opd/doctors?departmentId=${encodeURIComponent(dept)}&active=true`),
+  });
+  const refer = async (): Promise<void> => {
+    setErr(null); setBusy(true);
+    try {
+      const r = await referInternally(encounterId, { departmentId: dept, doctorId: doc, reason: reason.trim(), note: note.trim() === "" ? null : note.trim() });
+      const d = (depts.data?.items ?? []).find((x) => x.id === dept)?.name ?? "";
+      const n = (docs.data?.items ?? []).find((x) => x.id === doc)?.displayName ?? "";
+      onInternal({ tokenNo: r.tokenNo, where: `${d} · ${n}`, why: `${reason.trim()}${note.trim() === "" ? "" : ` — ${note.trim()}`}` });
+    } catch (e) {
+      const body = (e as { body?: { message?: unknown } }).body;
+      setErr(typeof body?.message === "string" ? body.message : e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const printLetter = (): void => {
+    onExternal(to.trim(), note.trim());
+    const w = window.open("", "_blank");
+    if (w === null) return;
+    const today = new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
+    w.document.write(`<!doctype html><html><head><title>${esc(t("opdConsultV2.refer.letterTitle"))}</title></head><body style="font-family:serif;max-width:640px;margin:40px auto;line-height:1.6">
+<p style="text-align:right">${esc(today)}</p><p>To,<br>${esc(to.trim())}</p>
+<p><strong>${esc(t("opdConsultV2.refer.letterRe", { patient: patientName }))}</strong></p>
+<p>${esc(note.trim())}</p><p style="margin-top:48px">${esc(doctorName)}</p></body></html>`);
+    w.document.close();
+    w.print();
+  };
+  const seg: React.CSSProperties = { padding: "3px 12px", fontSize: 12.5 };
+  return (
+    <div data-testid="refer-panel" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div role="group" style={{ display: "flex", gap: 6 }}>
+        <button type="button" data-testid="refer-internal" aria-pressed={kind === "internal"} className={kind === "internal" ? "pri" : "sec"} style={seg} onClick={() => { setKind("internal"); }}>{t("opdConsultV2.refer.internal")}</button>
+        <button type="button" data-testid="refer-external" aria-pressed={kind === "external"} className={kind === "external" ? "pri" : "sec"} style={seg} onClick={() => { setKind("external"); }}>{t("opdConsultV2.refer.external")}</button>
+      </div>
+      {kind === "internal" ? (
+        <>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.department")}
+            <select data-testid="refer-dept" className="in" value={dept} onChange={(e) => { setDept(e.target.value); setDoc(""); }} style={{ width: "100%", height: 34 }}>
+              <option value="">—</option>
+              {(depts.data?.items ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.doctor")}
+            <select data-testid="refer-doctor" className="in" value={doc} onChange={(e) => { setDoc(e.target.value); }} style={{ width: "100%", height: 34 }} disabled={dept === ""}>
+              <option value="">—</option>
+              {(docs.data?.items ?? []).map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.reason")}
+            <input data-testid="refer-reason" className="in" value={reason} onChange={(e) => { setReason(e.target.value); }} style={{ width: "100%", height: 34 }} />
+          </label>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.note")}
+            <input data-testid="refer-note" className="in" value={note} onChange={(e) => { setNote(e.target.value); }} style={{ width: "100%", height: 34 }} />
+          </label>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsultV2.refer.feeNote")}</p>
+          <button type="button" className="pri" data-testid="refer-send" disabled={busy || dept === "" || doc === "" || reason.trim().length < 3} onClick={() => void refer()} style={{ alignSelf: "flex-start", padding: "3px 14px" }}>
+            {t("opdConsultV2.refer.send")}
+          </button>
+        </>
+      ) : (
+        <>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.to")}
+            <input data-testid="refer-to" className="in" value={to} onChange={(e) => { setTo(e.target.value); }} style={{ width: "100%", height: 34 }} />
+          </label>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.letter")}
+            <textarea data-testid="refer-letter" className="in" value={note} onChange={(e) => { setNote(e.target.value); }} style={{ width: "100%", height: 110, padding: 8 }} />
+          </label>
+          <button type="button" className="pri" data-testid="refer-print" disabled={to.trim() === ""} onClick={printLetter} style={{ alignSelf: "flex-start", padding: "3px 14px" }}>
+            {t("opdConsultV2.refer.print")}
+          </button>
+        </>
+      )}
+      {err === null ? null : <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--red)" }}>{err}</p>}
+    </div>
+  );
+}
+
+/** A small alarm-bell mark for the recall button: inline stroke SVG, never an emoji. */
+export function BellIcon(): React.ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+
+/** "Open in a new tab": a box with an arrow leaving it. */
+export function NewTabIcon(): React.ReactElement {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 3h7v7" /><path d="M10 14 21 3" /><path d="M21 14v7H3V3h7" />
+    </svg>
+  );
 }
