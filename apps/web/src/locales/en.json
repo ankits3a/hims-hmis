@@ -920,6 +920,7 @@
     "referralTo": "Referred to",
     "referralNote": "Referral note",
     "complete": "Complete consultation",
+    "issueAndComplete": "Issue & complete",
     "shortcuts": "Alt+N call next · Alt+K skip · Alt+S start / issue · Alt+Enter complete",
     "routeOption": {
       "oral": "Oral",

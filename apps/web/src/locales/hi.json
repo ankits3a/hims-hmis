@@ -920,6 +920,7 @@
     "referralTo": "किसे रेफ़र किया",
     "referralNote": "रेफ़रल टिप्पणी",
     "complete": "परामर्श पूर्ण करें",
+    "issueAndComplete": "जारी करें और परामर्श पूर्ण करें",
     "shortcuts": "Alt+N अगला · Alt+K छोड़ें · Alt+S शुरू / जारी · Alt+Enter पूर्ण",
     "routeOption": {
       "oral": "मुँह से",
