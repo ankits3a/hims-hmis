@@ -78,6 +78,8 @@ export type ConsultNote = {
   diagnosisKind?: DiagnosisKind | null;
   /** D14 — offered/kept at a zero-stock line. `at` and `by` are stamped by the SERVER (see `stampStockChoices`). */
   rxStockChoices?: RxStockChoiceInput[] | null;
+  /** D17 — the writing tab's lease token (`lease.ts`). Absent = the shipped client, unchecked. Never stored. */
+  leaseToken?: string;
 };
 
 export const EXAM_GROUPS = ["general", "systemic", "local"] as const;
@@ -105,6 +107,23 @@ export function stampStockChoices(
       by: was?.by ?? actorId, at: was?.at ?? now.toISOString(),
     };
   });
+}
+
+/**
+ * The check `saveConsultNote` runs when a note names its tab's token: a token that does not hold a LIVE
+ * lease is refused, so a read-only tab cannot write even if its screen were tampered with. A note that
+ * names no token is the shipped client and is untouched.
+ */
+export function assertLeaseFor(
+  enc: { editLeaseToken: string | null; editLeaseUntil: Date | null }, token: string | undefined, now: Date,
+): void {
+  if (token === undefined) return;
+  const live = enc.editLeaseToken !== null && enc.editLeaseUntil !== null && enc.editLeaseUntil.getTime() > now.getTime();
+  if (live && enc.editLeaseToken !== token) {
+    throw new OpdError("edit_lease_state_conflict", "another tab is editing this consultation — take over editing there first", {
+      until: enc.editLeaseUntil!.toISOString(),
+    });
+  }
 }
 
 /** The encounter columns a note writes — the same set moveEncounter's patch accepts, so a completion is ONE update. */
@@ -519,6 +538,7 @@ export async function saveConsultNote(
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `the consult note needs in_consultation, not ${current.status}`);
   }
+  assertLeaseFor(current, note.leaseToken, now);
   /*
     ONE TRANSACTION, because the de-normalised `diagnosis` string on the encounter and the coded
     rows beside it are two statements of the same fact. A note that wrote one and not the other
@@ -566,6 +586,7 @@ export async function completeConsultation(
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a completion needs in_consultation, not ${current.status}`);
   }
+  assertLeaseFor(current, input.note?.leaseToken, now);
   const cfg = await loadOpdConfig(db);
   const patch = noteColumns(input.note);
 

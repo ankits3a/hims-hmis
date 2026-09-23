@@ -452,6 +452,19 @@ export const opdEncounters = pgTable(
     internalComment: text("internal_comment"),
     diagnosisKind: text("diagnosis_kind"),
     rxStockChoices: jsonb("rx_stock_choices"),
+    /**
+     * ═══ D17 — ONE TAB EDITS AT A TIME (owner, 2026-09-23) ═══
+     *
+     * A doctor may open a patient in a new browser tab. Two tabs writing the same note would each
+     * autosave over the other, so the consultation carries an EDIT LEASE: the tab holding
+     * `editLeaseToken` until `editLeaseUntil` edits, every other tab is read-only and offers "Take over
+     * editing here". A lease is a heartbeat, not a lock — it lapses by itself when the tab closes.
+     * Every takeover is appended to `editTakeovers` (`{ by, at, fromToken }[]`) and never removed.
+     */
+    editLeaseToken: text("edit_lease_token"),
+    editLeaseBy: text("edit_lease_by"),
+    editLeaseUntil: timestamp("edit_lease_until", { withTimezone: true }),
+    editTakeovers: jsonb("edit_takeovers"),
     referralTo: text("referral_to"),
     referralNote: text("referral_note"),
     followUpDays: integer("follow_up_days"), // stamped at completion: config default or an extension value
