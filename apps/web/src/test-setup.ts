@@ -9,3 +9,10 @@ import { afterEach } from "vitest";
 afterEach(() => {
   try { window.sessionStorage.clear(); } catch { /* a non-DOM environment has none */ }
 });
+
+/*
+ * THE CONSULT SCREEN'S DEFAULTS FOLLOW THE VIEWPORT (≥1440 both side columns open). jsdom reports
+ * 1024, which would fold both columns in every suite; suites are written for the desktop the screen
+ * is designed for, and the responsive defaults are exercised by the browser walk, not by jsdom.
+ */
+Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });

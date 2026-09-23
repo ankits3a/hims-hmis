@@ -270,8 +270,9 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
 
-    const diagnosis = await screen.findByLabelText("Diagnosis");
+    const diagnosis = await screen.findByLabelText("Diagnosis", { selector: "input" });
     await user.click(diagnosis);
     await user.type(diagnosis, "acute upper");
     await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
@@ -293,8 +294,9 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
 
-    const diagnosis = await screen.findByLabelText("Diagnosis");
+    const diagnosis = await screen.findByLabelText("Diagnosis", { selector: "input" });
     await user.click(diagnosis);
     /* Enter commits verbatim — including the comma, which is why " · " is the separator. */
     await user.type(diagnosis, "?dengue, review in 48h{Enter}");
@@ -333,7 +335,9 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
-
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
+    
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
     await user.type(advice, "steam inhalation");
@@ -361,8 +365,9 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
 
-    const diagnosis = await screen.findByLabelText("Diagnosis");
+    const diagnosis = await screen.findByLabelText("Diagnosis", { selector: "input" });
     await user.click(diagnosis);
     await user.type(diagnosis, "acute upper");
     await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
@@ -387,12 +392,13 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
 
     const icd10 = await screen.findByTestId("note-icd10");
     expect(icd10).toHaveAttribute("readonly");
     expect(icd10).toHaveValue("");
 
-    const diagnosis = screen.getByLabelText("Diagnosis");
+    const diagnosis = screen.getByLabelText("Diagnosis", { selector: "input" });
     await user.click(diagnosis);
     await user.type(diagnosis, "acute upper");
     await user.click(await screen.findByText("Acute upper respiratory infection, unspecified"));
@@ -415,6 +421,7 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
 
     await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J02.9"); });
   });
@@ -578,6 +585,7 @@ describe("OpdConsult — the advice library", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     await user.click(await screen.findByTestId("advice-tpl-adv_seed_rest_fluids-hi"));
     await user.click(screen.getByRole("heading", { name: "Consultation" }));
@@ -596,6 +604,7 @@ describe("OpdConsult — the advice library", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     await user.click(await screen.findByTestId("advice-tpl-adv_seed_rest_fluids-en"));
     await user.click(screen.getByRole("heading", { name: "Consultation" }));
@@ -614,6 +623,7 @@ describe("OpdConsult — the advice library", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
@@ -632,6 +642,7 @@ describe("OpdConsult — the advice library", () => {
     mockRoutes({ ...baseRoutes(), "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES } });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     await screen.findByTestId("advice-tpl-adv_en_only-en");
     // Half a row beats no row; what it must not do is offer a Hindi button that inserts nothing.
@@ -647,6 +658,7 @@ describe("OpdConsult — the advice library", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
@@ -667,6 +679,7 @@ describe("OpdConsult — the advice library", () => {
     mockRoutes({ ...baseRoutes(), "GET /api/opd/advice-templates": { status: 200, body: ADVICE_TEMPLATES } });
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     await screen.findByTestId("advice-library");
     expect(screen.queryByTestId("advice-save-open")).toBeNull();
@@ -781,6 +794,7 @@ describe("OpdConsult — snippets in the advice box", () => {
     mockRoutes(snippetRoutes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
@@ -794,6 +808,7 @@ describe("OpdConsult — snippets in the advice box", () => {
     mockRoutes(snippetRoutes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
@@ -812,6 +827,7 @@ describe("OpdConsult — snippets in the advice box", () => {
     mockRoutes(snippetRoutes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
@@ -836,6 +852,7 @@ describe("OpdConsult — snippets in the advice box", () => {
     mockRoutes(snippetRoutes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
@@ -854,6 +871,7 @@ describe("OpdConsult — snippets in the advice box", () => {
     mockRoutes(snippetRoutes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     await user.click(await screen.findByTestId("advice-tpl-adv_rx-en"));
     const advice = screen.getByLabelText("Advice");
@@ -865,6 +883,7 @@ describe("OpdConsult — snippets in the advice box", () => {
     mockRoutes(snippetRoutes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
@@ -882,6 +901,7 @@ describe("OpdConsult — snippets in the advice box", () => {
     mockRoutes(snippetRoutes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     const advice = await screen.findByLabelText("Advice");
     await user.click(advice);
@@ -912,6 +932,7 @@ describe("OpdConsult — snippets in the advice box", () => {
     mockRoutes(snippetRoutes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
 
     await user.click(await screen.findByTestId("snippet-ref-toggle"));
     const ref = await screen.findByTestId("snippet-ref");
@@ -959,7 +980,7 @@ describe("OpdConsult — the slips a desk photographed", () => {
   async function openSlips(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await openPanel(user);
     /* The view toggle lives inside the History TAB, so that is opened first. */
-    await user.click(await screen.findByRole("tab", { name: "History" }));
+    await user.click(await screen.findByTestId("history-open"));
     await user.click(await screen.findByRole("button", { name: "Slips" }));
   }
 
@@ -1193,7 +1214,7 @@ describe("OpdConsult", () => {
     // "the obvious next thing" and with a consultation already open the obvious next thing is
     // nothing, so there is no key for this and the control is the only road.
     // CONSULT V2 (owner, 2026-09-23): in a consultation the line is minimised by default — one tap opens it.
-    await user.click(screen.getByTestId("sidebar-open"));
+    { const so = screen.queryByTestId("sidebar-open"); if (so !== null) await user.click(so); }
     await user.click(screen.getByRole("button", { name: "Call next" }));
     await waitFor(() => expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(2));
     const refusal = await screen.findByText("another patient is already called");
@@ -1214,11 +1235,11 @@ describe("OpdConsult", () => {
     const chip = await screen.findByTestId("allergy-chip-al-1");
     expect(chip).toHaveTextContent("Penicillin");
     /*
-      THE CHIP IS `.pill rd` — the design system's brick pill — not a Tailwind red. The assertion
-      moved with the paint because it is the same claim: an allergy is shown in the danger colour,
-      not merely listed.
+      THE CHIP IS `.cx-allergy` — the Consult Engine boards' brick chip (owner, 2026-09-23), in
+      the danger palette — not a Tailwind red. The assertion moved with the paint because it is the
+      same claim: an allergy is shown in the danger colour, not merely listed.
     */
-    expect(chip).toHaveClass("pill", "rd");
+    expect(chip).toHaveClass("cx-allergy");
     expect(screen.queryByTestId("allergy-chip-al-2")).toBeNull();
     expect(screen.getByTestId("allergy-chips")).not.toHaveTextContent("Sulfa");
 
@@ -1229,7 +1250,7 @@ describe("OpdConsult", () => {
     expect(screen.getByTestId("vitals-danger-sbp")).toHaveTextContent("190");
 
     // the OPD timeline: date, department, doctor, diagnosis
-    await user.click(screen.getByRole("tab", { name: "History" }));
+    await user.click(screen.getByTestId("history-open"));
     const row = await screen.findByTestId("timeline-row-enc-0");
     expect(row).toHaveTextContent("2026-07-10");
     expect(row).toHaveTextContent("General medicine");
@@ -1268,16 +1289,19 @@ describe("OpdConsult", () => {
 
     /* DIAGNOSIS IS A TAG FIELD SINCE 2026-09-14 and its keystroke contract is the complaint's:
        typing holds a draft, Enter commits the doctor's own words verbatim as a tag. */
-    const diagnosis = await screen.findByLabelText("Diagnosis");
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
+    const diagnosis = await screen.findByLabelText("Diagnosis", { selector: "input" });
     await user.click(diagnosis);
     await user.type(diagnosis, "Acute pharyngitis");
     // typing is NOT the trigger — a screen saving on change would already have posted here
     expect(callsTo("PUT", path)).toHaveLength(0);
     await user.type(diagnosis, "{Enter}");
 
+    await user.click(screen.getByRole("tab", { name: "Complaints" }));
     const chief = screen.getByLabelText("Chief complaint");
     await user.click(chief);
     await user.type(chief, "fever 3d{Enter}");
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
     const advice = screen.getByLabelText("Advice");
     await user.click(advice);
     await user.type(advice, "warm fluids");
@@ -1813,6 +1837,7 @@ describe("OpdConsult", () => {
     const path = "/api/opd/visits/enc-1/consult/complete";
 
     // (a) an extension plus the outcome controls — refused by the server, and the form survives it
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
     await user.selectOptions(screen.getByLabelText("Follow-up"), "15");
     await user.click(screen.getByLabelText("Tests ordered — patient returns today"));
     await user.click(screen.getByLabelText("Admission advised"));
@@ -2351,7 +2376,7 @@ describe("07d T1 — the past-record panel", () => {
 
   async function openHistoryTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await openPanel(user);
-    await user.click(screen.getByRole("tab", { name: "History" }));
+    await user.click(screen.getByTestId("history-open"));
     await screen.findByTestId("timeline");
   }
 
@@ -2471,7 +2496,9 @@ describe("07d T5 — advised investigations", () => {
 
   it("says on the SCREEN that this creates no order — before a doctor assumes one exists", async () => {
     mockRoutes(routes());
-    await openPanel(userEvent.setup());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Lab & radiology" }));
 
     const panel = await screen.findByTestId("advised-tests");
     expect(within(panel).getByText(/create no order and book no sample/i)).toBeInTheDocument();
@@ -2482,6 +2509,7 @@ describe("07d T5 — advised investigations", () => {
     mockRoutes(routes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Lab & radiology" }));
 
     await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
 
@@ -2499,6 +2527,7 @@ describe("07d T5 — advised investigations", () => {
     mockRoutes(routes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Lab & radiology" }));
 
     await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
     await user.click(await screen.findByRole("button", { name: /Ultrasound abdomen/ }));
@@ -2517,6 +2546,7 @@ describe("07d T5 — advised investigations", () => {
     mockRoutes(routes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Lab & radiology" }));
 
     await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
     await user.click(await screen.findByRole("button", { name: /Ultrasound abdomen/ }));
@@ -2534,6 +2564,7 @@ describe("07d T5 — advised investigations", () => {
     mockRoutes(routes({ "GET /api/tariff/price-list": { status: 200, body: { items: [] } } }));
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Lab & radiology" }));
 
     await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
     expect(await screen.findByText(/The catalogue is curated in the tariff, not here/i)).toBeInTheDocument();
@@ -2626,6 +2657,10 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
     renderWithProviders(<OpdConsult />);
 
     await user.click(await screen.findByTestId("queue-open-qe-park"));
+    // the brief first (owner, 2026-09-23): nothing is posted until the doctor resumes from it
+    expect(await screen.findByTestId("patient-brief")).toBeInTheDocument();
+    expect(callsTo("POST", "/api/opd/visits/enc-9/consult/resume")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Resume consultation" }));
 
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-9/consult/resume")).toHaveLength(1); });
     expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Gita Kumari");
@@ -2652,7 +2687,7 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
     await openPanel(user);
 
     // CONSULT V2 (owner, 2026-09-23): in a consultation the line is minimised by default — one tap opens it.
-    await user.click(screen.getByTestId("sidebar-open"));
+    { const so = screen.queryByTestId("sidebar-open"); if (so !== null) await user.click(so); }
     await user.click(screen.getByRole("button", { name: "Park patient" }));
 
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/consult/park")).toHaveLength(1); });
@@ -2693,9 +2728,43 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
     const row = await screen.findByTestId("queue-row-qe-seat");
     expect(within(row).queryByTestId("queue-parked-qe-seat")).toBeNull();
     await user.click(within(row).getByTestId("queue-open-qe-seat"));
+    await user.click(await screen.findByRole("button", { name: "Resume consultation" }));
 
     expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Hari Shankar");
     expect(callsTo("POST", "/api/opd/visits/enc-8/consult/resume")).toHaveLength(0);
+  });
+
+  /**
+   * THE OWNER'S WALK, 2026-09-23: a reload during a consultation showed "Nobody is in the chair" over
+   * a patient who was in consultation. The seated patient comes back as a BRIEF with Resume
+   * consultation under it — never an empty chair — and nothing is posted until the doctor resumes.
+   */
+  it("W6: after a reload the patient still in the chair comes back as a brief with Resume consultation", async () => {
+    const seat8 = {
+      "GET /api/opd/visits/enc-8": {
+        status: 200,
+        body: {
+          encounter: { ...ENCOUNTER, id: "enc-8", patientId: "p-8", status: "in_consultation" },
+          queueEntries: [SEATED], vitals: [], prescriptions: [], patient: summary("p-8", "HMS0000000080", "Hari Shankar"),
+        },
+      },
+      "GET /api/patients/p-8": {
+        status: 200,
+        body: { patient: { uhid: "HMS0000000080", name: "Hari Shankar", alias: null, dob: "1985-01-01", administrativeGender: "male" }, resolvedFrom: null },
+      },
+      "GET /api/patients/p-8/allergies": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-8/timeline": { status: 200, body: { items: [] } },
+    };
+    mockRoutes(withInConsult([SEATED], {
+      ...seat8,
+      "GET /api/opd/queues": { status: 200, body: { ...QUEUE_VIEW, current: null, inConsult: [SEATED], counts: { ...QUEUE_VIEW.counts, inConsult: 1 } } },
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    expect(await screen.findByTestId("patient-brief")).toBeInTheDocument();
+    expect(screen.queryByText("Nobody is in the chair")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Resume consultation" }));
+    expect(await screen.findByTestId("panel-patient-name")).toHaveTextContent("Hari Shankar");
   });
 
   /** A refusal is rendered where the doctor reads it, like every other act on this screen. */
@@ -2710,6 +2779,7 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
     renderWithProviders(<OpdConsult />);
 
     await user.click(await screen.findByTestId("queue-open-qe-park"));
+    await user.click(await screen.findByRole("button", { name: "Resume consultation" }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByTestId("patient-panel")).toBeNull();
@@ -3095,7 +3165,8 @@ describe("OpdConsult — the clinical co-pilot", () => {
     expect(within(screen.getByTestId("copilot-panel")).getByTestId("copilot-suggestions-pane")).toBe(pane);
     expect(screen.queryByTestId("copilot-suggestions-inline")).toBeNull();
     await user.click(within(pane).getByTestId("sug-dx-SYN_URI_01"));
-    // the diagnosis is now a tag, and its ICD-10 code rides with it
+    // the diagnosis is now a tag, and its ICD-10 code rides with it (read on the Diagnosis tab)
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
     await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J06.9"); });
     // complaint + diagnosis → the tests advised before for it, asked with the diagnosis and nothing about the patient
     const chip = await within(screen.getByTestId("copilot-suggestions-pane")).findByTestId("sug-test-svc-cbc");
@@ -3118,7 +3189,7 @@ describe("OpdConsult — the clinical co-pilot", () => {
     expect(inline).toHaveTextContent(/COPILOT IS FOLDED/);
     expect(screen.queryByTestId("copilot-suggestions-pane")).toBeNull();
     // nothing was entered by the suggestion appearing
-    expect(screen.getByTestId("note-icd10")).toHaveValue("");
+    expect(screen.getByTestId("work-dx")).toHaveTextContent("not yet");
     await user.click(within(inline).getByTestId("sug-dx-SYN_URI_01"));
     await user.click(await within(screen.getByTestId("copilot-suggestions-inline")).findByTestId("sug-rx-fill"));
     // the regimen's medicines are on the Rx now
@@ -3944,11 +4015,47 @@ describe("Consult v2", () => {
 
     await user.click(screen.getByRole("button", { name: "Start consultation" }));
     await screen.findByTestId("patient-panel");
+    // ≥1440 (the owner's responsive ruling, 2026-09-23): both side columns open in the consultation too
+    expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "open");
+    await user.click(screen.getByTestId("sidebar-close"));
     expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "closed");
     expect(screen.getByTestId("sidebar-waiting")).toHaveTextContent("2");
-    await user.click(screen.getByTestId("sidebar-open"));
-    expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "open");
-    expect(sessionStorage.getItem("hmis.consult.left.consult")).toBe("1");
+    expect(sessionStorage.getItem("hmis.consult.left.consult")).toBe("0");
+  });
+
+  it("V2b: the defaults follow the width — 1200–1439 folds the copilot, below 1200 both fold, and a doctor's own choice wins", async () => {
+    window.innerWidth = 1280;
+    try {
+      mockRoutes(routes());
+      const user = userEvent.setup();
+      const { unmount } = renderWithProviders(<OpdConsult />);
+      await screen.findByTestId("patient-brief");
+      expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "open");
+      expect(screen.getByTestId("copilot-panel")).toHaveAttribute("data-state", "closed");
+      await user.click(screen.getByTestId("copilot-open"));
+      expect(sessionStorage.getItem("hmis.consult.right")).toBe("1");
+      unmount();
+      sessionStorage.clear();
+      window.innerWidth = 1100;
+      renderWithProviders(<OpdConsult />);
+      await screen.findByTestId("patient-brief");
+      expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "closed");
+      expect(screen.getByTestId("copilot-panel")).toHaveAttribute("data-state", "closed");
+    } finally {
+      window.innerWidth = 1440;
+    }
+  });
+
+  it("V2c: the tabs are the boards' ten, and the page header carries Complete, not a route path", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    expect(screen.getAllByRole("tab").map((x) => x.textContent?.replace(/[•\s]+/g, " ").trim())).toEqual([
+      "Summary", "Vitals", "Complaints", "Examination", "Diagnosis", "Lab & radiology", "Prescription", "Treatment", "Advice & follow-up", "Notes",
+    ]);
+    expect(screen.queryByText("/opd/consult")).toBeNull();
+    expect(within(screen.getByTestId("consult-centre")).getByTestId("complete-consult")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-visit-type")).toBeInTheDocument();
   });
 
   it("V3: F2 opens a minimised copilot and lands in its ask box, docked at the panel's foot", async () => {
@@ -3998,7 +4105,7 @@ describe("Consult v2", () => {
 
     await user.click(screen.getByRole("tab", { name: "Treatment" }));
     await user.click(screen.getByRole("button", { name: "Nebulisation in OPD" }));
-    await user.click(screen.getByRole("tab", { name: "Note" }));
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
     await user.click(screen.getByTestId("dx-kind-final"));
     await waitFor(() => {
       const b = bodiesOf("PUT", path).at(-1)!;
@@ -4016,6 +4123,7 @@ describe("Consult v2", () => {
     mockRoutes(routes());
     const user = userEvent.setup();
     await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
     const advice = screen.getByLabelText("Advice");
     await user.click(advice);
     await user.type(advice, "warm fluids");
@@ -4130,6 +4238,7 @@ describe("Consult v2 — part two", () => {
     const user = userEvent.setup();
     await openPanel(user);
     expect(await screen.findByTestId("lease-readonly")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
     expect(screen.getByLabelText("Advice")).toBeDisabled();
     await user.click(screen.getByTestId("save-draft"));
     expect(callsTo("PUT", "/api/opd/visits/enc-1/consult/note")).toHaveLength(0);
@@ -4186,6 +4295,7 @@ describe("Consult v2 — part two", () => {
     await user.click(within(dialog).getByTestId("refer-send"));
     await waitFor(() => { expect(bodiesOf("POST", "/api/opd/visits/enc-1/refer").at(-1)).toEqual({ departmentId: "dep-2", doctorId: "doc-9", reason: "wheeze, assess asthma", note: null }); });
     expect(await screen.findByTestId("refer-done")).toHaveTextContent("token 3 in Paediatrics · Dr Gupta");
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
     expect(screen.getByLabelText("Referred to")).toHaveValue("Paediatrics · Dr Gupta");
   });
 });

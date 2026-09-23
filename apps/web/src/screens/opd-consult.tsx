@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,7 +30,9 @@ import {
   BellIcon, ConsultSidebar, CopilotPanel, ExamSection, HistoryBrowser, NewTabIcon, NotesSection, PatientBrief, ReferPanel, SavedClock,
   SectionHistory,
   StockAlternativeCard, StockTag, SummaryView, TreatmentSection, VitalsTab, WorkStrip, useDoctorStock, useSessionToggle,
+  useViewportWidth,
 } from "./opd-consult-v2";
+import "./opd-consult.css";
 import { recallToken, releaseLease, takeLease } from "../lib/opd-api";
 import type { WorkRow } from "./opd-consult-v2";
 import { CopilotSuggestions, TermInput } from "./opd-consult-suggest";
@@ -239,7 +241,8 @@ function v2BodyOf(v: V2State, on: boolean): Record<string, unknown> {
     diagnosisKind: v.diagnosisKind, rxStockChoices: v.rxStockChoices,
   };
 }
-type TabId = "summary" | "vitals" | "note" | "exam" | "rx" | "treat" | "notes" | "history";
+/** The designed tabs (Consult.dc.html). Complaints, Diagnosis and Advice are the v1 note form, split. */
+type TabId = "summary" | "vitals" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
 
 /**
  * ═══ THE DIAGNOSIS GOES UP AS A LIST, AND THE CODES RIDE WITH THEIR OWN WORDS ═══
@@ -267,7 +270,9 @@ function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>): Record<string
 }
 
 export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } = {}): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  /** The viewport width decides the side columns' DEFAULTS and whether an open one is a drawer (<1024). */
+  const vw = useViewportWidth();
   const queryClient = useQueryClient();
   /** PLAN 07d T1 — which of the three histories the tab is showing. Drives the lazy fetches below. */
   const [historyView, setHistoryView] = useState<"visits" | "rx" | "vitals" | "documents">("visits");
@@ -279,7 +284,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const today = todayIst();
 
   const [active, setActive] = useState<Active | null>(null);
-  const [tab, setTab] = useState<TabId>("note");
+  const [tab, setTab] = useState<TabId>("complaints");
   /*
     ═══ THE CO-PILOT (owner, 2026-09-14) ═══
     *"when doctor starts to write chief complaints, he don't need to type much, just tap and select"*
@@ -346,9 +351,14 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const editV2 = (patch: Partial<V2State>): void => { v2On.current = true; setV2((cur) => ({ ...cur, ...patch })); };
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [savedAsDraft, setSavedAsDraft] = useState(false);
-  const [leftOnBrief, setLeftOnBrief] = useSessionToggle("hmis.consult.left.brief", true);
-  const [leftOnConsult, setLeftOnConsult] = useSessionToggle("hmis.consult.left.consult", false);
-  const [rightOpen, setRightOpen] = useSessionToggle("hmis.consult.right", true);
+  /*
+    THE DEFAULTS FOLLOW THE WIDTH (owner, 2026-09-23 — "I want screen to be responsive"): ≥1440 both
+    side columns open; 1200–1439 the copilot folds; below 1200 both fold (below 1024 an open one is a
+    drawer). A doctor's own choice, once made, is remembered for the session and wins.
+  */
+  const [leftOnBrief, setLeftOnBrief] = useSessionToggle("hmis.consult.left.brief", vw >= 1200);
+  const [leftOnConsult, setLeftOnConsult] = useSessionToggle("hmis.consult.left.consult", vw >= 1440);
+  const [rightOpen, setRightOpen] = useSessionToggle("hmis.consult.right", vw >= 1440);
   const rightOpenRef = useRef(rightOpen);
   useEffect(() => { rightOpenRef.current = rightOpen; }, [rightOpen]);
   const [agentAutoFocus, setAgentAutoFocus] = useState(false);
@@ -777,8 +787,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     },
   ];
   const goToSection = (id: string): void => {
-    const tabFor: Record<string, TabId> = { complaints: "note", dx: "note", advice: "note", inv: "note", exam: "exam", rx: "rx", treat: "treat", notes: "notes" };
-    setTab(tabFor[id] ?? "note");
+    const tabFor: Record<string, TabId> = { complaints: "complaints", dx: "dx", advice: "advice", inv: "inv", exam: "exam", rx: "rx", treat: "treat", notes: "notes" };
+    setTab(tabFor[id] ?? "complaints");
     const anchorFor: Record<string, string> = { complaints: "note-chief", dx: "note-diagnosis", advice: "note-advice" };
     setTimeout(() => {
       const el = id === "inv" ? document.querySelector('[data-testid="advised-tests"]') : anchorFor[id] !== undefined ? document.getElementById(anchorFor[id]!) : null;
@@ -786,7 +796,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     }, 0);
   };
   const tabHas = (id: TabId): boolean => {
-    const map: Partial<Record<TabId, string[]>> = { note: ["complaints", "dx", "advice"], exam: ["exam"], rx: ["rx"], treat: ["treat"], notes: ["notes"] };
+    const map: Partial<Record<TabId, string[]>> = { complaints: ["complaints"], dx: ["dx"], inv: ["inv"], advice: ["advice"], exam: ["exam"], rx: ["rx"], treat: ["treat"], notes: ["notes"] };
     const ids = map[id] ?? [];
     return workRows.some((r) => ids.includes(r.id) && r.count > 0);
   };
@@ -995,7 +1005,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     setAdmissionAdvised(false);
     setReferralTo("");
     setReferralNote("");
-    setTab("note");
+    setTab("complaints");
     setHits([]);
     setRegimen(null);
     setCdsError(null);
@@ -1025,6 +1035,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     setQueueError(null);
     try {
       await api("POST", `/opd/queues/${view.session.id}/call-next`);
+      setBriefEntry(null);
       await invalidateQueue();
     } catch (e) {
       setQueueError(opdErrorMessage(e));
@@ -1305,6 +1316,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     try {
       const res = await api<{ encounter: WireEncounter }>("POST", `/opd/visits/${current.encounter.id}/consult/start`);
       resetPanel();
+      setBriefEntry(null);
       setActive({ encounterId: res.encounter.id, patientId: res.encounter.patientId, summary: current.patient });
       await invalidateQueue();
     } catch (e) {
@@ -1347,6 +1359,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     try {
       if (parkedSince(e) !== null) await api("POST", `/opd/visits/${e.encounter.id}/consult/resume`);
       resetPanel();
+      setBriefEntry(null);
       setActive({ encounterId: e.encounter.id, patientId: e.encounter.patientId, summary: e.patient });
       await invalidateQueue();
     } catch (err) {
@@ -1365,12 +1378,24 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     const hit = inConsult.find((e) => e.encounterId === focusEncounterId);
     if (hit !== undefined && active?.encounterId !== focusEncounterId) {
       focusedOnce.current = true;
-      void openEntry(hit);
+      setBriefEntry(hit); // the brief first, then Resume consultation (owner, 2026-09-23)
     } else if (current?.encounterId === focusEncounterId) {
       focusedOnce.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs until the focused patient is found, once
   }, [focusEncounterId, view]);
+
+  /*
+    THE BRIEF FOR A PATIENT OPENED FROM THE LINE (Resume, Open, the new-tab link) — and, after a
+    reload, for the patient still in the chair. The owner's walk found "Nobody is in the chair" over a
+    patient who was in consultation: the panel's state lived only in memory. A seated (not parked)
+    patient is now brought back as a brief with Resume consultation under it, never an empty chair.
+  */
+  const [briefEntry, setBriefEntry] = useState<WireQueueEntryView | null>(null);
+  const activeToken: number | null = active === null ? null
+    : ([...inConsult, ...(current === null ? [] : [current])].find((e) => e.encounterId === active.encounterId)?.tokenNo ?? null);
+  const seatedNow = inConsult.find((e) => parkedSince(e) === null) ?? null;
+  const briefFor: WireQueueEntryView | null = briefEntry ?? current ?? seatedNow;
 
   const setSessionStatus = async (status: SessionStatusInput): Promise<void> => {
     if (view === null) return;
@@ -1939,7 +1964,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
           second is a decision, and it is the one that must never happen by accident, which is why
           it takes two presses rather than a confirm dialog a doctor learns to dismiss.
         */
-        if (escArmed && a.hasActive) { escArmed = false; setActive(null); setTab("note"); return; }
+        if (escArmed && a.hasActive) { escArmed = false; setActive(null); setTab("complaints"); return; }
         escArmed = true;
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
         return;
@@ -2084,7 +2109,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         <button
           type="button" className="sec" data-testid={`queue-open-${e.id}`}
           style={{ padding: "1px 9px", fontSize: 11.5 }}
-          onClick={() => void openEntry(e)}
+          onClick={() => { setActive(null); setBriefEntry(e); }}
         >
           {mode === "parked" ? t("opdConsult.resume") : t("opdConsult.openPatient")}
         </button>
@@ -2094,7 +2119,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   };
 
   return (
-    <PaperScreen testId="opd-consult" style={{ padding: 0, gap: 0, flexDirection: "row" }}>
+    <div className="pp cx" data-testid="opd-consult" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"}>
       {/*
         ═══ CONSULT V2 — THREE FULL-HEIGHT COLUMNS (owner, 2026-09-23) ═══
         The line on the left (the hospital's mark at its top, like a chat app's sidebar), the work in
@@ -2108,6 +2133,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         onToggle={active === null ? setLeftOnBrief : setLeftOnConsult}
         waiting={ordered.length}
         sessionStatus={view?.session.status ?? null}
+        subtitle={view === null ? undefined : [view.doctor.displayName, view.doctor.specialty].filter((x) => x !== null && x !== "").join(" · ")}
       >
           <div>
             <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="session-status">{t("opdConsult.sessionStatus")}</label>
@@ -2126,19 +2152,19 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
             </select>
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <button type="button" className="pri" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void callNext()}>{t("opdConsult.callNext")}</button>
-            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => { skipCurrent(); }}>{t("opdConsult.skip")}</button>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+            <button type="button" className="pri" style={{ height: 36, fontSize: 12.5 }} onClick={() => void callNext()}>{t("opdConsult.callNext")}</button>
+            <button type="button" className="sec" style={{ height: 36, fontSize: 12.5 }} onClick={() => { skipCurrent(); }}>{t("opdConsult.skip")}</button>
             {/* Start consultation lives under the brief (owner, 2026-09-23); here only while another patient's panel is open. */}
             {active !== null && current !== null && current.encounterId !== active.encounterId && (
-              <button type="button" className="sec grn" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void startConsult()}>{t("opdConsult.start")}</button>
+              <button type="button" className="sec grn" style={{ height: 36, fontSize: 12.5, gridColumn: "span 2" }} onClick={() => void startConsult()}>{t("opdConsult.start")}</button>
             )}
             {/*
               PARK sits with the other three because it answers the same question they do — what
               happens to the chair next — and because the alternative the owner was left with was
               Call next, which is how a half-seen patient went missing in the first place.
             */}
-            <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void parkActive()}>{t("opdConsult.park")}</button>
+            <button type="button" className="sec" style={{ height: 36, fontSize: 12.5, gridColumn: "span 2", borderColor: "var(--gold-line)", background: "var(--gold-soft)", color: "#8a5a10", fontWeight: 600 }} onClick={() => void parkActive()}>{t("opdConsult.park")}</button>
           </div>
           <ErrorLine message={queueError} />
 
@@ -2242,64 +2268,93 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
           )}
       </ConsultSidebar>
 
-      <div data-testid="consult-centre" style={{ flexGrow: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", gap: 12, padding: "14px 20px 0" }}>
-      <ScreenTitle
-        title={t("opdConsult.title")} route="/opd/consult" subtitle={me.data?.displayName ?? undefined}
-        actions={
-          /*
-            THE KEYCAP LEGEND IS THE ARTBOARD'S OWN RULE MADE VISIBLE: "every keycap ON the screen
-            shows what is actually bound." Three caps, three bindings, all in the effect below —
-            F4 and F7 are deliberately absent because `lib/keyboard.tsx` owns them globally and a
-            keycap for them here would navigate a doctor away mid-consultation.
-          */
-          <span style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, color: "var(--faint)" }}>
-            <span><span className="kb">Ctrl</span><span className="kb">⏎</span> {t("opdConsult.keys.complete")}</span>
-            <span><span className="kb">F2</span> {t("opdConsult.keys.agent")}</span>
-            <span><span className="kb">Esc</span> {t("opdConsult.keys.back")}</span>
+      <div data-testid="consult-centre" className="cx-centre">
+        {/* ONE 52px header, as on Consult.dc.html. Keycaps are gone from the header; the bindings are unchanged. */}
+        <header className="cx-head">
+          <button type="button" className="cx-hbtn cx-mob" data-testid="mob-queue" aria-label={t("opdConsultV2.showLine")}
+            onClick={() => { if (active === null) setLeftOnBrief(true); else setLeftOnConsult(true); }}>☰ {ordered.length}</button>
+          {active !== null && (
+            <button type="button" className="cx-hbtn cx-hide-sm" data-testid="back-to-line" style={{ border: 0, padding: "0 4px", color: "var(--green)", fontWeight: 500 }}
+              onClick={() => { setActive(null); setTab("complaints"); }}>← {t("opdConsultV2.theLine")}</button>
+          )}
+          <h1 className="cx-title" style={{ margin: 0 }}>{t("opdConsult.title")}</h1>
+          <span className="cx-who" data-testid="consult-who">
+            {[me.data?.displayName ?? view?.doctor.displayName ?? null, view?.doctor.specialty ?? null].filter((x) => x !== null && x !== "").join(" · ")}
           </span>
-        }
-      />
-        {active !== null && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginTop: -6 }}>
-            <button type="button" className="sec" data-testid="history-open" style={{ padding: "3px 12px", fontSize: 12 }} onClick={() => { setHistoryOpen(true); }}>
-              {t("opdConsultV2.history.button")}
-            </button>
-            <SavedClock at={savedAt} draft={savedAsDraft} />
-            <button type="button" className="sec" data-testid="save-draft" style={{ padding: "3px 12px", fontSize: 12 }} onClick={() => void saveNote({ force: true })}>
-              {t("opdConsultV2.saveDraft")}
-            </button>
-          </div>
-        )}
+          <span className="cx-grow" />
+          {active !== null && (
+            <>
+              <span className="cx-saved cx-hide-sm"><SavedClock at={savedAt} draft={savedAsDraft} /></span>
+              <button type="button" className="cx-hbtn cx-hide-md" data-testid="refer-open" onClick={() => { setReferDone(null); setReferOpen(true); }}>
+                {t("opdConsultV2.refer.open")}
+              </button>
+              <button type="button" className="cx-hbtn" data-testid="history-open" onClick={() => { setHistoryOpen(true); }}>
+                {t("opdConsultV2.history.button")}
+              </button>
+              <button type="button" className="cx-hbtn cx-hide-md" data-testid="save-draft" onClick={() => void saveNote({ force: true })}>
+                {t("opdConsultV2.saveDraft")}
+              </button>
+              {/* Ctrl+Enter does this too — the Keymap's "commit, a chord because it is the irreversible one". */}
+              <button type="button" className="cx-hbtn pri" data-testid="complete-consult" onClick={() => void complete()}>
+                <span className="cx-full">{rxWaiting ? t("opdConsult.issueAndComplete") : t("opdConsult.complete")}</span>
+                <span className="cx-short" aria-hidden="true">{t("opdConsultV2.completeShort")}</span>
+              </button>
+            </>
+          )}
+          <button type="button" className="cx-hbtn cx-mob" data-testid="mob-copilot" aria-label={t("opdConsultV2.showCopilot")}
+            onClick={() => { setRightOpen(true); }}>F2</button>
+        </header>
+        <p className="cx-desktop-note" data-testid="desktop-note" style={{ margin: 0 }}>{t("opdConsultV2.desktopNote")}</p>
 
         {/* (b) the patient panel */}
-        <main style={{ flexGrow: 999, flexBasis: 520, minWidth: 0, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto", paddingBottom: 14 }}>
-          {active === null && current !== null && (
-            <PatientBrief
-              encounterId={current.encounter.id} patientId={current.encounter.patientId}
-              patientName={patientLabel(current.patient)} onStart={() => void startConsult()}
-            />
+        <main className="cx-scroll" data-testid="consult-scroll">
+          {/*
+            THE BRIEF FIRST, ON EVERY WAY IN (owner, 2026-09-23): Call next, Resume and Open all land on
+            what the desks recorded, with Start / Resume consultation under it. `briefEntry` is a patient
+            opened from the line; `current` is the one just called.
+          */}
+          {active === null && briefFor !== null && (
+            <div className="cx-brief">
+              <PatientBrief
+                encounterId={briefFor.encounter.id} patientId={briefFor.encounter.patientId}
+                patientName={patientLabel(briefFor.patient)}
+                startLabel={briefFor === current ? undefined : t("opdConsultV2.resumeConsult")}
+                onStart={() => { if (briefFor === current) void startConsult(); else { const e = briefFor; setBriefEntry(null); void openEntry(e); } }}
+              />
+            </div>
           )}
-          {active === null && current === null && (
-            <div className="box" style={{ padding: "26px 22px", textAlign: "center" }}>
+          {active === null && briefFor === null && (
+            <div className="cx-body"><div className="box" style={{ padding: "26px 22px", textAlign: "center" }}>
               <p style={{ margin: "0 0 5px", fontSize: 16, fontWeight: 700 }}>{t("opdConsult.noPatientTitle")}</p>
               <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.noPatientBody")}</p>
               <p data-testid="pick-patient-hint" style={{ margin: "9px 0 0", fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.pickPatientHint")}</p>
-            </div>
+            </div></div>
           )}
 
           {active !== null && (
-            <div data-testid="patient-panel" style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+            <div data-testid="patient-panel" style={{ display: "flex", flexDirection: "column" }}>
               {/* D17 — another tab holds the pen: this one reads, and may take it over (audited). */}
               {readOnly && (
-                <div data-testid="lease-readonly" role="status" className="box" style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
+                <div data-testid="lease-readonly" role="status" className="box" style={{ margin: "10px 20px 0", padding: "10px 14px", display: "flex", alignItems: "center", gap: 12, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
                   <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{t("opdConsultV2.lease.other")}</span>
                   <button type="button" className="pri" data-testid="lease-takeover" style={{ padding: "3px 12px", fontSize: 12.5 }} onClick={() => void takeOverEditing()}>
                     {t("opdConsultV2.lease.takeover")}
                   </button>
                 </div>
               )}
-              <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 13 }}>
-              <header className="box" style={{ padding: "13px 15px", display: "flex", flexDirection: "column", gap: 5 }}>
+              {/*
+                D17's read-only tab disables the WORK (the strip's edits and every tab body) but not the
+                tab bar: a doctor reading another tab's consultation must still be able to move around it.
+              */}
+              <div className="cx-pin" data-testid="consult-pin">
+              <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              {/* THE PATIENT STRIP — one row, as on Consult.dc.html: the visit type first and large, so it cannot be missed. */}
+              <header className="cx-strip" data-testid="patient-strip">
+                {encounter !== null && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <VisitTypeBadge visitType={encounter.visitType} testId="panel-visit-type" size="xl" />
+                  </div>
+                )}
                 {restricted ? (
                   <>
                     <p data-testid="restricted-banner" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--gold)" }}>{t("opdConsult.restricted")}</p>
@@ -2307,28 +2362,29 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   </>
                 ) : (
                   <>
-                    <h2 data-testid="panel-patient-name" style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>
-                      {patient.data?.patient.name ?? patient.data?.patient.alias ?? patientLabel(active.summary)}
-                    </h2>
-                    <p data-testid="panel-uhid" className="mo" style={{ margin: 0, fontSize: 11, color: "var(--faint)" }}>
-                      {patient.data?.patient.uhid ?? active.summary?.uhid ?? "—"}
-                    </p>
-                    <p data-testid="panel-patient-age" style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>
-                      {t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.administrativeGender ?? "—"}
-                    </p>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="cx-name">
+                        <span data-testid="panel-patient-name">{patient.data?.patient.name ?? patient.data?.patient.alias ?? patientLabel(active.summary)}</span>
+                        <small>
+                          {" · "}<span data-testid="panel-patient-age">{t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.administrativeGender ?? "—"}</span>
+                          {activeToken !== null && <> · {t("opdConsultV2.token", { n: activeToken })}</>}
+                          {" · "}<span data-testid="panel-uhid" className="mo" style={{ fontSize: 12 }}>{patient.data?.patient.uhid ?? active.summary?.uhid ?? "—"}</span>
+                        </small>
+                      </div>
+                      {encounter !== null && (
+                        <div className="cx-meaning" data-testid="panel-visit-meaning" style={{ color: encounter.visitType === "renewal" ? "#8a5a10" : encounter.visitType === "new" ? "var(--green)" : "var(--dim)", fontWeight: 600 }}>
+                          {t(`opdConsultV2.vtShort.${encounter.visitType === "new" || encounter.visitType === "revisit" || encounter.visitType === "renewal" ? encounter.visitType : "new"}`)}
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
-                {encounter !== null && (
-                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, marginTop: 2 }}>
-                    <VisitTypeBadge visitType={encounter.visitType} testId="panel-visit-type" />
-                    {encounter.dangerFlagged && (
-                      <span className="pill rd" data-testid="panel-danger">{t("opdConsult.danger")}</span>
-                    )}
-                  </div>
+                {encounter !== null && encounter.dangerFlagged && (
+                  <span className="pill rd" data-testid="panel-danger">{t("opdConsult.danger")}</span>
                 )}
 
                 {!restricted && (
-                  <div style={{ paddingTop: 7 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, flex: "1 1 240px", minWidth: 0 }}>
                     {/*
                     FD-32 / owner 2026-09-13 — beside the allergies, because both are things the
                     doctor must see BEFORE prescribing. The fee gate already refuses an unpaid
@@ -2337,7 +2393,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                     the patient.
                   */}
                   <UnpaidMark unpaid={visit.data?.feeUnpaid ?? false} bypass={visit.data?.feeBypass ?? null} />
-                    <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.allergies")}</h3>
+                    <h3 className="tag" style={{ margin: 0, color: "var(--red)" }}>{t("opdConsult.allergies")}</h3>
                     <div data-testid="allergy-chips" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
                       {activeAllergies.length === 0 && (
                         <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noAllergies")}</span>
@@ -2351,7 +2407,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         has had this since E-8; the consult screen is where the mistake is MADE.
                       */}
                       {activeAllergies.map((a) => (
-                        <span key={a.id} data-testid={`allergy-chip-${a.id}`} className="pill rd" style={{ fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span key={a.id} data-testid={`allergy-chip-${a.id}`} className="cx-allergy">
                           {a.substance}
                           <button
                             type="button" data-testid={`allergy-strike-${a.id}`}
@@ -2381,7 +2437,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       )}
                     </div>
                     {allergyOpen && (
-                      <div data-testid="allergy-form" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6 }}>
+                      <div data-testid="allergy-form" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, flexBasis: "100%" }}>
                         {/*
                           ═══ AUTOCOMPLETE, AUTOCORRECT, AND A WARNING — BECAUSE A TYPO IS SILENT ═══
 
@@ -2483,7 +2539,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       <div
                         data-testid="allergy-strike-form" role="alertdialog" aria-label={t("opdConsult.allergyRemoveTitle", { substance: allergyStriking.substance })}
                         style={{
-                          marginTop: 7, padding: "8px 10px", borderRadius: 6,
+                          flexBasis: "100%", padding: "8px 10px", borderRadius: 6,
                           border: "1px solid var(--red)", background: "var(--red-soft)",
                           display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
                         }}
@@ -2531,7 +2587,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       considered and withdrawn.
                     */}
                     {correctedAllergies.length > 0 && (
-                      <div style={{ marginTop: 5 }}>
+                      <div style={{ flexBasis: "100%" }}>
                         <button
                           type="button" data-testid="allergy-corrected-toggle"
                           onClick={() => { setShowCorrectedAllergies((v) => !v); }}
@@ -2554,54 +2610,72 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   </div>
                 )}
 
-                <div style={{ paddingTop: 7 }}>
-                  <h3 className="tag" style={{ margin: "0 0 5px" }}>{t("opdConsult.vitals")}</h3>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
                   {latestVitals === null && <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noVitals")}</p>}
-                  {latestVitals !== null && (
-                    <>
-                      {/* Bay One's own numbers, in Bay One's mono, so the two screens read as one record. */}
-                      <p data-testid="panel-vitals" className="mo" role="button" tabIndex={0} title={t("opdConsultV2.vitals.open")}
-                        onClick={() => { setTab("vitals"); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("vitals"); } }}
-                        style={{ margin: 0, fontSize: 13, cursor: "pointer", textDecoration: "underline dotted" }}>
-                        BP {latestVitals.sbp ?? "—"}/{latestVitals.dbp ?? "—"} · P {latestVitals.pulse ?? "—"} · SpO₂ {latestVitals.spo2 ?? "—"}%
-                      </p>
-                      {latestVitals.dangerFlags.map((f) => (
-                        <p
-                          key={f.vital}
-                          role="alert"
-                          data-testid={`vitals-danger-${f.vital}`}
-                          className="mo"
-                          style={{ margin: "5px 0 0", padding: "4px 8px", borderRadius: 6, fontSize: 12, fontWeight: 700, color: "var(--red)", background: "var(--red-soft)" }}
-                        >
-                          {f.vital} {f.value} ({f.bound} {f.limit})
-                        </p>
-                      ))}
-                    </>
-                  )}
+                  {latestVitals !== null && (() => {
+                    const lv = latestVitals;
+                    const cls = (warn: boolean, danger: boolean): string => (danger ? "danger" : warn ? "warn" : "");
+                    const flagged = (vital: string): boolean => lv.dangerFlags.some((f) => f.vital.toLowerCase().includes(vital));
+                    const bmi = lv.weightKg != null && lv.heightCm != null && lv.heightCm > 0 ? lv.weightKg / ((lv.heightCm / 100) ** 2) : null;
+                    return (
+                      <>
+                        {/* Bay One's own numbers, in Bay One's mono; a click opens the Vitals tab (owner, 2026-09-23). */}
+                        <button type="button" data-testid="panel-vitals" className="cx-vitals" title={t("opdConsultV2.vitals.open")} onClick={() => { setTab("vitals"); }}>
+                          <span className={cls((lv.sbp ?? 0) >= 140 || (lv.dbp ?? 0) >= 90, flagged("bp") || flagged("sbp") || flagged("dbp"))}>BP {lv.sbp ?? "—"}/{lv.dbp ?? "—"}</span>
+                          <span className={cls((lv.pulse ?? 80) > 100 || (lv.pulse ?? 80) < 50, flagged("pulse"))}>P {lv.pulse ?? "—"}</span>
+                          <span className={cls((lv.spo2 ?? 99) < 95, flagged("spo2") || (lv.spo2 ?? 99) < 90)}>SpO₂ {lv.spo2 ?? "—"}%</span>
+                          {lv.weightKg != null && <span>{lv.weightKg} kg</span>}
+                          {bmi !== null && <span>BMI {bmi.toFixed(1)}</span>}
+                          <span className="more">{t("opdConsultV2.vitals.more")}</span>
+                        </button>
+                        {lv.dangerFlags.map((f) => (
+                          <p
+                            key={f.vital}
+                            role="alert"
+                            data-testid={`vitals-danger-${f.vital}`}
+                            className="mo"
+                            style={{ margin: 0, padding: "3px 8px", borderRadius: 6, fontSize: 12, fontWeight: 700, color: "var(--red)", background: "var(--red-soft)" }}
+                          >
+                            {f.vital} {f.value} ({f.bound} {f.limit})
+                          </p>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </div>
               </header>
+              </fieldset>
 
-              <WorkStrip rows={workRows} onGo={goToSection} />
+              <div className="cx-work"><WorkStrip rows={workRows} onGo={goToSection} /></div>
 
-              <div className="box" style={{ padding: "13px 15px", display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="cx-tabs">
                 <TabStrip
-                  label={t("opdConsult.tabs.note")}
+                  label={t("opdConsultV2.tabs.label")}
                   value={tab}
                   onChange={setTab}
                   options={[
                     ["summary", t("opdConsultV2.tabs.summary")],
                     ["vitals", t("opdConsultV2.tabs.vitals")],
-                    ["note", t("opdConsult.tabs.note")],
+                    ["complaints", t("opdConsultV2.tabs.complaints")],
                     ["exam", t("opdConsultV2.tabs.exam")],
+                    ["dx", t("opdConsultV2.tabs.dx")],
+                    ["inv", t("opdConsultV2.tabs.inv")],
                     ["rx", t("opdConsult.tabs.rx")],
                     ["treat", t("opdConsultV2.tabs.treat")],
+                    ["advice", t("opdConsultV2.tabs.advice")],
                     ["notes", t("opdConsultV2.tabs.notes")],
-                    ["history", t("opdConsult.tabs.history")],
                   ] as const}
-                  marked={{ note: tabHas("note"), exam: tabHas("exam"), rx: tabHas("rx"), treat: tabHas("treat"), notes: tabHas("notes") }}
+                  marked={{ complaints: tabHas("complaints"), exam: tabHas("exam"), dx: tabHas("dx"), inv: tabHas("inv"), rx: tabHas("rx"), treat: tabHas("treat"), advice: tabHas("advice"), notes: tabHas("notes") }}
                 />
+              </div>
+              {completeError !== null && <div style={{ padding: "6px 20px", background: "var(--card)" }}><ErrorLine message={completeError} /></div>}
+              {referDone !== null && <div style={{ padding: "6px 20px", background: "var(--green-soft)" }}><span data-testid="refer-done" style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>{referDone}</span></div>}
+              </div>
 
-                {!rightOpen && (tab === "note" || tab === "rx") && suggestionsFor("inline")}
+              <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <div className="cx-body">
+
+                {!rightOpen && (tab === "complaints" || tab === "dx" || tab === "inv" || tab === "rx") && suggestionsFor("inline")}
 
                 {tab === "summary" && (
                   <div role="tabpanel" id="tabpanel-summary" aria-labelledby="tab-summary"><SummaryView rows={workRows} onGo={goToSection} /></div>
@@ -2640,17 +2714,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 )}
 
                 {/* the note autosaves on blur — focusout bubbles, so one handler covers every field */}
-                {tab === "note" && (
-                <div role="tabpanel" id="tabpanel-note" aria-labelledby="tab-note">
+                {(tab === "complaints" || tab === "dx" || tab === "advice") && (
+                <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 9 }} onBlur={() => void saveNote()}>
-                    {/*
-                      THE SCRIBE SITS ABOVE THE COMPLAINT because that is the field it fills, and
-                      because a doctor who has just finished listening to a patient reaches for it
-                      first. It inserts a SUGGESTION into the field below and never writes past it.
-                    */}
-                    <ConsultScribe onInsert={(text) => {
-                      setNote((n) => ({ ...n, chiefComplaint: n.chiefComplaint.trim() === "" ? text : `${n.chiefComplaint.trim()} ${text}` }));
-                    }} />
+                    {tab === "complaints" && (<>
                     {visit.data?.deskComplaint != null && (
                       <p data-testid="desk-complaint" style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>
                         {t("opdConsult.deskComplaint", {
@@ -2775,6 +2842,16 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       )}
                     </div>
                     {/*
+                      THE SCRIBE IS A SMALL CONTROL UNDER THE COMPLAINT now (owner, 2026-09-23: the
+                      boards open the tab on the complaint, not on a dictation box). It still inserts a
+                      SUGGESTION into the field above and never writes past it.
+                    */}
+                    <ConsultScribe onInsert={(text) => {
+                      setNote((n) => ({ ...n, chiefComplaint: n.chiefComplaint.trim() === "" ? text : `${n.chiefComplaint.trim()} ${text}` }));
+                    }} />
+                    </>)}
+                    {tab === "dx" && (<>
+                    {/*
                       ═══ THE DIAGNOSIS IS TAGS, AND ITS CODE COMES FROM THE CATALOGUE ═══
 
                       Owner, 2026-09-14, chose SEVERAL tags over one value: an OPD note reads
@@ -2852,6 +2929,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       />
                       <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.icd10Hint")}</p>
                     </div>
+                    </>)}
+                    {tab === "advice" && (
                     <div>
                       <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="note-advice">{t("opdConsult.advice")}</label>
                       {/* CONSULT V2 PR 3 — advice autocompletes too: a template by its title or its words, or the doctor's own line. */}
@@ -3039,13 +3118,14 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         )}
                       </div>
                     </div>
+                    )}
                     {noteSaved && <p data-testid="note-saved" style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--green)" }}>{t("opdConsult.noteSaved")}</p>}
                     <ErrorLine message={noteError} />
                   </div>
                 </div>
                 )}
 
-                {tab === "note" && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["complaints", "dx", "advice", "inv"]} testId="history-foot-note" />}
+                {(tab === "complaints" || tab === "dx" || tab === "advice") && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={[tab]} testId={`history-foot-${tab}`} />}
                 {tab === "rx" && (
                 <div role="tabpanel" id="tabpanel-rx" aria-labelledby="tab-rx">
                   {/* The copilot folded away? Its stock suggestions come inline instead (owner, 2026-09-23). */}
@@ -3123,13 +3203,13 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   <FormProvider {...rxForm}>
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (
-                        <Fragment key={f.id}>
+                        <div key={f.id} className="cx-rxcard" data-testid={`rx-card-${String(i)}`} style={{ marginTop: 14 }}>
                         {/*
                           A LINE IS Drug · Dose · Route, then the sig panel — the ONLY control for
                           how often, food timing, days and the note (see components/sig-panel.tsx
                           for why the Frequency select and the Days and Instructions boxes went).
                         */}
-                        <div data-testid={`rx-row-${String(i)}`} style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9, padding: "11px 0 9px", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
+                        <div data-testid={`rx-row-${String(i)}`} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9 }}>
                           <StockTag stock={stockByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-stock-${String(i)}`} />
                           <div style={{ flex: "2 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
                             {/*
@@ -3252,7 +3332,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                             if (patch.durationDays !== undefined) rxForm.setValue(`lines.${i}.durationDays`, patch.durationDays, opts);
                           }}
                         />
-                        </Fragment>
+                        </div>
                       ))}
                       <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
                         <button type="button" className="sec" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => lines.append(EMPTY_LINE)}>
@@ -3339,169 +3419,6 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 )}
 
                 {tab === "rx" && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["rx"]} testId="history-foot-rx" />}
-                {tab === "history" && (
-                <div role="tabpanel" id="tabpanel-history" aria-labelledby="tab-history">
-                  {/*
-                    PLAN 07d T1 — THREE VIEWS OF THE SAME PATIENT, and the two new ones are the point
-                    of the task. Visits is what existed; prescriptions and vitals are what a doctor
-                    has been unable to see since this application shipped.
-                  */}
-                  <div style={{ marginBottom: 10, display: "flex", gap: 6 }} role="group" aria-label={t("opdConsult.historyView")}>
-                    {(["visits", "rx", "vitals", "documents"] as const).map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        aria-pressed={v === historyView}
-                        className={v === historyView ? "pill on" : "pill"}
-                        onClick={() => { setHistoryView(v); }}
-                      >
-                        {t(`opdConsult.history.${v}`)}
-                      </button>
-                    ))}
-                  </div>
-
-                  {historyView === "visits" && (
-                    <ul data-testid="timeline" style={{ listStyle: "none", margin: 0, padding: 0, fontSize: 12.5 }}>
-                      {timelineItems.length === 0 && <li style={{ color: "var(--dim)" }}>{t("opdConsult.noHistory")}</li>}
-                      {timelineItems.map((item) => (
-                        <li key={item.encounterId} data-testid={`timeline-row-${item.encounterId}`} className="drow" style={{ padding: "6px 0" }}>
-                          {item.serviceDate} · {item.departmentName ?? "—"} · {item.doctorName ?? "—"} · {item.diagnosis ?? "—"}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {historyView === "rx" && (
-                    <div data-testid="rx-history" style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
-                      {rxHistory.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
-                      {!rxHistory.isPending && (rxHistory.data?.items ?? []).length === 0 && (
-                        <p style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noRxHistory")}</p>
-                      )}
-                      {(rxHistory.data?.items ?? []).map((rx) => (
-                        <div key={rx.prescriptionId} className="box" style={{ padding: "9px 11px" }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 7, fontSize: 10.5, color: "var(--faint)" }}>
-                            <span>{rx.serviceDate}</span>
-                            <span>{rx.doctorName ?? "—"}</span>
-                            {/*
-                              A SUPERSEDED VERSION IS SHOWN AND LABELLED, never hidden. "What was
-                              this patient actually given in March" may well be the superseded row,
-                              and a history that showed only the live version would quietly rewrite
-                              the past.
-                            */}
-                            {rx.status !== "active" && (
-                              <span className="pill gd">{t(`opdConsult.rxStatus.${rx.status}`)}</span>
-                            )}
-                          </div>
-                          <ul style={{ listStyle: "none", margin: "6px 0 0", padding: 0 }}>
-                            {(Array.isArray(rx.lines) ? rx.lines : []).map((line, i) => (
-                              <li key={`${rx.prescriptionId}-${String(i)}`}>
-                                {line.drug}{line.dose === null ? "" : ` · ${line.dose}`}
-                                {line.frequency === null ? "" : ` · ${line.frequency}`}
-                                {line.durationDays === null ? "" : ` · ${t("opdConsult.forDays", { days: line.durationDays })}`}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/*
-                    ═══ THE PAPER THE DESK PHOTOGRAPHED, WHERE THE DOCTOR LOOKS FOR IT ═══
-
-                    Owner, 2026-09-14. The list is METADATA — a doctor scanning for "did they bring
-                    the outside prescription" needs when and what, not four megabytes of JPEG for
-                    every visit. Opening one is a deliberate second request, which is also what
-                    keeps the access log honest about who actually read a prescription.
-                  */}
-                  {historyView === "documents" && (
-                    <div data-testid="document-history" style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5 }}>
-                      {documents.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
-                      {!documents.isPending && (documents.data?.items ?? []).length === 0 && (
-                        <p data-testid="no-documents" style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noDocuments")}</p>
-                      )}
-                      {(documents.data?.items ?? []).map((d) => (
-                        <div key={d.id} data-testid={`document-${d.id}`} style={{ borderBottom: "1px solid var(--line)", paddingBottom: 5 }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "baseline" }}>
-                            <span style={{ fontWeight: 600 }}>{t(`opdConsult.documentKind.${d.kind}`, { defaultValue: d.kind })}</span>
-                            <span className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>
-                              {new Date(d.capturedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
-                            </span>
-                            {d.note !== null && <span style={{ color: "var(--dim)" }}>{d.note}</span>}
-                            <button
-                              type="button" className="sec" data-testid={`document-open-${d.id}`}
-                              style={{ marginLeft: "auto", height: 24, fontSize: 11 }}
-                              onClick={() => { setOpenDocumentId(openDocumentId === d.id ? null : d.id); }}
-                            >
-                              {openDocumentId === d.id ? t("opdConsult.documentHide") : t("opdConsult.documentOpen")}
-                            </button>
-                          </div>
-                          {openDocumentId === d.id && (
-                            <div style={{ marginTop: 6 }}>
-                              {openDocument.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
-                              {openDocument.isError && (
-                                <p role="alert" data-testid={`document-error-${d.id}`} style={{ margin: 0, color: "var(--red)", fontWeight: 600 }}>
-                                  {t("opdConsult.documentUnreadable")}
-                                </p>
-                              )}
-                              {openDocument.data !== undefined && openDocument.data.mimeType !== "application/pdf" && (
-                                <img
-                                  data-testid={`document-image-${d.id}`}
-                                  src={`data:${openDocument.data.mimeType};base64,${openDocument.data.imageBase64}`}
-                                  alt={t("opdConsult.documentAlt")}
-                                  style={{ maxWidth: "100%", border: "1px solid var(--line)", borderRadius: 4 }}
-                                />
-                              )}
-                              {openDocument.data !== undefined && openDocument.data.mimeType === "application/pdf" && (
-                                <a
-                                  data-testid={`document-pdf-${d.id}`}
-                                  href={`data:application/pdf;base64,${openDocument.data.imageBase64}`}
-                                  target="_blank" rel="noreferrer"
-                                  style={{ fontSize: 12, color: "var(--green)" }}
-                                >
-                                  {t("opdConsult.documentOpenPdf")}
-                                </a>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {historyView === "vitals" && (
-                    <div data-testid="vitals-history" style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12.5 }}>
-                      {vitalsHistory.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
-                      {!vitalsHistory.isPending && (vitalsHistory.data?.items ?? []).length === 0 && (
-                        <p style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noVitalsHistory")}</p>
-                      )}
-                      {/*
-                        OLDEST FIRST, because this is read as a TREND and a trend read backwards is a
-                        trend nobody sees. The server returns it in this order; the screen does not
-                        re-sort it.
-                      */}
-                      {(vitalsHistory.data?.items ?? []).map((v) => (
-                        <div key={v.vitalsId} className="mo" style={{ display: "flex", flexWrap: "wrap", columnGap: 12 }}>
-                          <span style={{ color: "var(--faint)" }}>{v.serviceDate}</span>
-                          {/*
-                            SHORT labels, in this screen's own namespace. `opdVitals.field.*` are the
-                            FORM labels ("SBP (mmHg)") and are correct there and wrong in a dense
-                            trend row — and `opdVitals.bp` does not exist at all, which is what a
-                            first draft of this block referenced and would have rendered as a raw key.
-                          */}
-                          <span>{t("opdConsult.vitalsBp")} {v.sbp ?? "—"}/{v.dbp ?? "—"}</span>
-                          <span>{t("opdConsult.vitalsPulse")} {v.pulse ?? "—"}</span>
-                          <span>{t("opdConsult.vitalsSpo2")} {v.spo2 ?? "—"}</span>
-                          {Array.isArray(v.dangerFlags) && v.dangerFlags.length > 0 && (
-                            <span style={{ color: "var(--red)", fontWeight: 700 }}>{t("opdConsult.flagged")}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                )}
-              </div>
 
               {/*
                 PLAN 07d T5 / DD4 — **ADVISED INVESTIGATIONS: A CATALOGUE AND A PRICE, NOT AN ORDER.**
@@ -3517,7 +3434,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 pipeline exists. A UI that implies an order somebody must then chase is worse than
                 one that admits there is none.
               */}
-              {active !== null && (
+              {active !== null && tab === "inv" && (
                 <div data-testid="advised-tests" className="box" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "13px 15px" }}>
                   <h2 className="tag" style={{ margin: 0 }}>{t("opdConsult.advisedTests")}</h2>
                   {/*
@@ -3601,11 +3518,13 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 who ordered it is the safety defect DD6 exists to avoid rather than to cause. The
                 note under the heading says so, because a doctor who assumes otherwise stops looking.
               */}
-              {active !== null && (
+              {active !== null && tab === "inv" && (
                 <LabResultsPanel visitNo={visit.data?.encounter.visitNo ?? null} />
               )}
+              {tab === "inv" && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["inv"]} testId="history-foot-inv" />}
 
-              {/* (c) completion */}
+              {/* (c) follow-up, referral fields — the Advice & follow-up tab; Complete lives in the header */}
+              {tab === "advice" && (
               <div className="box" style={{ display: "flex", flexDirection: "column", gap: 9, padding: "13px 15px" }}>
                 <label className="tag" style={{ display: "block" }} htmlFor="follow-up">{t("opdConsult.followUp")}</label>
                 <select
@@ -3646,23 +3565,12 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <button type="button" className="sec" data-testid="refer-open" style={{ padding: "3px 12px", fontSize: 12.5 }} onClick={() => { setReferDone(null); setReferOpen(true); }}>
+                  <button type="button" className="sec" data-testid="refer-open-advice" style={{ padding: "3px 12px", fontSize: 12.5 }} onClick={() => { setReferDone(null); setReferOpen(true); }}>
                     {t("opdConsultV2.refer.open")}
                   </button>
-                  {referDone === null ? null : <span data-testid="refer-done" style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>{referDone}</span>}
                 </div>
-                {/* Ctrl+Enter does this too — the Keymap's "commit, a chord because it is the irreversible one". */}
-                <button type="button" className="pri" style={{ alignSelf: "flex-start" }} onClick={() => void complete()}>
-                  {rxWaiting ? t("opdConsult.issueAndComplete") : t("opdConsult.complete")}
-                  {/*
-                    `aria-hidden` ON THE KEYCAPS, and it is not cosmetic. Without it this button's
-                    accessible name becomes "Complete consultation Ctrl ⏎" — which is what a screen
-                    reader announces, and what `getByRole("button", { name: "Complete consultation" })`
-                    stops finding. A keycap is a picture of a key, not part of the button's name.
-                  */}
-                  <span aria-hidden="true"><span className="kb" style={{ marginLeft: 6 }}>Ctrl</span><span className="kb">⏎</span></span>
-                </button>
-                <ErrorLine message={completeError} />
+              </div>
+              )}
               </div>
               </fieldset>
             </div>
@@ -3906,6 +3814,169 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         onClose={() => { setHistoryOpen(false); }}
       >
         {active !== null && <HistoryBrowser visits={timelineItems} currentEncounterId={active.encounterId} />}
+        {/* the v1 History tab's views (visits, prescriptions, vitals trend, scanned documents) — kept, now inside the dialog */}
+        {active !== null && (
+                <div data-testid="history-v1" style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--line2)" }}>
+                  {/*
+                    PLAN 07d T1 — THREE VIEWS OF THE SAME PATIENT, and the two new ones are the point
+                    of the task. Visits is what existed; prescriptions and vitals are what a doctor
+                    has been unable to see since this application shipped.
+                  */}
+                  <div style={{ marginBottom: 10, display: "flex", gap: 6 }} role="group" aria-label={t("opdConsult.historyView")}>
+                    {(["visits", "rx", "vitals", "documents"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        aria-pressed={v === historyView}
+                        className={v === historyView ? "pill on" : "pill"}
+                        onClick={() => { setHistoryView(v); }}
+                      >
+                        {t(`opdConsult.history.${v}`)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {historyView === "visits" && (
+                    <ul data-testid="timeline" style={{ listStyle: "none", margin: 0, padding: 0, fontSize: 12.5 }}>
+                      {timelineItems.length === 0 && <li style={{ color: "var(--dim)" }}>{t("opdConsult.noHistory")}</li>}
+                      {timelineItems.map((item) => (
+                        <li key={item.encounterId} data-testid={`timeline-row-${item.encounterId}`} className="drow" style={{ padding: "6px 0" }}>
+                          {item.serviceDate} · {item.departmentName ?? "—"} · {item.doctorName ?? "—"} · {item.diagnosis ?? "—"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {historyView === "rx" && (
+                    <div data-testid="rx-history" style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
+                      {rxHistory.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
+                      {!rxHistory.isPending && (rxHistory.data?.items ?? []).length === 0 && (
+                        <p style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noRxHistory")}</p>
+                      )}
+                      {(rxHistory.data?.items ?? []).map((rx) => (
+                        <div key={rx.prescriptionId} className="box" style={{ padding: "9px 11px" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 7, fontSize: 10.5, color: "var(--faint)" }}>
+                            <span>{rx.serviceDate}</span>
+                            <span>{rx.doctorName ?? "—"}</span>
+                            {/*
+                              A SUPERSEDED VERSION IS SHOWN AND LABELLED, never hidden. "What was
+                              this patient actually given in March" may well be the superseded row,
+                              and a history that showed only the live version would quietly rewrite
+                              the past.
+                            */}
+                            {rx.status !== "active" && (
+                              <span className="pill gd">{t(`opdConsult.rxStatus.${rx.status}`)}</span>
+                            )}
+                          </div>
+                          <ul style={{ listStyle: "none", margin: "6px 0 0", padding: 0 }}>
+                            {(Array.isArray(rx.lines) ? rx.lines : []).map((line, i) => (
+                              <li key={`${rx.prescriptionId}-${String(i)}`}>
+                                {line.drug}{line.dose === null ? "" : ` · ${line.dose}`}
+                                {line.frequency === null ? "" : ` · ${line.frequency}`}
+                                {line.durationDays === null ? "" : ` · ${t("opdConsult.forDays", { days: line.durationDays })}`}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/*
+                    ═══ THE PAPER THE DESK PHOTOGRAPHED, WHERE THE DOCTOR LOOKS FOR IT ═══
+
+                    Owner, 2026-09-14. The list is METADATA — a doctor scanning for "did they bring
+                    the outside prescription" needs when and what, not four megabytes of JPEG for
+                    every visit. Opening one is a deliberate second request, which is also what
+                    keeps the access log honest about who actually read a prescription.
+                  */}
+                  {historyView === "documents" && (
+                    <div data-testid="document-history" style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5 }}>
+                      {documents.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
+                      {!documents.isPending && (documents.data?.items ?? []).length === 0 && (
+                        <p data-testid="no-documents" style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noDocuments")}</p>
+                      )}
+                      {(documents.data?.items ?? []).map((d) => (
+                        <div key={d.id} data-testid={`document-${d.id}`} style={{ borderBottom: "1px solid var(--line)", paddingBottom: 5 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "baseline" }}>
+                            <span style={{ fontWeight: 600 }}>{t(`opdConsult.documentKind.${d.kind}`, { defaultValue: d.kind })}</span>
+                            <span className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>
+                              {new Date(d.capturedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                            </span>
+                            {d.note !== null && <span style={{ color: "var(--dim)" }}>{d.note}</span>}
+                            <button
+                              type="button" className="sec" data-testid={`document-open-${d.id}`}
+                              style={{ marginLeft: "auto", height: 24, fontSize: 11 }}
+                              onClick={() => { setOpenDocumentId(openDocumentId === d.id ? null : d.id); }}
+                            >
+                              {openDocumentId === d.id ? t("opdConsult.documentHide") : t("opdConsult.documentOpen")}
+                            </button>
+                          </div>
+                          {openDocumentId === d.id && (
+                            <div style={{ marginTop: 6 }}>
+                              {openDocument.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
+                              {openDocument.isError && (
+                                <p role="alert" data-testid={`document-error-${d.id}`} style={{ margin: 0, color: "var(--red)", fontWeight: 600 }}>
+                                  {t("opdConsult.documentUnreadable")}
+                                </p>
+                              )}
+                              {openDocument.data !== undefined && openDocument.data.mimeType !== "application/pdf" && (
+                                <img
+                                  data-testid={`document-image-${d.id}`}
+                                  src={`data:${openDocument.data.mimeType};base64,${openDocument.data.imageBase64}`}
+                                  alt={t("opdConsult.documentAlt")}
+                                  style={{ maxWidth: "100%", border: "1px solid var(--line)", borderRadius: 4 }}
+                                />
+                              )}
+                              {openDocument.data !== undefined && openDocument.data.mimeType === "application/pdf" && (
+                                <a
+                                  data-testid={`document-pdf-${d.id}`}
+                                  href={`data:application/pdf;base64,${openDocument.data.imageBase64}`}
+                                  target="_blank" rel="noreferrer"
+                                  style={{ fontSize: 12, color: "var(--green)" }}
+                                >
+                                  {t("opdConsult.documentOpenPdf")}
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {historyView === "vitals" && (
+                    <div data-testid="vitals-history" style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12.5 }}>
+                      {vitalsHistory.isPending && <p style={{ margin: 0, color: "var(--dim)" }}>{t("app.loading")}</p>}
+                      {!vitalsHistory.isPending && (vitalsHistory.data?.items ?? []).length === 0 && (
+                        <p style={{ margin: 0, color: "var(--dim)" }}>{t("opdConsult.noVitalsHistory")}</p>
+                      )}
+                      {/*
+                        OLDEST FIRST, because this is read as a TREND and a trend read backwards is a
+                        trend nobody sees. The server returns it in this order; the screen does not
+                        re-sort it.
+                      */}
+                      {(vitalsHistory.data?.items ?? []).map((v) => (
+                        <div key={v.vitalsId} className="mo" style={{ display: "flex", flexWrap: "wrap", columnGap: 12 }}>
+                          <span style={{ color: "var(--faint)" }}>{v.serviceDate}</span>
+                          {/*
+                            SHORT labels, in this screen's own namespace. `opdVitals.field.*` are the
+                            FORM labels ("SBP (mmHg)") and are correct there and wrong in a dense
+                            trend row — and `opdVitals.bp` does not exist at all, which is what a
+                            first draft of this block referenced and would have rendered as a raw key.
+                          */}
+                          <span>{t("opdConsult.vitalsBp")} {v.sbp ?? "—"}/{v.dbp ?? "—"}</span>
+                          <span>{t("opdConsult.vitalsPulse")} {v.pulse ?? "—"}</span>
+                          <span>{t("opdConsult.vitalsSpo2")} {v.spo2 ?? "—"}</span>
+                          {Array.isArray(v.dangerFlags) && v.dangerFlags.length > 0 && (
+                            <span style={{ color: "var(--red)", fontWeight: 700 }}>{t("opdConsult.flagged")}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+        )}
       </DeskModal>
 
       {/* CONSULT V2 — refer: another department's doctor (a new visit in that line), or out with a letter. */}
@@ -3948,6 +4019,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         where it came from and why "I cannot answer that from this screen" is a first-class reply
         rather than a failure.
       */}
+      {/* <1024 an open side column is a drawer; the scrim closes it */}
+      {vw < 1024 && ((active === null ? leftOnBrief : leftOnConsult) || rightOpen) && (
+        <button type="button" className="cx-scrim" aria-label={t("opdConsultV2.closePanels")} data-testid="cx-scrim"
+          onClick={() => { if (active === null) setLeftOnBrief(false); else setLeftOnConsult(false); setRightOpen(false); }} />
+      )}
       <CopilotPanel
         open={rightOpen} onToggle={(next) => { setAgentAutoFocus(false); setRightOpen(next); }}
         alert={stockAlerts.length > 0}
@@ -3958,23 +4034,22 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
             panel={copilot.report === null ? undefined : (
               <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
             )}
+            cards={(() => {
+              const sug = suggestionsFor("pane");
+              const alts = stockAlerts.map((a) => (
+                <StockAlternativeCard
+                  key={`${String(a.index)}-${a.stock.medicineId}`} drug={a.drug} stock={a.stock}
+                  onUse={(medicineId, label) => { pickAlternative(a.index, a.stock.medicineId, medicineId, label); }}
+                  onKeep={() => { keepWritten(a.stock); }}
+                />
+              ));
+              return sug === null && alts.length === 0 ? undefined : <>{sug}{alts}</>;
+            })()}
             placeholder={t("opdConsult.askPlaceholder")} idle={t("opdConsult.agentIdle")}
           />
         )}
-      >
-        {(() => {
-          const sug = suggestionsFor("pane");
-          const alts = stockAlerts.map((a) => (
-            <StockAlternativeCard
-              key={`${String(a.index)}-${a.stock.medicineId}`} drug={a.drug} stock={a.stock}
-              onUse={(medicineId, label) => { pickAlternative(a.index, a.stock.medicineId, medicineId, label); }}
-              onKeep={() => { keepWritten(a.stock); }}
-            />
-          ));
-          return sug === null && alts.length === 0 ? undefined : <>{sug}{alts}</>;
-        })()}
-      </CopilotPanel>
-    </PaperScreen>
+      />
+    </div>
   );
 }
 

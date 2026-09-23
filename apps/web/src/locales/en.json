@@ -5405,7 +5405,12 @@
       "exam": "Examination",
       "treat": "Treatment",
       "notes": "Notes",
-      "vitals": "Vitals"
+      "vitals": "Vitals",
+      "label": "Consultation sections",
+      "complaints": "Complaints",
+      "dx": "Diagnosis",
+      "inv": "Lab & radiology",
+      "advice": "Advice & follow-up"
     },
     "treatmentHead": "Treatment given in the room",
     "treatmentOwn": "Add a treatment",
@@ -5429,7 +5434,8 @@
       "because": "corrected: {{reason}}",
       "earlier": "Earlier readings",
       "none": "No earlier readings.",
-      "open": "Open the Vitals tab"
+      "open": "Open the Vitals tab",
+      "more": "vitals ›"
     },
     "recall": "Recall token {{token}} on the board",
     "recalledTimes": "Recalled {{n}} times",
@@ -5480,7 +5486,18 @@
         "notes": "Notes"
       },
       "close": "Close"
-    }
+    },
+    "closePanels": "Close the side panel",
+    "theLine": "The line",
+    "desktopNote": "The consultation is designed for a desktop screen. On a phone, the line and the copilot open from the buttons above.",
+    "resumeConsult": "Resume consultation",
+    "token": "token {{n}}",
+    "vtShort": {
+      "new": "New patient · first visit",
+      "revisit": "Revisit · free follow-up",
+      "renewal": "Renewal · fresh fee due"
+    },
+    "completeShort": "Complete"
   },
   "opdConsultV3": {
     "suggestions": "Copilot suggestions",

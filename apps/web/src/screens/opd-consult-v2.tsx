@@ -40,73 +40,101 @@ export function useSessionToggle(key: string, initial: boolean): [boolean, (next
   return [open, set];
 }
 
-const RAIL = 52;
+/** The viewport's width, live — the consult screen's side-column defaults and drawers follow it. */
+export function useViewportWidth(): number {
+  const read = (): number => (typeof window === "undefined" ? 1440 : window.innerWidth);
+  const [w, setW] = useState<number>(read);
+  useEffect(() => {
+    const on = (): void => { setW(read()); };
+    window.addEventListener("resize", on);
+    return () => { window.removeEventListener("resize", on); };
+  }, []);
+  return w;
+}
 
-/** The left column: the hospital's mark and name at the top, then the line. Full height, like a chat app's sidebar. */
-export function ConsultSidebar({ open, onToggle, waiting, sessionStatus, children }: {
-  open: boolean; onToggle: (next: boolean) => void; waiting: number; sessionStatus: string | null; children: React.ReactNode;
+/** The hospital's mark: the app's green diamond in a rounded square, as on the boards' sidebar. */
+function Mark({ size = 30 }: { size?: number }): React.ReactElement {
+  return (
+    <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: 7, background: "var(--green)", flexShrink: 0 }}>
+      <span style={{ width: size * 0.36, height: size * 0.36, borderRadius: 2, background: "#ffffff", transform: "rotate(45deg)" }} />
+    </span>
+  );
+}
+
+/**
+ * The left column: the hospital's mark and name at the top, then the line. Full height, like a chat
+ * app's sidebar (owner, 2026-09-23). Height and the <1024 drawer behaviour come from `opd-consult.css`
+ * (`.cx-side`); the component only says which side it is and whether it is open.
+ */
+export function ConsultSidebar({ open, onToggle, waiting, sessionStatus, subtitle, children }: {
+  open: boolean; onToggle: (next: boolean) => void; waiting: number; sessionStatus: string | null; subtitle?: string; children: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
   const dot = sessionStatus === "in" ? "var(--green)" : sessionStatus === "out" ? "var(--gold)" : sessionStatus === "closed" ? "var(--red)" : "var(--faint)";
   if (!open) {
     return (
-      <aside data-testid="consult-sidebar" data-state="closed" className="no-print"
-        style={{ width: RAIL, flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "12px 0", background: "var(--card)", borderRight: "1px solid var(--line)" }}>
-        <Link to="/" aria-label={t("app.title")} className="brand"><span className="mark" /></Link>
+      <aside data-testid="consult-sidebar" data-state="closed" data-side="left" className="no-print cx-side cx-strip-rail" style={{ borderRight: "1px solid var(--line)" }}>
+        <Link to="/" aria-label={t("app.title")}><Mark size={32} /></Link>
         <button type="button" className="sec" data-testid="sidebar-open" aria-label={t("opdConsultV2.showLine")} onClick={() => { onToggle(true); }}
           style={{ width: 36, height: 36, padding: 0 }}>»</button>
         <span data-testid="sidebar-waiting" className="mo" style={{ fontSize: 15, fontWeight: 700 }}>{waiting}</span>
         <span aria-label={t("opdConsult.sessionStatus")} title={sessionStatus ?? ""} style={{ width: 10, height: 10, borderRadius: 5, background: dot }} />
-        <span className="mo" style={{ fontSize: 9, letterSpacing: ".1em", color: "var(--dim)", writingMode: "vertical-rl" }}>{t("opdConsultV2.waitingVertical")}</span>
+        <span className="mo" style={{ fontSize: 8.5, letterSpacing: ".1em", color: "var(--dim)", writingMode: "vertical-rl" }}>{t("opdConsultV2.waitingVertical")}</span>
       </aside>
     );
   }
   return (
-    <aside data-testid="consult-sidebar" data-state="open" className="no-print"
-      style={{ width: 244, flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", background: "var(--card)", borderRight: "1px solid var(--line)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 12px 10px", borderBottom: "1px solid var(--line2)" }}>
-        <Link to="/" className="brand" style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>
-          <span className="mark" />{t("app.title")}
+    <aside data-testid="consult-sidebar" data-state="open" data-side="left" className="no-print cx-side"
+      style={{ width: 244, display: "flex", flexDirection: "column", background: "var(--card)", borderRight: "1px solid var(--line)" }}>
+      <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, height: 52, boxSizing: "border-box", padding: "0 10px 0 14px", borderBottom: "1px solid var(--line2)" }}>
+        <Link to="/" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexGrow: 1, color: "var(--ink)", textDecoration: "none" }}>
+          <Mark />
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, lineHeight: "15px" }}>{t("app.title")}</span>
+            {subtitle !== undefined && <span style={{ display: "block", fontSize: 10.5, color: "var(--dim)", lineHeight: "13px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</span>}
+          </span>
         </Link>
-        <span style={{ flexGrow: 1 }} />
         <button type="button" className="sec" data-testid="sidebar-close" aria-label={t("opdConsultV2.hideLine")} onClick={() => { onToggle(false); }}
           style={{ width: 30, height: 30, padding: 0 }}>«</button>
       </div>
-      <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="cx-side-scroll" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
         {children}
       </div>
     </aside>
   );
 }
 
-/** The right column: the copilot. Its F2 ask box is docked at the bottom; minimised it keeps a mark, «, and an amber dot when an alternative waits. */
-export function CopilotPanel({ open, onToggle, alert, children, dock }: {
-  open: boolean; onToggle: (next: boolean) => void; alert: boolean; children?: React.ReactNode; dock: React.ReactNode;
+/**
+ * The right column: the copilot — WHITE, as on the boards, with the pine card inside and the F2 ask
+ * box docked at its foot. Minimised it keeps a mark, «, and an amber dot when an alternative waits.
+ */
+export function CopilotPanel({ open, onToggle, alert, dock }: {
+  open: boolean; onToggle: (next: boolean) => void; alert: boolean; dock: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
   if (!open) {
     return (
-      <aside data-testid="copilot-panel" data-state="closed" className="no-print"
-        style={{ width: RAIL, flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "12px 0", background: "var(--agent)", color: "var(--agent-fg)" }}>
-        <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 5, background: "var(--mint)" }} />
-        <button type="button" data-testid="copilot-open" aria-label={t("opdConsultV2.showCopilot")} onClick={() => { onToggle(true); }}
-          style={{ width: 36, height: 36, borderRadius: 6, border: "1px solid #24413655", background: "transparent", color: "var(--agent-fg)" }}>«</button>
+      <aside data-testid="copilot-panel" data-state="closed" data-side="right" className="no-print cx-side cx-strip-rail" style={{ borderLeft: "1px solid var(--line)" }}>
+        <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 7, background: "var(--agent)" }}>
+          <span style={{ width: 9, height: 9, borderRadius: 5, background: "var(--mint)" }} />
+        </span>
+        <button type="button" className="sec" data-testid="copilot-open" aria-label={t("opdConsultV2.showCopilot")} onClick={() => { onToggle(true); }}
+          style={{ width: 36, height: 36, padding: 0 }}>«</button>
         {alert && <span data-testid="copilot-alert" aria-label={t("opdConsultV2.altWaiting")} style={{ width: 10, height: 10, borderRadius: 5, background: "var(--gold)" }} />}
-        <span className="mo" style={{ fontSize: 9, letterSpacing: ".12em", color: "var(--agent-dim)", writingMode: "vertical-rl" }}>COPILOT · F2</span>
+        <span className="mo" style={{ fontSize: 8.5, letterSpacing: ".1em", color: "var(--dim)", writingMode: "vertical-rl" }}>COPILOT · F2</span>
       </aside>
     );
   }
   return (
-    <aside data-testid="copilot-panel" data-state="open" className="no-print"
-      style={{ width: 320, flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", background: "var(--agent)", color: "var(--agent-fg)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderBottom: "1px solid #24413655" }}>
+    <aside data-testid="copilot-panel" data-state="open" data-side="right" className="no-print cx-side cx-cop">
+      <div className="cx-cop-head">
         <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: "var(--mint)" }} />
-        <span className="mo" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".14em" }}>COPILOT</span>
+        <span className="mo" style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em" }}>COPILOT</span>
         <span style={{ flexGrow: 1 }} />
-        <button type="button" data-testid="copilot-close" aria-label={t("opdConsultV2.hideCopilot")} onClick={() => { onToggle(false); }}
-          style={{ width: 30, height: 30, borderRadius: 6, border: "1px solid #24413655", background: "transparent", color: "var(--agent-fg)" }}>»</button>
+        <button type="button" className="sec" data-testid="copilot-close" aria-label={t("opdConsultV2.hideCopilot")} onClick={() => { onToggle(false); }}
+          style={{ width: 30, height: 30, padding: 0 }}>»</button>
       </div>
-      {children === undefined ? null : <div style={{ padding: "12px 14px 0", display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>}
+      {/* the cards (suggestions, the zero-stock alternative) ride inside the dock's scroll, above its answer */}
       {dock}
     </aside>
   );
@@ -138,8 +166,10 @@ function linesOf(rx: WireRxHistoryItem | undefined): string[] {
  * read through the same gated routes the consult already uses, so the permission and the PHI log are
  * theirs. Nothing on it is a suggestion; the copilot's suggestions stay in the right column.
  */
-export function PatientBrief({ encounterId, patientId, patientName, onStart }: {
+export function PatientBrief({ encounterId, patientId, patientName, onStart, startLabel }: {
   encounterId: string; patientId: string; patientName: string; onStart: () => void;
+  /** "Resume consultation" for a patient already in consultation (parked, or back after a reload). */
+  startLabel?: string;
 }): React.ReactElement {
   const { t } = useTranslation();
   const visit = useQuery({ queryKey: ["opd", "brief", "visit", encounterId], queryFn: () => api<BriefVisit>("GET", `/opd/visits/${encounterId}`) });
@@ -178,8 +208,8 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart }: {
   return (
     <section data-testid="patient-brief" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 12 }}>
-        <VisitTypeBadge visitType={vt} testId="brief-visit-type" />
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{patientName}</h2>
+        <VisitTypeBadge visitType={vt} testId="brief-visit-type" size="xl" />
+        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{patientName}</h2>
         <span style={{ flexGrow: 1 }} />
         <span data-testid="brief-allergies" style={{ fontSize: 13, fontWeight: 700, color: allergies.length > 0 ? "var(--red)" : "var(--dim)" }}>
           {allergies.length > 0 ? t("opdConsultV2.allergyList", { list: allergies.join(", ") }) : t("opdConsult.noAllergies")}
@@ -207,7 +237,7 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart }: {
         </div>
         {v !== undefined && (
           <div>
-            <div data-testid="brief-vitals" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10 }}>
+            <div data-testid="brief-vitals" className="cx-brief-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10 }}>
               {tiles.map((x) => (
                 <div key={x.k} style={{ padding: "10px 12px", borderRadius: 8, background: "var(--wash)" }}>
                   <div className="mo" style={{ fontSize: 9.5, letterSpacing: ".12em", color: "var(--dim)" }}>{x.k}</div>
@@ -218,7 +248,7 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart }: {
             <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--dim)" }}>{t("opdConsultV2.vitalsBy", { by: v.recordedByName ?? "—", at: fmtTime(v.recordedAt) })}</p>
           </div>
         )}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 18, borderTop: "1px solid var(--line2)", paddingTop: 12 }}>
+        <div className="cx-brief-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 18, borderTop: "1px solid var(--line2)", paddingTop: 12 }}>
           <div>
             <div className="tag">{t("opdConsultV2.lastConsult")}</div>
             <p data-testid="brief-last" style={{ margin: "6px 0 0", fontSize: 13.5 }}>
@@ -236,8 +266,8 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart }: {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, borderTop: "1px solid var(--line2)", paddingTop: 12 }}>
           <p style={{ margin: 0, flexGrow: 1, fontSize: 12, color: "var(--dim)" }}>{t("opdConsultV2.nothingSuggestion")}</p>
-          <button type="button" className="pri" data-testid="brief-start" style={{ height: 44, padding: "0 20px", fontSize: 14 }} onClick={onStart}>
-            {t("opdConsult.start")}
+          <button type="button" className="pri" data-testid="brief-start" style={{ height: 46, padding: "0 22px", fontSize: 14, flexShrink: 0 }} onClick={onStart}>
+            {startLabel ?? t("opdConsult.start")}<span aria-hidden="true"> →</span>
           </button>
         </div>
       </div>
@@ -252,8 +282,7 @@ export type WorkRow = { id: string; label: string; text: string; count: number }
 export function WorkStrip({ rows, onGo }: { rows: WorkRow[]; onGo: (id: string) => void }): React.ReactElement {
   const { t } = useTranslation();
   return (
-    <section data-testid="work-strip" aria-label={t("opdConsultV2.workSoFar")}
-      style={{ padding: "8px 12px", borderRadius: 8, background: "var(--wash)", border: "1px solid var(--line)" }}>
+    <section data-testid="work-strip" aria-label={t("opdConsultV2.workSoFar")}>
       <div className="mo" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".14em", color: "var(--green)", marginBottom: 4 }}>{t("opdConsultV2.workSoFar")}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: 20, rowGap: 2 }}>
         {rows.map((r) => (
@@ -418,12 +447,17 @@ export function StockTag({ stock, testId }: { stock: WireDoctorStock | undefined
   return (
     <span data-testid={testId} className="mo" title={zero ? t("opdConsultV2.stockZeroTitle") : t("opdConsultV2.stockTitle")}
       style={{
-        position: "absolute", top: -9, right: 8, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 10.5, fontWeight: 600, lineHeight: "18px",
+        position: "absolute", top: -9, right: 10, height: 18, padding: "0 7px", borderRadius: 9, fontSize: 10.5, fontWeight: 600, lineHeight: "18px",
         ...(zero
-          ? { background: "rgba(221,143,28,.14)", border: "1px solid rgba(221,143,28,.5)", color: "var(--gold)" }
-          : { background: "rgba(14,107,78,.07)", border: "1px solid rgba(14,107,78,.22)", color: "var(--dim)" }),
+          ? { background: "rgba(221,143,28,.14)", border: "1px solid rgba(221,143,28,.5)", color: "#8a5a10" }
+          : { background: "rgba(14,107,78,.07)", border: "1px solid rgba(14,107,78,.22)", color: "#3f6b5b" }),
       }}>
-      {zero ? t("opdConsultV2.stockZero") : `${stock.available.toLocaleString("en-IN")}${unit}`}
+      {zero ? (
+        <>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ verticalAlign: -1, marginRight: 3 }}><path d="M7 7h11l-3-3" /><path d="M17 17H6l3 3" /></svg>
+          {t("opdConsultV2.stockZero")}
+        </>
+      ) : `${stock.available.toLocaleString("en-IN")}${unit}`}
     </span>
   );
 }
@@ -789,6 +823,12 @@ function PastVisitSections({ encounterId }: { encounterId: string }): React.Reac
 }
 
 /** The History browser — a read-only list of the patient's visits, filtered by year chips or a date. */
+/** "2026-09-18" → "18 Sep 2026", the way a doctor reads a date (owner's walk, 2026-09-23). */
+export function fmtDay(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 export function HistoryBrowser({ visits, currentEncounterId }: {
   visits: WireTimelineItem[]; currentEncounterId: string;
 }): React.ReactElement {
@@ -818,7 +858,7 @@ export function HistoryBrowser({ visits, currentEncounterId }: {
               <button type="button" data-testid={`history-visit-${v.encounterId}`} aria-pressed={picked === v.encounterId} onClick={() => { setPicked(v.encounterId); }}
                 style={{ width: "100%", textAlign: "left", padding: "7px 9px", borderRadius: 6, border: `1px solid ${picked === v.encounterId ? "var(--green)" : "var(--line)"}`, background: picked === v.encounterId ? "var(--green-soft)" : "var(--card)", fontSize: 12.5 }}>
                 <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <span className="mo">{v.serviceDate}</span>
+                  <span className="mo">{fmtDay(v.serviceDate)}</span>
                   <VisitTypeBadge visitType={v.visitType} size="sm" testId={`history-vt-${v.encounterId}`} />
                   <span className="mo" style={{ marginLeft: "auto", fontSize: 11, color: "var(--dim)" }}>{v.visitNo ?? ""}</span>
                 </span>
@@ -828,7 +868,22 @@ export function HistoryBrowser({ visits, currentEncounterId }: {
           ))}
         </ul>
       </div>
-      <div>{picked === null ? <p style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsultV2.history.pick")}</p> : <PastVisitSections key={picked} encounterId={picked} />}</div>
+      <div>{picked === null ? <p style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsultV2.history.pick")}</p> : (() => {
+        const pv = past.find((v) => v.encounterId === picked);
+        return (
+          <>
+            {pv !== undefined && (
+              <h3 data-testid="history-record-head" style={{ margin: "0 0 8px", fontSize: 14 }}>
+                {fmtDay(pv.serviceDate)}
+                {pv.visitNo !== null && pv.visitNo !== undefined && pv.visitNo !== "" && <> · <span className="mo" style={{ fontSize: 12, color: "var(--dim)" }}>{pv.visitNo}</span></>}
+                {" · "}{pv.doctorName ?? "—"}
+                {pv.departmentName !== null && pv.departmentName !== undefined ? ` · ${pv.departmentName}` : ""}
+              </h3>
+            )}
+            <PastVisitSections key={picked} encounterId={picked} />
+          </>
+        );
+      })()}</div>
     </div>
   );
 }
@@ -840,7 +895,7 @@ function PastSectionRow({ item, sections, open }: { item: WireTimelineItem; sect
   return (
     <details open={open} data-testid={`section-history-${item.encounterId}`} style={{ borderTop: "1px solid var(--line2)", padding: "6px 0" }}>
       <summary style={{ cursor: "pointer", fontSize: 12.5 }}>
-        <span className="mo">{item.serviceDate}</span> · <span className="mo" style={{ color: "var(--dim)" }}>{item.visitNo ?? ""}</span>
+        <span className="mo">{fmtDay(item.serviceDate)}</span> · <span className="mo" style={{ color: "var(--dim)" }}>{item.visitNo ?? ""}</span>
       </summary>
       {lines === null ? <p style={{ margin: "4px 0", fontSize: 12, color: "var(--dim)" }}>{t("app.loading")}</p>
         : lines.length === 0 ? <p style={{ margin: "4px 0", fontSize: 12, color: "var(--faint)" }}>{t("opdConsultV2.nothingEntered")}</p>
