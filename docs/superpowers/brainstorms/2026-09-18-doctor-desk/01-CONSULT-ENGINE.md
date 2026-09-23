@@ -1,0 +1,384 @@
+# Doctor Desk, part 2: the consult engine
+
+**This brainstorm restarts on 2026-09-23.** The owner unparked the Doctor Desk brainstorm after
+comparing our consult screen with Healthray's doctor OPD: *"I feel it's not good enough and we are
+falling behind a HIMS provider."*
+
+This file is the consult-screen half of the Doctor Desk. `00-BRAINSTORM.md` is the other half: the
+unit head's control tower, the ward round and the phone. The two meet at `OpdDesk.dc.html`, where
+the OPD line is the screen.
+
+**Status.** This is a brainstorm. Nothing here authorises code, a migration or a plan until the
+owner approves the cut in §12. Measurements were taken at `origin/main` `3813a80c` on 2026-09-23.
+
+**Reference material.** The 26 Healthray screenshots are at
+`/opt/hmis-context/reference/2026-09-23-healthray-doctor-opd/`, outside git. They are the benchmark
+for the non-AI basics of a doctor's desk. They are not the design target.
+
+---
+
+## 1. Owner rulings, 2026-09-23
+
+1. **Who configures layouts: the admin and the doctor.** The admin sets each department's default
+   layout. The doctor adjusts it for their own practice, inside what the admin allows.
+2. **Specialty order: ophthalmology, then paediatrics, then gynaecology.** General medicine is the
+   default profile that every other profile starts from.
+3. **Coding:** ICD-10 is the primary code. An ICD-11 or SNOMED CT map comes later, for ABDM.
+4. **Work-up before the doctor.** Eventually the optometrist, the antenatal nurse and the paediatric
+   nurse each fill whole sections before the doctor sees the patient. **For now the work-up is
+   vitals only.** There will be **a toggle to switch the work-up mode on and off** (§8).
+5. **The Doctor Desk brainstorm is unparked.**
+6. **Standing product frame, restated:** *"we are building Agentic AI based hospital operating
+   system that will use AI agent as human copilot and so we have to design the software
+   accordingly."*
+7. **The owner's top priorities, in his words:** *"accuracy, speed, auditable, complaint* [meaning
+   compliant] *and user experience of the dashboard."* Every design decision below is checked
+   against these five (§10).
+
+---
+
+## 2. What the Healthray benchmark taught us
+
+The Healthray consult screen is built from seven layers. Copying its screens without these layers
+would give us the look without the capability.
+
+| # | Layer | What Healthray does | Where we are today |
+|---|---|---|---|
+| 1 | **Catalogs** | Each section has a chip library that grows from what the doctor types. It also holds saved groups (`MB_*` chips) and a drug library and groups | Only complaint terms (`opd_complaint_terms` plus usage ranking), advice templates and the formulary |
+| 2 | **Section definitions** | Each section has categories. Each category has a form type (vital sign, chip list or grid). Each chip carries **detail questions**; for example `FEVER (headache\|vomiting, Yes, 3d)` is a chip plus its answers | Hard-coded in `opd-consult.tsx`: complaint, diagnosis, advice, Rx |
+| 3 | **Layout profile** | Sections can be ordered, shown or hidden, made expandable, printed or not, shown on the dashboard. Each section also has **SNOMED CT search** and **AI suggestion** toggles | Hard-coded. A new specialty is a code change |
+| 4 | **Visit record** | Entries stored per section, read back on a Summary page with a count for each section | Complaint, diagnosis, Rx and advice columns on the encounter |
+| 5 | **Longitudinal views** | Earlier visits load inline and can be printed or have documents uploaded; Previous RX; Patient Report (one section across a date range); vitals Graph | A History tab that is a list, and a vitals trend shown as text |
+| 6 | **Output** | 30 print formats. Style for each label. Language choice. Hide header. WhatsApp, SMS and email. Send to the referring doctor | Server-side Rx print with a signed QR |
+| 7 | **Actions out** | Admit, appointment, bill, send order, certificate, consent, vaccination, blood request, ABHA | Only an "admission advised" checkbox |
+
+**Our real gap is layers 2 and 3.** Until those exist, every specialty screen costs a pass through
+`opd-consult.tsx` (3,562 lines) and the shared files.
+
+**Healthray weaknesses we will not copy:**
+- **Unmoderated catalogs.** Junk chips sit in live libraries, for example "guuryjhfdkjhdujedfu",
+  "hhjdghjdgshsds", "pagal" and "dgfgd".
+- **Tests filed as diagnoses** ("Blood test", "Scalp biopsy").
+- **Sections switched on by sex alone.** A 2-year-old girl gets Antenatal Sheet and Menstrual
+  History tabs.
+- **No prescribing safety check visible anywhere** on the Rx grid.
+
+**Where we are already ahead:**
+- The Rx safety checks: allergy, interaction, duplicate salt and drug–disease, each with an override
+  reason.
+- The queue engine: park, skip, held-for-payment.
+- Complaint ranking learned from the doctor's own usage.
+- A keyboard-first flow.
+
+---
+
+## 3. The model we build: sections as data, profiles as data
+
+```
+Catalog item   ── hospital master → department list → the doctor's own entries
+     │            (curated)          (admin)           (grows from use; the admin can prune)
+     ▼
+Section def    ── kind (chips | grid | eye-grid | vitals | table-per-visit | free note)
+     │            items come from a catalog; each item carries detail questions
+     │            coded? (ICD-10 / SNOMED / LOINC)  printable?  who may fill it (role)
+     ▼
+Profile        ── department default (admin) + doctor overlay (doctor, within the admin's bounds)
+     │            which sections, in what order, collapsed or not, printed or not, which print format
+     │            gates: sex, age band, pregnancy flag (not sex alone)
+     ▼
+Visit record   ── one entry per section item: value, detail answers,
+                  author, source (tap | typed | template | group | agent-draft | work-up),
+                  time, and what it supersedes
+```
+
+**DECIDED (planner, the owner may overturn):**
+- **D1. A section definition is versioned.** A visit stores the version it was filled under, so a
+  later layout change never rewrites how an old visit reads or prints. This serves audit.
+- **D2. Gates use age band, sex and pregnancy flag together.** A menstrual history section needs
+  female AND age ≥ 9 years. An antenatal section needs the pregnancy flag. Growth charts need age
+  < 18 years.
+- **D3. Coded sections stay coded.** A diagnosis chip must resolve to an ICD-10 code or be marked
+  "uncoded", and uncoded is counted and shown to the curator. A test can never be entered as a
+  diagnosis, because the investigation and diagnosis catalogs are separate kinds.
+- **D4. The doctor's own catalog is private until promoted.** The doctor's typed items stay in
+  their own list. A curator (the admin or the department head) promotes them to the department
+  list. This is the fix for Healthray's junk chips. The curator screen already exists as a pattern
+  in the formulary (a mapping proposal that a person signs).
+- **D5. Groups and templates are catalog items too.** A group is a set of items within one section,
+  for example a CBC+LFT profile or a "NAD" systemic exam. A full-visit template is a set of groups
+  across sections, for example "Fracture calcaneum". Both come in three tiers: hospital,
+  department and doctor.
+- **D6. The existing consult keeps working throughout.** General medicine is re-built on the engine
+  first and must be at least as fast and as safe as today before any specialty is added.
+
+---
+
+## 4. The copilot inside the engine
+
+The engine is what makes the copilot possible. An agent can only draft into a section that has a
+definition, and it can only choose items that exist in a catalog. This is the pattern `triage.ts`
+already uses: the model gets **our** list and returns **indexes** into it, so it cannot invent an
+item.
+
+### 4.1 The ladder of cost (cheapest first; stop at the first confident answer)
+
+| Step | Tool | Cost | Already in main |
+|---|---|---|---|
+| 1 | The doctor's own usage: most-used chips, last visit, Previous RX | a DB read | Complaint usage ranking (`complaint-ranker.ts`, `opd_complaint_term_usage`) |
+| 2 | Deterministic matchers: keyword and IDF over our books | microseconds | `cds/matcher.ts` (complaint → syndrome), `complaint-ranker.ts` (IDF over 82 syndromes and 782 phrasings) |
+| 3 | Rules from the clinical master: regimens, prescribing defaults, safety rules | a DB read | Regimens (`cds/regimen.ts`); interactions, drug–disease and allergy classes adopted into the formulary |
+| 4 | **Jev (TypeSafe) as the decision model:** picks an index from our list, with a confidence score | about 300 ms | Adopted for the copilot router (#250) and triage (#252); `MIN_CONFIDENCE=0.6` |
+| 5 | LLM, last and bounded: prose drafts (history of present illness, a referral letter), summarising old visits | seconds, and tokens | Groq as fallback; the scribe is built but returns 503 until a speech provider is configured |
+
+**A correction the owner should have.** The owner remembers the complaint → diagnosis matrix as
+*"mapped through vector embedding"*. What is in main is different. `complaint-ranker.ts` records
+that the engine delivered with the bundle "scored character-trigram overlap and called it an
+embedding". Measured, it could not read Devanagari and routed "mera mobile kho gaya" to Emergency
+with no confidence floor. It was replaced by inverse-document-frequency token scoring, which is
+explainable (the seat can name the word that decided it). **No vector embedding is in the
+consult path today.** Adding a real embedding model is possible as step 2b, but only if it is
+measured against the IDF scorer on our own complaints first.
+
+### 4.2 Where the agent acts in the consult
+
+- **Pre-fill before the doctor sits down.** From the work-up entries, the last visit, and the
+  complaint matched to a syndrome, the agent suggests chips for the examination, a template and a
+  regimen. Suggestions appear as **ghost chips**: one tap accepts, one key dismisses. The
+  doctor-controlled "proactive" toggle already ruled for the doctor copilot governs this.
+- **Draft, never sign.** An agent entry is stored with `source = agent-draft`. It does not count as
+  the doctor's entry until the doctor accepts it. It is visible as a draft in the audit trail.
+- **Each section's AI switch lives in the profile**, like Healthray's "Show AI Suggestion", so an
+  admin can switch agent help off for a section (for example psychiatry notes).
+- **The agent can also act on the desk**, not just answer questions. It can book the follow-up,
+  send the order, or draft the certificate. Every act needs the doctor's one-tap confirmation and
+  is audited. This follows the ruling that the desk copilot must act.
+
+---
+
+## 5. What the clinical data we hold can configure
+
+| Asset | Where | What it configures in the consult |
+|---|---|---|
+| NRCES medicines: 10,303 generics and about 103k brands | `/opt/hmis-context/nrces-2026-09/`; formulary tables in main | Drug search, brand → generic, the composition line under the brand (as Healthray shows it) |
+| `prescribing_defaults` (10,303 rows: frequency, food relation, default days, dispense quantity, indications) | `cds-bundle.sql` (clinical master 2026-09-17) | **Rx line pre-fill.** Picking a drug fills its sig, so most lines need zero typing. Also auto quantity |
+| `ddi_rules`, `cyp`, allergy cross-reactivity, drug–disease (ICD-10 contraindications) | Adopted into the formulary (P21, P21b, P22) | The existing safety checks |
+| `amsp_antimicrobial_rules` (WHO AWaRe category, ICMR tier, maximum empirical days, mandatory culture order) | Clinical master | **Antimicrobial policy on the Rx line.** Healthray only links to a policy document; we can enforce it at the line, for example by warning on days over the limit |
+| `pregnancy_trimester_matrix` | Clinical master | Gynaecology profile: a trimester-aware check when the pregnancy flag is on |
+| `vitals_safety_rules`, `lab_diagnostic_rules` (LOINC cutoffs against conflicting drugs) | Clinical master | Checks that read vitals and lab results against the Rx. Example: a drug that raises BP when today's BP is high |
+| `symptom_drug_mapping`, `clinical_syndromes_regimens` | Clinical master, partly in `cds/` | Complaint → syndrome → regimen suggestions |
+| `dpco_jan_aushadhi_index`, NLEM 2022 (`scripts/data/nlem-2022.ts`), drug schedules (H, H1, X) | Clinical master; scripts | Cost and NLEM badge on the line; schedule rules on the print; the Jan Aushadhi alternative |
+| ICD-10 catalogue (74k codes) | `cds/icd10.ts` | The diagnosis section |
+
+**Gaps in the data for the specialty order the owner chose:**
+- **Paediatrics:** `prescribing_defaults` has no weight-based dose (mg/kg), no maximum dose and no
+  syrup strength rounding. Paediatric dosing needs a new rule set, sourced (IAP drug formulary or
+  similar) and signed by a doctor. This is the largest data task in the three specialties.
+- **Ophthalmology:** eye drop sigs (drops per eye, which eye, taper over weeks) do not fit the
+  `1-0-1` grammar. The Rx line needs a **site** (right eye / left eye / both) and a **taper**
+  (Healthray shows two dose lines for one drug).
+- **Gynaecology:** the pregnancy matrix exists. The obstetric calculators (EDD, gestational age)
+  are formulas, not data.
+
+---
+
+## 6. Specialty profiles, in the owner's order
+
+Each profile is **general medicine plus or minus sections, a work-up split and print formats.** It
+is data, per D6 and §3.
+
+### 6.1 Ophthalmology (first)
+
+- **Sections:**
+  - Visual acuity (unaided, with glasses, pinhole, near, colour vision; right and left eye with
+    copy across)
+  - Auto-refraction (AR)
+  - Current glasses power
+  - Refraction and the final glasses prescription (sphere, cylinder, axis, add, for each eye)
+  - Pupils
+  - Slit-lamp examination by structure (lids, conjunctiva, cornea, anterior chamber, iris, lens)
+  - Fundus
+  - IOP (method: NCT or GAT)
+  - A-scan and IOL power
+  - Topography
+- **The work-up split (when the toggle is on):** the optometrist fills VA, AR, current glasses and
+  IOP. The doctor sees them as filled sections and does refraction, slit lamp, fundus, diagnosis
+  and Rx.
+- **Queue state:** "work-up done" becomes a state in the queue. The line goes optometrist → doctor.
+- **Rx:** the eye drop line needs an eye site and a taper (§5).
+- **Prints:** the spectacle prescription is its own print; the surgery and IOL advice is another.
+- **Chips:** eye diagnoses in ICD-10 H00–H59 carry a **laterality** detail question.
+
+### 6.2 Paediatrics (second)
+
+- **Age** shown in years, months and days.
+- **Weight-based dosing** on the Rx line (§5 gap). The weight comes from today's vitals, and a
+  stale weight is flagged.
+- **Growth:** weight, length or height, head circumference and BMI plotted on WHO charts (under 5)
+  and IAP charts (5–18), as percentile and z-score.
+- **Immunisation:** the IAP schedule, with due and overdue items and "given today". A vaccination
+  card print.
+- **History sections:** birth history (gestation, birth weight, NICU stay), developmental
+  milestones, feeding.
+- **The informant is recorded:** the history comes from a parent or guardian, so the record says
+  who gave it.
+- **Work-up split:** the paediatric nurse fills anthropometry, vaccination status and possibly
+  milestones.
+
+### 6.3 Gynaecology and obstetrics (third)
+
+- **Obstetric score** (G P L A). **LMP → EDD and gestational age**, calculated. A pregnancy flag on
+  the banner. High-risk flags.
+- **Antenatal sheet:** one row per visit (weight, BP, fundal height, FHS, presentation, oedema, Hb,
+  urine), shown as a running table across visits.
+- **Other history:** menstrual history (cycle, flow, LMP, dysmenorrhoea), post-natal, contraception.
+- **USG findings.** The **PCPNDT Form F link** comes from the existing `pcpndt` module. This is law,
+  and a Form F obligation cannot be skipped.
+- **The trimester-aware prescribing check** (§5).
+- **Work-up split:** the antenatal nurse fills the vitals row of the antenatal sheet.
+
+---
+
+## 7. General medicine rebuilt on the engine (the base every profile extends)
+
+**Sections:**
+- Complaints, with duration, severity and detail questions
+- History of present illness (a note, and the agent may draft it)
+- Past medical and surgical history
+- Family history
+- Personal history (smoking, alcohol, diet, sleep)
+- Current medications
+- Allergies (as today)
+- Vitals (read from the bay; the doctor may add a reading)
+- General examination
+- Systemic examination
+- Local examination
+- Provisional and final diagnosis (ICD-10)
+- Investigations (lab, radiology and ECG, with order sets)
+- Procedures
+- Rx
+- Advice (general and dietary)
+- Follow-up (a date, with booking)
+- Referral (internal to a department or doctor, or external)
+- Notes (§7.1)
+
+**Longitudinal views:**
+- **Summary.** This visit read back, with a count for each section.
+- **Previous consultations inline.** Each earlier visit in full, collapsible. It can be copied into
+  today by section or whole, printed again, or have documents attached.
+- **Previous RX.** Copies the last Rx into today, line by line, and **the safety checks run again**
+  on every copied line.
+- **Section report.** One section across a date range.
+- **Vitals graph.**
+
+**Calculators:** BMI, BSA, eGFR (CKD-EPI 2021), waist–hip ratio, and a diabetes risk score. Each
+shows its formula and inputs, so the result can be audited.
+
+**Actions menu:**
+- Certificate (medical, fitness)
+- Consent form
+- Vaccination
+- Admission request (links to the IPD workflow when IPD exists)
+- Blood request
+- ABHA create or link
+- Label print
+- Payment history (read-only)
+
+### 7.1 Notes: five kinds, each with an audience and a lifetime
+
+| Note | Audience | Lifetime | Printed |
+|---|---|---|---|
+| Detail on an item (for example "Detailed information of NORMAL") | The clinical record | This visit | Yes, as a qualifier |
+| Doctor's note | The clinical record | This visit | Profile setting, off by default |
+| Internal comment | Staff and the next doctor | This visit | Never |
+| **Patient reminder** (sticky) | Everyone who opens this patient | **Across visits**, until resolved | Never |
+| Allergy | Everyone, on the banner | Permanent (entered-in-error strike, as today) | Yes |
+
+**D7. Every note records its author and time and is append-only.** An edit supersedes; it never
+overwrites. The sealed-record model and the `permission_denied` rules apply as they do today.
+
+---
+
+## 8. The work-up mode toggle
+
+- **What it does.** When off (today), the work-up seat fills only vitals, as the vitals bay does
+  now. When on, the work-up role for that department fills the sections its profile assigns to it
+  (optometrist, antenatal nurse or paediatric nurse), and the queue line gains a "work-up done"
+  state before the doctor.
+- **D8. Where it lives.** The toggle is **per department, set by the admin**, not per doctor. The
+  reason is that it changes staff flow and queue states for everyone in that department. A doctor
+  sees the setting but cannot flip it.
+- **D9. It is audited like any configuration change.** Who changed it, when, from what to what.
+  The change applies to new visits only. A visit already in work-up finishes under the mode it
+  started in.
+- **Off must be exactly today's behaviour.** A test pins this before the toggle ships.
+
+---
+
+## 9. Output: print and share
+
+- **One server-side print engine**, per the existing printing ruling, with a **print format per
+  profile**: Rx, spectacle prescription, ANC card, vaccination card, investigation slip,
+  certificate. Label style (font, bold, visibility, uppercase) is set per section in the profile,
+  as Healthray does.
+- **Print options:** language (English and Hindi first), hide header and footer (for pre-printed
+  pads), hide patient details.
+- **Share:** WhatsApp, SMS, email, and send to the referring doctor. The WhatsApp rail already
+  carries lab reports (`reach`). Sharing requires the patient's consent on record (DPDP Act 2023),
+  and every send is logged with its channel and recipient.
+- **Prescription content required by law and regulation:**
+  - generic name printed legibly (NMC 2023 prescribing guidance)
+  - the doctor's registration number
+  - Schedule H, H1 and X marks where they apply
+  - for teleconsult, the Telemedicine Practice Guidelines 2020 drug lists (List O, A and B) limit
+    what can be prescribed, and the Rx grid must enforce that on a teleconsult visit
+
+---
+
+## 10. The owner's five priorities as design tests
+
+| Priority | Test each deliverable must pass |
+|---|---|
+| **Accuracy** | Coded fields stay coded (D3). Catalogs are curated (D4). Every calculator shows its formula. Safety checks re-run on copied and templated lines. Agent output is picked from our lists, never free-generated into a coded field |
+| **Speed** | A routine follow-up visit completed with a template or Previous RX in **under 60 seconds** and **under 15 taps**. A chip search answers in under 100 ms. The keyboard path covers every section. The LLM is never on the critical path of a tap |
+| **Auditable** | Every entry records author, source (tap, typed, template, group, agent-draft, work-up), time and what it supersedes. Section definitions and profiles are versioned (D1). Configuration changes are audited (D9) |
+| **Compliant** | ICD-10 now, with a map to ICD-11 or SNOMED for the ABDM OPConsultation record later. PCPNDT Form F on obstetric USG. NMC and Drugs & Cosmetics Rules content on the Rx. Telemedicine lists on teleconsult. DPDP consent before any share |
+| **User experience of the dashboard** | The live summary strip at the top (the whole visit at a glance, as Healthray has). Ghost chips from the agent. Nothing modal in the main path. The Doctor Desk dashboard (`00-BRAINSTORM.md`) and the consult share one visual system |
+
+---
+
+## 11. Open questions for the owner
+
+1. **Doctor overlay limits.** Can a doctor hide a section the admin marked mandatory for the
+   department? Proposed: no. Mandatory sections stay; the doctor may reorder and collapse them.
+2. **Who curates the catalogs:** the department head, a medical-records officer, or the admin?
+   This decides who promotes a doctor's own chips to the department list (D4).
+3. **Paediatric dosing source.** Which formulary do we adopt and have a doctor sign (IAP or
+   another)? This touches clinical liability, so it may count as law.
+4. **Print languages beyond English and Hindi.** Which ones, for example Gujarati or Marathi?
+5. **Teleconsult.** Is it in scope for this phase? It carries its own prescribing law.
+
+---
+
+## 12. The cut, when approved (proposal only)
+
+| Step | Deliverable | Shared files it touches |
+|---|---|---|
+| **C0** | Engine: section definitions, catalogs in three tiers, profiles (department plus doctor), a versioned visit-entry store with audit. General medicine re-platformed. Summary page and previous consultations inline. Previous RX. Rx pre-fill from `prescribing_defaults` | Schema, one migration, `router.tsx`, locales, and `opd` (which many modules import) |
+| **C1** | Groups and full-visit templates; the catalog curator screen; the live summary strip; calculators | the `opd` module |
+| **C2** | Ophthalmology profile, the eye-site and taper Rx line, the spectacle print | a migration |
+| **C3** | The work-up mode toggle with the optometrist seat (the first use of the toggle) | the queue states in `opd` |
+| **C4** | Paediatrics: weight-based dosing rules (after the owner answers question 3), growth charts, IAP immunisation | a migration; data |
+| **C5** | Gynaecology: obstetric calculators, antenatal sheet, the PCPNDT link, the trimester check | `pcpndt` via its index |
+| **C6** | Share (WhatsApp, SMS, email) with consent; the actions menu; the ICD-11 / SNOMED map | `reach`; a migration |
+
+C0 is the risky step. It moves the doctor's live screen onto a new store, so it ships behind a
+switch for each department, with the old path kept until general medicine is proved equal.
+
+**The next step, before any plan:** canvas boards of the consult engine, which the owner rules on
+by comment, as for Desk One and the Tower:
+1. general medicine consult
+2. ophthalmology
+3. the profile builder (admin view and doctor overlay)
+4. the catalog curator
+5. the work-up toggle
+6. the print and share dialog

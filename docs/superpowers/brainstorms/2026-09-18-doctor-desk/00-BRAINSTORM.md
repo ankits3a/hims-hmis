@@ -1,5 +1,7 @@
 # Doctor Desk — the doctor's first screen, the round, and the unit head's view
 
+**RESTARTED 2026-09-23 by the owner. The consult-screen half is in `01-CONSULT-ENGINE.md`.**
+
 **Brainstorm, 2026-09-18. PARKED by the owner the same day: "save into roadmap, I will work on it
 later." Nothing here authorises a code change, a migration or a plan.** Measured at `origin/main` @
 `37b9191d`, 2026-09-18 UTC. Roadmap entry: `docs/superpowers/2026-09-06-ROADMAP-v2.md` §9.
