@@ -1191,6 +1191,8 @@ describe("OpdConsult", () => {
     // the doctor reads it. Through the button, deliberately — the signed-off keymap gives Enter to
     // "the obvious next thing" and with a consultation already open the obvious next thing is
     // nothing, so there is no key for this and the control is the only road.
+    // CONSULT V2 (owner, 2026-09-23): in a consultation the line is minimised by default — one tap opens it.
+    await user.click(screen.getByTestId("sidebar-open"));
     await user.click(screen.getByRole("button", { name: "Call next" }));
     await waitFor(() => expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(2));
     const refusal = await screen.findByText("another patient is already called");
@@ -2374,11 +2376,16 @@ describe("07d T1 — the past-record panel", () => {
    * into the PHI access log, so firing both on every consult render — or even on opening the tab —
    * would fill the DPDP register with reads nobody performed.
    */
-  it("T1: neither history is read until its own view is opened", async () => {
+  /*
+    CONSULT V2 (owner, 2026-09-23) moved ONE of the two reads earlier, on purpose: the brief shown after
+    Call next lists what the patient is on now, and that is the last prescription — a read the doctor
+    is actually performing, about the patient they have just called. The vitals history is still read
+    only when its own view is opened, and that half of the property is pinned unchanged.
+  */
+  it("T1: the vitals history is not read until its own view is opened; prescriptions only for the brief's 'on now'", async () => {
     mockRoutes(withHistory());
     await openHistoryTab(userEvent.setup());
 
-    expect(asked("/opd/patients/p-1/prescriptions")).toBe(false);
     expect(asked("/opd/patients/p-1/vitals")).toBe(false);
   });
 
@@ -2634,6 +2641,8 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
     const user = userEvent.setup();
     await openPanel(user);
 
+    // CONSULT V2 (owner, 2026-09-23): in a consultation the line is minimised by default — one tap opens it.
+    await user.click(screen.getByTestId("sidebar-open"));
     await user.click(screen.getByRole("button", { name: "Park patient" }));
 
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/consult/park")).toHaveLength(1); });
@@ -3786,5 +3795,207 @@ describe("OpdConsult — the desk complaint and the visit type", () => {
     renderWithProviders(<OpdConsult />);
     const row = await screen.findByTestId(`queue-visit-type-${String(WAIT_B.id)}`);
     expect(row).toHaveAttribute("data-visit-type", "revisit");
+  });
+});
+
+/**
+ * ═══ CONSULT V2 (owner, 2026-09-23) — THE BRIEF, THE THREE COLUMNS, THE WORK STRIP, THE NEW SECTIONS ═══
+ *
+ * The design is `docs/design/2026-09-23-consult-engine/` (Main = the brief, Consult = the consultation,
+ * Summary = the Summary tab) and the rulings are `01-CONSULT-ENGINE.md` §1.1.
+ */
+describe("Consult v2", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    sessionStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+    setToken("t-1");
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const V2_DRUGS = {
+    items: [
+      { id: "m-amlong", name: "Amlong 5", form: "Oral tablet", strength: "5 mg", code: "D0100", routeClass: "systemic", salts: ["Amlodipine"], prefix: true },
+      { id: "m-telma", name: "Telma 40", form: "Oral tablet", strength: "40 mg", code: "D0101", routeClass: "systemic", salts: ["Telmisartan"], prefix: true },
+    ],
+  };
+  const DESK_VISIT = {
+    ...VISIT,
+    encounter: { ...ENCOUNTER, visitType: "revisit" },
+    deskComplaint: { text: "Sar mein dard aur chakkar, ek hafte se", by: "Anita Sharma", at: "2026-08-18T04:32:00.000Z" },
+  };
+  function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: DESK_VISIT },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-1/reminder": { status: 200, body: { reminder: null } },
+      ...over,
+    };
+  }
+
+  it("V1: Call next shows the BRIEF — the visit type, the desk's own words, the vitals — with Start consultation under it", async () => {
+    mockRoutes(routes());
+    renderWithProviders(<OpdConsult />);
+    const brief = await screen.findByTestId("patient-brief");
+    expect(await within(brief).findByTestId("brief-desk-words")).toHaveTextContent("Sar mein dard aur chakkar, ek hafte se");
+    expect(within(brief).getByText(/Typed by Anita Sharma/)).toBeInTheDocument();
+    await waitFor(() => { expect(within(brief).getByTestId("brief-visit-type")).toHaveAttribute("data-visit-type", "revisit"); });
+    expect(within(brief).getByTestId("brief-visit-meaning")).toHaveTextContent(/Revisit/);
+    expect(within(brief).getByTestId("brief-vitals")).toHaveTextContent("190/80");
+    expect(within(brief).getByTestId("brief-allergies")).toHaveTextContent(/Allergy/);
+    // Start lives under the brief — and only there while the brief is showing.
+    expect(screen.getAllByRole("button", { name: "Start consultation" })).toHaveLength(1);
+    expect(within(brief).getByRole("button", { name: "Start consultation" })).toBeInTheDocument();
+    // The brief is read before a consultation starts — nothing is written.
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(0);
+  });
+
+  it("V2: three columns — the line is OPEN on the brief and FOLDED in the consultation; the copilot is open on both", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("patient-brief");
+    expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "open");
+    expect(screen.getByTestId("copilot-panel")).toHaveAttribute("data-state", "open");
+    // The hospital's mark and name sit at the top of the line, and are the way home.
+    expect(within(screen.getByTestId("consult-sidebar")).getByRole("link", { name: /HMIS/ })).toHaveAttribute("href", "/");
+
+    await user.click(screen.getByRole("button", { name: "Start consultation" }));
+    await screen.findByTestId("patient-panel");
+    expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "closed");
+    expect(screen.getByTestId("sidebar-waiting")).toHaveTextContent("2");
+    await user.click(screen.getByTestId("sidebar-open"));
+    expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "open");
+    expect(sessionStorage.getItem("hmis.consult.left.consult")).toBe("1");
+  });
+
+  it("V3: F2 opens a minimised copilot and lands in its ask box, docked at the panel's foot", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByTestId("copilot-close"));
+    expect(screen.getByTestId("copilot-panel")).toHaveAttribute("data-state", "closed");
+    expect(screen.queryByTestId("agent-ask")).toBeNull();
+    await user.keyboard("{F2}");
+    expect(screen.getByTestId("copilot-panel")).toHaveAttribute("data-state", "open");
+    await waitFor(() => { expect(screen.getByTestId("agent-ask")).toHaveFocus(); });
+  });
+
+  it("V4: the desk's words are already chips, and 'your work so far' shows them on EVERY tab", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const strip = await screen.findByTestId("work-strip");
+    await waitFor(() => { expect(within(strip).getByTestId("work-complaints")).toHaveTextContent("Sar mein dard aur chakkar"); });
+    await user.click(screen.getByRole("tab", { name: "Examination" }));
+    expect(screen.getByTestId("work-strip")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Summary" }));
+    expect(screen.getByTestId("work-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("summary-complaints")).toHaveTextContent("Sar mein dard aur chakkar");
+    expect(screen.getByTestId("summary-exam")).toHaveTextContent("Nothing entered");
+    // A line of the strip is a way to its section.
+    await user.click(within(screen.getByTestId("work-strip")).getByTestId("work-exam"));
+    expect(screen.getByRole("tab", { name: "Examination" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("V5: examination, treatment, the diagnosis kind and the notes ride the SAME note route", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const path = "/api/opd/visits/enc-1/consult/note";
+
+    await user.click(screen.getByRole("tab", { name: "Examination" }));
+    await user.click(screen.getByTestId("exam-general-Pallor absent"));
+    await user.click(screen.getByTestId("exam-systemic-CVS: S1 S2 normal, no murmur"));
+    await waitFor(() => {
+      expect(bodiesOf("PUT", path).at(-1)?.examination).toEqual([
+        { group: "general", text: "Pallor absent" }, { group: "systemic", text: "CVS: S1 S2 normal, no murmur" },
+      ]);
+    }, { timeout: 3000 });
+    expect(screen.getByTestId("tab-dot-exam")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Treatment" }));
+    await user.click(screen.getByRole("button", { name: "Nebulisation in OPD" }));
+    await user.click(screen.getByRole("tab", { name: "Note" }));
+    await user.click(screen.getByTestId("dx-kind-final"));
+    await waitFor(() => {
+      const b = bodiesOf("PUT", path).at(-1)!;
+      expect(b.treatment).toEqual(["Nebulisation in OPD"]);
+      expect(b.diagnosisKind).toBe("final");
+    }, { timeout: 3000 });
+
+    await user.click(screen.getByRole("tab", { name: "Notes" }));
+    await user.type(screen.getByTestId("note-internal"), "Call if BP log above 150");
+    await user.click(screen.getByTestId("note-doctor"));
+    await waitFor(() => { expect(bodiesOf("PUT", path).at(-1)?.internalComment).toBe("Call if BP log above 150"); }, { timeout: 3000 });
+  });
+
+  it("V6: a visit that never uses the new sections sends EXACTLY the body it always sent", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const advice = screen.getByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "warm fluids");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+    await waitFor(() => { expect(bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").length).toBeGreaterThan(0); });
+    const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1)!;
+    expect(Object.keys(body).sort()).toEqual(["advice", "chiefComplaint", "diagnoses"]);
+  });
+
+  it("V7: Save draft saves even when nothing changed, and says so", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByTestId("save-draft"));
+    await waitFor(() => { expect(callsTo("PUT", "/api/opd/visits/enc-1/consult/note")).toHaveLength(1); });
+    expect(await screen.findByTestId("saved-clock")).toHaveTextContent(/Draft saved \d\d:\d\d:\d\d/);
+  });
+
+  it("V8: each medicine carries its stock as a small tag; at zero the copilot offers the same salt, and Use swaps and records it", async () => {
+    mockRoutes(routes({
+      "GET /api/formulary/medicines/search": { status: 200, body: V2_DRUGS },
+      "GET /api/pharmacy/doctor/stock": {
+        status: 200,
+        body: { items: [{ medicineId: "m-amlong", available: 0, unit: "tablet", alternatives: [{ medicineId: "m-stamlo", brandName: "Stamlo", strengthLabel: "5 mg", available: 240, unit: "tablet" }] }] },
+      },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "amlo");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-amlong"));
+
+    expect(await screen.findByTestId("rx-stock-0")).toHaveTextContent("0 in stock");
+    const card = await screen.findByTestId("stock-alt-m-amlong");
+    expect(within(card).getByText(/Stamlo 5 mg · 240 tab/)).toBeInTheDocument();
+    await user.click(within(card).getByTestId("stock-use-m-stamlo"));
+    expect(screen.getByLabelText("Drug")).toHaveValue("Stamlo 5 mg");
+    expect(screen.queryByTestId("stock-alt-m-amlong")).toBeNull();
+    await waitFor(() => {
+      expect(bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1)?.rxStockChoices).toEqual([
+        { offeredMedicineId: "m-stamlo", keptMedicineId: "m-stamlo", chosen: "swap" },
+      ]);
+    }, { timeout: 3000 });
+  });
+
+  it("V9: unknown stock (the pharmacy is not open) shows NO tag — never a zero", async () => {
+    mockRoutes(routes({
+      "GET /api/formulary/medicines/search": { status: 200, body: V2_DRUGS },
+      "GET /api/pharmacy/doctor/stock": { status: 200, body: { items: [{ medicineId: "m-telma", available: null, unit: null, alternatives: [] }] } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "telm");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-telma"));
+    await waitFor(() => { expect(callsTo("GET", "/api/pharmacy/doctor/stock").length).toBeGreaterThan(0); });
+    expect(screen.queryByTestId("rx-stock-0")).toBeNull();
+    expect(screen.queryByTestId("stock-alt-m-telma")).toBeNull();
   });
 });

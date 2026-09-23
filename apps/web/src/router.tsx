@@ -1091,6 +1091,13 @@ const opdConsultRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/consult",
   component: OpdConsult,
+  /*
+    CONSULT V2 (owner, 2026-09-23) — the consult draws three full-height columns of its own, the left
+    one carrying the hospital's mark and the way home, like a chat app's sidebar. The shell's header
+    would sit above them and split the columns, so the route owns the viewport as Desk One does.
+    F8 (the palette) and every global chord still work: the providers are not conditional.
+  */
+  staticData: { fullViewport: true },
 });
 
 /**

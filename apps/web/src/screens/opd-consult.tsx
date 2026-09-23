@@ -26,6 +26,12 @@ import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { useCopilot } from "../lib/use-copilot";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
+import {
+  ConsultSidebar, CopilotPanel, ExamSection, NotesSection, PatientBrief, SavedClock, StockAlternativeCard, StockTag,
+  SummaryView, TreatmentSection, WorkStrip, useDoctorStock, useSessionToggle,
+} from "./opd-consult-v2";
+import type { WorkRow } from "./opd-consult-v2";
+import type { WireExamFinding } from "../lib/opd-api";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { DrugField } from "../components/drug-field";
@@ -212,6 +218,27 @@ type NoteState = { chiefComplaint: string; diagnosis: string; icd10Code: string;
 const EMPTY_NOTE: NoteState = { chiefComplaint: "", diagnosis: "", icd10Code: "", advice: "" };
 
 /**
+ * CONSULT V2 (owner, 2026-09-23) — the sections the screen was missing, saved through the SAME note route.
+ * They join the body only once the visit has any of them (loaded, or touched by the doctor): a visit that
+ * never uses them sends exactly the body it always sent.
+ */
+type StockChoice = { offeredMedicineId: string; keptMedicineId: string; chosen: "swap" | "keep" };
+type V2State = {
+  examination: WireExamFinding[]; treatment: string[]; doctorNote: string; internalComment: string;
+  diagnosisKind: "provisional" | "final" | null; rxStockChoices: StockChoice[];
+};
+const EMPTY_V2: V2State = { examination: [], treatment: [], doctorNote: "", internalComment: "", diagnosisKind: null, rxStockChoices: [] };
+function v2BodyOf(v: V2State, on: boolean): Record<string, unknown> {
+  if (!on) return {};
+  return {
+    examination: v.examination, treatment: v.treatment,
+    doctorNote: orNull(v.doctorNote), internalComment: orNull(v.internalComment),
+    diagnosisKind: v.diagnosisKind, rxStockChoices: v.rxStockChoices,
+  };
+}
+type TabId = "summary" | "note" | "exam" | "rx" | "treat" | "notes" | "history";
+
+/**
  * ═══ THE DIAGNOSIS GOES UP AS A LIST, AND THE CODES RIDE WITH THEIR OWN WORDS ═══
  *
  * `TagField` hands back one joined string, which is all a complaint ever needs. A diagnosis needs
@@ -249,7 +276,7 @@ export function OpdConsult(): React.ReactElement {
   const today = todayIst();
 
   const [active, setActive] = useState<Active | null>(null);
-  const [tab, setTab] = useState<"note" | "rx" | "history">("note");
+  const [tab, setTab] = useState<TabId>("note");
   /*
     ═══ THE CO-PILOT (owner, 2026-09-14) ═══
     *"when doctor starts to write chief complaints, he don't need to type much, just tap and select"*
@@ -310,6 +337,20 @@ export function OpdConsult(): React.ReactElement {
   */
   const icdByTerm = useRef(new Map<string, string>());
   const [noteSaved, setNoteSaved] = useState(false);
+  const [v2, setV2] = useState<V2State>(EMPTY_V2);
+  /** True once this visit has any v2 section — loaded from the server or touched here. */
+  const v2On = useRef(false);
+  const editV2 = (patch: Partial<V2State>): void => { v2On.current = true; setV2((cur) => ({ ...cur, ...patch })); };
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [savedAsDraft, setSavedAsDraft] = useState(false);
+  const [leftOnBrief, setLeftOnBrief] = useSessionToggle("hmis.consult.left.brief", true);
+  const [leftOnConsult, setLeftOnConsult] = useSessionToggle("hmis.consult.left.consult", false);
+  const [rightOpen, setRightOpen] = useSessionToggle("hmis.consult.right", true);
+  const rightOpenRef = useRef(rightOpen);
+  useEffect(() => { rightOpenRef.current = rightOpen; }, [rightOpen]);
+  const [agentAutoFocus, setAgentAutoFocus] = useState(false);
+  /** Zero-stock lines the doctor has already answered (Use or Keep), keyed by the medicine written. */
+  const [stockAnswered, setStockAnswered] = useState<Record<string, true>>({});
   const [noteError, setNoteError] = useState<string | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [rxError, setRxError] = useState<string | null>(null);
@@ -638,7 +679,19 @@ export function OpdConsult(): React.ReactElement {
       if (d.icd10Code !== null) icdByTerm.current.set(d.text.toLowerCase(), d.icd10Code);
     }
     setNote(next);
-    lastSavedNote.current = JSON.stringify(noteBodyOf({ ...next, chiefComplaint: written }, icdByTerm.current));
+    const loadedV2: V2State = {
+      examination: encounter.examination ?? [], treatment: encounter.treatment ?? [],
+      doctorNote: encounter.doctorNote ?? "", internalComment: encounter.internalComment ?? "",
+      diagnosisKind: encounter.diagnosisKind ?? null,
+      rxStockChoices: Array.isArray(encounter.rxStockChoices)
+        ? (encounter.rxStockChoices as StockChoice[]).map((c) => ({ offeredMedicineId: c.offeredMedicineId, keptMedicineId: c.keptMedicineId, chosen: c.chosen }))
+        : [],
+    };
+    v2On.current = loadedV2.examination.length > 0 || loadedV2.treatment.length > 0 || loadedV2.doctorNote !== ""
+      || loadedV2.internalComment !== "" || loadedV2.diagnosisKind !== null || loadedV2.rxStockChoices.length > 0;
+    setV2(loadedV2);
+    setStockAnswered(Object.fromEntries(loadedV2.rxStockChoices.map((c) => [c.chosen === "keep" ? c.keptMedicineId : c.offeredMedicineId, true as const])));
+    lastSavedNote.current = JSON.stringify({ ...noteBodyOf({ ...next, chiefComplaint: written }, icdByTerm.current), ...v2BodyOf(loadedV2, v2On.current) });
   }, [encounter, visit.data]);
 
   const rxForm = useForm<RxFormInput, unknown, RxFormValues>({
@@ -665,6 +718,78 @@ export function OpdConsult(): React.ReactElement {
   }, [lines.fields]);
   /* The label follows what Complete will do: "Issue & complete" while written rows are un-issued. */
   const rxWaiting = (() => { const k = rowsKey(rxForm.watch("lines")); return k !== "" && k !== issuedRowsKey; })();
+
+  // ——— CONSULT V2: stock beside each medicine, and the alternative at zero (D13, D14) ———
+  const watchedLines = rxForm.watch("lines");
+  const stockByMedicine = useDoctorStock(watchedLines.map((l) => l.medicineId ?? ""));
+  const stockAlerts = watchedLines.flatMap((l, index) => {
+    const id = l.medicineId ?? "";
+    const st = id === "" ? undefined : stockByMedicine.get(id);
+    return st !== undefined && st.available === 0 && stockAnswered[id] !== true ? [{ index, drug: l.drug, stock: st }] : [];
+  });
+  const recordChoice = (c: StockChoice): void => {
+    const rest = v2.rxStockChoices.filter((x) => !(x.offeredMedicineId === c.offeredMedicineId && x.keptMedicineId === c.keptMedicineId));
+    editV2({ rxStockChoices: [...rest, c] });
+  };
+  const pickAlternative = (index: number, writtenId: string, altId: string, label: string): void => {
+    rxForm.setValue(`lines.${index}.medicineId`, altId, { shouldDirty: true });
+    rxForm.setValue(`lines.${index}.drug`, label, { shouldDirty: true });
+    setStockAnswered((a) => ({ ...a, [writtenId]: true }));
+    recordChoice({ offeredMedicineId: altId, keptMedicineId: altId, chosen: "swap" });
+  };
+  const keepWritten = (st: { medicineId: string; alternatives: { medicineId: string }[] }): void => {
+    setStockAnswered((a) => ({ ...a, [st.medicineId]: true }));
+    const offered = st.alternatives[0]?.medicineId;
+    if (offered !== undefined) recordChoice({ offeredMedicineId: offered, keptMedicineId: st.medicineId, chosen: "keep" });
+  };
+
+  // ——— CONSULT V2: "your work so far" — one line per section, visible on every tab ———
+  const splitList = (x: string): string[] => splitTags(x);
+  const workRows: WorkRow[] = [
+    { id: "complaints", label: t("opdConsultV2.sec.complaints"), text: splitList(note.chiefComplaint).join(" · "), count: splitList(note.chiefComplaint).length },
+    { id: "exam", label: t("opdConsultV2.sec.exam"), text: v2.examination.map((f) => f.text).join(" · "), count: v2.examination.length },
+    {
+      id: "dx", label: t("opdConsultV2.sec.dx"),
+      text: splitList(note.diagnosis).length === 0 ? "" : `${v2.diagnosisKind === null ? "" : `${t(`opdConsultV2.kind.${v2.diagnosisKind}`)}: `}${splitList(note.diagnosis).join(" · ")}`,
+      count: splitList(note.diagnosis).length,
+    },
+    { id: "inv", label: t("opdConsultV2.sec.inv"), text: advisedTests.map((x) => x.name).join(" · "), count: advisedTests.length },
+    { id: "rx", label: t("opdConsultV2.sec.rx"), text: watchedLines.filter((l) => l.drug.trim() !== "").map((l) => `${l.drug.trim()} ${l.frequency}`).join(" · "), count: watchedLines.filter((l) => l.drug.trim() !== "").length },
+    { id: "treat", label: t("opdConsultV2.sec.treat"), text: v2.treatment.join(" · "), count: v2.treatment.length },
+    { id: "advice", label: t("opdConsultV2.sec.advice"), text: note.advice.trim(), count: note.advice.trim() === "" ? 0 : 1 },
+    {
+      id: "notes", label: t("opdConsultV2.sec.notes"),
+      text: [v2.doctorNote.trim(), v2.internalComment.trim()].filter((x) => x !== "").join(" · "),
+      count: [v2.doctorNote, v2.internalComment].filter((x) => x.trim() !== "").length,
+    },
+  ];
+  const goToSection = (id: string): void => {
+    const tabFor: Record<string, TabId> = { complaints: "note", dx: "note", advice: "note", inv: "note", exam: "exam", rx: "rx", treat: "treat", notes: "notes" };
+    setTab(tabFor[id] ?? "note");
+    const anchorFor: Record<string, string> = { complaints: "note-chief", dx: "note-diagnosis", advice: "note-advice" };
+    setTimeout(() => {
+      const el = id === "inv" ? document.querySelector('[data-testid="advised-tests"]') : anchorFor[id] !== undefined ? document.getElementById(anchorFor[id]!) : null;
+      if (el instanceof HTMLElement && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 0);
+  };
+  const tabHas = (id: TabId): boolean => {
+    const map: Partial<Record<TabId, string[]>> = { note: ["complaints", "dx", "advice"], exam: ["exam"], rx: ["rx"], treat: ["treat"], notes: ["notes"] };
+    const ids = map[id] ?? [];
+    return workRows.some((r) => ids.includes(r.id) && r.count > 0);
+  };
+
+  /* F2 opens a minimised copilot and lands in its ask box; an open one is the dock's own F2. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "F2" || rightOpenRef.current) return;
+      e.preventDefault();
+      setAgentAutoFocus(true);
+      setRightOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the setter is stable for the screen's life
+  }, []);
 
   /*
     ═══ FD-30 — THE DOOR'S SLIP, AND THE TAP THAT ISSUES IT (OWNER RULING 2026-09-12) ═══
@@ -794,6 +919,11 @@ export function OpdConsult(): React.ReactElement {
     lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map()));
     setNote(EMPTY_NOTE);
     setNoteSaved(false);
+    v2On.current = false;
+    setV2(EMPTY_V2);
+    setSavedAt(null);
+    setSavedAsDraft(false);
+    setStockAnswered({});
     setNoteError(null);
     setRxError(null);
     setCompleteError(null);
@@ -1201,26 +1331,41 @@ export function OpdConsult(): React.ReactElement {
     if (active === null) return;
     setNoteError(null);
     try {
-      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current), advisedTests: next });
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current), ...v2BodyOf(v2, v2On.current), advisedTests: next });
+      setSavedAt(new Date());
     } catch (e) {
       setNoteError(opdErrorMessage(e));
     }
   };
 
-  const saveNote = async (): Promise<void> => {
+  const saveNote = async (opts?: { force?: boolean; v2?: V2State }): Promise<void> => {
     if (active === null) return;
-    const body = noteBodyOf(note, icdByTerm.current);
+    const body = { ...noteBodyOf(note, icdByTerm.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current) };
     const key = JSON.stringify(body);
-    if (key === lastSavedNote.current) return;
+    if (key === lastSavedNote.current && opts?.force !== true) return;
     setNoteError(null);
     try {
       await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, body);
       lastSavedNote.current = key;
       setNoteSaved(true);
+      setSavedAt(new Date());
+      setSavedAsDraft(opts?.force === true);
     } catch (e) {
       setNoteError(opdErrorMessage(e));
     }
   };
+
+  /*
+    CONSULT V2 — a chip or a toggle is not a blur, so the v2 sections autosave on their own short
+    debounce through the same `saveNote` (which sends nothing when nothing changed). The note fields
+    keep their blur contract untouched.
+  */
+  useEffect(() => {
+    if (!v2On.current || active === null) return;
+    const id = setTimeout(() => { void saveNote({ v2 }); }, 900);
+    return () => { clearTimeout(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- saving is keyed on the v2 sections only
+  }, [v2]);
 
   // ——— the e-Rx ———
 
@@ -1492,6 +1637,7 @@ export function OpdConsult(): React.ReactElement {
     const body: Record<string, unknown> = {
       note: {
         ...noteBodyOf(note, icdByTerm.current),
+        ...v2BodyOf(v2, v2On.current),
         admissionAdvised,
         referralTo: orNull(referralTo),
         referralNote: orNull(referralNote),
@@ -1829,33 +1975,21 @@ export function OpdConsult(): React.ReactElement {
   };
 
   return (
-    <PaperScreen testId="opd-consult" style={{ padding: "16px 20px 0", gap: 13 }}>
-      <ScreenTitle
-        title={t("opdConsult.title")} route="/opd/consult" subtitle={me.data?.displayName ?? undefined}
-        actions={
-          /*
-            THE KEYCAP LEGEND IS THE ARTBOARD'S OWN RULE MADE VISIBLE: "every keycap ON the screen
-            shows what is actually bound." Three caps, three bindings, all in the effect below —
-            F4 and F7 are deliberately absent because `lib/keyboard.tsx` owns them globally and a
-            keycap for them here would navigate a doctor away mid-consultation.
-          */
-          <span style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, color: "var(--faint)" }}>
-            <span><span className="kb">Ctrl</span><span className="kb">⏎</span> {t("opdConsult.keys.complete")}</span>
-            <span><span className="kb">F2</span> {t("opdConsult.keys.agent")}</span>
-            <span><span className="kb">Esc</span> {t("opdConsult.keys.back")}</span>
-          </span>
-        }
-      />
-
+    <PaperScreen testId="opd-consult" style={{ padding: 0, gap: 0, flexDirection: "row" }}>
       {/*
-        THE RAIL IS 296px AND DOES NOT GROW. A doctor reads the queue with their peripheral vision
-        while looking at a patient; a column that reflows with the window is a column they have to
-        re-find. Below 1100px the two stack, because a `.pp` screen inherits no narrow story from
-        `.d1` and a lobby terminal at 1024 would otherwise get a 300px-wide note field.
+        ═══ CONSULT V2 — THREE FULL-HEIGHT COLUMNS (owner, 2026-09-23) ═══
+        The line on the left (the hospital's mark at its top, like a chat app's sidebar), the work in
+        the centre, the copilot on the right. Both side columns fold to a 52 px strip; the left is open
+        on the brief and folded in the consultation by default, and each remembers the doctor's choice
+        for the browser session. The route is `fullViewport`, so the app's own header does not sit
+        above this screen: the sidebar's mark is the way home.
       */}
-      <div style={{ flexGrow: 1, minHeight: 0, display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
-        {/* (a) the live queue and the session controls */}
-        <aside className="box" style={{ width: 296, flexGrow: 1, maxWidth: "100%", flexBasis: 296, padding: 13, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto" }}>
+      <ConsultSidebar
+        open={active === null ? leftOnBrief : leftOnConsult}
+        onToggle={active === null ? setLeftOnBrief : setLeftOnConsult}
+        waiting={ordered.length}
+        sessionStatus={view?.session.status ?? null}
+      >
           <div>
             <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="session-status">{t("opdConsult.sessionStatus")}</label>
             <select
@@ -1876,7 +2010,10 @@ export function OpdConsult(): React.ReactElement {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             <button type="button" className="pri" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void callNext()}>{t("opdConsult.callNext")}</button>
             <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => { skipCurrent(); }}>{t("opdConsult.skip")}</button>
-            <button type="button" className="sec grn" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void startConsult()}>{t("opdConsult.start")}</button>
+            {/* Start consultation lives under the brief (owner, 2026-09-23); here only while another patient's panel is open. */}
+            {active !== null && current !== null && current.encounterId !== active.encounterId && (
+              <button type="button" className="sec grn" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => void startConsult()}>{t("opdConsult.start")}</button>
+            )}
             {/*
               PARK sits with the other three because it answers the same question they do — what
               happens to the chair next — and because the alternative the owner was left with was
@@ -1984,11 +2121,43 @@ export function OpdConsult(): React.ReactElement {
               </ul>
             </>
           )}
-        </aside>
+      </ConsultSidebar>
+
+      <div data-testid="consult-centre" style={{ flexGrow: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", gap: 12, padding: "14px 20px 0" }}>
+      <ScreenTitle
+        title={t("opdConsult.title")} route="/opd/consult" subtitle={me.data?.displayName ?? undefined}
+        actions={
+          /*
+            THE KEYCAP LEGEND IS THE ARTBOARD'S OWN RULE MADE VISIBLE: "every keycap ON the screen
+            shows what is actually bound." Three caps, three bindings, all in the effect below —
+            F4 and F7 are deliberately absent because `lib/keyboard.tsx` owns them globally and a
+            keycap for them here would navigate a doctor away mid-consultation.
+          */
+          <span style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, color: "var(--faint)" }}>
+            <span><span className="kb">Ctrl</span><span className="kb">⏎</span> {t("opdConsult.keys.complete")}</span>
+            <span><span className="kb">F2</span> {t("opdConsult.keys.agent")}</span>
+            <span><span className="kb">Esc</span> {t("opdConsult.keys.back")}</span>
+          </span>
+        }
+      />
+        {active !== null && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginTop: -6 }}>
+            <SavedClock at={savedAt} draft={savedAsDraft} />
+            <button type="button" className="sec" data-testid="save-draft" style={{ padding: "3px 12px", fontSize: 12 }} onClick={() => void saveNote({ force: true })}>
+              {t("opdConsultV2.saveDraft")}
+            </button>
+          </div>
+        )}
 
         {/* (b) the patient panel */}
         <main style={{ flexGrow: 999, flexBasis: 520, minWidth: 0, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto", paddingBottom: 14 }}>
-          {active === null && (
+          {active === null && current !== null && (
+            <PatientBrief
+              encounterId={current.encounter.id} patientId={current.encounter.patientId}
+              patientName={patientLabel(current.patient)} onStart={() => void startConsult()}
+            />
+          )}
+          {active === null && current === null && (
             <div className="box" style={{ padding: "26px 22px", textAlign: "center" }}>
               <p style={{ margin: "0 0 5px", fontSize: 16, fontWeight: 700 }}>{t("opdConsult.noPatientTitle")}</p>
               <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.noPatientBody")}</p>
@@ -2278,13 +2447,47 @@ export function OpdConsult(): React.ReactElement {
                 </div>
               </header>
 
+              <WorkStrip rows={workRows} onGo={goToSection} />
+
               <div className="box" style={{ padding: "13px 15px", display: "flex", flexDirection: "column", gap: 12 }}>
                 <TabStrip
                   label={t("opdConsult.tabs.note")}
                   value={tab}
                   onChange={setTab}
-                  options={[["note", t("opdConsult.tabs.note")], ["rx", t("opdConsult.tabs.rx")], ["history", t("opdConsult.tabs.history")]] as const}
+                  options={[
+                    ["summary", t("opdConsultV2.tabs.summary")],
+                    ["note", t("opdConsult.tabs.note")],
+                    ["exam", t("opdConsultV2.tabs.exam")],
+                    ["rx", t("opdConsult.tabs.rx")],
+                    ["treat", t("opdConsultV2.tabs.treat")],
+                    ["notes", t("opdConsultV2.tabs.notes")],
+                    ["history", t("opdConsult.tabs.history")],
+                  ] as const}
+                  marked={{ note: tabHas("note"), exam: tabHas("exam"), rx: tabHas("rx"), treat: tabHas("treat"), notes: tabHas("notes") }}
                 />
+
+                {tab === "summary" && (
+                  <div role="tabpanel" id="tabpanel-summary" aria-labelledby="tab-summary"><SummaryView rows={workRows} onGo={goToSection} /></div>
+                )}
+                {tab === "exam" && (
+                  <div role="tabpanel" id="tabpanel-exam" aria-labelledby="tab-exam">
+                    <ExamSection value={v2.examination} onChange={(next) => { editV2({ examination: next }); }} />
+                  </div>
+                )}
+                {tab === "treat" && (
+                  <div role="tabpanel" id="tabpanel-treat" aria-labelledby="tab-treat">
+                    <TreatmentSection value={v2.treatment} onChange={(next) => { editV2({ treatment: next }); }} />
+                  </div>
+                )}
+                {tab === "notes" && active !== null && (
+                  <div role="tabpanel" id="tabpanel-notes" aria-labelledby="tab-notes">
+                    <NotesSection
+                      patientId={active.patientId} doctorNote={v2.doctorNote} internalComment={v2.internalComment}
+                      onDoctorNote={(v) => { editV2({ doctorNote: v }); }} onInternalComment={(v) => { editV2({ internalComment: v }); }}
+                      onBlur={() => void saveNote()}
+                    />
+                  </div>
+                )}
 
                 {/* the note autosaves on blur — focusout bubbles, so one handler covers every field */}
                 {tab === "note" && (
@@ -2459,6 +2662,16 @@ export function OpdConsult(): React.ReactElement {
                       placeholder={t("opdConsult.diagnosisPlaceholder")}
                       hint={t("opdConsult.diagnosisHint")}
                     />
+                    <div role="group" aria-label={t("opdConsultV2.kind.label")} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <span className="tag">{t("opdConsultV2.kind.label")}</span>
+                      {(["provisional", "final"] as const).map((k) => (
+                        <button key={k} type="button" data-testid={`dx-kind-${k}`} aria-pressed={v2.diagnosisKind === k}
+                          className={v2.diagnosisKind === k ? "pri" : "sec"} style={{ padding: "2px 10px", fontSize: 12 }}
+                          onClick={() => { editV2({ diagnosisKind: v2.diagnosisKind === k ? null : k }); }}>
+                          {t(`opdConsultV2.kind.${k}`)}
+                        </button>
+                      ))}
+                    </div>
                     <div>
                       {/*
                         THE CODE FIELD STAYS, AND IS NOW A READING RATHER THAN A SECOND PLACE TO TYPE.
@@ -2742,7 +2955,8 @@ export function OpdConsult(): React.ReactElement {
                           how often, food timing, days and the note (see components/sig-panel.tsx
                           for why the Frequency select and the Days and Instructions boxes went).
                         */}
-                        <div data-testid={`rx-row-${String(i)}`} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9, padding: "11px 0 9px", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
+                        <div data-testid={`rx-row-${String(i)}`} style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9, padding: "11px 0 9px", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
+                          <StockTag stock={stockByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-stock-${String(i)}`} />
                           <div style={{ flex: "2 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
                             {/*
                               THE DRUG FIELD IS NOW A COMBOBOX over the CLINICAL DRUG tier —
@@ -3517,13 +3731,28 @@ export function OpdConsult(): React.ReactElement {
         where it came from and why "I cannot answer that from this screen" is a first-class reply
         rather than a failure.
       */}
-      <AgentDock
-        answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
-        panel={copilot.report === null ? undefined : (
-          <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+      <CopilotPanel
+        open={rightOpen} onToggle={(next) => { setAgentAutoFocus(false); setRightOpen(next); }}
+        alert={stockAlerts.length > 0}
+        dock={(
+          <AgentDock
+            variant="panel" autoFocus={agentAutoFocus}
+            answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
+            panel={copilot.report === null ? undefined : (
+              <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+            )}
+            placeholder={t("opdConsult.askPlaceholder")} idle={t("opdConsult.agentIdle")}
+          />
         )}
-        placeholder={t("opdConsult.askPlaceholder")} idle={t("opdConsult.agentIdle")}
-      />
+      >
+        {stockAlerts.length === 0 ? undefined : stockAlerts.map((a) => (
+          <StockAlternativeCard
+            key={`${String(a.index)}-${a.stock.medicineId}`} drug={a.drug} stock={a.stock}
+            onUse={(medicineId, label) => { pickAlternative(a.index, a.stock.medicineId, medicineId, label); }}
+            onKeep={() => { keepWritten(a.stock); }}
+          />
+        ))}
+      </CopilotPanel>
     </PaperScreen>
   );
 }
