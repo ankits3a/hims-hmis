@@ -9,7 +9,9 @@ import { findStoreByCode, listItems } from "../materials";
 import { findVisitByToken, getPrescription, getVisit, listVisits, verifyPrescriptionQr } from "../opd";
 import { getPatientSummaries, searchPatients, verifyQrScan } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
-import { dispenseClaimed } from "./events";
+import { dispenseClaimed, lineMatched } from "./events";
+import { MATCH_ACTOR, chooseMatch, matchesFor, shelfIndex, targetOf } from "./auto-match";
+import type { Matched } from "./auto-match";
 import { PharmacyError } from "./errors";
 import { enqueueDispense, getDispense, getDispenseRow, liveDispenseFor, userNames } from "./queue";
 import { prefillQtyBase } from "./qty";
@@ -198,10 +200,28 @@ export async function claimDispense(
     return {
       id: newId(), dispenseId: d.id, lineIdx, rxLine: line,
       orderedMedicineId: ordered, dispensedMedicineId,
-      substitutionType: ordered === null && viaText !== null ? "resolved" : "none",
-      itemId: item?.id ?? null, qtyBase: prefillQtyBase(line), scheduleFlag, status: "open" as const,
+      substitutionType: (ordered === null && viaText !== null ? "resolved" : "none") as "resolved" | "none",
+      itemId: (item?.id ?? null) as string | null, qtyBase: prefillQtyBase(line), scheduleFlag: scheduleFlag as string | null, status: "open" as const,
     };
   });
+  /*
+    2026-09-23 — a line the doctor named no brand on (free words, or a formulary generic) is filled
+    with the stocked brand of exactly its composition (`auto-match.ts`), before the line is written,
+    so the pharmacist opens a ticket that already has its item, batch and price.
+  */
+  const unplaced = laid.filter((l) => l.itemId === null);
+  const matched = new Map<number, Matched>();
+  if (unplaced.length > 0) {
+    const ix = await shelfIndex(db);
+    for (const l of unplaced) {
+      const target = targetOf(l.rxLine, l.orderedMedicineId === null ? undefined : medicines.get(l.orderedMedicineId), l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId));
+      if (target === null) continue;
+      const m = await chooseMatch(db, store.id, matchesFor(ix, target), now);
+      if (m === null) continue;
+      matched.set(l.lineIdx, m);
+      Object.assign(l, { dispensedMedicineId: m.medicineId, itemId: m.itemId, substitutionType: "resolved", scheduleFlag: m.scheduleFlag ?? l.scheduleFlag });
+    }
+  }
   const scheduled = laid.some((l) => l.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(l.scheduleFlag));
 
   await withTx(db, async (tx) => {
@@ -214,6 +234,17 @@ export async function claimDispense(
     const { instanceId } = await startInstance(tx, PHARMACY_DISPENSE_DEF_KEY, { type: "pharmacy_dispense", id: d.id, patientId: d.patientId, encounterId: d.encounterId });
     await transition(tx, instanceId, "claimed", actor);
     await tx.update(pharmacyDispenses).set({ workflowInstanceId: instanceId }).where(eq(pharmacyDispenses.id, d.id));
+    for (const l of laid) {
+      const m = matched.get(l.lineIdx);
+      if (m === undefined) continue;
+      await appendEvent(tx, lineMatched.make({
+        occurredAt: now, actor: MATCH_ACTOR, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
+        payload: {
+          dispenseId: d.id, lineIdx: l.lineIdx, patientId: d.patientId, orderedMedicineId: l.orderedMedicineId,
+          dispensedMedicineId: m.medicineId, itemId: m.itemId, rule: "salt", candidates: m.candidates, onClaimOf: actor.id,
+        },
+      }));
+    }
     await appendEvent(tx, dispenseClaimed.make({
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: { dispenseId: d.id, patientId: d.patientId, encounterId: d.encounterId, prescriptionId: d.prescriptionId, lineCount: laid.length, door: input.door },

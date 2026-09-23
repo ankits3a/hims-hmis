@@ -136,6 +136,20 @@ export function holdOf(row: Pick<WireQueueRow, "status" | "claimedBy" | "claimed
   return { kind: "theirs", name: row.claimedByName ?? "another pharmacist" };
 }
 
+/**
+ * A DRAFT is a ticket this pharmacist took and has not finished: claimed, checked or collected, and
+ * still theirs. "Save draft" leaves it exactly so — the claim is the draft — and the line puts it
+ * FIRST, marked "your draft · resume", so the pharmacist finds it where they left it.
+ */
+const DRAFT_STATES = new Set(["claimed", "verified", "picked"]);
+export function isMyDraft(row: Pick<WireQueueRow, "status" | "claimedBy">, me: string | null): boolean {
+  return me !== null && row.claimedBy === me && DRAFT_STATES.has(row.status);
+}
+/** The line with this pharmacist's drafts first; every other ticket keeps the server's order (oldest first). */
+export function draftsFirst<R extends Pick<WireQueueRow, "status" | "claimedBy">>(rows: readonly R[], me: string | null): R[] {
+  return [...rows.filter((r) => isMyDraft(r, me)), ...rows.filter((r) => !isMyDraft(r, me))];
+}
+
 /** `restricted` patients cannot be claimed by a reader without the grant (PD-1, E3); the row says so first. */
 export function sealedFor(row: Pick<WireQueueRow, "patient">): boolean {
   return row.patient.restricted;

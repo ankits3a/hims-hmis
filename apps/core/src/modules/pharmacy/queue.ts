@@ -3,7 +3,7 @@ import type { SQL } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
-import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
+import { events, opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
 import { medicinesByIds, saltsByIds, unreviewedSaltIds } from "../formulary";
@@ -284,6 +284,12 @@ export type DispenseLineView = {
   /** PD-4 — once picked, the batch the line was GIVEN from, which the desk prints beside it. */
   pickedBatch: { batchNo: string; expiryDate: string | null } | null;
   /**
+   * 2026-09-23 — "salt" when the counter filled a line the doctor named no brand on with the stocked
+   * brand of exactly its composition (`auto-match.ts`, `dispense.line_matched`). The desk shows a quiet
+   * "matched by salt"; the line is otherwise an ordinary placed line.
+   */
+  matchedBy: "salt" | null;
+  /**
    * The desk board's doctor column: what the medicine the doctor wrote is made of ("Amoxicillin +
    * Clavulanic acid"), else the one dispensed, else null. Display only.
    */
@@ -424,6 +430,13 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       if (q !== null) quotes.set(itemId, q);
     }
   }
+  /* Which lines the shelf matched by composition — the rule's own record, one indexed read. */
+  const matchedRows = await db.select({ payload: events.payload }).from(events)
+    .where(and(eq(events.correlationId, d.id), eq(events.name, "dispense.line_matched")));
+  const matchedAt = new Map(matchedRows.map((r) => {
+    const p = r.payload as { lineIdx: number; dispensedMedicineId: string };
+    return [p.lineIdx, p.dispensedMedicineId] as const;
+  }));
   const views: DispenseLineView[] = [];
   for (const l of lines) {
     const om = l.orderedMedicineId === null ? undefined : medicines.get(l.orderedMedicineId);
@@ -462,6 +475,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       fefoOverride: l.fefoOverride, pickNote: l.pickNote,
       partlyChecked: (dm ?? om)?.salts.some((s) => unreviewed.has(s.saltId)) ?? false,
       salt: saltOf(om) ?? saltOf(dm),
+      matchedBy: l.dispensedMedicineId !== null && matchedAt.get(l.lineIdx) === l.dispensedMedicineId ? "salt" : null,
       batches: l.status === "open" && l.itemId !== null && l.batchId === null ? (batchesByItem.get(l.itemId) ?? []) : [],
       pickedBatch: picked === undefined ? null : { batchNo: picked.batchNo, expiryDate: picked.expiryDate },
       authorisations: asked.filter((a) => a.lineIdx === l.lineIdx).map((a) => ({

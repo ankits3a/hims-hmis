@@ -62,6 +62,16 @@ export const lineResolved = defineEvent("dispense.line_resolved", MODULE, z.obje
 }));
 
 /**
+ * 2026-09-23 — a line the doctor named no brand on (free words, or a formulary generic) was filled with
+ * the stocked brand of exactly its composition (`auto-match.ts`). The actor is the rule; `onClaimOf` is
+ * the pharmacist whose claim (or re-opening) ran it. `candidates` is how many shelf medicines matched.
+ */
+export const lineMatched = defineEvent("dispense.line_matched", MODULE, z.object({
+  dispenseId: id, lineIdx: z.number().int().nonnegative(), patientId: id, orderedMedicineId: id.nullable(),
+  dispensedMedicineId: id, itemId: id, rule: z.literal("salt"), candidates: z.number().int().positive(), onClaimOf: id,
+}));
+
+/**
  * PD-D18 — where an item sits in a counter's store was set, replaced or (`location: null`) cleared.
  * Master data a pharmacist walks by, so a change to it is on the record with who made it.
  */
@@ -186,7 +196,7 @@ export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODU
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
-  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, shelfLocationSet,
+  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
   authorisationRequested, authorisationDecided,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,

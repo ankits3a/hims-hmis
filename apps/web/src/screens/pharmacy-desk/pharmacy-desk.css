@@ -23,3 +23,6 @@
 .d1 .choose { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 13px; border-radius: 6px;
   border: 1px solid var(--gold); color: var(--gold-ink, #9a6208); font-size: 12.5px; font-weight: 600; }
 .d1 .choose:disabled { opacity: .5; cursor: not-allowed; }
+/* Save draft's confirmation — a quiet green line at the top of the desk, where the ticket just was. */
+.d1 .draft-saved { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; padding: 11px 14px; border-radius: 7px;
+  border: 1px solid var(--green-line, #b9dccb); background: var(--green-soft); color: var(--green); font-size: 13px; line-height: 19px; font-weight: 500; }
