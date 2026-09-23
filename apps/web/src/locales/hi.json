@@ -892,6 +892,7 @@
       "history": "इतिहास"
     },
     "chiefComplaint": "मुख्य शिकायत",
+    "deskComplaint": "फ्रंट डेस्क पर: \"{{text}}\" — {{by}} ने {{at}} बजे लिखा",
     "diagnosis": "निदान",
     "icd10Code": "ICD-10 कोड",
     "advice": "सलाह",

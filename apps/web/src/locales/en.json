@@ -892,6 +892,7 @@
       "history": "History"
     },
     "chiefComplaint": "Chief complaint",
+    "deskComplaint": "At the front desk: \"{{text}}\" — typed by {{by}} at {{at}}",
     "diagnosis": "Diagnosis",
     "icd10Code": "ICD-10 code",
     "advice": "Advice",

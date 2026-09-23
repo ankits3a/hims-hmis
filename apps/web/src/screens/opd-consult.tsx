@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
 import { UnpaidMark } from "../components/unpaid-mark";
+import { VisitTypeBadge } from "../components/visit-type-badge";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
@@ -30,7 +31,7 @@ import { DeskModal } from "../components/desk-modal";
 import { DrugField } from "../components/drug-field";
 import { SigPanel } from "../components/sig-panel";
 import type { SigPatch } from "../components/sig-panel";
-import { TagField, splitTags } from "../components/tag-field";
+import { TagField, joinTags, splitTags } from "../components/tag-field";
 import { useSnippets } from "../lib/use-snippets";
 import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
 import type { SnippetContext } from "../lib/snippets";
@@ -72,6 +73,8 @@ type VisitDetail = {
   /* FD-32 — the owner's warning, from the same derivation the vitals bay uses. */
   feeUnpaid?: boolean;
   feeBypass?: { by: string; reason: string; at: string } | null;
+  /** The patient's own words from the front desk, who typed them and when (2026-09-23, D15). */
+  deskComplaint?: { text: string; by: string; at: string } | null;
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
@@ -602,8 +605,25 @@ export function OpdConsult(): React.ReactElement {
   useEffect(() => {
     if (encounter === null || loadedNoteFor.current === encounter.id) return;
     loadedNoteFor.current = encounter.id;
+    /*
+      ═══ THE DESK'S WORDS SEED AN EMPTY COMPLAINT, AND NEVER A WRITTEN ONE (2026-09-23) ═══
+
+      The patient told the front desk why they came; the doctor should not have to ask again. So an
+      EMPTY complaint starts as the desk's words, split on the commas the clerk typed into tags the
+      doctor can keep or remove. A complaint the doctor has already written wins outright — a
+      reopened note must read as the doctor left it.
+
+      `lastSavedNote` is taken from the UNSEEDED note on purpose: the seed is not yet the doctor's
+      entry, so the first save the doctor causes (any blur, or Complete) is what makes it one. The
+      desk's own record stays in `desk_complaint`, untouched, whatever the doctor does here.
+    */
+    const desk = visit.data?.deskComplaint ?? null;
+    const written = encounter.chiefComplaint ?? "";
+    const seeded = written.trim() === "" && desk !== null
+      ? joinTags(desk.text.split(/[,;\n]/).map((x) => x.trim()).filter((x) => x !== ""))
+      : written;
     const next: NoteState = {
-      chiefComplaint: encounter.chiefComplaint ?? "",
+      chiefComplaint: seeded,
       diagnosis: encounter.diagnosis ?? "",
       icd10Code: encounter.icd10Code ?? "",
       advice: encounter.advice ?? "",
@@ -618,7 +638,7 @@ export function OpdConsult(): React.ReactElement {
       if (d.icd10Code !== null) icdByTerm.current.set(d.text.toLowerCase(), d.icd10Code);
     }
     setNote(next);
-    lastSavedNote.current = JSON.stringify(noteBodyOf(next, icdByTerm.current));
+    lastSavedNote.current = JSON.stringify(noteBodyOf({ ...next, chiefComplaint: written }, icdByTerm.current));
   }, [encounter, visit.data]);
 
   const rxForm = useForm<RxFormInput, unknown, RxFormValues>({
@@ -1753,6 +1773,7 @@ export function OpdConsult(): React.ReactElement {
       </span>
       <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
       <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
+      <VisitTypeBadge visitType={e.encounter.visitType} size="sm" testId={`queue-visit-type-${e.id}`} />
       {e.queueClass !== null && <span className="tag">{t(`opd.queueClass.${e.queueClass}`)}</span>}
       {(e.danger || e.encounter.dangerFlagged) && (
         <span data-testid={`queue-danger-${e.id}`} aria-label={t("opdConsult.danger")} style={{ color: "var(--red)", fontWeight: 700 }}>⚠</span>
@@ -1998,7 +2019,7 @@ export function OpdConsult(): React.ReactElement {
                 )}
                 {encounter !== null && (
                   <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7, marginTop: 2 }}>
-                    <span className="pill" data-testid="panel-visit-type">{t(`opd.visitType.${encounter.visitType}`)}</span>
+                    <VisitTypeBadge visitType={encounter.visitType} testId="panel-visit-type" />
                     {encounter.dangerFlagged && (
                       <span className="pill rd" data-testid="panel-danger">{t("opdConsult.danger")}</span>
                     )}
@@ -2277,6 +2298,13 @@ export function OpdConsult(): React.ReactElement {
                     <ConsultScribe onInsert={(text) => {
                       setNote((n) => ({ ...n, chiefComplaint: n.chiefComplaint.trim() === "" ? text : `${n.chiefComplaint.trim()} ${text}` }));
                     }} />
+                    {visit.data?.deskComplaint != null && (
+                      <p data-testid="desk-complaint" style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>
+                        {t("opdConsult.deskComplaint", {
+                          text: visit.data.deskComplaint.text, by: visit.data.deskComplaint.by, at: fmtIst(visit.data.deskComplaint.at),
+                        })}
+                      </p>
+                    )}
                     <div>
                       {/*
                         THE COMPLAINT IS TAGS NOW (owner, 2026-09-14), and the stored value is still

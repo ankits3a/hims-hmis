@@ -3721,3 +3721,70 @@ describe("OpdConsult — the token waiting for its bill", () => {
     expect(screen.getByTestId("held-row-qe-held")).toBeInTheDocument();
   });
 });
+
+/**
+ * ═══ THE PATIENT'S OWN WORDS, AND WHAT KIND OF VISIT THIS IS (owner, 2026-09-23) ═══
+ *
+ * *"If the patient has given his chief complaint on the front desk, the system will carry the chief
+ * complain on the doctors desk too so that the patient doesn't have to repeat."* And: *"If the
+ * patient is revisit, new, renew then clearly mention it so that doctor could not miss it."*
+ */
+describe("OpdConsult — the desk complaint and the visit type", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  const DESK = { text: "pair mein jhunjhuni, raat ko zyada", by: "Anita Sharma", at: "2026-08-18T04:32:00.000Z" };
+
+  it("D1: the desk's words are shown with who typed them and when, and seed the complaint tags", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, deskComplaint: DESK } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const line = await screen.findByTestId("desk-complaint");
+    expect(line).toHaveTextContent("pair mein jhunjhuni, raat ko zyada");
+    expect(line).toHaveTextContent("Anita Sharma");
+    expect(line).toHaveTextContent("10:02"); // 04:32 UTC is 10:02 IST
+    // split on the comma the clerk typed: two tags the doctor can remove one at a time
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("pair mein jhunjhuni");
+    expect(screen.getByTestId("note-chief-tag-1")).toHaveTextContent("raat ko zyada");
+  });
+
+  it("D2: a note the doctor already wrote is never overwritten by the desk's words", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: {
+      ...VISIT, encounter: { ...ENCOUNTER, chiefComplaint: "numbness feet" }, deskComplaint: DESK,
+    } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await screen.findByTestId("desk-complaint");
+    expect(screen.getByTestId("note-chief-tag-0")).toHaveTextContent("numbness feet");
+    expect(screen.queryByTestId("note-chief-tag-1")).not.toBeInTheDocument();
+  });
+
+  it("D3: nothing from the desk shows nothing — no empty 'At the front desk' line", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, deskComplaint: null } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await screen.findByLabelText("Chief complaint");
+    expect(screen.queryByTestId("desk-complaint")).not.toBeInTheDocument();
+  });
+
+  it.each([["new", "New"], ["revisit", "Revisit"], ["renewal", "Renewal"]])(
+    "D4: the banner wears a %s badge a doctor cannot miss", async (visitType, label) => {
+      mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: {
+        ...VISIT, encounter: { ...ENCOUNTER, visitType },
+      } } });
+      const user = userEvent.setup();
+      await openPanel(user);
+      const badge = await screen.findByTestId("panel-visit-type");
+      expect(badge).toHaveAttribute("data-visit-type", visitType);
+      expect(badge).toHaveTextContent(label);
+    },
+  );
+
+  it("D5: every queue row says new or revisit before the patient is called", async () => {
+    mockRoutes(baseRoutes());
+    renderWithProviders(<OpdConsult />);
+    const row = await screen.findByTestId(`queue-visit-type-${String(WAIT_B.id)}`);
+    expect(row).toHaveAttribute("data-visit-type", "revisit");
+  });
+});
