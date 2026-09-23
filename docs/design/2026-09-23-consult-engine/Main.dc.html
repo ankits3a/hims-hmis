@@ -49,8 +49,7 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;">
 <button type="button" onClick="{{ callNext }}" style="height: 38px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Call next</button>
 <button type="button" onClick="{{ skip }}" style="height: 38px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Skip</button>
-<button type="button" onClick="{{ start }}" style="height: 38px; border-radius: 6px; border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08); color: #0e6b4e; font-size: 12.5px; font-weight: 600;">Start consult</button>
-<button type="button" onClick="{{ park }}" style="height: 38px; border-radius: 6px; border: 1px solid rgba(221,143,28,.45); background: rgba(221,143,28,.10); color: #8a5a10; font-size: 12.5px; font-weight: 600;">Park patient</button>
+<button type="button" onClick="{{ park }}" style="grid-column: span 2; height: 38px; border-radius: 6px; border: 1px solid rgba(221,143,28,.45); background: rgba(221,143,28,.10); color: #8a5a10; font-size: 12.5px; font-weight: 600;">Park patient</button>
 </div>
 <div style="padding: 8px 10px; border-radius: 6px; background: #132420; color: #d9efe4; font-size: 11.5px;">
 <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: .14em; color: #7fa392;">CORRIDOR DISPLAY NOW SHOWS</div>
@@ -68,11 +67,63 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 
 <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
 
+<sc-if value="{{ isBrief }}" hint-placeholder-val="{{ true }}">
+<div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; gap: 12px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">CALLED · TOKEN {{ b.tokenNo }}</span>
+<span style="font-size: 24px; font-weight: 700;">{{ b.name }}</span>
+<span style="font-size: 15px; color: #5c6f66;">{{ b.sub }}</span>
+<div style="flex-grow: 1;"></div>
+<span style="font-size: 13px; font-weight: 700; color: #b23a30;">{{ b.allergy }}</span>
+</div>
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px;">
+<div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">WHY THE PATIENT CAME · AS TOLD AT THE FRONT DESK</div>
+<div style="font-size: 20px; font-weight: 500; margin-top: 6px;">{{ b.said }}</div>
+<div style="font-size: 12px; color: #5c6f66; margin-top: 2px;">{{ b.saidBy }}</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;">
+<sc-for list="{{ b.vitals }}" as="v" hint-placeholder-count="5">
+<div style="padding: 10px 12px; border-radius: 8px; background: #eef3ef;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: .12em; color: #5c6f66;">{{ v.k }}</div>
+<div style="{{ v.style }}">{{ v.v }}</div>
+</div>
+</sc-for>
+</div>
+<div style="font-size: 12px; color: #5c6f66; margin-top: -8px;">{{ b.vitalsBy }}</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; border-top: 1px solid #ecf1ed; padding-top: 14px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">LAST CONSULTATION · {{ b.lastDate }}</div>
+<div style="font-size: 13.5px;">{{ b.lastNote }}</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66; margin-top: 8px;">SINCE THEN · LAB AND RADIOLOGY</div>
+<sc-for list="{{ b.results }}" as="r" hint-placeholder-count="3">
+<div style="font-size: 13.5px;"><span style="{{ r.style }}">{{ r.what }}</span> <span style="font-size: 12px; color: #5c6f66;">· {{ r.when }}</span></div>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">ON NOW · YOUR LAST PRESCRIPTION</div>
+<sc-for list="{{ b.meds }}" as="m" hint-placeholder-count="3">
+<div style="font-size: 13.5px;">{{ m }}</div>
+</sc-for>
+<div style="font-size: 12px; color: #5c6f66;">{{ b.adherence }}</div>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 14px; border-top: 1px solid #ecf1ed; padding-top: 14px;">
+<div style="flex-grow: 1; font-size: 12.5px; color: #5c6f66;">Nothing on this card is a suggestion. It is what the front desk, the vitals bay, the lab and your last visit already recorded.</div>
+<button type="button" onClick="{{ start }}" style="height: 46px; padding: 0 22px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 14px; font-weight: 600;">Start consultation</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isConsultMode }}" hint-placeholder-val="{{ false }}">
+<div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column;">
+
 <section style="display: flex; flex-direction: column; gap: 8px; padding: 12px 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
 <div style="display: flex; align-items: center; gap: 16px;">
 <div>
-<div style="font-size: 17px; font-weight: 700;">Ramesh Patel</div>
-<div style="font-size: 12px; color: #5c6f66;">UHID 000429 · 45Y M · Cash · 4th visit · last 12 Aug</div>
+<div style="font-size: 17px; font-weight: 700;">{{ b.name }}</div>
+<div style="font-size: 12px; color: #5c6f66;">Token {{ b.tokenNo }} · {{ b.sub }}</div>
 </div>
 <div style="flex-grow: 1;"></div>
 <div style="display: flex; gap: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">
@@ -111,7 +162,8 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <div style="display: flex; flex-direction: column; gap: 14px;">
 
 <div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">CHIEF COMPLAINTS</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">CHIEF COMPLAINTS · CARRIED FROM THE FRONT DESK</span>
+<div style="font-size: 12.5px; color: #5c6f66;">At the desk: <em>{{ b.said }}</em></div>
 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
 <sc-for list="{{ complaints }}" as="c" hint-placeholder-count="2">
 <span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 12px; border-radius: 16px; background: #0e6b4e; color: #ffffff; font-size: 13px; font-weight: 600;">{{ c.label }}<button type="button" onClick="{{ c.remove }}" aria-label="Remove complaint" style="width: 22px; height: 22px; border-radius: 11px; border: 0; background: rgba(255,255,255,.18); color: #ffffff; font-size: 13px; line-height: 1;">×</button></span>
@@ -188,6 +240,8 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <span style="font-size: 12px; color: #5c6f66;">Ctrl+⏎ completes</span>
 <button type="button" style="height: 40px; padding: 0 18px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 13px; font-weight: 600;">Complete &amp; print</button>
 </footer>
+</div>
+</sc-if>
 </main>
 
 <aside style="width: 310px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 12px; padding: 14px;">
@@ -228,9 +282,9 @@ class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = {
-      tab: 'consult', taps: 0, tele: false, session: 'in', called: 'T-12', seated: 'T-12', parked: [],
+      mode: 'brief', tab: 'consult', taps: 0, tele: false, session: 'in', called: 'T-12', seated: null, parked: [],
       allergies: ['Penicillin'], algQ: '',
-      complaints: ['Headache', 'Giddiness'], dx: 'I10',
+      complaints: [], dx: 'I10',
       rx: ['telmi'], altChoice: null
     };
   }
@@ -255,6 +309,20 @@ class Component extends DCLogic {
         box: 'padding: 9px 10px; border-radius: 8px; ' + (seated ? 'border: 1px solid rgba(14,107,78,.35); background: rgba(14,107,78,.08);' : parked ? 'border: 1px dashed rgba(221,143,28,.6);' : 'border: 1px solid #dfe7e1;')
       });
     });
+    const warn = 'font-size: 22px; font-weight: 700; color: #8a5a10; font-family: \'IBM Plex Mono\', monospace;';
+    const ok = 'font-size: 22px; font-weight: 700; font-family: \'IBM Plex Mono\', monospace;';
+    const briefs = {
+      'T-12': { name: 'Ramesh Patel', sub: '45 M · fourth visit', allergy: 'Allergy: penicillin', said: '"Sar mein dard aur chakkar, ek hafte se. Subah zyada."', saidBy: 'Typed by Anita at registration 10:02 · his words, not a summary', chips: ['Headache', 'Giddiness'],
+        vitals: [{ k: 'BP', v: '152/96', style: warn }, { k: 'PULSE', v: '88', style: ok }, { k: 'WEIGHT', v: '72 kg', style: ok }, { k: 'SUGAR, RANDOM', v: '118', style: ok }, { k: 'SpO₂', v: '97', style: ok }],
+        vitalsBy: 'Bay One, 10:14, Sr. Kavita', lastDate: '12 AUG', lastNote: 'Essential hypertension (I10). BP 148/94. Started telmisartan 40 mg. Salt under 5 g a day. Review in 4 weeks.',
+        results: [{ what: 'LDL 162 mg/dL', when: 'lab 19 Sep', style: 'font-weight: 700; color: #8a5a10;' }, { what: 'Creatinine 1.0 · eGFR 88', when: 'lab 19 Sep', style: 'font-weight: 600;' }, { what: 'ECG: normal sinus rhythm', when: 'radiology 12 Aug', style: 'font-weight: 600;' }],
+        meds: ['Telmisartan 40 mg · morning'], adherence: 'Pharmacy: 30 days bought on 12 Aug · none since (due 11 Sep)' },
+      'T-13': { name: 'Sunita Devi', sub: '38 F · new', allergy: 'No known allergy', said: '"Bukhar teen din se, khansi bhi."', saidBy: 'Typed by Anita at registration 10:21 · her words, not a summary', chips: ['Fever', 'Cough'],
+        vitals: [{ k: 'BP', v: '118/76', style: ok }, { k: 'PULSE', v: '102', style: warn }, { k: 'WEIGHT', v: '58 kg', style: ok }, { k: 'TEMP', v: '101.4 °F', style: warn }, { k: 'SpO₂', v: '96', style: ok }],
+        vitalsBy: 'Bay One, 10:33, Sr. Kavita', lastDate: 'NONE', lastNote: 'First visit to this hospital.', results: [{ what: 'No results on file', when: '—', style: 'color: #5c6f66;' }], meds: ['Nothing prescribed here before'], adherence: '' },
+      _new: { name: 'Patient', sub: '', allergy: '', said: '"—"', saidBy: 'No complaint was typed at the desk', chips: [], vitals: [], vitalsBy: '', lastDate: '—', lastNote: '—', results: [], meds: [], adherence: '' }
+    };
+    const bb = Object.assign({}, briefs[s.called] || briefs._new, { tokenNo: (s.called || '').replace('T-', '') });
     const nextWaiting = people.find((p) => p.token !== s.seated && p.token !== s.called && s.parked.indexOf(p.token) < 0);
     const tabDefs = [['consult', 'Consult'], ['history', 'History'], ['exam', 'Examination'], ['inv', 'Investigations'], ['advice', 'Advice'], ['fu', 'Follow-up'], ['notes', 'Notes'], ['prev', 'Previous visits']];
     const tabs = tabDefs.map(([id, label]) => ({ label, pick: () => this.setState({ tab: id }),
@@ -290,6 +358,7 @@ class Component extends DCLogic {
     const hasOut = s.rx.indexOf('amlo') >= 0;
     const other = { history: 'History: past medical and surgical, family, personal, current medicines.', exam: 'Examination: general, systemic and local chips.', inv: 'Investigations: lab, radiology and ECG, with order sets.', advice: 'Advice: general and dietary, English and Hindi.', fu: 'Follow-up: a date, booked into the appointment book.', notes: 'Notes: doctor note, internal comment, patient reminder.', prev: 'Previous visits: each earlier visit in full; copy its Rx to today.' };
     return {
+      b: bb, isBrief: s.mode === 'brief', isConsultMode: s.mode === 'consult',
       taps: s.taps, tele: s.tele,
       walkinStyle: 'height: 32px; padding: 0 12px; border: 0; font-size: 12.5px; ' + (s.tele ? 'background: #ffffff; color: #5c6f66;' : 'background: #132420; color: #ffffff; font-weight: 600;'),
       teleStyle: 'height: 32px; padding: 0 12px; border: 0; font-size: 12.5px; ' + (s.tele ? 'background: #132420; color: #ffffff; font-weight: 600;' : 'background: #ffffff; color: #5c6f66;'),
@@ -298,10 +367,10 @@ class Component extends DCLogic {
       sessStyle: 'height: 38px; border-radius: 6px; border: 1.5px solid ' + sessColor[s.session] + '; padding: 0 10px; background: #ffffff; color: ' + sessColor[s.session] + '; font-weight: 600;',
       displayLine: s.session !== 'in' ? (s.session === 'out' ? 'OPD-3 · DOCTOR AWAY' : s.session === 'closed' ? 'OPD-3 · CLOSED' : 'OPD-3 · NOT STARTED') : (s.called ? s.called + ' → OPD-3' : 'OPD-3 · —'),
       waitingCount: line.filter((p) => p.state === 'WAITING').length, line,
-      callNext: () => { if (nextWaiting && s.session === 'in') this.tap({ called: nextWaiting.token }); },
-      skip: () => { if (nextWaiting) this.tap({ called: nextWaiting.token }); },
-      start: () => this.tap({ seated: s.called }),
-      park: () => { if (s.seated) this.tap({ parked: s.parked.concat([s.seated]), seated: null }); },
+      callNext: () => { if (nextWaiting && s.session === 'in') this.tap({ called: nextWaiting.token, mode: 'brief' }); },
+      skip: () => { if (nextWaiting) this.tap({ called: nextWaiting.token, mode: 'brief' }); },
+      start: () => this.tap({ seated: s.called, mode: 'consult', complaints: (briefs[s.called] || briefs._new).chips.slice() }),
+      park: () => { if (s.seated) this.tap({ parked: s.parked.concat([s.seated]), seated: null, mode: 'brief' }); },
       allergies, algQ: s.algQ, typeAlg: (e) => this.setState({ algQ: e.target.value }), algOpen: algSug.length > 0, algSug,
       tabs, isConsult: s.tab === 'consult', isOther: s.tab !== 'consult', otherText: other[s.tab] || '',
       complaints, usual, dxList, dxShort: (dxDefs.find((d) => d.id === s.dx) || {}).name || '', drugSug, rx,

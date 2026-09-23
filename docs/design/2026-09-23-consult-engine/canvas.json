@@ -68,7 +68,7 @@
   },
   "walk": {
    "fill": "green",
-   "text": "Walk board 1:\n• My session drop-down: In / Out / Closed / Not started — the corridor display follows it.\n• Call next → Start consult → Park: the line and the display update.\n• Allergies: type in + Add allergy; suggestions appear. × removes.\n• Complaint chips with ×; tap 'Your usual' to add. Diagnoses show ICD-10 · ICD-11.\n• Suggested drugs show pharmacy stock. Add Amlong 5 (0 in stock): the right pane offers Stamlo 5. Use it or keep yours — both are recorded.\n• TAPS counter is the speed instrument.",
+   "text": "Walk board 1:\n• It opens on the PATIENT BRIEF for the called token: the words typed at the front desk, vitals, allergies, last consultation, lab and radiology since, current medicines.\n• Start consultation (under the brief) opens the consult with the desk complaint already as chips.\n• Call next / Skip / Park in the left lane; the corridor display follows. Call next again to see Sunita's brief.\n• Session drop-down: In / Out / Closed / Not started.\n• Suggested drugs show pharmacy stock; add Amlong 5 (0 in stock) to see the alternative in the right pane.\n• TAPS counter = speed.",
    "w": 420,
    "x": 3040,
    "y": 0
