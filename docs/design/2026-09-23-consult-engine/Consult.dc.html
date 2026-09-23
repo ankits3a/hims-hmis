@@ -16,7 +16,7 @@ input,textarea{font:inherit}
 a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </style>
 </helmet>
-<div style="width: 1440px; height: 1000px; box-sizing: border-box; display: flex; flex-direction: row; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+<div style="position: relative; width: 1440px; height: 1000px; box-sizing: border-box; display: flex; flex-direction: row; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
 <sc-if value="{{ railOpen }}" hint-placeholder-val="{{ false }}">
 <aside style="width: 236px; flex-shrink: 0; height: 100%; box-sizing: border-box; background: #ffffff; border-right: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 8px; padding: 10px;">
 <div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 4px; border-bottom: 1px solid #ecf1ed; margin: -10px -10px 4px; padding-left: 14px; padding-right: 10px;">
@@ -108,44 +108,6 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </nav>
 
 <div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 14px 20px;">
-<sc-if value="{{ histOpen }}" hint-placeholder-val="{{ false }}">
-<div style="margin-bottom: 12px; background: #ffffff; border: 1.5px solid #132420; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
-<div style="display: flex; align-items: center; gap: 10px;">
-<span style="font-size: 15px; font-weight: 700;">Visit history · Ramesh Patel</span>
-<span style="font-size: 12px; color: #5c6f66;">read only</span>
-<div style="flex-grow: 1;"></div>
-<button type="button" onClick="{{ closeHist }}" style="height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Close</button>
-</div>
-<div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-<span style="font-size: 12px; color: #5c6f66;">Year</span>
-<sc-for list="{{ years }}" as="y" hint-placeholder-count="3">
-<button type="button" onClick="{{ y.pick }}" style="{{ y.style }}">{{ y.label }}</button>
-</sc-for>
-<label for="hdate" style="font-size: 12px; color: #5c6f66; margin-left: 10px;">Date</label>
-<input id="hdate" type="date" style="height: 30px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 8px; font-size: 12.5px;">
-</div>
-<div style="display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; min-height: 250px;">
-<div style="display: flex; flex-direction: column; gap: 6px;">
-<sc-for list="{{ visitList }}" as="v" hint-placeholder-count="3">
-<button type="button" onClick="{{ v.pick }}" style="{{ v.style }}">
-<span style="display: block; font-weight: 700;">{{ v.date }}</span>
-<span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; opacity: .8;">{{ v.id }} · {{ v.type }}</span>
-<span style="display: block; font-size: 12px; opacity: .85;">{{ v.dx }}</span>
-</button>
-</sc-for>
-</div>
-<div style="border-left: 1px solid #ecf1ed; padding-left: 14px; display: flex; flex-direction: column; gap: 8px;">
-<div style="display: flex; flex-wrap: wrap; gap: 6px;">
-<sc-for list="{{ recTabs }}" as="t" hint-placeholder-count="6">
-<button type="button" onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
-</sc-for>
-</div>
-<div style="padding: 12px; border-radius: 8px; background: #f4f7f4; font-size: 13.5px; min-height: 80px;">{{ recText }}</div>
-<div style="font-size: 11.5px; color: #5c6f66;">{{ recMeta }}</div>
-</div>
-</div>
-</div>
-</sc-if>
 <sc-if value="{{ referOpen }}" hint-placeholder-val="{{ false }}">
 <div style="margin-bottom: 12px; background: #ffffff; border: 1.5px solid #132420; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
 <div style="font-weight: 700;">Refer Ramesh Patel</div>
@@ -435,6 +397,46 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <sc-if value="{{ copAlert }}" hint-placeholder-val="{{ false }}"><span title="An out-of-stock alternative is waiting" style="width: 10px; height: 10px; border-radius: 5px; background: #dd8f1c;"></span></sc-if>
 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; letter-spacing: .1em; color: #5c6f66; writing-mode: vertical-rl;">COPILOT · F2</span>
 </aside>
+</sc-if>
+<sc-if value="{{ histOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; top: 0; width: 1440px; height: 1000px; background: rgba(19,36,32,.45); display: flex; align-items: center; justify-content: center; z-index: 20;">
+<div role="dialog" aria-modal="true" aria-label="Visit history" style="width: 980px; max-height: 760px; overflow: auto; background: #ffffff; border-radius: 12px; box-shadow: 0 24px 60px rgba(19,36,32,.35); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="font-size: 15px; font-weight: 700;">Visit history · Ramesh Patel</span>
+<span style="font-size: 12px; color: #5c6f66;">read only</span>
+<div style="flex-grow: 1;"></div>
+<button type="button" onClick="{{ closeHist }}" style="height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Close</button>
+</div>
+<div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+<span style="font-size: 12px; color: #5c6f66;">Year</span>
+<sc-for list="{{ years }}" as="y" hint-placeholder-count="3">
+<button type="button" onClick="{{ y.pick }}" style="{{ y.style }}">{{ y.label }}</button>
+</sc-for>
+<label for="hdate" style="font-size: 12px; color: #5c6f66; margin-left: 10px;">Date</label>
+<input id="hdate" type="date" style="height: 30px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 8px; font-size: 12.5px;">
+</div>
+<div style="display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; min-height: 250px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<sc-for list="{{ visitList }}" as="v" hint-placeholder-count="3">
+<button type="button" onClick="{{ v.pick }}" style="{{ v.style }}">
+<span style="display: block; font-weight: 700;">{{ v.date }}</span>
+<span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; opacity: .8;">{{ v.id }} · {{ v.type }}</span>
+<span style="display: block; font-size: 12px; opacity: .85;">{{ v.dx }}</span>
+</button>
+</sc-for>
+</div>
+<div style="border-left: 1px solid #ecf1ed; padding-left: 14px; display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<sc-for list="{{ recTabs }}" as="t" hint-placeholder-count="6">
+<button type="button" onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
+</sc-for>
+</div>
+<div style="padding: 12px; border-radius: 8px; background: #f4f7f4; font-size: 13.5px; min-height: 80px;">{{ recText }}</div>
+<div style="font-size: 11.5px; color: #5c6f66;">{{ recMeta }}</div>
+</div>
+</div>
+</div>
+</div>
 </sc-if>
 </div>
 </x-dc>

@@ -132,7 +132,7 @@ for the non-AI basics of a doctor's desk. They are not the design target.
    - **Allergies can only be added or deleted (owner, round 5).** There is no edit. Delete is
      "entered in error": the entry is struck and kept, as the allergy model already does.
    - **Patient history: both ways (owner, round 6).**
-     - **A History button** in the consultation header lists every visit with its date, visit ID,
+     - **A History button** in the consultation header opens a **popup dialog** (modal, centred, over a dimmed screen; owner, round 7) listing every visit with its date, visit ID,
        visit type and diagnosis. It can be filtered by year and by date. Picking a visit shows its
        record tab by tab (vitals, complaints, examination, diagnosis, lab & radiology,
        prescription, treatment, advice, notes). It is **read only**: a signed visit cannot be edited.
