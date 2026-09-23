@@ -32,6 +32,17 @@ export type Quote = {
   lastKnown: boolean;
 };
 
+/**
+ * What `qty` base units of a quoted batch will cost under the loose-MRP ruling (2026-09-22): full
+ * packs at the pack's price (`pack.paise`, priced by `priceBatchLine`), the rest at the loose rate.
+ * The web's `quoteAmountPaise` mirrors this so the ticket's lines and its "so far" agree.
+ */
+export function quotedAmountPaise(quote: { unitPaise: number; pack: { multiplier: number; paise: number } | null }, qty: number): number {
+  if (quote.pack === null || quote.pack.multiplier <= 1) return quote.unitPaise * qty;
+  const packs = Math.floor(qty / quote.pack.multiplier);
+  return packs * quote.pack.paise + (qty - packs * quote.pack.multiplier) * quote.unitPaise;
+}
+
 /** Refusals that mean "no honest price from this batch", not a fault — a quote is then absent. */
 const NO_PRICE = new Set(["price_unknown", "gst_slab_unknown", "sale_item_inactive", "unknown_sale_item", "batch_not_saleable"]);
 
@@ -55,7 +66,11 @@ async function priceOf(db: Db, gst: GstCategoryMap, itemId: string, batch: { bat
     .sort((a, b) => a.toBaseMultiplier - b.toBaseMultiplier)[0];
   return {
     batchId: batch.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, unitPaise, winner, mrpUnitPaise, lastKnown,
-    pack: pack === undefined ? null : { uom: pack.uom, multiplier: pack.toBaseMultiplier, paise: unitPaise * pack.toBaseMultiplier },
+    // The loose-MRP ruling (2026-09-22): a full strip is its printed MRP, not the rounded-down tablet × 15.
+    pack: pack === undefined ? null : {
+      uom: pack.uom, multiplier: pack.toBaseMultiplier,
+      paise: (await priceBatchLine(db, gst, { itemId, batchId: batch.batchId, qtyBase: pack.toBaseMultiplier }, now)).amountPaise,
+    },
   };
 }
 

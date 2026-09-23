@@ -1,13 +1,15 @@
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
-import { issueCreditNote, requestRefund } from "../billing";
+import { getInvoice, invoiceLineCredits, issueCreditNote, requestRefund } from "../billing";
 import { getBatch, itemsByIds, postMovement, returnedQtyByRef, uomsByItems } from "../materials";
 import {
   RETURN_MIN_SHELF_DAYS, RETURN_REF_TYPE, RETURN_REFUSED_STORAGE, RETURN_WINDOW_DAYS, istDateOf,
 } from "./config";
 import { dispenseLineReturned } from "./events";
 import { PharmacyError } from "./errors";
+import { gstCategoryMap, priceBatchLine } from "./bill";
+import { residueLinesOf } from "./bill-rows";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
@@ -50,7 +52,13 @@ const dayNumber = (isoDate: string): number => Math.floor(Date.parse(`${isoDate}
 
 /** A line that left the counter and was billed: the only kind a return may name. */
 export type ReturnableLine = { id: string; lineIdx: number; qtyBase: number; itemId: string; batchId: string; invoiceLineId: string };
-export type ReturnPlanLine = { lineId: string; lineIdx: number; qtyBase: number; batchId: string; invoiceLineId: string };
+export type ReturnPlanLine = {
+  lineId: string; lineIdx: number; qtyBase: number; batchId: string; invoiceLineId: string;
+  /** The loose-MRP ruling's pack-residue line to credit alongside, or null (see `residueCredits`). */
+  residue: { invoiceLineId: string; qty: number } | null;
+};
+/** The sale a return is against: its invoice, and when it was priced (the regulation in force then). */
+export type ReturnSale = { invoiceId: string; pricedAt: Date };
 export type ReturnedLine = { lineIdx: number; qtyBase: number; batchId: string; ledgerEntryId: string };
 
 /**
@@ -86,7 +94,7 @@ export function judgeReturnAct(input: ReturnInput, leftAt: Date, now: Date): str
  * on the shelf.
  */
 export async function judgeReturnLines(
-  db: Db, lines: readonly ReturnableLine[], wanted: ReturnInput["lines"], refType: string, now: Date,
+  db: Db, lines: readonly ReturnableLine[], wanted: ReturnInput["lines"], refType: string, now: Date, sale: ReturnSale,
 ): Promise<ReturnPlanLine[]> {
   const today = istDateOf(now);
   const already = await returnedQtyByRef(db, refType, lines.map((l) => l.id));
@@ -116,9 +124,62 @@ export async function judgeReturnLines(
     if (batch.recallStatus !== "none" || (batch.expiryDate !== null && dayNumber(batch.expiryDate) - dayNumber(today) < RETURN_MIN_SHELF_DAYS)) {
       throw new PharmacyError("return_short_expiry", `batch ${batch.batchNo} cannot go back on the shelf (expiry ${batch.expiryDate ?? "none"}, recall ${batch.recallStatus}) — quarantine it instead`, { lineIdx: want.lineIdx });
     }
-    plan.push({ lineId: l.id, lineIdx: l.lineIdx, qtyBase: want.qtyBase, batchId: l.batchId, invoiceLineId: l.invoiceLineId });
+    plan.push({ lineId: l.id, lineIdx: l.lineIdx, qtyBase: want.qtyBase, batchId: l.batchId, invoiceLineId: l.invoiceLineId, residue: null });
   }
-  return plan;
+  return residueCredits(db, lines, plan, already, sale);
+}
+
+/**
+ * ═══ THE LOOSE-MRP RULING, ON THE WAY BACK (owner, money, 2026-09-22) ═══
+ *
+ * A sale line whose full pack does not divide (₹35.50 / 15) was billed as a MAIN line at the loose
+ * rate plus a PACK-RESIDUE line right after it (`priceBatchLine`: 20 tablets = 20 × 236 + 1 × 10).
+ * Crediting only the main line on a return would keep the residue of a strip the patient gave back,
+ * and what they kept would then have cost MORE than its share of the MRP. So the residue line is
+ * credited down to what the RETAINED quantity owes: re-priced at the sale's own date, the kept
+ * units' residue is what stays billed, and the difference is credited with the return.
+ *
+ * The residue line is the invoice line immediately after the main one that is no sale line's own
+ * (`invoiceInputsOf` put it there; the invoice is immutable).
+ */
+async function residueCredits(
+  db: Db, lines: readonly ReturnableLine[], plan: ReturnPlanLine[], already: Map<string, number>, sale: ReturnSale,
+): Promise<ReturnPlanLine[]> {
+  if (plan.length === 0) return plan;
+  const invoice = await getInvoice(db, sale.invoiceId);
+  if (invoice === null) return plan;
+  const residueOf = residueLinesOf(invoice.lines, new Set(lines.map((l) => l.invoiceLineId)));
+  if (residueOf.size === 0) return plan;
+  const credited = await invoiceLineCredits(db, [...residueOf.values()].map((r) => r.id));
+  const gst = await gstCategoryMap(db);
+  const out: ReturnPlanLine[] = [];
+  const returningNow = new Map<string, number>();
+  for (const p of plan) returningNow.set(p.lineId, (returningNow.get(p.lineId) ?? 0) + p.qtyBase);
+  const done = new Set<string>(); // a line named twice in one return has its residue credited once
+  for (const p of plan) {
+    const residue = residueOf.get(p.invoiceLineId);
+    const l = lines.find((x) => x.id === p.lineId);
+    if (residue === undefined || l === undefined || done.has(l.id)) { out.push(p); continue; }
+    done.add(l.id);
+    const remaining = residue.qty - (credited.get(residue.id)?.creditedQty ?? 0);
+    const retained = l.qtyBase - (already.get(l.id) ?? 0) - (returningNow.get(l.id) ?? 0);
+    let owed = remaining; // if the kept units cannot be re-priced, keep the residue billed rather than guess
+    if (retained <= 0) {
+      owed = 0;
+    } else {
+      try {
+        const kept = await priceBatchLine(db, gst, { itemId: l.itemId, batchId: l.batchId, qtyBase: retained }, sale.pricedAt);
+        const keptResidue = kept.residual;
+        if (keptResidue === null) owed = 0;
+        else if (keptResidue.batchUnitPaise === residue.unitPaise) owed = keptResidue.qty;
+      } catch (e) {
+        if (!(e instanceof PharmacyError)) throw e;
+      }
+    }
+    const qty = remaining - owed;
+    out.push(qty > 0 ? { ...p, residue: { invoiceLineId: residue.id, qty } } : p);
+  }
+  return out;
 }
 
 /**
@@ -145,7 +206,10 @@ export async function restockAndRefund(
   // Billing's own transactions are savepoints inside this one (the `bill.ts` cast).
   const credit = await issueCreditNote(tx as unknown as Db, actor, {
     kind: "refund", invoiceId: args.invoiceId, reason: `pharmacy return: ${args.reason}`,
-    lines: plan.map((p) => ({ invoiceLineId: p.invoiceLineId, qty: p.qtyBase })),
+    lines: plan.flatMap((p) => [
+      { invoiceLineId: p.invoiceLineId, qty: p.qtyBase },
+      ...(p.residue === null ? [] : [{ invoiceLineId: p.residue.invoiceLineId, qty: p.residue.qty }]),
+    ]),
   }, now);
   const refund = await requestRefund(tx as unknown as Db, actor, {
     kind: "invoice_refund", creditNoteId: credit.creditNoteId, amountPaise: credit.netPaise,
@@ -170,8 +234,8 @@ export async function acceptReturn(
     if (l.status !== "open" || l.qtyBase === null || l.batchId === null || l.itemId === null || l.invoiceLineId === null) continue;
     returnable.push({ id: l.id, lineIdx: l.lineIdx, qtyBase: l.qtyBase, itemId: l.itemId, batchId: l.batchId, invoiceLineId: l.invoiceLineId });
   }
-  const plan = await judgeReturnLines(db, returnable, input.lines, RETURN_REF_TYPE, now);
   const invoiceId = d.invoiceId;
+  const plan = await judgeReturnLines(db, returnable, input.lines, RETURN_REF_TYPE, now, { invoiceId, pricedAt: d.billedAt ?? d.handedOverAt });
 
   const result = await withTx(db, async (tx) => {
     const done = await restockAndRefund(tx, actor, {

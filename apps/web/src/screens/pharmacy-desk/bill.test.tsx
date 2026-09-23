@@ -112,6 +112,38 @@ describe("the bill rail and the hand-over (PD-6)", () => {
     expect(screen.getByTestId("desk-ticker")).not.toHaveTextContent("₹50.00");
   });
 
+  it("LOOSE-MRP — the bill rail shows ONE row per drug: 20 tablets of a ₹35.50/15 strip is 1 strip + 5 tablet at ₹47.30, never a ₹0.10 row", async () => {
+    // The server folds the pack residue into its drug (`bill.ts` displayDraft); the rail words it.
+    const merged: WirePricedDraft = {
+      lines: [{ lineId: "l", serviceId: "s", serviceName: "Dolo 650 tablet", qty: 20, unitPaise: 236, grossPaise: 4730, discountPaise: 0, netPaise: 4730, gst: { rateBps: 500, exempt: false },
+        pack: { uom: "strip", multiplier: 15, packs: 1, loose: 5, baseUom: "tablet", packPaise: 3550 } }],
+      totals: { grossPaise: 4730, discountPaise: 0, cgstPaise: 112, sgstPaise: 112, rawTotalPaise: 4730, netPayablePaise: 4700, roundingPaise: -30 },
+    };
+    const current = dispense("d1", "picked");
+    mockRoutes(base(() => current, "open", { "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 200, body: merged } }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    const rows = await within(rail).findAllByTestId("desk-bill-line");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.parentElement).toHaveTextContent("Dolo 650 tablet 1 strip + 5 tablet₹47.30");
+    expect(rail).not.toHaveTextContent("₹0.10");
+  });
+
+  it("LOOSE-MRP — before the bill, a line's quote is priced by the pack: 20 tablets at 236 a tablet and ₹35.50 a strip is ₹47.30", async () => {
+    const quoted = {
+      ...dispense("d1", "claimed"),
+      quotedTotalPaise: 4730,
+      lines: [{ ...LINE, qtyBase: 20, dispensedMedicine: { ...LINE.dispensedMedicine!, brandName: "Dolo 650" },
+        quote: { batchId: "b1", batchNo: "D-1", expiryDate: "2028-01-31", unitPaise: 236, pack: { uom: "strip", multiplier: 15, paise: 3550 }, lastKnown: false } }],
+    } as WireDispense;
+    mockRoutes(base(() => quoted, "open"));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    // the line AND the running total are the pack-priced ₹47.30 (not 20 × ₹2.36 = ₹47.20)
+    expect(await within(rail).findAllByText("₹47.30", { exact: false })).toHaveLength(2);
+    expect(rail).not.toHaveTextContent("₹47.20");
+  });
+
   it("the rail prices the ticket BEFORE it is collected — each line at today's shelf price, and the running total", async () => {
     const quoted = {
       ...dispense("d1", "claimed"),

@@ -89,7 +89,8 @@ export type MaterialsErrorCode =
    * T3 — the UoM is not one of THIS item's (`uom.ts`, A2). Never a global UoM table.
    *
    * **Filed under 409 despite the `unknown_` prefix (m8).** The item was found; it is the unit in
-   * the request that is wrong, or an MRP that will not divide into whole paise. See
+   * the request that is wrong (or an MRP with no unit). An MRP that will not divide into whole paise
+   * was also refused here until the loose-MRP ruling (owner, 2026-09-22); it no longer is. See
    * `NOT_FOUND_CODES` below, which deliberately omits it.
    */
   | "unknown_uom"
@@ -203,7 +204,7 @@ export type MaterialsErrorCode =
  * CLOSE REVIEW m8 — **`unknown_uom` is NOT in this set, despite the prefix.** Every other
  * `unknown_*` names a ROW the caller addressed and the server could not find, which is what 404
  * means. `unknown_uom` is raised when the REQUEST BODY carries a unit the item does not declare, or
- * an MRP that will not divide into whole paise — the item was found, and answering 404 tells the
+ * an MRP with no unit — the item was found, and answering 404 tells the
  * caller the opposite of what happened. It is a 409 with the rest of the validation conflicts.
  */
 const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([

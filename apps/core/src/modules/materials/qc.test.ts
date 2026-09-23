@@ -30,7 +30,7 @@ function ctx(over: Partial<QcContext> = {}): QcContext {
   return {
     item: { id: "it1", class: "drug", active: true, shelfLifeDays: 1095 },
     uoms: TABLETS,
-    ceilingPaisePerBase: null,
+    ceiling: null,
     ceilingUnconvertible: false,
     batchFrozen: false,
     hasConsignmentAgreement: true,
@@ -191,21 +191,21 @@ describe("the GRN gate's rules (Plan 14 T6 / DD8)", () => {
 
   it("rule 7: an MRP above a notified ceiling is a HARD block, and equality is not", () => {
     // Ceiling 850 a tablet; MRP 8500 a strip = 850 a tablet. EQUAL → allowed.
-    expect(qcLine(ctx({ ceilingPaisePerBase: 850 }), line({ mrpPaise: 8500, mrpUom: "strip" })))
+    expect(qcLine(ctx({ ceiling: { paise: 850, baseUnits: 1 } }), line({ mrpPaise: 8500, mrpUom: "strip" })))
       .toEqual({ verdict: "pass" });
     // One paisa above → refused. Selling above ceiling is the offence and the gate is the cheapest
     // place to stop it (doc 16 D2).
-    expect(qcLine(ctx({ ceilingPaisePerBase: 849 }), line({ mrpPaise: 8500, mrpUom: "strip" })))
+    expect(qcLine(ctx({ ceiling: { paise: 849, baseUnits: 1 } }), line({ mrpPaise: 8500, mrpUom: "strip" })))
       .toEqual({ verdict: "reject", rule: "mrp_above_ceiling" });
     // NO ceiling in force → nothing to breach.
-    expect(qcLine(ctx({ ceilingPaisePerBase: null }), line({ mrpPaise: 9999990, mrpUom: "strip" })))
+    expect(qcLine(ctx({ ceiling: null }), line({ mrpPaise: 9999990, mrpUom: "strip" })))
       .toEqual({ verdict: "pass" });
   });
 
   /**
    * ═══ CLOSE REVIEW M7 — AN UNCONVERTIBLE CEILING REJECTS THE LINE, AND DOES NOT PASS IT ═══
    *
-   * The two null-ish states are NOT the same and this is the leg that says so. `ceilingPaisePerBase:
+   * The two null-ish states are NOT the same and this is the leg that says so. `ceiling:
    * null` means *no ceiling was notified* — nothing to breach, pass. `ceilingUnconvertible: true`
    * means *a ceiling WAS notified and could not be put in the line's unit* — a rule the government
    * imposed that we are unable to evaluate, which must fail CLOSED.
@@ -222,12 +222,12 @@ describe("the GRN gate's rules (Plan 14 T6 / DD8)", () => {
       .toEqual({ verdict: "reject", rule: "mrp_unconvertible" });
     /**
      * **The discriminating pair, and it is the whole point of the finding.** Identical line;
-     * `ceilingPaisePerBase` is `null` in BOTH cases, because there is no usable number either way;
+     * `ceiling` is `null` in BOTH cases, because there is no usable number either way;
      * opposite verdicts. An implementation that collapses "no ceiling notified" and "a ceiling was
      * notified and cannot be converted" into one `null` — which is exactly what shipped, by letting
      * the conversion THROW and catching nothing — cannot satisfy both of these at once.
      */
-    expect(qcLine(ctx({ ceilingPaisePerBase: null, ceilingUnconvertible: false }), line()))
+    expect(qcLine(ctx({ ceiling: null, ceilingUnconvertible: false }), line()))
       .toEqual({ verdict: "pass" });
     // It rejects an MRP that would have been under any plausible ceiling too: the point is that the
     // comparison could not be MADE, not that it failed.
@@ -242,18 +242,39 @@ describe("the GRN gate's rules (Plan 14 T6 / DD8)", () => {
   // ─────────────────── rules 8 and 9 ───────────────────
 
   /**
-   * F9 — an MRP that cannot be expressed in whole paise per base unit is a LINE rejection, not an
-   * exception. `mrpPerBaseUnit` refuses ₹85 on a strip of 12 rather than rounding it (the right
-   * call), and `qcLine` catches that refusal so one mistyped price rejects one line instead of
-   * aborting the whole delivery's QC run. The plan's nine rules do not name this case.
+   * F9, SUPERSEDED BY THE LOOSE-MRP RULING (owner, money, 2026-09-22). An MRP that does not divide
+   * into whole paise per base unit used to be a LINE rejection (`mrp_unconvertible`): ₹85 on a strip
+   * of 12 was refused rather than rounded. That refused most of a real shelf. It is now compared
+   * EXACTLY, by cross-multiplying, against a per-base cost — never rounded either way.
+   *
+   * What F9 was really about survives: a price that CANNOT be compared (no unit, or a unit the item
+   * does not have) is still a per-line `mrp_unconvertible` verdict, never an exception.
    */
-  it("F9: an MRP that does not divide into whole paise per base unit rejects the LINE", () => {
+  it("loose-MRP: an MRP that does not divide is compared EXACTLY — accepted at or above cost, refused below", () => {
     const odd: UomRow[] = [{ uom: "tablet", toBaseMultiplier: 1 }, { uom: "strip", toBaseMultiplier: 12 }];
+    // ₹85 / 12 = 708.33 a tablet ≥ 700 → pass (was `mrp_unconvertible` before the ruling).
     expect(qcLine(ctx({ uoms: odd }), line({ uom: "tablet", mrpPaise: 8500, mrpUom: "strip" })))
-      .toEqual({ verdict: "reject", rule: "mrp_unconvertible" });
-    // …and one that DOES divide goes on to be compared normally.
-    expect(qcLine(ctx({ uoms: odd }), line({ uom: "tablet", mrpPaise: 8400, mrpUom: "strip", unitCostPaise: 700 })))
       .toEqual({ verdict: "pass" });
+    const fifteen: UomRow[] = [{ uom: "tablet", toBaseMultiplier: 1 }, { uom: "strip", toBaseMultiplier: 15 }];
+    // ₹35.50 / 15 = 236.67 a tablet. Cost 236 → above it by two-thirds of a paisa: pass.
+    expect(qcLine(ctx({ uoms: fifteen }), line({ uom: "tablet", mrpPaise: 3550, mrpUom: "strip", unitCostPaise: 236 })))
+      .toEqual({ verdict: "pass" });
+    // Cost 237 → the MRP is below it by a third of a paisa. A floored MRP (236) would call it below
+    // by a paisa either way; a CEILED one (237) would pass it. Only the exact comparison refuses it.
+    expect(qcLine(ctx({ uoms: fifteen }), line({ uom: "tablet", mrpPaise: 3550, mrpUom: "strip", unitCostPaise: 237 })))
+      .toEqual({ verdict: "reject", rule: "mrp_below_cost" });
+    // The ceiling is compared the same way: 3550/15 against a ceiling of ₹35.49 a strip is above it.
+    expect(qcLine(ctx({ uoms: fifteen, ceiling: { paise: 3549, baseUnits: 15 } }), line({ uom: "tablet", mrpPaise: 3550, mrpUom: "strip", unitCostPaise: 200 })))
+      .toEqual({ verdict: "reject", rule: "mrp_above_ceiling" });
+    expect(qcLine(ctx({ uoms: fifteen, ceiling: { paise: 3550, baseUnits: 15 } }), line({ uom: "tablet", mrpPaise: 3550, mrpUom: "strip", unitCostPaise: 200 })))
+      .toEqual({ verdict: "pass" });
+  });
+
+  it("F9 (kept): an MRP in a unit the item does not have still rejects the LINE, never throws", () => {
+    expect(qcLine(ctx(), line({ mrpPaise: 8500, mrpUom: "carton" })))
+      .toEqual({ verdict: "reject", rule: "mrp_unconvertible" });
+    expect(qcLine(ctx(), line({ mrpPaise: 8500, mrpUom: null })))
+      .toEqual({ verdict: "reject", rule: "mrp_unconvertible" });
   });
 
   it("rule 8: a recall-frozen batch refuses a NEW receipt", () => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchPatientRail } from "../../lib/pharmacy-api";
+import { billQtyText, quoteAmountPaise } from "../../lib/pharmacy-bill";
 import type { Tender, WireDispense, WirePricedDraft } from "../../lib/pharmacy-api";
 
 /**
@@ -155,7 +156,7 @@ export function BillRail({
           <>
             {dispense.lines.map((l) => {
               /* Priced at today's shelf price for the batch the pick would take — the server's quote, never ours. */
-              const amount = l.quote == null || l.qtyBase === null || l.status === "declined" ? null : l.quote.unitPaise * l.qtyBase;
+              const amount = l.quote == null || l.qtyBase === null || l.status === "declined" ? null : quoteAmountPaise(l.quote, l.qtyBase);
               return (
                 <div key={l.lineIdx} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
                   <span style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: l.status === "declined" ? "var(--dim)" : "var(--ink)" }}>
@@ -182,7 +183,7 @@ export function BillRail({
           <>
             {preview.lines.map((l) => (
               <div key={l.lineId} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
-                <span style={{ flexGrow: 1, minWidth: 0, fontSize: 12 }}>{l.serviceName} × {l.qty}</span>
+                <span data-testid="desk-bill-line" style={{ flexGrow: 1, minWidth: 0, fontSize: 12 }}>{l.serviceName} <span className="mo" style={{ color: "var(--dim)" }}>{billQtyText(t, l.qty, l.pack)}</span></span>
                 <span className="mo" style={{ fontSize: 12 }}>{rupees(l.netPaise)}</span>
               </div>
             ))}

@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next";
 import { billingPatientLabel } from "../lib/billing-api";
 import { fmtPaise } from "../lib/format";
 import { Button } from "@/components/ui/button";
+import { billQtyText } from "../lib/pharmacy-bill";
 import type { WireInvoicePrint } from "../lib/billing-api";
+import type { WireBillRow } from "../lib/pharmacy-bill";
 
 /**
  * The printed invoice (Plan 08 T13 / K40). Props are the `GET /billing/invoices/:id/print` wire
@@ -49,7 +51,14 @@ export function documentTitleKey(lines: readonly { exempt: boolean }[]): "taxInv
   return exempt === lines.length ? "billOfSupply" : "invoiceCumBill";
 }
 
-export function InvoicePrint({ data, annex }: { data: WireInvoicePrint; annex?: React.ReactNode }): React.ReactElement {
+/**
+ * `rows` — the loose-MRP ruling (2026-09-22): a pharmacy bill stores a drug whose full pack does not
+ * divide as two lines (the loose-rate line and its pack residue). The pharmacy server folds them into
+ * ONE row per drug and the counter passes those rows here, so the paper never shows a ₹0.10 line as
+ * a second drug. Each row's money is the server's sum of the stored lines; the totals below are the
+ * invoice's own, untouched, so the GST summary reconciles to the stored lines exactly.
+ */
+export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; annex?: React.ReactNode; rows?: WireBillRow[] | null }): React.ReactElement {
   const { t } = useTranslation();
   const { invoice, settlement, letterhead } = data;
   const outstanding = settlement.outstandingPaise > 0;
@@ -101,7 +110,27 @@ export function InvoicePrint({ data, annex }: { data: WireInvoicePrint; annex?: 
             </tr>
           </thead>
           <tbody>
-            {data.lines.map((line) => (
+            {rows != null && rows.length > 0 ? rows.map((row, i) => (
+              <tr key={row.lineIds.join("+")} data-testid={`invoice-row-${String(i + 1)}`}>
+                <td>
+                  {row.serviceName}
+                  <span className="block font-mono text-xs text-neutral-600">
+                    {t("billing.print.sac")} {row.sacCode ?? ""}
+                    {row.exempt === true ? ` · ${t("billing.print.exempt")}` : row.rateBps === null ? "" : ` · ${String(row.rateBps / 100)}%`}
+                  </span>
+                </td>
+                <td className="text-right tabular-nums">
+                  {billQtyText(t, row.qty, row.pack)}
+                  {row.pack !== null && row.pack.packs > 0 && row.pack.packPaise !== null && (
+                    <span className="block text-xs text-neutral-600">{t("pharmacyBill.packRate", { amount: fmtPaise(row.pack.packPaise), pack: row.pack.uom })}</span>
+                  )}
+                </td>
+                <td className="text-right tabular-nums">{fmtPaise(row.grossPaise)}</td>
+                <td className="text-right tabular-nums">{fmtPaise(row.discountPaise)}</td>
+                <td className="text-right tabular-nums">{fmtPaise(row.cgstPaise + row.sgstPaise)}</td>
+                <td className="text-right tabular-nums">{fmtPaise(row.netPaise)}</td>
+              </tr>
+            )) : data.lines.map((line) => (
               <tr key={line.id} data-testid={`invoice-line-${String(line.lineNo)}`}>
                 <td>
                   {line.serviceName}

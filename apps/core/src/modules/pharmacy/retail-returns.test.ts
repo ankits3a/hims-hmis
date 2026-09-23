@@ -5,12 +5,15 @@ import { MON, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
-import { approvals, events, pharmacyRetailSaleLines, stockLedger } from "../../kernel/db/schema";
-import { issueCreditNote, listCreditNotes } from "../billing";
-import { balances, createStore, postMovement, updateItem } from "../materials";
+import { approvals, creditNoteLines, events, pharmacyRetailSaleLines, stockLedger } from "../../kernel/db/schema";
+import { getInvoice, issueCreditNote, listCreditNotes } from "../billing";
+import { balances, createStore, postMovement, registerItem, updateItem } from "../materials";
+import { addMedicine, addSalt } from "../formulary";
+import { inclusiveTaxHead } from "../tariff";
+import { registerSaleItem } from "./sale-items";
 import { RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE, RETAIL_RETURN_REF_TYPE } from "./config";
 import { pharmacyLeakage } from "./leakage";
-import { getRetailSale, recordRetailLicence, sellRetail } from "./retail";
+import { getRetailSale, previewRetailSale, recordRetailLicence, sellRetail } from "./retail";
 import { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 import type { Actor } from "@hmis/contracts";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
@@ -119,6 +122,73 @@ describe("returns at the walk-in counter (P19b)", () => {
     await expect(ret(sale.id, 10, later(3))).rejects.toMatchObject({ code: "return_exceeds_dispensed", detail: { left: 0 } });
     expect(await onHand(retailId, batch)).toBe(50);
     expect((await getRetailSale(db, fx.pharmacist.actor, sale.id)).lines[0]?.returnedQtyBase).toBe(20);
+  });
+
+  /**
+   * THE LOOSE-MRP RULING (owner, money, 2026-09-22), end to end at the walk-in counter. ₹35.50 on a
+   * strip of 15 (236.67 paise a tablet) was UNSALEABLE (`price_unknown`). A full strip now bills at
+   * exactly its MRP and a loose tablet at 236: 20 tablets = 3550 + 5 × 236 = 4730, carried as the
+   * main line (20 × 236) and the strip's residue (1 × 10). GST 5% is carved out of each line, and the
+   * three heads add back to the amount. A strip returned leaves 5 loose tablets billed at 5 × 236.
+   */
+  it("loose-MRP: 20 tablets from ₹35.50 strips of 15 bill 4730, tax carved out; a strip back refunds 3550", async () => {
+    const dolo = await withTx(db, async (tx) => {
+      const salt = await addSalt(tx, fx.pharmacist.actor, { name: "Paracetamol DT", drugClass: "analgesic" });
+      const med = await addMedicine(tx, fx.pharmacist.actor, {
+        brandName: "Dolo 650", form: "tablet", routeClass: "systemic", strengthLabel: "650 mg", scheduleFlag: "OTC",
+        salts: [{ saltId: salt.saltId, strength: "650 mg" }],
+      });
+      const { itemId } = await registerItem(tx, HEAD, {
+        code: "DOLO650", name: "Dolo 650 tablet", class: "drug", baseUom: "tablet", batchTracked: true,
+        formularyMedicineId: med.medicineId, gstRateBps: 500,
+        uoms: [{ uom: "strip", toBaseMultiplier: 15, isPurchaseUom: true, isIssueUom: true }],
+      });
+      await registerSaleItem(tx, fx.pharmacist.actor, itemId);
+      return { itemId, medicineId: med.medicineId };
+    });
+    await stockIn(db, fx, { itemId: dolo.itemId, batchNo: "DOLO-1", mrpPaise: 3550, qtyBase: 60, expiryDate: "2027-12-31", resourceId: retailId });
+    const priceOf = async (qtyBase: number) =>
+      (await previewRetailSale(db, fx.pharmacist.actor, { lines: [{ medicineId: dolo.medicineId, qtyBase }] }, MON)).totals.grossPaise;
+    expect(await priceOf(15)).toBe(3550);
+    expect(await priceOf(1)).toBe(236);
+    expect(await priceOf(20)).toBe(4730);
+
+    const preview = await previewRetailSale(db, fx.pharmacist.actor, { lines: [{ medicineId: dolo.medicineId, qtyBase: 20 }] }, MON);
+    const sale = await sellRetail(db, new FakeStore(), fx.pharmacist.actor, {
+      customer: { existingId: fx.patient.id }, lines: [{ medicineId: dolo.medicineId, qtyBase: 20 }],
+      tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }],
+    }, undefined, MON);
+    const invoice = (await getInvoice(db, sale.invoiceId))!;
+    const lines = [...invoice.lines].sort((a, b) => a.lineNo - b.lineNo);
+    expect(lines.map((l) => [l.qty, l.unitPaise, l.grossPaise])).toEqual([[20, 236, 4720], [1, 10, 10]]);
+    // Every line's tax is carved OUT of its own amount at 5%, and the heads add back to it exactly.
+    for (const l of lines) {
+      expect(l.cgstPaise).toBe(inclusiveTaxHead(l.grossPaise, 500));
+      expect(l.sgstPaise).toBe(l.cgstPaise);
+      expect(l.taxableBasePaise + l.cgstPaise + l.sgstPaise).toBe(l.grossPaise);
+    }
+    const sum = (f: (l: (typeof lines)[number]) => number) => lines.reduce((n, l) => n + f(l), 0);
+    expect(sum((l) => l.taxableBasePaise) + sum((l) => l.cgstPaise) + sum((l) => l.sgstPaise)).toBe(4730);
+    // Carving per line vs on the whole 4730 differs only by the per-line rounding of each head.
+    expect(Math.abs(sum((l) => l.cgstPaise) - inclusiveTaxHead(4730, 500))).toBeLessThanOrEqual(lines.length - 1);
+    // ONE ROW PER DRUG wherever a person reads the bill: the printed bill's rows fold the residue in.
+    const view = await getRetailSale(db, fx.pharmacist.actor, sale.id);
+    expect(view.billRows?.map((r) => [r.serviceName, r.netPaise, r.pack])).toEqual([
+      ["Dolo 650 tablet", 4730, { uom: "strip", multiplier: 15, packs: 1, loose: 5, baseUom: "tablet", packPaise: 3550 }],
+    ]);
+    expect(view.billRows?.some((r) => r.grossPaise === 10)).toBe(false);
+    // The sale line keys on the MAIN invoice line, in base units, as every reader of it expects.
+    expect(sale.lines.map((l) => [l.qtyBase, l.unitPaise])).toEqual([[20, 236]]);
+
+    // A whole strip comes back: 15 × 236 off the main line AND the strip's 10-paise residue.
+    const back = await ret(sale.id, 15, later(2));
+    const [note] = await listCreditNotes(db);
+    expect(note?.id).toBe(back.creditNoteId);
+    const credited = await db.select().from(creditNoteLines).where(eq(creditNoteLines.creditNoteId, back.creditNoteId));
+    expect(credited.map((c) => [c.invoiceLineId, c.qty, c.grossPaise]).sort((a, b) => Number(b[2]) - Number(a[2])))
+      .toEqual([[lines[0]!.id, 15, 3540], [lines[1]!.id, 1, 10]]);
+    expect(credited.reduce((n, c) => n + c.grossPaise, 0)).toBe(3550);
+    expect(note).toMatchObject({ kind: "refund" });
   });
 
   it("refuses what O-7 refuses, and writes nothing when it does", async () => {

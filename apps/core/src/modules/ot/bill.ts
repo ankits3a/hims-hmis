@@ -265,8 +265,9 @@ export async function composeDischargeBill(
      * ═══ CLOSE REVIEW M4 — A CEILING THAT CANNOT BE RE-DERIVED IS NOT "NO CEILING" ═══
      *
      * `consumptionsFor` returns `ceilingPaisePerBase: null` whenever `mrpPerBaseUnit` throws — an
-     * unrecognised `mrp_uom` on the regulation row, or a gazette price that does not divide into
-     * whole paise per base unit (a ceiling filed per `box` of 3). `clampImplantUnitPaise` skips a
+     * unrecognised `mrp_uom` on the regulation row (before the loose-MRP ruling of 2026-09-22 it
+     * also threw on a gazette price that did not divide into whole paise per base unit; that now
+     * yields the per-unit share ROUNDED DOWN, which can only lower the bound). `clampImplantUnitPaise` skips a
      * null bound, so the clamp silently became `min(tariff, MRP)` and the invoice could stand ABOVE
      * the NPPA ceiling — in exactly the untidy cases, and with this file's own header claiming the
      * cap is "impossible to lose".

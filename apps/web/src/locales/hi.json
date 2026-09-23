@@ -1961,7 +1961,7 @@
     "rule_expired": "चालान तिथि पर पहले ही समाप्त",
     "rule_near_expiry": "अल्प शेल्फ़-लाइफ़ — चढ़ाने से पहले मटीरियल्स हेड की स्वीकृति चाहिए",
     "rule_mrp_required": "इस श्रेणी के लिए मुद्रित MRP अनिवार्य है",
-    "rule_mrp_unconvertible": "MRP प्रति आधार इकाई पूर्ण पैसे में नहीं बँटता — मूल्य या पैक जाँचें",
+    "rule_mrp_unconvertible": "MRP की इकाई नहीं है, या यह इकाई इस आइटम की नहीं है — MRP इकाई जाँचें",
     "rule_mrp_below_cost": "MRP लागत से कम है — मूल्य या पैक आकार जाँचें",
     "rule_mrp_above_ceiling": "MRP अधिसूचित सीमा से अधिक है",
     "rule_batch_frozen": "वह बैच रिकॉल-फ़्रोज़न है, दोबारा नहीं लिया जा सकता",
@@ -4947,7 +4947,11 @@
     "qty": "मात्रा",
     "substitutedFor": "({{brand}} के स्थान पर)",
     "dispensedBy": "{{name}} द्वारा दी गई",
-    "reg": "रजि. {{no}}"
+    "reg": "रजि. {{no}}",
+    "packsLoose": "{{packs}} {{pack}} + {{loose}} {{unit}}",
+    "packsOnly": "{{packs}} {{pack}}",
+    "unitsOnly": "{{qty}} {{unit}}",
+    "packRate": "{{amount}}/{{pack}}"
   },
   "materialsCounts": {
     "title": "स्टॉक गिनती",

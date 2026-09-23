@@ -1961,7 +1961,7 @@
     "rule_expired": "Already expired on the challan date",
     "rule_near_expiry": "Short shelf life — needs the materials head's acceptance before posting",
     "rule_mrp_required": "This class needs the printed MRP",
-    "rule_mrp_unconvertible": "The MRP does not divide into whole paise per base unit — check the price or the pack",
+    "rule_mrp_unconvertible": "The MRP has no unit, or a unit this item does not have — check the MRP unit",
     "rule_mrp_below_cost": "The MRP is below the landed cost — check the price or the pack size",
     "rule_mrp_above_ceiling": "The MRP is above the notified ceiling for this item",
     "rule_batch_frozen": "That batch is recall-frozen and cannot be received again",
@@ -4947,7 +4947,11 @@
     "qty": "Qty",
     "substitutedFor": "(for {{brand}})",
     "dispensedBy": "Dispensed by {{name}}",
-    "reg": "Reg. {{no}}"
+    "reg": "Reg. {{no}}",
+    "packsLoose": "{{packs}} {{pack}} + {{loose}} {{unit}}",
+    "packsOnly": "{{packs}} {{pack}}",
+    "unitsOnly": "{{qty}} {{unit}}",
+    "packRate": "{{amount}}/{{pack}}"
   },
   "materialsCounts": {
     "title": "Stock counts",

@@ -195,4 +195,38 @@ describe("InvoicePrint", () => {
     expect(screen.getByTestId("invoice-dues-stamp")).toHaveTextContent("DUE ₹840.00");
     expect(screen.getByTestId("invoice-settlement")).toHaveTextContent("Unpaid");
   });
+
+  /**
+   * LOOSE-MRP RULING (owner, 2026-09-22): 20 tablets of ₹35.50/15 are STORED as 20 × 2.36 and a pack
+   * residue 1 × 0.10. The paper must show ONE Dolo row of ₹47.30 in packs + loose, never a ₹0.10 row;
+   * the footer is the invoice's own, so the GST summary still reconciles to the stored lines.
+   */
+  it("prints a pharmacy bill ONE row per drug: 20 tablets of a ₹35.50/15 strip is one ₹47.30 row, no ₹0.10 row", () => {
+    const dolo = (id: string, lineNo: number, qty: number, unitPaise: number, head: number): WireInvoiceLine => ({
+      id, invoiceId: "inv-2", lineNo, serviceId: "svc-dolo", serviceName: "Dolo 650 tablet", category: "pharmacy_5",
+      qty, unitPaise, grossPaise: qty * unitPaise, regulatedClamp: null, candidates: [], winner: null, discountPaise: 0,
+      taxableBasePaise: qty * unitPaise - 2 * head, sacCode: "3004", rateBps: 500, exempt: false, exemptReason: null,
+      cgstPaise: head, sgstPaise: head, netPaise: qty * unitPaise,
+    });
+    const lines = [dolo("d-1", 1, 20, 236, 112), dolo("d-2", 2, 1, 10, 0)];
+    const data: WireInvoicePrint = {
+      ...DATA, lines,
+      invoice: { ...INVOICE, id: "inv-2", grossPaise: 4730, discountPaise: 0, taxableBasePaise: 4506, cgstPaise: 112, sgstPaise: 112, rawTotalPaise: 4730, roundingPaise: -30, netPayablePaise: 4700 },
+    };
+    renderWithProviders(<InvoicePrint data={data} rows={[{
+      lineIds: ["d-1", "d-2"], serviceName: "Dolo 650 tablet", qty: 20, unitPaise: 236,
+      pack: { uom: "strip", multiplier: 15, packs: 1, loose: 5, baseUom: "tablet", packPaise: 3550 },
+      grossPaise: 4730, discountPaise: 0, cgstPaise: 112, sgstPaise: 112, netPaise: 4730, sacCode: "3004", rateBps: 500, exempt: false,
+    }]} />);
+    const doc = document.querySelector(".print-doc") as HTMLElement;
+    const body = within(doc).getAllByRole("row").filter((r) => r.textContent?.includes("Dolo 650"));
+    expect(body).toHaveLength(1);
+    expect(body[0]).toHaveTextContent("1 strip + 5 tablet");
+    expect(body[0]).toHaveTextContent("₹35.50/strip");
+    expect(body[0]).toHaveTextContent("₹47.30");
+    expect(doc).not.toHaveTextContent("₹0.10");
+    // The GST summary is the invoice's own figures, which are the sums of the stored lines.
+    expect(screen.getByTestId("invoice-taxable")).toHaveTextContent("₹45.06");
+    expect(screen.getByTestId("invoice-cgst")).toHaveTextContent("₹1.12");
+  });
 });

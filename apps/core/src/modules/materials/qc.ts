@@ -1,8 +1,8 @@
 import {
   BATCH_MANDATORY_CLASSES, MRP_MANDATORY_CLASSES, NEAR_EXPIRY_MIN_FRACTION, NEAR_EXPIRY_MIN_MONTHS,
 } from "./config";
-import { mrpPerBaseUnit } from "./uom";
-import type { UomRow } from "./uom";
+import { comparePackPrices, packPriceOf } from "./uom";
+import type { PackPrice, UomRow } from "./uom";
 
 /**
  * PLAN 14 T6 / DD8 — **THE GRN GATE'S RULES, PURE, IN THE ORDER THEY RUN.**
@@ -65,12 +65,16 @@ export type QcContext = {
   };
   /** THIS ITEM's units. Rule 2 and the MRP conversion both read them. */
   uoms: readonly UomRow[];
-  /** The ceiling in force on the challan date, per BASE unit, or null when none is (rule 7). */
-  ceilingPaisePerBase: number | null;
+  /**
+   * The ceiling in force on the challan date, AS NOTIFIED — paise for its pack's base units — or
+   * null when none is (rule 7). Kept as a pair, never divided: rule 7 compares by cross-multiplying
+   * (the loose-MRP ruling, 2026-09-22), so a ceiling on a pack that does not divide is comparable.
+   */
+  ceiling: PackPrice | null;
   /**
    * A ceiling IS in force and could NOT be expressed per base unit — CLOSE REVIEW M7.
    *
-   * Distinct from `ceilingPaisePerBase: null`, which means *no ceiling was notified* and is a PASS.
+   * Distinct from `ceiling: null`, which means *no ceiling was notified* and is a PASS.
    * This one means *a ceiling was notified and we cannot compare against it*, which must be a
    * REJECT. Collapsing the two — which is what a bare `null` did — makes DD8 rule 7 fail OPEN on
    * exactly the items it exists for.
@@ -181,23 +185,25 @@ export function qcLine(ctx: QcContext, line: QcLine): QcVerdict {
      * Both operands in ONE unit before they are compared — DD7, and §2.93's "verify a formula where
      * its operands differ".
      *
-     * **`mrpPerBaseUnit` THROWS rather than rounds, and the throw is CAUGHT here and turned into a
-     * line verdict** (finding F9). It refuses an MRP that does not divide into whole paise per base
-     * unit — ₹85 on a strip of 12 has no honest integer answer — and that is right. But a rule
-     * engine that THREW would abort the whole `runGateQc` transaction over one mistyped price,
-     * so a storekeeper with twelve good lines and one bad one would see a 409 for the delivery
-     * rather than a rejection for the line. **A per-line rule must produce a per-line verdict.**
+     * ═══ THE LOOSE-MRP RULING (owner, money, 2026-09-22) — COMPARED EXACTLY, NEVER ROUNDED ═══
      *
-     * The plan's nine rules do not name this case; the union of `RuleCode` is this file's own, so
-     * the code is added here and disclosed rather than smuggled.
+     * The MRP is kept as printed — `{ paise, baseUnits }` of its pack — and compared with the
+     * per-base cost by CROSS-MULTIPLYING (`comparePackPrices`). ₹35.50 on a strip of 15 is 236.67
+     * paise a tablet; it used to be refused here (`mrp_unconvertible`) because it has no whole-paisa
+     * quotient, which refused most of a real shelf. It is now ACCEPTED, and still refused when it is
+     * truly below cost: `3550 × 1 < cost × 15` is the whole test, with no rounding step that could
+     * pass a below-cost MRP by a fraction of a paisa or fail a lawful one.
+     *
+     * A unit that is not one of the item's (or no unit at all) is still a data error and still a
+     * LINE verdict, never an exception (finding F9: a per-line rule must produce a per-line verdict).
      */
-    let mrpBase: number | null;
+    let mrpPack: PackPrice | null;
     try {
-      mrpBase = mrpPerBaseUnit(ctx.uoms, mrp, line.mrpUom);
+      mrpPack = packPriceOf(ctx.uoms, mrp, line.mrpUom);
     } catch {
       return { verdict: "reject", rule: "mrp_unconvertible" };
     }
-    if (mrpBase !== null) {
+    if (mrpPack !== null) {
       /**
        * **`<`, NOT `<=` (A15).** An MRP EQUAL to landed cost passes: a zero-margin line is a
        * commercial decision, not a data error, and refusing it would block every at-cost transfer
@@ -205,7 +211,9 @@ export function qcLine(ctx: QcContext, line: QcLine): QcVerdict {
        * less than zero — which is the same fact expressed twice and is why the plan uses the
        * mrp = cost fixture as A15's discriminating leg ON PURPOSE.
        */
-      if (mrpBase < line.unitCostPaise) return { verdict: "reject", rule: "mrp_below_cost" };
+      if (comparePackPrices(mrpPack, { paise: line.unitCostPaise, baseUnits: 1 }) < 0) {
+        return { verdict: "reject", rule: "mrp_below_cost" };
+      }
 
       // ── 7. MRP above a notified ceiling, where one is in force ──
       /**
@@ -227,7 +235,7 @@ export function qcLine(ctx: QcContext, line: QcLine): QcVerdict {
        * was untidy is the same fail-open M4 fixed at the other end of the same rule.
        */
       if (ctx.ceilingUnconvertible) return { verdict: "reject", rule: "mrp_unconvertible" };
-      if (ctx.ceilingPaisePerBase !== null && mrpBase > ctx.ceilingPaisePerBase) {
+      if (ctx.ceiling !== null && comparePackPrices(mrpPack, ctx.ceiling) > 0) {
         return { verdict: "reject", rule: "mrp_above_ceiling" };
       }
     }

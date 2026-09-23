@@ -287,7 +287,7 @@ export function PharmacyRetail(): React.ReactElement {
         <Button type="button" variant="outline" className="no-print" onClick={() => setPrinting(null)}>{t("pharmacyRetail.backToCounter")}</Button>
         {failed !== null && <p role="alert" className="text-sm text-red-700">{pharmacyErrorText(failed, t)}</p>}
         {printSale.data !== undefined && printInvoice.data !== undefined && (
-          <InvoicePrint data={printInvoice.data} annex={(
+          <InvoicePrint data={printInvoice.data} rows={printSale.data.billRows ?? null} annex={(
             <div className="space-y-1">
               <PharmacyBillAnnex label={annexOf(printSale.data)} />
               {printSale.data.prescription !== null && (

@@ -233,7 +233,8 @@ export const consignmentDeployed = defineEvent("consignment.deployed", MODULE, z
  *
  * So the payload now carries, explicitly:
  *   · `mrpPaise` + `mrpUom` — the price AS PRINTED, on the pack it is printed on;
- *   · `mrpPaisePerBase` — the same price per BASE unit, or null when it does not divide evenly;
+ *   · `mrpPaisePerBase` — the same price per BASE unit (a pack that does not divide gives the
+ *     loose-unit rate ROUNDED DOWN — the loose-MRP ruling, 2026-09-22); null when there is no MRP;
  *   · `ceilingPaisePerBase` — the ceiling per BASE unit, the unit now in the NAME (`qc.ts` already
  *     called its own field this, and the frozen payload had dropped the suffix).
  *
@@ -260,7 +261,12 @@ export const materialConsumed = defineEvent("material.consumed", MODULE, z.objec
   /** AS PRINTED, on `mrpUom`'s pack. */
   mrpPaise: paise.nullable(),
   mrpUom: z.string().nullable(),
-  /** The same price per BASE unit; null when the MRP does not divide into whole paise (M3). */
+  /**
+   * The same price per BASE unit — the LOOSE-unit rate, rounded down when the pack does not divide
+   * (loose-MRP ruling, 2026-09-22). Null when there is no MRP. Events written before the ruling carry
+   * null for an MRP that did not divide; a reader pricing money from one uses `saleAmountPaise` on
+   * `mrpPaise` + `mrpUom`, never null-as-no-price.
+   */
   mrpPaisePerBase: paise.nullable(),
   /** The notified ceiling per BASE unit — the unit is in the name, deliberately (M3). */
   ceilingPaisePerBase: paise.nullable(),

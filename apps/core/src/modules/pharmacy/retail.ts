@@ -18,7 +18,9 @@ import {
 } from "../materials";
 import { runRxChecks } from "../opd";
 import { captureDocument, getPatient, nearMatches, registerPatient, resolvePatientId } from "../patients";
-import { gstCategoryMap, priceBatchLine, winnerOf } from "./bill";
+import { gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, winnerOf } from "./bill";
+import { billRowsForInvoice } from "./bill-rows";
+import type { BillRow } from "./bill-rows";
 import {
   DOWNTIME_BACKFILL_DAYS, OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS, REGISTER_FLAGS, RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE,
   RETAIL_RETURN_REF_TYPE, SCHEDULED_FLAGS, isIsoDate, istDateOf,
@@ -476,7 +478,7 @@ async function previewAt(
   for (const p of plan) priced.push(await priceBatchLine(db, gst, p, at));
   const patientId = input.patientId === undefined ? undefined : (await resolvePatientId(db, input.patientId)) ?? undefined;
   if (input.patientId !== undefined && patientId === undefined) throw new PharmacyError("not_found", `patient ${input.patientId} not found`);
-  const draft = await previewInvoice(db, { ...(patientId === undefined ? {} : { patientId }), lines: priced.map((x) => x.input) }, now);
+  const draft = await previewInvoice(db, { ...(patientId === undefined ? {} : { patientId }), lines: priced.flatMap(invoiceInputsOf) }, now);
   let checks: RetailPreview["checks"] = null;
   if (patientId !== undefined) {
     const outcome = await runRxChecks(db, patientId, checkLinesOf(plan), at);
@@ -668,7 +670,7 @@ async function recordSale(
         // The invoice is issued now, with a number from now: a sheet's serial is a reconciliation
         // key, never a tax invoice number (kernel/ops/downtime-kit.ts).
         const result = await issueInvoice(tx as unknown as Db, actor, {
-          draftId: id, patientId, lines: priced.map((x) => x.input),
+          draftId: id, patientId, lines: priced.flatMap(invoiceInputsOf),
           receipt: {
             tenders: input.tenders,
             ...(input.panNumber === undefined ? {} : { panNumber: input.panNumber }),
@@ -679,7 +681,7 @@ async function recordSale(
         }, now);
         const stored = await getInvoice(tx, result.invoiceId);
         if (stored === null) throw new PharmacyError("not_found", `invoice ${result.invoiceId} vanished inside its own transaction`);
-        const byNo = [...stored.lines].sort((a, b) => a.lineNo - b.lineNo);
+        const byNo = mainRowsOf([...stored.lines].sort((a, b) => a.lineNo - b.lineNo), priced);
 
         await tx.insert(pharmacyRetailSales).values({
           id, storeResourceId: store.id, channel: ctx.channel, licenceId: ctx.licenceId, patientId, registeredHere, scheduled,
@@ -901,6 +903,8 @@ export type RetailSaleView = {
     /** P19b — what has come back of this line so far. */
     returnedQtyBase: number;
   }[];
+  /** The bill as a person reads it: one row per drug, a pack residue folded in (loose-MRP ruling, `bill-rows.ts`). */
+  billRows: BillRow[] | null;
 };
 
 /** One sale, with its customer: a PHI read, logged by the patient module. */
@@ -947,6 +951,7 @@ export async function getRetailSale(db: Db, actor: Actor, saleId: string): Promi
     },
     pharmacistRegNo: sale.pharmacistRegNo,
     lines: out,
+    billRows: await billRowsForInvoice(db, sale.invoiceId, lines),
   };
 }
 
