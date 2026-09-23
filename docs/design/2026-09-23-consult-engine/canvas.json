@@ -5,48 +5,64 @@
   "Curator.dc.html": {
    "h": 760,
    "is_interactive": true,
-   "title": "4 · Curator: doctors' own entries",
+   "title": "6 · Curator",
    "w": 1280,
-   "x": 1360,
-   "y": 1060
+   "x": 2880,
+   "y": 1120
   },
   "Main.dc.html": {
    "h": 980,
    "is_interactive": true,
-   "title": "1 · General medicine consult",
+   "title": "1 · The brief: after Call next",
    "w": 1440,
    "x": 0,
    "y": 0
   },
   "Ophthal.dc.html": {
    "h": 900,
-   "title": "2 · Ophthalmology screen",
+   "title": "4 · Ophthalmology screen",
    "w": 1440,
-   "x": 1520,
-   "y": 0
+   "x": 0,
+   "y": 1120
   },
   "PrintShare.dc.html": {
    "h": 820,
    "is_interactive": true,
-   "title": "6 · Print and share",
+   "title": "8 · Print and share",
    "w": 1280,
    "x": 980,
-   "y": 2000
+   "y": 2120
   },
   "Profiles.dc.html": {
    "h": 820,
    "is_interactive": true,
-   "title": "3 · Layout builder: admin default, doctor overlay",
+   "title": "5 · Layout builder",
    "w": 1280,
-   "x": 0,
-   "y": 1060
+   "x": 1520,
+   "y": 1120
   },
   "Departments.dc.html": {
    "x": 0,
-   "y": 2000,
+   "y": 2120,
    "w": 900,
    "h": 640,
-   "title": "5 · Department screens, chosen automatically"
+   "title": "7 · Department screens"
+  },
+  "Consult.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1000,
+   "title": "2 · Consultation: after Start consultation",
+   "is_interactive": true
+  },
+  "Summary.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1000,
+   "title": "3 · Summary tab, a finished visit",
+   "is_interactive": true
   }
  },
  "createdOnFiles": {
@@ -60,7 +76,7 @@
  "notes": {
   "title": {
    "kind": "title1",
-   "maxW": 2960,
+   "maxW": 4480,
    "text": "Consult engine — the doctor's screen as settings, not code",
    "w": 240,
    "x": 0,
@@ -68,21 +84,23 @@
   },
   "walk": {
    "fill": "green",
-   "text": "Walk board 1:\n• It opens on the PATIENT BRIEF for the called token: the words typed at the front desk, vitals, allergies, last consultation, lab and radiology since, current medicines.\n• Start consultation (under the brief) opens the consult with the desk complaint already as chips.\n• Call next / Skip / Park in the left lane; the corridor display follows. Call next again to see Sunita's brief.\n• Session drop-down: In / Out / Closed / Not started.\n• Suggested drugs show pharmacy stock; add Amlong 5 (0 in stock) to see the alternative in the right pane.\n• TAPS counter = speed.",
+   "text": "Walk it:\n1 · The brief opens for the called token. The visit type is the big badge: REVISIT, NEW (Call next) or RENEWAL (Call next again). The desk complaint is in the patient's words.\n2 · Start consultation → board 2. The desk words are already chips. Move between the tabs: the 'Your work so far' strip stays on top and fills as you enter things. Tabs with entries get a dot.\n• Prescription: each medicine has a small stock tag in its top-right corner. Add Amlong 5 (0 in stock) to see the alternative in the right pane.\n• Save draft in the header; autosave time updates on every change.\n3 · The Summary tab of a finished visit.",
    "w": 420,
-   "x": 3040,
+   "x": 4560,
    "y": 0
   },
   "why": {
    "fill": "orange",
    "text": "Owner's five tests on every board: accuracy, speed, auditable, compliant, dashboard UX.\n\nComment on any board to rule on it.",
    "w": 420,
-   "x": 3040,
-   "y": 620
+   "x": 4560,
+   "y": 640
   }
  },
  "order": [
   "Main.dc.html",
+  "Consult.dc.html",
+  "Summary.dc.html",
   "Ophthal.dc.html",
   "Profiles.dc.html",
   "Curator.dc.html",

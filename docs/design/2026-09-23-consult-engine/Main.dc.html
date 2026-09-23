@@ -71,11 +71,13 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px;">
 <div style="display: flex; align-items: baseline; gap: 12px;">
 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">CALLED · TOKEN {{ b.tokenNo }}</span>
+<span style="{{ b.vtStyle }}">{{ b.vt }}</span>
 <span style="font-size: 24px; font-weight: 700;">{{ b.name }}</span>
 <span style="font-size: 15px; color: #5c6f66;">{{ b.sub }}</span>
 <div style="flex-grow: 1;"></div>
 <span style="font-size: 13px; font-weight: 700; color: #b23a30;">{{ b.allergy }}</span>
 </div>
+<div style="{{ b.vtNoteStyle }}">{{ b.vtNote }}</div>
 <div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px;">
 <div>
 <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: .14em; color: #5c6f66;">WHY THE PATIENT CAME · AS TOLD AT THE FRONT DESK</div>
@@ -110,7 +112,7 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </div>
 <div style="display: flex; align-items: center; gap: 14px; border-top: 1px solid #ecf1ed; padding-top: 14px;">
 <div style="flex-grow: 1; font-size: 12.5px; color: #5c6f66;">Nothing on this card is a suggestion. It is what the front desk, the vitals bay, the lab and your last visit already recorded.</div>
-<button type="button" onClick="{{ start }}" style="height: 46px; padding: 0 22px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 14px; font-weight: 600;">Start consultation</button>
+<a href="Consult.dc.html" style="display: inline-flex; align-items: center; height: 46px; padding: 0 22px; border-radius: 6px; background: #0e6b4e; color: #ffffff; font-size: 14px; font-weight: 600;">Start consultation →</a>
 </div>
 </div>
 </div>
@@ -294,9 +296,9 @@ class Component extends DCLogic {
     const sessText = { in: 'The corridor board calls your patients.', out: 'Board shows "Doctor away". Your line keeps its order.', closed: 'No more calls today. Waiting patients are told.', not_started: 'Board shows "Session not started".' };
     const sessColor = { in: '#0e6b4e', out: '#8a5a10', closed: '#b23a30', not_started: '#5c6f66' };
     const people = [
-      { token: 'T-12', name: 'Ramesh Patel', sub: '45Y M · revisit' },
-      { token: 'T-13', name: 'Sunita Devi', sub: '38Y F · new · waiting 34 min' },
-      { token: 'T-14', name: 'Imran Khan', sub: '61Y M · revisit · waiting 18 min' },
+      { token: 'T-12', name: 'Ramesh Patel', sub: '45Y M · REVISIT' },
+      { token: 'T-13', name: 'Sunita Devi', sub: '38Y F · NEW · waiting 34 min' },
+      { token: 'T-14', name: 'Imran Khan', sub: '61Y M · RENEWAL · waiting 18 min' },
       { token: 'T-15', name: 'Kavya R.', sub: '29Y F · at the vitals bay' }
     ];
     const line = people.map((p) => {
@@ -312,17 +314,25 @@ class Component extends DCLogic {
     const warn = 'font-size: 22px; font-weight: 700; color: #8a5a10; font-family: \'IBM Plex Mono\', monospace;';
     const ok = 'font-size: 22px; font-weight: 700; font-family: \'IBM Plex Mono\', monospace;';
     const briefs = {
-      'T-12': { name: 'Ramesh Patel', sub: '45 M · fourth visit', allergy: 'Allergy: penicillin', said: '"Sar mein dard aur chakkar, ek hafte se. Subah zyada."', saidBy: 'Typed by Anita at registration 10:02 · his words, not a summary', chips: ['Headache', 'Giddiness'],
+      'T-12': { vt: 'REVISIT', vtNote: 'Revisit · free follow-up · day 42 since your visit on 12 Aug', name: 'Ramesh Patel', sub: '45 M · fourth visit', allergy: 'Allergy: penicillin', said: '"Sar mein dard aur chakkar, ek hafte se. Subah zyada."', saidBy: 'Typed by Anita at registration 10:02 · his words, not a summary', chips: ['Headache', 'Giddiness'],
         vitals: [{ k: 'BP', v: '152/96', style: warn }, { k: 'PULSE', v: '88', style: ok }, { k: 'WEIGHT', v: '72 kg', style: ok }, { k: 'SUGAR, RANDOM', v: '118', style: ok }, { k: 'SpO₂', v: '97', style: ok }],
         vitalsBy: 'Bay One, 10:14, Sr. Kavita', lastDate: '12 AUG', lastNote: 'Essential hypertension (I10). BP 148/94. Started telmisartan 40 mg. Salt under 5 g a day. Review in 4 weeks.',
         results: [{ what: 'LDL 162 mg/dL', when: 'lab 19 Sep', style: 'font-weight: 700; color: #8a5a10;' }, { what: 'Creatinine 1.0 · eGFR 88', when: 'lab 19 Sep', style: 'font-weight: 600;' }, { what: 'ECG: normal sinus rhythm', when: 'radiology 12 Aug', style: 'font-weight: 600;' }],
         meds: ['Telmisartan 40 mg · morning'], adherence: 'Pharmacy: 30 days bought on 12 Aug · none since (due 11 Sep)' },
-      'T-13': { name: 'Sunita Devi', sub: '38 F · new', allergy: 'No known allergy', said: '"Bukhar teen din se, khansi bhi."', saidBy: 'Typed by Anita at registration 10:21 · her words, not a summary', chips: ['Fever', 'Cough'],
+      'T-13': { vt: 'NEW', vtNote: 'New patient · first visit to this hospital · fee paid', name: 'Sunita Devi', sub: '38 F · new', allergy: 'No known allergy', said: '"Bukhar teen din se, khansi bhi."', saidBy: 'Typed by Anita at registration 10:21 · her words, not a summary', chips: ['Fever', 'Cough'],
         vitals: [{ k: 'BP', v: '118/76', style: ok }, { k: 'PULSE', v: '102', style: warn }, { k: 'WEIGHT', v: '58 kg', style: ok }, { k: 'TEMP', v: '101.4 °F', style: warn }, { k: 'SpO₂', v: '96', style: ok }],
         vitalsBy: 'Bay One, 10:33, Sr. Kavita', lastDate: 'NONE', lastNote: 'First visit to this hospital.', results: [{ what: 'No results on file', when: '—', style: 'color: #5c6f66;' }], meds: ['Nothing prescribed here before'], adherence: '' },
-      _new: { name: 'Patient', sub: '', allergy: '', said: '"—"', saidBy: 'No complaint was typed at the desk', chips: [], vitals: [], vitalsBy: '', lastDate: '—', lastNote: '—', results: [], meds: [], adherence: '' }
+      'T-14': { vt: 'RENEWAL', vtNote: 'Renewal · follow-up window lapsed (last seen 3 Jun) · fresh fee paid', name: 'Imran Khan', sub: '61 M · third visit', allergy: 'No known allergy', said: '"Sugar ki dawai khatam, pairon mein sunnapan."', saidBy: 'Typed by Anita at registration 10:25 · his words, not a summary', chips: ['Medicine refill', 'Numbness of feet'],
+        vitals: [{ k: 'BP', v: '134/84', style: ok }, { k: 'PULSE', v: '80', style: ok }, { k: 'WEIGHT', v: '81 kg', style: ok }, { k: 'SUGAR, RANDOM', v: '248', style: warn }, { k: 'SpO₂', v: '97', style: ok }],
+        vitalsBy: 'Bay One, 10:31, Sr. Kavita', lastDate: '3 JUN', lastNote: 'Type 2 diabetes (E11.9). HbA1c 8.1. Metformin 1 g twice a day. Review in 3 months.',
+        results: [{ what: 'HbA1c 8.1', when: 'lab 3 Jun · none since', style: 'font-weight: 700; color: #8a5a10;' }], meds: ['Metformin 1 g · twice a day'], adherence: 'Pharmacy: 30 days bought on 3 Jun · none since' },
+      _new: { vt: 'NEW', name: 'Patient', sub: '', allergy: '', said: '"—"', saidBy: 'No complaint was typed at the desk', chips: [], vitals: [], vitalsBy: '', lastDate: '—', lastNote: '—', results: [], meds: [], adherence: '' }
     };
-    const bb = Object.assign({}, briefs[s.called] || briefs._new, { tokenNo: (s.called || '').replace('T-', '') });
+    const vtColor = { NEW: '#0e6b4e', REVISIT: '#132420', RENEWAL: '#dd8f1c' };
+    const b0 = briefs[s.called] || briefs._new;
+    const bb = Object.assign({}, b0, { tokenNo: (s.called || '').replace('T-', ''),
+      vtStyle: 'display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 6px; background: ' + vtColor[b0.vt] + '; color: #ffffff; font-family: \'IBM Plex Mono\', monospace; font-size: 13px; font-weight: 700; letter-spacing: .12em;',
+      vtNoteStyle: 'margin-top: -8px; font-size: 13.5px; font-weight: 600; color: ' + (b0.vt === 'RENEWAL' ? '#8a5a10' : '#0e6b4e') + ';' });
     const nextWaiting = people.find((p) => p.token !== s.seated && p.token !== s.called && s.parked.indexOf(p.token) < 0);
     const tabDefs = [['consult', 'Consult'], ['history', 'History'], ['exam', 'Examination'], ['inv', 'Investigations'], ['advice', 'Advice'], ['fu', 'Follow-up'], ['notes', 'Notes'], ['prev', 'Previous visits']];
     const tabs = tabDefs.map(([id, label]) => ({ label, pick: () => this.setState({ tab: id }),

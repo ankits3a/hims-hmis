@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Consultation in progress</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+input,textarea{font:inherit}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1000px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+
+<header style="display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
+<a href="Main.dc.html" style="font-size: 12.5px;">← The line</a>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .16em;">CONSULTATION</div>
+<div style="font-size: 13px; color: #5c6f66;">Dr. A. Mehta · OPD-3 · General Medicine screen</div>
+<div style="flex-grow: 1;"></div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #0e6b4e;">{{ savedLine }}</span>
+<button type="button" onClick="{{ saveDraft }}" style="height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px; font-weight: 600;">Save draft</button>
+<button type="button" style="height: 36px; padding: 0 16px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 13px; font-weight: 600;">Complete &amp; print</button>
+</header>
+
+<section style="display: flex; align-items: center; gap: 14px; padding: 10px 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
+<span style="display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 6px; background: #132420; color: #ffffff; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: .1em;">REVISIT</span>
+<div>
+<div style="font-size: 17px; font-weight: 700;">Ramesh Patel <span style="font-size: 13px; font-weight: 500; color: #5c6f66;">· 45 M · token 12 · UHID 000429</span></div>
+<div style="font-size: 12px; color: #5c6f66;">Free follow-up · day 42 of hypertension care · last seen 12 Aug by you</div>
+</div>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 4px; background: rgba(178,58,48,.08); border: 1px solid rgba(178,58,48,.4); color: #b23a30; font-size: 11px; font-weight: 600;">ALLERGY · PENICILLIN</span>
+<div style="flex-grow: 1;"></div>
+<div style="display: flex; gap: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">
+<span style="color: #8a5a10; font-weight: 700;">BP 152/96</span><span>P 88</span><span>SpO₂ 97</span><span>72 kg</span><span>BMI 24.9</span>
+</div>
+</section>
+
+<section style="padding: 10px 20px; background: #eef3ef; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
+<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 700; letter-spacing: .14em; color: #0e6b4e;">YOUR WORK SO FAR · STAYS HERE ON EVERY TAB</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; row-gap: 3px; font-size: 12.5px;">
+<sc-for list="{{ strip }}" as="r" hint-placeholder-count="8">
+<button type="button" onClick="{{ r.go }}" style="display: flex; gap: 8px; text-align: left; border: 0; background: transparent; padding: 1px 0; font-size: 12.5px; color: #132420;">
+<span style="width: 96px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .1em; color: #5c6f66; padding-top: 2px;">{{ r.k }}</span>
+<span style="{{ r.style }}">{{ r.v }}</span>
+</button>
+</sc-for>
+</div>
+</section>
+
+<div style="display: flex; flex-grow: 1; min-height: 0;">
+<main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
+<nav style="display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 0;">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="10">
+<button type="button" onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
+</sc-for>
+</nav>
+
+<div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 14px 20px;">
+
+<sc-if value="{{ on.summary }}" hint-placeholder-val="{{ false }}">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 10px; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<span style="font-size: 18px; font-weight: 700;">Consultation summary</span>
+<span style="font-size: 12.5px; color: #5c6f66;">23 Sep 2026 · revisit · this is what will print and be saved</span>
+</div>
+<sc-for list="{{ summary }}" as="s" hint-placeholder-count="8">
+<div style="display: grid; grid-template-columns: 170px minmax(0, 1fr) 70px; gap: 12px; padding-top: 10px; border-top: 1px solid #ecf1ed;">
+<div><div style="font-weight: 700;">{{ s.k }}</div><div style="font-size: 11.5px; color: #5c6f66;">{{ s.count }}</div></div>
+<div style="{{ s.style }}">{{ s.v }}</div>
+<button type="button" onClick="{{ s.go }}" style="height: 28px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12px;">Edit</button>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.complaints }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<div style="padding: 10px 12px; border-radius: 8px; background: #ffffff; border: 1px solid #dfe7e1; font-size: 13px;">At the front desk: <em>"Sar mein dard aur chakkar, ek hafte se. Subah zyada."</em> <span style="color: #5c6f66; font-size: 12px;">— typed by Anita, 10:02</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+<sc-for list="{{ complaintChips }}" as="c" hint-placeholder-count="2">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 12px; border-radius: 16px; background: #0e6b4e; color: #ffffff; font-size: 13px; font-weight: 600;">{{ c.label }}<button type="button" onClick="{{ c.remove }}" aria-label="Remove" style="width: 22px; height: 22px; border-radius: 11px; border: 0; background: rgba(255,255,255,.18); color: #ffffff;">×</button></span>
+</sc-for>
+<label for="cq" style="position: absolute; left: -9999px;">Add complaint</label>
+<input id="cq" placeholder="Type a complaint" style="flex-grow: 1; min-width: 220px; height: 32px; border-radius: 16px; border: 1px solid #dfe7e1; padding: 0 12px; background: #ffffff;">
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+<span style="font-size: 12px; color: #5c6f66;">Your usual:</span>
+<sc-for list="{{ usual }}" as="u" hint-placeholder-count="5">
+<button type="button" onClick="{{ u.add }}" style="height: 28px; padding: 0 10px; border-radius: 14px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">{{ u.label }}</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.exam }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<sc-for list="{{ examGroups }}" as="g" hint-placeholder-count="3">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">{{ g.title }}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{ g.chips }}" as="c" hint-placeholder-count="6">
+<button type="button" onClick="{{ c.toggle }}" style="{{ c.style }}">{{ c.label }}</button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.dx }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; gap: 6px;">
+<button type="button" onClick="{{ setProv }}" style="{{ provStyle }}">Provisional</button>
+<button type="button" onClick="{{ setFinal }}" style="{{ finalStyle }}">Final</button>
+</div>
+<sc-for list="{{ dxList }}" as="d" hint-placeholder-count="3">
+<button type="button" onClick="{{ d.toggle }}" style="{{ d.style }}">
+<span style="display: flex; justify-content: space-between;"><span style="font-weight: 600;">{{ d.name }}</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">ICD-10 {{ d.i10 }} · ICD-11 {{ d.i11 }}</span></span>
+<span style="display: block; font-size: 11.5px; opacity: .8;">{{ d.why }}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.inv }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; align-items: center; gap: 10px;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">ORDER SETS</span></div>
+<button type="button" onClick="{{ addSet }}" style="align-self: flex-start; height: 32px; padding: 0 12px; border-radius: 6px; border: 1.5px dashed #0e6b4e; background: rgba(14,107,78,.06); color: #0e6b4e; font-size: 12.5px; font-weight: 600;">Hypertension baseline · Lipid profile, RFT, Urine R/M, ECG</button>
+</div>
+<sc-for list="{{ invGroups }}" as="g" hint-placeholder-count="2">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">{{ g.title }}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{ g.chips }}" as="c" hint-placeholder-count="6">
+<button type="button" onClick="{{ c.toggle }}" style="{{ c.style }}">{{ c.label }}</button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div style="font-size: 12px; color: #5c6f66;">Orders go to the lab and radiology desks on Complete, billed there.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.rx }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<sc-for list="{{ rxLines }}" as="r" hint-placeholder-count="2">
+<div style="position: relative; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 10px 12px; display: grid; grid-template-columns: 26px minmax(0, 2.2fr) minmax(0, .7fr) minmax(0, 1fr) minmax(0, .6fr) minmax(0, .5fr); gap: 8px; align-items: center;">
+<span style="{{ r.stockChip }}">{{ r.stock }}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #8ea69a;">{{ r.n }}</span>
+<div><div style="font-weight: 600;">{{ r.name }}</div><div style="font-size: 11.5px; color: #5c6f66; font-style: italic;">{{ r.generic }}</div></div>
+<span style="font-family: 'IBM Plex Mono', monospace;">{{ r.dose }}</span>
+<span style="font-size: 12.5px;">{{ r.when }}</span>
+<span style="font-size: 12.5px;">{{ r.days }} days</span>
+<button type="button" onClick="{{ r.remove }}" aria-label="Remove medicine" style="height: 28px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12px;">Remove</button>
+</div>
+</sc-for>
+<div style="background: #ffffff; border: 1px dashed #dfe7e1; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">ADD · SUGGESTED FOR THE DIAGNOSIS</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{ rxSug }}" as="s" hint-placeholder-count="3">
+<button type="button" onClick="{{ s.add }}" style="height: 32px; padding: 0 12px; border-radius: 16px; border: 1.5px dashed #0e6b4e; background: rgba(14,107,78,.06); color: #0e6b4e; font-size: 12.5px;">+ {{ s.label }}</button>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.treat }}" hint-placeholder-val="{{ false }}">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">TREATMENT · PROCEDURES AND NON-DRUG CARE (BILLED FROM HERE)</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{ treatChips }}" as="c" hint-placeholder-count="6">
+<button type="button" onClick="{{ c.toggle }}" style="{{ c.style }}">{{ c.label }}</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.advice }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<sc-for list="{{ adviceGroups }}" as="g" hint-placeholder-count="2">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">{{ g.title }}</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{ g.chips }}" as="c" hint-placeholder-count="4">
+<button type="button" onClick="{{ c.toggle }}" style="{{ c.style }}">{{ c.label }}</button>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">FOLLOW-UP</span>
+<sc-for list="{{ fuChips }}" as="c" hint-placeholder-count="4">
+<button type="button" onClick="{{ c.pick }}" style="{{ c.style }}">{{ c.label }}</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ on.notes }}" hint-placeholder-val="{{ false }}">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+<sc-for list="{{ noteBoxes }}" as="n" hint-placeholder-count="3">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+<label for="{{ n.id }}" style="font-weight: 700;">{{ n.title }}</label>
+<span style="font-size: 11.5px; color: #5c6f66;">{{ n.who }}</span>
+<textarea id="{{ n.id }}" value="{{ n.val }}" onInput="{{ n.type }}" style="height: 120px; resize: none; border-radius: 6px; border: 1px solid #dfe7e1; padding: 8px 10px; font-size: 13px;"></textarea>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+</div>
+</main>
+
+<aside style="width: 300px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 12px; padding: 14px;">
+<div style="padding: 14px; border-radius: 8px; background: #132420; color: #d9efe4; display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 4px; background: #35c48f;"></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .14em;">COPILOT</span></div>
+<div style="font-size: 12.5px;">{{ copilotLine }}</div>
+<div style="font-size: 11px; color: #7fa392;">Picked from our lists; no LLM called.</div>
+</div>
+<sc-if value="{{ showAlt }}" hint-placeholder-val="{{ false }}">
+<div style="padding: 14px; border-radius: 8px; border: 1.5px solid rgba(221,143,28,.6); background: rgba(221,143,28,.08); display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .12em; color: #8a5a10;">AMLONG 5 · 0 IN STOCK</span>
+<div style="font-size: 12.5px;">Same salt, same strength: <strong>Stamlo 5</strong> · 240 tab in stock.</div>
+<div style="display: flex; gap: 6px;">
+<button type="button" onClick="{{ swap }}" style="flex-grow: 1; height: 34px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Use Stamlo 5</button>
+<button type="button" onClick="{{ keep }}" style="flex-grow: 1; height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Keep</button>
+</div>
+</div>
+</sc-if>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"startTab":{"editor":"enum","options":["complaints","summary","exam","dx","inv","rx","treat","advice","notes"],"default":"complaints"},"filled":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
+      complaints: ['Headache', 'Giddiness'],
+      exam: props.filled ? ['Conscious, oriented', 'Pallor absent', 'No pedal oedema', 'CVS: S1 S2 normal, no murmur', 'Fundus: AV nicking'] : [],
+      dx: props.filled ? ['I10', 'E78.5'] : [], dxKind: props.filled ? 'Final' : 'Provisional',
+      inv: props.filled ? ['Urine R/M', 'ECG'] : [], rx: props.filled ? ['telmi', 'stamlo', 'ator'] : ['telmi'],
+      treat: props.filled ? ['BP recheck after 10 min rest'] : [], advice: props.filled ? ['Salt under 5 g a day', 'Check BP at home, keep a log', 'Less oil and fried food'] : [], fu: props.filled ? '4 weeks' : '',
+      notes: { doc: '', comment: '', reminder: 'Prefers generic medicines' }, alt: null
+    };
+  }
+  set(p) { const t = new Date(); const hh = String(t.getHours()).padStart(2, '0'), mm = String(t.getMinutes()).padStart(2, '0'), ss = String(t.getSeconds()).padStart(2, '0'); this.setState(Object.assign({ saved: hh + ':' + mm + ':' + ss, drafted: false }, p)); }
+  tog(key, v) { const cur = this.state[key]; this.set({ [key]: cur.indexOf(v) >= 0 ? cur.filter((x) => x !== v) : cur.concat([v]) }); }
+  chip(on, ghost) {
+    const b = 'height: 32px; padding: 0 12px; border-radius: 16px; font-size: 13px; ';
+    if (on) return b + 'border: 1px solid #0e6b4e; background: #0e6b4e; color: #ffffff; font-weight: 600;';
+    if (ghost) return b + 'border: 1.5px dashed #0e6b4e; background: rgba(14,107,78,.06); color: #0e6b4e;';
+    return b + 'border: 1px solid #dfe7e1; background: #ffffff; color: #132420;';
+  }
+  renderVals() {
+    const s = this.state;
+    const tabIds = ['summary', 'complaints', 'exam', 'dx', 'inv', 'rx', 'treat', 'advice', 'notes'];
+    const names = { summary: 'Summary', complaints: 'Complaints', exam: 'Examination', dx: 'Diagnosis', inv: 'Lab & radiology', rx: 'Prescription', treat: 'Treatment', advice: 'Advice & follow-up', notes: 'Notes' };
+    const catalog = {
+      telmi: { name: 'Telma 40', generic: 'TELMISARTAN 40 mg tablet', dose: '1-0-0', when: 'After breakfast', days: 30, stock: 1240, unit: 'tab' },
+      amlo: { name: 'Amlong 5', generic: 'AMLODIPINE 5 mg tablet', dose: '0-0-1', when: 'After dinner', days: 30, stock: 0, unit: 'tab' },
+      stamlo: { name: 'Stamlo 5', generic: 'AMLODIPINE 5 mg tablet', dose: '0-0-1', when: 'After dinner', days: 30, stock: 240, unit: 'tab' },
+      pcm: { name: 'Dolo 650', generic: 'PARACETAMOL 650 mg tablet', dose: 'SOS', when: 'After food', days: 3, stock: 3600, unit: 'tab' },
+      ator: { name: 'Atorva 10', generic: 'ATORVASTATIN 10 mg tablet', dose: '0-0-1', when: 'After dinner', days: 30, stock: 86, unit: 'tab' }
+    };
+    const dxDefs = [
+      { id: 'I10', name: 'Essential hypertension', i10: 'I10', i11: 'BA00', why: 'BP high today and on 12 Aug' },
+      { id: 'E78.5', name: 'Hyperlipidaemia, unspecified', i10: 'E78.5', i11: '5C80.Z', why: 'LDL 162 on 19 Sep' },
+      { id: 'G44.2', name: 'Tension-type headache', i10: 'G44.2', i11: '8A81', why: 'Headache without fever' }
+    ];
+    const count = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+    const dxText = s.dx.length ? s.dxKind + ': ' + s.dx.map((id) => { const d = dxDefs.find((x) => x.id === id); return d.name + ' (' + d.i10 + ' · ' + d.i11 + ')'; }).join('; ') : '';
+    const rxText = s.rx.map((id) => catalog[id].generic.split(' ')[0] + ' ' + catalog[id].dose + ' × ' + catalog[id].days + 'd').join(' · ');
+    const noteText = [s.notes.doc && 'Note: ' + s.notes.doc, s.notes.comment && 'Comment: ' + s.notes.comment, s.notes.reminder && 'Reminder: ' + s.notes.reminder].filter(Boolean).join(' · ');
+    const sections = [
+      ['complaints', 'COMPLAINTS', s.complaints.join(' · '), count(s.complaints.length, 'item', 'items')],
+      ['exam', 'EXAMINATION', s.exam.join(' · '), count(s.exam.length, 'finding', 'findings')],
+      ['dx', 'DIAGNOSIS', dxText, count(s.dx.length, 'code', 'codes')],
+      ['inv', 'LAB & RADIO', s.inv.join(' · '), count(s.inv.length, 'order', 'orders')],
+      ['rx', 'PRESCRIPTION', rxText, count(s.rx.length, 'medicine', 'medicines')],
+      ['treat', 'TREATMENT', s.treat.join(' · '), count(s.treat.length, 'item', 'items')],
+      ['advice', 'ADVICE', s.advice.concat(s.fu ? ['Follow-up ' + s.fu] : []).join(' · '), count(s.advice.length + (s.fu ? 1 : 0), 'item', 'items')],
+      ['notes', 'NOTES', noteText, noteText ? 'kept private or sticky' : '0 notes']
+    ];
+    const filled = 'font-size: 12.5px; color: #132420; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+    const empty = 'font-size: 12.5px; color: #a5b8ae;';
+    const strip = sections.map(([id, k, v]) => ({ k, v: v || '— not yet', style: v ? filled : empty, go: () => this.setState({ tab: id }) }));
+    const summary = sections.map(([id, k, v, c]) => ({ k: k.charAt(0) + k.slice(1).toLowerCase(), v: v || 'Nothing entered', count: c, style: v ? 'font-size: 13.5px;' : 'font-size: 13.5px; color: #a5b8ae;', go: () => this.setState({ tab: id }) }));
+    const tabs = tabIds.map((id) => {
+      const sec = sections.find((x) => x[0] === id); const has = sec && sec[2];
+      return { label: names[id] + (has ? ' ●' : ''), pick: () => this.setState({ tab: id }),
+        style: 'height: 32px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; ' + (s.tab === id ? 'border: 1px solid #0e6b4e; background: rgba(14,107,78,.08); color: #0e6b4e; font-weight: 600;' : 'border: 1px solid #dfe7e1; background: #ffffff; color: #132420;') };
+    });
+    const on = {}; tabIds.forEach((id) => { on[id] = s.tab === id; });
+    const group = (title, key, list, ghosts) => ({ title, chips: list.map((l) => ({ label: l, toggle: () => this.tog(key, l), style: this.chip(s[key].indexOf(l) >= 0, (ghosts || []).indexOf(l) >= 0) })) });
+    const examGroups = [
+      group('GENERAL EXAMINATION', 'exam', ['Conscious, oriented', 'Pallor absent', 'No icterus', 'No cyanosis', 'No clubbing', 'No pedal oedema', 'Obese'], ['Conscious, oriented']),
+      group('SYSTEMIC EXAMINATION', 'exam', ['CVS: S1 S2 normal, no murmur', 'RS: clear, NVBS', 'P/A: soft, non-tender', 'CNS: no focal deficit'], ['CVS: S1 S2 normal, no murmur']),
+      group('LOCAL EXAMINATION', 'exam', ['Fundus: AV nicking', 'Carotid bruit absent', 'Neck: no stiffness'], [])
+    ];
+    const dxList = dxDefs.map((d) => ({ name: d.name, i10: d.i10, i11: d.i11, why: d.why, toggle: () => this.tog('dx', d.id),
+      style: 'text-align: left; padding: 10px 12px; border-radius: 8px; font-size: 13px; ' + (s.dx.indexOf(d.id) >= 0 ? 'border: 1px solid #0e6b4e; background: #0e6b4e; color: #ffffff;' : 'border: 1.5px dashed #0e6b4e; background: rgba(14,107,78,.06); color: #132420;') }));
+    const seg = (on2) => 'height: 30px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; ' + (on2 ? 'border: 1px solid #132420; background: #132420; color: #ffffff; font-weight: 600;' : 'border: 1px solid #dfe7e1; background: #ffffff;');
+    const invGroups = [
+      group('LAB', 'inv', ['Lipid profile', 'RFT', 'Urine R/M', 'HbA1c', 'CBC', 'TSH', 'Serum electrolytes'], []),
+      group('RADIOLOGY & ECG', 'inv', ['ECG', 'Chest X-ray PA', '2D Echo', 'USG abdomen'], [])
+    ];
+    const stockChip = (n) => 'position: absolute; top: -9px; right: 10px; height: 18px; padding: 0 7px; border-radius: 9px; font-family: \'IBM Plex Mono\', monospace; font-size: 10.5px; font-weight: 600; line-height: 18px; ' + (n === 0 ? 'background: rgba(221,143,28,.14); border: 1px solid rgba(221,143,28,.5); color: #8a5a10;' : 'background: rgba(14,107,78,.07); border: 1px solid rgba(14,107,78,.22); color: #3f6b5b;');
+    const rxLines = s.rx.map((id, i) => { const d = catalog[id]; return { n: String(i + 1).padStart(2, '0'), name: d.name, generic: d.generic, dose: d.dose, when: d.when, days: d.days,
+      stock: d.stock === 0 ? '0 in stock ⇄' : d.stock.toLocaleString('en-IN') + ' ' + d.unit, stockChip: stockChip(d.stock), remove: () => this.set({ rx: s.rx.filter((x) => x !== id) }) }; });
+    const rxSug = ['amlo', 'ator', 'pcm'].filter((id) => s.rx.indexOf(id) < 0 && !(id === 'amlo' && s.rx.indexOf('stamlo') >= 0)).map((id) => ({ label: catalog[id].name + ' · ' + (catalog[id].stock === 0 ? '0 in stock' : catalog[id].stock + ' ' + catalog[id].unit), add: () => this.set({ rx: s.rx.concat([id]), alt: null }) }));
+    const treatChips = ['BP recheck after 10 min rest', 'Nebulisation in OPD', 'Wound dressing', 'IM injection given', 'Physiotherapy referral', 'Lifestyle counselling (10 min)'].map((l) => ({ label: l, toggle: () => this.tog('treat', l), style: this.chip(s.treat.indexOf(l) >= 0, false) }));
+    const adviceGroups = [
+      group('GENERAL ADVICE', 'advice', ['Salt under 5 g a day', 'Walk 30 min daily', 'Check BP at home, keep a log', 'Stop smoking'], ['Salt under 5 g a day']),
+      group('DIETARY ADVICE', 'advice', ['Less oil and fried food', 'No pickles or papad', 'More fruit and vegetables'], [])
+    ];
+    const fuChips = ['1 week', '2 weeks', '4 weeks', 'After reports'].map((l) => ({ label: l, pick: () => this.set({ fu: l }), style: this.chip(s.fu === l, false) }));
+    const noteBoxes = [
+      { id: 'n1', title: 'Doctor note', who: 'Clinical record · not printed by default', val: s.notes.doc, type: (e) => this.set({ notes: Object.assign({}, s.notes, { doc: e.target.value }) }) },
+      { id: 'n2', title: 'Internal comment', who: 'Staff and next doctor · never printed', val: s.notes.comment, type: (e) => this.set({ notes: Object.assign({}, s.notes, { comment: e.target.value }) }) },
+      { id: 'n3', title: 'Patient reminder', who: 'Sticky · shows on every visit until cleared', val: s.notes.reminder, type: (e) => this.set({ notes: Object.assign({}, s.notes, { reminder: e.target.value }) }) }
+    ];
+    const complaintChips = s.complaints.map((c) => ({ label: c, remove: () => this.set({ complaints: s.complaints.filter((x) => x !== c) }) }));
+    const usual = ['Fever', 'Cough', 'Chest pain', 'Breathlessness', 'Palpitations', 'Blurred vision'].filter((u) => s.complaints.indexOf(u) < 0).map((u) => ({ label: u, add: () => this.set({ complaints: s.complaints.concat([u]) }) }));
+    const copy = { complaints: 'Desk words carried in as two chips. Suggested next: examination.', exam: 'Dashed chips are suggestions from BP and your usual findings.', dx: 'Essential hypertension fits BP today and 12 Aug. LDL 162 suggests hyperlipidaemia.', inv: 'Lipid and RFT were done 19 Sep — repeat is not needed yet.', rx: 'Telmisartan continued. BP still high: consider adding amlodipine 5 mg.', treat: 'Nothing billed yet.', advice: 'Salt advice suggested for hypertension.', notes: 'Reminder carried from the last visit.', summary: 'Check every section before Complete.' };
+    return {
+      savedLine: s.drafted ? 'Draft saved ' + s.saved : 'Autosaved ' + s.saved,
+      saveDraft: () => this.set({ drafted: true }),
+      strip, summary, tabs, on, examGroups, dxList, invGroups, rxLines, rxSug, treatChips, adviceGroups, fuChips, noteBoxes, complaintChips, usual,
+      setProv: () => this.set({ dxKind: 'Provisional' }), setFinal: () => this.set({ dxKind: 'Final' }),
+      provStyle: seg(s.dxKind === 'Provisional'), finalStyle: seg(s.dxKind === 'Final'),
+      addSet: () => this.set({ inv: Array.from(new Set(s.inv.concat(['Lipid profile', 'RFT', 'Urine R/M', 'ECG']))) }),
+      copilotLine: copy[s.tab],
+      showAlt: s.rx.indexOf('amlo') >= 0 && s.alt !== 'keep',
+      swap: () => this.set({ rx: s.rx.map((x) => (x === 'amlo' ? 'stamlo' : x)), alt: 'swap' }),
+      keep: () => this.set({ alt: 'keep' })
+    };
+  }
+}
+</script>
+</body>
+</html>
