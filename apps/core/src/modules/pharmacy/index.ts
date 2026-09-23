@@ -112,3 +112,6 @@ export type {
 export { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 export type { RetailReturnInput, RetailReturnResult } from "./retail-returns";
 export { setShelfLocation, shelfLocationsFor } from "./shelf-locations";
+/** Consult v2 — the doctor's read of the shelf: sellable count per medicine, and alternatives at zero. */
+export { stockForDoctor } from "./doctor-stock";
+export type { DoctorStock, DoctorStockAlternative } from "./doctor-stock";

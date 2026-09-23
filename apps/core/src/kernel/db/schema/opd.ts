@@ -429,6 +429,29 @@ export const opdEncounters = pgTable(
      * selection that was never persisted tells nobody anything.
      */
     advisedTests: jsonb("advised_tests"),
+    /**
+     * ═══ CONSULT V2 (owner, 2026-09-23) — THE SECTIONS THE DOCTOR'S SCREEN WAS MISSING ═══
+     *
+     * Examination, treatment and two notes, written by the same `saveConsultNote` path as the
+     * complaint and the diagnosis — so the same treating-doctor and in_consultation guards hold, and
+     * autosave covers them. `examination` is `{ group: 'general'|'systemic'|'local', text }[]`;
+     * `treatment` is the procedures and non-drug care given in the room, as text.
+     *
+     * `doctorNote` is part of the clinical record; `internalComment` is for staff and the next doctor.
+     * NEITHER is printed: the Rx print reads its own fields and never these.
+     *
+     * `diagnosisKind` says whether the diagnoses are provisional or final. Null = not said.
+     *
+     * `rxStockChoices` is D14: when the pharmacy had none of a medicine and the screen offered an
+     * alternative, what was offered and what the doctor kept — `{ offeredMedicineId, keptMedicineId,
+     * chosen: 'swap'|'keep', at }[]`. An audit of the offer, never a gate on the prescription.
+     */
+    examination: jsonb("examination"),
+    treatment: jsonb("treatment"),
+    doctorNote: text("doctor_note"),
+    internalComment: text("internal_comment"),
+    diagnosisKind: text("diagnosis_kind"),
+    rxStockChoices: jsonb("rx_stock_choices"),
     referralTo: text("referral_to"),
     referralNote: text("referral_note"),
     followUpDays: integer("follow_up_days"), // stamped at completion: config default or an extension value
@@ -462,6 +485,7 @@ export const opdEncounters = pgTable(
     index("opd_encounters_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_encounters_patient_opened_idx").on(t.patientId, t.openedAt),
     index("opd_encounters_status_idx").on(t.status),
+    check("opd_encounters_diagnosis_kind_ck", sql`${t.diagnosisKind} is null or ${t.diagnosisKind} in ('provisional', 'final')`),
   ],
 );
 
@@ -1081,5 +1105,30 @@ export const opdPrescriptionDrafts = pgTable(
     uniqueIndex("opd_rx_drafts_pending_ux").on(t.encounterId).where(sql`status = 'pending'`),
     index("opd_rx_drafts_patient_idx").on(t.patientId),
     index("opd_rx_drafts_drafted_by_at_idx").on(t.draftedBy, t.draftedAt),
+  ],
+);
+
+/**
+ * ═══ THE PATIENT REMINDER — A STICKY NOTE THAT OUTLIVES THE VISIT (Consult v2, 2026-09-23) ═══
+ *
+ * "Prefers generic medicines", "hard of hearing, speak slowly": something every doctor who opens this
+ * patient should see, on every visit, until somebody clears it. It belongs to the PATIENT, not to an
+ * encounter, which is why it is a table and not a column. One ACTIVE reminder per patient (the partial
+ * unique index): setting a new one clears the old one in the same transaction, so there is never a
+ * question of which of two notes is current. Nothing is deleted — a cleared row keeps who cleared it.
+ */
+export const opdPatientReminders = pgTable(
+  "opd_patient_reminders",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    text: text("text").notNull(),
+    setBy: text("set_by").notNull(),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull().defaultNow(),
+    clearedBy: text("cleared_by"),
+    clearedAt: timestamp("cleared_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("opd_patient_reminders_active_ux").on(t.patientId).where(sql`cleared_at is null`),
   ],
 );

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { PharmacyCounterController } from "./pharmacy-counter.controller";
+import { PharmacyDoctorController } from "./pharmacy-doctor.controller";
 import { PharmacyItemsController } from "./pharmacy-items.controller";
 import { PharmacyPharmacistsController } from "./pharmacy-pharmacists.controller";
 import { PharmacyDowntimeController, PharmacyRetailController } from "./pharmacy-retail.controller";
@@ -7,7 +8,7 @@ import { PharmacyDowntimeController, PharmacyRetailController } from "./pharmacy
 /**
  * PLAN 16c — the module. T1 shipped it inert; T2 mounted the sale-items controller, T3 the
  * counter's (the `LabModule` precedent). P2 mounted the register of pharmacists; P19 the walk-in
- * retail counter; P20 the paper-dispense entry.
+ * retail counter; P20 the paper-dispense entry; Consult v2 the doctor's read of the shelf.
  */
-@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController] })
+@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController] })
 export class PharmacyModule {}

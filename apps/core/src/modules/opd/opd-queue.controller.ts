@@ -4,7 +4,9 @@ import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
-import { completeConsultation, openUnpaidToken, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
+import { DIAGNOSIS_KINDS, EXAM_GROUPS, completeConsultation, openUnpaidToken, parkConsultation, resumeConsultation, saveConsultNote, startConsultation } from "./consultation";
+import { activeReminder, clearReminder, setReminder } from "./reminders";
+import type { ReminderView } from "./reminders";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
 import {
@@ -80,7 +82,23 @@ const consultNoteBody = z.object({
     name: z.string().min(1).max(300),
     pricePaise: z.number().int().nonnegative(),
   })).max(20).nullable().optional(),
+  /**
+   * CONSULT V2 — bounded like everything else on this body. Sixty findings is a thorough examination;
+   * thirty treatment lines is more than any OPD room gives.
+   */
+  examination: z.array(z.object({ group: z.enum(EXAM_GROUPS), text: z.string().min(1).max(300) })).max(60).nullable().optional(),
+  treatment: z.array(z.string().min(1).max(300)).max(30).nullable().optional(),
+  doctorNote: z.string().max(4000).nullable().optional(),
+  internalComment: z.string().max(4000).nullable().optional(),
+  diagnosisKind: z.enum(DIAGNOSIS_KINDS).nullable().optional(),
+  // D14 — only what was offered and what was kept; `by`/`at` are the server's (`stampStockChoices`).
+  rxStockChoices: z.array(z.object({
+    offeredMedicineId: z.string().min(1).max(64),
+    keptMedicineId: z.string().min(1).max(64),
+    chosen: z.enum(["swap", "keep"]),
+  })).max(30).nullable().optional(),
 });
+const reminderBody = z.object({ text: z.string().trim().min(1).max(300) });
 const consultCompleteBody = z.object({
   note: consultNoteBody.optional(),
   testsOrderedReturnToday: z.boolean(),
@@ -326,6 +344,42 @@ export class OpdQueueController {
     const b = parsed(consultNoteBody, body);
     try {
       return await saveConsultNote(this.db, actor, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * CONSULT V2 — THE PATIENT REMINDER. Read and written by whoever conducts consultations
+   * (`opd.consult`), not by the desk: it is a clinician's note on the patient. `reminders.ts` gates the
+   * patient through `getPatient`, so a sealed record answers like an absent one.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("patients/:patientId/reminder")
+  async reminder(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ reminder: ReminderView | null }> {
+    try {
+      return { reminder: await activeReminder(this.db, actor, patientId) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Put("patients/:patientId/reminder")
+  async putReminder(@CurrentActor() actor: Actor, @Param("patientId") patientId: string, @Body() body: unknown): Promise<{ reminder: ReminderView }> {
+    const b = parsed(reminderBody, body);
+    try {
+      return { reminder: await setReminder(this.db, actor, patientId, b.text) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Post("patients/:patientId/reminder/clear")
+  async clearReminderRoute(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ cleared: boolean }> {
+    try {
+      return await clearReminder(this.db, actor, patientId);
     } catch (e) {
       toHttp(e);
     }

@@ -67,12 +67,50 @@ export type ConsultNote = {
    * be added to a finished visit.
    */
   advisedTests?: AdvisedTest[] | null;
+  /**
+   * CONSULT V2 (owner, 2026-09-23) — the sections the screen was missing. Each list is REPLACED
+   * whole, as the diagnoses are: the doctor edits the list, and a merge would keep what they deleted.
+   */
+  examination?: ExamFinding[] | null;
+  treatment?: string[] | null;
+  doctorNote?: string | null;
+  internalComment?: string | null;
+  diagnosisKind?: DiagnosisKind | null;
+  /** D14 — offered/kept at a zero-stock line. `at` and `by` are stamped by the SERVER (see `stampStockChoices`). */
+  rxStockChoices?: RxStockChoiceInput[] | null;
 };
+
+export const EXAM_GROUPS = ["general", "systemic", "local"] as const;
+export type ExamFinding = { group: (typeof EXAM_GROUPS)[number]; text: string };
+export const DIAGNOSIS_KINDS = ["provisional", "final"] as const;
+export type DiagnosisKind = (typeof DIAGNOSIS_KINDS)[number];
+export type RxStockChoiceInput = { offeredMedicineId: string; keptMedicineId: string; chosen: "swap" | "keep" };
+export type RxStockChoice = RxStockChoiceInput & { by: string; at: string };
+
+/**
+ * D14 IS AN AUDIT, SO THE CLIENT NEVER NAMES WHO OR WHEN. The list is re-sent whole on every
+ * autosave; a choice already on the record keeps its original stamp, and a new one gets this
+ * actor and this moment. A client that sent `by`/`at` would have them ignored.
+ */
+export function stampStockChoices(
+  incoming: RxStockChoiceInput[], existing: unknown, actorId: string, now: Date,
+): RxStockChoice[] {
+  const prior = Array.isArray(existing) ? (existing as RxStockChoice[]) : [];
+  const key = (c: RxStockChoiceInput): string => `${c.offeredMedicineId}|${c.keptMedicineId}|${c.chosen}`;
+  const priorByKey = new Map(prior.map((c) => [key(c), c]));
+  return incoming.map((c) => {
+    const was = priorByKey.get(key(c));
+    return {
+      offeredMedicineId: c.offeredMedicineId, keptMedicineId: c.keptMedicineId, chosen: c.chosen,
+      by: was?.by ?? actorId, at: was?.at ?? now.toISOString(),
+    };
+  });
+}
 
 /** The encounter columns a note writes — the same set moveEncounter's patch accepts, so a completion is ONE update. */
 type NoteColumns = Partial<Pick<EncounterRow,
   "chiefComplaint" | "diagnosis" | "icd10Code" | "advice" | "admissionAdvised" | "referralTo" | "referralNote"
-  | "advisedTests">>;
+  | "advisedTests" | "examination" | "treatment" | "doctorNote" | "internalComment" | "diagnosisKind">>;
 
 /**
  * The structured list a note writes, or null when the note says nothing about diagnoses at all.
@@ -139,6 +177,11 @@ function noteColumns(note: ConsultNote | undefined): NoteColumns {
   if (note.referralTo !== undefined) patch.referralTo = note.referralTo;
   if (note.referralNote !== undefined) patch.referralNote = note.referralNote;
   if (note.advisedTests !== undefined) patch.advisedTests = note.advisedTests;
+  if (note.examination !== undefined) patch.examination = note.examination;
+  if (note.treatment !== undefined) patch.treatment = note.treatment;
+  if (note.doctorNote !== undefined) patch.doctorNote = note.doctorNote;
+  if (note.internalComment !== undefined) patch.internalComment = note.internalComment;
+  if (note.diagnosisKind !== undefined) patch.diagnosisKind = note.diagnosisKind;
   return patch;
 }
 
@@ -484,7 +527,13 @@ export async function saveConsultNote(
   return withTx(db, async (tx) => {
     const rows = await tx
       .update(opdEncounters)
-      .set({ ...noteColumns(note), updatedBy: actor.id, updatedAt: now })
+      .set({
+        ...noteColumns(note),
+        ...(note.rxStockChoices === undefined ? {} : {
+          rxStockChoices: note.rxStockChoices === null ? null : stampStockChoices(note.rxStockChoices, current.rxStockChoices, actor.id, now),
+        }),
+        updatedBy: actor.id, updatedAt: now,
+      })
       .where(and(eq(opdEncounters.id, encounterId), eq(opdEncounters.status, "in_consultation")))
       .returning();
     if (rows.length === 0) throw new OpdError("encounter_state_conflict", "encounter moved concurrently");
