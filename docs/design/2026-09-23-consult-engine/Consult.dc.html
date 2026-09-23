@@ -53,6 +53,7 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <div style="font-size: 13px; color: #5c6f66;">Dr. A. Mehta · OPD-3 · General Medicine screen</div>
 <div style="flex-grow: 1;"></div>
 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #0e6b4e;">{{ savedLine }}</span>
+<button type="button" onClick="{{ openRefer }}" style="height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px; font-weight: 600;">Refer</button>
 <button type="button" onClick="{{ saveDraft }}" style="height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px; font-weight: 600;">Save draft</button>
 <button type="button" style="height: 36px; padding: 0 16px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 13px; font-weight: 600;">Complete &amp; print</button>
 </header>
@@ -63,11 +64,24 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <div style="font-size: 17px; font-weight: 700;">Ramesh Patel <span style="font-size: 13px; font-weight: 500; color: #5c6f66;">· 45 M · token 12 · UHID 000429</span></div>
 <div style="font-size: 12px; color: #5c6f66;">Free follow-up · day 42 of hypertension care · last seen 12 Aug by you</div>
 </div>
-<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 4px; background: rgba(178,58,48,.08); border: 1px solid rgba(178,58,48,.4); color: #b23a30; font-size: 11px; font-weight: 600;">ALLERGY · PENICILLIN</span>
-<div style="flex-grow: 1;"></div>
-<div style="display: flex; gap: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">
-<span style="color: #8a5a10; font-weight: 700;">BP 152/96</span><span>P 88</span><span>SpO₂ 97</span><span>72 kg</span><span>BMI 24.9</span>
+<div style="display: flex; align-items: center; gap: 6px; position: relative;">
+<sc-for list="{{ allergies }}" as="a" hint-placeholder-count="1">
+<span style="display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 9px; border-radius: 13px; background: rgba(178,58,48,.08); border: 1px solid rgba(178,58,48,.4); color: #b23a30; font-size: 11.5px; font-weight: 600;">{{ a.name }}<button type="button" onClick="{{ a.edit }}" aria-label="Edit allergy" style="height: 20px; padding: 0 5px; border: 0; background: transparent; color: #b23a30; font-size: 11px; text-decoration: underline;">edit</button><button type="button" onClick="{{ a.remove }}" aria-label="Delete allergy (entered in error)" style="width: 20px; height: 20px; border-radius: 10px; border: 0; background: transparent; color: #b23a30;">×</button></span>
+</sc-for>
+<label for="alg2" style="position: absolute; left: -9999px;">Add allergy</label>
+<input id="alg2" value="{{ algQ }}" onInput="{{ typeAlg }}" placeholder="+ Add allergy" style="height: 26px; width: 150px; border-radius: 13px; border: 1px dashed rgba(178,58,48,.4); padding: 0 10px; background: #ffffff; font-size: 12px;">
+<sc-if value="{{ algOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 30px; right: 0; width: 230px; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; box-shadow: 0 6px 18px rgba(19,36,32,.12); z-index: 6; padding: 4px;">
+<sc-for list="{{ algSug }}" as="x" hint-placeholder-count="3">
+<button type="button" onClick="{{ x.add }}" style="display: block; width: 100%; text-align: left; height: 30px; padding: 0 10px; border: 0; background: transparent; font-size: 12.5px;">{{ x.label }}</button>
+</sc-for>
 </div>
+</sc-if>
+</div>
+<div style="flex-grow: 1;"></div>
+<button type="button" onClick="{{ openVitals }}" title="Edit or add a reading" style="display: flex; gap: 12px; align-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; border: 1px dashed #dfe7e1; border-radius: 6px; background: #ffffff; padding: 4px 8px;">
+<span style="{{ bpStyle }}">BP {{ bp }}</span><span>P 88</span><span>SpO₂ 97</span><span>72 kg</span><span>BMI 24.9</span><span style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; color: #0e6b4e; text-decoration: underline;">edit</span>
+</button>
 </section>
 
 <section style="padding: 10px 20px; background: #eef3ef; border-bottom: 1px solid #dfe7e1; flex-shrink: 0;">
@@ -93,6 +107,45 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </nav>
 
 <div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 14px 20px;">
+<sc-if value="{{ vitalsOpen }}" hint-placeholder-val="{{ false }}">
+<div style="margin-bottom: 12px; background: #ffffff; border: 1.5px solid #0e6b4e; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+<div style="font-weight: 700;">Vitals · bay reading 10:14 by Sr. Kavita</div>
+<div style="display: flex; gap: 10px; align-items: end; flex-wrap: wrap;">
+<div style="display: flex; flex-direction: column; gap: 3px;"><label for="bpin" style="font-size: 11.5px; color: #5c6f66;">BP (new reading)</label><input id="bpin" value="{{ bpDraft }}" onInput="{{ typeBp }}" style="height: 34px; width: 110px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 8px; font-family: 'IBM Plex Mono', monospace;"></div>
+<div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;"><label for="why" style="font-size: 11.5px; color: #5c6f66;">Why (for a correction)</label><input id="why" placeholder="Repeated after 10 min rest" style="height: 34px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 8px;"></div>
+<button type="button" onClick="{{ saveVitals }}" style="height: 34px; padding: 0 14px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Add reading</button>
+<button type="button" onClick="{{ closeVitals }}" style="height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Close</button>
+</div>
+<div style="font-size: 12px; color: #5c6f66;">{{ vitalsNote }}</div>
+</div>
+</sc-if>
+<sc-if value="{{ referOpen }}" hint-placeholder-val="{{ false }}">
+<div style="margin-bottom: 12px; background: #ffffff; border: 1.5px solid #132420; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+<div style="font-weight: 700;">Refer Ramesh Patel</div>
+<div style="display: flex; gap: 6px; flex-wrap: wrap;">
+<sc-for list="{{ referTo }}" as="r" hint-placeholder-count="5">
+<button type="button" onClick="{{ r.pick }}" style="{{ r.style }}">{{ r.label }}</button>
+</sc-for>
+</div>
+<label for="rnote" style="font-size: 11.5px; color: #5c6f66;">Reason and note for the receiving doctor</label>
+<input id="rnote" placeholder="BP uncontrolled on two drugs; please evaluate for secondary hypertension" style="height: 36px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 10px;">
+<div style="display: flex; gap: 8px; align-items: center;">
+<button type="button" onClick="{{ sendRefer }}" style="height: 36px; padding: 0 16px; border-radius: 6px; border: 0; background: #132420; color: #ffffff; font-size: 12.5px; font-weight: 600;">{{ referSendLabel }}</button>
+<button type="button" onClick="{{ closeRefer }}" style="height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Close</button>
+<span style="font-size: 12px; color: #5c6f66;">Internal: joins that line without re-registering. External: prints a referral letter.</span>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ inlineOn }}" hint-placeholder-val="{{ false }}">
+<div style="margin-bottom: 12px; padding: 10px 12px; border-radius: 8px; border: 1px dashed #0e6b4e; background: rgba(14,107,78,.04); display: flex; flex-direction: column; gap: 6px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 700; letter-spacing: .14em; color: #0e6b4e;">{{ inlineTitle }} · COPILOT IS MINIMISED, SO SUGGESTIONS SHOW HERE</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<sc-for list="{{ inlineChips }}" as="c" hint-placeholder-count="3">
+<button type="button" onClick="{{ c.add }}" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1.5px dashed #0e6b4e; background: #ffffff; color: #0e6b4e; font-size: 12.5px;">+ {{ c.label }}</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
 
 <sc-if value="{{ on.summary }}" hint-placeholder-val="{{ false }}">
 <div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 10px; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px;">
@@ -118,7 +171,16 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 12px; border-radius: 16px; background: #0e6b4e; color: #ffffff; font-size: 13px; font-weight: 600;">{{ c.label }}<button type="button" onClick="{{ c.remove }}" aria-label="Remove" style="width: 22px; height: 22px; border-radius: 11px; border: 0; background: rgba(255,255,255,.18); color: #ffffff;">×</button></span>
 </sc-for>
 <label for="cq" style="position: absolute; left: -9999px;">Add complaint</label>
-<input id="cq" placeholder="Type a complaint" style="flex-grow: 1; min-width: 220px; height: 32px; border-radius: 16px; border: 1px solid #dfe7e1; padding: 0 12px; background: #ffffff;">
+<div style="position: relative; flex-grow: 1; min-width: 220px;">
+<input id="cq" value="{{ cQ }}" onInput="{{ typeC }}" placeholder="Type a complaint — suggestions appear as you type" style="width: 100%; box-sizing: border-box; height: 32px; border-radius: 16px; border: 1px solid #dfe7e1; padding: 0 12px; background: #ffffff;">
+<sc-if value="{{ cOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 36px; left: 0; width: 280px; background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; box-shadow: 0 6px 18px rgba(19,36,32,.12); z-index: 6; padding: 4px;">
+<sc-for list="{{ cSug }}" as="x" hint-placeholder-count="3">
+<button type="button" onClick="{{ x.add }}" style="display: block; width: 100%; text-align: left; height: 30px; padding: 0 10px; border: 0; background: transparent; font-size: 12.5px;">{{ x.label }}</button>
+</sc-for>
+</div>
+</sc-if>
+</div>
 </div>
 <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
 <span style="font-size: 12px; color: #5c6f66;">Your usual:</span>
@@ -299,12 +361,12 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"startTab":{"editor":"enum","options":["complaints","summary","exam","dx","inv","rx","treat","advice","notes"],"default":"complaints"},"filled":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"startTab":{"editor":"enum","options":["complaints","summary","exam","dx","inv","rx","treat","advice","notes"],"default":"exam"},"filled":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = {
-      railOpen: false, copOpen: true, tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
+      railOpen: false, copOpen: true, referOpen: false, referPick: null, referSent: false, vitalsOpen: false, bp: '152/96', bpDraft: '', vitalsNote: '', allergies: ['Penicillin'], algQ: '', cQ: '', tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
       complaints: ['Headache', 'Giddiness'],
       exam: props.filled ? ['Conscious, oriented', 'Pallor absent', 'No pedal oedema', 'CVS: S1 S2 normal, no murmur', 'Fundus: AV nicking'] : [],
       dx: props.filled ? ['I10', 'E78.5'] : [], dxKind: props.filled ? 'Final' : 'Provisional',
@@ -393,6 +455,26 @@ class Component extends DCLogic {
     const usual = ['Fever', 'Cough', 'Chest pain', 'Breathlessness', 'Palpitations', 'Blurred vision'].filter((u) => s.complaints.indexOf(u) < 0).map((u) => ({ label: u, add: () => this.set({ complaints: s.complaints.concat([u]) }) }));
     const copy = { complaints: 'Desk words carried in as two chips. Suggested next: examination.', exam: 'Dashed chips are suggestions from BP and your usual findings.', dx: 'Essential hypertension fits BP today and 12 Aug. LDL 162 suggests hyperlipidaemia.', inv: 'Lipid and RFT were done 19 Sep — repeat is not needed yet.', rx: 'Telmisartan continued. BP still high: consider adding amlodipine 5 mg.', treat: 'Nothing billed yet.', advice: 'Salt advice suggested for hypertension.', notes: 'Reminder carried from the last visit.', summary: 'Check every section before Complete.' };
     return {
+      openRefer: () => this.setState({ referOpen: true, referSent: false }), closeRefer: () => this.setState({ referOpen: false }),
+      referOpen: s.referOpen,
+      referTo: ['Cardiology', 'Nephrology · Dr. R. Menon', 'Endocrinology', 'Ophthalmology (fundus)', 'External hospital'].map((l) => ({ label: l, pick: () => this.setState({ referPick: l }), style: this.chip(s.referPick === l, false) })),
+      referSendLabel: s.referSent ? 'Referred to ' + s.referPick + ' · logged' : (s.referPick ? 'Refer to ' + s.referPick : 'Pick where to refer'),
+      sendRefer: () => { if (s.referPick) this.set({ referSent: true }); },
+      vitalsOpen: s.vitalsOpen, openVitals: () => this.setState({ vitalsOpen: true }), closeVitals: () => this.setState({ vitalsOpen: false }),
+      bp: s.bp, bpDraft: s.bpDraft, typeBp: (e) => this.setState({ bpDraft: e.target.value }), vitalsNote: s.vitalsNote,
+      bpStyle: s.bp === '152/96' ? 'color: #8a5a10; font-weight: 700;' : 'font-weight: 700;',
+      saveVitals: () => { if (s.bpDraft.trim()) this.set({ bp: s.bpDraft.trim(), vitalsNote: 'Added ' + s.bpDraft.trim() + ' by Dr. A. Mehta. The bay reading 152/96 is kept in the record.', bpDraft: '' }); },
+      allergies: s.allergies.map((a) => ({ name: a, remove: () => this.set({ allergies: s.allergies.filter((x) => x !== a) }), edit: () => this.setState({ algQ: a }) })),
+      algQ: s.algQ, typeAlg: (e) => this.setState({ algQ: e.target.value }),
+      algSug: (s.algQ.trim() ? ['Penicillin', 'Amoxicillin', 'Sulfa drugs (sulfonamides)', 'Aspirin / NSAIDs', 'Iodinated contrast', 'Cephalosporins', 'Peanut', 'Latex'].filter((a) => a.toLowerCase().indexOf(s.algQ.trim().toLowerCase()) >= 0 && s.allergies.indexOf(a) < 0).slice(0, 5) : []).map((a) => ({ label: a, add: () => this.set({ allergies: s.allergies.concat([a]), algQ: '' }) })),
+      algOpen: !!s.algQ.trim(),
+      cQ: s.cQ, typeC: (e) => this.setState({ cQ: e.target.value }), cOpen: !!s.cQ.trim(),
+      cSug: ['Headache', 'Giddiness', 'Fever', 'Chest pain', 'Chest tightness', 'Cough', 'Breathlessness', 'Palpitations', 'Blurred vision', 'Burning micturition', 'Pain abdomen'].filter((c) => c.toLowerCase().indexOf(s.cQ.trim().toLowerCase()) >= 0 && s.complaints.indexOf(c) < 0).slice(0, 6).concat([s.cQ.trim()].filter((c) => c)).map((c, i, arr) => ({ label: i === arr.length - 1 && arr.length && c === s.cQ.trim() ? 'Add "' + c + '" (your own term)' : c, add: () => this.set({ complaints: s.complaints.concat([c]), cQ: '' }) })),
+      inlineOn: !s.copOpen && ['complaints', 'dx', 'inv', 'rx'].indexOf(s.tab) >= 0,
+      inlineTitle: { complaints: 'LIKELY DIAGNOSES FROM THE COMPLAINTS', dx: 'TESTS FOR COMPLAINTS + DIAGNOSIS', inv: 'TESTS FOR COMPLAINTS + DIAGNOSIS', rx: 'MEDICINES FOR THE DIAGNOSIS · WITH STOCK' }[s.tab] || '',
+      inlineChips: (s.tab === 'complaints' ? dxDefs.filter((d) => s.dx.indexOf(d.id) < 0).map((d) => ({ label: d.name + ' · ' + d.i10, add: () => this.tog('dx', d.id) }))
+        : (s.tab === 'dx' || s.tab === 'inv') ? ['Lipid profile', 'RFT', 'Urine R/M', 'ECG'].filter((t) => s.inv.indexOf(t) < 0).map((t) => ({ label: t, add: () => this.tog('inv', t) }))
+        : s.tab === 'rx' ? ['amlo', 'ator'].filter((id) => s.rx.indexOf(id) < 0).map((id) => ({ label: catalog[id].name + ' · ' + (catalog[id].stock === 0 ? '0 in stock' : catalog[id].stock + ' tab'), add: () => this.set({ rx: s.rx.concat([id]) }) })) : []),
       copOpen: s.copOpen, copShut: !s.copOpen, toggleCop: () => this.setState({ copOpen: !s.copOpen }), copAlert: s.rx.indexOf('amlo') >= 0 && s.alt !== 'keep',
       railOpen: s.railOpen, railShut: !s.railOpen, toggleRail: () => this.setState({ railOpen: !s.railOpen }),
       savedLine: s.drafted ? 'Draft saved ' + s.saved : 'Autosaved ' + s.saved,
