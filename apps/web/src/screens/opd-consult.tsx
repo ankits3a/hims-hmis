@@ -176,6 +176,18 @@ const EMPTY_LINE: RxFormInput["lines"][number] = {
   noSubstitution: false, medicineId: null,
 };
 
+/** A row the doctor has written something into. Route, frequency and the checkbox carry defaults. */
+function rowHasContent(l: RxFormInput["lines"][number]): boolean {
+  return l.drug.trim() !== "" || l.dose.trim() !== "" || l.instructions.trim() !== ""
+    || String(l.durationDays ?? "").trim() !== "";
+}
+
+/** The written rows as one comparable value; "" means the editor holds no prescription at all. */
+function rowsKey(lines: RxFormInput["lines"]): string {
+  const written = lines.filter(rowHasContent);
+  return written.length === 0 ? "" : JSON.stringify(written);
+}
+
 // ─────────────────────────── PLAN 16a T6 — the check-suite wire shapes ───────────────────────────
 
 type WirePrecheck = {
@@ -358,6 +370,12 @@ export function OpdConsult(): React.ReactElement {
   const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map())));
   /** The PARSED lines of a refused submission — never `getValues()`, whose durationDays is a string (§3.19). */
   const pendingLines = useRef<RxLineValues[]>([]);
+  /**
+   * PRODUCTION 2026-09-23 — the rows as they stood when the last issue SUCCEEDED (null: nothing
+   * issued this consultation). Complete compares the editor against it: a non-empty editor that
+   * differs has not reached the pharmacy, and Complete must issue it rather than drop it.
+   */
+  const [issuedRowsKey, setIssuedRowsKey] = useState<string | null>(null);
   const loadedNoteFor = useRef<string | null>(null);
 
   // ——— boot: am I a doctor, and what is my queue today? ———
@@ -602,6 +620,8 @@ export function OpdConsult(): React.ReactElement {
     defaultValues: { lines: [EMPTY_LINE] },
   });
   const lines = useFieldArray({ control: rxForm.control, name: "lines" });
+  /* The label follows what Complete will do: "Issue & complete" while written rows are un-issued. */
+  const rxWaiting = (() => { const k = rowsKey(rxForm.watch("lines")); return k !== "" && k !== issuedRowsKey; })();
 
   /*
     ═══ FD-30 — THE DOOR'S SLIP, AND THE TAP THAT ISSUES IT (OWNER RULING 2026-09-12) ═══
@@ -755,6 +775,7 @@ export function OpdConsult(): React.ReactElement {
     setRegimen(null);
     setCdsError(null);
     rxForm.reset({ lines: [EMPTY_LINE] });
+    setIssuedRowsKey(null);
   };
 
   // ——— the queue actions ———
@@ -1150,8 +1171,8 @@ export function OpdConsult(): React.ReactElement {
     interactionOverrides?: { lineIndex: number; reason: string; saltPair: [string, string] }[],
     duplicateOverrides?: { lineIndex: number; reason: string; moiety: string }[],
     drugDiseaseOverrides?: { lineIndex: number; reason: string; moiety: string; icd10Prefix: string }[],
-  ): Promise<void> => {
-    if (active === null) return;
+  ): Promise<boolean> => {
+    if (active === null) return false;
     setRxError(null);
     const body: Record<string, unknown> = {
       lines: rxLines.map((l) => ({
@@ -1169,12 +1190,16 @@ export function OpdConsult(): React.ReactElement {
     if (interactionOverrides !== undefined) body.interactionOverrides = interactionOverrides;
     if (duplicateOverrides !== undefined) body.duplicateOverrides = duplicateOverrides;
     if (drugDiseaseOverrides !== undefined) body.drugDiseaseOverrides = drugDiseaseOverrides;
+    let exists = false;
     try {
       const issued = await api<{
         prescriptionId: string; version: number;
         notices?: WireRxNotice[];
         unreviewedLineIndexes?: number[];
       }>("POST", `/opd/visits/${active.encounterId}/prescriptions`, body);
+      // The prescription EXISTS from here on; the print below is a courtesy that must not un-issue it.
+      exists = true;
+      setIssuedRowsKey(rowsKey(rxForm.getValues("lines")));
       setMatches(null);
       setReasons([]);
       setInteractionHits([]);
@@ -1190,7 +1215,11 @@ export function OpdConsult(): React.ReactElement {
       const print = await api<WireRxPrint>("GET", `/opd/prescriptions/${issued.prescriptionId}/print`);
       setRxPrint(print);
       await queryClient.invalidateQueries({ queryKey: ["opd", "visit"] });
+      return true;
     } catch (e) {
+      /* The POST succeeded and a later read (the print) failed: the prescription is issued, the
+         pharmacy has it, and the failure is shown — but it is not a reason to call the issue failed. */
+      if (exists) { setRxError(opdErrorMessage(e)); return true; }
       if (e instanceof ApiError) {
         const errBody = e.body as {
           code?: string;
@@ -1201,7 +1230,7 @@ export function OpdConsult(): React.ReactElement {
           setMatches(errBody.detail.matches);
           setReasons(errBody.detail.matches.map(() => ""));
           setOverrideError(null);
-          return;
+          return false;
         }
         /**
          * PLAN 16a T6 / DD3 — the two new hard warnings arrive in `allergy_conflict`'s exact shape,
@@ -1214,34 +1243,36 @@ export function OpdConsult(): React.ReactElement {
           setInteractionHits(hits);
           setInteractionReasons(hits.map(() => ""));
           setOverrideError(null);
-          return;
+          return false;
         }
         if (errBody?.code === "duplicate_salt_conflict" && Array.isArray(errBody.detail?.hits)) {
           const hits = errBody.detail.hits.filter((h): h is WireDuplicateHit => !isInteractionHit(h));
           setDuplicateHits(hits);
           setDuplicateReasons(hits.map(() => ""));
           setOverrideError(null);
-          return;
+          return false;
         }
         if (errBody?.code === "drug_disease_conflict" && Array.isArray(errBody.detail?.diseaseHits)) {
           const hits = errBody.detail.diseaseHits;
           setDiseaseHits(hits);
           setDiseaseReasons(hits.map(() => ""));
           setOverrideError(null);
-          return;
+          return false;
         }
         if (errBody?.code === "override_reason_required") {
           setOverrideError(opdErrorMessage(e));
-          return;
+          return false;
         }
       }
       setRxError(opdErrorMessage(e));
+      return false;
     }
   };
 
-  const submitRx = rxForm.handleSubmit(async (values) => {
+  /** The Issue path, answering whether a prescription now exists. Issue and Complete share it. */
+  const issueRx = async (values: RxFormValues): Promise<boolean> => {
     pendingLines.current = values.lines;
-    if (active === null) return;
+    if (active === null) return false;
     /**
      * PLAN 16a T6 — the pre-check runs first so the doctor meets the warning before the refusal.
      * IT IS A COURTESY, NOT A GATE: the issue path re-runs every check server-side regardless
@@ -1278,7 +1309,7 @@ export function OpdConsult(): React.ReactElement {
         setDiseaseHits(severeDisease);
         setDiseaseReasons(severeDisease.map(() => ""));
         setOverrideError(null);
-        return;
+        return false;
       }
     } catch {
       // Deliberately swallowed — see the comment above. The server is the gate.
@@ -1287,7 +1318,11 @@ export function OpdConsult(): React.ReactElement {
       setUnresolvedLines([]);
       setUnreviewedLines([]);
     }
-    await postRx(values.lines);
+    return postRx(values.lines);
+  };
+
+  const submitRx = rxForm.handleSubmit(async (values) => {
+    await issueRx(values);
   });
 
   /**
@@ -1370,9 +1405,31 @@ export function OpdConsult(): React.ReactElement {
 
   // ——— completion ———
 
+  /**
+   * ═══ PRODUCTION 2026-09-23 — COMPLETE MUST NOT DROP A PRESCRIPTION NOBODY ISSUED ═══
+   *
+   * Encounter 01M36K6NZ7676HA11278QK9225: consultation.completed 46 seconds after it started and no
+   * prescription.issued. The doctor typed medicines and pressed Complete; this function posted the
+   * note and `resetPanel()` cleared the rows. The pharmacy queue never got a ticket.
+   *
+   * So a written, un-issued editor makes Complete "Issue & complete": it takes the Issue button's
+   * own road — the pre-check, the server's allergy / interaction / duplicate / drug-disease checks,
+   * the override dialog — and completes ONLY if a prescription now exists. A pause, a refusal or an
+   * error leaves the visit open and every row where the doctor wrote it.
+   */
+  const rxUnissued = (): boolean => {
+    const key = rowsKey(rxForm.getValues("lines"));
+    return key !== "" && key !== issuedRowsKey;
+  };
+
   const complete = async (): Promise<void> => {
     if (active === null) return;
     setCompleteError(null);
+    if (rxUnissued()) {
+      let issued = false;
+      await rxForm.handleSubmit(async (values) => { issued = await issueRx(values); })();
+      if (!issued) { setTab("rx"); return; }
+    }
     const body: Record<string, unknown> = {
       note: {
         ...noteBodyOf(note, icdByTerm.current),
@@ -3125,7 +3182,7 @@ export function OpdConsult(): React.ReactElement {
                 </div>
                 {/* Ctrl+Enter does this too — the Keymap's "commit, a chord because it is the irreversible one". */}
                 <button type="button" className="pri" style={{ alignSelf: "flex-start" }} onClick={() => void complete()}>
-                  {t("opdConsult.complete")}
+                  {rxWaiting ? t("opdConsult.issueAndComplete") : t("opdConsult.complete")}
                   {/*
                     `aria-hidden` ON THE KEYCAPS, and it is not cosmetic. Without it this button's
                     accessible name becomes "Complete consultation Ctrl ⏎" — which is what a screen

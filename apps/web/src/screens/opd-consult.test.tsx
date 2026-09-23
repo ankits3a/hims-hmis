@@ -1652,6 +1652,13 @@ describe("OpdConsult", () => {
      */
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    /*
+      PRODUCTION 2026-09-23 — Complete no longer drops a written, un-issued row: it would issue it,
+      meet the same severe hit and stop. The doctor who abandons patient A's line therefore clears
+      it first, which leaves A's check state behind for `resetPanel` exactly as before.
+    */
+    await user.clear(screen.getByLabelText("Drug"));
+    await user.clear(screen.getByLabelText("Dose"));
     await user.click(screen.getByRole("button", { name: "Complete consultation" }));
 
     /**
@@ -2014,6 +2021,148 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+  });
+
+  /**
+   * ═══ PRODUCTION 2026-09-23 — COMPLETE DROPPED THE PRESCRIPTION THE DOCTOR HAD TYPED ═══
+   *
+   * Encounter 01M36K6NZ7676HA11278QK9225: consultation.started 07:39:12 → consultation.completed
+   * 07:39:58 and NO prescription.issued — no opd_prescriptions row, no draft, no pharmacy ticket. The
+   * doctor typed the medicines and pressed Complete; `complete()` posted the note and ran
+   * `resetPanel()`, which cleared the rows nobody had issued. Complete now ISSUES FIRST through the
+   * same road as the Issue button (every server check intact), and completes only if that succeeded.
+   */
+  const RX_OK_ROUTES = (): Record<string, Handler> => ({
+    ...baseRoutes(),
+    "GET /api/formulary/medicines/search": { status: 200, body: DRUG_HITS },
+    "POST /api/opd/visits/enc-1/consult/complete": { status: 201, body: { encounter: ENCOUNTER } },
+    "POST /api/opd/visits/enc-1/prescriptions": {
+      status: 201,
+      body: { prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload, allergyOverrideCount: 0 },
+    },
+    "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+  });
+  const COMPLETE_PATH = "/api/opd/visits/enc-1/consult/complete";
+  const ISSUE_PATH = "/api/opd/visits/enc-1/prescriptions";
+  const completeButton = (): HTMLElement =>
+    screen.getByRole("button", { name: /^(Complete consultation|Issue & complete)$/ });
+  /** The order the two POSTs reached the network in — the whole claim is "issue, THEN complete". */
+  const postOrder = (): string[] =>
+    fetchCalls().filter((c) => c.method === "POST" && (c.path === ISSUE_PATH || c.path === COMPLETE_PATH)).map((c) => c.path);
+
+  async function typeOneLine(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Tab Paracetamol");
+    await user.type(screen.getByLabelText("Dose"), "500 mg");
+    await user.click(screen.getByTestId("sig-0-freq-TDS"));
+    await user.click(screen.getByTestId("sig-0-days-3"));
+  }
+
+  it("PROD 2026-09-23 (1): a typed, un-issued medicine is ISSUED by Complete, and only then is the visit completed", async () => {
+    mockRoutes(RX_OK_ROUTES());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await typeOneLine(user);
+
+    await user.click(completeButton());
+
+    await waitFor(() => expect(callsTo("POST", COMPLETE_PATH)).toHaveLength(1));
+    expect(postOrder()).toEqual([ISSUE_PATH, COMPLETE_PATH]);
+    const issued = bodiesOf("POST", ISSUE_PATH)[0] as { lines: { drug: string; dose: string }[] };
+    expect(issued.lines.map((l) => [l.drug, l.dose])).toEqual([["Tab Paracetamol", "500 mg"]]);
+    await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
+  });
+
+  it("PROD 2026-09-23 (2): when the issue pauses on a hard warning the visit is NOT completed and the rows stay on screen", async () => {
+    mockRoutes({
+      ...RX_OK_ROUTES(),
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 409,
+        body: { statusCode: 409, code: "allergy_conflict", message: "allergy", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] } },
+      },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await typeOneLine(user);
+
+    await user.click(completeButton());
+
+    // The doctor meets the override dialog exactly as if they had pressed Issue.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Penicillin/)).toBeInTheDocument();
+    expect(callsTo("POST", ISSUE_PATH)).toHaveLength(1);
+    expect(callsTo("POST", COMPLETE_PATH)).toHaveLength(0);
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+    expect(screen.getByLabelText("Drug")).toHaveValue("Tab Paracetamol");
+    expect(screen.getByLabelText("Dose")).toHaveValue("500 mg");
+  });
+
+  it("PROD 2026-09-23 (2b): a server error on the issue does not complete either — the error shows and the rows stay", async () => {
+    mockRoutes({
+      ...RX_OK_ROUTES(),
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 500, body: { statusCode: 500, message: "prescription store unavailable" },
+      },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await typeOneLine(user);
+
+    await user.click(completeButton());
+
+    await screen.findByText("prescription store unavailable");
+    expect(callsTo("POST", COMPLETE_PATH)).toHaveLength(0);
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+    expect(screen.getByLabelText("Drug")).toHaveValue("Tab Paracetamol");
+  });
+
+  it("PROD 2026-09-23 (3): with no medicine rows Complete only completes, and the label says which one it will do", async () => {
+    mockRoutes(RX_OK_ROUTES());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    expect(completeButton()).toHaveAccessibleName("Complete consultation");
+    await user.click(completeButton());
+
+    await waitFor(() => expect(callsTo("POST", COMPLETE_PATH)).toHaveLength(1));
+    expect(callsTo("POST", ISSUE_PATH)).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/visits/enc-1/rx-precheck")).toHaveLength(0);
+
+    // The next patient: a typed row turns the button into the act it will now perform.
+    await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Start consultation" }));
+    await screen.findByTestId("patient-panel");
+    await typeOneLine(user);
+    expect(completeButton()).toHaveAccessibleName("Issue & complete");
+  });
+
+  it("PROD 2026-09-23 (4): Ctrl+Enter issues the typed medicine first, then completes", async () => {
+    mockRoutes(RX_OK_ROUTES());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await typeOneLine(user);
+
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    await waitFor(() => expect(callsTo("POST", COMPLETE_PATH)).toHaveLength(1));
+    expect(postOrder()).toEqual([ISSUE_PATH, COMPLETE_PATH]);
+  });
+
+  it("PROD 2026-09-23 (5): a prescription already issued and unchanged is not issued twice — Complete just completes", async () => {
+    mockRoutes(RX_OK_ROUTES());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await typeOneLine(user);
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    expect(completeButton()).toHaveAccessibleName("Complete consultation");
+    await user.click(completeButton());
+
+    await waitFor(() => expect(callsTo("POST", COMPLETE_PATH)).toHaveLength(1));
+    expect(callsTo("POST", ISSUE_PATH)).toHaveLength(1);
   });
 
   it("CLOSE PASS 2: typing inside a dialog disarms the two-stage Escape — one press afterwards does not release the patient", async () => {
