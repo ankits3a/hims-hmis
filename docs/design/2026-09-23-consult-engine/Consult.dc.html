@@ -250,7 +250,19 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </div>
 </main>
 
-<aside style="width: 300px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 12px; padding: 14px;">
+
+</div>
+</div>
+<sc-if value="{{ copOpen }}" hint-placeholder-val="{{ true }}">
+<aside style="width: 300px; flex-shrink: 0; height: 100%; box-sizing: border-box; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 12px 0 14px; border-bottom: 1px solid #ecf1ed; flex-shrink: 0;">
+<span style="width: 8px; height: 8px; border-radius: 4px; background: #35c48f;"></span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: .14em;">COPILOT</span>
+<div style="flex-grow: 1;"></div>
+<button type="button" onClick="{{ toggleCop }}" aria-label="Minimise the copilot" style="width: 30px; height: 30px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">»</button>
+</div>
+<div style="flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px;">
+
 <div style="padding: 14px; border-radius: 8px; background: #132420; color: #d9efe4; display: flex; flex-direction: column; gap: 8px;">
 <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 4px; background: #35c48f;"></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .14em;">COPILOT</span></div>
 <div style="font-size: 12.5px;">{{ copilotLine }}</div>
@@ -266,9 +278,25 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </div>
 </div>
 </sc-if>
+
+</div>
+<div style="flex-shrink: 0; padding: 12px 14px; border-top: 1px solid #ecf1ed; display: flex; flex-direction: column; gap: 6px;">
+<label for="ask" style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">ASK THE COPILOT · F2</label>
+<div style="display: flex; gap: 6px;">
+<input id="ask" placeholder="iska pichhla HbA1c dikhao…" style="flex-grow: 1; min-width: 0; height: 38px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 10px; background: #f4f7f4; font-size: 12.5px;">
+<button type="button" aria-label="Send" style="width: 38px; height: 38px; border-radius: 6px; border: 0; background: #132420; color: #ffffff; font-size: 14px;">↵</button>
+</div>
+</div>
 </aside>
-</div>
-</div>
+</sc-if>
+<sc-if value="{{ copShut }}" hint-placeholder-val="{{ false }}">
+<aside style="width: 52px; flex-shrink: 0; height: 100%; box-sizing: border-box; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0;">
+<span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 7px; background: #132420; margin-bottom: 6px;"><span style="width: 9px; height: 9px; border-radius: 5px; background: #35c48f;"></span></span>
+<button type="button" onClick="{{ toggleCop }}" aria-label="Show the copilot" style="width: 36px; height: 36px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">«</button>
+<sc-if value="{{ copAlert }}" hint-placeholder-val="{{ false }}"><span title="An out-of-stock alternative is waiting" style="width: 10px; height: 10px; border-radius: 5px; background: #dd8f1c;"></span></sc-if>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; letter-spacing: .1em; color: #5c6f66; writing-mode: vertical-rl;">COPILOT · F2</span>
+</aside>
+</sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"startTab":{"editor":"enum","options":["complaints","summary","exam","dx","inv","rx","treat","advice","notes"],"default":"complaints"},"filled":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
@@ -276,7 +304,7 @@ class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = {
-      railOpen: false, tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
+      railOpen: false, copOpen: true, tab: props.startTab || 'complaints', saved: '10:41:07', drafted: false,
       complaints: ['Headache', 'Giddiness'],
       exam: props.filled ? ['Conscious, oriented', 'Pallor absent', 'No pedal oedema', 'CVS: S1 S2 normal, no murmur', 'Fundus: AV nicking'] : [],
       dx: props.filled ? ['I10', 'E78.5'] : [], dxKind: props.filled ? 'Final' : 'Provisional',
@@ -365,6 +393,7 @@ class Component extends DCLogic {
     const usual = ['Fever', 'Cough', 'Chest pain', 'Breathlessness', 'Palpitations', 'Blurred vision'].filter((u) => s.complaints.indexOf(u) < 0).map((u) => ({ label: u, add: () => this.set({ complaints: s.complaints.concat([u]) }) }));
     const copy = { complaints: 'Desk words carried in as two chips. Suggested next: examination.', exam: 'Dashed chips are suggestions from BP and your usual findings.', dx: 'Essential hypertension fits BP today and 12 Aug. LDL 162 suggests hyperlipidaemia.', inv: 'Lipid and RFT were done 19 Sep — repeat is not needed yet.', rx: 'Telmisartan continued. BP still high: consider adding amlodipine 5 mg.', treat: 'Nothing billed yet.', advice: 'Salt advice suggested for hypertension.', notes: 'Reminder carried from the last visit.', summary: 'Check every section before Complete.' };
     return {
+      copOpen: s.copOpen, copShut: !s.copOpen, toggleCop: () => this.setState({ copOpen: !s.copOpen }), copAlert: s.rx.indexOf('amlo') >= 0 && s.alt !== 'keep',
       railOpen: s.railOpen, railShut: !s.railOpen, toggleRail: () => this.setState({ railOpen: !s.railOpen }),
       savedLine: s.drafted ? 'Draft saved ' + s.saved : 'Autosaved ' + s.saved,
       saveDraft: () => this.set({ drafted: true }),

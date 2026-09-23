@@ -253,7 +253,20 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 </sc-if>
 </main>
 
-<aside style="width: 310px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column; gap: 12px; padding: 14px;">
+
+
+</div>
+</div>
+<sc-if value="{{ copOpen }}" hint-placeholder-val="{{ true }}">
+<aside style="width: 300px; flex-shrink: 0; height: 100%; box-sizing: border-box; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 12px 0 14px; border-bottom: 1px solid #ecf1ed; flex-shrink: 0;">
+<span style="width: 8px; height: 8px; border-radius: 4px; background: #35c48f;"></span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: .14em;">COPILOT</span>
+<div style="flex-grow: 1;"></div>
+<button type="button" onClick="{{ toggleCop }}" aria-label="Minimise the copilot" style="width: 30px; height: 30px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">»</button>
+</div>
+<div style="flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px;">
+
 <div style="padding: 14px; border-radius: 8px; background: #132420; color: #d9efe4; display: flex; flex-direction: column; gap: 10px;">
 <div style="display: flex; align-items: center; gap: 8px;">
 <span style="width: 8px; height: 8px; border-radius: 4px; background: #35c48f;"></span>
@@ -281,10 +294,25 @@ a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
 <sc-if value="{{ altDone }}" hint-placeholder-val="{{ false }}">
 <div style="padding: 12px 14px; border-radius: 8px; border: 1px solid #dfe7e1; font-size: 12px; color: #5c6f66;">{{ altNote }}</div>
 </sc-if>
-</aside>
 
 </div>
+<div style="flex-shrink: 0; padding: 12px 14px; border-top: 1px solid #ecf1ed; display: flex; flex-direction: column; gap: 6px;">
+<label for="ask" style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; color: #8ea69a;">ASK THE COPILOT · F2</label>
+<div style="display: flex; gap: 6px;">
+<input id="ask" placeholder="iska pichhla HbA1c dikhao…" style="flex-grow: 1; min-width: 0; height: 38px; border-radius: 6px; border: 1px solid #dfe7e1; padding: 0 10px; background: #f4f7f4; font-size: 12.5px;">
+<button type="button" aria-label="Send" style="width: 38px; height: 38px; border-radius: 6px; border: 0; background: #132420; color: #ffffff; font-size: 14px;">↵</button>
 </div>
+</div>
+</aside>
+</sc-if>
+<sc-if value="{{ copShut }}" hint-placeholder-val="{{ false }}">
+<aside style="width: 52px; flex-shrink: 0; height: 100%; box-sizing: border-box; background: #ffffff; border-left: 1px solid #dfe7e1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0;">
+<span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 7px; background: #132420; margin-bottom: 6px;"><span style="width: 9px; height: 9px; border-radius: 5px; background: #35c48f;"></span></span>
+<button type="button" onClick="{{ toggleCop }}" aria-label="Show the copilot" style="width: 36px; height: 36px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 14px;">«</button>
+<sc-if value="{{ copAlert }}" hint-placeholder-val="{{ false }}"><span title="An out-of-stock alternative is waiting" style="width: 10px; height: 10px; border-radius: 5px; background: #dd8f1c;"></span></sc-if>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; letter-spacing: .1em; color: #5c6f66; writing-mode: vertical-rl;">COPILOT · F2</span>
+</aside>
+</sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
@@ -295,7 +323,7 @@ class Component extends DCLogic {
       mode: 'brief', tab: 'consult', taps: 0, tele: false, session: 'in', called: 'T-12', seated: null, parked: [],
       allergies: ['Penicillin'], algQ: '',
       complaints: [], dx: 'I10',
-      rx: ['telmi'], altChoice: null
+      rx: ['telmi'], altChoice: null, copOpen: true
     };
   }
   tap(p) { this.setState(Object.assign({ taps: this.state.taps + 1 }, p)); }
@@ -376,6 +404,7 @@ class Component extends DCLogic {
     const hasOut = s.rx.indexOf('amlo') >= 0;
     const other = { history: 'History: past medical and surgical, family, personal, current medicines.', exam: 'Examination: general, systemic and local chips.', inv: 'Investigations: lab, radiology and ECG, with order sets.', advice: 'Advice: general and dietary, English and Hindi.', fu: 'Follow-up: a date, booked into the appointment book.', notes: 'Notes: doctor note, internal comment, patient reminder.', prev: 'Previous visits: each earlier visit in full; copy its Rx to today.' };
     return {
+      copOpen: s.copOpen, copShut: !s.copOpen, toggleCop: () => this.setState({ copOpen: !s.copOpen }), copAlert: s.rx.indexOf('amlo') >= 0 && !s.altChoice,
       b: bb, isBrief: s.mode === 'brief', isConsultMode: s.mode === 'consult',
       taps: s.taps, tele: s.tele,
       walkinStyle: 'height: 32px; padding: 0 12px; border: 0; font-size: 12.5px; ' + (s.tele ? 'background: #ffffff; color: #5c6f66;' : 'background: #132420; color: #ffffff; font-weight: 600;'),
