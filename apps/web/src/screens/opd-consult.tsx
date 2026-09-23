@@ -3865,6 +3865,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       {/* ROUND 6 / D18 — the History browser: read-only, every visit opened is a logged visit read. */}
       <DeskModal
         open={historyOpen && active !== null} title={t("opdConsultV2.history.title")} titleId="history-title" testId="history-dialog" width={980}
+        trapFocus centred closeLabel={t("opdConsultV2.history.close")}
         onClose={() => { setHistoryOpen(false); }}
       >
         {active !== null && <HistoryBrowser visits={timelineItems} currentEncounterId={active.encounterId} />}
