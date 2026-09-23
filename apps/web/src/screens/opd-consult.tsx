@@ -27,7 +27,8 @@ import { useCopilot } from "../lib/use-copilot";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import {
-  BellIcon, ConsultSidebar, CopilotPanel, ExamSection, NewTabIcon, NotesSection, PatientBrief, ReferPanel, SavedClock,
+  BellIcon, ConsultSidebar, CopilotPanel, ExamSection, HistoryBrowser, NewTabIcon, NotesSection, PatientBrief, ReferPanel, SavedClock,
+  SectionHistory,
   StockAlternativeCard, StockTag, SummaryView, TreatmentSection, VitalsTab, WorkStrip, useDoctorStock, useSessionToggle,
 } from "./opd-consult-v2";
 import { recallToken, releaseLease, takeLease } from "../lib/opd-api";
@@ -426,6 +427,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const [referralNote, setReferralNote] = useState("");
   const [referOpen, setReferOpen] = useState(false);
   const [referDone, setReferDone] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map())));
   /** The PARSED lines of a refused submission — never `getValues()`, whose durationDays is a string (§3.19). */
@@ -2235,6 +2237,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       />
         {active !== null && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginTop: -6 }}>
+            <button type="button" className="sec" data-testid="history-open" style={{ padding: "3px 12px", fontSize: 12 }} onClick={() => { setHistoryOpen(true); }}>
+              {t("opdConsultV2.history.button")}
+            </button>
             <SavedClock at={savedAt} draft={savedAsDraft} />
             <button type="button" className="sec" data-testid="save-draft" style={{ padding: "3px 12px", fontSize: 12 }} onClick={() => void saveNote({ force: true })}>
               {t("opdConsultV2.saveDraft")}
@@ -2582,16 +2587,19 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       today={vitalsRows as unknown as Parameters<typeof VitalsTab>[0]["today"]}
                       onChanged={() => { void queryClient.invalidateQueries({ queryKey: ["opd", "visit", active.encounterId] }); }}
                     />
+                    <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["vitals"]} testId="history-foot-vitals" />
                   </div>
                 )}
                 {tab === "exam" && (
                   <div role="tabpanel" id="tabpanel-exam" aria-labelledby="tab-exam">
                     <ExamSection value={v2.examination} onChange={(next) => { editV2({ examination: next }); }} />
+                    <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["exam"]} testId="history-foot-exam" />
                   </div>
                 )}
                 {tab === "treat" && (
                   <div role="tabpanel" id="tabpanel-treat" aria-labelledby="tab-treat">
                     <TreatmentSection value={v2.treatment} onChange={(next) => { editV2({ treatment: next }); }} />
+                    <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["treat"]} testId="history-foot-treat" />
                   </div>
                 )}
                 {tab === "notes" && active !== null && (
@@ -2601,6 +2609,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       onDoctorNote={(v) => { editV2({ doctorNote: v }); }} onInternalComment={(v) => { editV2({ internalComment: v }); }}
                       onBlur={() => void saveNote()}
                     />
+                    <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["notes"]} testId="history-foot-notes" />
                   </div>
                 )}
 
@@ -2999,6 +3008,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 </div>
                 )}
 
+                {tab === "note" && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["complaints", "dx", "advice", "inv"]} testId="history-foot-note" />}
                 {tab === "rx" && (
                 <div role="tabpanel" id="tabpanel-rx" aria-labelledby="tab-rx">
                   {/* The copilot folded away? Its stock suggestions come inline instead (owner, 2026-09-23). */}
@@ -3291,6 +3301,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 </div>
                 )}
 
+                {tab === "rx" && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["rx"]} testId="history-foot-rx" />}
                 {tab === "history" && (
                 <div role="tabpanel" id="tabpanel-history" aria-labelledby="tab-history">
                   {/*
@@ -3849,6 +3860,14 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
             </button>
           </div>
         </div>
+      </DeskModal>
+
+      {/* ROUND 6 / D18 — the History browser: read-only, every visit opened is a logged visit read. */}
+      <DeskModal
+        open={historyOpen && active !== null} title={t("opdConsultV2.history.title")} titleId="history-title" testId="history-dialog" width={980}
+        onClose={() => { setHistoryOpen(false); }}
+      >
+        {active !== null && <HistoryBrowser visits={timelineItems} currentEncounterId={active.encounterId} />}
       </DeskModal>
 
       {/* CONSULT V2 — refer: another department's doctor (a new visit in that line), or out with a letter. */}

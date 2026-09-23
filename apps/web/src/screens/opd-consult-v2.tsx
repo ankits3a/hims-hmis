@@ -719,3 +719,162 @@ export function NewTabIcon(): React.ReactElement {
     </svg>
   );
 }
+
+// ═══ ROUND 6 (owner, 2026-09-23) — PATIENT HISTORY BOTH WAYS (D18) ═══
+//
+// Every past visit is read through `GET /opd/visits/:id` — the route that already gates a sealed record
+// and writes one `opd.visit` row to the PHI access log per read. So opening a visit in the browser, or
+// expanding a section's history, logs exactly the visits the doctor actually looked at, and no new read
+// path exists to audit separately. Nothing here can edit.
+
+export type PastVisit = {
+  encounter: {
+    id: string; visitNo: string; serviceDate: string; visitType: string;
+    chiefComplaint: string | null; diagnosis: string | null; advice: string | null; icd10Code: string | null;
+    examination?: WireExamFinding[] | null; treatment?: string[] | null; doctorNote?: string | null; internalComment?: string | null;
+    diagnosisKind?: string | null; advisedTests?: { name: string }[] | null; referralTo?: string | null; followUpDays?: number | null;
+  };
+  deskComplaint?: { text: string } | null;
+  vitals: (VitalsLike & { id: string })[];
+  prescriptions: { status: string; lines: { drug: string; dose?: string; frequency?: string; durationDays?: number | null }[] }[];
+  diagnoses: { text: string; icd10Code: string | null }[];
+};
+
+export type HistorySection = "vitals" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
+export const HISTORY_SECTIONS: HistorySection[] = ["vitals", "complaints", "exam", "dx", "inv", "rx", "treat", "advice", "notes"];
+
+/** One section of a past visit, as lines of text. An empty array means the visit recorded nothing there. */
+export function sectionLines(v: PastVisit, s: HistorySection): string[] {
+  const e = v.encounter;
+  const split = (x: string | null | undefined): string[] => (x ?? "").split(" · ").map((y) => y.trim()).filter((y) => y !== "");
+  switch (s) {
+    case "vitals": return v.vitals.filter((x) => x.status !== "superseded").map((x) => `BP ${String(x.sbp ?? "—")}/${String(x.dbp ?? "—")} · P ${String(x.pulse ?? "—")} · SpO₂ ${String(x.spo2 ?? "—")} · T ${String(x.tempC ?? "—")}${x.weightKg == null ? "" : ` · ${String(x.weightKg)} kg`}`);
+    case "complaints": return [...split(e.chiefComplaint), ...(v.deskComplaint == null ? [] : [`(desk) ${v.deskComplaint.text}`])];
+    case "exam": return (e.examination ?? []).map((f) => `${f.group}: ${f.text}`);
+    case "dx": return v.diagnoses.length > 0
+      ? v.diagnoses.map((d) => `${d.text}${d.icd10Code === null ? "" : ` (${d.icd10Code})`}${e.diagnosisKind == null ? "" : ` · ${e.diagnosisKind}`}`)
+      : split(e.diagnosis);
+    case "inv": return (e.advisedTests ?? []).map((x) => x.name);
+    case "rx": return v.prescriptions.filter((p) => p.status === "active").flatMap((p) => p.lines.map((l) => [l.drug, l.dose, l.frequency, l.durationDays == null ? "" : `${String(l.durationDays)} d`].filter((x) => x !== undefined && x !== "").join(" · ")));
+    case "treat": return e.treatment ?? [];
+    case "advice": return [...(e.advice === null || e.advice.trim() === "" ? [] : [e.advice.trim()]), ...(e.referralTo == null ? [] : [`Referred to ${e.referralTo}`])];
+    case "notes": return [e.doctorNote, e.internalComment].filter((x): x is string => typeof x === "string" && x.trim() !== "");
+  }
+}
+
+function usePastVisit(encounterId: string | null): { data: PastVisit | undefined; isLoading: boolean } {
+  const q = useQuery({
+    queryKey: ["opd", "past-visit", encounterId ?? ""], enabled: encounterId !== null,
+    queryFn: () => api<PastVisit>("GET", `/opd/visits/${encounterId ?? ""}`), staleTime: 5 * 60_000,
+  });
+  return { data: q.data, isLoading: q.isLoading };
+}
+
+function PastVisitSections({ encounterId }: { encounterId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const v = usePastVisit(encounterId);
+  const [sec, setSec] = useState<HistorySection>("complaints");
+  if (v.data === undefined) return <p style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("app.loading")}</p>;
+  const lines = sectionLines(v.data, sec);
+  return (
+    <div data-testid="history-visit" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div role="tablist" aria-label={t("opdConsultV2.history.sections")} style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        {HISTORY_SECTIONS.map((s) => (
+          <button key={s} type="button" role="tab" aria-selected={sec === s} data-testid={`history-sec-${s}`} className={sec === s ? "pill on" : "pill"}
+            style={{ fontSize: 12 }} onClick={() => { setSec(s); }}>
+            {t(`opdConsultV2.history.sec.${s}`)}{sectionLines(v.data!, s).length > 0 ? " ·" : ""}
+          </button>
+        ))}
+      </div>
+      <ul data-testid="history-lines" style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+        {lines.length === 0 ? <li style={{ listStyle: "none", marginLeft: -18, color: "var(--faint)" }}>{t("opdConsultV2.nothingEntered")}</li> : lines.map((l, i) => <li key={i}>{l}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+/** The History browser — a read-only list of the patient's visits, filtered by year chips or a date. */
+export function HistoryBrowser({ visits, currentEncounterId }: {
+  visits: WireTimelineItem[]; currentEncounterId: string;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const past = visits.filter((v) => v.encounterId !== currentEncounterId);
+  const years = [...new Set(past.map((v) => v.serviceDate.slice(0, 4)))].sort().reverse();
+  const [year, setYear] = useState<string>("all");
+  const [date, setDate] = useState("");
+  const shown = past.filter((v) => (year === "all" || v.serviceDate.startsWith(year)) && (date === "" || v.serviceDate === date));
+  const [picked, setPicked] = useState<string | null>(shown[0]?.encounterId ?? null);
+  return (
+    <div data-testid="history-browser" style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: 16, minHeight: 360 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {["all", ...years].map((y) => (
+            <button key={y} type="button" data-testid={`history-year-${y}`} aria-pressed={year === y} className={year === y ? "pill on" : "pill"} style={{ fontSize: 12 }}
+              onClick={() => { setYear(y); setDate(""); }}>{y === "all" ? t("opdConsultV2.history.all") : y}</button>
+          ))}
+        </div>
+        <label style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsultV2.history.date")}
+          <input type="date" data-testid="history-date" className="in" value={date} onChange={(e) => { setDate(e.target.value); }} style={{ width: "100%", height: 32 }} />
+        </label>
+        <ul data-testid="history-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: 420 }}>
+          {shown.length === 0 && <li style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsultV2.history.none")}</li>}
+          {shown.map((v) => (
+            <li key={v.encounterId}>
+              <button type="button" data-testid={`history-visit-${v.encounterId}`} aria-pressed={picked === v.encounterId} onClick={() => { setPicked(v.encounterId); }}
+                style={{ width: "100%", textAlign: "left", padding: "7px 9px", borderRadius: 6, border: `1px solid ${picked === v.encounterId ? "var(--green)" : "var(--line)"}`, background: picked === v.encounterId ? "var(--green-soft)" : "var(--card)", fontSize: 12.5 }}>
+                <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span className="mo">{v.serviceDate}</span>
+                  <VisitTypeBadge visitType={v.visitType} size="sm" testId={`history-vt-${v.encounterId}`} />
+                  <span className="mo" style={{ marginLeft: "auto", fontSize: 11, color: "var(--dim)" }}>{v.visitNo ?? ""}</span>
+                </span>
+                <span style={{ display: "block", color: "var(--dim)" }}>{v.diagnosis ?? t("opdConsultV2.noDx")}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div>{picked === null ? <p style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsultV2.history.pick")}</p> : <PastVisitSections key={picked} encounterId={picked} />}</div>
+    </div>
+  );
+}
+
+function PastSectionRow({ item, sections, open }: { item: WireTimelineItem; sections: HistorySection[]; open: boolean }): React.ReactElement {
+  const { t } = useTranslation();
+  const v = usePastVisit(item.encounterId);
+  const lines = v.data === undefined ? null : sections.flatMap((s) => sectionLines(v.data!, s).map((l) => (sections.length > 1 ? `${t(`opdConsultV2.history.sec.${s}`)}: ${l}` : l)));
+  return (
+    <details open={open} data-testid={`section-history-${item.encounterId}`} style={{ borderTop: "1px solid var(--line2)", padding: "6px 0" }}>
+      <summary style={{ cursor: "pointer", fontSize: 12.5 }}>
+        <span className="mo">{item.serviceDate}</span> · <span className="mo" style={{ color: "var(--dim)" }}>{item.visitNo ?? ""}</span>
+      </summary>
+      {lines === null ? <p style={{ margin: "4px 0", fontSize: 12, color: "var(--dim)" }}>{t("app.loading")}</p>
+        : lines.length === 0 ? <p style={{ margin: "4px 0", fontSize: 12, color: "var(--faint)" }}>{t("opdConsultV2.nothingEntered")}</p>
+          : <ul style={{ margin: "4px 0", paddingLeft: 18, fontSize: 12.5 }}>{lines.map((l, i) => <li key={i}>{l}</li>)}</ul>}
+    </details>
+  );
+}
+
+const SECTION_HISTORY_DEPTH = 8;
+
+/** The foot of a consultation tab: a line, "View history", and this section from earlier visits, newest open. */
+export function SectionHistory({ visits, currentEncounterId, sections, testId }: {
+  visits: WireTimelineItem[]; currentEncounterId: string; sections: HistorySection[]; testId: string;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const past = visits.filter((v) => v.encounterId !== currentEncounterId).slice(0, SECTION_HISTORY_DEPTH);
+  return (
+    <div data-testid={testId} style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ flexGrow: 1, borderTop: "1px solid var(--line)" }} />
+        <button type="button" className="sec" data-testid={`${testId}-toggle`} aria-expanded={open} style={{ padding: "2px 12px", fontSize: 12 }} onClick={() => { setOpen(!open); }}>
+          {open ? t("opdConsultV2.history.hide") : t("opdConsultV2.history.view")}
+        </button>
+        <span style={{ flexGrow: 1, borderTop: "1px solid var(--line)" }} />
+      </div>
+      {open && (past.length === 0
+        ? <p style={{ fontSize: 12.5, color: "var(--dim)", textAlign: "center" }}>{t("opdConsultV2.history.none")}</p>
+        : <div style={{ marginTop: 6 }}>{past.map((v, i) => <PastSectionRow key={v.encounterId} item={v} sections={sections} open={i === 0} />)}</div>)}
+    </div>
+  );
+}
