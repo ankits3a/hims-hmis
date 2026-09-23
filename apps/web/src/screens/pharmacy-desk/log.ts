@@ -26,8 +26,27 @@ export function useDeskLog(): readonly DeskLog[] {
   );
 }
 
+/**
+ * SAVE DRAFT'S CONFIRMATION, held here for the same reason as the log: the draft clears the desk, the
+ * clear is a route change, and the route change remounts the desk — a sentence in component state
+ * died at the moment it was due to be read (browser walk, 2026-09-23). It is shown until the next
+ * ticket is in hand or the pharmacist dismisses it.
+ */
+let draftNotice: string | null = null;
+export function noteDraftSaved(text: string | null): void {
+  draftNotice = text;
+  for (const l of listeners) l();
+}
+export function useDraftNotice(): string | null {
+  return useSyncExternalStore(
+    (onChange) => { listeners.add(onChange); return () => { listeners.delete(onChange); }; },
+    () => draftNotice,
+  );
+}
+
 /** Tests only — a module store is shared across a suite's renders. */
 export function resetDeskLog(): void {
   entries = [];
+  draftNotice = null;
   for (const l of listeners) l();
 }

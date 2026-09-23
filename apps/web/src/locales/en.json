@@ -3944,6 +3944,14 @@
     "lineFoot": "A ticket you take is marked claimed for everyone, with your name on it. Nobody else spends a minute on it.",
     "heldBy": "{{name}} has this",
     "yours": "yours",
+    "draftResume": "your draft · resume",
+    "matchedBySalt": "matched by salt",
+    "matchedBySaltTitle": "The doctor wrote the salt; this is the stocked brand with the same salts, strength and form. Tap to choose another.",
+    "draftSaved": {
+      "claimOnly": "{{ticket}} saved — it waits for you in the line, marked “your draft”. Nothing was picked yet, so only your claim is kept.",
+      "held": "{{ticket}} saved — it waits for you in the line, marked “your draft”. The strips you pulled are held until {{time}}.",
+      "dismiss": "Dismiss"
+    },
     "slipToConfirm": "slip to confirm",
     "overlayTitle": "Every ticket at this counter",
     "close": "close",

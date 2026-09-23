@@ -85,6 +85,11 @@ export type WireDispenseLine = {
   pickedBatch?: { batchNo: string; expiryDate: string | null } | null;
   /** The salt(s) of the medicine the doctor wrote ("Amoxicillin + Clavulanic acid"). Absent from an older server. */
   salt?: string | null;
+  /**
+   * "salt" when the server placed a generic or free-text line on the stocked brand of the same
+   * composition (same salts, strength per salt, form, route). Absent from an older server.
+   */
+  matchedBy?: "salt" | null;
 };
 export type WireBatch = { batchId: string; batchNo: string; expiryDate: string | null; available: number };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };

@@ -12,9 +12,9 @@ import {
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
-import { heldByAnother, holdOf, stageOf } from "./model";
+import { heldByAnother, holdOf, stageOf, ticketLabel, whoLabel } from "./model";
 import { BillRail, heldUntil, holdEnded, rupees } from "./bill";
-import { say, useDeskLog } from "./log";
+import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { SlipSheet } from "./slip";
 import { TicketPanel } from "./ticket";
@@ -76,6 +76,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [billError, setBillError] = useState<string | null>(null);
+  /* Save draft's confirmation, said where the pharmacist is looking — the desk — until the next ticket is in hand. */
+  const savedDraft = useDraftNotice();
   const [handOverError, setHandOverError] = useState<string | null>(null);
   /*
     E26 — ONE idempotency key per money act per ticket, kept across a NETWORK failure (no answer:
@@ -161,6 +163,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
 
   const hold = useCallback((id: string): void => {
     setInHandId(id);
+    noteDraftSaved(null);
     setCandidates(null);
     setNote(null);
     void navigate({ to: "/pharmacy/desk/$ticketId", params: { ticketId: id } });
@@ -298,12 +301,22 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   }, [inHandId, settle, t]);
 
   /* E27 — a draft keeps the claim and whatever is held; the sentence names the deadline. */
+  /*
+    It makes no server call because none is needed: the claim IS the draft (the ticket stays this
+    pharmacist's, and a collected one keeps its strips until the hold ends). What was missing was the
+    SAYING of it — the owner pressed it and saw the desk empty. So the desk says which ticket was
+    saved, what was kept, and where to find it; the line shows it first as "your draft · resume".
+  */
   const draft = useCallback((): void => {
-    const until = heldUntil(ticket.data?.pickedAt ?? null);
+    const d = ticket.data;
+    const until = heldUntil(d?.pickedAt ?? null);
     /* E13 — a hold already over keeps nothing but the claim, and the log says only that. */
-    say(until === null || holdEnded(ticket.data?.pickedAt ?? null, new Date()) ? t("pharmacyDesk.log.draftClaimOnly") : t("pharmacyDesk.log.draftHeld", { time: until }), "warn");
+    const claimOnly = until === null || holdEnded(d?.pickedAt ?? null, new Date());
+    say(claimOnly ? t("pharmacyDesk.log.draftClaimOnly") : t("pharmacyDesk.log.draftHeld", { time: until }), "warn");
+    const label = d === undefined ? "" : (ticketLabel(d.dispenseNo) ?? whoLabel(d.patient));
     clearDesk();
-  }, [clearDesk, t, ticket.data?.pickedAt]);
+    noteDraftSaved(claimOnly ? t("pharmacyDesk.draftSaved.claimOnly", { ticket: label }) : t("pharmacyDesk.draftSaved.held", { ticket: label, time: until }));
+  }, [clearDesk, t, ticket.data]);
 
   /* FD-31 / E28 — the cross-confirmation, asked for when the ticket is opened rather than at the till. */
   const confirmSlip = useCallback(async (): Promise<void> => {
@@ -412,6 +425,13 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
           <Dossier inHand={inHand} me={me} summary={summary.data ?? null} queued={rows.length} onClear={clearDesk} paletteBound={palette !== null} />
 
           <main style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "24px 30px 30px 30px" }}>
+            {savedDraft === null || inHandId !== null ? null : (
+              <div role="status" data-testid="desk-draft-saved" className="draft-saved">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}><path d="M5 12l5 5L19 7" /></svg>
+                <span style={{ flexGrow: 1 }}>{savedDraft}</span>
+                <button type="button" aria-label={t("pharmacyDesk.draftSaved.dismiss")} onClick={() => noteDraftSaved(null)} style={{ color: "var(--dim)", fontSize: 15, lineHeight: "15px" }}>×</button>
+              </div>
+            )}
             <TicketPanel
               inHand={inHand}
               loading={inHandId !== null && ticket.isPending}
@@ -464,7 +484,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
 
       {overlay === "slip" && inHand !== null ? <SlipSheet dispense={inHand} onClose={() => setOverlay(null)} /> : null}
       {overlay === "queue" ? (
-        <QueueOverlay rows={rows} me={me} now={now} onOpen={(id, who, mine) => void openInTab(id, who, mine)} onClose={() => setOverlay(null)} />
+        <QueueOverlay rows={rows} me={me} now={now} onOpen={(id, who, mine) => void openInTab(id, who, mine)} onResume={(id) => { setOverlay(null); hold(id); }} onClose={() => setOverlay(null)} />
       ) : null}
     </div>
   );

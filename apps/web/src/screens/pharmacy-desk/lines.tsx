@@ -512,6 +512,14 @@ function LineRow({
           ) : (
             <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
               <span style={{ fontSize: 13.5, fontWeight: 600 }}>{given.brandName}</span>
+              {/* Auto-match: the doctor wrote the salt, the server placed the stocked brand. A quiet fact, not a warning; a tap chooses another. */}
+              {line.matchedBy === "salt" ? (
+                editable && substitutable(line) ? (
+                  <button type="button" className="pill" data-testid={`${id}-matched`} title={t("pharmacyDesk.matchedBySaltTitle")} disabled={busy} onClick={onSubstitute}>
+                    {t("pharmacyDesk.matchedBySalt")}
+                  </button>
+                ) : <span className="pill" data-testid={`${id}-matched`} title={t("pharmacyDesk.matchedBySaltTitle")}>{t("pharmacyDesk.matchedBySalt")}</span>
+              ) : null}
               {line.scheduleFlag === "H1" ? <span className="pill rd">H1</span>
                 : line.scheduleFlag === "X" ? <span className="pill rd">{t("pharmacyDesk.scheduleX")}</span>
                   : line.partlyChecked === true ? <span className="pill gd">{t("pharmacyDesk.notChecked")}</span> : null}

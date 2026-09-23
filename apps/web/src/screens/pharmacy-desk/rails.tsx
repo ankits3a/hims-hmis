@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchPatientRail } from "../../lib/pharmacy-api";
 import { useTranslation } from "react-i18next";
-import { FLOW_STEPS, flowIndex, holdOf, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
+import { FLOW_STEPS, draftsFirst, flowIndex, holdOf, isMyDraft, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
 import type { WaitTone } from "./model";
 import type { WireCounterSummary, WireDispense, WireQueueRow } from "../../lib/pharmacy-api";
 
@@ -207,9 +207,10 @@ export function QueueRail({
         {rows.length === 0 ? (
           <p style={{ margin: 0, padding: "9px 15px", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.lineEmpty")}</p>
         ) : null}
-        {rows.map((row) => {
+        {draftsFirst(rows, me).map((row) => {
           const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday") });
           const theirs = m.hold.kind === "theirs";
+          const draft = isMyDraft(row, me);
           const here = row.dispenseId === inHandId;
           return (
             /* TWO acts per row, as the board draws them: take it here, or open it in its own tab. A row
@@ -246,7 +247,8 @@ export function QueueRail({
                 )}
                 <span style={{ display: "flex", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
                   {m.hold.kind === "theirs" ? <span className="pill">{t("pharmacyDesk.heldBy", { name: m.hold.name })}</span> : null}
-                  {m.hold.kind === "mine" ? <span className="pill on">{t("pharmacyDesk.yours")}</span> : null}
+                  {draft ? <span className="pill on" data-testid={`queue-row-${row.dispenseId}-draft`}>{t("pharmacyDesk.draftResume")}</span>
+                    : m.hold.kind === "mine" ? <span className="pill on">{t("pharmacyDesk.yours")}</span> : null}
                   {row.patient.restricted ? <span className="pill gd">{t("pharmacyDesk.sealedRecord")}</span> : null}
                   <ShelfPill row={row} />
                   {row.transcribedBy !== null && row.transcribedBy !== undefined && row.slipConfirmedBy === null
@@ -283,12 +285,14 @@ export function QueueRail({
  * so this window keeps the patient it already has; a held ticket cannot be opened and says who has it.
  */
 export function QueueOverlay({
-  rows, me, now, onOpen, onClose,
+  rows, me, now, onOpen, onResume, onClose,
 }: {
   rows: WireQueueRow[];
   me: string | null;
   now: Date;
   onOpen: (dispenseId: string, who: string, mine: boolean) => void;
+  /** A draft of mine reopens HERE, on this desk, where it was left. */
+  onResume: (dispenseId: string) => void;
   onClose: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
@@ -302,7 +306,7 @@ export function QueueOverlay({
           <button className="pill" onClick={onClose}>{t("pharmacyDesk.close")} <span className="kb">Esc</span></button>
         </div>
         <div style={{ overflowY: "auto" }}>
-          {rows.map((row) => {
+          {draftsFirst(rows, me).map((row) => {
             const m = rowMeta({ row, me, now, yesterday: t("pharmacyDesk.queuedYesterday") });
             return (
               <div key={row.dispenseId} className="drow" style={{ alignItems: "flex-start" }} data-testid={`overlay-row-${row.dispenseId}`}>
@@ -313,7 +317,9 @@ export function QueueOverlay({
                   <span style={{ display: "flex", marginTop: 4 }}><ShelfPill row={row} /></span>
                 </span>
                 <span className="mo" style={{ fontSize: 11.5, color: m.tone, width: 52, textAlign: "right", paddingTop: 3 }}>{m.wait}</span>
-                {m.hold.kind === "theirs" ? (
+                {isMyDraft(row, me) ? (
+                  <button className="sec grn" style={{ height: 26, width: 124 }} onClick={() => onResume(row.dispenseId)}>{t("pharmacyDesk.draftResume")}</button>
+                ) : m.hold.kind === "theirs" ? (
                   <span style={{ fontSize: 11, color: "var(--dim)", width: 124, textAlign: "right", paddingTop: 3 }}>{t("pharmacyDesk.heldBy", { name: m.hold.name })}</span>
                 ) : (
                   <button className="sec grn" style={{ height: 26, width: 124 }} onClick={() => onOpen(row.dispenseId, m.who, m.hold.kind === "mine")}>

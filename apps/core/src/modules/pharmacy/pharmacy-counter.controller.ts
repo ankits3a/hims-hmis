@@ -5,6 +5,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
+import { cachedShelfIndex, matchOpenLines } from "./auto-match";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { closingFor } from "./closing";
@@ -98,6 +99,8 @@ export class PharmacyCounterController {
 
   private decls() { return collectOrderKinds(this.registry); }
 
+  private readonly shelfForPoll = cachedShelfIndex(() => this.db);
+
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("queue")
   async queue(@CurrentActor() actor: Actor, @Query("serviceDate") serviceDate?: string): Promise<{ items: QueueRow[] }> {
@@ -118,6 +121,8 @@ export class PharmacyCounterController {
   @Get("dispenses/:id")
   async one(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<DispenseView> {
     try {
+      /* A ticket claimed before the salt match shipped is matched when its holder opens it (idempotent). */
+      await matchOpenLines(this.db, actor, id, new Date(), { shelf: this.shelfForPoll });
       return await getDispense(this.db, actor, id);
     } catch (e) {
       return toHttp(e);

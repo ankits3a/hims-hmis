@@ -5,6 +5,7 @@ import { availableQtyByItem, findStoreByCode } from "../materials";
 import { OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS } from "./config";
 import { prefillQtyBase } from "./qty";
 import { shelfByMedicine } from "./shelf";
+import { matchesFor, shelfIndex, targetOf } from "./auto-match";
 import type { Db } from "../../kernel/db/client";
 import type { RxLine } from "../opd";
 
@@ -55,13 +56,41 @@ export async function shelfChecks(
   const medicines = await medicinesByIds(db, medicineIds);
   const shelf = await shelfByMedicine(db);
   const store = await findStoreByCode(db, OPD_PHARMACY_STORE_CODE);
-  const itemIds = medicineIds.map((m) => shelf.get(m)?.item.id).filter((i): i is string => i !== undefined);
-  const available = store === undefined || itemIds.length === 0 ? new Map<string, number>() : await availableQtyByItem(db, store.id, itemIds, now);
+  /*
+    2026-09-23 — a line the doctor named no brand on is what the claim will fill with the stocked brand
+    of its composition (`auto-match.ts`), so the waiting row counts it the same way: the shelf's
+    matches for it, read once for the page and only when some waiting line needs them.
+  */
+  const allLines = rx.flatMap((r) => r.lines as RxLine[]);
+  const needsMatch = (l: RxLine): boolean => {
+    const id = medicineOf(l);
+    return id === null || (medicines.get(id)?.code != null && !shelf.has(id));
+  };
+  const ix = allLines.some(needsMatch) ? await shelfIndex(db) : null;
+  const matchesOf = new Map<RxLine, string[]>();
+  if (ix !== null) {
+    for (const l of allLines.filter(needsMatch)) {
+      const target = targetOf(l, l.medicineId ? medicines.get(l.medicineId) : undefined, l.medicineId ? undefined : medicines.get(medicineOf(l) ?? ""));
+      matchesOf.set(l, target === null ? [] : matchesFor(ix, target).map((c) => c.itemId));
+    }
+  }
+  const itemIds = [
+    ...medicineIds.map((m) => shelf.get(m)?.item.id).filter((i): i is string => i !== undefined),
+    ...[...matchesOf.values()].flat(),
+  ];
+  const available = store === undefined || itemIds.length === 0 ? new Map<string, number>() : await availableQtyByItem(db, store.id, [...new Set(itemIds)], now);
 
   for (const t of tickets) {
     const lines = linesByRx.get(t.prescriptionId) ?? [];
     const check: ShelfCheck = { lines: lines.length, onShelf: 0, short: [], notStocked: [], unplaceable: 0, scheduleX: false };
     for (const l of lines) {
+      const matched = matchesOf.get(l) ?? [];
+      if (matched.length > 0) {
+        const want = prefillQtyBase(l) ?? 1;
+        if (matched.some((itemId) => (available.get(itemId) ?? 0) >= want)) check.onShelf += 1;
+        else check.short.push(l.drug);
+        continue;
+      }
       const medicineId = medicineOf(l);
       if (medicineId === null) { check.unplaceable += 1; continue; }
       const flag = medicines.get(medicineId)?.scheduleFlag ?? null;
