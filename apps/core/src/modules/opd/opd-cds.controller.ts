@@ -9,6 +9,8 @@ import type { AllergenHit, BuiltLine, BuiltRegimen, Card, Icd10Hit, PatientFacts
 import { getEncounter } from "./encounters";
 import { expandComplaintForMatching, suggestComplaints } from "./complaints";
 import { doctorForUser } from "./masters";
+import { myTerms, testsForDiagnosis } from "./term-suggest";
+import type { TermHit, TestHit } from "./term-suggest";
 import type { ComplaintSuggestion } from "./complaints";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -44,6 +46,15 @@ import type { Db } from "../../kernel/db/client";
  */
 const suggestQuery = z.object({ complaint: z.string().max(500) });
 const completeQuery = z.object({ q: z.string().max(120) });
+const termQuery = z.object({
+  field: z.enum(["exam_general", "exam_systemic", "exam_local", "treatment"]),
+  q: z.string().max(120),
+});
+const testsQuery = z.object({
+  /** JSON: `[{ text, icd10 }]` — the diagnoses on screen, saved or not. Counts only; no PHI. */
+  dx: z.string().max(4000),
+});
+const dxList = z.array(z.object({ text: z.string().max(300), icd10: z.string().max(16).nullable() })).max(10);
 const diagnosisQuery = z.object({ q: z.string().max(120), limit: z.coerce.number().int().min(1).max(25).optional() });
 const regimenQuery = z.object({
   syndromeKey: z.string().min(1).max(64),
@@ -236,5 +247,34 @@ export class OpdCdsController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * CONSULT V2 PR 3 — autocomplete for the examination and treatment fields: the asking doctor's own
+   * words, never another doctor's (D4). A non-doctor gets nothing, which is an ordinary state.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("complete/term")
+  async completeTerm(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: TermHit[] }> {
+    const q = parsed(termQuery, query);
+    const doctor = actor.type === "user" ? await doctorForUser(this.db, actor.id) : null;
+    if (doctor === null) return { items: [] };
+    return { items: await myTerms(this.db, doctor.id, q.field, q.q) };
+  }
+
+  /** CONSULT V2 PR 3 — tests advised before for the same diagnosis: yours first, then the hospital's. */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("suggest/tests")
+  async suggestTests(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: TestHit[] }> {
+    const q = parsed(testsQuery, query);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(q.dx);
+    } catch {
+      raw = undefined;
+    }
+    const dx = parsed(dxList, raw);
+    const doctor = actor.type === "user" ? await doctorForUser(this.db, actor.id) : null;
+    return { items: await testsForDiagnosis(this.db, doctor?.id ?? null, dx) };
   }
 }

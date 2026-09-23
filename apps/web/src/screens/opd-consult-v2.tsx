@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { VisitTypeBadge } from "../components/visit-type-badge";
+import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
 import type {
   WireDoctorStock, WireExamFinding, WireRxHistoryItem, WireTimelineItem, WireVitals,
@@ -295,7 +296,6 @@ const EXAM_CHIPS: Record<WireExamFinding["group"], string[]> = {
 
 export function ExamSection({ value, onChange }: { value: WireExamFinding[]; onChange: (next: WireExamFinding[]) => void }): React.ReactElement {
   const { t } = useTranslation();
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const has = (g: WireExamFinding["group"], text: string): boolean => value.some((f) => f.group === g && f.text === text);
   const toggle = (g: WireExamFinding["group"], text: string): void => {
     onChange(has(g, text) ? value.filter((f) => !(f.group === g && f.text === text)) : [...value, { group: g, text }]);
@@ -313,18 +313,14 @@ export function ExamSection({ value, onChange }: { value: WireExamFinding[]; onC
                   style={{ padding: "3px 11px", fontSize: 12.5, borderRadius: 15 }} onClick={() => { toggle(g, c); }}>{c}</button>
               ))}
             </div>
-            <form style={{ display: "flex", gap: 6 }} onSubmit={(e) => {
-              e.preventDefault();
-              const text = (drafts[g] ?? "").trim();
-              if (text === "" || has(g, text)) return;
-              onChange([...value, { group: g, text }]);
-              setDrafts((d) => ({ ...d, [g]: "" }));
-            }}>
-              <label htmlFor={`exam-own-${g}`} style={{ position: "absolute", left: -9999 }}>{t("opdConsultV2.exam.own", { group: t(`opdConsultV2.exam.${g}`) })}</label>
-              <input id={`exam-own-${g}`} className="in" value={drafts[g] ?? ""} placeholder={t("opdConsultV2.exam.ownPlaceholder")}
-                onChange={(e) => { setDrafts((d) => ({ ...d, [g]: e.target.value })); }} style={{ flexGrow: 1, height: 32, fontSize: 12.5 }} />
-              <button type="submit" className="sec" style={{ padding: "0 12px", fontSize: 12 }}>{t("opdConsultV2.add")}</button>
-            </form>
+            <TermInput
+              id={`exam-own-${g}`} testId={`exam-own-${g}`}
+              label={t("opdConsultV2.exam.own", { group: t(`opdConsultV2.exam.${g}`) })}
+              placeholder={t("opdConsultV2.exam.ownPlaceholder")}
+              local={EXAM_CHIPS[g]} remote={ownTerms(`exam_${g}`)}
+              exclude={value.filter((f) => f.group === g).map((f) => f.text)}
+              onAdd={(text) => { if (!has(g, text)) onChange([...value, { group: g, text }]); }}
+            />
           </div>
         );
       })}
@@ -338,7 +334,6 @@ const TREATMENT_CHIPS = ["BP recheck after 10 min rest", "Nebulisation in OPD", 
 
 export function TreatmentSection({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }): React.ReactElement {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState("");
   const all = [...TREATMENT_CHIPS, ...value.filter((v) => !TREATMENT_CHIPS.includes(v))];
   return (
     <div data-testid="treatment-section" className="box" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -349,11 +344,11 @@ export function TreatmentSection({ value, onChange }: { value: string[]; onChang
             onClick={() => { onChange(value.includes(c) ? value.filter((x) => x !== c) : [...value, c]); }}>{c}</button>
         ))}
       </div>
-      <form style={{ display: "flex", gap: 6 }} onSubmit={(e) => { e.preventDefault(); const x = draft.trim(); if (x === "" || value.includes(x)) return; onChange([...value, x]); setDraft(""); }}>
-        <label htmlFor="treatment-own" style={{ position: "absolute", left: -9999 }}>{t("opdConsultV2.treatmentOwn")}</label>
-        <input id="treatment-own" className="in" value={draft} onChange={(e) => { setDraft(e.target.value); }} placeholder={t("opdConsultV2.treatmentOwn")} style={{ flexGrow: 1, height: 32, fontSize: 12.5 }} />
-        <button type="submit" className="sec" style={{ padding: "0 12px", fontSize: 12 }}>{t("opdConsultV2.add")}</button>
-      </form>
+      <TermInput
+        id="treatment-own" testId="treatment-own" label={t("opdConsultV2.treatmentOwn")} placeholder={t("opdConsultV2.treatmentOwn")}
+        local={TREATMENT_CHIPS} remote={ownTerms("treatment")} exclude={value}
+        onAdd={(x) => { if (!value.includes(x)) onChange([...value, x]); }}
+      />
     </div>
   );
 }
