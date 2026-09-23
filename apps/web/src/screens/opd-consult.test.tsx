@@ -1,4 +1,5 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { onTestFinished } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { todayIst } from "../lib/opd-api";
@@ -2596,6 +2597,15 @@ describe("OpdConsult — parking a patient and picking them up again", () => {
   }
 
   it("W1: a patient held mid-consultation is ON the rail, with how long they have been held", async () => {
+    /*
+      THE CLOCK IS PINNED to fifteen minutes after `PARKED_AT`. The fixture reads the real clock once, when
+      the file is collected, and the screen reads it again when this test renders; on a loaded box a
+      minute can pass between the two and the row honestly says "16 min" (found 2026-09-23 in a full run).
+      Only `Date` is faked, so the screen's timers and user-event are untouched.
+    */
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(Date.parse(PARKED_AT) + 15 * 60_000 + 5_000));
+    onTestFinished(() => { vi.useRealTimers(); });
     mockRoutes(withInConsult([PARKED]));
     renderWithProviders(<OpdConsult />);
 
@@ -3067,6 +3077,73 @@ describe("OpdConsult — the clinical co-pilot", () => {
       ["Calpol 250 Suspension", "m-calpol"],
       ["Levocetirizine + Ambroxol Pediatric Syrup", null],
     ]);
+  });
+
+  /*
+   * ═══ CONSULT V2 PR 3 — the suggestions follow the copilot (owner, 2026-09-23, round 4) ═══
+   * Open copilot → they sit in its column. Folded → at the head of the tab, labelled so. Never both.
+   * Each is a dashed chip that one tap accepts; nothing is entered silently.
+   */
+  const TESTS = { items: [{ serviceId: "svc-cbc", code: "CBC", name: "CBC", pricePaise: 30000, mine: 3, hospital: 9 }] };
+
+  it("S1: with the copilot OPEN the suggestions are in its column and not inline; a diagnosis chip adds the diagnosis with its code", async () => {
+    mockRoutes(cdsRoutes({ "GET /api/opd/cds/suggest/tests": { status: 200, body: TESTS } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    const pane = await screen.findByTestId("copilot-suggestions-pane");
+    expect(within(screen.getByTestId("copilot-panel")).getByTestId("copilot-suggestions-pane")).toBe(pane);
+    expect(screen.queryByTestId("copilot-suggestions-inline")).toBeNull();
+    await user.click(within(pane).getByTestId("sug-dx-SYN_URI_01"));
+    // the diagnosis is now a tag, and its ICD-10 code rides with it
+    await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J06.9"); });
+    // complaint + diagnosis → the tests advised before for it, asked with the diagnosis and nothing about the patient
+    const chip = await within(screen.getByTestId("copilot-suggestions-pane")).findByTestId("sug-test-svc-cbc");
+    const url = decodeURIComponent(callsTo("GET", "/api/opd/cds/suggest/tests").at(-1)!.url);
+    expect(url).toContain("J06.9");
+    expect(url).not.toContain("p-1");
+    expect(chip).toHaveTextContent("CBC");
+    // … and the medicines for it, from the regimen book, one tap away
+    expect(await within(screen.getByTestId("copilot-suggestions-pane")).findByTestId("sug-rx-fill")).toHaveTextContent("Add these 2");
+  });
+
+  it("S2: with the copilot FOLDED the same suggestions come inline at the head of the tab, labelled so — and a tap accepts, nothing earlier", async () => {
+    sessionStorage.setItem("hmis.consult.right", "false");
+    mockRoutes(cdsRoutes({ "GET /api/opd/cds/suggest/tests": { status: 200, body: TESTS } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    expect(screen.getByTestId("copilot-panel")).toHaveAttribute("data-state", "closed");
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+    const inline = await screen.findByTestId("copilot-suggestions-inline");
+    expect(inline).toHaveTextContent(/COPILOT IS FOLDED/);
+    expect(screen.queryByTestId("copilot-suggestions-pane")).toBeNull();
+    // nothing was entered by the suggestion appearing
+    expect(screen.getByTestId("note-icd10")).toHaveValue("");
+    await user.click(within(inline).getByTestId("sug-dx-SYN_URI_01"));
+    await user.click(await within(screen.getByTestId("copilot-suggestions-inline")).findByTestId("sug-rx-fill"));
+    // the regimen's medicines are on the Rx now
+    expect(await screen.findByDisplayValue("Paracetamol Oral Suspension 250mg/5ml")).toBeInTheDocument();
+  });
+
+  it("S3: autocomplete everywhere — examination offers the hospital's list and the doctor's own words; ↓ Enter takes a row, Enter alone takes the typed words", async () => {
+    mockRoutes(cdsRoutes({
+      "GET /api/opd/cds/complete/term": { status: 200, body: { items: [{ term: "Pallor ++ on palms", uses: 4 }] } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: /Examination/ }));
+    const box = screen.getByTestId("exam-own-general");
+    await user.type(box, "pall");
+    const list = await screen.findByRole("listbox", { name: /general/i });
+    expect(await within(list).findByText("Pallor ++ on palms")).toBeInTheDocument(); // the doctor's own, first
+    expect(within(list).getByText("Pallor absent")).toBeInTheDocument();          // the hospital's list
+    expect(callsTo("GET", "/api/opd/cds/complete/term").at(-1)!.url).toContain("field=exam_general");
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(await screen.findByTestId("exam-general-Pallor ++ on palms")).toHaveAttribute("aria-pressed", "true");
+    await user.type(box, "Koilonychia{Enter}");
+    expect(await screen.findByTestId("exam-general-Koilonychia")).toHaveAttribute("aria-pressed", "true");
+    await user.type(box, "pall{Escape}");
+    expect(screen.queryByRole("listbox", { name: /general/i })).toBeNull();
   });
 });
 
@@ -3997,5 +4074,205 @@ describe("Consult v2", () => {
     await waitFor(() => { expect(callsTo("GET", "/api/pharmacy/doctor/stock").length).toBeGreaterThan(0); });
     expect(screen.queryByTestId("rx-stock-0")).toBeNull();
     expect(screen.queryByTestId("stock-alt-m-telma")).toBeNull();
+  });
+});
+
+/**
+ * ═══ CONSULT V2, PART TWO (owner, 2026-09-23, rounds 4–5; 01-CONSULT-ENGINE.md §1.1 item 9) ═══
+ * Recall on the board, a patient in a new tab, one tab editing at a time (D17), the Vitals tab, the referral.
+ */
+describe("Consult v2 — part two", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+    setToken("t-1");
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-1/reminder": { status: 200, body: { reminder: null } },
+      ...over,
+    };
+  }
+
+  it("P1: the called card carries an alarm that re-announces the token on the board", async () => {
+    mockRoutes(routes({ "POST /api/opd/queues/entries/qe-cur/recall": { status: 201, body: { entry: { ...CURRENT, callCount: 2 } } } }));
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await user.click(await screen.findByTestId("queue-recall-qe-cur"));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/recall")).toHaveLength(1); });
+    expect(screen.queryByTestId("queue-recall-qe-a")).toBeNull(); // only a CALLED token can be recalled
+  });
+
+  it("P2: every card opens its patient in a new tab", async () => {
+    mockRoutes(routes());
+    renderWithProviders(<OpdConsult />);
+    const link = await screen.findByTestId("queue-newtab-qe-cur");
+    expect(link).toHaveAttribute("href", "/opd/consult/enc-1");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("P3: D17 — when another tab holds the lease this tab is read-only, writes nothing, and can take over", async () => {
+    let takeover = false;
+    mockRoutes(routes({
+      "POST /api/opd/visits/enc-1/consult/lease": () => ({ status: 201, body: takeover
+        ? { held: true, until: NOW_ISO, holderIsMe: true, tookOver: true }
+        : { held: false, until: NOW_ISO, holderIsMe: false, tookOver: false } }),
+      "POST /api/opd/visits/enc-1/consult/lease/release": { status: 201, body: { released: false } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    expect(await screen.findByTestId("lease-readonly")).toBeInTheDocument();
+    expect(screen.getByLabelText("Advice")).toBeDisabled();
+    await user.click(screen.getByTestId("save-draft"));
+    expect(callsTo("PUT", "/api/opd/visits/enc-1/consult/note")).toHaveLength(0);
+
+    takeover = true;
+    await user.click(screen.getByTestId("lease-takeover"));
+    await waitFor(() => { expect(screen.queryByTestId("lease-readonly")).toBeNull(); });
+    expect(bodiesOf("POST", "/api/opd/visits/enc-1/consult/lease").at(-1)).toMatchObject({ takeover: true });
+    await user.click(screen.getByTestId("save-draft"));
+    await waitFor(() => { expect(callsTo("PUT", "/api/opd/visits/enc-1/consult/note")).toHaveLength(1); });
+    expect(typeof bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note")[0]!.leaseToken).toBe("string");
+  });
+
+  it("P4: the banner's vitals open the Vitals tab — a new reading records the doctor; a correction needs a reason and keeps the original", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/patients/p-1/vitals": { status: 200, body: { items: [
+        { vitalsId: "old-1", encounterId: "enc-0", serviceDate: "2026-08-10", recordedAt: "2026-08-10T04:00:00.000Z", sbp: 150, dbp: 95, pulse: 80, rr: 16, spo2: 98, tempC: 37, band: "adult", dangerFlags: [], status: "active", recordedByName: "Sr. Kavita", amendmentReason: null },
+      ] } },
+      "POST /api/opd/visits/enc-1/vitals": { status: 201, body: { vitals: VITALS_LATEST, flags: [] } },
+      "POST /api/opd/vitals/vit-2/amend": { status: 201, body: { vitals: VITALS_LATEST, flags: [], superseded: "vit-2" } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(await screen.findByTestId("panel-vitals"));
+    expect(screen.getByRole("tab", { name: "Vitals" })).toHaveAttribute("aria-selected", "true");
+    const tab = screen.getByTestId("vitals-tab");
+    expect(await within(tab).findByText("Sr. Kavita")).toBeInTheDocument(); // the earlier reading, and who took it
+
+    await user.clear(within(tab).getByTestId("vital-sbp"));
+    await user.type(within(tab).getByTestId("vital-sbp"), "150");
+    await user.click(within(tab).getByTestId("vital-save"));
+    await waitFor(() => { expect(bodiesOf("POST", "/api/opd/visits/enc-1/vitals").at(-1)).toMatchObject({ sbp: 150 }); });
+
+    await user.click(within(tab).getByTestId("vital-fix-vit-2"));
+    expect(within(tab).getByTestId("vital-save")).toBeDisabled(); // no reason, no correction
+    await user.type(within(tab).getByTestId("vital-reason"), "cuff too small");
+    await user.click(within(tab).getByTestId("vital-save"));
+    await waitFor(() => { expect(bodiesOf("POST", "/api/opd/vitals/vit-2/amend").at(-1)).toMatchObject({ reason: "cuff too small" }); });
+  });
+
+  it("P5: refer to a doctor here puts the patient in that line, and the completion carries the referral", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/departments": { status: 200, body: { items: [{ id: "dep-2", name: "Paediatrics" }] } },
+      "GET /api/opd/doctors": { status: 200, body: { items: [{ id: "doc-9", displayName: "Dr Gupta", departmentId: "dep-2", active: true }] } },
+      "POST /api/opd/visits/enc-1/refer": { status: 201, body: { encounterId: "enc-77", tokenNo: 3, visitNo: "V77", visitType: "new" } },
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByTestId("refer-open"));
+    const dialog = await screen.findByTestId("refer-dialog");
+    await user.selectOptions(within(dialog).getByTestId("refer-dept"), "dep-2");
+    await user.selectOptions(await within(dialog).findByTestId("refer-doctor"), await within(dialog).findByRole("option", { name: "Dr Gupta" }));
+    await user.type(within(dialog).getByTestId("refer-reason"), "wheeze, assess asthma");
+    await user.click(within(dialog).getByTestId("refer-send"));
+    await waitFor(() => { expect(bodiesOf("POST", "/api/opd/visits/enc-1/refer").at(-1)).toEqual({ departmentId: "dep-2", doctorId: "doc-9", reason: "wheeze, assess asthma", note: null }); });
+    expect(await screen.findByTestId("refer-done")).toHaveTextContent("token 3 in Paediatrics · Dr Gupta");
+    expect(screen.getByLabelText("Referred to")).toHaveValue("Paediatrics · Dr Gupta");
+  });
+});
+
+/** ROUND 6 / D18 — patient history both ways: the read-only browser, and "View history" at a tab's foot. */
+describe("Consult v2 — patient history both ways", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+    setToken("t-1");
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const PAST = [
+    { encounterId: "enc-0", visitNo: "V-2025-0042", serviceDate: "2025-11-02", openedAt: "2025-11-02T04:00:00.000Z", status: "completed", visitType: "new",
+      doctorId: "doc-1", doctorName: "Dr Meera Rao", departmentId: "dep-1", departmentName: "Medicine", diagnosis: "Essential hypertension", icd10Code: "I10", prescriptionLineCount: 1, dangerFlagged: false },
+    { encounterId: "enc-00", visitNo: "V-2026-0007", serviceDate: "2026-06-12", openedAt: "2026-06-12T04:00:00.000Z", status: "completed", visitType: "revisit",
+      doctorId: "doc-1", doctorName: "Dr Meera Rao", departmentId: "dep-1", departmentName: "Medicine", diagnosis: "Tension headache", icd10Code: "G44.2", prescriptionLineCount: 0, dangerFlagged: false },
+  ];
+  const pastVisit = (id: string, exam: string): Record<string, unknown> => ({
+    encounter: { ...ENCOUNTER, id, visitNo: id, status: "completed", chiefComplaint: "headache", examination: [{ group: "general", text: exam }], treatment: [] },
+    vitals: [], prescriptions: [], diagnoses: [{ text: "Essential hypertension", icd10Code: "I10" }], deskComplaint: null,
+  });
+  function routes(): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/patients/p-1/timeline": { status: 200, body: { items: [...PAST.slice().reverse()] } },
+      "GET /api/opd/visits/enc-0": { status: 200, body: pastVisit("enc-0", "Pallor present") },
+      "GET /api/opd/visits/enc-00": { status: 200, body: pastVisit("enc-00", "No pedal oedema") },
+      "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: { items: [] } },
+      "GET /api/opd/patients/p-1/reminder": { status: 200, body: { reminder: null } },
+    };
+  }
+
+  it("H1: the History button opens a read-only browser — year chips filter the visits, and a picked visit reads by section", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByTestId("history-open"));
+    const browser = await screen.findByTestId("history-browser");
+    expect(within(browser).getByTestId("history-visit-enc-0")).toHaveTextContent("V-2025-0042");
+    await user.click(within(browser).getByTestId("history-year-2025"));
+    expect(within(browser).queryByTestId("history-visit-enc-00")).toBeNull();
+    await user.click(within(browser).getByTestId("history-visit-enc-0"));
+    await user.click(await within(browser).findByTestId("history-sec-exam"));
+    expect(within(browser).getByTestId("history-lines")).toHaveTextContent("general: Pallor present");
+    expect(within(browser).queryAllByRole("textbox")).toHaveLength(0); // nothing here can be edited
+    await waitFor(() => { expect(callsTo("GET", "/api/opd/visits/enc-0").length).toBeGreaterThan(0); }); // a logged visit read
+  });
+
+  it("H3: the History browser is a real modal — a dialog, focus trapped both ways, Esc or Close dismisses it, focus goes back to History", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    const button = screen.getByTestId("history-open");
+    await user.click(button);
+    const dialog = await screen.findByRole("dialog", { name: "Patient history — read only" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    const tabbables = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])")];
+    tabbables.at(-1)!.focus();
+    await user.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(tabbables[0]);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(tabbables.at(-1));
+    await user.keyboard("{Escape}");
+    await waitFor(() => { expect(screen.queryByTestId("history-dialog")).toBeNull(); });
+    expect(button).toHaveFocus();
+    await user.click(button);
+    await user.click(await screen.findByTestId("history-dialog-close"));
+    await waitFor(() => { expect(screen.queryByTestId("history-dialog")).toBeNull(); });
+    expect(button).toHaveFocus();
+  });
+
+  it("H2: 'View history' at a tab's foot opens that section from earlier visits, the newest open", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Examination" }));
+    expect(callsTo("GET", "/api/opd/visits/enc-00")).toHaveLength(0); // nothing is read until asked
+    await user.click(screen.getByTestId("history-foot-exam-toggle"));
+    const newest = await screen.findByTestId("section-history-enc-00");
+    expect(newest).toHaveAttribute("open");
+    await waitFor(() => { expect(newest).toHaveTextContent("general: No pedal oedema"); });
+    expect(screen.getByTestId("section-history-enc-0")).not.toHaveAttribute("open");
   });
 });

@@ -305,6 +305,38 @@ export async function callNext(db: Db, actor: Actor, sessionId: string, now: Dat
 }
 
 /**
+ * ═══ CONSULT V2 — RECALL: SAY THE CALLED TOKEN AGAIN (owner, 2026-09-23) ═══
+ *
+ * The patient was called and has not come in. The doctor presses the alarm on the card and the corridor
+ * board announces the same token again. Nothing about the queue moves — the entry stays `called`, keeps
+ * its place and its `calledAt` — only `callCount` rises, and a `queue.called` event is appended exactly
+ * as `callNext` appends one: that event IS the announcement the display speaks, and it is the audit
+ * (who pressed it, when, and the running count). Skip is untouched; a recall is not a skip.
+ *
+ * The same authority as Call next and Skip (`opd.queue.operate`, on the route), and only a token that
+ * is `called` right now.
+ */
+export async function recallCalled(db: Db, actor: Actor, entryId: string): Promise<{ entry: QueueEntryRow }> {
+  return withTx(db, async (tx) => {
+    const [row] = await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.id, entryId)).for("update");
+    if (!row) throw new OpdError("unknown_queue_entry");
+    const [session] = await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, row.sessionId));
+    if (!session) throw new OpdError("unknown_session");
+    if (row.status !== "called") throw new OpdError("queue_entry_state_conflict", `a recall needs a called token, not ${row.status}`);
+    const updated = await tx.update(opdQueueEntries)
+      .set({ callCount: sql`${opdQueueEntries.callCount} + 1` })
+      .where(and(eq(opdQueueEntries.id, entryId), eq(opdQueueEntries.status, "called"))).returning();
+    if (updated.length === 0) throw new OpdError("call_conflict", "entry moved concurrently");
+    const encounter = (await getEncounter(tx, row.encounterId))!;
+    await appendEvent(tx, queueCalled.make({ actor, patientId: encounter.patientId, encounterId: encounter.id, correlationId: encounter.workflowInstanceId, payload: {
+      encounterId: encounter.id, patientId: encounter.patientId, entryId, doctorId: session.doctorId, serviceDate: session.serviceDate,
+      sessionId: session.id, roomId: session.roomId, tokenNo: updated[0]!.tokenNo, callCount: updated[0]!.callCount,
+    } }));
+    return { entry: updated[0]! };
+  });
+}
+
+/**
  * The called patient did not come: back to waiting with eligible_at = now (they lose their place, never their token),
  * or out of the queue once max_skips_before_left is reached.
  */

@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
-import { opdDoctors, opdEncounters, opdPrescriptions, opdVitals } from "../../kernel/db/schema";
+import { opdDoctors, opdEncounters, opdPrescriptions, opdVitals, users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { getPatient, listMergedLoserIds } from "../patients";
 import { OpdError } from "./errors";
@@ -62,6 +62,16 @@ export type VitalsHistoryItem = {
   band: string;
   /** `DangerFlag[]` as persisted — a reading that tripped a rule stays flagged in the history. */
   dangerFlags: unknown;
+  /**
+   * CONSULT V2 (owner, 2026-09-23) — the Vitals tab lists every earlier reading WITH WHO TOOK IT, and a
+   * corrected reading stays in the list struck through. So the history carries the row's status, the
+   * weight, and the recorder by name (`users.fullName`, else the username, else the id — the rule
+   * `withRecorder` uses). Superseded rows were always returned; now the screen can say which they are.
+   */
+  weightKg: number | null;
+  status: string;
+  recordedByName: string;
+  amendmentReason: string | null;
 };
 
 /** The merge chain for a patient the actor may see, or a refusal indistinguishable from absence. */
@@ -127,9 +137,10 @@ export async function patientVitalsHistory(
 ): Promise<VitalsHistoryItem[]> {
   const chain = await chainFor(db, actor, patientId, "opd.vitals_history");
   const rows = await db
-    .select({ v: opdVitals, serviceDate: opdEncounters.serviceDate })
+    .select({ v: opdVitals, serviceDate: opdEncounters.serviceDate, fullName: users.fullName, username: users.username })
     .from(opdVitals)
     .innerJoin(opdEncounters, eq(opdVitals.encounterId, opdEncounters.id))
+    .leftJoin(users, eq(users.id, opdVitals.recordedBy))
     .where(and(inArray(opdVitals.patientId, chain)))
     .orderBy(asc(opdVitals.recordedAt))
     .limit(limit);
@@ -142,5 +153,9 @@ export async function patientVitalsHistory(
     sbp: r.v.sbp, dbp: r.v.dbp, pulse: r.v.pulse, rr: r.v.rr, spo2: r.v.spo2, tempC: r.v.tempC,
     band: r.v.band,
     dangerFlags: r.v.dangerFlags,
+    weightKg: r.v.weightKg,
+    status: r.v.status,
+    recordedByName: (r.fullName ?? "").trim() !== "" ? r.fullName! : (r.username ?? "").trim() !== "" ? r.username! : r.v.recordedBy,
+    amendmentReason: r.v.amendmentReason,
   }));
 }

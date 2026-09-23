@@ -6,7 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { opdEncounters, opdQueueEntries, opdQueueSessions, opdVitals, users } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
-import { vitalsGateVerdict } from "./consultation";
+import { requireTreatingDoctor, vitalsGateVerdict } from "./consultation";
 import { getEncounter, grantFeeBypass, moveEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { visibleEncounterFor } from "./read-gate";
@@ -267,7 +267,17 @@ export async function recordVitals(
   validateVitalsRanges(values);
   const enc = await getEncounter(db, encounterId);
   if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
-  if (!RECORDABLE.includes(enc.status)) throw new OpdError("encounter_state_conflict", `vitals need registered or waiting, not ${enc.status}`);
+  /*
+    CONSULT V2 (owner, 2026-09-23) — THE DOCTOR MAY ADD A READING IN THE ROOM. Only the encounter's own
+    treating doctor, and only while the consultation is open: the same person and state `saveConsultNote`
+    requires. Everything below — ranges, sanity gates, the required set, danger flags, the events —
+    applies unchanged. What does NOT apply is the bay's pay-before-vitals door (FD-32): that rule is
+    about a patient reaching the VITALS DESK unpaid, and this patient is already in the chair, past the
+    doctor's own fee gate (or the doctor's recorded override of it).
+  */
+  const inRoom = enc.status === "in_consultation";
+  if (!RECORDABLE.includes(enc.status) && !inRoom) throw new OpdError("encounter_state_conflict", `vitals need registered, waiting or the doctor's own consultation, not ${enc.status}`);
+  if (inRoom) await requireTreatingDoctor(db, actor, enc);
   /*
     ═══ FD-32 — PAY BEFORE VITALS (OWNER RULING 2026-09-13) ═══
 
@@ -300,7 +310,7 @@ export async function recordVitals(
     not open on an ordinary save, which still refuses and names the emergency button in its message.
   */
   const emergency = detail.emergency === true;
-  const gate = await vitalsGateVerdict(db, enc);
+  const gate = inRoom ? { ok: true as const } : await vitalsGateVerdict(db, enc);
   if (!gate.ok && !emergency) {
     throw new OpdError("consult_gate_refused", gateRefusalMessage(gate.code), {
       guard: "billing_fee_gate", door: "vitals", code: gate.code, detail: gate.detail,

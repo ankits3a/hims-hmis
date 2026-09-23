@@ -1101,6 +1101,20 @@ const opdConsultRoute = createRoute({
 });
 
 /**
+ * CONSULT V2 (owner, 2026-09-23) — one patient in its own browser tab, opened from a card's new-tab icon.
+ * The same screen, focused on that visit; D17's lease decides whether this tab may write.
+ */
+const opdConsultFocusRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/consult/$encounterId",
+  component: function OpdConsultFocus(): React.ReactElement {
+    const { encounterId } = opdConsultFocusRoute.useParams();
+    return <OpdConsult focusEncounterId={encounterId} />;
+  },
+  staticData: { fullViewport: true },
+});
+
+/**
  * FD-30 — the OPD-door scribe. No search parameters: the visit is TYPED OR SCANNED into the screen's
  * own box (one input, both roads — the prescription QR encodes exactly the visit number), so there
  * is no deep link to validate and no state to carry between patients.
@@ -1301,7 +1315,7 @@ export const router = createRouter({
     changePasswordRoute,
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdConsultRoute, opdScribeRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
+      opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and

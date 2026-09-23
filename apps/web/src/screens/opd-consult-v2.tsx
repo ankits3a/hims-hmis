@@ -4,7 +4,8 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { VisitTypeBadge } from "../components/visit-type-badge";
-import { clearReminder, fetchDoctorStock, fetchReminder, putReminder } from "../lib/opd-api";
+import { TermInput, ownTerms } from "./opd-consult-suggest";
+import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
 import type {
   WireDoctorStock, WireExamFinding, WireRxHistoryItem, WireTimelineItem, WireVitals,
 } from "../lib/opd-api";
@@ -295,7 +296,6 @@ const EXAM_CHIPS: Record<WireExamFinding["group"], string[]> = {
 
 export function ExamSection({ value, onChange }: { value: WireExamFinding[]; onChange: (next: WireExamFinding[]) => void }): React.ReactElement {
   const { t } = useTranslation();
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const has = (g: WireExamFinding["group"], text: string): boolean => value.some((f) => f.group === g && f.text === text);
   const toggle = (g: WireExamFinding["group"], text: string): void => {
     onChange(has(g, text) ? value.filter((f) => !(f.group === g && f.text === text)) : [...value, { group: g, text }]);
@@ -313,18 +313,14 @@ export function ExamSection({ value, onChange }: { value: WireExamFinding[]; onC
                   style={{ padding: "3px 11px", fontSize: 12.5, borderRadius: 15 }} onClick={() => { toggle(g, c); }}>{c}</button>
               ))}
             </div>
-            <form style={{ display: "flex", gap: 6 }} onSubmit={(e) => {
-              e.preventDefault();
-              const text = (drafts[g] ?? "").trim();
-              if (text === "" || has(g, text)) return;
-              onChange([...value, { group: g, text }]);
-              setDrafts((d) => ({ ...d, [g]: "" }));
-            }}>
-              <label htmlFor={`exam-own-${g}`} style={{ position: "absolute", left: -9999 }}>{t("opdConsultV2.exam.own", { group: t(`opdConsultV2.exam.${g}`) })}</label>
-              <input id={`exam-own-${g}`} className="in" value={drafts[g] ?? ""} placeholder={t("opdConsultV2.exam.ownPlaceholder")}
-                onChange={(e) => { setDrafts((d) => ({ ...d, [g]: e.target.value })); }} style={{ flexGrow: 1, height: 32, fontSize: 12.5 }} />
-              <button type="submit" className="sec" style={{ padding: "0 12px", fontSize: 12 }}>{t("opdConsultV2.add")}</button>
-            </form>
+            <TermInput
+              id={`exam-own-${g}`} testId={`exam-own-${g}`}
+              label={t("opdConsultV2.exam.own", { group: t(`opdConsultV2.exam.${g}`) })}
+              placeholder={t("opdConsultV2.exam.ownPlaceholder")}
+              local={EXAM_CHIPS[g]} remote={ownTerms(`exam_${g}`)}
+              exclude={value.filter((f) => f.group === g).map((f) => f.text)}
+              onAdd={(text) => { if (!has(g, text)) onChange([...value, { group: g, text }]); }}
+            />
           </div>
         );
       })}
@@ -338,7 +334,6 @@ const TREATMENT_CHIPS = ["BP recheck after 10 min rest", "Nebulisation in OPD", 
 
 export function TreatmentSection({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }): React.ReactElement {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState("");
   const all = [...TREATMENT_CHIPS, ...value.filter((v) => !TREATMENT_CHIPS.includes(v))];
   return (
     <div data-testid="treatment-section" className="box" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -349,11 +344,11 @@ export function TreatmentSection({ value, onChange }: { value: string[]; onChang
             onClick={() => { onChange(value.includes(c) ? value.filter((x) => x !== c) : [...value, c]); }}>{c}</button>
         ))}
       </div>
-      <form style={{ display: "flex", gap: 6 }} onSubmit={(e) => { e.preventDefault(); const x = draft.trim(); if (x === "" || value.includes(x)) return; onChange([...value, x]); setDraft(""); }}>
-        <label htmlFor="treatment-own" style={{ position: "absolute", left: -9999 }}>{t("opdConsultV2.treatmentOwn")}</label>
-        <input id="treatment-own" className="in" value={draft} onChange={(e) => { setDraft(e.target.value); }} placeholder={t("opdConsultV2.treatmentOwn")} style={{ flexGrow: 1, height: 32, fontSize: 12.5 }} />
-        <button type="submit" className="sec" style={{ padding: "0 12px", fontSize: 12 }}>{t("opdConsultV2.add")}</button>
-      </form>
+      <TermInput
+        id="treatment-own" testId="treatment-own" label={t("opdConsultV2.treatmentOwn")} placeholder={t("opdConsultV2.treatmentOwn")}
+        local={TREATMENT_CHIPS} remote={ownTerms("treatment")} exclude={value}
+        onAdd={(x) => { if (!value.includes(x)) onChange([...value, x]); }}
+      />
     </div>
   );
 }
@@ -463,4 +458,418 @@ export function SavedClock({ at, draft }: { at: Date | null; draft: boolean }): 
   if (at === null) return null;
   const hhmmss = at.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   return <span data-testid="saved-clock" className="mo" style={{ fontSize: 11, color: "var(--green)" }}>{draft ? t("opdConsultV2.draftSaved", { at: hhmmss }) : t("opdConsultV2.autosaved", { at: hhmmss })}</span>;
+}
+
+// ═══ PART TWO (owner, 2026-09-23, rounds 4–5) ═══
+
+// ——— the Vitals tab: today's reading editable, a correction never overwrites, every earlier reading below ———
+
+type VitalKey = "sbp" | "dbp" | "pulse" | "spo2" | "tempC" | "weightKg" | "heightCm" | "rr";
+const VITAL_FIELDS: { key: VitalKey; label: string; unit: string }[] = [
+  { key: "sbp", label: "BP sys", unit: "mmHg" }, { key: "dbp", label: "BP dia", unit: "mmHg" }, { key: "pulse", label: "Pulse", unit: "/min" },
+  { key: "spo2", label: "SpO₂", unit: "%" }, { key: "tempC", label: "Temp", unit: "°C" }, { key: "rr", label: "RR", unit: "/min" },
+  { key: "weightKg", label: "Weight", unit: "kg" }, { key: "heightCm", label: "Height", unit: "cm" },
+];
+type VitalsLike = Partial<Record<VitalKey, number | null>> & { recordedAt: string; recordedByName?: string; status?: string; amendmentReason?: string | null };
+
+/** Gold, never red: red is the danger-flag rule's own colour, and this is a glance, not a rule. */
+export function abnormal(v: Partial<Record<VitalKey, number | null>>): Set<VitalKey> {
+  const out = new Set<VitalKey>();
+  if ((v.sbp ?? 0) >= 140) out.add("sbp");
+  if ((v.dbp ?? 0) >= 90) out.add("dbp");
+  if (v.pulse != null && (v.pulse > 100 || v.pulse < 50)) out.add("pulse");
+  if (v.spo2 != null && v.spo2 < 94) out.add("spo2");
+  if (v.tempC != null && v.tempC >= 38) out.add("tempC");
+  return out;
+}
+
+function readingLine(v: VitalsLike): React.ReactElement {
+  const hi = abnormal(v);
+  const parts: [VitalKey | "bp", string][] = [
+    ["bp", v.sbp == null ? "BP —" : `BP ${String(v.sbp)}/${String(v.dbp ?? "—")}`],
+    ["pulse", `P ${String(v.pulse ?? "—")}`], ["spo2", `SpO₂ ${String(v.spo2 ?? "—")}`], ["tempC", `T ${String(v.tempC ?? "—")}`],
+    ...(v.weightKg == null ? [] : [["weightKg", `${String(v.weightKg)} kg`] as [VitalKey, string]]),
+  ];
+  return (
+    <span className="mo" style={{ display: "inline-flex", gap: 12, flexWrap: "wrap" }}>
+      {parts.map(([k, text]) => (
+        <span key={k} style={{ color: (k === "bp" ? hi.has("sbp") || hi.has("dbp") : hi.has(k as VitalKey)) ? "var(--gold)" : undefined, fontWeight: 600 }}>{text}</span>
+      ))}
+    </span>
+  );
+}
+
+export function VitalsTab({ encounterId, patientId, today, onChanged }: {
+  encounterId: string; patientId: string; today: (VitalsLike & { id: string })[]; onChanged: () => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const rows = today;
+  const current = rows.filter((r) => r.status !== "superseded").at(-1);
+  const seed = (): Record<VitalKey, string> => Object.fromEntries(VITAL_FIELDS.map((f) => [f.key, current?.[f.key] == null ? "" : String(current[f.key])])) as Record<VitalKey, string>;
+  const [form, setForm] = useState<Record<VitalKey, string>>(seed);
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const history = useQuery({
+    queryKey: ["opd", "vitals-history", patientId],
+    queryFn: () => api<{ items: (VitalsLike & { vitalsId: string; encounterId: string; serviceDate: string })[] }>("GET", `/opd/patients/${patientId}/vitals`),
+  });
+  const earlier = (history.data?.items ?? []).filter((h) => h.encounterId !== encounterId).slice().reverse();
+  const values = (): Record<string, number | null> => Object.fromEntries(VITAL_FIELDS.map((f) => [f.key, form[f.key].trim() === "" ? null : Number(form[f.key])]));
+  const submit = async (): Promise<void> => {
+    setErr(null); setBusy(true);
+    try {
+      if (fixing === null) await api("POST", `/opd/visits/${encounterId}/vitals`, values());
+      else await api("POST", `/opd/vitals/${fixing}/amend`, { ...values(), reason: reason.trim() });
+      setFixing(null); setReason("");
+      onChanged();
+      await history.refetch();
+    } catch (e) {
+      const body = (e as { body?: { message?: unknown } }).body;
+      setErr(typeof body?.message === "string" ? body.message : e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div data-testid="vitals-tab" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="box" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <span className="tag">{fixing === null ? t("opdConsultV2.vitals.today") : t("opdConsultV2.vitals.correcting")}</span>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+          {VITAL_FIELDS.map((f) => (
+            <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11.5, color: "var(--dim)" }}>
+              {f.label} ({f.unit})
+              <input data-testid={`vital-${f.key}`} className="in mo" inputMode="decimal" value={form[f.key]}
+                onChange={(e) => { const v = e.target.value; setForm((cur) => ({ ...cur, [f.key]: v })); }}
+                style={{ height: 32, fontSize: 13, color: abnormal({ [f.key]: form[f.key] === "" ? null : Number(form[f.key]) }).has(f.key) ? "var(--gold)" : undefined }} />
+            </label>
+          ))}
+        </div>
+        {fixing !== null && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+            {t("opdConsultV2.vitals.reason")}
+            <input data-testid="vital-reason" className="in" value={reason} onChange={(e) => { setReason(e.target.value); }} style={{ height: 32, fontSize: 13 }} />
+          </label>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" className="pri" data-testid="vital-save" disabled={busy || (fixing !== null && reason.trim() === "")} onClick={() => void submit()}
+            style={{ padding: "3px 14px", fontSize: 12.5 }}>{fixing === null ? t("opdConsultV2.vitals.saveNew") : t("opdConsultV2.vitals.saveFix")}</button>
+          {fixing !== null && <button type="button" className="sec" onClick={() => { setFixing(null); setReason(""); setForm(seed()); }} style={{ padding: "3px 12px", fontSize: 12 }}>{t("opdConsult.cancel")}</button>}
+        </div>
+        {err === null ? null : <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--red)" }}>{err}</p>}
+        <ul data-testid="vitals-today" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {rows.map((r) => (
+            <li key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, textDecoration: r.status === "superseded" ? "line-through" : undefined, color: r.status === "superseded" ? "var(--faint)" : undefined }}>
+              {readingLine(r)}
+              <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{t("opdConsultV2.vitalsBy", { by: r.recordedByName ?? "—", at: fmtTime(r.recordedAt) })}</span>
+              {r.amendmentReason != null && <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsultV2.vitals.because", { reason: r.amendmentReason })}</span>}
+              {r.status !== "superseded" && (
+                <button type="button" className="sec" data-testid={`vital-fix-${r.id}`} style={{ marginLeft: "auto", padding: "1px 9px", fontSize: 11.5 }}
+                  onClick={() => { setFixing(r.id); setForm(Object.fromEntries(VITAL_FIELDS.map((f) => [f.key, r[f.key] == null ? "" : String(r[f.key])])) as Record<VitalKey, string>); }}>
+                  {t("opdConsultV2.vitals.correct")}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: 0 }} />
+      <div className="box" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <span className="tag">{t("opdConsultV2.vitals.earlier")}</span>
+        {earlier.length === 0 ? <span style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsultV2.vitals.none")}</span> : (
+          <ul data-testid="vitals-earlier" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+            {earlier.map((h) => (
+              <li key={h.vitalsId} style={{ display: "flex", gap: 10, fontSize: 12.5, textDecoration: h.status === "superseded" ? "line-through" : undefined, color: h.status === "superseded" ? "var(--faint)" : undefined }}>
+                <span className="mo" style={{ width: 132, flexShrink: 0, color: "var(--dim)" }}>{h.serviceDate} {fmtTime(h.recordedAt)}</span>
+                {readingLine(h)}
+                <span style={{ color: "var(--dim)", fontSize: 11.5 }}>{h.recordedByName ?? ""}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ——— refer: to another department's doctor, or out with a letter ———
+
+type WireDept = { id: string; name: string; active?: boolean };
+type WireDoc = { id: string; displayName: string; departmentId: string; active: boolean };
+
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
+export function ReferPanel({ encounterId, patientName, doctorName, onInternal, onExternal }: {
+  encounterId: string; patientName: string; doctorName: string;
+  onInternal: (r: { tokenNo: number; where: string; why: string }) => void;
+  onExternal: (to: string, note: string) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [kind, setKind] = useState<"internal" | "external">("internal");
+  const [dept, setDept] = useState("");
+  const [doc, setDoc] = useState("");
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const [to, setTo] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const depts = useQuery({ queryKey: ["opd", "departments"], queryFn: () => api<{ items: WireDept[] }>("GET", "/opd/departments") });
+  const docs = useQuery({
+    queryKey: ["opd", "doctors", dept], enabled: dept !== "",
+    queryFn: () => api<{ items: WireDoc[] }>("GET", `/opd/doctors?departmentId=${encodeURIComponent(dept)}&active=true`),
+  });
+  const refer = async (): Promise<void> => {
+    setErr(null); setBusy(true);
+    try {
+      const r = await referInternally(encounterId, { departmentId: dept, doctorId: doc, reason: reason.trim(), note: note.trim() === "" ? null : note.trim() });
+      const d = (depts.data?.items ?? []).find((x) => x.id === dept)?.name ?? "";
+      const n = (docs.data?.items ?? []).find((x) => x.id === doc)?.displayName ?? "";
+      onInternal({ tokenNo: r.tokenNo, where: `${d} · ${n}`, why: `${reason.trim()}${note.trim() === "" ? "" : ` — ${note.trim()}`}` });
+    } catch (e) {
+      const body = (e as { body?: { message?: unknown } }).body;
+      setErr(typeof body?.message === "string" ? body.message : e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const printLetter = (): void => {
+    onExternal(to.trim(), note.trim());
+    const w = window.open("", "_blank");
+    if (w === null) return;
+    const today = new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
+    w.document.write(`<!doctype html><html><head><title>${esc(t("opdConsultV2.refer.letterTitle"))}</title></head><body style="font-family:serif;max-width:640px;margin:40px auto;line-height:1.6">
+<p style="text-align:right">${esc(today)}</p><p>To,<br>${esc(to.trim())}</p>
+<p><strong>${esc(t("opdConsultV2.refer.letterRe", { patient: patientName }))}</strong></p>
+<p>${esc(note.trim())}</p><p style="margin-top:48px">${esc(doctorName)}</p></body></html>`);
+    w.document.close();
+    w.print();
+  };
+  const seg: React.CSSProperties = { padding: "3px 12px", fontSize: 12.5 };
+  return (
+    <div data-testid="refer-panel" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div role="group" style={{ display: "flex", gap: 6 }}>
+        <button type="button" data-testid="refer-internal" aria-pressed={kind === "internal"} className={kind === "internal" ? "pri" : "sec"} style={seg} onClick={() => { setKind("internal"); }}>{t("opdConsultV2.refer.internal")}</button>
+        <button type="button" data-testid="refer-external" aria-pressed={kind === "external"} className={kind === "external" ? "pri" : "sec"} style={seg} onClick={() => { setKind("external"); }}>{t("opdConsultV2.refer.external")}</button>
+      </div>
+      {kind === "internal" ? (
+        <>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.department")}
+            <select data-testid="refer-dept" className="in" value={dept} onChange={(e) => { setDept(e.target.value); setDoc(""); }} style={{ width: "100%", height: 34 }}>
+              <option value="">—</option>
+              {(depts.data?.items ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.doctor")}
+            <select data-testid="refer-doctor" className="in" value={doc} onChange={(e) => { setDoc(e.target.value); }} style={{ width: "100%", height: 34 }} disabled={dept === ""}>
+              <option value="">—</option>
+              {(docs.data?.items ?? []).map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.reason")}
+            <input data-testid="refer-reason" className="in" value={reason} onChange={(e) => { setReason(e.target.value); }} style={{ width: "100%", height: 34 }} />
+          </label>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.note")}
+            <input data-testid="refer-note" className="in" value={note} onChange={(e) => { setNote(e.target.value); }} style={{ width: "100%", height: 34 }} />
+          </label>
+          <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsultV2.refer.feeNote")}</p>
+          <button type="button" className="pri" data-testid="refer-send" disabled={busy || dept === "" || doc === "" || reason.trim().length < 3} onClick={() => void refer()} style={{ alignSelf: "flex-start", padding: "3px 14px" }}>
+            {t("opdConsultV2.refer.send")}
+          </button>
+        </>
+      ) : (
+        <>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.to")}
+            <input data-testid="refer-to" className="in" value={to} onChange={(e) => { setTo(e.target.value); }} style={{ width: "100%", height: 34 }} />
+          </label>
+          <label style={{ fontSize: 12 }}>{t("opdConsultV2.refer.letter")}
+            <textarea data-testid="refer-letter" className="in" value={note} onChange={(e) => { setNote(e.target.value); }} style={{ width: "100%", height: 110, padding: 8 }} />
+          </label>
+          <button type="button" className="pri" data-testid="refer-print" disabled={to.trim() === ""} onClick={printLetter} style={{ alignSelf: "flex-start", padding: "3px 14px" }}>
+            {t("opdConsultV2.refer.print")}
+          </button>
+        </>
+      )}
+      {err === null ? null : <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--red)" }}>{err}</p>}
+    </div>
+  );
+}
+
+/** A small alarm-bell mark for the recall button: inline stroke SVG, never an emoji. */
+export function BellIcon(): React.ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+
+/** "Open in a new tab": a box with an arrow leaving it. */
+export function NewTabIcon(): React.ReactElement {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 3h7v7" /><path d="M10 14 21 3" /><path d="M21 14v7H3V3h7" />
+    </svg>
+  );
+}
+
+// ═══ ROUND 6 (owner, 2026-09-23) — PATIENT HISTORY BOTH WAYS (D18) ═══
+//
+// Every past visit is read through `GET /opd/visits/:id` — the route that already gates a sealed record
+// and writes one `opd.visit` row to the PHI access log per read. So opening a visit in the browser, or
+// expanding a section's history, logs exactly the visits the doctor actually looked at, and no new read
+// path exists to audit separately. Nothing here can edit.
+
+export type PastVisit = {
+  encounter: {
+    id: string; visitNo: string; serviceDate: string; visitType: string;
+    chiefComplaint: string | null; diagnosis: string | null; advice: string | null; icd10Code: string | null;
+    examination?: WireExamFinding[] | null; treatment?: string[] | null; doctorNote?: string | null; internalComment?: string | null;
+    diagnosisKind?: string | null; advisedTests?: { name: string }[] | null; referralTo?: string | null; followUpDays?: number | null;
+  };
+  deskComplaint?: { text: string } | null;
+  vitals: (VitalsLike & { id: string })[];
+  prescriptions: { status: string; lines: { drug: string; dose?: string; frequency?: string; durationDays?: number | null }[] }[];
+  diagnoses: { text: string; icd10Code: string | null }[];
+};
+
+export type HistorySection = "vitals" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
+export const HISTORY_SECTIONS: HistorySection[] = ["vitals", "complaints", "exam", "dx", "inv", "rx", "treat", "advice", "notes"];
+
+/** One section of a past visit, as lines of text. An empty array means the visit recorded nothing there. */
+export function sectionLines(v: PastVisit, s: HistorySection): string[] {
+  const e = v.encounter;
+  const split = (x: string | null | undefined): string[] => (x ?? "").split(" · ").map((y) => y.trim()).filter((y) => y !== "");
+  switch (s) {
+    case "vitals": return v.vitals.filter((x) => x.status !== "superseded").map((x) => `BP ${String(x.sbp ?? "—")}/${String(x.dbp ?? "—")} · P ${String(x.pulse ?? "—")} · SpO₂ ${String(x.spo2 ?? "—")} · T ${String(x.tempC ?? "—")}${x.weightKg == null ? "" : ` · ${String(x.weightKg)} kg`}`);
+    case "complaints": return [...split(e.chiefComplaint), ...(v.deskComplaint == null ? [] : [`(desk) ${v.deskComplaint.text}`])];
+    case "exam": return (e.examination ?? []).map((f) => `${f.group}: ${f.text}`);
+    case "dx": return v.diagnoses.length > 0
+      ? v.diagnoses.map((d) => `${d.text}${d.icd10Code === null ? "" : ` (${d.icd10Code})`}${e.diagnosisKind == null ? "" : ` · ${e.diagnosisKind}`}`)
+      : split(e.diagnosis);
+    case "inv": return (e.advisedTests ?? []).map((x) => x.name);
+    case "rx": return v.prescriptions.filter((p) => p.status === "active").flatMap((p) => p.lines.map((l) => [l.drug, l.dose, l.frequency, l.durationDays == null ? "" : `${String(l.durationDays)} d`].filter((x) => x !== undefined && x !== "").join(" · ")));
+    case "treat": return e.treatment ?? [];
+    case "advice": return [...(e.advice === null || e.advice.trim() === "" ? [] : [e.advice.trim()]), ...(e.referralTo == null ? [] : [`Referred to ${e.referralTo}`])];
+    case "notes": return [e.doctorNote, e.internalComment].filter((x): x is string => typeof x === "string" && x.trim() !== "");
+  }
+}
+
+function usePastVisit(encounterId: string | null): { data: PastVisit | undefined; isLoading: boolean } {
+  const q = useQuery({
+    queryKey: ["opd", "past-visit", encounterId ?? ""], enabled: encounterId !== null,
+    queryFn: () => api<PastVisit>("GET", `/opd/visits/${encounterId ?? ""}`), staleTime: 5 * 60_000,
+  });
+  return { data: q.data, isLoading: q.isLoading };
+}
+
+function PastVisitSections({ encounterId }: { encounterId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const v = usePastVisit(encounterId);
+  const [sec, setSec] = useState<HistorySection>("complaints");
+  if (v.data === undefined) return <p style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("app.loading")}</p>;
+  const lines = sectionLines(v.data, sec);
+  return (
+    <div data-testid="history-visit" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div role="tablist" aria-label={t("opdConsultV2.history.sections")} style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        {HISTORY_SECTIONS.map((s) => (
+          <button key={s} type="button" role="tab" aria-selected={sec === s} data-testid={`history-sec-${s}`} className={sec === s ? "pill on" : "pill"}
+            style={{ fontSize: 12 }} onClick={() => { setSec(s); }}>
+            {t(`opdConsultV2.history.sec.${s}`)}{sectionLines(v.data!, s).length > 0 ? " ·" : ""}
+          </button>
+        ))}
+      </div>
+      <ul data-testid="history-lines" style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+        {lines.length === 0 ? <li style={{ listStyle: "none", marginLeft: -18, color: "var(--faint)" }}>{t("opdConsultV2.nothingEntered")}</li> : lines.map((l, i) => <li key={i}>{l}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+/** The History browser — a read-only list of the patient's visits, filtered by year chips or a date. */
+export function HistoryBrowser({ visits, currentEncounterId }: {
+  visits: WireTimelineItem[]; currentEncounterId: string;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const past = visits.filter((v) => v.encounterId !== currentEncounterId);
+  const years = [...new Set(past.map((v) => v.serviceDate.slice(0, 4)))].sort().reverse();
+  const [year, setYear] = useState<string>("all");
+  const [date, setDate] = useState("");
+  const shown = past.filter((v) => (year === "all" || v.serviceDate.startsWith(year)) && (date === "" || v.serviceDate === date));
+  const [picked, setPicked] = useState<string | null>(shown[0]?.encounterId ?? null);
+  return (
+    <div data-testid="history-browser" style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr)", gap: 16, minHeight: 360 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {["all", ...years].map((y) => (
+            <button key={y} type="button" data-testid={`history-year-${y}`} aria-pressed={year === y} className={year === y ? "pill on" : "pill"} style={{ fontSize: 12 }}
+              onClick={() => { setYear(y); setDate(""); }}>{y === "all" ? t("opdConsultV2.history.all") : y}</button>
+          ))}
+        </div>
+        <label style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdConsultV2.history.date")}
+          <input type="date" data-testid="history-date" className="in" value={date} onChange={(e) => { setDate(e.target.value); }} style={{ width: "100%", height: 32 }} />
+        </label>
+        <ul data-testid="history-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4, overflowY: "auto", maxHeight: 420 }}>
+          {shown.length === 0 && <li style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsultV2.history.none")}</li>}
+          {shown.map((v) => (
+            <li key={v.encounterId}>
+              <button type="button" data-testid={`history-visit-${v.encounterId}`} aria-pressed={picked === v.encounterId} onClick={() => { setPicked(v.encounterId); }}
+                style={{ width: "100%", textAlign: "left", padding: "7px 9px", borderRadius: 6, border: `1px solid ${picked === v.encounterId ? "var(--green)" : "var(--line)"}`, background: picked === v.encounterId ? "var(--green-soft)" : "var(--card)", fontSize: 12.5 }}>
+                <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span className="mo">{v.serviceDate}</span>
+                  <VisitTypeBadge visitType={v.visitType} size="sm" testId={`history-vt-${v.encounterId}`} />
+                  <span className="mo" style={{ marginLeft: "auto", fontSize: 11, color: "var(--dim)" }}>{v.visitNo ?? ""}</span>
+                </span>
+                <span style={{ display: "block", color: "var(--dim)" }}>{v.diagnosis ?? t("opdConsultV2.noDx")}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div>{picked === null ? <p style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsultV2.history.pick")}</p> : <PastVisitSections key={picked} encounterId={picked} />}</div>
+    </div>
+  );
+}
+
+function PastSectionRow({ item, sections, open }: { item: WireTimelineItem; sections: HistorySection[]; open: boolean }): React.ReactElement {
+  const { t } = useTranslation();
+  const v = usePastVisit(item.encounterId);
+  const lines = v.data === undefined ? null : sections.flatMap((s) => sectionLines(v.data!, s).map((l) => (sections.length > 1 ? `${t(`opdConsultV2.history.sec.${s}`)}: ${l}` : l)));
+  return (
+    <details open={open} data-testid={`section-history-${item.encounterId}`} style={{ borderTop: "1px solid var(--line2)", padding: "6px 0" }}>
+      <summary style={{ cursor: "pointer", fontSize: 12.5 }}>
+        <span className="mo">{item.serviceDate}</span> · <span className="mo" style={{ color: "var(--dim)" }}>{item.visitNo ?? ""}</span>
+      </summary>
+      {lines === null ? <p style={{ margin: "4px 0", fontSize: 12, color: "var(--dim)" }}>{t("app.loading")}</p>
+        : lines.length === 0 ? <p style={{ margin: "4px 0", fontSize: 12, color: "var(--faint)" }}>{t("opdConsultV2.nothingEntered")}</p>
+          : <ul style={{ margin: "4px 0", paddingLeft: 18, fontSize: 12.5 }}>{lines.map((l, i) => <li key={i}>{l}</li>)}</ul>}
+    </details>
+  );
+}
+
+const SECTION_HISTORY_DEPTH = 8;
+
+/** The foot of a consultation tab: a line, "View history", and this section from earlier visits, newest open. */
+export function SectionHistory({ visits, currentEncounterId, sections, testId }: {
+  visits: WireTimelineItem[]; currentEncounterId: string; sections: HistorySection[]; testId: string;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const past = visits.filter((v) => v.encounterId !== currentEncounterId).slice(0, SECTION_HISTORY_DEPTH);
+  return (
+    <div data-testid={testId} style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ flexGrow: 1, borderTop: "1px solid var(--line)" }} />
+        <button type="button" className="sec" data-testid={`${testId}-toggle`} aria-expanded={open} style={{ padding: "2px 12px", fontSize: 12 }} onClick={() => { setOpen(!open); }}>
+          {open ? t("opdConsultV2.history.hide") : t("opdConsultV2.history.view")}
+        </button>
+        <span style={{ flexGrow: 1, borderTop: "1px solid var(--line)" }} />
+      </div>
+      {open && (past.length === 0
+        ? <p style={{ fontSize: 12.5, color: "var(--dim)", textAlign: "center" }}>{t("opdConsultV2.history.none")}</p>
+        : <div style={{ marginTop: 6 }}>{past.map((v, i) => <PastSectionRow key={v.encounterId} item={v} sections={sections} open={i === 0} />)}</div>)}
+    </div>
+  );
 }
