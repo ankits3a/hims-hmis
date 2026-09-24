@@ -31,7 +31,7 @@ import { useEffect, useRef, useState } from "react";
 export type AgentLine = { at: string; text: string; kind: "did" | "ok" | "warn" | "err" };
 
 export function AgentDock(
-  { answer, log, onAsk, placeholder, idle, action, panel, variant = "bar", autoFocus = false }: {
+  { answer, log, onAsk, placeholder, idle, action, panel, cards, variant = "bar", autoFocus = false }: {
     answer: string | null;
     log: AgentLine[];
     onAsk: (question: string) => void;
@@ -74,6 +74,8 @@ export function AgentDock(
      * behaviour, the F2 binding and what it may answer are the same — only the placement differs.
      */
     variant?: "bar" | "panel";
+    /** panel only: cards shown above the answer (the consult's suggestions and stock alternatives). */
+    cards?: React.ReactNode;
     /** Focus the ask box on mount — the consult sets it when F2 opened a minimised panel. */
     autoFocus?: boolean;
   },
@@ -110,27 +112,33 @@ export function AgentDock(
   useEffect(() => { if (autoFocus) askRef.current?.focus(); }, [autoFocus]);
 
   if (variant === "panel") {
+    /*
+      THE PANEL VARIANT IS WHITE WITH A PINE CARD (owner, 2026-09-23, the Consult Engine boards). The
+      machine still speaks on pine — the answer and the log sit inside the dark card — but the column
+      around it is paper, so the consult screen reads as one sheet, and the ask box is docked at the
+      column's foot.
+    */
     return (
-      <div data-testid="agent-dock" style={{ display: "flex", flexDirection: "column", flexGrow: 1, minHeight: 0, background: "var(--agent)", color: "var(--agent-fg)" }}>
-        <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <div className="tag" style={{ color: "var(--agent-dim)" }}>answer</div>
-            <div data-testid="agent-ticker" style={{ marginTop: 6, fontSize: 12.5, lineHeight: "18px", color: answer === null ? "var(--agent-dim)" : "var(--agent-fg)" }}>
+      <div data-testid="agent-dock" style={{ display: "flex", flexDirection: "column", flexGrow: 1, minHeight: 0, background: "var(--card)", color: "var(--ink)" }}>
+        <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+          {cards}
+          <div style={{ padding: 14, borderRadius: 8, background: "var(--agent)", color: "var(--agent-fg)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div data-testid="agent-ticker" style={{ fontSize: 12.5, lineHeight: "18px", color: answer === null ? "var(--agent-dim)" : "var(--agent-fg)" }}>
               {answer ?? idle}
             </div>
-          </div>
-          {panel === undefined ? null : <div>{panel}</div>}
-          <div>
-            <div className="tag" style={{ color: "var(--agent-dim)" }}>what happened on this screen</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-              {log.length === 0 ? (
-                <span style={{ fontSize: 11, color: "var(--agent-dim)" }}>Nothing yet.</span>
-              ) : log.map((line, i) => (
-                <div key={`${line.at}-${String(i)}`} style={{ display: "flex", gap: 8, fontSize: 11.5 }}>
-                  <span className="mo" style={{ color: "var(--agent-dim)", flexShrink: 0 }}>{line.at}</span>
-                  <span style={{ color: line.kind === "err" ? "#ff9d94" : line.kind === "warn" ? "#f0c26a" : line.kind === "ok" ? "var(--mint)" : "var(--agent-fg)" }}>{line.text}</span>
-                </div>
-              ))}
+            {panel === undefined ? null : <div>{panel}</div>}
+            <div>
+              <div className="tag" style={{ color: "var(--agent-dim)" }}>what happened on this screen</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                {log.length === 0 ? (
+                  <span style={{ fontSize: 11, color: "var(--agent-dim)" }}>Nothing yet.</span>
+                ) : log.map((line, i) => (
+                  <div key={`${line.at}-${String(i)}`} style={{ display: "flex", gap: 8, fontSize: 11.5 }}>
+                    <span className="mo" style={{ color: "var(--agent-dim)", flexShrink: 0 }}>{line.at}</span>
+                    <span style={{ color: line.kind === "err" ? "#ff9d94" : line.kind === "warn" ? "#f0c26a" : line.kind === "ok" ? "var(--mint)" : "var(--agent-fg)" }}>{line.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -141,16 +149,19 @@ export function AgentDock(
           </button>
         )}
         <form
-          style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 12px", borderTop: "1px solid #24413655" }}
+          style={{ flex: "none", display: "flex", flexDirection: "column", gap: 6, padding: "12px 14px", borderTop: "1px solid var(--line2)" }}
           onSubmit={(e) => { e.preventDefault(); onAsk(draft); setDraft(""); }}
         >
-          <input
-            ref={askRef} data-testid="agent-ask" value={draft}
-            onChange={(e) => { setDraft(e.target.value); }}
-            placeholder={placeholder}
-            style={{ flexGrow: 1, minWidth: 0, height: 32, borderRadius: 6, border: "1px solid #24413655", background: "#0c1f1a", color: "var(--agent-fg)", padding: "0 10px", fontSize: 12 }}
-          />
-          <span className="kb dk">F2</span>
+          <label htmlFor="agent-ask-input" className="tag" style={{ color: "var(--faint)" }}>ASK THE COPILOT · F2</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              id="agent-ask-input" ref={askRef} data-testid="agent-ask" value={draft}
+              onChange={(e) => { setDraft(e.target.value); }}
+              placeholder={placeholder}
+              style={{ flexGrow: 1, minWidth: 0, height: 38, borderRadius: 6, border: "1px solid var(--line)", background: "var(--paper)", color: "var(--ink)", padding: "0 10px", fontSize: 12.5 }}
+            />
+            <button type="submit" aria-label="Send" style={{ width: 38, height: 38, borderRadius: 6, border: 0, background: "var(--agent)", color: "#ffffff", fontSize: 14, cursor: "pointer" }}>↵</button>
+          </div>
         </form>
       </div>
     );

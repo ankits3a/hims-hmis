@@ -17,25 +17,27 @@ import { useTranslation } from "react-i18next";
  * the consulting room cannot call the same visit two different things.
  */
 const LOOK: Record<string, React.CSSProperties> = {
-  new: { background: "var(--ink)", color: "var(--paper)", borderColor: "var(--ink)" },
-  revisit: { background: "var(--green)", color: "#ffffff", borderColor: "var(--green)" },
-  renewal: { background: "var(--gold-soft)", color: "var(--gold)", borderColor: "var(--gold)" },
+  /* The Consult Engine boards' colours, approved by the owner 2026-09-23: NEW green, REVISIT ink, RENEWAL gold. */
+  new: { background: "var(--green)", color: "#ffffff", borderColor: "var(--green)" },
+  revisit: { background: "var(--ink)", color: "#ffffff", borderColor: "var(--ink)" },
+  renewal: { background: "var(--gold)", color: "#ffffff", borderColor: "var(--gold)" },
 };
 
 export function VisitTypeBadge(
-  { visitType, size = "lg", testId }: { visitType: string; size?: "lg" | "sm"; testId?: string },
+  { visitType, size = "lg", testId }: { visitType: string; size?: "xl" | "lg" | "sm"; testId?: string },
 ): React.ReactElement {
   const { t } = useTranslation();
   const look = LOOK[visitType] ?? LOOK.new!;
-  const big = size === "lg";
+  const big = size !== "sm";
+  const xl = size === "xl";
   return (
     <span
       data-testid={testId ?? "visit-type-badge"}
       data-visit-type={visitType}
       className="mo"
       style={{
-        display: "inline-flex", alignItems: "center", height: big ? 24 : 19, padding: big ? "0 10px" : "0 6px",
-        borderRadius: 4, border: "1.5px solid", fontSize: big ? 11.5 : 9.5, fontWeight: 700,
+        display: "inline-flex", alignItems: "center", height: xl ? 34 : big ? 24 : 19, padding: xl ? "0 14px" : big ? "0 10px" : "0 6px",
+        borderRadius: xl ? 6 : 4, border: "1.5px solid", fontSize: xl ? 13 : big ? 11.5 : 9.5, fontWeight: 700,
         letterSpacing: ".1em", textTransform: "uppercase", whiteSpace: "nowrap", ...look,
       }}
     >

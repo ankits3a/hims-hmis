@@ -171,11 +171,12 @@ export function CopilotSuggestions({ variant, hits, diagnoses, onAddDx, advised,
   if (dxChips.length === 0 && testChips.length === 0 && regimen === null && rxFor === null) return null;
 
   const pane = variant === "pane";
+  /* The copilot column is WHITE now (the Consult Engine boards): the pane's chips read on paper, like the inline ones. */
   const chip: React.CSSProperties = {
-    padding: "3px 11px", fontSize: 12.5, borderRadius: 15, border: `1.5px dashed ${pane ? "var(--mint)" : "var(--green)"}`,
-    background: pane ? "transparent" : "rgba(14,107,78,.05)", color: pane ? "var(--agent-fg)" : "var(--green)",
+    padding: "3px 11px", fontSize: 12.5, borderRadius: 15, border: "1.5px dashed var(--green)",
+    background: "rgba(14,107,78,.05)", color: "var(--green)",
   };
-  const head: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, letterSpacing: ".14em", color: pane ? "var(--agent-dim)" : "var(--green)" };
+  const head: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, letterSpacing: ".14em", color: "var(--green)" };
 
   return (
     <section data-testid={`copilot-suggestions-${variant}`} aria-label={t("opdConsultV3.suggestions")}

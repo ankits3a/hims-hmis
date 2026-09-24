@@ -1,0 +1,178 @@
+/*
+ * ═══ THE CONSULT SCREEN'S FRAME — PORTED FROM THE APPROVED BOARDS (owner, 2026-09-23) ═══
+ *
+ * docs/design/2026-09-23-consult-engine/{Main,Consult}.dc.html are the specification. The owner
+ * rejected a build that looked like the v1 screen with columns that stopped half-way down:
+ *
+ *   - the screen IS the viewport (100dvh), never "at least" one — a side column is full height only
+ *     when its parent has a definite height, which `min-height` never gives;
+ *   - three grid columns (line | work | copilot), each scrolling on its own;
+ *   - in the centre only the tab BODY scrolls: header, patient strip, work strip and tab bar stay;
+ *   - four widths, each with its own default (the JS picks the defaults, CSS makes them fit):
+ *       ≥1440  both side columns open
+ *       1200–1439 copilot folded
+ *       1024–1199 both folded
+ *       <1024  an open side column is a drawer over the work, with a scrim
+ *       <768   one column: the folded strips go, the header carries Queue and Copilot buttons.
+ */
+
+.cx {
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "IBM Plex Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13.5px;
+  line-height: 19px;
+  -webkit-font-smoothing: antialiased;
+}
+.cx button, .cx input, .cx select, .cx textarea { font-family: inherit; }
+.cx .mo, .cx .kb, .cx .tag { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; }
+
+.cx-side { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+.cx-side-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+
+.cx-centre { height: 100vh; height: 100dvh; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* one 52px header — Consult.dc.html's first row */
+.cx-head {
+  flex: none; height: 52px; box-sizing: border-box; display: flex; align-items: center; gap: 12px;
+  padding: 0 20px; background: var(--card); border-bottom: 1px solid var(--line); min-width: 0;
+}
+.cx-head .cx-title { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .16em; white-space: nowrap; }
+.cx-head .cx-who { font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cx-head .cx-grow { flex: 1 1 auto; }
+.cx-head .cx-saved { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--green); white-space: nowrap; }
+.cx-head .cx-hbtn { height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; cursor: pointer; }
+.cx-head .cx-hbtn.pri { border: 0; background: var(--green); color: #fff; height: 36px; padding: 0 16px; font-size: 13px; }
+.cx-head .cx-mob { display: none; }
+
+/* the scrolling body; everything pinned lives in .cx-pin at its top */
+.cx-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.cx-pin { position: sticky; top: 0; z-index: 6; background: var(--paper); }
+.cx-body { padding: 14px 20px 22px; display: flex; flex-direction: column; gap: 12px; }
+
+/* the patient strip — one row, ~56px */
+.cx-strip {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 20px;
+  background: var(--card); border-bottom: 1px solid var(--line); min-width: 0;
+}
+.cx-strip .cx-name { font-size: 17px; font-weight: 700; }
+.cx-strip .cx-name small { font-size: 13px; font-weight: 500; color: var(--dim); }
+.cx-strip .cx-meaning { font-size: 12px; color: var(--dim); }
+.cx-vitals {
+  display: flex; gap: 12px; align-items: center; font-family: "IBM Plex Mono", monospace; font-size: 12px;
+  border: 1px dashed var(--line); border-radius: 6px; background: var(--card); padding: 4px 8px; cursor: pointer; color: var(--ink);
+}
+.cx-vitals .warn { color: #8a5a10; font-weight: 700; }
+.cx-vitals .danger { color: var(--red); font-weight: 700; }
+.cx-vitals .more { font-family: "IBM Plex Sans", sans-serif; font-size: 11px; color: var(--green); text-decoration: underline; }
+.cx-allergy { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 9px; border-radius: 13px; background: var(--red-soft); border: 1px solid var(--red-line); color: var(--red); font-size: 11.5px; font-weight: 600; }
+.cx-allergy button { width: 20px; height: 20px; border-radius: 10px; border: 0; background: transparent; color: var(--red); cursor: pointer; }
+
+/* "your work so far" — the green band under the strip */
+.cx-work { padding: 10px 20px; background: var(--wash); border-bottom: 1px solid var(--line); }
+
+/* the tab bar */
+.cx-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 10px; background: var(--paper); border-bottom: 1px solid var(--line2); }
+.cx-tab { height: 32px; padding: 0 12px; border-radius: 6px; font-size: 12.5px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.cx-tab[aria-selected="true"] { border-color: var(--green); background: var(--green-soft); color: var(--green); font-weight: 600; }
+.cx-tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--green); margin-left: 6px; vertical-align: 2px; }
+
+/* the brief (Main.dc.html) */
+.cx-brief { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+
+/* Rx line cards with the corner stock tag (Consult.dc.html, Prescription tab) */
+.cx-rxcard { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 12px 10px; }
+.cx-stock {
+  position: absolute; top: -9px; right: 10px; height: 18px; padding: 0 7px; border-radius: 9px; line-height: 18px;
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600;
+  background: rgba(14,107,78,.07); border: 1px solid rgba(14,107,78,.22); color: #3f6b5b;
+}
+.cx-stock.zero { background: rgba(221,143,28,.14); border-color: rgba(221,143,28,.5); color: #8a5a10; }
+
+/* the copilot column, white as on the boards, with the pine card inside */
+.cx-cop { width: 300px; display: flex; flex-direction: column; background: var(--card); border-left: 1px solid var(--line); }
+.cx-cop-head { flex: none; display: flex; align-items: center; gap: 8px; height: 52px; box-sizing: border-box; padding: 0 12px 0 14px; border-bottom: 1px solid var(--line2); }
+.cx-cop-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.cx-strip-rail { width: 52px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0; box-sizing: border-box; background: var(--card); }
+
+.cx-scrim { display: none; }
+.cx-desktop-note { display: none; }
+
+/* ≥1024 and <1440 need nothing more: the JS folds the columns by default */
+
+/* <1024: an OPEN side column floats over the work as a drawer */
+@media (max-width: 1023px) {
+  .cx-side[data-state="open"] { position: fixed; top: 0; bottom: 0; z-index: 40; box-shadow: 0 0 40px rgba(19,36,32,.28); }
+  .cx-side[data-side="left"][data-state="open"] { left: 0; }
+  .cx-side[data-side="right"][data-state="open"] { right: 0; }
+  .cx-scrim { display: block; position: fixed; inset: 0; z-index: 35; background: rgba(19,36,32,.35); border: 0; }
+  .cx-head .cx-who { display: none; }
+  .cx-strip { padding: 8px 14px; gap: 10px; }
+  .cx-work, .cx-tabs { padding-left: 14px; padding-right: 14px; }
+  .cx-body { padding: 12px 14px 20px; }
+}
+
+/* <768: one column. The folded strips go; the header carries Queue and Copilot. */
+@media (max-width: 767px) {
+  .cx { grid-template-columns: minmax(0, 1fr); }
+  .cx-side[data-state="closed"] { display: none; }
+  .cx-side[data-state="open"] { width: min(88vw, 320px) !important; }
+  .cx-head { padding: 0 10px; gap: 6px; }
+  .cx-head .cx-mob { display: inline-flex; align-items: center; }
+  .cx-head .cx-hide-sm { display: none; }
+  .cx-desktop-note { display: block; padding: 6px 14px; font-size: 11.5px; color: var(--dim); background: var(--gold-soft); border-bottom: 1px solid var(--gold-line); }
+  .cx-tabs { flex-wrap: nowrap; overflow-x: auto; }
+  .cx-work { display: none; }
+  .cx-brief-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .cx-brief-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+/* ——— refinements after the step-1 walk ——— */
+.cx-head .cx-title { text-transform: uppercase; }
+.cx-tabs [role="tablist"] { flex-wrap: wrap; border-bottom: 0 !important; padding-bottom: 0 !important; }
+.cx-tabs [role="tab"] { height: 32px; padding: 0 12px; border-radius: 6px; font-size: 12.5px !important; border: 1px solid var(--line); background: var(--card); color: var(--ink); white-space: nowrap; }
+.cx-tabs [role="tab"][aria-selected="true"] { border-color: var(--green); background: var(--green-soft); color: var(--green); font-weight: 600; }
+.cx-work [data-testid="work-strip"] > div:first-child { text-transform: uppercase; }
+.cx-head .cx-short { display: none; }
+
+@media (max-width: 1199px) {
+  .cx-head .cx-who { display: none; }
+  .cx-head .cx-hbtn { padding: 0 10px; }
+}
+@media (max-width: 899px) {
+  .cx-head .cx-hide-md { display: none; }
+  .cx-head .cx-full { display: none; }
+  .cx-head .cx-short { display: inline; }
+}
+@media (max-width: 767px) {
+  .cx-tabs [role="tablist"] { flex-wrap: nowrap; overflow-x: auto; }
+  .cx-head .cx-title { display: none; }
+}
+
+/* ——— step 5 (main-session review) ——— */
+/* the tab bar is ONE row at every width: it scrolls sideways with faded edges rather than wrapping */
+.cx-tabs [role="tablist"] {
+  flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%);
+  padding: 0 14px 0 2px !important; gap: 5px !important;
+}
+.cx-tabs [role="tablist"]::-webkit-scrollbar { display: none; }
+.cx-tabs [role="tab"] { padding: 0 10px; flex: none; }
+.cx-tabs { padding-left: 16px; padding-right: 16px; }
+
+/* the header's ⋯ overflow: shown only where Refer and Save draft are hidden */
+.cx-head .cx-more { display: none; padding: 0 10px; font-size: 16px; line-height: 1; }
+.cx-more-menu {
+  position: absolute; top: 40px; right: 0; z-index: 30; min-width: 170px; padding: 4px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 22px rgba(19,36,32,.16);
+  display: flex; flex-direction: column;
+}
+.cx-more-menu button { text-align: left; height: 34px; padding: 0 12px; border: 0; background: transparent; border-radius: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
+.cx-more-menu button:hover { background: var(--wash); }
+@media (max-width: 899px) { .cx-head .cx-more { display: inline-flex; align-items: center; } }

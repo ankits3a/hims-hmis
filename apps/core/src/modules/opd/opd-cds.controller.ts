@@ -7,7 +7,7 @@ import { getPatient, listAllergies } from "../patients";
 import { buildRegimen, cardsFor, matchesAKnownAllergen, rankSyndromes, searchAllergens, searchIcd10, toRxDraft } from "../cds";
 import type { AllergenHit, BuiltLine, BuiltRegimen, Card, Icd10Hit, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
 import { getEncounter } from "./encounters";
-import { expandComplaintForMatching, suggestComplaints } from "./complaints";
+import { expandComplaintForMatching, recognisedComplaintConcepts, suggestComplaints } from "./complaints";
 import { doctorForUser } from "./masters";
 import { myTerms, testsForDiagnosis } from "./term-suggest";
 import type { TermHit, TestHit } from "./term-suggest";
@@ -46,6 +46,7 @@ import type { Db } from "../../kernel/db/client";
  */
 const suggestQuery = z.object({ complaint: z.string().max(500) });
 const completeQuery = z.object({ q: z.string().max(120) });
+const recogniseQuery = z.object({ text: z.string().max(500) });
 const termQuery = z.object({
   field: z.enum(["exam_general", "exam_systemic", "exam_local", "treatment"]),
   q: z.string().max(120),
@@ -104,6 +105,19 @@ export class OpdCdsController {
    * the best PREFIX match and is null unless one exists, because an inline completion that inserts
    * letters BEFORE the cursor is a keystroke the doctor did not make.
    */
+  /**
+   * The front desk's sentence → the complaints this hospital's vocabulary recognises in it (owner's
+   * walk, 2026-09-23). A READ over the vocabulary tables only: the caller sends the words it already
+   * shows on screen, nothing about the patient is looked up, and nothing is written. The consult
+   * offers the result as suggestions the doctor taps — never as the doctor's entry.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("recognise/complaint")
+  async recogniseComplaint(@Query() query: unknown): Promise<{ items: { conceptKey: string; label: string; matched: string }[] }> {
+    const q = parsed(recogniseQuery, query);
+    return { items: await recognisedComplaintConcepts(this.db, q.text) };
+  }
+
   @RequirePermission("opd.consult", "hospital")
   @Get("complete/complaint")
   async completeComplaint(
