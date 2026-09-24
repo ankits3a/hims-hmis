@@ -3,9 +3,10 @@ import { opdDoctors, opdEncounters } from "../../kernel/db/schema";
 import { getPatient, listMergedLoserIds } from "../patients";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { istDate } from "./time";
-import { classifyVisit } from "./visit-type";
+import { classifyVisit, REFERRAL_FREE_DAYS } from "./visit-type";
 import type { VisitType } from "./visit-type";
 import { OpdError } from "./errors";
+import { referralAnchorFor } from "./encounters";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -51,6 +52,14 @@ export type ContinuityAnchor = {
   windowEndsOn: string;
   /** `revisit` is free (`feeServiceFor`); `renewal` and `new` are charged. */
   wouldBe: VisitType;
+  /**
+   * OWNER RULING 2026-09-24 — `referral` when the anchor is an internal referral INTO this department
+   * inside its 7 days, not a consultation here: `doctorId`/`doctorName` are then the doctor the
+   * patient was SENT to (nobody here has seen them yet), `seenOn` the day of the referral, and
+   * `referredBy` the referring doctor. `consult` otherwise, with `referredBy` null.
+   */
+  via: "consult" | "referral";
+  referredBy: string | null;
 };
 
 function windowStart(now: Date): Date {
@@ -130,6 +139,22 @@ export async function continuityDoctorFor(
     .orderBy(desc(opdEncounters.consultCompletedAt))
     .limit(1))[0];
 
+  const consult = row === undefined || row.doctorId === null || row.consultCompletedAt === null ? null : row;
+  const consultFree = consult !== null
+    && classifyVisit({ consultCompletedAt: consult.consultCompletedAt!, followUpDays: consult.followUpDays ?? 7 }, now) === "revisit";
+  if (!consultFree) {
+    // The same second anchor `openVisitInTx` classifies with; inside its window it is the better answer.
+    const referral = await referralAnchorFor(db, chainIds, input.departmentId);
+    if (referral !== null && referral.doctorId !== null && classifyVisit(null, now, referral.referredAt) === "revisit") {
+      const [to] = await db.select({ displayName: opdDoctors.displayName }).from(opdDoctors).where(eq(opdDoctors.id, referral.doctorId));
+      return {
+        doctorId: referral.doctorId, doctorName: to?.displayName ?? "", seenOn: istDate(referral.referredAt),
+        followUpDays: REFERRAL_FREE_DAYS,
+        windowEndsOn: istDate(new Date(referral.referredAt.getTime() + REFERRAL_FREE_DAYS * 24 * 3600 * 1000)),
+        wouldBe: "revisit", via: "referral", referredBy: referral.referrerName,
+      };
+    }
+  }
   if (row === undefined || row.doctorId === null || row.consultCompletedAt === null) return null;
   /*
     The default is SEVEN and it is `reviewAnchorFor`'s and `openVisitInTx`'s default too, spelled
@@ -145,5 +170,6 @@ export async function continuityDoctorFor(
     followUpDays: days,
     windowEndsOn: istDate(windowEnd),
     wouldBe: classifyVisit({ consultCompletedAt: row.consultCompletedAt, followUpDays: days }, now),
+    via: "consult", referredBy: null,
   };
 }

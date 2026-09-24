@@ -386,7 +386,7 @@ export function Dossier(): React.ReactElement {
       <div className="tag" style={{ marginTop: 20 }}>benefits & links</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
         {freeReason !== null ? (
-          <span className="pill on">✓ review free till {freeReason.windowEndsOn}</span>
+          <span className="pill on">✓ {freeReason.kind === "referral_window" ? "referral" : "review"} free till {freeReason.windowEndsOn}</span>
         ) : null}
         {memberships.map((m) => (
           <span key={m.instanceId} className="pill on" title={m.benefits.map((b) => b.title).join(", ")}>

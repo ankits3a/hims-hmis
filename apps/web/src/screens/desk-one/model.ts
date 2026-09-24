@@ -285,7 +285,7 @@ export function billOf(quote: WireFeeQuote | null): { lines: BillLine[]; totalPa
     const why = quote.freeReason;
     const label = why === null
       ? "review visit — nothing to collect"
-      : `review visit — free till ${why.windowEndsOn}${why.doctorName === null ? "" : ` (${why.doctorName})`}`;
+      : `${why.kind === "referral_window" ? "referral visit" : "review visit"} — free till ${why.windowEndsOn}${why.doctorName === null ? "" : ` (${why.doctorName})`}`;
     return { lines: [{ label, paise: 0, credit: true }], totalPaise: 0, free: true };
   }
   const lines: BillLine[] = [];

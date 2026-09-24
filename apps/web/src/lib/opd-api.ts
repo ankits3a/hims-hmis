@@ -126,6 +126,8 @@ export type WireEncounter = {
   /** The front desk's record of the patient's words (D15) — kept apart from the doctor's `chiefComplaint`. Optional: an older server sends none. */
   deskComplaint?: string | null; deskComplaintBy?: string | null; deskComplaintAt?: string | null;
   admissionAdvised: boolean; referralTo: string | null; referralNote: string | null;
+  /** Owner ruling 2026-09-24 — the visit whose doctor referred the patient here. Optional: an older server sends none. */
+  referredFromEncounterId?: string | null;
   /** Consult v2 (migration 0120). Optional: an older server sends none of them. */
   examination?: WireExamFinding[] | null; treatment?: string[] | null;
   doctorNote?: string | null; internalComment?: string | null;
@@ -179,6 +181,8 @@ export type WireQueueEntryView = WireQueueEntry & {
   queueClass: OpdQueueClass | null;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
+    /** Owner ruling 2026-09-24 — an internal referral opened this visit. Optional: an older server sends none. */
+    referredFromEncounterId?: string | null;
     /**
      * OWNER RULING 2026-09-20 — the two sentences that explain an unpaid token. `feeBypassReason`
      * is the front desk's or the bay's (FD-32: why this patient reached the nurse unbilled);

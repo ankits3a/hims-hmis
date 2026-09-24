@@ -1,0 +1,1 @@
+ALTER TABLE "opd_encounters" ADD COLUMN "referred_from_encounter_id" text;

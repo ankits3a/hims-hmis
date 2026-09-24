@@ -1062,7 +1062,9 @@ function StageAppointment(): React.ReactElement {
                 "Dr Sharma saw you on 14 March" is making a promise the desk can keep; "you have been
                 here before" is small talk.
               */}
-              {proposal?.rule === "continuity" && proposal.anchor !== null ? (
+              {proposal?.rule === "continuity" && proposal.anchor?.via === "referral" ? (
+                <><b data-testid="continuity-anchor">Referred here</b> — by {proposal.anchor.referredBy ?? "a doctor here"} on {proposal.anchor.seenOn}. To {proposal.anchor.doctorName}, the doctor they were sent to.</>
+              ) : proposal?.rule === "continuity" && proposal.anchor !== null ? (
                 <><b data-testid="continuity-anchor">Seen here before</b> — {proposal.anchor.doctorName} on {proposal.anchor.seenOn}. Back to the same doctor.</>
               ) : suggested ? (
                 <><b>{s.complaint}</b> → {pick.departmentName}.</>
@@ -1113,7 +1115,9 @@ function StageAppointment(): React.ReactElement {
                     : t("registrationCounter.visitType.renewal")}
                 </span>
                 <span style={{ fontSize: 11.5, color: "var(--dim)", marginLeft: 7, lineHeight: "16px" }}>
-                  {proposal.anchor.wouldBe === "revisit"
+                  {proposal.anchor.via === "referral"
+                    ? t("registrationCounter.visitType.referralWhy", { until: proposal.anchor.windowEndsOn })
+                    : proposal.anchor.wouldBe === "revisit"
                     ? t("registrationCounter.visitType.revisitWhy", {
                       days: proposal.anchor.followUpDays, until: proposal.anchor.windowEndsOn,
                     })
@@ -1930,8 +1934,13 @@ function StageBill(): React.ReactElement {
         }}>
           <span className="stamp pd">₹0</span>
           <span style={{ fontSize: 12, lineHeight: "17px" }}>
-            <b>Review visit.</b> {d.quote.freeReason.doctorName ?? "The doctor"} saw them on {d.quote.freeReason.seenOn};
-            the window runs to {d.quote.freeReason.windowEndsOn}. Nothing to collect — the server decided that, not this screen.
+            {d.quote.freeReason.kind === "referral_window" ? (
+              <><b>Referral visit.</b> {d.quote.freeReason.doctorName ?? "A doctor here"} referred them on {d.quote.freeReason.seenOn};
+              free here until {d.quote.freeReason.windowEndsOn}.</>
+            ) : (
+              <><b>Review visit.</b> {d.quote.freeReason.doctorName ?? "The doctor"} saw them on {d.quote.freeReason.seenOn};
+              the window runs to {d.quote.freeReason.windowEndsOn}.</>
+            )} Nothing to collect — the server decided that, not this screen.
           </span>
         </div>
       )}

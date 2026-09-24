@@ -202,6 +202,19 @@ describe("the live bill — read off the server's draft, never re-added here", (
     expect(bill.totalPaise).toBe(0);
     expect(bill.lines[0]?.label).toContain("2026-09-09");
     expect(bill.lines[0]?.label).toContain("Dr. Nishant Rao");
+    expect(bill.lines[0]?.label).toMatch(/^review visit/);
+  });
+
+  // Owner ruling 2026-09-24: a visit inside 7 days of an internal referral is free; the clerk must say
+  // it was the referral, not a review, or the patient is told they saw a doctor they never met.
+  it("a referral visit is free and says it was the referral, naming the referring doctor", () => {
+    const bill = billOf(draftQuote({
+      free: true, draft: null, feeServiceId: null,
+      freeReason: { kind: "referral_window", doctorName: "Dr. Anand Rao", seenOn: "2026-09-24", windowEndsOn: "2026-10-01" },
+    }));
+    expect(bill.free).toBe(true);
+    expect(bill.totalPaise).toBe(0);
+    expect(bill.lines[0]?.label).toBe("referral visit — free till 2026-10-01 (Dr. Anand Rao)");
   });
 });
 

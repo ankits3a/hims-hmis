@@ -24,6 +24,8 @@ export type WireContinuityAnchor = {
   doctorId: string; doctorName: string; seenOn: string;
   /** FD-17 — the doctor's prescribed tenure and what today would classify as under it. */
   followUpDays: number; windowEndsOn: string; wouldBe: "new" | "revisit" | "renewal";
+  /** Owner, 2026-09-24 — `referral`: sent here by `referredBy` on `seenOn`; `doctorName` is who they were sent TO. */
+  via?: "consult" | "referral"; referredBy?: string | null;
 };
 
 /**

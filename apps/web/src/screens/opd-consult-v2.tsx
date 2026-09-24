@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
-import { VisitTypeBadge } from "../components/visit-type-badge";
+import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
 import type {
@@ -161,10 +161,10 @@ export function CopilotPanel({ open, onToggle, alert, dock }: {
 
 // ——— the brief: what four desks already recorded, before the patient walks in ———
 
-const vtMeaning = (vt: string): string => `opdConsultV2.vt.${vt === "new" || vt === "revisit" || vt === "renewal" ? vt : "new"}`;
+const vtMeaning = (vt: string): string => `opdConsultV2.vt.${vt === "new" || vt === "revisit" || vt === "renewal" || vt === "referral" ? vt : "new"}`;
 
 type BriefVisit = {
-  encounter: { id: string; visitNo: string; patientId: string; visitType: string };
+  encounter: { id: string; visitNo: string; patientId: string; visitType: string; referredFromEncounterId?: string | null };
   deskComplaint?: { text: string; by: string; at: string } | null;
   vitals: WireVitals[];
 };
@@ -212,7 +212,7 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
     queryFn: () => fetchReminder(patientId!),
   });
 
-  const vt = visit.data?.encounter.visitType ?? "new";
+  const vt = visit.data === undefined ? "new" : shownVisitType(visit.data.encounter);
   const desk = visit.data?.deskComplaint ?? null;
   const v = visit.data?.vitals.filter((x) => x.status !== "superseded").at(-1);
   const last = (timeline.data?.items ?? []).find((i) => i.encounterId !== encounterId && i.status === "completed");
