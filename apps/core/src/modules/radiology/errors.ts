@@ -39,6 +39,10 @@ export const RADIOLOGY_ERROR_CODES = [
   "duplicate_recent",
   "unknown_study",
   "unknown_study_type",
+  /** Consult v2 — the patient-scoped reports read: no such patient, or one this reader may not see. */
+  "unknown_patient",
+  /** Consult v2 — a patient's reports are read by a person, never an agent or device credential. */
+  "user_actor_required",
   // ── scheduling (T4) ──
   "slot_taken",
   "device_unavailable",
@@ -151,6 +155,8 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   duplicate_recent: 409,
   unknown_study: 404,
   unknown_study_type: 422,
+  unknown_patient: 404,
+  user_actor_required: 403,
 
   slot_taken: 409,
   device_unavailable: 422,

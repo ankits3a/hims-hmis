@@ -8,6 +8,7 @@ import {
   acknowledgeCritical, amendReport, draftReport, flagCritical, proposeDraft, publishReport, savePrelim, signReport,
 } from "./reports";
 import { reportView, studyView, worklist } from "./read";
+import { patientReportsForDoctor } from "./patient-reports";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { AuthedRequest } from "../../kernel/auth/decorators";
 import type { Actor } from "@hmis/contracts";
@@ -107,6 +108,15 @@ export class RadiologyReportsController {
   async study(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
     try {
       return { study: await studyView(this.db, actor, studyId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** Consult v2 — the brief's "since then": the patient's signed reports (`patient-reports.ts`). */
+  @Get("reports/patient/:patientId")
+  @RequirePermission("radiology.reports.read", "hospital")
+  async forPatient(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<unknown> {
+    try {
+      return { items: await patientReportsForDoctor(this.db, actor, parsed(idSchema, patientId)) };
     } catch (e) { toHttp(e); }
   }
 

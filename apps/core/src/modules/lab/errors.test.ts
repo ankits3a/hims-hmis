@@ -96,6 +96,7 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   user_actor_required: "verify.ts",
   item_not_resultable: "results.ts",
   unknown_result: "results.ts",
+  unknown_patient: "patient-results.ts",
   critical_already_closed: "criticals.ts",
 
   report_print_blocked: "reports.ts",
@@ -175,7 +176,7 @@ describe("the lab error union (Plan 17 T2)", () => {
       "unknown_analyte", "unknown_instrument",
       /** 17-E T7b — the bridge's device row, refused in the module's vocabulary and not as an FK. */
       "unknown_interface",
-      "unknown_item", "unknown_orderable", "unknown_report",
+      "unknown_item", "unknown_orderable", "unknown_patient", "unknown_report",
       "unknown_result", "unknown_service", "unknown_specimen",
     ]);
     // A compare-and-set loser is a CONFLICT: the caller's correct response is to re-read, not to
