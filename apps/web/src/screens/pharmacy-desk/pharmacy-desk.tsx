@@ -566,7 +566,8 @@ function DeskDock({ log, said, busy, onAsk, onDismiss, draft: agentDraft, onDraf
   return (
     <div style={{ flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}>
       {agentDraft === null || agentDraft.alreadyOpen ? null : <DraftCard draft={agentDraft} onDone={onDraftDone} />}
-      {said === null ? null : (
+      {/* The card IS the answer to a draft; saying it again above the bar is the same sentence twice. */}
+      {said === null || (agentDraft !== null && !agentDraft.alreadyOpen) ? null : (
         <div data-testid="desk-answer" style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "11px 18px", borderBottom: "1px solid #24413631" }}>
           <span style={{ flexGrow: 1, fontSize: 12.5, lineHeight: "18px" }}>{said}</span>
           <button onClick={onDismiss} aria-label={t("pharmacyDesk.ask.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>
