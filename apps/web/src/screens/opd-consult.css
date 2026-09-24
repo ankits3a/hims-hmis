@@ -87,6 +87,19 @@
 
 /* Rx line cards with the corner stock tag (Consult.dc.html, Prescription tab) */
 .cx-rxcard { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 12px 10px; }
+/* Handoff item 2 — the line still being written wears the board's dashed "add" border. */
+.cx-rxcard.writing { border-style: dashed; border-color: rgba(14,107,78,.45); }
+.cx-rxedit input, .cx-rxedit select { height: 32px; }
+.cx-rxedit label.block, .cx-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+/* `button.` for specificity: the shell's `.pp button` reset (0,1,1) would otherwise win. */
+button.cx-rxadd {
+  flex: 1 1 auto; height: 40px; border-radius: 8px; border: 1.5px dashed rgba(14,107,78,.55);
+  background: rgba(14,107,78,.05); color: var(--green); font-size: 13px; font-weight: 600; text-align: left; padding: 0 14px; cursor: pointer;
+}
+button.cx-rxadd:hover { background: rgba(14,107,78,.09); }
 .cx-stock {
   position: absolute; top: -9px; right: 10px; height: 18px; padding: 0 7px; border-radius: 9px; line-height: 18px;
   font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600;

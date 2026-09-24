@@ -3245,7 +3245,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   <FormProvider {...rxForm}>
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (
-                        <div key={f.id} className="cx-rxcard" data-testid={`rx-card-${String(i)}`} style={{ marginTop: 14 }}>
+                        <div key={f.id} className={`cx-rxcard${(watchedLines[i]?.drug.trim() ?? "") === "" || String(watchedLines[i]?.durationDays ?? "").trim() === "" ? " writing" : ""}`}
+                          data-testid={`rx-card-${String(i)}`} style={{ marginTop: 14 }}>
                         <StockTag stock={stockByMedicine.get(watchedLines[i]?.medicineId ?? "")} testId={`rx-stock-${String(i)}`} />
                         {(() => {
                           /*
@@ -3276,8 +3277,20 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           how often, food timing, days and the note (see components/sig-panel.tsx
                           for why the Frequency select and the Days and Instructions boxes went).
                         */}
-                        <div data-testid={`rx-row-${String(i)}`} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 9 }}>
-                          <div style={{ flex: "2 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+                        {/*
+                          ═══ THE LINE BEING WRITTEN IS A CARD TOO (the Consult Engine board, handoff item 2) ═══
+                          The same columns a finished card reads in — number · medicine · dose · route ·
+                          the substitution mark · remove — so writing a line and reading it back are one
+                          shape. The labels stay in the DOM for screen readers and are hidden on screen;
+                          the placeholders carry the prompt, as the board draws it. A line that is not yet
+                          finished (no medicine, or no days) wears the board's dashed "add" border.
+                        */}
+                        <div data-testid={`rx-row-${String(i)}`} className="cx-rxedit" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                          {/* The number leads the row until the card's own head (which carries it) appears with the medicine. */}
+                          <span className="mo" aria-hidden="true" style={{ flex: "0 0 26px", fontSize: 12, color: "var(--faint)" }}>
+                            {(watchedLines[i]?.drug.trim() ?? "") === "" ? String(i + 1).padStart(2, "0") : ""}
+                          </span>
+                          <div style={{ flex: "2.2 1 220px", minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                             {/*
                               THE DRUG FIELD IS NOW A COMBOBOX over the CLINICAL DRUG tier —
                               molecule and strength, no brand. It replaces a plain TextField plus a
@@ -3304,7 +3317,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               the interaction and duplicate checks can reason about; typing over it
                               clears the id again, exactly as the old field did.
                             */}
-                            <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor={`rx-drug-${String(i)}`}>
+                            <label className="tag cx-sr" htmlFor={`rx-drug-${String(i)}`}>
                               {t("opdConsult.drug")}
                             </label>
                             <DrugField
@@ -3362,20 +3375,20 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               </p>
                             )}
                           </div>
-                          <div style={{ flex: "1 1 130px", minWidth: 0 }}>
-                            <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} />
+                          <div style={{ flex: ".7 1 128px", minWidth: 0 }}>
+                            <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} placeholder={t("opdConsultV2.rxDosePlaceholder")} />
                           </div>
-                          <div style={{ flex: "1 1 130px", minWidth: 0 }}>
+                          <div style={{ flex: "1 1 110px", minWidth: 0 }}>
                             <SelectField
                               name={`lines.${String(i)}.route`}
                               label={t("opdConsult.route")}
                               options={ROUTE_OPTIONS.map((r) => ({ value: r, label: t(`opdConsult.routeOption.${r}`) }))}
                             />
                           </div>
-                          <div style={{ flex: "0 1 auto", display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start", paddingTop: 22 }}>
+                          <div style={{ flex: "0 1 auto", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                             <CheckboxField name={`lines.${String(i)}.noSubstitution`} label={t("opdConsult.noSubstitution")} />
                             {lines.fields.length > 1 && (
-                              <button type="button" className="sec" style={{ padding: "3px 11px", fontSize: 12 }} onClick={() => lines.remove(i)}>
+                              <button type="button" className="sec" style={{ height: 28, padding: "0 11px", fontSize: 12 }} onClick={() => lines.remove(i)}>
                                 {t("opdConsult.removeLine")}
                               </button>
                             )}
@@ -3402,8 +3415,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         </div>
                       ))}
                       <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
-                        <button type="button" className="sec" style={{ padding: "4px 12px", fontSize: 12.5 }} onClick={() => { setRxOpen(lines.fields.length); lines.append(EMPTY_LINE); }}>
-                          {t("opdConsult.addLine")}
+                        {/* The board's add row: a dashed card across the column, not a small grey button. */}
+                        <button type="button" className="cx-rxadd" data-testid="rx-add" onClick={() => { setRxOpen(lines.fields.length); lines.append(EMPTY_LINE); }}>
+                          <span aria-hidden="true">+ </span>{t("opdConsult.addLine")}
                         </button>
                         <button type="submit" className="pri">{t("opdConsult.issue")}</button>
                       </div>

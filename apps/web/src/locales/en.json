@@ -5384,6 +5384,7 @@
     "notYet": "— not yet",
     "nothingSuggestion": "Nothing on this card is a suggestion. It is what the front desk, the vitals bay, the lab and the last visit already recorded.",
     "onNow": "On now · the last prescription",
+    "rxDosePlaceholder": "Dose, e.g. 500 mg",
     "sinceThen": "Since then · lab and radiology",
     "onFile": "Lab and radiology on file",
     "noResults": "No results on file",
