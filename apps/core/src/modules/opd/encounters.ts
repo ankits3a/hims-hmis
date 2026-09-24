@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, notInArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
@@ -19,7 +19,7 @@ import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred, visitR
 import { allocateToken, getOrCreateSession, roomForDoctorDay } from "./sessions";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { istDate } from "./time";
-import { classifyVisit } from "./visit-type";
+import { classifyVisit, REFERRAL_FREE_DAYS } from "./visit-type";
 import { OPD_VISIT_DEF_KEY } from "./workflow-def";
 import type { OpdVisitState } from "./workflow-def";
 import type { VisitType } from "./visit-type";
@@ -53,6 +53,13 @@ export type OpenVisitInput = {
    * clock, so a browser cannot put words in another clerk's mouth. See `opdEncounters.deskComplaint`.
    */
   deskComplaint?: string;
+  /**
+   * OWNER RULING 2026-09-24 (money) — the visit whose doctor referred the patient here. Set ONLY by
+   * `referInternally`; neither route body (`visitOpenBody`, `walkInBody`) declares it, so zod strips
+   * it from anything a browser sends. It makes this visit free and anchors the department's 7-day
+   * referral window (`classifyVisit`'s `referredAt`).
+   */
+  referredFromEncounterId?: string;
   appointment?: { id: string; slotStart: Date }; // set only by appointments.checkIn (T4)
   /**
    * RC-1 T3 / D4 — `bill_first` is a DEFERRED QUEUE JOIN, not a reordered transaction. The visit
@@ -139,7 +146,9 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     .orderBy(desc(opdEncounters.consultCompletedAt))
     .limit(1);
   const a = anchorRows[0];
-  const visitType = classifyVisit(a && a.consultCompletedAt ? { consultCompletedAt: a.consultCompletedAt, followUpDays: a.followUpDays ?? 7 } : null, now);
+  // The referral opening THIS visit is its own anchor, at this moment; otherwise the latest earlier one.
+  const referredAt = input.referredFromEncounterId !== undefined ? now : (await referralAnchorFor(tx, input.chainIds, dept.id))?.referredAt ?? null;
+  const visitType = classifyVisit(a && a.consultCompletedAt ? { consultCompletedAt: a.consultCompletedAt, followUpDays: a.followUpDays ?? 7 } : null, now, referredAt);
 
   const deskWords = normaliseDeskComplaint(input.deskComplaint);
   const encounterId = newId();
@@ -154,6 +163,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
     appointmentId: input.appointment?.id ?? null, serviceDate, visitType,
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
+    referredFromEncounterId: input.referredFromEncounterId ?? null,
     // Trimmed, and an empty string is stored as NULL: "" is not a slip, and a blank code reaching
     // the fee quote would be a lookup for a partner that cannot exist.
     attributionCode: (input.attributionCode ?? "").trim() === "" ? null : input.attributionCode!.trim(),
@@ -342,7 +352,35 @@ export async function joinQueueInTx(tx: Tx, actor: Actor, encounterId: string, n
   return { encounter, ...joined, alreadyJoined: false };
 }
 
-export type ReviewAnchor = { doctorName: string | null; seenOn: string; windowEndsOn: string };
+export type ReviewAnchor = {
+  /** `consult` — a completed consultation's follow-up window; `referral` — an internal referral into the department (2026-09-24). */
+  via: "consult" | "referral";
+  /** The doctor who saw the patient on `seenOn`: the consulting doctor, or the REFERRING one. */
+  doctorName: string | null;
+  seenOn: string;
+  windowEndsOn: string;
+};
+
+/**
+ * OWNER RULING 2026-09-24 — the most recent internal referral INTO a department: the visit
+ * `referInternally` opened there, and when. Keyed on `referredFromEncounterId`, never on
+ * `referralSource`, which is the desk's attribution dropdown. Any status counts: a patient who did
+ * not wait on the day of the referral is still inside its window when they come back.
+ */
+export async function referralAnchorFor(
+  db: Db | Tx, chainIds: string[], departmentId: string, atOrBefore?: Date,
+): Promise<{ referredAt: Date; referrerName: string | null; doctorId: string | null } | null> {
+  const row = (await db
+    .select({ openedAt: opdEncounters.openedAt, referrerName: opdEncounters.referrerName, doctorId: opdEncounters.doctorId })
+    .from(opdEncounters)
+    .where(and(
+      inArray(opdEncounters.patientId, chainIds), eq(opdEncounters.departmentId, departmentId), isNotNull(opdEncounters.referredFromEncounterId),
+      atOrBefore === undefined ? undefined : lte(opdEncounters.openedAt, atOrBefore),
+    ))
+    .orderBy(desc(opdEncounters.openedAt))
+    .limit(1))[0];
+  return row === undefined ? null : { referredAt: row.openedAt, referrerName: row.referrerName, doctorId: row.doctorId };
+}
 
 /**
  * RC-1 T5 / D8 — the anchor that made this visit FREE, so the quote can NAME the rule instead of
@@ -352,9 +390,18 @@ export type ReviewAnchor = { doctorName: string | null; seenOn: string; windowEn
  */
 export async function reviewAnchorFor(
   db: Db | Tx,
-  encounter: { patientId: string; departmentId: string | null; visitType: string },
+  encounter: {
+    patientId: string; departmentId: string | null; visitType: string;
+    openedAt: Date; referredFromEncounterId: string | null; referrerName: string | null;
+  },
 ): Promise<ReviewAnchor | null> {
   if (encounter.visitType !== "revisit" || encounter.departmentId === null) return null;
+  const referralNamed = (at: Date, doctorName: string | null): ReviewAnchor => ({
+    via: "referral", doctorName, seenOn: istDate(at),
+    windowEndsOn: istDate(new Date(at.getTime() + REFERRAL_FREE_DAYS * 24 * 3600 * 1000)),
+  });
+  // The visit a referral opened was freed by that referral, whatever else the patient has on file.
+  if (encounter.referredFromEncounterId !== null) return referralNamed(encounter.openedAt, encounter.referrerName);
   const chainIds = [encounter.patientId, ...(await listMergedLoserIds(db, encounter.patientId))];
   const anchor = (await db
     .select({ consultCompletedAt: opdEncounters.consultCompletedAt, followUpDays: opdEncounters.followUpDays, doctorId: opdEncounters.doctorId })
@@ -362,13 +409,21 @@ export async function reviewAnchorFor(
     .where(and(inArray(opdEncounters.patientId, chainIds), eq(opdEncounters.departmentId, encounter.departmentId), eq(opdEncounters.status, "completed")))
     .orderBy(desc(opdEncounters.consultCompletedAt))
     .limit(1))[0];
+  const days = anchor?.followUpDays ?? 7;
+  const consultCovers = anchor?.consultCompletedAt != null
+    && classifyVisit({ consultCompletedAt: anchor.consultCompletedAt, followUpDays: days }, encounter.openedAt) === "revisit";
+  if (!consultCovers) {
+    // Not the consult's window at the moment the visit opened: then it was an earlier referral's.
+    const referral = await referralAnchorFor(db, chainIds, encounter.departmentId, encounter.openedAt);
+    if (referral !== null) return referralNamed(referral.referredAt, referral.referrerName);
+  }
   if (!anchor?.consultCompletedAt) return null;
-  const days = anchor.followUpDays ?? 7;
   const windowEnd = new Date(anchor.consultCompletedAt.getTime() + days * 24 * 3600 * 1000);
   const doctor = anchor.doctorId === null
     ? undefined
     : (await db.select({ displayName: opdDoctors.displayName }).from(opdDoctors).where(eq(opdDoctors.id, anchor.doctorId)))[0];
   return {
+    via: "consult",
     doctorName: doctor?.displayName ?? null,
     seenOn: istDate(anchor.consultCompletedAt),
     windowEndsOn: istDate(windowEnd),

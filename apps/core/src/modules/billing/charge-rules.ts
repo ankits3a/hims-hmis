@@ -53,7 +53,8 @@ export type FeeQuote = {
    * RC-1 T5 / D8 — WHY it is free, named (the receipt and the seat print the rule: "review visit —
    * free till <date> (<doctor>)"). Naming only: null never un-frees anything.
    */
-  freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
+  /** `review_window` — a completed consult's follow-up; `referral_window` — an internal referral into the department (owner, 2026-09-24). */
+  freeReason: { kind: "review_window" | "referral_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
   /**
    * FD-7 T9 / R4 — THE SLIP THE DESK CAPTURED, so the cashier's field can PRE-FILL from it.
    *
@@ -114,7 +115,10 @@ export async function feeQuote(
     const anchor = await reviewAnchorFor(db, encounter);
     return {
       encounterId, visitType: encounter.visitType, free: true, feeServiceId: null, draft: null,
-      freeReason: anchor === null ? null : { kind: "review_window", ...anchor },
+      freeReason: anchor === null ? null : {
+        kind: anchor.via === "referral" ? "referral_window" : "review_window",
+        doctorName: anchor.doctorName, seenOn: anchor.seenOn, windowEndsOn: anchor.windowEndsOn,
+      },
       intendedPayer: encounter.intendedPayer,
       // On the FREE branch too: a review visit still carries the partner's slip, and the accrual
       // that hangs off it is the partner's whether or not this particular visit was charged for.

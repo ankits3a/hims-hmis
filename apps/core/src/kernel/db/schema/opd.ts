@@ -320,6 +320,14 @@ export const opdEncounters = pgTable(
     referralSource: text("referral_source"), // 'self' | 'internal_doctor' | 'external_rmp' | 'camp' | 'other' — attribution capture (§6); Plan 09 uses it
     referrerName: text("referrer_name"),
     /**
+     * OWNER RULING 2026-09-24 (money) — THE VISIT AN INTERNAL REFERRAL OPENED, AND FROM WHICH VISIT.
+     * Set ONLY by `referInternally` (opd/referral.ts); no route body carries it. Its presence makes
+     * this visit the anchor of a 7-day free window in THIS department (visit-type.ts). It is not
+     * `referralSource = 'internal_doctor'`: the desk picks that from a list for attribution, and a
+     * dropdown the clerk sets must not be the thing that waives a fee.
+     */
+    referredFromEncounterId: text("referred_from_encounter_id"),
+    /**
      * ═══ FD-7 T9 / OWNER RULING R4 — THE CHANNEL-PARTNER SLIP, GIVEN A HOME ═══
      *
      * `attributionCode` was a per-request parameter and nothing else — handed to `feeQuote` and to

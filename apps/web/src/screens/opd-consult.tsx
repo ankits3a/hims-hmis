@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
 import { UnpaidMark } from "../components/unpaid-mark";
-import { VisitTypeBadge } from "../components/visit-type-badge";
+import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
@@ -2058,7 +2058,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
           ⚠ {t("opdConsultV2.dangerShort")}
         </span>
       )}
-      <VisitTypeBadge visitType={e.encounter.visitType} size="sm" testId={`queue-visit-type-${e.id}`} />
+      <VisitTypeBadge visitType={shownVisitType(e.encounter)} size="sm" testId={`queue-visit-type-${e.id}`} />
       {/*
         CONSULT V2 (owner, 2026-09-23) — the alarm says a called token again on the corridor board; the
         box-and-arrow opens this patient in a new browser tab (D17: only one tab edits at a time).
@@ -2375,7 +2375,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               <header className="cx-strip" data-testid="patient-strip">
                 {encounter !== null && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <VisitTypeBadge visitType={encounter.visitType} testId="panel-visit-type" size="xl" />
+                    <VisitTypeBadge visitType={shownVisitType(encounter)} testId="panel-visit-type" size="xl" />
                   </div>
                 )}
                 {restricted ? (
@@ -2396,7 +2396,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       </div>
                       {encounter !== null && (
                         <div className="cx-meaning" data-testid="panel-visit-meaning" style={{ color: encounter.visitType === "renewal" ? "#8a5a10" : encounter.visitType === "new" ? "var(--green)" : "var(--dim)", fontWeight: 600 }}>
-                          {t(`opdConsultV2.vtShort.${encounter.visitType === "new" || encounter.visitType === "revisit" || encounter.visitType === "renewal" ? encounter.visitType : "new"}`)}
+                          {t(`opdConsultV2.vtShort.${["new", "revisit", "renewal", "referral"].includes(shownVisitType(encounter)) ? shownVisitType(encounter) : "new"}`)}
                         </div>
                       )}
                     </div>

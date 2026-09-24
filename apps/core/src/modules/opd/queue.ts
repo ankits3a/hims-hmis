@@ -156,6 +156,8 @@ export type QueueEntryView = QueueEntryRow & {
      * token back in the callable order.
      */
     feeBypassReason: string | null; consultFeeOverrideReason: string | null;
+    /** Owner ruling 2026-09-24 — set when an internal referral opened this visit, so the rail says REFERRAL, not REVISIT. */
+    referredFromEncounterId: string | null;
   };
   patient: PatientSummary | null;
   /**
@@ -225,6 +227,7 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
         id: encounter.id, patientId: encounter.patientId, visitType: encounter.visitType,
         dangerFlagged: encounter.dangerFlagged, status: encounter.status,
         feeBypassReason: encounter.feeBypassReason, consultFeeOverrideReason: encounter.consultFeeOverrideReason,
+        referredFromEncounterId: encounter.referredFromEncounterId,
       },
       patient: summaryByPatient.get(encounter.patientId) ?? null,
       feeStatus: feeStatuses.get(encounter.id) ?? null,

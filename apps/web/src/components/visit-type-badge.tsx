@@ -21,7 +21,19 @@ const LOOK: Record<string, React.CSSProperties> = {
   new: { background: "var(--green)", color: "#ffffff", borderColor: "var(--green)" },
   revisit: { background: "var(--ink)", color: "#ffffff", borderColor: "var(--ink)" },
   renewal: { background: "var(--gold)", color: "#ffffff", borderColor: "var(--gold)" },
+  /* A first meeting like NEW — the history is to be taken — outlined because it is free (owner ruling 2026-09-24). */
+  referral: { background: "#ffffff", color: "var(--green)", borderColor: "var(--green)" },
 };
+
+/**
+ * OWNER RULING 2026-09-24 — a visit an internal referral opened is FREE, so the server stamps it
+ * `revisit`; the doctor it was sent to has never seen the patient, and REVISIT would tell them the
+ * last note is the context. So it is shown as REFERRAL. Only while it is still `revisit`: a visit
+ * the desk reclassified shows what the desk made it.
+ */
+export function shownVisitType(e: { visitType: string; referredFromEncounterId?: string | null }): string {
+  return e.visitType === "revisit" && e.referredFromEncounterId != null ? "referral" : e.visitType;
+}
 
 export function VisitTypeBadge(
   { visitType, size = "lg", testId }: { visitType: string; size?: "xl" | "lg" | "sm"; testId?: string },

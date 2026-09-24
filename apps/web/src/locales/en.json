@@ -485,7 +485,8 @@
     "visitType": {
       "new": "New",
       "revisit": "Revisit",
-      "renewal": "Renewal"
+      "renewal": "Renewal",
+      "referral": "Referral"
     },
     "weekday": {
       "0": "Sunday",
@@ -3293,6 +3294,7 @@
     },
     "visitType": {
       "revisit": "Revisit — no consultation fee",
+      "referralWhy": "Within 7 days of a doctor's referral into this department, so no fee; free until {{until}}.",
       "revisitWhy": "Within the {{days}}-day follow-up the doctor set; the window runs to {{until}}.",
       "renewal": "Renewal — the consultation is chargeable",
       "renewalWhy": "The {{days}}-day follow-up window ended on {{ended}}, so this counts as a fresh consultation."
@@ -5419,7 +5421,8 @@
     "vt": {
       "new": "New patient · first visit to this department",
       "revisit": "Revisit · free follow-up · last seen {{date}}",
-      "renewal": "Renewal · follow-up window lapsed (last seen {{date}}) · fresh fee"
+      "renewal": "Renewal · follow-up window lapsed (last seen {{date}}) · fresh fee",
+      "referral": "Referral · first visit to this department · free within 7 days of the referral"
     },
     "waitingVertical": "WAITING",
     "whyCame": "Why the patient came · as told at the front desk",
@@ -5495,7 +5498,8 @@
     "vtShort": {
       "new": "New patient · first visit",
       "revisit": "Revisit · free follow-up",
-      "renewal": "Renewal · fresh fee due"
+      "renewal": "Renewal · fresh fee due",
+      "referral": "Referral · free within 7 days"
     },
     "completeShort": "Complete",
     "deskHeard": "Heard at the desk — tap to add:",

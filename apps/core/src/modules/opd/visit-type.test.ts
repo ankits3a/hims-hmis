@@ -18,3 +18,16 @@ describe("classifyVisit (pure; IST calendar days, inclusive window)", () => {
     expect(classifyVisit(anchor("2026-08-08T10:00:00.000Z", 30), new Date("2026-09-08T05:00:00.000Z"))).toBe("renewal");
   });
 });
+
+describe("classifyVisit with a referral into the department (owner ruling 2026-09-24)", () => {
+  const referred = new Date("2026-08-17T04:00:00.000Z"); // Mon 17 Aug, 09:30 IST
+  it("day 7 after the referral is free; day 8 falls back to what the consult anchor says", () => {
+    expect(classifyVisit(null, new Date("2026-08-24T05:00:00.000Z"), referred)).toBe("revisit");
+    expect(classifyVisit(null, new Date("2026-08-25T05:00:00.000Z"), referred)).toBe("new");
+    expect(classifyVisit(anchor("2026-07-01T10:00:00.000Z"), new Date("2026-08-25T05:00:00.000Z"), referred)).toBe("renewal");
+  });
+  it("a referral frees a visit whose consult window has lapsed, and never charges one that is inside it", () => {
+    expect(classifyVisit(anchor("2026-07-01T10:00:00.000Z"), new Date("2026-08-20T05:00:00.000Z"), referred)).toBe("revisit");
+    expect(classifyVisit(anchor("2026-08-20T10:00:00.000Z", 30), new Date("2026-09-10T05:00:00.000Z"), referred)).toBe("revisit");
+  });
+});

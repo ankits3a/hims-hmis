@@ -12,9 +12,10 @@ import type { Db } from "../../kernel/db/client";
  * The doctor refers the patient to another department's doctor with a reason. The patient is NOT
  * registered again: a new visit is opened for the same person through `openVisit`, the one door every
  * visit enters by, so the token, the queue, the visit type and the fee all follow the rules they follow
- * for anybody else. THE FEE IS NOT DECIDED HERE — whether a same-day internal referral is charged is an
- * open owner ruling (money), so this adds no special case: the tariff applies and the front desk sees
- * the visit as it sees every other.
+ * for anybody else. THE FEE FOLLOWS THE OWNER'S RULING OF 2026-09-24 (money): `referredFromEncounterId`
+ * marks the new visit as a referral, and `classifyVisit` makes any visit to the referred department
+ * within 7 days of it a free follow-up — this one included. After 7 days the ordinary fee applies. No
+ * price is decided here; the visit type is, and billing charges a visit type as it always has.
  *
  * What the receiving doctor reads first is the referral itself: it rides the new visit's desk-complaint
  * field, stamped with the REFERRING doctor as its author, so the brief says who sent the patient and why.
@@ -45,6 +46,7 @@ export async function referInternally(
   const opened = await openVisit(db, actor, {
     patientId: enc.patientId, departmentId: input.departmentId, doctorId: input.doctorId,
     referralSource: "internal_doctor", referrerName: from.displayName, deskComplaint: words,
+    referredFromEncounterId: enc.id,
   }, now);
   await saveConsultNote(db, actor, encounterId, {
     referralTo: `${dept.name} · ${to.displayName}`.slice(0, 200),

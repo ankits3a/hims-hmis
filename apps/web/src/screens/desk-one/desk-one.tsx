@@ -887,7 +887,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         ...prev,
         stage: "done",
         tender: null,
-        log: logged(prev.log, `₹0 confirmed — ${q.freeReason === null ? "nothing to collect on this visit" : `review visit, free till ${q.freeReason.windowEndsOn}`}`, "ok"),
+        log: logged(prev.log, `₹0 confirmed — ${q.freeReason === null ? "nothing to collect on this visit" : `${q.freeReason.kind === "referral_window" ? "referral" : "review"} visit, free till ${q.freeReason.windowEndsOn}`}`, "ok"),
       }));
       return;
     }
@@ -1087,7 +1087,9 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         : `Shortest open line right now is ${best.departmentName}, about ${String(best.poolWaitMinutes)} minutes — ${String(best.waiting)} waiting for a doctor there${best.atVitals > 0 ? ` and ${String(best.atVitals)} still at the vitals bay` : ""}. Straight off the board, this minute.`;
     } else if (/(free|review|zero|₹0|paisa|charge|kyun)/.test(lo)) {
       const why = quote.data?.freeReason ?? null;
-      answer = why !== null
+      answer = why !== null && why.kind === "referral_window"
+        ? `This visit is free because ${why.doctorName ?? "a doctor here"} referred them to this department on ${why.seenOn}, and a referral is free here for 7 days — until ${why.windowEndsOn}. The hospital's rule decided that, not this screen, and nothing here can charge them.`
+        : why !== null
         ? `This visit is free because it is a review inside ${why.doctorName ?? "the doctor"}'s own window — they were seen on ${why.seenOn} and it runs to ${why.windowEndsOn}. The hospital's rule decided that, not this screen, and nothing here can charge them.`
         : "A revisit inside the doctor's own review window bills nothing by itself: the fee comes back with no charge at all and names the window it fell inside. There is no button on this desk that can force it either way.";
     } else if (/(price|fee|discount|member|coupon|package|paisa|kitna)/.test(lo)) {

@@ -144,7 +144,7 @@ export type WireFeeQuote = {
    * reason at all. Added here by RC-2 T1 because this is the type RC-3 renders from; naming only,
    * exactly as the server says — a null never un-frees anything.
    */
-  freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
+  freeReason: { kind: "review_window" | "referral_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
   /**
    * FD-7 T9 / R4 — the slip the desk captured, on BOTH branches, so the cashier's field pre-fills
    * from it. Without this the quote would price with a stored code the screen could not see and the
