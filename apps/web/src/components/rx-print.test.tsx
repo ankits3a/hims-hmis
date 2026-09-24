@@ -167,3 +167,19 @@ it("07d T5: a payload from before this field existed still renders", () => {
   expect(screen.getByTestId("rx-date")).toBeInTheDocument();
   expect(screen.queryByTestId("rx-advised-tests")).not.toBeInTheDocument();
 });
+
+describe("RxPrint — the ophthal line", () => {
+  it("names the eye after the route, and a taper prints as its text", () => {
+    renderWithProviders(<RxPrint data={{
+      ...DATA,
+      lines: [{
+        drug: "Prednisolone acetate 1% eye drops", dose: "1 drop", route: "eye", eye: "od",
+        frequency: "Taper: 6×/day × 7d → 4×/day × 7d", taper: [{ timesPerDay: 6, days: 7 }, { timesPerDay: 4, days: 7 }],
+        durationDays: 14, instructions: null, noSubstitution: false,
+      }],
+    }} />);
+    expect(screen.getByTestId("rx-line-0")).toHaveTextContent(
+      "Prednisolone acetate 1% eye drops · 1 drop · Taper: 6×/day × 7d → 4×/day × 7d · eye · RIGHT EYE · 14 days",
+    );
+  });
+});

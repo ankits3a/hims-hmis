@@ -1,6 +1,7 @@
 import { api, ApiError } from "./api";
 import type { WireMatchLane } from "./patients-api";
 import type { WireContinuityAnchor } from "./walk-in-routing";
+import type { Eye, TaperStep } from "./eye-line";
 
 /**
  * The OPD wire contract, shared by all six Plan 07 screens (the plan's File Structure names this file
@@ -374,6 +375,8 @@ export type WireVitals = {
 export type WireRxLine = {
   drug: string; dose: string; route: string; frequency: string;
   durationDays: number | null; instructions: string | null; noSubstitution: boolean;
+  /** The ophthal line. Absent on every line written before it and on every non-eye line. */
+  eye?: Eye | null; taper?: TaperStep[] | null;
 };
 
 export type WirePrescription = {
@@ -666,6 +669,9 @@ export type WireRxHistoryLine = {
   frequency: string | null;
   durationDays: number | null;
   instructions: string | null;
+  /** The ophthal line — the stored line is returned whole, so a line that has an eye carries it. */
+  eye?: Eye | null;
+  taper?: TaperStep[] | null;
 };
 
 export type WireRxHistoryItem = {

@@ -127,3 +127,48 @@ describe("SigPanel", () => {
     expect(Array.from(daysRow.querySelectorAll("button")).filter((b) => b.tabIndex === 0).map((b) => b.dataset.testid)).toEqual(["sig-0-days-3"]);
   });
 });
+
+describe("SigPanel — the ophthal line", () => {
+  type EyeLine = Line & { route: string; eye?: "od" | "os" | "ou" | null; taper?: { timesPerDay: number; days: number }[] | null };
+  function EyeHarness({ initial, log }: { initial: EyeLine; log: SigPatch[] }): React.ReactElement {
+    const [line, setLine] = useState(initial);
+    return (
+      <>
+        <SigPanel lineIndex={0} {...line} onPatch={(p) => { log.push(p); setLine((l) => ({ ...l, ...p })); }} />
+        <output data-testid="line">{JSON.stringify(line)}</output>
+      </>
+    );
+  }
+  const plain = { frequency: "QID", instructions: "", durationDays: "7" };
+
+  it("EY1: the eye row and the taper toggle are there for an eye line only", async () => {
+    const log: SigPatch[] = [];
+    const { unmount } = renderWithProviders(<EyeHarness initial={{ ...plain, route: "oral" }} log={log} />);
+    expect(screen.queryByTestId("sig-0-eye-od")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sig-0-taper")).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<EyeHarness initial={{ ...plain, route: "eye" }} log={log} />);
+    await userEvent.setup().click(screen.getByTestId("sig-0-eye-ou"));
+    expect(log).toContainEqual({ eye: "ou" });
+    expect(screen.getByTestId("sig-0-eye-ou")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("EY2: the preset fills five week-long steps, and turning the taper off clears them and brings the frequency back", async () => {
+    const log: SigPatch[] = [];
+    const user = userEvent.setup();
+    renderWithProviders(<EyeHarness initial={{ ...plain, route: "eye" }} log={log} />);
+
+    await user.click(screen.getByTestId("sig-0-taper"));
+    expect(screen.queryByTestId("sig-0-freq-QID")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("sig-0-taper-preset"));
+    const steps = [6, 4, 3, 2, 1].map((n) => ({ timesPerDay: n, days: 7 }));
+    expect(log.at(-1)).toEqual({ taper: steps });
+    expect(screen.getAllByTestId(/^sig-0-taper-step-\d+$/)).toHaveLength(5);
+
+    await user.click(screen.getByTestId("sig-0-taper"));
+    expect(log.at(-1)).toEqual({ taper: null });
+    expect(screen.queryByTestId("sig-0-taper-step-0")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sig-0-freq-QID")).toBeInTheDocument();
+  });
+});

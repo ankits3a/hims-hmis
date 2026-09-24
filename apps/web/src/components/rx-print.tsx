@@ -32,9 +32,13 @@ function vitalsLine(v: WireVitals | null): string | null {
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
-/** `drug · dose · frequency · route · N days · instructions` — the T7 dosage order, blanks dropped. */
-function lineText(l: WireRxLine, days: (n: number) => string): string {
+/**
+ * `drug · dose · frequency · route · eye · N days · instructions` — the T7 dosage order, blanks
+ * dropped. The eye sits after the route, as the FHIR dosage text has it.
+ */
+function lineText(l: WireRxLine, days: (n: number) => string, eye: (e: NonNullable<WireRxLine["eye"]>) => string): string {
   const parts = [l.drug, l.dose, l.frequency, l.route];
+  if (l.eye !== undefined && l.eye !== null) parts.push(eye(l.eye));
   if (l.durationDays !== null) parts.push(days(l.durationDays));
   if (l.instructions !== null && l.instructions.trim() !== "") parts.push(l.instructions);
   return parts.filter((p) => p.trim() !== "").join(" · ");
@@ -92,7 +96,7 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
         <ol className="space-y-1 text-sm">
           {data.lines.map((l, i) => (
             <li key={`${l.drug}-${String(i)}`} data-testid={`rx-line-${String(i)}`}>
-              {i + 1}. {lineText(l, (n) => t("rx.days", { n }))}
+              {i + 1}. {lineText(l, (n) => t("rx.days", { n }), (e) => t(`rx.eye.${e}`))}
               {l.noSubstitution && <span className="ml-2 text-xs font-medium">{t("rx.noSubstitution")}</span>}
             </li>
           ))}

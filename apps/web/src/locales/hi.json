@@ -932,6 +932,7 @@
       "sc": "SC",
       "topical": "त्वचा पर",
       "inhaled": "साँस द्वारा",
+      "eye": "आँख (ड्रॉप/मलहम)",
       "other": "अन्य"
     },
     "frequencyOption": {
@@ -1127,6 +1128,11 @@
     "advice": "सलाह",
     "noSubstitution": "दवा न बदलें",
     "days": "{{n}} दिन",
+    "eye": {
+      "od": "दाईं आँख",
+      "os": "बाईं आँख",
+      "ou": "दोनों आँखें"
+    },
     "followUp": "{{days}} दिन बाद फ़ॉलो-अप",
     "version": "संस्करण {{n}}",
     "print": "पर्चा प्रिंट करें",
@@ -4986,6 +4992,19 @@
     "frequencyPlaceholder": "जैसे 1-0-0, हर 6 घंटे, हफ़्ते में एक बार",
     "daysUnit": "दिन",
     "notePlaceholder": "और कुछ — जैसे दूध के साथ",
+    "eye": "कौन-सी आँख",
+    "eyeOption": {
+      "od": "OD · दाईं",
+      "os": "OS · बाईं",
+      "ou": "OU · दोनों"
+    },
+    "taper": "धीरे-धीरे कम करें",
+    "taperPreset": "6-4-3-2-1, हर एक हफ़्ता",
+    "taperStep": "चरण {{n}}",
+    "taperTimes": "बार प्रतिदिन",
+    "taperDays": "दिन",
+    "taperAdd": "चरण जोड़ें",
+    "taperRemove": "चरण {{n}} हटाएँ",
     "timingOption": {
       "afterFood": "खाने के बाद",
       "beforeFood": "खाने से पहले",

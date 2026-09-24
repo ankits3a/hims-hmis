@@ -1,12 +1,15 @@
 /**
  * The e-Rx document, FHIR-shaped (spec §6: stored FHIR-shaped, serialized to a conformant profile later).
- * A pure core — this file imports NOTHING, reaches for no clock and no randomness, so the JSONB stored on
+ * A pure core — it imports only the pure shared eye-line vocabulary (`@hmis/contracts` rx-eye), reaches
+ * for no clock and no randomness, so the JSONB stored on
  * opd_prescriptions.document is a total function of the consultation facts handed to it.
  *
  * Absence is expressed by an ABSENT KEY, never by null and never by an undefined value: the document is
  * persisted as jsonb and read back by scanners and (later) by an FHIR serializer, and a null there would
  * claim "this field is known to be empty" where the shape means "this field does not apply".
  */
+import { EYE_TEXT, taperDays, taperText } from "@hmis/contracts";
+import type { Eye, TaperStep } from "@hmis/contracts";
 
 /** The identifier system for this hospital's own formulary — a local code system, not a public one. */
 export const FORMULARY_CODE_SYSTEM = "urn:hmis:formulary:medicine";
@@ -27,7 +30,38 @@ export type RxLine = {
   durationDays: number | null;
   instructions: string | null;
   noSubstitution: boolean; // true ⇒ the pharmacy may not substitute (FHIR substitution.allowedBoolean = false)
+  /**
+   * The ophthal line (board "Ophthal", 2026-09-23): WHICH eye, and an optional taper. Both optional
+   * for the same reason `medicineId` is — every stored line before them lacks the keys for ever.
+   * A tapered line still carries `frequency` and `durationDays`: `normaliseRxLine` writes them from
+   * the steps at issue, so no reader has to learn what a taper is to read the line correctly.
+   */
+  eye?: Eye | null;
+  taper?: TaperStep[] | null;
 };
+
+/** od = right, os = left, ou = both — the ophthalmologist's own abbreviations. The vocabulary is shared with the web (`@hmis/contracts` rx-eye). */
+export type { Eye, TaperStep };
+export { EYE_TEXT, taperText };
+
+/** SNOMED CT body structures — the coded `site` of an eye line's dosage. */
+const EYE_SITE: Record<Eye, { code: string; display: string }> = {
+  od: { code: "18944008", display: "Right eye structure" },
+  os: { code: "8966001", display: "Left eye structure" },
+  ou: { code: "40638003", display: "Both eyes" },
+};
+const SNOMED_SYSTEM = "http://snomed.info/sct";
+
+/**
+ * The server is the source of truth for a tapered line: its frequency is the canonical taper text
+ * and its duration the sum of the steps, whatever the client sent. Any other line is returned AS
+ * IS — the same object — so a plain prescription stores exactly what it stored before.
+ */
+export function normaliseRxLine(line: RxLine): RxLine {
+  const steps = line.taper;
+  if (steps === undefined || steps === null || steps.length === 0) return line;
+  return { ...line, frequency: taperText(steps), durationDays: taperDays(steps) };
+}
 
 /** Structural shape only: this module ships no FHIR validator, and never claims profile conformance. */
 export type FhirBundle = {
@@ -69,12 +103,14 @@ function dosageInstruction(line: RxLine): Record<string, unknown> {
   const dose = text(line.dose);
   const frequency = text(line.frequency);
   const route = text(line.route);
+  const eye = line.eye ?? null;
   const days = line.durationDays;
 
   const parts: string[] = [];
   if (dose !== null) parts.push(dose);
   if (frequency !== null) parts.push(frequency);
   if (route !== null) parts.push(route);
+  if (eye !== null) parts.push(EYE_TEXT[eye]);
   if (days !== null) parts.push(`${days} days`);
 
   const timing: Record<string, unknown> = {};
@@ -83,8 +119,39 @@ function dosageInstruction(line: RxLine): Record<string, unknown> {
 
   const dosage: Record<string, unknown> = { text: parts.join(DOSAGE_SEPARATOR) };
   if (route !== null) dosage.route = { text: route };
+  if (eye !== null) dosage.site = siteOf(eye);
   if (Object.keys(timing).length > 0) dosage.timing = timing;
   return dosage;
+}
+
+function siteOf(eye: Eye): Record<string, unknown> {
+  return { coding: [{ system: SNOMED_SYSTEM, ...EYE_SITE[eye] }], text: EYE_TEXT[eye] };
+}
+
+/**
+ * A taper is FHIR's sequenced dosage: one dosageInstruction per step, `sequence` 1-based, each
+ * with its own times-a-day and its own bound — never one instruction whose free text alone says
+ * "then 4×", which no machine reader downstream could act on.
+ */
+function taperInstructions(line: RxLine, steps: readonly TaperStep[]): Record<string, unknown>[] {
+  const dose = text(line.dose);
+  const route = text(line.route);
+  const eye = line.eye ?? null;
+  return steps.map((step, i) => {
+    const parts: string[] = [];
+    if (dose !== null) parts.push(dose);
+    parts.push(`${String(step.timesPerDay)}×/day`);
+    if (route !== null) parts.push(route);
+    if (eye !== null) parts.push(EYE_TEXT[eye]);
+    parts.push(`${String(step.days)} days`);
+    const dosage: Record<string, unknown> = { sequence: i + 1, text: parts.join(DOSAGE_SEPARATOR) };
+    if (route !== null) dosage.route = { text: route };
+    if (eye !== null) dosage.site = siteOf(eye);
+    dosage.timing = {
+      repeat: { frequency: step.timesPerDay, period: 1, periodUnit: "d", boundsDuration: { value: step.days, unit: "d" } },
+    };
+    return dosage;
+  });
 }
 
 export function toFhirBundle(input: FhirDocumentInput): FhirBundle {
@@ -123,7 +190,9 @@ export function toFhirBundle(input: FhirDocumentInput): FhirBundle {
         // The display text is what the prescriber wrote and is never rewritten; the coding is an
         // extra fact about it. Absence stays an ABSENT KEY, per this file's own rule.
         : { text: line.drug, coding: [{ system: FORMULARY_CODE_SYSTEM, code: line.medicineId }] },
-      dosageInstruction: [dosageInstruction(line)],
+      dosageInstruction: line.taper !== undefined && line.taper !== null && line.taper.length > 0
+        ? taperInstructions(line, line.taper)
+        : [dosageInstruction(line)],
     };
     const instructions = text(line.instructions);
     if (instructions !== null) resource.note = [{ text: instructions }];

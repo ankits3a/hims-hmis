@@ -1,4 +1,4 @@
-import { toFhirBundle } from "./fhir";
+import { taperText, toFhirBundle } from "./fhir";
 import type { RxLine } from "./fhir";
 
 /** Hand-written instants and objects — nothing below was produced by running the builder (§3.10). */
@@ -69,5 +69,54 @@ describe("toFhirBundle (the e-Rx document — pure)", () => {
     const dosage = (bundle.entry[1]!.resource as { dosageInstruction: Record<string, unknown>[] }).dosageInstruction[0]!;
     expect(Object.keys(dosage).sort()).toEqual(["route", "text", "timing"]);
     expect(Object.keys((dosage as { timing: Record<string, unknown> }).timing).sort()).toEqual(["code"]); // no repeat without a duration
+  });
+
+  /**
+   * The ophthal line (board "Ophthal", 2026-09-23): an eye is a coded SITE on the dosage, and a
+   * taper is one dosageInstruction per step, in order — FHIR's own shape for "6× a day for a week,
+   * then 4×…". Hand-written expectations; the plain-line bundles above prove nothing else moved.
+   */
+  const eyeBundle = (line: RxLine) => toFhirBundle({
+    prescriptionId: "RX3", version: 1, encounterId: "E1", patientId: "P1", doctorId: "DOC1",
+    issuedAt: new Date(ISSUED), diagnosis: null, icd10Code: null, lines: [line],
+  });
+  const dosageOf = (line: RxLine) =>
+    (eyeBundle(line).entry[1]!.resource as { dosageInstruction: Record<string, unknown>[] }).dosageInstruction;
+  const MOXI: RxLine = {
+    drug: "Moxifloxacin 0.5% eye drops", dose: "1 drop", route: "eye", frequency: "QID", durationDays: 7,
+    instructions: null, noSubstitution: false,
+  };
+
+  it("an eye line carries a SNOMED body-structure site, one code per eye", () => {
+    const sites = (["od", "os", "ou"] as const).map((eye) => dosageOf({ ...MOXI, eye })[0]!.site);
+    expect(sites).toEqual([
+      { coding: [{ system: "http://snomed.info/sct", code: "18944008", display: "Right eye structure" }], text: "RIGHT EYE" },
+      { coding: [{ system: "http://snomed.info/sct", code: "8966001", display: "Left eye structure" }], text: "LEFT EYE" },
+      { coding: [{ system: "http://snomed.info/sct", code: "40638003", display: "Both eyes" }], text: "BOTH EYES" },
+    ]);
+    expect(dosageOf({ ...MOXI, eye: "ou" })[0]!.text).toBe("1 drop · QID · eye · BOTH EYES · 7 days");
+    // null is absence, exactly as a missing key is.
+    expect(Object.keys(dosageOf({ ...MOXI, eye: null })[0]!).sort()).toEqual(["route", "text", "timing"]);
+  });
+
+  it("a tapered line is one sequenced dosageInstruction per step, each with its own frequency and bound", () => {
+    const taper = [{ timesPerDay: 6, days: 7 }, { timesPerDay: 4, days: 7 }, { timesPerDay: 1, days: 3 }];
+    const dosage = dosageOf({
+      ...MOXI, drug: "Prednisolone acetate 1% eye drops", eye: "od", taper, frequency: taperText(taper), durationDays: 17,
+    });
+    const site = { coding: [{ system: "http://snomed.info/sct", code: "18944008", display: "Right eye structure" }], text: "RIGHT EYE" };
+    expect(dosage).toEqual([
+      { sequence: 1, text: "1 drop · 6×/day · eye · RIGHT EYE · 7 days", route: { text: "eye" }, site,
+        timing: { repeat: { frequency: 6, period: 1, periodUnit: "d", boundsDuration: { value: 7, unit: "d" } } } },
+      { sequence: 2, text: "1 drop · 4×/day · eye · RIGHT EYE · 7 days", route: { text: "eye" }, site,
+        timing: { repeat: { frequency: 4, period: 1, periodUnit: "d", boundsDuration: { value: 7, unit: "d" } } } },
+      { sequence: 3, text: "1 drop · 1×/day · eye · RIGHT EYE · 3 days", route: { text: "eye" }, site,
+        timing: { repeat: { frequency: 1, period: 1, periodUnit: "d", boundsDuration: { value: 3, unit: "d" } } } },
+    ]);
+  });
+
+  it("taperText is the one canonical wording of a taper", () => {
+    expect(taperText([{ timesPerDay: 6, days: 7 }, { timesPerDay: 4, days: 7 }, { timesPerDay: 3, days: 7 }]))
+      .toBe("Taper: 6×/day × 7d → 4×/day × 7d → 3×/day × 7d");
   });
 });

@@ -128,6 +128,39 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     expect(await listPrescriptions(db, dra.actor, enc.id)).toHaveLength(1);
   });
 
+  /**
+   * The ophthal line. The SERVER is the source of truth for a tapered line: whatever frequency and
+   * duration the browser sent, the stored line says the canonical taper text and the summed days,
+   * so every reader that knows only `frequency` / `durationDays` (label, qty prefill, rx-checks'
+   * isCurrent, the desk's sig) reads the right thing without knowing a taper exists.
+   */
+  it("a tapered eye line is stored with the canonical taper frequency and the summed duration; a plain line is untouched", async () => {
+    const enc = await inConsult();
+    const taper = [
+      { timesPerDay: 6, days: 7 }, { timesPerDay: 4, days: 7 }, { timesPerDay: 3, days: 7 },
+      { timesPerDay: 2, days: 7 }, { timesPerDay: 1, days: 7 },
+    ];
+    const sent: RxLine[] = [
+      { drug: "Prednisolone acetate 1% eye drops", dose: "1 drop", route: "eye", frequency: "",
+        durationDays: 3, instructions: null, noSubstitution: false, eye: "od", taper },
+      { drug: "Moxifloxacin 0.5% eye drops", dose: "1 drop", route: "eye", frequency: "QID", durationDays: 7,
+        instructions: null, noSubstitution: false, eye: "ou" },
+      TWO_LINES[0]!,
+    ];
+    await issuePrescription(db, dra.actor, testCfg, enc.id, { lines: sent }, MON2);
+    const [row] = await listPrescriptions(db, dra.actor, enc.id);
+    expect(row!.lines).toEqual([
+      { ...sent[0], frequency: "Taper: 6×/day × 7d → 4×/day × 7d → 3×/day × 7d → 2×/day × 7d → 1×/day × 7d", durationDays: 35 },
+      sent[1],
+      TWO_LINES[0],
+    ]);
+    // The blank frequency sent did not refuse: the normalisation runs BEFORE the "every line needs a
+    // frequency" check. The document is built from the NORMALISED lines, never from what was sent.
+    const doc = row!.document as { entry: { resource: { dosageInstruction?: unknown[] } }[] };
+    expect(doc.entry.filter((e) => e.resource.dosageInstruction !== undefined).map((e) => e.resource.dosageInstruction!.length))
+      .toEqual([5, 1, 1]);
+  });
+
   it("the allergy hard-warning blocks, a reasoned override releases it, and matching is bidirectional and case-insensitive", async () => {
     const enc = await inConsult();
     await addActiveAllergy("Penicillin");

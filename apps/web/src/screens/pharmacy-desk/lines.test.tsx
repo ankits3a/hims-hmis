@@ -66,6 +66,12 @@ describe("the line rules, pure (PD-4)", () => {
     expect(sigOf({ dose: "10 ml", frequency: "1-1-1", durationDays: 5 })).toBe("10 ml 1-1-1 × 5d");
     expect(sigOf({ dose: "5 mg/kg", frequency: "BD", durationDays: 3 })).toBe("5 mg/kg · BD × 3d");
   });
+  it("an eye line's sig leads with WHICH eye; a line with no eye reads as it always did", () => {
+    expect(sigOf({ dose: "1 drop", frequency: "QID", durationDays: 7, eye: "ou" })).toBe("BOTH EYES · 1 drop · QID × 7d");
+    expect(sigOf({ dose: "1 drop", frequency: "Taper: 6×/day × 7d → 4×/day × 7d", durationDays: 14, eye: "od" }))
+      .toBe("RIGHT EYE · 1 drop · Taper: 6×/day × 7d → 4×/day × 7d × 14d");
+    expect(sigOf({ dose: "1 tab", frequency: "BD", durationDays: 3, eye: null })).toBe("1 tab · BD × 3d");
+  });
   it("E9 — a short quantity cannot be ticked until it says why; more than prescribed never can", () => {
     const l = lineOf(0, { drug: "Glycomet 500", qtyBase: 270 });
     expect(canTick(l, { ...freshTick(l), qty: "200" })).toBe(false);
