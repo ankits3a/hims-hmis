@@ -100,6 +100,18 @@ export const COPILOT_ANSWER_KEYS = [
   /* ═══ paid_not_collected (pharmacy, PD-7 C8) — "kiska paisa pending hai" ═══ */
   "copilot.answer.uncollected",
   "copilot.answer.uncollectedNone",
+
+  /*
+    ═══ draft_short_book_entry (pharmacy, parity P1) — "Pan 40 khatam", "out of Pan 40" ═══
+    A DRAFT, never a write: the answer's `payload` carries the draft and the desk shows it as a card
+    the pharmacist confirms with one tap (which calls `POST /pharmacy/short-book`).
+  */
+  /** The draft is ready: "Note Pan 40 in the short book?" */
+  "copilot.answer.shortBookDraft",
+  /** That drug is already open in the short book — nothing to confirm. */
+  "copilot.answer.shortBookAlready",
+  /** The sentence named no drug ("khatam ho gaya"). */
+  "copilot.answer.shortBookNeedName",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];

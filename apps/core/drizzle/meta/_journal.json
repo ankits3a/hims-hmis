@@ -862,6 +862,13 @@
       "when": 1790257496465,
       "tag": "0122_referral_free_window",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1790266287628,
+      "tag": "0123_pharmacy_short_book",
+      "breakpoints": true
     }
   ]
 }

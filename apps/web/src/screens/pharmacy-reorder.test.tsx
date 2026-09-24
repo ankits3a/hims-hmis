@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
 import { PharmacyReorder } from "./pharmacy-reorder";
@@ -77,5 +77,48 @@ describe("PharmacyReorder (P4)", () => {
     expect(last).toHaveTextContent("last day today");
     expect(last).toHaveTextContent("Sells in time");
     expect(screen.getByTestId("expired-CP-OLD")).toHaveTextContent("Batch CP-OLD · Expires 2026-09-10 · On hand 12 tablet");
+  });
+});
+
+/**
+ * PARITY P1 — the short book sits at the top of the reorder list: what the counter said it was out
+ * of, who said so and when, and the counter's act of closing a row (ordered, received, dismissed).
+ */
+describe("PharmacyReorder — the short book (parity P1)", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("lists the open shortages first, a drug the hospital does not stock marked so, and closes one as ordered", async () => {
+    const resolved: unknown[] = [];
+    let open = [
+      { id: "sb1", storeResourceId: "s", itemId: null, drugName: "Pan 40", qtyWanted: null, source: "agent", dispenseId: null, notedBy: "u1", notedAt: "2026-09-19T05:00:00.000Z", resolvedAt: null, resolvedBy: null, resolution: null, notedByName: "Kavita Joshi" },
+      { id: "sb2", storeResourceId: "s", itemId: "i1", drugName: "Calpol 500 tablet", qtyWanted: 30, source: "desk", dispenseId: "d1", notedBy: "u1", notedAt: "2026-09-19T06:00:00.000Z", resolvedAt: null, resolvedBy: null, resolution: null, notedByName: "Kavita Joshi" },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = (typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url).split("?")[0]!;
+      const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (raw.endsWith("/api/auth/me")) return json({ actor: { type: "user", id: "u1" }, permissions: { hospital: ["pharmacy.dispense.place", "pharmacy.dispense.read"], scoped: { department: {}, floor: {} } } });
+      if (raw.endsWith("/api/pharmacy/short-book")) return json({ entries: open });
+      if (raw.endsWith("/api/pharmacy/short-book/sb1/resolve")) {
+        resolved.push(JSON.parse(String(init?.body)));
+        open = open.filter((e) => e.id !== "sb1");
+        return json({ ...open[0], resolvedAt: "x" });
+      }
+      if (raw.endsWith("/api/pharmacy/reorder")) return json({ asOf: "2026-09-19T06:00:00.000Z", window: { days: 30, minCoverDays: 3, targetCoverDays: 7, nearExpiryDays: 90 }, items: [], expiring: [], expiredOnShelf: [] });
+      return new Response("{}", { status: 404 });
+    }));
+    renderWithProviders(<PharmacyReorder />);
+    const book = await screen.findByTestId("reorder-short-book");
+    expect(book).toHaveTextContent("Short book · 2 open");
+    const pan = await within(book).findByTestId("short-sb1");
+    expect(pan).toHaveTextContent("Pan 40");
+    expect(pan).toHaveTextContent("not stocked");
+    expect(pan).toHaveTextContent("Kavita Joshi");
+    expect(pan).toHaveTextContent("agent draft");
+    expect(within(book).getByTestId("short-sb2")).toHaveTextContent("30");
+    const { default: userEvent } = await import("@testing-library/user-event");
+    await userEvent.click(await within(pan).findByRole("button", { name: "Ordered" }));
+    await waitFor(() => expect(resolved).toEqual([{ resolution: "ordered" }]));
+    await waitFor(() => expect(screen.queryByTestId("short-sb1")).toBeNull());
   });
 });

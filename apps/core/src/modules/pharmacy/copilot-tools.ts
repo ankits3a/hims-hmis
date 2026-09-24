@@ -1,5 +1,5 @@
-import { asc, eq } from "drizzle-orm";
-import { pharmacyDispenses } from "../../kernel/db/schema";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { pharmacyDispenses, pharmacyShortBook } from "../../kernel/db/schema";
 import { findStoreByCode, sellableBatchesByItem } from "../materials";
 import { getPatientSummaries } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
@@ -39,6 +39,31 @@ export function medicineTermOf(question: string): string {
     .split(/[^\p{L}\p{M}\p{N}]+/u)
     .filter((w) => w !== "" && !FILLER.has(w))
     .join(" ");
+}
+
+/**
+ * PARITY P1 — the words of an "out of X" sentence that are not the drug: the shortage itself, the
+ * instruction to write it down, and counter Hindi's connective tissue. Whole words only.
+ */
+const SHORT_FILLER = new Set([
+  ...FILLER,
+  "khatam", "khatm", "khtm", "ho", "gaya", "gayi", "gaye", "out", "ran", "finished", "short", "book", "shortbook", "shortage",
+  "note", "likh", "likho", "do", "karo", "kar", "please", "add", "to", "it", "mein", "hai", "se", "wala", "wali",
+  "खत्म", "ख़त्म", "हो", "गया", "गई", "लिख", "दो",
+]);
+
+/** The drug an "out of X" sentence names, in the words as typed (case kept), or [] when it names none. */
+function shortWordsOf(question: string): string[] {
+  return question
+    .replace(/<<P\d+>>/g, " ")
+    .normalize("NFC")
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
+    .filter((w) => w !== "" && !SHORT_FILLER.has(w.toLowerCase()));
+}
+
+/** The same, lower-cased — the search term. Exported for its table test. */
+export function shortTermOf(question: string): string {
+  return shortWordsOf(question).join(" ").toLowerCase();
 }
 
 const MAX_LISTED = 5;
@@ -115,6 +140,44 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
       const shown = visible.slice(0, MAX_LISTED * 2);
       const more = visible.length - shown.length;
       return { key: "copilot.answer.uncollected", params: { n: visible.length, items: shown.join(", ") + (more > 0 ? ` +${String(more)}` : "") } };
+    },
+  },
+  {
+    /*
+      ═══ PARITY P1 — "Pan 40 khatam": THE AGENT DRAFTS, THE PHARMACIST CONFIRMS ═══
+
+      The first pharmacy tool that leads to a WRITE, and it does not perform it: the answer carries
+      a DRAFT (`payload`) that the desk shows as a card, and the card's one tap calls
+      `POST /pharmacy/short-book` as the person who tapped. The plan's rule — `draft_*`, never
+      `post_*`; nothing posts without a person — is kept by construction: this function has no
+      insert in it.
+
+      Gated on the CONFIRMING act's permission (`pharmacy.dispense.place`), because tools run with the
+      asker's permissions: a login that could not note the shortage is not offered a draft of it.
+    */
+    intent: "draft_short_book_entry",
+    permission: "pharmacy.dispense.place",
+    needsSubject: false,
+    async run(ctx): Promise<CopilotAnswer> {
+      const said = shortWordsOf(ctx.question).join(" ");
+      if (said === "") return { key: "copilot.answer.shortBookNeedName", params: {} };
+      const store = await findStoreByCode(ctx.db, OPD_PHARMACY_STORE_CODE);
+      /* A drug the counter knows is drafted BY ITEM — the same search the counter's own box uses. */
+      const found = store === undefined ? [] : await searchShelfAt(ctx.db, store.id, said.toLowerCase(), new Date());
+      const exact = found.filter((f) => f.brandName.toLowerCase() === said.toLowerCase());
+      const hit = exact.length === 1 ? exact[0] : found.length === 1 ? found[0] : undefined;
+      const itemId = hit?.itemId ?? null;
+      const drugName = hit?.brandName ?? said;
+      const open = store === undefined ? [] : await ctx.db.select({ id: pharmacyShortBook.id }).from(pharmacyShortBook).where(and(
+        eq(pharmacyShortBook.storeResourceId, store.id), isNull(pharmacyShortBook.resolvedAt),
+        itemId !== null ? eq(pharmacyShortBook.itemId, itemId)
+          : and(isNull(pharmacyShortBook.itemId), sql`lower(${pharmacyShortBook.drugName}) = lower(${drugName})`),
+      )).limit(1);
+      const alreadyOpen = open.length > 0;
+      const payload = { kind: "short_book_draft", itemId, drugName, available: hit?.available ?? null, alreadyOpen };
+      return alreadyOpen
+        ? { key: "copilot.answer.shortBookAlready", params: { name: drugName }, payload }
+        : { key: "copilot.answer.shortBookDraft", params: { name: drugName }, payload };
     },
   },
 ];

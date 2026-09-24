@@ -38,6 +38,13 @@ export type CopilotState = {
   ask: (question: string) => void;
   /** Clears a rendered report without clearing the answer that announced it. */
   dismissReport: () => void;
+  /**
+   * PARITY P1 — the last answer's `payload`, when a tool handed one over that is not the day report:
+   * a DRAFT the screen shows for a person to confirm (the pharmacy's `draft_short_book_entry`). The
+   * hook does not interpret it; the screen that knows the draft's kind does.
+   */
+  payload: unknown;
+  clearPayload: () => void;
 };
 
 export function useCopilot(opts: {
@@ -56,6 +63,7 @@ export function useCopilot(opts: {
   const [answer, setAnswer] = useState<string | null>(null);
   const [report, setReport] = useState<CopilotDayReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [payload, setPayload] = useState<unknown>(null);
 
   const { terms, fallback, onNote, date } = opts;
 
@@ -67,6 +75,7 @@ export function useCopilot(opts: {
 
     setBusy(true);
     setReport(null);
+    setPayload(null);
     askCopilot(q, terms?.() ?? [], date)
       .then((reply: CopilotReply) => {
         /*
@@ -82,6 +91,8 @@ export function useCopilot(opts: {
         setAnswer(t(reply.answer.key, reply.answer.params));
         if (reply.intent === "my_day_report" && reply.answer.payload !== undefined) {
           setReport(reply.answer.payload as CopilotDayReport);
+        } else if (reply.answer.payload !== undefined) {
+          setPayload(reply.answer.payload);
         }
         onNote?.(q);
       })
@@ -95,5 +106,8 @@ export function useCopilot(opts: {
       .finally(() => { setBusy(false); });
   }, [t, terms, fallback, onNote, date]);
 
-  return { answer, report, busy, ask, dismissReport: useCallback(() => { setReport(null); }, []) };
+  return {
+    answer, report, busy, ask, dismissReport: useCallback(() => { setReport(null); }, []),
+    payload, clearPayload: useCallback(() => { setPayload(null); }, []),
+  };
 }

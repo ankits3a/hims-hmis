@@ -469,3 +469,47 @@ export const pharmacyAuthorisations = pgTable(
     check("pharmacy_authorisations_same_actor_ck", sql`${t.decidedBy} is null or ${t.decidedBy} <> ${t.requestedBy}`),
   ],
 );
+
+/**
+ * ═══ PHARMACY P1 — THE SHORT BOOK: "OUT OF X", SAID AT THE COUNTER AND KEPT ═══
+ *
+ * The approved parity plan (2026-09-24, P1): a pharmacist who turns a patient away for want of a
+ * drug says so in one key (`N`), or the counter agent drafts it from "Pan 40 khatam", and the line
+ * lands here with who and when. `/pharmacy/reorder` reads the open rows first; P2's purchase-order
+ * draft will read them too. A row is an OBSERVATION, not a stock figure: stock stays in materials.
+ *
+ * `item_id` when the drug is one the counter knows, else only the name as said — a drug the
+ * hospital has never stocked is exactly what a short book is for. One OPEN row per drug per store
+ * (by item, or by the lower-cased name when there is no item): a second pharmacist noting the same
+ * shortage is told it is already noted, rather than doubling the reorder list.
+ *
+ * Resolved once, with how: `ordered`, `received`, or `dismissed`. The resolved columns move together.
+ */
+export const pharmacyShortBook = pgTable(
+  "pharmacy_short_book",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    itemId: text("item_id").references(() => items.id),
+    drugName: text("drug_name").notNull(),
+    qtyWanted: integer("qty_wanted"),
+    source: text("source").notNull(),
+    /** The ticket the shortage was met on, when it was met on one. */
+    dispenseId: text("dispense_id").references(() => pharmacyDispenses.id),
+    notedBy: text("noted_by").notNull(),
+    notedAt: timestamp("noted_at", { withTimezone: true }).notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: text("resolved_by"),
+    resolution: text("resolution"),
+  },
+  (t) => [
+    index("pharmacy_short_book_open_idx").on(t.storeResourceId, t.resolvedAt),
+    uniqueIndex("pharmacy_short_book_open_item_ux").on(t.storeResourceId, t.itemId).where(sql`${t.resolvedAt} is null and ${t.itemId} is not null`),
+    uniqueIndex("pharmacy_short_book_open_name_ux").on(t.storeResourceId, sql`lower(${t.drugName})`).where(sql`${t.resolvedAt} is null and ${t.itemId} is null`),
+    check("pharmacy_short_book_name_ck", sql`length(btrim(${t.drugName})) between 2 and 120`),
+    check("pharmacy_short_book_qty_ck", sql`${t.qtyWanted} is null or ${t.qtyWanted} > 0`),
+    check("pharmacy_short_book_source_ck", sql`${t.source} in ('desk', 'agent', 'reorder')`),
+    check("pharmacy_short_book_resolution_ck", sql`${t.resolution} is null or ${t.resolution} in ('ordered', 'received', 'dismissed')`),
+    check("pharmacy_short_book_resolved_ck", sql`(${t.resolvedAt} is null) = (${t.resolvedBy} is null) and (${t.resolvedAt} is null) = (${t.resolution} is null)`),
+  ],
+);

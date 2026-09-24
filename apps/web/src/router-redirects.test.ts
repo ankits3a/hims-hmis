@@ -53,3 +53,17 @@ describe("the three deleted front-desk paths forward for one release (11i T9)", 
     expect(router.state.location.pathname).toBe("/counter/figures");
   });
 });
+
+/**
+ * PARITY P1 (2026-09-24) — `/pharmacy/counter` retired into the desk. The counter PCs have it
+ * bookmarked; it forwards to `/pharmacy/desk` rather than landing on a blank page. That it is gone
+ * from the nav and the manifest is `nav-parity.test.ts`'s (core) to hold.
+ */
+describe("the retired pharmacy counter forwards to the desk (parity P1)", () => {
+  afterAll(() => { setToken(null); });
+
+  it("forwards /pharmacy/counter to /pharmacy/desk", async () => {
+    await loadAt("/pharmacy/counter");
+    expect(router.state.location.pathname).toBe("/pharmacy/desk");
+  });
+});

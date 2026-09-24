@@ -8,7 +8,7 @@ import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import { useCopilot } from "../../lib/use-copilot";
 import {
-  billDispense, claimDispense, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchQueue, findAtCounter, handOverDispense,
+  billDispense, claimDispense, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchQueue, findAtCounter, handOverDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
@@ -17,6 +17,8 @@ import { BillRail, heldUntil, holdEnded, rupees } from "./bill";
 import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { SlipSheet } from "./slip";
+import { DraftCard, ShortBookSheet, shortBookDraftOf } from "./short-book";
+import type { ShortBookDraft, ShortDrug } from "./short-book";
 import { TicketPanel } from "./ticket";
 import type { DeskLog } from "./log";
 import type { CollectResult } from "./lines";
@@ -50,7 +52,8 @@ import "./pharmacy-desk.css";
  *
  * ═══ EVERY KEYCAP DRAWN IS BOUND (PD-D6) ═══
  *
- * `Q` the whole line · `F8` the hospital's command palette · `Esc` close, then clear the desk.
+ * `Q` the whole line · `F8` the hospital's command palette · `N` note a shortage in the short book
+ * (parity P1) · `Esc` close, then clear the desk.
  * `S`, `1-4`, `Ctrl+⏎` and `F2` belong to the tasks that build what they press, and are not drawn
  * until then — a keycap that lies is worse than none (`desk-one.tsx`). `F2` is PD-7 C8's: it asks
  * the counter agent, in the dock.
@@ -71,7 +74,12 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [inHandId, setInHandId] = useState<string | null>(ticketId);
   useEffect(() => { setInHandId(ticketId); }, [ticketId]);
   const [candidates, setCandidates] = useState<WirePatientSummary[] | null>(null);
-  const [overlay, setOverlay] = useState<"queue" | "slip" | null>(null);
+  const [overlay, setOverlay] = useState<"queue" | "slip" | "short" | null>(null);
+  /* PARITY P1 — the hand-over that just happened HERE prints by itself; reopening an old ticket does not. */
+  const [justHandedOver, setJustHandedOver] = useState<string | null>(null);
+  /* PARITY P1 — the line the pharmacist is on, so `N` opens the short book prefilled with its drug. */
+  const [focusedDrug, setFocusedDrug] = useState<ShortDrug | null>(null);
+  useEffect(() => { setFocusedDrug(null); }, [inHandId]);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -112,6 +120,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
 
   const queue = useQuery({ queryKey: ["pharmacy", "queue"], queryFn: fetchQueue, refetchInterval: 10_000 });
   const summary = useQuery({ queryKey: ["pharmacy", "summary"], queryFn: () => fetchCounterSummary(), refetchInterval: 60_000 });
+  /* PARITY P1 — "your day" is this pharmacist's shift: their hand-overs, their money by tender, their drawer. */
+  const shift = useQuery({ queryKey: ["pharmacy", "summary", "mine"], queryFn: fetchMyShift, refetchInterval: 60_000, retry: false });
   /*
     Polled while in hand, because the server can change the ticket under the pharmacist — the pick
     reservation sweep cancels an abandoned pick after 30 minutes (E13) — and the screen must learn
@@ -289,6 +299,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       const d = await handOverDispense(inHandId, identity, keyFor("handover", inHandId));
       moneyKeys.current.delete(`handover:${inHandId}`);
       settle(d);
+      setJustHandedOver(d.id);
       say(t("pharmacyDesk.log.handedOver", { who: d.patient.alias ?? d.patient.name ?? d.patient.uhid }));
     } catch (e) {
       answered("handover", inHandId, e);
@@ -363,6 +374,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       if (e.key === "F8") { e.preventDefault(); palette?.open(); return; }
       if (typingIn(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "q" || e.key === "Q") { e.preventDefault(); setOverlay((o) => (o === "queue" ? null : "queue")); return; }
+      /* PARITY P1 — `N`: note a shortage. One field, prefilled with the drug of the line in hand. */
+      if ((e.key === "n" || e.key === "N") && document.querySelector("[role=dialog]") === null) { e.preventDefault(); setOverlay("short"); return; }
       /* `S` exists only where there is paper to see: a ticket typed from the doctor's slip. */
       if ((e.key === "s" || e.key === "S") && ticket.data?.transcribedBy != null) { e.preventDefault(); setOverlay("slip"); }
     };
@@ -422,7 +435,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
         </div>
 
         <div style={{ display: "flex", flexGrow: 1, minHeight: 0 }}>
-          <Dossier inHand={inHand} me={me} summary={summary.data ?? null} queued={rows.length} onClear={clearDesk} paletteBound={palette !== null} />
+          <Dossier inHand={inHand} me={me} summary={summary.data ?? null} shift={shift.data ?? null} queued={rows.length} onClear={clearDesk} paletteBound={palette !== null} />
 
           <main style={{ flexGrow: 1, minWidth: 0, overflowY: "auto", padding: "24px 30px 30px 30px" }}>
             {savedDraft === null || inHandId !== null ? null : (
@@ -453,6 +466,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onFind={(q) => void find(q)}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
+              autoPrint={inHand !== null && justHandedOver === inHand.id}
+              onFocusDrug={setFocusedDrug}
             />
           </main>
 
@@ -479,10 +494,11 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
           )}
         </div>
 
-        <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} />
+        <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} onDraftDone={copilot.clearPayload} />
       </div>
 
       {overlay === "slip" && inHand !== null ? <SlipSheet dispense={inHand} onClose={() => setOverlay(null)} /> : null}
+      {overlay === "short" ? <ShortBookSheet prefill={inHand === null ? null : focusedDrug} dispenseId={inHandId} onClose={() => setOverlay(null)} /> : null}
       {overlay === "queue" ? (
         <QueueOverlay rows={rows} me={me} now={now} onOpen={(id, who, mine) => void openInTab(id, who, mine)} onResume={(id) => { setOverlay(null); hold(id); }} onClose={() => setOverlay(null)} />
       ) : null}
@@ -524,12 +540,15 @@ function sealedRefusal(e: unknown): boolean {
  * time it landed — and, since PD-7 C8, the ask box: `F2` focuses it (bound here, locally, as the
  * shared `AgentDock` binds it), and an answer is said IN FULL above the bar, never cut to a ticker.
  */
-function DeskDock({ log, said, busy, onAsk, onDismiss }: {
+function DeskDock({ log, said, busy, onAsk, onDismiss, draft: agentDraft, onDraftDone }: {
   log: readonly DeskLog[];
   said: string | null;
   busy: boolean;
   onAsk: (question: string) => void;
   onDismiss: () => void;
+  /** PARITY P1 — the agent's short-book draft, confirmed on the card with one tap. */
+  draft: ShortBookDraft | null;
+  onDraftDone: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const latest = log[0];
@@ -546,7 +565,9 @@ function DeskDock({ log, said, busy, onAsk, onDismiss }: {
   }, []);
   return (
     <div style={{ flexShrink: 0, background: "var(--agent)", color: "var(--agent-fg)" }}>
-      {said === null ? null : (
+      {agentDraft === null || agentDraft.alreadyOpen ? null : <DraftCard draft={agentDraft} onDone={onDraftDone} />}
+      {/* The card IS the answer to a draft; saying it again above the bar is the same sentence twice. */}
+      {said === null || (agentDraft !== null && !agentDraft.alreadyOpen) ? null : (
         <div data-testid="desk-answer" style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "11px 18px", borderBottom: "1px solid #24413631" }}>
           <span style={{ flexGrow: 1, fontSize: 12.5, lineHeight: "18px" }}>{said}</span>
           <button onClick={onDismiss} aria-label={t("pharmacyDesk.ask.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>

@@ -23,7 +23,7 @@
  */
 
 /** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
-export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected";
+export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -121,6 +121,18 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("paisa dekar"), S("paise dekar"), S("pay karke"),
     S("दवा नहीं ली"), S("लेने नहीं आया"), S("पैसे दे दिए"),
     W("pending"), W("collect"), W("le gaye"),
+  ],
+  /**
+   * PARITY P1 (2026-09-24) — "Pan 40 khatam", "out of Pan 40": the counter says a drug is short,
+   * and the agent DRAFTS a short-book line for the pharmacist to confirm. `out of stock` outweighs
+   * the shelf's `stock` (a phrase outranks the word inside it); `nahi bacha` is left out, because
+   * against the shelf's `bacha` it would tie inside the margin and send a plain stock question to
+   * the model.
+   */
+  draft_short_book_entry: [
+    S("khatam"), S("khatm"), S("khtm"), S("खत्म"), S("ख़त्म"), S("out of"), S("out of stock"), S("ran out"),
+    S("short book"), S("shortbook"), S("shortage"), S("short hai"), S("short ho"),
+    W("likh"), W("note"), W("finished"),
   ],
 };
 

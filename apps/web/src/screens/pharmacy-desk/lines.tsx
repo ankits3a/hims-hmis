@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
-import { askPrescriber, fetchPrecheck, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
+import { askPrescriber, fetchPrecheck, noteShortBook, pharmacyErrorText, setShelfLocation } from "../../lib/pharmacy-api";
+import { say } from "./log";
+import { readsAsShortage, sayNoted } from "./short-book";
+import type { ShortDrug } from "./short-book";
 import { quoteAmountPaise } from "../../lib/pharmacy-bill";
 import { ResolveSheet } from "./resolve";
 import { CopilotOffer, firstLineNeedingHelp } from "./copilot";
@@ -26,7 +29,7 @@ import type { PickLine, VerifyLine, WireAlternativeBlock, WireDispense, WireDisp
 export type CollectResult = { ok: true } | { ok: false; lineErrors: Record<number, string>; message: string | null };
 
 export function LineList({
-  dispense, editable, busy, onCollect, onDecline,
+  dispense, editable, busy, onCollect, onDecline, onFocusDrug,
 }: {
   dispense: WireDispense;
   /** Claimed or verified, and this desk's to work. Everything else is drawn, not worked. */
@@ -34,6 +37,8 @@ export function LineList({
   busy: boolean;
   onCollect: (verify: VerifyLine[] | null, pick: PickLine[]) => Promise<CollectResult>;
   onDecline: (lineIdx: number, reason: string) => Promise<boolean>;
+  /** PARITY P1 — the drug of the line the pharmacist is on, so the desk's `N` opens prefilled with it. */
+  onFocusDrug?: (drug: ShortDrug | null) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [ticks, setTicks] = useState<Record<number, Tick>>({});
@@ -129,10 +134,25 @@ export function LineList({
     }
   };
 
-  const decline = async (lineIdx: number, reason: string): Promise<void> => {
+  const decline = async (lineIdx: number, reason: string, alsoShort: boolean): Promise<void> => {
     settleAfterDecline.current = true;
-    if (await onDecline(lineIdx, reason)) setDeclining(null);
-    else settleAfterDecline.current = false;
+    if (await onDecline(lineIdx, reason)) {
+      setDeclining(null);
+      /*
+        PARITY P1 — "not stocked" is the short book's first source. The decline stands on its own;
+        the note is a second act, and a refusal of it is said in the dock, never undoing the decline.
+      */
+      if (alsoShort) {
+        const d = drugOf(dispense.lines.find((l) => l.lineIdx === lineIdx)!);
+        try {
+          const r = await noteShortBook({ drugName: d.name, source: "desk", dispenseId: dispense.id, ...(d.itemId === null ? {} : { itemId: d.itemId }) });
+          say(sayNoted(t, r), r.created ? "ok" : "warn");
+          void qc.invalidateQueries({ queryKey: ["pharmacy", "short-book"] });
+        } catch (e) {
+          say(pharmacyErrorText(e, t), "err");
+        }
+      }
+    } else settleAfterDecline.current = false;
   };
 
   /** A line whose batch the pharmacist may still choose: open, worked here, its own shelf (not a substitute's). */
@@ -229,8 +249,8 @@ export function LineList({
             onSubstitute={() => setSubbing(l.lineIdx)}
             onResolve={() => setResolving(l.lineIdx)}
             onOpenBatch={batchable(l) ? () => setBatchFor(l.lineIdx) : null}
-            onFocusLine={() => setFocusLine(l.lineIdx)}
-            onDecline={(reason) => void decline(l.lineIdx, reason)}
+            onFocusLine={() => { setFocusLine(l.lineIdx); onFocusDrug?.(drugOf(l)); }}
+            onDecline={(reason, alsoShort) => void decline(l.lineIdx, reason, alsoShort)}
           />
         ))}
       </div>
@@ -324,7 +344,7 @@ function LineRow({
   declining: boolean;
   onEdit: (patch: Partial<Tick>, settle: boolean) => void;
   onToggleDecline: (open: boolean) => void;
-  onDecline: (reason: string) => void;
+  onDecline: (reason: string, alsoShort: boolean) => void;
   onSubstitute: () => void;
   onResolve: () => void;
   /** The FEFO batch & shelf sheet for this line, or null when its batch is not the pharmacist's to choose. */
@@ -335,6 +355,8 @@ function LineRow({
   const [menu, setMenu] = useState(false);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [why, setWhy] = useState("");
+  /* PARITY P1 — null follows the reason ("not stocked" ticks it); a tap makes it the pharmacist's. */
+  const [shortChoice, setShortChoice] = useState<boolean | null>(null);
   const [placing, setPlacing] = useState("");
   const [asking, setAsking] = useState("");
   const [sheetError, setSheetError] = useState<string | null>(null);
@@ -443,7 +465,7 @@ function LineRow({
     ] : []),
     ...(onAsk !== null && unasked.length > 0 ? [{ key: "ask", label: t("pharmacyDesk.auth.ask", { doctor }), act: () => { setAsking(""); setSheetError(null); setSheet("ask"); }, disabled: busy }] : []),
     ...(onPlace === null ? [] : [{ key: "where", label: line.location == null ? t("pharmacyDesk.rack.ask") : t("pharmacyDesk.rack.change"), act: () => { setPlacing(line.location ?? ""); setSheetError(null); setSheet("where"); } }]),
-    { key: "decline", label: t("pharmacyDesk.menu.decline"), act: () => { setWhy(""); onToggleDecline(true); } },
+    { key: "decline", label: t("pharmacyDesk.menu.decline"), act: () => { setWhy(""); setShortChoice(null); onToggleDecline(true); } },
   ];
 
   const closeSheet = (): void => { setSheet(null); setSheetError(null); };
@@ -677,8 +699,21 @@ function LineRow({
             placeholder={t("pharmacyDesk.declinePlaceholder")}
             onChange={(e) => setWhy(e.target.value)}
           />
+          <span style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {(["notStocked", "outOfStock"] as const).map((k) => (
+              <button key={k} type="button" className="pill" data-testid={`${id}-why-${k}`} onClick={() => setWhy(t(`pharmacyDesk.short.reason.${k}`))}>
+                {t(`pharmacyDesk.short.reason.${k}`)}
+              </button>
+            ))}
+          </span>
+          {(shortChoice ?? readsAsShortage(why)) || shortChoice === false ? (
+            <label data-testid={`${id}-also-short`} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12.5 }}>
+              <input type="checkbox" checked={shortChoice ?? readsAsShortage(why)} onChange={(e) => setShortChoice(e.target.checked)} />
+              {t("pharmacyDesk.short.alsoNote", { name: given?.brandName ?? rx.drug })}
+            </label>
+          ) : null}
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <button type="button" className="pri" style={{ flexGrow: 1 }} disabled={busy || why.trim() === ""} onClick={() => onDecline(why.trim())}>
+            <button type="button" className="pri" style={{ flexGrow: 1 }} disabled={busy || why.trim() === ""} onClick={() => onDecline(why.trim(), shortChoice ?? readsAsShortage(why))}>
               {t("pharmacyDesk.declineIt")}
             </button>
             <button type="button" className="sec" onClick={() => onToggleDecline(false)}>{t("pharmacyDesk.rack.cancel")}</button>
@@ -689,8 +724,13 @@ function LineRow({
   );
 }
 
+/** The drug a line is about, as the short book should name it: what is being given, else what was written. */
+export function drugOf(l: WireDispenseLine): ShortDrug {
+  return { itemId: l.item?.id ?? null, name: l.dispensedMedicine?.brandName ?? l.item?.name ?? l.rxLine.drug };
+}
+
 /** A small sheet over the desk for one line's exception; Esc closes it and only it. */
-function LineSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }): React.ReactElement {
+export function LineSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }): React.ReactElement {
   const { t } = useTranslation();
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

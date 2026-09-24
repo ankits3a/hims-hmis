@@ -98,12 +98,44 @@ export function openDocumentForPrinting(doc: WireRenderedDocument): boolean {
   return true;
 }
 
+/**
+ * ═══ PHARMACY P1 — THE SAME DOCUMENT, PRINTED FROM THIS PAGE, WITH NO POP-UP ═══
+ *
+ * The pharmacy desk prints its bill and labels in the browser only when no relay is serving the
+ * counter's roll, and it does so right after the hand-over — an `await` after the click, by which
+ * time a browser may treat `window.open` as a pop-up and block it. A hidden iframe needs no
+ * permission: the server's HTML is written into it whole (its own `@page`, none of our stylesheet)
+ * and the frame's own `print()` raises the dialog. The frame is removed a minute later.
+ *
+ * Returns false when the frame could not be made to print (no `contentWindow`), so the caller can
+ * say so rather than claim the paper came out.
+ */
+export function printInFrame(doc: WireRenderedDocument): boolean {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.setAttribute("data-testid", "print-frame");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(frame);
+  const w = frame.contentWindow;
+  if (w === null) { frame.remove(); return false; }
+  w.document.open();
+  w.document.write(doc.html);
+  w.document.close();
+  const go = (): void => { try { w.focus(); w.print(); } catch { /* a refused print is the dialog's business */ } };
+  if (w.document.readyState === "complete") setTimeout(go, 50);
+  else w.addEventListener("load", go, { once: true });
+  setTimeout(() => frame.remove(), 60_000);
+  return true;
+}
+
 /** The clerk-facing name of each document. The wire keys are the server's; these are the counter's. */
 export const PRINT_DOCUMENT_LABEL: Record<string, string> = {
   opd_token_slip: "token slip",
   opd_prescription: "prescription sheet",
   opd_payment_receipt: "payment receipt",
   vitals_slip: "vitals slip",
+  pharmacy_bill: "pharmacy bill",
+  pharmacy_labels: "medicine labels",
 };
 
 /**

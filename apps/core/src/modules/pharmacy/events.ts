@@ -194,6 +194,20 @@ export const retailLicenceRecorded = defineEvent("retail.licence_recorded", MODU
   validFrom: z.string().min(1), validTo: z.string().min(1),
 }));
 
+/**
+ * P1 (parity plan 2026-09-24) — "out of X" was noted at the counter: by the desk's `N`, a declined
+ * line's sheet, or the counter agent's draft once a person confirmed it.
+ */
+export const shortBookNoted = defineEvent("short_book.noted", MODULE, z.object({
+  entryId: id, storeResourceId: id, itemId: id.nullable(), drugName: z.string().min(1),
+  qtyWanted: z.number().int().positive().nullable(), source: z.enum(["desk", "agent", "reorder"]), dispenseId: id.nullable(),
+}));
+
+/** P1 — a short-book entry was closed: ordered, received, or dismissed. */
+export const shortBookResolved = defineEvent("short_book.resolved", MODULE, z.object({
+  entryId: id, storeResourceId: id, resolution: z.enum(["ordered", "received", "dismissed"]),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -201,4 +215,5 @@ export const PHARMACY_EVENTS = [
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
   retailSold, retailLicenceRecorded, retailLineReturned,
+  shortBookNoted, shortBookResolved,
 ] as const;

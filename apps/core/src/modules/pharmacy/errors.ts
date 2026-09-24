@@ -137,6 +137,15 @@ export const PHARMACY_ERROR_CODES = [
   /** The request was already authorised or declined. */
   "authorisation_not_pending",
   "unknown_authorisation",
+  // ── P1 (parity plan 2026-09-24): the short book ──
+  /** A drug name under two characters, or a quantity that is not a positive whole number. */
+  "invalid_short_book_entry",
+  "unknown_short_book_entry",
+  /** The entry was already resolved (ordered, received or dismissed). */
+  "short_book_resolved",
+  // ── P1: the desk prints ──
+  /** The paper asked for does not exist yet: no bill before the money, no label before the pick. */
+  "nothing_to_print",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -230,6 +239,10 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   authorisation_not_needed: 409,
   authorisation_not_pending: 409,
   unknown_authorisation: 404,
+  invalid_short_book_entry: 400,
+  unknown_short_book_entry: 404,
+  short_book_resolved: 409,
+  nothing_to_print: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

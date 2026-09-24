@@ -17,6 +17,7 @@ import { CREST_PNG_DATA_URI } from "./crest";
 import { qrSvg } from "./qr";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
+import type { PrintDocument } from "./enqueue";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -80,7 +81,7 @@ export type RenderedDocument = {
 };
 
 /** Escapes text for HTML. Everything interpolated below goes through it — patient names included. */
-function esc(value: unknown): string {
+export function esc(value: unknown): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -246,12 +247,17 @@ function genderLetter(gender: string | null): string {
   return g.startsWith("o") ? "O" : "—";
 }
 
-function thermalPage(title: string, body: string): RenderedDocument {
+/**
+ * `extraCss` — PHARMACY P1: a document registered by a module (the pharmacy's bill and labels)
+ * adds its own rules to the roll's, rather than growing this file's stylesheet for a layout it does
+ * not own. The OPD documents pass none and print byte-for-byte as before.
+ */
+export function thermalPage(title: string, body: string, extraCss = ""): RenderedDocument {
   return {
     title,
     // 72 mm wide, and `null` height means CONTINUOUS: the relay measures the laid-out document.
     page: { widthMm: 72, heightMm: null },
-    html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${THERMAL_CSS}</style></head><body>${body}</body></html>`,
+    html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${THERMAL_CSS}${extraCss}</style></head><body>${body}</body></html>`,
   };
 }
 
@@ -1116,6 +1122,29 @@ export async function renderPrescriptionSheet(
 }
 
 /**
+ * ═══ PHARMACY P1 — A MODULE DRAWS ITS OWN PAPER ═══
+ *
+ * The OPD documents are drawn in this file because the kernel already reads the encounter. A
+ * pharmacy bill is the pharmacy's rows (the dispense, its merged bill rows, its labels), and this
+ * file importing the pharmacy module would make the kernel depend on a leaf. So a module registers a
+ * renderer for a document it declared in `PrintDocument`, from its Nest module's `onModuleInit` —
+ * the `registerFeeStatusHook` shape. Keyed, so a second init replaces rather than doubles.
+ *
+ * A document with neither a case below nor a registration renders null, which the relay reports
+ * failed: advisory, per R7, exactly as before.
+ */
+export type DocumentRenderer = (
+  db: Db, params: Record<string, unknown>, now: Date, requester: Actor | null,
+) => Promise<RenderedDocument | null>;
+
+const MODULE_RENDERERS = new Map<string, DocumentRenderer>();
+
+export function registerDocumentRenderer(document: PrintDocument, renderer: DocumentRenderer): () => void {
+  MODULE_RENDERERS.set(document, renderer);
+  return () => { if (MODULE_RENDERERS.get(document) === renderer) MODULE_RENDERERS.delete(document); };
+}
+
+/**
  * The one dispatcher the relay's claim goes through.
  *
  * `vitals_slip` returns null DELIBERATELY and is not an oversight: owner ruling R3 created that
@@ -1139,6 +1168,9 @@ export async function renderDocument(
     case "opd_token_slip": return await renderTokenSlip(db, params, now, requester);
     case "opd_payment_receipt": return await renderPaymentReceipt(db, params, now, requester);
     case "opd_prescription": return await renderPrescriptionSheet(db, params, now, requester);
-    default: return null;
+    default: {
+      const registered = MODULE_RENDERERS.get(document);
+      return registered === undefined ? null : await registered(db, params, now, requester);
+    }
   }
 }

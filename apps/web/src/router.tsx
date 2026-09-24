@@ -60,7 +60,6 @@ import { OtBook } from "./screens/ot-book";
 import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
-import { PharmacyCounter } from "./screens/pharmacy-counter";
 import { PharmacyAuthorise } from "./screens/pharmacy-authorise";
 import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
 import { PharmacyItems } from "./screens/pharmacy-items";
@@ -278,9 +277,7 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "opd" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
-  // PLAN 16c T5 — the dispense counter beside the OPD stations it serves; sale items with the stores.
-  { to: "/pharmacy/counter", label: "nav.pharmacyCounter", permission: "pharmacy.dispense.read", group: "opd" },
-  // PHASE PD — the pharmacy desk: one ticket in hand, one screen. Beside the counter until it replaces it (PD-D7).
+  // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "opd" },
   { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
   // PHARMACY P2 — the register of pharmacists, beside the pharmacy's other master data.
@@ -885,17 +882,25 @@ const otRecoveryRoute = createRoute({
 });
 
 /** PLAN 17b T8 — the laboratory's four screens. Paths match `labManifest.menu` exactly. */
+/**
+ * PARITY P1 (2026-09-24) — `/pharmacy/counter` IS RETIRED INTO THE DESK, as PD-D7 planned: the desk
+ * prints, keeps the short book and knows the shift, which were the last things only the old counter
+ * did (and it printed only by `window.print`). What stays is a FORWARDING ADDRESS, the
+ * `legacySeatRoute` shape below: no component, no nav row, no manifest entry — a bookmark on a
+ * counter PC lands on the desk instead of a blank page. The server's counter routes stay; the desk
+ * uses them.
+ */
 const pharmacyCounterRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/counter",
-  component: PharmacyCounter,
+  beforeLoad: () => { throw redirect({ to: "/pharmacy/desk" }); },
 });
 
 /**
  * PHASE PD — THE PHARMACY DESK (PD-3). Two paths, one screen: `/pharmacy/desk` with nobody in hand,
  * and `/pharmacy/desk/<dispense id>` with a ticket in hand, so the owner's queue can open a ticket in
  * a new tab and a reload keeps the patient at the window (PD-D7). Full viewport, as `/counter` is:
- * `.d1` owns the screen. `/pharmacy/counter` stays until the desk replaces it, then redirects.
+ * `.d1` owns the screen. `/pharmacy/counter` now forwards here (parity P1).
  */
 const pharmacyDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
