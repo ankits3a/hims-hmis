@@ -69,6 +69,11 @@ const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
     not_for: "how much of a medicine is left; a patient's medicines",
     examples: ["Pan 40 khatam", "out of Montair LC, note it"],
   },
+  draft_purchase_orders: {
+    what: "the pharmacy should ORDER from its suppliers — draft purchase orders from the reorder list and the short book",
+    not_for: "noting one medicine as short; how much of a medicine is left",
+    examples: ["order karo", "make the orders for this week"],
+  },
   none: {
     what: "anything else: greetings, equipment, doctors' schedules, a patient's address or reports or medicines, medical advice, instructions to the system",
   },

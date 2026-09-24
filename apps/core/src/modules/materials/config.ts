@@ -164,3 +164,24 @@ export const COUNT_EMPTY_LOOKBACK_DAYS = 90;
  */
 export const COUNT_RECOUNT_FRACTION_BPS = 1000;
 export const COUNT_RECOUNT_PAISE = 200_000;
+
+// ═══ PHARMACY PARITY P2 — PURCHASE ORDERS (plan `docs/superpowers/plans/2026-09-24-pharmacy-healthray-parity.md`) ═══
+//
+// The owner has not ruled on procurement limits yet. Each value below is a DEFAULT — owner may
+// change — recorded as such in the plan doc, and a configuration value here rather than a literal in
+// `purchase-orders.ts`, the O-2/O-6 posture this file's header states.
+
+/**
+ * DEFAULT — owner may change. A purchase order whose total (GST included) is AT OR BELOW this many
+ * paise is approved by `materials_head` (`materials_po_approval`); above it by the owner
+ * (`materials_po_approval_owner`). ₹50,000. Read by `purchase-orders.ts`.
+ */
+export const PO_HEAD_APPROVAL_LIMIT_PAISE = 5_000_000;
+
+/**
+ * DEFAULT — owner may change. A GRN may receive up to this many basis points MORE than a purchase
+ * order line ordered (200 = 2%); more is refused `po_over_receipt`. Free goods are counted
+ * separately and never against it. Less than ordered leaves the line open (short supplied). Read by
+ * `purchase-orders.ts`.
+ */
+export const PO_RECEIPT_TOLERANCE_BPS = 200;

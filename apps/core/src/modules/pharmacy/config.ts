@@ -91,3 +91,11 @@ export const RETURN_REFUSED_STORAGE = ["cold_2_8", "frozen", "narcotic"] as cons
 export const RETURN_REF_TYPE = "pharmacy_return";
 /** P19b — the same for a pack back from a walk-in sale or a paper dispense: `ref_id` is the SALE line. */
 export const RETAIL_RETURN_REF_TYPE = "pharmacy_retail_return";
+
+/**
+ * PARITY P2 — the expected-delivery date the agent's DRAFT orders carry: this many days from today.
+ * A distributor in the same city delivers next day or the day after; three leaves a margin. The
+ * person reviewing the draft changes it; the office's "overdue" card reads it. DECIDED (not money,
+ * not procurement authority — a default a pharmacist edits on every order).
+ */
+export const PURCHASE_DEFAULT_LEAD_DAYS = 3;

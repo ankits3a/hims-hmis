@@ -121,4 +121,39 @@ describe("PharmacyReorder — the short book (parity P1)", () => {
     await waitFor(() => expect(resolved).toEqual([{ resolution: "ordered" }]));
     await waitFor(() => expect(screen.queryByTestId("short-sb1")).toBeNull());
   });
+
+  /** PARITY P2 — the levels are set in place by whoever raises orders, and the list says what is ordered and what to buy. */
+  it("shows on-order and to-buy, and saves min / reorder / max on ⏎", async () => {
+    const saved: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = (typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url).split("?")[0]!;
+      const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (raw.endsWith("/api/auth/me")) return json({ actor: { type: "user", id: "u1" }, permissions: { hospital: ["pharmacy.dispense.read", "materials.po.raise"], scoped: { department: {}, floor: {} } } });
+      if (raw.endsWith("/api/pharmacy/short-book")) return json({ entries: [] });
+      if (raw.endsWith("/api/materials/stock-levels")) { saved.push(JSON.parse(String(init?.body))); return json({ level: {} }); }
+      if (raw.endsWith("/api/pharmacy/reorder")) {
+        return json({
+          asOf: "2026-09-24T06:00:00.000Z", store: { id: "s-opd", code: "PHARM-OPD" },
+          window: { days: 30, minCoverDays: 3, targetCoverDays: 7, nearExpiryDays: 90 },
+          items: [
+            { itemId: "i1", code: "CROC500", name: "Crocin 500 tablet", baseUom: "tablet", status: "reorder", available: 30, usedInWindow: 0, daysOfCover: null, unsoldByExpiry: 0, suggestBase: 0, suggestPacks: null, source: null, levels: { minBase: 20, reorderBase: 40, maxBase: 200 }, onOrderBase: 50, inDraftBase: 30, orderBase: 90 },
+            { itemId: "i2", code: "CALP500", name: "Calpol 500 tablet", baseUom: "tablet", status: "no_movement", available: 5, usedInWindow: 0, daysOfCover: null, unsoldByExpiry: 0, suggestBase: 0, suggestPacks: null, source: null, levels: null, onOrderBase: 0, inDraftBase: 0, orderBase: 0 },
+          ],
+          expiring: [], expiredOnShelf: [],
+        });
+      }
+      return new Response("{}", { status: 404 });
+    }));
+    const { renderWithRouter } = await import("../test-utils");
+    renderWithRouter(<PharmacyReorder />, "/pharmacy/reorder");
+    expect(await screen.findByTestId("on-order-CROC500")).toHaveTextContent("50 tablet");
+    expect(screen.getByTestId("on-order-CROC500")).toHaveTextContent("30 on a draft");
+    expect(screen.getByTestId("to-buy-CROC500")).toHaveTextContent("90 tablet");
+    expect(await screen.findByTestId("reorder-office-link")).toBeInTheDocument();
+    const { default: userEvent } = await import("@testing-library/user-event");
+    await userEvent.type(await screen.findByLabelText("Min for CALP500"), "10");
+    await userEvent.type(screen.getByLabelText("Reorder level for CALP500"), "30");
+    await userEvent.type(screen.getByLabelText("Max for CALP500"), "120{Enter}");
+    await waitFor(() => expect(saved).toEqual([{ itemId: "i2", storeResourceId: "s-opd", minBase: 10, reorderBase: 30, maxBase: 120 }]));
+  });
 });

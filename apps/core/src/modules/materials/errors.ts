@@ -194,7 +194,22 @@ export type MaterialsErrorCode =
   /** The person who issued a transfer tries to receive it. DD9's two signatures are two people. */
   | "transfer_self_receipt"
   /** The destination names its keepers (`attributes.custodianRoles`) and the receiver holds none of them. */
-  | "not_store_keeper";
+  | "not_store_keeper"
+  // ── PHARMACY PARITY P2 — purchase orders and the GRN received against one ──
+  /** No such purchase order. */
+  | "unknown_purchase_order"
+  /** The order is not in the state this act needs (edit a draft, approve a pending one, send an approved one…). */
+  | "po_wrong_status"
+  /** A line or header the order cannot carry: no lines, a quantity or rate out of range, an item twice, a pack the item does not have. */
+  | "po_invalid"
+  /** A GRN line would take an order line past what was ordered plus the receipt tolerance (paid quantity; free goods apart). */
+  | "po_over_receipt"
+  /** The GRN is not for this order: another vendor or store, or an item the order does not carry. */
+  | "po_mismatch"
+  /** The person who approved the order is the one receiving it (`po_approver_grn_receiver`). */
+  | "po_approver_receiving"
+  /** Stock levels that do not hold `0 ≤ min ≤ reorder < max`. */
+  | "invalid_stock_level";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
@@ -209,7 +224,7 @@ export type MaterialsErrorCode =
  */
 const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([
   "unknown_item", "unknown_vendor", "unknown_store", "unknown_batch",
-  "unknown_document", "unknown_count", "unknown_adjustment",
+  "unknown_document", "unknown_count", "unknown_adjustment", "unknown_purchase_order",
 ]);
 
 export function materialsHttpStatus(code: MaterialsErrorCode): number {

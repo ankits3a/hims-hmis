@@ -114,6 +114,14 @@ export const materialsManifest: ModuleManifest = {
     "materials.counts.manage",
     /** 14c — count a store the system assigned. Never a store whose stock one moved in the last 30 days. */
     "materials.counts.perform",
+    /**
+     * PHARMACY PARITY P2 — draft, edit, submit, send and cancel a purchase order, and set an item's
+     * min / reorder / max at a store. NOT the approval: that is the approvals engine's
+     * (`materials_po_approval` → materials_head, above the limit `materials_po_approval_owner` →
+     * owner), and a `materials.po.approve` string would be a second door to one decision — the
+     * bank-change precedent in this file's header.
+     */
+    "materials.po.raise",
   ],
   /**
    * **PLAN 14 T7 — THE ONE SUBSCRIPTION, LANDED WITH ITS HANDLER IN THIS COMMIT.**

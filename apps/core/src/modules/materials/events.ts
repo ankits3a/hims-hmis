@@ -317,6 +317,37 @@ export const stockAdjusted = defineEvent("stock.adjusted", MODULE, z.object({
   netValuePaise: paise,
 }));
 
+// ═══ PHARMACY PARITY P2 — buying: levels, purchase orders, and the receipt against one ═══
+
+/** A store's min / reorder / max for an item, set or changed. Base units. */
+export const stockLevelSet = defineEvent("stock_level.set", MODULE, z.object({
+  itemId: id, storeResourceId: id, minBase: qty, reorderBase: qty, maxBase: qty,
+  previous: z.object({ minBase: qty, reorderBase: qty, maxBase: qty }).nullable(),
+}));
+
+const poHeader = { purchaseOrderId: id, poNo: z.string().min(1), vendorId: id, totalPaise: paise };
+
+/** A draft written — by a person (`manual`) or by the agent's draft action a person asked for (`agent`). */
+export const purchaseOrderDrafted = defineEvent("purchase_order.drafted", MODULE, z.object({
+  ...poHeader, storeResourceId: id, source: z.enum(["manual", "agent"]), lines: z.number().int().nonnegative(),
+}));
+/** A draft's lines or header changed. */
+export const purchaseOrderUpdated = defineEvent("purchase_order.updated", MODULE, z.object({ ...poHeader, lines: z.number().int().nonnegative() }));
+/** Sent for approval; `tier` says which approval type it went to. */
+export const purchaseOrderSubmitted = defineEvent("purchase_order.submitted", MODULE, z.object({
+  ...poHeader, approvalId: id, tier: z.enum(["head", "owner"]),
+}));
+export const purchaseOrderApproved = defineEvent("purchase_order.approved", MODULE, z.object({ ...poHeader, approvalId: id, approvedBy: id }));
+/** Rejected by the approver: the order goes back to draft with the reason. */
+export const purchaseOrderRejected = defineEvent("purchase_order.rejected", MODULE, z.object({ ...poHeader, approvalId: id, rejectedBy: id, note: z.string() }));
+export const purchaseOrderSent = defineEvent("purchase_order.sent", MODULE, z.object({ ...poHeader, sentBy: id }));
+export const purchaseOrderCancelled = defineEvent("purchase_order.cancelled", MODULE, z.object({ ...poHeader, reason: z.string().min(1), fromStatus: z.string() }));
+/** A posted GRN received against the order. `status` is the order's status after it. */
+export const purchaseOrderReceived = defineEvent("purchase_order.received", MODULE, z.object({
+  ...poHeader, grnId: id, status: z.enum(["part_received", "received"]),
+  lines: z.array(z.object({ itemId: id, receivedBase: qty, freeReceivedBase: qty })).min(1),
+}));
+
 export const MATERIALS_EVENTS = [
   itemRegistered, itemUpdated,
   vendorRegistered, vendorUpdated, vendorStatusChanged,
@@ -326,4 +357,7 @@ export const MATERIALS_EVENTS = [
   consignmentDeployed, materialConsumed,
   stockCountScheduled, stockCounted, stockVarianceFlagged, stockCountClosed, stockCountCancelled,
   stockAdjusted,
+  stockLevelSet,
+  purchaseOrderDrafted, purchaseOrderUpdated, purchaseOrderSubmitted, purchaseOrderApproved, purchaseOrderRejected,
+  purchaseOrderSent, purchaseOrderCancelled, purchaseOrderReceived,
 ] as const;

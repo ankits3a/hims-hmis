@@ -6,6 +6,8 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { ApprovalError } from "../../kernel/approvals/types";
+import { SodViolationError } from "../../kernel/auth/sod";
+import { WorkflowError } from "../../kernel/workflow/instances";
 import { ResourceError, resourceHttpStatus } from "../../kernel/resources/errors";
 import { MaterialsError, materialsHttpStatus } from "./errors";
 import {
@@ -25,6 +27,12 @@ import {
 import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
 import type { TransferView } from "./transfers";
 import { consumptionsFor } from "./consumption";
+import {
+  assertNotPoApprover, cancelPurchaseOrder, createPurchaseOrder, decidePurchaseOrder, getPurchaseOrder,
+  listPurchaseOrders, purchaseOrderOfGrn, purchasableVendors, receivableLines, sendPurchaseOrder, setStockLevel,
+  submitPurchaseOrder, updatePurchaseOrder,
+} from "./purchase-orders";
+import type { PoSummary, PoView } from "./purchase-orders";
 import { expiringBatches } from "./expiry";
 import { cancelCount, closeCount, countSheet, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
 import { ADJUSTMENT_REASONS, listAdjustments, postAdjustments, requestCountAdjustment } from "./adjustments";
@@ -95,6 +103,10 @@ function httpError(statusCode: number, message: string, code: string, detail?: u
 export function toHttp(e: unknown): never {
   if (e instanceof MaterialsError) throw httpError(materialsHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof ApprovalError) throw httpError(409, e.message, e.code);
+  /** PARITY P2 — a PO's raiser deciding it, or its approver receiving it: the SoD engine's refusal, the billing grammar. */
+  if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation", { pairKey: e.pairKey });
+  /** PARITY P2 — the kernel transition behind a PO decision refused the decider's role, or lost a race. */
+  if (e instanceof WorkflowError) throw httpError(409, e.message, "workflow_refused");
   /**
    * ═══ CLOSE REVIEW M1 — THE FOURTH DOOR, AND THE REPO HAD ALREADY SHUT IT ONCE ═══
    *
@@ -199,7 +211,28 @@ const grnCaptureBody = z.object({
   vendorId: id, source: z.enum(["challan", "consignment_challan", "donation"]),
   storeResourceId: id, challanNo: z.string().min(1).max(64), challanDate: dateStr,
   invoiceNo: z.string().max(64).nullish(), poRef: z.string().max(64).nullish(),
+  /** PARITY P2 — receive against this purchase order. */
+  purchaseOrderId: id.nullish(),
   lines: z.array(grnLineBody).min(1).max(200),
+});
+
+// ── PARITY P2 — purchase orders ──
+const poLineBody = z.object({
+  itemId: id, uom: z.string().min(1).max(32).nullish(), qtyPacks: z.number().int().positive(),
+  freePacks: z.number().int().nonnegative().optional(), ratePaise: paise.nonnegative(),
+  gstRateBps: z.number().int().nonnegative().nullish(), mrpPaise: paise.positive().nullish(),
+});
+const poBody = z.object({
+  vendorId: id, storeResourceId: id, expectedDate: dateStr.nullish(),
+  terms: z.string().max(500).nullish(), note: z.string().max(500).nullish(),
+  lines: z.array(poLineBody).min(1).max(200),
+});
+const poPatchBody = poBody.partial();
+const poStatuses = z.enum(["draft", "pending_approval", "approved", "sent", "part_received", "received", "cancelled"]);
+const decisionBody = z.object({ verdict: z.enum(["approve", "reject"]), note: z.string().min(1).max(500) });
+const levelBody = z.object({
+  itemId: id, storeResourceId: id,
+  minBase: z.number().int().nonnegative(), reorderBase: z.number().int().nonnegative(), maxBase: z.number().int().positive(),
 });
 
 const issueBody = z.object({
@@ -654,6 +687,8 @@ export class MaterialsController {
   ): Promise<{ grnId: string; grnNo: string }> {
     const b = parsed(grnCaptureBody, body);
     try {
+      // PARITY P2 — the SoD engine first, on `db`, so an approver's attempt to receive is recorded.
+      if (b.purchaseOrderId != null) await assertNotPoApprover(this.db, actor, b.purchaseOrderId);
       return await withTx(this.db, (tx) => captureGrn(tx, actor, { ...b, now: new Date() }));
     } catch (e) { toHttp(e); }
   }
@@ -686,7 +721,111 @@ export class MaterialsController {
     @CurrentActor() actor: Actor, @Param("id") grnId: string,
   ): Promise<{ status: string; ledgerEntryIds: string[] }> {
     try {
+      const poId = await purchaseOrderOfGrn(this.db, grnId);
+      if (poId !== null) await assertNotPoApprover(this.db, actor, poId);
       return await withTx(this.db, (tx) => postGrn(tx, actor, grnId, new Date()));
+    } catch (e) { toHttp(e); }
+  }
+
+  // ═══════════════════════════════ PURCHASE ORDERS (PARITY P2) ═══════════════════════════════
+  //
+  // Every route carries its guard (the rule in this file's header); the acts in `purchase-orders.ts`
+  // check again, so a caller that is not this controller (the pharmacy office, the copilot) is held
+  // to the same grants. Reads are `materials.stock.read`; the decision is the approvals engine's,
+  // whose inbox is where an owner who reads no stock decides an order above the head's limit.
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("purchase-orders")
+  async purchaseOrders(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ purchaseOrders: PoSummary[] }> {
+    const q = parsed(z.object({ status: z.string().max(200).optional(), vendorId: id.optional() }), query);
+    const statuses = q.status === undefined ? undefined : q.status.split(",").map((x) => parsed(poStatuses, x));
+    try {
+      return { purchaseOrders: await listPurchaseOrders(this.db, actor, { ...(statuses === undefined ? {} : { statuses }), ...(q.vendorId === undefined ? {} : { vendorId: q.vendorId }) }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("purchase-orders/:id")
+  async purchaseOrder(@CurrentActor() actor: Actor, @Param("id") poId: string): Promise<{ purchaseOrder: PoView }> {
+    try {
+      return { purchaseOrder: await getPurchaseOrder(this.db, actor, poId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.grn.capture", "hospital")
+  @Get("purchase-orders/:id/receivable")
+  async purchaseOrderReceivable(@CurrentActor() actor: Actor, @Param("id") poId: string): Promise<unknown> {
+    try {
+      return await receivableLines(this.db, actor, poId);
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.po.raise", "hospital")
+  @Post("purchase-orders")
+  async createPo(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ purchaseOrder: PoView }> {
+    const b = parsed(poBody, body);
+    try {
+      return { purchaseOrder: await createPurchaseOrder(this.db, actor, b, { source: "manual" }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.po.raise", "hospital")
+  @Patch("purchase-orders/:id")
+  async updatePo(@CurrentActor() actor: Actor, @Param("id") poId: string, @Body() body: unknown): Promise<{ purchaseOrder: PoView }> {
+    const b = parsed(poPatchBody, body);
+    try {
+      return { purchaseOrder: await updatePurchaseOrder(this.db, actor, poId, b) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.po.raise", "hospital")
+  @Post("purchase-orders/:id/submit")
+  async submitPo(@CurrentActor() actor: Actor, @Param("id") poId: string): Promise<{ purchaseOrder: PoView }> {
+    try {
+      return { purchaseOrder: await submitPurchaseOrder(this.db, actor, poId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("approvals.requests.decide", "hospital")
+  @Post("purchase-orders/:id/decision")
+  async decidePo(@CurrentActor() actor: Actor, @Param("id") poId: string, @Body() body: unknown): Promise<{ purchaseOrder: PoView }> {
+    const b = parsed(decisionBody, body);
+    try {
+      return { purchaseOrder: await decidePurchaseOrder(this.db, actor, poId, b.verdict, b.note) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.po.raise", "hospital")
+  @Post("purchase-orders/:id/send")
+  async sendPo(@CurrentActor() actor: Actor, @Param("id") poId: string): Promise<{ purchaseOrder: PoView }> {
+    try {
+      return { purchaseOrder: await sendPurchaseOrder(this.db, actor, poId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.po.raise", "hospital")
+  @Post("purchase-orders/:id/cancel")
+  async cancelPo(@CurrentActor() actor: Actor, @Param("id") poId: string, @Body() body: unknown): Promise<{ purchaseOrder: PoView }> {
+    const b = parsed(reasonBody, body);
+    try {
+      return { purchaseOrder: await cancelPurchaseOrder(this.db, actor, poId, b.reason) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.po.raise", "hospital")
+  @Get("purchase-vendors")
+  async poVendors(@CurrentActor() actor: Actor): Promise<{ vendors: { id: string; code: string; name: string }[] }> {
+    try {
+      return { vendors: await purchasableVendors(this.db, actor) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.po.raise", "hospital")
+  @Post("stock-levels")
+  async stockLevel(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ level: unknown }> {
+    const b = parsed(levelBody, body);
+    try {
+      return { level: await setStockLevel(this.db, actor, b) };
     } catch (e) { toHttp(e); }
   }
 

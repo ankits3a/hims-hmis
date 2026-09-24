@@ -1,7 +1,7 @@
 import { createDb } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { seedSodPairs } from "../src/kernel/auth/sod";
-import { registerMaterialsApprovalTypes } from "../src/modules/materials/approval-types";
+import { MATERIALS_APPROVAL_TYPES, registerMaterialsApprovalTypes } from "../src/modules/materials/approval-types";
 import type { Actor } from "@hmis/contracts";
 
 /**
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     // `deploy.sh` runs the seeds in a fixed sequence that a later phase may reorder.
     await seedSodPairs(db);
     await registerMaterialsApprovalTypes(db, activator);
-    console.log("approval types ensured: materials_near_expiry_acceptance, materials_vendor_bank_change");
+    console.log(`approval types ensured: ${MATERIALS_APPROVAL_TYPES.map((t) => t.typeKey).join(", ")}`);
     console.log("no item, vendor or store seeded — master data is registered through /materials/* (DD16)");
   } finally {
     await pool.end();

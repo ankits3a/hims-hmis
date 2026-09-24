@@ -347,7 +347,8 @@ describe("the words behind the screen", () => {
   const SERVER_TYPES = [
     "billing_discount", "billing_clearance_discount", "billing_credit_extension", "billing_refund", "billing_variance",
     "lab_release_unpaid", "patient_merge", "patient_unmerge", "materials_stock_adjustment",
-    "materials_near_expiry_acceptance", "materials_vendor_bank_change", "imaging_definition_publish",
+    "materials_near_expiry_acceptance", "materials_vendor_bank_change", "materials_po_approval", "materials_po_approval_owner",
+    "imaging_definition_publish",
     "ot_definition_publish", "ot_deposit_exception", "tariff_revision", "membership_grace_honor",
   ];
 

@@ -1,7 +1,8 @@
 import {
   EXPIRY_THRESHOLD_DAYS, availableQtyByItem, consumedQtyByItem, expiredStockAt, findStoreByCode, itemsByIds, listStores,
-  sellableBatchesByItem, uomsByItems,
+  onOrderAt, sellableBatchesByItem, stockLevelsAt, uomsByItems,
 } from "../materials";
+import type { StockLevel } from "../materials";
 import { OPD_PHARMACY_STORE_CODE, REORDER_MIN_COVER_DAYS, REORDER_TARGET_COVER_DAYS, REORDER_WINDOW_DAYS, istDateOf } from "./config";
 import { PharmacyError } from "./errors";
 import { listSaleItems } from "./sale-items";
@@ -58,6 +59,18 @@ export type ReorderLine = {
   /** "2 strip" when the suggestion is a whole number of the item's issue pack. */
   suggestPacks: string | null;
   source: { storeCode: string; storeName: string; available: number } | null;
+  /** PARITY P2 — the store's min / reorder / max for the item, when somebody has set them. */
+  levels: StockLevel | null;
+  /** PARITY P2 — still owed on approved, sent and part-received orders (base units). */
+  onOrderBase: number;
+  /** PARITY P2 — on drafts and orders awaiting approval (base units). */
+  inDraftBase: number;
+  /**
+   * PARITY P2 — what to BUY, in base units. With levels, at or below the reorder level:
+   * `max − (available + on order + in draft)`. Without levels: the cover suggestion when no other
+   * store can send it, less what is already ordered or drafted. Zero when nothing is to be bought.
+   */
+  orderBase: number;
 };
 
 export type ExpiryAction = "move_back" | "sell_first";
@@ -81,6 +94,8 @@ export type ExpiredLine = { itemId: string; code: string; name: string; baseUom:
 
 export type ReorderAdvice = {
   asOf: Date;
+  /** PARITY P2 — the counter's store, whose levels the list shows and edits. */
+  store: { id: string; code: string };
   window: { days: number; minCoverDays: number; targetCoverDays: number; nearExpiryDays: number };
   items: ReorderLine[];
   expiring: ExpiringLine[];
@@ -125,12 +140,14 @@ export async function reorderAdvice(db: Db, now: Date = new Date()): Promise<Reo
   const ids = sale.map((i) => i.itemId);
   const since = new Date(now.getTime() - REORDER_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const today = istDateOf(now);
-  const [available, used, uoms, batches, expired] = await Promise.all([
+  const [available, used, uoms, batches, expired, levels, onOrder] = await Promise.all([
     availableQtyByItem(db, counter.id, ids, now),
     consumedQtyByItem(db, counter.id, ids, since, now),
     uomsByItems(db, ids),
     sellableBatchesByItem(db, counter.id, ids, now),
     expiredStockAt(db, counter.id, now),
+    stockLevelsAt(db, counter.id, ids),
+    onOrderAt(db, counter.id, ids),
   ]);
 
   const expiring: ExpiringLine[] = [];
@@ -155,9 +172,12 @@ export async function reorderAdvice(db: Db, now: Date = new Date()): Promise<Reo
     });
     const cover = Math.max(0, have - unsoldByExpiry);
     const daysOfCover = perDay === 0 ? null : Math.round((cover / perDay) * 10) / 10;
-    const status: ReorderStatus = usedQty === 0 ? "no_movement"
+    const level = levels.get(item.itemId) ?? null;
+    const coverStatus: ReorderStatus = usedQty === 0 ? "no_movement"
       : have === 0 ? "stock_out"
         : (daysOfCover as number) < REORDER_MIN_COVER_DAYS ? "reorder" : "ok";
+    // P2 — a level a person set outranks the forecast when stock is at or below it.
+    const status: ReorderStatus = level !== null && have <= level.reorderBase ? (have === 0 ? "stock_out" : "reorder") : coverStatus;
     let suggestBase = 0;
     let suggestPacks: string | null = null;
     if (status === "stock_out" || status === "reorder") {
@@ -168,9 +188,14 @@ export async function reorderAdvice(db: Db, now: Date = new Date()): Promise<Reo
       suggestBase = pack === undefined ? short : Math.ceil(short / pack.toBaseMultiplier) * pack.toBaseMultiplier;
       if (pack !== undefined && suggestBase > 0) suggestPacks = `${String(suggestBase / pack.toBaseMultiplier)} ${pack.uom}`;
     }
+    const coming = onOrder.get(item.itemId) ?? { onOrderBase: 0, inDraftBase: 0 };
     return {
       itemId: item.itemId, code: item.code, name: item.name, baseUom: item.baseUom,
       status, available: have, usedInWindow: usedQty, daysOfCover, unsoldByExpiry, suggestBase, suggestPacks, source: null,
+      levels: level, onOrderBase: coming.onOrderBase, inDraftBase: coming.inDraftBase,
+      orderBase: level !== null && have <= level.reorderBase
+        ? Math.max(0, level.maxBase - (have + coming.onOrderBase + coming.inDraftBase))
+        : 0,
     };
   });
 
@@ -189,6 +214,12 @@ export async function reorderAdvice(db: Db, now: Date = new Date()): Promise<Reo
       line.source = offers.find((o) => o.available >= line.suggestBase) ?? offers[0] ?? null;
     }
   }
+  // P2 — without levels, the cover suggestion is bought only when no other store can send it.
+  for (const line of lines) {
+    if (line.levels === null && line.suggestBase > 0 && line.source === null) {
+      line.orderBase = Math.max(0, line.suggestBase - line.onOrderBase - line.inDraftBase);
+    }
+  }
 
   lines.sort((a, b) => RANK[a.status] - RANK[b.status]
     || (a.daysOfCover ?? Infinity) - (b.daysOfCover ?? Infinity)
@@ -204,6 +235,7 @@ export async function reorderAdvice(db: Db, now: Date = new Date()): Promise<Reo
 
   return {
     asOf: now,
+    store: { id: counter.id, code: counter.code },
     window: {
       days: REORDER_WINDOW_DAYS, minCoverDays: REORDER_MIN_COVER_DAYS, targetCoverDays: REORDER_TARGET_COVER_DAYS,
       nearExpiryDays: NEAR_EXPIRY_DAYS,

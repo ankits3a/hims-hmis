@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
 import { fetchReorderAdvice, fetchShortBook, pharmacyErrorText, resolveShortBook } from "../lib/pharmacy-api";
+import { setStockLevel } from "../lib/purchase-api";
+import { materialsErrorText } from "../lib/materials-api";
 import { Button } from "@/components/ui/button";
 import type { WireReorderLine } from "../lib/pharmacy-api";
 
@@ -23,12 +26,20 @@ const TONE: Record<WireReorderLine["status"], string> = {
 
 export function PharmacyReorder(): React.ReactElement {
   const { t } = useTranslation();
+  const { can } = useAuth();
   const advice = useQuery({ queryKey: ["pharmacy", "reorder"], queryFn: fetchReorderAdvice });
   const w = advice.data?.window;
+  /* PARITY P2 — whoever raises orders sets the levels, here, in place. */
+  const canLevel = can("materials.po.raise") && advice.data?.store !== undefined;
   return (
     <div className="space-y-4 p-4">
       <style>{"@media print { body * { visibility: hidden; } .reorder-print, .reorder-print * { visibility: visible; } .reorder-print { position: absolute; left: 0; top: 0; } .reorder-print .no-need { display: none; } }"}</style>
-      <h1 className="text-xl font-semibold">{t("pharmacyReorder.title")}</h1>
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h1 className="text-xl font-semibold">{t("pharmacyReorder.title")}</h1>
+        {can("materials.po.raise") && (
+          <Link to="/pharmacy/office" className="text-sm underline" data-testid="reorder-office-link">{t("pharmacyReorder.p2.office")}</Link>
+        )}
+      </div>
       {w !== undefined && (
         <p className="max-w-3xl text-sm text-muted-foreground">
           {t("pharmacyReorder.intro", { days: w.days, min: w.minCoverDays, target: w.targetCoverDays })}
@@ -51,11 +62,14 @@ export function PharmacyReorder(): React.ReactElement {
                   <th className="py-1 pr-3">{t("pharmacyReorder.cover")}</th>
                   <th className="py-1 pr-3">{t("pharmacyReorder.suggest")}</th>
                   <th className="py-1 pr-3">{t("pharmacyReorder.source")}</th>
+                  <th className="py-1 pr-3">{t("pharmacyReorder.p2.levels")}</th>
+                  <th className="py-1 pr-3">{t("pharmacyReorder.p2.onOrder")}</th>
+                  <th className="py-1 pr-3">{t("pharmacyReorder.p2.toBuy")}</th>
                 </tr>
               </thead>
               <tbody>
                 {advice.data.items.map((l) => (
-                  <tr key={l.itemId} data-testid={`reorder-${l.code}`} className={l.suggestBase === 0 ? "no-need" : ""}>
+                  <tr key={l.itemId} data-testid={`reorder-${l.code}`} className={l.suggestBase === 0 && (l.orderBase ?? 0) === 0 ? "no-need" : ""}>
                     <td className="py-1 pr-3">{l.name} <span className="text-xs text-muted-foreground">{l.code}</span></td>
                     <td className="py-1 pr-3"><span className={`rounded px-1 text-xs ${TONE[l.status]}`}>{t(`pharmacyReorder.${l.status}`)}</span></td>
                     <td className="py-1 pr-3">{l.available} {l.baseUom}</td>
@@ -72,6 +86,16 @@ export function PharmacyReorder(): React.ReactElement {
                         ? t("pharmacyReorder.purchase")
                         : t("pharmacyReorder.sourceHas", { store: l.source.storeName, n: l.source.available })}
                     </td>
+                    <td className="py-1 pr-3">
+                      {canLevel
+                        ? <LevelsCell itemId={l.itemId} code={l.code} storeResourceId={advice.data.store!.id} levels={l.levels ?? null} />
+                        : l.levels == null ? "" : `${String(l.levels.minBase)} / ${String(l.levels.reorderBase)} / ${String(l.levels.maxBase)}`}
+                    </td>
+                    <td className="py-1 pr-3" data-testid={`on-order-${l.code}`}>
+                      {(l.onOrderBase ?? 0) > 0 ? `${String(l.onOrderBase)} ${l.baseUom}` : ""}
+                      {(l.inDraftBase ?? 0) > 0 && <span className="block text-xs text-muted-foreground">{t("pharmacyReorder.p2.inDraft", { n: l.inDraftBase })}</span>}
+                    </td>
+                    <td className="py-1 pr-3" data-testid={`to-buy-${l.code}`}>{(l.orderBase ?? 0) > 0 ? `${String(l.orderBase)} ${l.baseUom}` : ""}</td>
                   </tr>
                 ))}
               </tbody>
@@ -135,6 +159,56 @@ export function PharmacyReorder(): React.ReactElement {
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * PARITY P2 — min / reorder / max for one item at the counter's store, typed in place. ⏎ saves; the
+ * server holds `0 ≤ min ≤ reorder < max` and says so in the operator's language when it does not.
+ */
+function LevelsCell({ itemId, code, storeResourceId, levels }: {
+  itemId: string; code: string; storeResourceId: string; levels: { minBase: number; reorderBase: number; maxBase: number } | null;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [v, setV] = useState({
+    min: levels === null ? "" : String(levels.minBase),
+    reorder: levels === null ? "" : String(levels.reorderBase),
+    max: levels === null ? "" : String(levels.maxBase),
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const dirty = levels === null
+    ? v.min !== "" || v.reorder !== "" || v.max !== ""
+    : v.min !== String(levels.minBase) || v.reorder !== String(levels.reorderBase) || v.max !== String(levels.maxBase);
+  const save = async (): Promise<void> => {
+    if (!dirty || busy) return;
+    setBusy(true); setError(null);
+    try {
+      await setStockLevel({ itemId, storeResourceId, minBase: Number(v.min || "0"), reorderBase: Number(v.reorder || "0"), maxBase: Number(v.max || "0") });
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "reorder"] });
+    } catch (e) {
+      setError(materialsErrorText(e, t));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const box = (k: "min" | "reorder" | "max"): React.ReactElement => (
+    <input
+      aria-label={t(`pharmacyReorder.p2.${k}`, { code })}
+      className="w-14 rounded border px-1 py-0.5 text-right"
+      inputMode="numeric"
+      value={v[k]}
+      onChange={(e) => setV((p) => ({ ...p, [k]: e.target.value.replace(/[^0-9]/g, "") }))}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void save(); } }}
+    />
+  );
+  return (
+    <form className="flex items-center gap-1 whitespace-nowrap" onSubmit={(e) => { e.preventDefault(); void save(); }} data-testid={`levels-${code}`}>
+      {box("min")}<span>/</span>{box("reorder")}<span>/</span>{box("max")}
+      {dirty && <Button type="submit" size="sm" variant="outline" disabled={busy}>{t("pharmacyReorder.p2.save")}</Button>}
+      {error !== null && <span role="alert" className="block text-xs text-red-600">{error}</span>}
+    </form>
   );
 }
 

@@ -77,12 +77,41 @@ export const MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
     actFirstAllowed: false,
     closureSlaMinutes: 1440,
   },
+  /**
+   * PHARMACY PARITY P2 — a purchase order, up to `PO_HEAD_APPROVAL_LIMIT_PAISE` (config.ts). The
+   * materials head, who is accountable for what the hospital buys. A working day to decide.
+   * DEFAULT — owner may change (the plan doc's procurement defaults).
+   */
+  {
+    typeKey: "materials_po_approval",
+    title: "Purchase Order Approval",
+    approverRole: "materials_head",
+    urgencyClass: "routine",
+    actFirstAllowed: false,
+    closureSlaMinutes: 1440,
+  },
+  /**
+   * PARITY P2 — a purchase order ABOVE the limit goes to the owner. A second type rather than a
+   * branch inside one, because an approval type names exactly one approver role and the kernel's
+   * transition checks that role (kernel/approvals/types.ts). DEFAULT — owner may change.
+   */
+  {
+    typeKey: "materials_po_approval_owner",
+    title: "Purchase Order Approval (above the head's limit)",
+    approverRole: "owner",
+    urgencyClass: "routine",
+    actFirstAllowed: false,
+    closureSlaMinutes: 1440,
+  },
 ];
 
 /** The two type keys, for callers that must not retype a string the engine matches exactly. */
 export const NEAR_EXPIRY_APPROVAL_TYPE = "materials_near_expiry_acceptance";
 export const VENDOR_BANK_CHANGE_APPROVAL_TYPE = "materials_vendor_bank_change";
 export const STOCK_ADJUSTMENT_APPROVAL_TYPE = "materials_stock_adjustment";
+/** PARITY P2 — the purchase order's two tiers. */
+export const PO_APPROVAL_TYPE = "materials_po_approval";
+export const PO_OWNER_APPROVAL_TYPE = "materials_po_approval_owner";
 
 /**
  * The DRAFTER half of each `approval_<typeKey>` definition. `createDraft` runs no actor-type check,

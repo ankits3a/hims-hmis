@@ -23,7 +23,7 @@ import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
   OT_DEFINITION_KIND_VALUES, OT_GATE_DEF_KEY, activeDefinitionRow,
 } from "../src/modules/ot";
-import { availableQty, findStoreByCode, listItems } from "../src/modules/materials";
+import { PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, availableQty, findStoreByCode, listItems } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import {
   HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
@@ -810,6 +810,31 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return anyCurrent;
       },
       fix: "§1.10: file each pharmacist's council registration, and renew any that ends within 60 days, at /pharmacy/pharmacists (the register screen names who) — the day one lapses, verify refuses that pharmacist",
+    },
+    {
+      /**
+       * PARITY P2 — green when `seed:materials` has registered BOTH purchase-order approval types
+       * (the deploy's act). Without them `submitPurchaseOrder` refuses `unknown_type` and no order
+       * the agent drafts can ever be approved.
+       */
+      gate: "G2", code: "pharmacy_po_approval_registered",
+      check: async (db) => {
+        for (const key of [PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE]) {
+          if ((await withTx(db, (tx) => getApprovalType(tx, key))) === null) return false;
+        }
+        return true;
+      },
+      fix: "§11: done by seed:materials on every deploy — run: pnpm --filter @hmis/core seed:materials",
+    },
+    {
+      /**
+       * PARITY P2 — green when an ACTIVE person holds `materials_head`, the approver of every purchase
+       * order up to the limit (the owner decides above it). Red until somebody is assigned: with no
+       * holder, a submitted order waits in a queue nobody can open.
+       */
+      gate: "G4", code: "pharmacy_po_approver_held",
+      check: heldAtHospitalScope("materials_head"),
+      fix: "§11: assign `materials_head` at /admin/users — the approver of purchase orders up to ₹50,000 (the owner approves above it; nobody approves an order they raised)",
     },
   ],
 

@@ -166,6 +166,42 @@ describe("MaterialsGrn", () => {
     expect(sent.lines[0]?.qtyBase).toBeUndefined();
   });
 
+  /**
+   * PARITY P2 — a delivery received AGAINST an order: picking the order fills the store and the
+   * lines with what is still owed, at the order's rate per base unit, and the capture names the order.
+   */
+  it("picks the vendor's open order, prefills what is owed, and captures against it", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/materials/purchase-orders": { status: 200, body: { purchaseOrders: [{ id: "po-1", poNo: "MPO2609240001", expectedDate: "2026-09-27", status: "sent" }] } },
+      "GET /api/materials/purchase-orders/po-1/receivable": { status: 200, body: {
+        purchaseOrder: { id: "po-1", poNo: "MPO2609240001", storeResourceId: "st-1", status: "sent" },
+        lines: [{ itemId: "it-1", itemCode: "CROC500", itemName: "Crocin", uom: "strip", multiplier: 10, remainingPacks: 4, remainingBase: 40, unitCostPaise: 260, mrpPaise: 3_500, freePacksRemaining: 0 }],
+      } },
+      "POST /api/materials/grns": { status: 201, body: { grnId: "g-1", grnNo: "GRN2608270001" } },
+      "GET /api/materials/grns/g-1": { status: 200, body: { grn: grnWith(null) } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    const user = userEvent.setup();
+    await screen.findByRole("option", { name: "ACME" });
+    await user.selectOptions(screen.getByLabelText("Vendor"), "v-1");
+    await screen.findByRole("option", { name: /MPO2609240001/ });
+    await user.selectOptions(screen.getByLabelText("Purchase order"), "po-1");
+    await waitFor(() => expect(screen.getByLabelText("Quantity")).toHaveValue("4"));
+    expect(screen.getByLabelText("Store")).toHaveValue("st-1");
+    expect(screen.getByLabelText("Unit")).toHaveValue("strip");
+    expect(screen.getByLabelText(/Landed cost per base unit/)).toHaveValue("2.60");
+    await user.type(screen.getByLabelText(/^Challan no\.$/), "CH/9");
+    await user.type(screen.getByLabelText(/^Challan date/), "2026-09-26");
+    await user.type(screen.getByLabelText("Batch"), "B-9");
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() => { expect(bodiesOf("POST", "/materials/grns")).toHaveLength(1); });
+    expect(bodiesOf("POST", "/materials/grns")[0]).toMatchObject({
+      purchaseOrderId: "po-1", storeResourceId: "st-1",
+      lines: [{ itemId: "it-1", uom: "strip", qtyInUom: 4, unitCostPaise: 260, mrpPaise: 3_500, mrpUom: "strip", batchNo: "B-9" }],
+    });
+  });
+
   /** A free-goods line is zero-cost with FULL batch discipline (DD8) — never a discount. */
   it("a free-goods line sends cost 0 and disables the cost field", async () => {
     mockRoutes({

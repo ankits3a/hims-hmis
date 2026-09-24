@@ -4,7 +4,8 @@ import { seedSodPairs } from "../../kernel/auth/sod";
 import { getApprovalType } from "../../kernel/approvals/types";
 import { withTx } from "../../kernel/db/client";
 import {
-  MATERIALS_APPROVAL_TYPES, NEAR_EXPIRY_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE, VENDOR_BANK_CHANGE_APPROVAL_TYPE,
+  MATERIALS_APPROVAL_TYPES, NEAR_EXPIRY_APPROVAL_TYPE, PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE,
+  VENDOR_BANK_CHANGE_APPROVAL_TYPE,
   registerMaterialsApprovalTypes,
 } from "./approval-types";
 import type { Actor } from "@hmis/contracts";
@@ -53,13 +54,15 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
    * A diff that moved it to `materials_head` would put the person who talks to the vendor daily in
    * charge of where the vendor's money goes, and it would compile.
    */
-  it("declares exactly three types, with DD10's approver roles and SLAs, and 14c's write-off to the MS", () => {
+  it("declares exactly five types, with DD10's approver roles and SLAs, 14c's write-off to the MS, and P2's two PO tiers", () => {
     expect(MATERIALS_APPROVAL_TYPES.map((s) => s.typeKey)).toEqual([
       NEAR_EXPIRY_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE, VENDOR_BANK_CHANGE_APPROVAL_TYPE,
+      PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE,
     ]);
     // 14c: the write-off is the medical superintendent's, never the materials head who asks for it.
-    expect(MATERIALS_APPROVAL_TYPES.map((s) => s.approverRole)).toEqual(["materials_head", "medical_superintendent", "owner"]);
-    expect(MATERIALS_APPROVAL_TYPES.map((s) => s.closureSlaMinutes)).toEqual([240, 1440, 1440]);
+    // Parity P2: a purchase order up to the configured limit is the head's, above it the owner's.
+    expect(MATERIALS_APPROVAL_TYPES.map((s) => s.approverRole)).toEqual(["materials_head", "medical_superintendent", "owner", "materials_head", "owner"]);
+    expect(MATERIALS_APPROVAL_TYPES.map((s) => s.closureSlaMinutes)).toEqual([240, 1440, 1440, 1440, 1440]);
     // Neither is act-first: accepting short-dated stock and moving where money goes are both
     // reversible only on paper. See the file header in `approval-types.ts`.
     expect(MATERIALS_APPROVAL_TYPES.every((s) => s.actFirstAllowed === false)).toBe(true);
@@ -68,7 +71,7 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
 
   // ────────────────────────────── registration, then idempotence ──────────────────────────────
 
-  it("registers both types and activates one definition version each", async () => {
+  it("registers every type and activates one definition version each", async () => {
     await seedSodPairs(db);
     await registerMaterialsApprovalTypes(db, activator);
 
@@ -76,9 +79,14 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
     const bank = await withTx(db, (tx: Tx) => getApprovalType(tx, VENDOR_BANK_CHANGE_APPROVAL_TYPE));
     expect(near?.approverRole).toBe("materials_head");
     expect(bank?.approverRole).toBe("owner");
+    // Parity P2 — the purchase order's two tiers.
+    expect((await withTx(db, (tx: Tx) => getApprovalType(tx, PO_APPROVAL_TYPE)))?.approverRole).toBe("materials_head");
+    expect((await withTx(db, (tx: Tx) => getApprovalType(tx, PO_OWNER_APPROVAL_TYPE)))?.approverRole).toBe("owner");
 
     expect(await definitionVersions()).toEqual([
       { key: `approval_${NEAR_EXPIRY_APPROVAL_TYPE}`, versions: 1 },
+      { key: `approval_${PO_APPROVAL_TYPE}`, versions: 1 },
+      { key: `approval_${PO_OWNER_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${STOCK_ADJUSTMENT_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${VENDOR_BANK_CHANGE_APPROVAL_TYPE}`, versions: 1 },
     ]);
@@ -97,12 +105,14 @@ describe("the materials approval types (Plan 14 T2 / DD10)", () => {
     expect(await definitionVersions()).toEqual(after1);
     expect(await definitionVersions()).toEqual([
       { key: `approval_${NEAR_EXPIRY_APPROVAL_TYPE}`, versions: 1 },
+      { key: `approval_${PO_APPROVAL_TYPE}`, versions: 1 },
+      { key: `approval_${PO_OWNER_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${STOCK_ADJUSTMENT_APPROVAL_TYPE}`, versions: 1 },
       { key: `approval_${VENDOR_BANK_CHANGE_APPROVAL_TYPE}`, versions: 1 },
     ]);
     const rows = (await db.execute(sql`
       select count(*)::int as "n" from approval_types where type_key like 'materials_%'
     `)).rows as { n: number }[];
-    expect(rows[0]?.n).toBe(3); // 14c second slice: + materials_stock_adjustment
+    expect(rows[0]?.n).toBe(5); // 14c second slice: + materials_stock_adjustment; parity P2: + the two PO tiers
   });
 });

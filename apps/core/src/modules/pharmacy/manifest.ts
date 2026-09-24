@@ -31,6 +31,8 @@ export const pharmacyManifest: ModuleManifest = {
     { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
     { label: "Pharmacists", path: "/pharmacy/pharmacists", permission: "pharmacy.pharmacists.manage" },
     { label: "Reorder list", path: "/pharmacy/reorder", permission: "pharmacy.dispense.read" },
+    /** PARITY P2 — the back office: needs-you-today, purchase orders the agent drafts, approval, send. */
+    { label: "Pharmacy office", path: "/pharmacy/office", permission: "materials.po.raise" },
     { label: "H1 register", path: "/pharmacy/registers/h1", permission: "pharmacy.register.read" },
     /** P12 — the leakage triangle: the billing supervisor's and the owner's read, not the counter's. */
     { label: "Pharmacy leakage", path: "/pharmacy/leakage", permission: "billing.reports.read" },

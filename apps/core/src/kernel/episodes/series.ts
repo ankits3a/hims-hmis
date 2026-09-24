@@ -74,6 +74,12 @@ export const EPISODE_SERIES = {
    * inside the 16-character accession limit 18b will write it into.
    */
   imaging_study: "X",
+  /**
+   * PHARMACY PARITY P2 — the purchase order. A stores document like the GRN, so it takes the same
+   * multi-letter exception. Not `PO`, which would start with the dispense's `P` and break prefix
+   * freedom (`series.test.ts`): `MPO`, the materials purchase order, `MPO2609240001` on paper.
+   */
+  purchase_order: "MPO",
 } as const;
 
 export type EpisodeSeriesKey = keyof typeof EPISODE_SERIES;

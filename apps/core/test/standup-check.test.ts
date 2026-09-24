@@ -28,6 +28,7 @@ import { ensureOtUnit } from "../scripts/seed-ot";
 import { seedOtBase } from "./helpers/ot";
 import { setupPcpndtFixture } from "./helpers/pcpndt";
 import { registerOtApprovalTypes } from "../src/modules/ot";
+import { registerMaterialsApprovalTypes } from "../src/modules/materials";
 import {
   ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_RESOLVER_FLAG, assign, draftPeriod, listTeams,
   publishPeriod, seedOrgDepartments, seedRosterPositions, seedUnits,
@@ -206,6 +207,9 @@ async function deployG2State(db: Db): Promise<void> {
   await seedFormularyInteractions(db);
   await registerOtApprovalTypes(db, ACTOR);
   await ensureOtUnit(db, ACTOR);
+  // `deploy.sh` runs `seed-materials.js`: the purchase order's two approval types are deploy facts
+  // (parity P2's `pharmacy_po_approval_registered`), and so are the three older materials types.
+  await registerMaterialsApprovalTypes(db, ACTOR);
 }
 
 const verdictOf = (rows: RowResult[], module: string, code: string): string | undefined =>

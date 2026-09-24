@@ -34,6 +34,9 @@ export const APPROVAL_KINDS = {
   materials_stock_adjustment: [],
   materials_near_expiry_acceptance: [],
   materials_vendor_bank_change: [],
+  /* PARITY P2 — a purchase order, up to the head's limit and above it. The total is in the request note. */
+  materials_po_approval: ["amount"],
+  materials_po_approval_owner: ["amount"],
   imaging_definition_publish: [],
   ot_definition_publish: [],
   ot_deposit_exception: ["amount", "patient"],

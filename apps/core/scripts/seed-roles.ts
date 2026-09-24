@@ -465,6 +465,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.register.read",
       // 14c — a pharmacist may count the main store; the counter's own store is theirs and is refused.
       "materials.counts.perform",
+      // PHARMACY PARITY P2 — the pharmacist (the in-charge holds `pharmacy` too) raises the counter's
+      // purchase orders and sets its min / reorder / max. DEFAULT — owner may change. The approval is
+      // not theirs: the kernel routes it to materials_head, or the owner above the limit.
+      "materials.po.raise",
       // PHARMACY P5 — a paid dispense that cannot be collected: the counter that issued the invoice
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",
@@ -1050,6 +1054,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // else scheduled. The act keeps the scheduler and the store's custodians off the sheet.
       "materials.counts.manage",
       "materials.counts.perform",
+      // PHARMACY PARITY P2 — the head raises orders too. Approving is the approvals pair below: the
+      // head is `materials_po_approval`'s approverRole, and the kernel refuses a head deciding an
+      // order they submitted or drafted.
+      "materials.po.raise",
       // ─── THE APPROVALS SPINE, 2026-09-20: the same defect as the owner's, one store over ───
       //
       // `materials_head` is the `approverRole` on `materials_near_expiry_acceptance` and held
