@@ -4287,6 +4287,33 @@ describe("Consult v2", () => {
     expect(screen.getByTestId("rx-fields-0")).not.toHaveStyle({ display: "none" });
   });
 
+  // Handoff item 2 (board `Consult`): the line being written is a card on the finished card's columns.
+  it("V10b: the line being written is a dashed card on the same columns — number, medicine, dose, route — and turns solid once it has a medicine and days", async () => {
+    mockRoutes(routes({ "GET /api/formulary/medicines/search": { status: 200, body: V2_DRUGS } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    const card = await screen.findByTestId("rx-card-0");
+    expect(card).toHaveClass("writing");
+    const row = within(card).getByTestId("rx-row-0");
+    expect(row).toHaveClass("cx-rxedit");
+    expect(row).toHaveTextContent(/^01/); // the line's number leads the row, as on a finished card
+    // The fields keep their names for a screen reader; the label text is not drawn on screen.
+    expect(within(row).getByLabelText("Drug")).toBeInTheDocument();
+    expect(within(row).getByLabelText("Dose")).toHaveAttribute("placeholder", "Dose, e.g. 500 mg");
+    expect(within(row).getByLabelText("Route")).toBeInTheDocument();
+    await user.type(within(row).getByLabelText("Drug"), "amlo");
+    await user.click(await screen.findByTestId("rx-drug-0-hit-m-amlong"));
+    expect(card).toHaveClass("writing"); // a medicine but no days yet
+    // Once the medicine is in, the card's head carries the number; the row does not repeat it.
+    expect(within(card).getByTestId("rx-card-head-0")).toHaveTextContent(/^01/);
+    expect(within(card).getByTestId("rx-row-0")).not.toHaveTextContent(/^01/);
+    await user.click(screen.getByTestId("sig-0-days-5"));
+    expect(card).not.toHaveClass("writing");
+    expect(screen.getByTestId("rx-add")).toHaveClass("cx-rxadd");
+    expect(screen.getByRole("button", { name: "Add line" })).toBe(screen.getByTestId("rx-add"));
+  });
+
   it("V11: the voice scribe is a small mic in the complaint's header row, and Save draft and Refer are also in the header's ⋯ menu", async () => {
     mockRoutes(routes());
     const user = userEvent.setup();
