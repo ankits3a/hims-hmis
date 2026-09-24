@@ -21,21 +21,40 @@ import type {
  * strip. The pieces live here so `opd-consult.tsx` keeps its logic and only changes its layout.
  */
 
-// ——— a side column's open/closed state, remembered for the browser session ———
+// ——— a side column's open/closed state, remembered for the browser session, per width band ———
 
-export function useSessionToggle(key: string, initial: boolean): [boolean, (next: boolean) => void] {
+export type WidthBand = "wide" | "mid" | "narrow" | "drawer";
+
+/** ≥1440 wide · 1200–1439 mid · 1024–1199 narrow · <1024 drawer — the bands the defaults are ruled for. */
+export function widthBand(vw: number): WidthBand {
+  if (vw >= 1440) return "wide";
+  if (vw >= 1200) return "mid";
+  if (vw >= 1024) return "narrow";
+  return "drawer";
+}
+
+/*
+  A choice is remembered PER BAND (production, 2026-09-24): snapping an open window to half the
+  screen kept the wide layout's columns open, cutting the brief's vitals at 1024 and covering a phone
+  with the copilot drawer. Crossing a band re-reads that band's own remembered choice, else its default.
+*/
+export function useSessionToggle(key: string, initial: boolean, band?: WidthBand): [boolean, (next: boolean) => void] {
+  const storageKey = band === undefined ? key : `${key}.${band}`;
   const read = (): boolean => {
     try {
-      const v = window.sessionStorage.getItem(key);
+      const v = window.sessionStorage.getItem(storageKey);
       return v === null ? initial : v === "1";
     } catch {
       return initial;
     }
   };
   const [open, setOpen] = useState<boolean>(read);
+  // Re-read only when the band (so the key) changes; `read` closes over the new key and default.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setOpen(read()); }, [storageKey]);
   const set = (next: boolean): void => {
     setOpen(next);
-    try { window.sessionStorage.setItem(key, next ? "1" : "0"); } catch { /* storage refused: the toggle still works for this page */ }
+    try { window.sessionStorage.setItem(storageKey, next ? "1" : "0"); } catch { /* storage refused: the toggle still works for this page */ }
   };
   return [open, set];
 }
@@ -239,7 +258,7 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
         </div>
         {v !== undefined && (
           <div>
-            <div data-testid="brief-vitals" className="cx-brief-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10 }}>
+            <div data-testid="brief-vitals" className="cx-brief-tiles" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 10 }}>
               {tiles.map((x) => (
                 <div key={x.k} style={{ padding: "10px 12px", borderRadius: 8, background: "var(--wash)" }}>
                   <div className="mo" style={{ fontSize: 9.5, letterSpacing: ".12em", color: "var(--dim)" }}>{x.k}</div>

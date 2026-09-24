@@ -3179,7 +3179,7 @@ describe("OpdConsult — the clinical co-pilot", () => {
   });
 
   it("S2: with the copilot FOLDED the same suggestions come inline at the head of the tab, labelled so — and a tap accepts, nothing earlier", async () => {
-    sessionStorage.setItem("hmis.consult.right", "false");
+    sessionStorage.setItem("hmis.consult.right.wide", "0"); // a choice is kept per width band (2026-09-24)
     mockRoutes(cdsRoutes({ "GET /api/opd/cds/suggest/tests": { status: 200, body: TESTS } }));
     const user = userEvent.setup();
     await openPanel(user);
@@ -4044,7 +4044,7 @@ describe("Consult v2", () => {
     await user.click(screen.getByTestId("sidebar-close"));
     expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "closed");
     expect(screen.getByTestId("sidebar-waiting")).toHaveTextContent("2");
-    expect(sessionStorage.getItem("hmis.consult.left.consult")).toBe("0");
+    expect(sessionStorage.getItem("hmis.consult.left.consult.wide")).toBe("0");
   });
 
   it("V2b: the defaults follow the width — 1200–1439 folds the copilot, below 1200 both fold, and a doctor's own choice wins", async () => {
@@ -4057,7 +4057,7 @@ describe("Consult v2", () => {
       expect(screen.getByTestId("consult-sidebar")).toHaveAttribute("data-state", "open");
       expect(screen.getByTestId("copilot-panel")).toHaveAttribute("data-state", "closed");
       await user.click(screen.getByTestId("copilot-open"));
-      expect(sessionStorage.getItem("hmis.consult.right")).toBe("1");
+      expect(sessionStorage.getItem("hmis.consult.right.mid")).toBe("1");
       unmount();
       sessionStorage.clear();
       window.innerWidth = 1100;

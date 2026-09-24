@@ -30,7 +30,7 @@ import {
   BellIcon, ConsultSidebar, CopilotPanel, ExamSection, HistoryBrowser, NewTabIcon, NotesSection, PatientBrief, ReferPanel, SavedClock,
   SectionHistory,
   StockAlternativeCard, StockTag, SummaryView, TreatmentSection, VitalsTab, WorkStrip, useDoctorStock, useSessionToggle,
-  useViewportWidth,
+  useViewportWidth, widthBand,
 } from "./opd-consult-v2";
 import "./opd-consult.css";
 import { recallToken, releaseLease, takeLease } from "../lib/opd-api";
@@ -356,9 +356,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     side columns open; 1200–1439 the copilot folds; below 1200 both fold (below 1024 an open one is a
     drawer). A doctor's own choice, once made, is remembered for the session and wins.
   */
-  const [leftOnBrief, setLeftOnBrief] = useSessionToggle("hmis.consult.left.brief", vw >= 1200);
-  const [leftOnConsult, setLeftOnConsult] = useSessionToggle("hmis.consult.left.consult", vw >= 1440);
-  const [rightOpen, setRightOpen] = useSessionToggle("hmis.consult.right", vw >= 1440);
+  const band = widthBand(vw);
+  const [leftOnBrief, setLeftOnBrief] = useSessionToggle("hmis.consult.left.brief", vw >= 1200, band);
+  const [leftOnConsult, setLeftOnConsult] = useSessionToggle("hmis.consult.left.consult", vw >= 1440, band);
+  const [rightOpen, setRightOpen] = useSessionToggle("hmis.consult.right", vw >= 1440, band);
   const rightOpenRef = useRef(rightOpen);
   useEffect(() => { rightOpenRef.current = rightOpen; }, [rightOpen]);
   const [agentAutoFocus, setAgentAutoFocus] = useState(false);
