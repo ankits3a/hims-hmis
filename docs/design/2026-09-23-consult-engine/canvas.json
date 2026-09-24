@@ -1,0 +1,112 @@
+{
+ "v": 3,
+ "attachments": {},
+ "boards": {
+  "Curator.dc.html": {
+   "h": 760,
+   "is_interactive": true,
+   "title": "6 · Curator",
+   "w": 1280,
+   "x": 2880,
+   "y": 1120
+  },
+  "Main.dc.html": {
+   "h": 980,
+   "is_interactive": true,
+   "title": "1 · The brief: after Call next",
+   "w": 1440,
+   "x": 0,
+   "y": 0
+  },
+  "Ophthal.dc.html": {
+   "h": 900,
+   "title": "4 · Ophthalmology screen",
+   "w": 1440,
+   "x": 0,
+   "y": 1120
+  },
+  "PrintShare.dc.html": {
+   "h": 820,
+   "is_interactive": true,
+   "title": "8 · Print and share",
+   "w": 1280,
+   "x": 980,
+   "y": 2120
+  },
+  "Profiles.dc.html": {
+   "h": 820,
+   "is_interactive": true,
+   "title": "5 · Layout builder",
+   "w": 1280,
+   "x": 1520,
+   "y": 1120
+  },
+  "Departments.dc.html": {
+   "x": 0,
+   "y": 2120,
+   "w": 900,
+   "h": 640,
+   "title": "7 · Department screens"
+  },
+  "Consult.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1000,
+   "title": "2 · Consultation: after Start consultation",
+   "is_interactive": true
+  },
+  "Summary.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1000,
+   "title": "3 · Summary tab, a finished visit",
+   "is_interactive": true
+  }
+ },
+ "createdOnFiles": {
+  "at": "2026-09-23T11:40:00Z",
+  "v": 1
+ },
+ "designSystems": [],
+ "launch": {
+  "view": "canvas"
+ },
+ "notes": {
+  "title": {
+   "kind": "title1",
+   "maxW": 4480,
+   "text": "Consult engine — the doctor's screen as settings, not code",
+   "w": 240,
+   "x": 0,
+   "y": -320
+  },
+  "walk": {
+   "fill": "green",
+   "text": "Walk it:\n1 · The brief opens for the called token. The visit type is the big badge: REVISIT, NEW (Call next) or RENEWAL (Call next again). The desk complaint is in the patient's words.\n2 · Start consultation → board 2. The desk words are already chips. Move between the tabs: the 'Your work so far' strip stays on top and fills as you enter things. Tabs with entries get a dot.\n• Prescription: each medicine has a small stock tag in its top-right corner. Add Amlong 5 (0 in stock) to see the alternative in the right pane.\n• Save draft in the header; autosave time updates on every change.\n3 · The Summary tab of a finished visit.",
+   "w": 420,
+   "x": 4560,
+   "y": 0
+  },
+  "why": {
+   "fill": "orange",
+   "text": "Owner's five tests on every board: accuracy, speed, auditable, compliant, dashboard UX.\n\nComment on any board to rule on it.",
+   "w": 420,
+   "x": 4560,
+   "y": 640
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Consult.dc.html",
+  "Summary.dc.html",
+  "Ophthal.dc.html",
+  "Profiles.dc.html",
+  "Curator.dc.html",
+  "Departments.dc.html",
+  "PrintShare.dc.html"
+ ],
+ "pages": [],
+ "title": "Consult Engine"
+}

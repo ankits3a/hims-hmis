@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>List curator</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap">
+<style>
+body{margin:0;font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;background:#f4f7f4;color:#132420;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+a{color:#0e6b4e;text-decoration:none}a:hover{color:#0a5039}
+</style>
+</helmet>
+<div style="width: 1280px; height: 760px; box-sizing: border-box; display: flex; flex-direction: column; background: #f4f7f4; color: #132420; font-size: 13.5px; line-height: 19px;">
+
+<header style="display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 20px; background: #ffffff; border-bottom: 1px solid #dfe7e1;">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .16em;">CURATOR</div>
+<div style="font-size: 13px; color: #5c6f66;">General Medicine · you are: Dept head Dr. V. Nair</div>
+<div style="flex-grow: 1;"></div>
+<span style="font-size: 12px; color: #5c6f66;">Curators: department head · medical-records officer · admin</span>
+</header>
+
+<div style="display: flex; gap: 8px; padding: 12px 20px 0;">
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 6px; background: rgba(14,107,78,.08); border: 1px solid #0e6b4e; color: #0e6b4e; font-size: 12.5px; font-weight: 600;">Doctors' own entries · 3 waiting</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Uncoded diagnoses · 7</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Drug rows to sign · 350 drafts</span>
+</div>
+
+<div style="flex-grow: 1; padding: 12px 20px; display: flex; flex-direction: column; gap: 10px;">
+<sc-for list="{{ items }}" as="i" hint-placeholder-count="3">
+<div style="background: #ffffff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 12px 14px; display: flex; align-items: center; gap: 14px;">
+<div style="flex-grow: 1;">
+<div style="display: flex; gap: 10px; align-items: baseline;"><strong style="font-size: 14px;">{{ i.text }}</strong><span style="font-size: 12px; color: #5c6f66;">{{ i.section }}</span></div>
+<div style="font-size: 12px; color: #5c6f66;">{{ i.meta }}</div>
+<div style="font-size: 12px; color: #0e6b4e;">{{ i.hint }}</div>
+</div>
+<span style="{{ i.stateStyle }}">{{ i.state }}</span>
+<button type="button" onClick="{{ i.promote }}" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 0; background: #0e6b4e; color: #ffffff; font-size: 12.5px; font-weight: 600;">Promote to department</button>
+<button type="button" onClick="{{ i.merge }}" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Merge into existing</button>
+<button type="button" onClick="{{ i.keep }}" style="height: 34px; padding: 0 13px; border-radius: 6px; border: 1px solid #dfe7e1; background: #ffffff; font-size: 12.5px;">Keep private</button>
+</div>
+</sc-for>
+<div style="font-size: 12px; color: #5c6f66;">A doctor's own entry is on that doctor's screen only. Every promotion records the curator, the time and the doctor it came from.</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { done: {} }; }
+  renderVals() {
+    const base = [
+      { id: 'a', text: 'Giddiness on standing', section: 'Complaints', meta: 'Dr. A. Mehta · used 41 times in 3 weeks · 2 other doctors typed the same words', hint: 'Suggested: promote. Close to "Postural dizziness" (existing).' },
+      { id: 'b', text: 'hhjdgs', section: 'Systemic examination', meta: 'Dr. K. Iyer · used 1 time', hint: 'Suggested: keep private. Looks like a typing slip.' },
+      { id: 'c', text: 'Blood test', section: 'Diagnosis', meta: 'Dr. K. Iyer · used 3 times · no ICD-10 code', hint: 'Suggested: not a diagnosis. Belongs in Investigations.' }
+    ];
+    const items = base.map((b) => {
+      const st = this.state.done[b.id];
+      const set = (v) => { const d = Object.assign({}, this.state.done); d[b.id] = v; this.setState({ done: d }); };
+      return Object.assign({}, b, {
+        state: st || 'Waiting',
+        stateStyle: 'font-family: \'IBM Plex Mono\', monospace; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; ' + (st ? 'color: #0e6b4e;' : 'color: #dd8f1c;'),
+        promote: () => set('Promoted'), merge: () => set('Merged'), keep: () => set('Kept private')
+      });
+    });
+    return { items };
+  }
+}
+</script>
+</body>
+</html>
