@@ -3964,7 +3964,7 @@ describe("OpdConsult — the desk complaint and the visit type", () => {
 
   // Owner ruling 2026-09-24: a referral's visit is FREE (stored `revisit`) but the doctor has never met the patient.
   it("D5r: a queue row a referral opened says REFERRAL, not revisit", async () => {
-    const referred = { ...WAIT_B, encounter: { ...WAIT_B.encounter, referredFromEncounterId: "enc-0" } };
+    const referred = { ...WAIT_B, encounter: { ...(WAIT_B.encounter as Record<string, unknown>), referredFromEncounterId: "enc-0" } };
     mockRoutes({ ...baseRoutes(), "GET /api/opd/queues": { status: 200, body: { ...QUEUE_VIEW, ordered: [WAIT_A, referred] } } });
     renderWithProviders(<OpdConsult />);
     const row = await screen.findByTestId(`queue-visit-type-${String(WAIT_B.id)}`);
