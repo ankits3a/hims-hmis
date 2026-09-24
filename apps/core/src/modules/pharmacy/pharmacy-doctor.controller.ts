@@ -1,10 +1,13 @@
-import { Controller, Get, Inject, Query } from "@nestjs/common";
+import { Controller, Get, Inject, Param, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
-import { RequirePermission } from "../../kernel/auth/decorators";
+import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { parsed, toHttp } from "./pharmacy-http";
 import { stockForDoctor } from "./doctor-stock";
 import type { DoctorStock } from "./doctor-stock";
+import { patientDispensesForDoctor } from "./patient-dispenses";
+import type { PatientDispense } from "./patient-dispenses";
+import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -26,6 +29,18 @@ export class PharmacyDoctorController {
     const q = parsed(stockQuery, query);
     try {
       return { items: await stockForDoctor(this.db, q.medicineIds) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Consult v2 — the refill record on the brief: what was handed over, against which prescription (`patient-dispenses.ts`). */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("patients/:patientId/dispenses")
+  async dispenses(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ items: PatientDispense[] }> {
+    const id = parsed(z.string().min(1).max(64), patientId);
+    try {
+      return { items: await patientDispensesForDoctor(this.db, actor, id) };
     } catch (e) {
       toHttp(e);
     }

@@ -11,6 +11,7 @@ import {
   printReport, publishReport, releaseUnpaid, reportVersions, deliveryRegister, reportsForPatient,
 } from "./reports";
 import { amendResult, requestRerun } from "./results";
+import { patientResultsForDoctor } from "./patient-results";
 import { nightReleasesAwaitingReview, reviewNightRelease, verifyResult } from "./verify";
 import { publishableOrders, verifyWorklist } from "./worklist";
 import { LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, idSchema, isoDateSchema, parsed, toHttp } from "./lab-http";
@@ -331,6 +332,16 @@ export class LabVerifyController {
     @Param("encounterNo") encounterNo: string,
   ): Promise<unknown> {
     try { return await listResultsForEncounter(this.db, actor, encounterNo); } catch (e) { toHttp(e); }
+  }
+
+  /** Consult v2 — the brief's "since then": the patient's signed values across visits (`patient-results.ts`). */
+  @Get("results/patient/:patientId")
+  @RequirePermission("lab.results.read", "hospital")
+  async forPatient(
+    @CurrentActor() actor: Actor,
+    @Param("patientId") patientId: string,
+  ): Promise<unknown> {
+    try { return { items: await patientResultsForDoctor(this.db, actor, parsed(idSchema, patientId)) }; } catch (e) { toHttp(e); }
   }
 
   /**
