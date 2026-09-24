@@ -4314,6 +4314,30 @@ describe("Consult v2", () => {
     expect(screen.getByRole("button", { name: "Add line" })).toBe(screen.getByTestId("rx-add"));
   });
 
+  // Consult engine (D19, board `Ophthal`): the eye OPD's visits gain an Eye tab; every other visit is unchanged.
+  it("V12: an ophthalmology visit has an Eye tab with the eye sections; a visit without a profile has none", async () => {
+    mockRoutes(routes({ "GET /api/opd/visits/enc-1/sections": { status: 200, body: {
+      profile: "ophthalmology",
+      sections: [{ key: "eye.vision", version: 1, kind: "eye-grid" }, { key: "eye.glasses_rx", version: 1, kind: "lens-grid" }],
+      records: {},
+    } } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(await screen.findByRole("tab", { name: "Eye" }));
+    expect(await screen.findByTestId("eye-sections")).toBeInTheDocument();
+    expect(screen.getByTestId("eye-vision")).toBeInTheDocument();
+    expect(screen.getByTestId("eye-glasses")).toBeInTheDocument();
+    expect(screen.queryByTestId("eye-slit")).toBeNull(); // only the sections the profile names
+  });
+
+  it("V12b: a general-medicine visit has no Eye tab", async () => {
+    mockRoutes(routes({ "GET /api/opd/visits/enc-1/sections": { status: 200, body: { profile: null, sections: [], records: {} } } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await screen.findByRole("tab", { name: "Prescription" });
+    expect(screen.queryByRole("tab", { name: "Eye" })).toBeNull();
+  });
+
   it("V11: the voice scribe is a small mic in the complaint's header row, and Save draft and Refer are also in the header's ⋯ menu", async () => {
     mockRoutes(routes());
     const user = userEvent.setup();

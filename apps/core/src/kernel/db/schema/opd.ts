@@ -1153,3 +1153,41 @@ export const opdPatientReminders = pgTable(
     uniqueIndex("opd_patient_reminders_active_ux").on(t.patientId).where(sql`cleared_at is null`),
   ],
 );
+
+/**
+ * ═══ THE CONSULT ENGINE'S VISIT RECORD (01-CONSULT-ENGINE.md §3; D1, D7) ═══
+ *
+ * One row per SAVE of one section of one visit — the ophthalmology vision grid, the slit lamp, the
+ * IOP, the glasses prescription. The section's DEFINITION lives in code (`modules/opd/sections.ts`)
+ * under a key and a version, and the row stores the version it was filled under, so a later change
+ * to the grid never rewrites how an old visit reads or prints (D1).
+ *
+ * APPEND-ONLY (D7). A correction is a new row whose `supersedes_id` names the one it replaces; the
+ * current value is the row nothing supersedes. Who wrote it and when is on every row, so the
+ * optometrist's vision test and the doctor's slit lamp keep their own authors.
+ */
+export const opdSectionRecords = pgTable(
+  "opd_section_records",
+  {
+    id: text("id").primaryKey(),
+    encounterId: text("encounter_id").notNull().references(() => opdEncounters.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    sectionKey: text("section_key").notNull(),
+    sectionVersion: integer("section_version").notNull(),
+    body: jsonb("body").notNull(),
+    /** 'typed' today; 'template' | 'agent-draft' | 'work-up' arrive with the engine's later slices (§3). */
+    source: text("source").notNull().default("typed"),
+    authorId: text("author_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    supersedesId: text("supersedes_id"),
+  },
+  (t) => [
+    index("opd_section_records_encounter_idx").on(t.encounterId, t.sectionKey),
+    index("opd_section_records_patient_idx").on(t.patientId, t.sectionKey),
+    /** One live row per section per visit: a row can be superseded once, never forked. */
+    uniqueIndex("opd_section_records_supersedes_ux").on(t.supersedesId).where(sql`supersedes_id is not null`),
+    /** …and one ROOT per section per visit, so two first saves racing cannot both become current. */
+    uniqueIndex("opd_section_records_root_ux").on(t.encounterId, t.sectionKey).where(sql`supersedes_id is null`),
+    check("opd_section_records_version_ck", sql`${t.sectionVersion} > 0`),
+  ],
+);

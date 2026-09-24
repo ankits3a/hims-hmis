@@ -230,7 +230,9 @@ export type PhiSurface =
    * one per owning module, because "saw her HbA1c", "saw her ultrasound" and "saw what she bought" are
    * three different disclosures. Appended; nothing above changes.
    */
-  | "lab.patient_results" | "imaging.patient_reports" | "pharmacy.patient_dispenses";
+  | "lab.patient_results" | "imaging.patient_reports" | "pharmacy.patient_dispenses"
+  /** Consult engine (2026-09-24) — a visit's specialty sections (the eye grids), read with the consult. Appended. */
+  | "opd.sections";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

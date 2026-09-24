@@ -5601,5 +5601,55 @@
     "rxFill": "+ Add these {{n}} to the prescription",
     "addOwn": "Add “{{term}}” as your own entry",
     "adviceFind": "Find advice — a template or your own line"
+  },
+  "opdEye": {
+    "tab": "Eye",
+    "test": "Test",
+    "od": "Right eye (OD)",
+    "os": "Left eye (OS)",
+    "copyOdOs": "Copy OD → OS",
+    "visionTitle": "Vision tests · each eye",
+    "slitTitle": "Slit lamp · the doctor",
+    "glassesTitle": "Glasses prescription · its own print",
+    "vision": {
+      "vaUnaided": "VA unaided",
+      "vaGlasses": "VA with glasses",
+      "vaPinhole": "VA pinhole",
+      "near": "Near vision",
+      "colour": "Colour vision",
+      "autoRefraction": "Auto-refraction",
+      "currentGlasses": "Current glasses"
+    },
+    "slit": {
+      "lids": "Lids",
+      "conjunctiva": "Conjunctiva",
+      "cornea": "Cornea",
+      "anteriorChamber": "Anterior chamber",
+      "iris": "Iris",
+      "pupil": "Pupil",
+      "lens": "Lens",
+      "fundus": "Fundus"
+    },
+    "iop": "IOP",
+    "iopMethod": "IOP method",
+    "method": "Method",
+    "lens": {
+      "sph": "SPH",
+      "cyl": "CYL",
+      "axis": "AXIS",
+      "add": "ADD"
+    },
+    "use": "Use",
+    "useOption": {
+      "distance": "Distance",
+      "near": "Near",
+      "bifocal": "Bifocal",
+      "progressive": "Progressive"
+    },
+    "note": "Note for the optician",
+    "lensRule": "Powers move in 0.25 D steps, and a cylinder needs its axis (1–180).",
+    "saving": "Saving…",
+    "savedAt": "Saved {{at}}",
+    "saveFailed": "Not saved — {{reason}}"
   }
 }
