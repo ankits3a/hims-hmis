@@ -4020,6 +4020,55 @@ describe("Consult v2", () => {
     };
   }
 
+  // Board `Main` (approved 2026-09-23): SINCE THEN · LAB AND RADIOLOGY, and the pharmacy refill line under ON NOW.
+  it("V1h: the brief shows the signed results since the last visit and what the pharmacy handed over", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: { items: [{
+        prescriptionId: "rx-0", encounterId: "enc-0", serviceDate: "2026-07-10", issuedAt: "2026-07-10T05:00:00.000Z",
+        doctorId: "doc-1", doctorName: "Dr Meera Rao", status: "active", version: 1,
+        lines: [{ drug: "Telmisartan", dose: "40 mg", route: "oral", frequency: "1-0-0", durationDays: 30, instructions: null, noSubstitution: false }],
+      }] } },
+      "GET /api/lab/results/patient/p-1": { status: 200, body: { items: [
+        { orderableName: "Lipid profile", analyteName: "LDL", value: "162", unit: "mg/dL", flag: "H", verifiedAt: "2026-09-19T05:00:00.000Z" },
+        { orderableName: "CBC", analyteName: "Haemoglobin", value: "13.1", unit: "g/dL", flag: null, verifiedAt: "2026-06-01T05:00:00.000Z" },
+      ] } },
+      "GET /api/radiology/reports/patient/p-1": { status: 200, body: { items: [
+        { studyName: "ECG", impression: "normal sinus rhythm", criticalCategory: null, signedAt: "2026-07-10T08:00:00.000Z" },
+      ] } },
+      "GET /api/pharmacy/doctor/patients/p-1/dispenses": { status: 200, body: { items: [
+        { prescriptionId: "rx-0", handedOverAt: "2026-07-10T07:00:00.000Z", lines: [{ drug: "Telmisartan", durationDays: 30, qtyBase: 30 }] },
+      ] } },
+    }));
+    renderWithProviders(<OpdConsult />);
+    const brief = await screen.findByTestId("patient-brief");
+    const results = within(brief).getByTestId("brief-results");
+    await waitFor(() => { expect(results).toHaveTextContent("LDL 162 mg/dL"); });
+    expect(results).toHaveTextContent("lab 19 Sep");
+    expect(results).toHaveTextContent("ECG: normal sinus rhythm · radiology 10 Jul");
+    expect(results).not.toHaveTextContent("Haemoglobin"); // before the last visit (10 Jul)
+    expect(within(results).getByText("LDL 162 mg/dL").closest("li")).toHaveAttribute("data-abnormal", "true");
+    expect(within(brief).getByText(/Since then · lab and radiology/i)).toBeInTheDocument();
+    expect(await within(brief).findByTestId("brief-refill")).toHaveTextContent("Pharmacy: 30 days bought on 10 Jul · none since (due 9 Aug)");
+  });
+
+  it("V1i: when the three records cannot be read the brief says so, and invents nothing", async () => {
+    mockRoutes(routes({
+      "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: { items: [{
+        prescriptionId: "rx-0", encounterId: "enc-0", serviceDate: "2026-07-10", issuedAt: "2026-07-10T05:00:00.000Z",
+        doctorId: "doc-1", doctorName: "Dr Meera Rao", status: "active", version: 1,
+        lines: [{ drug: "Telmisartan", dose: "40 mg", route: "oral", frequency: "1-0-0", durationDays: 30, instructions: null, noSubstitution: false }],
+      }] } },
+      "GET /api/lab/results/patient/p-1": { status: 403, body: { code: "permission_denied" } },
+      "GET /api/radiology/reports/patient/p-1": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/doctor/patients/p-1/dispenses": { status: 500, body: {} },
+    }));
+    renderWithProviders(<OpdConsult />);
+    const brief = await screen.findByTestId("patient-brief");
+    await waitFor(() => { expect(within(brief).getByTestId("brief-results")).toHaveTextContent("could not be read"); });
+    expect(within(brief).getByTestId("brief-results")).not.toHaveTextContent("No results on file");
+    expect(await within(brief).findByTestId("brief-refill")).toHaveTextContent("pharmacy record could not be read");
+  });
+
   it("V1: Call next shows the BRIEF — the visit type, the desk's own words, the vitals — with Start consultation under it", async () => {
     mockRoutes(routes());
     renderWithProviders(<OpdConsult />);

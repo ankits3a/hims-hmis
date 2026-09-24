@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
+import { briefRefill, briefResults, fetchPatientDispenses, fetchPatientImaging, fetchPatientResults, shortDay } from "../lib/brief-history";
 import type {
   WireDoctorStock, WireExamFinding, WireRxHistoryItem, WireTimelineItem, WireVitals,
 } from "../lib/opd-api";
@@ -211,12 +212,20 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
     queryKey: ["opd", "reminder", patientId ?? ""], enabled: patientId !== null,
     queryFn: () => fetchReminder(patientId!),
   });
+  // Consult v2 — the three records the board's brief reads besides the visit (lib/brief-history.ts).
+  const labRows = useQuery({ queryKey: ["brief", "lab", patientId], queryFn: () => fetchPatientResults(patientId), retry: false });
+  const imagingRows = useQuery({ queryKey: ["brief", "imaging", patientId], queryFn: () => fetchPatientImaging(patientId), retry: false });
+  const dispenseRows = useQuery({ queryKey: ["brief", "dispenses", patientId], queryFn: () => fetchPatientDispenses(patientId), retry: false });
 
   const vt = visit.data === undefined ? "new" : shownVisitType(visit.data.encounter);
   const desk = visit.data?.deskComplaint ?? null;
   const v = visit.data?.vitals.filter((x) => x.status !== "superseded").at(-1);
   const last = (timeline.data?.items ?? []).find((i) => i.encounterId !== encounterId && i.status === "completed");
   const lastRx = (rxHistory.data?.items ?? []).find((r) => r.encounterId !== encounterId && r.status === "active");
+  const resultsReady = labRows.data !== undefined && imagingRows.data !== undefined;
+  const resultsFailed = labRows.isError || imagingRows.isError;
+  const results = briefResults(labRows.data?.items ?? [], imagingRows.data?.items ?? [], last?.serviceDate ?? null);
+  const refill = lastRx === undefined || dispenseRows.data === undefined ? null : briefRefill(lastRx.prescriptionId, dispenseRows.data.items);
   const warn = (on: boolean): React.CSSProperties => ({ fontSize: 22, fontWeight: 700, color: on ? "var(--gold)" : "var(--ink)" });
   const tiles: { k: string; v: string; warn: boolean }[] = v === undefined ? [] : [
     { k: "BP", v: v.sbp === null || v.dbp === null ? "—" : `${String(v.sbp)}/${String(v.dbp)}`, warn: (v.sbp ?? 0) >= 140 || (v.dbp ?? 0) >= 90 },
@@ -279,12 +288,37 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
                 date: last.serviceDate, doctor: last.doctorName ?? "—", dx: last.diagnosis ?? t("opdConsultV2.noDx"), n: last.prescriptionLineCount,
               })}
             </p>
+            <div className="tag" style={{ marginTop: 12 }}>{last === undefined ? t("opdConsultV2.onFile") : t("opdConsultV2.sinceThen")}</div>
+            <ul data-testid="brief-results" style={{ margin: "6px 0 0", padding: 0, listStyle: "none", fontSize: 13.5, display: "flex", flexDirection: "column", gap: 4 }}>
+              {resultsFailed ? (
+                <li style={{ color: "var(--dim)" }}>{t("opdConsultV2.resultsUnreadable")}</li>
+              ) : !resultsReady ? null : results.lines.length === 0 ? (
+                <li style={{ color: "var(--dim)" }}>{t("opdConsultV2.noResults")}</li>
+              ) : results.lines.map((r, i) => (
+                <li key={i} data-abnormal={r.abnormal ? "true" : "false"}>
+                  <span style={{ fontWeight: r.abnormal ? 700 : 600, color: r.abnormal ? "var(--gold)" : "var(--ink)" }}>{r.what}</span>{" "}
+                  <span style={{ fontSize: 12, color: "var(--dim)" }}>
+                    · {t(r.kind === "lab" ? "opdConsultV2.whenLab" : "opdConsultV2.whenRadiology", { date: shortDay(r.day) })}
+                    {results.noneSince ? ` · ${t("opdConsultV2.noneSince")}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
           <div>
             <div className="tag">{t("opdConsultV2.onNow")}</div>
             <ul data-testid="brief-meds" style={{ margin: "6px 0 0", padding: 0, listStyle: "none", fontSize: 13.5 }}>
               {linesOf(lastRx).length === 0 ? <li style={{ color: "var(--dim)" }}>{t("opdConsultV2.noMeds")}</li> : linesOf(lastRx).map((l, i) => <li key={i}>{l}</li>)}
             </ul>
+            {lastRx !== undefined && (dispenseRows.isError || refill !== null) && (
+              <p data-testid="brief-refill" style={{ margin: "6px 0 0", fontSize: 12, color: "var(--dim)" }}>
+                {dispenseRows.isError || refill === null ? t("opdConsultV2.refillUnreadable")
+                  : refill.kind === "none" ? t("opdConsultV2.refillNone")
+                  : refill.days === null || refill.dueDay === null ? t("opdConsultV2.refillNoDays", { date: shortDay(refill.lastDay) })
+                  : refill.times > 1 ? t("opdConsultV2.refillTimes", { n: refill.times, date: shortDay(refill.lastDay), days: refill.days, due: shortDay(refill.dueDay) })
+                  : t("opdConsultV2.refillOnce", { date: shortDay(refill.lastDay), days: refill.days, due: shortDay(refill.dueDay) })}
+              </p>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, borderTop: "1px solid var(--line2)", paddingTop: 12 }}>

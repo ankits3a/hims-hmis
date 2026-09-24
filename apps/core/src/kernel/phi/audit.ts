@@ -223,7 +223,14 @@ export type PhiSurface =
    * distinct patient for the same reason. Its own name: an approver reading their queue is a
    * different disclosure from opening a record, and an enquiry must be able to tell them apart.
    */
-  | "approvals.worklist";
+  | "approvals.worklist"
+  /**
+   * CONSULT V2 (2026-09-24) — the doctor's brief reads three PATIENT-scoped histories it never read
+   * before: signed lab values, signed imaging reports, and what the pharmacy handed over. Three names,
+   * one per owning module, because "saw her HbA1c", "saw her ultrasound" and "saw what she bought" are
+   * three different disclosures. Appended; nothing above changes.
+   */
+  | "lab.patient_results" | "imaging.patient_reports" | "pharmacy.patient_dispenses";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

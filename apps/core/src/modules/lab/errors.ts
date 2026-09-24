@@ -90,6 +90,8 @@ export const LAB_ERROR_CODES = [
   "user_actor_required",
   "item_not_resultable",
   "unknown_result",
+  /** Consult v2 — the patient-scoped results read: no such patient, or one this reader may not see. */
+  "unknown_patient",
   "critical_already_closed",
   // ── reports (T7) ──
   "report_print_blocked",
@@ -196,6 +198,7 @@ const STATUS: Record<LabErrorCode, number> = {
   user_actor_required: 403,
   item_not_resultable: 409,
   unknown_result: 404,
+  unknown_patient: 404,
   critical_already_closed: 409,
 
   report_print_blocked: 422,
