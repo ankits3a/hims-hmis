@@ -104,9 +104,11 @@ for the non-AI basics of a doctor's desk. They are not the design target.
      - An internal referral puts the patient in that department's line (or that doctor's line)
        with the reason and the referring doctor's note. The patient does not re-register.
      - An external referral prints a referral letter.
-     - **OPEN (money: owner ruling).** Whether an internal referral is charged a fresh consultation
-       fee, or is free the same day. Until he rules, it follows the existing tariff with no
-       special case, and the desk sees it.
+     - **RULED (owner, 2026-09-24, money).** If the patient consults the referred doctor or
+       department **within 7 days** of the referral, **no fee** is charged. Use the existing
+       follow-up-days method (`visit-type.ts`: a revisit inside the window is free). A referral
+       visit inside 7 days is a free follow-up for the referred department or doctor; after
+       7 days the normal new/renewal fee applies.
    - **Recall a no-show.** Each called patient's card in the left lane has an alarm icon.
      Clicking it re-announces the token on the corridor display board ("Token 13, OPD-3, please
      come in"). Every recall is logged, with a count. Skip stays as it is.
