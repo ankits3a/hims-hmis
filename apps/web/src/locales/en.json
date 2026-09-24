@@ -5384,6 +5384,7 @@
     "notYet": "— not yet",
     "nothingSuggestion": "Nothing on this card is a suggestion. It is what the front desk, the vitals bay and the last visit already recorded.",
     "onNow": "On now · the last prescription",
+    "rxDosePlaceholder": "Dose, e.g. 500 mg",
     "pulse": "PULSE",
     "temp": "TEMP",
     "weight": "WEIGHT",
