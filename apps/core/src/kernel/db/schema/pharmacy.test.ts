@@ -9,7 +9,7 @@ import { openVisit } from "../../../modules/opd/encounters";
 import { issuePrescription } from "../../../modules/opd/prescriptions";
 import { callNext } from "../../../modules/opd/queue";
 import { recordVitals } from "../../../modules/opd/vitals";
-import { pharmacyAuthorisations, pharmacyDispenseLines, pharmacyDispenses, pharmacyRegH1, pharmacyShelfLocations } from "./index";
+import { pharmacyAuthorisations, pharmacyDispenseLines, pharmacyDispenses, pharmacyRegH1, pharmacyShelfLocations, pharmacyShortBook } from "./index";
 import { MON2 as PMON2, issueRx, line as rxLineOf, seedPharmacyBase } from "../../../../test/helpers/pharmacy";
 import { findAtCounter } from "../../../modules/pharmacy/claim";
 import type { PharmacyFixture } from "../../../../test/helpers/pharmacy";
@@ -175,5 +175,43 @@ describe("pharmacy_authorisations (PD-9, migration 0107)", () => {
     await expect(db.insert(pharmacyAuthorisations).values(row({ decidedBy: "dr", decidedAt: PMON2, decisionReason: "fine" })))
       .rejects.toThrow(/pharmacy_authorisations_decided_ck/);
     await expect(db.insert(pharmacyAuthorisations).values(row({ book: "vibes" }))).rejects.toThrow(/pharmacy_authorisations_book_ck/);
+  });
+});
+
+/**
+ * PARITY P1 — `pharmacy_short_book`: one OPEN row per drug per store (by item, or by the name when
+ * there is none, case-insensitively), a name that is a name, and a resolution that moves together.
+ * The migration number is taken at rebase; the constraints are what this pins.
+ */
+describe("pharmacy_short_book (parity P1)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: PharmacyFixture;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => { await truncateAll(db); fx = await seedPharmacyBase(db); });
+  afterEach(() => { fx.unregister(); });
+
+  const row = (over: Partial<typeof pharmacyShortBook.$inferInsert> = {}): typeof pharmacyShortBook.$inferInsert =>
+    ({ id: newId(), storeResourceId: fx.storeId, drugName: "Pan 40", source: "desk", notedBy: "u", notedAt: MON, ...over });
+
+  it("holds one open row per drug per store, by item or by name, and a resolved row frees the drug", async () => {
+    await db.insert(pharmacyShortBook).values(row());
+    await expect(db.insert(pharmacyShortBook).values(row({ drugName: "PAN 40" }))).rejects.toThrow(/pharmacy_short_book_open_name_ux/);
+    await db.insert(pharmacyShortBook).values(row({ itemId: fx.item.crocin, drugName: "Crocin 500" }));
+    await expect(db.insert(pharmacyShortBook).values(row({ itemId: fx.item.crocin, drugName: "Crocin" }))).rejects.toThrow(/pharmacy_short_book_open_item_ux/);
+    await db.update(pharmacyShortBook).set({ resolvedAt: MON, resolvedBy: "u", resolution: "ordered" }).where(eq(pharmacyShortBook.drugName, "Pan 40"));
+    await db.insert(pharmacyShortBook).values(row());
+  });
+
+  it.each([
+    [{ drugName: " x " }, /pharmacy_short_book_name_ck/],
+    [{ qtyWanted: 0 }, /pharmacy_short_book_qty_ck/],
+    [{ source: "fax" }, /pharmacy_short_book_source_ck/],
+    [{ resolvedAt: MON, resolvedBy: "u" }, /pharmacy_short_book_resolved_ck/],
+    [{ resolvedAt: MON, resolvedBy: "u", resolution: "lost" }, /pharmacy_short_book_resolution_ck/],
+  ])("refuses %j", async (over: Partial<typeof pharmacyShortBook.$inferInsert>, err: RegExp) => {
+    await expect(db.insert(pharmacyShortBook).values(row(over))).rejects.toThrow(err);
   });
 });

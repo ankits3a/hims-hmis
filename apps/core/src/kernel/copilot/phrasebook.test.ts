@@ -125,6 +125,13 @@ describe("matchIntent — the pharmacy counter", () => {
     ["kiska paisa pending hai", "paid_not_collected"],
     ["who has paid but not collected", "paid_not_collected"],
     ["kaun dawai le nahi gaye", "paid_not_collected"],
+    /* PARITY P1 — "out of X" drafts a short-book line; the pharmacist confirms it on the desk. */
+    ["Pan 40 khatam", "draft_short_book_entry"],
+    ["pan 40 khatam ho gaya", "draft_short_book_entry"],
+    ["out of Pan 40", "draft_short_book_entry"],
+    ["Dolo 650 out of stock hai", "draft_short_book_entry"],
+    ["short book mein Montair LC likh do", "draft_short_book_entry"],
+    ["पैन 40 खत्म", "draft_short_book_entry"],
   ])("routes %s", (question: string, intent: string) => {
     expect(matchIntent(question)?.intent).toBe(intent);
   });

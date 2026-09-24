@@ -53,7 +53,15 @@ export type PrintDocument =
   | "opd_payment_receipt"
   | "opd_prescription"
   /** Destination only; the renderer returns null pending owner ruling R3's artboard. See the header. */
-  | "vitals_slip";
+  | "vitals_slip"
+  /**
+   * PHARMACY P1 (parity plan 2026-09-24) — the desk's paper after a hand-over: the bill (merged
+   * loose-MRP rows and the GST summary, as the counter shows them) and one label per medicine.
+   * Producer `modules/pharmacy/print.ts`; renderer registered by the pharmacy module
+   * (`registerDocumentRenderer`), so the kernel does not import the module that owns the rows.
+   */
+  | "pharmacy_bill"
+  | "pharmacy_labels";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -65,7 +73,9 @@ export type PrintDocument =
 export type PrintDestination =
   | "front_desk_thermal"
   | "front_desk_a4"
-  | "vitals_thermal";
+  | "vitals_thermal"
+  /** PHARMACY P1 — the pharmacy counter's 80 mm roll (72 mm printable), bill and labels alike. */
+  | "pharmacy_thermal";
 
 /**
  * WHERE EACH DOCUMENT GOES, from the owner's rulings and `PrinterChoice.dc.html`.
@@ -82,6 +92,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   opd_payment_receipt: "front_desk_thermal",
   opd_prescription: "front_desk_a4",
   vitals_slip: "vitals_thermal",
+  pharmacy_bill: "pharmacy_thermal",
+  pharmacy_labels: "pharmacy_thermal",
 };
 
 export type EnqueuePrintInput = {

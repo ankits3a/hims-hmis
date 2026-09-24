@@ -26,8 +26,7 @@ export const pharmacyManifest: ModuleManifest = {
   key: "pharmacy",
   title: "Pharmacy",
   menu: [
-    { label: "Dispense counter", path: "/pharmacy/counter", permission: "pharmacy.dispense.read" },
-    /** PHASE PD — the pharmacy desk, beside the counter until it replaces it (PD-D7). */
+    /** PHASE PD — the pharmacy desk. PARITY P1 retired `/pharmacy/counter` into it (the path forwards here). */
     { label: "Pharmacy desk", path: "/pharmacy/desk", permission: "pharmacy.dispense.read" },
     { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
     { label: "Pharmacists", path: "/pharmacy/pharmacists", permission: "pharmacy.pharmacists.manage" },
@@ -86,7 +85,7 @@ export const pharmacyManifest: ModuleManifest = {
       selfOrderable: false,
     },
   ],
-  /** PD-7 C8 — the desk's F2: stock by name, and paid-not-collected (`copilot-tools.ts`). */
+  /** PD-7 C8 — the desk's F2: stock by name, and paid-not-collected; parity P1 — the short-book DRAFT (`copilot-tools.ts`). */
   copilotTools: pharmacyCopilotTools,
   /** PD-9 — a prescriber's own desk shows the requests waiting on them. */
   desk: [pharmacyAuthorisationsDeskProvider],

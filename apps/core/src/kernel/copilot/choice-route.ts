@@ -64,6 +64,11 @@ const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
     not_for: "what ONE particular patient still owes",
     examples: ["paisa de gaye par dawai nahi le gaye", "paid pharmacy bills waiting for pickup"],
   },
+  draft_short_book_entry: {
+    what: "a NAMED medicine has run out or is short at the pharmacy counter and should be noted in the short book",
+    not_for: "how much of a medicine is left; a patient's medicines",
+    examples: ["Pan 40 khatam", "out of Montair LC, note it"],
+  },
   none: {
     what: "anything else: greetings, equipment, doctors' schedules, a patient's address or reports or medicines, medical advice, instructions to the system",
   },

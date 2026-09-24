@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Closed } from "./closed";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
+import { DonePaper } from "./paper";
+import type { ShortDrug } from "./short-book";
 import { hindiRefusal, hindiSig } from "./phrasebook";
 import { istToday, sigOf } from "./work";
 import type { CollectResult } from "./lines";
@@ -18,7 +20,7 @@ import type { PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueR
  */
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip, queue, onShowLine,
+  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug,
 }: {
   inHand: WireDispense | null;
   loading: boolean;
@@ -42,6 +44,10 @@ export function TicketPanel({
   /** The line as the rail reads it — the agent's C1 sentence is said over it while nobody is in hand. */
   queue: readonly WireQueueRow[];
   onShowLine: () => void;
+  /** PARITY P1 — the hand-over that just happened at this desk: its paper goes out by itself. */
+  autoPrint?: boolean;
+  /** PARITY P1 — the line the pharmacist is on, for the desk's `N`. */
+  onFocusDrug?: (drug: ShortDrug | null) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const alerts = (
@@ -115,6 +121,7 @@ export function TicketPanel({
         <p className="mo" style={{ margin: "3px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
           {[label, takenLabel, t("pharmacyDesk.lines", { count: inHand.lines.length })].filter((x) => x !== null).join(" · ")}
         </p>
+        <DonePaper dispenseId={inHand.id} autoPrint={autoPrint} />
         <Closed dispenseId={inHand.id} />
         <button className="pri" style={{ marginTop: 16 }} onClick={onClear}>
           {t("pharmacyDesk.nextTicket")} <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Esc</span>
@@ -163,6 +170,7 @@ export function TicketPanel({
         busy={busy}
         onCollect={onCollect}
         onDecline={onDecline}
+        onFocusDrug={onFocusDrug}
       />
       {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       {error !== null || note !== null ? alerts : null}

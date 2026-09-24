@@ -45,6 +45,13 @@ import type { DispenseView, QueueRow } from "./queue";
 import type { CheckedAlternative, LinePrecheck } from "./verify";
 import type { RetailShelfEntry } from "./retail";
 import type { LabelData } from "./label";
+import { dispensePaper, dispensePrintJobs, sendDispensePaper } from "./print";
+import type { PrintJobView, SendPaperResult } from "./print";
+import { addShortBookEntry, listOpenShortBook, resolveShortBookEntry } from "./short-book";
+import type { ShortBookEntry, ShortBookView } from "./short-book";
+import { myShift } from "./shift";
+import type { MyShift } from "./shift";
+import type { RenderedDocument } from "../../kernel/printing/render";
 
 const claimBody = z.object({ dispenseId: idSchema, door: z.enum(["rx_qr", "patient_qr", "token", "uhid"]) });
 const verifyBody = z.object({
@@ -80,6 +87,17 @@ const billBody = z.object({
   changeGivenPaise: z.number().int().nonnegative().optional(),
   tags: z.array(z.string().min(1)).optional(),
 });
+/** P1 — the short book. `itemId` when the counter knows the drug; the name as said otherwise. */
+const shortBookBody = z.object({
+  itemId: idSchema.optional(),
+  drugName: z.string().max(200),
+  qtyWanted: z.number().int().positive().max(100_000).optional(),
+  source: z.enum(["desk", "agent", "reorder"]),
+  dispenseId: idSchema.optional(),
+  storeCode: z.string().min(1).max(40).optional(),
+});
+const resolveShortBody = z.object({ resolution: z.enum(["ordered", "received", "dismissed"]) });
+const printBody = z.object({ reprint: z.boolean().optional() });
 const handoverBody = z.object({
   identity: z.object({ via: z.enum(["token", "phone_last4"]), value: z.string().min(1).max(12) }).optional(),
 });
@@ -346,6 +364,93 @@ export class PharmacyCounterController {
   async label(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<LabelData> {
     try {
       return await labelFor(this.db, actor, id);
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PARITY P1 — the desk's paper: the bill and the labels to the counter's roll through the print
+   * relay, or `{ via: "browser" }` when no relay is serving it (`print.ts`). Advisory (R7): it never
+   * touches the ticket.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/print")
+  async print(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<SendPaperResult> {
+    const input = parsed(printBody, body ?? {});
+    try {
+      return await sendDispensePaper(this.db, actor, id, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P1 — what became of this ticket's paper, newest first: the done screen's "printed" or "not taken". */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/print")
+  async printJobs(@Param("id") id: string): Promise<{ jobs: PrintJobView[] }> {
+    try {
+      return { jobs: await dispensePrintJobs(this.db, id) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P1 — the same bill and labels, rendered for the browser when no relay serves the roll. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/paper")
+  async paper(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<RenderedDocument> {
+    try {
+      return await dispensePaper(this.db, actor, id, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P1 — the short book's open rows for a counter's store (the OPD counter's by default). */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("short-book")
+  async shortBook(@Query("store") store?: string): Promise<{ entries: ShortBookView[] }> {
+    try {
+      return { entries: await listOpenShortBook(this.db, store) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * P1 — note "out of X". The counter's own act (`pharmacy.dispense.place`): the person who meets
+   * the empty shelf is the person who says so. The agent's draft reaches here only when a person
+   * confirms it; `created: false` means the shortage was already open.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("short-book")
+  async noteShort(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ entry: ShortBookEntry; created: boolean }> {
+    const input = parsed(shortBookBody, body);
+    try {
+      return await addShortBookEntry(this.db, actor, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("short-book/:id/resolve")
+  async resolveShort(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<ShortBookEntry> {
+    const { resolution } = parsed(resolveShortBody, body);
+    try {
+      return await resolveShortBookEntry(this.db, actor, id, resolution, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** P1 — the pharmacist's OWN shift for the desk's idle rail (`shift.ts`). Self-scoped; read-only. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("summary/mine")
+  async mySummary(@CurrentActor() actor: Actor): Promise<MyShift> {
+    try {
+      return await myShift(this.db, actor, new Date());
     } catch (e) {
       return toHttp(e);
     }

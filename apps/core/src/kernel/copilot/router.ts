@@ -77,6 +77,7 @@ function buildSystemPrompt(): string {
     "my_day_report  — the clerk's OWN figures for the day: what they registered, booked, collected",
     "stock_on_shelf — how much of a NAMED medicine is on the pharmacy shelf, or when its batch expires",
     "paid_not_collected — which pharmacy bills are paid but the medicines not yet collected",
+    "draft_short_book_entry — a NAMED medicine has run out at the pharmacy and should be noted as short",
     "none           — anything else at all, including anything you are unsure about",
     "",
     "The question may be English, Hindi, or romanised Hinglish.",

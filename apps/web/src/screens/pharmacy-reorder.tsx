@@ -1,6 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchReorderAdvice, pharmacyErrorText } from "../lib/pharmacy-api";
+import { useAuth } from "../lib/auth";
+import { fetchReorderAdvice, fetchShortBook, pharmacyErrorText, resolveShortBook } from "../lib/pharmacy-api";
 import { Button } from "@/components/ui/button";
 import type { WireReorderLine } from "../lib/pharmacy-api";
 
@@ -32,6 +34,7 @@ export function PharmacyReorder(): React.ReactElement {
           {t("pharmacyReorder.intro", { days: w.days, min: w.minCoverDays, target: w.targetCoverDays })}
         </p>
       )}
+      <ShortBook />
       {advice.error !== null && <p role="alert" className="text-sm text-red-600">{pharmacyErrorText(advice.error, t)}</p>}
       {advice.data !== undefined && advice.data.items.length === 0 && <p className="text-sm">{t("pharmacyReorder.none")}</p>}
       {advice.data !== undefined && advice.data.items.length > 0 && (
@@ -132,5 +135,77 @@ export function PharmacyReorder(): React.ReactElement {
         </section>
       )}
     </div>
+  );
+}
+
+const IST_WHEN = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+
+/**
+ * ═══ PARITY P1 — THE SHORT BOOK, AT THE TOP OF THE REORDER LIST ═══
+ *
+ * What the counter said it was out of — by `N` at the desk, from a declined line, or from the agent's
+ * draft a pharmacist confirmed — oldest first, with who said so and when. These rows are what the
+ * shelf figures below cannot show: a drug the hospital does not stock at all has no reorder row.
+ * P2's purchase-order draft reads the same rows. Closing a row is the counter's act
+ * (`pharmacy.dispense.place`): ordered, received, or dismissed.
+ */
+function ShortBook(): React.ReactElement | null {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const book = useQuery({ queryKey: ["pharmacy", "short-book"], queryFn: fetchShortBook, retry: false });
+  const [error, setError] = useState<string | null>(null);
+  const canResolve = can("pharmacy.dispense.place");
+  const resolve = async (id: string, how: "ordered" | "received" | "dismissed"): Promise<void> => {
+    setError(null);
+    try {
+      await resolveShortBook(id, how);
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "short-book"] });
+    } catch (e) {
+      setError(pharmacyErrorText(e, t));
+    }
+  };
+  if (book.data === undefined) return null;
+  const rows = book.data.entries;
+  return (
+    <section className="space-y-2" data-testid="reorder-short-book">
+      <h2 className="text-lg font-semibold">{t("pharmacyReorder.short.title", { count: rows.length })}</h2>
+      <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyReorder.short.intro")}</p>
+      {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {rows.length === 0 ? <p className="text-sm">{t("pharmacyReorder.short.none")}</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left">
+                <th className="py-1 pr-3">{t("pharmacyReorder.item")}</th>
+                <th className="py-1 pr-3">{t("pharmacyReorder.short.noted")}</th>
+                <th className="py-1 pr-3">{t("pharmacyReorder.short.qty")}</th>
+                <th className="py-1 pr-3">{t("pharmacyReorder.short.from")}</th>
+                {canResolve && <th className="py-1 pr-3" />}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} data-testid={`short-${r.id}`}>
+                  <td className="py-1 pr-3">{r.drugName}{r.itemId === null && <span className="ml-1 rounded bg-muted px-1 text-xs text-muted-foreground">{t("pharmacyReorder.short.notStocked")}</span>}</td>
+                  <td className="py-1 pr-3">{IST_WHEN.format(new Date(r.notedAt))} · {r.notedByName ?? "—"}</td>
+                  <td className="py-1 pr-3">{r.qtyWanted ?? ""}</td>
+                  <td className="py-1 pr-3">{t(`pharmacyReorder.short.source.${r.source}`)}</td>
+                  {canResolve && (
+                    <td className="py-1 pr-3 whitespace-nowrap">
+                      {(["ordered", "received", "dismissed"] as const).map((how) => (
+                        <Button key={how} type="button" size="sm" variant="outline" className="mr-1" onClick={() => void resolve(r.id, how)}>
+                          {t(`pharmacyReorder.short.${how}`)}
+                        </Button>
+                      ))}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

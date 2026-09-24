@@ -550,3 +550,48 @@ export async function fetchPaperDispenses(): Promise<WireRetailSaleRow[]> {
   const { items } = await api<{ items: WireRetailSaleRow[] }>("GET", "/pharmacy/downtime/dispenses");
   return items;
 }
+
+// ── PARITY P1 — the desk prints, keeps a short book, and knows the shift ──
+export type WirePharmacyPrintJob = { id: string; document: string; status: string; lastError: string | null; printedAt: string | null; createdAt: string };
+/** `relay`: queued to the counter's roll. `browser`: no relay serves the roll — print `fetchDispensePaper` here. */
+export type WireSendPaper =
+  | { via: "relay"; jobs: WirePharmacyPrintJob[] }
+  | { via: "browser"; documents: string[] };
+export async function sendDispensePaper(id: string, reprint = false): Promise<WireSendPaper> {
+  return api<WireSendPaper>("POST", `/pharmacy/dispenses/${id}/print`, reprint ? { reprint: true } : {});
+}
+export async function fetchDispensePrintJobs(id: string): Promise<{ jobs: WirePharmacyPrintJob[] }> {
+  return api<{ jobs: WirePharmacyPrintJob[] }>("GET", `/pharmacy/dispenses/${id}/print`);
+}
+/** The bill and the labels, the relay's own rendering, for the browser's print. */
+export async function fetchDispensePaper(id: string): Promise<{ html: string; title: string; page: { widthMm: number; heightMm: number | null } }> {
+  return api("GET", `/pharmacy/dispenses/${id}/paper`);
+}
+
+export type WireShortBookEntry = {
+  id: string; storeResourceId: string; itemId: string | null; drugName: string; qtyWanted: number | null;
+  source: "desk" | "agent" | "reorder"; dispenseId: string | null; notedBy: string; notedAt: string;
+  resolvedAt: string | null; resolvedBy: string | null; resolution: string | null;
+  /** On the list read only. */
+  notedByName?: string | null;
+};
+export async function fetchShortBook(): Promise<{ entries: WireShortBookEntry[] }> {
+  return api<{ entries: WireShortBookEntry[] }>("GET", "/pharmacy/short-book");
+}
+export async function noteShortBook(input: {
+  itemId?: string; drugName: string; qtyWanted?: number; source: "desk" | "agent" | "reorder"; dispenseId?: string;
+}): Promise<{ entry: WireShortBookEntry; created: boolean }> {
+  return api<{ entry: WireShortBookEntry; created: boolean }>("POST", "/pharmacy/short-book", input);
+}
+export async function resolveShortBook(id: string, resolution: "ordered" | "received" | "dismissed"): Promise<WireShortBookEntry> {
+  return api<WireShortBookEntry>("POST", `/pharmacy/short-book/${id}/resolve`, { resolution });
+}
+
+export type WireMyShift = {
+  day: string; handedOver: number; takenPaise: number; byMode: { cash: number; upi: number; card: number };
+  receipts: number; returns: number; refunds: number;
+  drawer: { status: string; openingFloatPaise: number; expectedCashPaise: number } | null;
+};
+export async function fetchMyShift(): Promise<WireMyShift> {
+  return api<WireMyShift>("GET", "/pharmacy/summary/mine");
+}

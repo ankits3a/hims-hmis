@@ -56,6 +56,15 @@ export { creditShare } from "./credit-share";
 export { settlementState } from "./settlement";
 export type { Settlement, SettlementState } from "./settlement";
 export { runDailyClose, dayBook, gstr1Summary, chargeOrphans } from "./daily-close";
+/**
+ * PHARMACY P1 — the pharmacist's own shift on the desk's idle rail: the SAME cashier-day fold and
+ * the SAME expected-cash formula the billing desk card reads (`desk-provider.ts`, FD-1 T3 / D5), so
+ * the pharmacy's strip and the drawer's close can never disagree about one person's money. Exported
+ * rather than copied: a second arithmetic on a tile is a figure nobody can defend.
+ */
+export { cashierDay } from "./desk-provider";
+export type { CashierDay } from "./desk-provider";
+export { liveExpectedCashPaise, listSessions } from "./sessions";
 export type { ChargeOrphanRow } from "./daily-close";
 export type { DayBook, Gstr1Row, DailyCloseResult } from "./daily-close";
 export { registerBillingApprovalTypes, BILLING_APPROVAL_TYPES } from "./approval-types";

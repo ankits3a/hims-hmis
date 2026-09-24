@@ -71,7 +71,8 @@ lp -d CRK-Thermal-1 /usr/share/cups/data/testprint   # prove the queue before wi
   "queues": {
     "front_desk_thermal": "CRK-Thermal-1",
     "front_desk_a4":      "CRK-Laser-1",
-    "vitals_thermal":     "CRK-Thermal-2"
+    "vitals_thermal":     "CRK-Thermal-2",
+    "pharmacy_thermal":   "CRK-Thermal-Pharmacy"
   },
   "chromium":    "chromium",
   "pollSeconds": 3
@@ -91,6 +92,12 @@ lp -d CRK-Thermal-1 /usr/share/cups/data/testprint   # prove the queue before wi
 > is what proves the **queue** — the self-test never calls `lp` and never touches CUPS, so it cannot
 > tell you a printer is plugged in.
 
+
+> **`pharmacy_thermal` (parity P1, 2026-09-24)** — the pharmacy desk's bill and medicine labels, on
+> the pharmacy counter's own 80 mm roll. The desk asks the server before it queues: until this relay
+> has claimed a job in the last 24 hours (any destination) or a `pharmacy_thermal` job in the last
+> 7 days, the desk prints the same documents from the browser instead, so no stale bills pile up for
+> a relay that is not there.
 
 The **agent key** is created by an administrator on the server (`createAgent`). Only its SHA-256 is
 stored there, so the key is shown once — keep the config file `chmod 600`. A compromised relay is

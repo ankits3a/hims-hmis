@@ -73,7 +73,7 @@ It declares six pharmacy rows. Five are checkable; the sixth says itself that it
 | 1 | Plan 14 deployed; `deploy.sh` ran `seed-materials.js` | `select count(*) from stock_batches` answers |
 | 2 | `seed-pharmacy.js` ran (the `PHARM-OPD` store, the `pharmacy_dispense` definition) | census rows **`pharmacy_store_present`** and **`pharmacy_definition_active`** green |
 | 3 | `seed-roles.js` ran: roles `pharmacy` and `pharmacy_assistant` exist | the census line in the deploy log |
-| 4 | Assign `pharmacy` to the registered pharmacist(s) at `/admin/users`; `pharmacy_assistant` to the aide(s) | census row **`pharmacy_role_held`** green; the person can open `/pharmacy/counter` |
+| 4 | Assign `pharmacy` to the registered pharmacist(s) at `/admin/users`; `pharmacy_assistant` to the aide(s) | census row **`pharmacy_role_held`** green; the person can open `/pharmacy/desk` (`/pharmacy/counter` forwards there since parity P1) |
 | 5 | **`materials_head` held by a human** — §2 rows 2 and 4 are theirs, not the pharmacist's | that person can open `/materials/items` |
 | 6 | **`storekeeper` held by a human** — §2 row 5 is theirs | that person can open `/materials/grn` |
 | 7 | **An ACTIVATED tariff version resolves today.** `previewDispenseBill` and `billDispense` both load a pricing context and throw `version_not_active` without one — and `seed-tariff` deliberately creates none | `select id, status, effective_from from tariff_versions where status = 'activated'` returns a row covering today |
@@ -168,7 +168,7 @@ A blank slab still bills as exempt.
 
 1. A doctor issues an e-Rx with an OTC line, an H1 line, one brand you do not stock, **and one
    SOS / PRN line**.
-2. Scan the slip's QR at `/pharmacy/counter` → the Rx appears QUEUED with the patient's allergies.
+2. Scan the slip's QR at `/pharmacy/desk` → the Rx appears QUEUED with the patient's allergies.
    Try the token (`T-n`) and the UHID: the same row.
 3. **Take this Rx** (aide may). Quantities prefill from dose × frequency × days; edit one.
    **The SOS line's quantity starts BLANK and that is correct** — `prefillQtyBase` returns null for
@@ -194,10 +194,14 @@ A blank slab still bills as exempt.
 8. Read back: `stock_balances` for the batch went down by exactly the dispensed quantity; the invoice
    lists the lines; `orders` carries a `medication` order with items `completed`.
 
-> **3.9 THE LABEL PRINTS ON A5, NOT ON A 70 × 40 mm ROLL.** The component styles a 70 × 40 mm div,
-> but the only `@page` rule in the tree is `size: A5 portrait` inside a global `@media print` block,
-> and `DispenseLabel` declares none of its own. Expect one A5 sheet with the labels stacked. Do not
-> buy a roll printer on the strength of the sentence that used to be here.
+> **3.9 THE BILL AND LABELS PRINT FROM THE DESK, ON THE 80 mm ROLL (parity P1, 2026-09-24).** The
+> old `/pharmacy/counter` printed an A5 sheet by `window.print()`; it is retired and forwards to the
+> desk. After a hand-over the desk sends the bill and one label per medicine to the logical
+> destination **`pharmacy_thermal`** through the server's print relay (`kernel/printing`,
+> 72 mm printable, continuous). Map that destination to the pharmacy's CUPS queue in the relay's
+> config (`tools/print-relay/README.md`). Until a relay has claimed any job in the last 24 hours (or a
+> `pharmacy_thermal` job in the last 7 days) the desk prints the SAME documents from the browser and
+> says so once. `⋯ → Reprint` on the done screen sends a second copy.
 
 > **A PICKED DISPENSE THAT IS ABANDONED FOR 30 MINUTES IS CANCELLED BY THE SERVER, AND THE STOCK
 > GOES BACK ON THE SHELF.** `PICK_RESERVATION_MINUTES = 30`, swept every 60 seconds by the worker job
@@ -240,9 +244,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 77 codes
+## 4. What refuses, and why — all 81 codes
 
-`errors.ts` declares 77, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 81, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -265,6 +269,8 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `allergy_block` · `interaction_block` | the re-check hit something the prescriber did not override | back to the doctor |
 | `authorisation_not_needed` | the doctor was asked to authorise a refusal the check does not raise on that line | ask about the refusal the line actually shows |
 | `authorisation_not_pending` · `unknown_authorisation` | the request was already decided, or does not exist | read the decision on the ticket |
+| `invalid_short_book_entry` · `unknown_short_book_entry` · `short_book_resolved` | a short-book note with no real drug name or a zero quantity; a row that is gone; a row already ordered, received or dismissed | name the drug; re-read `/pharmacy/reorder` |
+| `nothing_to_print` | the desk asked for the bill and labels before the ticket was billed | take the money first; the paper follows the hand-over |
 | `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
 | `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |

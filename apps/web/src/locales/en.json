@@ -3668,7 +3668,24 @@
     "sell_first": "Sells in time",
     "expiredTitle": "Expired, still on the shelf",
     "expiredIntro": "The counter will not sell these. Take them off the shelf and move them to quarantine in Stores, naming the batch.",
-    "onHand": "On hand"
+    "onHand": "On hand",
+    "short": {
+      "title": "Short book · {{count}} open",
+      "intro": "What the counter said it was out of, oldest first. A drug the hospital does not stock has no row below — it is here.",
+      "none": "Nothing is noted short.",
+      "noted": "noted",
+      "qty": "wanted",
+      "from": "from",
+      "notStocked": "not stocked",
+      "source": {
+        "desk": "the desk",
+        "agent": "agent draft",
+        "reorder": "this list"
+      },
+      "ordered": "Ordered",
+      "received": "Received",
+      "dismissed": "Dismiss"
+    }
   },
   "pharmacyDay": {
     "today": "Today",
@@ -3762,7 +3779,11 @@
     "not_in_downtime": "The hospital was not in downtime at that time — a paper entry is only for a declared outage",
     "backfill_window_closed": "This sheet is more than 7 days old — take it to the pharmacist in charge as an incident",
     "batch_required": "Enter the batch written on the sheet for every line",
-    "unknown_pharmacist": "The person named as handing it over is not pharmacy staff"
+    "unknown_pharmacist": "The person named as handing it over is not pharmacy staff",
+    "invalid_short_book_entry": "Name the drug that is short (two letters at least); a quantity, if given, is a whole number above zero.",
+    "unknown_short_book_entry": "That short-book line is not there any more.",
+    "short_book_resolved": "That shortage was already closed.",
+    "nothing_to_print": "Nothing to print yet — the bill and labels print once the ticket is billed."
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -3873,7 +3894,11 @@
       "handedOver": "handed over",
       "money": "money taken",
       "declined": "lines declined",
-      "inLine": "in the line now"
+      "inLine": "in the line now",
+      "handedOverMine": "you handed over",
+      "moneyMine": "money you took",
+      "returnsRefunds": "returns · refunds",
+      "drawerHolds": "drawer should hold"
     },
     "keys": {
       "title": "keys",
@@ -3884,7 +3909,8 @@
       "s": "see the slip",
       "b": "batch & shelf",
       "tender": "cash · UPI · card · split",
-      "f2": "ask the counter agent"
+      "f2": "ask the counter agent",
+      "n": "note a shortage"
     },
     "sealedRecord": "sealed record",
     "years": "{{n}}y",
@@ -4269,6 +4295,42 @@
       "notRegistered": "not registered — cannot verify",
       "drawerOpen": "drawer open · float {{float}}",
       "noDrawer": "no drawer — open one to take money"
+    },
+    "paper": {
+      "sending": "Sending the bill and labels to the printer…",
+      "withPrinter": "Bill and label are with the printer.",
+      "printed": "Bill and label printed.",
+      "failed": "The printer did not print the bill and label.",
+      "failedWhy": "The printer did not print it: {{why}}",
+      "notTaken": "The printer has not taken the bill and label yet.",
+      "browser": "Bill and label printed from this screen.",
+      "notYet": "Bill and label not printed from this desk.",
+      "printHere": "Print here",
+      "print": "Print bill and labels",
+      "reprint": "Reprint bill and labels",
+      "menu": "Paper for this ticket",
+      "logSent": "Bill and labels sent to the counter printer.",
+      "logReprint": "A second copy of the bill and labels sent to the printer.",
+      "noRelayOnce": "No counter printer is set up — bills and labels print from this screen.",
+      "frameRefused": "This browser would not open the print dialog."
+    },
+    "short": {
+      "title": "Note a shortage",
+      "label": "medicine that is out",
+      "placeholder": "Pan 40",
+      "note": "Note it",
+      "noted": "{{name}} noted in the short book.",
+      "already": "{{name}} was already in the short book.",
+      "alsoNote": "Also note {{name}} in the short book",
+      "reason": {
+        "notStocked": "not stocked",
+        "outOfStock": "out of stock"
+      },
+      "draftTag": "draft",
+      "draftBody": "Note {{name}} in the short book?",
+      "draftShelf": "{{count}} on the shelf",
+      "confirm": "Confirm",
+      "dismiss": "Dismiss the draft"
     }
   },
   "pharmacyAuthorise": {
@@ -5291,7 +5353,10 @@
       "stockNeedName": "Which medicine? Ask with its name — “kitni Mox 500 bachi hai”.",
       "uncollected": "Paid and not yet collected ({{n}}): {{items}}.",
       "uncollectedNone": "Nothing is paid and waiting to be collected.",
-      "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})"
+      "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})",
+      "shortBookDraft": "Drafted: note {{name}} in the short book? Confirm on the card.",
+      "shortBookAlready": "{{name}} is already in the short book.",
+      "shortBookNeedName": "Which medicine is out? Say it with the name — “Pan 40 khatam”."
     },
     "report": {
       "title": "Your day — {{date}}",

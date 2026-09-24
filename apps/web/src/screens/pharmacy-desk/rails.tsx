@@ -3,7 +3,7 @@ import { fetchPatientRail } from "../../lib/pharmacy-api";
 import { useTranslation } from "react-i18next";
 import { FLOW_STEPS, draftsFirst, flowIndex, holdOf, isMyDraft, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
 import type { WaitTone } from "./model";
-import type { WireCounterSummary, WireDispense, WireQueueRow } from "../../lib/pharmacy-api";
+import type { WireCounterSummary, WireDispense, WireMyShift, WireQueueRow } from "../../lib/pharmacy-api";
 
 const TONE: Record<WaitTone, string> = { calm: "var(--dim)", warm: "var(--gold)", late: "var(--red)" };
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -14,11 +14,13 @@ const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en
  * pharmacy's left rail is the PATIENT, because the right rail becomes the bill.
  */
 export function Dossier({
-  inHand, me, summary, queued, onClear, paletteBound,
+  inHand, me, summary, shift = null, queued, onClear, paletteBound,
 }: {
   inHand: WireDispense | null;
   me: string | null;
   summary: WireCounterSummary | null;
+  /** PARITY P1 — this pharmacist's own shift; null on an older server, and the counter's figures stand in. */
+  shift?: WireMyShift | null;
   queued: number;
   onClear: () => void;
   paletteBound: boolean;
@@ -33,7 +35,21 @@ export function Dossier({
     retry: false,
   });
   if (inHand === null) {
-    const day = summary === null ? [] : [
+    /*
+      PARITY P1 — "SALES TODAY", where the board's "your day" sits. The first two rows are the
+      PERSON's (their hand-overs; the money they took, by tender); the drawer is their own, by the
+      close's own formula; the last two stay the counter's, because the line is everybody's.
+    */
+    const modes = shift === null ? "" : (["cash", "upi", "card"] as const)
+      .filter((m) => shift.byMode[m] > 0).map((m) => `${t(`pharmacyDesk.bill.mode.${m}`, { defaultValue: m })} ${rupees(shift.byMode[m])}`).join(" · ");
+    const day: { label: string; value: string; sub?: string; testId?: string }[] = shift !== null ? [
+      { label: t("pharmacyDesk.day.handedOverMine"), value: String(shift.handedOver), testId: "desk-shift-handed" },
+      { label: t("pharmacyDesk.day.moneyMine"), value: rupees(shift.takenPaise), ...(modes === "" ? {} : { sub: modes }), testId: "desk-shift-money" },
+      ...(shift.returns + shift.refunds > 0 ? [{ label: t("pharmacyDesk.day.returnsRefunds"), value: `${String(shift.returns)} · ${String(shift.refunds)}`, testId: "desk-shift-returns" }] : []),
+      ...(shift.drawer === null ? [] : [{ label: t("pharmacyDesk.day.drawerHolds"), value: rupees(shift.drawer.expectedCashPaise), testId: "desk-shift-drawer" }]),
+      ...(summary === null ? [] : [{ label: t("pharmacyDesk.day.declined"), value: String(summary.declinedLines) }]),
+      { label: t("pharmacyDesk.day.inLine"), value: String(queued) },
+    ] : summary === null ? [] : [
       { label: t("pharmacyDesk.day.handedOver"), value: String(summary.handedOver) },
       { label: t("pharmacyDesk.day.money"), value: rupees(summary.billedPaise) },
       { label: t("pharmacyDesk.day.declined"), value: String(summary.declinedLines) },
@@ -46,6 +62,7 @@ export function Dossier({
       { k: "S", what: t("pharmacyDesk.keys.s") },
       { k: "B", what: t("pharmacyDesk.keys.b") },
       { k: "1-4", what: t("pharmacyDesk.keys.tender") },
+      { k: "N", what: t("pharmacyDesk.keys.n") },
       { k: "F2", what: t("pharmacyDesk.keys.f2") },
       { k: "Esc", what: t("pharmacyDesk.keys.esc") },
     ];
@@ -56,9 +73,12 @@ export function Dossier({
         <div className="tag" style={{ marginTop: 22 }}>{t("pharmacyDesk.day.title")}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 10 }}>
           {day.map((d) => (
-            <div key={d.label} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{ flexGrow: 1, fontSize: 12.5, color: "var(--dim)" }}>{d.label}</span>
-              <span className="mo" style={{ fontSize: 14, fontWeight: 600 }}>{d.value}</span>
+            <div key={d.label} data-testid={d.testId}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ flexGrow: 1, fontSize: 12.5, color: "var(--dim)" }}>{d.label}</span>
+                <span className="mo" style={{ fontSize: 14, fontWeight: 600 }}>{d.value}</span>
+              </div>
+              {d.sub === undefined ? null : <div className="mo" style={{ fontSize: 11, color: "var(--faint)", textAlign: "right", marginTop: 1 }}>{d.sub}</div>}
             </div>
           ))}
         </div>
