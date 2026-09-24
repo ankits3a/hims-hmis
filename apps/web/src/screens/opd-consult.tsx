@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
 import { UnpaidMark } from "../components/unpaid-mark";
+import { EyeSections, fetchVisitSections } from "./opd-eye-sections";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
@@ -242,7 +243,7 @@ function v2BodyOf(v: V2State, on: boolean): Record<string, unknown> {
   };
 }
 /** The designed tabs (Consult.dc.html). Complaints, Diagnosis and Advice are the v1 note form, split. */
-type TabId = "summary" | "vitals" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
+type TabId = "summary" | "vitals" | "eye" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
 
 /**
  * ═══ THE DIAGNOSIS GOES UP AS A LIST, AND THE CODES RIDE WITH THEIR OWN WORDS ═══
@@ -369,6 +370,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   );
   const [lease, setLease] = useState<"none" | "mine" | "other">("none");
   const readOnly = lease === "other";
+  /** Consult engine — which specialty sections this visit's department adds (`GET /opd/visits/:id/sections`). */
+  const engine = useQuery({
+    queryKey: ["opd", "sections", active?.encounterId ?? ""], enabled: active !== null, retry: false,
+    queryFn: () => fetchVisitSections(active!.encounterId),
+  });
   const leaseBody = (): Record<string, string> => (lease === "mine" ? { leaseToken: tabToken.current } : {});
   /** Zero-stock lines the doctor has already answered (Use or Keep), keyed by the medicine written. */
   const [stockAnswered, setStockAnswered] = useState<Record<string, true>>({});
@@ -2679,6 +2685,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   options={[
                     ["summary", t("opdConsultV2.tabs.summary")],
                     ["vitals", t("opdConsultV2.tabs.vitals")],
+                    // Consult engine (D19): the department's own sections, only where its profile names them.
+                    ...(engine.data?.profile === "ophthalmology" ? [["eye", t("opdEye.tab")] as const] : []),
                     ["complaints", t("opdConsultV2.tabs.complaints")],
                     ["exam", t("opdConsultV2.tabs.exam")],
                     ["dx", t("opdConsultV2.tabs.dx")],
@@ -2711,6 +2719,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       onChanged={() => { void queryClient.invalidateQueries({ queryKey: ["opd", "visit", active.encounterId] }); }}
                     />
                     <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["vitals"]} testId="history-foot-vitals" />
+                  </div>
+                )}
+                {tab === "eye" && active !== null && (
+                  <div role="tabpanel" id="tabpanel-eye" aria-labelledby="tab-eye">
+                    <EyeSections key={active.encounterId} encounterId={active.encounterId} leaseBody={leaseBody} readOnly={readOnly} />
                   </div>
                 )}
                 {tab === "exam" && (

@@ -9,6 +9,8 @@ import { activeReminder, clearReminder, setReminder } from "./reminders";
 import { acquireEditLease, releaseEditLease } from "./lease";
 import type { LeaseAnswer } from "./lease";
 import { referInternally } from "./referral";
+import { saveVisitSection, visitSections } from "./sections";
+import type { SectionRecordView, VisitSections } from "./sections";
 import type { ReminderView } from "./reminders";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -175,6 +177,9 @@ const issueDraftBody = z.object({
   })).optional(),
 });
 const verifyBody = z.object({ payload: z.string().min(1).max(500) });
+
+/** The section's own schema validates the body (sections.ts); the route bounds only the envelope. */
+const sectionBody = z.object({ body: z.record(z.string(), z.unknown()), leaseToken: z.string().min(1).max(64).nullable().optional() });
 
 @Controller("opd")
 export class OpdQueueController {
@@ -364,6 +369,30 @@ export class OpdQueueController {
     const b = parsed(consultNoteBody, body);
     try {
       return await saveConsultNote(this.db, actor, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Consult engine (sections.ts) — the department's specialty sections for this visit, and what is recorded in them. */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("visits/:id/sections")
+  async sections(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<VisitSections> {
+    try {
+      return await visitSections(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Put("visits/:id/sections/:key")
+  async saveSection(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Param("key") key: string, @Body() body: unknown,
+  ): Promise<{ record: SectionRecordView }> {
+    const b = parsed(sectionBody, body);
+    try {
+      return { record: await saveVisitSection(this.db, actor, id, key, b) };
     } catch (e) {
       toHttp(e);
     }

@@ -5601,5 +5601,55 @@
     "rxFill": "+ ये {{n}} पर्चे में जोड़ें",
     "addOwn": "“{{term}}” को अपनी प्रविष्टि के रूप में जोड़ें",
     "adviceFind": "सलाह खोजें — टेम्पलेट या अपनी पंक्ति"
+  },
+  "opdEye": {
+    "tab": "आँख",
+    "test": "जाँच",
+    "od": "दायीं आँख (OD)",
+    "os": "बायीं आँख (OS)",
+    "copyOdOs": "OD → OS कॉपी करें",
+    "visionTitle": "दृष्टि जाँच · हर आँख",
+    "slitTitle": "स्लिट लैम्प · डॉक्टर",
+    "glassesTitle": "चश्मे का पर्चा · अलग प्रिंट",
+    "vision": {
+      "vaUnaided": "VA बिना चश्मा",
+      "vaGlasses": "VA चश्मे के साथ",
+      "vaPinhole": "VA पिनहोल",
+      "near": "पास की दृष्टि",
+      "colour": "रंग दृष्टि",
+      "autoRefraction": "ऑटो-रिफ्रैक्शन",
+      "currentGlasses": "वर्तमान चश्मा"
+    },
+    "slit": {
+      "lids": "पलकें",
+      "conjunctiva": "कंजंक्टिवा",
+      "cornea": "कॉर्निया",
+      "anteriorChamber": "एंटीरियर चैम्बर",
+      "iris": "आइरिस",
+      "pupil": "पुतली",
+      "lens": "लेंस",
+      "fundus": "फंडस"
+    },
+    "iop": "IOP",
+    "iopMethod": "IOP विधि",
+    "method": "विधि",
+    "lens": {
+      "sph": "SPH",
+      "cyl": "CYL",
+      "axis": "AXIS",
+      "add": "ADD"
+    },
+    "use": "उपयोग",
+    "useOption": {
+      "distance": "दूर",
+      "near": "पास",
+      "bifocal": "बाइफोकल",
+      "progressive": "प्रोग्रेसिव"
+    },
+    "note": "ऑप्टिशियन के लिए नोट",
+    "lensRule": "पावर 0.25 D के कदमों में, और सिलिंडर के साथ एक्सिस (1–180) ज़रूरी है।",
+    "saving": "सहेजा जा रहा है…",
+    "savedAt": "{{at}} पर सहेजा",
+    "saveFailed": "सहेजा नहीं गया — {{reason}}"
   }
 }

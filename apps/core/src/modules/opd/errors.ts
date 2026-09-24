@@ -58,7 +58,9 @@ export type OpdErrorCode =
   // never to `openVisitInTx`: OPD legitimately opens a second visit the same day, and the lab is
   // the case where it is always a mistake — a walk-in is one draw, and tests remembered on the way
   // out are an add-on to the order that exists.
-  | "lab_walkin_already_open";
+  | "lab_walkin_already_open"
+  // Consult engine (sections.ts): a section this visit's department does not show, or a body its schema refuses.
+  | "section_not_in_profile" | "invalid_section_body";
 
 export class OpdError extends Error {
   constructor(
