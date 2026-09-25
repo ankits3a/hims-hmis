@@ -210,7 +210,7 @@ Measured before planning (2 read-only passes, 2026-09-24):
   approval.
 - Recall screen (endpoint exists, no UI).
 
-**P4 as built (2026-09-25, lane `pharmacy-p4-returns`, migration 0128).**
+**P4 as built (2026-09-25, lane `pharmacy-p4-returns`, migration 0129 — regenerated after #318 took 0128).**
 - Tables (materials module): `supplier_returns` and `supplier_return_lines` (the return and OUR debit
   note on it), `supplier_credit_notes` (the vendor's credit note as accepted), `stock_write_offs` and
   `stock_write_off_lines` (destruction), `stock_recalls` (the recall register); `vendors.expiry_return_days`
