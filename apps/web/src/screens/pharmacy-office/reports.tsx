@@ -117,8 +117,10 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="ghost" onClick={onBack}>← {t("pharmacyOffice.reports.back")} <kbd className="ml-1 rounded border px-1 text-xs">Esc</kbd></Button>
         <h2 className="flex-1 text-lg font-semibold">{t(`pharmacyOffice.reports.name.${report}`)}</h2>
-        <Button type="button" variant="outline" data-testid="report-export" onClick={exportNow}>{t("pharmacyOffice.reports.export")} <kbd className="ml-1 rounded border px-1 text-xs">E</kbd></Button>
-        <Button type="button" variant="outline" data-testid="report-print" onClick={printNow}>{t("pharmacyOffice.reports.print")} <kbd className="ml-1 rounded border px-1 text-xs">P</kbd></Button>
+        {report !== "tally" && (<>
+          <Button type="button" variant="outline" data-testid="report-export" onClick={exportNow}>{t("pharmacyOffice.reports.export")} <kbd className="ml-1 rounded border px-1 text-xs">E</kbd></Button>
+          <Button type="button" variant="outline" data-testid="report-print" onClick={printNow}>{t("pharmacyOffice.reports.print")} <kbd className="ml-1 rounded border px-1 text-xs">P</kbd></Button>
+        </>)}
       </div>
       {notice !== null && <p role="alert" className="text-sm text-red-600">{notice}</p>}
       {report === "sales" && <SalesReport {...bind} />}

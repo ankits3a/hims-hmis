@@ -127,7 +127,7 @@ export function TallyReport({ range, rangeBar, keysRef }: {
 function VoucherView({ v }: { v: WireTallyVoucher }): React.ReactElement {
   const { t } = useTranslation();
   return (
-    <table className="mt-2 w-full text-xs" data-testid={`tally-voucher-${v.number}`}>
+    <table className="mt-2 w-full max-w-2xl text-xs [&_td]:px-1.5 [&_th]:px-1.5" data-testid={`tally-voucher-${v.number}`}>
       <caption className="text-left font-medium">{v.type} · {v.number} · {v.date} · {v.party}</caption>
       <thead><tr className="text-left text-muted-foreground"><th>{t("pharmacyOffice.tally.ledger")}</th><th className="text-right">{t("pharmacyOffice.tally.debit")}</th><th className="text-right">{t("pharmacyOffice.tally.credit")}</th></tr></thead>
       <tbody>{v.entries.map((e, i) => (
