@@ -1024,6 +1024,10 @@ split is what those pairs will hang on.
 | `materials.counts.manage` | ✓ | | |
 | `materials.counts.perform` | ✓ | ✓ | ✓ |
 | `materials.po.raise` | ✓ | | ✓ |
+| `materials.bills.manage` | ✓ | | ✓ |
+| `materials.bills.accept_difference` | ✓ | | |
+| `materials.payments.prepare` | ✓ | | |
+| `materials.payments.record` | ✓ | | |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
@@ -1049,6 +1053,16 @@ is no `materials.po.approve`: the approval is the approvals engine's, `materials
 `materials_head` up to ₹50,000 and `materials_po_approval_owner` to the owner above it (both
 defaults the owner may change), and the kernel refuses whoever submitted or drafted an order
 deciding it. Whoever approved an order cannot receive its GRN (`po_approver_grn_receiver`).
+
+**Pharmacy parity P3 pays the supplier, and adds four `materials.*` strings.** `materials.bills.manage`
+goes to `materials_head` and `pharmacy`: the pharmacist enters the supplier's bill from the GRN the
+agent prefilled and matches it three ways. `materials.bills.accept_difference` is the head's alone and
+accepts a bill held outside the match tolerance (1% or ₹10, whichever is larger), with a reason and
+never by whoever entered it. `materials.payments.prepare` and `materials.payments.record` go to
+`materials_head` and `pharmacy_incharge`: they prepare the payment run and record each vendor paid.
+There is no `materials.payments.authorise`: the owner authorises through `materials_payment_run_approval`,
+the preparer can never authorise (`payout_preparer_payout_approver`), and whoever authorised a run
+cannot record it paid (`payment_authoriser_recorder`). All of these are defaults the owner may change.
 
 **Two approval types, registered by `seed:materials` in the deploy path.**
 `materials_near_expiry_acceptance` (approver `materials_head`, 240-minute SLA) gates posting a GRN
@@ -1287,6 +1301,8 @@ behind `patients.confidential.read`.
 | `pharmacy.retail.sell` | ✓ | | |
 | `pharmacy.retail.manage` | | | ✓ |
 | `pharmacy.downtime.enter` | ✓ | | |
+| `materials.payments.prepare` | | | ✓ |
+| `materials.payments.record` | | | ✓ |
 
 Ten grants are held outside that table. **`pharmacy` gains the kernel's `orders.place`,
 `orders.read` and `orders.cancel`** because the claim at the counter PLACES the `medication` order

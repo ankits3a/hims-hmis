@@ -431,8 +431,14 @@
         "label": "Purchase order above the limit",
         "ask": "Approve a purchase order of {{amount}}, above the materials head's limit",
         "explain": "Orders above the limit come to you. Approving lets them send the order to the supplier."
+      },
+      "materials_payment_run_approval": {
+        "label": "Supplier payment run",
+        "ask": "Authorise paying suppliers {{amount}}",
+        "explain": "The materials head or the pharmacist in charge prepared a run of supplier bills to pay. Authorising lets somebody else pay them and record it; you cannot record it yourself."
       }
-    }
+    },
+    "openRun": "Open the run"
   },
   "opd": {
     "labels": {
@@ -1935,7 +1941,21 @@
     "po_over_receipt": "More than the order allows (ordered + 2%) — put free goods on their own line",
     "po_mismatch": "This delivery is not for that purchase order (vendor, store or item differs)",
     "po_approver_receiving": "You approved this order — somebody else must receive it",
-    "invalid_stock_level": "Levels must hold 0 ≤ min ≤ reorder < max"
+    "invalid_stock_level": "Levels must hold 0 ≤ min ≤ reorder < max",
+    "unknown_supplier_bill": "That supplier bill does not exist.",
+    "bill_wrong_status": "The bill is not in a state that allows this.",
+    "bill_invalid": "The bill cannot be saved as entered — check the GRN, the numbers and the date.",
+    "duplicate_bill": "This vendor's bill number is already booked in this financial year.",
+    "grn_already_billed": "That GRN is already on another bill.",
+    "bill_self_accept": "You entered this bill; somebody else accepts its difference.",
+    "unknown_payment_run": "That payment run does not exist.",
+    "run_wrong_status": "The payment run is not in a state that allows this.",
+    "run_invalid": "The run cannot be saved — a bill is not payable, or the amount is more than it still owes.",
+    "run_not_preparer": "Only the person who prepared the run submits it.",
+    "authoriser_recording": "You authorised this run; somebody else records it paid.",
+    "vendor_cooling_off": "The vendor's bank details changed recently; the first payment waits for the cooling-off to end.",
+    "cash_limit_exceeded": "Cash to one vendor in one day cannot pass ₹10,000 (Income-tax Act s.40A(3)) — pay by bank.",
+    "payment_reference_required": "Type the UTR or the cheque number."
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -4384,6 +4404,11 @@
       "tag": "Orders",
       "body": "Ready to draft — orders: {{orders}} · lines: {{lines}} · need a vendor: {{unassigned}}.",
       "open": "Open the office"
+    },
+    "payPlan": {
+      "tag": "PAY",
+      "body": "Payment run ready — vendors: {{vendors}} · bills: {{bills}}. The owner authorises it.",
+      "open": "Open the office"
     }
   },
   "pharmacyAuthorise": {
@@ -5424,7 +5449,9 @@
       "shortBookAlready": "{{name}} is already in the short book.",
       "shortBookNeedName": "Which medicine is out? Say it with the name — “Pan 40 khatam”.",
       "purchaseDraftPlan": "Ready to draft — orders: {{orders}} · lines: {{lines}} · need a vendor: {{unassigned}}. Open the office to make the drafts.",
-      "purchaseDraftNothing": "Nothing to order: no item is at its reorder level and the short book is clear."
+      "purchaseDraftNothing": "Nothing to order: no item is at its reorder level and the short book is clear.",
+      "paymentRunPlan": "Ready to draft a payment run — vendors: {{vendors}} · bills: {{bills}} · ₹{{amount}} due by {{until}}. Open the office to make the draft.",
+      "paymentRunNothing": "Nothing falls due by {{until}} that a run does not already hold."
     },
     "report": {
       "title": "Your day — {{date}}",
@@ -5819,6 +5846,179 @@
       "cancelled": "Cancelled.",
       "waitingOn_head": "Waiting on the materials head.",
       "waitingOn_owner": "Waiting on the owner."
+    },
+    "views": "Office views",
+    "view": {
+      "buy": "Buy",
+      "pay": "Pay"
+    },
+    "pay": {
+      "count": {
+        "toMatch": "Bills to enter or match",
+        "held": "Held for match",
+        "dueThisWeek": "Due this week",
+        "overdue": "Overdue",
+        "awaitingAuth": "Runs awaiting the owner"
+      },
+      "section": {
+        "held": "Held for match",
+        "drafts": "Bills not yet matched",
+        "matched": "Matched — accept to book",
+        "runs": "Payment runs"
+      },
+      "msmeOverdue_one": "{{count}} MSME bill past the 45-day limit",
+      "msmeOverdue_other": "{{count}} MSME bills past the 45-day limit",
+      "outstanding": "Outstanding",
+      "overdueAmount": "Overdue",
+      "openPayables": "Payables & ageing",
+      "agent": {
+        "can": "Ready to draft a payment run — vendors: {{vendors}} · bills: {{bills}} · {{amount}} due by {{until}}.",
+        "nothing": "Nothing falls due by {{until}} that a run does not already hold.",
+        "blocked_one": "{{count}} vendor left out: bank details changed and the cooling-off has not ended.",
+        "blocked_other": "{{count}} vendors left out: bank details changed and the cooling-off has not ended.",
+        "make": "Make the draft",
+        "made": "Drafted run {{runNo}} — check it and submit it for the owner."
+      },
+      "noInvoiceNo": "no invoice no. on the challan",
+      "billReady": "bill prefilled",
+      "runLine": "vendors: {{vendors}} · bills: {{bills}}",
+      "daysOverdue_one": "{{count}} day overdue",
+      "daysOverdue_other": "{{count}} days overdue",
+      "dueOn": "due {{date}}",
+      "paid": "Paid",
+      "empty": "No bill to enter, nothing due and no run open.",
+      "csv": "Export CSV",
+      "billStatus": {
+        "draft": "Draft",
+        "matched": "Matched",
+        "held_for_match": "Held for match",
+        "accepted": "Payable",
+        "part_paid": "Part paid",
+        "paid": "Paid",
+        "cancelled": "Cancelled"
+      },
+      "runStatus": {
+        "draft": "Draft",
+        "pending_authorisation": "Awaiting the owner",
+        "authorised": "Authorised",
+        "completed": "Paid",
+        "cancelled": "Cancelled"
+      },
+      "mismatch": {
+        "not_received": "not received",
+        "qty_over": "more than received",
+        "qty_under": "less than received",
+        "rate": "rate differs",
+        "gst_rate": "GST rate differs",
+        "value": "outside tolerance",
+        "not_billed": "received, not billed"
+      },
+      "bucket": {
+        "0_30": "0–30 days",
+        "31_60": "31–60 days",
+        "61_90": "61–90 days",
+        "90_plus": "Over 90 days"
+      },
+      "mode": {
+        "neft": "NEFT",
+        "rtgs": "RTGS",
+        "upi": "UPI",
+        "cheque": "Cheque",
+        "cash": "Cash"
+      },
+      "bill": {
+        "newTitle": "Bill for {{grn}} · {{vendor}}",
+        "prefilled": "The agent filled this from {{grn}} (PO {{po}}): what the gate accepted, at the order's rate and GST. Type the vendor's bill number and date, and change any line that differs.",
+        "vendorBillNo": "Vendor's bill no.",
+        "billDate": "Bill date",
+        "interState": "Inter-state (IGST)",
+        "roundOff": "Round-off ₹",
+        "received": "Received @ PO rate",
+        "difference": "Difference",
+        "expected": "Expected at the PO's rate: {{amount}} incl. GST",
+        "saveMatch": "Save and match",
+        "needNo": "Type the vendor's bill number.",
+        "heldBecause": "Held: {{reason}}",
+        "differenceAccepted": "Difference accepted: {{reason}} — {{by}}",
+        "billed": "Billed",
+        "expectedCol": "Expected",
+        "match": "Match",
+        "ok": "matches",
+        "expectedShort": "Expected",
+        "matchedMsg": "Matched.",
+        "accept": "Accept",
+        "accepted": "Booked as payable.",
+        "differenceReason": "Why the difference is accepted",
+        "acceptDifference": "Accept the difference",
+        "waitingHead": "Waiting for the materials head to accept the difference.",
+        "cancelReason": "Why the bill is cancelled",
+        "cancel": "Cancel the bill",
+        "cancelled": "Bill cancelled."
+      },
+      "run": {
+        "preparedBy": "Prepared by {{name}}",
+        "authorisedBy": "Authorised by {{name}}",
+        "refused": "The owner refused it: {{note}}",
+        "invDate": "Inv date",
+        "ourNo": "Our no.",
+        "vendorNo": "Vendor bill no.",
+        "prevPaid": "Paid before",
+        "credit": "Credit",
+        "payNow": "Pay now",
+        "remaining": "Remaining",
+        "full": "Full",
+        "fullVendor": "Pay {{vendor}} in full",
+        "coolingOff": "cooling-off till {{date}}",
+        "notYours": "You authorised this run; somebody else records it paid.",
+        "mode": "Mode for {{vendor}}",
+        "reference": "Reference for {{vendor}}",
+        "paidOn": "Paid on for {{vendor}}",
+        "chequeNo": "Cheque no.",
+        "utr": "UTR",
+        "markPaid": "Mark paid {{amount}}",
+        "recorded": "{{vendor}} recorded as paid.",
+        "paidWith": "{{no}} · {{mode}} {{ref}} · {{date}} · {{amount}}",
+        "total": "Run total",
+        "creditNote": "Credit = the vendor's credit notes to offset (from the supplier-returns phase). Payable = Total − Credit.",
+        "submit": "Submit for the owner",
+        "submitted": "Sent to the owner to authorise.",
+        "waitingOwner": "Waiting for the owner to authorise it in Approvals.",
+        "cancelReason": "Why the run is cancelled",
+        "cancel": "Cancel the run",
+        "cancelled": "Run cancelled."
+      },
+      "payables": {
+        "title": "Payables",
+        "ageing": "Ageing",
+        "suppliers": "Supplier summary",
+        "supplier": "Supplier",
+        "due": "Due",
+        "age": "Age",
+        "outstanding": "Outstanding",
+        "ledger": "Ledger"
+      },
+      "ledger": {
+        "title": "Ledger · {{vendor}}",
+        "from": "From",
+        "to": "To",
+        "date": "Date",
+        "voucher": "Voucher",
+        "reference": "Reference",
+        "bill": "Bill",
+        "payment": "Payment",
+        "balance": "Balance",
+        "opening": "Opening balance",
+        "closing": "Closing",
+        "notesLater": "Debit and credit notes join this ledger with supplier returns."
+      },
+      "ownerView": {
+        "title": "Payment run {{runNo}} — for your authorisation",
+        "intro": "Prepared by {{name}} · vendors: {{vendors}} · bills: {{bills}}. Read it, then approve or reject with a reason."
+      }
+    },
+    "keys": {
+      "buy": "↑↓ move · ⏎ open · A approve · R reject · Esc close",
+      "pay": "↑↓ move · ⏎ open · D draft run · P payables · A accept bill · Esc close"
     }
   }
 }

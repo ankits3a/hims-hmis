@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { pharmacyDispenses, pharmacyShortBook } from "../../kernel/db/schema";
-import { findStoreByCode, sellableBatchesByItem } from "../materials";
+import { findStoreByCode, planPaymentRun, sellableBatchesByItem } from "../materials";
 import { getPatientSummaries } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { planPurchaseDrafts } from "./purchase-drafts";
@@ -209,6 +209,35 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
       return {
         key: "copilot.answer.purchaseDraftPlan",
         params: { orders: plan.groups.length, lines, unassigned: plan.unassigned.length },
+        payload,
+      };
+    },
+  },
+  /**
+   * PARITY P3 — "payment run bana do": what the agent WOULD put on a supplier payment run — every
+   * accepted bill due within the week, MSME first (`materials/payments.ts` `planPaymentRun`). Read-only
+   * like every tool here: the card links to `/pharmacy/office`, where a person presses "make the
+   * draft"; the owner authorises it and somebody other than the owner records it paid.
+   *
+   * Gated on `materials.payments.prepare` — the copilot offers a run to exactly the people who may
+   * prepare one.
+   */
+  {
+    intent: "draft_payment_run",
+    permission: "materials.payments.prepare",
+    needsSubject: false,
+    async run(ctx): Promise<CopilotAnswer> {
+      const plan = await planPaymentRun(ctx.db, new Date());
+      const bills = plan.groups.reduce((s, g) => s + g.bills.length, 0);
+      const payload = {
+        kind: "payment_run_plan", href: "/pharmacy/office?view=pay", vendors: plan.groups.length, bills, totalPaise: plan.totalPaise,
+        blocked: plan.blocked.length, until: plan.until,
+        msmeVendors: plan.groups.filter((g) => g.msme).length,
+      };
+      if (bills === 0) return { key: "copilot.answer.paymentRunNothing", params: { until: plan.until }, payload };
+      return {
+        key: "copilot.answer.paymentRunPlan",
+        params: { vendors: plan.groups.length, bills, amount: (plan.totalPaise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 }), until: plan.until, blocked: plan.blocked.length },
         payload,
       };
     },

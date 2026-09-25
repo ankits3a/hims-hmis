@@ -37,6 +37,8 @@ export const APPROVAL_KINDS = {
   /* PARITY P2 — a purchase order, up to the head's limit and above it. The total is in the request note. */
   materials_po_approval: ["amount"],
   materials_po_approval_owner: ["amount"],
+  /* PARITY P3 — a supplier payment run the owner authorises; the vendors and bills are in the request note. */
+  materials_payment_run_approval: ["amount"],
   imaging_definition_publish: [],
   ot_definition_publish: [],
   ot_deposit_exception: ["amount", "patient"],

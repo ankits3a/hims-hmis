@@ -549,3 +549,38 @@ approval types an order needs (`pharmacy_po_approval_registered`).
   - an item the order does not carry.
 
   Less than ordered leaves the order part received, and the rest stays open.
+
+## 12. Paying suppliers — bills, payables and the payment run (parity P3)
+
+Everything here is at **`/pharmacy/office`, the Pay side** (the Buy | Pay switch at the top). Bills
+need `materials.bills.manage` (`materials_head`, `pharmacy`); runs need `materials.payments.prepare`
+and `materials.payments.record` (`materials_head`, `pharmacy_incharge`). `deploy.sh` runs
+`seed:materials`, which registers `materials_payment_run_approval`
+(`pharmacy_payment_run_approval_registered`).
+
+- **Assign the people.** The owner authorises every payment run (`pharmacy_payment_authoriser_held`
+  is RED until an active person holds `owner`). Somebody other than the owner records the run paid
+  (`pharmacy_payment_recorder_held` is RED until an active person holds `materials_head` or
+  `pharmacy_incharge`). Nobody authorises a run they prepared, and whoever authorised a run cannot
+  record it paid.
+- **Enter the bill.** Each posted goods receipt without a bill shows under *Bills to enter or match*.
+  Open it: the agent has filled in what the gate accepted at the order's rate and GST. Type the
+  vendor's bill number and date, change any line the vendor billed differently, and press ⏎.
+- **The match.** A line's value may differ from received × order rate by 1% or ₹10, whichever is
+  larger (a default the owner may change). Beyond that, or with a different GST rate, more billed
+  than received, or a received item left off, the bill is *held for match*. The materials head
+  opens it, sees why line by line, and accepts the difference with a reason — never on a bill they
+  entered. A matched bill is booked with **A**.
+- **Due dates.** An MSME vendor (`msme_class` set on the vendor) is due within 45 days of the goods'
+  acceptance, sooner if their terms say so (MSMED Act s.15). Other vendors are due their payment
+  terms after the bill date (30 days when none are recorded).
+- **The payment run.** Press **D** (Make the draft), or say "payment run bana do" at the desk (F2).
+  The agent lists every bill due within the week, overdue first, MSME vendors first. A vendor whose
+  bank details changed in the last 7 days is left out until the cooling-off ends. Tick **Full** or
+  type a part payment per bill, then **Submit for the owner**. The owner authorises it in
+  `/approvals`.
+- **Record it paid.** After paying through the bank, open the run and, per vendor, choose the mode,
+  type the UTR or cheque number, and press **Mark paid**. Cash to one vendor in one day stops at
+  ₹10,000 (Income-tax Act s.40A(3)); anything more goes by bank.
+- **Payables.** Press **P** for ageing (0–30 / 31–60 / 61–90 / 90+ days) and the Supplier Summary;
+  a supplier opens its ledger. Both export CSV.

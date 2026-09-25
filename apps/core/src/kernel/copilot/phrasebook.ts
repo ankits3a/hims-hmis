@@ -23,7 +23,7 @@
  */
 
 /** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
-export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders";
+export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -143,6 +143,16 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("order karo"), S("order kar do"), S("order bana"), S("orders bana"), S("purchase order"), S("make the orders"),
     S("make orders"), S("draft the orders"), S("draft orders"), S("draft purchase"), S("po bana"), S("ऑर्डर कर"), S("ऑर्डर बना"),
     W("order"), W("orders"), W("ऑर्डर"),
+  ],
+  /**
+   * PARITY P3 (2026-09-25) — "payment run bana do", "pay the suppliers": the agent DRAFTS a payment run
+   * from the bills falling due. Phrases only — "due" and "paisa" are a patient's dues and stay there.
+   * The tool writes nothing: its card opens the office, where a person makes the draft, the owner
+   * authorises it and somebody else records it paid.
+   */
+  draft_payment_run: [
+    S("payment run"), S("pay the suppliers"), S("pay suppliers"), S("pay the vendors"), S("pay vendors"), S("supplier payment"),
+    S("vendor payment"), S("payment bana"), S("payment karo"), S("payment kar do"), S("bills to pay"), S("bhugtan"), S("भुगतान"),
   ],
 };
 

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import { usePalette } from "../components/command-palette";
@@ -187,6 +187,17 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
  */
 export function ShortcutLegend(): React.ReactElement {
   const { t } = useTranslation();
+  const screenKeys = useSyncExternalStore(subscribeScreenKeys, readScreenKeys, readScreenKeys);
+  // PARITY P3 — a screen that registers its own keys (`useScreenKeys`) gets them here instead of
+  // the front desk's: F4 / F7 / Ctrl+⏎ / "release the patient" mean nothing on the pharmacy office.
+  if (screenKeys !== null) {
+    return (
+      <footer className="no-print flex gap-4 border-t px-4 py-1 text-xs text-neutral-500" data-testid="shortcut-legend-screen">
+        <span>{t("shortcuts.search")}</span>
+        {screenKeys.map((k) => <span key={k}>{k}</span>)}
+      </footer>
+    );
+  }
   return (
     <footer className="no-print flex gap-4 border-t px-4 py-1 text-xs text-neutral-500">
       <span>{t("shortcuts.search")}</span>
@@ -196,4 +207,32 @@ export function ShortcutLegend(): React.ReactElement {
       <span>{t("shortcuts.release")}</span>
     </footer>
   );
+}
+
+/*
+ * PARITY P3 — THE SCREEN'S OWN KEYS ON THE LEGEND. A tiny external store rather than a provider, so
+ * the shell (`router.tsx`) does not change: a screen calls `useScreenKeys([...labels])` while it is
+ * mounted, and `ShortcutLegend` shows those labels (after `/ — Search`) instead of the desk's.
+ * Unmounting restores the desk legend. Labels are already translated by the caller.
+ */
+let screenKeysNow: readonly string[] | null = null;
+const screenKeyListeners = new Set<() => void>();
+function subscribeScreenKeys(fn: () => void): () => void {
+  screenKeyListeners.add(fn);
+  return () => { screenKeyListeners.delete(fn); };
+}
+function readScreenKeys(): readonly string[] | null {
+  return screenKeysNow;
+}
+function setScreenKeys(next: readonly string[] | null): void {
+  screenKeysNow = next;
+  for (const fn of screenKeyListeners) fn();
+}
+
+export function useScreenKeys(labels: readonly string[]): void {
+  const key = labels.join("\u0000");
+  useEffect(() => {
+    setScreenKeys(key === "" ? [] : key.split("\u0000"));
+    return () => setScreenKeys(null);
+  }, [key]);
 }

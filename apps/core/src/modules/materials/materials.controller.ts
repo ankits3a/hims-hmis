@@ -33,6 +33,16 @@ import {
   submitPurchaseOrder, updatePurchaseOrder,
 } from "./purchase-orders";
 import type { PoSummary, PoView } from "./purchase-orders";
+import {
+  acceptBillDifference, acceptSupplierBill, cancelSupplierBill, createSupplierBill, getSupplierBill, listSupplierBills, matchSupplierBill,
+  payables, supplierLedger, unbilledGrns, updateSupplierBill,
+} from "./supplier-bills";
+import type { BillStatus, BillSummary, BillView, Payables, SupplierLedger, UnbilledGrn } from "./supplier-bills";
+import {
+  PAYMENT_MODES, assertNotRunAuthoriser, cancelPaymentRun, createPaymentRun, decidePaymentRun, draftPaymentRun, getPaymentRun,
+  listPaymentRuns, planPaymentRun, recordVendorPayment, submitPaymentRun, updatePaymentRun,
+} from "./payments";
+import type { PaymentPlan, RunStatus, RunSummary, RunView } from "./payments";
 import { expiringBatches } from "./expiry";
 import { cancelCount, closeCount, countSheet, getCount, listCounts, myCounts, scheduleCount, submitCount } from "./counts";
 import { ADJUSTMENT_REASONS, listAdjustments, postAdjustments, requestCountAdjustment } from "./adjustments";
@@ -233,6 +243,26 @@ const decisionBody = z.object({ verdict: z.enum(["approve", "reject"]), note: z.
 const levelBody = z.object({
   itemId: id, storeResourceId: id,
   minBase: z.number().int().nonnegative(), reorderBase: z.number().int().nonnegative(), maxBase: z.number().int().positive(),
+});
+
+// ── PARITY P3 — supplier bills and payment runs ──
+const billLineBody = z.object({
+  grnId: id, itemId: id, uom: z.string().min(1).max(32).nullish(), qtyPacks: z.number().int().nonnegative(),
+  ratePaise: paise.nonnegative(), gstRateBps: z.number().int().nonnegative().max(2_800),
+});
+const billBody = z.object({
+  vendorId: id, vendorBillNo: z.string().min(1).max(64), billDate: dateStr, interState: z.boolean().optional(),
+  roundOffPaise: z.number().int().min(-99).max(99).optional(), note: z.string().max(500).nullish(),
+  lines: z.array(billLineBody).min(1).max(300),
+});
+const billPatchBody = billBody.partial();
+const billStatuses = z.enum(["draft", "matched", "held_for_match", "accepted", "part_paid", "paid", "cancelled"]);
+const runLineBody = z.object({ billId: id, payPaise: paise.positive() });
+const runBody = z.object({ lines: z.array(runLineBody).min(1).max(500), note: z.string().max(500).nullish() });
+const runPatchBody = runBody.partial();
+const runStatuses = z.enum(["draft", "pending_authorisation", "authorised", "completed", "cancelled"]);
+const paymentBody = z.object({
+  mode: z.enum(PAYMENT_MODES as unknown as [string, ...string[]]), reference: z.string().max(64).nullish(), paidOn: dateStr.nullish(),
 });
 
 const issueBody = z.object({
@@ -900,5 +930,209 @@ export class MaterialsController {
   async consumptions(@Query() query: unknown): Promise<{ consumptions: unknown[] }> {
     const q = parsed(z.object({ encounterId: id }), query);
     return { consumptions: await consumptionsFor(this.db, q.encounterId) };
+  }
+
+  // ═══════════════════════════════ SUPPLIER BILLS, PAYABLES, PAYMENT RUNS (PARITY P3) ═══════════════════════════════
+  //
+  // Reads are guarded on `materials.bills.manage` (the head, the pharmacist and the in-charge, who
+  // holds `pharmacy`); the acts re-check their own grant, and the reads accept any payables grant or an
+  // approver's, so the owner reads a run through the approval route below. The authorisation is the
+  // approvals engine's: `materials_payment_run_approval`, approver owner.
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("supplier-bills")
+  async supplierBills(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ bills: BillSummary[] }> {
+    const q = parsed(z.object({ status: z.string().max(200).optional(), vendorId: id.optional() }), query);
+    const statuses = q.status === undefined ? undefined : q.status.split(",").map((x) => parsed(billStatuses, x) as BillStatus);
+    try {
+      return { bills: await listSupplierBills(this.db, actor, { ...(statuses === undefined ? {} : { statuses }), ...(q.vendorId === undefined ? {} : { vendorId: q.vendorId }) }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("supplier-bills/unbilled-grns")
+  async unbilled(@CurrentActor() actor: Actor): Promise<{ grns: UnbilledGrn[] }> {
+    try {
+      return { grns: await unbilledGrns(this.db, actor) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("supplier-bills/:id")
+  async supplierBill(@CurrentActor() actor: Actor, @Param("id") billId: string): Promise<{ bill: BillView }> {
+    try {
+      return { bill: await getSupplierBill(this.db, actor, billId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Post("supplier-bills")
+  async createBill(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ bill: BillView }> {
+    const b = parsed(billBody, body);
+    try {
+      return { bill: await createSupplierBill(this.db, actor, b, { source: "manual" }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Patch("supplier-bills/:id")
+  async updateBill(@CurrentActor() actor: Actor, @Param("id") billId: string, @Body() body: unknown): Promise<{ bill: BillView }> {
+    const b = parsed(billPatchBody, body);
+    try {
+      return { bill: await updateSupplierBill(this.db, actor, billId, b) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Post("supplier-bills/:id/match")
+  async matchBill(@CurrentActor() actor: Actor, @Param("id") billId: string): Promise<{ bill: BillView }> {
+    try {
+      return { bill: await matchSupplierBill(this.db, actor, billId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Post("supplier-bills/:id/accept")
+  async acceptBill(@CurrentActor() actor: Actor, @Param("id") billId: string): Promise<{ bill: BillView }> {
+    try {
+      return { bill: await acceptSupplierBill(this.db, actor, billId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.accept_difference", "hospital")
+  @Post("supplier-bills/:id/accept-difference")
+  async acceptDifference(@CurrentActor() actor: Actor, @Param("id") billId: string, @Body() body: unknown): Promise<{ bill: BillView }> {
+    const b = parsed(reasonBody, body);
+    try {
+      return { bill: await acceptBillDifference(this.db, actor, billId, b.reason) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Post("supplier-bills/:id/cancel")
+  async cancelBill(@CurrentActor() actor: Actor, @Param("id") billId: string, @Body() body: unknown): Promise<{ bill: BillView }> {
+    const b = parsed(reasonBody, body);
+    try {
+      return { bill: await cancelSupplierBill(this.db, actor, billId, b.reason) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("payables")
+  async payablesView(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<Payables> {
+    const q = parsed(z.object({ vendorId: id.optional() }), query);
+    try {
+      return await payables(this.db, actor, new Date(), q.vendorId === undefined ? {} : { vendorId: q.vendorId });
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("payables/ledger/:vendorId")
+  async ledger(@CurrentActor() actor: Actor, @Param("vendorId") vendorId: string, @Query() query: unknown): Promise<SupplierLedger> {
+    const q = parsed(z.object({ from: dateStr.optional(), to: dateStr.optional() }), query);
+    try {
+      return await supplierLedger(this.db, actor, vendorId, { from: q.from ?? null, to: q.to ?? null });
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.payments.prepare", "hospital")
+  @Get("payment-runs/plan")
+  async runPlan(): Promise<PaymentPlan> {
+    try {
+      return await planPaymentRun(this.db, new Date());
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("payment-runs")
+  async runs(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ runs: RunSummary[] }> {
+    const q = parsed(z.object({ status: z.string().max(200).optional() }), query);
+    const statuses = q.status === undefined ? undefined : q.status.split(",").map((x) => parsed(runStatuses, x) as RunStatus);
+    try {
+      return { runs: await listPaymentRuns(this.db, actor, statuses === undefined ? {} : { statuses }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("payment-runs/:id")
+  async run(@CurrentActor() actor: Actor, @Param("id") runId: string): Promise<{ run: RunView }> {
+    try {
+      return { run: await getPaymentRun(this.db, actor, runId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The owner opens the run they are asked to authorise: the same read, behind the approver's grant. */
+  @RequirePermission("approvals.requests.decide", "hospital")
+  @Get("payment-runs/:id/for-approval")
+  async runForApproval(@CurrentActor() actor: Actor, @Param("id") runId: string): Promise<{ run: RunView }> {
+    try {
+      return { run: await getPaymentRun(this.db, actor, runId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.payments.prepare", "hospital")
+  @Post("payment-runs")
+  async createRun(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ run: RunView }> {
+    const b = parsed(runBody, body);
+    try {
+      return { run: await createPaymentRun(this.db, actor, b, { source: "manual" }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The person's press of "make the draft": the agent's plan as a DRAFT run. */
+  @RequirePermission("materials.payments.prepare", "hospital")
+  @Post("payment-runs/draft")
+  async draftRun(@CurrentActor() actor: Actor): Promise<{ run: RunView }> {
+    try {
+      return { run: await draftPaymentRun(this.db, actor) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.payments.prepare", "hospital")
+  @Patch("payment-runs/:id")
+  async updateRun(@CurrentActor() actor: Actor, @Param("id") runId: string, @Body() body: unknown): Promise<{ run: RunView }> {
+    const b = parsed(runPatchBody, body);
+    try {
+      return { run: await updatePaymentRun(this.db, actor, runId, b) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.payments.prepare", "hospital")
+  @Post("payment-runs/:id/submit")
+  async submitRun(@CurrentActor() actor: Actor, @Param("id") runId: string): Promise<{ run: RunView }> {
+    try {
+      return { run: await submitPaymentRun(this.db, actor, runId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("approvals.requests.decide", "hospital")
+  @Post("payment-runs/:id/decision")
+  async decideRun(@CurrentActor() actor: Actor, @Param("id") runId: string, @Body() body: unknown): Promise<{ run: RunView }> {
+    const b = parsed(decisionBody, body);
+    try {
+      return { run: await decidePaymentRun(this.db, actor, runId, b.verdict, b.note) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.payments.prepare", "hospital")
+  @Post("payment-runs/:id/cancel")
+  async cancelRun(@CurrentActor() actor: Actor, @Param("id") runId: string, @Body() body: unknown): Promise<{ run: RunView }> {
+    const b = parsed(reasonBody, body);
+    try {
+      return { run: await cancelPaymentRun(this.db, actor, runId, b.reason) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** One vendor on an authorised run paid. The SoD engine first, on `db`, so an authoriser's attempt is recorded. */
+  @RequirePermission("materials.payments.record", "hospital")
+  @Post("payment-runs/:id/vendors/:vendorId/pay")
+  async recordPayment(
+    @CurrentActor() actor: Actor, @Param("id") runId: string, @Param("vendorId") vendorId: string, @Body() body: unknown,
+  ): Promise<{ run: RunView }> {
+    const b = parsed(paymentBody, body);
+    try {
+      await assertNotRunAuthoriser(this.db, actor, runId);
+      return { run: await recordVendorPayment(this.db, actor, runId, vendorId, { mode: b.mode as (typeof PAYMENT_MODES)[number], reference: b.reference ?? null, paidOn: b.paidOn ?? null }) };
+    } catch (e) { toHttp(e); }
   }
 }

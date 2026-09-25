@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
+import { useScreenKeys } from "../../lib/keyboard";
 import { materialsErrorText } from "../../lib/materials-api";
 import { printInFrame } from "../../lib/print-api";
 import {
@@ -10,6 +11,8 @@ import {
   fetchPurchaseOrder, fetchPurchaseVendors, rupees, sendPurchaseOrder, submitPurchaseOrder, updatePurchaseOrder,
 } from "../../lib/purchase-api";
 import { Button } from "@/components/ui/button";
+import { PayView } from "./pay";
+import { Sheet } from "./sheet";
 import type { WireOfficeToday, WirePo, WirePoSummary } from "../../lib/purchase-api";
 
 /**
@@ -34,7 +37,15 @@ const STATUS_TONE: Record<string, string> = {
 
 export function PharmacyOffice(): React.ReactElement {
   const { t } = useTranslation();
-  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday });
+  const { can } = useAuth();
+  // PARITY P3 — the office's two halves: buying (P2) and paying. `?view=pay` opens on the second —
+  // the copilot's payment-run card links there.
+  const canPay = can("materials.bills.manage");
+  const [view, setView] = useState<"buy" | "pay">(() => (new URLSearchParams(window.location.search).get("view") === "pay" ? "pay" : "buy"));
+  const paying = view === "pay" && canPay;
+  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: !paying });
+  // PARITY P3 — the shell's legend shows the office's keys, not the front desk's.
+  useScreenKeys([t(paying ? "pharmacyOffice.keys.pay" : "pharmacyOffice.keys.buy")]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -66,7 +77,17 @@ export function PharmacyOffice(): React.ReactElement {
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-xl font-semibold">{t("pharmacyOffice.title")}</h1>
         <span className="text-sm text-muted-foreground">{t("pharmacyOffice.subtitle")}</span>
+        {canPay && (
+          <div className="ml-auto flex gap-1" role="tablist" aria-label={t("pharmacyOffice.views")}>
+            {(["buy", "pay"] as const).map((v) => (
+              <Button key={v} type="button" role="tab" aria-selected={(v === "pay") === paying} data-testid={`office-view-${v}`} variant={(v === "pay") === paying ? "default" : "outline"} onClick={() => setView(v)}>
+                {t(`pharmacyOffice.view.${v}`)}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
+      {paying ? <PayView /> : (<>
       {today.error !== null && <p role="alert" className="text-sm text-red-600">{materialsErrorText(today.error, t)}</p>}
       {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
 
@@ -145,29 +166,7 @@ export function PharmacyOffice(): React.ReactElement {
           onMade={(n, first) => { setPlanOpen(false); setNotice(t("pharmacyOffice.agent.made", { count: n })); if (first !== null) setOpenId(first); }}
         />
       )}
-    </div>
-  );
-}
-
-/** The right-hand sheet both flows use. Esc closes it; focus starts inside it. */
-function Sheet({ title, onClose, children, testId, onKey }: {
-  title: string; onClose: () => void; children: React.ReactNode; testId: string; onKey?: (e: React.KeyboardEvent) => void;
-}): React.ReactElement {
-  const ref = useRef<HTMLElement>(null);
-  useEffect(() => { ref.current?.focus(); }, []);
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <aside
-        ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} data-testid={testId}
-        className="h-full w-full max-w-4xl overflow-y-auto bg-background p-4 shadow-xl focus:outline-none"
-        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onClose(); return; } onKey?.(e); }}
-      >
-        <div className="mb-3 flex items-center gap-3">
-          <h2 className="flex-1 text-lg font-semibold">{title}</h2>
-          <button type="button" className="text-sm text-muted-foreground" onClick={onClose}>{`Esc`}</button>
-        </div>
-        {children}
-      </aside>
+      </>)}
     </div>
   );
 }

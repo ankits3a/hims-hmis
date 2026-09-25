@@ -122,6 +122,16 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.purchaseDraftPlan",
   /** Nothing is below its level and the short book is empty — nothing to order. */
   "copilot.answer.purchaseDraftNothing",
+
+  /*
+    ═══ draft_payment_run (pharmacy office, parity P3) — "payment run bana do", "pay the suppliers" ═══
+    A PLAN, never a write: how many vendors and bills the agent would put on a run, and its `payload`
+    links to /pharmacy/office, where a person makes the draft; the owner authorises it.
+  */
+  /** "4 vendors, 9 bills, ₹1,24,000 due by 2 Oct (1 vendor in bank-change cooling-off) — open the office." */
+  "copilot.answer.paymentRunPlan",
+  /** No accepted bill falls due within the week that a run does not already hold. */
+  "copilot.answer.paymentRunNothing",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];

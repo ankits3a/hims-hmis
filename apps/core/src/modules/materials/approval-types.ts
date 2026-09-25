@@ -103,6 +103,19 @@ export const MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
     actFirstAllowed: false,
     closureSlaMinutes: 1440,
   },
+  /**
+   * PHARMACY PARITY P3 — a payment run: the bills the materials head proposes to pay now. The OWNER
+   * authorises money leaving the hospital; the preparer never can (the kernel's requester ≠ approver,
+   * the preparer being the only submitter). A working day to decide. DEFAULT — owner may change.
+   */
+  {
+    typeKey: "materials_payment_run_approval",
+    title: "Supplier Payment Run Authorisation",
+    approverRole: "owner",
+    urgencyClass: "routine",
+    actFirstAllowed: false,
+    closureSlaMinutes: 1440,
+  },
 ];
 
 /** The two type keys, for callers that must not retype a string the engine matches exactly. */
@@ -112,6 +125,8 @@ export const STOCK_ADJUSTMENT_APPROVAL_TYPE = "materials_stock_adjustment";
 /** PARITY P2 — the purchase order's two tiers. */
 export const PO_APPROVAL_TYPE = "materials_po_approval";
 export const PO_OWNER_APPROVAL_TYPE = "materials_po_approval_owner";
+/** PARITY P3 — the payment run's authorisation. */
+export const PAYMENT_RUN_APPROVAL_TYPE = "materials_payment_run_approval";
 
 /**
  * The DRAFTER half of each `approval_<typeKey>` definition. `createDraft` runs no actor-type check,

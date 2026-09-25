@@ -23,7 +23,9 @@ import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
   OT_DEFINITION_KIND_VALUES, OT_GATE_DEF_KEY, activeDefinitionRow,
 } from "../src/modules/ot";
-import { PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, availableQty, findStoreByCode, listItems } from "../src/modules/materials";
+import {
+  PAYMENT_RUN_APPROVAL_TYPE, PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, availableQty, findStoreByCode, listItems,
+} from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import {
   HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
@@ -835,6 +837,35 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       gate: "G4", code: "pharmacy_po_approver_held",
       check: heldAtHospitalScope("materials_head"),
       fix: "§11: assign `materials_head` at /admin/users — the approver of purchase orders up to ₹50,000 (the owner approves above it; nobody approves an order they raised)",
+    },
+    {
+      /**
+       * PARITY P3 — green when `seed:materials` has registered `materials_payment_run_approval` (the
+       * deploy's act). Without it `submitPaymentRun` refuses `unknown_type` and no supplier is paid.
+       */
+      gate: "G2", code: "pharmacy_payment_run_approval_registered",
+      check: async (db) => (await withTx(db, (tx) => getApprovalType(tx, PAYMENT_RUN_APPROVAL_TYPE))) !== null,
+      fix: "§12: done by seed:materials on every deploy — run: pnpm --filter @hmis/core seed:materials",
+    },
+    {
+      /**
+       * PARITY P3 — green when an ACTIVE person holds `owner`, the authoriser of every supplier payment
+       * run. Red until somebody is assigned: a submitted run waits in a queue nobody can open.
+       */
+      gate: "G4", code: "pharmacy_payment_authoriser_held",
+      check: heldAtHospitalScope("owner"),
+      fix: "§12: assign `owner` at /admin/users — the owner authorises every supplier payment run in /approvals",
+    },
+    {
+      /**
+       * PARITY P3 — green when an ACTIVE person holds `materials_head` or `pharmacy_incharge`, who
+       * record an authorised run as paid. The owner authorises and may never record, so a hospital
+       * with only an owner cannot pay a supplier through the book.
+       */
+      gate: "G4", code: "pharmacy_payment_recorder_held",
+      check: async (db) => (await activeHoldersAtHospitalScope(db, "materials_head")).length > 0
+        || (await activeHoldersAtHospitalScope(db, "pharmacy_incharge")).length > 0,
+      fix: "§12: assign `materials_head` or `pharmacy_incharge` at /admin/users — they record a payment run paid (never the owner who authorised it)",
     },
   ],
 

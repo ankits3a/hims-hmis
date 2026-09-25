@@ -80,6 +80,15 @@ export const EPISODE_SERIES = {
    * freedom (`series.test.ts`): `MPO`, the materials purchase order, `MPO2609240001` on paper.
    */
   purchase_order: "MPO",
+  /**
+   * PHARMACY PARITY P3 — the money documents of the pharmacy's payables, each a stable voucher
+   * number P5's Tally export carries: the supplier's bill as we booked it (`MSB`), the payment run
+   * the owner authorises (`MPR`), and the payment voucher to one vendor (`MPV`). Three letters for
+   * the GRN's and the order's reason; none is a prefix of another or of `MPO`.
+   */
+  supplier_bill: "MSB",
+  payment_run: "MPR",
+  supplier_payment: "MPV",
 } as const;
 
 export type EpisodeSeriesKey = keyof typeof EPISODE_SERIES;
