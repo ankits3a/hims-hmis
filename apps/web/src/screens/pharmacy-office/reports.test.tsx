@@ -14,7 +14,8 @@ import type { WireActivity, WireGstr2b, WireNonMoving, WireSalesRegister, WireSa
  */
 type Call = { method: string; path: string; body: unknown };
 
-function mock(routes: Record<string, unknown | ((body: unknown) => unknown)>, perms: string[]): Call[] {
+/** `authDelayMs` answers `/auth/me` late, as a real network does: a screen mounts before it knows its grants. */
+function mock(routes: Record<string, unknown | ((body: unknown) => unknown)>, perms: string[], authDelayMs = 0): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -23,6 +24,7 @@ function mock(routes: Record<string, unknown | ((body: unknown) => unknown)>, pe
     const body = init?.body === undefined ? undefined : JSON.parse(String(init.body)) as unknown;
     calls.push({ method, path: raw.includes("?") ? `${path}?${raw.split("?")[1]!}` : path, body });
     if (path === "/auth/me") {
+      if (authDelayMs > 0) await new Promise((r) => setTimeout(r, authDelayMs));
       return new Response(JSON.stringify({ actor: { type: "user", id: "u-owner" }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } } }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     const key = `${method} ${path}`;
@@ -99,7 +101,7 @@ describe("the office's reports (parity P5)", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
   it("the owner, who buys nothing, lands on the reports; 1 opens the sales register with its totals, lines and profit", async () => {
-    const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/sales": register(true) }, OWNER);
+    const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/sales": register(true) }, OWNER, 150);
     renderWithRouter(<PharmacyOffice />, "/pharmacy/office");
     const list = await screen.findByTestId("reports-view");
     expect(screen.queryByTestId("office-view-buy")).toBeNull();
