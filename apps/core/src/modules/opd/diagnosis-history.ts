@@ -2,6 +2,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { anyOfText } from "../../kernel/db/any-of";
 import { opdEncounterDiagnoses, opdEncounters } from "../../kernel/db/schema";
 import { listMergedLoserIds } from "../patients";
+import type { Eye } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -40,6 +41,8 @@ export type CodedDiagnosis = {
   /** The service date of the visit that recorded it: `2026-09-17`. */
   codedOn: string;
   encounterId: string;
+  /** Which eye, on an eye code only (board "Ophthal"); null everywhere else. */
+  laterality: Eye | null;
 };
 
 export async function listCodedDiagnoses(db: Db, patientId: string): Promise<CodedDiagnosis[]> {
@@ -48,6 +51,7 @@ export async function listCodedDiagnoses(db: Db, patientId: string): Promise<Cod
   const rows = await db.select({
     code: opdEncounterDiagnoses.icd10Code,
     text: opdEncounterDiagnoses.text,
+    laterality: opdEncounterDiagnoses.laterality,
     codedOn: opdEncounters.serviceDate,
     encounterId: opdEncounters.id,
   })
@@ -61,5 +65,5 @@ export async function listCodedDiagnoses(db: Db, patientId: string): Promise<Cod
 
   return rows.flatMap((r) => r.code === null || r.code.trim() === ""
     ? []
-    : [{ code: r.code.trim().toUpperCase(), text: r.text, codedOn: r.codedOn, encounterId: r.encounterId }]);
+    : [{ code: r.code.trim().toUpperCase(), text: r.text, codedOn: r.codedOn, encounterId: r.encounterId, laterality: r.laterality as Eye | null }]);
 }

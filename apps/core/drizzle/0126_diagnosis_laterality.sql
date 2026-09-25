@@ -1,0 +1,2 @@
+ALTER TABLE "opd_encounter_diagnoses" ADD COLUMN "laterality" text;--> statement-breakpoint
+ALTER TABLE "opd_encounter_diagnoses" ADD CONSTRAINT "opd_encounter_diagnoses_laterality_ck" CHECK ("opd_encounter_diagnoses"."laterality" is null or "opd_encounter_diagnoses"."laterality" in ('od', 'os', 'ou'));

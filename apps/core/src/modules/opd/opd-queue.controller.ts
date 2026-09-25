@@ -67,6 +67,8 @@ const consultNoteBody = z.object({
   diagnoses: z.array(z.object({
     text: z.string().min(1).max(300),
     icd10Code: z.string().max(20).nullable(),
+    /** Which eye, for an eye code (board "Ophthal"). The server drops it on any other code. */
+    laterality: z.enum(["od", "os", "ou"]).nullable().optional(),
   })).max(12).nullable().optional(),
   diagnosis: z.string().max(2000).nullable().optional(),
   icd10Code: z.string().max(20).nullable().optional(),

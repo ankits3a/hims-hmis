@@ -754,9 +754,17 @@ export const opdEncounterDiagnoses = pgTable(
     text: text("text").notNull(),
     /** The catalogue code when the tag was PICKED; null when it was typed. */
     icd10Code: text("icd10_code"),
+    /**
+     * WHICH EYE — 'od' | 'os' | 'ou' (board "Ophthal", 2026-09-23: "each eye-code asks which eye").
+     * ICD-10 has no laterality, so the eye lives beside the code. Written only when `isEyeCode`
+     * (`@hmis/contracts`) says the code is an eye code; null for every other code whatever the
+     * client sent, and null on an eye code the doctor has not yet placed — not a gate (no ruling).
+     */
+    laterality: text("laterality"),
   },
   (t) => [
     primaryKey({ columns: [t.encounterId, t.seq] }),
+    check("opd_encounter_diagnoses_laterality_ck", sql`${t.laterality} is null or ${t.laterality} in ('od', 'os', 'ou')`),
     /** MRD and every claim count by code, so the code is the one thing read across encounters. */
     index("opd_encounter_diagnoses_code_idx").on(t.icd10Code),
   ],

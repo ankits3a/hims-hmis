@@ -307,6 +307,9 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
       // the issue test above), and it CAUGHT this field arriving: a payload that grew something
       // nobody decided to add should fail here, which is exactly what it did.
       advisedTests: [],
+      // Decided 2026-09-25 (board "Ophthal"): the coded rows ride the print so it can name each
+      // tag's eye. This note was saved in the older prose shape, so the row is uncoded.
+      diagnoses: [{ text: "Acute pharyngitis", icd10Code: null, laterality: null }],
     });
     expect(print.vitals).toMatchObject({ sbp: 120, band: "adult", dangerFlags: [] });
     expect(print.lines).toEqual(TWO_LINES);

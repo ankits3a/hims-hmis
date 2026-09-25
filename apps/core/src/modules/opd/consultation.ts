@@ -1,5 +1,6 @@
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
-import type { Actor } from "@hmis/contracts";
+import { isEyeCode } from "@hmis/contracts";
+import type { Actor, Eye } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { isNull } from "drizzle-orm";
@@ -34,8 +35,11 @@ export type AdvisedTest = {
   pricePaise: number;
 };
 
-/** One diagnosis as the doctor committed it: their words, and the catalogue code if they picked one. */
-export type NoteDiagnosis = { text: string; icd10Code: string | null };
+/**
+ * One diagnosis as the doctor committed it: their words, the catalogue code if they picked one, and
+ * — for an eye code only — which eye (board "Ophthal": ICD-10 has no laterality, so it rides beside).
+ */
+export type NoteDiagnosis = { text: string; icd10Code: string | null; laterality?: Eye | null };
 
 /**
  * THE TAG SEPARATOR, AND IT IS NOT A COMMA. `tag-field.tsx` learned this on the first realistic
@@ -168,6 +172,8 @@ async function writeDiagnosisRows(
   if (rows.length === 0) return;
   await tx.insert(opdEncounterDiagnoses).values(rows.map((d, seq) => ({
     encounterId, seq, text: d.text, icd10Code: d.icd10Code,
+    /* An eye beside an ear or a chest code means nothing, so it is dropped here, not trusted from the client. */
+    laterality: isEyeCode(d.icd10Code) ? d.laterality ?? null : null,
   })));
 }
 
