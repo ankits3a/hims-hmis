@@ -11,6 +11,7 @@ import type { LeaseAnswer } from "./lease";
 import { referInternally } from "./referral";
 import { saveVisitSection, visitSections } from "./sections";
 import type { SectionRecordView, VisitSections } from "./sections";
+import { printGlassesRx } from "./glasses-print";
 import type { ReminderView } from "./reminders";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -407,6 +408,21 @@ export class OpdQueueController {
     const b = parsed(sectionBody, body);
     try {
       return { record: await saveVisitSection(this.db, actor, id, key, b) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * Board "Ophthal" — "Print glasses Rx": one A4 job to the front desk for the CURRENT version of
+   * the visit's glasses prescription (glasses-print.ts). The treating doctor only, in any status.
+   * `queued: false` means this version is already coming — success, not failure.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/glasses-rx/print")
+  async printGlassesRx(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ queued: boolean }> {
+    try {
+      return await printGlassesRx(this.db, actor, id);
     } catch (e) {
       toHttp(e);
     }

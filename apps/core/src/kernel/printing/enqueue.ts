@@ -61,7 +61,13 @@ export type PrintDocument =
    * (`registerDocumentRenderer`), so the kernel does not import the module that owns the rows.
    */
   | "pharmacy_bill"
-  | "pharmacy_labels";
+  | "pharmacy_labels"
+  /**
+   * Board "Ophthal" — "GLASSES PRESCRIPTION · ITS OWN PRINT": the spectacle prescription the
+   * patient carries to an optician. Producer and renderer both in `modules/opd/glasses-print.ts`
+   * (the renderer registered by the OPD module), so the kernel never reads `opd_section_records`.
+   */
+  | "opd_glasses_rx";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -94,6 +100,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   vitals_slip: "vitals_thermal",
   pharmacy_bill: "pharmacy_thermal",
   pharmacy_labels: "pharmacy_thermal",
+  // The same A4 laser as the prescription sheet: the patient collects both papers at the one desk.
+  opd_glasses_rx: "front_desk_a4",
 };
 
 export type EnqueuePrintInput = {

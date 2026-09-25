@@ -164,7 +164,7 @@ function barField(payload: string): string {
  * literal `&amp;` on the paper. That is a trap the next reader will step in exactly once; it is
  * written down here rather than discovered on a printed sheet.
  */
-const HOSPITAL = {
+export const HOSPITAL = {
   name: "CRK MEDICAL COLLEGE &amp; HOSPITAL",
   /**
    * The SAME establishment, title-cased, for the prescription letterhead's footer.
@@ -217,7 +217,7 @@ function dayFromIso(iso: string): string | null {
  * Drizzle hands back a `Date` or the ISO string depending on the column's declared mode, so both
  * are taken rather than one assumed (the same care `ageYearsIST` takes, for the same reason).
  */
-function formatCalendarDay(value: string | Date | null): string | null {
+export function formatCalendarDay(value: string | Date | null): string | null {
   if (value === null || value === "") return null;
   return dayFromIso(value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10));
 }
@@ -240,7 +240,7 @@ function formatIstTime(at: Date): string {
  * The compact `ageSexOf` on the thermal slips keeps its old three-way fold — a 72 mm token slip has
  * no room for the distinction and nobody prescribes off one.
  */
-function genderLetter(gender: string | null): string {
+export function genderLetter(gender: string | null): string {
   const g = (gender ?? "").toLowerCase();
   if (g.startsWith("f")) return "F";
   if (g.startsWith("m")) return "M";
@@ -262,7 +262,7 @@ export function thermalPage(title: string, body: string, extraCss = ""): Rendere
 }
 
 /** The identity every document repeats, because a slip that cannot be matched to a person is litter. */
-type SlipSubject = {
+export type SlipSubject = {
   /**
    * FD-25 — the name that may be PRINTED, which for a §14 patient is not the name in the record.
    * `subjectOf` resolves it through the patients module; nothing downstream re-reads `patients.name`.
@@ -394,8 +394,13 @@ async function canonicalPersonOf(db: Db, patientId: string): Promise<SlipPerson 
  * This is why `print_jobs.params` carries an encounter id and not a name: a reprint after a
  * correction hands over the CORRECTED name, and the queue row never becomes a stale second copy of
  * the patient record.
+ *
+ * EXPORTED for a module-registered OPD document (the glasses prescription, `modules/opd/
+ * glasses-print.ts`): a second resolver of "whose name may reach paper" in the module would be the
+ * second authority the §14 comment below exists to prevent. `HOSPITAL`, `formatCalendarDay` and
+ * `genderLetter` are exported for the same sheet, for the same reason.
  */
-async function subjectOf(
+export async function subjectOf(
   db: Db, encounterId: string, now: Date, requester: Actor | null,
 ): Promise<SlipSubject | null> {
   const rows = await db

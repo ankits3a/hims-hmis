@@ -15,7 +15,7 @@ import { CREST_PNG_DATA_URI } from "./crest";
 import { qrSvg } from "./qr";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { breakGlassGrants, opdDepartments, opdEncounters, opdVitals, patientAllergies, patients, phiAccessLog, printJobs, users } from "../db/schema";
+import { breakGlassGrants, opdDepartments, opdEncounters, opdSectionRecords, opdVitals, patientAllergies, patients, phiAccessLog, printJobs, users } from "../db/schema";
 /* FD-25 §14 — the fixtures the confidentiality rows need: the grant, the queue row, and the one
    production caller that has to thread the requester through. */
 import { grantPermissionToRole, syncPermissions } from "../auth/permissions";
@@ -23,6 +23,7 @@ import { useBreakGlass } from "../auth/break-glass";
 import { ModuleRegistry } from "../modules/loader";
 import { patientsManifest } from "../../modules/patients";
 import { enqueuePrintJob } from "./enqueue";
+import { registerOpdGlassesPrinting } from "../../modules/opd/glasses-print";
 import { PrintingController } from "./printing.controller";
 import { withTx } from "../db/client";
 import type { Actor } from "@hmis/contracts";
@@ -778,12 +779,21 @@ describe("FD-24 T3: rendering the counter's documents", () => {
      * EVERY DOCUMENT, not just the token slip. A fix aimed at one instance closes one instance, and
      * the prescription sheet is the document that leaves the building in the patient's hand.
      */
-    it("applies to the receipt and the A4 prescription too, not only the token slip", async () => {
-      const { encounterId: sealedEncounter, clerk } = await sealedVisit();
+    it("applies to the receipt, the A4 prescription and the glasses prescription too, not only the token slip", async () => {
+      const { encounterId: sealedEncounter, patientId, clerk } = await sealedVisit();
       const holder = await grantHolder("vip-desk-reader-2");
+      /* Board "Ophthal" — the glasses sheet is drawn by the OPD module, from the section record, and
+         asks the same `subjectOf` for the name. Registered here as `opd.module.ts` does at init. */
+      const unregister = registerOpdGlassesPrinting();
+      const recordId = newId();
+      await db.insert(opdSectionRecords).values({
+        id: recordId, encounterId: sealedEncounter, patientId, sectionKey: "eye.glasses_rx", sectionVersion: 1,
+        body: { od: { sph: -1, cyl: null, axis: null, add: null }, os: { sph: -0.5, cyl: null, axis: null, add: null }, use: "distance", note: "" },
+        authorId: "t", at: MON,
+      });
 
-      for (const document of ["opd_token_slip", "opd_payment_receipt", "opd_prescription"]) {
-        const params = { encounterId: sealedEncounter, amountPaise: 30_000, mode: "cash" };
+      for (const document of ["opd_token_slip", "opd_payment_receipt", "opd_prescription", "opd_glasses_rx"]) {
+        const params = { encounterId: sealedEncounter, recordId, amountPaise: 30_000, mode: "cash" };
         const sealedDoc = await renderDocument(db, document, params, MON, clerk);
         expect(sealedDoc!.html).toContain(ALIAS);
         expect(sealedDoc!.html).not.toContain(SEALED_NAME);
@@ -792,6 +802,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
         const openDoc = await renderDocument(db, document, params, MON, holder);
         expect(openDoc!.html).toContain(SEALED_NAME);
       }
+      unregister();
     });
 
     /**
