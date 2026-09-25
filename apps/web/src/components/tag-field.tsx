@@ -62,7 +62,7 @@ export function joinTags(tags: string[]): string {
 export type TagSuggestion = { term: string; hint?: string | null };
 
 export function TagField({
-  id, label, value, onChange, suggest, placeholder, disabled = false, hint, adornTag,
+  id, label, value, onChange, suggest, placeholder, disabled = false, hint, adornTag, adornSuggestion,
 }: {
   id: string;
   label: string;
@@ -83,6 +83,8 @@ export function TagField({
    * (board "Ophthal"). The field stays a plain list of strings; what a tag means is the caller's.
    */
   adornTag?: (tagText: string, index: number) => React.ReactNode;
+  /** The same for one offered row, after its hint — the diagnosis field's ICD-11 pill (2026-09-25). */
+  adornSuggestion?: (suggestion: TagSuggestion) => React.ReactNode;
 }): React.ReactElement {
   const tags = splitTags(value);
   const [draft, setDraft] = useState("");
@@ -229,6 +231,7 @@ export function TagField({
               {s.hint !== undefined && s.hint !== null && (
                 <span className="mo" style={{ fontSize: 10, color: "var(--faint)" }}>{s.hint}</span>
               )}
+              {adornSuggestion?.(s)}
             </button>
           ))}
         </div>

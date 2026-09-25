@@ -35,6 +35,7 @@
     "import:holder-book": "tsx scripts/import-holder-book.ts",
     "import:item-master": "tsx scripts/import-item-master.ts",
     "import:nrces": "tsx scripts/import-nrces-formulary.ts",
+    "icd11:load": "tsx scripts/icd11-load.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",
     "seed:roster": "tsx scripts/seed-roster.ts",

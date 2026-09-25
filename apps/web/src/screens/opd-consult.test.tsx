@@ -520,6 +520,125 @@ const ALLERGEN_HITS = {
   known: true,
 };
 
+/**
+ * ═══ ICD-11 BESIDE ICD-10 — A MUTED PILL, WHO'S TITLE AS ITS TOOLTIP, WHO'S CITATION ONCE ═══
+ *
+ * The server attaches `icd11` from the latest loaded release of WHO's one-to-one table, or null.
+ * These are SYNTHETIC codes and titles (WHO's mapping data may not be in the repo); the citation is
+ * WHO's own §1.3 text. ICD-10 stays what is saved — the note body never carries anything ICD-11.
+ */
+describe("OpdConsult — the ICD-11 code beside the ICD-10 one", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  const REF = { code: "ZZ00", title: "Synthetic title", uri: "https://synthetic.invalid/release/2026-01/mms/1", release: "2026-01" };
+  const HITS_11 = {
+    items: [
+      { code: "X00.1", description: "Synthetic diagnosis", chapterNo: 20, codeMatch: false, icd11: REF },
+      { code: "X00.2", description: "Synthetic unmapped diagnosis", chapterNo: 20, codeMatch: false, icd11: null },
+    ],
+  };
+  const CITATION = "International Classification of Diseases, Eleventh Revision (ICD-11), World Health Organization (WHO) 2019 https://icd.who.int/browse11. Licensed under the Creative Commons Attribution-NoDerivatives 3.0 IGO licence (CC BY-ND 3.0 IGO).";
+
+  it("I1: a typeahead row with an answer shows 'ICD-11 <code>' with WHO's title; the unmapped row shows none", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: HITS_11 },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
+    const diagnosis = await screen.findByLabelText("Diagnosis", { selector: "input" });
+    await user.click(diagnosis);
+    await user.type(diagnosis, "synth");
+
+    const mapped = await screen.findByTestId("note-diagnosis-suggest-Synthetic diagnosis");
+    const pill = within(mapped).getByText("ICD-11 ZZ00");
+    expect(pill).toHaveAttribute("title", "Synthetic title");
+    expect(within(screen.getByTestId("note-diagnosis-suggest-Synthetic unmapped diagnosis")).queryByText(/ICD-11/)).toBeNull();
+    /* `find`: the pill registers in an effect, so the citation lands one render after it. */
+    expect(await screen.findAllByTestId("icd11-citation")).toHaveLength(1);
+    expect(screen.getByTestId("icd11-citation")).toHaveTextContent(CITATION);
+
+    /* Picking it keeps the pill on the tag — and the note that is SAVED is ICD-10 only. */
+    await user.click(mapped);
+    expect(within(await screen.findByTestId("note-diagnosis-tag-0")).getByText("ICD-11 ZZ00")).toHaveAttribute("title", "Synthetic title");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
+      expect(body.diagnoses).toEqual([{ text: "Synthetic diagnosis", icd10Code: "X00.1" }]);
+    });
+    expect(JSON.stringify(bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note"))).not.toMatch(/icd11|ZZ00/i);
+  });
+
+  it("I2: a reopened coded note shows the pill on its saved tag, and the citation once", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: {
+        ...VISIT,
+        encounter: { ...ENCOUNTER, diagnosis: "Synthetic diagnosis · Synthetic unmapped diagnosis", icd10Code: "X00.1" },
+        diagnoses: [
+          { text: "Synthetic diagnosis", icd10Code: "X00.1", laterality: null, icd11: REF },
+          { text: "Synthetic unmapped diagnosis", icd10Code: "X00.2", laterality: null, icd11: null },
+        ],
+      } },
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: { items: [] } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
+
+    const tag = await screen.findByTestId("note-diagnosis-tag-0");
+    expect(within(tag).getByText("ICD-11 ZZ00")).toHaveAttribute("title", "Synthetic title");
+    expect(within(screen.getByTestId("note-diagnosis-tag-1")).queryByText(/ICD-11/)).toBeNull();
+    /* `find`: the pill registers in an effect, so the citation lands one render after it. */
+    expect(await screen.findAllByTestId("icd11-citation")).toHaveLength(1);
+    /* The stored code is still what the code field reads. */
+    expect(screen.getByTestId("note-icd10")).toHaveValue("X00.1 · X00.2");
+  });
+
+  it("I3: icd11 null everywhere — no pill, no label, no citation", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: {
+        ...VISIT,
+        encounter: { ...ENCOUNTER, diagnosis: "Synthetic unmapped diagnosis", icd10Code: "X00.2" },
+        diagnoses: [{ text: "Synthetic unmapped diagnosis", icd10Code: "X00.2", laterality: null, icd11: null }],
+      } },
+      "GET /api/opd/cds/complete/diagnosis": { status: 200, body: { items: [HITS_11.items[1]] } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
+    await screen.findByTestId("note-diagnosis-tag-0");
+    const diagnosis = screen.getByLabelText("Diagnosis", { selector: "input" });
+    await user.click(diagnosis);
+    await user.type(diagnosis, "synth");
+    await screen.findByTestId("note-diagnosis-suggest-Synthetic unmapped diagnosis");
+
+    expect(screen.queryByText(/ICD-11/)).toBeNull();
+    expect(screen.queryByTestId("icd11-citation")).toBeNull();
+  });
+
+  it("I4: the co-pilot's syndrome chip shows the pill too, and the citation is still ONE", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/cds/suggest": { status: 200, body: { items: [
+        { key: "SYN_URI_01", name: "Acute Upper Respiratory Infection (URI)", icd10: "J06.9", score: 4, matched: ["fever"], icd11: { ...REF, code: "ZZ07" } },
+      ] } },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.type(screen.getByLabelText("Chief complaint"), "fever and sore throat{Enter}");
+
+    const chip = await screen.findByTestId("cds-hit-SYN_URI_01");
+    expect(within(chip).getByText("ICD-11 ZZ07")).toHaveAttribute("title", "Synthetic title");
+    /* `find`: the pill registers in an effect, so the citation lands one render after it. */
+    expect(await screen.findAllByTestId("icd11-citation")).toHaveLength(1);
+  });
+});
+
 describe("OpdConsult — recording an allergy in the room", () => {
   beforeEach(() => { vi.restoreAllMocks(); });
 

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -93,5 +93,94 @@ export const icd10Codes = pgTable(
     /** Typing a code is the other half: `J06` must reach `J06.9` by prefix, off the index. */
     index("icd10_codes_code_lower_idx").using("btree", sql`lower(${t.code})`),
     index("icd10_codes_billable_idx").on(t.billable),
+  ],
+);
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * ICD-11 — WHO'S ICD-10 → ICD-11 TABLE, HELD BESIDE THE CATALOGUE AND NEVER WRITTEN INTO A RECORD
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * WHO publishes the ICD-10 → ICD-11 mapping tables with each ICD-11 release (2026-01 here). This is
+ * the PLUMBING for the one-to-one file (`10To11MapToOneCategory.txt`): a table to hold it, a loader
+ * that records every load, and a read that shows the ICD-11 code beside the ICD-10 one on screen.
+ *
+ * ═══ NO WHO DATA SHIPS WITH THIS, AND NOTHING LOADS IT ═══
+ *
+ * WHO's ICD-11 licence §1.2.4 puts "mapping or producing crosswalks" under a separate written
+ * agreement, and the owner has not ruled on it. So no row of WHO's file is in the repository, no
+ * migration or seed loads one, and deploy does not run the loader. Until someone runs
+ * `pnpm --filter @hmis/core icd11:load` by hand, both tables are empty and every read answers null.
+ *
+ * ═══ ICD-10 STAYS THE CODE ═══
+ *
+ * `opd_encounter_diagnoses.icd10_code` is what the doctor picked and what a claim carries. Nothing
+ * here is a foreign key from it or to it, and nothing ICD-11 is ever written to a diagnosis: the
+ * ICD-11 code is looked up at READ time from the latest loaded release, so a new release changes
+ * what the screen shows and never what the record says.
+ *
+ * ═══ WHO'S STRINGS ARE KEPT AS RELEASED; OURS ARE NAMED AS OURS (§1.2.3, §1.2.5) ═══
+ *
+ * Every `icd10_*` / `icd11_*` column is a cell of WHO's file, stored byte for byte — an empty cell
+ * is stored as '' rather than null, because '' is what WHO wrote. The licence requires the code,
+ * the title AND the URI wherever the classification is stored or transmitted, so all three are here.
+ * `release` and `map_kind` did NOT come from WHO: `release` is the label the operator gave the load,
+ * and `map_kind` is derived by `cds/icd11-map.ts` from WHO's cells (see there). They carry no
+ * `icd` prefix so that no reader mistakes them for WHO's.
+ */
+export const icd11MapLoads = pgTable(
+  "icd11_map_loads",
+  {
+    id: text("id").primaryKey(),
+    /*
+      ONE LOAD PER FILE AND ONE PER RELEASE. The loader checks both first so it can say which; the
+      UNIQUE constraints are what hold under a race. They are constraints rather than indexes
+      because `icd11_map_rows.release` is a foreign key to this column.
+    */
+    /** The ICD-11 release the file belongs to, `YYYY-MM` (`2026-01`), as the operator named it. */
+    release: text("release").notNull().unique("icd11_map_loads_release_uq"),
+    /** The file's basename as loaded — `10To11MapToOneCategory.txt`. */
+    sourceFile: text("source_file").notNull(),
+    /** Of the file's BYTES, before any decoding: the same file loaded twice has the same sha. */
+    sha256: text("sha256").notNull().unique("icd11_map_loads_sha256_uq"),
+    rowCount: integer("row_count").notNull(),
+    /** Who ran the loader. A CLI has no session, so it is the name given on the command line. */
+    loadedBy: text("loaded_by").notNull(),
+    loadedAt: timestamp("loaded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("icd11_map_loads_release_ck", sql`${t.release} ~ '^[0-9]{4}-[0-9]{2}$'`),
+    check("icd11_map_loads_row_count_ck", sql`${t.rowCount} > 0`),
+  ],
+);
+
+export const icd11MapRows = pgTable(
+  "icd11_map_rows",
+  {
+    /** Not WHO's: the load this row came in with, and the key the read path picks the latest by. */
+    release: text("release").notNull().references(() => icd11MapLoads.release),
+    /** WHO's `icd10Code`, dotted as WHO writes it (`A00.0`); a block is a range (`A00-A09`). */
+    icd10Code: text("icd10_code").notNull(),
+    icd10Title: text("icd10_title").notNull(),
+    /**
+     * WHO's `icd11Code` — FREE TEXT, not a code shape. It may be empty (the target is a block,
+     * which bears no code), or combined: `&` joins a stem to an extension code and `/` a cluster.
+     */
+    icd11Code: text("icd11_code").notNull(),
+    icd11Title: text("icd11_title").notNull(),
+    icd11Chapter: text("icd11_chapter").notNull(),
+    /** WHO's `11ClassKind`: `category` or `block` ('' on a No Mapping row). */
+    icd11ClassKind: text("icd11_class_kind").notNull(),
+    /** WHO's `Linearization (releaseURI)` — the MMS entity at this release; '' on a No Mapping row. */
+    icd11ReleaseUri: text("icd11_release_uri").notNull(),
+    /** WHO's `ICD-11 FoundationURI`, verbatim — which is the literal `No Mapping` on those rows. */
+    icd11FoundationUri: text("icd11_foundation_uri").notNull(),
+    /** Not WHO's: derived at parse time from WHO's cells — see `mapKindOf` in `cds/icd11-map.ts`. */
+    mapKind: text("map_kind").notNull(),
+  },
+  (t) => [
+    /* WHO's one-to-one file names each ICD-10 code once; a second row for a code is a different file. */
+    primaryKey({ columns: [t.release, t.icd10Code] }),
+    check("icd11_map_rows_map_kind_ck", sql`${t.mapKind} in ('mapped', 'no_mapping', 'grouping')`),
   ],
 );
