@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { StockTag, useDoctorStock } from "./opd-consult-v2";
+import { Icd11Pill } from "../components/icd11";
 import type { WireAdvisedTest } from "../lib/opd-api";
 import type { WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 
@@ -193,6 +194,7 @@ export function CopilotSuggestions({ variant, hits, diagnoses, onAddDx, advised,
               <button key={h.key} type="button" data-testid={`sug-dx-${h.key}`} style={chip}
                 onClick={() => { onAddDx(h.name, h.icd10); onOpenRegimen(h.key); }}>
                 + {h.name}{h.icd10 === null ? "" : ` · ${h.icd10}`}
+                <Icd11Pill icd11={h.icd11} />
               </button>
             ))}
           </div>

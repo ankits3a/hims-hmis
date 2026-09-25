@@ -21,5 +21,10 @@ export { completeComplaint, complaintVocabulary, ghostFor } from "./vocabulary";
 export type { ComplaintTerm } from "./vocabulary";
 export { MIN_QUERY_CHARS as ICD10_MIN_QUERY_CHARS, searchIcd10 } from "./icd10";
 export type { Icd10Hit } from "./icd10";
+/** WHO's ICD-10 → ICD-11 one-to-one table: the pure parser, and the read-time lookup (2026-09-25). */
+export { Icd11MapFormatError, WHO_NO_MAPPING, WHO_ONE_TO_ONE_HEADER, mapKindOf, parseWhoOneToOneMap } from "./icd11-map";
+export type { Icd11MapKind, ParsedWhoMap, WhoMapRow } from "./icd11-map";
+export { icd11ForCodes, withIcd11 } from "./icd11-lookup";
+export type { Icd11Ref } from "./icd11-lookup";
 export { ALLERGEN_MIN_CHARS, matchesAKnownAllergen, searchAllergens } from "./allergens";
 export type { AllergenHit } from "./allergens";

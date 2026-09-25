@@ -5034,6 +5034,10 @@
   },
   "cds": {
     "suggests": "Suggests",
+    "icd11": {
+      "label": "ICD-11",
+      "citationLead": "ICD-11 codes beside ICD-10 are from WHO's ICD-10 → ICD-11 mapping table, release {{release}}; the codes saved are ICD-10."
+    },
     "band": {
       "adult": "Adult regimen",
       "pediatric": "Child regimen"
