@@ -60,7 +60,10 @@ export type OpdErrorCode =
   // out are an add-on to the order that exists.
   | "lab_walkin_already_open"
   // Consult engine (sections.ts): a section this visit's department does not show, or a body its schema refuses.
-  | "section_not_in_profile" | "invalid_section_body";
+  | "section_not_in_profile" | "invalid_section_body"
+  // Board "Ophthal" — the glasses print refuses a prescription with no power in it: a sheet of blank
+  // lens cells handed to an optician is not a prescription. 400 through `opdStatus`'s default.
+  | "glasses_rx_empty";
 
 export class OpdError extends Error {
   constructor(

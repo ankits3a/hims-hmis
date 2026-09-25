@@ -136,6 +136,7 @@ export const PRINT_DOCUMENT_LABEL: Record<string, string> = {
   vitals_slip: "vitals slip",
   pharmacy_bill: "pharmacy bill",
   pharmacy_labels: "medicine labels",
+  opd_glasses_rx: "glasses prescription",
 };
 
 /**

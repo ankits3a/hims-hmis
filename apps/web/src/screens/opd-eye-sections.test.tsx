@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setToken } from "../lib/api";
+import { PRINT_DOCUMENT_LABEL } from "../lib/print-api";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { EyeSections, fmtPower } from "./opd-eye-sections";
 import type { WireVisitSections } from "./opd-eye-sections";
@@ -85,6 +86,51 @@ describe("EyeSections — the ophthalmology consult sections", () => {
     expect(fmtPower(-1.25)).toBe("−1.25");
     expect(fmtPower(2.5)).toBe("+2.50");
     expect(fmtPower(0)).toBe("0.00");
+  });
+
+  /* Board `Ophthal`: "GLASSES PRESCRIPTION · ITS OWN PRINT" — the button sends the saved version to the front desk's A4. */
+  const WITH_GLASSES: WireVisitSections = {
+    ...EYE,
+    records: {
+      ...EYE.records,
+      "eye.glasses_rx": {
+        body: { od: { sph: -1.25, cyl: null, axis: null, add: null }, os: { sph: -1, cyl: null, axis: null, add: null }, use: "distance", note: "" },
+        at: "2026-09-24T04:55:00.000Z", authorId: "u-1", sectionVersion: 1, recordId: "r-g1",
+      },
+    },
+  };
+  const posts = (path: string): number => vi.mocked(fetch).mock.calls
+    .filter(([u, init]) => String(u).split("?")[0] === path && init?.method === "POST").length;
+
+  it("Print glasses Rx posts the saved prescription and says where it went", async () => {
+    stubFetch({
+      "GET /api/opd/visits/enc-1/sections": WITH_GLASSES,
+      "POST /api/opd/visits/enc-1/glasses-rx/print": { queued: true },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<EyeSections encounterId="enc-1" leaseBody={() => ({})} readOnly={false} />);
+    const btn = await screen.findByRole("button", { name: "Print glasses Rx" });
+    await waitFor(() => { expect(btn).toBeEnabled(); });
+    await user.click(btn);
+    expect(await screen.findByTestId("eye-glasses-print-status")).toHaveTextContent("Sent to the front-desk printer");
+    expect(posts("/api/opd/visits/enc-1/glasses-rx/print")).toBe(1);
+    // The desk's papers list names the document by the same words.
+    expect(PRINT_DOCUMENT_LABEL.opd_glasses_rx).toBe("glasses prescription");
+  });
+
+  it("Print glasses Rx is disabled with no power on record, and while an edit is unsaved", async () => {
+    stubFetch({ "GET /api/opd/visits/enc-1/sections": EYE });
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<EyeSections encounterId="enc-1" leaseBody={() => ({})} readOnly={false} />);
+    expect(await screen.findByRole("button", { name: "Print glasses Rx" })).toBeDisabled();
+    unmount();
+
+    stubFetch({ "GET /api/opd/visits/enc-1/sections": WITH_GLASSES });
+    renderWithProviders(<EyeSections encounterId="enc-1" leaseBody={() => ({})} readOnly={false} />);
+    const btn = await screen.findByRole("button", { name: "Print glasses Rx" });
+    await waitFor(() => { expect(btn).toBeEnabled(); });
+    await user.type(screen.getByTestId("eye-glasses-note"), "tint"); // typed, not yet saved (saves on leaving the box)
+    expect(btn).toBeDisabled();
   });
 
   it("a department without a profile draws nothing", async () => {

@@ -64,6 +64,8 @@ describe("FD-24 T1: the print outbox", () => {
     expect(DESTINATION_OF.opd_payment_receipt).toBe("front_desk_thermal");
     expect(DESTINATION_OF.opd_prescription).toBe("front_desk_a4"); // R2 — not the vitals desk
     expect(DESTINATION_OF.vitals_slip).toBe("vitals_thermal"); // R3 — its own printer
+    // Board "Ophthal" — the glasses prescription is its own A4 sheet, on the same laser as the prescription.
+    expect(DESTINATION_OF.opd_glasses_rx).toBe("front_desk_a4");
   });
 
   /**

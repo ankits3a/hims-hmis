@@ -95,7 +95,7 @@ export type VisitSections = {
   records: Partial<Record<SectionKey, SectionRecordView>>;
 };
 
-async function profileForDepartment(db: Db, departmentId: string | null): Promise<(typeof PROFILES)[string] | null> {
+export async function profileForDepartment(db: Db, departmentId: string | null): Promise<(typeof PROFILES)[string] | null> {
   if (departmentId === null) return null;
   const [d] = await db.select({ code: opdDepartments.code }).from(opdDepartments).where(eq(opdDepartments.id, departmentId));
   return d === undefined ? null : PROFILES[d.code] ?? null;
@@ -117,6 +117,26 @@ async function liveRecords(db: Db, encounterId: string): Promise<Partial<Record<
     };
   }
   return out;
+}
+
+/**
+ * One section's row on one visit: the exact `recordId` when given (a print names the version it
+ * queued), else the CURRENT row — the one nothing supersedes. `undefined` when there is none, or
+ * when the id is not this visit's row for this section.
+ */
+export async function sectionRecord(
+  db: Db, encounterId: string, sectionKey: SectionKey, recordId: string | null = null,
+): Promise<{ id: string; patientId: string; sectionVersion: number; body: unknown } | undefined> {
+  const [row] = await db
+    .select({ id: opdSectionRecords.id, patientId: opdSectionRecords.patientId, sectionVersion: opdSectionRecords.sectionVersion, body: opdSectionRecords.body })
+    .from(opdSectionRecords)
+    .where(and(
+      eq(opdSectionRecords.encounterId, encounterId), eq(opdSectionRecords.sectionKey, sectionKey),
+      recordId === null
+        ? sql`not exists (select 1 from opd_section_records s where s.supersedes_id = ${opdSectionRecords.id})`
+        : eq(opdSectionRecords.id, recordId),
+    ));
+  return row;
 }
 
 /**

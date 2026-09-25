@@ -5718,7 +5718,12 @@
     "lensRule": "Powers move in 0.25 D steps, and a cylinder needs its axis (1–180).",
     "saving": "Saving…",
     "savedAt": "Saved {{at}}",
-    "saveFailed": "Not saved — {{reason}}"
+    "saveFailed": "Not saved — {{reason}}",
+    "printGlasses": "Print glasses Rx",
+    "printSending": "Sending to the printer…",
+    "printSent": "Sent to the front-desk printer",
+    "printEmpty": "No lens power is saved yet — nothing to print.",
+    "printFailed": "Not sent to the printer — {{reason}}"
   },
   "pharmacyOffice": {
     "title": "Pharmacy office",
