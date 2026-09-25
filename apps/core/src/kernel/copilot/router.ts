@@ -78,6 +78,7 @@ function buildSystemPrompt(): string {
     "stock_on_shelf — how much of a NAMED medicine is on the pharmacy shelf, or when its batch expires",
     "paid_not_collected — which pharmacy bills are paid but the medicines not yet collected",
     "draft_short_book_entry — a NAMED medicine has run out at the pharmacy and should be noted as short",
+    "draft_purchase_orders — the pharmacy should order from its suppliers: draft purchase orders to review",
     "none           — anything else at all, including anything you are unsure about",
     "",
     "The question may be English, Hindi, or romanised Hinglish.",

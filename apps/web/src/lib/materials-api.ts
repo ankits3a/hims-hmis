@@ -183,6 +183,8 @@ export async function fetchGrn(id: string): Promise<WireGrn> {
 export async function captureGrn(input: {
   vendorId: string; source: string; storeResourceId: string;
   challanNo: string; challanDate: string; invoiceNo?: string | null;
+  /** PARITY P2 — receive against this purchase order. */
+  purchaseOrderId?: string;
   lines: CaptureLineInput[];
 }): Promise<{ grnId: string; grnNo: string }> {
   return api<{ grnId: string; grnNo: string }>("POST", "/materials/grns", input);

@@ -70,6 +70,54 @@ Measured before planning (2 read-only passes, 2026-09-24):
   - Send as PDF.
   - The GRN (`materials/grn.ts`, `grns.po_ref` becomes a real FK) receives against the PO; short supply stays open on it.
 
+**P2 as built (2026-09-24, lane `pharmacy-p2-po`, migration 0124).**
+- Tables:
+  - `item_stock_levels` (min / reorder / max per item per store, base units);
+  - `purchase_orders` and `purchase_order_lines` (materials module);
+  - `grns.purchase_order_id`, a real FK. `po_ref` is kept as the challan's free text.
+- Order numbers come from `EPISODE_SERIES.purchase_order`, prefix `MPO`. `PO` would start with the
+  dispense's `P` and break prefix freedom.
+- Procurement defaults, each a named value in `modules/materials/config.ts`, the module's
+  configuration pattern (materials has no config table):
+  - **DEFAULT — owner may change.** Raising an order is `materials.po.raise`, held by
+    `materials_head` and `pharmacy`. The in-charge holds `pharmacy` too, so the pharmacist and the
+    in-charge both raise. The same grant sets min / reorder / max.
+  - **DEFAULT — owner may change.** Approval runs through `kernel/approvals`:
+    - `materials_po_approval` (approver `materials_head`) covers an order up to
+      `PO_HEAD_APPROVAL_LIMIT_PAISE` = ₹50,000, GST included;
+    - `materials_po_approval_owner` (approver `owner`) covers anything above it.
+
+    These are two types because an approval type names exactly one approver role. The kernel
+    refuses the submitter deciding their own request. The office also refuses whoever drafted the
+    order (`requester_approver`).
+  - **DEFAULT — owner may change.** `po_approver_grn_receiver` is now enforced. Whoever approved an
+    order may not capture or post a GRN against it. The SoD engine logs an audit event, and a guard
+    inside the act refuses whatever the caller did.
+  - **DEFAULT — owner may change.** Receipt tolerance `PO_RECEIPT_TOLERANCE_BPS` = 2% over the
+    ordered paid quantity. It counts posted GRNs plus captured, unposted ones. Free goods are
+    counted apart and never capped. Less than ordered leaves the order `part_received`.
+- DECIDED (not money, procurement or law):
+  - There is no `materials.po.approve` string. The approval is the engine's, as with the bank
+    change.
+  - Reading an order needs `materials.stock.read`. An owner who reads no stock decides in
+    `/approvals`, where the two types show the total. A decision taken there is settled onto the
+    order the next time anything reads it.
+  - A rejected order returns to draft with the reason. A resubmit files a fresh approval.
+  - An order that has any GRN against it cannot be cancelled. Short-closing the rest is P3's.
+  - The agent's drafts carry an expected date of today + 3 days (`PURCHASE_DEFAULT_LEAD_DAYS`).
+  - An agent draft goes to each item's last paid supplier, at that receipt's rate per pack. An item
+    never bought, or whose last supplier is inactive, waits for a person to assign it. A short-book
+    drug with no item is listed as not stocked.
+  - "On order" counts approved, sent and part-received orders. "In draft" counts drafts and pending
+    orders. Both are subtracted from `max`, so nothing is drafted twice.
+  - The order prints as A4 HTML, and the browser saves it as PDF (the OPD report's path). A draft
+    prints stamped DRAFT.
+- Deferred:
+  - Closing short-book rows automatically when their order is received;
+  - short-closing a part-received order;
+  - e-mailing the PDF to the vendor;
+  - levels for stores other than the OPD counter on a screen. The API takes any store.
+
 **P3 — Pay: supplier bill → payables → payment run → ledger**
 - Supplier bill entry: bill no/date, taxable, input GST, total. **3-way match** PO ↔ GRN ↔ bill with a tolerance (owner
   ruling).

@@ -100,13 +100,27 @@ const CENSUS: Record<string, string[]> = {
   ],
   grns: [
     "approval_id", "captured_by", "challan_date", "challan_no", "created_at", "created_by", "grn_no",
-    "id", "invoice_no", "po_ref", "posted_at", "qc_by", "source", "status", "store_resource_id",
-    "updated_at", "updated_by", "vendor_id",
+    "id", "invoice_no", "po_ref", "posted_at", "purchase_order_id", "qc_by", "source", "status",
+    "store_resource_id", "updated_at", "updated_by", "vendor_id",
   ],
   grn_lines: [
     "batch_id", "batch_no", "expiry_date", "free_goods", "grn_id", "id", "item_id", "mfg_date",
     "mrp_paise", "mrp_uom", "near_expiry", "qty_accepted_base", "qty_base", "qty_in_uom",
     "qty_rejected_base", "reject_reason", "temp_log_ref", "unit_cost_paise", "uom",
+  ],
+  // PHARMACY PARITY P2 — levels per item per store, the purchase order and its lines.
+  item_stock_levels: [
+    "id", "item_id", "max_base", "min_base", "reorder_base", "store_resource_id", "updated_at", "updated_by",
+  ],
+  purchase_orders: [
+    "approval_id", "approval_tier", "approved_at", "approved_by", "cancel_reason", "cancelled_at", "cancelled_by",
+    "created_at", "created_by", "expected_date", "gst_paise", "id", "note", "po_no", "rejection_note", "sent_at",
+    "sent_by", "source", "status", "store_resource_id", "submitted_at", "submitted_by", "subtotal_paise", "terms",
+    "total_paise", "updated_at", "updated_by", "vendor_id",
+  ],
+  purchase_order_lines: [
+    "free_packs", "free_received_base", "gst_rate_bps", "id", "item_id", "line_total_paise", "mrp_paise", "multiplier",
+    "purchase_order_id", "qty_packs", "rate_paise", "received_base", "uom",
   ],
 };
 
@@ -147,8 +161,8 @@ describe("the materials tables (Plan 14 T1)", () => {
    * each, and the prose count followed the bullets rather than the tables. Recorded here as a
    * number rather than only in CLOSE, so the next phase that reads this family counts what exists.
    */
-  it("there are exactly SIXTEEN of them — the plan's prose said fifteen (F2)", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(16);
+  it("there are exactly NINETEEN of them — the plan's prose said fifteen (F2); parity P2 added three", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(19);
   });
 
   // ───────────────────── the five semantic CHECKs, read out BY NAME ─────────────────────

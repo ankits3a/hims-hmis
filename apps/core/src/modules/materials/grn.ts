@@ -5,8 +5,9 @@ import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import {
-  consignmentLots, grnLines, grns, stockBatches, vendorDocuments,
+  consignmentLots, grnLines, grns, purchaseOrders, stockBatches, vendorDocuments,
 } from "../../kernel/db/schema";
+import { applyReceiptToPo, assertReceivableAgainstPo } from "./purchase-orders";
 import { DEEMED_SUPPLY_DAYS } from "./config";
 import { NEAR_EXPIRY_APPROVAL_TYPE } from "./approval-types";
 import { MaterialsError } from "./errors";
@@ -33,10 +34,11 @@ export type GrnWithLines = GrnRow & { lines: GrnLineRow[] };
  *
  * `captureGrn` records what came off the vehicle so the vehicle can leave; `runGateQc` records the
  * verdict when somebody competent to give one arrives; `postGrn` moves the stock. **Capture and QC
- * may be the same USER in this phase** — the SoD pairs S10 names are PO-approver/receiver and
- * custodian/counter, neither of which exists until 14b/14c, and inventing a third pair here would
- * be a rule nobody ruled. The PERMISSIONS are nonetheless distinct (`grn.capture` vs `grn.qc`,
- * DD11), so the day a pair is ruled it is a `sod_pairs` row rather than a refactor.
+ * may be the same USER in this phase** — the custodian/counter pair belongs to counts, and a
+ * third pair here would be a rule nobody ruled. The PERMISSIONS are nonetheless distinct
+ * (`grn.capture` vs `grn.qc`, DD11). **Parity P2 makes the PO-approver/receiver pair real:** a GRN
+ * against a purchase order refuses, at capture and again at post, the person who approved the
+ * order (`po_approver_grn_receiver`; `purchase-orders.ts`).
  *
  * ═══ NOTHING MOVES UNTIL `postGrn`, AND THAT IS THE WHOLE SHAPE ═══
  *
@@ -191,6 +193,8 @@ export async function captureGrn(
     challanDate: string;
     invoiceNo?: string | null;
     poRef?: string | null;
+    /** PARITY P2 — the purchase order this delivery is received against (`purchase-orders.ts`). */
+    purchaseOrderId?: string | null;
     lines: CaptureLine[];
     now?: Date;
     /** The IST calendar date the GRN number is series-numbered under. Defaults from `now`. */
@@ -210,12 +214,30 @@ export async function captureGrn(
   // code that might disagree about the offset". The caller may pass one; otherwise it is resolved
   // here, once.
   const serviceDate = input.serviceDate ?? istDay(input.now ?? new Date());
+
+  // PARITY P2 — against an order: asked BEFORE this GRN exists, so the headroom it counts (posted
+  // plus every other captured GRN against the order) does not include this delivery twice.
+  const purchaseOrderId = input.purchaseOrderId ?? null;
+  let poRef = input.poRef ?? null;
+  if (purchaseOrderId !== null) {
+    const receipt = [];
+    for (const line of input.lines) {
+      const uoms = await itemUomRows(tx, line.itemId);
+      if (uoms.length === 0) throw new MaterialsError("unknown_item", `item ${line.itemId} not found`, { itemId: line.itemId });
+      receipt.push({ itemId: line.itemId, qtyBase: toBase(uoms, line.uom, line.qtyInUom), freeGoods: line.freeGoods ?? false });
+    }
+    await assertReceivableAgainstPo(tx, actor, purchaseOrderId, { vendorId: input.vendorId, storeResourceId: input.storeResourceId }, receipt);
+    if (poRef === null) {
+      poRef = (await tx.select({ poNo: purchaseOrders.poNo }).from(purchaseOrders).where(eq(purchaseOrders.id, purchaseOrderId)))[0]?.poNo ?? null;
+    }
+  }
+
   const grnNo = await nextEpisodeNo(tx, "grn", serviceDate);
   const grnId = newId();
 
   await tx.insert(grns).values({
     id: grnId, grnNo, vendorId: input.vendorId, source: input.source,
-    poRef: input.poRef ?? null, challanNo: input.challanNo, challanDate: input.challanDate,
+    poRef, purchaseOrderId, challanNo: input.challanNo, challanDate: input.challanDate,
     invoiceNo: input.invoiceNo ?? null, storeResourceId: input.storeResourceId,
     status: "gate_qc", capturedBy: actor.id,
     createdBy: actor.id, updatedBy: actor.id,
@@ -388,6 +410,13 @@ export async function postGrn(
         { approvalStatus: approval?.status ?? null },
       );
     }
+  }
+
+  // PARITY P2 — the receipt booked onto its order, under the order's lock, before any stock moves.
+  if (grn.purchaseOrderId !== null && acceptedLines.length > 0) {
+    await applyReceiptToPo(tx, actor, grn.purchaseOrderId, grnId, acceptedLines.map((l) => ({
+      itemId: l.itemId, qtyBase: l.qtyAcceptedBase, freeGoods: l.freeGoods,
+    })), now);
   }
 
   // Nothing accepted: emit the rejections, close the GRN, write NO ledger row (T6's acceptance).

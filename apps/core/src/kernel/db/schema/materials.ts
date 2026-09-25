@@ -666,6 +666,131 @@ export const transferLines = pgTable(
   ],
 );
 
+// ═══════════════════════════ BUYING (PHARMACY PARITY P2) ═══════════════════════════
+
+/**
+ * PARITY P2 — THE LEVELS A STORE KEEPS AN ITEM AT. One row per item per store, in BASE units.
+ *
+ *   - `min_base`: the safety stock. Below it the item is short whatever the forecast says.
+ *   - `reorder_base`: the reorder level. At or below it the reorder list suggests an order.
+ *   - `max_base`: the order-up-to level. The suggestion is `max − (on hand + on order)`.
+ *
+ * A row, not three columns on `items`: the OPD counter and the main store keep one drug at
+ * different levels. Written by whoever raises purchase orders (`materials.po.raise`).
+ */
+export const itemStockLevels = pgTable(
+  "item_stock_levels",
+  {
+    id: text("id").primaryKey(),
+    itemId: text("item_id").notNull().references(() => items.id),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    minBase: integer("min_base").notNull(),
+    reorderBase: integer("reorder_base").notNull(),
+    maxBase: integer("max_base").notNull(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("item_stock_levels_item_store_ux").on(t.itemId, t.storeResourceId),
+    index("item_stock_levels_store_idx").on(t.storeResourceId),
+    check("item_stock_levels_order_ck", sql`0 <= ${t.minBase} and ${t.minBase} <= ${t.reorderBase} and ${t.reorderBase} < ${t.maxBase}`),
+  ],
+);
+
+/**
+ * PARITY P2 — A PURCHASE ORDER: one vendor, one receiving store, many lines.
+ *
+ *   draft → pending_approval → approved → sent → part_received → received
+ *                 └→ draft (rejected, with the reason)     draft/pending/approved/sent → cancelled
+ *
+ *   - `po_no` from `EPISODE_SERIES.purchase_order` (`PO2609240001`), the GRN's grammar.
+ *   - `source`: `agent` when the counter agent drafted it from the reorder list and the short book,
+ *     `manual` when a person started it. Either way nothing leaves a draft without a person.
+ *   - `approval_id` / `approval_tier`: the `kernel/approvals` request filed at submit, and which of
+ *     the two types it went to (`head` up to the configured limit, `owner` above it).
+ *   - Totals are kept on the header in paise and recomputed on every write of the lines.
+ *   - `approved_by` is who granted the approval. The GRN refuses them as its receiver
+ *     (`po_approver_grn_receiver`).
+ */
+export const purchaseOrders = pgTable(
+  "purchase_orders",
+  {
+    id: text("id").primaryKey(),
+    poNo: text("po_no").notNull(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    status: text("status").notNull(),
+    source: text("source").notNull(),
+    expectedDate: date("expected_date", { mode: "string" }),
+    terms: text("terms"),
+    note: text("note"),
+    subtotalPaise: bigint("subtotal_paise", { mode: "number" }).notNull().default(0),
+    gstPaise: bigint("gst_paise", { mode: "number" }).notNull().default(0),
+    totalPaise: bigint("total_paise", { mode: "number" }).notNull().default(0),
+    approvalId: text("approval_id"), // plain text, the `grns.approval_id` precedent
+    approvalTier: text("approval_tier"),
+    submittedBy: text("submitted_by"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    approvedBy: text("approved_by"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    rejectionNote: text("rejection_note"),
+    sentBy: text("sent_by"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    cancelledBy: text("cancelled_by"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("purchase_orders_po_no_ux").on(t.poNo),
+    index("purchase_orders_vendor_idx").on(t.vendorId, t.status),
+    index("purchase_orders_status_idx").on(t.status, t.expectedDate),
+    check("purchase_orders_status_ck", sql`${t.status} in ('draft', 'pending_approval', 'approved', 'sent', 'part_received', 'received', 'cancelled')`),
+    check("purchase_orders_source_ck", sql`${t.source} in ('manual', 'agent')`),
+    check("purchase_orders_tier_ck", sql`${t.approvalTier} is null or ${t.approvalTier} in ('head', 'owner')`),
+    check("purchase_orders_totals_ck", sql`${t.subtotalPaise} >= 0 and ${t.gstPaise} >= 0 and ${t.totalPaise} = ${t.subtotalPaise} + ${t.gstPaise}`),
+    check("purchase_orders_approved_ck", sql`(${t.approvedAt} is null) = (${t.approvedBy} is null) and (${t.status} not in ('approved', 'sent', 'part_received', 'received') or ${t.approvedBy} is not null)`),
+    check("purchase_orders_cancelled_ck", sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null) and (${t.cancelledAt} is null) = (${t.cancelReason} is null)`),
+  ],
+);
+
+/**
+ * One line of a purchase order, in the PACK the vendor sells (`uom`, `multiplier` base units each,
+ * copied from `item_uoms` when the line is written so a later change to the pack cannot move an
+ * order already placed).
+ *
+ *   - `qty_packs` ordered and paid for; `free_packs` promised free (the scheme).
+ *   - `rate_paise`: the PTR per pack before GST. `line_total_paise = qty_packs × rate_paise`.
+ *   - `mrp_paise`: the MRP per pack the buyer expects printed; the GRN gate checks what arrives.
+ *   - `received_base` / `free_received_base`: what posted GRNs accepted against this line, in base
+ *     units. `received_base` may pass `qty_packs × multiplier` by the configured tolerance, no more.
+ *   - One line per item per order.
+ */
+export const purchaseOrderLines = pgTable(
+  "purchase_order_lines",
+  {
+    id: text("id").primaryKey(),
+    purchaseOrderId: text("purchase_order_id").notNull().references(() => purchaseOrders.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    uom: text("uom").notNull(),
+    multiplier: integer("multiplier").notNull(),
+    qtyPacks: integer("qty_packs").notNull(),
+    freePacks: integer("free_packs").notNull().default(0),
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+    mrpPaise: bigint("mrp_paise", { mode: "number" }),
+    lineTotalPaise: bigint("line_total_paise", { mode: "number" }).notNull(),
+    receivedBase: integer("received_base").notNull().default(0),
+    freeReceivedBase: integer("free_received_base").notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("purchase_order_lines_item_ux").on(t.purchaseOrderId, t.itemId),
+    check("purchase_order_lines_qty_ck", sql`${t.qtyPacks} > 0 and ${t.freePacks} >= 0 and ${t.multiplier} > 0`),
+    check("purchase_order_lines_money_ck", sql`${t.ratePaise} >= 0 and ${t.gstRateBps} >= 0 and ${t.lineTotalPaise} = ${t.qtyPacks} * ${t.ratePaise}`),
+    check("purchase_order_lines_received_ck", sql`${t.receivedBase} >= 0 and ${t.freeReceivedBase} >= 0`),
+  ],
+);
+
 // ═══════════════════════════════════ THE GRN GATE ═══════════════════════════════════
 
 /**
@@ -678,8 +803,8 @@ export const transferLines = pgTable(
  * `grn_no` comes from `EPISODE_SERIES.grn` (T1, `series.ts`) rather than a private counter: one
  * daily-number grammar for the whole house is the reason that table exists.
  *
- * `po_ref` carries no FK because purchase orders are 14b's; `approval_id` carries none for the
- * `vendor_bank_changes` reason.
+ * `po_ref` stays free text; parity P2 adds `purchase_order_id`, the real link, beside it.
+ * `approval_id` carries no FK for the `vendor_bank_changes` reason.
  */
 export const grns = pgTable(
   "grns",
@@ -688,7 +813,9 @@ export const grns = pgTable(
     grnNo: text("grn_no").notNull(),
     vendorId: text("vendor_id").notNull().references(() => vendors.id),
     source: text("source").notNull(),
-    poRef: text("po_ref"), // no FK — 14b owns purchase orders
+    poRef: text("po_ref"), // free text as the challan printed it; `purchase_order_id` is the link
+    /** PARITY P2 — the order this delivery is received against, when there is one. */
+    purchaseOrderId: text("purchase_order_id").references(() => purchaseOrders.id),
     challanNo: text("challan_no").notNull(),
     challanDate: date("challan_date", { mode: "string" }).notNull(),
     invoiceNo: text("invoice_no"),
@@ -704,6 +831,7 @@ export const grns = pgTable(
     uniqueIndex("grns_grn_no_ux").on(t.grnNo),
     index("grns_vendor_idx").on(t.vendorId, t.challanDate),
     index("grns_store_status_idx").on(t.storeResourceId, t.status),
+    index("grns_purchase_order_idx").on(t.purchaseOrderId),
     check("grns_source_ck", sql`${t.source} in ('challan', 'consignment_challan', 'donation')`),
     check("grns_status_ck", sql`${t.status} in ('draft', 'gate_qc', 'accepted', 'partially_accepted', 'rejected', 'posted')`),
   ],

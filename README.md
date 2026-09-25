@@ -1023,6 +1023,7 @@ split is what those pairs will hang on.
 | `materials.recall.manage` | ✓ | | |
 | `materials.counts.manage` | ✓ | | |
 | `materials.counts.perform` | ✓ | ✓ | ✓ |
+| `materials.po.raise` | ✓ | | ✓ |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
@@ -1040,6 +1041,14 @@ adjustment: writing a variance off needs a second key, and runbook O1 is open.
 the dispensary acknowledges what reached its shelf, the two signatures of an indent voucher. The act
 refuses the issuer as the receiver, and a store that names its keepers is received into only by one
 of them, so the pharmacy, not the storekeeper, confirms a transfer into `PHARM-OPD` or `PHARM-RETAIL`.
+
+**Pharmacy parity P2 adds the purchase order, and `materials.po.raise` goes to `materials_head` and `pharmacy`.**
+The pharmacist and the materials head draft, edit, submit, send and cancel an order and set an
+item's min, reorder and max at a store; the storekeeper receives against it and raises none. There
+is no `materials.po.approve`: the approval is the approvals engine's, `materials_po_approval` to
+`materials_head` up to ₹50,000 and `materials_po_approval_owner` to the owner above it (both
+defaults the owner may change), and the kernel refuses whoever submitted or drafted an order
+deciding it. Whoever approved an order cannot receive its GRN (`po_approver_grn_receiver`).
 
 **Two approval types, registered by `seed:materials` in the deploy path.**
 `materials_near_expiry_acceptance` (approver `materials_head`, 240-minute SLA) gates posting a GRN

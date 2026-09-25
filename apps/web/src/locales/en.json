@@ -75,7 +75,8 @@
     "pharmacyRetailLicence": "Retail licence",
     "pharmacyDowntime": "Paper dispenses",
     "materialsTransfers": "Stock transfers",
-    "opdDayReport": "OPD report"
+    "opdDayReport": "OPD report",
+    "pharmacyOffice": "Pharmacy office"
   },
   "palette": {
     "title": "Search",
@@ -420,6 +421,16 @@
         "label": "Membership card",
         "ask": "Give {{patient}} member benefits on a card missing from the member list",
         "explain": "The card is not in the member list. Approving gives the benefit this time."
+      },
+      "materials_po_approval": {
+        "label": "Purchase order",
+        "ask": "Approve a purchase order of {{amount}}",
+        "explain": "The pharmacy or the stores want to order from a supplier. Approving lets them send the order; you cannot then receive its delivery."
+      },
+      "materials_po_approval_owner": {
+        "label": "Purchase order above the limit",
+        "ask": "Approve a purchase order of {{amount}}, above the materials head's limit",
+        "explain": "Orders above the limit come to you. Approving lets them send the order to the supplier."
       }
     }
   },
@@ -1909,7 +1920,14 @@
     "adjustment_unapproved": "Nothing is booked until the medical superintendent approves the request",
     "unknown_adjustment": "That adjustment does not exist",
     "transfer_self_receipt": "You sent this transfer. Someone at the receiving store confirms it.",
-    "not_store_keeper": "Only the receiving store's own staff confirm what reached it."
+    "not_store_keeper": "Only the receiving store's own staff confirm what reached it.",
+    "unknown_purchase_order": "No such purchase order",
+    "po_wrong_status": "The purchase order is not in a state that allows this",
+    "po_invalid": "The order has a line or detail it cannot carry — check quantities, rates and packs",
+    "po_over_receipt": "More than the order allows (ordered + 2%) — put free goods on their own line",
+    "po_mismatch": "This delivery is not for that purchase order (vendor, store or item differs)",
+    "po_approver_receiving": "You approved this order — somebody else must receive it",
+    "invalid_stock_level": "Levels must hold 0 ≤ min ≤ reorder < max"
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -1976,7 +1994,12 @@
     "rule_mrp_above_ceiling": "The MRP is above the notified ceiling for this item",
     "rule_batch_frozen": "That batch is recall-frozen and cannot be received again",
     "rule_agreement_missing": "No signed consignment agreement is valid on the challan date",
-    "rule_unknown": "Rejected"
+    "rule_unknown": "Rejected",
+    "po": {
+      "label": "Purchase order",
+      "none": "No order",
+      "prefilled": "Lines filled from {{poNo}} — what is still owed."
+    }
   },
   "otList": {
     "title": "Theatre list",
@@ -3691,6 +3714,17 @@
       "ordered": "Ordered",
       "received": "Received",
       "dismissed": "Dismiss"
+    },
+    "p2": {
+      "office": "Pharmacy office →",
+      "levels": "Min / reorder / max",
+      "onOrder": "On order",
+      "toBuy": "To buy",
+      "inDraft": "{{n}} on a draft",
+      "save": "Save",
+      "min": "Min for {{code}}",
+      "reorder": "Reorder level for {{code}}",
+      "max": "Max for {{code}}"
     }
   },
   "pharmacyDay": {
@@ -4337,6 +4371,11 @@
       "draftShelf": "{{count}} on the shelf",
       "confirm": "Confirm",
       "dismiss": "Dismiss the draft"
+    },
+    "plan": {
+      "tag": "Orders",
+      "body": "Ready to draft — orders: {{orders}} · lines: {{lines}} · need a vendor: {{unassigned}}.",
+      "open": "Open the office"
     }
   },
   "pharmacyAuthorise": {
@@ -5375,7 +5414,9 @@
       "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})",
       "shortBookDraft": "Drafted: note {{name}} in the short book? Confirm on the card.",
       "shortBookAlready": "{{name}} is already in the short book.",
-      "shortBookNeedName": "Which medicine is out? Say it with the name — “Pan 40 khatam”."
+      "shortBookNeedName": "Which medicine is out? Say it with the name — “Pan 40 khatam”.",
+      "purchaseDraftPlan": "Ready to draft — orders: {{orders}} · lines: {{lines}} · need a vendor: {{unassigned}}. Open the office to make the drafts.",
+      "purchaseDraftNothing": "Nothing to order: no item is at its reorder level and the short book is clear."
     },
     "report": {
       "title": "Your day — {{date}}",
@@ -5670,5 +5711,101 @@
     "saving": "Saving…",
     "savedAt": "Saved {{at}}",
     "saveFailed": "Not saved — {{reason}}"
+  },
+  "pharmacyOffice": {
+    "title": "Pharmacy office",
+    "subtitle": "Needs you today",
+    "empty": "Nothing needs you right now.",
+    "lines_one": "{{count}} line",
+    "lines_other": "{{count}} lines",
+    "shortages_one": "{{count}} shortage is open in the short book.",
+    "shortages_other": "{{count}} shortages are open in the short book.",
+    "openReorder": "Open the reorder list",
+    "count": {
+      "awaitingYou": "Awaiting your approval",
+      "drafts": "Drafts to review",
+      "overdue": "Overdue",
+      "waiting": "Waiting on approver",
+      "toReceive": "To receive",
+      "shortages": "Open shortages"
+    },
+    "status": {
+      "draft": "Draft",
+      "pending_approval": "Awaiting approval",
+      "approved": "Approved",
+      "sent": "Sent",
+      "part_received": "Part received",
+      "received": "Received",
+      "cancelled": "Cancelled"
+    },
+    "agent": {
+      "tag": "Agent",
+      "drafted": "agent draft",
+      "can": "From the reorder list and the short book I can draft — orders: {{orders}} · lines: {{lines}} · need a vendor: {{unassigned}}.",
+      "nothing": "Nothing to order now. Already on a draft: {{drafted}}.",
+      "unmatched_one": "{{count}} short-book drug is not stocked — register it before it can be ordered.",
+      "unmatched_other": "{{count}} short-book drugs are not stocked — register them before they can be ordered.",
+      "review": "Review and make drafts",
+      "made_one": "{{count}} draft made — check it and submit.",
+      "made_other": "{{count}} drafts made — check each and submit."
+    },
+    "plan": {
+      "title": "Orders the agent would draft",
+      "intro": "One draft per last supplier, at the last receipt's rate, expected {{date}}. Nothing is sent until approved.",
+      "reason_reorder": "reorder level",
+      "reason_short_book": "short book",
+      "unassigned": "Needs a vendor",
+      "why_no_history": "never bought",
+      "why_vendor_inactive": "last supplier inactive",
+      "vendorFor": "Vendor for {{code}}",
+      "rateFor": "Rate per pack for {{code}}",
+      "rate": "₹ / pack",
+      "leaveOut": "Leave out",
+      "notStocked": "Not stocked, so not ordered: {{names}}",
+      "make": "Make the drafts",
+      "notNow": "Not now"
+    },
+    "sheet": {
+      "loading": "Loading…",
+      "store": "Deliver to {{store}}",
+      "expected": "Expected",
+      "tier_head": "Materials head approves",
+      "tier_owner": "Owner approves (above the limit)",
+      "wasRejected": "Returned: {{note}}",
+      "item": "Item",
+      "pack": "Pack",
+      "qty": "Qty",
+      "free": "Free",
+      "rate": "Rate ₹",
+      "gst": "GST %",
+      "mrp": "MRP ₹",
+      "amount": "Amount",
+      "received": "Received",
+      "total": "Total",
+      "taxable": "Taxable",
+      "approveNote": "Note (optional)",
+      "rejectReason": "Why is it returned?",
+      "reasonNeeded": "Say why the order is returned.",
+      "approvedNote": "Approved",
+      "approved": "Approved.",
+      "rejected": "Returned to draft.",
+      "save": "Save",
+      "saved": "Saved.",
+      "submit": "Submit for approval",
+      "submitted": "Submitted for approval.",
+      "approve": "Approve",
+      "reject": "Reject",
+      "send": "Mark sent",
+      "sent": "Marked sent.",
+      "receive": "Receive against it",
+      "print": "Print / PDF",
+      "printFailed": "The page could not be printed here.",
+      "more": "More",
+      "cancelReason": "Why cancel it?",
+      "cancel": "Cancel order",
+      "cancelled": "Cancelled.",
+      "waitingOn_head": "Waiting on the materials head.",
+      "waitingOn_owner": "Waiting on the owner."
+    }
   }
 }

@@ -5,6 +5,7 @@ import {
   captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItems, fetchStores,
   fetchVendors, materialsErrorText, postGrn, requestNearExpiry, runGrnQc,
 } from "../lib/materials-api";
+import { fetchPurchaseOrders, fetchReceivable } from "../lib/purchase-api";
 import { Button } from "@/components/ui/button";
 import type { CaptureLineInput, WireGrn } from "../lib/materials-api";
 
@@ -67,6 +68,8 @@ export function MaterialsGrn(): React.ReactElement {
   const [challanNo, setChallanNo] = useState("");
   const [challanDate, setChallanDate] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
+  /* PARITY P2 — the order this delivery is received against: picking one fills the lines. */
+  const [purchaseOrderId, setPurchaseOrderId] = useState("");
   const [openGrnId, setOpenGrnId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -75,6 +78,23 @@ export function MaterialsGrn(): React.ReactElement {
   const stores = useQuery({ queryKey: ["materials", "stores"], queryFn: fetchStores });
   const items = useQuery({ queryKey: ["materials", "items"], queryFn: () => fetchItems({}) });
   const grns = useQuery({ queryKey: ["materials", "grns"], queryFn: fetchGrns });
+  const orders = useQuery({
+    queryKey: ["materials", "purchase-orders", "receivable", vendorId],
+    queryFn: () => fetchPurchaseOrders({ vendorId, status: ["approved", "sent", "part_received"] }),
+    enabled: vendorId !== "",
+  });
+  const pickOrder = (id: string): void => void run(async () => {
+    setPurchaseOrderId(id);
+    if (id === "") return;
+    const r = await fetchReceivable(id);
+    setStoreId(r.purchaseOrder.storeResourceId);
+    setSource("challan");
+    setLines(r.lines.map((l) => ({
+      ...emptyLine(), itemId: l.itemId, uom: l.uom, qtyInUom: String(l.remainingPacks),
+      costRupees: (l.unitCostPaise / 100).toFixed(2),
+      ...(l.mrpPaise === null ? {} : { mrpRupees: (l.mrpPaise / 100).toFixed(2), mrpUom: l.uom }),
+    })));
+  }, t("materialsGrn.po.prefilled", { poNo: orders.data?.find((o) => o.id === id)?.poNo ?? "" }));
   const openGrn = useQuery({
     queryKey: ["materials", "grn", openGrnId],
     queryFn: () => fetchGrn(openGrnId as string),
@@ -118,8 +138,10 @@ export function MaterialsGrn(): React.ReactElement {
     const { grnId, grnNo } = await captureGrn({
       vendorId, source, storeResourceId: storeId,
       challanNo: challanNo.trim(), challanDate: challanDate.trim(),
+      ...(purchaseOrderId === "" ? {} : { purchaseOrderId }),
       lines: payload,
     });
+    setPurchaseOrderId("");
     setOpenGrnId(grnId);
     setLines([emptyLine()]);
     setChallanNo("");
@@ -152,9 +174,19 @@ export function MaterialsGrn(): React.ReactElement {
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="flex flex-col gap-1 text-sm">
                 {t("materialsGrn.vendor")}
-                <select className="rounded border px-2 py-1" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+                <select className="rounded border px-2 py-1" value={vendorId} onChange={(e) => { setVendorId(e.target.value); setPurchaseOrderId(""); }}>
                   <option value="">—</option>
                   {(vendors.data ?? []).map((v) => <option key={v.id} value={v.id}>{v.code}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                {t("materialsGrn.po.label")}
+                <select
+                  className="rounded border px-2 py-1" value={purchaseOrderId} disabled={vendorId === ""}
+                  onChange={(e) => pickOrder(e.target.value)}
+                >
+                  <option value="">{t("materialsGrn.po.none")}</option>
+                  {(orders.data ?? []).map((o) => <option key={o.id} value={o.id}>{o.poNo} · {o.expectedDate ?? ""}</option>)}
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm">

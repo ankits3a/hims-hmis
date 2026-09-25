@@ -23,7 +23,7 @@
  */
 
 /** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
-export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry";
+export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -133,6 +133,16 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("khatam"), S("khatm"), S("khtm"), S("खत्म"), S("ख़त्म"), S("out of"), S("out of stock"), S("ran out"),
     S("short book"), S("shortbook"), S("shortage"), S("short hai"), S("short ho"),
     W("likh"), W("note"), W("finished"),
+  ],
+  /**
+   * PARITY P2 (2026-09-24) — "order karo", "make the orders": the agent DRAFTS purchase orders from
+   * the reorder list and the short book. Phrases only, plus the bare `order` as a weak word: the tool
+   * writes nothing (it answers with a card linking to the office, where a person makes the drafts).
+   */
+  draft_purchase_orders: [
+    S("order karo"), S("order kar do"), S("order bana"), S("orders bana"), S("purchase order"), S("make the orders"),
+    S("make orders"), S("draft the orders"), S("draft orders"), S("draft purchase"), S("po bana"), S("ऑर्डर कर"), S("ऑर्डर बना"),
+    W("order"), W("orders"), W("ऑर्डर"),
   ],
 };
 

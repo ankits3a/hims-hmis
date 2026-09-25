@@ -3,6 +3,7 @@ import { pharmacyDispenses, pharmacyShortBook } from "../../kernel/db/schema";
 import { findStoreByCode, sellableBatchesByItem } from "../materials";
 import { getPatientSummaries } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
+import { planPurchaseDrafts } from "./purchase-drafts";
 import { searchShelfAt } from "./retail";
 import type { CopilotAnswer, CopilotToolDecl } from "../../kernel/copilot/types";
 
@@ -178,6 +179,38 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
       return alreadyOpen
         ? { key: "copilot.answer.shortBookAlready", params: { name: drugName }, payload }
         : { key: "copilot.answer.shortBookDraft", params: { name: drugName }, payload };
+    },
+  },
+  /**
+   * PARITY P2 — "order karo": what the agent WOULD draft, from the reorder list and the open short
+   * book, grouped by each item's last supplier (`purchase-drafts.ts`). Read-only like every tool
+   * here: the card links to `/pharmacy/office`, where a person presses "make the drafts", and each
+   * draft still needs a submit, somebody else's approval and a send.
+   *
+   * Gated on `materials.po.raise` — the grant of the people who buy, so the copilot offers an order
+   * to exactly the people the office would let make one.
+   */
+  {
+    intent: "draft_purchase_orders",
+    permission: "materials.po.raise",
+    needsSubject: false,
+    async run(ctx): Promise<CopilotAnswer> {
+      const plan = await planPurchaseDrafts(ctx.db, new Date());
+      const lines = plan.groups.reduce((s, g) => s + g.lines.length, 0);
+      const payload = {
+        kind: "purchase_draft_plan", href: "/pharmacy/office",
+        orders: plan.groups.length, lines, unassigned: plan.unassigned.length, unmatched: plan.unmatched.length,
+        alreadyDrafted: plan.alreadyDrafted.length,
+        vendors: plan.groups.map((g) => ({ name: g.vendorName, lines: g.lines.length, totalPaise: g.totalPaise })),
+      };
+      if (lines === 0 && plan.unassigned.length === 0) {
+        return { key: "copilot.answer.purchaseDraftNothing", params: { drafted: plan.alreadyDrafted.length }, payload };
+      }
+      return {
+        key: "copilot.answer.purchaseDraftPlan",
+        params: { orders: plan.groups.length, lines, unassigned: plan.unassigned.length },
+        payload,
+      };
     },
   },
 ];

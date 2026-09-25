@@ -132,6 +132,12 @@ describe("matchIntent — the pharmacy counter", () => {
     ["Dolo 650 out of stock hai", "draft_short_book_entry"],
     ["short book mein Montair LC likh do", "draft_short_book_entry"],
     ["पैन 40 खत्म", "draft_short_book_entry"],
+    /* PARITY P2 — "order karo" drafts purchase orders; a person makes and sends them in the office. */
+    ["order karo", "draft_purchase_orders"],
+    ["make the orders", "draft_purchase_orders"],
+    ["purchase order bana do", "draft_purchase_orders"],
+    ["draft orders for the week", "draft_purchase_orders"],
+    ["ऑर्डर कर दो", "draft_purchase_orders"],
   ])("routes %s", (question: string, intent: string) => {
     expect(matchIntent(question)?.intent).toBe(intent);
   });

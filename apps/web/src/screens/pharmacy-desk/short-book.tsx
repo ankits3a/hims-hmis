@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { noteShortBook, pharmacyErrorText } from "../../lib/pharmacy-api";
@@ -121,6 +122,30 @@ export function DraftCard({ draft, onDone }: { draft: ShortBookDraft; onDone: ()
         {error !== null ? <span role="alert" style={{ display: "block", color: "#f1a39b" }}>{error}</span> : null}
       </span>
       <button type="button" className="agdo" disabled={busy} onClick={() => void confirm()}>{t("pharmacyDesk.short.confirm")}</button>
+      <button type="button" onClick={onDone} aria-label={t("pharmacyDesk.short.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>
+    </div>
+  );
+}
+
+/**
+ * PARITY P2 — "order karo": the agent's PLAN, as the copilot hands it over. It writes nothing; the
+ * card links to the office, where a person makes the drafts and then reviews each one.
+ */
+export type PurchasePlanCardData = { kind: "purchase_draft_plan"; href: string; orders: number; lines: number; unassigned: number };
+
+export function purchasePlanOf(payload: unknown): PurchasePlanCardData | null {
+  const p = payload as Partial<PurchasePlanCardData> | null | undefined;
+  return p != null && p.kind === "purchase_draft_plan" && typeof p.orders === "number" && (p.orders > 0 || (p.unassigned ?? 0) > 0) ? (p as PurchasePlanCardData) : null;
+}
+
+export function PurchasePlanCard({ plan, onDone }: { plan: PurchasePlanCardData; onDone: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  return (
+    <div data-testid="desk-plan-card" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid #24413631" }}>
+      <span className="tag" style={{ color: "var(--mint)", flexShrink: 0 }}>{t("pharmacyDesk.plan.tag")}</span>
+      <span style={{ flexGrow: 1, fontSize: 12.5, lineHeight: "18px" }}>{t("pharmacyDesk.plan.body", { orders: plan.orders, lines: plan.lines, unassigned: plan.unassigned })}</span>
+      <button type="button" className="agdo" onClick={() => { onDone(); void navigate({ to: "/pharmacy/office" }); }}>{t("pharmacyDesk.plan.open")}</button>
       <button type="button" onClick={onDone} aria-label={t("pharmacyDesk.short.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>
     </div>
   );

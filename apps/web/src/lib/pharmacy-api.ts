@@ -341,6 +341,9 @@ export type WireReorderLine = {
   unsoldByExpiry: number;
   suggestBase: number; suggestPacks: string | null;
   source: { storeCode: string; storeName: string; available: number } | null;
+  /** PARITY P2 — the store's levels, and what is ordered, drafted, and to buy (base units). */
+  levels?: { minBase: number; reorderBase: number; maxBase: number } | null;
+  onOrderBase?: number; inDraftBase?: number; orderBase?: number;
 };
 export type WireExpiringLine = {
   itemId: string; code: string; name: string; baseUom: string;
@@ -352,6 +355,8 @@ export type WireExpiredLine = {
 };
 export type WireReorderAdvice = {
   asOf: string;
+  /** PARITY P2 — the counter's store, whose levels the list edits. */
+  store?: { id: string; code: string };
   window: { days: number; minCoverDays: number; targetCoverDays: number; nearExpiryDays: number };
   items: WireReorderLine[];
   expiring: WireExpiringLine[];

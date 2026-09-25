@@ -217,7 +217,10 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       // clause argues this one at length; it is the module's generic 404 by design.
       unknown_document: ["consumption.ts", "grn.ts", "ledger.ts", "materials.controller.ts", "transfers.ts", "vendors.ts"],
       // "no such item".
-      unknown_item: ["grn.ts", "items.ts", "materials.controller.ts"],
+      unknown_item: ["grn.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts"],
+      // Parity P2 — the act's own grant check, answered as the route guard would (403): counts,
+      // adjustments, and the purchase order's raise/read. One meaning: you do not hold the grant.
+      permission_denied: ["adjustments.ts", "counts.ts", "purchase-orders.ts"],
     });
   });
 

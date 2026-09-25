@@ -112,6 +112,16 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.shortBookAlready",
   /** The sentence named no drug ("khatam ho gaya"). */
   "copilot.answer.shortBookNeedName",
+
+  /*
+    ═══ draft_purchase_orders (pharmacy, parity P2) — "order karo", "make the orders" ═══
+    A PLAN, never a write: the answer says how many orders the agent would draft, and its `payload`
+    links to /pharmacy/office, where a person presses "make the drafts" and then reviews each one.
+  */
+  /** "3 orders, 11 lines ready to draft (2 items need a vendor) — open the office." */
+  "copilot.answer.purchaseDraftPlan",
+  /** Nothing is below its level and the short book is empty — nothing to order. */
+  "copilot.answer.purchaseDraftNothing",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];

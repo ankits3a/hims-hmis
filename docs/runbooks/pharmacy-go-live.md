@@ -517,3 +517,35 @@ taken, so the pharmacist in charge follows up with the patient.
 
 **A queued OPD prescription that was dispensed on paper** stays in the counter's queue. Cancel it
 there with the reason "dispensed on paper, sheet N", so it is not dispensed twice.
+
+## 11. Buying — purchase orders (parity P2)
+
+Everything here is at **`/pharmacy/office`** (permission `materials.po.raise`, held by
+`materials_head` and `pharmacy`). `deploy.sh` runs `seed:materials`, which registers the two
+approval types an order needs (`pharmacy_po_approval_registered`).
+
+- **Assign an approver.** `materials_head` approves every order up to ₹50,000, GST included. The
+  owner approves anything above. Both limits are defaults the owner may change
+  (`materials/config.ts`). Nobody approves an order they drafted or submitted.
+  `pharmacy_po_approver_held` stays RED until an active person holds `materials_head`.
+- **Set levels.** On `/pharmacy/reorder`, give each regularly bought drug a min, reorder and max,
+  in tablets or other base units. At or below the reorder level the list suggests
+  `max − (on hand + on order)`.
+- **Let the agent draft.** Say "order karo" at the desk (F2), or press **Make the drafts** in the
+  office. The agent writes one draft order per supplier, from:
+  - the reorder list;
+  - the open short book.
+
+  Each item is priced at its last goods-receipt rate and addressed to its last supplier. An item
+  nobody has supplied is left for you to give a vendor. Check quantities and rates, then press
+  **Submit**.
+- **Approve, then send.** The approver presses **A** on the order, or decides it in `/approvals`.
+  Rejecting it needs a reason and returns it to draft. Print the approved order (the page saves as
+  PDF), send it to the supplier, and press **Send**.
+- **Receive against it.** At `/materials/grn`, choose the vendor and then its order. The lines
+  fill in with what is still owed. The gate refuses:
+  - the person who approved the order;
+  - more than 2% over the ordered quantity (free goods go on their own line);
+  - an item the order does not carry.
+
+  Less than ordered leaves the order part received, and the rest stays open.

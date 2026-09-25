@@ -3,6 +3,7 @@ import { registerDocumentRenderer } from "../../kernel/printing/render";
 import { PharmacyCounterController } from "./pharmacy-counter.controller";
 import { PharmacyDoctorController } from "./pharmacy-doctor.controller";
 import { PharmacyItemsController } from "./pharmacy-items.controller";
+import { PharmacyOfficeController } from "./pharmacy-office.controller";
 import { PharmacyPharmacistsController } from "./pharmacy-pharmacists.controller";
 import { PharmacyDowntimeController, PharmacyRetailController } from "./pharmacy-retail.controller";
 import { renderPharmacyPaper } from "./print";
@@ -27,7 +28,7 @@ export function registerPharmacyPrinting(): () => void {
  * retail counter; P20 the paper-dispense entry; Consult v2 the doctor's read of the shelf; parity
  * P1 the desk's paper.
  */
-@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController] })
+@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController] })
 export class PharmacyModule implements OnModuleInit {
   onModuleInit(): void {
     registerPharmacyPrinting();
