@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
+import { useScreenKeys } from "../../lib/keyboard";
 import { materialsErrorText } from "../../lib/materials-api";
 import { printInFrame } from "../../lib/print-api";
 import {
@@ -43,6 +44,8 @@ export function PharmacyOffice(): React.ReactElement {
   const [view, setView] = useState<"buy" | "pay">(() => (new URLSearchParams(window.location.search).get("view") === "pay" ? "pay" : "buy"));
   const paying = view === "pay" && canPay;
   const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: !paying });
+  // PARITY P3 — the shell's legend shows the office's keys, not the front desk's.
+  useScreenKeys([t(paying ? "pharmacyOffice.keys.pay" : "pharmacyOffice.keys.buy")]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);

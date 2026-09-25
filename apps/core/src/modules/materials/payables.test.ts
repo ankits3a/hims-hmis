@@ -430,6 +430,22 @@ describe("supplier bills, payables and payment runs (parity P3)", () => {
     void b2;
   });
 
+  it("an owner who holds ONLY the approvals grants reads the run they are asked to authorise, and nothing else of the book", async () => {
+    await ensureRole(db, "approver_only");
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    for (const p of ["approvals.requests.decide", "approvals.requests.read"]) await grantPermissionToRole(db, registry, "approver_only", p);
+    const bare = await mkUser(db, "bare.owner", ["approver_only"]);
+    const bill = await payable(vendor, 10, 25_000, "OW-1");
+    const run = await createPaymentRun(db, head.actor, { lines: [{ billId: bill, payPaise: 250_000 }] }, { now: at(100) });
+    await submitPaymentRun(db, head.actor, run.id, at(101));
+    const read = await getPaymentRun(db, bare.actor, run.id, at(102));
+    expect([read.runNo, read.status, read.totalPaise, read.vendors[0]!.lines[0]!.payPaise]).toEqual([run.runNo, "pending_authorisation", 250_000, 250_000]);
+    // Reading is not preparing or paying.
+    await expect(createPaymentRun(db, bare.actor, { lines: [{ billId: bill, payPaise: 1 }] })).rejects.toMatchObject({ code: "permission_denied" });
+    await expect(recordVendorPayment(db, bare.actor, run.id, vendor, { mode: "neft", reference: "U" }, at(103))).rejects.toMatchObject({ code: "permission_denied" });
+  });
+
   it("only the grants read and act: a storekeeper reads no payables and enters no bill", async () => {
     await expect(payables(db, keeper.actor)).rejects.toMatchObject({ code: "permission_denied" });
     const grn = await received(vendor, zero, 1, 25_000);

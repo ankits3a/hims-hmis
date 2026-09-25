@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { APPROVAL_KINDS, ageOf, decisionErrorKey, isKnownKind, patientName } from "./approval-kinds";
 import type { ApprovalPatient } from "./approval-kinds";
+import { RunApprovalSheet } from "./pharmacy-office/run-approval";
 
 /**
  * ═══ APPROVALS-UX — THE OWNER'S INBOX, REBUILT FROM "THIS SCREEN CONFUSES ME" ═══
@@ -42,6 +43,9 @@ import type { ApprovalPatient } from "./approval-kinds";
 type ApprovalItem = {
   id: string;
   typeKey: string;
+  /** What the request is about. Parity P3 opens a payment run's grid from it; absent on an old API. */
+  subjectType?: string;
+  subjectId?: string;
   requesterId: string;
   requesterName: string | null;
   urgencyClass: "routine" | "urgent" | "emergency";
@@ -157,6 +161,9 @@ function ApprovalCard({
   const { can } = useAuth();
   const sameDay = sameDayLine(item, t);
   const decided = item.status !== "pending";
+  // PARITY P3 — a supplier payment run is decided on sight of the run itself, not only its total.
+  const [runOpen, setRunOpen] = useState(false);
+  const runId = item.typeKey === "materials_payment_run_approval" && item.subjectId !== undefined ? item.subjectId : null;
   const attention = !decided && item.urgencyClass !== "routine";
 
   const actions = decided || canDecide === null ? null : isOwn ? (
@@ -231,6 +238,14 @@ function ApprovalCard({
           </div>
 
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{kindExplain(item, t)}</p>
+          {runId === null ? null : (
+            <button
+              type="button" data-testid="open-payment-run" onClick={() => setRunOpen(true)}
+              style={{ alignSelf: "flex-start", color: "var(--green)", fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3 }}
+            >
+              {t("inbox.openRun")}
+            </button>
+          )}
         </div>
 
         {actions === null ? null : (
@@ -245,6 +260,15 @@ function ApprovalCard({
       )}
 
       {decided ? <DecidedFooter item={item} /> : null}
+      {runId === null || !runOpen ? null : (
+        <RunApprovalSheet
+          runId={runId}
+          onClose={() => setRunOpen(false)}
+          {...(!decided && canDecide === true && !isOwn && onDecide !== undefined
+            ? { onDecide: (v: Verdict) => { setRunOpen(false); onDecide(v); } }
+            : {})}
+        />
+      )}
     </article>
   );
 }

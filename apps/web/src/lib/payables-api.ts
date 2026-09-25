@@ -122,6 +122,8 @@ export function fetchLedger(vendorId: string, range: { from?: string; to?: strin
 }
 
 export const fetchRun = async (id: string): Promise<WireRun> => (await api<{ run: WireRun }>("GET", `/materials/payment-runs/${id}`)).run;
+/** PARITY P3 — the run as the owner reads it from its approval card (guarded on approvals.requests.decide). */
+export const fetchRunForApproval = async (id: string): Promise<WireRun> => (await api<{ run: WireRun }>("GET", `/materials/payment-runs/${id}/for-approval`)).run;
 export const draftRun = async (): Promise<WireRun> => (await api<{ run: WireRun }>("POST", "/materials/payment-runs/draft")).run;
 export const updateRun = async (id: string, patch: { lines?: { billId: string; payPaise: number }[]; note?: string | null }): Promise<WireRun> =>
   (await api<{ run: WireRun }>("PATCH", `/materials/payment-runs/${id}`, patch)).run;

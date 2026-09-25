@@ -437,7 +437,8 @@
         "ask": "Authorise paying suppliers {{amount}}",
         "explain": "The materials head or the pharmacist in charge prepared a run of supplier bills to pay. Authorising lets somebody else pay them and record it; you cannot record it yourself."
       }
-    }
+    },
+    "openRun": "Open the run"
   },
   "opd": {
     "labels": {
@@ -5996,7 +5997,15 @@
         "opening": "Opening balance",
         "closing": "Closing",
         "notesLater": "Debit and credit notes join this ledger with supplier returns."
+      },
+      "ownerView": {
+        "title": "Payment run {{runNo}} — for your authorisation",
+        "intro": "Prepared by {{name}} · vendors: {{vendors}} · bills: {{bills}}. Read it, then approve or reject with a reason."
       }
+    },
+    "keys": {
+      "buy": "↑↓ move · ⏎ open · A approve · R reject · Esc close",
+      "pay": "↑↓ move · ⏎ open · D draft run · P payables · A accept bill · Esc close"
     }
   }
 }
