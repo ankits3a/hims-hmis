@@ -1,5 +1,5 @@
-import { and, asc, gte, inArray, lt, lte, sql } from "drizzle-orm";
-import { allocations, creditNoteLines, creditNotes, invoiceLines, invoices, receiptTenders } from "../../kernel/db/schema";
+import { and, asc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { allocations, creditNoteLines, creditNotes, invoiceLines, invoices, receipts, receiptTenders, refundVouchers } from "../../kernel/db/schema";
 import { enteredInErrorDocIds } from "./daily-close";
 import { allocatedByInvoice, creditedByInvoice } from "./receipts";
 import { IST_OFFSET_MS } from "./time";
@@ -224,4 +224,77 @@ export async function billingDocumentByNo(exec: Db | Tx, typed: string): Promise
   const cn = (await exec.select({ id: creditNotes.id, no: creditNotes.creditNoteNo, invoiceId: creditNotes.invoiceId })
     .from(creditNotes).where(sql`upper(${creditNotes.creditNoteNo}) = ${no}`).limit(1))[0];
   return cn === undefined ? null : { kind: "credit_note", id: cn.id, no: cn.no, invoiceId: cn.invoiceId };
+}
+
+export type ReceiptAllocationRead = {
+  receiptId: string; receiptNo: string; patientId: string; receivedAt: string; day: string; invoiceId: string; amountPaise: number;
+  byMode: Record<TenderMode, number>;
+};
+
+/**
+ * PARITY P5 (TALLY) — the money received in the IST days `from`..`to` inclusive, per (live receipt,
+ * invoice): the allocation net of its reversals, split by tender mode as `invoicePayments` splits it
+ * (non-cash tenders first, cash the rest). Hospital-wide; the caller keeps the invoices it owns. A
+ * receipt that is `entered-in-error` was never money and is left out.
+ */
+export async function receiptAllocationsBetween(exec: Db | Tx, from: string, to: string): Promise<ReceiptAllocationRead[]> {
+  const heads = await exec.select({
+    id: receipts.id, receiptNo: receipts.receiptNo, patientId: receipts.patientId, receivedAt: receipts.receivedAt, serviceDay: receipts.serviceDay,
+  }).from(receipts).where(and(gte(receipts.serviceDay, from), lte(receipts.serviceDay, to)));
+  const dead = await deadAmong(exec, "receipt", heads.map((h) => h.id));
+  const live = new Map(heads.filter((h) => !dead.has(h.id)).map((h) => [h.id, h] as const));
+  const allocs = await inChunks([...live.keys()], (chunk) => exec.select({
+    receiptId: allocations.receiptId, invoiceId: allocations.invoiceId, amountPaise: allocations.amountPaise, kind: allocations.kind, seq: allocations.seq,
+  }).from(allocations).where(inArray(allocations.receiptId, chunk)));
+  const tenders = await inChunks([...live.keys()], (chunk) => exec.select({ receiptId: receiptTenders.receiptId, mode: receiptTenders.mode, amountPaise: receiptTenders.amountPaise })
+    .from(receiptTenders).where(inArray(receiptTenders.receiptId, chunk)));
+  const pool = new Map<string, { upi: number; card: number }>();
+  for (const t of tenders) {
+    const s = pool.get(t.receiptId) ?? { upi: 0, card: 0 };
+    if (t.mode === "upi") s.upi += t.amountPaise;
+    if (t.mode === "card") s.card += t.amountPaise;
+    pool.set(t.receiptId, s);
+  }
+  const net = new Map<string, { receiptId: string; invoiceId: string; amount: number; firstSeq: number }>();
+  for (const a of allocs) {
+    const k = `${a.receiptId}|${a.invoiceId}`;
+    const cur = net.get(k) ?? { receiptId: a.receiptId, invoiceId: a.invoiceId, amount: 0, firstSeq: a.seq };
+    cur.amount += a.kind === "apply" ? a.amountPaise : -a.amountPaise;
+    cur.firstSeq = Math.min(cur.firstSeq, a.seq);
+    net.set(k, cur);
+  }
+  const out: ReceiptAllocationRead[] = [];
+  for (const n of [...net.values()].sort((a, b) => a.firstSeq - b.firstSeq)) {
+    if (n.amount <= 0) continue;
+    const h = live.get(n.receiptId)!;
+    const p = pool.get(n.receiptId) ?? { upi: 0, card: 0 };
+    const upi = Math.min(n.amount, p.upi);
+    const card = Math.min(n.amount - upi, p.card);
+    p.upi -= upi;
+    p.card -= card;
+    pool.set(n.receiptId, p);
+    out.push({
+      receiptId: n.receiptId, receiptNo: h.receiptNo, patientId: h.patientId, receivedAt: h.receivedAt.toISOString(), day: h.serviceDay,
+      invoiceId: n.invoiceId, amountPaise: n.amount, byMode: { cash: n.amount - upi - card, upi, card },
+    });
+  }
+  return out;
+}
+
+export type RefundPaidRead = {
+  id: string; voucherNo: string; patientId: string; invoiceId: string | null; creditNoteId: string | null; amountPaise: number;
+  method: "cash" | "bank_transfer"; paidAt: string; day: string;
+};
+
+/** PARITY P5 (TALLY) — refund vouchers PAID in the IST days `from`..`to` inclusive (the money going back out). */
+export async function refundVouchersPaidBetween(exec: Db | Tx, from: string, to: string): Promise<RefundPaidRead[]> {
+  const { start, end } = istWindow(from, to);
+  const rows = await exec.select().from(refundVouchers)
+    .where(and(eq(refundVouchers.status, "paid"), gte(refundVouchers.paidAt, start), lt(refundVouchers.paidAt, end)))
+    .orderBy(asc(refundVouchers.paidAt), asc(refundVouchers.voucherNo));
+  return rows.map((r) => ({
+    id: r.id, voucherNo: r.voucherNo, patientId: r.patientId, invoiceId: r.invoiceId, creditNoteId: r.creditNoteId, amountPaise: r.amountPaise,
+    method: r.method === "cash" ? "cash" : "bank_transfer", paidAt: r.paidAt!.toISOString(),
+    day: new Date(Math.floor((r.paidAt!.getTime() + IST_OFFSET_MS) / DAY_MS) * DAY_MS).toISOString().slice(0, 10),
+  }));
 }

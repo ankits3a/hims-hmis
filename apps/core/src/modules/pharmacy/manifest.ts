@@ -88,6 +88,11 @@ export const pharmacyManifest: ModuleManifest = {
      * profit on the sale screen is deliberately not copied).
      */
     "pharmacy.reports.margin",
+    /**
+     * PARITY P5 — the TallyPrime export (owner ruling 2026-09-25) and the ledger names it uses: every
+     * pharmacy voucher of a period, recorded. The owner and the billing office.
+     */
+    "pharmacy.tally.export",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],

@@ -681,6 +681,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // GSTR-2B against the books (the accountant's work), but NOT its margin: cost and profit are
       // the owner's, the head's and the in-charge's. DEFAULT — owner may change.
       "pharmacy.reports.read",
+      // PHARMACY PARITY P5 — the accountant's act: the TallyPrime export and the ledger names it uses.
+      "pharmacy.tally.export",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -801,6 +803,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // margin. Read-only. DEFAULT — owner may change.
       "pharmacy.reports.read",
       "pharmacy.reports.margin",
+      // PHARMACY PARITY P5 — the TallyPrime export of the pharmacy's vouchers and its ledger names: the
+      // books are the owner's. DEFAULT — owner may change.
+      "pharmacy.tally.export",
     ],
   },
   {

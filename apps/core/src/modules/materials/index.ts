@@ -152,10 +152,10 @@ export type { RecallSource, RecallStatus, RecallSummary, RecallView } from "./re
 
 // ── PHARMACY PARITY P5 — the office's reports: purchases, valuation, non-moving, the GSTR-2B books, a document by number ──
 export {
-  BOOKED_BILL_STATUSES, NON_MOVING_PRESETS, batchesByIds, billsForReconciliation, findDocumentByNo, nonMovingStock, purchaseRegister,
-  splitLikeDebitNote, stockValuationAt,
+  BOOKED_BILL_STATUSES, NON_MOVING_PRESETS, batchesByIds, billsForReconciliation, findDocumentByNo, nonMovingStock, purchaseAdjustmentsBetween,
+  purchaseRegister, splitLikeDebitNote, stockValuationAt, supplierPaymentsBetween,
 } from "./reports";
 export type {
-  BatchFacts, MaterialsDocKind, MaterialsDocRef, NonMovingReport, NonMovingRow, NonMovingSuggestion, PurchaseRegister, PurchaseRegisterLine,
-  PurchaseRegisterRow, ReconBill, StockValuation, ValuationGroup, ValuationRow,
+  BatchFacts, MaterialsDocKind, MaterialsDocRef, NonMovingReport, NonMovingRow, NonMovingSuggestion, PurchaseAdjustment, PurchaseRegister,
+  PurchaseRegisterLine, PurchaseRegisterRow, ReconBill, StockValuation, SupplierPaymentRead, ValuationGroup, ValuationRow,
 } from "./reports";

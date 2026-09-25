@@ -17,7 +17,7 @@ import {
 } from "../src/modules/lab";
 import {
   OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, RETAIL_PHARMACY_STORE_CODE, currentRegistration, gstSlabPlan,
-  listSaleItems, renewalDaysLeft, retailLicenceState,
+  listSaleItems, renewalDaysLeft, retailLicenceState, tallyLedgersConfirmed,
 } from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
@@ -896,6 +896,16 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       gate: "G4", code: "pharmacy_writeoff_approver_held",
       check: heldAtHospitalScope("medical_superintendent"),
       fix: "§13: assign `medical_superintendent` at /admin/users — the MS approves every destruction write-off in /approvals",
+    },
+    {
+      /**
+       * PARITY P5 — green when the accountant has confirmed the TallyPrime ledger names once (a row in
+       * `pharmacy_tally_config`). Red until then: the Tally export refuses, because the defaults are
+       * names, not the hospital's Tally company's ledgers.
+       */
+      gate: "G3", code: "pharmacy_tally_ledgers_confirmed",
+      check: tallyLedgersConfirmed,
+      fix: "§15: the accountant opens /pharmacy/office/reports → 9 Tally export → L, types each ledger as TallyPrime names it, and saves",
     },
   ],
 

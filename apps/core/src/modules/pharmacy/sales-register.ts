@@ -553,3 +553,49 @@ export async function hsnReport(db: Db, actor: Actor, input: ReportInput, now: D
     totals: { qty: sum("qty"), taxablePaise: sum("taxablePaise"), cgstPaise: sum("cgstPaise"), sgstPaise: sum("sgstPaise"), igstPaise: sum("igstPaise"), taxPaise: sum("taxPaise"), valuePaise: sum("valuePaise") },
   };
 }
+
+// ═══════════════════════════════════ the period, for the Tally export ═══════════════════════════════════
+
+export type PeriodSale = {
+  id: string; invoiceNo: string; serviceDay: string; ref: string | null; patient: { name: string; uhid: string };
+  taxableBasePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPayablePaise: number;
+};
+export type PeriodRefund = {
+  id: string; creditNoteNo: string; day: string; invoiceNo: string; patient: { name: string; uhid: string };
+  taxableBasePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number;
+};
+
+/**
+ * PARITY P5 (TALLY) — the period's pharmacy bills and credit notes exactly as the register reads them
+ * (the same `loadPeriod`), with the patient's name and UHID; and two lookups over billing's
+ * hospital-wide receipts and refunds: which of those invoices are the pharmacy's (and their numbers),
+ * and who a patient is. The caller has already been gated.
+ */
+export async function pharmacySalesPeriod(db: Db, actor: Actor, from: string, to: string): Promise<{
+  sales: PeriodSale[]; refunds: PeriodRefund[];
+  pharmacyInvoiceIds: (invoiceIds: readonly string[]) => Promise<Map<string, string>>;
+  patients: (patientIds: readonly string[]) => Promise<Map<string, { name: string; uhid: string }>>;
+}> {
+  const p = await loadPeriod(db, from, to, null);
+  const who = await patientNames(db, actor, [...p.heads.values()].map((h) => h.patientId));
+  const person = (id: string): { name: string; uhid: string } => who.get(id) ?? { name: "—", uhid: "" };
+  return {
+    sales: p.sales.map((h) => ({
+      id: h.id, invoiceNo: h.invoiceNo, serviceDay: h.serviceDay, ref: p.docs.get(h.id)?.ref ?? null, patient: person(h.patientId),
+      taxableBasePaise: h.taxableBasePaise, cgstPaise: h.cgstPaise, sgstPaise: h.sgstPaise, roundingPaise: h.roundingPaise, netPayablePaise: h.netPayablePaise,
+    })),
+    refunds: p.refunds.map((n) => {
+      const h = p.heads.get(n.invoiceId)!;
+      return {
+        id: n.id, creditNoteNo: n.creditNoteNo, day: n.day, invoiceNo: h.invoiceNo, patient: person(h.patientId),
+        taxableBasePaise: n.taxableBasePaise, cgstPaise: n.cgstPaise, sgstPaise: n.sgstPaise, roundingPaise: n.roundingPaise, netPaise: n.netPaise,
+      };
+    }),
+    pharmacyInvoiceIds: async (invoiceIds) => {
+      const docs = await saleDocsOf(db, invoiceIds);
+      const heads = await invoiceHeadsByIds(db, [...docs.keys()]);
+      return new Map(heads.map((h) => [h.id, h.invoiceNo] as const));
+    },
+    patients: (patientIds) => patientNames(db, actor, patientIds),
+  };
+}

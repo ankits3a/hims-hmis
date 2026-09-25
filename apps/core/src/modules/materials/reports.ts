@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, inArray, lt, lte, notInArray, sql } from "drizzle-orm";
 import {
   items, resources, stockBalances, stockBatches, stockLedger, stockWriteOffs, supplierBillLines, supplierBills, supplierCreditNotes,
-  supplierPaymentRuns, supplierReturnLines, supplierReturns, vendors,
+  supplierPaymentRunLines, supplierPaymentRuns, supplierPayments, supplierReturnLines, supplierReturns, vendors,
 } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { TRANSIT_STORE_CODE } from "./config";
@@ -500,3 +500,68 @@ export async function findDocumentByNo(db: Db | Tx, typed: string): Promise<Mate
   return null;
 }
 
+
+// ═══════════════════════════════════ what the Tally export reads besides the register ═══════════════════════════════════
+
+export type SupplierPaymentRead = {
+  id: string; paymentNo: string; runNo: string; paidOn: string; vendorId: string; vendorCode: string; vendorName: string; gstin: string | null;
+  mode: "neft" | "rtgs" | "upi" | "cheque" | "cash"; reference: string | null; amountPaise: number;
+  /** The bills this voucher settled (our numbers and the vendor's), for the narration. */
+  bills: { billNo: string; vendorBillNo: string; payPaise: number; creditPaise: number }[];
+};
+
+/** PARITY P5 (TALLY) — every supplier payment voucher (`MPV…`) paid on `from`..`to` (IST days, inclusive). */
+export async function supplierPaymentsBetween(db: Db | Tx, from: string, to: string): Promise<SupplierPaymentRead[]> {
+  const rows = await db.select({
+    id: supplierPayments.id, paymentNo: supplierPayments.paymentNo, runNo: supplierPaymentRuns.runNo, paidOn: supplierPayments.paidOn,
+    vendorId: supplierPayments.vendorId, vendorCode: vendors.code, vendorName, gstin: vendors.gstin, mode: supplierPayments.mode,
+    reference: supplierPayments.reference, amountPaise: supplierPayments.amountPaise,
+  }).from(supplierPayments)
+    .innerJoin(vendors, eq(vendors.id, supplierPayments.vendorId))
+    .innerJoin(supplierPaymentRuns, eq(supplierPaymentRuns.id, supplierPayments.runId))
+    .where(and(gte(supplierPayments.paidOn, from), lte(supplierPayments.paidOn, to)))
+    .orderBy(asc(supplierPayments.paidOn), asc(supplierPayments.paymentNo));
+  const lines = await inChunks(rows.map((r) => r.id), (chunk) => db.select({
+    paymentId: supplierPaymentRunLines.paymentId, billNo: supplierBills.billNo, vendorBillNo: supplierBills.vendorBillNo,
+    payPaise: supplierPaymentRunLines.payPaise, creditPaise: supplierPaymentRunLines.creditPaise,
+  }).from(supplierPaymentRunLines).innerJoin(supplierBills, eq(supplierBills.id, supplierPaymentRunLines.billId))
+    .where(inArray(supplierPaymentRunLines.paymentId, chunk)));
+  return rows.map((r) => ({
+    ...r, mode: r.mode as SupplierPaymentRead["mode"],
+    bills: lines.filter((l) => l.paymentId === r.id).map((l) => ({ billNo: l.billNo, vendorBillNo: l.vendorBillNo, payPaise: l.payPaise, creditPaise: l.creditPaise }))
+      .sort((a, b) => a.billNo.localeCompare(b.billNo)),
+  }));
+}
+
+export type PurchaseAdjustment = {
+  /**
+   * `short_credit`: the vendor's credit note was less than our debit note — the difference is a loss
+   * the books take (`MCN…`, dated the credit note's date). `closed`: a dispatched return the vendor
+   * will never credit, closed by the head — the whole debit note is a loss (`MRT…`, dated the close).
+   */
+  kind: "short_credit" | "closed";
+  id: string; no: string; date: string; ref: string | null; reason: string | null;
+  vendorId: string; vendorCode: string; vendorName: string; amountPaise: number;
+};
+
+/** PARITY P5 (TALLY) — what our debit notes will not get back, dated `from`..`to` (IST days, inclusive). */
+export async function purchaseAdjustmentsBetween(db: Db | Tx, from: string, to: string): Promise<PurchaseAdjustment[]> {
+  const short = await db.select({
+    id: supplierCreditNotes.id, no: supplierCreditNotes.creditNo, date: supplierCreditNotes.creditNoteDate, ref: supplierReturns.debitNoteNo,
+    reason: supplierCreditNotes.differenceReason, vendorId: supplierCreditNotes.vendorId, vendorCode: vendors.code, vendorName,
+    amountPaise: supplierCreditNotes.differencePaise,
+  }).from(supplierCreditNotes)
+    .innerJoin(vendors, eq(vendors.id, supplierCreditNotes.vendorId))
+    .innerJoin(supplierReturns, eq(supplierReturns.id, supplierCreditNotes.returnId))
+    .where(and(eq(supplierCreditNotes.status, "accepted"), sql`${supplierCreditNotes.differencePaise} > 0`,
+      gte(supplierCreditNotes.creditNoteDate, from), lte(supplierCreditNotes.creditNoteDate, to)));
+  const closed = await db.select({
+    id: supplierReturns.id, no: supplierReturns.returnNo, closedAt: supplierReturns.closedAt, ref: supplierReturns.debitNoteNo,
+    reason: supplierReturns.closeReason, vendorId: supplierReturns.vendorId, vendorCode: vendors.code, vendorName, amountPaise: supplierReturns.totalPaise,
+  }).from(supplierReturns).innerJoin(vendors, eq(vendors.id, supplierReturns.vendorId))
+    .where(and(eq(supplierReturns.status, "closed"), gte(supplierReturns.closedAt, istDayStart(from)), lt(supplierReturns.closedAt, istDayEnd(to))));
+  return [
+    ...short.map((s): PurchaseAdjustment => ({ kind: "short_credit", ...s })),
+    ...closed.map(({ closedAt, ...c }): PurchaseAdjustment => ({ kind: "closed", ...c, date: istDay(closedAt!) })),
+  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.no.localeCompare(b.no)));
+}

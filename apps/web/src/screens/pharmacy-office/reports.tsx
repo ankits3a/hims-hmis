@@ -10,6 +10,7 @@ import {
   todayIst, trimGstr2bJson,
 } from "../../lib/reports-api";
 import { Button } from "@/components/ui/button";
+import { TallyReport } from "./tally";
 import type {
   MarginGroupBy, RangeInput, ReconBucket, ReportPreset, SalesGroupBy, WireActivity, WireGstr2b, WireSalesRow,
 } from "../../lib/reports-api";
@@ -26,8 +27,8 @@ import type {
  * Cost, profit and margin appear only for a holder of `pharmacy.reports.margin` — the server leaves
  * them out for anybody else, and the margin report is not offered.
  */
-export type ReportKey = "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "activity";
-const ALL_REPORTS: readonly ReportKey[] = ["sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "activity"];
+export type ReportKey = "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "activity" | "tally";
+const ALL_REPORTS: readonly ReportKey[] = ["sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "activity", "tally"];
 
 type Col<R> = { key: string; label: string; num?: boolean; money?: boolean; value: (r: R) => string | number | null };
 type Totals = Record<string, string | number | null>;
@@ -57,7 +58,7 @@ function printSheet(s: Sheet): boolean {
 export function ReportsView({ initial = null }: { initial?: ReportKey | null }): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
-  const reports = ALL_REPORTS.filter((r) => r !== "margin" || can("pharmacy.reports.margin"));
+  const reports = ALL_REPORTS.filter((r) => (r !== "margin" || can("pharmacy.reports.margin")) && (r !== "tally" || can("pharmacy.tally.export")));
   const [open, setOpen] = useState<ReportKey | null>(initial !== null && reports.includes(initial) ? initial : null);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (open === null) listRef.current?.focus(); }, [open]);
@@ -92,6 +93,7 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
   const { t } = useTranslation();
   const sheet = useRef<Sheet | null>(null);
   const presetRef = useRef<((p: ReportPreset) => void) | null>(null);
+  const keysRef = useRef<((key: string) => boolean) | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const exportNow = (): void => { if (sheet.current !== null) exportSheet(sheet.current); };
   const printNow = (): void => { if (sheet.current !== null && !printSheet(sheet.current)) setNotice(t("pharmacyOffice.reports.printFailed")); };
@@ -100,12 +102,13 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
     if (e.key === "Escape" && !typing) { e.preventDefault(); onBack(); return; }
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
+    if (keysRef.current !== null && keysRef.current(k)) { e.preventDefault(); return; }
     if (k === "e") { e.preventDefault(); exportNow(); return; }
     if (k === "p") { e.preventDefault(); printNow(); return; }
     const preset = ({ t: "today", w: "week", m: "month", y: "fy" } as Record<string, ReportPreset | undefined>)[k];
     if (preset !== undefined && presetRef.current !== null) { e.preventDefault(); presetRef.current(preset); }
   };
-  const bind = { sheet, presetRef };
+  const bind = { sheet, presetRef, keysRef };
   // Focus lands on the report once, when it opens, so its keys work at once; never again on a re-render.
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => { box.current?.focus(); }, []);
@@ -126,11 +129,25 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "hsn" && <HsnReport {...bind} />}
       {report === "gstr2b" && <Gstr2bReport {...bind} />}
       {report === "activity" && <ActivityReport {...bind} />}
+      {report === "tally" && <TallyScreen {...bind} />}
     </div>
   );
 }
 
-type Bind = { sheet: React.MutableRefObject<Sheet | null>; presetRef: React.MutableRefObject<((p: ReportPreset) => void) | null> };
+type Bind = {
+  sheet: React.MutableRefObject<Sheet | null>;
+  presetRef: React.MutableRefObject<((p: ReportPreset) => void) | null>;
+  /** A report's own keys (the Tally export's X and L), asked before the screen's. */
+  keysRef: React.MutableRefObject<((key: string) => boolean) | null>;
+};
+
+// ═══════════════════════════════════ 9. the Tally export ═══════════════════════════════════
+
+function TallyScreen({ sheet, presetRef, keysRef }: Bind): React.ReactElement {
+  const [range, setRange] = useRange(presetRef, "month");
+  sheet.current = null; // the export is its own file, not a table to print
+  return <TallyReport range={range} rangeBar={<RangeBar range={range} onChange={setRange} store={false} />} keysRef={keysRef} />;
+}
 
 // ═══════════════════════════════════ the shared pieces ═══════════════════════════════════
 
