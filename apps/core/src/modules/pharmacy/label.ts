@@ -1,5 +1,6 @@
 import { medicinesByIds } from "../formulary";
 import { fromBase, getBatch, itemUomRows, itemsByIds } from "../materials";
+import { EYE_TEXT } from "../opd";
 import { getPatientSummaries } from "../patients";
 import { billRowsForInvoice } from "./bill-rows";
 import { PharmacyError } from "./errors";
@@ -44,6 +45,17 @@ export type LabelData = {
   billRows: BillRow[] | null;
 };
 
+/**
+ * The directions line the patient reads at home: dose · eye · frequency · days · instructions,
+ * only the parts present. The eye rides right after the dose ("1 drop · RIGHT EYE · …") because
+ * WHICH eye is the part of an eye line that must never be missed.
+ */
+export function labelDirections(rx: RxLine): string {
+  const eye = rx.eye === undefined || rx.eye === null ? null : EYE_TEXT[rx.eye];
+  return [rx.dose, eye, rx.frequency, rx.durationDays === null ? null : `${String(rx.durationDays)} days`, rx.instructions]
+    .filter((x): x is string => x !== null && x !== "").join(" · ");
+}
+
 /** Everything the counter prints per pack — read after the pick, so a batch and its expiry exist. Alias-safe. */
 export async function labelFor(db: Db, actor: Actor, dispenseId: string): Promise<LabelData> {
   const d = await getDispenseRow(db, dispenseId);
@@ -70,7 +82,7 @@ export async function labelFor(db: Db, actor: Actor, dispenseId: string): Promis
       drug: med?.brandName ?? rx.drug, strength: med?.strengthLabel ?? null, form: med?.form ?? null,
       qtyBase: l.qtyBase ?? 0, unit: item?.baseUom ?? "unit", packs,
       batchNo: batch?.batchNo ?? "", expiryDate: batch?.expiryDate ?? null,
-      directions: [rx.dose, rx.frequency, rx.durationDays === null ? null : `${String(rx.durationDays)} days`, rx.instructions].filter((x): x is string => x !== null && x !== "").join(" · "),
+      directions: labelDirections(rx),
       substitutedFor: l.substitutionType === "generic" && ordered !== undefined ? ordered.brandName : null,
     });
   }

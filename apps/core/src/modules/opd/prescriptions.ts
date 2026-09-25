@@ -24,7 +24,7 @@ import { visibleEncounterFor } from "./read-gate";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { prescriptionIssued, rxQrSignatureFailed } from "./events";
 import { getDoctor } from "./masters";
-import { toFhirBundle } from "./fhir";
+import { normaliseRxLine, toFhirBundle } from "./fhir";
 import { ageYearsAt } from "./time";
 import type { Letterhead } from "./config";
 import type { PrescriptionRow, VitalsRow } from "./encounters";
@@ -413,8 +413,10 @@ async function vetOffers(
  * the consultation gets the same warnings, and nothing is written either way.
  */
 export async function precheckPrescription(
-  db: Db, actor: Actor, encounterId: string, lines: RxLine[], now: Date = new Date(),
+  db: Db, actor: Actor, encounterId: string, sent: RxLine[], now: Date = new Date(),
 ): Promise<RxPrecheckResult> {
+  // The same normalisation the issue path applies, so the pre-check judges the line it will store.
+  const lines = sent.map(normaliseRxLine);
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   await requireTreatingDoctor(db, actor, encounter);
@@ -515,7 +517,10 @@ export async function issuePrescription(
     throw new OpdError("encounter_state_conflict", `a prescription is issued in consultation, not ${encounter.status}`);
   }
 
-  const lines = input.lines;
+  // A tapered line's frequency and duration are the SERVER's, written from its steps before the
+  // "every line needs a frequency" check below — so the checks, the stored row and the FHIR
+  // document all read the same normalised line. A draft issues through here too.
+  const lines = input.lines.map(normaliseRxLine);
   if (lines.length === 0) throw new OpdError("empty_prescription", "a prescription needs at least one line");
   for (const line of lines) {
     if (line.drug.trim() === "" || line.dose.trim() === "" || line.frequency.trim() === "" || line.route.trim() === "") {

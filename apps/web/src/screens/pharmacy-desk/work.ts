@@ -1,4 +1,5 @@
 import type { PickLine, VerifyLine, WireBatch, WireDispenseLine, WireRxLine } from "../../lib/pharmacy-api";
+import { eyeTextOf } from "../../lib/eye-line";
 
 /**
  * ═══ PD-4 — THE TICK IS THE PICK, AS FAR AS THE SERVER LETS IT BE (PD-D2) ═══
@@ -145,12 +146,16 @@ export function pickBody(lines: readonly WireDispenseLine[], ticks: Readonly<Rec
  * shown VERBATIM (E19): a weight-based or tapering dose has no honest shorthand, and one that drops
  * the per-kg is worse than none.
  */
-export function sigOf(rx: Pick<WireRxLine, "dose" | "frequency" | "durationDays">): string {
+export function sigOf(rx: Pick<WireRxLine, "dose" | "frequency" | "durationDays" | "eye">): string {
   const days = rx.durationDays === null ? "" : ` × ${String(rx.durationDays)}d`;
   const triplet = /^\s*\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*-\s*\d+(\.\d+)?\s*$/.test(rx.frequency);
   const unit = /^1\s+(tab|tablet|cap|capsule)s?$/i.test(rx.dose.trim());
-  if (triplet) return `${unit ? "" : `${rx.dose.trim()} `}${rx.frequency.replace(/\s+/g, "")}${days}`;
-  return [rx.dose.trim(), rx.frequency.trim()].filter((x) => x !== "").join(" · ") + days;
+  // An eye drop's sig leads with WHICH eye — the one fact on it a pharmacist must say aloud.
+  const eye = eyeTextOf(rx.eye);
+  const sig = triplet
+    ? `${unit ? "" : `${rx.dose.trim()} `}${rx.frequency.replace(/\s+/g, "")}${days}`
+    : [rx.dose.trim(), rx.frequency.trim()].filter((x) => x !== "").join(" · ") + days;
+  return eye === null ? sig : `${eye} · ${sig}`;
 }
 
 /**

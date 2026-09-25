@@ -43,6 +43,7 @@ import { DeskModal } from "../components/desk-modal";
 import { DrugField } from "../components/drug-field";
 import { SigPanel } from "../components/sig-panel";
 import type { SigPatch } from "../components/sig-panel";
+import { taperDays, taperText } from "../lib/eye-line";
 import { TagField, joinTags, splitTags } from "../components/tag-field";
 import { useSnippets } from "../lib/use-snippets";
 import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
@@ -78,7 +79,7 @@ import { TabStrip } from "../components/desk-fields";
  */
 const POLL_MS = 15_000;
 
-const ROUTE_OPTIONS = ["oral", "iv", "im", "sc", "topical", "inhaled", "other"] as const;
+const ROUTE_OPTIONS = ["oral", "iv", "im", "sc", "topical", "inhaled", "eye", "other"] as const;
 
 type VisitDetail = {
   encounter: WireEncounter;
@@ -140,6 +141,26 @@ function patientLabel(p: { name: string | null; alias: string | null; restricted
   return p.restricted ? (p.alias ?? "—") : (p.name ?? "—");
 }
 
+/**
+ * ONE wire shape for a line, for the issue AND the pre-check. Both bodies used to pick the fields
+ * one by one, so a field the form gained reached neither unless somebody remembered both — the
+ * eye and the taper would have been dropped exactly that way. The two ophthal keys ride only when
+ * set and only on an `eye` route: a plain line's body is byte-for-byte what it always was, and an
+ * eye picked before the route was changed away does not follow the line to an oral tablet.
+ */
+function wireRxLine(l: RxLineValues): Record<string, unknown> {
+  const wire: Record<string, unknown> = {
+    drug: l.drug.trim(), dose: l.dose.trim(), route: l.route, frequency: l.frequency,
+    durationDays: l.durationDays, instructions: orNull(l.instructions),
+    noSubstitution: l.noSubstitution, medicineId: l.medicineId,
+  };
+  if (l.route === "eye") {
+    if (l.eye !== undefined && l.eye !== null) wire.eye = l.eye;
+    if (l.taper !== undefined && l.taper !== null && l.taper.length > 0) wire.taper = l.taper;
+  }
+  return wire;
+}
+
 function orNull(s: string): string | null {
   return s.trim() === "" ? null : s.trim();
 }
@@ -178,6 +199,13 @@ const rxSchema = z.object({
          * for ever, and the screen must not be the place that quietly stops being true.
          */
         medicineId: z.string().nullable(),
+        /**
+         * The ophthal line (board "Ophthal", 2026-09-23) — set by the sig panel on an `eye` route
+         * only. OPTIONAL so every other builder of a line (the regimen fill, a reopened draft, the
+         * co-pilot) stays as it was: an absent eye is the plain line it always was.
+         */
+        eye: z.enum(["od", "os", "ou"]).nullable().optional(),
+        taper: z.array(z.object({ timesPerDay: z.number().int(), days: z.number().int() })).nullable().optional(),
       }),
     )
     .min(1),
@@ -188,7 +216,7 @@ type RxLineValues = RxFormValues["lines"][number];
 
 const EMPTY_LINE: RxFormInput["lines"][number] = {
   drug: "", dose: "", route: "oral", frequency: "OD", durationDays: "", instructions: "",
-  noSubstitution: false, medicineId: null,
+  noSubstitution: false, medicineId: null, eye: null, taper: null,
 };
 
 /** A row the doctor has written something into. Route, frequency and the checkbox carry defaults. */
@@ -742,6 +770,24 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
 
   // ——— CONSULT V2: stock beside each medicine, and the alternative at zero (D13, D14) ———
   const watchedLines = rxForm.watch("lines");
+  /*
+    An eye and a taper belong to an EYE line. When the doctor moves a line's route away from "eye",
+    both are cleared and — if a taper had written the frequency and the days — those go back to the
+    blank line's, so the "Taper: …" text cannot outlive the taper and print on an oral tablet.
+  */
+  const routeKey = watchedLines.map((l) => l.route).join("|");
+  useEffect(() => {
+    rxForm.getValues("lines").forEach((l, i) => {
+      if (l.route === "eye") return;
+      const hadTaper = l.taper !== undefined && l.taper !== null && l.taper.length > 0;
+      if (l.eye != null) rxForm.setValue(`lines.${i}.eye`, null);
+      if (hadTaper) {
+        rxForm.setValue(`lines.${i}.taper`, null);
+        rxForm.setValue(`lines.${i}.frequency`, EMPTY_LINE.frequency);
+        rxForm.setValue(`lines.${i}.durationDays`, "");
+      }
+    });
+  }, [routeKey, rxForm]);
   /* the complaints the vocabulary recognises in the desk's sentence — offered, never entered */
   const deskText = visit.data?.deskComplaint?.text ?? "";
   const deskHeard = useQuery({
@@ -1516,16 +1562,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (active === null) return false;
     setRxError(null);
     const body: Record<string, unknown> = {
-      lines: rxLines.map((l) => ({
-        drug: l.drug.trim(),
-        dose: l.dose.trim(),
-        route: l.route,
-        frequency: l.frequency,
-        durationDays: l.durationDays,
-        instructions: orNull(l.instructions),
-        noSubstitution: l.noSubstitution,
-        medicineId: l.medicineId,
-      })),
+      lines: rxLines.map(wireRxLine),
     };
     if (overrides !== undefined) body.overrides = overrides;
     if (interactionOverrides !== undefined) body.interactionOverrides = interactionOverrides;
@@ -1624,11 +1661,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     try {
       const pre = await api<WirePrecheck>(
         "POST", `/opd/visits/${active.encounterId}/rx-precheck`,
-        { lines: values.lines.map((l) => ({
-          drug: l.drug.trim(), dose: l.dose.trim(), route: l.route, frequency: l.frequency,
-          durationDays: l.durationDays, instructions: orNull(l.instructions),
-          noSubstitution: l.noSubstitution, medicineId: l.medicineId,
-        })) },
+        { lines: values.lines.map(wireRxLine) },
       );
       setNotices(pre.notices);
       setNoticesDismissed(false);
@@ -3277,6 +3310,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               <span className="mo" style={{ fontSize: 12, color: "var(--faint)" }}>{String(i + 1).padStart(2, "0")}</span>
                               <span style={{ fontWeight: 700, fontSize: 13.5 }}>{l.drug}</span>
                               {l.dose.trim() !== "" && <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{l.dose}</span>}
+                              {l.route === "eye" && l.eye !== undefined && l.eye !== null && <span style={{ fontSize: 12, fontWeight: 700 }}>{t(`rx.eye.${l.eye}`)}</span>}
                               <span className="mo" style={{ fontSize: 12.5 }}>{l.frequency}</span>
                               {days !== "" && <span style={{ fontSize: 12.5 }}>{t("opdConsultV2.rxDays", { n: days })}</span>}
                               {l.instructions.trim() !== "" && <span style={{ fontSize: 12, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{l.instructions}</span>}
@@ -3412,6 +3446,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           frequency={rxForm.watch(`lines.${i}.frequency`)}
                           instructions={rxForm.watch(`lines.${i}.instructions`)}
                           durationDays={String(rxForm.watch(`lines.${i}.durationDays`) ?? "")}
+                          route={rxForm.watch(`lines.${i}.route`)}
+                          eye={rxForm.watch(`lines.${i}.eye`)}
+                          taper={rxForm.watch(`lines.${i}.taper`)}
                           frequencyError={rxForm.formState.errors.lines?.[i]?.frequency?.message}
                           daysError={rxForm.formState.errors.lines?.[i]?.durationDays?.message}
                           onPatch={(patch: SigPatch) => {
@@ -3422,6 +3459,16 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                             if (patch.frequency !== undefined) rxForm.setValue(`lines.${i}.frequency`, patch.frequency, opts);
                             if (patch.instructions !== undefined) rxForm.setValue(`lines.${i}.instructions`, patch.instructions, opts);
                             if (patch.durationDays !== undefined) rxForm.setValue(`lines.${i}.durationDays`, patch.durationDays, opts);
+                            if (patch.eye !== undefined) rxForm.setValue(`lines.${i}.eye`, patch.eye, opts);
+                            if (patch.taper !== undefined) {
+                              /* A taper OWNS the line's frequency and days — its text and its sum, the
+                                 server's own normalisation — so the card head and the checks read them.
+                                 Off, the line goes back to the taps' default with no days chosen. */
+                              rxForm.setValue(`lines.${i}.taper`, patch.taper, opts);
+                              const steps = patch.taper ?? [];
+                              rxForm.setValue(`lines.${i}.frequency`, steps.length > 0 ? taperText(steps) : EMPTY_LINE.frequency, opts);
+                              rxForm.setValue(`lines.${i}.durationDays`, steps.length > 0 ? String(taperDays(steps)) : "", opts);
+                            }
                           }}
                         />
                         </div>
