@@ -65,7 +65,7 @@ import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
 import { PharmacyItems } from "./screens/pharmacy-items";
 import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
 import { PharmacyReorder } from "./screens/pharmacy-reorder";
-import { PharmacyOffice } from "./screens/pharmacy-office/pharmacy-office";
+import { PharmacyOffice, PharmacyOfficeReports } from "./screens/pharmacy-office/pharmacy-office";
 import { PharmacyH1Register } from "./screens/pharmacy-h1-register";
 import { PharmacyLeakage } from "./screens/pharmacy-leakage";
 import { PharmacyRetail } from "./screens/pharmacy-retail";
@@ -287,6 +287,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/pharmacy/reorder", label: "nav.pharmacyReorder", permission: "pharmacy.dispense.read", group: "stores" },
   // PARITY P2 — the back office: needs-you-today, purchase orders the agent drafts, approval and send.
   { to: "/pharmacy/office", label: "nav.pharmacyOffice", permission: "materials.po.raise", group: "stores" },
+  // PARITY P5 — the office's Reports side, its own door for the owner and the billing office, who buy nothing.
+  { to: "/pharmacy/office/reports", label: "nav.pharmacyReports", permission: "pharmacy.reports.read", group: "stores" },
   // PHARMACY P9 — the Schedule H1 register, the pharmacist's statutory read.
   { to: "/pharmacy/registers/h1", label: "nav.pharmacyH1", permission: "pharmacy.register.read", group: "stores" },
   // PHARMACY P19 — the walk-in retail counter, and the licence that opens it.
@@ -962,6 +964,13 @@ const pharmacyOfficeRoute = createRoute({
   component: PharmacyOffice,
 });
 
+/** PARITY P5 — the same office, opened on its Reports side. Path matches `pharmacyManifest.menu`. */
+const pharmacyOfficeReportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/office/reports",
+  component: PharmacyOfficeReports,
+});
+
 /** PLAN 14c, first slice — stock counts. Path matches `materialsManifest.menu`. */
 const materialsCountsRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1371,7 +1380,7 @@ export const router = createRouter({
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
-      pharmacyCounterRoute, pharmacyDeskRoute, pharmacyDeskTicketRoute, pharmacyAuthoriseRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyOfficeRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
+      pharmacyCounterRoute, pharmacyDeskRoute, pharmacyDeskTicketRoute, pharmacyAuthoriseRoute, pharmacyItemsRoute, pharmacyPharmacistsRoute, pharmacyReorderRoute, pharmacyOfficeRoute, pharmacyOfficeReportsRoute, pharmacyH1RegisterRoute, materialsCountsRoute, materialsTransfersRoute, pharmacyLeakageRoute,
       pharmacyRetailRoute, pharmacyRetailLicenceRoute, pharmacyDowntimeRoute,
       // PHASE 11i T9 — 50 -> 53, and every one of the three is a REDIRECT with no screen. They exist
       // because the catch-up deploy deletes three paths production has been serving since

@@ -146,6 +146,9 @@ export const PHARMACY_ERROR_CODES = [
   // ── P1: the desk prints ──
   /** The paper asked for does not exist yet: no bill before the money, no label before the pick. */
   "nothing_to_print",
+  // ── P5 (parity plan): the office's reports ──
+  /** The GSTR-2B file is not the portal's JSON, nor a CSV with a GSTIN, invoice number, date and taxable value. */
+  "gst_statement_unreadable",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -243,6 +246,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   unknown_short_book_entry: 404,
   short_book_resolved: 409,
   nothing_to_print: 409,
+  gst_statement_unreadable: 400,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

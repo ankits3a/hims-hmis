@@ -33,6 +33,8 @@ export const pharmacyManifest: ModuleManifest = {
     { label: "Reorder list", path: "/pharmacy/reorder", permission: "pharmacy.dispense.read" },
     /** PARITY P2 — the back office: needs-you-today, purchase orders the agent drafts, approval, send. */
     { label: "Pharmacy office", path: "/pharmacy/office", permission: "materials.po.raise" },
+    /** PARITY P5 — the office's Reports side, reached on its own by the owner and the billing office, who buy nothing. */
+    { label: "Pharmacy reports", path: "/pharmacy/office/reports", permission: "pharmacy.reports.read" },
     { label: "H1 register", path: "/pharmacy/registers/h1", permission: "pharmacy.register.read" },
     /** P12 — the leakage triangle: the billing supervisor's and the owner's read, not the counter's. */
     { label: "Pharmacy leakage", path: "/pharmacy/leakage", permission: "billing.reports.read" },
@@ -74,6 +76,18 @@ export const pharmacyManifest: ModuleManifest = {
     "pharmacy.retail.manage",
     /** P20 — enter a dispense written on a downtime kit's sheet while the screens were dark. */
     "pharmacy.downtime.enter",
+    /**
+     * PARITY P5 — the office's reports: the sales and purchase registers, stock valuation, non-moving
+     * stock, the HSN summary, GSTR-2B against the books, and the activity view. Read-only. The owner,
+     * the materials head, the pharmacist in charge and the billing office — not the counter.
+     */
+    "pharmacy.reports.read",
+    /**
+     * PARITY P5 — cost and margin: the margin report, and the profit columns of the sales register.
+     * The owner, the materials head and the pharmacist in charge; never the counter (Healthray's live
+     * profit on the sale screen is deliberately not copied).
+     */
+    "pharmacy.reports.margin",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],

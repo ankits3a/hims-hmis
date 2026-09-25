@@ -311,6 +311,57 @@ Measured before planning (2 read-only passes, 2026-09-24):
 - **Activity diff:** before/after of any bill or credit note, from the event log.
 - **Tally export:** vouchers for sales, purchases, returns and payments (format per owner/CA).
 
+**P5 as built — the reports (2026-09-25, lane `pharmacy-p5-reports`, no migration).**
+- One **Reports** side in `/pharmacy/office` (Buy | Pay | Returns | Reports), and its own door
+  `/pharmacy/office/reports` for the owner and the billing office, who buy nothing (the office now
+  shows only the sides a person may open). Numbered list, one screen per report; T W M Y set the range
+  (today / this week from Monday / this month / this FY; custom ≤ 366 days); E exports CSV of the table
+  as seen with its totals row; P prints A4 through the browser (the PO's path); Esc back.
+- Reads federate: billing's new `report-reads.ts` (`invoicesBetween`, `invoiceHeadsByIds`,
+  `invoiceLinesOf`, `creditNotesBetween`, `invoicePayments`, `billingDocumentByNo`) — live documents
+  only, the stored heads never recomputed, chunked under the bind ceiling; materials' new `reports.ts`
+  (`purchaseRegister`, `stockValuationAt`, `nonMovingStock`, `billsForReconciliation`,
+  `findDocumentByNo`, `batchesByIds`); the pharmacy folds them (`sales-register.ts`,
+  `office-reports.ts`, `gstr2b.ts`, `activity.ts`) behind `pharmacy-reports.controller.ts`.
+- **Sales register**: a pharmacy sale is an invoice a dispense or a walk-in / paper sale names, dated by
+  its service day; a refund is a credit note against one, dated the day it was issued (GSTR-1's rule) —
+  so the totals ARE the day book's and GSTR-1's (asserted). Group by bill / item / doctor / patient /
+  pharmacist / tender; a bill opens to its batch lines (a loose-MRP pack residue folds into its drug's
+  line). Tender: a receipt's non-cash tenders are set against the allocation first, cash takes the rest.
+- **Margin** = taxable value − units × the batch's GRN cost (`landed_cost_paise`, per-batch = FIFO);
+  a refund gives its revenue and its units' cost back. By item / category (the formulary dosage form)
+  / doctor. The sales register carries profit and margin % only for a margin holder.
+- **Stock valuation** from the LEDGER to the end of any IST day (today = `stock_balances`, asserted),
+  at GRN cost and at MRP, by batch / item / store; consignment and loaner stock counted apart;
+  IN-TRANSIT included (still the hospital's).
+- **Non-moving**: no `consume` or `issue` out of the store since IST midnight N days ago (30/60/90/180),
+  the window's first day inclusive (asserted both sides of the boundary); agent suggestion per batch:
+  return (P4's draft), write off, or watch.
+- **HSN summary** (GSTR-1 table 12): billing's `gstr1Summary` has no HSN table, so it is folded here
+  from the same stored line heads, HSN = the invoice line's `sac_code` (what the bill prints), × rate ×
+  UQC (tablet → TBS), quantity = base units sold − returned; totals = the invoices' tax − the credit
+  notes' (asserted).
+- **GSTR-2B**: the portal's JSON (or the Excel B2B sheet saved as CSV) is read in the request and never
+  stored; matched by GSTIN + P3's invoice key + date + each head within ₹1 (inclusive, asserted);
+  buckets matched / mismatch / only in 2B / only in books; CDNR listed apart, not matched.
+- **Activity**: from the event log (no new writes); `supplier_bill.updated` now carries `changes`
+  (before/after per header field and per line — additive, optional); every other step's diff is
+  derived from consecutive states.
+- Permissions: `pharmacy.reports.read` (owner, materials_head, pharmacy_incharge, billing_manager) and
+  `pharmacy.reports.margin` (owner, materials_head, pharmacy_incharge). New refusal
+  `gst_statement_unreadable`. Runbook §14.
+- DECIDED (not money, procurement or law):
+  - the purchase register books a bill once ACCEPTED (drafts and held bills are not in the books);
+    purchases net of returns = bills − our debit notes (the vendor's credit confirms a debit note and
+    is not subtracted twice); a vendor credit's GST split is its debit note's, pro rata;
+  - the sales register names patients by name and UHID, no phone (an accounting read, not a contact
+    list; a sealed patient by alias);
+  - margin category = the formulary dosage form (item class for a non-drug);
+  - the 2B's books are the bills dated in the range, plus earlier ones for a late-filed invoice; drafts
+    and cancelled bills are not "in the books".
+- Deferred: matching the 2B's credit/debit notes (CDNR) to our debit notes and vendor credits;
+  Excel (.xlsx) upload of the 2B (save as CSV); IPD / ward issue in the registers (no IPD yet).
+
 **P6 — Law and hygiene**
 - NDPS register (Form 3D/3E) with double-lock custody, if the hospital stocks narcotics (owner ruling).
 - Item Merge (moves history, keeps the audit).
