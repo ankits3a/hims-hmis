@@ -1,5 +1,5 @@
 {
-  "id": "93c5ab79-8083-49ed-8f1d-4ab9fb513456",
+  "id": "5ca61cdc-08ba-405f-9641-6e1c51093549",
   "prevId": "ae5ac132-7d66-4ea4-8e63-eed450411d48",
   "version": "7",
   "dialect": "postgresql",
@@ -14814,6 +14814,186 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.icd11_map_loads": {
+      "name": "icd11_map_loads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "release": {
+          "name": "release",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "row_count": {
+          "name": "row_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "loaded_by": {
+          "name": "loaded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "loaded_at": {
+          "name": "loaded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "icd11_map_loads_release_uq": {
+          "name": "icd11_map_loads_release_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "release"
+          ]
+        },
+        "icd11_map_loads_sha256_uq": {
+          "name": "icd11_map_loads_sha256_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "sha256"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "icd11_map_loads_release_ck": {
+          "name": "icd11_map_loads_release_ck",
+          "value": "\"icd11_map_loads\".\"release\" ~ '^[0-9]{4}-[0-9]{2}$'"
+        },
+        "icd11_map_loads_row_count_ck": {
+          "name": "icd11_map_loads_row_count_ck",
+          "value": "\"icd11_map_loads\".\"row_count\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.icd11_map_rows": {
+      "name": "icd11_map_rows",
+      "schema": "",
+      "columns": {
+        "release": {
+          "name": "release",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icd10_code": {
+          "name": "icd10_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icd10_title": {
+          "name": "icd10_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icd11_code": {
+          "name": "icd11_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icd11_title": {
+          "name": "icd11_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icd11_chapter": {
+          "name": "icd11_chapter",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icd11_class_kind": {
+          "name": "icd11_class_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icd11_release_uri": {
+          "name": "icd11_release_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icd11_foundation_uri": {
+          "name": "icd11_foundation_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "map_kind": {
+          "name": "map_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "icd11_map_rows_release_icd11_map_loads_release_fk": {
+          "name": "icd11_map_rows_release_icd11_map_loads_release_fk",
+          "tableFrom": "icd11_map_rows",
+          "tableTo": "icd11_map_loads",
+          "columnsFrom": [
+            "release"
+          ],
+          "columnsTo": [
+            "release"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "icd11_map_rows_release_icd10_code_pk": {
+          "name": "icd11_map_rows_release_icd10_code_pk",
+          "columns": [
+            "release",
+            "icd10_code"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "icd11_map_rows_map_kind_ck": {
+          "name": "icd11_map_rows_map_kind_ck",
+          "value": "\"icd11_map_rows\".\"map_kind\" in ('mapped', 'no_mapping', 'grouping')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.patient_documents": {
@@ -32621,211 +32801,6 @@
         "pharmacy_short_book_resolved_ck": {
           "name": "pharmacy_short_book_resolved_ck",
           "value": "(\"pharmacy_short_book\".\"resolved_at\" is null) = (\"pharmacy_short_book\".\"resolved_by\" is null) and (\"pharmacy_short_book\".\"resolved_at\" is null) = (\"pharmacy_short_book\".\"resolution\" is null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.pharmacy_tally_config": {
-      "name": "pharmacy_tally_config",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "ledgers": {
-          "name": "ledgers",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "pharmacy_tally_config_updated_by_users_id_fk": {
-          "name": "pharmacy_tally_config_updated_by_users_id_fk",
-          "tableFrom": "pharmacy_tally_config",
-          "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "pharmacy_tally_config_one_row_ck": {
-          "name": "pharmacy_tally_config_one_row_ck",
-          "value": "\"pharmacy_tally_config\".\"id\" = 'main'"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.pharmacy_tally_exports": {
-      "name": "pharmacy_tally_exports",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "from_date": {
-          "name": "from_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "to_date": {
-          "name": "to_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "voucher_count": {
-          "name": "voucher_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "counts": {
-          "name": "counts",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "debit_paise": {
-          "name": "debit_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "checksum": {
-          "name": "checksum",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ledgers": {
-          "name": "ledgers",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "vouchers_xml": {
-          "name": "vouchers_xml",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "masters_xml": {
-          "name": "masters_xml",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exported_by": {
-          "name": "exported_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "exported_at": {
-          "name": "exported_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "pharmacy_tally_exports_range_idx": {
-          "name": "pharmacy_tally_exports_range_idx",
-          "columns": [
-            {
-              "expression": "from_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "to_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "pharmacy_tally_exports_at_idx": {
-          "name": "pharmacy_tally_exports_at_idx",
-          "columns": [
-            {
-              "expression": "exported_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "pharmacy_tally_exports_exported_by_users_id_fk": {
-          "name": "pharmacy_tally_exports_exported_by_users_id_fk",
-          "tableFrom": "pharmacy_tally_exports",
-          "tableTo": "users",
-          "columnsFrom": [
-            "exported_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "pharmacy_tally_exports_range_ck": {
-          "name": "pharmacy_tally_exports_range_ck",
-          "value": "\"pharmacy_tally_exports\".\"to_date\" >= \"pharmacy_tally_exports\".\"from_date\""
-        },
-        "pharmacy_tally_exports_money_ck": {
-          "name": "pharmacy_tally_exports_money_ck",
-          "value": "\"pharmacy_tally_exports\".\"voucher_count\" >= 0 and \"pharmacy_tally_exports\".\"debit_paise\" >= 0"
-        },
-        "pharmacy_tally_exports_checksum_ck": {
-          "name": "pharmacy_tally_exports_checksum_ck",
-          "value": "\"pharmacy_tally_exports\".\"checksum\" ~ '^[0-9a-f]{64}$'"
         }
       },
       "isRLSEnabled": false

@@ -48,12 +48,13 @@ import { taperDays, taperText } from "../lib/eye-line";
 import type { Eye } from "../lib/eye-line";
 import { isEyeCode } from "../lib/eye-codes";
 import { TagField, joinTags, splitTags } from "../components/tag-field";
+import { Icd11Citation, Icd11Pill, Icd11Scope } from "../components/icd11";
 import { useSnippets } from "../lib/use-snippets";
 import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
 import type { SnippetContext } from "../lib/snippets";
 import { ConsultScribe } from "../components/consult-scribe";
 import { completeComplaint, fetchRegimen, recogniseComplaint, suggestSyndromes } from "../lib/cds-api";
-import type { WireCard, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
+import type { WireCard, WireIcd11, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
 
 /**
@@ -94,8 +95,11 @@ type VisitDetail = {
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
-  /** The CODED diagnoses. `encounter.diagnosis` is the display string and carries no codes. */
-  diagnoses: { text: string; icd10Code: string | null; laterality?: Eye | null }[];
+  /**
+   * The CODED diagnoses. `encounter.diagnosis` is the display string and carries no codes. `icd11`
+   * is WHO's answer for the ICD-10 code, read at request time — shown, never sent back.
+   */
+  diagnoses: { text: string; icd10Code: string | null; laterality?: Eye | null; icd11?: WireIcd11 | null }[];
   patient: WirePatientSummary | null;
 };
 type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
@@ -108,8 +112,8 @@ type WireAdviceTemplate = {
 type WireAllergenHit = {
   term: string; kind: "class" | "moiety"; allergenClass: string | null; saltId: string | null; blocks: string[];
 };
-/** `GET /opd/cds/complete/diagnosis` — one row of the ICD-10 typeahead. */
-type WireIcd10Hit = { code: string; description: string; chapterNo: number; codeMatch: boolean };
+/** `GET /opd/cds/complete/diagnosis` — one row of the ICD-10 typeahead, and WHO's ICD-11 answer beside it (or null). */
+type WireIcd10Hit = { code: string; description: string; chapterNo: number; codeMatch: boolean; icd11?: WireIcd11 | null };
 type AllergyRow = {
   id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string;
   /**
@@ -389,6 +393,13 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   */
   const eyeByTerm = useRef(new Map<string, Eye>());
   const [, setEyeTick] = useState(0);
+  /*
+    WHO's ICD-11 answer for each ICD-10 code the screen has been told about — by the typeahead, the
+    syndrome chips and the visit read. Keyed by the ICD-10 CODE, because the answer is a property of
+    the code and not of the words. Display only: `noteBodyOf` never reads it, so nothing ICD-11 is
+    ever saved. Cleared with the other two in `resetPanel`.
+  */
+  const icd11ByCode = useRef(new Map<string, WireIcd11>());
   const [noteSaved, setNoteSaved] = useState(false);
   const [v2, setV2] = useState<V2State>(EMPTY_V2);
   /** True once this visit has any v2 section — loaded from the server or touched here. */
@@ -752,6 +763,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     */
     for (const d of visit.data?.diagnoses ?? []) {
       if (d.icd10Code !== null) icdByTerm.current.set(d.text.toLowerCase(), d.icd10Code);
+      if (d.icd10Code !== null && d.icd11 != null) icd11ByCode.current.set(d.icd10Code, d.icd11);
       /* The eye too — or the first autosave after reopening would send the cataract back eyeless. */
       if (d.laterality != null) eyeByTerm.current.set(d.text.toLowerCase(), d.laterality);
     }
@@ -966,7 +978,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (q.length < 3) { setHits([]); return; }
     const timer = setTimeout(() => {
       void suggestSyndromes(q)
-        .then((r) => { setHits(r.items); })
+        .then((r) => {
+          /* A tapped chip becomes a tag with this code, and the tag shows the same ICD-11 pill. */
+          for (const h of r.items) if (h.icd10 !== null && h.icd11 != null) icd11ByCode.current.set(h.icd10, h.icd11);
+          setHits(r.items);
+        })
         .catch(() => { setHits([]); }); // an advisor that fails is silent, never an error the doctor must dismiss
     }, 250);
     return () => { clearTimeout(timer); };
@@ -1042,6 +1058,44 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     );
   };
 
+  /**
+   * EACH EYE-CODE ASKS WHICH EYE (board "Ophthal", 2026-09-23) — the diagnosis tag's eye pills, drawn
+   * by the tag's `adornTag`. Null on any tag whose code is not an eye code.
+   */
+  const eyeAdorn = (tagText: string, i: number, key: string): React.ReactNode => {
+    if (!isEyeCode(icdByTerm.current.get(key) ?? null)) return null;
+    const eye = eyeByTerm.current.get(key) ?? null;
+    const pick = (next: Eye | null): void => {
+      if (next === null) eyeByTerm.current.delete(key); else eyeByTerm.current.set(key, next);
+      setEyeTick((n) => n + 1);
+      if (next !== null) void saveNote();
+    };
+    if (eye !== null) {
+      return (
+        <button type="button" data-testid={`note-diagnosis-eye-set-${String(i)}`} disabled={readOnly}
+          aria-label={t("opdConsult.dxEyeChange", { dx: tagText })}
+          onClick={(e) => { e.stopPropagation(); pick(null); }}
+          style={{ border: 0, background: "none", padding: 0, cursor: "pointer", color: "inherit", font: "inherit" }}>
+          {` · ${t(`opdConsult.dxEye.${eye}`)}`}
+        </button>
+      );
+    }
+    return (
+      <span role="group" aria-label={t("opdConsult.dxEyeGroup", { dx: tagText })} style={{ display: "inline-flex", gap: 3, alignItems: "center", marginLeft: 4 }}>
+        <span data-testid={`note-diagnosis-which-eye-${String(i)}`} style={{ color: "var(--gold)", fontWeight: 600, fontSize: 11 }}>
+          {t("opdConsult.dxWhichEye")}
+        </span>
+        {(["od", "os", "ou"] as const).map((x) => (
+          <button key={x} type="button" data-testid={`note-diagnosis-eye-${String(i)}-${x}`} disabled={readOnly}
+            className="sec" onClick={(e) => { e.stopPropagation(); pick(x); }}
+            style={{ padding: "0 5px", height: 18, fontSize: 10.5, borderColor: "var(--gold-line)" }}>
+            {t(`opdConsult.dxEye.${x}`)}
+          </button>
+        ))}
+      </span>
+    );
+  };
+
   const resetPanel = (): void => {
     setRxOpen(null);
     loadedNoteFor.current = null;
@@ -1050,6 +1104,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
        newly-added state before (the T6 allergy fields); this is the line that stops it happening. */
     icdByTerm.current = new Map();
     eyeByTerm.current = new Map();
+    icd11ByCode.current = new Map();
     lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map(), new Map()));
     setNote(EMPTY_NOTE);
     setNoteSaved(false);
@@ -2200,6 +2255,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   };
 
   return (
+    /* One scope for the screen: however many ICD-11 pills are showing, WHO's citation shows once. */
+    <Icd11Scope>
     <div className="pp cx" data-testid="opd-consult" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"}>
       {/*
         ═══ CONSULT V2 — THREE FULL-HEIGHT COLUMNS (owner, 2026-09-23) ═══
@@ -2910,6 +2967,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                             >
                               {h.name}
                               <span className="mo" style={{ marginLeft: 6, fontSize: 10, color: "var(--faint)" }}>{h.icd10 ?? ""}</span>
+                              <Icd11Pill icd11={h.icd11} />
                             </button>
                           ))}
                         </div>
@@ -3006,7 +3064,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           "GET", `/opd/cds/complete/diagnosis?q=${encodeURIComponent(q)}`,
                         );
                         /* Remember what was OFFERED, so the tag can be paired with its code on save. */
-                        for (const i of r.items) icdByTerm.current.set(i.description.toLowerCase(), i.code);
+                        for (const i of r.items) {
+                          icdByTerm.current.set(i.description.toLowerCase(), i.code);
+                          if (i.icd11 != null) icd11ByCode.current.set(i.code, i.icd11);
+                        }
                         /*
                           NO GHOST. The complaint field ghosts the remainder of a prefix match
                           because its vocabulary is seventy short words. A ghost of "Acute upper
@@ -3017,6 +3078,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       }}
                       placeholder={t("opdConsult.diagnosisPlaceholder")}
                       hint={t("opdConsult.diagnosisHint")}
+                      /* The offered row's ICD-11 pill, after its ICD-10 code — null answers draw nothing. */
+                      adornSuggestion={(sg) => <Icd11Pill icd11={sg.hint == null ? null : icd11ByCode.current.get(sg.hint)} />}
                       /*
                         EACH EYE-CODE ASKS WHICH EYE (board "Ophthal", 2026-09-23). ICD-10 has no
                         laterality, so the eye sits beside the code: "H25.1 … · OD". Unset is a gold
@@ -3024,37 +3087,13 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       */
                       adornTag={(tagText, i) => {
                         const key = tagText.toLowerCase();
-                        if (!isEyeCode(icdByTerm.current.get(key) ?? null)) return null;
-                        const eye = eyeByTerm.current.get(key) ?? null;
-                        const pick = (next: Eye | null): void => {
-                          if (next === null) eyeByTerm.current.delete(key); else eyeByTerm.current.set(key, next);
-                          setEyeTick((n) => n + 1);
-                          if (next !== null) void saveNote();
-                        };
-                        if (eye !== null) {
-                          return (
-                            <button type="button" data-testid={`note-diagnosis-eye-set-${String(i)}`} disabled={readOnly}
-                              aria-label={t("opdConsult.dxEyeChange", { dx: tagText })}
-                              onClick={(e) => { e.stopPropagation(); pick(null); }}
-                              style={{ border: 0, background: "none", padding: 0, cursor: "pointer", color: "inherit", font: "inherit" }}>
-                              {` · ${t(`opdConsult.dxEye.${eye}`)}`}
-                            </button>
-                          );
-                        }
-                        return (
-                          <span role="group" aria-label={t("opdConsult.dxEyeGroup", { dx: tagText })} style={{ display: "inline-flex", gap: 3, alignItems: "center", marginLeft: 4 }}>
-                            <span data-testid={`note-diagnosis-which-eye-${String(i)}`} style={{ color: "var(--gold)", fontWeight: 600, fontSize: 11 }}>
-                              {t("opdConsult.dxWhichEye")}
-                            </span>
-                            {(["od", "os", "ou"] as const).map((x) => (
-                              <button key={x} type="button" data-testid={`note-diagnosis-eye-${String(i)}-${x}`} disabled={readOnly}
-                                className="sec" onClick={(e) => { e.stopPropagation(); pick(x); }}
-                                style={{ padding: "0 5px", height: 18, fontSize: 10.5, borderColor: "var(--gold-line)" }}>
-                                {t(`opdConsult.dxEye.${x}`)}
-                              </button>
-                            ))}
-                          </span>
-                        );
+                        /*
+                          ICD-11 SITS AFTER THE EYE, so "cataract · OD" still reads as one phrase and
+                          the pill is visibly an annotation on it rather than part of the diagnosis.
+                        */
+                        const code = icdByTerm.current.get(key) ?? null;
+                        const icd11 = <Icd11Pill icd11={code === null ? null : icd11ByCode.current.get(code)} testId={`note-diagnosis-icd11-${String(i)}`} />;
+                        return <>{eyeAdorn(tagText, i, key)}{icd11}</>;
                       }}
                     />
                     <div role="group" aria-label={t("opdConsultV2.kind.label")} style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -3792,6 +3831,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 </div>
               </div>
               )}
+              {/* WHO's §1.3 citation — once, while any ICD-11 pill on this screen is showing. */}
+              <Icd11Citation />
               </div>
               </fieldset>
             </div>
@@ -4274,6 +4315,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         )}
       />
     </div>
+    </Icd11Scope>
   );
 }
 
