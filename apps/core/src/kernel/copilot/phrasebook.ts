@@ -23,7 +23,7 @@
  */
 
 /** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
-export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run";
+export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -153,6 +153,18 @@ const CUES: Record<CopilotIntent, Cue[]> = {
   draft_payment_run: [
     S("payment run"), S("pay the suppliers"), S("pay suppliers"), S("pay the vendors"), S("pay vendors"), S("supplier payment"),
     S("vendor payment"), S("payment bana"), S("payment karo"), S("payment kar do"), S("bills to pay"), S("bhugtan"), S("भुगतान"),
+  ],
+  /**
+   * PARITY P4 (2026-09-25) — "expiry return bana do", "expired maal wapas bhejo": the agent DRAFTS
+   * returns to the suppliers from the expiry list. Phrases, so a plain "kab expire hoga" stays the
+   * shelf's (`stock_on_shelf` holds `expire` / `expiry`), and "दवा वापस" outweighs the shelf's
+   * `एक्सपायर` + `दवा`. The tool writes nothing: its card opens the office, where a person makes the
+   * drafts, the head approves each and somebody else dispatches it.
+   */
+  draft_supplier_returns: [
+    S("supplier return"), S("purchase return"), S("return to supplier"), S("return to the supplier"), S("return bana"), S("returns bana"),
+    S("expiry return"), S("expired maal"), S("wapas bhej"), S("vapas bhej"), S("debit note"), S("वापस भेज"), S("दवा वापस"),
+    W("wapas"), W("vapas"), W("वापस"),
   ],
 };
 

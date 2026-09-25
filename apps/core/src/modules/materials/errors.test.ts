@@ -211,8 +211,16 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       already_received: ["grn.ts", "ledger.ts", "transfers.ts", "vendors.ts"],
       // "this batch exists and disagrees with what the caller believes" — one meaning throughout.
       batch_mismatch: ["consumption.ts", "grn.ts", "transfers.ts"],
-      // "no such batch". The id is wrong, wherever it came from.
-      unknown_batch: ["consumption.ts", "ledger.ts", "transfers.ts"],
+      // "no such batch". The id is wrong, wherever it came from. Parity P4: a return's, a write-off's
+      // or a recall's batch — the same wrong id.
+      unknown_batch: ["consumption.ts", "ledger.ts", "recalls.ts", "supplier-returns.ts", "transfers.ts", "write-offs.ts"],
+      // Parity P4 — "the store cannot give this much": the ledger's own refusal, and the same number
+      // asked before a return or a write-off is written (on hand less reserved, frozen and what other
+      // live documents hold), so the person learns it at the draft rather than at dispatch.
+      insufficient_stock: ["ledger.ts", "supplier-returns.ts", "transfers.ts", "write-offs.ts"],
+      // Parity P4 — "that resource is not a store": the store guard's own 404, asked by a return's
+      // and a write-off's line as it is by a transfer.
+      unknown_store: ["stores.ts", "supplier-returns.ts", "transfers.ts", "write-offs.ts"],
       // "the id names no row of this kind" — GRN, transfer, lot, bank change. `errors.ts`'s F5
       // clause argues this one at length; it is the module's generic 404 by design.
       // Parity P3: a supplier bill naming a GRN that is not there — the same "no such document".
@@ -222,12 +230,15 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       // Parity P2 — the act's own grant check, answered as the route guard would (403): counts,
       // adjustments, and the purchase order's raise/read. One meaning: you do not hold the grant.
       // Parity P3: the supplier bill's and the payment run's own grant checks — the same meaning.
-      permission_denied: ["adjustments.ts", "counts.ts", "payments.ts", "purchase-orders.ts", "supplier-bills.ts"],
+      // Parity P4: the return's, the write-off's and the recall's own grant checks — the same meaning.
+      permission_denied: ["adjustments.ts", "counts.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts", "write-offs.ts"],
       // "say why": a count closed, an order, a bill or a run cancelled, a bill's difference accepted —
       // every one is a free-text reason the act refuses to take empty. One meaning, one remedy.
-      reason_required: ["counts.ts", "payments.ts", "purchase-orders.ts", "supplier-bills.ts"],
+      // Parity P4: a return cancelled or closed, a credit note cancelled, a recall raised — the same.
+      reason_required: ["counts.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts"],
       // "no such vendor": the master's own 404, reached from a bill, a payment and a ledger.
-      unknown_vendor: ["materials.controller.ts", "payments.ts", "supplier-bills.ts", "vendors.ts"],
+      // Parity P4: the vendor a return is drafted to — the same master's 404.
+      unknown_vendor: ["materials.controller.ts", "payments.ts", "supplier-bills.ts", "supplier-returns.ts", "vendors.ts"],
     });
   });
 

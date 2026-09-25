@@ -105,7 +105,10 @@ export const materialsManifest: ModuleManifest = {
     "materials.grn.qc",
     "materials.stock.issue",
     "materials.stock.receive",
-    /** DD14's one-action freeze. Narrowest grant in the module: `materials_head` alone. */
+    /**
+     * DD14's one-action freeze. Narrowest grant in the module: `materials_head`, and (parity P4) the
+     * pharmacist in charge, who acts on a CDSCO drug alert at the counter.
+     */
     "materials.recall.manage",
     /**
      * 14c, first slice — schedule, review, close and cancel a blind count. Never the count itself:
@@ -136,6 +139,20 @@ export const materialsManifest: ModuleManifest = {
     "materials.payments.prepare",
     /** P3 — record a vendor on an authorised run as paid: mode, reference, date. Never the authoriser. */
     "materials.payments.record",
+    /**
+     * PHARMACY PARITY P4 — draft (or have the agent draft) a return to the supplier from the expiry
+     * list, a recall or damaged stock; edit and cancel a draft; DISPATCH an approved one (never its
+     * approver), which moves the stock out and issues our debit note.
+     */
+    "materials.returns.manage",
+    /** P4 — approve a drafted return before it leaves. Never the person who drafted it. */
+    "materials.returns.approve",
+    /**
+     * P4 — raise a destruction write-off (BMW Rules 2016) of expired, recalled or damaged stock and post
+     * it with the disposal manifest. NOT the approval: that is `materials_stock_adjustment`'s (the
+     * medical superintendent), the route a count's variance takes.
+     */
+    "materials.writeoffs.manage",
   ],
   /**
    * **PLAN 14 T7 — THE ONE SUBSCRIPTION, LANDED WITH ITS HANDLER IN THIS COMMIT.**

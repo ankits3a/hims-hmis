@@ -26,6 +26,10 @@ export const SOD_PAIR_SEED: { pairKey: string; description: string }[] = [
   // the owner who said yes is not the hand that says the money left. `payout_preparer_payout_approver`
   // is the run's other pair (the preparer never authorises).
   { pairKey: "payment_authoriser_recorder", description: "Supplier payment-run authoriser vs payment recorder" },
+  // PHARMACY PARITY P4 — whoever approved a return to a supplier does not also hand the goods over:
+  // the head who said "these may leave" is not the hand that sends them. The mirror of
+  // `po_approver_grn_receiver` for stock going out rather than coming in.
+  { pairKey: "return_approver_dispatcher", description: "Supplier-return approver vs dispatcher" },
 ];
 
 export async function seedSodPairs(db: Db): Promise<void> {

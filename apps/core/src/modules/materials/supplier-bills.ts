@@ -1,12 +1,12 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
-  grnLines, grns, itemUoms, items, purchaseOrderLines, purchaseOrders, supplierBillLines, supplierBills, supplierPaymentRunLines,
-  supplierPaymentRuns, supplierPayments, users, vendors,
+  grnLines, grns, itemUoms, items, purchaseOrderLines, purchaseOrders, supplierBillLines, supplierBills, supplierCreditNotes,
+  supplierPaymentRunLines, supplierPaymentRuns, supplierPayments, supplierReturns, users, vendors,
 } from "../../kernel/db/schema";
 import {
   BILL_MATCH_TOLERANCE_BPS, BILL_MATCH_TOLERANCE_MIN_PAISE, DEFAULT_SUPPLIER_TERMS_DAYS, MSME_MAX_PAYMENT_DAYS,
@@ -98,7 +98,8 @@ export type BillView = BillSummary & {
   names: Record<string, string>; lines: BillLineView[];
   /** GRN items accepted but not on the bill — counted in the expected total. */
   unbilled: { grnId: string; grnNo: string; itemId: string; itemCode: string; itemName: string; expectedBase: number; expectedTaxablePaise: number }[];
-  payments: { paymentId: string; paymentNo: string; runNo: string; mode: string; reference: string | null; paidOn: string; paidPaise: number }[];
+  /** Recorded payments against this bill; `creditPaise` is the vendor credit set off on the same voucher (P4). */
+  payments: { paymentId: string; paymentNo: string; runNo: string; mode: string; reference: string | null; paidOn: string; paidPaise: number; creditPaise: number }[];
 };
 
 // ═══════════════════════════════════ small pure pieces ═══════════════════════════════════
@@ -735,7 +736,7 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
   const billed = new Set(lines.map((l) => `${l.l.grnId}|${l.l.itemId}`));
   const missing = [...expectations.values()].filter((e) => e.acceptedBase > 0 && !billed.has(`${e.grnId}|${e.itemId}`));
   const missingItems = missing.length === 0 ? [] : await db.select().from(items).where(inArray(items.id, missing.map((m) => m.itemId)));
-  const payments = await db.select({ p: supplierPayments, runNo: supplierPaymentRuns.runNo, paid: supplierPaymentRunLines.payPaise })
+  const payments = await db.select({ p: supplierPayments, runNo: supplierPaymentRuns.runNo, paid: supplierPaymentRunLines.payPaise, credit: supplierPaymentRunLines.creditPaise })
     .from(supplierPaymentRunLines)
     .innerJoin(supplierPayments, eq(supplierPayments.id, supplierPaymentRunLines.paymentId))
     .innerJoin(supplierPaymentRuns, eq(supplierPaymentRuns.id, supplierPaymentRunLines.runId))
@@ -762,8 +763,8 @@ async function readSupplierBill(db: Db, billId: string): Promise<BillView | unde
         expectedBase: e.acceptedBase, expectedTaxablePaise: valueAt(e.acceptedBase, e.rate),
       };
     }),
-    payments: payments.map(({ p, runNo, paid }) => ({
-      paymentId: p.id, paymentNo: p.paymentNo, runNo, mode: p.mode, reference: p.reference, paidOn: p.paidOn, paidPaise: paid,
+    payments: payments.map(({ p, runNo, paid, credit }) => ({
+      paymentId: p.id, paymentNo: p.paymentNo, runNo, mode: p.mode, reference: p.reference, paidOn: p.paidOn, paidPaise: paid, creditPaise: credit,
     })),
   };
 }
@@ -808,6 +809,13 @@ export type PayableRow = BillSummary & { ageDays: number; bucket: AgeBucket; ove
 export type SupplierSummaryRow = {
   vendorId: string; vendorCode: string; vendorName: string; msme: boolean; phone: string | null; gstin: string | null;
   totalPaise: number; paidPaise: number; remainingPaise: number; overduePaise: number; buckets: Record<AgeBucket, number>;
+  /**
+   * PARITY P4 — the vendor's accepted credit not yet set against a paid bill (`accepted − applied`,
+   * what open runs hold included), and what the hospital owes net of it: `remaining − credit`,
+   * which is the supplier ledger's closing balance.
+   */
+  creditPaise: number;
+  netPaise: number;
 };
 
 export type Payables = {
@@ -819,10 +827,13 @@ export type Payables = {
   overduePaise: number;
 };
 
-/** What each open run reserves against each bill: amounts on runs not yet paid, cancelled runs aside. */
+/**
+ * What each open run reserves against each bill: pay + credit on runs not yet paid, cancelled runs
+ * aside. (Parity P4: a line's credit settles the bill as surely as its payment, so it is held too.)
+ */
 export async function reservedByBill(db: Db | Tx, billIds: readonly string[], exceptRunId?: string): Promise<Map<string, number>> {
   if (billIds.length === 0) return new Map();
-  const rows = await db.select({ billId: supplierPaymentRunLines.billId, paise: sql<string>`sum(${supplierPaymentRunLines.payPaise})` })
+  const rows = await db.select({ billId: supplierPaymentRunLines.billId, paise: sql<string>`sum(${supplierPaymentRunLines.payPaise} + ${supplierPaymentRunLines.creditPaise})` })
     .from(supplierPaymentRunLines).innerJoin(supplierPaymentRuns, eq(supplierPaymentRuns.id, supplierPaymentRunLines.runId))
     .where(and(
       inArray(supplierPaymentRunLines.billId, [...billIds]), isNull(supplierPaymentRunLines.paymentId),
@@ -831,6 +842,52 @@ export async function reservedByBill(db: Db | Tx, billIds: readonly string[], ex
     ))
     .groupBy(supplierPaymentRunLines.billId);
   return new Map(rows.map((r) => [r.billId, Number(r.paise)]));
+}
+
+// ═══════════════════════════════════ the vendor's credit (parity P4) ═══════════════════════════════════
+
+export type VendorCredit = {
+  /** Every accepted vendor credit note, summed. */
+  acceptedPaise: number;
+  /** Set against bills on recorded payments. */
+  appliedPaise: number;
+  /** Held by run lines not yet paid, on runs not cancelled. */
+  reservedPaise: number;
+  /** What a new run may still spend: `accepted − applied − reserved`. */
+  availablePaise: number;
+};
+
+/**
+ * PARITY P4 — THE VENDOR'S CREDIT, AS THE PAYMENT RUN SPENDS IT. An accepted credit note (the
+ * vendor's answer to our debit note, `supplier-returns.ts`) is one pool per vendor; a run line's
+ * `credit_paise` spends it — reserved while the run is open, applied once the vendor's payment is
+ * recorded, released if the run is cancelled. Keyed by vendor; a vendor with none is absent.
+ * `exceptRunId` leaves that run's own lines out (editing a draft re-spends what it held).
+ */
+export async function vendorCredits(db: Db | Tx, vendorIds?: readonly string[], exceptRunId?: string): Promise<Map<string, VendorCredit>> {
+  const only = vendorIds === undefined ? [] : [...new Set(vendorIds)];
+  if (vendorIds !== undefined && only.length === 0) return new Map();
+  const accepted = await db.select({ vendorId: supplierCreditNotes.vendorId, paise: sql<string>`sum(${supplierCreditNotes.amountPaise})` })
+    .from(supplierCreditNotes)
+    .where(and(eq(supplierCreditNotes.status, "accepted"), ...(vendorIds === undefined ? [] : [inArray(supplierCreditNotes.vendorId, only)])))
+    .groupBy(supplierCreditNotes.vendorId);
+  const spent = await db.select({
+    vendorId: supplierPaymentRunLines.vendorId,
+    applied: sql<string>`coalesce(sum(${supplierPaymentRunLines.creditPaise}) filter (where ${supplierPaymentRunLines.paymentId} is not null), 0)`,
+    reserved: sql<string>`coalesce(sum(${supplierPaymentRunLines.creditPaise}) filter (where ${supplierPaymentRunLines.paymentId} is null), 0)`,
+  }).from(supplierPaymentRunLines).innerJoin(supplierPaymentRuns, eq(supplierPaymentRuns.id, supplierPaymentRunLines.runId))
+    .where(and(
+      sql`${supplierPaymentRunLines.creditPaise} > 0`, ne(supplierPaymentRuns.status, "cancelled"),
+      ...(vendorIds === undefined ? [] : [inArray(supplierPaymentRunLines.vendorId, only)]),
+      ...(exceptRunId === undefined ? [] : [ne(supplierPaymentRuns.id, exceptRunId)]),
+    ))
+    .groupBy(supplierPaymentRunLines.vendorId);
+  const out = new Map<string, VendorCredit>();
+  const get = (v: string): VendorCredit => out.get(v) ?? { acceptedPaise: 0, appliedPaise: 0, reservedPaise: 0, availablePaise: 0 };
+  for (const a of accepted) out.set(a.vendorId, { ...get(a.vendorId), acceptedPaise: Number(a.paise) });
+  for (const x of spent) out.set(x.vendorId, { ...get(x.vendorId), appliedPaise: Number(x.applied), reservedPaise: Number(x.reserved) });
+  for (const c of out.values()) c.availablePaise = c.acceptedPaise - c.appliedPaise - c.reservedPaise;
+  return out;
 }
 
 /**
@@ -858,7 +915,7 @@ export async function payables(db: Db, actor: Actor, now: Date = new Date(), fil
     const s = bySupplier.get(b.vendorId) ?? {
       vendorId: b.vendorId, vendorCode: vendor.code, vendorName: vendor.tradeName ?? vendor.legalName, msme: isMsme(vendor),
       phone: null, gstin: vendor.gstin, totalPaise: 0, paidPaise: 0, remainingPaise: 0, overduePaise: 0,
-      buckets: { "0_30": 0, "31_60": 0, "61_90": 0, "90_plus": 0 },
+      buckets: { "0_30": 0, "31_60": 0, "61_90": 0, "90_plus": 0 }, creditPaise: 0, netPaise: 0,
     };
     s.totalPaise += b.totalPaise;
     s.paidPaise += b.paidPaise;
@@ -874,16 +931,40 @@ export async function payables(db: Db, actor: Actor, now: Date = new Date(), fil
     if (overdueDays > 0) { s.overduePaise += outstanding; overduePaise += outstanding; }
     bills.push({ ...summaryOf(b, vendor), ageDays, bucket, overdueDays, reservedPaise: reserved.get(b.id) ?? 0 });
   }
+  // PARITY P4 — each vendor's unapplied credit, and what is owed net of it (the ledger's balance).
+  const credits = await vendorCredits(db, filter.vendorId === undefined ? undefined : [filter.vendorId]);
+  for (const [vendorId, c] of credits) {
+    const unapplied = c.acceptedPaise - c.appliedPaise;
+    if (unapplied === 0) continue;
+    let s = bySupplier.get(vendorId);
+    if (s === undefined) {
+      const [vendor] = await db.select().from(vendors).where(eq(vendors.id, vendorId));
+      if (vendor === undefined) continue;
+      s = {
+        vendorId, vendorCode: vendor.code, vendorName: vendor.tradeName ?? vendor.legalName, msme: isMsme(vendor), phone: null, gstin: vendor.gstin,
+        totalPaise: 0, paidPaise: 0, remainingPaise: 0, overduePaise: 0, buckets: { "0_30": 0, "31_60": 0, "61_90": 0, "90_plus": 0 }, creditPaise: 0, netPaise: 0,
+      };
+      bySupplier.set(vendorId, s);
+    }
+    s.creditPaise = unapplied;
+  }
+  for (const s of bySupplier.values()) s.netPaise = s.remainingPaise - s.creditPaise;
   const suppliers = [...bySupplier.values()].sort((a, b) => b.remainingPaise - a.remainingPaise || a.vendorName.localeCompare(b.vendorName));
   return { asOf: today, bills, suppliers, buckets, totalOutstandingPaise: bills.reduce((s, b) => s + b.outstandingPaise, 0), overduePaise };
 }
 
 export type LedgerEntry = {
-  date: string; kind: "bill" | "payment"; voucherNo: string; reference: string;
+  date: string; kind: "bill" | "payment" | "debit_note" | "credit_note"; voucherNo: string; reference: string;
   /** What we owe the vendor goes up (a bill) … */
   creditPaise: number;
-  /** … or down (a payment). P4's debit and credit notes will be the third and fourth kinds. */
+  /** … or down (a payment, or the vendor's accepted credit note). */
   debitPaise: number;
+  /**
+   * PARITY P4 — our DEBIT NOTE's amount on a `debit_note` row: the claim the goods went back with. It
+   * does not move the balance; the vendor's credit note, when accepted, does (a `credit_note` row,
+   * possibly for less). So the balance is always what the payables book says is owed.
+   */
+  memoPaise: number;
   balancePaise: number;
   id: string;
 };
@@ -891,12 +972,17 @@ export type LedgerEntry = {
 export type SupplierLedger = {
   vendorId: string; vendorCode: string; vendorName: string; msme: boolean; from: string | null; to: string | null;
   openingPaise: number; entries: LedgerEntry[]; closingPaise: number; billedPaise: number; paidPaise: number;
+  /** PARITY P4 — the vendor's accepted credit notes in the window. */
+  creditedPaise: number;
 };
+
+const LEDGER_KIND_ORDER: Record<LedgerEntry["kind"], number> = { bill: 0, debit_note: 1, credit_note: 2, payment: 3 };
 
 /**
  * One vendor's account, oldest first: each accepted bill on its bill date (credit), each payment on
- * the day it was paid (debit), and the running balance we owe. Before `from` everything folds into
- * the opening balance. Balance = bills − payments, always.
+ * the day it was paid (debit), each debit note we issued on its date (a memo, no balance effect) and
+ * each accepted vendor credit note on its date (debit), and the running balance we owe. Before `from`
+ * everything folds into the opening balance. Balance = bills − payments − credits, always.
  */
 export async function supplierLedger(db: Db, actor: Actor, vendorId: string, range: { from?: string | null; to?: string | null } = {}): Promise<SupplierLedger> {
   await requirePayablesReader(db, actor);
@@ -909,10 +995,20 @@ export async function supplierLedger(db: Db, actor: Actor, vendorId: string, ran
     .where(and(eq(supplierBills.vendorId, vendorId), inArray(supplierBills.status, ["accepted", "part_paid", "paid"]), ...(to === null ? [] : [lte(supplierBills.billDate, to)])));
   const pays = await db.select().from(supplierPayments)
     .where(and(eq(supplierPayments.vendorId, vendorId), ...(to === null ? [] : [lte(supplierPayments.paidOn, to)])));
+  const debitNotes = await db.select().from(supplierReturns)
+    .where(and(eq(supplierReturns.vendorId, vendorId), isNotNull(supplierReturns.debitNoteNo), ...(to === null ? [] : [lte(supplierReturns.debitNoteDate, to)])));
+  const credits = await db.select({ c: supplierCreditNotes, returnNo: supplierReturns.returnNo, debitNoteNo: supplierReturns.debitNoteNo })
+    .from(supplierCreditNotes).innerJoin(supplierReturns, eq(supplierReturns.id, supplierCreditNotes.returnId))
+    .where(and(eq(supplierCreditNotes.vendorId, vendorId), eq(supplierCreditNotes.status, "accepted"), ...(to === null ? [] : [lte(supplierCreditNotes.creditNoteDate, to)])));
   const all: Omit<LedgerEntry, "balancePaise">[] = [
-    ...bills.map((b) => ({ date: b.billDate, kind: "bill" as const, voucherNo: b.billNo, reference: b.vendorBillNo, creditPaise: b.totalPaise, debitPaise: 0, id: b.id })),
-    ...pays.map((p) => ({ date: p.paidOn, kind: "payment" as const, voucherNo: p.paymentNo, reference: `${p.mode.toUpperCase()}${p.reference === null ? "" : ` ${p.reference}`}`, creditPaise: 0, debitPaise: p.amountPaise, id: p.id })),
-  ].sort((a, b) => a.date.localeCompare(b.date) || (a.kind === b.kind ? a.voucherNo.localeCompare(b.voucherNo) : a.kind === "bill" ? -1 : 1));
+    ...bills.map((b) => ({ date: b.billDate, kind: "bill" as const, voucherNo: b.billNo, reference: b.vendorBillNo, creditPaise: b.totalPaise, debitPaise: 0, memoPaise: 0, id: b.id })),
+    ...pays.map((p) => ({ date: p.paidOn, kind: "payment" as const, voucherNo: p.paymentNo, reference: `${p.mode.toUpperCase()}${p.reference === null ? "" : ` ${p.reference}`}`, creditPaise: 0, debitPaise: p.amountPaise, memoPaise: 0, id: p.id })),
+    ...debitNotes.map((r) => ({ date: r.debitNoteDate!, kind: "debit_note" as const, voucherNo: r.debitNoteNo!, reference: r.returnNo, creditPaise: 0, debitPaise: 0, memoPaise: r.totalPaise, id: r.id })),
+    ...credits.map(({ c, debitNoteNo }) => ({
+      date: c.creditNoteDate, kind: "credit_note" as const, voucherNo: c.creditNo, reference: `${c.vendorCreditNoteNo}${debitNoteNo === null ? "" : ` · ${debitNoteNo}`}`,
+      creditPaise: 0, debitPaise: c.amountPaise, memoPaise: 0, id: c.id,
+    })),
+  ].sort((a, b) => a.date.localeCompare(b.date) || LEDGER_KIND_ORDER[a.kind] - LEDGER_KIND_ORDER[b.kind] || a.voucherNo.localeCompare(b.voucherNo));
   let balance = 0;
   let openingPaise = 0;
   const entries: LedgerEntry[] = [];
@@ -924,7 +1020,9 @@ export async function supplierLedger(db: Db, actor: Actor, vendorId: string, ran
   return {
     vendorId, vendorCode: vendor.code, vendorName: vendor.tradeName ?? vendor.legalName, msme: isMsme(vendor), from, to,
     openingPaise, entries, closingPaise: balance,
-    billedPaise: entries.reduce((s, e) => s + e.creditPaise, 0), paidPaise: entries.reduce((s, e) => s + e.debitPaise, 0),
+    billedPaise: entries.reduce((s, e) => s + e.creditPaise, 0),
+    paidPaise: entries.filter((e) => e.kind === "payment").reduce((s, e) => s + e.debitPaise, 0),
+    creditedPaise: entries.filter((e) => e.kind === "credit_note").reduce((s, e) => s + e.debitPaise, 0),
   };
 }
 

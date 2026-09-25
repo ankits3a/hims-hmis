@@ -121,6 +121,8 @@ export async function registerVendor(
     code: string; legalName: string; tradeName?: string | null; gstin?: string | null;
     pan?: string | null; msmeUdyamNo?: string | null; msmeClass?: string | null;
     paymentTermsDays?: number | null; classFlags?: Record<string, boolean>;
+    /** PARITY P4 — this vendor's expiry return window in days after expiry; null = the default. */
+    expiryReturnDays?: number | null;
   },
 ): Promise<{ vendorId: string }> {
   const vendorId = newId();
@@ -130,6 +132,7 @@ export async function registerVendor(
       tradeName: input.tradeName ?? null, gstin: input.gstin ?? null, pan: input.pan ?? null,
       msmeUdyamNo: input.msmeUdyamNo ?? null, msmeClass: input.msmeClass ?? null,
       paymentTermsDays: input.paymentTermsDays ?? null,
+      expiryReturnDays: input.expiryReturnDays ?? null,
       classFlags: input.classFlags ?? {},
       // `draft`, ALWAYS. A vendor becomes purchasable only through `activateVendor`, which checks
       // the paperwork — registering straight into `active` would make the document gate optional.
@@ -170,6 +173,8 @@ export async function updateVendor(
     gstinVerifiedAt?: Date | null; pan?: string | null; msmeUdyamNo?: string | null;
     msmeClass?: string | null; paymentTermsDays?: number | null;
     classFlags?: Record<string, boolean>;
+    /** PARITY P4 — the vendor's expiry return window; null returns it to the default. */
+    expiryReturnDays?: number | null;
   },
 ): Promise<void> {
   await requireVendor(tx, vendorId);
@@ -184,6 +189,7 @@ export async function updateVendor(
   if (patch.msmeUdyamNo !== undefined) next.msmeUdyamNo = patch.msmeUdyamNo;
   if (patch.msmeClass !== undefined) next.msmeClass = patch.msmeClass;
   if (patch.paymentTermsDays !== undefined) next.paymentTermsDays = patch.paymentTermsDays;
+  if (patch.expiryReturnDays !== undefined) next.expiryReturnDays = patch.expiryReturnDays;
   if (patch.classFlags !== undefined) next.classFlags = patch.classFlags;
 
   const changed = Object.keys(next);

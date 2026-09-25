@@ -584,3 +584,47 @@ and `materials.payments.record` (`materials_head`, `pharmacy_incharge`). `deploy
   ₹10,000 (Income-tax Act s.40A(3)); anything more goes by bank.
 - **Payables.** Press **P** for ageing (0–30 / 31–60 / 61–90 / 90+ days) and the Supplier Summary;
   a supplier opens its ledger. Both export CSV.
+
+## 13. Returns — expiry to the supplier, the credit, destruction and recalls (parity P4)
+
+Everything here is at **`/pharmacy/office`, the Returns side** (Buy | Pay | Returns). Returns need
+`materials.returns.manage` (`materials_head`, `pharmacy`) and the head's `materials.returns.approve`;
+the vendor's credit note needs `materials.bills.manage`; write-offs need `materials.writeoffs.manage`
+(`materials_head`, `pharmacy_incharge`); recalls need `materials.recall.manage` (`materials_head`,
+`pharmacy_incharge`). `deploy.sh` runs `seed:materials`, which registers `materials_stock_adjustment`,
+the write-off's approval (`pharmacy_writeoff_approval_registered`).
+
+- **Assign the people.** The materials head approves every return (`pharmacy_return_approver_held` is
+  RED until an active person holds `materials_head`); nobody approves a return they drafted, and
+  whoever approved it does not dispatch it. The medical superintendent approves every destruction
+  write-off (`pharmacy_writeoff_approver_held` is RED until an active person holds
+  `medical_superintendent`).
+- **The expiry report.** Press **E**. Presets: expired, next 30 / 60 / 90 days, or a custom range.
+  *Item-wise* lists each store's batch with its quantity in packs and tablets, MRP, cost value, the
+  supplier (the hospital's OPENING STOCK and TRIAL STOCK show as such), the last day it may go back,
+  and the return or write-off already raised. *Supplier-wise* groups the same rows by supplier with
+  what can still go back. Both export CSV.
+- **The return window** (a default the owner may change): a vendor takes an expired batch back up to
+  90 days after its expiry (`vendors.expiry_return_days` sets a vendor's own), and a batch within 90
+  days of expiry any time. A recalled batch goes back whatever its date.
+- **The agent's drafts.** Press **D** (or say "expiry return bana do" at the desk, F2). The agent
+  lists one return per vendor at the GRN's cost and the purchase's GST, and apart from it what can
+  only be destroyed. Untick a vendor to leave it out; **Make the drafts** writes DRAFTS only.
+- **Approve, dispatch.** The head opens a draft and presses **A**. Somebody else presses **D**
+  (*Dispatch and issue the debit note*) when the goods leave: the stock goes out of the store and our
+  debit note (`MDN…`) is issued with the vendor's GSTIN and the CGST + SGST or IGST reversal. **P**
+  prints it to go with the goods.
+- **The vendor's credit note.** When it arrives, open the return, type the vendor's credit note
+  number, date and amount, and record it. Less than our debit note needs the reason, and the materials
+  head. The credit is set off on the next payment run (the run grid's Credit column; Payable = Total −
+  Credit) and appears in the supplier's ledger. A return the vendor will never credit is closed by the
+  head with the reason (⋯).
+- **Destruction (BMW Rules 2016).** Press **W**: the agent's "cannot go back" list for a store. Tick
+  and count what goes, and send it to the medical superintendent, who approves it in `/approvals`. When
+  the common treatment facility collects it, open the write-off, type the agency, its manifest or
+  challan number and the date, and press *Hand over and write off*. Print the manifest for the file.
+- **Recall.** Press **R**, find the item, pick the batch, say which alert (CDSCO / manufacturer / our
+  own) and why: the batch freezes in every store. Its sheet shows where it still sits and who it was
+  dispensed to (names and phone numbers for the callback; reading the list is logged). *Return it to
+  the supplier* drafts its return in one tap; a batch nobody can take back is destroyed with a
+  write-off. Close the recall when no store holds any of it.

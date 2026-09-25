@@ -17,8 +17,8 @@ import { BillRail, heldUntil, holdEnded, rupees } from "./bill";
 import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { SlipSheet } from "./slip";
-import { DraftCard, PaymentRunCard, PurchasePlanCard, ShortBookSheet, paymentRunPlanOf, purchasePlanOf, shortBookDraftOf } from "./short-book";
-import type { PaymentRunCardData, PurchasePlanCardData, ShortBookDraft, ShortDrug } from "./short-book";
+import { DraftCard, PaymentRunCard, PurchasePlanCard, ReturnPlanCard, ShortBookSheet, paymentRunPlanOf, purchasePlanOf, returnPlanOf, shortBookDraftOf } from "./short-book";
+import type { PaymentRunCardData, PurchasePlanCardData, ReturnPlanCardData, ShortBookDraft, ShortDrug } from "./short-book";
 import { TicketPanel } from "./ticket";
 import type { DeskLog } from "./log";
 import type { CollectResult } from "./lines";
@@ -494,7 +494,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
           )}
         </div>
 
-        <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} plan={purchasePlanOf(copilot.payload)} payPlan={paymentRunPlanOf(copilot.payload)} onDraftDone={copilot.clearPayload} />
+        <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} plan={purchasePlanOf(copilot.payload)} payPlan={paymentRunPlanOf(copilot.payload)} returnPlan={returnPlanOf(copilot.payload)} onDraftDone={copilot.clearPayload} />
       </div>
 
       {overlay === "slip" && inHand !== null ? <SlipSheet dispense={inHand} onClose={() => setOverlay(null)} /> : null}
@@ -540,7 +540,7 @@ function sealedRefusal(e: unknown): boolean {
  * time it landed — and, since PD-7 C8, the ask box: `F2` focuses it (bound here, locally, as the
  * shared `AgentDock` binds it), and an answer is said IN FULL above the bar, never cut to a ticker.
  */
-function DeskDock({ log, said, busy, onAsk, onDismiss, draft: agentDraft, plan, payPlan, onDraftDone }: {
+function DeskDock({ log, said, busy, onAsk, onDismiss, draft: agentDraft, plan, payPlan, returnPlan, onDraftDone }: {
   log: readonly DeskLog[];
   said: string | null;
   busy: boolean;
@@ -552,6 +552,8 @@ function DeskDock({ log, said, busy, onAsk, onDismiss, draft: agentDraft, plan, 
   plan: PurchasePlanCardData | null;
   /** PARITY P3 — the agent's payment-run plan ("payment run bana do"), a card that opens the office's pay side. */
   payPlan: PaymentRunCardData | null;
+  /** PARITY P4 — the agent's return plan ("expiry return bana do"), a card that opens the office's returns side. */
+  returnPlan: ReturnPlanCardData | null;
   onDraftDone: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
@@ -572,8 +574,9 @@ function DeskDock({ log, said, busy, onAsk, onDismiss, draft: agentDraft, plan, 
       {agentDraft === null || agentDraft.alreadyOpen ? null : <DraftCard draft={agentDraft} onDone={onDraftDone} />}
       {plan === null ? null : <PurchasePlanCard plan={plan} onDone={onDraftDone} />}
       {payPlan === null ? null : <PaymentRunCard plan={payPlan} onDone={onDraftDone} />}
+      {returnPlan === null ? null : <ReturnPlanCard plan={returnPlan} onDone={onDraftDone} />}
       {/* The card IS the answer to a draft; saying it again above the bar is the same sentence twice. */}
-      {said === null || (agentDraft !== null && !agentDraft.alreadyOpen) || plan !== null || payPlan !== null ? null : (
+      {said === null || (agentDraft !== null && !agentDraft.alreadyOpen) || plan !== null || payPlan !== null || returnPlan !== null ? null : (
         <div data-testid="desk-answer" style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "11px 18px", borderBottom: "1px solid #24413631" }}>
           <span style={{ flexGrow: 1, fontSize: 12.5, lineHeight: "18px" }}>{said}</span>
           <button onClick={onDismiss} aria-label={t("pharmacyDesk.ask.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>

@@ -197,7 +197,7 @@ Measured before planning (2 read-only passes, 2026-09-24):
   - The run's approval carries the run as its payee for the kernel's daily aggregation, and the total
     as its amount.
   - An edited matched or held bill goes back to draft and is matched again.
-- Deferred: debit/credit notes and the credit offset (P4); Tally vouchers and GSTR-2B (P5); printing a
+- Deferred: debit/credit notes and the credit offset (P4 — built, see "P4 as built"); Tally vouchers and GSTR-2B (P5); printing a
   payment advice; bank file upload (NEFT bulk); e-mailing the vendor a remittance advice; the owner
   opening the run grid from `/approvals` (the route `GET /materials/payment-runs/:id/for-approval`
   exists, no screen links it).
@@ -209,6 +209,94 @@ Measured before planning (2 read-only passes, 2026-09-24):
 - BMW destruction write-off for non-returnable expiry: an adjustment with a manifest, through `materials_stock_adjustment`
   approval.
 - Recall screen (endpoint exists, no UI).
+
+**P4 as built (2026-09-25, lane `pharmacy-p4-returns`, migration 0129 — regenerated after #318 took 0128).**
+- Tables (materials module): `supplier_returns` and `supplier_return_lines` (the return and OUR debit
+  note on it), `supplier_credit_notes` (the vendor's credit note as accepted), `stock_write_offs` and
+  `stock_write_off_lines` (destruction), `stock_recalls` (the recall register); `vendors.expiry_return_days`
+  (a vendor's own return window). `supplier_payment_run_lines`' money CHECK relaxed so a bill the
+  vendor's credit covers whole rides on a run with `pay_paise = 0`.
+- Numbers (stable, for P5's Tally export), from `EPISODE_SERIES`: the return `MRT…`, our debit note
+  `MDN…` (with its date, the vendor's GSTIN and the CGST + SGST or IGST reversal per line), the vendor's
+  credit note as we booked it `MCN…`, the write-off `MWO…`, the recall `MRC…`.
+- Return: draft → approved → dispatched → credited | closed, or cancelled from draft/approved.
+  - The agent drafts (`planSupplierReturns` / `draftSupplierReturns`): per vendor, every owned batch at
+    every store that is expired within the window, near expiry or recalled, less what is reserved,
+    frozen (unless recalled) and already on a live return or write-off, at the GRN's cost per base unit
+    and the GST the purchase was billed at (the supplier bill's line, else the PO's, else the item's).
+    What cannot go back is listed apart for destruction. The copilot tool `draft_supplier_returns`
+    ("expiry return bana do") is read-only, gated on `materials.returns.manage`; its card opens
+    `/pharmacy/office?view=returns`.
+  - Approve: `materials.returns.approve` (the head), never the drafter (`requester_approver`, SoD
+    engine + in-act guard); the lines are re-asked against today's stock and window.
+  - Dispatch: `materials.returns.manage`, never the approver (new SoD pair `return_approver_dispatcher`,
+    engine + in-act guard). One `return` ledger row out per line; a recalled batch leaves through the
+    ledger's new `recallExit` flag, allowed ONLY for `return` and `adjust` (every other outbound on a
+    frozen batch is still refused).
+  - The vendor's credit note (`materials.bills.manage`): at most the debit note; less needs a reason
+    and `materials.bills.accept_difference` (the head). A credit note recorded in error is cancelled
+    only while no run has spent it. A dispatched return the vendor will never credit is closed by the
+    head with the reason.
+- The credit offset (P3 integrated): `vendorCredits()` = accepted − applied (on recorded payments) −
+  reserved (on open runs). `planPaymentRun` sets a vendor's available credit against its bills oldest
+  due first (`credit_paise`; Payable = Total − Credit); a vendor whose credit covers all it is owed is
+  listed apart (`coveredByCredit`) and left off — no ₹0 voucher. `resolveLines` refuses credit beyond
+  the vendor's available credit and a vendor paid nothing, under the vendor row lock. Recording the
+  payment settles pay + credit on the bill. Supplier Summary gains Credit (accepted, not yet applied) and
+  Net (= remaining − credit). The supplier ledger gains debit-note rows (a MEMO: our claim, no balance
+  effect) and credit-note rows (a debit); balance = bills − payments − credits, and it equals the
+  summary's net.
+- Write-off: raised by `materials.writeoffs.manage` (the head, the pharmacist in charge) for `expiry`
+  (only expired batches), `recall` (only recalled) or `damage`; the approval is the EXISTING
+  `materials_stock_adjustment` type (medical superintendent), subject `stock_write_off`; posted only
+  once granted and with the disposal agency, its manifest / challan number and the handover date:
+  one `adjust` row out per line. A rejected approval settles the write-off as refused. The manifest
+  prints as A4 (a condemnation list before it is posted).
+- Recall: `POST /materials/recalls` now writes the register entry (source `cdsco` / `manufacturer` /
+  `internal`, reference) with the freeze, in one transaction; `batch.recalled` carries it
+  (additive). The screen shows where the batch sits and the ledger's `consume` rows with the patient's
+  name, UHID and phone, read-only, through `getPatientSummaries(withContact)` (the PHI read is logged);
+  one tap drafts its return. A recall closes only when no store holds the batch.
+- Screens: inside `/pharmacy/office`, a third side, Returns (`?view=returns`): expired / 30 / 60 / 90
+  cards with value, the agent's card, returns to approve / to dispatch / awaiting credit, write-offs
+  awaiting the MS / ready to hand over, open recalls. Keys (the legend via `useScreenKeys`): E expiry
+  report, D the agent's plan, W write-off, R recall; on a return A approve, D dispatch, P print. The
+  debit note prints as A4 (a return note before dispatch). The pay side shows the credit in the run
+  grid (per bill and per vendor), the agent's card and the Supplier Summary.
+- Permissions: `materials.returns.manage` (materials_head, pharmacy), `materials.returns.approve`
+  (materials_head), `materials.writeoffs.manage` (materials_head, pharmacy_incharge); and
+  `pharmacy_incharge` gains `materials.recall.manage`. Census: `pharmacy_return_approver_held` (G4),
+  `pharmacy_writeoff_approval_registered` (G2), `pharmacy_writeoff_approver_held` (G4). Runbook §13.
+- Defaults, each a named value in `modules/materials/config.ts`:
+  - **DEFAULT — owner may change.** Expiry return window: a vendor takes an expired batch back up to
+    `EXPIRY_RETURN_WINDOW_DAYS` = 90 days after its expiry, inclusive; `vendors.expiry_return_days`
+    overrides it per vendor. Past it the batch is destroyed, not returned.
+  - **DEFAULT — owner may change.** Near expiry (`NEAR_EXPIRY_RETURN_DAYS` = 90 days or less to
+    expiry) returns at any time.
+  - **DEFAULT — owner may change.** Returns approved by `materials_head` (`materials.returns.approve`);
+    the approver never dispatches.
+  - **DEFAULT — owner may change.** Destruction write-off approved by the medical superintendent
+    through `materials_stock_adjustment` (the route a count's variance takes, reused, not a second
+    route); raised by the head or the pharmacist in charge.
+  - **DEFAULT — owner may change.** A credit short of the debit note is accepted by the head
+    (`materials.bills.accept_difference`) with a reason.
+- DECIDED (not money authority, procurement or law):
+  - The debit note does not move the supplier's balance; the vendor's accepted credit note does (the
+    offset the owner asked for arrives with the credit). The debit note shows in the ledger as a memo.
+  - One vendor credit pool; a run spends it oldest due first. One credit note per return.
+  - Only OWNED stock goes back on a debit note; consignment and loaner stock are the vendor's already,
+    donated and the hospital's opening / trial stock (`NON_SUPPLIER_VENDOR_CODES`) have nobody to go
+    back to (they are destroyed). A batch goes back only to the vendor whose GRN brought it in.
+  - A recalled batch goes back (or is destroyed) whatever its date; a damaged one on a person's word.
+  - Returns and write-offs hold their quantity against each other: the same tablet cannot be both
+    returned and destroyed.
+  - The recall screen's callback list is read-only; calling patients is a person's act outside the book.
+  - `materials.recall.manage` to the pharmacist in charge: a CDSCO drug alert is acted on at the counter.
+- Deferred: printing through the relay (the debit note and manifest print from the browser, the PO's
+  path); e-mailing the debit note; releasing a recall as a false alarm (`releaseRecall`, 14c); the
+  Tally vouchers for the debit and credit notes (P5); a per-rate-contract window beyond the vendor's
+  own; editing a draft return's lines on screen (the API takes them — the screen approves, cancels
+  and re-drafts).
 
 **P5 — Know: reports + accounting**
 - Office reports, each one screen with filters + Excel/CSV + print:

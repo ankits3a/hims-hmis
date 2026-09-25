@@ -74,6 +74,11 @@ const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
     not_for: "noting one medicine as short; how much of a medicine is left",
     examples: ["order karo", "make the orders for this week"],
   },
+  draft_supplier_returns: {
+    what: "the pharmacy should SEND EXPIRED, near-expiry or recalled medicines BACK to its suppliers — draft the returns",
+    not_for: "a patient returning medicines at the counter; when one medicine expires; ordering or paying suppliers",
+    examples: ["expiry return bana do", "expired maal supplier ko wapas bhejo"],
+  },
   draft_payment_run: {
     what: "the hospital should PAY its suppliers — draft a payment run from the supplier bills falling due",
     not_for: "a patient's dues or bill; ordering medicines",

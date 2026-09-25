@@ -231,3 +231,35 @@ export const CASH_PAYMENT_DAILY_LIMIT_PAISE = 1_000_000;
  * `payments.ts`.
  */
 export const PAYMENT_RUN_HORIZON_DAYS = 7;
+
+// ═══ PHARMACY PARITY P4 — RETURNS TO THE SUPPLIER, AND DESTRUCTION (plan `docs/superpowers/plans/2026-09-24-pharmacy-healthray-parity.md`) ═══
+//
+// The owner has not ruled on the return window or on write-off authority. Each value below is a
+// DEFAULT — owner may change — recorded as such in the plan doc. `supplier-returns.ts` reads them and
+// nothing else does.
+
+/**
+ * DEFAULT — owner may change. A vendor takes an EXPIRED batch back for credit up to this many days
+ * after its printed expiry (the rate contract's return window). `vendors.expiry_return_days`
+ * overrides it per vendor. Past it the stock cannot go back and is destroyed under the BMW Rules
+ * (a write-off). Read by `supplier-returns.ts`.
+ */
+export const EXPIRY_RETURN_WINDOW_DAYS = 90;
+
+/**
+ * DEFAULT — owner may change. A batch whose expiry falls within this many days is NEAR EXPIRY and
+ * may be returned at any time before it expires (the vendor re-sells short-dated stock). Read by
+ * `supplier-returns.ts`.
+ */
+export const NEAR_EXPIRY_RETURN_DAYS = 90;
+
+/**
+ * DECIDED (not a ruling): the vendor codes that are not suppliers — the hospital's own shelf at
+ * go-live (`scripts/import-opening-stock.ts`) and the rehearsal stock (`scripts/load-trial-stock.ts`).
+ * Their batches are shown as such on the expiry report and are never drafted onto a return: there is
+ * nobody to send them back to. Read by `supplier-returns.ts`.
+ */
+export const NON_SUPPLIER_VENDOR_CODES = ["OPENING-STOCK", "TRIAL-STOCK"] as const;
+
+/** DECIDED: the expiry report's presets, in days from today (plus "expired" and a custom range). */
+export const EXPIRY_REPORT_PRESET_DAYS = [30, 60, 90] as const;

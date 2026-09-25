@@ -143,6 +143,11 @@ describe("matchIntent — the pharmacy counter", () => {
     ["pay the suppliers", "draft_payment_run"],
     ["supplier payment karo", "draft_payment_run"],
     ["भुगतान की सूची बनाओ", "draft_payment_run"],
+    /* PARITY P4 — "expiry return bana do" drafts the returns; a person makes them, the head approves each. */
+    ["expiry return bana do", "draft_supplier_returns"],
+    ["expired maal supplier ko wapas bhejo", "draft_supplier_returns"],
+    ["make the supplier returns", "draft_supplier_returns"],
+    ["एक्सपायर दवा वापस भेजो", "draft_supplier_returns"],
   ])("routes %s", (question: string, intent: string) => {
     expect(matchIntent(question)?.intent).toBe(intent);
   });

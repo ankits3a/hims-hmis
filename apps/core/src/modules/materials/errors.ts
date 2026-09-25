@@ -238,7 +238,44 @@ export type MaterialsErrorCode =
   /** Cash to one vendor in one day would pass the Income-tax Act s.40A(3) limit. */
   | "cash_limit_exceeded"
   /** A bank mode without its reference (UTR, cheque number). */
-  | "payment_reference_required";
+  | "payment_reference_required"
+  // ── PHARMACY PARITY P4 — returns to the supplier, credit notes, write-offs, recalls ──
+  /** No such return to a supplier. */
+  | "unknown_supplier_return"
+  /** The return is not in the state this act needs (edit a draft, approve a draft, dispatch an approved one…). */
+  | "return_wrong_status"
+  /** A return or line out of shape: no lines, a batch not the vendor's or not owned stock, a store not a store, a quantity or rate out of range. */
+  | "return_invalid"
+  /** The batch cannot go back to this supplier: the hospital's own opening or trial stock, or no supplier on the batch. */
+  | "not_returnable"
+  /** An expired batch is past the vendor's return window — it is destroyed, not returned. */
+  | "return_window_passed"
+  /** Whoever drafted the return approves it; somebody else does (maker ≠ checker). */
+  | "return_self_approve"
+  /** Whoever approved the return dispatches it (`return_approver_dispatcher`). */
+  | "approver_dispatching"
+  /** A credit note out of shape: more than the debit note, a short credit without its reason, a date in the future. */
+  | "credit_invalid"
+  /** A credit note cannot be cancelled once the payment runs have spent it. */
+  | "credit_spent"
+  /** No such write-off. */
+  | "unknown_write_off"
+  /** The write-off is not in the state this act needs. */
+  | "writeoff_wrong_status"
+  /** A write-off or line out of shape: no lines, a batch not in that store, an expiry write-off of stock not yet expired. */
+  | "writeoff_invalid"
+  /** The write-off's approval is not granted yet: nothing is destroyed before it is. */
+  | "writeoff_unapproved"
+  /** Posting a write-off needs the disposal agency, its manifest / challan number and the handover date. */
+  | "disposal_required"
+  /** No such recall. */
+  | "unknown_recall"
+  /** The batch already has an open recall. */
+  | "recall_open"
+  /** The recall is not in the state this act needs. */
+  | "recall_wrong_status"
+  /** A recall is closed only when no store holds any of the batch. */
+  | "recall_stock_remaining";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
@@ -255,6 +292,7 @@ const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([
   "unknown_item", "unknown_vendor", "unknown_store", "unknown_batch",
   "unknown_document", "unknown_count", "unknown_adjustment", "unknown_purchase_order",
   "unknown_supplier_bill", "unknown_payment_run",
+  "unknown_supplier_return", "unknown_write_off", "unknown_recall",
 ]);
 
 export function materialsHttpStatus(code: MaterialsErrorCode): number {

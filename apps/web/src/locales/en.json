@@ -383,9 +383,9 @@
         "explain": "Two records were joined by mistake. Approving splits them back apart."
       },
       "materials_stock_adjustment": {
-        "label": "Stock correction",
-        "ask": "Correct the store's stock after a physical count",
-        "explain": "The count found more or less stock than the system shows. Approving corrects the stock."
+        "label": "Stock correction or destruction",
+        "ask": "Correct the store's stock after a physical count, or destroy expired stock that cannot go back",
+        "explain": "A count found more or less stock than the system shows, or stock is to be destroyed under the BMW Rules (the request names the write-off). Approving corrects the stock, or lets it be handed over for destruction."
       },
       "materials_near_expiry_acceptance": {
         "label": "Stock that expires soon",
@@ -1955,7 +1955,25 @@
     "authoriser_recording": "You authorised this run; somebody else records it paid.",
     "vendor_cooling_off": "The vendor's bank details changed recently; the first payment waits for the cooling-off to end.",
     "cash_limit_exceeded": "Cash to one vendor in one day cannot pass ₹10,000 (Income-tax Act s.40A(3)) — pay by bank.",
-    "payment_reference_required": "Type the UTR or the cheque number."
+    "payment_reference_required": "Type the UTR or the cheque number.",
+    "unknown_supplier_return": "That return to the supplier was not found.",
+    "return_wrong_status": "The return is not in a state that allows this — refresh and look at it again.",
+    "return_invalid": "A line on the return does not fit: check the batch, its supplier, the reason and the quantity.",
+    "not_returnable": "This stock cannot go back to a supplier (the hospital's own opening or trial stock, or not bought stock) — destroy it with a write-off instead.",
+    "return_window_passed": "This batch is past the vendor's return window after expiry — it is destroyed with a write-off, not returned.",
+    "return_self_approve": "You drafted this return — somebody else approves it.",
+    "approver_dispatching": "You approved this return — somebody else dispatches it.",
+    "credit_invalid": "The credit note does not fit: it may not be more than our debit note, a short credit needs its reason, and its date cannot be in the future.",
+    "credit_spent": "A payment run has already used this credit — cancel or edit that run first.",
+    "unknown_write_off": "That write-off was not found.",
+    "writeoff_wrong_status": "The write-off is not in a state that allows this.",
+    "writeoff_invalid": "A line on the write-off does not fit: an expiry write-off destroys only expired stock, a recall write-off only a recalled batch.",
+    "writeoff_unapproved": "The medical superintendent has not approved this write-off yet — nothing is destroyed before that.",
+    "disposal_required": "Enter the disposal agency, its manifest or challan number and the handover date.",
+    "unknown_recall": "That recall was not found.",
+    "recall_open": "This batch is already under an open recall.",
+    "recall_wrong_status": "The recall is not open.",
+    "recall_stock_remaining": "Some store still holds this batch — return it or destroy it before closing the recall."
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -4409,6 +4427,11 @@
       "tag": "PAY",
       "body": "Payment run ready — vendors: {{vendors}} · bills: {{bills}}. The owner authorises it.",
       "open": "Open the office"
+    },
+    "returnPlan": {
+      "tag": "RETURN",
+      "body": "Returns ready to draft — vendors: {{vendors}} · batches: {{batches}} · {{toDestroy}} to destroy. The head approves each.",
+      "open": "Open the office"
     }
   },
   "pharmacyAuthorise": {
@@ -5451,7 +5474,9 @@
       "purchaseDraftPlan": "Ready to draft — orders: {{orders}} · lines: {{lines}} · need a vendor: {{unassigned}}. Open the office to make the drafts.",
       "purchaseDraftNothing": "Nothing to order: no item is at its reorder level and the short book is clear.",
       "paymentRunPlan": "Ready to draft a payment run — vendors: {{vendors}} · bills: {{bills}} · ₹{{amount}} due by {{until}}. Open the office to make the draft.",
-      "paymentRunNothing": "Nothing falls due by {{until}} that a run does not already hold."
+      "paymentRunNothing": "Nothing falls due by {{until}} that a run does not already hold.",
+      "returnPlan": "Ready to draft returns — vendors: {{vendors}} · batches: {{batches}} · ₹{{amount}} at cost can go back ({{toDestroy}} can only be destroyed). Open the office to make the drafts.",
+      "returnNothing": "Nothing expired within its window, near expiry or recalled that a return does not already hold ({{toDestroy}} can only be destroyed)."
     },
     "report": {
       "title": "Your day — {{date}}",
@@ -5889,7 +5914,8 @@
     "views": "Office views",
     "view": {
       "buy": "Buy",
-      "pay": "Pay"
+      "pay": "Pay",
+      "returns": "Returns"
     },
     "pay": {
       "count": {
@@ -5916,7 +5942,10 @@
         "blocked_one": "{{count}} vendor left out: bank details changed and the cooling-off has not ended.",
         "blocked_other": "{{count}} vendors left out: bank details changed and the cooling-off has not ended.",
         "make": "Make the draft",
-        "made": "Drafted run {{runNo}} — check it and submit it for the owner."
+        "made": "Drafted run {{runNo}} — check it and submit it for the owner.",
+        "credit": "Vendor credit set off on this draft: {{amount}}.",
+        "covered_one": "{{count}} vendor left out: their credit covers everything due.",
+        "covered_other": "{{count}} vendors left out: their credit covers everything due."
       },
       "noInvoiceNo": "no invoice no. on the challan",
       "billReady": "bill prefilled",
@@ -6018,7 +6047,7 @@
         "recorded": "{{vendor}} recorded as paid.",
         "paidWith": "{{no}} · {{mode}} {{ref}} · {{date}} · {{amount}}",
         "total": "Run total",
-        "creditNote": "Credit = the vendor's credit notes to offset (from the supplier-returns phase). Payable = Total − Credit.",
+        "creditNote": "Credit = the vendor's accepted credit notes, set against the oldest bills first. Payable = Total − Credit.",
         "submit": "Submit for the owner",
         "submitted": "Sent to the owner to authorise.",
         "waitingOwner": "Waiting for the owner to authorise it in Approvals.",
@@ -6034,7 +6063,8 @@
         "due": "Due",
         "age": "Age",
         "outstanding": "Outstanding",
-        "ledger": "Ledger"
+        "ledger": "Ledger",
+        "net": "Net owed"
       },
       "ledger": {
         "title": "Ledger · {{vendor}}",
@@ -6048,7 +6078,12 @@
         "balance": "Balance",
         "opening": "Opening balance",
         "closing": "Closing",
-        "notesLater": "Debit and credit notes join this ledger with supplier returns."
+        "notes": "A debit note is our claim and moves no balance; the vendor's credit note, when accepted, does. Balance = bills − payments − credits.",
+        "claim": "claim {{amount}}",
+        "kind": {
+          "debit_note": "Debit note",
+          "credit_note": "Credit note"
+        }
       },
       "ownerView": {
         "title": "Payment run {{runNo}} — for your authorisation",
@@ -6057,7 +6092,214 @@
     },
     "keys": {
       "buy": "↑↓ move · ⏎ open · A approve · R reject · Esc close",
-      "pay": "↑↓ move · ⏎ open · D draft run · P payables · A accept bill · Esc close"
+      "pay": "↑↓ move · ⏎ open · D draft run · P payables · A accept bill · Esc close",
+      "returns": "↑↓ move · ⏎ open · E expiry · D drafts · W write-off · R recall · A approve · P print · Esc close"
+    },
+    "returns": {
+      "batches_one": "{{count}} batch",
+      "batches_other": "{{count}} batches",
+      "fromRecall": "recall",
+      "recalled": "recalled",
+      "destroyOnly": "destroy only",
+      "until": "back until {{date}}",
+      "empty": "Nothing to return, destroy or chase today.",
+      "openExpiry": "Expiry report",
+      "newWriteOff": "Destruction write-off",
+      "newRecall": "Recall a batch",
+      "creditWaiting": "Vendor credit not yet set off: {{amount}} — the next payment run uses it.",
+      "made_one": "Drafted {{count}} return — the head approves it.",
+      "made_other": "Drafted {{count}} returns — the head approves each.",
+      "count": {
+        "expired": "Expired",
+        "d30": "Expiring in 30 days",
+        "d60": "Expiring in 60 days",
+        "d90": "Expiring in 90 days",
+        "awaitingCredit": "Awaiting the vendor's credit",
+        "writeOffs": "Write-offs awaiting the MS",
+        "recalls": "Open recalls"
+      },
+      "status": {
+        "draft": "Draft",
+        "approved": "Approved",
+        "dispatched": "Dispatched",
+        "credited": "Credited",
+        "closed": "Closed",
+        "cancelled": "Cancelled"
+      },
+      "reason": {
+        "expired": "Expired",
+        "near_expiry": "Near expiry",
+        "damaged": "Damaged",
+        "recalled": "Recalled"
+      },
+      "why": {
+        "past_window": "past the vendor's return window",
+        "no_supplier": "no supplier to return to"
+      },
+      "supplierKind": {
+        "supplier": "Supplier",
+        "opening": "OPENING STOCK",
+        "trial": "TRIAL STOCK",
+        "none": "No supplier"
+      },
+      "approval": {
+        "pending": "awaiting the MS",
+        "granted": "approved",
+        "rejected": "refused",
+        "missing": "no approval"
+      },
+      "col": {
+        "batch": "Batch",
+        "expiry": "Expiry",
+        "cost": "Cost value",
+        "supplier": "Supplier",
+        "until": "Returnable until",
+        "raised": "Return raised",
+        "reason": "Reason"
+      },
+      "section": {
+        "drafts": "Returns to approve",
+        "toDispatch": "Approved — to dispatch",
+        "awaitingCredit": "Dispatched — awaiting the vendor's credit",
+        "writeOffsToPost": "Write-offs approved — hand over",
+        "writeOffsAwaiting": "Write-offs awaiting the MS",
+        "recalls": "Open recalls"
+      },
+      "agent": {
+        "can": "Ready to draft returns — vendors: {{vendors}} · batches: {{lines}} · {{amount}} at cost can go back.",
+        "nothing": "Nothing expired within its window, near expiry or recalled that a return does not already hold.",
+        "destroy_one": "{{count}} batch can only be destroyed ({{amount}}) — raise a write-off.",
+        "destroy_other": "{{count}} batches can only be destroyed ({{amount}}) — raise a write-off.",
+        "review": "Review and make the drafts"
+      },
+      "plan": {
+        "title": "The agent's returns",
+        "intro": "One return per vendor: expired stock inside the vendor's return window, stock within 90 days of expiry, and recalled batches, at the GRN's cost. Untick a vendor to leave it out.",
+        "include": "Draft a return to {{vendor}}",
+        "destroy_one": "{{count}} batch cannot go back",
+        "destroy_other": "{{count}} batches cannot go back",
+        "make_one": "Make {{count}} draft",
+        "make_other": "Make {{count}} drafts"
+      },
+      "expiry": {
+        "title": "Expiry report",
+        "presets": "Expiry range",
+        "preset": {
+          "expired": "Expired",
+          "30": "Next 30 days",
+          "60": "Next 60 days",
+          "90": "Next 90 days",
+          "custom": "Custom"
+        },
+        "itemWise": "Item-wise",
+        "supplierWise": "Supplier-wise",
+        "summary_one": "{{count}} batch · {{amount}} at cost",
+        "summary_other": "{{count}} batches · {{amount}} at cost",
+        "none": "Nothing expires in this range.",
+        "returnable": "can go back: {{amount}}"
+      },
+      "sheet": {
+        "debitNote": "Debit note {{no}} · {{date}}",
+        "recall": "Recall {{no}}",
+        "draftedBy": "Drafted by {{name}}",
+        "approvedBy": "Approved by {{name}}",
+        "approve": "Approve",
+        "approved": "Return approved — somebody else dispatches it.",
+        "dispatch": "Dispatch and issue the debit note",
+        "dispatched": "Dispatched — the debit note is issued.",
+        "notYourApproval": "You drafted this return; the head approves it.",
+        "waitingHead": "Waiting for the materials head to approve it.",
+        "notYourDispatch": "You approved this return; somebody else dispatches it.",
+        "printReturn": "Print return note",
+        "printDebit": "Print debit note",
+        "recordCredit": "The vendor's credit note",
+        "creditNo": "Vendor's credit note no.",
+        "creditDate": "Credit note date",
+        "creditAmount": "Amount ₹",
+        "shortReason": "Short by {{amount}} — why",
+        "shortReasonLabel": "Why the credit is short",
+        "shortNeedsHead": "A credit short of the debit note is accepted by the materials head.",
+        "saveCredit": "Record the credit note",
+        "creditRecorded": "Credit note recorded — the next payment run sets it off.",
+        "credited": "Credited: {{no}} (our {{ours}}) of {{date}} for {{amount}}.",
+        "short": "Short by {{amount}}: {{reason}}",
+        "closedWhy": "Closed without a credit: {{reason}}",
+        "why": "Reason",
+        "cancel": "Cancel the return",
+        "cancelled": "Return cancelled.",
+        "close": "Close without a credit",
+        "closed": "Return closed without a credit.",
+        "cancelCredit": "Cancel the credit note",
+        "creditCancelled": "Credit note cancelled — the return waits for its credit again."
+      },
+      "writeOff": {
+        "newTitle": "Destruction write-off (BMW Rules 2016)",
+        "intro": "Stock that cannot go back is destroyed through the common treatment facility. The medical superintendent approves the write-off; the stock leaves only when it is handed over with the facility's manifest.",
+        "nothing": "Nothing is waiting to be destroyed.",
+        "store": "Store",
+        "include": "Destroy batch {{batch}}",
+        "qtyFor": "Quantity of {{batch}}",
+        "agency": "Disposal agency",
+        "manifest": "Manifest / challan no.",
+        "date": "Handed over on",
+        "note": "Note (optional)",
+        "send": "Send to the medical superintendent",
+        "raised": "Write-off {{no}} sent to the medical superintendent.",
+        "reason": {
+          "expiry": "Expired",
+          "damage": "Damaged",
+          "recall": "Recalled"
+        },
+        "status": {
+          "requested": "Requested",
+          "posted": "Destroyed",
+          "refused": "Refused"
+        },
+        "approvalIs": "Approval: {{status}}",
+        "waitingMs": "Waiting for the medical superintendent in /approvals.",
+        "post": "Hand over and write off",
+        "posted": "Write-off {{no}} posted — the stock is off the books.",
+        "handedOver": "Handed to {{agency}} against manifest {{manifest}} on {{date}}.",
+        "print": "Print the manifest"
+      },
+      "recall": {
+        "newTitle": "Recall a batch",
+        "intro": "The batch freezes in every store at once: nothing more is sold or issued. It leaves only back to its supplier or into destruction.",
+        "findItem": "Find the item (2+ letters)",
+        "sourceLabel": "Alert from",
+        "source": {
+          "cdsco": "CDSCO / drug controller",
+          "manufacturer": "Manufacturer",
+          "internal": "Our own finding"
+        },
+        "reference": "Alert reference",
+        "reason": "Why it is recalled",
+        "freeze": "Freeze the batch everywhere",
+        "raised": "Recall {{no}} raised — the batch is frozen in every store.",
+        "status": {
+          "open": "Open",
+          "closed": "Closed"
+        },
+        "left_one": "{{count}} left",
+        "left_other": "{{count}} left",
+        "where": "Where the batch sits",
+        "nowhere": "No store holds any of it.",
+        "frozen_one": "{{count}} frozen",
+        "frozen_other": "{{count}} frozen",
+        "dispensedTo_one": "Dispensed to {{count}} patient visit",
+        "dispensedTo_other": "Dispensed to {{count}} patient visits",
+        "readOnly": "Read-only, for the callback. Opening this list is logged.",
+        "when": "When",
+        "patient": "Patient",
+        "phone": "Phone",
+        "visit": "Visit",
+        "restricted": "restricted",
+        "toReturn": "Return it to the supplier",
+        "returnDrafted": "Return {{no}} drafted from the recall.",
+        "closeNote": "Closing note",
+        "close": "Close the recall",
+        "closed": "Recall {{no}} closed."
+      }
     }
   }
 }

@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { pharmacyDispenses, pharmacyShortBook } from "../../kernel/db/schema";
-import { findStoreByCode, planPaymentRun, sellableBatchesByItem } from "../materials";
+import { findStoreByCode, planPaymentRun, planSupplierReturns, sellableBatchesByItem } from "../materials";
 import { getPatientSummaries } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { planPurchaseDrafts } from "./purchase-drafts";
@@ -238,6 +238,38 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
       return {
         key: "copilot.answer.paymentRunPlan",
         params: { vendors: plan.groups.length, bills, amount: (plan.totalPaise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 }), until: plan.until, blocked: plan.blocked.length },
+        payload,
+      };
+    },
+  },
+  /**
+   * PARITY P4 — "expiry return bana do", "expired maal wapas bhejo": what the agent WOULD put on
+   * returns to the suppliers — expired within each vendor's window, near expiry and recalled stock,
+   * one return per vendor (`materials/supplier-returns.ts` `planSupplierReturns`) — and what can only
+   * be destroyed. Read-only like every tool here: the card opens the office's returns side, where a
+   * person presses "make the drafts"; the head approves each and somebody else dispatches it.
+   *
+   * Gated on `materials.returns.manage` — the copilot offers returns to exactly the people who may
+   * draft them.
+   */
+  {
+    intent: "draft_supplier_returns",
+    permission: "materials.returns.manage",
+    needsSubject: false,
+    async run(ctx): Promise<CopilotAnswer> {
+      const plan = await planSupplierReturns(ctx.db, new Date());
+      const batches = plan.groups.reduce((s, g) => s + g.lines.length, 0);
+      const payload = {
+        kind: "supplier_return_plan", href: "/pharmacy/office?view=returns", vendors: plan.groups.length, batches, taxablePaise: plan.taxablePaise,
+        toDestroy: plan.toDestroy.length,
+        vendorsList: plan.groups.map((g) => ({ name: g.vendorName, batches: g.lines.length, taxablePaise: g.taxablePaise })),
+      };
+      if (batches === 0) return { key: "copilot.answer.returnNothing", params: { toDestroy: plan.toDestroy.length }, payload };
+      return {
+        key: "copilot.answer.returnPlan",
+        params: {
+          vendors: plan.groups.length, batches, amount: (plan.taxablePaise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 }), toDestroy: plan.toDestroy.length,
+        },
         payload,
       };
     },

@@ -35,6 +35,15 @@ export type MovementInput = {
   occurredAt: Date;
   /** The downtime convention: `occurred_at` MAY precede this. Defaults to the database's now. */
   recordedAt?: Date;
+  /**
+   * PARITY P4 — THE RECALLED BATCH'S ONE WAY OUT. A frozen batch refuses every outbound movement
+   * (DD14) EXCEPT one that sets this AND is a `return` (to its supplier) or an `adjust` (destroyed
+   * under a write-off): "the safe direction for a recalled batch is back, never out", and back to
+   * the supplier or into the incinerator are the two ends of "back". Such a movement may take what
+   * is on hand less what is reserved, and the frozen quantity falls with it. On a batch that is not
+   * frozen the flag changes nothing — every ordinary check applies.
+   */
+  recallExit?: boolean;
 };
 
 /**
@@ -211,8 +220,10 @@ export async function postMovements(
     if (batch === undefined) throw new MaterialsError("unknown_batch", `batch ${m.batchId} not found`);
     // DD14 — a frozen batch refuses every OUTBOUND movement. Inbound is refused at the GRN gate
     // (DD8 rule 8) rather than here, so that a `return` of already-issued stock into quarantine
-    // stays possible: the safe direction for a recalled batch is "back", never "out".
-    if (batch.recallStatus === "frozen" && m.qtyDelta < 0) {
+    // stays possible: the safe direction for a recalled batch is "back", never "out". Parity P4's
+    // `recallExit` is the one exception, and only for a return to the supplier or a destruction.
+    const exit = m.recallExit === true && (m.reason === "return" || m.reason === "adjust");
+    if (batch.recallStatus === "frozen" && m.qtyDelta < 0 && !exit) {
       throw new MaterialsError(
         "batch_frozen",
         `batch ${batch.batchNo} is recall-frozen and no stock may leave any location (DD14)`,
@@ -224,7 +235,10 @@ export async function postMovements(
   for (const [key, delta] of net) {
     if (delta >= 0) continue;
     const current = balances.get(key);
-    const avail = current === undefined ? 0 : available(current);
+    // On a frozen batch the only outbound left by the check above is a recall exit, which may take
+    // the frozen quantity (never the reserved one).
+    const frozenBatch = batches.get(key.split(SEP)[1] ?? "")?.recallStatus === "frozen";
+    const avail = current === undefined ? 0 : frozenBatch ? current.qtyOnHand - current.qtyReserved : available(current);
     if (avail < -delta) {
       const [resourceId, batchId] = key.split(SEP);
       throw new MaterialsError(
@@ -308,8 +322,15 @@ export async function postMovements(
       qtyOnHand: 0, updatedAt: new Date(),
     }).onConflictDoNothing({ target: [stockBalances.resourceId, stockBalances.batchId] });
 
+    // A recall exit takes the frozen quantity down with the stock (never below zero), so the
+    // balance CHECK's `qty_frozen <= qty_on_hand` holds by construction.
+    const exiting = m.qtyDelta < 0 && batches.get(m.batchId)?.recallStatus === "frozen";
     const [written] = await tx.update(stockBalances)
-      .set({ qtyOnHand: sql`${stockBalances.qtyOnHand} + ${m.qtyDelta}`, updatedAt: new Date() })
+      .set({
+        qtyOnHand: sql`${stockBalances.qtyOnHand} + ${m.qtyDelta}`,
+        ...(exiting ? { qtyFrozen: sql`greatest(${stockBalances.qtyFrozen} + ${m.qtyDelta}, 0)` } : {}),
+        updatedAt: new Date(),
+      })
       .where(and(
         eq(stockBalances.resourceId, m.resourceId),
         eq(stockBalances.batchId, m.batchId),
@@ -752,6 +773,8 @@ export async function recallBatch(
   actor: Actor,
   batchId: string,
   reason: string,
+  /** PARITY P4 — the recall register's entry (`recalls.ts`), carried on the event when there is one. */
+  register?: { recallId: string; recallNo: string; source: "cdsco" | "manufacturer" | "internal"; reference: string | null },
 ): Promise<{ locations: { storeResourceId: string; qtyFrozen: number }[] }> {
   const batch = await requireBatch(tx, batchId);
 
@@ -775,7 +798,7 @@ export async function recallBatch(
 
   await appendEvent(tx, batchRecalled.make({
     payload: {
-      batchId, itemId: batch.itemId, batchNo: batch.batchNo, reason, locations,
+      batchId, itemId: batch.itemId, batchNo: batch.batchNo, reason, locations, ...(register ?? {}),
     },
     actor, correlationId: batchId,
   }));

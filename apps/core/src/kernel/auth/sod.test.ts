@@ -15,7 +15,7 @@ describe("sod", () => {
   afterAll(async () => { await teardown(); });
 
   it("seeds all ten S10 pairs idempotently", async () => {
-    expect(SOD_PAIR_SEED).toHaveLength(11); // pharmacy parity P3: + payment_authoriser_recorder
+    expect(SOD_PAIR_SEED).toHaveLength(12); // pharmacy parity P3: + payment_authoriser_recorder; P4: + return_approver_dispatcher
     await seedSodPairs(db); // second run must not throw
   });
 

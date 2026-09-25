@@ -1028,6 +1028,9 @@ split is what those pairs will hang on.
 | `materials.bills.accept_difference` | ✓ | | |
 | `materials.payments.prepare` | ✓ | | |
 | `materials.payments.record` | ✓ | | |
+| `materials.returns.manage` | ✓ | | ✓ |
+| `materials.returns.approve` | ✓ | | |
+| `materials.writeoffs.manage` | ✓ | | |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
@@ -1063,6 +1066,19 @@ never by whoever entered it. `materials.payments.prepare` and `materials.payment
 There is no `materials.payments.authorise`: the owner authorises through `materials_payment_run_approval`,
 the preparer can never authorise (`payout_preparer_payout_approver`), and whoever authorised a run
 cannot record it paid (`payment_authoriser_recorder`). All of these are defaults the owner may change.
+
+**Pharmacy parity P4 sends stock back to the supplier, and adds three `materials.*` strings.**
+`materials.returns.manage` goes to `materials_head` and `pharmacy`: they draft the return of expired,
+near-expiry, recalled or damaged stock (the agent drafts one per vendor from the expiry list) and
+dispatch an approved one, which moves the stock out and issues our debit note.
+`materials.returns.approve` is the head's alone, and never for a return the head drafted; whoever
+approved a return cannot dispatch it (`return_approver_dispatcher`). The vendor's credit note is
+recorded under `materials.bills.manage`, and a credit short of the debit note also needs
+`materials.bills.accept_difference`. `materials.writeoffs.manage` goes to `materials_head` and
+`pharmacy_incharge`: they raise the destruction write-off of stock that cannot go back, and the
+medical superintendent approves it through `materials_stock_adjustment`, the route a count's
+variance takes. `pharmacy_incharge` also gains `materials.recall.manage` to act on a drug alert. All
+of these are defaults the owner may change.
 
 **Two approval types, registered by `seed:materials` in the deploy path.**
 `materials_near_expiry_acceptance` (approver `materials_head`, 240-minute SLA) gates posting a GRN
@@ -1303,6 +1319,8 @@ behind `patients.confidential.read`.
 | `pharmacy.downtime.enter` | ✓ | | |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
+| `materials.writeoffs.manage` | | | ✓ |
+| `materials.recall.manage` | | | ✓ |
 
 Ten grants are held outside that table. **`pharmacy` gains the kernel's `orders.place`,
 `orders.read` and `orders.cancel`** because the claim at the counter PLACES the `medication` order

@@ -24,7 +24,7 @@ import {
   OT_DEFINITION_KIND_VALUES, OT_GATE_DEF_KEY, activeDefinitionRow,
 } from "../src/modules/ot";
 import {
-  PAYMENT_RUN_APPROVAL_TYPE, PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, availableQty, findStoreByCode, listItems,
+  PAYMENT_RUN_APPROVAL_TYPE, PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE, availableQty, findStoreByCode, listItems,
 } from "../src/modules/materials";
 import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
 import {
@@ -866,6 +866,36 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       check: async (db) => (await activeHoldersAtHospitalScope(db, "materials_head")).length > 0
         || (await activeHoldersAtHospitalScope(db, "pharmacy_incharge")).length > 0,
       fix: "§12: assign `materials_head` or `pharmacy_incharge` at /admin/users — they record a payment run paid (never the owner who authorised it)",
+    },
+    {
+      /**
+       * PARITY P4 — green when an ACTIVE person holds `materials_head`, who approves a return to a
+       * supplier (`materials.returns.approve`). Red until somebody is assigned: the agent's drafts wait
+       * for an approver who does not exist, and expired stock sits past its return window.
+       */
+      gate: "G4", code: "pharmacy_return_approver_held",
+      check: heldAtHospitalScope("materials_head"),
+      fix: "§13: assign `materials_head` at /admin/users — the head approves every return to a supplier (never one they drafted; the approver never dispatches it)",
+    },
+    {
+      /**
+       * PARITY P4 — green when `seed:materials` has registered `materials_stock_adjustment` (the
+       * deploy's act), the approval a destruction write-off files. Without it `raiseWriteOff` refuses
+       * `unknown_type` and expired stock cannot be destroyed through the book.
+       */
+      gate: "G2", code: "pharmacy_writeoff_approval_registered",
+      check: async (db) => (await withTx(db, (tx) => getApprovalType(tx, STOCK_ADJUSTMENT_APPROVAL_TYPE))) !== null,
+      fix: "§13: done by seed:materials on every deploy — run: pnpm --filter @hmis/core seed:materials",
+    },
+    {
+      /**
+       * PARITY P4 — green when an ACTIVE person holds `medical_superintendent`, who approves a
+       * destruction write-off (`materials_stock_adjustment`). Red until somebody is assigned: a
+       * raised write-off waits in a queue nobody can open and the expired stock stays on the shelf.
+       */
+      gate: "G4", code: "pharmacy_writeoff_approver_held",
+      check: heldAtHospitalScope("medical_superintendent"),
+      fix: "§13: assign `medical_superintendent` at /admin/users — the MS approves every destruction write-off in /approvals",
     },
   ],
 
