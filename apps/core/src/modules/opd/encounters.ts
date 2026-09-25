@@ -11,6 +11,8 @@ import { startInstance, transition, WorkflowError } from "../../kernel/workflow/
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
 import { encounterFeeStatuses } from "../billing";
 import type { EncounterFeeStatus } from "../billing";
+import { withIcd11 } from "../cds";
+import type { Icd11Ref } from "../cds";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
@@ -933,7 +935,7 @@ export async function getVisit(
   encounterId: string,
 ): Promise<{
   encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[];
-  prescriptions: PrescriptionRow[]; diagnoses: VisitDiagnosis[];
+  prescriptions: PrescriptionRow[]; diagnoses: VisitDiagnosisOnScreen[];
 } | null> {
   // PLAN 07a T1 FOLLOW-UP — this route was the FOURTH instance of the same hole and the first fix
   // missed it. It returns the encounter's diagnosis and ICD-10 code AND the visit's vitals AND its
@@ -959,9 +961,20 @@ export async function getVisit(
     would send back tags with no codes and the coded rows would be REPLACED by uncoded ones. Both
     ends would be individually correct and the record would lose the coding on an ordinary edit.
     Returning the rows is what closes that seam — and the same holds for the eye (2026-09-25).
+
+    ═══ AND ICD-11 BESIDE EACH CODE — ON THIS READ ONLY, NEVER ON THE ROW ═══
+
+    The consult shows WHO's ICD-11 code next to each coded tag (2026-09-25). It is looked up here,
+    at read time, from the latest loaded release of WHO's one-to-one table (`cds/icd11-lookup.ts`),
+    and it is null until someone loads one. It is attached to THIS read and not to `visitDiagnoses`:
+    the print and the prescription's issue path share that select, and neither has any use for it.
   */
-  return { encounter, queueEntries, vitals, prescriptions, diagnoses: await visitDiagnoses(db, encounterId) };
+  const diagnoses = await withIcd11(db, await visitDiagnoses(db, encounterId), (d) => d.icd10Code);
+  return { encounter, queueEntries, vitals, prescriptions, diagnoses };
 }
+
+/** A coded row as the consult screen reads it: the stored row, and WHO's ICD-11 answer beside it (or null). */
+export type VisitDiagnosisOnScreen = VisitDiagnosis & { icd11: Icd11Ref | null };
 
 /** One coded diagnosis row as the readers return it. `laterality` is set only on an eye code. */
 export type VisitDiagnosis = { text: string; icd10Code: string | null; laterality: Eye | null };

@@ -11,6 +11,7 @@ import { completeConsultation, saveConsultNote, startConsultation } from "./cons
 import { listCodedDiagnoses } from "./diagnosis-history";
 import { getPrescriptionPrint, issuePrescription } from "./prescriptions";
 import { OpdQueueController } from "./opd-queue.controller";
+import { seedIcd11Release } from "../../../test/helpers/icd11";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -236,8 +237,9 @@ describe("the diagnoses of one encounter", () => {
 
     /* Reopening the note: without the eye here, the next autosave would send it back blank. */
     const visit = await getVisit(db, dra.actor, id);
+    /* `icd11: null` — the visit read also carries the ICD-11 lookup (2026-09-25), and nothing is loaded here. */
     expect(visit!.diagnoses).toEqual([
-      { ...CATARACT, laterality: "od" }, { text: "Essential (primary) hypertension", icd10Code: "I10", laterality: null },
+      { ...CATARACT, laterality: "od", icd11: null }, { text: "Essential (primary) hypertension", icd10Code: "I10", laterality: null, icd11: null },
     ]);
     expect((await listCodedDiagnoses(db, patientId)).map((d) => [d.code, d.laterality])).toEqual([["H25.1", "od"], ["I10", null]]);
 
@@ -245,7 +247,10 @@ describe("the diagnoses of one encounter", () => {
       lines: [{ drug: "Moxifloxacin 0.5% eye drops", dose: "1 drop", route: "topical", frequency: "QID", durationDays: 7, instructions: null, noSubstitution: false, eye: "od" }],
     }, MON);
     const print = await getPrescriptionPrint(db, testCfg, dra.actor, issued.prescriptionId);
-    expect(print.encounter.diagnoses).toEqual(visit!.diagnoses);
+    /* The print carries the same rows and eyes; the ICD-11 lookup is the screen's alone. */
+    expect(print.encounter.diagnoses).toEqual([
+      { ...CATARACT, laterality: "od" }, { text: "Essential (primary) hypertension", icd10Code: "I10", laterality: null },
+    ]);
 
     /* The Condition's bodySite is the primary code's eye, coded in the SNOMED the eye lines already use. */
     const bundle = (await db.execute(sql`select document from opd_prescriptions where id = ${issued.prescriptionId}`)).rows[0]!["document"] as {
@@ -253,5 +258,32 @@ describe("the diagnoses of one encounter", () => {
     };
     const condition = bundle.entry.map((e) => e.resource).find((r) => r["resourceType"] === "Condition")!;
     expect(condition["bodySite"]).toEqual([{ coding: [{ system: "http://snomed.info/sct", code: "18944008", display: "Right eye structure" }], text: "RIGHT EYE" }]);
+  });
+  it("X14: the visit read shows ICD-11 beside each coded tag, and NOTHING ICD-11 reaches the stored row", async () => {
+    /*
+      ICD-10 stays the stored code. The ICD-11 answer is looked up from the latest loaded release at
+      READ time — so the row keeps exactly the columns it had, and a tag without a code, or with a
+      code WHO's table does not list, answers null. The map row is SYNTHETIC (`test/helpers/icd11.ts`).
+    */
+    await seedIcd11Release(db, "2026-01", [{ icd10Code: "X00.1", icd11Code: "ZZ00", icd11Title: "Synthetic title" }]);
+    const id = await inConsult();
+    await saveConsultNote(db, dra.actor, id, {
+      diagnoses: [
+        { text: "Synthetic diagnosis", icd10Code: "X00.1" },
+        { text: "Essential (primary) hypertension", icd10Code: "I10" },
+        { text: "?viral fever", icd10Code: null },
+      ],
+    }, MON);
+
+    const visit = await getVisit(db, dra.actor, id);
+    expect(visit!.diagnoses.map((d) => [d.text, d.icd10Code, d.icd11])).toEqual([
+      ["Synthetic diagnosis", "X00.1", { code: "ZZ00", title: "Synthetic title", uri: "https://synthetic.invalid/release/2026-01/mms/0", release: "2026-01" }],
+      ["Essential (primary) hypertension", "I10", null],
+      ["?viral fever", null, null],
+    ]);
+    const stored = await rowsOf(id);
+    expect(stored.map((r) => r.icd10Code)).toEqual(["X00.1", "I10", null]);
+    expect(Object.keys(stored[0]!).filter((k) => k.toLowerCase().includes("icd11"))).toEqual([]);
+    expect((await encounterOf(id)).icd10Code).toBe("X00.1");
   });
 });

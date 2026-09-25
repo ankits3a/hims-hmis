@@ -12,7 +12,18 @@ import { api } from "./api";
  * The single thing it may assert is `pregnant`, because the hospital records that nowhere and the
  * doctor is the only one who can answer it — and `undefined` is a third state that means UNASKED.
  */
-export type WireSyndromeHit = { key: string; name: string; icd10: string | null; score: number; matched: string[] };
+export type WireSyndromeHit = {
+  key: string; name: string; icd10: string | null; score: number; matched: string[];
+  /** WHO's ICD-11 answer for the chip's ICD-10 code, or null — see `WireIcd11`. */
+  icd11?: WireIcd11 | null;
+};
+
+/**
+ * WHO's ICD-11 answer for an ICD-10 code — code, title and URI verbatim from the latest loaded
+ * one-to-one mapping table, and `release`, the load's label (ours, not WHO's). Rendered by
+ * `components/icd11.tsx`; null until someone loads WHO's table by hand.
+ */
+export type WireIcd11 = { code: string; title: string; uri: string; release: string };
 
 export type WireDoseVerdict =
   | { state: "computed"; mg: number; ml: number | null; basis: string }

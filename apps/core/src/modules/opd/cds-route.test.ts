@@ -1,6 +1,7 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { icd10Codes } from "../../kernel/db/schema";
 import { generalityOf } from "../../../scripts/import-icd10-catalogue";
+import { seedIcd11Release } from "../../../test/helpers/icd11";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { addAllergy } from "../patients";
 import { withTx } from "../../kernel/db/client";
@@ -148,6 +149,38 @@ describe("GET /opd/cds — suggest, regimen and the diagnosis catalogue", () => 
     */
     await expect(ctl.completeDiagnosis({ q: "asthma", limit: "5000" })).rejects.toThrow();
     await expect(ctl.completeDiagnosis({ q: "asthma", limit: "25" })).resolves.toBeDefined();
+  });
+
+  /*
+    ═══ ICD-11 BESIDE THE ICD-10 CODE — READ AT REQUEST TIME, NULL UNTIL SOMEONE LOADS WHO'S TABLE ═══
+
+    Both of the consult's diagnosis suggesters carry it: the typeahead (`complete/diagnosis`) and the
+    co-pilot's syndrome chips (`suggest`). The map rows are SYNTHETIC (`test/helpers/icd11.ts`).
+  */
+  it("C9: the diagnosis typeahead carries icd11 when a release is loaded, and null when none is", async () => {
+    await db.insert(icd10Codes).values({
+      code: "X00.1", rawCode: "X001", orderNumber: 1, billable: true, shortDescription: "Synthetic diagnosis",
+      longDescription: "Synthetic diagnosis", chapterNo: 20, chapterName: "Chapter 20: …", generality: 0,
+    });
+    const before = await ctl.completeDiagnosis({ q: "synthetic" });
+    expect(before.items).toEqual([expect.objectContaining({ code: "X00.1", icd11: null })]);
+
+    await seedIcd11Release(db, "2026-01", [{ icd10Code: "X00.1", icd11Code: "ZZ00&ZZ9P1", icd11Title: "Synthetic title" }]);
+    const after = await ctl.completeDiagnosis({ q: "synthetic" });
+    expect(after.items[0]!.icd11).toEqual({
+      code: "ZZ00&ZZ9P1", title: "Synthetic title", uri: "https://synthetic.invalid/release/2026-01/mms/0", release: "2026-01",
+    });
+  });
+
+  it("C10: the co-pilot's syndrome chips carry icd11 for their ICD-10 code, null when unmapped", async () => {
+    const empty = await ctl.suggest({ complaint: "Fever + Sore Throat + Dry Cough" });
+    expect(empty.items[0]).toMatchObject({ key: "SYN_URI_01", icd10: "J06.9", icd11: null });
+
+    /* A synthetic target for the bundle's own ICD-10 code — not WHO's answer for it. */
+    await seedIcd11Release(db, "2026-01", [{ icd10Code: "J06.9", icd11Code: "ZZ07", icd11Title: "Synthetic title" }]);
+    const { items } = await ctl.suggest({ complaint: "Fever + Sore Throat + Dry Cough" });
+    expect(items[0]!.icd11).toMatchObject({ code: "ZZ07", title: "Synthetic title", release: "2026-01" });
+    expect(items.filter((h) => h.icd10 !== "J06.9").every((h) => h.icd11 === null)).toBe(true);
   });
 
   it("C6: an unknown encounter and an unknown syndrome both answer 404, never a 500", async () => {

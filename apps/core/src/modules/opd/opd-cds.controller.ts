@@ -4,8 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { getPatient, listAllergies } from "../patients";
-import { buildRegimen, cardsFor, matchesAKnownAllergen, rankSyndromes, searchAllergens, searchIcd10, toRxDraft } from "../cds";
-import type { AllergenHit, BuiltLine, BuiltRegimen, Card, Icd10Hit, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
+import { buildRegimen, cardsFor, matchesAKnownAllergen, rankSyndromes, searchAllergens, searchIcd10, toRxDraft, withIcd11 } from "../cds";
+import type { AllergenHit, BuiltLine, BuiltRegimen, Card, Icd10Hit, Icd11Ref, PatientFacts, RxDraftLine, SyndromeHit } from "../cds";
 import { getEncounter } from "./encounters";
 import { expandComplaintForMatching, recognisedComplaintConcepts, suggestComplaints } from "./complaints";
 import { doctorForUser } from "./masters";
@@ -83,14 +83,16 @@ export class OpdCdsController {
    */
   @RequirePermission("opd.consult", "hospital")
   @Get("suggest")
-  async suggest(@Query() query: unknown): Promise<{ items: SyndromeHit[] }> {
+  async suggest(@Query() query: unknown): Promise<{ items: (SyndromeHit & { icd11: Icd11Ref | null })[] }> {
     const q = parsed(suggestQuery, query);
     /*
       ENRICHED FIRST. `rankSyndromes` matches English keywords, so a Hindi or romanised complaint
       reaches a syndrome only through its concept's English forms. The matcher itself is unchanged
       and still a pure function over words — see `expandComplaintForMatching`.
     */
-    return { items: rankSyndromes(await expandComplaintForMatching(this.db, q.complaint)) };
+    const hits = rankSyndromes(await expandComplaintForMatching(this.db, q.complaint));
+    /* ICD-11 beside each chip's ICD-10 code, from WHO's table when one is loaded — `cds/icd11-lookup.ts`. */
+    return { items: await withIcd11(this.db, hits, (h) => h.icd10) };
   }
 
   /**
@@ -161,9 +163,14 @@ export class OpdCdsController {
    */
   @RequirePermission("opd.consult", "hospital")
   @Get("complete/diagnosis")
-  async completeDiagnosis(@Query() query: unknown): Promise<{ items: Icd10Hit[] }> {
+  async completeDiagnosis(@Query() query: unknown): Promise<{ items: (Icd10Hit & { icd11: Icd11Ref | null })[] }> {
     const q = parsed(diagnosisQuery, query);
-    return { items: await searchIcd10(this.db, q.q, q.limit ?? 10) };
+    /*
+      THE ICD-11 CODE RIDES BESIDE, AND IS NEVER WHAT A TAP SAVES. Each row carries WHO's ICD-11
+      answer for its ICD-10 code from the latest loaded release, or null — which is every row until
+      someone loads WHO's table by hand (`scripts/icd11-load.ts`). One query for the page of rows.
+    */
+    return { items: await withIcd11(this.db, await searchIcd10(this.db, q.q, q.limit ?? 10), (h) => h.code) };
   }
 
   /**
