@@ -81,6 +81,8 @@ export type FhirDocumentInput = {
   issuedAt: Date;
   diagnosis: string | null;
   icd10Code: string | null;
+  /** The eye of the primary coded diagnosis (`icd10Code`'s row), when it is an eye code. */
+  laterality?: Eye | null;
   lines: RxLine[];
 };
 
@@ -178,7 +180,11 @@ export function toFhirBundle(input: FhirDocumentInput): FhirBundle {
     const code: Record<string, unknown> = {};
     if (diagnosis !== null) code.text = diagnosis;
     if (icd10Code !== null) code.coding = [{ system: ICD10_SYSTEM, code: icd10Code }];
-    entry.push({ resource: { resourceType: "Condition", subject, encounter, code } });
+    const condition: Record<string, unknown> = { resourceType: "Condition", subject, encounter, code };
+    /* ICD-10 has no laterality; FHIR's place for the eye is `bodySite`, coded as the eye lines' `site` is. */
+    const eye = icd10Code === null ? null : input.laterality ?? null;
+    if (eye !== null) condition.bodySite = [siteOf(eye)];
+    entry.push({ resource: condition });
   }
 
   for (const line of input.lines) {

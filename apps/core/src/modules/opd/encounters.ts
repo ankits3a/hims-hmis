@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, notInArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, Eye } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
@@ -932,7 +932,7 @@ export async function getVisit(
   encounterId: string,
 ): Promise<{
   encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[];
-  prescriptions: PrescriptionRow[]; diagnoses: { text: string; icd10Code: string | null }[];
+  prescriptions: PrescriptionRow[]; diagnoses: VisitDiagnosis[];
 } | null> {
   // PLAN 07a T1 FOLLOW-UP — this route was the FOURTH instance of the same hole and the first fix
   // missed it. It returns the encounter's diagnosis and ICD-10 code AND the visit's vitals AND its
@@ -957,14 +957,25 @@ export async function getVisit(
     that loaded only that string, then saved the note again after the doctor changed one word,
     would send back tags with no codes and the coded rows would be REPLACED by uncoded ones. Both
     ends would be individually correct and the record would lose the coding on an ordinary edit.
-    Returning the rows is what closes that seam.
+    Returning the rows is what closes that seam — and the same holds for the eye (2026-09-25).
   */
-  const diagnoses = (await db
-    .select({ text: opdEncounterDiagnoses.text, icd10Code: opdEncounterDiagnoses.icd10Code })
+  return { encounter, queueEntries, vitals, prescriptions, diagnoses: await visitDiagnoses(db, encounterId) };
+}
+
+/** One coded diagnosis row as the readers return it. `laterality` is set only on an eye code. */
+export type VisitDiagnosis = { text: string; icd10Code: string | null; laterality: Eye | null };
+
+/**
+ * The encounter's diagnosis rows in the doctor's order — the ONE select the visit and the print
+ * share, so a column added here (the eye, 2026-09-25) reaches both rather than one of them.
+ */
+export async function visitDiagnoses(db: Db | Tx, encounterId: string): Promise<VisitDiagnosis[]> {
+  const rows = await db
+    .select({ text: opdEncounterDiagnoses.text, icd10Code: opdEncounterDiagnoses.icd10Code, laterality: opdEncounterDiagnoses.laterality })
     .from(opdEncounterDiagnoses)
     .where(eq(opdEncounterDiagnoses.encounterId, encounterId))
-    .orderBy(asc(opdEncounterDiagnoses.seq)));
-  return { encounter, queueEntries, vitals, prescriptions, diagnoses };
+    .orderBy(asc(opdEncounterDiagnoses.seq));
+  return rows.map((r) => ({ ...r, laterality: r.laterality as Eye | null }));
 }
 
 /**

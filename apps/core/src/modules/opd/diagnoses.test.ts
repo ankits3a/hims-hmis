@@ -1,13 +1,16 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
-  activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters,
+  activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg,
 } from "../../../test/helpers/opd";
 import { opdEncounterDiagnoses, opdEncounters, registrationConfig } from "../../kernel/db/schema";
-import { openVisit } from "./encounters";
+import { getVisit, openVisit } from "./encounters";
 import { recordVitals } from "./vitals";
 import { callNext } from "./queue";
 import { completeConsultation, saveConsultNote, startConsultation } from "./consultation";
+import { listCodedDiagnoses } from "./diagnosis-history";
+import { getPrescriptionPrint, issuePrescription } from "./prescriptions";
+import { OpdQueueController } from "./opd-queue.controller";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -181,5 +184,74 @@ describe("the diagnoses of one encounter", () => {
     expect(enc.status).toBe("completed");
     // `consultationCompleted` carries icd10Code off this very column, so the event cannot disagree.
     expect(enc.icd10Code).toBe("J45.909");
+  });
+
+  /*
+    ═══ WHICH EYE (board "Ophthal", 2026-09-23: "each eye-code asks which eye") ═══
+
+    ICD-10 has no laterality, so the eye is stored BESIDE the code — and only where the code is an
+    eye code (`isEyeCode`, `@hmis/contracts`). An eye on an ear or a chest code means nothing, so the
+    server drops it whatever the client sent. An eye code with no eye is legal: no gate is ruled.
+  */
+  const CATARACT = { text: "Senile nuclear cataract", icd10Code: "H25.1" };
+  const DR = { text: "Type 2 diabetes mellitus with ophthalmic complications", icd10Code: "E11.3" };
+
+  it("X10: an eye code keeps its eye; the same eye on a non-eye code is stored as null", async () => {
+    const id = await inConsult();
+    await saveConsultNote(db, dra.actor, id, {
+      diagnoses: [
+        { ...CATARACT, laterality: "od" },
+        { ...DR, laterality: "os" },
+        { text: "Essential (primary) hypertension", icd10Code: "I10", laterality: "od" },
+        { text: "Otitis externa", icd10Code: "H60.9", laterality: "ou" },
+        { text: "red eye, typed", icd10Code: null, laterality: "ou" },
+      ],
+    }, MON);
+    expect((await rowsOf(id)).map((r) => [r.icd10Code, r.laterality])).toEqual([
+      ["H25.1", "od"], ["E11.3", "os"], ["I10", null], ["H60.9", null], [null, null],
+    ]);
+  });
+
+  it("X11: a note without an eye leaves it null — and the old shape still writes rows", async () => {
+    const id = await inConsult();
+    await saveConsultNote(db, dra.actor, id, { diagnoses: [CATARACT] }, MON);
+    expect((await rowsOf(id)).map((r) => r.laterality)).toEqual([null]);
+    await saveConsultNote(db, dra.actor, id, { diagnosis: "Cataract" }, MON);
+    expect((await rowsOf(id)).map((r) => [r.text, r.laterality])).toEqual([["Cataract", null]]);
+  });
+
+  it("X12: the ROUTE keeps the field — zod strips an unknown key, so the controller is where it could vanish", async () => {
+    const id = await inConsult();
+    const ctl = new OpdQueueController(db, testCfg as never);
+    await ctl.note(dra.actor, id, { diagnoses: [{ ...CATARACT, laterality: "ou" }] });
+    expect((await rowsOf(id)).map((r) => r.laterality)).toEqual(["ou"]);
+    await expect(ctl.note(dra.actor, id, { diagnoses: [{ ...CATARACT, laterality: "left" }] })).rejects.toThrow();
+  });
+
+  it("X13: every reader of the coded rows returns the eye — the visit, the coded history, the print and the e-Rx", async () => {
+    const id = await inConsult();
+    await saveConsultNote(db, dra.actor, id, {
+      diagnoses: [{ ...CATARACT, laterality: "od" }, { text: "Essential (primary) hypertension", icd10Code: "I10" }],
+    }, MON);
+
+    /* Reopening the note: without the eye here, the next autosave would send it back blank. */
+    const visit = await getVisit(db, dra.actor, id);
+    expect(visit!.diagnoses).toEqual([
+      { ...CATARACT, laterality: "od" }, { text: "Essential (primary) hypertension", icd10Code: "I10", laterality: null },
+    ]);
+    expect((await listCodedDiagnoses(db, patientId)).map((d) => [d.code, d.laterality])).toEqual([["H25.1", "od"], ["I10", null]]);
+
+    const issued = await issuePrescription(db, dra.actor, testCfg, id, {
+      lines: [{ drug: "Moxifloxacin 0.5% eye drops", dose: "1 drop", route: "topical", frequency: "QID", durationDays: 7, instructions: null, noSubstitution: false, eye: "od" }],
+    }, MON);
+    const print = await getPrescriptionPrint(db, testCfg, dra.actor, issued.prescriptionId);
+    expect(print.encounter.diagnoses).toEqual(visit!.diagnoses);
+
+    /* The Condition's bodySite is the primary code's eye, coded in the SNOMED the eye lines already use. */
+    const bundle = (await db.execute(sql`select document from opd_prescriptions where id = ${issued.prescriptionId}`)).rows[0]!["document"] as {
+      entry: { resource: Record<string, unknown> }[];
+    };
+    const condition = bundle.entry.map((e) => e.resource).find((r) => r["resourceType"] === "Condition")!;
+    expect(condition["bodySite"]).toEqual([{ coding: [{ system: "http://snomed.info/sct", code: "18944008", display: "Right eye structure" }], text: "RIGHT EYE" }]);
   });
 });

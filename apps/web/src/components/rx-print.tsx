@@ -49,6 +49,8 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
   const p = data.patient;
   const name = p.restricted ? (p.alias ?? "—") : (p.name ?? p.alias ?? "—");
   const vitals = vitalsLine(data.vitals);
+  const rows = data.encounter.diagnoses ?? [];
+  const eyedDiagnoses = rows.some((d) => d.laterality !== null) ? rows : null;
   return (
     <div className="space-y-3">
       <div className="print-doc w-[560px] space-y-2 rounded-lg border p-4">
@@ -85,8 +87,14 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
 
         {data.encounter.diagnosis !== null && (
           <p data-testid="rx-diagnosis" className="text-sm">
-            {t("rx.diagnosis")}: {data.encounter.diagnosis}
-            {data.encounter.icd10Code !== null ? ` (${data.encounter.icd10Code})` : ""}
+            {/*
+              THE EYE PRINTS BESIDE ITS OWN CODE (board "Ophthal"). The display string carries every
+              tag but only the PRIMARY code, so it cannot say which tag is which eye — a visit that
+              names an eye prints tag by tag from the coded rows; every other visit prints as before.
+            */}
+            {t("rx.diagnosis")}: {eyedDiagnoses !== null
+              ? eyedDiagnoses.map((d) => `${d.text}${d.icd10Code === null ? "" : ` (${d.icd10Code}${d.laterality === null ? "" : `, ${t(`rx.eye.${d.laterality}`)}`})`}`).join(" · ")
+              : <>{data.encounter.diagnosis}{data.encounter.icd10Code !== null ? ` (${data.encounter.icd10Code})` : ""}</>}
           </p>
         )}
         {vitals !== null && (
