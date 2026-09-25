@@ -63,7 +63,10 @@ export type OpdErrorCode =
   | "section_not_in_profile" | "invalid_section_body"
   // Board "Ophthal" — the glasses print refuses a prescription with no power in it: a sheet of blank
   // lens cells handed to an optician is not a prescription. 400 through `opdStatus`'s default.
-  | "glasses_rx_empty";
+  | "glasses_rx_empty"
+  // The consult layout (layout.ts): a body the one validator refuses, and a save that lost a race
+  // for its version number (409 by the `_state_conflict` rule — re-read, then save again).
+  | "invalid_layout" | "layout_state_conflict";
 
 export class OpdError extends Error {
   constructor(

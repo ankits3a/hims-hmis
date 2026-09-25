@@ -4490,6 +4490,78 @@ describe("Consult v2", () => {
     expect(screen.queryByRole("tab", { name: "Eye" })).toBeNull();
   });
 
+  // Board `Profiles` — the tabs and the work strip follow the visit's resolved layout (layout.ts).
+  it("VL1: the tabs follow the visit's layout — its order, and no tab for a section it leaves off", async () => {
+    mockRoutes(routes({ "GET /api/opd/visits/enc-1/layout": { status: 200, body: {
+      sections: ["rx", "vitals", "complaints", "exam", "dx", "inv", "advice"].map((key) => ({ key, mandatory: ["rx", "vitals", "complaints", "exam", "dx"].includes(key) })),
+      defaultVersion: 2, overlayVersion: 1,
+    } } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await waitFor(() => { expect(screen.queryByRole("tab", { name: "Notes" })).toBeNull(); });
+    expect(within(screen.getByRole("tablist", { name: "Consultation sections" })).getAllByRole("tab").map((b) => b.textContent)).toEqual([
+      "Summary", "Prescription", "Vitals", "Complaints", "Examination", "Diagnosis", "Lab & radiology", "Advice & follow-up",
+    ]);
+    const strip = screen.getByTestId("work-strip");
+    expect(within(strip).queryByTestId("work-notes")).toBeNull();
+    expect(within(strip).queryByTestId("work-treat")).toBeNull();
+    expect(within(strip).getAllByRole("button").map((b) => b.getAttribute("data-testid"))).toEqual([
+      "work-rx", "work-complaints", "work-exam", "work-dx", "work-inv", "work-advice",
+    ]);
+  });
+
+  it("VL4: while the layout read is in flight no tab is drawn, so the order never jumps under a finger", async () => {
+    const body = {
+      sections: ["rx", "vitals", "complaints", "exam", "dx"].map((key) => ({ key, mandatory: true })),
+      defaultVersion: 1, overlayVersion: null,
+    };
+    mockRoutes(routes());
+    const inner = vi.mocked(fetch).getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).split("?")[0]!.endsWith("/api/opd/visits/enc-1/layout")) {
+        await gate;
+        return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return inner(input, init);
+    }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    expect(await screen.findByTestId("tabs-waiting")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Complaints" })).toBeNull();
+    release();
+    await waitFor(() => { expect(screen.queryByTestId("tabs-waiting")).toBeNull(); });
+    expect(within(screen.getByRole("tablist", { name: "Consultation sections" })).getAllByRole("tab").map((b) => b.textContent)).toEqual([
+      "Summary", "Prescription", "Vitals", "Complaints", "Examination", "Diagnosis",
+    ]);
+  });
+
+  it("VL2: a failed layout read keeps every tab in today's order", async () => {
+    mockRoutes(routes({ "GET /api/opd/visits/enc-1/layout": { status: 500, body: { message: "boom" } } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await waitFor(() => { expect(callsTo("GET", "/api/opd/visits/enc-1/layout").length).toBeGreaterThan(0); });
+    expect(within(screen.getByRole("tablist", { name: "Consultation sections" })).getAllByRole("tab").map((b) => b.textContent)).toEqual([
+      "Summary", "Vitals", "Complaints", "Examination", "Diagnosis", "Lab & radiology", "Prescription", "Treatment", "Advice & follow-up", "Notes",
+    ]);
+  });
+
+  it("VL3: My layout opens from the header's ⋯ menu and says it applies to the next visits", async () => {
+    mockRoutes(routes({ "GET /api/opd/me/layout": { status: 200, body: {
+      departmentId: "dep-1", departmentName: "General Medicine", version: null, defaultVersion: null,
+      sections: [{ key: "rx", mandatory: true, hidden: false }, { key: "notes", mandatory: false, hidden: false }], adminHidden: [], audit: [],
+    } } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByTestId("header-more"));
+    await user.click(within(screen.getByTestId("header-more-menu")).getByTestId("more-my-layout"));
+    const dialog = await screen.findByTestId("my-layout-dialog");
+    expect(await within(dialog).findByTestId("my-layout-hide-notes")).toBeInTheDocument();
+    expect(within(dialog).queryByTestId("my-layout-hide-rx")).toBeNull();
+    expect(dialog).toHaveTextContent("Changes apply to your next visits");
+  });
+
   it("V11: the voice scribe is a small mic in the complaint's header row, and Save draft and Refer are also in the header's ⋯ menu", async () => {
     mockRoutes(routes());
     const user = userEvent.setup();
