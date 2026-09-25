@@ -101,6 +101,14 @@ export const authSessions = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     secondFactorAt: timestamp("second_factor_at", { withTimezone: true }),
+    /**
+     * WASA M-05 — where the session was opened from: the client address the ONE trusted proxy hop
+     * reported (`req.ip`, see `src/http-hardening.ts`) and the browser's User-Agent, bounded at
+     * 512 characters. NULLABLE: every session before this column has neither, and a session opened
+     * outside HTTP (a test, a script) has no client. Written by `auth-audit.ts` at the route.
+     */
+    clientIp: text("client_ip"),
+    userAgent: text("user_agent"),
   },
   (t) => [
     uniqueIndex("auth_sessions_token_ux").on(t.tokenHash),

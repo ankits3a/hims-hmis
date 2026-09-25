@@ -103,6 +103,14 @@ const configSchema = z.object({
    * turn ON, which is the only direction that fails safe.
    */
   HMIS_ENVIRONMENT_LABEL: z.string().trim().max(24).default(""),
+  /**
+   * WASA M-05 — which socket peers may tell the API the client's address (`X-Forwarded-For`), as
+   * comma-separated CIDRs. EMPTY BY DEFAULT, meaning `DEFAULT_TRUSTED_PROXY_CIDRS` in
+   * `src/http-hardening.ts` (loopback + Docker's bridge pools) — the argument for those ranges is
+   * there. Set it to the compose network's exact subnet to narrow it. Only ONE hop is ever trusted,
+   * whatever this says. A value that is not a CIDR list stops the API at boot (`compileCidrs`).
+   */
+  TRUSTED_PROXY_CIDRS: z.string().trim().default(""),
   /*
    * FD-8 — the triage advisor's gateway. ALL OPTIONAL and unset by default: with no key the desk
    * routes on its own keyword table and never makes a network call, which is the shipped behaviour
@@ -393,6 +401,8 @@ export type AppConfig = {
   webPushVapid: { publicKey: string; privateKey: string; subject: string } | null;
   /** 11i T3 — "UAT", "TRAINING", …; `null` on production, where the key is never set. */
   environmentLabel: string | null;
+  /** WASA M-05 — `TRUSTED_PROXY_CIDRS` split; `null` ⇒ `DEFAULT_TRUSTED_PROXY_CIDRS`. */
+  trustedProxyCidrs: string[] | null;
   /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
   triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   /** 2026-09-19 — triage's FIRST model, a classifier (TypeSafe). Null key ⇒ skipped, `triage` above answers. */
@@ -532,6 +542,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerStaleAfterMs: parsed.WORKER_STALE_AFTER_MS,
     documentStorePath: parsed.DOCUMENT_STORE_PATH,
     environmentLabel: parsed.HMIS_ENVIRONMENT_LABEL === "" ? null : parsed.HMIS_ENVIRONMENT_LABEL,
+    trustedProxyCidrs: parsed.TRUSTED_PROXY_CIDRS === ""
+      ? null
+      : parsed.TRUSTED_PROXY_CIDRS.split(",").map((c) => c.trim()).filter((c) => c !== ""),
     workerDispatchIntervalMs: parsed.WORKER_DISPATCH_INTERVAL_MS,
     workerTimersIntervalMs: parsed.WORKER_TIMERS_INTERVAL_MS,
     workerTempRolesIntervalMs: parsed.WORKER_TEMP_ROLES_INTERVAL_MS,
