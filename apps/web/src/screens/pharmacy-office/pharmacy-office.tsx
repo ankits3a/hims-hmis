@@ -12,6 +12,7 @@ import {
 } from "../../lib/purchase-api";
 import { Button } from "@/components/ui/button";
 import { PayView } from "./pay";
+import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
 import type { WireOfficeToday, WirePo, WirePoSummary } from "../../lib/purchase-api";
 
@@ -38,14 +39,22 @@ const STATUS_TONE: Record<string, string> = {
 export function PharmacyOffice(): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
-  // PARITY P3 — the office's two halves: buying (P2) and paying. `?view=pay` opens on the second —
-  // the copilot's payment-run card links there.
+  // PARITY P3 — the office's halves: buying (P2) and paying. `?view=pay` opens on the second — the
+  // copilot's payment-run card links there. PARITY P4 adds the third, returning: `?view=returns`,
+  // where the copilot's return card links.
   const canPay = can("materials.bills.manage");
-  const [view, setView] = useState<"buy" | "pay">(() => (new URLSearchParams(window.location.search).get("view") === "pay" ? "pay" : "buy"));
+  const canReturn = can("materials.returns.manage") || can("materials.writeoffs.manage") || can("materials.recall.manage");
+  const [view, setView] = useState<"buy" | "pay" | "returns">(() => {
+    const v = new URLSearchParams(window.location.search).get("view");
+    return v === "pay" || v === "returns" ? v : "buy";
+  });
   const paying = view === "pay" && canPay;
-  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: !paying });
+  const returning = view === "returns" && canReturn;
+  const shown: "buy" | "pay" | "returns" = paying ? "pay" : returning ? "returns" : "buy";
+  const views = (["buy", ...(canPay ? ["pay"] : []), ...(canReturn ? ["returns"] : [])] as ("buy" | "pay" | "returns")[]);
+  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: shown === "buy" });
   // PARITY P3 — the shell's legend shows the office's keys, not the front desk's.
-  useScreenKeys([t(paying ? "pharmacyOffice.keys.pay" : "pharmacyOffice.keys.buy")]);
+  useScreenKeys([t(`pharmacyOffice.keys.${shown}`)]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -77,17 +86,17 @@ export function PharmacyOffice(): React.ReactElement {
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-xl font-semibold">{t("pharmacyOffice.title")}</h1>
         <span className="text-sm text-muted-foreground">{t("pharmacyOffice.subtitle")}</span>
-        {canPay && (
+        {views.length > 1 && (
           <div className="ml-auto flex gap-1" role="tablist" aria-label={t("pharmacyOffice.views")}>
-            {(["buy", "pay"] as const).map((v) => (
-              <Button key={v} type="button" role="tab" aria-selected={(v === "pay") === paying} data-testid={`office-view-${v}`} variant={(v === "pay") === paying ? "default" : "outline"} onClick={() => setView(v)}>
+            {views.map((v) => (
+              <Button key={v} type="button" role="tab" aria-selected={v === shown} data-testid={`office-view-${v}`} variant={v === shown ? "default" : "outline"} onClick={() => setView(v)}>
                 {t(`pharmacyOffice.view.${v}`)}
               </Button>
             ))}
           </div>
         )}
       </div>
-      {paying ? <PayView /> : (<>
+      {shown === "pay" ? <PayView /> : shown === "returns" ? <ReturnsView /> : (<>
       {today.error !== null && <p role="alert" className="text-sm text-red-600">{materialsErrorText(today.error, t)}</p>}
       {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
 

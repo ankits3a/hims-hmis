@@ -4,12 +4,15 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { SodViolationError } from "../../kernel/auth/sod";
 import { httpError, idSchema, parsed, toHttp } from "./pharmacy-http";
-import { officeBillDraft, officePay, officeToday, purchaseOrderDocument } from "./office";
+import {
+  debitNoteDocument, officeBillDraft, officeDraftReturns, officePay, officeRecall, officeReturnFromRecall, officeReturns, officeToday,
+  purchaseOrderDocument, writeOffManifestDocument,
+} from "./office";
 import { draftPurchaseOrders, planPurchaseDrafts } from "./purchase-drafts";
-import type { OfficePay, OfficeToday } from "./office";
+import type { OfficePay, OfficeRecall, OfficeReturns, OfficeToday } from "./office";
 import type { BillDraft } from "../materials";
 import type { PurchasePlan } from "./purchase-drafts";
-import type { PoView } from "../materials";
+import type { PoView, ReturnView } from "../materials";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { RenderedDocument } from "../../kernel/printing/render";
@@ -25,6 +28,8 @@ import type { RenderedDocument } from "../../kernel/printing/render";
 const assignBody = z.object({
   assign: z.array(z.object({ itemId: idSchema, vendorId: idSchema, ratePaise: z.number().int().nonnegative().optional() })).max(200).optional(),
 });
+
+const draftReturnsBody = z.object({ vendorIds: z.array(idSchema).max(200).optional() });
 
 function officeHttp(e: unknown): never {
   if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation", { pairKey: e.pairKey });
@@ -75,6 +80,63 @@ export class PharmacyOfficeController {
   async pay(@CurrentActor() actor: Actor): Promise<OfficePay> {
     try {
       return await officePay(this.db, actor, new Date());
+    } catch (e) { officeHttp(e); }
+  }
+
+  // ═══ PARITY P4 — the returns side: expiry, returns to the supplier, write-offs, recalls ═══
+
+  /** Expiring 30 / 60 / 90, the agent's return plan, returns in flight, write-offs, open recalls. */
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Get("returns")
+  async returns(@CurrentActor() actor: Actor): Promise<OfficeReturns> {
+    try {
+      return await officeReturns(this.db, actor, new Date());
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** The person's press of "make the drafts": one DRAFT return per vendor (the ones ticked, or all). */
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Post("returns/draft")
+  async draftReturns(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ drafts: ReturnView[] }> {
+    const b = parsed(draftReturnsBody, body ?? {});
+    try {
+      return { drafts: await officeDraftReturns(this.db, actor, new Date(), b.vendorIds) };
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** Our debit note (a return note before dispatch), A4 for the browser to print. */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("returns/:id/debit-note")
+  async debitNote(@CurrentActor() actor: Actor, @Param("id") returnId: string): Promise<RenderedDocument> {
+    try {
+      return await debitNoteDocument(this.db, actor, returnId);
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** The BMW destruction manifest (a condemnation list before it is posted), A4. */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("write-offs/:id/manifest")
+  async manifest(@CurrentActor() actor: Actor, @Param("id") writeOffId: string): Promise<RenderedDocument> {
+    try {
+      return await writeOffManifestDocument(this.db, actor, writeOffId);
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** A recall with its read-only callback list — names and phone numbers, logged as a PHI read. */
+  @RequirePermission("materials.recall.manage", "hospital")
+  @Get("recalls/:id")
+  async recall(@CurrentActor() actor: Actor, @Param("id") recallId: string): Promise<OfficeRecall> {
+    try {
+      return await officeRecall(this.db, actor, recallId);
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** One tap: the recalled batch into a draft return to its supplier. */
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Post("recalls/:id/return")
+  async recallReturn(@CurrentActor() actor: Actor, @Param("id") recallId: string): Promise<{ return: ReturnView }> {
+    try {
+      return { return: await officeReturnFromRecall(this.db, actor, recallId) };
     } catch (e) { officeHttp(e); }
   }
 

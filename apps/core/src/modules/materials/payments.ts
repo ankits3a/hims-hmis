@@ -17,7 +17,7 @@ import {
   paymentRunUpdated, supplierPaymentRecorded,
 } from "./events";
 import { istDay } from "./grn";
-import { addDays, billsDueBy, daysBetween, requirePayablesReader, reservedByBill } from "./supplier-bills";
+import { addDays, billsDueBy, daysBetween, requirePayablesReader, reservedByBill, vendorCredits } from "./supplier-bills";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -43,7 +43,11 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   `first_payment_allowed_at` must have passed (bank-change cooling-off, O-6); cash to one vendor in
  *   one day may not pass the s.40A(3) limit; no bill may be paid past its total.
  * - **Part payments.** A run line may pay less than the bill owes; the bill becomes `part_paid`.
- * - **Credit to offset** (`credit_paise`) is reserved for P4's credit notes: always 0 today.
+ * - **Credit to offset** (parity P4): a vendor's accepted credit notes (`vendorCredits`) are set
+ *   against its bills on the run, oldest due first — `credit_paise` on the line, `Payable = Total −
+ *   Credit`. A bill the credit covers whole rides on the run with nothing to pay; a vendor whose credit
+ *   covers everything due is left off (listed apart) — no voucher is written for ₹0. What a run holds
+ *   is reserved; recording the vendor's payment applies it; cancelling the run releases it.
  */
 
 const PREPARE = "materials.payments.prepare";
@@ -54,7 +58,8 @@ const OPEN_RUN: readonly RunStatus[] = ["draft", "pending_authorisation", "autho
 export type PaymentMode = "neft" | "rtgs" | "upi" | "cheque" | "cash";
 export const PAYMENT_MODES: readonly PaymentMode[] = ["neft", "rtgs", "upi", "cheque", "cash"];
 
-export type RunLineInput = { billId: string; payPaise: number };
+/** One bill on a run: what is paid now and (parity P4) the vendor credit set against it. */
+export type RunLineInput = { billId: string; payPaise: number; creditPaise?: number };
 
 export type RunLineView = {
   id: string; billId: string; billNo: string; vendorBillNo: string; billDate: string; dueDate: string | null; msme: boolean;
@@ -75,6 +80,8 @@ export type RunVendorView = {
   coolingOffUntil: string | null;
   payPaise: number;
   lines: RunLineView[];
+  /** PARITY P4 — the vendor credit set against this vendor's bills on the run. */
+  creditPaise: number;
   payment: { paymentId: string; paymentNo: string; mode: PaymentMode; reference: string | null; paidOn: string; amountPaise: number; recordedBy: string } | null;
 };
 
@@ -101,15 +108,33 @@ async function requirePerm(db: Db | Tx, actor: Actor, perm: string, what: string
 
 export type PlanBill = {
   billId: string; billNo: string; vendorBillNo: string; billDate: string; dueDate: string; totalPaise: number; paidPaise: number;
-  reservedPaise: number; payablePaise: number; overdueDays: number;
+  reservedPaise: number;
+  /** What the bill still owes, less what open runs already hold. */
+  owedPaise: number;
+  /** PARITY P4 — the vendor's available credit set against this bill (oldest due first). */
+  creditPaise: number;
+  /** What the run pays on it now: `owed − credit`. */
+  payablePaise: number;
+  overdueDays: number;
 };
-export type PlanGroup = { vendorId: string; vendorCode: string; vendorName: string; msme: boolean; totalPaise: number; bills: PlanBill[] };
+export type PlanGroup = {
+  vendorId: string; vendorCode: string; vendorName: string; msme: boolean;
+  /** Σ payable — the money this vendor is paid. */
+  totalPaise: number;
+  /** Σ credit set off. */
+  creditPaise: number;
+  bills: PlanBill[];
+};
 export type PaymentPlan = {
   asOf: string; until: string;
   groups: PlanGroup[];
   /** Vendors with bills due whose bank-change cooling-off has not ended — left out of the draft. */
   blocked: (PlanGroup & { coolingOffUntil: string })[];
+  /** PARITY P4 — vendors whose available credit covers everything due: nothing to pay, left out. */
+  coveredByCredit: PlanGroup[];
   totalPaise: number;
+  /** PARITY P4 — the credit the draft sets off, all vendors. */
+  creditPaise: number;
 };
 
 /**
@@ -124,60 +149,103 @@ export async function planPaymentRun(db: Db, now: Date = new Date()): Promise<Pa
   const reserved = await reservedByBill(db, due.map((b) => b.id));
   const vendorIds = [...new Set(due.map((b) => b.vendorId))];
   const vs = vendorIds.length === 0 ? [] : await db.select().from(vendors).where(inArray(vendors.id, vendorIds));
-  const groups = new Map<string, PlanGroup & { coolingOffUntil: string | null }>();
+  const credit = await vendorCredits(db, vendorIds);
+  const groups = new Map<string, PlanGroup & { coolingOffUntil: string | null; creditLeft: number }>();
   for (const b of due) {
-    const payable = b.totalPaise - b.paidPaise - (reserved.get(b.id) ?? 0);
-    if (payable <= 0) continue;
+    const owed = b.totalPaise - b.paidPaise - (reserved.get(b.id) ?? 0);
+    if (owed <= 0) continue;
     const v = vs.find((x) => x.id === b.vendorId)!;
+    const coolingOffUntil = v.firstPaymentAllowedAt !== null && v.firstPaymentAllowedAt > now ? v.firstPaymentAllowedAt.toISOString() : null;
     const g = groups.get(b.vendorId) ?? {
-      vendorId: v.id, vendorCode: v.code, vendorName: v.tradeName ?? v.legalName, msme: b.msme, totalPaise: 0, bills: [],
-      coolingOffUntil: v.firstPaymentAllowedAt !== null && v.firstPaymentAllowedAt > now ? v.firstPaymentAllowedAt.toISOString() : null,
+      vendorId: v.id, vendorCode: v.code, vendorName: v.tradeName ?? v.legalName, msme: b.msme, totalPaise: 0, creditPaise: 0, bills: [],
+      coolingOffUntil,
+      // A vendor in cooling-off is not paid now, so none of its credit is spent on it either.
+      creditLeft: coolingOffUntil === null ? Math.max(0, credit.get(v.id)?.availablePaise ?? 0) : 0,
     };
     g.msme = g.msme || b.msme;
+    // `billsDueBy` orders by due date: the oldest bill takes the credit first.
+    const setOff = Math.min(g.creditLeft, owed);
+    g.creditLeft -= setOff;
     g.bills.push({
       billId: b.id, billNo: b.billNo, vendorBillNo: b.vendorBillNo, billDate: b.billDate, dueDate: b.dueDate!, totalPaise: b.totalPaise,
-      paidPaise: b.paidPaise, reservedPaise: reserved.get(b.id) ?? 0, payablePaise: payable, overdueDays: Math.max(0, daysBetween(b.dueDate!, today)),
+      paidPaise: b.paidPaise, reservedPaise: reserved.get(b.id) ?? 0, owedPaise: owed, creditPaise: setOff, payablePaise: owed - setOff,
+      overdueDays: Math.max(0, daysBetween(b.dueDate!, today)),
     });
-    g.totalPaise += payable;
+    g.totalPaise += owed - setOff;
+    g.creditPaise += setOff;
     groups.set(b.vendorId, g);
   }
   const ordered = [...groups.values()].sort((a, b) =>
     Number(b.msme) - Number(a.msme) || a.bills[0]!.dueDate.localeCompare(b.bills[0]!.dueDate) || a.vendorName.localeCompare(b.vendorName));
-  const ready: PlanGroup[] = ordered.filter((g) => g.coolingOffUntil === null)
-    .map((g) => ({ vendorId: g.vendorId, vendorCode: g.vendorCode, vendorName: g.vendorName, msme: g.msme, totalPaise: g.totalPaise, bills: g.bills }));
-  const blocked = ordered.filter((g) => g.coolingOffUntil !== null).map((g) => ({ ...g, coolingOffUntil: g.coolingOffUntil! }));
-  return { asOf: today, until, groups: ready, blocked, totalPaise: ready.reduce((s, g) => s + g.totalPaise, 0) };
+  const plain = (g: PlanGroup): PlanGroup => ({
+    vendorId: g.vendorId, vendorCode: g.vendorCode, vendorName: g.vendorName, msme: g.msme, totalPaise: g.totalPaise, creditPaise: g.creditPaise, bills: g.bills,
+  });
+  const ready: PlanGroup[] = ordered.filter((g) => g.coolingOffUntil === null && g.totalPaise > 0).map(plain);
+  const coveredByCredit: PlanGroup[] = ordered.filter((g) => g.coolingOffUntil === null && g.totalPaise === 0).map(plain);
+  const blocked = ordered.filter((g) => g.coolingOffUntil !== null).map((g) => ({ ...plain(g), coolingOffUntil: g.coolingOffUntil! }));
+  return {
+    asOf: today, until, groups: ready, blocked, coveredByCredit,
+    totalPaise: ready.reduce((s, g) => s + g.totalPaise, 0), creditPaise: ready.reduce((s, g) => s + g.creditPaise, 0),
+  };
 }
 
 // ═══════════════════════════════════ lines ═══════════════════════════════════
 
 type RunRow = typeof supplierPaymentRuns.$inferSelect;
 
-async function resolveLines(tx: Tx, runId: string | null, lines: readonly RunLineInput[]): Promise<{ billId: string; vendorId: string; payPaise: number }[]> {
+type ResolvedRunLine = { billId: string; vendorId: string; payPaise: number; creditPaise: number };
+
+async function resolveLines(tx: Tx, runId: string | null, lines: readonly RunLineInput[]): Promise<ResolvedRunLine[]> {
   if (lines.length === 0) throw new MaterialsError("run_invalid", "a run carries at least one bill");
   if (lines.length > 500) throw new MaterialsError("run_invalid", "a run carries at most 500 bills");
   const ids = [...new Set(lines.map((l) => l.billId))];
   if (ids.length !== lines.length) throw new MaterialsError("run_invalid", "a bill appears twice on the run");
+  // PARITY P4 — the vendors' rows are locked BEFORE the bills', the order `recordVendorPayment` takes
+  // them in (run → vendor → bills), so a run being drafted and a payment being recorded cannot
+  // deadlock; the lock is what stops two runs spending one vendor credit.
+  const owners = await tx.select({ vendorId: supplierBills.vendorId }).from(supplierBills).where(inArray(supplierBills.id, ids));
+  const vendorIds = [...new Set(owners.map((o) => o.vendorId))].sort();
+  if (vendorIds.length > 0) await tx.select({ id: vendors.id }).from(vendors).where(inArray(vendors.id, vendorIds)).orderBy(asc(vendors.id)).for("update");
   const bills = await tx.select().from(supplierBills).where(inArray(supplierBills.id, ids)).for("update");
   const reserved = await reservedByBill(tx, ids, runId ?? undefined);
-  return lines.map((l) => {
+  const resolved = lines.map((l) => {
     const b = bills.find((x) => x.id === l.billId);
     if (b === undefined) throw new MaterialsError("unknown_supplier_bill", `supplier bill ${l.billId} not found`);
     if (b.status !== "accepted" && b.status !== "part_paid") {
       throw new MaterialsError("run_invalid", `bill ${b.billNo} is ${b.status}; only an accepted bill is paid`, { billNo: b.billNo, status: b.status });
     }
     const available = b.totalPaise - b.paidPaise - (reserved.get(b.id) ?? 0);
-    if (!Number.isSafeInteger(l.payPaise) || l.payPaise <= 0 || l.payPaise > available) {
-      throw new MaterialsError("run_invalid", `bill ${b.billNo}: pay between ₹0.01 and ₹${(available / 100).toFixed(2)} (what it still owes, less other open runs)`, {
-        billNo: b.billNo, availablePaise: available, payPaise: l.payPaise,
+    const credit = l.creditPaise ?? 0;
+    if (!Number.isSafeInteger(l.payPaise) || !Number.isSafeInteger(credit) || l.payPaise < 0 || credit < 0 || l.payPaise + credit <= 0 || l.payPaise + credit > available) {
+      throw new MaterialsError("run_invalid", `bill ${b.billNo}: pay plus credit between ₹0.01 and ₹${(available / 100).toFixed(2)} (what it still owes, less other open runs)`, {
+        billNo: b.billNo, availablePaise: available, payPaise: l.payPaise, creditPaise: credit,
       });
     }
-    return { billId: b.id, vendorId: b.vendorId, payPaise: l.payPaise };
+    return { billId: b.id, vendorId: b.vendorId, payPaise: l.payPaise, creditPaise: credit };
   });
+  // PARITY P4 — per vendor: the credit set off is the vendor's to spend (under the lock taken above),
+  // and money still moves.
+  const credits = await vendorCredits(tx, vendorIds, runId ?? undefined);
+  for (const vendorId of vendorIds) {
+    const mine = resolved.filter((l) => l.vendorId === vendorId);
+    const creditOn = mine.reduce((s, l) => s + l.creditPaise, 0);
+    const availableCredit = Math.max(0, credits.get(vendorId)?.availablePaise ?? 0);
+    if (creditOn > availableCredit) {
+      throw new MaterialsError("run_invalid", `credit ₹${(creditOn / 100).toFixed(2)} is more than the vendor's available credit ₹${(availableCredit / 100).toFixed(2)}`, {
+        vendorId, creditPaise: creditOn, availableCreditPaise: availableCredit,
+      });
+    }
+    if (mine.reduce((s, l) => s + l.payPaise, 0) === 0) {
+      throw new MaterialsError("run_invalid", "every vendor on a run is paid something; a vendor whose credit covers everything due is left off the run", { vendorId });
+    }
+  }
+  return resolved;
 }
 
-async function writeLines(tx: Tx, runId: string, lines: readonly { billId: string; vendorId: string; payPaise: number }[]): Promise<number> {
-  await tx.insert(supplierPaymentRunLines).values(lines.map((l) => ({ id: newId(), runId, billId: l.billId, vendorId: l.vendorId, payPaise: l.payPaise, creditPaise: 0 })));
+async function writeLines(tx: Tx, runId: string, lines: readonly ResolvedRunLine[]): Promise<number> {
+  await tx.insert(supplierPaymentRunLines).values(lines.map((l) => ({
+    id: newId(), runId, billId: l.billId, vendorId: l.vendorId, payPaise: l.payPaise, creditPaise: l.creditPaise,
+  })));
   return lines.reduce((s, l) => s + l.payPaise, 0);
 }
 
@@ -224,7 +292,7 @@ export async function createPaymentRun(
 export async function draftPaymentRun(db: Db, actor: Actor, now: Date = new Date()): Promise<RunView> {
   await requirePerm(db, actor, PREPARE, "preparing a payment run");
   const plan = await planPaymentRun(db, now);
-  const lines = plan.groups.flatMap((g) => g.bills.map((b) => ({ billId: b.billId, payPaise: b.payablePaise })));
+  const lines = plan.groups.flatMap((g) => g.bills.map((b) => ({ billId: b.billId, payPaise: b.payablePaise, creditPaise: b.creditPaise })));
   if (lines.length === 0) throw new MaterialsError("run_invalid", "nothing is due to pay: no accepted bill falls due in the next week that another run does not already hold");
   return createPaymentRun(db, actor, { lines, note: `Drafted by the agent: bills due by ${plan.until}` }, { source: "agent", now });
 }
@@ -266,7 +334,7 @@ export async function submitPaymentRun(db: Db, actor: Actor, runId: string, now:
     if (r.status !== "draft") throw wrongStatus(r, "submitting", ["draft"]);
     if (r.createdBy !== actor.id) throw new MaterialsError("run_not_preparer", `payment run ${r.runNo} is submitted by the person who prepared it`, { runNo: r.runNo });
     const lines = await tx.select().from(supplierPaymentRunLines).where(eq(supplierPaymentRunLines.runId, runId));
-    await resolveLines(tx, runId, lines.map((l) => ({ billId: l.billId, payPaise: l.payPaise })));
+    await resolveLines(tx, runId, lines.map((l) => ({ billId: l.billId, payPaise: l.payPaise, creditPaise: l.creditPaise })));
     const vendorsOn = new Set(lines.map((l) => l.vendorId)).size;
     const { approvalId } = await requestApproval(tx, actor, {
       typeKey: PAYMENT_RUN_APPROVAL_TYPE,
@@ -433,7 +501,7 @@ export async function recordVendorPayment(
     const paymentId = newId();
     const paymentNo = await nextEpisodeNo(tx, "supplier_payment", istDay(now));
     await tx.insert(supplierPayments).values({ id: paymentId, paymentNo, runId, vendorId, mode, reference, paidOn, amountPaise: amount, recordedBy: actor.id, recordedAt: now });
-    const settled: { billId: string; billNo: string; paidPaise: number; status: "part_paid" | "paid" }[] = [];
+    const settled: { billId: string; billNo: string; paidPaise: number; creditPaise: number; status: "part_paid" | "paid" }[] = [];
     for (const l of lines) {
       const b = bills.find((x) => x.id === l.billId)!;
       if (b.status !== "accepted" && b.status !== "part_paid") {
@@ -447,7 +515,7 @@ export async function recordVendorPayment(
       await tx.update(supplierBills).set({ paidPaise: paid, status, updatedBy: actor.id, updatedAt: now }).where(eq(supplierBills.id, b.id));
       await tx.update(supplierPaymentRunLines).set({ paymentId }).where(eq(supplierPaymentRunLines.id, l.id));
       b.paidPaise = paid;
-      settled.push({ billId: b.id, billNo: b.billNo, paidPaise: l.payPaise, status });
+      settled.push({ billId: b.id, billNo: b.billNo, paidPaise: l.payPaise, creditPaise: l.creditPaise, status });
     }
     await appendEvent(tx, supplierPaymentRecorded.make({
       occurredAt: now, actor, correlationId: paymentId,
@@ -497,7 +565,7 @@ async function readPaymentRun(db: Db, runId: string, now: Date = new Date()): Pr
     const g = byVendor.get(v.id) ?? {
       vendorId: v.id, vendorCode: v.code, vendorName: v.tradeName ?? v.legalName, msme: false,
       coolingOffUntil: v.firstPaymentAllowedAt !== null && v.firstPaymentAllowedAt > now ? v.firstPaymentAllowedAt.toISOString() : null,
-      payPaise: 0, lines: [],
+      payPaise: 0, creditPaise: 0, lines: [],
       payment: p === null ? null : {
         paymentId: p.id, paymentNo: p.paymentNo, mode: p.mode as PaymentMode, reference: p.reference, paidOn: p.paidOn, amountPaise: p.amountPaise, recordedBy: p.recordedBy,
       },
@@ -512,6 +580,7 @@ async function readPaymentRun(db: Db, runId: string, now: Date = new Date()): Pr
       overdueDays: b.dueDate === null ? 0 : Math.max(0, daysBetween(b.dueDate, today)), paid,
     });
     g.payPaise += l.payPaise;
+    g.creditPaise += l.creditPaise;
     byVendor.set(v.id, g);
   }
   const vendorsOut = [...byVendor.values()].sort((a, b) => Number(b.msme) - Number(a.msme) || a.vendorName.localeCompare(b.vendorName));

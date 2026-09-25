@@ -326,6 +326,12 @@ export const vendors = pgTable(
     msmeUdyamNo: text("msme_udyam_no"),
     msmeClass: text("msme_class"), // micro | small | medium — 14b's MSME clock (R-099) reads it
     paymentTermsDays: integer("payment_terms_days"),
+    /**
+     * PARITY P4 — how many days after a batch's expiry this vendor still takes it back for credit
+     * (the rate contract's return window). NULL = the configured default
+     * (`EXPIRY_RETURN_WINDOW_DAYS`, 90). DEFAULT — owner may change.
+     */
+    expiryReturnDays: integer("expiry_return_days"),
     classFlags: jsonb("class_flags").$type<Record<string, boolean>>().notNull().default(sql`'{}'::jsonb`),
     /** MASKED on every read path outside `vendor_bank_changes` (T4, A7). Written ONLY by `applyBankChange`. */
     bank: jsonb("bank").$type<Record<string, unknown>>(),
@@ -1067,10 +1073,14 @@ export const supplierPayments = pgTable(
 );
 
 /**
- * One bill on a payment run: `pay_paise` now, `credit_paise` offset by the vendor's credit notes
- * (RESERVED for P4 — always 0 here; `Payable = Total − Credit`). `payment_id` is set when the
- * vendor's payment is recorded; until then the amount is RESERVED against the bill, so no two
- * open runs can pay the same rupee.
+ * One bill on a payment run: `pay_paise` now, `credit_paise` offset by the vendor's accepted credit
+ * notes (parity P4; `Payable = Total − Credit`). `payment_id` is set when the vendor's payment is
+ * recorded; until then pay + credit is RESERVED against the bill, so no two open runs can pay the
+ * same rupee.
+ *
+ * P4 relaxed the money CHECK: a bill the vendor's credit covers in full is settled on the run with
+ * `pay_paise = 0`. The act still refuses a VENDOR whose lines pay nothing at all (no voucher can be
+ * written for ₹0), so the credit-only settlement always rides on a real payment.
  */
 export const supplierPaymentRunLines = pgTable(
   "supplier_payment_run_lines",
@@ -1086,7 +1096,7 @@ export const supplierPaymentRunLines = pgTable(
   (t) => [
     uniqueIndex("supplier_payment_run_lines_bill_ux").on(t.runId, t.billId),
     index("supplier_payment_run_lines_bill_idx").on(t.billId),
-    check("supplier_payment_run_lines_money_ck", sql`${t.payPaise} > 0 and ${t.creditPaise} >= 0`),
+    check("supplier_payment_run_lines_money_ck", sql`${t.payPaise} >= 0 and ${t.creditPaise} >= 0 and ${t.payPaise} + ${t.creditPaise} > 0`),
   ],
 );
 
@@ -1213,5 +1223,248 @@ export const stockAdjustments = pgTable(
     check("stock_adjustments_reason_ck", sql`${t.reasonCode} in ('shrinkage', 'damage', 'expiry', 'entry_error', 'found')`),
     check("stock_adjustments_posted_ck", sql`(${t.status} = 'posted') = (${t.ledgerEntryId} is not null) and (${t.postedAt} is null) = (${t.postedBy} is null) and (${t.status} = 'posted') = (${t.postedAt} is not null)`),
     check("stock_adjustments_found_ck", sql`(${t.reasonCode} = 'found') = (${t.qtyDelta} > 0) or ${t.reasonCode} = 'entry_error'`),
+  ],
+);
+
+// ═══════════════════════ RETURNING (PHARMACY PARITY P4) ═══════════════════════
+//
+// Plan `docs/superpowers/plans/2026-09-24-pharmacy-healthray-parity.md`, P4: expiry, damage and
+// recall → a return to the supplier with our DEBIT NOTE → the vendor's CREDIT NOTE → an offset on the
+// next payment run (P3's `credit_paise`); and the BMW-Rules destruction write-off for what cannot go
+// back. Every money document carries our own number and its date, for P5's Tally export.
+
+/**
+ * PARITY P4 — A RECALL: one batch, the alert behind it, and whether it is still open.
+ *
+ *   - `recall_no` from `EPISODE_SERIES.stock_recall` (`MRC…`), the register's number.
+ *   - `source`: `cdsco` (a CDSCO / state drug-controller alert), `manufacturer`, or `internal`.
+ *   - Raising one freezes the batch everywhere (`recallBatch`, DD14); closing one needs the batch
+ *     gone from every store (returned or destroyed). One OPEN recall per batch.
+ */
+export const stockRecalls = pgTable(
+  "stock_recalls",
+  {
+    id: text("id").primaryKey(),
+    recallNo: text("recall_no").notNull(),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    source: text("source").notNull(),
+    reference: text("reference"),
+    reason: text("reason").notNull(),
+    status: text("status").notNull(),
+    raisedBy: text("raised_by").notNull(),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+    closedBy: text("closed_by"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closeNote: text("close_note"),
+  },
+  (t) => [
+    uniqueIndex("stock_recalls_recall_no_ux").on(t.recallNo),
+    uniqueIndex("stock_recalls_open_batch_ux").on(t.batchId).where(sql`${t.status} = 'open'`),
+    index("stock_recalls_status_idx").on(t.status, t.raisedAt),
+    check("stock_recalls_source_ck", sql`${t.source} in ('cdsco', 'manufacturer', 'internal')`),
+    check("stock_recalls_status_ck", sql`${t.status} in ('open', 'closed')`),
+    check("stock_recalls_closed_ck", sql`(${t.status} = 'closed') = (${t.closedAt} is not null) and (${t.closedAt} is null) = (${t.closedBy} is null)`),
+  ],
+);
+
+/**
+ * PARITY P4 — A RETURN TO THE SUPPLIER (the purchase return), and on dispatch OUR DEBIT NOTE.
+ *
+ *   draft ─approve (materials head, never the drafter)→ approved ─dispatch (never the approver)→ dispatched
+ *     dispatched ─the vendor's credit note recorded→ credited      dispatched ─no credit coming (the head, a reason)→ closed
+ *     draft / approved ─cancel (a reason)→ cancelled
+ *
+ *   - `return_no` from `EPISODE_SERIES.supplier_return` (`MRT…`); `debit_note_no` from
+ *     `EPISODE_SERIES.debit_note` (`MDN…`), issued at dispatch with its date and the vendor's GSTIN as
+ *     it stood — the voucher P5 exports, with the input-GST reversal split CGST + SGST or IGST.
+ *   - `source`: `agent` (the expiry list's draft a person asked for), `recall` (one tap from a recall,
+ *     `recall_id` set), or `manual`.
+ *   - Money in paise: `total = taxable + cgst + sgst + igst`; the lines carry the same split.
+ *   - `credited_paise`: what the vendor's accepted credit note gives back (≤ the debit note).
+ */
+export const supplierReturns = pgTable(
+  "supplier_returns",
+  {
+    id: text("id").primaryKey(),
+    returnNo: text("return_no").notNull(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    status: text("status").notNull(),
+    source: text("source").notNull(),
+    recallId: text("recall_id").references(() => stockRecalls.id),
+    interState: boolean("inter_state").notNull().default(false),
+    taxablePaise: bigint("taxable_paise", { mode: "number" }).notNull().default(0),
+    cgstPaise: bigint("cgst_paise", { mode: "number" }).notNull().default(0),
+    sgstPaise: bigint("sgst_paise", { mode: "number" }).notNull().default(0),
+    igstPaise: bigint("igst_paise", { mode: "number" }).notNull().default(0),
+    totalPaise: bigint("total_paise", { mode: "number" }).notNull().default(0),
+    note: text("note"),
+    approvedBy: text("approved_by"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    dispatchedBy: text("dispatched_by"),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    debitNoteNo: text("debit_note_no"),
+    debitNoteDate: date("debit_note_date", { mode: "string" }),
+    vendorGstin: text("vendor_gstin"),
+    creditedPaise: bigint("credited_paise", { mode: "number" }).notNull().default(0),
+    closedBy: text("closed_by"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closeReason: text("close_reason"),
+    cancelledBy: text("cancelled_by"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("supplier_returns_return_no_ux").on(t.returnNo),
+    uniqueIndex("supplier_returns_debit_note_no_ux").on(t.debitNoteNo).where(sql`${t.debitNoteNo} is not null`),
+    index("supplier_returns_vendor_idx").on(t.vendorId, t.status),
+    index("supplier_returns_status_idx").on(t.status),
+    check("supplier_returns_status_ck", sql`${t.status} in ('draft', 'approved', 'dispatched', 'credited', 'closed', 'cancelled')`),
+    check("supplier_returns_source_ck", sql`${t.source} in ('manual', 'agent', 'recall')`),
+    check("supplier_returns_money_ck", sql`${t.taxablePaise} >= 0 and ${t.cgstPaise} >= 0 and ${t.sgstPaise} >= 0 and ${t.igstPaise} >= 0 and ${t.totalPaise} = ${t.taxablePaise} + ${t.cgstPaise} + ${t.sgstPaise} + ${t.igstPaise}`),
+    check("supplier_returns_tax_kind_ck", sql`(${t.interState} and ${t.cgstPaise} = 0 and ${t.sgstPaise} = 0) or (not ${t.interState} and ${t.igstPaise} = 0)`),
+    check("supplier_returns_approved_ck", sql`(${t.approvedAt} is null) = (${t.approvedBy} is null) and (${t.status} not in ('approved', 'dispatched', 'credited', 'closed') or ${t.approvedBy} is not null)`),
+    check("supplier_returns_dispatched_ck", sql`(${t.status} in ('dispatched', 'credited', 'closed')) = (${t.dispatchedAt} is not null) and (${t.dispatchedAt} is null) = (${t.dispatchedBy} is null) and (${t.dispatchedAt} is null) = (${t.debitNoteNo} is null) and (${t.debitNoteNo} is null) = (${t.debitNoteDate} is null)`),
+    check("supplier_returns_credited_ck", sql`${t.creditedPaise} >= 0 and ${t.creditedPaise} <= ${t.totalPaise} and (${t.status} = 'credited' or ${t.creditedPaise} = 0)`),
+    check("supplier_returns_closed_ck", sql`(${t.status} = 'closed') = (${t.closedAt} is not null) and (${t.closedAt} is null) = (${t.closeReason} is null) and (${t.closedAt} is null) = (${t.closedBy} is null)`),
+    check("supplier_returns_cancelled_ck", sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null) and (${t.cancelledAt} is null) = (${t.cancelReason} is null)`),
+  ],
+);
+
+/**
+ * One batch leaving one store on a return. `rate_paise` is PER BASE UNIT before GST — the GRN's cost
+ * for that batch (`stock_batches.landed_cost_paise`) unless a person changed it on the draft;
+ * `taxable = qty_base × rate`, GST half-up per line, split as the header says. `reason`: `expired`,
+ * `near_expiry`, `damaged`, `recalled`. `ledger_entry_id` is the `return` row dispatch wrote.
+ */
+export const supplierReturnLines = pgTable(
+  "supplier_return_lines",
+  {
+    id: text("id").primaryKey(),
+    returnId: text("return_id").notNull().references(() => supplierReturns.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    reason: text("reason").notNull(),
+    qtyBase: integer("qty_base").notNull(),
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    taxablePaise: bigint("taxable_paise", { mode: "number" }).notNull(),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+    cgstPaise: bigint("cgst_paise", { mode: "number" }).notNull().default(0),
+    sgstPaise: bigint("sgst_paise", { mode: "number" }).notNull().default(0),
+    igstPaise: bigint("igst_paise", { mode: "number" }).notNull().default(0),
+    hsnCode: text("hsn_code"),
+    ledgerEntryId: text("ledger_entry_id"),
+  },
+  (t) => [
+    uniqueIndex("supplier_return_lines_batch_ux").on(t.returnId, t.batchId, t.storeResourceId),
+    index("supplier_return_lines_batch_idx").on(t.batchId),
+    check("supplier_return_lines_reason_ck", sql`${t.reason} in ('expired', 'near_expiry', 'damaged', 'recalled')`),
+    check("supplier_return_lines_qty_ck", sql`${t.qtyBase} > 0`),
+    check("supplier_return_lines_money_ck", sql`${t.ratePaise} >= 0 and ${t.gstRateBps} >= 0 and ${t.taxablePaise} = ${t.qtyBase} * ${t.ratePaise} and ${t.cgstPaise} >= 0 and ${t.sgstPaise} >= 0 and ${t.igstPaise} >= 0`),
+  ],
+);
+
+/**
+ * PARITY P4 — THE VENDOR'S CREDIT NOTE against one of our returns, as accepted. Its own number
+ * (`credit_no`, `EPISODE_SERIES.supplier_credit`, `MCN…`) beside the vendor's, and its date.
+ *
+ *   - `amount_paise` may be LESS than the debit note (`debit_note_paise`); the difference then
+ *     carries a reason (and the materials head's hand). Never more.
+ *   - An accepted credit is an OFFSET the next payment run spends (`supplier_payment_run_lines.credit_paise`).
+ *   - One live credit note per return; a cancelled one (recorded in error, and not yet spent) frees it.
+ */
+export const supplierCreditNotes = pgTable(
+  "supplier_credit_notes",
+  {
+    id: text("id").primaryKey(),
+    creditNo: text("credit_no").notNull(),
+    returnId: text("return_id").notNull().references(() => supplierReturns.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    vendorCreditNoteNo: text("vendor_credit_note_no").notNull(),
+    creditNoteDate: date("credit_note_date", { mode: "string" }).notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    debitNotePaise: bigint("debit_note_paise", { mode: "number" }).notNull(),
+    differencePaise: bigint("difference_paise", { mode: "number" }).notNull(),
+    differenceReason: text("difference_reason"),
+    status: text("status").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    cancelledBy: text("cancelled_by"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+  },
+  (t) => [
+    uniqueIndex("supplier_credit_notes_credit_no_ux").on(t.creditNo),
+    uniqueIndex("supplier_credit_notes_live_return_ux").on(t.returnId).where(sql`${t.status} = 'accepted'`),
+    index("supplier_credit_notes_vendor_idx").on(t.vendorId, t.status),
+    check("supplier_credit_notes_status_ck", sql`${t.status} in ('accepted', 'cancelled')`),
+    check("supplier_credit_notes_money_ck", sql`${t.amountPaise} > 0 and ${t.amountPaise} <= ${t.debitNotePaise} and ${t.differencePaise} = ${t.debitNotePaise} - ${t.amountPaise}`),
+    check("supplier_credit_notes_reason_ck", sql`(${t.differencePaise} = 0) = (${t.differenceReason} is null)`),
+    check("supplier_credit_notes_cancelled_ck", sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null) and (${t.cancelledAt} is null) = (${t.cancelReason} is null)`),
+  ],
+);
+
+/**
+ * PARITY P4 — A DESTRUCTION WRITE-OFF (Bio-Medical Waste Management Rules 2016: expired and discarded
+ * medicines, yellow category (d), go to the common treatment facility against a manifest).
+ *
+ *   requested ─approval granted, disposal details given → posted          requested ─approval rejected→ refused
+ *
+ *   - `write_off_no` from `EPISODE_SERIES.stock_write_off` (`MWO…`). One store per write-off.
+ *   - The approval is the SAME route a count's variance takes: `materials_stock_adjustment`, decided
+ *     by the medical superintendent, subject `stock_write_off`. Nothing posts before it is granted.
+ *   - Posting writes one `adjust` ledger row out per line and needs the disposal agency, its
+ *     manifest / challan number and the handover date.
+ */
+export const stockWriteOffs = pgTable(
+  "stock_write_offs",
+  {
+    id: text("id").primaryKey(),
+    writeOffNo: text("write_off_no").notNull(),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    reason: text("reason").notNull(),
+    status: text("status").notNull(),
+    totalValuePaise: bigint("total_value_paise", { mode: "number" }).notNull().default(0),
+    approvalId: text("approval_id").notNull(),
+    disposalAgency: text("disposal_agency"),
+    manifestNo: text("manifest_no"),
+    disposalDate: date("disposal_date", { mode: "string" }),
+    note: text("note"),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    postedBy: text("posted_by"),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    refusedAt: timestamp("refused_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("stock_write_offs_write_off_no_ux").on(t.writeOffNo),
+    index("stock_write_offs_approval_idx").on(t.approvalId),
+    index("stock_write_offs_status_idx").on(t.status),
+    check("stock_write_offs_reason_ck", sql`${t.reason} in ('expiry', 'damage', 'recall')`),
+    check("stock_write_offs_status_ck", sql`${t.status} in ('requested', 'posted', 'refused')`),
+    check("stock_write_offs_value_ck", sql`${t.totalValuePaise} >= 0`),
+    check("stock_write_offs_posted_ck", sql`(${t.status} = 'posted') = (${t.postedAt} is not null) and (${t.postedAt} is null) = (${t.postedBy} is null) and (${t.status} <> 'posted' or (${t.disposalAgency} is not null and ${t.manifestNo} is not null and ${t.disposalDate} is not null))`),
+    check("stock_write_offs_refused_ck", sql`(${t.status} = 'refused') = (${t.refusedAt} is not null)`),
+  ],
+);
+
+/** One batch on a write-off: the quantity destroyed, its value at landed cost, and the `adjust` row. */
+export const stockWriteOffLines = pgTable(
+  "stock_write_off_lines",
+  {
+    id: text("id").primaryKey(),
+    writeOffId: text("write_off_id").notNull().references(() => stockWriteOffs.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    qtyBase: integer("qty_base").notNull(),
+    valuePaise: bigint("value_paise", { mode: "number" }).notNull(),
+    ledgerEntryId: text("ledger_entry_id"),
+  },
+  (t) => [
+    uniqueIndex("stock_write_off_lines_batch_ux").on(t.writeOffId, t.batchId),
+    index("stock_write_off_lines_batch_idx").on(t.batchId),
+    check("stock_write_off_lines_qty_ck", sql`${t.qtyBase} > 0 and ${t.valuePaise} >= 0`),
   ],
 );

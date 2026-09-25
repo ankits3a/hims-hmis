@@ -20,7 +20,16 @@ import {
   requestBankChange, suspendVendor, updateVendor,
 } from "./vendors";
 import { createStore, listStores } from "./stores";
-import { balances, movementsFor, recallBatch } from "./ledger";
+import { balances, movementsFor } from "./ledger";
+import { closeRecall, getRecall, listRecalls, raiseRecall, recallableBatches } from "./recalls";
+import type { RecallSummary, RecallView } from "./recalls";
+import {
+  approveSupplierReturn, cancelSupplierReturn, cancelVendorCredit, closeSupplierReturn, createSupplierReturn, dispatchSupplierReturn,
+  expiryReport, getSupplierReturn, listSupplierReturns, planSupplierReturns, recordVendorCredit, updateSupplierReturn,
+} from "./supplier-returns";
+import type { ExpiryReport, ReturnPlan, ReturnSummary, ReturnView } from "./supplier-returns";
+import { getWriteOff, listWriteOffs, postWriteOff, raiseWriteOff } from "./write-offs";
+import type { WriteOffSummary, WriteOffView } from "./write-offs";
 import {
   captureGrn, getGrn, listGrns, postGrn, requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
@@ -190,6 +199,7 @@ const vendorCreateBody = z.object({
   gstin: z.string().max(20).nullish(), pan: z.string().max(20).nullish(),
   msmeUdyamNo: z.string().max(32).nullish(), msmeClass: z.string().max(16).nullish(),
   paymentTermsDays: z.number().int().nullish(),
+  expiryReturnDays: z.number().int().min(0).max(3650).nullish(),
   classFlags: z.record(z.string(), z.boolean()).optional(),
 });
 const vendorPatchBody = z.object({
@@ -197,6 +207,7 @@ const vendorPatchBody = z.object({
   gstin: z.string().max(20).nullish(), pan: z.string().max(20).nullish(),
   msmeUdyamNo: z.string().max(32).nullish(), msmeClass: z.string().max(16).nullish(),
   paymentTermsDays: z.number().int().nullish(),
+  expiryReturnDays: z.number().int().min(0).max(3650).nullish(),
   classFlags: z.record(z.string(), z.boolean()).optional(),
 });
 const documentBody = z.object({
@@ -257,7 +268,8 @@ const billBody = z.object({
 });
 const billPatchBody = billBody.partial();
 const billStatuses = z.enum(["draft", "matched", "held_for_match", "accepted", "part_paid", "paid", "cancelled"]);
-const runLineBody = z.object({ billId: id, payPaise: paise.positive() });
+// PARITY P4 — a line may carry the vendor's credit set off; a bill the credit covers whole pays nothing.
+const runLineBody = z.object({ billId: id, payPaise: paise.nonnegative(), creditPaise: paise.nonnegative().optional() });
 const runBody = z.object({ lines: z.array(runLineBody).min(1).max(500), note: z.string().max(500).nullish() });
 const runPatchBody = runBody.partial();
 const runStatuses = z.enum(["draft", "pending_authorisation", "authorised", "completed", "cancelled"]);
@@ -277,7 +289,37 @@ const receiveBody = z.object({
     lineId: id, qtyReceived: z.number().int().nonnegative(),
   })).min(1).max(200),
 });
-const recallBody = z.object({ batchId: id, reason: z.string().min(1).max(500) });
+const recallBody = z.object({
+  batchId: id, reason: z.string().min(1).max(500),
+  // PARITY P4 — the recall register: which alert, and its reference. Optional, so the plan-14 body still works.
+  source: z.enum(["cdsco", "manufacturer", "internal"]).optional(), reference: z.string().max(120).nullish(),
+});
+// ── PARITY P4 — returns to the supplier, credit notes, write-offs ──
+const returnLineBody = z.object({
+  batchId: id, storeResourceId: id, qtyBase: z.number().int().positive().max(10_000_000),
+  reason: z.enum(["expired", "near_expiry", "damaged", "recalled"]),
+  ratePaise: paise.nonnegative().nullish(), gstRateBps: z.number().int().min(0).max(10_000).nullish(),
+});
+const returnBody = z.object({
+  vendorId: id, interState: z.boolean().optional(), note: z.string().max(500).nullish(), lines: z.array(returnLineBody).min(1).max(300),
+});
+const returnPatchBody = z.object({
+  interState: z.boolean().optional(), note: z.string().max(500).nullish(), lines: z.array(returnLineBody).min(1).max(300).optional(),
+});
+const returnStatuses = z.enum(["draft", "approved", "dispatched", "credited", "closed", "cancelled"]);
+const creditBody = z.object({
+  vendorCreditNoteNo: z.string().min(1).max(64), creditNoteDate: dateStr, amountPaise: paise.positive(), differenceReason: z.string().max(500).nullish(),
+});
+const disposalBody = z.object({ disposalAgency: z.string().max(200).nullish(), manifestNo: z.string().max(200).nullish(), disposalDate: dateStr.nullish() });
+const writeOffBody = z.object({
+  storeResourceId: id, reason: z.enum(["expiry", "damage", "recall"]), note: z.string().max(500).nullish(),
+  lines: z.array(z.object({ batchId: id, qtyBase: z.number().int().positive().max(10_000_000) })).min(1).max(300), disposal: disposalBody.optional(),
+});
+const writeOffStatuses = z.enum(["requested", "posted", "refused"]);
+const recallStatuses = z.enum(["open", "closed"]);
+const expiryQuery = z.object({
+  preset: z.enum(["expired", "30", "60", "90", "custom"]).optional(), from: dateStr.optional(), to: dateStr.optional(), storeResourceId: id.optional(),
+});
 
 @Controller("materials")
 export class MaterialsController {
@@ -658,14 +700,202 @@ export class MaterialsController {
     };
   }
 
+  /**
+   * DD14's one action — and, since parity P4, the recall register's entry (`MRC…`) with its source and
+   * reference, in the same transaction. The response keeps `locations` for the plan-14 callers.
+   */
   @RequirePermission("materials.recall.manage", "hospital")
   @Post("recalls")
   async recall(
     @CurrentActor() actor: Actor, @Body() body: unknown,
-  ): Promise<{ locations: { storeResourceId: string; qtyFrozen: number }[] }> {
+  ): Promise<{ locations: { storeResourceId: string; qtyFrozen: number }[]; recall: RecallView }> {
     const b = parsed(recallBody, body);
     try {
-      return await withTx(this.db, (tx) => recallBatch(tx, actor, b.batchId, b.reason));
+      return await raiseRecall(this.db, actor, { batchId: b.batchId, reason: b.reason, ...(b.source === undefined ? {} : { source: b.source }), reference: b.reference ?? null });
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("recalls")
+  async recalls(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ recalls: RecallSummary[] }> {
+    const q = parsed(z.object({ status: z.string().max(40).optional() }), query);
+    const statuses = q.status === undefined ? undefined : q.status.split(",").map((x) => parsed(recallStatuses, x));
+    try {
+      return { recalls: await listRecalls(this.db, actor, statuses === undefined ? {} : { statuses }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The batches of an item, for the recall screen's picker. */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("recalls/batches")
+  async recallBatches(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ batches: unknown[] }> {
+    const q = parsed(z.object({ itemId: id }), query);
+    try {
+      return { batches: await recallableBatches(this.db, actor, q.itemId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("recalls/:id")
+  async recallOne(@CurrentActor() actor: Actor, @Param("id") recallId: string): Promise<{ recall: RecallView }> {
+    try {
+      return { recall: await getRecall(this.db, actor, recallId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.recall.manage", "hospital")
+  @Post("recalls/:id/close")
+  async closeRecallRoute(@CurrentActor() actor: Actor, @Param("id") recallId: string, @Body() body: unknown): Promise<{ recall: RecallView }> {
+    const b = parsed(z.object({ note: z.string().max(500).optional() }), body ?? {});
+    try {
+      return { recall: await closeRecall(this.db, actor, recallId, b.note ?? "") };
+    } catch (e) { toHttp(e); }
+  }
+
+  // ═══════════════════════════════ THE EXPIRY REPORT, RETURNS, CREDIT NOTES, WRITE-OFFS (PARITY P4) ═══════════════════════════════
+
+  /** Healthray s13/s14, our way: item-wise rows and the supplier-wise sums, with the return window. */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("expiry-report")
+  async expiryReportRoute(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<ExpiryReport> {
+    const q = parsed(expiryQuery, query);
+    try {
+      return await expiryReport(this.db, actor, { preset: q.preset ?? "90", from: q.from ?? null, to: q.to ?? null, storeResourceId: q.storeResourceId ?? null });
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Get("supplier-returns/plan")
+  async returnPlan(): Promise<ReturnPlan> {
+    try {
+      return await planSupplierReturns(this.db, new Date());
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("supplier-returns")
+  async returns(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ returns: ReturnSummary[] }> {
+    const q = parsed(z.object({ status: z.string().max(200).optional(), vendorId: id.optional() }), query);
+    const statuses = q.status === undefined ? undefined : q.status.split(",").map((x) => parsed(returnStatuses, x));
+    try {
+      return { returns: await listSupplierReturns(this.db, actor, { ...(statuses === undefined ? {} : { statuses }), ...(q.vendorId === undefined ? {} : { vendorId: q.vendorId }) }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("supplier-returns/:id")
+  async returnOne(@CurrentActor() actor: Actor, @Param("id") returnId: string): Promise<{ return: ReturnView }> {
+    try {
+      return { return: await getSupplierReturn(this.db, actor, returnId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Post("supplier-returns")
+  async createReturn(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ return: ReturnView }> {
+    const b = parsed(returnBody, body);
+    try {
+      return { return: await createSupplierReturn(this.db, actor, b, { source: "manual" }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Patch("supplier-returns/:id")
+  async updateReturn(@CurrentActor() actor: Actor, @Param("id") returnId: string, @Body() body: unknown): Promise<{ return: ReturnView }> {
+    const b = parsed(returnPatchBody, body);
+    try {
+      return { return: await updateSupplierReturn(this.db, actor, returnId, b) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.returns.approve", "hospital")
+  @Post("supplier-returns/:id/approve")
+  async approveReturn(@CurrentActor() actor: Actor, @Param("id") returnId: string): Promise<{ return: ReturnView }> {
+    try {
+      return { return: await approveSupplierReturn(this.db, actor, returnId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The goods leave and our debit note is issued. The SoD engine first, on `db`, so an approver's attempt is recorded. */
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Post("supplier-returns/:id/dispatch")
+  async dispatchReturn(@CurrentActor() actor: Actor, @Param("id") returnId: string): Promise<{ return: ReturnView }> {
+    try {
+      return { return: await dispatchSupplierReturn(this.db, actor, returnId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Post("supplier-returns/:id/cancel")
+  async cancelReturn(@CurrentActor() actor: Actor, @Param("id") returnId: string, @Body() body: unknown): Promise<{ return: ReturnView }> {
+    const b = parsed(reasonBody, body);
+    try {
+      return { return: await cancelSupplierReturn(this.db, actor, returnId, b.reason) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The vendor's credit note; a short one needs the reason and the head (the act checks it). */
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Post("supplier-returns/:id/credit-note")
+  async creditNote(@CurrentActor() actor: Actor, @Param("id") returnId: string, @Body() body: unknown): Promise<{ return: ReturnView }> {
+    const b = parsed(creditBody, body);
+    try {
+      return { return: await recordVendorCredit(this.db, actor, returnId, { ...b, differenceReason: b.differenceReason ?? null }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Post("supplier-returns/:id/credit-note/cancel")
+  async cancelCreditNote(@CurrentActor() actor: Actor, @Param("id") returnId: string, @Body() body: unknown): Promise<{ return: ReturnView }> {
+    const b = parsed(reasonBody, body);
+    try {
+      return { return: await cancelVendorCredit(this.db, actor, returnId, b.reason) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.bills.accept_difference", "hospital")
+  @Post("supplier-returns/:id/close")
+  async closeReturn(@CurrentActor() actor: Actor, @Param("id") returnId: string, @Body() body: unknown): Promise<{ return: ReturnView }> {
+    const b = parsed(reasonBody, body);
+    try {
+      return { return: await closeSupplierReturn(this.db, actor, returnId, b.reason) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("write-offs")
+  async writeOffs(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ writeOffs: WriteOffSummary[] }> {
+    const q = parsed(z.object({ status: z.string().max(60).optional() }), query);
+    const statuses = q.status === undefined ? undefined : q.status.split(",").map((x) => parsed(writeOffStatuses, x));
+    try {
+      return { writeOffs: await listWriteOffs(this.db, actor, statuses === undefined ? {} : { statuses }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("write-offs/:id")
+  async writeOff(@CurrentActor() actor: Actor, @Param("id") writeOffId: string): Promise<{ writeOff: WriteOffView }> {
+    try {
+      return { writeOff: await getWriteOff(this.db, actor, writeOffId) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** A destruction write-off raised; its approval goes to the medical superintendent (`materials_stock_adjustment`). */
+  @RequirePermission("materials.writeoffs.manage", "hospital")
+  @Post("write-offs")
+  async raiseWriteOffRoute(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ writeOff: WriteOffView }> {
+    const b = parsed(writeOffBody, body);
+    try {
+      return { writeOff: await raiseWriteOff(this.db, actor, { ...b, ...(b.disposal === undefined ? {} : { disposal: b.disposal }) }) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("materials.writeoffs.manage", "hospital")
+  @Post("write-offs/:id/post")
+  async postWriteOffRoute(@CurrentActor() actor: Actor, @Param("id") writeOffId: string, @Body() body: unknown): Promise<{ writeOff: WriteOffView }> {
+    const b = parsed(disposalBody, body ?? {});
+    try {
+      return { writeOff: await postWriteOff(this.db, actor, writeOffId, b) };
     } catch (e) { toHttp(e); }
   }
 

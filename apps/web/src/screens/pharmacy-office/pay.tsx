@@ -138,6 +138,8 @@ export function PayView(): React.ReactElement {
                     ? t("pharmacyOffice.pay.agent.nothing", { until: d.plan.until })
                     : t("pharmacyOffice.pay.agent.can", { vendors: d.plan.vendors, bills: d.plan.bills, amount: rupees(d.plan.totalPaise), until: d.plan.until })}
                   {d.plan.blocked > 0 && <span className="block text-xs text-muted-foreground">{t("pharmacyOffice.pay.agent.blocked", { count: d.plan.blocked })}</span>}
+                  {d.plan.creditPaise > 0 && <span className="block text-xs text-emerald-800" data-testid="pay-agent-credit">{t("pharmacyOffice.pay.agent.credit", { amount: rupees(d.plan.creditPaise) })}</span>}
+                  {d.plan.covered > 0 && <span className="block text-xs text-muted-foreground">{t("pharmacyOffice.pay.agent.covered", { count: d.plan.covered })}</span>}
                 </span>
                 <Button type="button" disabled={busy || d.plan.bills === 0} onClick={() => void makeDraft()}>
                   {t("pharmacyOffice.pay.agent.make")} <kbd className="ml-1 rounded border px-1 text-xs">D</kbd>
@@ -495,8 +497,11 @@ function RunSheet({ id, onClose, onDone }: { id: string; onClose: () => void; on
     }
   };
   const maxFor = (l: { totalPaise: number; prevPaidPaise: number; creditPaise: number }): number => l.totalPaise - l.prevPaidPaise - l.creditPaise;
-  const linesOut = (): { billId: string; payPaise: number }[] =>
-    Object.entries(pay ?? {}).map(([billId, v]) => ({ billId, payPaise: toPaise(v) })).filter((l) => l.payPaise > 0);
+  // PARITY P4 — each line's vendor credit (set by the agent's draft) rides along when the draft is
+  // saved; a bill the credit covers whole stays on the run with nothing to pay.
+  const creditOf = (billId: string): number => r?.vendors.flatMap((v) => v.lines).find((l) => l.billId === billId)?.creditPaise ?? 0;
+  const linesOut = (): { billId: string; payPaise: number; creditPaise: number }[] =>
+    Object.entries(pay ?? {}).map(([billId, v]) => ({ billId, payPaise: toPaise(v), creditPaise: creditOf(billId) })).filter((l) => l.payPaise > 0 || l.creditPaise > 0);
   const save = (): Promise<WireRun> => updateRun(id, { lines: linesOut() });
   const total = r === undefined ? 0 : isDraft ? linesOut().reduce((s, l) => s + l.payPaise, 0) : r.totalPaise;
   const recordFor = (vendorId: string): { mode: PaymentMode; reference: string; paidOn: string } => record[vendorId] ?? { mode: "neft", reference: "", paidOn: "" };
@@ -529,10 +534,11 @@ function RunSheet({ id, onClose, onDone }: { id: string; onClose: () => void; on
                 return (
                   <tbody key={v.vendorId} data-testid={`run-vendor-${v.vendorCode}`}>
                     <tr className="border-t bg-muted/40">
-                      <td colSpan={6} className="py-1 pr-2 font-medium">
+                      <td colSpan={5} className="py-1 pr-2 font-medium">
                         {v.vendorName} {v.msme && <span className="ml-1 rounded bg-red-100 px-1 text-xs font-medium text-red-800">MSME</span>}
                         {v.coolingOffUntil !== null && <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-900">{t("pharmacyOffice.pay.run.coolingOff", { date: v.coolingOffUntil.slice(0, 10) })}</span>}
                       </td>
+                      <td className="py-1 pr-2 text-right text-xs tabular-nums text-emerald-800" data-testid={`run-vendor-credit-${v.vendorCode}`}>{v.creditPaise === 0 ? "" : rupees(v.creditPaise)}</td>
                       <td className="py-1 pr-2 text-right font-medium tabular-nums">{rupees(isDraft ? v.lines.reduce((s, l) => s + toPaise(pay[l.billId] ?? "0"), 0) : v.payPaise)}</td>
                       <td />
                       <td className="py-1 pr-2">
@@ -549,7 +555,7 @@ function RunSheet({ id, onClose, onDone }: { id: string; onClose: () => void; on
                           <td className="py-1 pr-2 text-xs">{l.vendorBillNo}{l.overdueDays > 0 && <span className="ml-1 text-red-700">{t("pharmacyOffice.pay.daysOverdue", { count: l.overdueDays })}</span>}</td>
                           <td className="py-1 pr-2 text-right tabular-nums">{rupees(l.totalPaise)}</td>
                           <td className="py-1 pr-2 text-right tabular-nums">{rupees(l.prevPaidPaise)}</td>
-                          <td className="py-1 pr-2 text-right tabular-nums text-muted-foreground">{l.creditPaise === 0 ? "—" : rupees(l.creditPaise)}</td>
+                          <td className="py-1 pr-2 text-right tabular-nums text-emerald-800" data-testid={`run-credit-${l.billNo}`}>{l.creditPaise === 0 ? "—" : rupees(l.creditPaise)}</td>
                           <td className="py-1 pr-2 text-right">
                             {isDraft
                               ? <input aria-label={`${t("pharmacyOffice.pay.run.payNow")} ${l.billNo}`} className="w-24 rounded border px-1 text-right" inputMode="decimal" value={pay[l.billId] ?? ""} onChange={(e) => setPay((p) => ({ ...(p ?? {}), [l.billId]: e.target.value }))} />
@@ -641,8 +647,8 @@ function PayablesSheet({ onClose, onLedger }: { onClose: () => void; onLedger: (
   const exportSuppliers = (): void => {
     if (p === undefined) return;
     downloadCsv(`supplier-summary-${p.asOf}.csv`, toCsv(
-      ["Supplier", "Code", "GSTIN", "MSME", "Total", "Paid", "Remaining", "Overdue", "0-30", "31-60", "61-90", "90+"],
-      p.suppliers.map((s) => [s.vendorName, s.vendorCode, s.gstin ?? "", s.msme ? "yes" : "no", csvRupees(s.totalPaise), csvRupees(s.paidPaise), csvRupees(s.remainingPaise), csvRupees(s.overduePaise), ...AGE_BUCKETS.map((k) => csvRupees(s.buckets[k]))]),
+      ["Supplier", "Code", "GSTIN", "MSME", "Total", "Paid", "Remaining", "Credit", "Net", "Overdue", "0-30", "31-60", "61-90", "90+"],
+      p.suppliers.map((s) => [s.vendorName, s.vendorCode, s.gstin ?? "", s.msme ? "yes" : "no", csvRupees(s.totalPaise), csvRupees(s.paidPaise), csvRupees(s.remainingPaise), csvRupees(s.creditPaise), csvRupees(s.netPaise), csvRupees(s.overduePaise), ...AGE_BUCKETS.map((k) => csvRupees(s.buckets[k]))]),
     ));
   };
   return (
@@ -693,7 +699,8 @@ function PayablesSheet({ onClose, onLedger }: { onClose: () => void; onLedger: (
                 <thead><tr className="text-left text-xs text-muted-foreground">
                   <th className="py-1 pr-2">{t("pharmacyOffice.pay.payables.supplier")}</th><th className="py-1 pr-2">GSTIN</th>
                   <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.total")}</th><th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.paid")}</th>
-                  <th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.run.remaining")}</th><th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.overdueAmount")}</th><th />
+                  <th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.run.remaining")}</th><th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.run.credit")}</th>
+                  <th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.payables.net")}</th><th className="py-1 pr-2 text-right">{t("pharmacyOffice.pay.overdueAmount")}</th><th />
                 </tr></thead>
                 <tbody>
                   {p.suppliers.map((s) => (
@@ -701,7 +708,9 @@ function PayablesSheet({ onClose, onLedger }: { onClose: () => void; onLedger: (
                       <td className="py-1 pr-2">{s.vendorName} {s.msme && <span className="rounded bg-red-100 px-1 text-xs font-medium text-red-800">MSME</span>}</td>
                       <td className="py-1 pr-2 font-mono text-xs">{s.gstin ?? "—"}</td>
                       <td className="py-1 pr-2 text-right tabular-nums">{rupees(s.totalPaise)}</td><td className="py-1 pr-2 text-right tabular-nums">{rupees(s.paidPaise)}</td>
-                      <td className="py-1 pr-2 text-right font-medium tabular-nums">{rupees(s.remainingPaise)}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{rupees(s.remainingPaise)}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums text-emerald-800">{s.creditPaise === 0 ? "—" : rupees(s.creditPaise)}</td>
+                      <td className="py-1 pr-2 text-right font-medium tabular-nums" data-testid={`supplier-net-${s.vendorCode}`}>{rupees(s.netPaise)}</td>
                       <td className={`py-1 pr-2 text-right tabular-nums ${s.overduePaise > 0 ? "text-red-700" : ""}`}>{rupees(s.overduePaise)}</td>
                       <td className="py-1 pr-2"><Button type="button" variant="outline" onClick={() => onLedger(s.vendorId)}>{t("pharmacyOffice.pay.payables.ledger")}</Button></td>
                     </tr>
@@ -725,8 +734,8 @@ function LedgerSheet({ vendorId, onClose }: { vendorId: string; onClose: () => v
   const exportCsv = (): void => {
     if (l === undefined) return;
     downloadCsv(`ledger-${l.vendorCode}-${l.from ?? "start"}-${l.to ?? "today"}.csv`, toCsv(
-      ["Date", "Kind", "Voucher", "Reference", "Bill (credit)", "Payment (debit)", "Balance"],
-      [["", "opening", "", "", "", "", csvRupees(l.openingPaise)], ...l.entries.map((e) => [e.date, e.kind, e.voucherNo, e.reference, csvRupees(e.creditPaise), csvRupees(e.debitPaise), csvRupees(e.balancePaise)])],
+      ["Date", "Kind", "Voucher", "Reference", "Bill (credit)", "Payment / credit note (debit)", "Debit note (claim)", "Balance"],
+      [["", "opening", "", "", "", "", "", csvRupees(l.openingPaise)], ...l.entries.map((e) => [e.date, e.kind, e.voucherNo, e.reference, csvRupees(e.creditPaise), csvRupees(e.debitPaise), e.memoPaise === 0 ? "" : csvRupees(e.memoPaise), csvRupees(e.balancePaise)])],
     ));
   };
   return (
@@ -748,21 +757,21 @@ function LedgerSheet({ vendorId, onClose }: { vendorId: string; onClose: () => v
             <tbody>
               <tr className="border-t text-muted-foreground"><td className="py-1 pr-2" colSpan={5}>{t("pharmacyOffice.pay.ledger.opening")}</td><td className="py-1 pr-2 text-right tabular-nums">{rupees(l.openingPaise)}</td></tr>
               {l.entries.map((e) => (
-                <tr key={`${e.kind}-${e.id}`} className="border-t" data-testid={`ledger-${e.voucherNo}`}>
+                <tr key={`${e.kind}-${e.id}`} className={`border-t ${e.kind === "debit_note" ? "text-muted-foreground" : ""}`} data-testid={`ledger-${e.voucherNo}`}>
                   <td className="py-1 pr-2 text-xs">{e.date}</td>
-                  <td className="py-1 pr-2 font-mono text-xs">{e.voucherNo}</td>
-                  <td className="py-1 pr-2 text-xs">{e.reference}</td>
+                  <td className="py-1 pr-2 font-mono text-xs">{e.voucherNo}{e.kind === "debit_note" || e.kind === "credit_note" ? <span className="ml-1 font-sans">{t(`pharmacyOffice.pay.ledger.kind.${e.kind}`)}</span> : null}</td>
+                  <td className="py-1 pr-2 text-xs">{e.reference}{e.memoPaise > 0 ? <span className="block">{t("pharmacyOffice.pay.ledger.claim", { amount: rupees(e.memoPaise) })}</span> : null}</td>
                   <td className="py-1 pr-2 text-right tabular-nums">{e.creditPaise === 0 ? "" : rupees(e.creditPaise)}</td>
                   <td className="py-1 pr-2 text-right tabular-nums">{e.debitPaise === 0 ? "" : rupees(e.debitPaise)}</td>
                   <td className="py-1 pr-2 text-right font-medium tabular-nums">{rupees(e.balancePaise)}</td>
                 </tr>
               ))}
               <tr className="border-t font-medium"><td className="py-1 pr-2" colSpan={3}>{t("pharmacyOffice.pay.ledger.closing")}</td>
-                <td className="py-1 pr-2 text-right tabular-nums">{rupees(l.billedPaise)}</td><td className="py-1 pr-2 text-right tabular-nums">{rupees(l.paidPaise)}</td>
+                <td className="py-1 pr-2 text-right tabular-nums">{rupees(l.billedPaise)}</td><td className="py-1 pr-2 text-right tabular-nums">{rupees(l.paidPaise + l.creditedPaise)}</td>
                 <td className="py-1 pr-2 text-right tabular-nums" data-testid="ledger-closing">{rupees(l.closingPaise)}</td></tr>
             </tbody>
           </table>
-          <p className="mt-2 text-xs text-muted-foreground">{t("pharmacyOffice.pay.ledger.notesLater")}</p>
+          <p className="mt-2 text-xs text-muted-foreground">{t("pharmacyOffice.pay.ledger.notes")}</p>
         </div>
       )}
     </Sheet>

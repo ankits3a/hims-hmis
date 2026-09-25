@@ -75,7 +75,7 @@ const officePay = (over: Partial<WireOfficePay> = {}): WireOfficePay => ({
   toMatch: [{ grnId: "g-1", grnNo: "GRN2609250001", vendorId: "v-1", vendorName: "Acme Distributors", postedAt: "2026-09-25T05:00:00Z", invoiceNo: null, poNo: "MPO2609240001" }],
   drafts: [], held: [billSummary()], matched: [], dueThisWeek: [], overdue: [payable()],
   runs: [{ id: "r-1", runNo: "MPR2609250001", status: "pending_authorisation", source: "agent", totalPaise: 50_000, vendorCount: 1, billCount: 1, approvalId: "ap-1", rejectionNote: null, createdBy: "u-head", createdAt: "2026-09-25T06:00:00Z", submittedAt: "2026-09-25T06:01:00Z", authorisedBy: null, authorisedAt: null, completedAt: null }],
-  outstandingPaise: 341_200, overduePaise: 50_000, plan: { vendors: 1, bills: 1, totalPaise: 50_000, blocked: 1, until: "2026-10-02" },
+  outstandingPaise: 341_200, overduePaise: 50_000, plan: { vendors: 1, bills: 1, totalPaise: 50_000, blocked: 1, until: "2026-10-02", creditPaise: 0, covered: 0 },
   ...over,
 });
 
@@ -84,7 +84,7 @@ const run = (over: Partial<WireRun> = {}): WireRun => ({
   createdBy: "u-head", createdAt: "2026-09-25T06:00:00Z", submittedAt: null, authorisedBy: null, authorisedAt: null, completedAt: null,
   note: null, cancelReason: null, names: { "u-head": "Mat Head", "u-owner": "The Owner" }, approval: null,
   vendors: [{
-    vendorId: "v-2", vendorCode: "SMALL", vendorName: "Small Pharma", msme: true, coolingOffUntil: null, payPaise: 80_000, payment: null,
+    vendorId: "v-2", vendorCode: "SMALL", vendorName: "Small Pharma", msme: true, coolingOffUntil: null, payPaise: 80_000, creditPaise: 0, payment: null,
     lines: [
       { id: "rl-1", billId: "b-2", billNo: "MSB2609100001", vendorBillNo: "S-11", billDate: "2026-09-10", dueDate: "2026-09-20", msme: true, totalPaise: 50_000, prevPaidPaise: 0, creditPaise: 0, payPaise: 50_000, remainingPaise: 0, overdueDays: 5, paid: false },
       { id: "rl-2", billId: "b-3", billNo: "MSB2609120001", vendorBillNo: "S-12", billDate: "2026-09-12", dueDate: "2026-09-27", msme: true, totalPaise: 40_000, prevPaidPaise: 10_000, creditPaise: 0, payPaise: 30_000, remainingPaise: 0, overdueDays: 0, paid: false },
@@ -165,7 +165,7 @@ describe("the office pays (parity P3)", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: "Submit for the owner" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/materials/payment-runs/r-1/submit")).toBe(true));
     const patch = calls.find((c) => c.method === "PATCH")!;
-    expect(patch.body).toEqual({ lines: [{ billId: "b-2", payPaise: 50_000 }, { billId: "b-3", payPaise: 12_000 }] });
+    expect(patch.body).toEqual({ lines: [{ billId: "b-2", payPaise: 50_000, creditPaise: 0 }, { billId: "b-3", payPaise: 12_000, creditPaise: 0 }] });
     expect(calls.findIndex((c) => c.method === "PATCH")).toBeLessThan(calls.findIndex((c) => c.path.endsWith("/submit")));
   });
 
@@ -201,17 +201,17 @@ describe("the office pays (parity P3)", () => {
   it("P opens payables: ageing buckets, the Supplier Summary, and a supplier's ledger with its closing balance", async () => {
     const payables: WirePayables = {
       asOf: "2026-09-25", bills: [payable()], buckets: { "0_30": 50_000, "31_60": 0, "61_90": 0, "90_plus": 0 },
-      suppliers: [{ vendorId: "v-2", vendorCode: "SMALL", vendorName: "Small Pharma", msme: true, phone: null, gstin: "10AAATL6484H1ZP", totalPaise: 90_000, paidPaise: 40_000, remainingPaise: 50_000, overduePaise: 50_000, buckets: { "0_30": 50_000, "31_60": 0, "61_90": 0, "90_plus": 0 } }],
+      suppliers: [{ vendorId: "v-2", vendorCode: "SMALL", vendorName: "Small Pharma", msme: true, phone: null, gstin: "10AAATL6484H1ZP", totalPaise: 90_000, paidPaise: 40_000, remainingPaise: 50_000, overduePaise: 50_000, buckets: { "0_30": 50_000, "31_60": 0, "61_90": 0, "90_plus": 0 }, creditPaise: 0, netPaise: 50_000 }],
       totalOutstandingPaise: 50_000, overduePaise: 50_000,
     };
     const ledger: WireLedger = {
       vendorId: "v-2", vendorCode: "SMALL", vendorName: "Small Pharma", msme: true, from: null, to: null, openingPaise: 0,
       entries: [
-        { date: "2026-09-01", kind: "bill", voucherNo: "MSB2609010001", reference: "S-01", creditPaise: 40_000, debitPaise: 0, balancePaise: 40_000, id: "b-0" },
-        { date: "2026-09-10", kind: "bill", voucherNo: "MSB2609100001", reference: "S-11", creditPaise: 50_000, debitPaise: 0, balancePaise: 90_000, id: "b-2" },
-        { date: "2026-09-15", kind: "payment", voucherNo: "MPV2609150001", reference: "NEFT UTR1", creditPaise: 0, debitPaise: 40_000, balancePaise: 50_000, id: "p-1" },
+        { date: "2026-09-01", kind: "bill", voucherNo: "MSB2609010001", reference: "S-01", creditPaise: 40_000, debitPaise: 0, memoPaise: 0, balancePaise: 40_000, id: "b-0" },
+        { date: "2026-09-10", kind: "bill", voucherNo: "MSB2609100001", reference: "S-11", creditPaise: 50_000, debitPaise: 0, memoPaise: 0, balancePaise: 90_000, id: "b-2" },
+        { date: "2026-09-15", kind: "payment", voucherNo: "MPV2609150001", reference: "NEFT UTR1", creditPaise: 0, debitPaise: 40_000, memoPaise: 0, balancePaise: 50_000, id: "p-1" },
       ],
-      closingPaise: 50_000, billedPaise: 90_000, paidPaise: 40_000,
+      closingPaise: 50_000, billedPaise: 90_000, paidPaise: 40_000, creditedPaise: 0,
     };
     mock({ "GET /pharmacy/office/pay": officePay(), "GET /materials/payables": payables, "GET /materials/payables/ledger/v-2": ledger }, HEAD);
     renderWithRouter(<PayView />);
@@ -230,5 +230,75 @@ describe("the office pays (parity P3)", () => {
     const l = await screen.findByTestId("ledger-sheet");
     expect(await within(l).findByTestId("ledger-closing")).toHaveTextContent("₹500.00");
     expect(within(l).getByTestId("ledger-MPV2609150001")).toHaveTextContent("NEFT UTR1");
+  });
+
+  /**
+   * PARITY P4 — the vendor's accepted credit on the grid: the agent's draft set ₹112 against the first
+   * bill, so it pays ₹388 and the Credit column says ₹112; a bill the credit covers whole pays ₹0 and
+   * stays on the run; saving the draft carries every line's credit back.
+   */
+  it("the credit column: the agent's credit is shown per bill and per vendor, and saving keeps it", async () => {
+    const credited = run({
+      totalPaise: 38_800 + 30_000,
+      vendors: [{
+        ...run().vendors[0]!, payPaise: 38_800 + 30_000, creditPaise: 11_200 + 0,
+        lines: [
+          { ...run().vendors[0]!.lines[0]!, creditPaise: 11_200, payPaise: 38_800, remainingPaise: 0 },
+          { ...run().vendors[0]!.lines[1]!, creditPaise: 0, payPaise: 30_000, remainingPaise: 0 },
+        ],
+      }],
+    });
+    const calls = mock({
+      "GET /pharmacy/office/pay": officePay({ runs: [{ ...officePay().runs[0]!, status: "draft" }], plan: { vendors: 1, bills: 2, totalPaise: 68_800, blocked: 0, until: "2026-10-02", creditPaise: 11_200, covered: 0 } }),
+      "GET /materials/payment-runs/r-1": { run: credited },
+      "PATCH /materials/payment-runs/r-1": { run: credited },
+    }, HEAD);
+    renderWithRouter(<PayView />);
+    expect(await screen.findByTestId("pay-agent-credit")).toHaveTextContent("₹112.00");
+    await userEvent.click(within(await screen.findByTestId("pay-section-runs")).getByTestId("run-row-MPR2609250001"));
+    const sheet = await screen.findByTestId("run-sheet");
+    const grid = await within(sheet).findByTestId("run-vendor-SMALL");
+    expect(within(grid).getByTestId("run-credit-MSB2609100001")).toHaveTextContent("₹112.00");
+    expect(within(grid).getByTestId("run-vendor-credit-SMALL")).toHaveTextContent("₹112.00");
+    // Full is what is left after the credit: ₹500 − ₹112.
+    expect(within(grid).getByLabelText("Full MSB2609100001")).toBeChecked();
+    expect(within(grid).getByLabelText("Pay now MSB2609100001")).toHaveValue("388.00");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+    expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({
+      lines: [{ billId: "b-2", payPaise: 38_800, creditPaise: 11_200 }, { billId: "b-3", payPaise: 30_000, creditPaise: 0 }],
+    });
+  });
+
+  it("the supplier summary nets the credit, and the ledger shows our debit note (a claim) and the vendor's credit note", async () => {
+    const payables: WirePayables = {
+      asOf: "2027-08-01", bills: [payable()], buckets: { "0_30": 50_000, "31_60": 0, "61_90": 0, "90_plus": 0 },
+      suppliers: [{ vendorId: "v-2", vendorCode: "SMALL", vendorName: "Small Pharma", msme: true, phone: null, gstin: "10AAATL6484H1ZP", totalPaise: 50_000, paidPaise: 0, remainingPaise: 50_000, overduePaise: 0, buckets: { "0_30": 50_000, "31_60": 0, "61_90": 0, "90_plus": 0 }, creditPaise: 11_200, netPaise: 38_800 }],
+      totalOutstandingPaise: 50_000, overduePaise: 0,
+    };
+    const ledger: WireLedger = {
+      vendorId: "v-2", vendorCode: "SMALL", vendorName: "Small Pharma", msme: true, from: null, to: null, openingPaise: 0,
+      entries: [
+        { date: "2026-09-10", kind: "bill", voucherNo: "MSB2609100001", reference: "S-11", creditPaise: 50_000, debitPaise: 0, memoPaise: 0, balancePaise: 50_000, id: "b-2" },
+        { date: "2027-08-01", kind: "debit_note", voucherNo: "MDN2708010001", reference: "MRT2708010001", creditPaise: 0, debitPaise: 0, memoPaise: 11_200, balancePaise: 50_000, id: "r-1" },
+        { date: "2027-08-03", kind: "credit_note", voucherNo: "MCN2708030001", reference: "CN/27/118 · MDN2708010001", creditPaise: 0, debitPaise: 11_200, memoPaise: 0, balancePaise: 38_800, id: "c-1" },
+      ],
+      closingPaise: 38_800, billedPaise: 50_000, paidPaise: 0, creditedPaise: 11_200,
+    };
+    mock({ "GET /pharmacy/office/pay": officePay(), "GET /materials/payables": payables, "GET /materials/payables/ledger/v-2": ledger }, HEAD);
+    renderWithRouter(<PayView />);
+    const view = await screen.findByTestId("pay-view");
+    await screen.findByTestId("pay-counts");
+    view.focus();
+    await userEvent.keyboard("p");
+    const sheet = await screen.findByTestId("payables-sheet");
+    await userEvent.click(await within(sheet).findByRole("button", { name: "Supplier summary" }));
+    expect(within(sheet).getByTestId("supplier-net-SMALL")).toHaveTextContent("₹388.00");
+    await userEvent.click(within(within(sheet).getByTestId("supplier-SMALL")).getByRole("button", { name: "Ledger" }));
+    const l = await screen.findByTestId("ledger-sheet");
+    expect(await within(l).findByTestId("ledger-MDN2708010001")).toHaveTextContent("Debit note");
+    expect(within(l).getByTestId("ledger-MDN2708010001")).toHaveTextContent("claim ₹112.00");
+    expect(within(l).getByTestId("ledger-MCN2708030001")).toHaveTextContent("Credit note");
+    expect(within(l).getByTestId("ledger-closing")).toHaveTextContent("₹388.00");
   });
 });

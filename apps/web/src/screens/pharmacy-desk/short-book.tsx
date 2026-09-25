@@ -175,3 +175,28 @@ export function PaymentRunCard({ plan, onDone }: { plan: PaymentRunCardData; onD
     </div>
   );
 }
+
+/**
+ * PARITY P4 — "expiry return bana do": the agent's RETURN plan as the copilot hands it over. It
+ * writes nothing; the card opens the office's returns side, where a person makes the drafts, the head
+ * approves each and somebody else dispatches it with our debit note.
+ */
+export type ReturnPlanCardData = { kind: "supplier_return_plan"; href: string; vendors: number; batches: number; taxablePaise: number; toDestroy: number };
+
+export function returnPlanOf(payload: unknown): ReturnPlanCardData | null {
+  const p = payload as Partial<ReturnPlanCardData> | null | undefined;
+  return p != null && p.kind === "supplier_return_plan" && typeof p.batches === "number" && (p.batches > 0 || (p.toDestroy ?? 0) > 0) ? (p as ReturnPlanCardData) : null;
+}
+
+export function ReturnPlanCard({ plan, onDone }: { plan: ReturnPlanCardData; onDone: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  return (
+    <div data-testid="desk-return-card" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid #24413631" }}>
+      <span className="tag" style={{ color: "var(--mint)", flexShrink: 0 }}>{t("pharmacyDesk.returnPlan.tag")}</span>
+      <span style={{ flexGrow: 1, fontSize: 12.5, lineHeight: "18px" }}>{t("pharmacyDesk.returnPlan.body", { vendors: plan.vendors, batches: plan.batches, toDestroy: plan.toDestroy })}</span>
+      <button type="button" className="agdo" onClick={() => { onDone(); void navigate({ to: "/pharmacy/office", search: { view: "returns" } as never }); }}>{t("pharmacyDesk.returnPlan.open")}</button>
+      <button type="button" onClick={onDone} aria-label={t("pharmacyDesk.short.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>
+    </div>
+  );
+}

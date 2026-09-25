@@ -132,6 +132,17 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.paymentRunPlan",
   /** No accepted bill falls due within the week that a run does not already hold. */
   "copilot.answer.paymentRunNothing",
+
+  /*
+    ═══ draft_supplier_returns (pharmacy office, parity P4) — "expiry return bana do", "expired maal wapas bhejo" ═══
+    A PLAN, never a write: how many vendors and batches the agent would put on returns, and what can
+    only be destroyed; its `payload` links to /pharmacy/office?view=returns, where a person makes the
+    drafts, the head approves each and somebody else dispatches it.
+  */
+  /** "3 vendors, 11 batches, ₹42,000 at cost can go back (2 batches past the window — destroy) — open the office." */
+  "copilot.answer.returnPlan",
+  /** Nothing expired within the window, near expiry or recalled that a return does not already hold. */
+  "copilot.answer.returnNothing",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];

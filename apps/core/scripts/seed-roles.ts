@@ -473,6 +473,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // supplier's bill from the GRN the agent prefilled. DEFAULT — owner may change. Accepting a
       // difference, and paying, are not theirs.
       "materials.bills.manage",
+      // PHARMACY PARITY P4 — the pharmacist drafts (or has the agent draft) the return of expired,
+      // near-expiry, recalled or damaged stock to its supplier, and dispatches an approved one with
+      // our debit note. DEFAULT — owner may change. Approving it is the head's, never the drafter's,
+      // and whoever approved it never dispatches it (`return_approver_dispatcher`).
+      "materials.returns.manage",
       // PHARMACY P5 — a paid dispense that cannot be collected: the counter that issued the invoice
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",
@@ -1069,6 +1074,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.bills.accept_difference",
       "materials.payments.prepare",
       "materials.payments.record",
+      // PHARMACY PARITY P4 — the head drafts and dispatches returns to suppliers, APPROVES a return
+      // somebody else drafted (never their own; never one they then dispatch), and raises the
+      // destruction write-off of stock that cannot go back. The write-off's approval is the medical
+      // superintendent's, through `materials_stock_adjustment`. DEFAULTS — owner may change.
+      "materials.returns.manage",
+      "materials.returns.approve",
+      "materials.writeoffs.manage",
       // ─── THE APPROVALS SPINE, 2026-09-20: the same defect as the owner's, one store over ───
       //
       // `materials_head` is the `approverRole` on `materials_near_expiry_acceptance` and held
@@ -1535,6 +1547,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // paid, as the materials head does. DEFAULT — owner may change. The owner authorises.
       "materials.payments.prepare",
       "materials.payments.record",
+      // PHARMACY PARITY P4 — the pharmacist named on the drug licence raises the destruction write-off
+      // of expired stock (the medical superintendent approves it) and acts on a CDSCO drug alert: the
+      // recall freeze and its register. DECIDED / DEFAULT — owner may change.
+      "materials.writeoffs.manage",
+      "materials.recall.manage",
     ],
   },
 ];

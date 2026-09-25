@@ -58,7 +58,7 @@ const CENSUS: Record<string, string[]> = {
   ],
   vendors: [
     "bank", "blacklist_reason", "blacklist_until", "class_flags", "code", "created_at", "created_by",
-    "first_payment_allowed_at", "gstin", "gstin_verified_at", "id", "legal_name", "msme_class",
+    "expiry_return_days", "first_payment_allowed_at", "gstin", "gstin_verified_at", "id", "legal_name", "msme_class",
     "msme_udyam_no", "pan", "payment_terms_days", "status", "trade_name", "updated_at", "updated_by",
   ],
   vendor_documents: [
@@ -147,6 +147,34 @@ const CENSUS: Record<string, string[]> = {
   supplier_payment_run_lines: [
     "bill_id", "credit_paise", "id", "pay_paise", "payment_id", "run_id", "vendor_id",
   ],
+  // PHARMACY PARITY P4 — the recall register, the return to the supplier and its lines, the vendor's
+  // credit note, and the destruction write-off and its lines.
+  stock_recalls: [
+    "batch_id", "close_note", "closed_at", "closed_by", "id", "item_id", "raised_at", "raised_by", "reason", "recall_no",
+    "reference", "source", "status",
+  ],
+  supplier_returns: [
+    "approved_at", "approved_by", "cancel_reason", "cancelled_at", "cancelled_by", "cgst_paise", "close_reason", "closed_at",
+    "closed_by", "created_at", "created_by", "credited_paise", "debit_note_date", "debit_note_no", "dispatched_at",
+    "dispatched_by", "id", "igst_paise", "inter_state", "note", "recall_id", "return_no", "sgst_paise", "source", "status",
+    "taxable_paise", "total_paise", "updated_at", "updated_by", "vendor_gstin", "vendor_id",
+  ],
+  supplier_return_lines: [
+    "batch_id", "cgst_paise", "gst_rate_bps", "hsn_code", "id", "igst_paise", "item_id", "ledger_entry_id", "qty_base",
+    "rate_paise", "reason", "return_id", "sgst_paise", "store_resource_id", "taxable_paise",
+  ],
+  supplier_credit_notes: [
+    "amount_paise", "cancel_reason", "cancelled_at", "cancelled_by", "credit_no", "credit_note_date", "debit_note_paise",
+    "difference_paise", "difference_reason", "id", "recorded_at", "recorded_by", "return_id", "status", "vendor_credit_note_no",
+    "vendor_id",
+  ],
+  stock_write_offs: [
+    "approval_id", "disposal_agency", "disposal_date", "id", "manifest_no", "note", "posted_at", "posted_by", "reason",
+    "refused_at", "requested_at", "requested_by", "status", "store_resource_id", "total_value_paise", "write_off_no",
+  ],
+  stock_write_off_lines: [
+    "batch_id", "id", "item_id", "ledger_entry_id", "qty_base", "value_paise", "write_off_id",
+  ],
 };
 
 describe("the materials tables (Plan 14 T1)", () => {
@@ -186,8 +214,8 @@ describe("the materials tables (Plan 14 T1)", () => {
    * each, and the prose count followed the bullets rather than the tables. Recorded here as a
    * number rather than only in CLOSE, so the next phase that reads this family counts what exists.
    */
-  it("there are exactly TWENTY-FOUR of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(24);
+  it("there are exactly THIRTY of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(30);
   });
 
   // ───────────────────── the five semantic CHECKs, read out BY NAME ─────────────────────

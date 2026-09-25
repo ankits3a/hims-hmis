@@ -114,11 +114,11 @@ export {
 export {
   AGE_BUCKETS, PAYABLE_BILL_STATUSES, acceptBillDifference, acceptSupplierBill, ageBucketOf, billDraftFromGrn, billsDueBy,
   cancelSupplierBill, createSupplierBill, dueDateFor, financialYearOf, getSupplierBill, lineMismatches, listSupplierBills,
-  matchSupplierBill, matchTolerancePaise, payables, supplierLedger, unbilledGrns, updateSupplierBill, vendorBillKey, withinMatch,
+  matchSupplierBill, matchTolerancePaise, payables, supplierLedger, unbilledGrns, updateSupplierBill, vendorBillKey, vendorCredits, withinMatch,
 } from "./supplier-bills";
 export type {
   AgeBucket, BillDraft, BillFilter, BillInput, BillLineInput, BillLineView, BillMismatch, BillStatus, BillSummary, BillView,
-  LedgerEntry, PayableRow, Payables, SupplierLedger, SupplierSummaryRow, UnbilledGrn,
+  LedgerEntry, PayableRow, Payables, SupplierLedger, SupplierSummaryRow, UnbilledGrn, VendorCredit,
 } from "./supplier-bills";
 export {
   PAYMENT_MODES, assertNotRunAuthoriser, cancelPaymentRun, createPaymentRun, decidePaymentRun, draftPaymentRun, getPaymentRun,
@@ -127,3 +127,25 @@ export {
 export type {
   PaymentInput, PaymentMode, PaymentPlan, PlanBill, PlanGroup, RunLineInput, RunLineView, RunStatus, RunSummary, RunVendorView, RunView,
 } from "./payments";
+
+// ── PHARMACY PARITY P4 — the expiry report, returns to the supplier, credit notes, write-offs, recalls ──
+export {
+  EXPIRY_REPORT_PRESET_DAYS, EXPIRY_RETURN_WINDOW_DAYS, NEAR_EXPIRY_RETURN_DAYS, NON_SUPPLIER_VENDOR_CODES,
+} from "./config";
+export {
+  EXPIRY_PRESETS, RETURN_LINE_REASONS, approveSupplierReturn, assertNotReturnApprover, cancelSupplierReturn, cancelVendorCredit,
+  closeSupplierReturn, createSupplierReturn, dispatchSupplierReturn, draftReturnFromRecall, draftSupplierReturns, expiryRange,
+  expiryReport, getSupplierReturn, listSupplierReturns, planSupplierReturns, recordVendorCredit, returnVerdict, returnWindowDays,
+  returnableUntil, supplierKindOf, updateSupplierReturn,
+} from "./supplier-returns";
+export type {
+  CreditInput, DestroyCandidate, ExpiryPreset, ExpiryReport, ExpiryReportRow, ExpirySupplierRow, ReturnFilter, ReturnInput,
+  ReturnLineInput, ReturnLineReason, ReturnLineView, ReturnPlan, ReturnPlanGroup, ReturnPlanLine, ReturnSource, ReturnStatus,
+  ReturnSummary, ReturnVerdict, ReturnView, SupplierKind,
+} from "./supplier-returns";
+export {
+  WRITE_OFF_REASONS, getWriteOff, listWriteOffs, postWriteOff, raiseWriteOff, settleWriteOffs, writeOffsAwaitingApproval, writeOffsReadyToPost,
+} from "./write-offs";
+export type { DisposalInput, WriteOffLineInput, WriteOffLineView, WriteOffReason, WriteOffStatus, WriteOffSummary, WriteOffView } from "./write-offs";
+export { RECALL_SOURCES, closeRecall, getRecall, listRecalls, raiseRecall, recallableBatches } from "./recalls";
+export type { RecallSource, RecallStatus, RecallSummary, RecallView } from "./recalls";

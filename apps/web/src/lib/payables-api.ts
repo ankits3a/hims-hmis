@@ -38,7 +38,7 @@ export type WireBill = WireBillSummary & {
   note: string | null; poNo: string | null; cancelReason: string | null; differenceAcceptedBy: string | null;
   names: Record<string, string>; lines: WireBillLine[];
   unbilled: { grnId: string; grnNo: string; itemId: string; itemCode: string; itemName: string; expectedBase: number; expectedTaxablePaise: number }[];
-  payments: { paymentId: string; paymentNo: string; runNo: string; mode: string; reference: string | null; paidOn: string; paidPaise: number }[];
+  payments: { paymentId: string; paymentNo: string; runNo: string; mode: string; reference: string | null; paidOn: string; paidPaise: number; creditPaise: number }[];
 };
 
 export type AgeBucket = "0_30" | "31_60" | "61_90" | "90_plus";
@@ -48,6 +48,8 @@ export type WirePayableRow = WireBillSummary & { ageDays: number; bucket: AgeBuc
 export type WireSupplierSummaryRow = {
   vendorId: string; vendorCode: string; vendorName: string; msme: boolean; phone: string | null; gstin: string | null;
   totalPaise: number; paidPaise: number; remainingPaise: number; overduePaise: number; buckets: Record<AgeBucket, number>;
+  /** PARITY P4 — accepted vendor credit not yet set against a paid bill, and what is owed net of it. */
+  creditPaise: number; netPaise: number;
 };
 export type WirePayables = {
   asOf: string; bills: WirePayableRow[]; suppliers: WireSupplierSummaryRow[]; buckets: Record<AgeBucket, number>;
@@ -55,11 +57,15 @@ export type WirePayables = {
 };
 
 export type WireLedgerEntry = {
-  date: string; kind: "bill" | "payment"; voucherNo: string; reference: string; creditPaise: number; debitPaise: number; balancePaise: number; id: string;
+  date: string; kind: "bill" | "payment" | "debit_note" | "credit_note"; voucherNo: string; reference: string;
+  creditPaise: number; debitPaise: number;
+  /** PARITY P4 — our debit note's amount on a `debit_note` row: a claim, which moves no balance. */
+  memoPaise: number;
+  balancePaise: number; id: string;
 };
 export type WireLedger = {
   vendorId: string; vendorCode: string; vendorName: string; msme: boolean; from: string | null; to: string | null;
-  openingPaise: number; entries: WireLedgerEntry[]; closingPaise: number; billedPaise: number; paidPaise: number;
+  openingPaise: number; entries: WireLedgerEntry[]; closingPaise: number; billedPaise: number; paidPaise: number; creditedPaise: number;
 };
 
 export type RunStatus = "draft" | "pending_authorisation" | "authorised" | "completed" | "cancelled";
@@ -77,6 +83,8 @@ export type WireRunLine = {
 };
 export type WireRunVendor = {
   vendorId: string; vendorCode: string; vendorName: string; msme: boolean; coolingOffUntil: string | null; payPaise: number;
+  /** PARITY P4 — the vendor credit set against this vendor's bills on the run. */
+  creditPaise: number;
   lines: WireRunLine[];
   payment: { paymentId: string; paymentNo: string; mode: PaymentMode; reference: string | null; paidOn: string; amountPaise: number; recordedBy: string } | null;
 };
@@ -91,7 +99,7 @@ export type WireOfficePay = {
   toMatch: WireUnbilledGrn[]; drafts: WireBillSummary[]; held: WireBillSummary[]; matched: WireBillSummary[];
   dueThisWeek: WirePayableRow[]; overdue: WirePayableRow[]; runs: WireRunSummary[];
   outstandingPaise: number; overduePaise: number;
-  plan: { vendors: number; bills: number; totalPaise: number; blocked: number; until: string };
+  plan: { vendors: number; bills: number; totalPaise: number; blocked: number; until: string; creditPaise: number; covered: number };
 };
 
 export const fetchOfficePay = (): Promise<WireOfficePay> => api("GET", "/pharmacy/office/pay");
@@ -125,7 +133,7 @@ export const fetchRun = async (id: string): Promise<WireRun> => (await api<{ run
 /** PARITY P3 — the run as the owner reads it from its approval card (guarded on approvals.requests.decide). */
 export const fetchRunForApproval = async (id: string): Promise<WireRun> => (await api<{ run: WireRun }>("GET", `/materials/payment-runs/${id}/for-approval`)).run;
 export const draftRun = async (): Promise<WireRun> => (await api<{ run: WireRun }>("POST", "/materials/payment-runs/draft")).run;
-export const updateRun = async (id: string, patch: { lines?: { billId: string; payPaise: number }[]; note?: string | null }): Promise<WireRun> =>
+export const updateRun = async (id: string, patch: { lines?: { billId: string; payPaise: number; creditPaise?: number }[]; note?: string | null }): Promise<WireRun> =>
   (await api<{ run: WireRun }>("PATCH", `/materials/payment-runs/${id}`, patch)).run;
 export const submitRun = async (id: string): Promise<WireRun> => (await api<{ run: WireRun }>("POST", `/materials/payment-runs/${id}/submit`)).run;
 export const cancelRun = async (id: string, reason: string): Promise<WireRun> =>

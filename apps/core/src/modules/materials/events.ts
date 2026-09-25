@@ -144,6 +144,9 @@ export const materialDiscrepancyFlagged = defineEvent("material.discrepancy_flag
 export const batchRecalled = defineEvent("batch.recalled", MODULE, z.object({
   batchId: id, itemId: id, batchNo: z.string().min(1), reason: z.string().min(1),
   locations: z.array(z.object({ storeResourceId: id, qtyFrozen: qty })),
+  /** PARITY P4 (additive) — the recall register's entry, when the recall was raised through it. */
+  recallId: id.optional(), recallNo: z.string().optional(),
+  source: z.enum(["cdsco", "manufacturer", "internal"]).optional(), reference: z.string().nullable().optional(),
 }));
 
 /**
@@ -386,7 +389,59 @@ export const paymentRunCompleted = defineEvent("payment_run.completed", MODULE, 
 export const supplierPaymentRecorded = defineEvent("supplier_payment.recorded", MODULE, z.object({
   paymentId: id, paymentNo: z.string().min(1), runId: id, vendorId: id, mode: z.enum(["neft", "rtgs", "upi", "cheque", "cash"]),
   reference: z.string().nullable(), paidOn: z.string(), amountPaise: paise,
-  bills: z.array(z.object({ billId: id, billNo: z.string(), paidPaise: paise, status: z.enum(["part_paid", "paid"]) })).min(1),
+  bills: z.array(z.object({
+    billId: id, billNo: z.string(), paidPaise: paise, status: z.enum(["part_paid", "paid"]),
+    /** PARITY P4 (additive) — the vendor's credit offset against this bill on the same voucher. */
+    creditPaise: paise.optional(),
+  })).min(1),
+}));
+
+// ═══ PHARMACY PARITY P4 — returning: the return to the supplier, the credit note, destruction, the recall ═══
+
+const returnHeader = { returnId: id, returnNo: z.string().min(1), vendorId: id, totalPaise: paise };
+
+/** A draft return written — by a person (`manual`), the agent's draft a person asked for (`agent`), or one tap from a recall. */
+export const supplierReturnDrafted = defineEvent("supplier_return.drafted", MODULE, z.object({
+  ...returnHeader, source: z.enum(["manual", "agent", "recall"]), lines: z.number().int().nonnegative(), recallId: id.nullable(),
+}));
+export const supplierReturnUpdated = defineEvent("supplier_return.updated", MODULE, z.object({ ...returnHeader, lines: z.number().int().nonnegative() }));
+export const supplierReturnApproved = defineEvent("supplier_return.approved", MODULE, z.object({ ...returnHeader, approvedBy: id }));
+/** The goods left: one `return` ledger row per line, and OUR debit note with its GST reversal. */
+export const supplierReturnDispatched = defineEvent("supplier_return.dispatched", MODULE, z.object({
+  ...returnHeader, debitNoteNo: z.string().min(1), debitNoteDate: z.string(), vendorGstin: z.string().nullable(), interState: z.boolean(),
+  taxablePaise: paise, cgstPaise: paise, sgstPaise: paise, igstPaise: paise, dispatchedBy: id,
+  lines: z.array(z.object({ lineId: id, itemId: id, batchId: id, storeResourceId: id, qtyBase: qty, ledgerEntryId: id })).min(1),
+}));
+export const supplierReturnCancelled = defineEvent("supplier_return.cancelled", MODULE, z.object({ ...returnHeader, reason: z.string().min(1), fromStatus: z.string() }));
+/** Dispatched and no credit is coming (the vendor refused it): the debit note is written off, with the reason. */
+export const supplierReturnClosed = defineEvent("supplier_return.closed", MODULE, z.object({ ...returnHeader, reason: z.string().min(1) }));
+/** The vendor's credit note recorded against a return: an offset the next payment run spends. */
+export const supplierCreditRecorded = defineEvent("supplier_credit.recorded", MODULE, z.object({
+  creditNoteId: id, creditNo: z.string().min(1), returnId: id, returnNo: z.string().min(1), vendorId: id,
+  vendorCreditNoteNo: z.string().min(1), creditNoteDate: z.string(), amountPaise: paise, debitNotePaise: paise,
+  differencePaise: paise, differenceReason: z.string().nullable(),
+}));
+/** A credit note recorded in error, cancelled before any run spent it; the return is back to dispatched. */
+export const supplierCreditCancelled = defineEvent("supplier_credit.cancelled", MODULE, z.object({
+  creditNoteId: id, creditNo: z.string().min(1), returnId: id, vendorId: id, amountPaise: paise, reason: z.string().min(1),
+}));
+
+const writeOffHeader = { writeOffId: id, writeOffNo: z.string().min(1), storeResourceId: id, totalValuePaise: paise };
+
+/** A destruction write-off asked for: the approval filed (`materials_stock_adjustment`, the medical superintendent's). */
+export const stockWriteOffRequested = defineEvent("stock_write_off.requested", MODULE, z.object({
+  ...writeOffHeader, reason: z.enum(["expiry", "damage", "recall"]), approvalId: id, lines: z.number().int().positive(),
+}));
+/** The approval refused: nothing moved. */
+export const stockWriteOffRefused = defineEvent("stock_write_off.refused", MODULE, z.object({ ...writeOffHeader, approvalId: id }));
+/** Destroyed: one `adjust` row out per line, and the BMW manifest it went with. */
+export const stockWriteOffPosted = defineEvent("stock_write_off.posted", MODULE, z.object({
+  ...writeOffHeader, approvalId: id, postedBy: id, disposalAgency: z.string().min(1), manifestNo: z.string().min(1), disposalDate: z.string(),
+  lines: z.array(z.object({ lineId: id, itemId: id, batchId: id, qtyBase: qty, valuePaise: paise, ledgerEntryId: id })).min(1),
+}));
+/** A recall closed: no store holds the batch any more. */
+export const stockRecallClosed = defineEvent("stock_recall.closed", MODULE, z.object({
+  recallId: id, recallNo: z.string().min(1), batchId: id, closedBy: id, note: z.string(),
 }));
 
 export const MATERIALS_EVENTS = [
@@ -404,4 +459,7 @@ export const MATERIALS_EVENTS = [
   supplierBillDrafted, supplierBillUpdated, supplierBillMatched, supplierBillAccepted, supplierBillCancelled,
   paymentRunDrafted, paymentRunUpdated, paymentRunSubmitted, paymentRunAuthorised, paymentRunRejected, paymentRunCancelled,
   paymentRunCompleted, supplierPaymentRecorded,
+  supplierReturnDrafted, supplierReturnUpdated, supplierReturnApproved, supplierReturnDispatched, supplierReturnCancelled,
+  supplierReturnClosed, supplierCreditRecorded, supplierCreditCancelled,
+  stockWriteOffRequested, stockWriteOffRefused, stockWriteOffPosted, stockRecallClosed,
 ] as const;

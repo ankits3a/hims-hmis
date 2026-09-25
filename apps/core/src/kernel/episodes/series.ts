@@ -89,6 +89,18 @@ export const EPISODE_SERIES = {
   supplier_bill: "MSB",
   payment_run: "MPR",
   supplier_payment: "MPV",
+  /**
+   * PHARMACY PARITY P4 — the documents of a return to the supplier and of destruction, each a stable
+   * number P5's Tally export carries: the return (`MRT`), OUR debit note issued when it leaves
+   * (`MDN`), the vendor's credit note as we booked it (`MCN`), the destruction write-off with its BMW
+   * manifest (`MWO`), and the recall register's entry (`MRC`). Three letters for the GRN's reason;
+   * none is a prefix of another or of the P2/P3 prefixes.
+   */
+  supplier_return: "MRT",
+  debit_note: "MDN",
+  supplier_credit: "MCN",
+  stock_write_off: "MWO",
+  stock_recall: "MRC",
 } as const;
 
 export type EpisodeSeriesKey = keyof typeof EPISODE_SERIES;
