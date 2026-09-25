@@ -127,7 +127,7 @@ Measured before planning (2 read-only passes, 2026-09-24):
   the reference. `vendors.first_payment_allowed_at` is honoured (bank-change cooling-off, already modelled).
 - Supplier ledger + Supplier Summary.
 
-**P3 as built (2026-09-25, lane `pharmacy-p3-pay`, migration 0126).**
+**P3 as built (2026-09-25, lane `pharmacy-p3-pay`, migration 0127).**
 - Tables (materials module): `supplier_bills` and `supplier_bill_lines` (one line per item per GRN,
   carrying what the GRN accepted and the PO's rate beside what was billed), `supplier_payment_runs`,
   `supplier_payment_run_lines` (`pay_paise`, and `credit_paise` reserved for P4 — always 0 today) and
