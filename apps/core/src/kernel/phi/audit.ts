@@ -244,7 +244,15 @@ export type PhiSurface =
    * patients and the narcotic or Schedule X drug each was given. Its own name, the H1 register's reason.
    * Appended; nothing above changes.
    */
-  | "pharmacy.controlled_register";
+  | "pharmacy.controlled_register"
+  /**
+   * ABDM S1 — the patient's ABHA profile (and card) as ABDM returned it after an OTP verification,
+   * read for a named patient: at the OTP step when the flow was opened from their record, and at the
+   * comparison and the link. Appended.
+   */
+  | "abdm.abha_profile"
+  /** ABDM S1 — a scan-and-share profile, audited against the patient it was linked to. Appended. */
+  | "abdm.profile_share";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

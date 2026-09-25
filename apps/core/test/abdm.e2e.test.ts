@@ -35,6 +35,12 @@ jest.setTimeout(120_000);
 
 const SECRET = "e2e-secret-7d1a-never-stored";
 const SHARE = "/abdm/callbacks/api/v3/hip/patient/share";
+/**
+ * S1 — the scan-and-share kind now HAS a handler (the abdm module registers it when ABDM is
+ * configured), so the registry assertions below run against a kind no slice handles yet.
+ */
+const GENERIC = "/abdm/callbacks/api/v3/links/context/on-notify";
+const GENERIC_KIND = "callback.links/context/on-notify";
 
 function workerDbUrl(): string {
   const url = new URL(requireEnv("TEST_DATABASE_URL"));
@@ -79,7 +85,7 @@ describe("ABDM callbacks e2e — configured", () => {
   beforeEach(async () => {
     await truncateAll(db);
     seen = [];
-    unregister = [registerAbdmCallbackHandler("callback.hip/patient/share", async (m) => { seen.push(m); })];
+    unregister = [registerAbdmCallbackHandler(GENERIC_KIND, async (m) => { seen.push(m); })];
   });
   afterEach(() => { for (const u of unregister) u(); });
 
@@ -91,15 +97,15 @@ describe("ABDM callbacks e2e — configured", () => {
   };
 
   it("accepts a gateway-signed callback with NO HMIS session: 202, logged, dispatched once", async () => {
-    const body = { intent: "PROFILE_SHARE", metaData: { hipId: "IN0000000001" }, response: { requestId: "corr-1" } };
-    const res = await post(SHARE, fake.signCallbackJwt(), "11111111-1111-4111-8111-111111111111", body);
+    const body = { acknowledgement: { status: "SUCCESS" }, response: { requestId: "corr-1" } };
+    const res = await post(GENERIC, fake.signCallbackJwt(), "11111111-1111-4111-8111-111111111111", body);
     expect(res.status).toBe(202);
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ kind: "callback.hip/patient/share", requestId: "11111111-1111-4111-8111-111111111111", hipId: "IN0000000001", body });
+    expect(seen[0]).toMatchObject({ kind: GENERIC_KIND, requestId: "11111111-1111-4111-8111-111111111111", hipId: "IN0000000001", body });
     const rows = await db.select().from(abdmMessages).where(eq(abdmMessages.direction, "in"));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      kind: "callback.hip/patient/share", path: "/api/v3/hip/patient/share", httpStatus: 202,
+      kind: GENERIC_KIND, path: "/api/v3/links/context/on-notify", httpStatus: 202,
       requestId: "11111111-1111-4111-8111-111111111111", correlationRequestId: "corr-1", dispatch: "handled", body,
     });
     // The inbound JWT is ABDM's credential and is not kept.
@@ -108,8 +114,8 @@ describe("ABDM callbacks e2e — configured", () => {
 
   it("a RETRY with the same REQUEST-ID answers 202 and is not dispatched again", async () => {
     const id = "22222222-2222-4222-8222-222222222222";
-    expect((await post(SHARE, fake.signCallbackJwt(), id)).status).toBe(202);
-    expect((await post(SHARE, fake.signCallbackJwt(), id)).status).toBe(202);
+    expect((await post(GENERIC, fake.signCallbackJwt(), id)).status).toBe(202);
+    expect((await post(GENERIC, fake.signCallbackJwt(), id)).status).toBe(202);
     expect(seen).toHaveLength(1);
     expect(await db.select().from(abdmMessages).where(eq(abdmMessages.direction, "in"))).toHaveLength(1);
   });
@@ -117,7 +123,7 @@ describe("ABDM callbacks e2e — configured", () => {
   it("a valid HMIS user session is NOT an ABDM token", async () => {
     const { id } = await createUser(db, { username: "clerk", fullName: "clerk", password: "p1234567" });
     const { token } = await createSession(db, cfg, id);
-    expect((await post(SHARE, token, "33333333-3333-4333-8333-333333333333")).status).toBe(401);
+    expect((await post(GENERIC, token, "33333333-3333-4333-8333-333333333333")).status).toBe(401);
     expect(seen).toHaveLength(0);
   });
 
@@ -156,6 +162,8 @@ describe("ABDM callbacks e2e — configured", () => {
   });
 
   it("registering a second handler for one kind is refused", () => {
+    expect(() => registerAbdmCallbackHandler(GENERIC_KIND, async () => undefined)).toThrow(/already/);
+    // S1 — and the share kind is taken by the module itself while ABDM is configured.
     expect(() => registerAbdmCallbackHandler("callback.hip/patient/share", async () => undefined)).toThrow(/already/);
   });
 });

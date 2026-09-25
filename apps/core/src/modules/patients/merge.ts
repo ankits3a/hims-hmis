@@ -8,6 +8,7 @@ import { patientAllergies, patientGuardians, patientMergeRequests, patients } fr
 import { withTx } from "../../kernel/db/client";
 import { patientMerged, patientUnmerged } from "./events";
 import { PatientError } from "./uhid";
+import { assertAbhaFree } from "./abha-holders";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /** Registered as DATA at go-live (runbook, T10 docs); tests register them inline. No engine work — Plan 04 gate report §8. */
@@ -220,6 +221,16 @@ export async function executeUnmerge(db: Db, actor: Actor, mergeRequestId: strin
     }
     if (moved.guardianIds.length > 0) {
       await tx.update(patientGuardians).set({ patientId: req.loserId }).where(inArray(patientGuardians.id, moved.guardianIds));
+    }
+    /*
+      ABDM S1 — ONE ABHA, ONE PATIENT survives an unmerge. A merged row is outside the ABHA indexes
+      (`abha-holders.ts`), so while it was frozen its winner may have been verified with the same
+      ABHA; putting the loser back would make two active holders. Refused, naming the holder.
+    */
+    const [loser] = await tx.select({ abhaNumber: patients.abhaNumber, abhaAddress: patients.abhaAddress })
+      .from(patients).where(eq(patients.id, req.loserId));
+    if (loser !== undefined) {
+      await assertAbhaFree(tx, actor, { abhaNumber: loser.abhaNumber, abhaAddress: loser.abhaAddress }, req.loserId);
     }
     const unfrozen = await tx
       .update(patients)

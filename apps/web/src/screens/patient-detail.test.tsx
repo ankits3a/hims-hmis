@@ -372,7 +372,10 @@ describe("PatientDetail", () => {
 describe("22c-A T7 — the amendment surface", () => {
   function open(): void {
     stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      /* ABDM S1 — the shared fixture's ABHA is `verified`, and a verified record now LOCKS name, birth and
+         gender (the lock has its own block below). These tests are about the Class I reason gate, so they
+         amend a record whose ABHA is the patient's own statement. */
+      "GET /api/patients/p-1": { patient: { ...PATIENT, abhaVerificationStatus: "self_declared" }, resolvedFrom: null },
       "GET /api/patients/p-1/allergies": { items: [] },
       "GET /api/patients/p-1/guardians": { items: [] },
       "GET /api/patients/p-1/qr": QR,
@@ -615,5 +618,72 @@ describe("ABDM S0 — the counter cannot offer 'verified'", () => {
     const select = await statusSelect();
     expect([...select.options].map((o) => o.value)).toEqual(["none", "self_declared", "verified"]);
     expect(select.value).toBe("verified");
+  });
+});
+
+/**
+ * ABDM S1 — "Verify with ABDM" on the record: drawn only when this hospital can verify (the
+ * capability says so), and it opens the verification flow pre-filled with the record's ABHA.
+ */
+describe("ABDM S1 — Verify with ABDM on the record", () => {
+  function openWith(canVerify: boolean): void {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: { ...PATIENT, abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: "self_declared" }, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "GET /api/patients/abha/capability": { configured: canVerify, canRecord: true, canCreate: false, canVerify, canScanShare: canVerify, reason: "test" },
+    });
+    renderWithProviders(<PatientDetail />);
+  }
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("is not drawn when the hospital cannot verify", async () => {
+    openWith(false);
+    await screen.findByText("Asha Devi");
+    await waitFor(() => expect(document.getElementById("f-abhaNumber")).not.toBeNull());
+    expect(screen.queryByTestId("patient-abdm-verify")).toBeNull();
+  });
+
+  it("opens the flow with the record's ABHA number when it can", async () => {
+    openWith(true);
+    const button = await screen.findByTestId("patient-abdm-verify");
+    await userEvent.setup({ delay: null }).click(button);
+    expect(await screen.findByTestId("abdm-identifier")).toHaveValue("91-2345-6789-0123");
+  });
+});
+
+/**
+ * ABDM S1 — DECIDED (NHA M1 workbook): while the ABHA is verified, name, birth and gender are ABDM's.
+ * The form says so and does not let them be typed over; mobile stays editable.
+ */
+describe("ABDM S1 — the demographics lock on the record", () => {
+  function openWith(status: string): void {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: { ...PATIENT, abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: status }, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "GET /api/patients/abha/capability": { configured: false, canRecord: true, canCreate: false, canVerify: false, canScanShare: false, reason: "test" },
+    });
+    renderWithProviders(<PatientDetail />);
+  }
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("verified: name and date of birth are read-only, gender inert, the phone editable, and the note says why", async () => {
+    openWith("verified");
+    await screen.findByTestId("abdm-demographics-locked");
+    await waitFor(() => expect(document.getElementById("f-name")).not.toBeNull());
+    expect(document.getElementById("f-name")).toHaveAttribute("readonly");
+    expect(document.getElementById("f-dob")).toHaveAttribute("readonly");
+    expect(document.getElementById("f-administrativeGender")).toHaveAttribute("aria-disabled", "true");
+    expect(document.getElementById("f-phone")).not.toHaveAttribute("readonly");
+  });
+
+  it("not verified: nothing is locked", async () => {
+    openWith("self_declared");
+    await waitFor(() => expect(document.getElementById("f-name")).not.toBeNull());
+    expect(screen.queryByTestId("abdm-demographics-locked")).toBeNull();
+    expect(document.getElementById("f-name")).not.toHaveAttribute("readonly");
   });
 });

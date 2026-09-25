@@ -23,6 +23,10 @@ export type AbdmSettings = {
   /** What `PATCH /gateway/v3/bridge/url` registers; callbacks arrive at `{this}/api/v3/...`. No trailing slash. */
   callbackBaseUrl: string;
   jwtAudience: string;
+  /** S1 — Aadhaar-OTP ABHA creation. OFF until the owner rules (config `ABDM_ABHA_CREATE_AADHAAR`). */
+  abhaCreateByAadhaar: boolean;
+  /** S1 — the scan-and-share QR base (config `ABDM_SCAN_SHARE_URL`, else derived from `cmId`). */
+  scanShareUrl: string;
 };
 
 const trimSlash = (s: string): string => s.replace(/\/+$/, "");
@@ -38,6 +42,8 @@ export function abdmSettingsFrom(abdm: AppConfig["abdm"]): AbdmSettings | null {
     hiuId: abdm.hiuId,
     callbackBaseUrl: trimSlash(abdm.callbackBaseUrl!),
     jwtAudience: abdm.jwtAudience,
+    abhaCreateByAadhaar: abdm.abhaCreateByAadhaar,
+    scanShareUrl: abdm.scanShareUrl,
   } as AbdmSettings;
   Object.defineProperty(settings, "clientSecret", { value: abdm.clientSecret!, enumerable: false, writable: false });
   return settings;

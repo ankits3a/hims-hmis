@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 
 /**
@@ -54,6 +54,12 @@ export const abdmMessages = pgTable(
     /** 'in' only: 'pending' | 'handled' | 'unhandled' | 'failed'. */
     dispatch: text("dispatch"),
     patientId: text("patient_id").references(() => patients.id),
+    /**
+     * ABDM S1 — 'out' only: WHO at the hospital caused this request (the clerk who asked ABDM to send
+     * an OTP, or fetched a profile). Null for the connector's own calls (the session, the JWKS, the
+     * on-share reply to a callback). Not a foreign key: an actor may be a system actor.
+     */
+    actorId: text("actor_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
@@ -64,5 +70,64 @@ export const abdmMessages = pgTable(
     index("abdm_messages_correlation_idx").on(t.correlationRequestId),
     index("abdm_messages_kind_created_idx").on(t.kind, t.createdAt),
     index("abdm_messages_patient_idx").on(t.patientId),
+  ],
+);
+
+/**
+ * ═══ ABDM S1 — SCAN AND SHARE: A PROFILE A PATIENT SHARED FROM THEIR PHR APP, WAITING AT THE COUNTER ═══
+ *
+ * The patient scans the counter's QR with an ABHA app; ABDM posts their profile to
+ * `/api/v3/hip/patient/share` (JWT-verified, de-duplicated on REQUEST-ID by `abdm_messages`); the
+ * handler (`modules/abdm/profile-shares.ts`) stores it HERE and answers ABDM with a token number the
+ * patient's phone shows. The clerk sees the pending list, opens one, and either registers a new
+ * patient pre-filled from it or matches it to a patient already on file — and only then does the ABHA
+ * reach a patient row, through `recordAbhaVerifiedByAbdm`.
+ *
+ *   · `request_id` — the REQUEST-ID of the FIRST share that created the row (unique). A re-scan by
+ *     the same ABHA address while a row is still pending REFRESHES that row and keeps its token
+ *     (Care's get-or-create), so a patient who scans twice is not two entries at the counter.
+ *   · `token_number` — per hospital (HIP id), per IST day, from 1. Unique on the three together;
+ *     a concurrent allocation that loses the race retries with the next number.
+ *   · `profile` — ABDM's `profile.patient` object AS SENT (PHI). No Aadhaar number is ever in it:
+ *     ABDM's share carries none.
+ *   · `status` — 'pending' until linked to a patient ('linked') or dismissed by the counter
+ *     ('dismissed'). An unlinked row past `expires_at` is simply not offered.
+ *   · `ack_status` — whether ABDM accepted our `on-share` reply ('sent'), refused it or could not be
+ *     reached ('failed', with `ack_error`), or it was not attempted yet (null).
+ */
+export const abdmProfileShares = pgTable(
+  "abdm_profile_shares",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id").notNull(),
+    /** The inbound `abdm_messages` row that created it. */
+    messageId: text("message_id").notNull().references(() => abdmMessages.id),
+    hipId: text("hip_id").notNull(),
+    /** `metaData.context` — the counter id printed in the QR. */
+    counterId: text("counter_id"),
+    intent: text("intent").notNull(),
+    abhaNumber: text("abha_number"),
+    abhaAddress: text("abha_address").notNull(),
+    profile: jsonb("profile").notNull(),
+    tokenDate: date("token_date", { mode: "string" }).notNull(),
+    tokenNumber: integer("token_number").notNull(),
+    status: text("status").notNull().default("pending"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ackStatus: text("ack_status"),
+    ackError: text("ack_error"),
+    patientId: text("patient_id").references(() => patients.id),
+    linkedBy: text("linked_by"),
+    linkedAt: timestamp("linked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("abdm_profile_shares_status_ck", sql`${t.status} in ('pending', 'linked', 'dismissed')`),
+    check("abdm_profile_shares_ack_ck", sql`${t.ackStatus} is null or ${t.ackStatus} in ('sent', 'failed')`),
+    check("abdm_profile_shares_linked_ck", sql`(${t.status} = 'linked') = (${t.patientId} is not null)`),
+    uniqueIndex("abdm_profile_shares_request_ux").on(t.requestId),
+    uniqueIndex("abdm_profile_shares_token_ux").on(t.hipId, t.tokenDate, t.tokenNumber),
+    index("abdm_profile_shares_status_idx").on(t.status, t.createdAt),
+    index("abdm_profile_shares_address_idx").on(t.hipId, t.abhaAddress),
   ],
 );

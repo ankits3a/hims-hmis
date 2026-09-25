@@ -53,6 +53,32 @@ facility QR, the share-profile callback → a pre-filled registration and the to
 **Owner rulings pending** (built, switched by config, default OFF until ruled): Aadhaar-based
 creation at the counter.
 
+S1 as built (primary M1 reference: the Care connector; `nha-in` a cross-check only; every endpoint
+is listed UNVERIFIED in `modules/abdm/abha-client.ts`):
+- **DECIDED — no new permission.** The steps ride `patients.register` (the counter's own ABHA
+  capability route); the two links ride `patients.update` (the permission `PATCH /patients/:id`
+  needs for the same columns).
+- **DECIDED — ABDM's tokens stay in memory.** The browser holds an opaque handle; ABDM's txnId and
+  the patient's X-token live in the api process for 15 minutes, never in a table (one api process).
+- **DECIDED — ABDM-verified name, birth and gender are authoritative** (NHA's M1 FT workbook: "set as
+  non-editable"). The link shows the differences first and needs the clerk's acceptance, then takes
+  ABDM's values through the amendment path (`acceptAbdmDemographics`: a Class I version, the audit,
+  evidence `abdm_verified`), then `recordAbhaVerifiedByAbdm` stamps the ABHA. While `verified`,
+  name/DOB/gender refuse an amendment (`abha_demographics_locked`, 409) — re-verify, or take the
+  verification down first in its own amendment. Mobile and address stay editable. Identity
+  assurance is neither raised nor dropped by it.
+- **DECIDED — one ABHA, one patient** (FT TAGGING_UNIQUEPATIENTID_UNIQUEABHANUMBER): partial unique
+  indexes on the ABHA number's digits and the lower-cased address over ACTIVE patients; registration,
+  amendment, verification, share-link and unmerge all refuse a duplicate (`abha_already_linked`,
+  409), naming the holder's UHID only to a user with `patients.read` who may see that record.
+- **DECIDED — re-send** 60 s after the last OTP, at most twice (FT CRT_ABHA_106); an Aadhaar OTP is
+  re-sent with the number typed again — it is kept nowhere. Find-by-Aadhaar rides the create switch.
+- **DECIDED — scan-and-share tokens** are per facility per IST day from 1, 1800 s (Care's default);
+  a re-scan by the same ABHA address keeps its token. A share with no ABHA number links the share
+  and stamps nothing.
+- `ABDM_ABHA_CREATE_AADHAAR` (default `false`) is the create switch; while off, create answers
+  403 `abha_create_disabled` and the counter does not draw the button.
+
 **S2 — M2 (the hospital shares its records).** Care-context linking (HIP-initiated with a link
 token; patient-initiated discovery/link callbacks); context notify after each visit; consent
 notification; the health-information request → FHIR bundles per NRCeS IG v6.5.0

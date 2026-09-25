@@ -44,7 +44,13 @@ const PATIENT = {
 /** Every registration POST this desk makes, with its body, so a test can assert what LEFT the browser. */
 function mountDesk(
   posted: { body: unknown }[],
-  opts: { abdmConfigured?: boolean } = {},
+  opts: {
+    abdmConfigured?: boolean;
+    /** ABDM S1 — create is its own switch (owner ruling pending), off unless a test says so. */
+    canCreate?: boolean;
+    /** ABDM S1 — extra routes (the ABHA flow, scan-and-share), merged over the defaults. */
+    routes?: Record<string, unknown | ((init?: RequestInit, url?: string) => unknown)>;
+  } = {},
 ): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -60,8 +66,9 @@ function mountDesk(
     "GET /api/patients/abha/capability": {
       configured: opts.abdmConfigured ?? false,
       canRecord: true,
-      canCreate: opts.abdmConfigured ?? false,
+      canCreate: (opts.abdmConfigured ?? false) && (opts.canCreate ?? false),
       canVerify: opts.abdmConfigured ?? false,
+      canScanShare: opts.abdmConfigured ?? false,
       reason: "test",
     },
     "GET /api/opd/config": { flow: "queue_first_token_first", locked: false },
@@ -79,6 +86,7 @@ function mountDesk(
         },
       };
     },
+    ...(opts.routes ?? {}),
   });
   setToken("t-1");
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -106,6 +114,12 @@ async function openEnrolment(): Promise<void> {
 }
 
 afterEach(() => { setToken(null); });
+
+/** ABDM S1 — the view fields every flow answer carries, at their "nothing to say" values. */
+const FLOW_DEFAULTS = {
+  resend: null, resendNeedsAadhaar: false, accounts: null, demographicsToApply: null, linkedElsewhere: null,
+  mobileVerification: null, addressSuggestions: null,
+};
 
 describe("FD-12: the registration counter's full record", () => {
   it("a child cannot be registered until a guardian is named — the block opens itself on the age", async () => {
@@ -304,7 +318,7 @@ describe("FD-12: the registration counter's full record", () => {
    * shown — a button that looks live and fails in a clerk's face, with a patient waiting, is worse
    * than one that says why it cannot be used.
    */
-  it("without ABDM: an ABHA can be recorded, and create/verify are visibly unavailable", async () => {
+  it("without ABDM: an ABHA can be recorded, and create/verify are not offered at all", async () => {
     const posted: { body: unknown }[] = [];
     mountDesk(posted, { abdmConfigured: false });
     await openEnrolment();
@@ -315,8 +329,9 @@ describe("FD-12: the registration counter's full record", () => {
     await user.click(screen.getByTestId("fold-abha"));
 
     await waitFor(() => expect(screen.getByTestId("abha-not-configured")).toBeInTheDocument());
-    expect(screen.getByTestId("abha-create")).toBeDisabled();
-    expect(screen.getByTestId("abha-verify")).toBeDisabled();
+    /* ABDM S1 — a button is drawn only when it works (the FD-12 greyed-out pair is gone). */
+    expect(screen.queryByTestId("abha-create")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("abha-verify")).not.toBeInTheDocument();
 
     await user.type(screen.getByTestId("abha-number"), "12345678901234");
     await user.click(screen.getByTestId("reg-submit"));
@@ -332,7 +347,7 @@ describe("FD-12: the registration counter's full record", () => {
     expect(body["abhaVerificationStatus"]).toBe("self_declared");
   });
 
-  it("with ABDM connected, create and verify become available", async () => {
+  it("with ABDM connected, verify is offered — and CREATE stays hidden while the hospital has not switched it on", async () => {
     mountDesk([], { abdmConfigured: true });
     await openEnrolment();
     const user = userEvent.setup({ delay: null });
@@ -341,9 +356,176 @@ describe("FD-12: the registration counter's full record", () => {
     await user.click(screen.getByTestId("reg-sex-female"));
     await user.click(screen.getByTestId("fold-abha"));
 
-    await waitFor(() => expect(screen.getByTestId("abha-create")).toBeEnabled());
-    expect(screen.getByTestId("abha-verify")).toBeEnabled();
+    await waitFor(() => expect(screen.getByTestId("abha-verify")).toBeEnabled());
+    expect(screen.queryByTestId("abha-create")).not.toBeInTheDocument();
     expect(screen.queryByTestId("abha-not-configured")).not.toBeInTheDocument();
+  });
+
+  it("with Aadhaar creation switched on, create is offered too", async () => {
+    mountDesk([], { abdmConfigured: true, canCreate: true });
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("fold-abha"));
+    await waitFor(() => expect(screen.getByTestId("abha-create")).toBeEnabled());
+    expect(screen.getByTestId("abha-find-aadhaar")).toBeEnabled();
+    await user.click(screen.getByTestId("abha-create"));
+    // the Aadhaar box is masked, and nothing can be sent until the patient's consent is ticked
+    expect(screen.getByTestId("abdm-aadhaar")).toHaveAttribute("type", "password");
+    await user.type(screen.getByTestId("abdm-aadhaar"), "987654321098");
+    expect(screen.getByTestId("abdm-send-otp")).toBeDisabled();
+    await user.click(screen.getByTestId("abdm-consent"));
+    expect(screen.getByTestId("abdm-send-otp")).toBeEnabled();
+  });
+
+  /**
+   * ABDM S1 — VERIFY AT THE COUNTER, BEFORE THE UHID EXISTS. ABDM confirms the ABHA; the form takes
+   * the number (and fills only BLANK demographics); the registration still posts `self_declared`;
+   * and the moment the UHID exists the desk LINKS it — which is where the server stamps `verified`.
+   */
+  it("verify → OTP → use → register → the ABHA is linked to the new UHID", async () => {
+    const posted: { body: unknown }[] = [];
+    const calls: { path: string; body: unknown }[] = [];
+    const flow = (stage: "otp_sent" | "authenticated") => ({
+      ...FLOW_DEFAULTS,
+      transactionId: "tx-opaque-1", purpose: "verify", stage, kind: "abha_number", otpMethod: "mobile_otp",
+      expiresAt: "2026-09-25T10:15:00.000Z", message: stage === "otp_sent" ? "OTP sent to ******3210" : null,
+      profile: stage === "otp_sent" ? null : {
+        abhaNumber: "91-2345-6789-0123", abhaAddress: "asha.devi@sbx", name: "Asha Devi", gender: "female",
+        yearOfBirth: 1986, monthOfBirth: 3, dayOfBirth: 14, dob: "1986-03-14", mobile: "******3210",
+        addressLine: null, district: null, stateName: null, pincode: null,
+      },
+      comparison: null, isNew: null,
+    });
+    mountDesk(posted, {
+      abdmConfigured: true,
+      routes: {
+        "POST /api/abdm/abha/verify": (init?: RequestInit) => { calls.push({ path: "verify", body: JSON.parse(String(init?.body)) }); return flow("otp_sent"); },
+        "POST /api/abdm/abha/transactions/tx-opaque-1/otp": (init?: RequestInit) => { calls.push({ path: "otp", body: JSON.parse(String(init?.body)) }); return flow("authenticated"); },
+        "POST /api/abdm/abha/transactions/tx-opaque-1/link": (init?: RequestInit) => { calls.push({ path: "link", body: JSON.parse(String(init?.body)) }); return { patientId: "p-new", changed: ["abhaVerificationStatus"], comparison: [] }; },
+      },
+    });
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByTestId("reg-name"), "Asha Devi");
+    await user.click(screen.getByTestId("reg-sex-female"));
+    await user.type(screen.getByTestId("reg-phone"), "9876543210");
+    await user.click(screen.getByTestId("fold-abha"));
+    await user.click(await screen.findByTestId("abha-verify"));
+
+    await user.type(screen.getByTestId("abdm-identifier"), "91-2345-6789-0123");
+    await user.click(screen.getByTestId("abdm-method-mobile"));
+    await user.click(screen.getByTestId("abdm-send-otp"));
+    await waitFor(() => expect(screen.getByTestId("abdm-otp-message")).toHaveTextContent("******3210"));
+    expect(calls[0]).toEqual({ path: "verify", body: { identifier: "91-2345-6789-0123", method: "mobile_otp", patientId: null } });
+
+    await user.type(screen.getByTestId("abdm-otp"), "314159");
+    await user.click(screen.getByTestId("abdm-verify-otp"));
+    await waitFor(() => expect(screen.getByTestId("abdm-profile")).toBeInTheDocument());
+    // ABDM beside the form: the typed name and mobile agree, and nothing is flagged
+    expect(screen.getByTestId("abdm-compare-name")).toHaveAttribute("data-result", "same");
+    expect(screen.getByTestId("abdm-compare-mobile")).toHaveAttribute("data-result", "same");
+    await user.click(screen.getByTestId("abdm-use"));
+
+    expect(screen.getByTestId("abha-number")).toHaveValue("91-2345-6789-0123");
+    expect(screen.getByTestId("abdm-pending-link")).toBeInTheDocument();
+    // the age box was blank, so ABDM's date of birth filled it; the typed name and mobile were kept
+    expect(screen.getByTestId("reg-dob")).toHaveValue("1986-03-14");
+    await user.click(screen.getByTestId("reg-submit"));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const body = posted[0]!.body as Record<string, unknown>;
+    expect(body).toMatchObject({
+      name: "Asha Devi", phone: "9876543210", dob: "1986-03-14",
+      abhaNumber: "91-2345-6789-0123", abhaAddress: "asha.devi@sbx", abhaVerificationStatus: "self_declared",
+    });
+    expect(JSON.stringify(body)).not.toContain("tx-opaque-1");
+    await waitFor(() => expect(calls.find((c) => c.path === "link")).toEqual({ path: "link", body: { patientId: "p-new", acceptAbdmDemographics: true } }));
+  });
+
+  it("DECIDED: a difference between ABDM and the form must be ACCEPTED, and then the form takes ABDM's details", async () => {
+    mountDesk([], {
+      abdmConfigured: true,
+      routes: {
+        "POST /api/abdm/abha/verify": { ...FLOW_DEFAULTS, transactionId: "tx-2", purpose: "verify", stage: "otp_sent", kind: "abha_number", otpMethod: "aadhaar_otp", expiresAt: "2026-09-25T10:15:00.000Z", message: null, profile: null, comparison: null, isNew: null },
+        "POST /api/abdm/abha/transactions/tx-2/otp": {
+          ...FLOW_DEFAULTS,
+          transactionId: "tx-2", purpose: "verify", stage: "authenticated", kind: "abha_number", otpMethod: "aadhaar_otp", expiresAt: "2026-09-25T10:15:00.000Z", message: null,
+          profile: { abhaNumber: "91-2345-6789-0123", abhaAddress: "asha@sbx", name: "Asha Kumari", gender: "female", yearOfBirth: 1986, monthOfBirth: null, dayOfBirth: null, dob: null, mobile: null, addressLine: null, district: null, stateName: null, pincode: null },
+          comparison: null, isNew: null,
+        },
+      },
+    });
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByTestId("reg-name"), "Asha Devi");
+    await user.click(screen.getByTestId("fold-abha"));
+    await user.click(await screen.findByTestId("abha-verify"));
+    await user.type(screen.getByTestId("abdm-identifier"), "91-2345-6789-0123");
+    await user.click(screen.getByTestId("abdm-send-otp"));
+    await user.type(await screen.findByTestId("abdm-otp"), "314159");
+    await user.click(screen.getByTestId("abdm-verify-otp"));
+    await waitFor(() => expect(screen.getByTestId("abdm-compare-name")).toHaveAttribute("data-result", "differs"));
+    expect(screen.getByTestId("abdm-use")).toBeDisabled();
+    await user.click(screen.getByTestId("abdm-accept"));
+    await user.click(screen.getByTestId("abdm-use"));
+    // ABDM-verified details are authoritative: the form takes ABDM's spelling, and the year of birth
+    expect(screen.getByTestId("reg-name")).toHaveValue("Asha Kumari");
+    expect(screen.getByTestId("reg-age")).toHaveValue(String(new Date().getFullYear() - 1986));
+    expect(screen.getByTestId("abha-number")).toHaveValue("91-2345-6789-0123");
+  });
+
+  it("find by Aadhaar is offered only when the hospital has switched Aadhaar on", async () => {
+    mountDesk([], { abdmConfigured: true });
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("fold-abha"));
+    await waitFor(() => expect(screen.getByTestId("abha-verify")).toBeInTheDocument());
+    expect(screen.queryByTestId("abha-find-aadhaar")).not.toBeInTheDocument();
+  });
+
+  /**
+   * ABDM S1 — SCAN AND SHARE: the pending list with its token, and "Register" opens the ORDINARY
+   * form pre-filled from what the patient shared; the share is linked once the UHID exists.
+   */
+  it("scan and share: the list shows the token, Register pre-fills the form, and the share is linked after the UHID", async () => {
+    const posted: { body: unknown }[] = [];
+    const linked: unknown[] = [];
+    const share = {
+      id: "sh-1", tokenNumber: 7, tokenDate: "2026-09-25", counterId: "1", status: "pending",
+      createdAt: "2026-09-25T04:00:00.000Z", expiresAt: "2026-09-25T04:30:00.000Z", ackStatus: "sent", patientId: null,
+      profile: {
+        abhaNumber: "91-2345-6789-0123", abhaAddress: "sunita.sharma@sbx", name: "Sunita Sharma", gender: "female",
+        yearOfBirth: 1986, monthOfBirth: 3, dayOfBirth: 14, dob: "1986-03-14", mobile: "9876543210",
+        addressLine: "12 Gandhi Nagar", district: "Jaipur", stateName: "RAJASTHAN", pincode: "302015",
+      },
+    };
+    mountDesk(posted, {
+      abdmConfigured: true,
+      routes: {
+        "GET /api/abdm/scan-share/qr": { url: "https://phrsbx.abdm.gov.in/share-profile?hf=IN0000000001&counter=1", hipId: "IN0000000001", counterId: "1" },
+        "GET /api/abdm/scan-share/shares": { shares: [share] },
+        "POST /api/abdm/scan-share/shares/sh-1/link": (init?: RequestInit) => { linked.push(JSON.parse(String(init?.body))); return { share: { ...share, status: "linked" }, changed: ["abhaVerificationStatus"], comparison: [] }; },
+      },
+    });
+    await act(async () => { await router.navigate({ to: "/counter" }); });
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await user.click(await screen.findByTestId("abdm-scan-share-open"));
+    await waitFor(() => expect(screen.getByTestId("abdm-counter-qr")).toHaveAttribute("data-url", "https://phrsbx.abdm.gov.in/share-profile?hf=IN0000000001&counter=1"));
+    expect(await screen.findByTestId("abdm-share-sh-1")).toHaveTextContent("Sunita Sharma");
+    expect(screen.getByTestId("abdm-share-token")).toHaveTextContent("7");
+
+    await user.click(screen.getByTestId("abdm-share-register-sh-1"));
+    await waitFor(() => expect(screen.getByTestId("reg-name")).toHaveValue("Sunita Sharma"));
+    expect(screen.getByTestId("reg-phone")).toHaveValue("9876543210");
+    await user.click(screen.getByTestId("reg-submit"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.body).toMatchObject({
+      name: "Sunita Sharma", sex: "female", phone: "9876543210", dob: "1986-03-14",
+      abhaNumber: "91-2345-6789-0123", abhaAddress: "sunita.sharma@sbx", abhaVerificationStatus: "self_declared",
+      addressLine: "12 Gandhi Nagar", pincode: "302015",
+    });
+    await waitFor(() => expect(linked).toEqual([{ patientId: "p-new", acceptAbdmDemographics: true }]));
   });
 
   /* The fast walk-in path is what Desk One is FOR, and none of the above may cost it. */

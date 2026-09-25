@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { abdmMessages } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
@@ -15,12 +15,12 @@ export type AbdmDispatch = "pending" | "handled" | "unhandled" | "failed";
 
 export async function insertOutbound(db: Db, row: {
   kind: string; path: string; requestId: string; headers: Record<string, string>;
-  body: unknown; patientId?: string | null;
+  body: unknown; patientId?: string | null; actorId?: string | null;
 }): Promise<string> {
   const id = newId();
   await db.insert(abdmMessages).values({
     id, direction: "out", kind: row.kind, path: row.path, requestId: row.requestId,
-    headers: row.headers, body: row.body ?? null, patientId: row.patientId ?? null,
+    headers: row.headers, body: row.body ?? null, patientId: row.patientId ?? null, actorId: row.actorId ?? null,
   });
   return id;
 }
@@ -51,6 +51,15 @@ export async function insertInbound(db: Db, row: {
     httpStatus: row.httpStatus, dispatch: "pending",
   }).onConflictDoNothing().returning({ id: abdmMessages.id });
   return inserted[0]?.id ?? null;
+}
+
+/**
+ * ABDM S1 — an inbound message that arrived before its patient existed (a scan-and-share profile)
+ * names them once the counter has linked it, so `listAbdmMessages` audits the read against them.
+ * Only ever fills a null: a message that already names a patient is not re-pointed.
+ */
+export async function attachPatientToMessage(db: Db, id: string, patientId: string): Promise<void> {
+  await db.update(abdmMessages).set({ patientId }).where(and(eq(abdmMessages.id, id), isNull(abdmMessages.patientId)));
 }
 
 export async function markDispatch(db: Db, id: string, dispatch: AbdmDispatch, error: string | null = null): Promise<void> {

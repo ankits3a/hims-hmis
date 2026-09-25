@@ -13,13 +13,16 @@ import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routin
 import { listPrintJobs, printSummary, reprintJob, PRINT_DOCUMENT_LABEL } from "../../lib/print-api";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import {
-  ageOf, bookableToday, etaClock, initialsOf, rs, sexLetter, tokenLabel, vitalsAhead, waitMinutes,
+  ageOf, bookableToday, etaClock, initialsOf, rs, seatHasStage, sexLetter, tokenLabel, vitalsAhead, waitMinutes,
 } from "./model";
 import type { DeptQueue } from "./model";
 import { dayMonthIst, monthYearIst } from "../../lib/format";
 import { SubmitButton } from "../../components/submit-button";
 import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components/desk-fields";
-import { EMPTY_COVERAGE, formNeedsGuardian, useDesk } from "./session";
+import { AbdmVerifyPanel } from "../../components/abdm-verify";
+import { ScanSharePanel } from "../../components/abdm-scan-share";
+import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
+import { EMPTY_COVERAGE, EMPTY_FORM, formNeedsGuardian, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
 import type { CoverageDraft, Person } from "./session";
 
@@ -83,11 +86,45 @@ function personOf(hit: WirePatientHit): Person {
   };
 }
 
+/**
+ * ABDM S1 — a new registration PRE-FILLED from a scan-and-share profile. The patient typed these
+ * into their own ABHA app, so they are the patient's words; the clerk still sees and may correct
+ * every field before registering, and the ABHA travels as `self_declared` until the link after the
+ * UHID — where the server stamps it verified from ABDM's answer.
+ */
+function formFromShare(share: WireShare): typeof EMPTY_FORM {
+  const p = share.profile;
+  const sex = p.gender === "male" || p.gender === "female" || p.gender === "other" ? p.gender : "";
+  const phone = p.mobile !== null && /^[6-9]\d{9}$/.test(p.mobile) ? p.mobile : "";
+  const year = p.yearOfBirth;
+  return {
+    ...EMPTY_FORM,
+    name: p.name ?? "",
+    phone,
+    sex,
+    ...(p.dob !== null
+      ? { ageMode: "dob" as const, dob: p.dob }
+      : year !== null ? { ageMode: "age" as const, age: String(new Date().getFullYear() - year) } : {}),
+    address: p.addressLine ?? "",
+    district: p.district ?? "",
+    stateName: p.stateName ?? "",
+    pincode: p.pincode !== null && /^\d{6}$/.test(p.pincode) ? p.pincode : "",
+    abhaNumber: p.abhaNumber ?? "",
+    abhaAddress: p.abhaAddress ?? "",
+    // The clerk pressed Register on a share: the form IS ABDM's details, accepted by that act.
+    abdmLink: { kind: "share", shareId: share.id, accept: true },
+  };
+}
+
 function StageFind(): React.ReactElement {
   const d = useDesk();
   const { t } = useTranslation();
   const { s } = d;
   const [debounced, setDebounced] = useState(s.query);
+  /* ABDM S1 — the scan-and-share list, offered only on a chair that registers and only when ABDM is on. */
+  const [sharesOpen, setSharesOpen] = useState(false);
+  const abha = useQuery({ queryKey: ["abha-capability"], queryFn: abhaCapability, staleTime: 5 * 60 * 1000, retry: false });
+  const canScanShare = abha.data?.canScanShare === true && seatHasStage(d.seat, "register");
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(s.query), 180);
@@ -137,12 +174,29 @@ function StageFind(): React.ReactElement {
         >
           new walk-in <span className="kb">F4</span>
         </button>
+        {canScanShare ? (
+          <button className="pill" data-testid="abdm-scan-share-open" onClick={() => setSharesOpen((o) => !o)}>
+            {t("abdm.share.open")}
+          </button>
+        ) : null}
         <span style={{ fontSize: 11, color: "var(--faint)" }}>
           {term.length >= 2
             ? `${String(rows.length)} on file for “${term}”`
             : "three lanes are searched at once: UHID, mobile and name"}
         </span>
       </div>
+
+      {canScanShare && sharesOpen ? (
+        <ScanSharePanel
+          onClose={() => setSharesOpen(false)}
+          onRegister={(share) => {
+            setSharesOpen(false);
+            d.startEnrolment();
+            d.patch({ form: formFromShare(share) });
+            d.note(`scan and share — token ${String(share.tokenNumber)} opened for registration`);
+          }}
+        />
+      ) : null}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 18 }}>
         {rows.map((hit, i) => (
@@ -303,6 +357,40 @@ function StageRegister(): React.ReactElement {
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
+  /* ABDM S1 — which ABDM panel is open under the ABHA fold, if any. */
+  const [abdmPanel, setAbdmPanel] = useState<"verify" | "create" | "find_aadhaar" | null>(null);
+  /*
+    Taking ABDM's answer onto the form. DECIDED (NHA's M1 workbook): ABDM-verified NAME, BIRTH and
+    GENDER are authoritative, so the form takes them — the clerk saw the differences and accepted them
+    before pressing Use — and they will be locked on the record once linked. Mobile and address are
+    the hospital's: filled from ABDM only where the form is still blank.
+  */
+  const takeAbdm = (flow: WireAbhaFlow, accept: boolean): void => {
+    const p = flow.profile;
+    if (p === null) return;
+    const blank = (v: string): boolean => v.trim() === "";
+    const sex = p.gender === "male" || p.gender === "female" || p.gender === "other" ? p.gender : "";
+    const birth = p.dob !== null
+      ? { ageMode: "dob" as const, dob: p.dob }
+      : p.yearOfBirth !== null ? { ageMode: "age" as const, age: String(new Date().getFullYear() - p.yearOfBirth), dob: "" } : {};
+    set({
+      abhaNumber: p.abhaNumber ?? f.abhaNumber,
+      abhaAddress: p.abhaAddress ?? f.abhaAddress,
+      abdmLink: { kind: "abha", transactionId: flow.transactionId, accept },
+      ...(p.name !== null ? { name: p.name } : {}),
+      ...(sex !== "" ? { sex } : {}),
+      ...birth,
+      ...(blank(f.phone) && p.mobile !== null && /^[6-9]\d{9}$/.test(p.mobile) ? { phone: p.mobile } : {}),
+      ...(blank(f.address) && p.addressLine !== null ? { address: p.addressLine } : {}),
+    });
+    setAbdmPanel(null);
+  };
+  const againstForm = {
+    name: f.name.trim() === "" ? null : f.name,
+    dob: f.ageMode === "dob" ? (f.dob === "" ? null : f.dob) : (/^\d+$/.test(f.age) ? String(new Date().getFullYear() - Number(f.age)) : null),
+    gender: f.sex === "" ? null : f.sex,
+    phone: f.phone.trim() === "" ? null : f.phone,
+  };
 
   const addCoverage = (): void => { set({ coverages: [...f.coverages, { ...EMPTY_COVERAGE }] }); };
   const setCoverage = (i: number, next: Partial<CoverageDraft>): void => {
@@ -506,13 +594,43 @@ function StageRegister(): React.ReactElement {
           >
             {t("registrationCounter.register.abha.link")}
           </button>
-          <button type="button" className="sec" data-testid="abha-create" disabled={abha.data?.canCreate !== true}>
-            {t("registrationCounter.register.abha.create")}
-          </button>
-          <button type="button" className="sec" data-testid="abha-verify" disabled={abha.data?.canVerify !== true}>
-            {t("registrationCounter.register.abha.verify")}
-          </button>
+          {/*
+            ABDM S1 — DRAWN ONLY WHEN THEY WORK. Verify is on whenever ABDM (and its ABHA service) is;
+            create is on only when the hospital has switched Aadhaar-OTP creation on, which it has not
+            (owner ruling pending) — so today the button does not exist rather than sitting greyed out.
+          */}
+          {abha.data?.canCreate === true ? (
+            <button type="button" className="sec" data-testid="abha-create" onClick={() => setAbdmPanel(abdmPanel === "create" ? null : "create")}>
+              {t("registrationCounter.register.abha.create")}
+            </button>
+          ) : null}
+          {abha.data?.canVerify === true ? (
+            <button type="button" className="sec" data-testid="abha-verify" onClick={() => setAbdmPanel(abdmPanel === "verify" ? null : "verify")}>
+              {t("registrationCounter.register.abha.verify")}
+            </button>
+          ) : null}
+          {/* VRFY_ABHA_401 — "find ABHA" by Aadhaar rides the same switch as creation: off until ruled. */}
+          {abha.data?.canCreate === true ? (
+            <button type="button" className="sec" data-testid="abha-find-aadhaar" onClick={() => setAbdmPanel(abdmPanel === "find_aadhaar" ? null : "find_aadhaar")}>
+              {t("abdm.find.open")}
+            </button>
+          ) : null}
         </div>
+        {f.abdmLink !== null ? (
+          <p data-testid="abdm-pending-link" style={{ fontSize: 11.5, color: "var(--green)", lineHeight: "16px", marginTop: 9 }}>
+            {t("abdm.verify.pendingLink")}
+          </p>
+        ) : null}
+        {abdmPanel !== null ? (
+          <AbdmVerifyPanel
+            key={abdmPanel}
+            mode={abdmPanel}
+            initialIdentifier={f.abhaNumber.trim() !== "" ? f.abhaNumber : f.abhaAddress}
+            against={againstForm}
+            onUse={takeAbdm}
+            onClose={() => setAbdmPanel(null)}
+          />
+        ) : null}
         {abha.data !== undefined && !abha.data.configured ? (
           <p data-testid="abha-not-configured" style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: "16px", marginTop: 9 }}>
             {t("registrationCounter.register.abha.notConfigured")}

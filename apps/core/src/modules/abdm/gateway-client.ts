@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { completeOutbound, insertOutbound } from "./messages";
-import { loggableHeaders, Scrubber, SESSION_REQUEST_MARKER, SESSION_RESPONSE_MARKER } from "./redact";
+import { loggableHeaders, redactKeys, Scrubber, SECRET_KEYS, SESSION_REQUEST_MARKER, SESSION_RESPONSE_MARKER } from "./redact";
 import type { AbdmSettings } from "./settings";
 import type { Db } from "../../kernel/db/client";
 
@@ -42,9 +42,35 @@ export type AbdmCallOptions = {
   extraHeaders?: Record<string, string>;
   /** The patient this message is about, when it is about one (S1+). */
   patientId?: string | null;
+  /**
+   * S1 — WHICH ABDM SERVICE. `gateway` (the default, S0) is the HIE-CM gateway and carries `X-CM-ID`.
+   * `abha` is the ABHA (M1) service at `settings.abhaBaseUrl`, under the SAME session token, and
+   * carries no `X-CM-ID`: neither the Care connector (`abdm/service/v3/health_id.py`) nor the
+   * nha-in ABHA spec sends one there.
+   */
+  service?: "gateway" | "abha";
+  /**
+   * S1 — plaintexts that must not survive into the log or a thrown message, whatever the gateway
+   * echoes back: an Aadhaar number, an OTP, a patient's ABHA token. Added to the client's own
+   * secret list for this call only.
+   */
+  secrets?: readonly (string | null | undefined)[];
+  /** S1 — redact `redact.ts` SECRET_KEYS / OMIT_KEYS from the stored request AND response bodies. */
+  redactBodyKeys?: boolean;
+  /** S1 — read the answer as BYTES (the ABHA card). The log keeps its type and length, never the bytes. */
+  binary?: boolean;
+  /** S1 — the hospital user who caused this request; stored on the log row. */
+  actorId?: string | null;
 };
 
-export type AbdmCallResult = { status: number; requestId: string; body: unknown };
+export type AbdmCallResult = {
+  status: number;
+  requestId: string;
+  /** Parsed JSON (or `{nonJson}`), or — with `binary` — a Buffer. */
+  body: unknown;
+  /** With `binary`: the answer's content type. */
+  contentType?: string | null;
+};
 
 export class AbdmGatewayError extends Error {
   constructor(
@@ -89,6 +115,18 @@ function errorSummary(body: unknown): string {
   return parts.length === 0 ? "" : ` — ${parts.join(": ")}`;
 }
 
+/** The answer with every per-call plaintext removed from its STRINGS (numbers and structure kept). */
+function scrubEchoes(v: unknown, scrub: Scrubber): unknown {
+  if (typeof v === "string") return scrub.text(v);
+  if (Array.isArray(v)) return v.map((x) => scrubEchoes(x, scrub));
+  if (typeof v === "object" && v !== null) {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) out[k] = scrubEchoes(x, scrub);
+    return out;
+  }
+  return v;
+}
+
 export class AbdmGatewayClient {
   #token: { value: string; expiresAtMs: number } | null = null;
   #inflight: Promise<string> | null = null;
@@ -110,7 +148,11 @@ export class AbdmGatewayClient {
     return new Date(this.nowMs()).toISOString();
   }
 
-  private url(path: string): string {
+  private url(path: string, service: "gateway" | "abha" = "gateway"): string {
+    if (service === "abha") {
+      if (this.settings.abhaBaseUrl === null) throw new AbdmGatewayError("network", "ABDM ABHA base URL is not configured", null);
+      return `${this.settings.abhaBaseUrl}${path}`;
+    }
     return `${this.settings.gatewayBaseUrl}${path}`;
   }
 
@@ -208,36 +250,53 @@ export class AbdmGatewayClient {
   private async attempt(
     method: AbdmHttpMethod, path: string, body: unknown, opts: AbdmCallOptions, requestId: string, token: string,
   ): Promise<AbdmCallResult> {
+    const service = opts.service ?? "gateway";
     const headers: Record<string, string> = {
-      Accept: "application/json",
+      Accept: opts.binary === true ? "*/*" : "application/json",
       "REQUEST-ID": requestId,
       TIMESTAMP: this.timestamp(),
-      "X-CM-ID": this.settings.cmId,
       Authorization: `Bearer ${token}`,
     };
+    if (service === "gateway") headers["X-CM-ID"] = this.settings.cmId;
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (opts.hipId !== undefined) headers["X-HIP-ID"] = opts.hipId;
     if (opts.hiuId !== undefined) headers["X-HIU-ID"] = opts.hiuId;
     for (const [k, v] of Object.entries(opts.extraHeaders ?? {})) headers[k] = v;
 
+    // Every ABHA-service exchange is also scrubbed of Aadhaar-SHAPED numbers (`redact.ts` says why).
+    const scrub = opts.secrets === undefined && service === "gateway" ? this.#scrub : this.#scrub.with(opts.secrets ?? [], service === "abha");
+    const storable = (v: unknown): unknown => scrub.json(opts.redactBodyKeys === true ? redactKeys(v, SECRET_KEYS) : v);
+    const url = this.url(path, service);
     const logId = await insertOutbound(this.deps.db, {
-      kind: opts.kind ?? `gateway:${method} ${path}`,
+      kind: opts.kind ?? `${service}:${method} ${path}`,
       path, requestId, headers: loggableHeaders(headers),
-      body: body === undefined ? null : this.#scrub.json(body),
+      body: body === undefined ? null : storable(body),
       patientId: opts.patientId ?? null,
+      actorId: opts.actorId ?? null,
     });
     let res: Response;
     try {
-      res = await this.send(this.url(path), {
+      res = await this.send(url, {
         method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
     } catch (e) {
-      const message = this.#scrub.text(e instanceof Error ? e.message : String(e));
+      const message = scrub.text(e instanceof Error ? e.message : String(e));
       await completeOutbound(this.deps.db, logId, { error: message });
       throw new AbdmGatewayError("network", `ABDM ${method} ${path} failed: ${message}`, null);
     }
+    const contentType = res.headers.get("content-type");
+    if (opts.binary === true && res.status >= 200 && res.status < 300) {
+      const bytes = Buffer.from(await res.arrayBuffer());
+      await completeOutbound(this.deps.db, logId, {
+        httpStatus: res.status, responseBody: { binary: true, contentType, bytes: bytes.length },
+      });
+      return { status: res.status, requestId, body: bytes, contentType };
+    }
     const parsed = await readBody(res);
-    await completeOutbound(this.deps.db, logId, { httpStatus: res.status, responseBody: this.#scrub.json(parsed) });
-    return { status: res.status, requestId, body: parsed };
+    const stored = storable(parsed);
+    await completeOutbound(this.deps.db, logId, { httpStatus: res.status, responseBody: stored });
+    // What the caller gets is ABDM's answer as sent — but an answer that ECHOED a per-call secret
+    // (an error quoting the OTP) is handed back scrubbed, so no caller can put it in an exception.
+    return { status: res.status, requestId, body: scrub === this.#scrub ? parsed : scrubEchoes(parsed, scrub), contentType };
   }
 }
