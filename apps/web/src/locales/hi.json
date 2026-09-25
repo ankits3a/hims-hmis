@@ -6542,7 +6542,8 @@
         "stock_write_off_requested": "राइट-ऑफ़ का अनुरोध",
         "stock_write_off_refused": "राइट-ऑफ़ अस्वीकार",
         "stock_write_off_posted": "नष्ट, दर्ज"
-      }
+      },
+      "subtitle": "फ़ार्मेसी ने क्या बेचा, क्या ख़रीदा, क्या रखा है"
     }
   }
 }

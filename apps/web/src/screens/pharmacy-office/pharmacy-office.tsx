@@ -61,7 +61,9 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
     return initialView ?? (v === "pay" || v === "returns" || v === "reports" ? v : "buy");
   });
   const shown: OfficeView = views.includes(view) ? view : (views[0] ?? "buy");
-  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: shown === "buy" });
+  // Only a buyer asks for the buying side's day: the owner and the billing office (reports only) never
+  // fire a request their grants refuse — not even in the instant before the session's grants load.
+  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: shown === "buy" && canBuy });
   // PARITY P3 — the shell's legend shows the office's keys, not the front desk's.
   useScreenKeys([t(`pharmacyOffice.keys.${shown}`)]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
     <div className="space-y-5 p-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-xl font-semibold">{t("pharmacyOffice.title")}</h1>
-        <span className="text-sm text-muted-foreground">{t("pharmacyOffice.subtitle")}</span>
+        <span className="text-sm text-muted-foreground">{t(shown === "reports" ? "pharmacyOffice.reports.subtitle" : "pharmacyOffice.subtitle")}</span>
         {views.length > 1 && (
           <div className="ml-auto flex gap-1" role="tablist" aria-label={t("pharmacyOffice.views")}>
             {views.map((v) => (

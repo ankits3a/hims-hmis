@@ -251,7 +251,7 @@ function SalesReport({ sheet, presetRef }: Bind): React.ReactElement {
   const d = q.data;
   const m = d?.margin === true;
   const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
-  const sign = (r: WireSalesRow, v: number): number => (r.kind === "refund" ? -v : v);
+  const sign = (r: WireSalesRow, v: number): number => (r.kind === "refund" && v !== 0 ? -v : v);
   const docCols: Col<WireSalesRow>[] = [
     { key: "date", label: L("date"), value: (r) => r.date },
     { key: "time", label: L("time"), value: (r) => new Date(r.at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) },
@@ -320,7 +320,7 @@ function SalesReport({ sheet, presetRef }: Bind): React.ReactElement {
             ? <Table testId="sales-table" cols={docCols} rows={d.rows} rowKey={(r) => r.id} totals={totals}
                 rowClass={(r) => (r.kind === "refund" ? "text-red-700" : "")}
                 expand={(r) => (
-                  <table className="w-full text-xs" data-testid={`sales-lines-${r.id}`}>
+                  <table className="w-full text-xs [&_td]:px-1.5 [&_th]:px-1.5" data-testid={`sales-lines-${r.id}`}>
                     <thead><tr className="text-left text-muted-foreground"><th>{L("item")}</th><th>{L("batch")}</th><th>{L("expiry")}</th><th className="text-right">{L("qty")}</th><th>{L("hsn")}</th><th className="text-right">{L("taxable")}</th><th className="text-right">{L("gst")}</th><th className="text-right">{L("total")}</th>{m && <th className="text-right">{L("cost")}</th>}{m && <th className="text-right">{L("profit")}</th>}</tr></thead>
                     <tbody>
                       {r.lines.map((l) => (
@@ -350,7 +350,7 @@ function PurchaseReport({ sheet, presetRef }: Bind): React.ReactElement {
   const d = q.data;
   const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
   type Row = NonNullable<typeof d>["rows"][number];
-  const neg = (r: Row, v: number): number => (r.kind === "bill" ? v : -v);
+  const neg = (r: Row, v: number): number => (r.kind === "bill" || v === 0 ? v : -v);
   const cols: Col<Row>[] = [
     { key: "date", label: L("date"), value: (r) => r.date },
     { key: "kind", label: L("mode"), value: (r) => t(`pharmacyOffice.reports.purchaseKind.${r.kind}`) },
@@ -385,7 +385,7 @@ function PurchaseReport({ sheet, presetRef }: Bind): React.ReactElement {
           <Table testId="purchase-table" cols={cols} rows={d.rows} rowKey={(r) => `${r.kind}-${r.id}`} totals={totals}
             rowClass={(r) => (r.kind === "bill" ? "" : "text-red-700")}
             expand={(r) => r.lines.length === 0 ? <span className="text-xs text-muted-foreground">{t("pharmacyOffice.reports.creditAnswers", { no: r.ref ?? "—" })}</span> : (
-              <table className="w-full text-xs">
+              <table className="w-full text-xs [&_td]:px-1.5 [&_th]:px-1.5">
                 <thead><tr className="text-left text-muted-foreground"><th>{L("item")}</th><th>{L("hsn")}</th><th>{L("batch")}</th><th className="text-right">{L("qty")}</th><th className="text-right">{L("rate")}</th><th className="text-right">{L("taxable")}</th><th className="text-right">{L("gst")}</th></tr></thead>
                 <tbody>{r.lines.map((l) => (
                   <tr key={`${l.itemId}-${l.batchNo ?? ""}`}><td>{l.itemName}</td><td>{l.hsnCode ?? "—"}</td><td>{l.batchNo ?? "—"}</td><td className="text-right">{l.qty} {l.uom}</td>
@@ -698,7 +698,7 @@ function ActivityReport({ sheet, presetRef }: Bind): React.ReactElement {
     { key: "amount", label: L("amount"), money: true, value: (r) => r.amountPaise },
   ];
   const fmt = (field: string, v: string | number | boolean | null): string =>
-    v === null ? "—" : typeof v === "number" && /Paise$/.test(field) ? money(v) : typeof v === "number" && /Bps$/.test(field) ? `${String(v / 100)}%` : String(v);
+    v === null ? "—" : typeof v === "number" && /Paise$/.test(field) ? money(v) : typeof v === "number" && /Bps$/.test(field) ? `${String(v / 100)}%` : field === "status" ? String(v).replace(/_/g, " ") : String(v);
   if (doc === null && feed.data !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.activity"), subtitle: rangeText(feed.data.from, feed.data.to), file: `activity-${feed.data.from}-${feed.data.to}`, cols: feedCols as Col<never>[], rows: feed.data.rows, totals: null };
   return (
     <div className="space-y-3">
@@ -728,7 +728,7 @@ function ActivityReport({ sheet, presetRef }: Bind): React.ReactElement {
                   <div className="text-xs text-muted-foreground">{Object.entries(e.facts).map(([k, v]) => `${k}: ${fmt(k, v)}`).join(" · ")}</div>
                 )}
                 {e.changes.length > 0 && (
-                  <table className="mt-1 w-full text-xs" data-testid={`activity-changes-${String(i)}`}>
+                  <table className="mt-1 w-full max-w-3xl text-xs [&_td]:px-1.5 [&_th]:px-1.5" data-testid={`activity-changes-${String(i)}`}>
                     <thead><tr className="text-left text-muted-foreground"><th>{L("field")}</th><th>{L("before")}</th><th>{L("after")}</th></tr></thead>
                     <tbody>{e.changes.map((c) => (
                       <tr key={c.field}><td>{c.label}</td><td className="bg-red-50 line-through decoration-red-400">{fmt(c.field, c.before)}</td><td className="bg-green-50">{fmt(c.field, c.after)}</td></tr>

@@ -103,6 +103,8 @@ describe("the office's reports (parity P5)", () => {
     renderWithRouter(<PharmacyOffice />, "/pharmacy/office");
     const list = await screen.findByTestId("reports-view");
     expect(screen.queryByTestId("office-view-buy")).toBeNull();
+    // …and never asks for the buying side's day, which its grants would refuse (found by the browser walk).
+    expect(calls.some((c) => c.path === "/pharmacy/office/today")).toBe(false);
     expect(within(list).getByTestId("report-margin")).toBeTruthy();
     list.focus();
     await userEvent.keyboard("1");
