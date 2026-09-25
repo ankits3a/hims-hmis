@@ -18,6 +18,8 @@ import {
   updateDepartment, updateDoctor, updateRoom,
 } from "./masters";
 import { listDoctorSchedules, replaceDoctorSchedules } from "./schedules";
+import { departmentLayout, myLayout, saveDepartmentLayout, saveMyLayout } from "./layout";
+import type { DepartmentLayoutView, MyLayoutView } from "./layout";
 import { OPD_VISIT_DEFINITION_JSON } from "./workflow-def";
 import type { DangerRangesConfig, Letterhead, OpdConfig, OpdConfigPatch } from "./config";
 import type { OpdErrorCode } from "./errors";
@@ -190,6 +192,16 @@ const configPatchBody = z.object({
 // RC-1 T2 / D5 — the flow pill's own body: EXACTLY the two flow keys. zod strips anything else,
 // so a holder of the narrow permission cannot reach danger ranges or the letterhead through this
 // route no matter what the request carries.
+/**
+ * The consult layout's two bodies. The route bounds only the SHAPE; every rule about which sections
+ * may be hidden, reordered or made mandatory is `layout.ts`'s one validator, shared with the tests.
+ */
+const layoutKey = z.string().min(1).max(40);
+const departmentLayoutBody = z.object({
+  sections: z.array(z.object({ key: layoutKey, shown: z.boolean(), mandatory: z.boolean() })).max(40),
+});
+const myLayoutBody = z.object({ order: z.array(layoutKey).max(40), hidden: z.array(layoutKey).max(40) });
+
 const counterFlowBody = z.object({
   counterSequence: z.enum(COUNTER_SEQUENCES).optional(),
   tokenLane: z.enum(TOKEN_LANES).optional(),
@@ -256,6 +268,58 @@ export class OpdMastersController {
     try {
       return await withTx(this.db, (tx) => updateOpdConfig(tx, actor, toConfigPatch(b)));
     } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * ═══ THE CONSULT LAYOUT (board `Profiles`; layout.ts) ═══
+   *
+   * The department default is the admin's (`opd.config.manage`, the permission that already governs
+   * the OPD's clinical config — no new one); the overlay is the doctor's own (`opd.consult`, and the
+   * service resolves WHOSE from the actor, never from a parameter). A user with `opd.consult` and no
+   * doctor row answers 404 `not_a_doctor`, exactly as `me/doctor` below does.
+   */
+  @RequirePermission("opd.config.manage", "hospital")
+  @Get("layouts/:departmentId")
+  async getDepartmentLayout(@Param("departmentId") departmentId: string): Promise<DepartmentLayoutView> {
+    try {
+      return await departmentLayout(this.db, departmentId);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.config.manage", "hospital")
+  @Put("layouts/:departmentId")
+  async putDepartmentLayout(@CurrentActor() actor: Actor, @Param("departmentId") departmentId: string, @Body() body: unknown): Promise<DepartmentLayoutView> {
+    const b = parsed(departmentLayoutBody, body);
+    try {
+      return await withTx(this.db, (tx) => saveDepartmentLayout(tx, actor, departmentId, b));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Get("me/layout")
+  async getMyLayout(@CurrentActor() actor: Actor): Promise<MyLayoutView> {
+    try {
+      return await myLayout(this.db, actor);
+    } catch (e) {
+      if (e instanceof OpdError && e.code === "not_a_doctor") throw httpError(404, e.message, e.code);
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Put("me/layout")
+  async putMyLayout(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<MyLayoutView> {
+    const b = parsed(myLayoutBody, body);
+    try {
+      return await withTx(this.db, (tx) => saveMyLayout(tx, actor, b));
+    } catch (e) {
+      if (e instanceof OpdError && e.code === "not_a_doctor") throw httpError(404, e.message, e.code);
       toHttp(e);
     }
   }

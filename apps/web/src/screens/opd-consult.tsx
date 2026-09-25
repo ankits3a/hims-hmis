@@ -8,6 +8,7 @@ import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
 import { UnpaidMark } from "../components/unpaid-mark";
 import { EyeSections, fetchVisitSections } from "./opd-eye-sections";
+import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
@@ -418,6 +419,16 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     queryKey: ["opd", "sections", active?.encounterId ?? ""], enabled: active !== null, retry: false,
     queryFn: () => fetchVisitSections(active!.encounterId),
   });
+  /*
+    Board `Profiles` — which sections this visit shows, in what order (the admin's default and this
+    doctor's overlay, in the versions the visit started under). A failed or pending read leaves
+    `data` undefined, and undefined is TODAY'S ORDER: a read that fails never costs the doctor a tab.
+  */
+  const layout = useQuery({
+    queryKey: ["opd", "layout", active?.encounterId ?? ""], enabled: active !== null, retry: false,
+    queryFn: () => fetchVisitLayout(active!.encounterId),
+  });
+  const [myLayoutOpen, setMyLayoutOpen] = useState(false);
   const leaseBody = (): Record<string, string> => (lease === "mine" ? { leaseToken: tabToken.current } : {});
   /** Zero-stock lines the doctor has already answered (Use or Keep), keyed by the medicine written. */
   const [stockAnswered, setStockAnswered] = useState<Record<string, true>>({});
@@ -841,7 +852,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
 
   // ——— CONSULT V2: "your work so far" — one line per section, visible on every tab ———
   const splitList = (x: string): string[] => splitTags(x);
-  const workRows: WorkRow[] = [
+  const allWorkRows: WorkRow[] = [
     { id: "complaints", label: t("opdConsultV2.sec.complaints"), text: splitList(note.chiefComplaint).join(" · "), count: splitList(note.chiefComplaint).length },
     { id: "exam", label: t("opdConsultV2.sec.exam"), text: v2.examination.map((f) => f.text).join(" · "), count: v2.examination.length },
     {
@@ -859,6 +870,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       count: [v2.doctorNote, v2.internalComment].filter((x) => x.trim() !== "").length,
     },
   ];
+  /** The work strip follows the layout too: the same order as the tabs, and no row for a section the layout leaves off. */
+  const workRows = orderRows(allWorkRows, layout.data);
   const goToSection = (id: string): void => {
     const tabFor: Record<string, TabId> = { complaints: "complaints", dx: "dx", advice: "advice", inv: "inv", exam: "exam", rx: "rx", treat: "treat", notes: "notes" };
     setTab(tabFor[id] ?? "complaints");
@@ -2377,6 +2390,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 <div role="menu" data-testid="header-more-menu" className="cx-more-menu">
                   <button type="button" role="menuitem" data-testid="more-save-draft" onClick={() => { setMoreOpen(false); void saveNote({ force: true }); }}>{t("opdConsultV2.saveDraft")}</button>
                   <button type="button" role="menuitem" data-testid="more-refer" onClick={() => { setMoreOpen(false); setReferDone(null); setReferOpen(true); }}>{t("opdConsultV2.refer.open")}</button>
+                  <button type="button" role="menuitem" data-testid="more-my-layout" onClick={() => { setMoreOpen(false); setMyLayoutOpen(true); }}>{t("opdLayout.my.menu")}</button>
                 </div>
               )}
             </div>
@@ -2729,26 +2743,35 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               <div className="cx-work"><WorkStrip rows={workRows} onGo={goToSection} /></div>
 
               <div className="cx-tabs">
-                <TabStrip
-                  label={t("opdConsultV2.tabs.label")}
-                  value={tab}
-                  onChange={setTab}
-                  options={[
-                    ["summary", t("opdConsultV2.tabs.summary")],
-                    ["vitals", t("opdConsultV2.tabs.vitals")],
-                    // Consult engine (D19): the department's own sections, only where its profile names them.
-                    ...(engine.data?.profile === "ophthalmology" ? [["eye", t("opdEye.tab")] as const] : []),
-                    ["complaints", t("opdConsultV2.tabs.complaints")],
-                    ["exam", t("opdConsultV2.tabs.exam")],
-                    ["dx", t("opdConsultV2.tabs.dx")],
-                    ["inv", t("opdConsultV2.tabs.inv")],
-                    ["rx", t("opdConsult.tabs.rx")],
-                    ["treat", t("opdConsultV2.tabs.treat")],
-                    ["advice", t("opdConsultV2.tabs.advice")],
-                    ["notes", t("opdConsultV2.tabs.notes")],
-                  ] as const}
-                  marked={{ complaints: tabHas("complaints"), exam: tabHas("exam"), dx: tabHas("dx"), inv: tabHas("inv"), rx: tabHas("rx"), treat: tabHas("treat"), advice: tabHas("advice"), notes: tabHas("notes") }}
-                />
+                {/*
+                  Held until the layout read SETTLES, so the tabs never jump under a finger: a
+                  pending read shows an empty strip of the same height, an answered one shows the
+                  layout, a failed one shows today's order (never fewer tabs).
+                */}
+                {layout.isPending && active !== null ? (
+                  <div data-testid="tabs-waiting" aria-busy="true" style={{ height: 38 }} />
+                ) : (
+                  <TabStrip
+                    label={t("opdConsultV2.tabs.label")}
+                    value={tab}
+                    onChange={setTab}
+                    options={applyLayout([
+                      ["summary", t("opdConsultV2.tabs.summary")],
+                      ["vitals", t("opdConsultV2.tabs.vitals")],
+                      // Consult engine (D19): the department's own sections, only where its profile names them.
+                      ...(engine.data?.profile === "ophthalmology" ? [["eye", t("opdEye.tab")] as const] : []),
+                      ["complaints", t("opdConsultV2.tabs.complaints")],
+                      ["exam", t("opdConsultV2.tabs.exam")],
+                      ["dx", t("opdConsultV2.tabs.dx")],
+                      ["inv", t("opdConsultV2.tabs.inv")],
+                      ["rx", t("opdConsult.tabs.rx")],
+                      ["treat", t("opdConsultV2.tabs.treat")],
+                      ["advice", t("opdConsultV2.tabs.advice")],
+                      ["notes", t("opdConsultV2.tabs.notes")],
+                    ] as const, layout.data)}
+                    marked={{ complaints: tabHas("complaints"), exam: tabHas("exam"), dx: tabHas("dx"), inv: tabHas("inv"), rx: tabHas("rx"), treat: tabHas("treat"), advice: tabHas("advice"), notes: tabHas("notes") }}
+                  />
+                )}
               </div>
               {completeError !== null && <div style={{ padding: "6px 20px", background: "var(--card)" }}><ErrorLine message={completeError} /></div>}
               {referDone !== null && <div style={{ padding: "6px 20px", background: "var(--green-soft)" }}><span data-testid="refer-done" style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>{referDone}</span></div>}
@@ -4176,6 +4199,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 </div>
         )}
       </DeskModal>
+
+      {/* Board `Profiles` — the doctor's own layout; it takes effect from their next visit, never this one. */}
+      <MyLayoutDialog open={myLayoutOpen} onClose={() => { setMyLayoutOpen(false); }} />
 
       {/* CONSULT V2 — refer: another department's doctor (a new visit in that line), or out with a letter. */}
       <DeskModal
