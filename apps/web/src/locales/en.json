@@ -6606,13 +6606,9 @@
         "bank": "Bank",
         "roundOff": "Round off",
         "returnShortfall": "Return shortfall",
-        "patientParty": "Patients as",
-        "patientLedger": "Patients ledger"
+        "counterSales": "Counter sales (B2C party)"
       },
-      "party": {
-        "patient": "one ledger per patient (name and UHID)",
-        "single": "one ledger for all patients"
-      }
+      "counterNote": "Every counter bill without a buyer GSTIN posts to this one ledger — no patient names reach Tally. A bill with the buyer's GSTIN posts to the buyer's legal name and GSTIN."
     }
   }
 }

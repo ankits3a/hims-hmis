@@ -38,7 +38,8 @@ const ACCOUNTS = ["pharmacy.reports.read", "pharmacy.tally.export"];
 const LEDGERS: TallyLedgers = {
   companyName: "", sales: "Pharmacy Sales", salesReturns: "Pharmacy Sales", outputCgst: "Output CGST", outputSgst: "Output SGST",
   purchases: "Purchase — Medicines", purchaseReturns: "Purchase — Medicines", inputCgst: "Input CGST", inputSgst: "Input SGST", inputIgst: "Input IGST",
-  cash: "Cash", bank: "Bank", roundOff: "Round Off", returnShortfall: "Purchase Return Shortfall", patientParty: "patient", patientLedger: "Pharmacy Patients",
+  cash: "Cash", bank: "Bank", roundOff: "Round Off", returnShortfall: "Purchase Return Shortfall",
+  counterSales: "Pharmacy Counter Sales",
 };
 const zero = { sale: 0, sales_return: 0, receipt: 0, refund: 0, purchase: 0, purchase_return: 0, supplier_payment: 0, credit_shortfall: 0, return_closed: 0 };
 const earlier: WireTallyExport = {
@@ -50,8 +51,8 @@ const preview = (confirmed: boolean): WireTallyPreview => ({
   debitPaise: 311_500, earlier: [earlier],
   sample: [{
     kind: "sale", type: "Sales", remoteId: "hmis:sale:inv-1", number: "INV/26-27/000001", date: "2026-09-25", reference: "P2609250001",
-    party: "Ramesh Patil (UH0001)", narration: "Pharmacy bill", entries: [
-      { ledger: "Ramesh Patil (UH0001)", amountPaise: 4_500, party: true }, { ledger: "Pharmacy Sales", amountPaise: -4_286, party: false },
+    party: "Pharmacy Counter Sales", narration: "Pharmacy bill INV/26-27/000001 (dispense P2609250001)", entries: [
+      { ledger: "Pharmacy Counter Sales", amountPaise: 4_500, party: true }, { ledger: "Pharmacy Sales", amountPaise: -4_286, party: false },
       { ledger: "Output CGST", amountPaise: -107, party: false }, { ledger: "Output SGST", amountPaise: -107, party: false },
     ],
   }],
@@ -87,8 +88,14 @@ describe("the Tally export (parity P5)", () => {
     const bank = await within(dialog).findByTestId("ledger-bank");
     await userEvent.clear(bank);
     await userEvent.type(bank, "HDFC Current A/c");
+    // The one B2C party ledger is the accountant's to name, like any other; there is no ledger per patient to choose.
+    const counter = within(dialog).getByTestId("ledger-counterSales");
+    expect(counter).toHaveValue("Pharmacy Counter Sales");
+    await userEvent.clear(counter);
+    await userEvent.type(counter, "Counter Sales — Pharmacy");
+    expect(within(dialog).queryByRole("radio")).toBeNull();
     await userEvent.click(within(dialog).getByTestId("tally-ledgers-save"));
-    await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ bank: "HDFC Current A/c", cash: "Cash", patientParty: "patient" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ ...LEDGERS, bank: "HDFC Current A/c", counterSales: "Counter Sales — Pharmacy" }));
     await waitFor(() => expect(screen.getByTestId("tally-export")).toBeEnabled());
   });
 

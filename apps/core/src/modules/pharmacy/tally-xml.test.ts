@@ -10,25 +10,33 @@ import type { TallySource, TallyVoucherKind } from "./tally";
  * is parsed back as XML by a strict reader (`test/helpers/xml.ts`) and every VOUCHER in it is summed: Tally rejects a
  * voucher whose amounts do not add to zero, so the file itself is what is checked, not the builder's
  * own arithmetic. A debit is ISDEEMEDPOSITIVE Yes with a negative AMOUNT, on every entry.
+ *
+ * The party: a B2C counter bill (no buyer GSTIN) and its receipt, credit note and refund post to the ONE
+ * counter ledger; a B2B bill posts to "legal name (GSTIN)", which the masters create with its GSTIN.
  */
 
 const ACME = { name: "ACME Pharma & Sons <Pune>", gstin: "27AAACA1234A1Z5" };
 const DELHI = { name: "Delhi Drug House", gstin: "07AAACD1234A1Z5" };
-const RAMESH = { name: "Ramesh \"Ramu\" Patil", uhid: "UH0001" };
+const KAVERI = { gstin: "29AABCK1234L1Z2", legalName: "Kaveri Nursing Home Pvt Ltd" };
+const KAVERI_LEDGER = "Kaveri Nursing Home Pvt Ltd (29AABCK1234L1Z2)";
 
 const SOURCE: TallySource = {
   sales: [
-    { id: "inv-1", no: "INV/26-27/000001", date: "2026-09-25", ref: "P2609250001", patient: RAMESH, taxablePaise: 4_286, cgstPaise: 107, sgstPaise: 107, roundingPaise: 0, netPaise: 4_500 },
+    { id: "inv-1", no: "INV/26-27/000001", date: "2026-09-25", ref: "P2609250001", buyer: null, taxablePaise: 4_286, cgstPaise: 107, sgstPaise: 107, roundingPaise: 0, netPaise: 4_500 },
     // one bill rounded up by a paisa to the rupee, one rounded down by two
-    { id: "inv-2", no: "INV/26-27/000002", date: "2026-09-25", ref: null, patient: RAMESH, taxablePaise: 10_714, cgstPaise: 642, sgstPaise: 643, roundingPaise: 1, netPaise: 12_000 },
-    { id: "inv-3", no: "INV/26-27/000003", date: "2026-09-26", ref: null, patient: RAMESH, taxablePaise: 8_931, cgstPaise: 535, sgstPaise: 536, roundingPaise: -2, netPaise: 10_000 },
+    { id: "inv-2", no: "INV/26-27/000002", date: "2026-09-25", ref: null, buyer: null, taxablePaise: 10_714, cgstPaise: 642, sgstPaise: 643, roundingPaise: 1, netPaise: 12_000 },
+    // a B2B bill: billing recorded the buying institution's GSTIN
+    { id: "inv-3", no: "INV/26-27/000003", date: "2026-09-26", ref: null, buyer: KAVERI, taxablePaise: 8_931, cgstPaise: 535, sgstPaise: 536, roundingPaise: -2, netPaise: 10_000 },
   ],
   salesReturns: [
-    { id: "cn-1", no: "CN/26-27/000001", date: "2026-09-26", invoiceNo: "INV/26-27/000001", patient: RAMESH, taxablePaise: 4_286, cgstPaise: 107, sgstPaise: 107, roundingPaise: 0, netPaise: 4_500 },
-    { id: "cn-2", no: "CN/26-27/000002", date: "2026-09-26", invoiceNo: "INV/26-27/000002", patient: RAMESH, taxablePaise: 1_071, cgstPaise: 64, sgstPaise: 65, roundingPaise: 0, netPaise: 1_200 },
+    { id: "cn-1", no: "CN/26-27/000001", date: "2026-09-26", invoiceNo: "INV/26-27/000001", buyer: null, taxablePaise: 4_286, cgstPaise: 107, sgstPaise: 107, roundingPaise: 0, netPaise: 4_500 },
+    { id: "cn-2", no: "CN/26-27/000002", date: "2026-09-26", invoiceNo: "INV/26-27/000002", buyer: null, taxablePaise: 1_071, cgstPaise: 64, sgstPaise: 65, roundingPaise: 0, netPaise: 1_200 },
   ],
-  receipts: [{ id: "rcp-1", no: "RCP/26-27/000001", date: "2026-09-25", patient: RAMESH, invoiceNos: ["INV/26-27/000001", "INV/26-27/000002"], cashPaise: 4_500, bankPaise: 12_000 }],
-  refunds: [{ id: "rfv-1", no: "RFV/26-27/000001", date: "2026-09-27", patient: RAMESH, invoiceNo: "INV/26-27/000001", amountPaise: 4_500, cash: true }],
+  receipts: [
+    { id: "rcp-1", no: "RCP/26-27/000001", date: "2026-09-25", invoiceNos: ["INV/26-27/000001", "INV/26-27/000002"], cashPaise: 4_500, bankPaise: 12_000, credits: [{ buyer: null, amountPaise: 4_500 }, { buyer: null, amountPaise: 12_000 }] },
+    { id: "rcp-2", no: "RCP/26-27/000002", date: "2026-09-26", invoiceNos: ["INV/26-27/000003"], cashPaise: 0, bankPaise: 10_000, credits: [{ buyer: KAVERI, amountPaise: 10_000 }] },
+  ],
+  refunds: [{ id: "rfv-1", no: "RFV/26-27/000001", date: "2026-09-27", buyer: null, invoiceNo: "INV/26-27/000001", amountPaise: 4_500, cash: true }],
   purchases: [
     { id: "b-1", no: "MSB2609240001", date: "2026-09-24", vendorBillNo: "ACME/0042", vendor: ACME, taxablePaise: 250_000, cgstPaise: 15_000, sgstPaise: 15_000, igstPaise: 0, roundOffPaise: 0, totalPaise: 280_000 },
     { id: "b-2", no: "MSB2609240002", date: "2026-09-24", vendorBillNo: "DDH/77", vendor: DELHI, taxablePaise: 100_333, cgstPaise: 0, sgstPaise: 0, igstPaise: 12_040, roundOffPaise: -73, totalPaise: 112_300 },
@@ -72,8 +80,17 @@ describe("the TallyPrime XML (parity P5)", () => {
     const sale = parsed.find((v) => child(v, "VOUCHERNUMBER") === "INV/26-27/000002")!;
     expect(sale.attrs.VCHTYPE).toBe("Sales");
     expect(all(sale, "ALLLEDGERENTRIES.LIST").map((e) => [child(e, "LEDGERNAME"), child(e, "AMOUNT")])).toEqual([
-      ["Ramesh \"Ramu\" Patil (UH0001)", "-120.00"], ["Pharmacy Sales", "107.14"], ["Output CGST", "6.42"], ["Output SGST", "6.43"], ["Round Off", "0.01"],
+      ["Pharmacy Counter Sales", "-120.00"], ["Pharmacy Sales", "107.14"], ["Output CGST", "6.42"], ["Output SGST", "6.43"], ["Round Off", "0.01"],
     ]);
+    expect(child(sale, "PARTYLEDGERNAME")).toBe("Pharmacy Counter Sales");
+    // The B2B bill, and the receipt that settled it, on the buyer's own ledger.
+    const b2b = parsed.find((v) => child(v, "VOUCHERNUMBER") === "INV/26-27/000003")!;
+    expect([child(b2b, "PARTYLEDGERNAME"), child(all(b2b, "ALLLEDGERENTRIES.LIST")[0]!, "LEDGERNAME"), child(all(b2b, "ALLLEDGERENTRIES.LIST")[0]!, "AMOUNT")]).toEqual([KAVERI_LEDGER, KAVERI_LEDGER, "-100.00"]);
+    const b2bPaid = parsed.find((v) => child(v, "VOUCHERNUMBER") === "RCP/26-27/000002")!;
+    expect(all(b2bPaid, "ALLLEDGERENTRIES.LIST").map((e) => [child(e, "LEDGERNAME"), child(e, "AMOUNT")])).toEqual([["Bank", "-100.00"], [KAVERI_LEDGER, "100.00"]]);
+    // B2C: every counter voucher (sale, receipt, credit note, refund) names the counter ledger as its party.
+    expect(new Set(parsed.filter((v) => ["Sales", "Receipt", "Credit Note"].includes(v.attrs.VCHTYPE ?? "") || child(v, "VOUCHERNUMBER").startsWith("RFV"))
+      .filter((v) => ![`INV/26-27/000003`, "RCP/26-27/000002"].includes(child(v, "VOUCHERNUMBER"))).map((v) => child(v, "PARTYLEDGERNAME")))).toEqual(new Set(["Pharmacy Counter Sales"]));
     const igstBill = parsed.find((v) => child(v, "VOUCHERNUMBER") === "MSB2609240002")!;
     expect([igstBill.attrs.VCHTYPE, child(igstBill, "REFERENCE")]).toEqual(["Purchase", "DDH/77"]);
     expect(all(igstBill, "ALLLEDGERENTRIES.LIST").map((e) => [child(e, "LEDGERNAME"), child(e, "AMOUNT")])).toEqual([
@@ -82,11 +99,11 @@ describe("the TallyPrime XML (parity P5)", () => {
     const cashPay = parsed.find((v) => child(v, "VOUCHERNUMBER") === "MPV2609280002")!;
     expect(all(cashPay, "ALLLEDGERENTRIES.LIST").map((e) => [child(e, "LEDGERNAME"), child(e, "AMOUNT")])).toEqual([["Delhi Drug House", "-99.99"], ["Cash", "99.99"]]);
     const receipt = parsed.find((v) => v.attrs.VCHTYPE === "Receipt")!;
-    expect(all(receipt, "ALLLEDGERENTRIES.LIST").map((e) => [child(e, "LEDGERNAME"), child(e, "AMOUNT")])).toEqual([["Cash", "-45.00"], ["Bank", "-120.00"], ["Ramesh \"Ramu\" Patil (UH0001)", "165.00"]]);
+    expect(all(receipt, "ALLLEDGERENTRIES.LIST").map((e) => [child(e, "LEDGERNAME"), child(e, "AMOUNT")])).toEqual([["Cash", "-45.00"], ["Bank", "-120.00"], ["Pharmacy Counter Sales", "165.00"]]);
     expect(parsed.filter((v) => v.attrs.VCHTYPE === "Journal").map((v) => child(v, "VOUCHERNUMBER"))).toEqual(["MCN2609270001", "MRT2609200001"]);
   });
 
-  it("the masters file names every ledger the vouchers use, each under its group, the vendors with their GSTIN", () => {
+  it("the masters file names every ledger the vouchers use, each under its group, the vendors and the B2B buyer with their GSTIN — and no ledger per patient", () => {
     const { vouchers, parties } = buildVouchers(SOURCE, DEFAULT_TALLY_LEDGERS);
     const doc = parseXml(mastersXml(vouchers, parties, DEFAULT_TALLY_LEDGERS));
     expect(child(all(doc, "REQUESTDESC")[0]!, "REPORTNAME")).toBe("All Masters");
@@ -97,13 +114,25 @@ describe("the TallyPrime XML (parity P5)", () => {
     expect(child(ledgers.get("Cash")!, "PARENT")).toBe("Cash-in-Hand");
     expect(child(ledgers.get("ACME Pharma & Sons <Pune>")!, "PARENT")).toBe("Sundry Creditors");
     expect(child(ledgers.get("ACME Pharma & Sons <Pune>")!, "PARTYGSTIN")).toBe("27AAACA1234A1Z5");
-    expect(child(ledgers.get("Ramesh \"Ramu\" Patil (UH0001)")!, "PARENT")).toBe("Sundry Debtors");
+    expect([child(ledgers.get("Pharmacy Counter Sales")!, "PARENT"), child(ledgers.get("Pharmacy Counter Sales")!, "PARTYGSTIN")]).toEqual(["Sundry Debtors", ""]);
+    expect([child(ledgers.get(KAVERI_LEDGER)!, "PARENT"), child(ledgers.get(KAVERI_LEDGER)!, "PARTYGSTIN")]).toEqual(["Sundry Debtors", "29AABCK1234L1Z2"]);
+    // The only debtors Tally is asked to create: the counter ledger and the B2B buyer.
+    expect([...ledgers.values()].filter((n) => child(n, "PARENT") === "Sundry Debtors").map((n) => n.attrs.NAME).sort()).toEqual([KAVERI_LEDGER, "Pharmacy Counter Sales"]);
   });
 
-  it("one patients ledger when the accountant asks for it; a renamed ledger is used everywhere", () => {
-    const l = cleanLedgers({ ...DEFAULT_TALLY_LEDGERS, patientParty: "single", patientLedger: "Pharmacy Patients", bank: "  HDFC   Current A/c " });
-    const { vouchers } = buildVouchers(SOURCE, l);
-    expect(new Set(vouchers.filter((v) => ["sale", "sales_return", "receipt", "refund"].includes(v.kind)).map((v) => v.party))).toEqual(new Set(["Pharmacy Patients"]));
+  it("the counter ledger is the accountant's to rename; a receipt settling a B2C and a B2B bill credits each; a renamed ledger is used everywhere", () => {
+    // A mapping stored before the counter ledger existed keeps nothing it no longer knows.
+    const l = cleanLedgers(Object.assign({}, DEFAULT_TALLY_LEDGERS, { counterSales: " Counter   Sales — Pharmacy ", bank: "  HDFC   Current A/c ", patientParty: "patient" }));
+    expect(Object.keys(l).sort()).toEqual(Object.keys(DEFAULT_TALLY_LEDGERS).sort());
+    const mixed: TallySource = {
+      ...SOURCE,
+      receipts: [{ id: "rcp-9", no: "RCP/26-27/000009", date: "2026-09-26", invoiceNos: ["INV/26-27/000002", "INV/26-27/000003"], cashPaise: 2_000, bankPaise: 20_000, credits: [{ buyer: null, amountPaise: 12_000 }, { buyer: { gstin: KAVERI.gstin, legalName: null }, amountPaise: 10_000 }] }],
+    };
+    const { vouchers } = buildVouchers(mixed, l);
+    expect(new Set(vouchers.filter((v) => ["sale", "sales_return", "refund"].includes(v.kind) && v.number !== "INV/26-27/000003").map((v) => v.party))).toEqual(new Set(["Counter Sales — Pharmacy"]));
+    expect(vouchers.find((v) => v.number === "RCP/26-27/000009")!.entries.map((e) => [e.ledger, e.amountPaise])).toEqual([
+      ["Cash", 2_000], ["HDFC Current A/c", 20_000], ["Counter Sales — Pharmacy", -12_000], ["GST buyer (29AABCK1234L1Z2)", -10_000],
+    ]);
     expect(vouchers.find((v) => v.kind === "supplier_payment" && v.number === "MPV2609280001")!.entries.map((e) => e.ledger)).toEqual(["ACME Pharma & Sons <Pune>", "HDFC Current A/c"]);
     expect(() => cleanLedgers({ ...DEFAULT_TALLY_LEDGERS, cash: "  " })).toThrow(expect.objectContaining({ code: "invalid_tally_ledgers" }));
   });

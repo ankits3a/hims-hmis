@@ -48,13 +48,13 @@ function istWindow(from: string, to: string): { start: Date; end: Date } {
 
 export type InvoiceHead = {
   id: string; invoiceNo: string; patientId: string; encounterId: string | null; serviceDay: string; issuedAt: string; issuedBy: string;
-  buyerGstin: string | null; grossPaise: number; discountPaise: number; taxableBasePaise: number; cgstPaise: number; sgstPaise: number;
+  buyerGstin: string | null; buyerLegalName: string | null; grossPaise: number; discountPaise: number; taxableBasePaise: number; cgstPaise: number; sgstPaise: number;
   rawTotalPaise: number; roundingPaise: number; netPayablePaise: number;
 };
 
 const headColumns = {
   id: invoices.id, invoiceNo: invoices.invoiceNo, patientId: invoices.patientId, encounterId: invoices.encounterId,
-  serviceDay: invoices.serviceDay, issuedAt: invoices.issuedAt, issuedBy: invoices.issuedBy, buyerGstin: invoices.buyerGstin,
+  serviceDay: invoices.serviceDay, issuedAt: invoices.issuedAt, issuedBy: invoices.issuedBy, buyerGstin: invoices.buyerGstin, buyerLegalName: invoices.buyerLegalName,
   grossPaise: invoices.grossPaise, discountPaise: invoices.discountPaise, taxableBasePaise: invoices.taxableBasePaise,
   cgstPaise: invoices.cgstPaise, sgstPaise: invoices.sgstPaise, rawTotalPaise: invoices.rawTotalPaise,
   roundingPaise: invoices.roundingPaise, netPayablePaise: invoices.netPayablePaise,

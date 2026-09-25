@@ -23,12 +23,12 @@ import type { Db } from "../../kernel/db/client";
  * unknown ledger.
  *
  * THE VOUCHERS, each on OUR stable number and date:
- *   - Sales        a pharmacy bill (`INV/…`, its service day): Dr the patient, Cr sales, Output CGST
+ *   - Sales        a pharmacy bill (`INV/…`, its service day): Dr the party, Cr sales, Output CGST
  *                  and SGST, the rupee rounding to Round Off;
  *   - Credit Note  a credit note against one (`CN/…`, its issue day): the same, reversed;
  *   - Receipt      the money taken for pharmacy bills (`RCP/…`): Dr Cash (cash) and Bank (UPI, card),
- *                  Cr the patient — without it every patient would stay a debtor in Tally for ever;
- *   - Payment      a refund voucher paid against a pharmacy credit note (`RFV/…`): Dr the patient,
+ *                  Cr the party — so the party nets to nothing once a bill is paid;
+ *   - Payment      a refund voucher paid against a pharmacy credit note (`RFV/…`): Dr the party,
  *                  Cr Cash or Bank; and every supplier payment (`MPV…`, its paid-on date): Dr the
  *                  vendor, Cr Cash (mode cash) or Bank (NEFT, RTGS, UPI, cheque);
  *   - Purchase     a supplier bill booked as payable (`MSB…`, the bill date; the vendor's own number
@@ -45,9 +45,15 @@ import type { Db } from "../../kernel/db/client";
  *
  * LEDGER NAMES are the accountant's (`pharmacy_tally_config`, edited on the settings screen): the
  * defaults are names, not the hospital's company, so the export refuses until the mapping has been
- * confirmed once (`tally_ledgers_unconfirmed`; census row `pharmacy_tally_ledgers_confirmed`). A party
- * is the vendor's name, and the patient's name with the UHID (or one "patients" ledger, the
- * accountant's choice).
+ * confirmed once (`tally_ledgers_unconfirmed`; census row `pharmacy_tally_ledgers_confirmed`).
+ *
+ * THE PARTY (review of #322, standard Indian practice for B2C counter sales): a counter bill with no
+ * buyer GSTIN (B2C) posts to ONE party ledger, `counterSales` ("Pharmacy Counter Sales" by default) —
+ * its sale, its receipt, its credit note and its refund — so Tally carries no debtor per patient and
+ * the books never learn who the patient is: no name, UHID or phone anywhere in either file (the
+ * REFERENCE and NARRATION carry our invoice, receipt and dispense numbers only; REMOTEID our own id).
+ * A bill that carries the buyer's GSTIN (B2B) posts to the buyer's ledger, "legal name (GSTIN)",
+ * created in the masters under Sundry Debtors with its GSTIN. A vendor is its own ledger, by name.
  *
  * EVERY EXPORT IS RECORDED (`pharmacy_tally_exports`: the range, who, when, how many of each voucher,
  * the SHA-256 of the vouchers file, the mapping used, and both files) — so a re-export of a range is
@@ -62,9 +68,8 @@ export type TallyLedgers = {
   sales: string; salesReturns: string; outputCgst: string; outputSgst: string;
   purchases: string; purchaseReturns: string; inputCgst: string; inputSgst: string; inputIgst: string;
   cash: string; bank: string; roundOff: string; returnShortfall: string;
-  /** `patient`: each patient their own debtor, "Name (UHID)"; `single`: every pharmacy patient on `patientLedger`. */
-  patientParty: "patient" | "single";
-  patientLedger: string;
+  /** The ONE party ledger every B2C counter bill, its receipt, credit note and refund post to. */
+  counterSales: string;
 };
 
 /** The spec's defaults (and the owner's ruling's words); the accountant confirms or renames each before the first export. */
@@ -73,12 +78,12 @@ export const DEFAULT_TALLY_LEDGERS: TallyLedgers = {
   sales: "Pharmacy Sales", salesReturns: "Pharmacy Sales", outputCgst: "Output CGST", outputSgst: "Output SGST",
   purchases: "Purchase — Medicines", purchaseReturns: "Purchase — Medicines", inputCgst: "Input CGST", inputSgst: "Input SGST", inputIgst: "Input IGST",
   cash: "Cash", bank: "Bank", roundOff: "Round Off", returnShortfall: "Purchase Return Shortfall",
-  patientParty: "patient", patientLedger: "Pharmacy Patients",
+  counterSales: "Pharmacy Counter Sales",
 };
 
 const LEDGER_KEYS = [
   "sales", "salesReturns", "outputCgst", "outputSgst", "purchases", "purchaseReturns", "inputCgst", "inputSgst", "inputIgst",
-  "cash", "bank", "roundOff", "returnShortfall", "patientLedger",
+  "cash", "bank", "roundOff", "returnShortfall", "counterSales",
 ] as const;
 
 /** The Tally group each ledger is created under in the masters file. */
@@ -86,18 +91,17 @@ const GROUP: Record<(typeof LEDGER_KEYS)[number], string> = {
   sales: "Sales Accounts", salesReturns: "Sales Accounts", outputCgst: "Duties & Taxes", outputSgst: "Duties & Taxes",
   purchases: "Purchase Accounts", purchaseReturns: "Purchase Accounts", inputCgst: "Duties & Taxes", inputSgst: "Duties & Taxes",
   inputIgst: "Duties & Taxes", cash: "Cash-in-Hand", bank: "Bank Accounts", roundOff: "Indirect Expenses", returnShortfall: "Indirect Expenses",
-  patientLedger: "Sundry Debtors",
+  counterSales: "Sundry Debtors",
 };
 
+/** The mapping from what was typed or stored: every known ledger named (a missing one takes its default), nothing else kept. */
 export function cleanLedgers(input: Partial<TallyLedgers>): TallyLedgers {
-  const out = { ...DEFAULT_TALLY_LEDGERS, ...input };
+  const out: TallyLedgers = { ...DEFAULT_TALLY_LEDGERS, companyName: String(input.companyName ?? "").trim().slice(0, 100) };
   for (const k of LEDGER_KEYS) {
-    const v = String(out[k] ?? "").trim().replace(/\s+/g, " ");
+    const v = String(input[k] ?? DEFAULT_TALLY_LEDGERS[k]).trim().replace(/\s+/g, " ");
     if (v === "" || v.length > 100) throw new PharmacyError("invalid_tally_ledgers", `the ${k} ledger needs a name of 1–100 characters`, { field: k });
     out[k] = v;
   }
-  out.companyName = String(out.companyName ?? "").trim().slice(0, 100);
-  if (out.patientParty !== "patient" && out.patientParty !== "single") throw new PharmacyError("invalid_tally_ledgers", "patient party is `patient` or `single`", { field: "patientParty" });
   return out;
 }
 
@@ -149,7 +153,7 @@ export type TallyVoucher = {
   kind: TallyVoucherKind; type: TallyVoucherType; remoteId: string; number: string; date: string; reference: string | null;
   party: string; narration: string; entries: TallyEntry[];
 };
-/** A party ledger the masters file creates: its group and, for a vendor, its GSTIN. */
+/** A party ledger the masters file creates (a vendor, a B2B buyer): its group and GSTIN. The counter ledger is a mapped account, not a party. */
 export type TallyParty = { name: string; group: "Sundry Debtors" | "Sundry Creditors"; gstin: string | null };
 
 type Build = { vouchers: TallyVoucher[]; parties: Map<string, TallyParty> };
@@ -167,11 +171,15 @@ const cr = (ledger: string, paise: number, party = false): TallyEntry => ({ ledg
 /** A rounding or round-off as the entry that closes the voucher: a positive amount is income (credit). */
 const roundOffEntry = (ledger: string, incomePaise: number): TallyEntry => ({ ledger, amountPaise: -incomePaise, party: false });
 
+/** A B2B buyer (the invoice's GSTIN and legal name); `null` is a B2C counter bill. */
+export type TallyBuyer = { gstin: string; legalName: string | null } | null;
+
 export type TallySource = {
-  sales: { id: string; no: string; date: string; ref: string | null; patient: { name: string; uhid: string }; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number }[];
-  salesReturns: { id: string; no: string; date: string; invoiceNo: string; patient: { name: string; uhid: string }; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number }[];
-  receipts: { id: string; no: string; date: string; patient: { name: string; uhid: string }; invoiceNos: string[]; cashPaise: number; bankPaise: number }[];
-  refunds: { id: string; no: string; date: string; patient: { name: string; uhid: string }; invoiceNo: string | null; amountPaise: number; cash: boolean }[];
+  sales: { id: string; no: string; date: string; ref: string | null; buyer: TallyBuyer; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number }[];
+  salesReturns: { id: string; no: string; date: string; invoiceNo: string; buyer: TallyBuyer; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number }[];
+  /** One receipt; `credits` is what it settled per buyer (a receipt can settle a B2C and a B2B bill together). */
+  receipts: { id: string; no: string; date: string; invoiceNos: string[]; cashPaise: number; bankPaise: number; credits: { buyer: TallyBuyer; amountPaise: number }[] }[];
+  refunds: { id: string; no: string; date: string; buyer: TallyBuyer; invoiceNo: string | null; amountPaise: number; cash: boolean }[];
   purchases: { id: string; no: string; date: string; vendorBillNo: string; vendor: { name: string; gstin: string | null }; taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; roundOffPaise: number; totalPaise: number }[];
   debitNotes: { id: string; no: string; date: string; returnNo: string | null; vendor: { name: string; gstin: string | null }; taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: number }[];
   supplierPayments: { id: string; no: string; date: string; vendor: { name: string; gstin: string | null }; mode: string; reference: string | null; amountPaise: number; bills: string[] }[];
@@ -185,9 +193,11 @@ export type TallySource = {
  */
 export function buildVouchers(src: TallySource, l: TallyLedgers): { vouchers: TallyVoucher[]; parties: TallyParty[] } {
   const b: Build = { vouchers: [], parties: new Map() };
-  const patient = (p: { name: string; uhid: string }): string => {
-    const name = l.patientParty === "single" ? l.patientLedger : `${p.name} (${p.uhid})`;
-    b.parties.set(name, { name, group: "Sundry Debtors", gstin: null });
+  /** B2C: the one counter ledger. B2B: "legal name (GSTIN)", a party the masters create with its GSTIN. */
+  const buyer = (x: TallyBuyer): string => {
+    if (x === null) return l.counterSales;
+    const name = `${x.legalName ?? "GST buyer"} (${x.gstin})`;
+    b.parties.set(name, { name, group: "Sundry Debtors", gstin: x.gstin });
     return name;
   };
   const vendor = (v: { name: string; gstin: string | null }): string => {
@@ -195,25 +205,27 @@ export function buildVouchers(src: TallySource, l: TallyLedgers): { vouchers: Ta
     return v.name;
   };
   for (const s of src.sales) {
-    const party = patient(s.patient);
+    const party = buyer(s.buyer);
     voucher(b, "sale", { remoteId: `hmis:sale:${s.id}`, number: s.no, date: s.date, reference: s.ref, party, narration: `Pharmacy bill ${s.no}${s.ref === null ? "" : ` (dispense ${s.ref})`}` }, [
       dr(party, s.netPaise, true), cr(l.sales, s.taxablePaise), cr(l.outputCgst, s.cgstPaise), cr(l.outputSgst, s.sgstPaise), roundOffEntry(l.roundOff, s.roundingPaise),
     ]);
   }
   for (const r of src.receipts) {
-    const party = patient(r.patient);
+    const credited = new Map<string, number>();
+    for (const c of r.credits) { const name = buyer(c.buyer); credited.set(name, (credited.get(name) ?? 0) + c.amountPaise); }
+    const party = [...credited.keys()][0] ?? l.counterSales;
     voucher(b, "receipt", { remoteId: `hmis:receipt:${r.id}`, number: r.no, date: r.date, reference: r.invoiceNos.join(", "), party, narration: `Received against ${r.invoiceNos.join(", ")}` }, [
-      dr(l.cash, r.cashPaise), dr(l.bank, r.bankPaise), cr(party, r.cashPaise + r.bankPaise, true),
+      dr(l.cash, r.cashPaise), dr(l.bank, r.bankPaise), ...[...credited].map(([name, paise]) => cr(name, paise, true)),
     ]);
   }
   for (const c of src.salesReturns) {
-    const party = patient(c.patient);
+    const party = buyer(c.buyer);
     voucher(b, "sales_return", { remoteId: `hmis:sales_return:${c.id}`, number: c.no, date: c.date, reference: c.invoiceNo, party, narration: `Credit note ${c.no} against ${c.invoiceNo}` }, [
       dr(l.salesReturns, c.taxablePaise), dr(l.outputCgst, c.cgstPaise), dr(l.outputSgst, c.sgstPaise), roundOffEntry(l.roundOff, -c.roundingPaise), cr(party, c.netPaise, true),
     ]);
   }
   for (const r of src.refunds) {
-    const party = patient(r.patient);
+    const party = buyer(r.buyer);
     voucher(b, "refund", { remoteId: `hmis:refund:${r.id}`, number: r.no, date: r.date, reference: r.invoiceNo, party, narration: `Refund ${r.no}${r.invoiceNo === null ? "" : ` on ${r.invoiceNo}`}` }, [
       dr(party, r.amountPaise, true), cr(r.cash ? l.cash : l.bank, r.amountPaise),
     ]);
@@ -312,7 +324,11 @@ export function vouchersXml(vouchers: readonly TallyVoucher[], l: TallyLedgers):
   return envelope("Vouchers", l.companyName, vouchers.map(voucherXml));
 }
 
-/** Every ledger the vouchers name, under its group: the accounts from the mapping, the parties as Sundry Debtors / Creditors. */
+/**
+ * Every ledger the vouchers name, under its group: the accounts from the mapping (the counter ledger
+ * among them, under Sundry Debtors), the vendors as Sundry Creditors and the B2B buyers as Sundry
+ * Debtors, each with its GSTIN. No ledger is ever made for a patient.
+ */
 export function mastersXml(vouchers: readonly TallyVoucher[], parties: readonly TallyParty[], l: TallyLedgers): string {
   const used = new Set(vouchers.flatMap((v) => v.entries.map((e) => e.ledger)));
   const accounts = new Map<string, string>();
@@ -334,9 +350,9 @@ export function mastersXml(vouchers: readonly TallyVoucher[], parties: readonly 
 
 // ═══════════════════════════════════ the period's documents ═══════════════════════════════════
 
-async function sourceOf(db: Db, actor: Actor, from: string, to: string): Promise<TallySource> {
+async function sourceOf(db: Db, from: string, to: string): Promise<TallySource> {
   const [sales, receipts, refunds, register, payments, adjustments] = await Promise.all([
-    pharmacySalesPeriod(db, actor, from, to),
+    pharmacySalesPeriod(db, from, to),
     receiptAllocationsBetween(db, from, to),
     refundVouchersPaidBetween(db, from, to),
     purchaseRegister(db, from, to),
@@ -344,31 +360,33 @@ async function sourceOf(db: Db, actor: Actor, from: string, to: string): Promise
     purchaseAdjustmentsBetween(db, from, to),
   ]);
   // Receipts and refunds are hospital-wide in billing: keep the pharmacy's own bills'.
-  const pharmacyInvoices = await sales.pharmacyInvoiceIds([...receipts.map((r) => r.invoiceId), ...refunds.map((r) => r.invoiceId).filter((x): x is string => x !== null)]);
-  const who = await sales.patients([...receipts.map((r) => r.patientId), ...refunds.map((r) => r.patientId)]);
-  const person = (id: string): { name: string; uhid: string } => who.get(id) ?? { name: id, uhid: "" };
+  const pharmacyInvoices = await sales.pharmacyInvoices([...receipts.map((r) => r.invoiceId), ...refunds.map((r) => r.invoiceId).filter((x): x is string => x !== null)]);
   const byReceipt = new Map<string, TallySource["receipts"][number]>();
   for (const r of receipts) {
-    if (!pharmacyInvoices.has(r.invoiceId)) continue;
-    const cur = byReceipt.get(r.receiptId) ?? { id: r.receiptId, no: r.receiptNo, date: r.day, patient: person(r.patientId), invoiceNos: [], cashPaise: 0, bankPaise: 0 };
-    cur.invoiceNos.push(pharmacyInvoices.get(r.invoiceId)!);
+    const inv = pharmacyInvoices.get(r.invoiceId);
+    if (inv === undefined) continue;
+    const cur = byReceipt.get(r.receiptId) ?? { id: r.receiptId, no: r.receiptNo, date: r.day, invoiceNos: [], cashPaise: 0, bankPaise: 0, credits: [] };
+    const paise = r.byMode.cash + r.byMode.upi + r.byMode.card;
+    cur.invoiceNos.push(inv.invoiceNo);
     cur.cashPaise += r.byMode.cash;
     cur.bankPaise += r.byMode.upi + r.byMode.card;
+    cur.credits.push({ buyer: inv.buyer, amountPaise: paise });
     byReceipt.set(r.receiptId, cur);
   }
   return {
     sales: sales.sales.map((s) => ({
-      id: s.id, no: s.invoiceNo, date: s.serviceDay, ref: s.ref, patient: s.patient, taxablePaise: s.taxableBasePaise, cgstPaise: s.cgstPaise, sgstPaise: s.sgstPaise,
+      id: s.id, no: s.invoiceNo, date: s.serviceDay, ref: s.ref, buyer: s.buyer, taxablePaise: s.taxableBasePaise, cgstPaise: s.cgstPaise, sgstPaise: s.sgstPaise,
       roundingPaise: s.roundingPaise, netPaise: s.netPayablePaise,
     })),
     salesReturns: sales.refunds.map((n) => ({
-      id: n.id, no: n.creditNoteNo, date: n.day, invoiceNo: n.invoiceNo, patient: n.patient, taxablePaise: n.taxableBasePaise, cgstPaise: n.cgstPaise,
+      id: n.id, no: n.creditNoteNo, date: n.day, invoiceNo: n.invoiceNo, buyer: n.buyer, taxablePaise: n.taxableBasePaise, cgstPaise: n.cgstPaise,
       sgstPaise: n.sgstPaise, roundingPaise: n.roundingPaise, netPaise: n.netPaise,
     })),
     receipts: [...byReceipt.values()],
-    refunds: refunds.filter((r) => r.invoiceId !== null && pharmacyInvoices.has(r.invoiceId)).map((r) => ({
-      id: r.id, no: r.voucherNo, date: r.day, patient: person(r.patientId), invoiceNo: pharmacyInvoices.get(r.invoiceId!) ?? null, amountPaise: r.amountPaise, cash: r.method === "cash",
-    })),
+    refunds: refunds.filter((r) => r.invoiceId !== null && pharmacyInvoices.has(r.invoiceId)).map((r) => {
+      const inv = pharmacyInvoices.get(r.invoiceId!)!;
+      return { id: r.id, no: r.voucherNo, date: r.day, buyer: inv.buyer, invoiceNo: inv.invoiceNo, amountPaise: r.amountPaise, cash: r.method === "cash" };
+    }),
     purchases: register.rows.filter((r) => r.kind === "bill").map((r) => ({
       id: r.id, no: r.docNo, date: r.date, vendorBillNo: r.vendorDocNo ?? "", vendor: { name: r.vendorName, gstin: r.gstin }, taxablePaise: r.taxablePaise,
       cgstPaise: r.cgstPaise, sgstPaise: r.sgstPaise, igstPaise: r.igstPaise, roundOffPaise: r.roundOffPaise, totalPaise: r.totalPaise,
@@ -426,7 +444,7 @@ export async function tallyPreview(db: Db, actor: Actor, input: ReportInput, now
   await requireReportPermission(db, actor, TALLY_EXPORT, "the Tally export");
   const range = reportRange(input.preset ?? "month", reportToday(now), input);
   const state = await readLedgers(db);
-  const { vouchers } = buildVouchers(await sourceOf(db, actor, range.from, range.to), state.ledgers);
+  const { vouchers } = buildVouchers(await sourceOf(db, range.from, range.to), state.ledgers);
   return {
     from: range.from, to: range.to, preset: range.preset, confirmed: state.confirmed, ledgers: state.ledgers,
     voucherCount: vouchers.length, counts: countsOf(vouchers), debitPaise: debitOf(vouchers), sample: vouchers.slice(0, 5),
@@ -445,7 +463,7 @@ export async function tallyExport(db: Db, actor: Actor, input: ReportInput, now:
   if (!state.confirmed) {
     throw new PharmacyError("tally_ledgers_unconfirmed", "confirm the Tally ledger names first (Tally → Ledgers): the defaults are names, not your company's ledgers");
   }
-  const { vouchers, parties } = buildVouchers(await sourceOf(db, actor, range.from, range.to), state.ledgers);
+  const { vouchers, parties } = buildVouchers(await sourceOf(db, range.from, range.to), state.ledgers);
   const vXml = vouchersXml(vouchers, state.ledgers);
   const mXml = mastersXml(vouchers, parties, state.ledgers);
   const row = {

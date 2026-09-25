@@ -684,9 +684,9 @@ TallyPrime import file. It needs `pharmacy.tally.export` (`owner`, `billing_mana
 
 - **Confirm the ledger names once (L).** Type each ledger exactly as the TallyPrime company names it:
   the defaults are *Pharmacy Sales*, *Output CGST*, *Output SGST*, *Purchase — Medicines*, *Input
-  CGST*, *Input SGST*, *Input IGST*, *Cash*, *Bank*, *Round Off* and *Purchase Return Shortfall*; the
-  Tally company (empty = the one open in Tally); patients as one ledger each ("Name (UHID)") or one
-  "Pharmacy Patients" ledger. **Save and confirm.** Until then the export refuses
+  CGST*, *Input SGST*, *Input IGST*, *Cash*, *Bank*, *Round Off*, *Purchase Return Shortfall* and
+  *Pharmacy Counter Sales* (the one B2C party, below); the Tally company (empty = the one open in
+  Tally). **Save and confirm.** Until then the export refuses
   (`tally_ledgers_unconfirmed`) and census row **`pharmacy_tally_ledgers_confirmed`** is RED.
 - **Export (X).** Pick the range (M = this month). The screen shows how many of each voucher the file
   will carry, the total debited, the first vouchers as Tally will read them, and any earlier export of
@@ -700,16 +700,26 @@ TallyPrime import file. It needs `pharmacy.tally.export` (`owner`, `billing_mana
   the SHA-256 of the vouchers file, the ledger names used, and both files). *Exports made* downloads
   any earlier file again, byte for byte.
 
+**The party — no patient reaches the books.** A counter bill with no buyer GSTIN (B2C) posts to ONE
+party ledger, *Pharmacy Counter Sales* (Sundry Debtors) — its Sales voucher, its Receipt, its Credit
+Note and its refund Payment — so Tally holds no debtor per patient, and neither file carries a
+patient's name, UHID or phone: `REFERENCE` and `NARRATION` carry only our invoice, receipt, credit-note
+and dispense numbers, and `REMOTEID` our internal id. The counter ledger nets to nothing once the
+day's bills are paid, and to the refunds still owed when a credit note has not yet been paid out. A
+bill that carries the buyer's GSTIN (B2B) posts to the buyer's own ledger, *legal name (GSTIN)*, which
+the masters file creates under Sundry Debtors with its GSTIN. The masters file creates the mapped
+ledgers, the vendors and the B2B buyers — never a patient.
+
 **What each voucher is.** Every one is on our own stable number and date, and balances (the amounts sum
 to zero — a debit is `ISDEEMEDPOSITIVE Yes` with a negative `AMOUNT`); a voucher that would not balance
 stops the whole file (`tally_unbalanced`, a defect to report, never a data-entry fix).
 
 | Voucher | Our document | Debit | Credit |
 |---|---|---|---|
-| Sales | pharmacy bill `INV/…`, its service day | the patient, the net payable | Pharmacy Sales (taxable), Output CGST, Output SGST, Round Off (the rupee rounding) |
-| Receipt | the counter's receipt `RCP/…` for pharmacy bills | Cash (cash), Bank (UPI, card) | the patient |
-| Credit Note | credit note `CN/…` against a pharmacy bill, its issue day | Sales returns (taxable), Output CGST, SGST | the patient |
-| Payment | refund voucher `RFV/…` paid on a pharmacy credit note | the patient | Cash or Bank |
+| Sales | pharmacy bill `INV/…`, its service day | Pharmacy Counter Sales (B2C) or the buyer (B2B), the net payable | Pharmacy Sales (taxable), Output CGST, Output SGST, Round Off (the rupee rounding) |
+| Receipt | the counter's receipt `RCP/…` for pharmacy bills | Cash (cash), Bank (UPI, card) | Pharmacy Counter Sales, or the B2B buyer, for what it settled |
+| Credit Note | credit note `CN/…` against a pharmacy bill, its issue day | Sales returns (taxable), Output CGST, SGST | the bill's party |
+| Payment | refund voucher `RFV/…` paid on a pharmacy credit note | the bill's party | Cash or Bank |
 | Purchase | supplier bill booked as payable `MSB…` (bill date; the vendor's number as REFERENCE) | Purchase — Medicines (taxable), Input CGST + SGST or IGST, Round Off | the vendor |
 | Debit Note | our debit note `MDN…` on a return | the vendor | Purchase returns (taxable), the input tax |
 | Journal | a vendor credit short of our debit note `MCN…`, or a return closed without credit `MRT…` | Purchase Return Shortfall | the vendor |
@@ -729,11 +739,11 @@ vendor's ledger in Tally equals what the office's payables owe (the test asserts
   <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
   <VOUCHERNUMBER>INV/26-27/000001</VOUCHERNUMBER>
   <REFERENCE>P2609250001</REFERENCE>
-  <PARTYLEDGERNAME>Ramesh Kumar Yadav (PAT-26-000412)</PARTYLEDGERNAME>
+  <PARTYLEDGERNAME>Pharmacy Counter Sales</PARTYLEDGERNAME>
   <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
   <NARRATION>Pharmacy bill INV/26-27/000001 (dispense P2609250001)</NARRATION>
  <ALLLEDGERENTRIES.LIST>
-  <LEDGERNAME>Ramesh Kumar Yadav (PAT-26-000412)</LEDGERNAME>
+  <LEDGERNAME>Pharmacy Counter Sales</LEDGERNAME>
   <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
   <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
   <AMOUNT>-45.00</AMOUNT>

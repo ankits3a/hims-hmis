@@ -12,10 +12,11 @@ export type TallyLedgers = {
   sales: string; salesReturns: string; outputCgst: string; outputSgst: string;
   purchases: string; purchaseReturns: string; inputCgst: string; inputSgst: string; inputIgst: string;
   cash: string; bank: string; roundOff: string; returnShortfall: string;
-  patientParty: "patient" | "single"; patientLedger: string;
+  /** The ONE party ledger for every B2C counter bill (no patient ever reaches the books). */
+  counterSales: string;
 };
 export const LEDGER_FIELDS = [
-  "sales", "salesReturns", "outputCgst", "outputSgst", "purchases", "purchaseReturns", "inputCgst", "inputSgst", "inputIgst",
+  "counterSales", "sales", "salesReturns", "outputCgst", "outputSgst", "purchases", "purchaseReturns", "inputCgst", "inputSgst", "inputIgst",
   "cash", "bank", "roundOff", "returnShortfall",
 ] as const;
 export type WireTallyLedgerState = { ledgers: TallyLedgers; confirmed: boolean; updatedBy: string | null; updatedAt: string | null };

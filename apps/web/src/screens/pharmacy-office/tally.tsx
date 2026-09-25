@@ -181,21 +181,7 @@ function LedgerSettings({ onClose }: { onClose: () => void }): React.ReactElemen
                 <input className="flex-1 rounded border px-2 py-0.5" data-testid={`ledger-${f}`} value={form[f]} onChange={(e) => setForm({ ...form, [f]: e.target.value })} />
               </label>
             ))}
-            <fieldset className="flex flex-wrap items-center gap-3">
-              <legend className="w-48">{t("pharmacyOffice.tally.field.patientParty")}</legend>
-              {(["patient", "single"] as const).map((m) => (
-                <label key={m} className="flex items-center gap-1">
-                  <input type="radio" name="patientParty" checked={form.patientParty === m} onChange={() => setForm({ ...form, patientParty: m })} />
-                  {t(`pharmacyOffice.tally.party.${m}`)}
-                </label>
-              ))}
-            </fieldset>
-            {form.patientParty === "single" && (
-              <label className="flex items-center gap-2">
-                <span className="w-48">{t("pharmacyOffice.tally.field.patientLedger")}</span>
-                <input className="flex-1 rounded border px-2 py-0.5" value={form.patientLedger} onChange={(e) => setForm({ ...form, patientLedger: e.target.value })} />
-              </label>
-            )}
+            <p className="text-xs text-muted-foreground">{t("pharmacyOffice.tally.counterNote")}</p>
             {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
             <div className="flex gap-2">
               <Button type="submit" disabled={busy} data-testid="tally-ledgers-save">{t("pharmacyOffice.tally.save")}</Button>

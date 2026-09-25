@@ -20,7 +20,7 @@ const name = z.string().max(100);
 const ledgersBody = z.object({
   companyName: name.optional(), sales: name, salesReturns: name, outputCgst: name, outputSgst: name, purchases: name, purchaseReturns: name,
   inputCgst: name, inputSgst: name, inputIgst: name, cash: name, bank: name, roundOff: name, returnShortfall: name,
-  patientParty: z.enum(["patient", "single"]), patientLedger: name,
+  counterSales: name,
 });
 const rangeBody = z.object({ preset: z.string().max(16).optional(), from: z.string().max(10).nullable().optional(), to: z.string().max(10).nullable().optional() });
 
