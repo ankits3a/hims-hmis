@@ -106,3 +106,4 @@ export * from "./org";
 // any department's: it is its own MANIFEST for the reason `aerb` is (D1) — the duty manager, the
 // on-call radiologist, the lab's critical ladder, every ward and every clinical unit owe it rows.
 export * from "./roster";
+export * from "./abdm"; // ABDM S0 — the message log

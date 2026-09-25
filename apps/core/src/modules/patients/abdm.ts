@@ -28,7 +28,7 @@ import { loadConfig } from "../../kernel/config";
  */
 
 export type AbhaCapability = {
-  /** True only when every ABDM credential is present. Never inferred from anything else. */
+  /** True only when ABDM is `configured` (kernel/config.ts). Never inferred from anything else. */
   configured: boolean;
   /** Recording a number the patient gives. Always available — it needs no gateway. */
   canRecord: boolean;
@@ -41,9 +41,10 @@ export type AbhaCapability = {
 };
 
 export function abhaCapability(env: NodeJS.ProcessEnv = process.env): AbhaCapability {
-  const { abdm } = loadConfig(env);
-  const configured =
-    abdm.baseUrl !== null && abdm.clientId !== null && abdm.clientSecret !== null;
+  // ABDM S0 — the SAME rule the connector reads (`AppConfig.abdm.configured`), never a local copy:
+  // gateway + client id + secret + HIP id + callback base. The old three-key rule said "connected"
+  // on a deployment whose callback routes answer 503.
+  const { configured } = loadConfig(env).abdm;
   return {
     configured,
     canRecord: true,

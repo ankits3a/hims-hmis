@@ -72,6 +72,11 @@ function toHttp(e: unknown): never {
     if (e.code === "duplicate_suspected") {
       throw new HttpException({ statusCode: 409, message: e.message, code: e.code, detail: e.detail }, 409);
     }
+    /* ABDM S0 — a 400 the client must be able to tell apart from a malformed body, so the code is a
+       field and not only the message's prefix. */
+    if (e.code === "abha_verified_only_by_abdm") {
+      throw new HttpException({ statusCode: 400, message: e.message, code: e.code, error: "Bad Request" }, 400);
+    }
     if (NOT_FOUND_CODES.has(e.code)) throw new NotFoundException(e.message);
     if (FORBIDDEN_CODES.has(e.code)) throw new ForbiddenException(e.message);
     /* 413 beside the photo's, and for the same reason: the request was fine and the FILE was big.

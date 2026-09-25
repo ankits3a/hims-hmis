@@ -575,3 +575,45 @@ describe("22c-A T7 — the amendment surface", () => {
     expect(screen.queryByTestId("linked-patients")).toBeNull();
   });
 });
+
+/**
+ * ABDM S0 — `verified` is ABDM's answer, never a clerk's choice. The server now refuses a move to it
+ * (400 `abha_verified_only_by_abdm`), so the edit form stops offering it: a record the registry
+ * verified still SHOWS the stamp (and a clerk may take it down), and any other record's control has
+ * no "verified" to pick.
+ */
+describe("ABDM S0 — the counter cannot offer 'verified'", () => {
+  function openWith(status: string): void {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: { ...PATIENT, abhaVerificationStatus: status }, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+    });
+    renderWithProviders(<PatientDetail />);
+  }
+  const statusSelect = async (): Promise<HTMLSelectElement> => {
+    await screen.findByText("Asha Devi");
+    return waitFor(() => {
+      const el = document.getElementById("f-abhaVerificationStatus");
+      expect(el).not.toBeNull();
+      return el as HTMLSelectElement;
+    });
+  };
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("an unverified record's status control offers none and self_declared only", async () => {
+    openWith("self_declared");
+    const select = await statusSelect();
+    expect([...select.options].map((o) => o.value)).toEqual(["none", "self_declared"]);
+    expect(select.value).toBe("self_declared");
+  });
+
+  it("an ABDM-verified record still shows verified, and offers taking it down", async () => {
+    openWith("verified");
+    const select = await statusSelect();
+    expect([...select.options].map((o) => o.value)).toEqual(["none", "self_declared", "verified"]);
+    expect(select.value).toBe("verified");
+  });
+});

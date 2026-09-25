@@ -232,7 +232,13 @@ export type PhiSurface =
    */
   | "lab.patient_results" | "imaging.patient_reports" | "pharmacy.patient_dispenses"
   /** Consult engine (2026-09-24) — a visit's specialty sections (the eye grids), read with the consult. Appended. */
-  | "opd.sections";
+  | "opd.sections"
+  /**
+   * ABDM S0 — the ABDM message log (`abdm_messages`): what the hospital sent the national network
+   * and what the network sent back — from S1 on, ABHA profiles, consent artefacts and FHIR bundles.
+   * One row per distinct patient a read returns. Appended; nothing above changes.
+   */
+  | "abdm.messages";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

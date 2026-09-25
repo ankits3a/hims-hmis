@@ -6,6 +6,11 @@
 export { patientsManifest } from "./manifest";
 export { PatientsModule } from "./patients.module";
 export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./registration";
+/**
+ * ABDM S0 — the ONE writer of `abha_verification_status = 'verified'`. Reached by no route; the abdm
+ * module's S1 handlers call it after ABDM has answered. The counter paths refuse `verified`.
+ */
+export { ABDM_ACTOR, recordAbhaVerifiedByAbdm } from "./abha-verified";
 export type { CoverageInput, GuardianInput, PatientPatch, PatientRow, RegisterPatientInput } from "./registration";
 export { getPatientSummaries, listMergedLoserIds } from "./registration"; // Plan 07 read helpers
 export type { PatientSummary } from "./registration";
