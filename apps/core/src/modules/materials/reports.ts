@@ -3,6 +3,7 @@ import {
   items, resources, stockBalances, stockBatches, stockLedger, stockWriteOffs, supplierBillLines, supplierBills, supplierCreditNotes,
   supplierPaymentRuns, supplierReturnLines, supplierReturns, vendors,
 } from "../../kernel/db/schema";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { TRANSIT_STORE_CODE } from "./config";
 import { istDay } from "./grn";
 import { uomsByItems } from "./items";
@@ -35,8 +36,6 @@ import type { Db, Tx } from "../../kernel/db/client";
 const CHUNK = 5_000;
 const VALUATION_ROW_LIMIT = 20_000;
 const NON_MOVING_ROW_LIMIT = 5_000;
-const DAY_MS = 86_400_000;
-const IST_OFFSET_MS = 330 * 60_000;
 
 async function inChunks<T>(ids: readonly string[], read: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
   const wanted = [...new Set(ids)];
@@ -45,10 +44,9 @@ async function inChunks<T>(ids: readonly string[], read: (chunk: string[]) => Pr
   return out;
 }
 
-/** The instant an IST calendar day ends (the next day's IST midnight), as UTC. */
-function istDayEnd(day: string): Date {
-  return new Date(Date.parse(`${day}T00:00:00.000Z`) - IST_OFFSET_MS + DAY_MS);
-}
+/** The instants an IST calendar day starts and ends — the kernel's one IST clock (`test/ist-clock-parity.test.ts`). */
+const istDayStart = (day: string): Date => istDayWindow(new Date(`${day}T12:00:00+05:30`)).start;
+const istDayEnd = (day: string): Date => istDayWindow(new Date(`${day}T12:00:00+05:30`)).end;
 
 const vendorName = sql<string>`coalesce(${vendors.tradeName}, ${vendors.legalName})`;
 
@@ -380,7 +378,7 @@ export async function nonMovingStock(
 ): Promise<NonMovingReport> {
   const today = istDay(now);
   const since = addDays(today, -days);
-  const sinceAt = new Date(Date.parse(`${since}T00:00:00.000Z`) - IST_OFFSET_MS);
+  const sinceAt = istDayStart(since);
   const onHand = await db.select({
     storeResourceId: stockBalances.resourceId, storeCode: resources.code, storeName: resources.name,
     itemId: items.id, itemCode: items.code, itemName: items.name, baseUom: items.baseUom,

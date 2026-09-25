@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { events, pharmacyDispenses, pharmacyRetailSales } from "../../kernel/db/schema";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { billingDocumentByNo } from "../billing";
 import { findDocumentByNo, itemsByIds } from "../materials";
 import { userNames } from "./queue";
@@ -179,8 +180,8 @@ export type ActivityFeedRow = { at: string; name: string; actorName: string; doc
 export async function recentActivity(db: Db, actor: Actor, input: ReportInput, now: Date = new Date()): Promise<{ from: string; to: string; rows: ActivityFeedRow[] }> {
   await requireReportPermission(db, actor, REPORTS_READ, "the activity view");
   const range = reportRange(input.preset, reportToday(now), input);
-  const start = new Date(Date.parse(`${range.from}T00:00:00.000Z`) - 330 * 60_000);
-  const end = new Date(Date.parse(`${range.to}T00:00:00.000Z`) - 330 * 60_000 + 86_400_000);
+  const { start } = istDayWindow(new Date(`${range.from}T12:00:00+05:30`));
+  const { end } = istDayWindow(new Date(`${range.to}T12:00:00+05:30`));
   const rows = await db.select({ name: events.name, actorId: events.actorId, occurredAt: events.occurredAt, payload: events.payload })
     .from(events)
     .where(and(inArray(events.name, NAMES.filter((n) => !["payment.received", "allocation.reversed", "payment.refunded"].includes(n))),
