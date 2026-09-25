@@ -680,7 +680,7 @@ only reads: nothing is changed from here, and no migration or seed is needed.
 Our app is the payables book of record; TallyPrime keeps the hospital's accounts. **Reports → 9 Tally
 export** (at `/pharmacy/office/reports`) hands the accountant every pharmacy voucher of a period as a
 TallyPrime import file. It needs `pharmacy.tally.export` (`owner`, `billing_manager`). Migration
-`0130` adds its two tables; nothing else is seeded.
+`0131` adds its two tables; nothing else is seeded.
 
 - **Confirm the ledger names once (L).** Type each ledger exactly as the TallyPrime company names it:
   the defaults are *Pharmacy Sales*, *Output CGST*, *Output SGST*, *Purchase — Medicines*, *Input

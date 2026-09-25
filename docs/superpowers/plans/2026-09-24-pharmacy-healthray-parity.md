@@ -362,7 +362,7 @@ Measured before planning (2 read-only passes, 2026-09-24):
 - Deferred: matching the 2B's credit/debit notes (CDNR) to our debit notes and vendor credits;
   Excel (.xlsx) upload of the 2B (save as CSV); IPD / ward issue in the registers (no IPD yet).
 
-**P5 as built — the Tally export (TallyPrime XML, owner ruling 2026-09-25; stacked on the reports; migration 0130).**
+**P5 as built — the Tally export (TallyPrime XML, owner ruling 2026-09-25; stacked on the reports; migration 0131 — regenerated after #321 took 0130, SQL byte-identical).**
 - Inside Reports (key 9, `pharmacy.tally.export`: owner, billing_manager). The accountant confirms the
   ledger names once (L; the defaults are the owner's list — Pharmacy Sales, Output CGST/SGST, Purchase —
   Medicines, Input CGST/SGST/IGST, Cash, Bank — plus Round Off and Purchase Return Shortfall; patients as
