@@ -183,3 +183,28 @@ describe("RxPrint — the ophthal line", () => {
     );
   });
 });
+
+describe("RxPrint — the eye of a diagnosis (board \"Ophthal\")", () => {
+  it("an eye-coded diagnosis prints its eye beside its code, each tag with its own", () => {
+    renderWithProviders(<RxPrint data={{
+      ...DATA,
+      encounter: {
+        ...DATA.encounter, diagnosis: "Senile nuclear cataract · Essential (primary) hypertension", icd10Code: "H25.1",
+        diagnoses: [
+          { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "od" },
+          { text: "Essential (primary) hypertension", icd10Code: "I10", laterality: null },
+        ],
+      },
+    }} />);
+    expect(screen.getByTestId("rx-diagnosis")).toHaveTextContent(
+      "Diagnosis: Senile nuclear cataract (H25.1, RIGHT EYE) · Essential (primary) hypertension (I10)",
+    );
+  });
+
+  it("a visit with no eye prints exactly as before", () => {
+    renderWithProviders(<RxPrint data={{
+      ...DATA, encounter: { ...DATA.encounter, diagnoses: [{ text: "Acute pharyngitis", icd10Code: "J02.9", laterality: null }] },
+    }} />);
+    expect(screen.getByTestId("rx-diagnosis")).toHaveTextContent("Diagnosis: Acute pharyngitis (J02.9)");
+  });
+});

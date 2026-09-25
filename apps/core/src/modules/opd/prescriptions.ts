@@ -17,7 +17,7 @@ import { listCodedDiagnoses } from "./diagnosis-history";
 import { loadOpdConfig } from "./config";
 import { requireTreatingDoctor } from "./consultation";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { getEncounter } from "./encounters";
+import { getEncounter, visitDiagnoses } from "./encounters";
 import { OpdError } from "./errors";
 import type { AdvisedTest } from "./consultation";
 import { visibleEncounterFor } from "./read-gate";
@@ -27,7 +27,7 @@ import { getDoctor } from "./masters";
 import { normaliseRxLine, toFhirBundle } from "./fhir";
 import { ageYearsAt } from "./time";
 import type { Letterhead } from "./config";
-import type { PrescriptionRow, VitalsRow } from "./encounters";
+import type { PrescriptionRow, VisitDiagnosis, VitalsRow } from "./encounters";
 import type { RxLine } from "./fhir";
 import type { DrugDiseaseAlternative } from "../formulary";
 import type { DrugDiseaseHit, DuplicateHit, InteractionHit, PriorRx, RxCheckLine } from "./rx-checks";
@@ -623,9 +623,11 @@ export async function issuePrescription(
       .where(and(eq(opdPrescriptions.encounterId, encounterId), eq(opdPrescriptions.status, "active")));
 
     const prescriptionId = newId();
+    /* The Condition carries the PRIMARY code (`encounter.icd10Code`), so its eye is that row's eye. */
+    const primary = (await visitDiagnoses(tx, encounterId)).find((d) => d.icd10Code !== null && d.icd10Code === encounter.icd10Code);
     const document = toFhirBundle({
       prescriptionId, version, encounterId, patientId: encounter.patientId, doctorId: doctor.id,
-      issuedAt: now, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code, lines,
+      issuedAt: now, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code, laterality: primary?.laterality ?? null, lines,
     });
     await tx.insert(opdPrescriptions).values({
       id: prescriptionId, encounterId, patientId: encounter.patientId, doctorId: doctor.id, version,
@@ -757,6 +759,12 @@ export type RxPrintData = {
      * prices it is quoting (E-9: the slip carries the as-of date, the counter reprices).
      */
     advisedTests: AdvisedTest[];
+    /**
+     * The coded rows, each with its eye (board "Ophthal"). `diagnosis`/`icd10Code` above are the
+     * display string and the PRIMARY code, and neither can say which eye each tag is — so a print
+     * that names the eye renders from these, and one without any eye is unchanged.
+     */
+    diagnoses: VisitDiagnosis[];
   };
   vitals: VitalsRow | null;
   lines: RxLine[];
@@ -810,6 +818,7 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
       advice: encounter.advice, followUpDays: encounter.followUpDays, chiefComplaint: encounter.chiefComplaint,
       // Read back verbatim; `[]` when the doctor advised none, so the renderer needs no null branch.
       advisedTests: Array.isArray(encounter.advisedTests) ? (encounter.advisedTests as AdvisedTest[]) : [],
+      diagnoses: await visitDiagnoses(db, encounter.id),
     },
     vitals: vitals[vitals.length - 1] ?? null, // the LATEST reading — a danger flag never auto-clears (D4)
     lines: row.lines as RxLine[],

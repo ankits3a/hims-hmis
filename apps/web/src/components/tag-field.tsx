@@ -62,7 +62,7 @@ export function joinTags(tags: string[]): string {
 export type TagSuggestion = { term: string; hint?: string | null };
 
 export function TagField({
-  id, label, value, onChange, suggest, placeholder, disabled = false, hint,
+  id, label, value, onChange, suggest, placeholder, disabled = false, hint, adornTag,
 }: {
   id: string;
   label: string;
@@ -78,6 +78,11 @@ export function TagField({
   placeholder?: string;
   disabled?: boolean;
   hint?: string | null;
+  /**
+   * Something the CALLER draws inside one tag, after its words — the diagnosis field's eye pills
+   * (board "Ophthal"). The field stays a plain list of strings; what a tag means is the caller's.
+   */
+  adornTag?: (tagText: string, index: number) => React.ReactNode;
 }): React.ReactElement {
   const tags = splitTags(value);
   const [draft, setDraft] = useState("");
@@ -181,6 +186,7 @@ export function TagField({
         {tags.map((tagText, i) => (
           <span key={`${tagText}-${String(i)}`} data-testid={`${id}-tag-${String(i)}`} className="pill on" style={{ height: 25, fontSize: 12, fontWeight: 600 }}>
             {tagText}
+            {adornTag?.(tagText, i)}
             <button
               type="button" aria-label={`Remove ${tagText}`} data-testid={`${id}-remove-${String(i)}`}
               onClick={(e) => { e.stopPropagation(); remove(i); }}

@@ -1083,6 +1083,14 @@
     "diagnosisPlaceholder": "Type a diagnosis or an ICD-10 code…",
     "diagnosisHint": "Enter adds your own words. Tap a suggestion to take its ICD-10 code.",
     "icd10Hint": "Set by the diagnoses above — tap a suggestion to attach its code.",
+    "dxWhichEye": "which eye?",
+    "dxEyeGroup": "Which eye — {{dx}}",
+    "dxEyeChange": "Change the eye for {{dx}}",
+    "dxEye": {
+      "od": "OD",
+      "os": "OS",
+      "ou": "OU"
+    },
     "allergyBlocks": "blocks {{list}}",
     "allergyUnknown": "Saved as written — the prescription check knows no rule for this, so it will not warn on it.",
     "adviceSaveAsTemplate": "+ Save as my template",

@@ -44,6 +44,8 @@ import { DrugField } from "../components/drug-field";
 import { SigPanel } from "../components/sig-panel";
 import type { SigPatch } from "../components/sig-panel";
 import { taperDays, taperText } from "../lib/eye-line";
+import type { Eye } from "../lib/eye-line";
+import { isEyeCode } from "../lib/eye-codes";
 import { TagField, joinTags, splitTags } from "../components/tag-field";
 import { useSnippets } from "../lib/use-snippets";
 import { PLACEHOLDER_FORMS, PLACEHOLDERS, expandSnippet, keywordProblem, unknownTokensIn } from "../lib/snippets";
@@ -92,7 +94,7 @@ type VisitDetail = {
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
   /** The CODED diagnoses. `encounter.diagnosis` is the display string and carries no codes. */
-  diagnoses: { text: string; icd10Code: string | null }[];
+  diagnoses: { text: string; icd10Code: string | null; laterality?: Eye | null }[];
   patient: WirePatientSummary | null;
 };
 type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
@@ -287,13 +289,20 @@ type TabId = "summary" | "vitals" | "eye" | "complaints" | "exam" | "dx" | "inv"
  *
  * `diagnosis` and `icd10Code` are NOT sent: the server derives both from this list, so there is one
  * statement of the fact rather than three that can disagree.
+ *
+ * THE EYE (board "Ophthal") rides the same way, by term — and ONLY on a tag whose code is an eye
+ * code, so every other visit sends exactly the body it always sent. The server drops an eye on a
+ * non-eye code anyway; not sending one keeps the two sides saying the same thing.
  */
-function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>): Record<string, unknown> {
+function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>, eyeByTerm: Map<string, Eye>): Record<string, unknown> {
   return {
     chiefComplaint: orNull(n.chiefComplaint),
-    diagnoses: splitTags(n.diagnosis).map((text) => ({
-      text, icd10Code: icdByTerm.get(text.toLowerCase()) ?? null,
-    })),
+    diagnoses: splitTags(n.diagnosis).map((text) => {
+      const icd10Code = icdByTerm.get(text.toLowerCase()) ?? null;
+      return isEyeCode(icd10Code)
+        ? { text, icd10Code, laterality: eyeByTerm.get(text.toLowerCase()) ?? null }
+        : { text, icd10Code };
+    }),
     advice: orNull(n.advice),
   };
 }
@@ -373,6 +382,12 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     cleared with it — a few hundred short strings at the very most.
   */
   const icdByTerm = useRef(new Map<string, string>());
+  /*
+    Which eye each eye-coded tag names, by term, exactly as `icdByTerm` pairs codes — and cleared
+    with it in `resetPanel`, for the same reason. A ref for the body; `eyeTick` re-draws the pills.
+  */
+  const eyeByTerm = useRef(new Map<string, Eye>());
+  const [, setEyeTick] = useState(0);
   const [noteSaved, setNoteSaved] = useState(false);
   const [v2, setV2] = useState<V2State>(EMPTY_V2);
   /** True once this visit has any v2 section — loaded from the server or touched here. */
@@ -475,7 +490,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const [referDone, setReferDone] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map())));
+  const lastSavedNote = useRef<string>(JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map(), new Map())));
   /** The PARSED lines of a refused submission — never `getValues()`, whose durationDays is a string (§3.19). */
   const pendingLines = useRef<RxLineValues[]>([]);
   /**
@@ -726,6 +741,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     */
     for (const d of visit.data?.diagnoses ?? []) {
       if (d.icd10Code !== null) icdByTerm.current.set(d.text.toLowerCase(), d.icd10Code);
+      /* The eye too — or the first autosave after reopening would send the cataract back eyeless. */
+      if (d.laterality != null) eyeByTerm.current.set(d.text.toLowerCase(), d.laterality);
     }
     setNote(next);
     const loadedV2: V2State = {
@@ -740,7 +757,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       || loadedV2.internalComment !== "" || loadedV2.diagnosisKind !== null || loadedV2.rxStockChoices.length > 0;
     setV2(loadedV2);
     setStockAnswered(Object.fromEntries(loadedV2.rxStockChoices.map((c) => [c.chosen === "keep" ? c.keptMedicineId : c.offeredMedicineId, true as const])));
-    lastSavedNote.current = JSON.stringify({ ...noteBodyOf(next, icdByTerm.current), ...v2BodyOf(loadedV2, v2On.current) });
+    lastSavedNote.current = JSON.stringify({ ...noteBodyOf(next, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(loadedV2, v2On.current) });
   }, [encounter, visit.data]);
 
   const rxForm = useForm<RxFormInput, unknown, RxFormValues>({
@@ -1019,7 +1036,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
        patient's ICD-10 code to another's identically-worded diagnosis. `resetPanel` has forgotten
        newly-added state before (the T6 allergy fields); this is the line that stops it happening. */
     icdByTerm.current = new Map();
-    lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map()));
+    eyeByTerm.current = new Map();
+    lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map(), new Map()));
     setNote(EMPTY_NOTE);
     setNoteSaved(false);
     v2On.current = false;
@@ -1513,7 +1531,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (active === null) return;
     setNoteError(null);
     try {
-      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current), ...v2BodyOf(v2, v2On.current), advisedTests: next, ...leaseBody() });
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(v2, v2On.current), advisedTests: next, ...leaseBody() });
       setSavedAt(new Date());
     } catch (e) {
       setNoteError(opdErrorMessage(e));
@@ -1523,7 +1541,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const saveNote = async (opts?: { force?: boolean; v2?: V2State }): Promise<void> => {
     if (active === null) return;
     if (readOnly) return; // D17: a read-only tab writes nothing
-    const body = { ...noteBodyOf(note, icdByTerm.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current) };
+    const body = { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current) };
     const key = JSON.stringify(body);
     if (key === lastSavedNote.current && opts?.force !== true) return;
     setNoteError(null);
@@ -1806,7 +1824,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     }
     const body: Record<string, unknown> = {
       note: {
-        ...noteBodyOf(note, icdByTerm.current),
+        ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current),
         ...v2BodyOf(v2, v2On.current),
         ...leaseBody(),
         admissionAdvised,
@@ -2976,6 +2994,45 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       }}
                       placeholder={t("opdConsult.diagnosisPlaceholder")}
                       hint={t("opdConsult.diagnosisHint")}
+                      /*
+                        EACH EYE-CODE ASKS WHICH EYE (board "Ophthal", 2026-09-23). ICD-10 has no
+                        laterality, so the eye sits beside the code: "H25.1 … · OD". Unset is a gold
+                        question, not a gate — no ruling makes the eye required — and a tap saves.
+                      */
+                      adornTag={(tagText, i) => {
+                        const key = tagText.toLowerCase();
+                        if (!isEyeCode(icdByTerm.current.get(key) ?? null)) return null;
+                        const eye = eyeByTerm.current.get(key) ?? null;
+                        const pick = (next: Eye | null): void => {
+                          if (next === null) eyeByTerm.current.delete(key); else eyeByTerm.current.set(key, next);
+                          setEyeTick((n) => n + 1);
+                          if (next !== null) void saveNote();
+                        };
+                        if (eye !== null) {
+                          return (
+                            <button type="button" data-testid={`note-diagnosis-eye-set-${String(i)}`} disabled={readOnly}
+                              aria-label={t("opdConsult.dxEyeChange", { dx: tagText })}
+                              onClick={(e) => { e.stopPropagation(); pick(null); }}
+                              style={{ border: 0, background: "none", padding: 0, cursor: "pointer", color: "inherit", font: "inherit" }}>
+                              {` · ${t(`opdConsult.dxEye.${eye}`)}`}
+                            </button>
+                          );
+                        }
+                        return (
+                          <span role="group" aria-label={t("opdConsult.dxEyeGroup", { dx: tagText })} style={{ display: "inline-flex", gap: 3, alignItems: "center", marginLeft: 4 }}>
+                            <span data-testid={`note-diagnosis-which-eye-${String(i)}`} style={{ color: "var(--gold)", fontWeight: 600, fontSize: 11 }}>
+                              {t("opdConsult.dxWhichEye")}
+                            </span>
+                            {(["od", "os", "ou"] as const).map((x) => (
+                              <button key={x} type="button" data-testid={`note-diagnosis-eye-${String(i)}-${x}`} disabled={readOnly}
+                                className="sec" onClick={(e) => { e.stopPropagation(); pick(x); }}
+                                style={{ padding: "0 5px", height: 18, fontSize: 10.5, borderColor: "var(--gold-line)" }}>
+                                {t(`opdConsult.dxEye.${x}`)}
+                              </button>
+                            ))}
+                          </span>
+                        );
+                      }}
                     />
                     <div role="group" aria-label={t("opdConsultV2.kind.label")} style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span className="tag">{t("opdConsultV2.kind.label")}</span>

@@ -8,6 +8,7 @@ import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
 import { briefRefill, briefResults, fetchPatientDispenses, fetchPatientImaging, fetchPatientResults, shortDay } from "../lib/brief-history";
 import { eyeTextOf } from "../lib/eye-line";
+import type { Eye } from "../lib/eye-line";
 import type {
   WireDoctorStock, WireExamFinding, WireRxHistoryItem, WireTimelineItem, WireVitals,
 } from "../lib/opd-api";
@@ -819,7 +820,7 @@ export type PastVisit = {
   deskComplaint?: { text: string } | null;
   vitals: (VitalsLike & { id: string })[];
   prescriptions: { status: string; lines: { drug: string; dose?: string; frequency?: string; durationDays?: number | null }[] }[];
-  diagnoses: { text: string; icd10Code: string | null }[];
+  diagnoses: { text: string; icd10Code: string | null; laterality?: Eye | null }[];
 };
 
 export type HistorySection = "vitals" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
@@ -834,7 +835,8 @@ export function sectionLines(v: PastVisit, s: HistorySection): string[] {
     case "complaints": return [...split(e.chiefComplaint), ...(v.deskComplaint == null ? [] : [`(desk) ${v.deskComplaint.text}`])];
     case "exam": return (e.examination ?? []).map((f) => `${f.group}: ${f.text}`);
     case "dx": return v.diagnoses.length > 0
-      ? v.diagnoses.map((d) => `${d.text}${d.icd10Code === null ? "" : ` (${d.icd10Code})`}${e.diagnosisKind == null ? "" : ` · ${e.diagnosisKind}`}`)
+      /* The eye sits inside the code's brackets, as the print has it — " · " already means the next tag. */
+      ? v.diagnoses.map((d) => `${d.text}${d.icd10Code === null ? "" : ` (${d.icd10Code}${d.laterality == null ? "" : `, ${eyeTextOf(d.laterality) ?? ""}`})`}${e.diagnosisKind == null ? "" : ` · ${e.diagnosisKind}`}`)
       : split(e.diagnosis);
     case "inv": return (e.advisedTests ?? []).map((x) => x.name);
     case "rx": return v.prescriptions.filter((p) => p.status === "active").flatMap((p) => p.lines.map((l) => [l.drug, l.dose, l.frequency, l.durationDays == null ? "" : `${String(l.durationDays)} d`].filter((x) => x !== undefined && x !== "").join(" · ")));

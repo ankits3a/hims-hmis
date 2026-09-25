@@ -42,7 +42,7 @@ describe("checkDrugDisease — the rule, the code and the calendar (P24)", () =>
     ...over,
   });
   const dx = (code: string, codedOn = "2026-08-01"): CodedDiagnosis =>
-    ({ code, text: "Asthma", codedOn, encounterId: "enc-1" });
+    ({ code, text: "Asthma", codedOn, encounterId: "enc-1", laterality: null });
   const rule = (over: Partial<DrugDiseaseRow> = {}): DrugDiseaseRow => ({
     saltId: "salt-propranolol", icd10Prefix: "J45", icd10Title: "Asthma", severity: "severe",
     note: "Bronchospasm — avoid.", alternatives: [{ moiety: "amlodipine", label: "Amlodipine 5 mg" }],

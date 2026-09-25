@@ -425,6 +425,81 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
 
     await waitFor(() => { expect(screen.getByTestId("note-icd10")).toHaveValue("J02.9"); });
   });
+
+  /*
+    ═══ EACH EYE-CODE ASKS WHICH EYE (board "Ophthal", 2026-09-23) ═══
+
+    ICD-10 has no laterality, so a cataract tag carries its eye beside the code. The pills appear
+    only on a tag whose code `isEyeCode` names; unset is a gold "which eye?", not a block.
+  */
+  const EYE_VISIT = (laterality: "od" | "os" | "ou" | null) => ({
+    ...VISIT,
+    encounter: { ...ENCOUNTER, diagnosis: "Senile nuclear cataract · Essential (primary) hypertension", icd10Code: "H25.1" },
+    diagnoses: [
+      { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality },
+      { text: "Essential (primary) hypertension", icd10Code: "I10", laterality: null },
+    ],
+  });
+
+  it("N7: the eye pills appear only on the eye code, and an unset eye asks \"which eye?\"", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: EYE_VISIT(null) } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
+
+    expect(await screen.findByTestId("note-diagnosis-which-eye-0")).toHaveTextContent("which eye?");
+    for (const eye of ["od", "os", "ou"]) expect(screen.getByTestId(`note-diagnosis-eye-0-${eye}`)).toBeInTheDocument();
+    expect(screen.queryByTestId("note-diagnosis-which-eye-1")).toBeNull();
+    expect(screen.queryByTestId("note-diagnosis-eye-1-od")).toBeNull();
+  });
+
+  it("N8: choosing OD sends laterality \"od\" on that diagnosis, and the chip reads \"· OD\"", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: EYE_VISIT(null) },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
+    await user.click(await screen.findByTestId("note-diagnosis-eye-0-od"));
+
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown } | undefined;
+      expect(body?.diagnoses).toEqual([
+        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "od" },
+        { text: "Essential (primary) hypertension", icd10Code: "I10" },
+      ]);
+    });
+    expect(screen.getByTestId("note-diagnosis-tag-0")).toHaveTextContent("Senile nuclear cataract · OD");
+    expect(screen.queryByTestId("note-diagnosis-which-eye-0")).toBeNull();
+  });
+
+  it("N9: reopening the visit restores the eye, and the next save sends it back rather than blanking it", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: EYE_VISIT("os") },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "Diagnosis" }));
+    expect(await screen.findByTestId("note-diagnosis-tag-0")).toHaveTextContent("Senile nuclear cataract · OS");
+    expect(screen.queryByTestId("note-diagnosis-which-eye-0")).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "Advice & follow-up" }));
+    const advice = await screen.findByLabelText("Advice");
+    await user.click(advice);
+    await user.type(advice, "dark glasses");
+    await user.click(screen.getByRole("heading", { name: "Consultation" }));
+    await waitFor(() => {
+      const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown } | undefined;
+      expect(body?.diagnoses).toEqual([
+        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "os" },
+        { text: "Essential (primary) hypertension", icd10Code: "I10" },
+      ]);
+    });
+  });
 });
 
 /**

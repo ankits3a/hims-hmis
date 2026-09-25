@@ -394,6 +394,8 @@ export type WireRxPrint = {
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
     /** PLAN 07d T5 — advised tests with the price AS OF the service date (DD4, E-9). */
     advisedTests: WireAdvisedTest[];
+    /** The coded rows with each one's eye (board "Ophthal"). Absent on a payload from before it. */
+    diagnoses?: { text: string; icd10Code: string | null; laterality: Eye | null }[];
   };
   vitals: WireVitals | null; lines: WireRxLine[]; qrPayload: string; version: number; issuedAt: string;
 };
