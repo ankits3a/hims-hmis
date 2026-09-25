@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 
 /**
  * ═══ THE OPHTHALMOLOGY SECTIONS (board `Ophthal`, approved 2026-09-23; 01-CONSULT-ENGINE.md §6.1) ═══
@@ -80,14 +80,16 @@ function useSection<T>(encounterId: string, key: SectionKey, data: WireVisitSect
     },
   });
   const lastSent = useRef<string>("");
+  const saved = JSON.stringify(rec === undefined ? empty() : { ...empty(), ...(rec.body as object) });
   const flush = (v: T = value): void => {
     const json = JSON.stringify(v);
-    const saved = JSON.stringify(rec === undefined ? empty() : { ...empty(), ...(rec.body as object) });
     if (json === saved || json === lastSent.current) return;
     lastSent.current = json;
     save.mutate(v);
   };
-  return { value, setValue, flush, save, savedAt: rec?.at ?? null };
+  /* What is on screen is not yet the row on record — typed and not left, or on its way to the server. */
+  const dirty = save.isPending || JSON.stringify(value) !== saved;
+  return { value, setValue, flush, save, savedAt: rec?.at ?? null, dirty };
 }
 
 function Status({ save, savedAt, testId }: { save: { isPending: boolean; isError: boolean; error: unknown }; savedAt: string | null; testId: string }): React.ReactElement {
@@ -134,7 +136,24 @@ export function EyeSections({ encounterId, leaseBody, readOnly }: {
   const iop = useSection(encounterId, "eye.iop", q.data, () => ({ method: null as string | null, od: null as number | null, os: null as number | null }), leaseBody);
   const slit = useSection(encounterId, "eye.slit_lamp", q.data, () => emptyPairs(SLIT_LAMP_ROWS), leaseBody);
   const glasses = useSection(encounterId, "eye.glasses_rx", q.data, () => ({ od: emptyLens(), os: emptyLens(), use: null as string | null, note: "" }), leaseBody);
+  /*
+    Board `Ophthal` — "GLASSES PRESCRIPTION · ITS OWN PRINT". The SERVER prints (owner ruling
+    2026-09-04): this asks for one A4 job at the front desk for the version on record, and the server
+    refuses anything but the treating doctor. `queued: false` is the same success — that version is
+    already coming off the printer.
+  */
+  const printGlasses = useMutation({
+    mutationFn: () => api<{ queued: boolean }>("POST", `/opd/visits/${encounterId}/glasses-rx/print`),
+  });
   if (q.data === undefined || q.data.profile === null) return null;
+  /* Only the SAVED row prints, so the button waits for it: no power on record, or an edit not yet saved, is nothing to send. */
+  const hasPower = (["od", "os"] as const).some((eye) => (["sph", "cyl", "add"] as const).some((f) => glasses.value[eye][f] !== null));
+  const canPrintGlasses = q.data.records["eye.glasses_rx"] !== undefined && hasPower && !glasses.dirty && !printGlasses.isPending;
+  const printFailure = (e: unknown): string => {
+    const body = e instanceof ApiError ? (e.body as { code?: string; message?: string } | null) : null;
+    if (body?.code === "glasses_rx_empty") return t("opdEye.printEmpty");
+    return t("opdEye.printFailed", { reason: body?.message ?? (e instanceof Error ? e.message : "") });
+  };
 
   const card: React.CSSProperties = { background: "var(--card)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 };
   const title = (text: string, extra?: React.ReactNode, status?: React.ReactNode): React.ReactElement => (
@@ -224,6 +243,15 @@ export function EyeSections({ encounterId, leaseBody, readOnly }: {
               value={glasses.value.note} maxLength={200} onChange={(e) => { glasses.setValue({ ...glasses.value, note: e.target.value }); }} onBlur={() => { glasses.flush(); }} />
           </div>
           {glasses.save.isError && <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--red)" }}>{t("opdEye.lensRule")}</p>}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button type="button" className="sec" data-testid="eye-glasses-print" disabled={!canPrintGlasses} style={{ height: 30, padding: "0 12px", fontSize: 12.5 }}
+              onClick={() => { printGlasses.mutate(); }}>{t("opdEye.printGlasses")}</button>
+            <span data-testid="eye-glasses-print-status" role={printGlasses.isError ? "alert" : undefined} style={{ fontSize: 11.5, color: printGlasses.isError ? "var(--red)" : "var(--dim)" }}>
+              {printGlasses.isPending ? t("opdEye.printSending")
+                : printGlasses.isError ? printFailure(printGlasses.error)
+                : printGlasses.isSuccess ? t("opdEye.printSent") : ""}
+            </span>
+          </div>
         </section>
       )}
     </div>

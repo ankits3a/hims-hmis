@@ -17,6 +17,7 @@ import { OpdCdsController } from "./opd-cds.controller";
 import { OpdQueueController } from "./opd-queue.controller";
 import { OpdVisitsController } from "./opd-visits.controller";
 import { OPD_TOPIC_SPACES, opdTopicRouter } from "./realtime";
+import { registerOpdGlassesPrinting } from "./glasses-print";
 
 /**
  * The module tells the kernel gateway which topic prefixes exist (each with the permission a subscriber must
@@ -57,6 +58,9 @@ export class OpdModule implements OnModuleInit {
     // second testing-module init replaces rather than double-registers (the guard's reasoning,
     // pointed the other way).
     registerFeeStatusHook("opd_queue_flip", queueFeeStatusHook);
+    // Board "Ophthal" — the glasses prescription is OPD's paper, drawn here and printed by the
+    // kernel's relay (the pharmacy module's shape), so the kernel never reads a section record.
+    registerOpdGlassesPrinting();
   }
 }
 

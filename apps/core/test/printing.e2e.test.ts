@@ -13,7 +13,7 @@ import { createRole, grantPermissionToRole, syncPermissions } from "../src/kerne
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { withTx } from "../src/kernel/db/client";
-import { phiAccessLog, printJobs } from "../src/kernel/db/schema";
+import { opdEncounters, opdSectionRecords, phiAccessLog, printJobs } from "../src/kernel/db/schema";
 import { enqueuePrintJob } from "../src/kernel/printing/enqueue";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Db } from "../src/kernel/db/client";
@@ -530,5 +530,32 @@ describe("FD-24 T2: the print relay's routes", () => {
       .send({ destinations: ["vitals_thermal"] }).expect(201)
       .expect((r) => { expect(r.body.jobs).toEqual([]); });
     expect((await db.select().from(printJobs).where(eq(printJobs.id, id!)))[0]!.attempts).toBe(1);
+  });
+
+  /**
+   * Board "Ophthal" — the glasses prescription is drawn by the OPD MODULE, registered at its init.
+   * Only the booted app proves that wiring: without `OpdModule.onModuleInit` registering the
+   * renderer, this job renders null and the claim fails it exactly as the vitals slip above.
+   */
+  it("the glasses prescription renders through the OPD module's registration, on the front desk's A4", async () => {
+    const { encounterId } = await realVisit();
+    const enc = (await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)))[0]!;
+    const recordId = `gl-${String(Date.now())}`;
+    await db.insert(opdSectionRecords).values({
+      id: recordId, encounterId, patientId: enc.patientId, sectionKey: "eye.glasses_rx", sectionVersion: 1,
+      body: { od: { sph: -1.25, cyl: null, axis: null, add: null }, os: { sph: null, cyl: null, axis: null, add: null }, use: null, note: "" },
+      authorId: "t", at: new Date("2026-08-17T04:00:00.000Z"),
+    });
+    await withTx(db, (tx) => enqueuePrintJob(tx, {
+      document: "opd_glasses_rx", params: { encounterId, recordId }, dedupeKey: `glasses:${recordId}`,
+      patientId: enc.patientId, encounterId,
+    }));
+    const claimed = await request(app.getHttpServer())
+      .post("/print/claim").set("x-agent-key", agentKey)
+      .send({ destinations: ["front_desk_a4"], limit: 5 }).expect(201);
+    const glasses = claimed.body.jobs.find((j: { document: string }) => j.document === "opd_glasses_rx");
+    expect(glasses).toBeDefined();
+    expect(glasses.html).toContain("Spectacle prescription");
+    expect(glasses.html).toContain("−1.25");
   });
 });
