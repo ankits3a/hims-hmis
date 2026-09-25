@@ -280,6 +280,37 @@ describe("opd e2e", () => {
   });
 
   /**
+   * The ophthal line over HTTP. `rxLineBody` is a zod object, and zod STRIPS a key it does not
+   * declare — so a route that forgot `eye` / `taper` would answer 201 and store a line with no eye.
+   * The bounds are the route's: a taper is 2..8 steps, 1..12 a day, 1..60 days a step.
+   */
+  it("an eye line keeps its eye and taper through the route, and a taper outside its bounds is a 400", async () => {
+    const patientId = await registerPatientOverHttp("Meena Devi", "9876543219");
+    const { encounterId, sessionId } = await openAndSeat(patientId);
+    await request(app.getHttpServer()).post(`/opd/queues/${sessionId}/call-next`).set(...auth(dra.token)).expect(201);
+    await request(app.getHttpServer()).post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
+    const eyeLine = {
+      drug: "Prednisolone acetate 1% eye drops", dose: "1 drop", route: "eye", frequency: "", durationDays: null,
+      instructions: null, noSubstitution: false, eye: "od",
+      taper: [{ timesPerDay: 6, days: 7 }, { timesPerDay: 4, days: 7 }],
+    };
+    const post = (line: Record<string, unknown>) => request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token)).send({ lines: [line] });
+
+    await post({ ...eyeLine, taper: [{ timesPerDay: 6, days: 7 }] }).expect(400);
+    await post({ ...eyeLine, taper: Array.from({ length: 9 }, () => ({ timesPerDay: 2, days: 7 })) }).expect(400);
+    await post({ ...eyeLine, taper: [{ timesPerDay: 13, days: 7 }, { timesPerDay: 4, days: 7 }] }).expect(400);
+    await post({ ...eyeLine, eye: "left" }).expect(400);
+
+    await post(eyeLine).expect(201);
+    const listed = await request(app.getHttpServer())
+      .get(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token)).expect(200);
+    expect(listed.body.items[0].lines[0]).toMatchObject({
+      eye: "od", taper: eyeLine.taper, frequency: "Taper: 6×/day × 7d → 4×/day × 7d", durationDays: 14,
+    });
+  });
+
+  /**
    * PLAN 16a T5 — the formulary safety layer, end to end over HTTP.
    *
    * It curates the formulary through the pharmacist's own routes, pre-checks as the consult screen

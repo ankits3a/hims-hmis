@@ -119,13 +119,25 @@ const rxLineBody = z.object({
   drug: z.string().max(300),
   dose: z.string().max(100),
   route: z.string().max(100),
-  frequency: z.string().max(100),
+  // 200, not 100, only so a tapered line's text fits (8 steps of "12×/day × 60d" is 132): the
+  // refine below keeps a plain line at 100, and a tapered line's frequency is overwritten by the
+  // server's own `taperText` at issue anyway.
+  frequency: z.string().max(200),
   durationDays: z.number().int().positive().nullable(),
   instructions: z.string().max(2000).nullable(),
   noSubstitution: z.boolean(),
   // PLAN 16a T5 / DD9 — optional and nullable: the autocomplete sets it, free typing does not, and
   // design law 1 says a line without one is a perfectly legal prescription for ever.
   medicineId: z.string().min(1).max(64).nullish(),
+  // The ophthal line (board "Ophthal", 2026-09-23). Undeclared keys are STRIPPED by zod, so these
+  // two must be named here or an eye line would issue with no eye.
+  eye: z.enum(["od", "os", "ou"]).nullish(),
+  taper: z.array(z.object({
+    timesPerDay: z.number().int().min(1).max(12),
+    days: z.number().int().min(1).max(60),
+  })).min(2).max(8).nullish(),
+}).refine((l) => (l.taper ?? null) !== null || l.frequency.length <= 100, {
+  path: ["frequency"], message: "String must contain at most 100 character(s)",
 });
 // No .min(1) on lines: an empty prescription answers empty_prescription with its OPD code, not a zod 400.
 const prescriptionBody = z.object({

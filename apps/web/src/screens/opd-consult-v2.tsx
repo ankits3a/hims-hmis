@@ -7,6 +7,7 @@ import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
 import { briefRefill, briefResults, fetchPatientDispenses, fetchPatientImaging, fetchPatientResults, shortDay } from "../lib/brief-history";
+import { eyeTextOf } from "../lib/eye-line";
 import type {
   WireDoctorStock, WireExamFinding, WireRxHistoryItem, WireTimelineItem, WireVitals,
 } from "../lib/opd-api";
@@ -178,7 +179,7 @@ function linesOf(rx: WireRxHistoryItem | undefined): string[] {
   if (rx === undefined) return [];
   /* The drug's NAME leads every line — "40 mg · 1-0-0" alone told the doctor nothing (owner's walk). */
   return rx.lines
-    .map((l) => [l.drug, l.dose, l.frequency].filter((x): x is string => typeof x === "string" && x.trim() !== "").join(" · "))
+    .map((l) => [l.drug, l.dose, eyeTextOf(l.eye), l.frequency].filter((x): x is string => typeof x === "string" && x.trim() !== "").join(" · "))
     .filter((line) => line !== "");
 }
 

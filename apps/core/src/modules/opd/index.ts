@@ -44,7 +44,9 @@ export { findVisitByToken } from "./encounters";
 export { getDoctor } from "./masters";
 export type { DoctorRow } from "./masters";
 export type { PrescriptionRow } from "./encounters";
-export type { RxLine } from "./fhir";
+export type { Eye, RxLine, TaperStep } from "./fhir";
+// The ophthal line's words: the pharmacy label names the eye exactly as the e-Rx does.
+export { EYE_TEXT } from "./fhir";
 export { classifyVisit } from "./visit-type";
 export type { VisitType } from "./visit-type";
 /**

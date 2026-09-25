@@ -1,6 +1,7 @@
 import type { WireBillRow, WireBillRowPack } from "./pharmacy-bill";
 import { api, ApiError } from "./api";
 import en from "../locales/en.json";
+import type { Eye, TaperStep } from "./eye-line";
 
 /**
  * PLAN 16c — the pharmacy module's wire types and calls. Every shape here is what the server
@@ -61,7 +62,11 @@ export function pharmacyErrorText(e: unknown, t: (key: string) => string): strin
 }
 
 // ── T3 — the counter ──
-export type WireRxLine = { drug: string; medicineId?: string | null; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; noSubstitution: boolean };
+export type WireRxLine = {
+  drug: string; medicineId?: string | null; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; noSubstitution: boolean;
+  /** The ophthal line. A tapered line's `frequency` is already the taper's text (the server writes it). */
+  eye?: Eye | null; taper?: TaperStep[] | null;
+};
 export type WireMedicine = { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag?: string | null };
 export type WireDispenseLine = {
   lineIdx: number; rxLine: WireRxLine; status: string; declinedReason: string | null; substitutionType: string;

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EYES, TAPER_MAX_DAYS, TAPER_MAX_STEPS, TAPER_MAX_TIMES, TAPER_MIN_STEPS, TAPER_PRESET } from "../lib/eye-line";
+import type { Eye, TaperStep } from "../lib/eye-line";
 
 /**
  * ═══ THE SIG PANEL — HOW A DRUG IS TAKEN, SAID ONCE ═══
@@ -21,8 +23,16 @@ import { useTranslation } from "react-i18next";
  *                   below owns the rest, so "After food" is never on screen twice.
  *   For how long  — six taps, and `Other`, which opens a number box.
  *
- * NOTHING NEW IS STORED. `frequency`, `durationDays` and `instructions` are the fields the line has
- * always posted, and the print, the FHIR bundle and the pharmacy queue read them unchanged.
+ * `frequency`, `durationDays` and `instructions` are the fields the line has always posted, and the
+ * print, the FHIR bundle and the pharmacy queue read them unchanged.
+ *
+ * ═══ THE EYE LINE — THE ONE PLACE TWO NEW FIELDS ARE STORED ═══
+ *
+ * Board "Ophthal" (2026-09-23): an eye line has an eye and a taper. For a line whose route is
+ * `eye` only, the panel adds a row for WHICH eye (`eye`) and a Taper toggle; taper on replaces the
+ * frequency taps with a step editor (`taper`, 2..8 steps of times-a-day × days). The parent writes
+ * the taper's text into `frequency` and its summed days into `durationDays`, as the server does at
+ * issue — so every reader that knows only those two still reads the line right.
  *
  * ═══ ALWAYS OPEN, UNDER ITS OWN LINE ═══
  *
@@ -43,7 +53,10 @@ import { useTranslation } from "react-i18next";
  * carrying reflux indications. The indication belongs to the consultation note, where a person
  * wrote it.
  */
-export type SigPatch = { frequency?: string; instructions?: string; durationDays?: string };
+export type SigPatch = {
+  frequency?: string; instructions?: string; durationDays?: string;
+  eye?: Eye | null; taper?: TaperStep[] | null;
+};
 
 /** `1-0-1` is how a prescription is said aloud in an Indian OPD; `BD` is what this system stores. */
 const FREQUENCY_PILLS = [
@@ -148,13 +161,77 @@ const LABEL: React.CSSProperties = { fontSize: 10.5, color: "var(--faint)", minW
 const PILL: React.CSSProperties = { padding: "3px 10px", fontSize: 11.5, borderRadius: 999 };
 const BOX: React.CSSProperties = { padding: "3px 8px", fontSize: 12.5 };
 
+/** The toggle's first steps; the preset is one tap away. Two, because a taper of one is not a taper. */
+const TAPER_START: readonly TaperStep[] = [{ timesPerDay: 4, days: 7 }, { timesPerDay: 2, days: 7 }];
+
+/** A typed count held inside the route's bounds, so the editor can never hold a step the server refuses. */
+function clampInt(raw: string, max: number): number {
+  const n = Math.trunc(Number(raw));
+  return Number.isFinite(n) ? Math.min(max, Math.max(1, n)) : 1;
+}
+
+function TaperEditor({
+  id, steps, onSteps,
+}: { id: string; steps: TaperStep[]; onSteps: (steps: TaperStep[]) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const set = (n: number, patch: Partial<TaperStep>): void => {
+    onSteps(steps.map((s, k) => (k === n ? { ...s, ...patch } : s)));
+  };
+  return (
+    <div data-testid={`${id}-taper-steps`} style={{ display: "flex", flexDirection: "column", gap: 5, paddingLeft: 79 }}>
+      {steps.map((s, n) => (
+        <div key={n} data-testid={`${id}-taper-step-${String(n)}`} style={ROW}>
+          <span style={{ ...LABEL, minWidth: 48 }}>{t("sigDrawer.taperStep", { n: n + 1 })}</span>
+          <input
+            type="number" min={1} max={TAPER_MAX_TIMES} step={1} aria-label={`${t("sigDrawer.taperStep", { n: n + 1 })} ${t("sigDrawer.taperTimes")}`}
+            className="rounded border" style={{ ...BOX, width: 56 }}
+            value={s.timesPerDay} onChange={(e) => { set(n, { timesPerDay: clampInt(e.target.value, TAPER_MAX_TIMES) }); }}
+          />
+          <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("sigDrawer.taperTimes")} ×</span>
+          <input
+            type="number" min={1} max={TAPER_MAX_DAYS} step={1} aria-label={`${t("sigDrawer.taperStep", { n: n + 1 })} ${t("sigDrawer.taperDays")}`}
+            className="rounded border" style={{ ...BOX, width: 56 }}
+            value={s.days} onChange={(e) => { set(n, { days: clampInt(e.target.value, TAPER_MAX_DAYS) }); }}
+          />
+          <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("sigDrawer.taperDays")}</span>
+          <button
+            type="button" className="sec" style={PILL} disabled={steps.length <= TAPER_MIN_STEPS}
+            aria-label={t("sigDrawer.taperRemove", { n: n + 1 })}
+            onClick={() => { onSteps(steps.filter((_, k) => k !== n)); }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <div style={ROW}>
+        <button
+          type="button" className="sec" style={PILL} data-testid={`${id}-taper-add`} disabled={steps.length >= TAPER_MAX_STEPS}
+          onClick={() => { onSteps([...steps, { ...(steps[steps.length - 1] ?? { timesPerDay: 1, days: 7 }) }]); }}
+        >
+          {t("sigDrawer.taperAdd")}
+        </button>
+        <button
+          type="button" className="sec" style={PILL} data-testid={`${id}-taper-preset`}
+          onClick={() => { onSteps(TAPER_PRESET.map((s) => ({ ...s }))); }}
+        >
+          {t("sigDrawer.taperPreset")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SigPanel({
-  lineIndex, frequency, instructions, durationDays, frequencyError, daysError, onPatch,
+  lineIndex, frequency, instructions, durationDays, route, eye, taper, frequencyError, daysError, onPatch,
 }: {
   lineIndex: number;
   frequency: string;
   instructions: string;
   durationDays: string;
+  /** Only `"eye"` changes anything: the eye row and the taper toggle are an eye line's alone. */
+  route?: string;
+  eye?: Eye | null;
+  taper?: TaperStep[] | null;
   frequencyError?: string;
   daysError?: string;
   onPatch: (patch: SigPatch) => void;
@@ -182,13 +259,38 @@ export function SigPanel({
   });
 
   const other = t("sigDrawer.other");
+  const eyeLine = route === "eye";
+  const tapered = eyeLine && taper !== undefined && taper !== null && taper.length > 0;
 
   return (
     <div
       data-testid={`${id}-panel`}
       style={{ margin: "0 0 11px", padding: "9px 11px", display: "flex", flexDirection: "column", gap: 7, border: "1px solid var(--line2)", borderRadius: 8 }}
     >
-      <PillRow
+      {eyeLine && (
+        <PillRow
+          label={t("sigDrawer.eye")}
+          pills={EYES.map((e) => ({ key: e, text: t(`sigDrawer.eyeOption.${e}`), testId: `${id}-eye-${e}` }))}
+          selected={eye ?? null}
+          clearable
+          onPick={(k) => { onPatch({ eye: k === null ? null : (k as Eye) }); }}
+        />
+      )}
+      {eyeLine && (
+        <div style={ROW}>
+          <span style={LABEL} aria-hidden="true">{t("sigDrawer.taper")}</span>
+          <button
+            type="button" role="switch" aria-checked={tapered} aria-label={t("sigDrawer.taper")} data-testid={`${id}-taper`}
+            className={tapered ? "pri" : "sec"} style={PILL}
+            onClick={() => { onPatch({ taper: tapered ? null : TAPER_START.map((s) => ({ ...s })) }); }}
+          >
+            {t("sigDrawer.taper")}
+          </button>
+        </div>
+      )}
+      {tapered && <TaperEditor id={id} steps={taper ?? []} onSteps={(steps) => { onPatch({ taper: steps }); }} />}
+
+      {!tapered && <PillRow
         label={t("sigDrawer.frequency")}
         pills={[
           ...FREQUENCY_PILLS.map((f) => ({
@@ -207,8 +309,8 @@ export function SigPanel({
           }
           if (k !== null) onPatch({ frequency: k });
         }}
-      />
-      {freqOther && (
+      />}
+      {!tapered && freqOther && (
         <div style={{ ...ROW, paddingLeft: 79 }}>
           <input
             ref={freqInput} id={`f-lines.${String(lineIndex)}.frequency`} data-field
@@ -228,7 +330,8 @@ export function SigPanel({
         onPick={(k) => { onPatch({ instructions: joinInstructions(k, note) }); }}
       />
 
-      <PillRow
+      {/* A taper's duration is the sum of its steps, so it has no row of its own to disagree with. */}
+      {!tapered && <PillRow
         label={t("sigDrawer.duration")}
         pills={[
           ...DURATION_PILLS.map((d) => ({ key: String(d), text: t("sigDrawer.days", { n: d }), testId: `${id}-days-${String(d)}` })),
@@ -246,8 +349,8 @@ export function SigPanel({
           setDaysOpen(false);
           onPatch({ durationDays: k ?? "" });
         }}
-      />
-      {daysOther && (
+      />}
+      {!tapered && daysOther && (
         <div style={{ ...ROW, paddingLeft: 79 }}>
           <input
             ref={daysInput} id={`f-lines.${String(lineIndex)}.durationDays`} data-field

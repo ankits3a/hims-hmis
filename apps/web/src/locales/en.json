@@ -943,6 +943,7 @@
       "sc": "SC",
       "topical": "Topical",
       "inhaled": "Inhaled",
+      "eye": "Eye (drops/ointment)",
       "other": "Other"
     },
     "frequencyOption": {
@@ -1138,6 +1139,11 @@
     "advice": "Advice",
     "noSubstitution": "Do not substitute",
     "days": "{{n}} days",
+    "eye": {
+      "od": "RIGHT EYE",
+      "os": "LEFT EYE",
+      "ou": "BOTH EYES"
+    },
     "followUp": "Follow-up in {{days}} days",
     "version": "Version {{n}}",
     "print": "Print prescription",
@@ -5025,6 +5031,19 @@
     "frequencyPlaceholder": "e.g. 1-0-0, every 6 hours, once a week",
     "daysUnit": "days",
     "notePlaceholder": "Anything else — e.g. with milk",
+    "eye": "Which eye",
+    "eyeOption": {
+      "od": "OD · right",
+      "os": "OS · left",
+      "ou": "OU · both"
+    },
+    "taper": "Taper",
+    "taperPreset": "6-4-3-2-1, a week each",
+    "taperStep": "Step {{n}}",
+    "taperTimes": "times a day",
+    "taperDays": "days",
+    "taperAdd": "Add step",
+    "taperRemove": "Remove step {{n}}",
     "timingOption": {
       "afterFood": "After food",
       "beforeFood": "Before food",

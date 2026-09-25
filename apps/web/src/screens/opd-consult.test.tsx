@@ -1404,6 +1404,83 @@ describe("OpdConsult", () => {
   });
 
   /**
+   * The ophthal line (board "Ophthal", 2026-09-23). Both POST bodies are built field by field, so a
+   * field the form holds but the body does not name is silently DROPPED — the trap this pins: the
+   * eye and the taper the doctor tapped must reach the pre-check and the issue alike.
+   */
+  it("EYE1: an eye line posts its eye and its taper, with the taper's text as its frequency and its summed days", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/opd/visits/enc-1/rx-precheck": {
+        status: 201, body: { allergyMatches: [], interactions: [], duplicates: [], notices: [], unresolvedLineIndexes: [] },
+      },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 201, body: { prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload, allergyOverrideCount: 0 },
+      },
+      "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Prednisolone acetate 1% eye drops");
+    await user.type(screen.getByLabelText("Dose"), "1 drop");
+    await user.selectOptions(screen.getByLabelText("Route"), "eye");
+    await user.click(screen.getByTestId("sig-0-eye-od"));
+    await user.click(screen.getByTestId("sig-0-taper"));
+    await user.click(screen.getByTestId("sig-0-taper-preset"));
+    const taperText = "Taper: 6×/day × 7d → 4×/day × 7d → 3×/day × 7d → 2×/day × 7d → 1×/day × 7d";
+    // The card head reads what the stored line will say, eye included.
+    expect(screen.getByTestId("rx-card-head-0")).toHaveTextContent("RIGHT EYE");
+    expect(screen.getByTestId("rx-card-head-0")).toHaveTextContent(taperText);
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    const taper = [6, 4, 3, 2, 1].map((n) => ({ timesPerDay: n, days: 7 }));
+    const line = {
+      drug: "Prednisolone acetate 1% eye drops", dose: "1 drop", route: "eye", frequency: taperText,
+      durationDays: 35, instructions: null, noSubstitution: false, medicineId: null, eye: "od", taper,
+    };
+    expect(bodiesOf("POST", path)[0]).toEqual({ lines: [line] });
+    expect(bodiesOf("POST", "/api/opd/visits/enc-1/rx-precheck")[0]).toEqual({ lines: [line] });
+  });
+
+  it("EYE2: moving a tapered eye line to another route clears the eye and the taper, and the taper's text does not stay as its frequency", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/opd/visits/enc-1/rx-precheck": {
+        status: 201, body: { allergyMatches: [], interactions: [], duplicates: [], notices: [], unresolvedLineIndexes: [] },
+      },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 201, body: { prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload, allergyOverrideCount: 0 },
+      },
+      "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const path = "/api/opd/visits/enc-1/prescriptions";
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Prednisolone 5 mg tablet");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.selectOptions(screen.getByLabelText("Route"), "eye");
+    await user.click(screen.getByTestId("sig-0-eye-od"));
+    await user.click(screen.getByTestId("sig-0-taper"));
+    await user.click(screen.getByTestId("sig-0-taper-preset"));
+    expect(screen.getByTestId("rx-card-head-0")).toHaveTextContent("Taper:");
+    await user.selectOptions(screen.getByLabelText("Route"), "oral");
+    await waitFor(() => { expect(screen.getByTestId("rx-card-head-0")).not.toHaveTextContent("Taper:"); });
+    expect(screen.getByTestId("rx-card-head-0")).not.toHaveTextContent("RIGHT EYE");
+    await user.click(screen.getByTestId("sig-0-days-5"));
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    expect(bodiesOf("POST", path)[0]).toEqual({ lines: [{
+      drug: "Prednisolone 5 mg tablet", dose: "1 tab", route: "oral", frequency: "OD",
+      durationDays: 5, instructions: null, noSubstitution: false, medicineId: null,
+    }] });
+  });
+
+  /**
    * PLAN 16a T6 — the formulary picker and the two new hard warnings.
    *
    * The four acceptance points, in order: picking fills the drug NAME and the `medicineId` with it;
