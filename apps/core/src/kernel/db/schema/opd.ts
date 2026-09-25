@@ -473,6 +473,16 @@ export const opdEncounters = pgTable(
     editLeaseBy: text("edit_lease_by"),
     editLeaseUntil: timestamp("edit_lease_until", { withTimezone: true }),
     editTakeovers: jsonb("edit_takeovers"),
+    /**
+     * ═══ THE LAYOUT THIS VISIT WAS STARTED UNDER (board `Profiles`; 01-CONSULT-ENGINE.md §3, D1) ═══
+     *
+     * *"Changes apply to new visits only."* `startConsultation` stamps the ids of the department
+     * default and the doctor's overlay in force at that moment (`modules/opd/layout.ts`), and the
+     * visit's consult reads THOSE versions for the rest of its life. Null means no row of that scope
+     * existed then — the base layout. Plain columns, written once, never rewritten.
+     */
+    layoutDefaultId: text("layout_default_id").references(() => opdConsultLayouts.id),
+    layoutOverlayId: text("layout_overlay_id").references(() => opdConsultLayouts.id),
     referralTo: text("referral_to"),
     referralNote: text("referral_note"),
     followUpDays: integer("follow_up_days"), // stamped at completion: config default or an extension value
@@ -1197,5 +1207,38 @@ export const opdSectionRecords = pgTable(
     /** …and one ROOT per section per visit, so two first saves racing cannot both become current. */
     uniqueIndex("opd_section_records_root_ux").on(t.encounterId, t.sectionKey).where(sql`supersedes_id is null`),
     check("opd_section_records_version_ck", sql`${t.sectionVersion} > 0`),
+  ],
+);
+
+/**
+ * ═══ THE CONSULT LAYOUT — DEPARTMENT DEFAULT AND DOCTOR OVERLAY (board `Profiles`; 01-CONSULT-ENGINE.md §3, D1) ═══
+ *
+ * Which consult sections a department's screen shows, in what order, and which are mandatory
+ * (`doctor_id` null — the admin's default), and each doctor's own order and hidden sections within
+ * those bounds (`doctor_id` set — the overlay). The body is validated by ONE pure resolver
+ * (`modules/opd/layout.ts`) that the routes and the tests share.
+ *
+ * APPEND-ONLY AND VERSIONED. Every save is a new row, `version` one more than the scope's last; the
+ * current layout is the highest version, and the audit list is the rows themselves, diffed pairwise
+ * on read — no prose is stored. An encounter stamps the ids it started under, so an old visit keeps
+ * reading in its own version.
+ */
+export const opdConsultLayouts = pgTable(
+  "opd_consult_layouts",
+  {
+    id: text("id").primaryKey(),
+    departmentId: text("department_id").notNull().references(() => opdDepartments.id),
+    doctorId: text("doctor_id").references(() => opdDoctors.id),
+    version: integer("version").notNull(),
+    body: jsonb("body").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    /** One version number per scope: the department default… */
+    uniqueIndex("opd_consult_layouts_default_ux").on(t.departmentId, t.version).where(sql`doctor_id is null`),
+    /** …and each doctor's overlay in that department. Two racing saves cannot both become version N. */
+    uniqueIndex("opd_consult_layouts_overlay_ux").on(t.departmentId, t.doctorId, t.version).where(sql`doctor_id is not null`),
+    check("opd_consult_layouts_version_ck", sql`${t.version} > 0`),
   ],
 );

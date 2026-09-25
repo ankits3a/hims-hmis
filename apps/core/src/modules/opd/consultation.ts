@@ -8,6 +8,7 @@ import { opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opd
 import { loadOpdConfig } from "./config";
 import { getEncounter, moveEncounter } from "./encounters";
 import { recordComplaintUsage } from "./complaints";
+import { layoutStampFor } from "./layout";
 import { OpdError } from "./errors";
 import {
   admissionRequested, consultFeeOverridden, consultationCompleted, consultationParked, consultationResumed,
@@ -409,7 +410,10 @@ export async function startConsultation(
     }
   }
   return withTx(db, async (tx) => {
-    const encounter = await moveEncounter(tx, actor, current, "in_consultation", { consultStartedAt: now }, now);
+    // Board `Profiles` — "changes apply to new visits only": the layout versions in force NOW are
+    // this visit's for good (layout.ts). Read inside the transaction that starts the consult.
+    const stamp = await layoutStampFor(tx, current.departmentId, doctor.id);
+    const encounter = await moveEncounter(tx, actor, current, "in_consultation", { consultStartedAt: now, ...stamp }, now);
     const queueEntry = await markInConsult(tx, encounterId, now);
     const sessions = await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, queueEntry.sessionId));
     await appendEvent(tx, consultationStarted.make({

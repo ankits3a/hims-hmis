@@ -622,7 +622,8 @@ export async function openLabWalkin(
 export async function moveEncounter(
   tx: Tx, actor: Actor, encounter: EncounterRow, to: OpdVisitState,
   patch: Partial<Pick<EncounterRow, "consultStartedAt" | "consultCompletedAt" | "abandonedAt" | "abandonReason" | "followUpDays" | "followUpExtended"
-    | "chiefComplaint" | "diagnosis" | "icd10Code" | "advice" | "admissionAdvised" | "referralTo" | "referralNote">> = {},
+    | "chiefComplaint" | "diagnosis" | "icd10Code" | "advice" | "admissionAdvised" | "referralTo" | "referralNote"
+    | "layoutDefaultId" | "layoutOverlayId">> = {},
   now: Date = new Date(),
 ): Promise<EncounterRow> {
   try {

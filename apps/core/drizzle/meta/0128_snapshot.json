@@ -1,5 +1,5 @@
 {
-  "id": "5550f219-00d3-48bf-b07f-57e650064d17",
+  "id": "6e18d550-cae4-498f-b773-10325880e325",
   "prevId": "3da7f1af-da0e-49fb-a05b-3e44632de7bd",
   "version": "7",
   "dialect": "postgresql",
@@ -4924,6 +4924,144 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.opd_consult_layouts": {
+      "name": "opd_consult_layouts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "doctor_id": {
+          "name": "doctor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "opd_consult_layouts_default_ux": {
+          "name": "opd_consult_layouts_default_ux",
+          "columns": [
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "doctor_id is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "opd_consult_layouts_overlay_ux": {
+          "name": "opd_consult_layouts_overlay_ux",
+          "columns": [
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "doctor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "doctor_id is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "opd_consult_layouts_department_id_opd_departments_id_fk": {
+          "name": "opd_consult_layouts_department_id_opd_departments_id_fk",
+          "tableFrom": "opd_consult_layouts",
+          "tableTo": "opd_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "opd_consult_layouts_doctor_id_opd_doctors_id_fk": {
+          "name": "opd_consult_layouts_doctor_id_opd_doctors_id_fk",
+          "tableFrom": "opd_consult_layouts",
+          "tableTo": "opd_doctors",
+          "columnsFrom": [
+            "doctor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "opd_consult_layouts_version_ck": {
+          "name": "opd_consult_layouts_version_ck",
+          "value": "\"opd_consult_layouts\".\"version\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.opd_department_tokens": {
       "name": "opd_department_tokens",
       "schema": "",
@@ -5794,6 +5932,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "layout_default_id": {
+          "name": "layout_default_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "layout_overlay_id": {
+          "name": "layout_overlay_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "referral_to": {
           "name": "referral_to",
           "type": "text",
@@ -6066,6 +6216,32 @@
           "tableTo": "opd_appointments",
           "columnsFrom": [
             "appointment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "opd_encounters_layout_default_id_opd_consult_layouts_id_fk": {
+          "name": "opd_encounters_layout_default_id_opd_consult_layouts_id_fk",
+          "tableFrom": "opd_encounters",
+          "tableTo": "opd_consult_layouts",
+          "columnsFrom": [
+            "layout_default_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "opd_encounters_layout_overlay_id_opd_consult_layouts_id_fk": {
+          "name": "opd_encounters_layout_overlay_id_opd_consult_layouts_id_fk",
+          "tableFrom": "opd_encounters",
+          "tableTo": "opd_consult_layouts",
+          "columnsFrom": [
+            "layout_overlay_id"
           ],
           "columnsTo": [
             "id"
@@ -18025,190 +18201,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.stock_recalls": {
-      "name": "stock_recalls",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "recall_no": {
-          "name": "recall_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "batch_id": {
-          "name": "batch_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "item_id": {
-          "name": "item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reference": {
-          "name": "reference",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "raised_by": {
-          "name": "raised_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "raised_at": {
-          "name": "raised_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "closed_by": {
-          "name": "closed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "closed_at": {
-          "name": "closed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "close_note": {
-          "name": "close_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "stock_recalls_recall_no_ux": {
-          "name": "stock_recalls_recall_no_ux",
-          "columns": [
-            {
-              "expression": "recall_no",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "stock_recalls_open_batch_ux": {
-          "name": "stock_recalls_open_batch_ux",
-          "columns": [
-            {
-              "expression": "batch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"stock_recalls\".\"status\" = 'open'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "stock_recalls_status_idx": {
-          "name": "stock_recalls_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "raised_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "stock_recalls_batch_id_stock_batches_id_fk": {
-          "name": "stock_recalls_batch_id_stock_batches_id_fk",
-          "tableFrom": "stock_recalls",
-          "tableTo": "stock_batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "stock_recalls_item_id_items_id_fk": {
-          "name": "stock_recalls_item_id_items_id_fk",
-          "tableFrom": "stock_recalls",
-          "tableTo": "items",
-          "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "stock_recalls_source_ck": {
-          "name": "stock_recalls_source_ck",
-          "value": "\"stock_recalls\".\"source\" in ('cdsco', 'manufacturer', 'internal')"
-        },
-        "stock_recalls_status_ck": {
-          "name": "stock_recalls_status_ck",
-          "value": "\"stock_recalls\".\"status\" in ('open', 'closed')"
-        },
-        "stock_recalls_closed_ck": {
-          "name": "stock_recalls_closed_ck",
-          "value": "(\"stock_recalls\".\"status\" = 'closed') = (\"stock_recalls\".\"closed_at\" is not null) and (\"stock_recalls\".\"closed_at\" is null) = (\"stock_recalls\".\"closed_by\" is null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.stock_reservations": {
       "name": "stock_reservations",
       "schema": "",
@@ -18359,334 +18351,6 @@
         "stock_reservations_status_ck": {
           "name": "stock_reservations_status_ck",
           "value": "\"stock_reservations\".\"status\" in ('held', 'consumed', 'released')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.stock_write_off_lines": {
-      "name": "stock_write_off_lines",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "write_off_id": {
-          "name": "write_off_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "item_id": {
-          "name": "item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "batch_id": {
-          "name": "batch_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "qty_base": {
-          "name": "qty_base",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value_paise": {
-          "name": "value_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ledger_entry_id": {
-          "name": "ledger_entry_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "stock_write_off_lines_batch_ux": {
-          "name": "stock_write_off_lines_batch_ux",
-          "columns": [
-            {
-              "expression": "write_off_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "batch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "stock_write_off_lines_batch_idx": {
-          "name": "stock_write_off_lines_batch_idx",
-          "columns": [
-            {
-              "expression": "batch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "stock_write_off_lines_write_off_id_stock_write_offs_id_fk": {
-          "name": "stock_write_off_lines_write_off_id_stock_write_offs_id_fk",
-          "tableFrom": "stock_write_off_lines",
-          "tableTo": "stock_write_offs",
-          "columnsFrom": [
-            "write_off_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "stock_write_off_lines_item_id_items_id_fk": {
-          "name": "stock_write_off_lines_item_id_items_id_fk",
-          "tableFrom": "stock_write_off_lines",
-          "tableTo": "items",
-          "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "stock_write_off_lines_batch_id_stock_batches_id_fk": {
-          "name": "stock_write_off_lines_batch_id_stock_batches_id_fk",
-          "tableFrom": "stock_write_off_lines",
-          "tableTo": "stock_batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "stock_write_off_lines_qty_ck": {
-          "name": "stock_write_off_lines_qty_ck",
-          "value": "\"stock_write_off_lines\".\"qty_base\" > 0 and \"stock_write_off_lines\".\"value_paise\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.stock_write_offs": {
-      "name": "stock_write_offs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "write_off_no": {
-          "name": "write_off_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "store_resource_id": {
-          "name": "store_resource_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "total_value_paise": {
-          "name": "total_value_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "approval_id": {
-          "name": "approval_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "disposal_agency": {
-          "name": "disposal_agency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "manifest_no": {
-          "name": "manifest_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "disposal_date": {
-          "name": "disposal_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "requested_by": {
-          "name": "requested_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_at": {
-          "name": "requested_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "posted_by": {
-          "name": "posted_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "posted_at": {
-          "name": "posted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "refused_at": {
-          "name": "refused_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "stock_write_offs_write_off_no_ux": {
-          "name": "stock_write_offs_write_off_no_ux",
-          "columns": [
-            {
-              "expression": "write_off_no",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "stock_write_offs_approval_idx": {
-          "name": "stock_write_offs_approval_idx",
-          "columns": [
-            {
-              "expression": "approval_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "stock_write_offs_status_idx": {
-          "name": "stock_write_offs_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "stock_write_offs_store_resource_id_resources_id_fk": {
-          "name": "stock_write_offs_store_resource_id_resources_id_fk",
-          "tableFrom": "stock_write_offs",
-          "tableTo": "resources",
-          "columnsFrom": [
-            "store_resource_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "stock_write_offs_reason_ck": {
-          "name": "stock_write_offs_reason_ck",
-          "value": "\"stock_write_offs\".\"reason\" in ('expiry', 'damage', 'recall')"
-        },
-        "stock_write_offs_status_ck": {
-          "name": "stock_write_offs_status_ck",
-          "value": "\"stock_write_offs\".\"status\" in ('requested', 'posted', 'refused')"
-        },
-        "stock_write_offs_value_ck": {
-          "name": "stock_write_offs_value_ck",
-          "value": "\"stock_write_offs\".\"total_value_paise\" >= 0"
-        },
-        "stock_write_offs_posted_ck": {
-          "name": "stock_write_offs_posted_ck",
-          "value": "(\"stock_write_offs\".\"status\" = 'posted') = (\"stock_write_offs\".\"posted_at\" is not null) and (\"stock_write_offs\".\"posted_at\" is null) = (\"stock_write_offs\".\"posted_by\" is null) and (\"stock_write_offs\".\"status\" <> 'posted' or (\"stock_write_offs\".\"disposal_agency\" is not null and \"stock_write_offs\".\"manifest_no\" is not null and \"stock_write_offs\".\"disposal_date\" is not null))"
-        },
-        "stock_write_offs_refused_ck": {
-          "name": "stock_write_offs_refused_ck",
-          "value": "(\"stock_write_offs\".\"status\" = 'refused') = (\"stock_write_offs\".\"refused_at\" is not null)"
         }
       },
       "isRLSEnabled": false
@@ -19290,212 +18954,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.supplier_credit_notes": {
-      "name": "supplier_credit_notes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "credit_no": {
-          "name": "credit_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "return_id": {
-          "name": "return_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "vendor_id": {
-          "name": "vendor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "vendor_credit_note_no": {
-          "name": "vendor_credit_note_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "credit_note_date": {
-          "name": "credit_note_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount_paise": {
-          "name": "amount_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "debit_note_paise": {
-          "name": "debit_note_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "difference_paise": {
-          "name": "difference_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "difference_reason": {
-          "name": "difference_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recorded_by": {
-          "name": "recorded_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recorded_at": {
-          "name": "recorded_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cancelled_by": {
-          "name": "cancelled_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancelled_at": {
-          "name": "cancelled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancel_reason": {
-          "name": "cancel_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "supplier_credit_notes_credit_no_ux": {
-          "name": "supplier_credit_notes_credit_no_ux",
-          "columns": [
-            {
-              "expression": "credit_no",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "supplier_credit_notes_live_return_ux": {
-          "name": "supplier_credit_notes_live_return_ux",
-          "columns": [
-            {
-              "expression": "return_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"supplier_credit_notes\".\"status\" = 'accepted'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "supplier_credit_notes_vendor_idx": {
-          "name": "supplier_credit_notes_vendor_idx",
-          "columns": [
-            {
-              "expression": "vendor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "supplier_credit_notes_return_id_supplier_returns_id_fk": {
-          "name": "supplier_credit_notes_return_id_supplier_returns_id_fk",
-          "tableFrom": "supplier_credit_notes",
-          "tableTo": "supplier_returns",
-          "columnsFrom": [
-            "return_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "supplier_credit_notes_vendor_id_vendors_id_fk": {
-          "name": "supplier_credit_notes_vendor_id_vendors_id_fk",
-          "tableFrom": "supplier_credit_notes",
-          "tableTo": "vendors",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "supplier_credit_notes_status_ck": {
-          "name": "supplier_credit_notes_status_ck",
-          "value": "\"supplier_credit_notes\".\"status\" in ('accepted', 'cancelled')"
-        },
-        "supplier_credit_notes_money_ck": {
-          "name": "supplier_credit_notes_money_ck",
-          "value": "\"supplier_credit_notes\".\"amount_paise\" > 0 and \"supplier_credit_notes\".\"amount_paise\" <= \"supplier_credit_notes\".\"debit_note_paise\" and \"supplier_credit_notes\".\"difference_paise\" = \"supplier_credit_notes\".\"debit_note_paise\" - \"supplier_credit_notes\".\"amount_paise\""
-        },
-        "supplier_credit_notes_reason_ck": {
-          "name": "supplier_credit_notes_reason_ck",
-          "value": "(\"supplier_credit_notes\".\"difference_paise\" = 0) = (\"supplier_credit_notes\".\"difference_reason\" is null)"
-        },
-        "supplier_credit_notes_cancelled_ck": {
-          "name": "supplier_credit_notes_cancelled_ck",
-          "value": "(\"supplier_credit_notes\".\"status\" = 'cancelled') = (\"supplier_credit_notes\".\"cancelled_at\" is not null) and (\"supplier_credit_notes\".\"cancelled_at\" is null) = (\"supplier_credit_notes\".\"cancel_reason\" is null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.supplier_payment_run_lines": {
       "name": "supplier_payment_run_lines",
       "schema": "",
@@ -19642,7 +19100,7 @@
       "checkConstraints": {
         "supplier_payment_run_lines_money_ck": {
           "name": "supplier_payment_run_lines_money_ck",
-          "value": "\"supplier_payment_run_lines\".\"pay_paise\" >= 0 and \"supplier_payment_run_lines\".\"credit_paise\" >= 0 and \"supplier_payment_run_lines\".\"pay_paise\" + \"supplier_payment_run_lines\".\"credit_paise\" > 0"
+          "value": "\"supplier_payment_run_lines\".\"pay_paise\" > 0 and \"supplier_payment_run_lines\".\"credit_paise\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -19997,561 +19455,6 @@
         "supplier_payments_amount_ck": {
           "name": "supplier_payments_amount_ck",
           "value": "\"supplier_payments\".\"amount_paise\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.supplier_return_lines": {
-      "name": "supplier_return_lines",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "return_id": {
-          "name": "return_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "item_id": {
-          "name": "item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "batch_id": {
-          "name": "batch_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "store_resource_id": {
-          "name": "store_resource_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "qty_base": {
-          "name": "qty_base",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rate_paise": {
-          "name": "rate_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "taxable_paise": {
-          "name": "taxable_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gst_rate_bps": {
-          "name": "gst_rate_bps",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cgst_paise": {
-          "name": "cgst_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "sgst_paise": {
-          "name": "sgst_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "igst_paise": {
-          "name": "igst_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "hsn_code": {
-          "name": "hsn_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ledger_entry_id": {
-          "name": "ledger_entry_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "supplier_return_lines_batch_ux": {
-          "name": "supplier_return_lines_batch_ux",
-          "columns": [
-            {
-              "expression": "return_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "batch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "store_resource_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "supplier_return_lines_batch_idx": {
-          "name": "supplier_return_lines_batch_idx",
-          "columns": [
-            {
-              "expression": "batch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "supplier_return_lines_return_id_supplier_returns_id_fk": {
-          "name": "supplier_return_lines_return_id_supplier_returns_id_fk",
-          "tableFrom": "supplier_return_lines",
-          "tableTo": "supplier_returns",
-          "columnsFrom": [
-            "return_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "supplier_return_lines_item_id_items_id_fk": {
-          "name": "supplier_return_lines_item_id_items_id_fk",
-          "tableFrom": "supplier_return_lines",
-          "tableTo": "items",
-          "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "supplier_return_lines_batch_id_stock_batches_id_fk": {
-          "name": "supplier_return_lines_batch_id_stock_batches_id_fk",
-          "tableFrom": "supplier_return_lines",
-          "tableTo": "stock_batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "supplier_return_lines_store_resource_id_resources_id_fk": {
-          "name": "supplier_return_lines_store_resource_id_resources_id_fk",
-          "tableFrom": "supplier_return_lines",
-          "tableTo": "resources",
-          "columnsFrom": [
-            "store_resource_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "supplier_return_lines_reason_ck": {
-          "name": "supplier_return_lines_reason_ck",
-          "value": "\"supplier_return_lines\".\"reason\" in ('expired', 'near_expiry', 'damaged', 'recalled')"
-        },
-        "supplier_return_lines_qty_ck": {
-          "name": "supplier_return_lines_qty_ck",
-          "value": "\"supplier_return_lines\".\"qty_base\" > 0"
-        },
-        "supplier_return_lines_money_ck": {
-          "name": "supplier_return_lines_money_ck",
-          "value": "\"supplier_return_lines\".\"rate_paise\" >= 0 and \"supplier_return_lines\".\"gst_rate_bps\" >= 0 and \"supplier_return_lines\".\"taxable_paise\" = \"supplier_return_lines\".\"qty_base\" * \"supplier_return_lines\".\"rate_paise\" and \"supplier_return_lines\".\"cgst_paise\" >= 0 and \"supplier_return_lines\".\"sgst_paise\" >= 0 and \"supplier_return_lines\".\"igst_paise\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.supplier_returns": {
-      "name": "supplier_returns",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "return_no": {
-          "name": "return_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "vendor_id": {
-          "name": "vendor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recall_id": {
-          "name": "recall_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "inter_state": {
-          "name": "inter_state",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "taxable_paise": {
-          "name": "taxable_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "cgst_paise": {
-          "name": "cgst_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "sgst_paise": {
-          "name": "sgst_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "igst_paise": {
-          "name": "igst_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "total_paise": {
-          "name": "total_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "approved_by": {
-          "name": "approved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "approved_at": {
-          "name": "approved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dispatched_by": {
-          "name": "dispatched_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dispatched_at": {
-          "name": "dispatched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "debit_note_no": {
-          "name": "debit_note_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "debit_note_date": {
-          "name": "debit_note_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "vendor_gstin": {
-          "name": "vendor_gstin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "credited_paise": {
-          "name": "credited_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "closed_by": {
-          "name": "closed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "closed_at": {
-          "name": "closed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "close_reason": {
-          "name": "close_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancelled_by": {
-          "name": "cancelled_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancelled_at": {
-          "name": "cancelled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancel_reason": {
-          "name": "cancel_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "supplier_returns_return_no_ux": {
-          "name": "supplier_returns_return_no_ux",
-          "columns": [
-            {
-              "expression": "return_no",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "supplier_returns_debit_note_no_ux": {
-          "name": "supplier_returns_debit_note_no_ux",
-          "columns": [
-            {
-              "expression": "debit_note_no",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"supplier_returns\".\"debit_note_no\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "supplier_returns_vendor_idx": {
-          "name": "supplier_returns_vendor_idx",
-          "columns": [
-            {
-              "expression": "vendor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "supplier_returns_status_idx": {
-          "name": "supplier_returns_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "supplier_returns_vendor_id_vendors_id_fk": {
-          "name": "supplier_returns_vendor_id_vendors_id_fk",
-          "tableFrom": "supplier_returns",
-          "tableTo": "vendors",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "supplier_returns_recall_id_stock_recalls_id_fk": {
-          "name": "supplier_returns_recall_id_stock_recalls_id_fk",
-          "tableFrom": "supplier_returns",
-          "tableTo": "stock_recalls",
-          "columnsFrom": [
-            "recall_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "supplier_returns_status_ck": {
-          "name": "supplier_returns_status_ck",
-          "value": "\"supplier_returns\".\"status\" in ('draft', 'approved', 'dispatched', 'credited', 'closed', 'cancelled')"
-        },
-        "supplier_returns_source_ck": {
-          "name": "supplier_returns_source_ck",
-          "value": "\"supplier_returns\".\"source\" in ('manual', 'agent', 'recall')"
-        },
-        "supplier_returns_money_ck": {
-          "name": "supplier_returns_money_ck",
-          "value": "\"supplier_returns\".\"taxable_paise\" >= 0 and \"supplier_returns\".\"cgst_paise\" >= 0 and \"supplier_returns\".\"sgst_paise\" >= 0 and \"supplier_returns\".\"igst_paise\" >= 0 and \"supplier_returns\".\"total_paise\" = \"supplier_returns\".\"taxable_paise\" + \"supplier_returns\".\"cgst_paise\" + \"supplier_returns\".\"sgst_paise\" + \"supplier_returns\".\"igst_paise\""
-        },
-        "supplier_returns_tax_kind_ck": {
-          "name": "supplier_returns_tax_kind_ck",
-          "value": "(\"supplier_returns\".\"inter_state\" and \"supplier_returns\".\"cgst_paise\" = 0 and \"supplier_returns\".\"sgst_paise\" = 0) or (not \"supplier_returns\".\"inter_state\" and \"supplier_returns\".\"igst_paise\" = 0)"
-        },
-        "supplier_returns_approved_ck": {
-          "name": "supplier_returns_approved_ck",
-          "value": "(\"supplier_returns\".\"approved_at\" is null) = (\"supplier_returns\".\"approved_by\" is null) and (\"supplier_returns\".\"status\" not in ('approved', 'dispatched', 'credited', 'closed') or \"supplier_returns\".\"approved_by\" is not null)"
-        },
-        "supplier_returns_dispatched_ck": {
-          "name": "supplier_returns_dispatched_ck",
-          "value": "(\"supplier_returns\".\"status\" in ('dispatched', 'credited', 'closed')) = (\"supplier_returns\".\"dispatched_at\" is not null) and (\"supplier_returns\".\"dispatched_at\" is null) = (\"supplier_returns\".\"dispatched_by\" is null) and (\"supplier_returns\".\"dispatched_at\" is null) = (\"supplier_returns\".\"debit_note_no\" is null) and (\"supplier_returns\".\"debit_note_no\" is null) = (\"supplier_returns\".\"debit_note_date\" is null)"
-        },
-        "supplier_returns_credited_ck": {
-          "name": "supplier_returns_credited_ck",
-          "value": "\"supplier_returns\".\"credited_paise\" >= 0 and \"supplier_returns\".\"credited_paise\" <= \"supplier_returns\".\"total_paise\" and (\"supplier_returns\".\"status\" = 'credited' or \"supplier_returns\".\"credited_paise\" = 0)"
-        },
-        "supplier_returns_closed_ck": {
-          "name": "supplier_returns_closed_ck",
-          "value": "(\"supplier_returns\".\"status\" = 'closed') = (\"supplier_returns\".\"closed_at\" is not null) and (\"supplier_returns\".\"closed_at\" is null) = (\"supplier_returns\".\"close_reason\" is null) and (\"supplier_returns\".\"closed_at\" is null) = (\"supplier_returns\".\"closed_by\" is null)"
-        },
-        "supplier_returns_cancelled_ck": {
-          "name": "supplier_returns_cancelled_ck",
-          "value": "(\"supplier_returns\".\"status\" = 'cancelled') = (\"supplier_returns\".\"cancelled_at\" is not null) and (\"supplier_returns\".\"cancelled_at\" is null) = (\"supplier_returns\".\"cancel_reason\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -21094,12 +19997,6 @@
         },
         "payment_terms_days": {
           "name": "payment_terms_days",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expiry_return_days": {
-          "name": "expiry_return_days",
           "type": "integer",
           "primaryKey": false,
           "notNull": false

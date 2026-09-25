@@ -10,6 +10,8 @@ import { acquireEditLease, releaseEditLease } from "./lease";
 import type { LeaseAnswer } from "./lease";
 import { referInternally } from "./referral";
 import { saveVisitSection, visitSections } from "./sections";
+import { visitLayout } from "./layout";
+import type { VisitLayout } from "./layout";
 import type { SectionRecordView, VisitSections } from "./sections";
 import { printGlassesRx } from "./glasses-print";
 import type { ReminderView } from "./reminders";
@@ -395,6 +397,17 @@ export class OpdQueueController {
   async sections(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<VisitSections> {
     try {
       return await visitSections(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Consult layout (layout.ts) — which consult sections this visit shows, in what order, under the versions it started with. */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("visits/:id/layout")
+  async layout(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<VisitLayout> {
+    try {
+      return await visitLayout(this.db, actor, id);
     } catch (e) {
       toHttp(e);
     }

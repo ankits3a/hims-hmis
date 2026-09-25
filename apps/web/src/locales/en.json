@@ -5722,6 +5722,45 @@
     "addOwn": "Add “{{term}}” as your own entry",
     "adviceFind": "Find advice — a template or your own line"
   },
+  "opdLayout": {
+    "adminTab": "Consult layout",
+    "department": "Department",
+    "section": "Section",
+    "order": "Order",
+    "shown": "Shown",
+    "mandatory": "Mandatory",
+    "locked": "Locked",
+    "up": "Move {{name}} up",
+    "down": "Move {{name}} down",
+    "save": "Save layout",
+    "saved": "Saved",
+    "versionLine": "{{dept}} · version {{version}} · changes apply to new visits only",
+    "versionNone": "{{dept}} · no saved layout yet · changes apply to new visits only",
+    "audit": "Audit",
+    "auditEmpty": "No changes yet.",
+    "auditRow": "{{at}} · {{who}} · {{changes}} (v{{from}} → v{{to}})",
+    "auditRowFirst": "{{at}} · {{who}} · {{changes}} (v{{to}})",
+    "auditNote": "An old visit always reads and prints in the version it was written under.",
+    "change": {
+      "hidden": "{{name}} hidden",
+      "shown": "{{name}} shown",
+      "mandatory": "{{name}} set to mandatory",
+      "optional": "{{name}} no longer mandatory",
+      "movedAbove": "{{name}} moved above {{other}}",
+      "movedBelow": "{{name}} moved below {{other}}"
+    },
+    "my": {
+      "menu": "My layout",
+      "title": "My layout",
+      "rules": "You may reorder any section. You may hide a section only if it is not mandatory. Mandatory sections stay on your screen.",
+      "hide": "Hide",
+      "mandatory": "Mandatory",
+      "adminHidden": "Hidden by the department layout: {{list}}",
+      "note": "Changes apply to your next visits",
+      "save": "Save",
+      "close": "Close"
+    }
+  },
   "opdEye": {
     "tab": "Eye",
     "test": "Test",

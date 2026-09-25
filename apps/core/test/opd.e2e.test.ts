@@ -512,6 +512,48 @@ describe("opd e2e", () => {
     expect(dept.avgConsultMinutes).toBe(9);
   });
 
+  /*
+   * Board `Profiles` — the consult layout. The department default is the config admin's and the
+   * overlay is the doctor's own, pinned in both directions over HTTP: a doctor is refused on the
+   * default, a holder of `opd.config.manage` without `opd.consult` is refused on the overlay, and a
+   * user WITH `opd.consult` but no doctor row gets 404 `not_a_doctor`, never somebody else's layout.
+   */
+  it("the consult layout: the admin's default and the doctor's own overlay, each behind its own permission", async () => {
+    const def = await request(app.getHttpServer())
+      .get(`/opd/layouts/${deptId}`).set(...auth(supervisor.token)).expect(200);
+    expect(def.body.version).toBeNull();
+    const sections = (def.body.sections as { key: string; shown: boolean; mandatory: boolean }[])
+      .map((r) => ({ key: r.key, shown: r.key === "notes" ? false : r.shown, mandatory: r.mandatory, locked: true }));
+    const saved = await request(app.getHttpServer())
+      .put(`/opd/layouts/${deptId}`).set(...auth(supervisor.token)).send({ sections }).expect(200);
+    expect(saved.body.version).toBe(1);
+    expect(saved.body.audit[0].summary).toBe("Notes hidden");
+    const locked = sections.map((r) => (r.key === "rx" ? { ...r, mandatory: false } : r));
+    const refusedLock = await request(app.getHttpServer())
+      .put(`/opd/layouts/${deptId}`).set(...auth(supervisor.token)).send({ sections: locked }).expect(400);
+    expect(refusedLock.body.code).toBe("invalid_layout");
+
+    // A doctor may not write the department default…
+    await request(app.getHttpServer())
+      .put(`/opd/layouts/${deptId}`).set(...auth(dra.token)).send({ sections }).expect(403);
+    // …but writes their own overlay, and may not hide a mandatory section in it.
+    const mine = await request(app.getHttpServer())
+      .put("/opd/me/layout").set(...auth(dra.token)).send({ order: ["rx"], hidden: ["treat"] }).expect(200);
+    expect(mine.body.version).toBe(1);
+    expect(mine.body.adminHidden).toEqual(["notes"]);
+    const refusedHide = await request(app.getHttpServer())
+      .put("/opd/me/layout").set(...auth(dra.token)).send({ order: [], hidden: ["dx"] }).expect(400);
+    expect(refusedHide.body.code).toBe("invalid_layout");
+    // The config admin is not a doctor: no `opd.consult`, so the overlay route refuses them outright.
+    await request(app.getHttpServer())
+      .put("/opd/me/layout").set(...auth(supervisor.token)).send({ order: [], hidden: [] }).expect(403);
+    // A user holding `opd.consult` with no doctor row is refused as not a doctor.
+    const notDoctor = await mkUser(db, "notdoc", ["doc"]);
+    const refusedNotDoctor = await request(app.getHttpServer())
+      .put("/opd/me/layout").set(...auth(notDoctor.token)).send({ order: [], hidden: [] }).expect(404);
+    expect(refusedNotDoctor.body.code).toBe("not_a_doctor");
+  });
+
   it("the public board carries tokens, rooms and doctors — and no patient identity", async () => {
     const first = await registerPatientOverHttp("Board One", "9876543213");
     const second = await registerPatientOverHttp("Board Two", "9876543214");
