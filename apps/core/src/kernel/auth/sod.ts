@@ -22,6 +22,10 @@ export const SOD_PAIR_SEED: { pairKey: string; description: string }[] = [
   // `sod.violation_blocked` when a service call tries it, so the attempt is auditable rather than
   // merely refused.
   { pairKey: "scrub_circulating", description: "Scrub nurse vs circulating nurse on one OT count round" },
+  // PHARMACY PARITY P3 — whoever authorised a supplier payment run does not also record it as paid:
+  // the owner who said yes is not the hand that says the money left. `payout_preparer_payout_approver`
+  // is the run's other pair (the preparer never authorises).
+  { pairKey: "payment_authoriser_recorder", description: "Supplier payment-run authoriser vs payment recorder" },
 ];
 
 export async function seedSodPairs(db: Db): Promise<void> {

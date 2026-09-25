@@ -104,3 +104,26 @@ export {
   stockLevelsAt, submitPurchaseOrder, updatePurchaseOrder,
 } from "./purchase-orders";
 export type { LastPurchase, PoFilter, PoInput, PoLineInput, PoLineView, PoStatus, PoSummary, PoView, StockLevel } from "./purchase-orders";
+
+// ── PHARMACY PARITY P3 — supplier bills, payables, payment runs ──
+export { PAYMENT_RUN_APPROVAL_TYPE } from "./approval-types";
+export {
+  BILL_MATCH_TOLERANCE_BPS, BILL_MATCH_TOLERANCE_MIN_PAISE, CASH_PAYMENT_DAILY_LIMIT_PAISE, DEFAULT_SUPPLIER_TERMS_DAYS,
+  MSME_MAX_PAYMENT_DAYS, PAYMENT_RUN_HORIZON_DAYS,
+} from "./config";
+export {
+  AGE_BUCKETS, PAYABLE_BILL_STATUSES, acceptBillDifference, acceptSupplierBill, ageBucketOf, billDraftFromGrn, billsDueBy,
+  cancelSupplierBill, createSupplierBill, dueDateFor, financialYearOf, getSupplierBill, lineMismatches, listSupplierBills,
+  matchSupplierBill, matchTolerancePaise, payables, supplierLedger, unbilledGrns, updateSupplierBill, vendorBillKey, withinMatch,
+} from "./supplier-bills";
+export type {
+  AgeBucket, BillDraft, BillFilter, BillInput, BillLineInput, BillLineView, BillMismatch, BillStatus, BillSummary, BillView,
+  LedgerEntry, PayableRow, Payables, SupplierLedger, SupplierSummaryRow, UnbilledGrn,
+} from "./supplier-bills";
+export {
+  PAYMENT_MODES, assertNotRunAuthoriser, cancelPaymentRun, createPaymentRun, decidePaymentRun, draftPaymentRun, getPaymentRun,
+  listPaymentRuns, planPaymentRun, recordVendorPayment, settlePaymentRuns, submitPaymentRun, updatePaymentRun,
+} from "./payments";
+export type {
+  PaymentInput, PaymentMode, PaymentPlan, PlanBill, PlanGroup, RunLineInput, RunLineView, RunStatus, RunSummary, RunVendorView, RunView,
+} from "./payments";

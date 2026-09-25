@@ -150,3 +150,28 @@ export function PurchasePlanCard({ plan, onDone }: { plan: PurchasePlanCardData;
     </div>
   );
 }
+
+/**
+ * PARITY P3 — "payment run bana do": the agent's PAYMENT-RUN plan as the copilot hands it over. It
+ * writes nothing; the card opens the office's pay side, where a person makes the draft run, the owner
+ * authorises it and somebody else records it paid.
+ */
+export type PaymentRunCardData = { kind: "payment_run_plan"; href: string; vendors: number; bills: number; totalPaise: number };
+
+export function paymentRunPlanOf(payload: unknown): PaymentRunCardData | null {
+  const p = payload as Partial<PaymentRunCardData> | null | undefined;
+  return p != null && p.kind === "payment_run_plan" && typeof p.bills === "number" && p.bills > 0 ? (p as PaymentRunCardData) : null;
+}
+
+export function PaymentRunCard({ plan, onDone }: { plan: PaymentRunCardData; onDone: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  return (
+    <div data-testid="desk-pay-card" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid #24413631" }}>
+      <span className="tag" style={{ color: "var(--mint)", flexShrink: 0 }}>{t("pharmacyDesk.payPlan.tag")}</span>
+      <span style={{ flexGrow: 1, fontSize: 12.5, lineHeight: "18px" }}>{t("pharmacyDesk.payPlan.body", { vendors: plan.vendors, bills: plan.bills })}</span>
+      <button type="button" className="agdo" onClick={() => { onDone(); void navigate({ to: "/pharmacy/office", search: { view: "pay" } as never }); }}>{t("pharmacyDesk.payPlan.open")}</button>
+      <button type="button" onClick={onDone} aria-label={t("pharmacyDesk.short.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>
+    </div>
+  );
+}

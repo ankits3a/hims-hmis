@@ -122,6 +122,20 @@ export const materialsManifest: ModuleManifest = {
      * bank-change precedent in this file's header.
      */
     "materials.po.raise",
+    /**
+     * PHARMACY PARITY P3 — enter a supplier's bill (the agent prefills it from the GRN), match it
+     * three ways, accept a matched one, cancel one nothing has been paid on.
+     */
+    "materials.bills.manage",
+    /** P3 — accept a bill HELD outside the match tolerance, with a reason. Never the bill's own enterer. */
+    "materials.bills.accept_difference",
+    /**
+     * P3 — prepare a payment run and submit it. NOT the authorisation: that is the approvals engine's
+     * (`materials_payment_run_approval` → owner), and the preparer can never authorise it.
+     */
+    "materials.payments.prepare",
+    /** P3 — record a vendor on an authorised run as paid: mode, reference, date. Never the authoriser. */
+    "materials.payments.record",
   ],
   /**
    * **PLAN 14 T7 — THE ONE SUBSCRIPTION, LANDED WITH ITS HANDLER IN THIS COMMIT.**

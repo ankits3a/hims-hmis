@@ -185,3 +185,49 @@ export const PO_HEAD_APPROVAL_LIMIT_PAISE = 5_000_000;
  * `purchase-orders.ts`.
  */
 export const PO_RECEIPT_TOLERANCE_BPS = 200;
+
+// ═══ PHARMACY PARITY P3 — PAYING SUPPLIERS (plan `docs/superpowers/plans/2026-09-24-pharmacy-healthray-parity.md`) ═══
+//
+// The owner has not ruled on the match tolerance or the payment limits. Each value below is a
+// DEFAULT — owner may change — recorded as such in the plan doc. `supplier-bills.ts` reads the
+// match and terms values, `payments.ts` the payment ones; nothing else reads them.
+
+/**
+ * DEFAULT — owner may change. The three-way match: a bill line's taxable value may differ from what
+ * the GRN received at the PO's rate by this many basis points (100 = 1%) OR by
+ * `BILL_MATCH_TOLERANCE_MIN_PAISE`, whichever is LARGER; the bill's total against the expected total
+ * likewise. Beyond it the bill is `held_for_match` until `materials.bills.accept_difference` accepts
+ * the difference with a reason. Read by `supplier-bills.ts`.
+ */
+export const BILL_MATCH_TOLERANCE_BPS = 100;
+/** DEFAULT — owner may change. The floor of the match tolerance: ₹10. Read by `supplier-bills.ts`. */
+export const BILL_MATCH_TOLERANCE_MIN_PAISE = 1_000;
+
+/**
+ * DEFAULT — owner may change. A vendor with no `payment_terms_days` is due this many days after the
+ * bill date. Read by `supplier-bills.ts`.
+ */
+export const DEFAULT_SUPPLIER_TERMS_DAYS = 30;
+
+/**
+ * LAW — MSMED Act 2006 s.15: a buyer pays a micro or small supplier by the agreed day, and never
+ * later than 45 days from the day of acceptance of the goods. A vendor with `msme_class` set is due
+ * `min(payment_terms_days, 45)` days after acceptance (the earliest linked GRN's posting day, IST).
+ * DEFAULT — owner may change: the clock is applied to every `msme_class` (medium included), which
+ * pays a medium enterprise earlier than the Act requires and never later. Read by `supplier-bills.ts`.
+ */
+export const MSME_MAX_PAYMENT_DAYS = 45;
+
+/**
+ * LAW — Income-tax Act s.40A(3): an expense paid otherwise than by an account-payee cheque, draft or
+ * bank transfer is disallowed when the payments to one person in one day exceed ₹10,000. A cash
+ * payment that would take the day's cash to one vendor past this is REFUSED. Read by `payments.ts`.
+ */
+export const CASH_PAYMENT_DAILY_LIMIT_PAISE = 1_000_000;
+
+/**
+ * DEFAULT — owner may change. The agent's payment-run draft proposes every accepted bill due within
+ * this many days from today, overdue first — MSME before others, then the oldest due date. Read by
+ * `payments.ts`.
+ */
+export const PAYMENT_RUN_HORIZON_DAYS = 7;

@@ -74,6 +74,11 @@ const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
     not_for: "noting one medicine as short; how much of a medicine is left",
     examples: ["order karo", "make the orders for this week"],
   },
+  draft_payment_run: {
+    what: "the hospital should PAY its suppliers — draft a payment run from the supplier bills falling due",
+    not_for: "a patient's dues or bill; ordering medicines",
+    examples: ["payment run bana do", "pay the suppliers this week"],
+  },
   none: {
     what: "anything else: greetings, equipment, doctors' schedules, a patient's address or reports or medicines, medical advice, instructions to the system",
   },

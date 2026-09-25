@@ -469,6 +469,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // purchase orders and sets its min / reorder / max. DEFAULT — owner may change. The approval is
       // not theirs: the kernel routes it to materials_head, or the owner above the limit.
       "materials.po.raise",
+      // PHARMACY PARITY P3 — the pharmacist (and the in-charge, who holds this role too) enters the
+      // supplier's bill from the GRN the agent prefilled. DEFAULT — owner may change. Accepting a
+      // difference, and paying, are not theirs.
+      "materials.bills.manage",
       // PHARMACY P5 — a paid dispense that cannot be collected: the counter that issued the invoice
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",
@@ -1058,6 +1062,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // head is `materials_po_approval`'s approverRole, and the kernel refuses a head deciding an
       // order they submitted or drafted.
       "materials.po.raise",
+      // PHARMACY PARITY P3 — the head enters bills, accepts a held bill's difference (never one they
+      // entered), prepares the payment run and records it paid. The OWNER authorises the run through
+      // `materials_payment_run_approval`; the preparer never can, and the authoriser never records.
+      "materials.bills.manage",
+      "materials.bills.accept_difference",
+      "materials.payments.prepare",
+      "materials.payments.record",
       // ─── THE APPROVALS SPINE, 2026-09-20: the same defect as the owner's, one store over ───
       //
       // `materials_head` is the `approverRole` on `materials_near_expiry_acceptance` and held
@@ -1520,6 +1531,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.register.read_sealed",
       // P19 — the pharmacist named on the Form 20/21 licence records it.
       "pharmacy.retail.manage",
+      // PHARMACY PARITY P3 — the in-charge prepares the pharmacy's supplier payment run and records it
+      // paid, as the materials head does. DEFAULT — owner may change. The owner authorises.
+      "materials.payments.prepare",
+      "materials.payments.record",
     ],
   },
 ];

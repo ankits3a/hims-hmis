@@ -122,6 +122,31 @@ const CENSUS: Record<string, string[]> = {
     "free_packs", "free_received_base", "gst_rate_bps", "id", "item_id", "line_total_paise", "mrp_paise", "multiplier",
     "purchase_order_id", "qty_packs", "rate_paise", "received_base", "uom",
   ],
+  // PHARMACY PARITY P3 — the supplier's bill and its lines, the payment run, its lines and the payment.
+  supplier_bills: [
+    "acceptance_date", "accepted_at", "accepted_by", "bill_date", "bill_no", "cancel_reason", "cancelled_at",
+    "cancelled_by", "cgst_paise", "created_at", "created_by", "difference_accepted_by", "difference_reason",
+    "due_date", "expected_total_paise", "fy", "held_reason", "id", "igst_paise", "inter_state", "matched_at", "msme",
+    "note", "paid_paise", "purchase_order_id", "round_off_paise", "sgst_paise", "status", "taxable_paise",
+    "terms_days", "total_paise", "updated_at", "updated_by", "vendor_bill_key", "vendor_bill_no", "vendor_id",
+  ],
+  supplier_bill_lines: [
+    "bill_id", "cgst_paise", "expected_base", "expected_gst_rate_bps", "expected_rate_paise",
+    "expected_taxable_paise", "grn_id", "gst_rate_bps", "id", "igst_paise", "item_id", "mismatch", "multiplier",
+    "qty_packs", "rate_paise", "sgst_paise", "taxable_paise", "uom",
+  ],
+  supplier_payment_runs: [
+    "approval_id", "authorised_at", "authorised_by", "cancel_reason", "cancelled_at", "cancelled_by", "completed_at",
+    "created_at", "created_by", "id", "note", "rejection_note", "run_no", "source", "status", "submitted_at",
+    "total_paise", "updated_at", "updated_by",
+  ],
+  supplier_payments: [
+    "amount_paise", "id", "mode", "paid_on", "payment_no", "recorded_at", "recorded_by", "reference", "run_id",
+    "vendor_id",
+  ],
+  supplier_payment_run_lines: [
+    "bill_id", "credit_paise", "id", "pay_paise", "payment_id", "run_id", "vendor_id",
+  ],
 };
 
 describe("the materials tables (Plan 14 T1)", () => {
@@ -161,8 +186,8 @@ describe("the materials tables (Plan 14 T1)", () => {
    * each, and the prose count followed the bullets rather than the tables. Recorded here as a
    * number rather than only in CLOSE, so the next phase that reads this family counts what exists.
    */
-  it("there are exactly NINETEEN of them — the plan's prose said fifteen (F2); parity P2 added three", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(19);
+  it("there are exactly TWENTY-FOUR of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(24);
   });
 
   // ───────────────────── the five semantic CHECKs, read out BY NAME ─────────────────────

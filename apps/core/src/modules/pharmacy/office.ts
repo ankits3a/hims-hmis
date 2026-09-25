@@ -1,9 +1,12 @@
-import { getPurchaseOrder, listPurchaseOrders, overduePurchaseOrders, purchaseOrdersAwaiting } from "../materials";
+import {
+  billDraftFromGrn, getPurchaseOrder, listPaymentRuns, listPurchaseOrders, listSupplierBills, overduePurchaseOrders, payables,
+  planPaymentRun, purchaseOrdersAwaiting, unbilledGrns,
+} from "../materials";
 import { loadOpdConfig } from "../opd";
 import { esc } from "../../kernel/printing/render";
 import { planPurchaseDrafts } from "./purchase-drafts";
 import { listOpenShortBook } from "./short-book";
-import type { PoSummary } from "../materials";
+import type { BillDraft, BillSummary, PayableRow, PoSummary, RunSummary, UnbilledGrn } from "../materials";
 import type { ShortBookView } from "./short-book";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -104,4 +107,67 @@ export async function purchaseOrderDocument(db: Db, actor: Actor, poId: string):
     page: { widthMm: 210, heightMm: 297 },
     html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body>${body}</body></html>`,
   };
+}
+
+/**
+ * ═══ PARITY P3 — THE OFFICE'S "PAY" SIDE: WHAT NEEDS PAYING ATTENTION TODAY ═══
+ *
+ * Federates materials' payables, as `officeToday` federates its orders:
+ *
+ *   - `toMatch`: posted challans no bill names yet — each opens a bill the agent prefilled;
+ *   - `drafts`: bills entered and not yet matched;
+ *   - `held`: bills held outside the match tolerance, waiting for the head's accept-the-difference;
+ *   - `matched`: matched bills one keystroke from being booked;
+ *   - `dueThisWeek` / `overdue`: accepted bills by due date (MSME first on both);
+ *   - `runs`: runs in draft, awaiting the owner's authorisation, and authorised but not yet paid;
+ *   - `plan`: what the agent would put on a run now, so its card says it before a person presses.
+ */
+export type OfficePay = {
+  toMatch: UnbilledGrn[];
+  drafts: BillSummary[];
+  held: BillSummary[];
+  matched: BillSummary[];
+  dueThisWeek: PayableRow[];
+  overdue: PayableRow[];
+  runs: RunSummary[];
+  outstandingPaise: number;
+  overduePaise: number;
+  plan: { vendors: number; bills: number; totalPaise: number; blocked: number; until: string };
+};
+
+const msmeFirst = (a: PayableRow, b: PayableRow): number =>
+  Number(b.msme) - Number(a.msme) || (a.dueDate ?? "").localeCompare(b.dueDate ?? "") || a.billNo.localeCompare(b.billNo);
+
+export async function officePay(db: Db, actor: Actor, now: Date = new Date()): Promise<OfficePay> {
+  const [toMatch, bills, book, runs, plan] = await Promise.all([
+    unbilledGrns(db, actor),
+    listSupplierBills(db, actor, { statuses: ["draft", "held_for_match", "matched"] }),
+    payables(db, actor, now),
+    listPaymentRuns(db, actor, { statuses: ["draft", "pending_authorisation", "authorised"] }),
+    planPaymentRun(db, now),
+  ]);
+  return {
+    toMatch,
+    drafts: bills.filter((b) => b.status === "draft"),
+    held: bills.filter((b) => b.status === "held_for_match"),
+    matched: bills.filter((b) => b.status === "matched"),
+    dueThisWeek: book.bills.filter((b) => b.overdueDays === 0 && b.dueDate !== null && b.dueDate <= plan.until).sort(msmeFirst),
+    overdue: book.bills.filter((b) => b.overdueDays > 0).sort(msmeFirst),
+    runs,
+    outstandingPaise: book.totalOutstandingPaise,
+    overduePaise: book.overduePaise,
+    plan: {
+      vendors: plan.groups.length, bills: plan.groups.reduce((s, g) => s + g.bills.length, 0), totalPaise: plan.totalPaise,
+      blocked: plan.blocked.length, until: plan.until,
+    },
+  };
+}
+
+/**
+ * The agent's bill for a GRN, with the hospital's GSTIN state (the letterhead's) so an out-of-state
+ * vendor's bill is prefilled as IGST. Writes nothing.
+ */
+export async function officeBillDraft(db: Db, actor: Actor, grnId: string): Promise<BillDraft> {
+  const gstin = (await loadOpdConfig(db)).letterhead.gstin;
+  return billDraftFromGrn(db, actor, grnId, { hospitalStateCode: gstin === undefined ? null : gstin.slice(0, 2) });
 }

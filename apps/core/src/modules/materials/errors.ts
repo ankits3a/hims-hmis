@@ -209,7 +209,36 @@ export type MaterialsErrorCode =
   /** The person who approved the order is the one receiving it (`po_approver_grn_receiver`). */
   | "po_approver_receiving"
   /** Stock levels that do not hold `0 ≤ min ≤ reorder < max`. */
-  | "invalid_stock_level";
+  | "invalid_stock_level"
+  // ── PHARMACY PARITY P3 — supplier bills, the match, payment runs and payments ──
+  /** No such supplier bill. */
+  | "unknown_supplier_bill"
+  /** The bill is not in the state this act needs. */
+  | "bill_wrong_status"
+  /** A bill or bill line out of shape: no lines, a GRN not this vendor's or not posted, an amount out of range. */
+  | "bill_invalid"
+  /** The vendor already has a live bill with this number in this financial year. */
+  | "duplicate_bill"
+  /** A GRN is already on another live bill. */
+  | "grn_already_billed"
+  /** Whoever entered the bill tries to accept its difference; somebody else does. */
+  | "bill_self_accept"
+  /** No such payment run. */
+  | "unknown_payment_run"
+  /** The run is not in the state this act needs. */
+  | "run_wrong_status"
+  /** A run or run line out of shape: a bill not payable, more than the bill still owes, no lines. */
+  | "run_invalid"
+  /** Only the run's preparer submits it (so the kernel's requester ≠ approver is preparer ≠ authoriser). */
+  | "run_not_preparer"
+  /** The person who authorised the run records its payment (`payment_authoriser_recorder`). */
+  | "authoriser_recording"
+  /** The vendor's bank details changed and the cooling-off has not ended (`vendors.first_payment_allowed_at`). */
+  | "vendor_cooling_off"
+  /** Cash to one vendor in one day would pass the Income-tax Act s.40A(3) limit. */
+  | "cash_limit_exceeded"
+  /** A bank mode without its reference (UTR, cheque number). */
+  | "payment_reference_required";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
@@ -225,6 +254,7 @@ export type MaterialsErrorCode =
 const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([
   "unknown_item", "unknown_vendor", "unknown_store", "unknown_batch",
   "unknown_document", "unknown_count", "unknown_adjustment", "unknown_purchase_order",
+  "unknown_supplier_bill", "unknown_payment_run",
 ]);
 
 export function materialsHttpStatus(code: MaterialsErrorCode): number {

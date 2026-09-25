@@ -4,9 +4,10 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { SodViolationError } from "../../kernel/auth/sod";
 import { httpError, idSchema, parsed, toHttp } from "./pharmacy-http";
-import { officeToday, purchaseOrderDocument } from "./office";
+import { officeBillDraft, officePay, officeToday, purchaseOrderDocument } from "./office";
 import { draftPurchaseOrders, planPurchaseDrafts } from "./purchase-drafts";
-import type { OfficeToday } from "./office";
+import type { OfficePay, OfficeToday } from "./office";
+import type { BillDraft } from "../materials";
 import type { PurchasePlan } from "./purchase-drafts";
 import type { PoView } from "../materials";
 import type { Actor } from "@hmis/contracts";
@@ -65,6 +66,24 @@ export class PharmacyOfficeController {
   async document(@CurrentActor() actor: Actor, @Param("id") poId: string): Promise<RenderedDocument> {
     try {
       return await purchaseOrderDocument(this.db, actor, poId);
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** PARITY P3 — the pay side of the office: bills to match, held, due, overdue, runs, the agent's plan. */
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("pay")
+  async pay(@CurrentActor() actor: Actor): Promise<OfficePay> {
+    try {
+      return await officePay(this.db, actor, new Date());
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** PARITY P3 — the agent's prefill of a bill from a posted GRN (IGST when the vendor is out of state). */
+  @RequirePermission("materials.bills.manage", "hospital")
+  @Get("bill-draft/:grnId")
+  async billDraft(@CurrentActor() actor: Actor, @Param("grnId") grnId: string): Promise<BillDraft> {
+    try {
+      return await officeBillDraft(this.db, actor, grnId);
     } catch (e) { officeHttp(e); }
   }
 }

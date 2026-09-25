@@ -215,12 +215,19 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       unknown_batch: ["consumption.ts", "ledger.ts", "transfers.ts"],
       // "the id names no row of this kind" — GRN, transfer, lot, bank change. `errors.ts`'s F5
       // clause argues this one at length; it is the module's generic 404 by design.
-      unknown_document: ["consumption.ts", "grn.ts", "ledger.ts", "materials.controller.ts", "transfers.ts", "vendors.ts"],
+      // Parity P3: a supplier bill naming a GRN that is not there — the same "no such document".
+      unknown_document: ["consumption.ts", "grn.ts", "ledger.ts", "materials.controller.ts", "supplier-bills.ts", "transfers.ts", "vendors.ts"],
       // "no such item".
-      unknown_item: ["grn.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts"],
+      unknown_item: ["grn.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts", "supplier-bills.ts"],
       // Parity P2 — the act's own grant check, answered as the route guard would (403): counts,
       // adjustments, and the purchase order's raise/read. One meaning: you do not hold the grant.
-      permission_denied: ["adjustments.ts", "counts.ts", "purchase-orders.ts"],
+      // Parity P3: the supplier bill's and the payment run's own grant checks — the same meaning.
+      permission_denied: ["adjustments.ts", "counts.ts", "payments.ts", "purchase-orders.ts", "supplier-bills.ts"],
+      // "say why": a count closed, an order, a bill or a run cancelled, a bill's difference accepted —
+      // every one is a free-text reason the act refuses to take empty. One meaning, one remedy.
+      reason_required: ["counts.ts", "payments.ts", "purchase-orders.ts", "supplier-bills.ts"],
+      // "no such vendor": the master's own 404, reached from a bill, a payment and a ledger.
+      unknown_vendor: ["materials.controller.ts", "payments.ts", "supplier-bills.ts", "vendors.ts"],
     });
   });
 

@@ -127,6 +127,81 @@ Measured before planning (2 read-only passes, 2026-09-24):
   the reference. `vendors.first_payment_allowed_at` is honoured (bank-change cooling-off, already modelled).
 - Supplier ledger + Supplier Summary.
 
+**P3 as built (2026-09-25, lane `pharmacy-p3-pay`, migration 0126).**
+- Tables (materials module): `supplier_bills` and `supplier_bill_lines` (one line per item per GRN,
+  carrying what the GRN accepted and the PO's rate beside what was billed), `supplier_payment_runs`,
+  `supplier_payment_run_lines` (`pay_paise`, and `credit_paise` reserved for P4 — always 0 today) and
+  `supplier_payments` (one voucher per vendor per run).
+- Voucher numbers (stable, for P5's Tally export) from `EPISODE_SERIES`: the bill as we booked it
+  `MSB…`, the payment run `MPR…`, the payment voucher `MPV…`. Every money document also carries its
+  date (bill date, paid-on date).
+- Bill: draft → matched | held_for_match → accepted → part_paid → paid, or cancelled (only with
+  nothing paid and on no open run). One live bill per vendor, vendor bill number (case, spaces, `-`,
+  `/`, `.` ignored) and Indian financial year — in the act and by a partial unique index. One GRN is on
+  one live bill. Consignment and donation GRNs are never billed here. Input GST is kept per line as
+  CGST + SGST or IGST (for P5's GSTR-2B).
+- The agent prefills a bill from a posted GRN (`billDraftFromGrn`): the accepted quantity, the PO's
+  rate and GST, the challan's invoice number and date; IGST when the vendor's GSTIN state is not the
+  letterhead's. The person types the bill number and date and any line that differs.
+- Payables: `payables()` (ageing by bill date 0–30 / 31–60 / 61–90 / 90+, overdue by due date, the
+  Supplier Summary: total, paid, remaining, overdue) and `supplierLedger()` (bills credit, payments
+  debit, running balance, opening balance before `from`). Both export CSV from the screen.
+- Payment run: the agent drafts (`planPaymentRun`: accepted bills due within the week, overdue
+  included, MSME vendors first, then oldest due, at what each bill owes less what open runs already
+  hold; a vendor in bank-change cooling-off is listed apart and left out). Preparer submits →
+  `materials_payment_run_approval` (approver `owner`) → recorder marks each vendor paid with mode
+  (NEFT / RTGS / UPI / cheque / cash), reference (UTR / cheque number; required unless cash) and date.
+- Screens: inside `/pharmacy/office`, a Buy | Pay switch (`?view=pay`). Pay opens on bills to enter
+  or match, held, due this week, overdue (MSME called out), runs awaiting the owner; a GRN row opens
+  the prefilled bill (⏎ saves and matches), a bill shows the match per line, the run sheet is the
+  Healthray grid (Inv date, our no., vendor bill no., total, paid before, credit, pay now, remaining,
+  Full per row and per vendor). `P` opens payables; `D` makes the agent's draft run.
+- Copilot: `draft_payment_run` ("payment run bana do", "pay the suppliers"), read-only, gated on
+  `materials.payments.prepare`; its card opens the office's pay side.
+- Permissions: `materials.bills.manage` (materials_head, pharmacy), `materials.bills.accept_difference`
+  (materials_head), `materials.payments.prepare` and `materials.payments.record` (materials_head,
+  pharmacy_incharge). No `materials.payments.authorise`: the approval is the engine's. SoD:
+  `payout_preparer_payout_approver` (preparer ≠ authoriser, on the sheet; the kernel's requester ≠
+  approver in the inbox, since only the preparer submits) and the new `payment_authoriser_recorder`
+  (authoriser ≠ recorder; SoD engine event + in-act guard).
+- Census: `pharmacy_payment_run_approval_registered` (G2), `pharmacy_payment_authoriser_held` and
+  `pharmacy_payment_recorder_held` (G4).
+- Defaults, each a named value in `modules/materials/config.ts`:
+  - **DEFAULT — owner may change.** Three-way match tolerance: a line's taxable value against GRN
+    accepted × PO rate, and the bill total against the expected total, may differ by
+    `BILL_MATCH_TOLERANCE_BPS` = 1% or `BILL_MATCH_TOLERANCE_MIN_PAISE` = ₹10, whichever is larger.
+    Beyond it, or with a GST rate other than the order's, more billed than received, or a received
+    item not billed, the bill is held for match. `materials.bills.accept_difference` (the head) accepts
+    the difference with a reason — never the person who entered the bill (DECIDED: maker ≠ checker).
+  - **DEFAULT — owner may change.** Payment run prepared by materials_head or the pharmacist in charge,
+    authorised by the OWNER through `kernel/approvals`; the preparer never authorises; the authoriser
+    never records.
+  - **DEFAULT — owner may change.** A vendor with no `payment_terms_days` is due
+    `DEFAULT_SUPPLIER_TERMS_DAYS` = 30 days after the bill date.
+  - **LAW, applied as a DEFAULT — owner may change.** MSMED Act s.15: a vendor with `msme_class` set is
+    due `min(terms, MSME_MAX_PAYMENT_DAYS = 45)` days after the day of acceptance, taken as the earliest
+    linked GRN's posting day (IST). Applied to every class, medium included (the Act binds micro and
+    small; paying a medium enterprise by 45 days is never late).
+  - **LAW.** Income-tax Act s.40A(3): cash to one vendor in one day may not pass
+    `CASH_PAYMENT_DAILY_LIMIT_PAISE` = ₹10,000, summed over every cash payment that day; refused with
+    the reason.
+  - **LAW / O-6.** `vendors.first_payment_allowed_at` (bank-change cooling-off) blocks recording a
+    payment to that vendor before it.
+  - **DEFAULT — owner may change.** The agent's run covers bills due within `PAYMENT_RUN_HORIZON_DAYS`
+    = 7 days.
+- DECIDED (not money authority, procurement or law):
+  - Ageing is by bill date (the accountant's convention); "overdue" is by due date.
+  - Part payments: a run line may pay less than a bill owes; the bill becomes `part_paid`. One run
+    pays one vendor in one voucher.
+  - What an open run holds is reserved against the bill, so two runs cannot pay the same rupee.
+  - The run's approval carries the run as its payee for the kernel's daily aggregation, and the total
+    as its amount.
+  - An edited matched or held bill goes back to draft and is matched again.
+- Deferred: debit/credit notes and the credit offset (P4); Tally vouchers and GSTR-2B (P5); printing a
+  payment advice; bank file upload (NEFT bulk); e-mailing the vendor a remittance advice; the owner
+  opening the run grid from `/approvals` (the route `GET /materials/payment-runs/:id/for-approval`
+  exists, no screen links it).
+
 **P4 — Return: expiry/damage → debit note → credit offset**
 - Return-to-supplier from the Expiry report (Supplier-wise tab): the agent drafts per vendor within the return window
   (owner ruling). It posts a stock `return` movement and a **debit note**. The vendor's credit note, when it arrives, is

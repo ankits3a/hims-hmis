@@ -348,6 +348,47 @@ export const purchaseOrderReceived = defineEvent("purchase_order.received", MODU
   lines: z.array(z.object({ itemId: id, receivedBase: qty, freeReceivedBase: qty })).min(1),
 }));
 
+// ═══ PHARMACY PARITY P3 — paying: the supplier's bill, the payment run, the payment ═══
+
+const billHeader = { billId: id, billNo: z.string().min(1), vendorId: id, vendorBillNo: z.string().min(1), totalPaise: paise };
+
+/** A bill entered (from a GRN the agent prefilled, or by hand); `source` says which. */
+export const supplierBillDrafted = defineEvent("supplier_bill.drafted", MODULE, z.object({
+  ...billHeader, grnIds: z.array(id).min(1), lines: z.number().int().nonnegative(), source: z.enum(["manual", "agent"]),
+}));
+/** A draft (or a held bill sent back to draft) changed. */
+export const supplierBillUpdated = defineEvent("supplier_bill.updated", MODULE, z.object({ ...billHeader, lines: z.number().int().nonnegative() }));
+/** The three-way match ran: inside the tolerance (`matched`) or not (`held_for_match`, with the lines out and why). */
+export const supplierBillMatched = defineEvent("supplier_bill.matched", MODULE, z.object({
+  ...billHeader, expectedTotalPaise: paise, outcome: z.enum(["matched", "held_for_match"]),
+  mismatches: z.array(z.object({ itemId: id, grnId: id, reasons: z.array(z.string()) })),
+}));
+/** Booked as payable. `differenceReason` is set when a held bill's difference was accepted. */
+export const supplierBillAccepted = defineEvent("supplier_bill.accepted", MODULE, z.object({
+  ...billHeader, dueDate: z.string(), msme: z.boolean(), differenceReason: z.string().nullable(), differencePaise: paise,
+}));
+export const supplierBillCancelled = defineEvent("supplier_bill.cancelled", MODULE, z.object({ ...billHeader, reason: z.string().min(1), fromStatus: z.string() }));
+
+const runHeader = { runId: id, runNo: z.string().min(1), totalPaise: paise };
+
+export const paymentRunDrafted = defineEvent("payment_run.drafted", MODULE, z.object({
+  ...runHeader, source: z.enum(["manual", "agent"]), bills: z.number().int().nonnegative(), vendors: z.number().int().nonnegative(),
+}));
+export const paymentRunUpdated = defineEvent("payment_run.updated", MODULE, z.object({ ...runHeader, bills: z.number().int().nonnegative() }));
+export const paymentRunSubmitted = defineEvent("payment_run.submitted", MODULE, z.object({ ...runHeader, approvalId: id }));
+export const paymentRunAuthorised = defineEvent("payment_run.authorised", MODULE, z.object({ ...runHeader, approvalId: id, authorisedBy: id }));
+/** Refused by the owner: back to draft with the reason. */
+export const paymentRunRejected = defineEvent("payment_run.rejected", MODULE, z.object({ ...runHeader, approvalId: id, rejectedBy: id, note: z.string() }));
+export const paymentRunCancelled = defineEvent("payment_run.cancelled", MODULE, z.object({ ...runHeader, reason: z.string().min(1), fromStatus: z.string() }));
+/** Every vendor on the run has been paid. */
+export const paymentRunCompleted = defineEvent("payment_run.completed", MODULE, z.object({ ...runHeader, payments: z.number().int().positive() }));
+/** A vendor paid: the voucher, its mode and reference, and each bill it settles. */
+export const supplierPaymentRecorded = defineEvent("supplier_payment.recorded", MODULE, z.object({
+  paymentId: id, paymentNo: z.string().min(1), runId: id, vendorId: id, mode: z.enum(["neft", "rtgs", "upi", "cheque", "cash"]),
+  reference: z.string().nullable(), paidOn: z.string(), amountPaise: paise,
+  bills: z.array(z.object({ billId: id, billNo: z.string(), paidPaise: paise, status: z.enum(["part_paid", "paid"]) })).min(1),
+}));
+
 export const MATERIALS_EVENTS = [
   itemRegistered, itemUpdated,
   vendorRegistered, vendorUpdated, vendorStatusChanged,
@@ -360,4 +401,7 @@ export const MATERIALS_EVENTS = [
   stockLevelSet,
   purchaseOrderDrafted, purchaseOrderUpdated, purchaseOrderSubmitted, purchaseOrderApproved, purchaseOrderRejected,
   purchaseOrderSent, purchaseOrderCancelled, purchaseOrderReceived,
+  supplierBillDrafted, supplierBillUpdated, supplierBillMatched, supplierBillAccepted, supplierBillCancelled,
+  paymentRunDrafted, paymentRunUpdated, paymentRunSubmitted, paymentRunAuthorised, paymentRunRejected, paymentRunCancelled,
+  paymentRunCompleted, supplierPaymentRecorded,
 ] as const;

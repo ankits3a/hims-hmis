@@ -881,6 +881,215 @@ export const grnLines = pgTable(
   ],
 );
 
+// ═══════════════════════════ PAYING (PHARMACY PARITY P3) ═══════════════════════════
+
+/**
+ * PARITY P3 — A SUPPLIER'S BILL (the purchase invoice), matched three ways: PO ↔ GRN ↔ bill.
+ *
+ *   draft ─match→ matched ─accept→ accepted ─pay→ part_paid ─pay→ paid
+ *            └──→ held_for_match ─accept the difference (reason)→ accepted
+ *   draft / matched / held_for_match / accepted (nothing paid or in a run) ─cancel→ cancelled
+ *
+ *   - `bill_no` is OURS, from `EPISODE_SERIES.supplier_bill` (`MSB…`) — the stable voucher number
+ *     P5's Tally export carries. `vendor_bill_no` is the vendor's, as printed; `vendor_bill_key` is it
+ *     upper-cased with spaces, `-` and `/` removed, and a live bill is unique per vendor, key and
+ *     Indian financial year (`fy`, `2026-27`) — the duplicate the partial index refuses.
+ *   - Money in paise. `total = taxable + cgst + sgst + igst + round_off`; an inter-state bill carries
+ *     IGST only, an intra-state bill CGST + SGST only. `expected_total_paise` is what the GRN
+ *     received at the PO's rate would have cost, GST included — the match's yardstick.
+ *   - `acceptance_date` is the MSME clock's start (the day the goods were accepted: the earliest
+ *     linked GRN's posting, IST); `due_date` is stamped at acceptance and never recomputed.
+ *   - `paid_paise` is the sum of recorded payments against it (`supplier_payment_run_lines`).
+ */
+export const supplierBills = pgTable(
+  "supplier_bills",
+  {
+    id: text("id").primaryKey(),
+    billNo: text("bill_no").notNull(),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    vendorBillNo: text("vendor_bill_no").notNull(),
+    vendorBillKey: text("vendor_bill_key").notNull(),
+    billDate: date("bill_date", { mode: "string" }).notNull(),
+    fy: text("fy").notNull(),
+    purchaseOrderId: text("purchase_order_id").references(() => purchaseOrders.id),
+    status: text("status").notNull(),
+    interState: boolean("inter_state").notNull().default(false),
+    taxablePaise: bigint("taxable_paise", { mode: "number" }).notNull().default(0),
+    cgstPaise: bigint("cgst_paise", { mode: "number" }).notNull().default(0),
+    sgstPaise: bigint("sgst_paise", { mode: "number" }).notNull().default(0),
+    igstPaise: bigint("igst_paise", { mode: "number" }).notNull().default(0),
+    roundOffPaise: integer("round_off_paise").notNull().default(0),
+    totalPaise: bigint("total_paise", { mode: "number" }).notNull().default(0),
+    expectedTotalPaise: bigint("expected_total_paise", { mode: "number" }).notNull().default(0),
+    heldReason: text("held_reason"),
+    matchedAt: timestamp("matched_at", { withTimezone: true }),
+    differenceAcceptedBy: text("difference_accepted_by"),
+    differenceReason: text("difference_reason"),
+    acceptedBy: text("accepted_by"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptanceDate: date("acceptance_date", { mode: "string" }),
+    msme: boolean("msme").notNull().default(false),
+    termsDays: integer("terms_days"),
+    dueDate: date("due_date", { mode: "string" }),
+    paidPaise: bigint("paid_paise", { mode: "number" }).notNull().default(0),
+    note: text("note"),
+    cancelledBy: text("cancelled_by"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("supplier_bills_bill_no_ux").on(t.billNo),
+    uniqueIndex("supplier_bills_vendor_key_fy_ux").on(t.vendorId, t.vendorBillKey, t.fy).where(sql`${t.status} <> 'cancelled'`),
+    index("supplier_bills_vendor_idx").on(t.vendorId, t.status),
+    index("supplier_bills_status_due_idx").on(t.status, t.dueDate),
+    check("supplier_bills_status_ck", sql`${t.status} in ('draft', 'matched', 'held_for_match', 'accepted', 'part_paid', 'paid', 'cancelled')`),
+    check("supplier_bills_money_ck", sql`${t.taxablePaise} >= 0 and ${t.cgstPaise} >= 0 and ${t.sgstPaise} >= 0 and ${t.igstPaise} >= 0 and ${t.roundOffPaise} between -99 and 99 and ${t.totalPaise} = ${t.taxablePaise} + ${t.cgstPaise} + ${t.sgstPaise} + ${t.igstPaise} + ${t.roundOffPaise}`),
+    check("supplier_bills_tax_kind_ck", sql`(${t.interState} and ${t.cgstPaise} = 0 and ${t.sgstPaise} = 0) or (not ${t.interState} and ${t.igstPaise} = 0)`),
+    check("supplier_bills_paid_ck", sql`${t.paidPaise} >= 0 and ${t.paidPaise} <= ${t.totalPaise}`),
+    check("supplier_bills_accepted_ck", sql`${t.status} not in ('accepted', 'part_paid', 'paid') or (${t.acceptedBy} is not null and ${t.dueDate} is not null)`),
+    check("supplier_bills_difference_ck", sql`(${t.differenceAcceptedBy} is null) = (${t.differenceReason} is null)`),
+    check("supplier_bills_cancelled_ck", sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null) and (${t.cancelledAt} is null) = (${t.cancelReason} is null)`),
+  ],
+);
+
+/**
+ * One line of a supplier's bill: one item from one GRN, in the pack the vendor billed.
+ *
+ *   - `qty_packs × rate_paise = taxable_paise`; GST at `gst_rate_bps`, half up per line, split into
+ *     CGST + SGST (intra-state) or IGST (inter-state) as the header says.
+ *   - `expected_base` is what that GRN ACCEPTED of the item (paid quantity, free goods apart);
+ *     `expected_rate_paise` the PO line's rate per this pack (the GRN's cost when there is no PO);
+ *     `expected_taxable_paise = expected_base / multiplier × expected rate`, and `expected_gst_rate_bps`
+ *     the PO's (or the item's) rate.
+ *   - `mismatch` lists why the line is outside the match, `null` when it is inside it.
+ */
+export const supplierBillLines = pgTable(
+  "supplier_bill_lines",
+  {
+    id: text("id").primaryKey(),
+    billId: text("bill_id").notNull().references(() => supplierBills.id),
+    grnId: text("grn_id").notNull().references(() => grns.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    uom: text("uom").notNull(),
+    multiplier: integer("multiplier").notNull(),
+    qtyPacks: integer("qty_packs").notNull(),
+    ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    taxablePaise: bigint("taxable_paise", { mode: "number" }).notNull(),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+    cgstPaise: bigint("cgst_paise", { mode: "number" }).notNull().default(0),
+    sgstPaise: bigint("sgst_paise", { mode: "number" }).notNull().default(0),
+    igstPaise: bigint("igst_paise", { mode: "number" }).notNull().default(0),
+    expectedBase: integer("expected_base").notNull(),
+    expectedRatePaise: bigint("expected_rate_paise", { mode: "number" }).notNull(),
+    expectedTaxablePaise: bigint("expected_taxable_paise", { mode: "number" }).notNull(),
+    expectedGstRateBps: integer("expected_gst_rate_bps").notNull(),
+    mismatch: text("mismatch"),
+  },
+  (t) => [
+    uniqueIndex("supplier_bill_lines_grn_item_ux").on(t.billId, t.grnId, t.itemId),
+    index("supplier_bill_lines_grn_idx").on(t.grnId),
+    check("supplier_bill_lines_qty_ck", sql`${t.qtyPacks} >= 0 and ${t.multiplier} > 0 and ${t.expectedBase} >= 0`),
+    check("supplier_bill_lines_money_ck", sql`${t.ratePaise} >= 0 and ${t.gstRateBps} >= 0 and ${t.taxablePaise} = ${t.qtyPacks} * ${t.ratePaise}`),
+  ],
+);
+
+/**
+ * PARITY P3 — A PAYMENT RUN: the bills a person proposes to pay now, authorised by the owner.
+ *
+ *   draft ─submit→ pending_authorisation ─authorise→ authorised ─every vendor recorded→ completed
+ *                        └─reject→ draft (with the reason)   draft/pending/authorised, nothing paid ─cancel→ cancelled
+ *
+ *   - `run_no` from `EPISODE_SERIES.payment_run` (`MPR…`). `created_by` is the PREPARER, and only the
+ *     preparer submits it, so the kernel's requester ≠ approver is the preparer ≠ authoriser rule.
+ *   - `approval_id`: the `materials_payment_run_approval` request (approver `owner`).
+ *   - `authorised_by` may not record a payment on it (`payment_authoriser_recorder`).
+ */
+export const supplierPaymentRuns = pgTable(
+  "supplier_payment_runs",
+  {
+    id: text("id").primaryKey(),
+    runNo: text("run_no").notNull(),
+    status: text("status").notNull(),
+    source: text("source").notNull(),
+    totalPaise: bigint("total_paise", { mode: "number" }).notNull().default(0),
+    note: text("note"),
+    approvalId: text("approval_id"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    authorisedBy: text("authorised_by"),
+    authorisedAt: timestamp("authorised_at", { withTimezone: true }),
+    rejectionNote: text("rejection_note"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    cancelledBy: text("cancelled_by"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+    ...auditColumns,
+  },
+  (t) => [
+    uniqueIndex("supplier_payment_runs_run_no_ux").on(t.runNo),
+    index("supplier_payment_runs_status_idx").on(t.status),
+    check("supplier_payment_runs_status_ck", sql`${t.status} in ('draft', 'pending_authorisation', 'authorised', 'completed', 'cancelled')`),
+    check("supplier_payment_runs_source_ck", sql`${t.source} in ('manual', 'agent')`),
+    check("supplier_payment_runs_total_ck", sql`${t.totalPaise} >= 0`),
+    check("supplier_payment_runs_authorised_ck", sql`(${t.authorisedAt} is null) = (${t.authorisedBy} is null) and (${t.status} not in ('authorised', 'completed') or ${t.authorisedBy} is not null)`),
+    check("supplier_payment_runs_cancelled_ck", sql`(${t.status} = 'cancelled') = (${t.cancelledAt} is not null) and (${t.cancelledAt} is null) = (${t.cancelReason} is null)`),
+  ],
+);
+
+/**
+ * A money voucher: one vendor paid on one run, by one mode, on one date (`payment_no` from
+ * `EPISODE_SERIES.supplier_payment`, `MPV…`). A bank mode carries its reference (UTR, cheque no.);
+ * cash never carries more than the §40A(3) limit per vendor per day — checked in the act, summed
+ * over every cash payment to that vendor that day.
+ */
+export const supplierPayments = pgTable(
+  "supplier_payments",
+  {
+    id: text("id").primaryKey(),
+    paymentNo: text("payment_no").notNull(),
+    runId: text("run_id").notNull().references(() => supplierPaymentRuns.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    mode: text("mode").notNull(),
+    reference: text("reference"),
+    paidOn: date("paid_on", { mode: "string" }).notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("supplier_payments_payment_no_ux").on(t.paymentNo),
+    uniqueIndex("supplier_payments_run_vendor_ux").on(t.runId, t.vendorId),
+    index("supplier_payments_vendor_idx").on(t.vendorId, t.paidOn),
+    check("supplier_payments_mode_ck", sql`${t.mode} in ('neft', 'rtgs', 'upi', 'cheque', 'cash')`),
+    check("supplier_payments_reference_ck", sql`${t.mode} = 'cash' or ${t.reference} is not null`),
+    check("supplier_payments_amount_ck", sql`${t.amountPaise} > 0`),
+  ],
+);
+
+/**
+ * One bill on a payment run: `pay_paise` now, `credit_paise` offset by the vendor's credit notes
+ * (RESERVED for P4 — always 0 here; `Payable = Total − Credit`). `payment_id` is set when the
+ * vendor's payment is recorded; until then the amount is RESERVED against the bill, so no two
+ * open runs can pay the same rupee.
+ */
+export const supplierPaymentRunLines = pgTable(
+  "supplier_payment_run_lines",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id").notNull().references(() => supplierPaymentRuns.id),
+    billId: text("bill_id").notNull().references(() => supplierBills.id),
+    vendorId: text("vendor_id").notNull().references(() => vendors.id),
+    payPaise: bigint("pay_paise", { mode: "number" }).notNull(),
+    creditPaise: bigint("credit_paise", { mode: "number" }).notNull().default(0),
+    paymentId: text("payment_id").references(() => supplierPayments.id),
+  },
+  (t) => [
+    uniqueIndex("supplier_payment_run_lines_bill_ux").on(t.runId, t.billId),
+    index("supplier_payment_run_lines_bill_idx").on(t.billId),
+    check("supplier_payment_run_lines_money_ck", sql`${t.payPaise} > 0 and ${t.creditPaise} >= 0`),
+  ],
+);
+
 // ═══════════════════════════════════ COUNTS (PLAN 14c, FIRST SLICE) ═══════════════════════════════════
 
 /**
