@@ -1,10 +1,11 @@
+import argon2 from "argon2";
 import { and, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON, MON2, MON3, issueRx, line, seedPharmacyBase } from "../../../test/helpers/pharmacy";
 import { ensureRole, mkUser, testCfg } from "../../../test/helpers/opd";
-import { setPin } from "../../kernel/auth/identity";
+import { deactivateUser, setPin } from "../../kernel/auth/identity";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { seedSodPairs } from "../../kernel/auth/sod";
 import { withTx } from "../../kernel/db/client";
@@ -15,7 +16,7 @@ import { addMedicine, addSalt } from "../formulary";
 import { createStore, postMovement, registerItem } from "../materials";
 import { billDispense, previewDispenseBill } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
-import { recordControlledLicence, recordEndPrescriber } from "./controlled";
+import { recordControlledLicence, recordEndPrescriber, verifyWitness } from "./controlled";
 import { captureRetainedPrescription } from "./controlled-dispense";
 import { handOverDispense } from "./handover";
 import { pickDispense } from "./pick";
@@ -237,6 +238,24 @@ describe("narcotic, psychotropic and Schedule X lines at the desk (pharmacy P6)"
     await expect(handOverDispense(db, fx.pharmacist.actor, fx.decls, id, { identity, controlled: controlledInput(doc, { witness: { username: "aide.ravi", pin: PIN } }) }, MON3))
       .rejects.toMatchObject({ code: "witness_not_permitted" });
     expect(await db.select().from(controlledStockRegister).where(eq(controlledStockRegister.movement, "consume"))).toEqual([]);
+  });
+
+  /**
+   * WASA L-02 (main, #326) at the witness door: an unknown or inactive username must not answer faster
+   * than a wrong PIN for a real one, or the witness field is a username-existence oracle. Counted, not
+   * timed — the same instrument as `kernel/auth/identity.test.ts`.
+   */
+  it("an unknown or inactive witness pays one argon2 verify, the same as a real witness's wrong PIN (WASA L-02)", async () => {
+    await deactivateUser(db, fx.aide.id);
+    const spy = jest.spyOn(argon2, "verify");
+    try {
+      await expect(verifyWitness(db, fx.pharmacist.actor, { username: "nobody-at-all", pin: PIN }, MON3)).rejects.toMatchObject({ code: "witness_not_confirmed" });
+      await expect(verifyWitness(db, fx.pharmacist.actor, { username: "aide.ravi", pin: PIN }, MON3)).rejects.toMatchObject({ code: "witness_not_confirmed" });
+      await expect(verifyWitness(db, fx.pharmacist.actor, { username: "ph.incharge", pin: "0000" }, MON3)).rejects.toMatchObject({ code: "witness_not_confirmed" });
+      expect(spy).toHaveBeenCalledTimes(3);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("Schedule X: the prescription is endorsed with the seller's name, address and date (r.65(11)(c)); who took it is written down", async () => {
