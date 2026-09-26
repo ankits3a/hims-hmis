@@ -1,5 +1,5 @@
 import { asc, eq, sql } from "drizzle-orm";
-import { pharmacySaleItems } from "../../kernel/db/schema";
+import { items, pharmacySaleItems } from "../../kernel/db/schema";
 import { getItem, itemsByIds, listItems } from "../materials";
 import { createService, listServices } from "../tariff";
 import { PharmacyError } from "./errors";
@@ -40,6 +40,20 @@ export type SaleItemView = {
   itemActive: boolean;
 };
 
+/**
+ * PHARMACY P6 (item merge) — a new use of an item merged into another (registering it for sale, switching
+ * its sale back on, giving it a shelf) is refused with the survivor named; the materials half refuses
+ * orders, receipts, levels and edits. An unknown id is the caller's own refusal to make.
+ */
+export async function refuseMergedItem(db: Db | Tx, itemId: string, doing: string): Promise<void> {
+  const [row] = await db.select({ code: items.code, into: items.mergedIntoItemId }).from(items).where(eq(items.id, itemId));
+  if (row === undefined || row.into === null) return;
+  const [survivor] = await db.select({ code: items.code, name: items.name }).from(items).where(eq(items.id, row.into));
+  throw new PharmacyError("item_merged", `item ${row.code} was merged into ${survivor?.code ?? "another item"} — ${doing} is refused for a merged item; use the survivor`, {
+    itemId, survivorItemId: row.into, survivorCode: survivor?.code ?? null, survivorName: survivor?.name ?? null,
+  });
+}
+
 export async function registerSaleItem(
   tx: Tx,
   actor: Actor,
@@ -47,6 +61,7 @@ export async function registerSaleItem(
 ): Promise<{ itemId: string; serviceId: string; serviceCode: string; category: string }> {
   const item = await getItem(tx, itemId);
   if (item === undefined) throw new PharmacyError("unknown_item", `item ${itemId} not found`);
+  await refuseMergedItem(tx, itemId, "registering it for sale");
   if (item.class !== "drug") {
     throw new PharmacyError(
       "not_a_drug",
@@ -67,6 +82,7 @@ export async function registerSaleItem(
 }
 
 export async function setSaleItemActive(tx: Tx, actor: Actor, itemId: string, active: boolean): Promise<void> {
+  if (active) await refuseMergedItem(tx, itemId, "putting it back on sale");
   const rows = await tx.update(pharmacySaleItems)
     .set({ active, updatedBy: actor.id, updatedAt: sql`now()` })
     .where(eq(pharmacySaleItems.itemId, itemId))

@@ -6,7 +6,7 @@ import {
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { TRANSIT_STORE_CODE } from "./config";
 import { istDay } from "./grn";
-import { uomsByItems } from "./items";
+import { survivorsOf, uomsByItems, withMergedAliases } from "./items";
 import { returnVerdict, returnWindowDays, supplierKindOf } from "./supplier-returns";
 import { addDays, daysBetween } from "./supplier-bills";
 import { mrpPerBaseUnit } from "./uom";
@@ -140,6 +140,28 @@ export function splitLikeDebitNote(
   return { taxablePaise: amountPaise - cgstPaise - sgstPaise - igstPaise, cgstPaise, sgstPaise, igstPaise };
 }
 
+/**
+ * PHARMACY P6 — the item a history row counts under: its survivor when it was merged into another
+ * (`item-merge.ts`), with the survivor's code, name, base unit and HSN. One read for the survivors not
+ * already in hand; an unknown id keeps whatever the caller had.
+ */
+export async function itemFactsThroughMerge(
+  db: Db | Tx, itemIds: readonly string[],
+): Promise<Map<string, { id: string; code: string; name: string; baseUom: string; hsnCode: string | null }>> {
+  const survivor = await survivorsOf(db, itemIds);
+  const wanted = [...new Set(survivor.values())];
+  const facts = wanted.length === 0 ? [] : await inChunks(wanted, (chunk) => db.select({
+    id: items.id, code: items.code, name: items.name, baseUom: items.baseUom, hsnCode: items.hsnCode,
+  }).from(items).where(inArray(items.id, chunk)));
+  const byId = new Map(facts.map((f) => [f.id, f] as const));
+  const out = new Map<string, { id: string; code: string; name: string; baseUom: string; hsnCode: string | null }>();
+  for (const [id, to] of survivor) {
+    const f = byId.get(to);
+    if (f !== undefined) out.set(id, f);
+  }
+  return out;
+}
+
 /** Every purchase document dated in `from`..`to` (IST calendar days, inclusive). */
 export async function purchaseRegister(db: Db | Tx, from: string, to: string): Promise<PurchaseRegister> {
   const bills = await db.select({
@@ -182,9 +204,12 @@ export async function purchaseRegister(db: Db | Tx, from: string, to: string): P
     cgstPaise: supplierReturnLines.cgstPaise, sgstPaise: supplierReturnLines.sgstPaise, igstPaise: supplierReturnLines.igstPaise,
   }).from(supplierReturnLines).innerJoin(items, eq(items.id, supplierReturnLines.itemId)).innerJoin(stockBatches, eq(stockBatches.id, supplierReturnLines.batchId))
     .where(inArray(supplierReturnLines.returnId, chunk)));
+  // PHARMACY P6 — a line of an item since merged into another is booked under the survivor.
+  const facts = await itemFactsThroughMerge(db, [...billLines.map((l) => l.itemId), ...returnLines.map((l) => l.itemId)]);
   const linesOf = <K extends string>(rows: (PurchaseRegisterLine & Record<K, string>)[], key: K, id: string): PurchaseRegisterLine[] =>
     rows.filter((r) => r[key] === id).map((r): PurchaseRegisterLine => ({
-      itemId: r.itemId, itemCode: r.itemCode, itemName: r.itemName, hsnCode: r.hsnCode, batchNo: r.batchNo, qty: r.qty, uom: r.uom,
+      itemId: facts.get(r.itemId)?.id ?? r.itemId, itemCode: facts.get(r.itemId)?.code ?? r.itemCode, itemName: facts.get(r.itemId)?.name ?? r.itemName,
+      hsnCode: r.hsnCode, batchNo: r.batchNo, qty: r.qty, uom: r.uom,
       ratePaise: r.ratePaise, taxablePaise: r.taxablePaise, gstRateBps: r.gstRateBps, cgstPaise: r.cgstPaise, sgstPaise: r.sgstPaise, igstPaise: r.igstPaise,
     })).sort((a, b) => a.itemName.localeCompare(b.itemName));
 
@@ -280,6 +305,8 @@ export async function stockValuationAt(db: Db | Tx, asOf: string, opts: { storeR
   const stores = new Map((await inChunks(pairs.map((p) => p.resourceId), (chunk) => db.select({ id: resources.id, code: resources.code, name: resources.name })
     .from(resources).where(inArray(resources.id, chunk)))).map((s) => [s.id, s] as const));
   const uoms = await uomsByItems(db, batchRows.map((b) => b.itemId));
+  // PHARMACY P6 — a batch of an item since merged into another is valued under the survivor, on any day.
+  const facts = await itemFactsThroughMerge(db, batchRows.map((b) => b.itemId));
 
   const rows: ValuationRow[] = [];
   const vendorOwned = { batches: 0, qtyBase: 0 };
@@ -299,9 +326,10 @@ export async function stockValuationAt(db: Db | Tx, asOf: string, opts: { storeR
     } catch {
       mrpPerBasePaise = null; // an MRP printed on a pack the item does not have: shown as missing, never guessed
     }
+    const f = facts.get(b.itemId);
     rows.push({
       storeResourceId: p.resourceId, storeCode: s.code, storeName: s.name,
-      itemId: b.itemId, itemCode: b.itemCode, itemName: b.itemName, baseUom: b.baseUom, hsnCode: b.hsnCode,
+      itemId: f?.id ?? b.itemId, itemCode: f?.code ?? b.itemCode, itemName: f?.name ?? b.itemName, baseUom: f?.baseUom ?? b.baseUom, hsnCode: f?.hsnCode ?? b.hsnCode,
       batchId: b.id, batchNo: b.batchNo, expiryDate: b.expiryDate, ownership: b.ownership,
       qtyBase, landedCostPaise: b.landedCostPaise, costValuePaise: qtyBase * b.landedCostPaise,
       mrpPerBasePaise, mrpValuePaise: mrpPerBasePaise === null ? null : qtyBase * mrpPerBasePaise,
@@ -398,13 +426,20 @@ export async function nonMovingStock(
       ...(opts.storeResourceId == null ? [] : [eq(stockBalances.resourceId, opts.storeResourceId)]),
     ));
   // The last time each (store, item) had stock leave to be used — one grouped read over the pairs held.
-  const itemIds = [...new Set(onHand.map((r) => r.itemId))];
+  // PHARMACY P6 — and the duplicates merged into an item moved it too: their sales count as its own.
+  const { ids: itemIds, standsFor } = await withMergedAliases(db, [...new Set(onHand.map((r) => r.itemId))]);
   const last = await inChunks(itemIds, (chunk) => db.select({
     resourceId: stockLedger.resourceId, itemId: stockLedger.itemId, at: sql<Date>`max(${stockLedger.occurredAt})`,
   }).from(stockLedger)
     .where(and(inArray(stockLedger.itemId, chunk), inArray(stockLedger.reason, [...MOVING_REASONS]), lt(stockLedger.qtyDelta, 0)))
     .groupBy(stockLedger.resourceId, stockLedger.itemId));
-  const lastAt = new Map(last.map((l) => [`${l.resourceId}|${l.itemId}`, new Date(l.at)] as const));
+  const lastAt = new Map<string, Date>();
+  for (const l of last) {
+    const key = `${l.resourceId}|${standsFor.get(l.itemId) ?? l.itemId}`;
+    const at = new Date(l.at);
+    const had = lastAt.get(key);
+    if (had === undefined || at > had) lastAt.set(key, at);
+  }
 
   const rows: NonMovingRow[] = [];
   for (const r of onHand) {

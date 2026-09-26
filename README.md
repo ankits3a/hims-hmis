@@ -1031,6 +1031,7 @@ split is what those pairs will hang on.
 | `materials.returns.manage` | ✓ | | ✓ |
 | `materials.returns.approve` | ✓ | | |
 | `materials.writeoffs.manage` | ✓ | | |
+| `materials.items.merge` | ✓ | | |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
@@ -1079,6 +1080,13 @@ recorded under `materials.bills.manage`, and a credit short of the debit note al
 medical superintendent approves it through `materials_stock_adjustment`, the route a count's
 variance takes. `pharmacy_incharge` also gains `materials.recall.manage` to act on a drug alert. All
 of these are defaults the owner may change.
+
+**Pharmacy P6 merges a duplicate item, and adds one `materials.*` string.** `materials.items.merge` goes
+to `materials_head` alone: the head raises "merge this duplicate into the item that stays" with the
+reason, and carries it out once the medical superintendent has approved it through
+`materials_stock_adjustment` (never the head who raised it). The stock on hand and the open work move
+to the item that stays; the history stays written against the duplicate. This is a default the owner
+may change.
 
 **Two approval types, registered by `seed:materials` in the deploy path.**
 `materials_near_expiry_acceptance` (approver `materials_head`, 240-minute SLA) gates posting a GRN
