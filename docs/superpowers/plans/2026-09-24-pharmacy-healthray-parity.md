@@ -414,7 +414,7 @@ Measured before planning (2 read-only passes, 2026-09-24):
 - Patient SMS/WhatsApp (bill, refill reminder) once a real provider replaces the console stub in `kernel/notify`.
 - IPD/ward issue from the counter when IPD exists (Healthray's "Patient List" modal) — tracked, not built now.
 
-**P6 as built — the law part (2026-09-26, lane `pharmacy-p6-ndps`, migration 0133; owner ruling 2026-09-26: the
+**P6 as built — the law part (2026-09-26, lane `pharmacy-p6-ndps`, migration 0134; owner ruling 2026-09-26: the
 hospital stocks NDPS and Schedule X drugs).** The law, with sources, is `2026-09-26-pharmacy-p6-ndps-schedule-x-law.md`.
 - **The cabinet at the ledger** (materials `controlled.ts`): a store whose attributes say `controlled: true`
   (`PHARM-NDPS`, seeded) — every movement there carries a witness (`stock_ledger.witness_id`, CHECK ≠ actor) and writes
