@@ -25,11 +25,29 @@
  *
  * RFC 4180 says CRLF, and the importers that care are the ones on Windows. Nothing that reads CSV
  * minds the extra byte.
+ *
+ * ═══ A CELL THAT STARTS LIKE A FORMULA IS WRITTEN AS TEXT (WASA L-03) ═══
+ *
+ * Excel, LibreOffice and Sheets EVALUATE a cell beginning `=`, `+`, `-` or `@`, and Excel strips a
+ * leading tab or CR before it looks. A patient registered as `=HYPERLINK("http://evil","Click")`
+ * therefore became a live link — or, with DDE, a command — in whoever opened `/me/report.csv`. The
+ * OWASP rule is applied here, so every export inherits it: such a cell gets a leading `'`, which a
+ * spreadsheet shows as text and never runs. It is applied BEFORE the quoting, so the `'` sits inside
+ * the quotes.
+ *
+ * ONE EXEMPTION, AND IT IS A SHAPE, NOT A GUESS: every cell reaching this function is a string, so a
+ * refund of `-₹1,500.00` (`formatPaise`) looks exactly like attacker text by type. A cell that is
+ * nothing but an optional sign, an optional `₹`, digits, grouping commas and one decimal part
+ * cannot name a function or a reference, so it stays a number the column can still sum. `-1+1`,
+ * `-2+3+cmd|…` and anything else with an operator or a letter in it is prefixed.
  */
 const NEEDS_QUOTING = /[",\r\n]/;
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[+-]?₹?\d[\d,]*(\.\d+)?$/;
 
 export function csvField(value: string): string {
-  return NEEDS_QUOTING.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const text = FORMULA_TRIGGER.test(value) && !PLAIN_NUMBER.test(value) ? `'${value}` : value;
+  return NEEDS_QUOTING.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 export function csvRow(fields: readonly string[]): string {

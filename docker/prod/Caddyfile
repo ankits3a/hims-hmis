@@ -145,6 +145,23 @@ hmis.crkmch.com {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Cross-Origin-Opener-Policy "same-origin"
 		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		# WASA M-01 — A CONTENT-SECURITY-POLICY, REPORT-ONLY UNTIL THE NEXT CHANGE ENFORCES IT.
+		# The SPA holds its bearer token in localStorage, so an injected script owns the session;
+		# `script-src 'self'` (no inline, no eval) is what makes one fail to run at all. Each other
+		# source is what the production build was MEASURED to load (vite build behind a throwaway
+		# caddy:2-alpine, Chromium walking 64 screens, the service worker, the socket and a print
+		# window — zero reports with the web app's zod set jitless):
+		#   style-src 'unsafe-inline'  print documents are written into about:blank windows and
+		#                              frames, which INHERIT this policy, and carry <style> blocks and
+		#                              style= attributes; four screens mount inline <style> too.
+		#   img-src data: blob:        patient photos, slip previews and the letterhead crest.
+		#   connect-src wss://{hostport}  the realtime socket, named explicitly for browsers whose
+		#                              'self' predates CSP3's ws/wss matching; {hostport} is the
+		#                              site's own host, so a re-pointed hostname needs no edit here.
+		# `frame-ancestors` is ignored in a report-only header; X-Frame-Options DENY covers it until
+		# the header name flips. Pinned by apps/core/test/caddyfile-hardening.test.ts; the UAT site
+		# sends the same policy.
+		Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss://{hostport}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		# WASA L-09: neither the edge nor the proxy hop names its software. `-Via` because
 		# `reverse_proxy` stamps `via: 1.1 Caddy` on every /api response (measured).
 		-Server

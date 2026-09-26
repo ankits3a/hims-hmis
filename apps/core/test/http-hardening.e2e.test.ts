@@ -1,5 +1,5 @@
 import { Test } from "@nestjs/testing";
-import { Controller, Get, INestApplication, NotFoundException } from "@nestjs/common";
+import { Body, Controller, Get, INestApplication, NotFoundException, Post } from "@nestjs/common";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.bootstrap";
@@ -25,6 +25,13 @@ class HardeningProbeController {
   @Get("boom")
   boom(): never {
     throw new Error("internal detail that must not reach the wire");
+  }
+
+  /** Says which body keys reached the handler — `null` when no parser produced a body at all. */
+  @Public()
+  @Post("body-keys")
+  bodyKeys(@Body() body: unknown): { keys: string[] | null } {
+    return { keys: typeof body === "object" && body !== null ? Object.keys(body) : null };
   }
 }
 
@@ -117,6 +124,28 @@ describe("WASA L-01 / L-09 — HTTP hardening", () => {
       const res = await request(app.getHttpServer()).get("/hardening-probe/boom").expect(500);
       expect(res.body).toEqual({ statusCode: 500, message: "Internal server error" });
       expect(res.text).not.toMatch(/internal detail/);
+    });
+  });
+
+  /**
+   * WASA M-08 — THE FORM PARSER NOBODY SENDS TO. `urlencoded({ extended: true })` handed every
+   * pre-auth request body to `qs`, whose DoS advisories are the reachable half of M-08, and no client
+   * of this API (the SPA, the print relay, ABDM's callbacks) sends `x-www-form-urlencoded`. The
+   * parser is gone; JSON is the only body this API reads.
+   */
+  describe("M-08 — JSON is the only request body the API parses", () => {
+    it("a form-encoded body reaches no handler as data", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/hardening-probe/body-keys")
+        .set("content-type", "application/x-www-form-urlencoded")
+        .send("username=x&a[b][c]=1")
+        .expect(201);
+      expect(res.body).toEqual({ keys: null });
+    });
+
+    it("a JSON body still does — the control that proves the probe can see a parsed body", async () => {
+      const res = await request(app.getHttpServer()).post("/hardening-probe/body-keys").send({ username: "x" }).expect(201);
+      expect(res.body).toEqual({ keys: ["username"] });
     });
   });
 });
