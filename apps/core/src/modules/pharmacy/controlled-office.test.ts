@@ -95,7 +95,10 @@ describe("the office's controlled side (pharmacy P6)", () => {
   async function inCabinet(batchNo: string, qty: number, expiryDate = "2027-12-31"): Promise<string> {
     const batchId = newId();
     await db.insert(stockBatches).values({ id: batchId, itemId: morphineItem, batchNo, expiryDate, landedCostPaise: 300, ownership: "owned", createdBy: head.id });
-    await withTx(db, (tx) => postMovement(tx, keeper.actor, { resourceId: cabinet, batchId, qtyDelta: qty, reason: "grn", occurredAt: at(0), custody: { witnessId: witness.id } }));
+    await withTx(db, (tx) => postMovement(tx, keeper.actor, {
+      resourceId: cabinet, batchId, qtyDelta: qty, reason: "grn", occurredAt: at(0),
+      custody: { witnessId: witness.id, counterparty: "ACME Pharma Pvt Ltd", counterpartyLicence: "20B-PUN-1, 21B-PUN-1", documentRef: "INV-4410", documentDate: "2026-09-24" },
+    }));
     return batchId;
   }
 
