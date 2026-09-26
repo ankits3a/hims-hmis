@@ -450,6 +450,49 @@ hospital stocks NDPS and Schedule X drugs).** The law, with sources, is `2026-09
   the manufacturer column (not in the catalogue); walk-in Schedule X; patient returns of controlled drugs; the doctor's
   stock chip reading the cabinet; item merge and SMS (the rest of P6).
 
+**P6 as built — patient messages (2026-09-26, lane `pharmacy-patient-messages`, migration 0136).** A bill by SMS and an
+opt-in refill reminder, on the notify kernel's one outbox — no second messaging system. Runbook §17.
+- **Templates** in `kernel/notify/templates.ts` (en + hi): `pharmacy_bill_ready` (transactional, SMS first) and
+  `pharmacy_refill_due` (`requiresOptIn: "refill_reminders"`). **Neither names a drug.** Bill = hospital, bill number,
+  amount, day; reminder = hospital, the day the medicines were bought, the pharmacy's phone, "tell the pharmacy" to stop.
+- **Triggers**: a `pharmacy.patient_messages` consumer on `dispense.handed_over` and `retail.sold`, idempotent by
+  invoice (dedupe key = the invoice id); a daily job `runRefillReminders` at 10:00 IST, once per dispense.
+- **Consent (kernel `patient_message_preferences`, `notify/preferences.ts`)**: one row per patient, the current state
+  with who/when/where; every change is a `message_preference.recorded` event. The pump honours a STOP for EVERY patient
+  message (suppressed `opted_out`), re-checks the reminder opt-in at send (`no_consent`), and obeys the patient's
+  language and first channel. `enqueueNotification` refuses an opt-in template without the opt-in.
+- **Provider** (`NOTIFY_PROVIDER=live` + a channel's keys; console otherwise): `kernel/notify/providers.ts` —
+  a DLT-registered SMS gateway (refuses a template with no DLT content-template id) and the WhatsApp Business Cloud API
+  (refuses a template with no approved name). The ids are data on the office's Messages side
+  (`notify_template_registrations`). `registerAllJobs` now hands the pump `adaptersFor(cfg)` — until this PR no provider
+  knob reached the pump at all (see "Finding" below). Phones are masked to the last four digits in every log line.
+- **Screens**: the desk rail's consent chip ("SMS reminders: off · turn on", the language, "Stop all messages"); the
+  hand-over's quiet bill line; the office's Messages side (`?view=messages`: provider state, the DLT text with
+  `{#var#}`, the ids, the pharmacy's phone, 30-day counts, reminders-on / stopped counts).
+- Permissions (defaults): `pharmacy.messages.consent` (pharmacy, in-charge), `pharmacy.messages.manage` (in-charge,
+  owner). Census: `pharmacy_messaging_provider_live` (G1), `pharmacy_dlt_template_ids_recorded` (G3).
+- DECIDED (not money, procurement or law; standard Indian-hospital practice):
+  - the bill is transactional (TRAI "service implicit"): no opt-in, to the number on record, never after a STOP; not for
+    a zero bill, a paper dispense typed in after an outage, or a patient with no phone;
+  - the reminder is TRAI "service explicit" and a DPDP purpose of its own: opt-IN only, one tap at a desk after asking;
+  - STOP stops every department's messages and withdraws the reminder opt-in; after a STOP reminders cannot be switched
+    on until the patient resumes messages; resuming does not bring reminders back;
+  - reminder arithmetic: supply = quantity ÷ (dose × doses/day) from the prescription's words; chronic-looking = ≥ 20
+    days; remind 3 days before the first chronic line runs out; look back 200 days; a later sale of the same item (either
+    counter) is a refill; a Schedule X / NDPS line never prompts a reminder;
+  - both messages are routine: held 21:00–08:00 IST (the kernel's law); the bill expires 48 h after the sale, the
+    reminder at the end of the day the medicines run out; neither raises a "call the patient" desk task when undelivered;
+  - the message language is the patient's own word at the desk, else the registered `patients.language`;
+  - naming drugs: OFF (`REFILL_REMINDER_NAMES_DRUGS`); even ON, no Schedule X, NDPS or H1 name can enter a message.
+- DEFAULT (procurement, the owner's): which SMS gateway and WhatsApp BSP; registering the entity, header and the two
+  templates on DLT; submitting the WhatsApp templates. Until then: console only, census row RED.
+- Finding: `NOTIFY_PUSH_PROVIDER=webpush` was parsed and never obeyed by the worker (the pump always fell back to its
+  console set). Threading `adaptersFor(cfg)` into the pump fixes that too — a deployment that already set it will start
+  pushing after this deploys.
+- Deferred: inbound STOP replies (needs the contracted gateway's callback); the front desk's own consent chip (Desk One);
+  a hospital-wide Messages screen for the other departments' templates (they will need DLT ids too once SMS is live);
+  delivery receipts (`notification.delivered`); WhatsApp named-drug variants.
+
 ## Owner rulings needed (money / procurement / law only — everything else DECIDED as top-hospital practice)
 Carried from the 2026-09-19 back-office report §7:
 - who may raise and approve a PO, and to what value;
