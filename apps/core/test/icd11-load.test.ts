@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { SYNTHETIC_ROWS, syntheticWhoMap } from "./helpers/icd11";
+import { SYNTHETIC_ROWS, syntheticWhoMap, syntheticWhoZip } from "./helpers/icd11";
 import { icd11MapLoads, icd11MapRows } from "../src/kernel/db/schema";
-import { loadIcd11Map, parseArgs, sha256Of } from "../scripts/icd11-load";
+import { loadIcd11Map, parseArgs, readSource, sha256Of } from "../scripts/icd11-load";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -96,5 +96,23 @@ describe("icd11:load — WHO's one-to-one table into icd11_map_rows", () => {
     expect(parseArgs(["--release", "2026-01", "--by", "dr.mrd", "f.txt"])).toEqual({ path: "f.txt", release: "2026-01", by: "dr.mrd" });
     expect(() => parseArgs(["f.txt"])).toThrow(/usage/);
     expect(() => parseArgs(["--release", "2026-01"])).toThrow(/usage/);
+  });
+
+  it("L8: --from-who hands WHO's file to the SAME load — its record names the URL, and the same bytes from disk are then the same file", async () => {
+    const zip = syntheticWhoZip();
+    const fetch = async () => new Response(new Uint8Array(zip));
+    const src = await readSource({ fromWho: "2099-01", sha256: sha256Of(zip), by: null }, { fetch });
+    expect(src).toMatchObject({
+      release: "2099-01", sourceFile: "https://icdcdn.who.int/static/releasefiles/2099-01/mapping.zip#10To11MapToOneCategory.txt",
+    });
+    expect(src.download).toMatchObject({ zipBytes: zip.length, zipSha256: sha256Of(zip), checksum: "given" });
+
+    const r = await loadIcd11Map(db, { bytes: src.bytes, sourceFile: src.sourceFile, release: src.release, loadedBy: "dr.mrd" });
+    expect(r).toMatchObject({ status: "loaded", release: "2099-01", rows: SYNTHETIC_ROWS.length });
+    const [rec] = await db.select().from(icd11MapLoads);
+    /* The load's sha256 is the TEXT file's, as it is for a path — which is what makes the next line refuse. */
+    expect(rec).toMatchObject({ sourceFile: src.sourceFile, sha256: sha256Of(file()), loadedBy: "dr.mrd", rowCount: SYNTHETIC_ROWS.length });
+    expect(await load(file(), "2099-02")).toMatchObject({ status: "refused", reason: "same_file" });
+    expect(await counts()).toEqual({ loads: 1, rows: SYNTHETIC_ROWS.length });
   });
 });

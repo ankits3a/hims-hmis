@@ -105,12 +105,13 @@ export const icd10Codes = pgTable(
  * the PLUMBING for the one-to-one file (`10To11MapToOneCategory.txt`): a table to hold it, a loader
  * that records every load, and a read that shows the ICD-11 code beside the ICD-10 one on screen.
  *
- * ═══ NO WHO DATA SHIPS WITH THIS, AND NOTHING LOADS IT ═══
+ * ═══ NO WHO DATA SHIPS WITH THIS, AND NOTHING LOADS IT AUTOMATICALLY ═══
  *
  * WHO's ICD-11 licence §1.2.4 puts "mapping or producing crosswalks" under a separate written
- * agreement, and the owner has not ruled on it. So no row of WHO's file is in the repository, no
- * migration or seed loads one, and deploy does not run the loader. Until someone runs
- * `pnpm --filter @hmis/core icd11:load` by hand, both tables are empty and every read answers null.
+ * agreement. The owner ruled on 2026-09-26 that the map may be loaded, downloaded from WHO at run
+ * time (`icd11:load --from-who`, checked against a pinned sha256). No row of WHO's file is in the
+ * repository, no migration or seed loads one, and deploy does not run the loader. Until someone runs
+ * `icd11:load` by hand, both tables are empty and every read answers null.
  *
  * ═══ ICD-10 STAYS THE CODE ═══
  *
