@@ -67,6 +67,26 @@ export async function markDispatch(db: Db, id: string, dispatch: AbdmDispatch, e
 }
 
 /**
+ * ABDM S3 — an inbound DATA PUSH is answered with what its processing decided (202, or a refusal),
+ * unlike a callback's constant 202; the row records that answer and whose data it carried.
+ */
+export async function completeInbound(db: Db, id: string, result: {
+  httpStatus: number; dispatch: AbdmDispatch; error?: string | null; patientId?: string | null;
+}): Promise<void> {
+  await db.update(abdmMessages).set({
+    httpStatus: result.httpStatus, dispatch: result.dispatch, error: result.error ?? null, completedAt: new Date(),
+    ...(result.patientId === undefined || result.patientId === null ? {} : { patientId: result.patientId }),
+  }).where(eq(abdmMessages.id, id));
+}
+
+/** ABDM S3 — what we answered an inbound message the first time (a re-delivered push gets the same answer). */
+export async function inboundAnswer(db: Db, requestId: string): Promise<{ httpStatus: number | null; error: string | null } | null> {
+  const [row] = await db.select({ httpStatus: abdmMessages.httpStatus, error: abdmMessages.error }).from(abdmMessages)
+    .where(and(eq(abdmMessages.direction, "in"), eq(abdmMessages.requestId, requestId)));
+  return row ?? null;
+}
+
+/**
  * THE READ, PHI-AUDITED. One `abdm.messages` access per distinct patient the read returned — the
  * `billing.collection_worklist` shape — because a list of messages is a list of disclosures about
  * whoever they name. A row that names nobody (every S0 row) is logged by nobody: `phi_access_log`

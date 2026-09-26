@@ -259,7 +259,13 @@ export type PhiSurface =
    * for the patient's consent, not a person, and the row is what answers "who received her records".
    * Appended.
    */
-  | "abdm.health_information";
+  | "abdm.health_information"
+  /**
+   * ABDM S3 — records RECEIVED from other facilities under the patient's ABDM consent (the hospital
+   * as HIU), read in the consult's history ("Records from other hospitals"). One row per read that
+   * returned any. Appended; nothing above changes.
+   */
+  | "abdm.external_records";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

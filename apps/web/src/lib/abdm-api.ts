@@ -182,3 +182,56 @@ export function alreadyLinkedUhid(e: unknown): { uhid: string | null } | null {
   const uhid = ((e as { body?: { detail?: { uhid?: unknown } } }).body?.detail?.uhid);
   return { uhid: typeof uhid === "string" ? uhid : null };
 }
+
+/**
+ * ═══ ABDM S3 — RECORDS FROM OTHER HOSPITALS (the hospital as HIU) ═══
+ *
+ * Mirrors `apps/core/src/modules/abdm/hiu.controller.ts`. The browser sees the requests, their status,
+ * and each received document as a SUMMARY (title, date, author, custodian, subject, sections as lines)
+ * — never the key material, the push address, or the raw bundle.
+ */
+export type WireExternalSummary = {
+  title: string | null;
+  date: string | null;
+  authors: string[];
+  custodian: string | null;
+  subjectName: string | null;
+  sections: { title: string; lines: string[] }[];
+};
+export type WireExternalRecord = {
+  id: string; hiType: string; recordDate: string | null; title: string | null; careContextReference: string;
+  consentId: string; consentExpiresAt: string | null; checksumVerified: boolean; receivedAt: string; summary: WireExternalSummary;
+};
+export type WireExternalFacility = { hipId: string; hipName: string | null; records: WireExternalRecord[] };
+export type WireHiuArtefact = {
+  consentId: string; hipId: string | null; hipName: string | null; status: string;
+  dataEraseAt: string | null; erasedAt: string | null; erasedCount: number; recordCount: number; error: string | null;
+};
+export type WireHiuRequest = {
+  id: string; encounterId: string;
+  status: "requested" | "awaiting_patient" | "granted" | "denied" | "expired" | "revoked" | "failed";
+  purposeCode: string; purposeText: string; hiTypes: string[]; dateFrom: string; dateTo: string; dataEraseAt: string;
+  createdAt: string; requesterName: string; consentRequestId: string | null; error: string | null; artefacts: WireHiuArtefact[];
+};
+export type WireExternalRecords = {
+  hiuConfigured: boolean;
+  abha: { address: string | null; verified: boolean };
+  purposes: { code: string; text: string }[];
+  hiTypes: string[];
+  defaults: { purposeCode: string; hiTypes: string[]; from: string; to: string; dataEraseAt: string };
+  requests: WireHiuRequest[];
+  facilities: WireExternalFacility[];
+};
+export type HiuRequestBody = { encounterId: string; purposeCode?: string; hiTypes?: string[]; from?: string; to?: string; dataEraseAt?: string };
+
+export function externalRecords(patientId: string): Promise<WireExternalRecords> {
+  return api<WireExternalRecords>("GET", `/abdm/hiu/patients/${encodeURIComponent(patientId)}/records`);
+}
+
+export function requestExternalRecords(body: HiuRequestBody): Promise<WireHiuRequest> {
+  return api<WireHiuRequest>("POST", "/abdm/hiu/consent-requests", body);
+}
+
+export function refreshExternalRequest(id: string): Promise<WireHiuRequest> {
+  return api<WireHiuRequest>("POST", `/abdm/hiu/consent-requests/${encodeURIComponent(id)}/status`);
+}

@@ -1,6 +1,6 @@
 import { constants, createHash, createHmac, generateKeyPairSync, privateDecrypt, randomUUID, sign } from "node:crypto";
 import type { KeyObject } from "node:crypto";
-import { FideliusKeyPair, fideliusDecrypt } from "../../src/modules/abdm/fidelius";
+import { FideliusKeyPair, fideliusDecrypt, fideliusEncrypt } from "../../src/modules/abdm/fidelius";
 
 /**
  * ═══ ABDM S0 — AN IN-PROCESS FAKE OF THE ABDM GATEWAY, FOR TESTS ONLY ═══
@@ -43,6 +43,17 @@ import { FideliusKeyPair, fideliusDecrypt } from "../../src/modules/abdm/fideliu
  * hospital's public key + nonce from the push — so a test asserts the PLAINTEXT bundle the hospital
  * actually sent, and a push encrypted wrongly fails loudly here. `signedCallback` wraps any body in
  * the gateway-signed headers ABDM would send it with.
+ *
+ * ═══ ABDM S3 — AND THE M3 HIU PATHS, AND A REMOTE HIP THAT ENCRYPTS TO US AND PUSHES ═══
+ *
+ * `fake.hiuGateway` records every M3 call the hospital makes as an HIU (consent init, status, the
+ * hiu/on-notify ack, fetch, the health-information request, and the HIU's transfer notify) and answers
+ * 202 — each REFUSING a call without `X-HIU-ID` (400), as the gateway would. `fake.remoteHip` is ANOTHER
+ * facility: it owns a Fidelius key pair (the published README SENDER key, so the push decrypts along
+ * the vector's own path), and `push()` builds the page that facility would POST to our `dataPushUrl`
+ * — encrypting each bundle to the public key and nonce WE sent in the health-information request, with
+ * the MD5 of the plaintext as its checksum — or, told to, a page with a wrong checksum or a key that is
+ * not ours, so a test can prove the HIU refuses it.
  */
 
 export type FakeGatewayRequest = {
@@ -97,6 +108,10 @@ export type FakeAbdmGateway = {
   hip: FakeHip;
   /** S2 — the HIU the hospital pushes to. */
   hiu: FakeHiu;
+  /** S3 — the HIU (M3) side of the gateway. */
+  hiuGateway: FakeHiuGateway;
+  /** S3 — another facility, pushing its records to OUR data-push URL. */
+  remoteHip: FakeRemoteHip;
   /** S2 — any callback body, with the headers ABDM would sign it with. */
   signedCallback(body: Record<string, unknown>, o?: { requestId?: string; hipId?: string; hiuId?: string }): { headers: Record<string, string>; body: Record<string, unknown> };
 };
@@ -123,6 +138,28 @@ export type FakeHiu = {
   received: { careContextReference: string; checksum: string; checksumOk: boolean; plaintext: string; bundle: Record<string, unknown> }[];
   /** The status the push receiver answers. */
   pushStatus: number;
+};
+
+export type FakeHiuGateway = {
+  /** Every call the hospital made to one M3 path, in order. */
+  calls(path: string): FakeHipCall[];
+  /** The status the fake answers on one M3 path (default 202). */
+  statusFor: Map<string, number>;
+};
+export type FakeRemoteHip = {
+  id: string;
+  name: string;
+  /** The published fidelius-cli README SENDER key pair. */
+  keyPair: FideliusKeyPair;
+  /**
+   * One push page, encrypted to the key material of `hiRequest` (the body WE sent ABDM). `tamper`:
+   * `checksum` sends a wrong MD5; `stranger` encrypts to a key that is not ours; `placeholder` sends the
+   * NHA wrapper's literal checksum "string".
+   */
+  push(hiRequest: Record<string, unknown>, o: {
+    transactionId: string; entries: { careContextReference: string; bundle: unknown }[];
+    pageNumber?: number; pageCount?: number; tamper?: "checksum" | "stranger" | "placeholder";
+  }): { path: string; token: string; body: Record<string, unknown> };
 };
 
 export type FakeAbhaAccount = {
@@ -563,6 +600,61 @@ export function createFakeAbdmGateway(opts: {
     if (linkTokens.get(address) !== token) return json(400, { error: { code: "ABDM-1038", message: "Link token mismatch" } });
     return accepted(req);
   };
+  // ═══ S3 — THE HIU (M3) PATHS ═══
+  const hiuCalls = new Map<string, FakeHipCall[]>();
+  const hiuStatus = new Map<string, number>();
+  const acceptedHiu = (req: FakeGatewayRequest): Response => {
+    if (!bearerOk(req)) return unauthorized();
+    if (req.headers["x-hiu-id"] === undefined) return json(400, { error: { code: "ABDM-1000", message: "X-HIU-ID is required" } });
+    const list = hiuCalls.get(req.path) ?? [];
+    list.push({ requestId: req.headers["request-id"] ?? "", headers: req.headers, body: (req.body ?? {}) as Record<string, unknown> });
+    hiuCalls.set(req.path, list);
+    const status = hiuStatus.get(req.path) ?? 202;
+    return status === 202 ? new Response(null, { status }) : json(status, { error: { code: "ABDM-1063", message: "refused by the fake" } });
+  };
+  for (const path of [
+    "/consent/v3/request/init", "/consent/v3/request/status", "/consent/v3/request/hiu/on-notify",
+    "/consent/v3/fetch", "/data-flow/v3/health-information/request",
+  ]) routes[`POST ${path}`] = acceptedHiu;
+  // The transfer notify is one path for both roles: the HIP names itself in X-HIP-ID, the HIU in X-HIU-ID.
+  routes["POST /data-flow/v3/health-information/notify"] = (req) => (req.headers["x-hiu-id"] !== undefined ? acceptedHiu(req) : accepted(req));
+  const hiuGateway: FakeHiuGateway = { calls: (path) => [...(hiuCalls.get(path) ?? [])], statusFor: hiuStatus };
+
+  const remoteHip: FakeRemoteHip = {
+    id: "IN0810000123",
+    name: "Fortis Escorts Jaipur",
+    keyPair: FideliusKeyPair.fromPrivateKey("AYhVZpbVeX4KS5Qm/W0+9Ye2q3rnVVGmqRICmseWni4=", "lmXgblZwotx+DfBgKJF0lZXtAXgBEYr5khh79Zytr2Y="),
+    push: (hiRequest, p) => {
+      const hr = (hiRequest.hiRequest ?? hiRequest) as { dataPushUrl: string; keyMaterial: { dhPublicKey: { keyValue: string }; nonce: string } };
+      const requester = p.tamper === "stranger"
+        ? { publicKey: FideliusKeyPair.generate().publicKeyX509(), nonce: hr.keyMaterial.nonce }
+        : { publicKey: hr.keyMaterial.dhPublicKey.keyValue, nonce: hr.keyMaterial.nonce };
+      const entries = p.entries.map((e) => {
+        const plain = JSON.stringify(e.bundle);
+        const md5 = createHash("md5").update(plain, "utf8").digest("hex");
+        return {
+          content: fideliusEncrypt(remoteHip.keyPair, requester, plain),
+          media: "application/fhir+json",
+          checksum: p.tamper === "checksum" ? createHash("md5").update(`${plain} `, "utf8").digest("hex") : p.tamper === "placeholder" ? "string" : md5,
+          careContextReference: e.careContextReference,
+        };
+      });
+      const url = new URL(hr.dataPushUrl);
+      const token = url.pathname.split("/").pop() ?? "";
+      return {
+        path: url.pathname.replace(/^\/api/, ""), token,
+        body: {
+          pageNumber: p.pageNumber ?? 0, pageCount: p.pageCount ?? 1, transactionId: p.transactionId, entries,
+          keyMaterial: {
+            cryptoAlg: "ECDH", curve: "Curve25519",
+            dhPublicKey: { expiry: new Date(now() + 3600_000).toISOString(), parameters: "Curve25519/32byte random key", keyValue: remoteHip.keyPair.publicKeyX509() },
+            nonce: remoteHip.keyPair.nonce,
+          },
+        },
+      };
+    },
+  };
+
   const hip: FakeHip = {
     calls: (path) => [...(hipCalls.get(path) ?? [])],
     issueLinkToken: (abhaAddress, abhaNumber = "91-2345-6789-0123") => {
@@ -677,6 +769,8 @@ export function createFakeAbdmGateway(opts: {
     onShares,
     hip,
     hiu,
+    hiuGateway,
+    remoteHip,
     signedCallback: (body, o = {}) => ({
       headers: {
         Authorization: `Bearer ${jwt({ alg: "RS256", typ: "JWT", kid: current.kid }, defaultClaims(), (input) => sign("sha256", Buffer.from(input), current.privateKey))}`,

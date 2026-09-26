@@ -24,7 +24,8 @@ import { ecdh, weierstrassN } from "@noble/curves/abstract/weierstrass";
  *
  * THE PRIVATE KEY lives in a `#private` field of a `FideliusKeyPair` for ONE transfer and dies with
  * it: `toJSON`, a spread and `util.inspect` all see only the public key and the nonce. Nothing in
- * this module writes, logs or returns it.
+ * this module writes, logs or returns it — except SEALED, to the HIU that must hold its half until
+ * the HIP's push arrives (S3, `sealPrivateKey`).
  */
 export const BC_CURVE25519: Readonly<{ p: bigint; n: bigint; h: bigint; a: bigint; b: bigint; Gx: bigint; Gy: bigint }> = {
   p: 2n ** 255n - 19n,
@@ -109,6 +110,22 @@ export class FideliusKeyPair {
   /** For the published test vector and for an HIU reading its own stored material (S3). */
   static fromPrivateKey(privateKeyBase64: string, nonceBase64: string): FideliusKeyPair {
     return new FideliusKeyPair(toBigInt(Buffer.from(privateKeyBase64, "base64")), nonceBase64);
+  }
+
+  /**
+   * ABDM S3 — THE HIU'S HALF MUST OUTLIVE THIS OBJECT: the key pair is minted for a health-information
+   * request, and the HIP's push that it decrypts arrives in ANOTHER request, seconds or minutes later.
+   * So the private key leaves this object exactly ONE way — handed to `seal` (the caller's AES-GCM
+   * sealer under the app's `SECRET_KEY`) — and only the SEALED form is returned. Nothing here logs it,
+   * and `toJSON` / `inspect` still show only the public half.
+   */
+  sealPrivateKey(seal: (privateKeyBase64: string) => string): string {
+    return seal(to32(this.#d).toString("base64"));
+  }
+
+  /** ABDM S3 — the pair back from its seal (`open` throws on a seal it cannot authenticate). */
+  static fromSealed(sealed: string, nonceBase64: string, open: (sealed: string) => string): FideliusKeyPair {
+    return FideliusKeyPair.fromPrivateKey(open(sealed), nonceBase64);
   }
 
   /** `04‖X‖Y`, base64 — fidelius-cli's `publicKey`. */

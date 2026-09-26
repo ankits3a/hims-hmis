@@ -6864,6 +6864,61 @@
     },
     "lock": {
       "note": "Name, date of birth and gender are verified by ABDM and cannot be edited here. Re-verify with ABDM to change them, or remove the verification first."
+    },
+    "external": {
+      "title": "Records from other hospitals",
+      "label": "External — not verified by this hospital. Shown as the other facility sent it, under the patient's ABDM consent, and deleted when that consent ends.",
+      "badge": "External · not verified",
+      "off": "Requesting records through ABDM is not switched on at this hospital.",
+      "noAbha": "The patient has no ABDM-verified ABHA. Verify it at the registration counter to request records from other hospitals.",
+      "requestOpen": "Request records via ABDM",
+      "formNote": "ABDM asks the patient ({{abha}}) to approve this in their ABHA app. Nothing arrives until they do.",
+      "purpose": "Purpose",
+      "purposeName": {
+        "CAREMGT": "Care management",
+        "BTG": "Break the glass (emergency)"
+      },
+      "types": "Record types",
+      "hiType": {
+        "OPConsultation": "OP consultation",
+        "Prescription": "Prescription",
+        "DiagnosticReport": "Diagnostic report",
+        "DischargeSummary": "Discharge summary",
+        "ImmunizationRecord": "Immunization",
+        "HealthDocumentRecord": "Health document",
+        "WellnessRecord": "Wellness record",
+        "Invoice": "Invoice"
+      },
+      "from": "Records from",
+      "to": "Records to",
+      "expires": "Access expires on",
+      "send": "Send the request",
+      "sent": "Request sent. The patient approves it in their ABHA app; the records appear here when their hospital sends them.",
+      "requests": "Requests",
+      "status": {
+        "requested": "Sent",
+        "awaiting_patient": "Waiting for the patient",
+        "granted": "Granted",
+        "denied": "Denied",
+        "expired": "Expired",
+        "revoked": "Revoked",
+        "failed": "Failed"
+      },
+      "artefact": {
+        "GRANTED": "granted",
+        "REVOKED": "revoked",
+        "EXPIRED": "expired"
+      },
+      "erased": "{{count}} record deleted",
+      "erased_other": "{{count}} records deleted",
+      "expiresOn": "expires {{date}}",
+      "check": "Check status",
+      "consentUntil": "Consent until {{date}} — deleted after that",
+      "subject": "Patient in the record: {{name}}",
+      "author": "By {{name}}",
+      "checksumUnverified": "The sender sent no checksum; the encryption still authenticated every byte.",
+      "unreadable": "Nothing readable in this document.",
+      "none": "No records from other hospitals yet."
     }
   }
 }

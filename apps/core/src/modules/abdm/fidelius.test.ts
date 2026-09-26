@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { openSecret, sealSecret } from "../../kernel/crypto";
 import {
   BC_CURVE25519, FideliusKeyPair, fideliusDecrypt, fideliusEncrypt, parseFideliusPublicKey,
 } from "./fidelius";
@@ -87,6 +88,22 @@ describe("Fidelius — the published fidelius-cli vector, on @noble/curves", () 
     expect(() => parseFideliusPublicKey(offCurve.toString("base64"))).toThrow();
     expect(() => parseFideliusPublicKey(Buffer.alloc(40, 7).toString("base64"))).toThrow();
     expect(() => fideliusEncrypt(hip, { publicKey: requester.pub, nonce: Buffer.alloc(16, 1).toString("base64") }, "x")).toThrow(/nonce/);
+  });
+
+  it("S3 — the HIU's half is held SEALED between its request and the HIP's push: the seal is not the key, and the opened pair decrypts the README ciphertext", () => {
+    const key = Buffer.alloc(32, 7);
+    const hiu = FideliusKeyPair.fromPrivateKey(requester.priv, requester.nonce);
+    let handed = "";
+    const sealed = hiu.sealPrivateKey((p) => { handed = p; return sealSecret(key, p); });
+    // the sealer is the ONE thing that ever sees the private key, and it sees it in the README's form
+    expect(Buffer.from(handed, "base64")).toEqual(Buffer.from(requester.priv, "base64"));
+    const d = BigInt(`0x${Buffer.from(requester.priv, "base64").toString("hex")}`);
+    for (const t of [requester.priv, d.toString(), d.toString(16)]) expect(sealed).not.toContain(t);
+    const back = FideliusKeyPair.fromSealed(sealed, requester.nonce, (s) => openSecret(key, s));
+    expect(back.publicKeyX509()).toBe(requester.x509);
+    expect(fideliusDecrypt(back, { publicKey: sender.x509, nonce: sender.nonce }, ENCRYPTED)).toBe(PLAINTEXT);
+    // a seal opened under another key is refused, not turned into some other key pair
+    expect(() => FideliusKeyPair.fromSealed(sealed, requester.nonce, (s) => openSecret(Buffer.alloc(32, 8), s))).toThrow();
   });
 
   it("THE PRIVATE KEY NEVER SERIALISES: not in JSON, not in a spread, not in util.inspect", () => {

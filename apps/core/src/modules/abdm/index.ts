@@ -11,6 +11,10 @@
  * S2 (M2 — the hospital shares its records, as a HIP): care contexts (HIP-initiated linking, context
  * notify, the worker's consumer and its manifest), patient-initiated linking with its OTP sender,
  * consent artefacts, the FHIR record builders, Fidelius, and the health-information transfer.
+ *
+ * S3 (M3 — the hospital fetches records, as an HIU): consent requests from the consult, artefacts,
+ * the health-information request, the push it receives, the received (external) records and their
+ * erasure when the consent ends.
  */
 export { AbdmModule } from "./abdm.module";
 export { ABDM_CLOCK, ABDM_FETCH, AbdmRuntime } from "./runtime";
@@ -52,3 +56,18 @@ export type { FideliusPeer } from "./fidelius";
 export { BUILT_HI_TYPES, imagingReportBundle, labReportBundle, opConsultBundle, prescriptionBundle } from "./fhir-records";
 export type { HiType, RecordContext, RecordPatient } from "./fhir-records";
 export { healthInformationReleased } from "./events";
+// ── S3 — M3 (the hospital as HIU) ──
+export { externalRecordsErased, externalRecordsReceived } from "./events";
+export {
+  HIU_DEFAULT_EXPIRY_DAYS, HIU_DEFAULT_RANGE_MONTHS, HIU_KEY_LIFETIME_MS, HIU_MAX_EXPIRY_DAYS, HIU_SWEEP_INTERVAL_MS,
+  Hiu, HiuError, eraseArtefact, purgeExpiredExternalRecords, readExternalRecords,
+} from "./hiu";
+export type {
+  ConsentRequestInput, ExternalFacility, ExternalRecordView, HiuErrorCode, HiuRequestView, PatientExternalRecords, PushAnswer,
+} from "./hiu";
+export {
+  ABDM_PURPOSES, ALL_HI_TYPES, CONSULT_PURPOSES, DEFAULT_REQUEST_HI_TYPES, HIU_PATHS, HIU_PUSH_PREFIX, HiuClient,
+} from "./hiu-client";
+export type { AbdmPurpose, AnyHiType } from "./hiu-client";
+export { classifyBundle, summarizeBundle } from "./fhir-read";
+export type { BundleVerdict, ExternalRecordSummary } from "./fhir-read";

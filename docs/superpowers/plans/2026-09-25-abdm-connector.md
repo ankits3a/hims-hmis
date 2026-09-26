@@ -132,6 +132,41 @@ HMIS, fixes for its findings (each its own PR), and the evidence pack an auditor
 URLs, role matrix and test users, architecture and data-flow, security-event logging). Draft
 assessment: `/opt/hmis-context/reference/wasa/`.
 
+S3 as built (primary M3 reference: the NHA wrapper's V3 `HIUConsentV3Service`,
+`HIUConsentGatewayCallbackV3Service`, `HIUV3HealthInformationService`, `GatewayURL.java`; Care a
+cross-check; every path is listed UNVERIFIED in `modules/abdm/hiu-client.ts`):
+- **DECIDED — no new permission.** The three doctor routes ride `opd.consult`; the REQUEST also takes
+  the consult's own guards (`requireTreatingDoctor`, an `in_consultation` encounter), so another
+  `opd.consult` holder is refused `not_your_patient`. The HIU is on only when `ABDM_HIU_ID` is set.
+- **DECIDED — the ask:** the patient's ABDM-VERIFIED ABHA address only (typing an address is not
+  built); purpose CAREMGT (default) or BTG — the other four HL7 codes are refused for a consult; HI
+  types default the three the consult renders fully, any of the eight allowed; last 12 months;
+  expiry 30 days (max 365); `accessMode` VIEW; requester = the doctor's registration number (REGNO;
+  HPR id owed, UNVERIFIED).
+- **DECIDED — keys:** a fresh Fidelius pair per health-information request (`fidelius.ts`, no second
+  crypto path); the private half leaves the key object only SEALED (`sealPrivateKey`, AES-GCM under
+  `SECRET_KEY`) into `abdm_hiu_data_requests`, and is NULLed when the transfer ends (a CHECK enforces
+  it). It is in no `abdm_messages` row.
+- **DECIDED — the push (UNVERIFIED):** `{ABDM_CALLBACK_BASE_URL}/hiu/data-push/<256-bit token>`,
+  `@Public()` and not JWT-guarded (the wrapper's HIP sends no Authorization); authenticated by the
+  token (SHA-256 stored, scrubbed from the log), the transaction id, the GCM tag under our key, and the
+  checksum. Every entry must decrypt, match a real MD5 checksum (the wrapper's placeholder `"string"`
+  and Care's `""` are accepted on the GCM tag and recorded unverified), be a FHIR document of an HI type
+  and care context the artefact names — or the page stores NOTHING, the transfer fails, ABDM is told
+  FAILED. Duplicates (page, callback, document) are stored once.
+- **DECIDED — external records** (`abdm_external_records`) are never merged into our clinical tables;
+  the consult History dialog shows them read-only, grouped by facility, newest first, each badged
+  "External · not verified" with its consent's expiry. A read writes `abdm.external_records` to the PHI
+  access log.
+- **DECIDED — erasure:** a REVOKED/EXPIRED notify, or our clock past `dataEraseAt` (wrapper
+  `docs_wrapperV3.yaml`: "Data related to this consent to be deleted on this date"; FT HIU_FLOW_202/301),
+  DELETES the artefact's records and records the erasure (`erased_*`, event
+  `abdm.external_records_erased`). The read sweeps first; the api sweeps every 10 minutes while the HIU
+  is on. A worker job is owed (a kernel edit).
+- **Owed:** a request body over 1 MB is refused by the app's global JSON limit (a path-scoped parser
+  needs `express`/`body-parser` as a direct dependency); requesting by a typed ABHA address; HPR id as
+  requester; PDF/image attachments are named, not rendered.
+
 ## 4. Owner rulings still open (law / money)
 
 1. Scope and order — this plan assumes M1 → M2 → M3.

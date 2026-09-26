@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { opdEncounters } from "./opd";
 import { patients } from "./patients";
 
@@ -353,5 +353,189 @@ export const abdmHealthInfoRequests = pgTable(
     check("abdm_hi_requests_refused_ck", sql`(${t.status} = 'refused') = (${t.refusal} is not null)`),
     uniqueIndex("abdm_hi_requests_transaction_ux").on(t.transactionId),
     index("abdm_hi_requests_consent_idx").on(t.consentId),
+  ],
+);
+
+/**
+ * ═══ ABDM S3 — M3: THE HOSPITAL AS HIU. FOUR TABLES, ONE PER STEP OF A FETCH ═══
+ *
+ * A doctor in an open consultation asks ABDM for the patient's records held by OTHER facilities
+ * (`modules/abdm/hiu.ts`). The patient approves in their ABHA app — outside this system — and ABDM
+ * hands us one consent ARTEFACT per facility (HIP) that holds records; per artefact we ask for the
+ * data with a fresh ephemeral key pair, and the HIP pushes the encrypted FHIR bundles straight to us.
+ *
+ *   abdm_hiu_consent_requests  — the doctor's request (`consent/v3/request/init`), and its status.
+ *   abdm_hiu_consent_artefacts — what the patient granted, per HIP (`notify` → `consent/v3/fetch`).
+ *   abdm_hiu_data_requests     — each `health-information/request`: OUR key material, the push URL.
+ *   abdm_external_records      — the bundles RECEIVED, decrypted: other hospitals' records.
+ *
+ * EXTERNAL RECORDS ARE NEVER MERGED into this hospital's clinical tables. They are another
+ * institution's statements, shown read-only and labelled "external — not verified by this hospital",
+ * and they live only as long as the consent does: a REVOKED or EXPIRED artefact (ABDM's notify, or
+ * our own clock passing `permission.dataEraseAt` — "Data related to this consent to be deleted on
+ * this date", NHA wrapper `docs_wrapperV3.yaml` ConsentV3Permission) DELETES its rows here — not a
+ * hidden flag — and the artefact row keeps only the fact of the erasure (`erased_at`, `erased_count`,
+ * `erase_reason`), as does the event spine (`abdm.external_records_erased`).
+ */
+export const abdmHiuConsentRequests = pgTable(
+  "abdm_hiu_consent_requests",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** The consultation it was raised from — the requester is that visit's treating doctor. */
+    encounterId: text("encounter_id").notNull().references(() => opdEncounters.id),
+    /** The hospital user (the doctor) who asked. */
+    requestedBy: text("requested_by").notNull(),
+    requesterName: text("requester_name").notNull(),
+    /** The doctor's medical registration number, sent as the requester identifier (UNVERIFIED — HPR id owed). */
+    requesterRegNo: text("requester_reg_no"),
+    hiuId: text("hiu_id").notNull(),
+    /** The patient's ABDM-VERIFIED ABHA address at the time of the request. */
+    abhaAddress: text("abha_address").notNull(),
+    purposeCode: text("purpose_code").notNull(),
+    hiTypes: text("hi_types").array().notNull(),
+    dateFrom: timestamp("date_from", { withTimezone: true }).notNull(),
+    dateTo: timestamp("date_to", { withTimezone: true }).notNull(),
+    /** The expiry the doctor asked for (`permission.dataEraseAt`); the patient may shorten it. */
+    dataEraseAt: timestamp("data_erase_at", { withTimezone: true }).notNull(),
+    /** Our REQUEST-ID for `consent/v3/request/init` — `on-init`'s `response.requestId`. */
+    requestId: text("request_id").notNull(),
+    /** ABDM's consent-request id, from `on-init`. */
+    consentRequestId: text("consent_request_id"),
+    /** requested → awaiting_patient → granted | denied | expired | revoked; failed = ABDM refused the request. */
+    status: text("status").notNull(),
+    error: text("error"),
+    statusCheckedAt: timestamp("status_checked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("abdm_hiu_consent_requests_status_ck", sql`${t.status} in ('requested', 'awaiting_patient', 'granted', 'denied', 'expired', 'revoked', 'failed')`),
+    uniqueIndex("abdm_hiu_consent_requests_request_ux").on(t.requestId),
+    uniqueIndex("abdm_hiu_consent_requests_cr_ux").on(t.consentRequestId).where(sql`${t.consentRequestId} is not null`),
+    index("abdm_hiu_consent_requests_patient_idx").on(t.patientId, t.createdAt),
+  ],
+);
+
+export const abdmHiuConsentArtefacts = pgTable(
+  "abdm_hiu_consent_artefacts",
+  {
+    id: text("id").primaryKey(),
+    hiuRequestId: text("hiu_request_id").notNull().references(() => abdmHiuConsentRequests.id),
+    /** ABDM's consent-artefact id (unique): the id every later call names. */
+    consentId: text("consent_id").notNull(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** ABDM's word: GRANTED until a REVOKED / EXPIRED notify — or our clock past `data_erase_at` — ends it. */
+    status: text("status").notNull(),
+    /** Our REQUEST-ID for `consent/v3/fetch` — `on-fetch`'s `response.requestId`. */
+    fetchRequestId: text("fetch_request_id"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    hipId: text("hip_id"),
+    hipName: text("hip_name"),
+    careContexts: jsonb("care_contexts").$type<{ patientReference: string; careContextReference: string }[]>().notNull().default(sql`'[]'::jsonb`),
+    hiTypes: text("hi_types").array().notNull().default(sql`'{}'::text[]`),
+    dateFrom: timestamp("date_from", { withTimezone: true }),
+    dateTo: timestamp("date_to", { withTimezone: true }),
+    dataEraseAt: timestamp("data_erase_at", { withTimezone: true }),
+    accessMode: text("access_mode"),
+    /** `consentDetail` as `on-fetch` delivered it. No health data: who, what types, which contexts, until when. */
+    artefact: jsonb("artefact"),
+    signature: text("signature"),
+    erasedAt: timestamp("erased_at", { withTimezone: true }),
+    erasedCount: integer("erased_count").notNull().default(0),
+    eraseReason: text("erase_reason"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("abdm_hiu_artefacts_status_ck", sql`${t.status} in ('GRANTED', 'REVOKED', 'EXPIRED')`),
+    uniqueIndex("abdm_hiu_artefacts_consent_ux").on(t.consentId),
+    index("abdm_hiu_artefacts_request_idx").on(t.hiuRequestId),
+    index("abdm_hiu_artefacts_patient_idx").on(t.patientId),
+    index("abdm_hiu_artefacts_erase_idx").on(t.status, t.dataEraseAt),
+  ],
+);
+
+/**
+ * One `data-flow/v3/health-information/request` per row. OUR KEY: a fresh Fidelius pair per request
+ * (`fidelius.ts`); the public key and nonce travel to the HIP, and the PRIVATE key is held here ONLY
+ * SEALED (AES-256-GCM under the app's `SECRET_KEY`, `kernel/crypto.ts` `sealSecret`) and only while
+ * the transfer is open — it is set to NULL the moment the transfer is received, fails, expires or is
+ * erased (the CHECK below makes a closed row with a key impossible). It is never in `abdm_messages`.
+ *
+ * THE PUSH URL carries a 256-bit random token (`push_token_hash` is its SHA-256; the token itself is
+ * stored nowhere and scrubbed from the logged request body): the push is not an ABDM callback and the
+ * NHA wrapper's HIP sends it with no Authorization at all, so the URL is the capability — together
+ * with the transaction id, and the GCM tag that only our key opens (UNVERIFIED — `hiu-client.ts`).
+ */
+export const abdmHiuDataRequests = pgTable(
+  "abdm_hiu_data_requests",
+  {
+    id: text("id").primaryKey(),
+    artefactId: text("artefact_id").notNull().references(() => abdmHiuConsentArtefacts.id),
+    consentId: text("consent_id").notNull(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** Our REQUEST-ID for the request — `on-request`'s `response.requestId`. */
+    requestId: text("request_id").notNull(),
+    /** ABDM's transaction id: from `on-request`, or bound by the first push when that arrives first. */
+    transactionId: text("transaction_id"),
+    pushTokenHash: text("push_token_hash").notNull(),
+    publicKey: text("public_key").notNull(),
+    nonce: text("nonce").notNull(),
+    privateKeySealed: text("private_key_sealed"),
+    keyExpiresAt: timestamp("key_expires_at", { withTimezone: true }).notNull(),
+    dateFrom: timestamp("date_from", { withTimezone: true }).notNull(),
+    dateTo: timestamp("date_to", { withTimezone: true }).notNull(),
+    /** requested → acknowledged → receiving → received; failed; erased (the consent ended). */
+    status: text("status").notNull(),
+    pageCount: integer("page_count"),
+    pagesReceived: integer("pages_received").array().notNull().default(sql`'{}'::integer[]`),
+    entryCount: integer("entry_count").notNull().default(0),
+    error: text("error"),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("abdm_hiu_data_requests_status_ck", sql`${t.status} in ('requested', 'acknowledged', 'receiving', 'received', 'failed', 'erased')`),
+    check("abdm_hiu_data_requests_key_ck", sql`${t.status} in ('requested', 'acknowledged', 'receiving') or ${t.privateKeySealed} is null`),
+    uniqueIndex("abdm_hiu_data_requests_request_ux").on(t.requestId),
+    uniqueIndex("abdm_hiu_data_requests_txn_ux").on(t.transactionId).where(sql`${t.transactionId} is not null`),
+    uniqueIndex("abdm_hiu_data_requests_token_ux").on(t.pushTokenHash),
+    index("abdm_hiu_data_requests_artefact_idx").on(t.artefactId),
+  ],
+);
+
+/**
+ * The decrypted FHIR documents another facility sent, ONE ROW PER DOCUMENT. `checksum` is the MD5 of
+ * the plaintext as WE computed it; unique with the consent and the care context, so a HIP that pushes
+ * the same page twice (a retry, a duplicated page) stores it once. `checksum_verified` says whether
+ * the HIP's own checksum was there to compare (a real MD5 must match or the page is refused; the
+ * placeholder values two reference implementations send are recorded as unverified).
+ */
+export const abdmExternalRecords = pgTable(
+  "abdm_external_records",
+  {
+    id: text("id").primaryKey(),
+    dataRequestId: text("data_request_id").notNull().references(() => abdmHiuDataRequests.id),
+    artefactId: text("artefact_id").notNull().references(() => abdmHiuConsentArtefacts.id),
+    consentId: text("consent_id").notNull(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    careContextReference: text("care_context_reference").notNull(),
+    hipId: text("hip_id").notNull(),
+    hipName: text("hip_name"),
+    hiType: text("hi_type").notNull(),
+    recordDate: timestamp("record_date", { withTimezone: true }),
+    title: text("title"),
+    checksum: text("checksum").notNull(),
+    checksumVerified: boolean("checksum_verified").notNull(),
+    bundle: jsonb("bundle").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("abdm_external_records_entry_ux").on(t.consentId, t.careContextReference, t.checksum),
+    index("abdm_external_records_patient_idx").on(t.patientId, t.recordDate),
+    index("abdm_external_records_artefact_idx").on(t.artefactId),
   ],
 );

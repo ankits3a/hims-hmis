@@ -7,6 +7,8 @@ import { Consents } from "./consents";
 import { AbdmGatewayClient } from "./gateway-client";
 import { HealthInformation } from "./health-information";
 import { HipClient } from "./hip-client";
+import { Hiu } from "./hiu";
+import { HiuClient } from "./hiu-client";
 import { LoggingOtpSender, PatientLinking } from "./patient-linking";
 import { ProfileShares } from "./profile-shares";
 import { abdmSettingsFrom } from "./settings";
@@ -37,12 +39,18 @@ export const defaultAbdmFetch: AbdmFetch = (url, init) => fetch(url, init);
  * notify — the api answers their callbacks; the worker runs its own copy off the event stream,
  * `consumer.ts`), patient-initiated linking with its OTP sender, consent artefacts, and the
  * health-information transfer. All null when ABDM is off.
+ *
+ * S3 adds the HIU (M3), on the SAME client once more: consent requests, artefacts, the
+ * health-information request and the push it receives (`hiu.ts`). Null unless ABDM is configured AND
+ * `ABDM_HIU_ID` is set — an HIU needs its own id, and the plan's config says M3 is off until then.
  */
 export type AbdmRuntimeOptions = {
   /** S2 — the linking OTP's sender. Default `LoggingOtpSender` (no SMS provider exists yet). */
   otpSender?: OtpSender;
   /** S2 — tests only: a known Fidelius key pair per transfer. */
   keyPair?: () => FideliusKeyPair;
+  /** S3 — tests only: a known Fidelius key pair per health-information REQUEST (the HIU's half). */
+  hiuKeyPair?: () => FideliusKeyPair;
 };
 export class AbdmRuntime {
   readonly settings: AbdmSettings | null;
@@ -57,8 +65,9 @@ export class AbdmRuntime {
   readonly linking: PatientLinking | null;
   readonly consents: Consents | null;
   readonly healthInformation: HealthInformation | null;
+  readonly hiu: Hiu | null;
 
-  constructor(cfg: AppConfig, readonly db: Db, fetchImpl: AbdmFetch, now: () => Date, opts: AbdmRuntimeOptions = {}) {
+  constructor(cfg: AppConfig, readonly db: Db, fetchImpl: AbdmFetch, readonly now: () => Date, opts: AbdmRuntimeOptions = {}) {
     this.settings = abdmSettingsFrom(cfg.abdm);
     this.abhaTransactions = new AbhaTransactions(now);
     if (this.settings === null) {
@@ -71,6 +80,7 @@ export class AbdmRuntime {
       this.linking = null;
       this.consents = null;
       this.healthInformation = null;
+      this.hiu = null;
     } else {
       this.client = new AbdmGatewayClient(this.settings, { db, fetch: fetchImpl, now });
       this.verifier = new AbdmCallbackVerifier(this.settings, { client: this.client, now });
@@ -87,6 +97,11 @@ export class AbdmRuntime {
       this.consents = consents;
       this.healthInformation = new HealthInformation({
         db, settings, hip, consents, now, ...(opts.keyPair === undefined ? {} : { keyPair: opts.keyPair }),
+      });
+      const hiuId = settings.hiuId;
+      this.hiu = hiuId === null ? null : new Hiu({
+        db, settings, hiuId, client: new HiuClient(this.client, hiuId), secretKey: cfg.secretKey, now,
+        ...(opts.hiuKeyPair === undefined ? {} : { keyPair: opts.hiuKeyPair }),
       });
     }
     this.abhaService = new AbhaService({ db, settings: this.settings, abha: this.abha, transactions: this.abhaTransactions, now });
