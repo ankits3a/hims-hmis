@@ -384,9 +384,9 @@
         "explain": "Two records were joined by mistake. Approving splits them back apart."
       },
       "materials_stock_adjustment": {
-        "label": "Stock correction or destruction",
-        "ask": "Correct the store's stock after a physical count, or destroy expired stock that cannot go back",
-        "explain": "A count found more or less stock than the system shows, or stock is to be destroyed under the BMW Rules (the request names the write-off). Approving corrects the stock, or lets it be handed over for destruction."
+        "label": "Stock correction, destruction or item merge",
+        "ask": "Correct the store's stock after a physical count, destroy expired stock that cannot go back, or merge a duplicate item into the one that stays",
+        "explain": "A count found more or less stock than the system shows, stock is to be destroyed under the BMW Rules, or one item is registered twice (the request names which). Approving corrects the stock, lets it be handed over for destruction, or lets the duplicate's stock and open work move to the item that stays — its history stays as written."
       },
       "materials_near_expiry_acceptance": {
         "label": "Stock that expires soon",
@@ -1843,7 +1843,8 @@
     "active": "Active",
     "retired": "Retired",
     "retire": "Retire",
-    "reactivate": "Reactivate"
+    "reactivate": "Reactivate",
+    "mergedInto": "Merged into {{code}}"
   },
   "materialsVendors": {
     "title": "Vendor master",
@@ -4500,6 +4501,11 @@
       "idProofHint": "Aadhaar ending 1234",
       "witness": "Witness username",
       "pin": "Witness PIN"
+    },
+    "duplicates": {
+      "tag": "DUPLICATES",
+      "body": "{{pairs}} pairs look like one item registered twice ({{sameMedicine}} the same medicine). The medical superintendent approves each merge.",
+      "open": "Open the office"
     }
   },
   "pharmacyAuthorise": {
@@ -5548,7 +5554,9 @@
       "paymentRunPlan": "Ready to draft a payment run — vendors: {{vendors}} · bills: {{bills}} · ₹{{amount}} due by {{until}}. Open the office to make the draft.",
       "paymentRunNothing": "Nothing falls due by {{until}} that a run does not already hold.",
       "returnPlan": "Ready to draft returns — vendors: {{vendors}} · batches: {{batches}} · ₹{{amount}} at cost can go back ({{toDestroy}} can only be destroyed). Open the office to make the drafts.",
-      "returnNothing": "Nothing expired within its window, near expiry or recalled that a return does not already hold ({{toDestroy}} can only be destroyed)."
+      "returnNothing": "Nothing expired within its window, near expiry or recalled that a return does not already hold ({{toDestroy}} can only be destroyed).",
+      "duplicateItems": "{{pairs}} possible duplicate items ({{sameMedicine}} the same medicine twice). Open the office's Items side to review and merge them.",
+      "duplicateItemsNothing": "No two live items look like one thing twice."
     },
     "report": {
       "title": "Your day — {{date}}",
@@ -5989,7 +5997,8 @@
       "pay": "Pay",
       "returns": "Returns",
       "reports": "Reports",
-      "controlled": "Controlled"
+      "controlled": "Controlled",
+      "items": "Items"
     },
     "pay": {
       "count": {
@@ -6169,7 +6178,8 @@
       "pay": "↑↓ move · ⏎ open · D draft run · P payables · A accept bill · Esc close",
       "returns": "↑↓ move · ⏎ open · E expiry · D drafts · W write-off · R recall · A approve · P print · Esc close",
       "reports": "1–9 open a report · T W M Y range · E export · P print · X Tally export · L ledgers · Esc back",
-      "controlled": "L licences · C count the cabinet · R register · B balance · Esc close"
+      "controlled": "L licences · C count the cabinet · R register · B balance · Esc close",
+      "items": "↑↓ move · ⏎ open · N pick two items · S swap · M merge now · Esc close"
     },
     "returns": {
       "batches_one": "{{count}} batch",
@@ -6782,6 +6792,136 @@
         "closing": "Closing",
         "ledgerClosing": "Ledger"
       }
+    },
+    "items": {
+      "count": {
+        "duplicates": "Possible duplicates",
+        "awaiting": "Waiting on the medical superintendent",
+        "ready": "Approved — ready to merge"
+      },
+      "agent": {
+        "found_one": "{{count}} pair looks like one item registered twice ({{scanned}} items checked). Open it to see what would move.",
+        "found_other": "{{count}} pairs look like one item registered twice ({{scanned}} items checked). Open one to see what would move.",
+        "nothing": "No two live items look like one thing twice ({{scanned}} items checked)."
+      },
+      "pickTwo": "Pick two items",
+      "why": {
+        "same_medicine": "Same medicine",
+        "same_composition": "Same composition",
+        "similar_name": "Similar name"
+      },
+      "onHandPair": "on hand {{keep}} · {{merge}}",
+      "section": {
+        "ready": "Ready to merge",
+        "duplicates": "The agent's possible duplicates",
+        "awaiting": "Waiting on the medical superintendent",
+        "recent": "Done"
+      },
+      "approval": {
+        "pending": "Waiting on the MS",
+        "granted": "Approved",
+        "rejected": "Refused"
+      },
+      "status": {
+        "requested": "Requested",
+        "merged": "Merged",
+        "refused": "Refused"
+      },
+      "empty": "Nothing to merge: the agent found no duplicates and no merge is in flight.",
+      "sheetTitle": "Merge {{pair}}",
+      "side": {
+        "stays": "Stays (A)",
+        "retired": "Merged into A and retired (B)"
+      },
+      "field": {
+        "class": "Class",
+        "medicine": "Medicine",
+        "baseUom": "Counted in",
+        "packs": "Packs",
+        "barcodes": "Barcodes",
+        "onHand": "On hand",
+        "controlled": "Controlled drug"
+      },
+      "yes": "Yes",
+      "no": "No",
+      "swap": "Swap which one stays",
+      "notOneThing": "These two are not one thing",
+      "finishFirst": "Finish this first",
+      "willMove": "What moves to A",
+      "col": {
+        "store": "Store",
+        "batch": "Batch",
+        "expiry": "Expiry",
+        "qty": "Quantity",
+        "into": "Into A's"
+      },
+      "into": {
+        "new_batch": "same batch, new record",
+        "existing_batch": "A's own batch of that number"
+      },
+      "moves": {
+        "orderLines_one": "{{count}} open purchase-order line",
+        "orderLines_other": "{{count}} open purchase-order lines",
+        "levels_one": "{{count}} min / reorder / max level",
+        "levels_other": "{{count}} min / reorder / max levels",
+        "levelsKept_one": "{{count}} level of B dropped — A's own is kept",
+        "levelsKept_other": "{{count}} levels of B dropped — A's own are kept",
+        "barcodes_one": "{{count}} barcode",
+        "barcodes_other": "{{count}} barcodes",
+        "packs_one": "{{count}} pack unit A lacks",
+        "packs_other": "{{count}} pack units A lacks",
+        "priceRegulation_one": "The price regulation in force (A has none)",
+        "priceRegulation_other": "The price regulations in force (A has none)",
+        "saleItemRetired_one": "B's sale registration is retired — A keeps its own",
+        "saleItemRetired_other": "B's sale registrations are retired — A keeps its own",
+        "saleItemRegistered_one": "A is registered for sale (only B was); B's registration is retired",
+        "saleItemRegistered_other": "A is registered for sale (only B was); B's registration is retired",
+        "shelf_one": "{{count}} shelf label",
+        "shelf_other": "{{count}} shelf labels",
+        "shelfKept_one": "{{count}} shelf label of B dropped — A's own is kept",
+        "shelfKept_other": "{{count}} shelf labels of B dropped — A's own are kept",
+        "shortBook_one": "{{count}} open short-book row",
+        "shortBook_other": "{{count}} open short-book rows",
+        "shortBookClosed_one": "{{count}} open short-book row of B closed — A already has one",
+        "shortBookClosed_other": "{{count}} open short-book rows of B closed — A already has one"
+      },
+      "nothingMoves": "Nothing is on hand or open under B: only the record is retired.",
+      "stays": "What stays, written against B (never rewritten)",
+      "stay": {
+        "ledgerRows_one": "{{count}} stock ledger row",
+        "ledgerRows_other": "{{count}} stock ledger rows",
+        "batches_one": "{{count}} batch record",
+        "batches_other": "{{count}} batch records",
+        "grnLines_one": "{{count}} goods-receipt line",
+        "grnLines_other": "{{count}} goods-receipt lines",
+        "billLines_one": "{{count}} supplier bill line",
+        "billLines_other": "{{count}} supplier bill lines",
+        "returnLines_one": "{{count}} return-to-supplier line",
+        "returnLines_other": "{{count}} return-to-supplier lines",
+        "closedOrderLines_one": "{{count}} closed purchase-order line",
+        "closedOrderLines_other": "{{count}} closed purchase-order lines",
+        "priceRegulations_one": "{{count}} price regulation",
+        "priceRegulations_other": "{{count}} price regulations",
+        "dispenseLines_one": "{{count}} dispense line",
+        "dispenseLines_other": "{{count}} dispense lines",
+        "retailLines_one": "{{count}} walk-in sale line",
+        "retailLines_other": "{{count}} walk-in sale lines",
+        "controlledRegister_one": "{{count}} controlled-drug register row",
+        "controlledRegister_other": "{{count}} controlled-drug register rows"
+      },
+      "irreversible": "A merge is not undone. B's history stays as it was written and every report reads it under A; B can never be ordered, received, sold or switched back on. A wrong merge is corrected by hand — ask IT first.",
+      "reason": "Why these are one item (the MS reads it)",
+      "reasonNeeded": "Say why these two are one item.",
+      "submit": "Submit for approval",
+      "submitted": "Sent to the medical superintendent for approval.",
+      "waitingOnMs": "Waiting on the medical superintendent's approval — nothing moves before it.",
+      "mergeNow": "Merge now",
+      "merged": "Merged. The stock and the open work are A's; B is retired.",
+      "doneSummary": "Merged: {{units}} units moved to A, by {{by}}.",
+      "pickTitle": "Merge two items you choose",
+      "pickKeep": "Search and choose the item that STAYS.",
+      "pickMerge": "Now choose the duplicate that merges into {{keep}}.",
+      "search": "Search by name or code"
     }
   }
 }

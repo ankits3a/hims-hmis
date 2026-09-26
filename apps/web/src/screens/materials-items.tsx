@@ -190,11 +190,18 @@ export function MaterialsItems(): React.ReactElement {
                   <td>{it.name}</td>
                   <td>{it.class}</td>
                   <td>{it.baseUom}</td>
-                  <td>{it.active ? t("materialsItems.active") : t("materialsItems.retired")}</td>
+                  <td data-testid={`item-status-${it.code}`}>
+                    {(it.mergedIntoItemId ?? null) !== null
+                      ? t("materialsItems.mergedInto", { code: items.data.find((x) => x.id === it.mergedIntoItemId)?.code ?? "—" })
+                      : it.active ? t("materialsItems.active") : t("materialsItems.retired")}
+                  </td>
                   <td>
-                    <Button variant="secondary" onClick={() => void toggleActive(it)}>
-                      {it.active ? t("materialsItems.retire") : t("materialsItems.reactivate")}
-                    </Button>
+                    {/* PHARMACY P6 — a merged item is history: it is never switched back on (the server refuses it too). */}
+                    {(it.mergedIntoItemId ?? null) === null && (
+                      <Button variant="secondary" onClick={() => void toggleActive(it)}>
+                        {it.active ? t("materialsItems.retire") : t("materialsItems.reactivate")}
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
