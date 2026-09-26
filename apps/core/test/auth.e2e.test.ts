@@ -1,11 +1,12 @@
 import { Test } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import { authenticator } from "otplib";
 import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { createUser, setPin } from "../src/kernel/auth/identity";
+import { createUser, rotateBadge, setPin } from "../src/kernel/auth/identity";
 import { createAgent, setKillSwitch } from "../src/kernel/auth/agents";
-import { requireEnv } from "../src/kernel/config";
+import { loadConfig, requireEnv } from "../src/kernel/config";
 import type { Db } from "../src/kernel/db/client";
 
 describe("auth e2e", () => {
@@ -68,8 +69,10 @@ describe("auth e2e", () => {
       .post("/auth/login").send({ username: "first", password: "s3cret-pass", terminalId: "counter-1" }).expect(201);
 
     // warm-up switch (JIT, pool) then the measured ones — budget guards the steady state
+    // WASA L-07: the terminal presents its outgoing session; the switch ends THAT session.
     let switched = await request(app.getHttpServer())
-      .post("/auth/switch/pin").send({ username: "second", pin: "482913", terminalId: "counter-1" }).expect(201);
+      .post("/auth/switch/pin").set("Authorization", `Bearer ${s1.body.token}`)
+      .send({ username: "second", pin: "482913", terminalId: "counter-1" }).expect(201);
 
     /**
      * PLAN 11f T3 — BEST-OF-N, the idiom `perf-opd-queue.test.ts` measures with, and for its
@@ -89,7 +92,8 @@ describe("auth e2e", () => {
     for (let i = 0; i < 5; i += 1) {
       const started = Date.now();
       switched = await request(app.getHttpServer())
-        .post("/auth/switch/pin").send({ username: "second", pin: "482913", terminalId: "counter-1" }).expect(201);
+        .post("/auth/switch/pin").set("Authorization", `Bearer ${switched.body.token}`)
+        .send({ username: "second", pin: "482913", terminalId: "counter-1" }).expect(201);
       times.push(Date.now() - started);
     }
     const fastest = Math.min(...times);
@@ -203,5 +207,112 @@ describe("auth e2e", () => {
     // Byte-identical status sequences for an account that exists and one that never has.
     expect(await attempts("real-person")).toEqual([401, 401, 401, 401, 401, 429]);
     expect(await attempts("no-such-person-anywhere")).toEqual([401, 401, 401, 401, 401, 429]);
+  });
+
+  // ─────────────────────────────── WASA M-02 — the TOTP routes ───────────────────────────────
+  //
+  // `src/kernel/auth/totp.test.ts` owns the mechanism (proof, replay, the shared counter). What is
+  // asserted HERE is what the wire does with it: the status each refusal answers, and that a
+  // session token on its own can no longer replace a factor.
+  describe("WASA M-02 — TOTP enrolment needs proof, codes are single-use, verification is throttled", () => {
+    const PASSWORD = "the-real-password-1";
+    const at = (secret: string, offsetSteps: number): string =>
+      authenticator.clone({ epoch: Date.now() + offsetSteps * 30_000 }).generate(secret);
+    const wrongFor = (secret: string): string => {
+      const valid = new Set([-1, 0, 1].map((o) => at(secret, o)));
+      for (let i = 0; ; i += 1) {
+        const c = String(i).padStart(6, "0");
+        if (!valid.has(c)) return c;
+      }
+    };
+    const secretOf = (otpauthUrl: string): string => new URL(otpauthUrl).searchParams.get("secret")!;
+
+    async function signedIn(username: string): Promise<string> {
+      await createUser(db, { username, fullName: username, password: PASSWORD });
+      const res = await request(app.getHttpServer()).post("/auth/login").send({ username, password: PASSWORD }).expect(201);
+      return res.body.token as string;
+    }
+
+    it("R1 — a session alone cannot enrol: no password is 403, a wrong one is 403, the right one is 201", async () => {
+      const token = await signedIn("enroller");
+      const none = await request(app.getHttpServer())
+        .post("/auth/totp/enroll").set("Authorization", `Bearer ${token}`).send({}).expect(403);
+      expect(none.body.code).toBe("password_required");
+      const wrong = await request(app.getHttpServer())
+        .post("/auth/totp/enroll").set("Authorization", `Bearer ${token}`).send({ password: "nope-nope-nope" }).expect(403);
+      expect(wrong.body.code).toBe("proof_invalid");
+      const ok = await request(app.getHttpServer())
+        .post("/auth/totp/enroll").set("Authorization", `Bearer ${token}`).send({ password: PASSWORD }).expect(201);
+      expect(ok.body.otpauthUrl).toContain("otpauth://totp/");
+    });
+
+    it("R2 — with a factor enabled, the password is not enough to replace it; the current code is", async () => {
+      const token = await signedIn("rotator");
+      const auth = { Authorization: `Bearer ${token}` };
+      const first = await request(app.getHttpServer()).post("/auth/totp/enroll").set(auth).send({ password: PASSWORD }).expect(201);
+      const secret = secretOf(first.body.otpauthUrl);
+      await request(app.getHttpServer()).post("/auth/totp/confirm").set(auth).send({ code: at(secret, 0) }).expect(204);
+
+      const pwOnly = await request(app.getHttpServer()).post("/auth/totp/enroll").set(auth).send({ password: PASSWORD }).expect(403);
+      expect(pwOnly.body.code).toBe("current_factor_required");
+      await request(app.getHttpServer()).post("/auth/totp/enroll").set(auth).send({ currentCode: at(secret, 1) }).expect(201);
+    });
+
+    it("R3 — a code is single-use: the confirm's code cannot then be replayed at verify", async () => {
+      const token = await signedIn("replayer");
+      const auth = { Authorization: `Bearer ${token}` };
+      const e = await request(app.getHttpServer()).post("/auth/totp/enroll").set(auth).send({ password: PASSWORD }).expect(201);
+      const secret = secretOf(e.body.otpauthUrl);
+      const code = at(secret, 0);
+      await request(app.getHttpServer()).post("/auth/totp/confirm").set(auth).send({ code }).expect(204);
+      await request(app.getHttpServer()).post("/auth/totp/verify").set(auth).send({ code }).expect(403);
+      await request(app.getHttpServer()).post("/auth/totp/verify").set(auth).send({ code: at(secret, 1) }).expect(204);
+    });
+
+    it("R4 — the 6th wrong code at /auth/totp/verify is 429 with Retry-After, and the right code is refused too", async () => {
+      const token = await signedIn("guesser");
+      const auth = { Authorization: `Bearer ${token}` };
+      const e = await request(app.getHttpServer()).post("/auth/totp/enroll").set(auth).send({ password: PASSWORD }).expect(201);
+      const secret = secretOf(e.body.otpauthUrl);
+      await request(app.getHttpServer()).post("/auth/totp/confirm").set(auth).send({ code: at(secret, 0) }).expect(204);
+      for (let i = 0; i < 5; i += 1) {
+        await request(app.getHttpServer()).post("/auth/totp/verify").set(auth).send({ code: wrongFor(secret) }).expect(403);
+      }
+      const throttled = await request(app.getHttpServer())
+        .post("/auth/totp/verify").set(auth).send({ code: at(secret, 1) }).expect(429);
+      expect(throttled.body.code).toBe("too_many_attempts");
+      expect(Number(throttled.headers["retry-after"])).toBeGreaterThan(0);
+    });
+  });
+
+  // ───────────────────────── WASA L-06 / L-07 — the two public switches ─────────────────────────
+  describe("WASA L-06 / L-07 — the public switch routes", () => {
+    const cfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! });
+
+    it("L-06 — the badge switch is throttled like the PIN: five refused badges for one user, then 429 even for the real one", async () => {
+      const { id } = await createUser(db, { username: "badged", fullName: "Badged", password: "s3cret-pass" });
+      const real = await rotateBadge(db, cfg, id);
+      const forged = real.badgeToken.replace(/\.[^.]+$/, ".not-the-signature");
+      for (let i = 1; i <= 5; i += 1) {
+        await request(app.getHttpServer()).post("/auth/switch/badge").send({ badgeToken: forged, terminalId: "t" }).expect(401);
+      }
+      const throttled = await request(app.getHttpServer())
+        .post("/auth/switch/badge").send({ badgeToken: real.badgeToken, terminalId: "t" }).expect(429);
+      expect(throttled.body.code).toBe("too_many_attempts");
+      expect(Number(throttled.headers["retry-after"])).toBeGreaterThan(0);
+    });
+
+    it("L-07 — a PIN switch that NAMES someone else's terminal does not sign them out of it", async () => {
+      await createUser(db, { username: "victim", fullName: "Victim", password: "s3cret-pass" });
+      const { id } = await createUser(db, { username: "pinholder", fullName: "Pin Holder", password: "s3cret-pass" });
+      await setPin(db, id, "482913");
+      const victim = await request(app.getHttpServer())
+        .post("/auth/login").send({ username: "victim", password: "s3cret-pass", terminalId: "counter-1" }).expect(201);
+
+      await request(app.getHttpServer())
+        .post("/auth/switch/pin").send({ username: "pinholder", pin: "482913", terminalId: "counter-1" }).expect(201);
+      await request(app.getHttpServer())
+        .get("/auth/me").set("Authorization", `Bearer ${victim.body.token}`).expect(200);
+    });
   });
 });

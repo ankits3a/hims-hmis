@@ -46,6 +46,9 @@ const configSchema = z.object({
     .regex(/^[0-9a-f]{64}$/, "SECRET_KEY must be 64 lowercase hex chars (32 bytes)"),
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(720),
   SECOND_FACTOR_WINDOW_MINUTES: z.coerce.number().int().positive().default(5),
+  // WASA L-06: a badge dies this long after the rotation that issued it (`identity.ts`
+  // `resolveBadge`). Server-side, so shortening it applies to badges already printed.
+  BADGE_MAX_AGE_DAYS: z.coerce.number().int().positive().default(365),
   BREAK_GLASS_TTL_MINUTES: z.coerce.number().int().positive().default(60),
   TEMP_ROLE_MAX_TTL_MINUTES: z.coerce.number().int().positive().default(720),
   // 2x the slowest INTERVAL job's cadence, NOT 2x the daily jobs': a daily job that has not
@@ -381,6 +384,7 @@ export type AppConfig = {
   secretKey: Buffer;
   sessionTtlMinutes: number;
   secondFactorWindowMinutes: number;
+  badgeMaxAgeDays: number;
   breakGlassTtlMinutes: number;
   tempRoleMaxTtlMinutes: number;
   workerStaleAfterMs: number;
@@ -537,6 +541,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     secretKey: Buffer.from(parsed.SECRET_KEY, "hex"),
     sessionTtlMinutes: parsed.SESSION_TTL_MINUTES,
     secondFactorWindowMinutes: parsed.SECOND_FACTOR_WINDOW_MINUTES,
+    badgeMaxAgeDays: parsed.BADGE_MAX_AGE_DAYS,
     breakGlassTtlMinutes: parsed.BREAK_GLASS_TTL_MINUTES,
     tempRoleMaxTtlMinutes: parsed.TEMP_ROLE_MAX_TTL_MINUTES,
     workerStaleAfterMs: parsed.WORKER_STALE_AFTER_MS,

@@ -177,15 +177,18 @@ describe("WASA M-05 — authentication events", () => {
     }]);
   });
 
-  it("a PIN switch records who came in, and every session it put out of the terminal — whoever held it", async () => {
+  // WASA L-07: a switch ends only the session whose bearer token is PRESENTED — no longer every
+  // session on the terminal — so the outgoing user's token is sent, and that one session is evented.
+  it("a PIN switch records who came in, and the session it replaced — the one whose token was presented", async () => {
     const { id: first } = await createUser(db, { username: "first", fullName: "F", password: "s3cret-pass-xyz" });
     const { id: second } = await createUser(db, { username: "second", fullName: "S", password: "s3cret-pass-xyz" });
     await setPin(db, second, "482913");
-    await http().post("/auth/login").send({ username: "first", password: "s3cret-pass-xyz", terminalId: "counter-1" }).expect(201);
+    const login = await http().post("/auth/login").send({ username: "first", password: "s3cret-pass-xyz", terminalId: "counter-1" }).expect(201);
     const [outgoing] = await db.select().from(authSessions).where(eq(authSessions.userId, first));
 
     const before = await highWater();
     await http().post("/auth/switch/pin").set("x-forwarded-for", CLIENT_IP).set("user-agent", UA)
+      .set("authorization", `Bearer ${login.body.token as string}`)
       .send({ username: "second", pin: "482913", terminalId: "counter-1" }).expect(201);
     const [incoming] = await db.select().from(authSessions).where(eq(authSessions.userId, second));
     expect([incoming!.clientIp, incoming!.userAgent]).toEqual([CLIENT_IP, UA]);
@@ -230,12 +233,20 @@ describe("WASA M-05 — authentication events", () => {
     expect(JSON.stringify(rows)).not.toContain(forged);
   });
 
+  /** WASA M-02 — a first factor is enrolled with the account password as proof; the secret comes back on success. */
+  async function enrolWithPassword(userId: string, password: string): Promise<string> {
+    const r = await enrollTotp(db, cfg, userId, { password });
+    if (!r.ok) throw new Error(`enrolment refused: ${r.reason}`);
+    return r.secret;
+  }
+
   it("TOTP enrolment is evented, and the secret it minted is nowhere in the row", async () => {
     const { id } = await createUser(db, { username: "enrol", fullName: "E", password: "s3cret-pass-xyz" });
     const { token } = await createSession(db, cfg, id);
     const before = await highWater();
+    // WASA M-02: enrolling a first factor needs the account password as proof.
     const res = await http().post("/auth/totp/enroll").set("authorization", `Bearer ${token}`)
-      .set("x-forwarded-for", CLIENT_IP).expect(201);
+      .set("x-forwarded-for", CLIENT_IP).send({ password: "s3cret-pass-xyz" }).expect(201);
     const secret = new URL(res.body.otpauthUrl as string).searchParams.get("secret")!;
     expect(secret.length).toBeGreaterThan(10);
     const rows = await authEventsSince(before);
@@ -246,7 +257,7 @@ describe("WASA M-05 — authentication events", () => {
   it("TOTP confirm and verify: a wrong code is totp_failed at its stage, a right one is its success", async () => {
     const { id } = await createUser(db, { username: "totp", fullName: "T", password: "s3cret-pass-xyz" });
     const { token } = await createSession(db, cfg, id);
-    const { secret } = await enrollTotp(db, cfg, id);
+    const secret = await enrolWithPassword(id, "s3cret-pass-xyz");
     const auth = `Bearer ${token}`;
     const now = Date.now();
     const before = await highWater();
@@ -274,7 +285,7 @@ describe("WASA M-05 — authentication events", () => {
     await grantPermissionToRole(db, registry, "signer", "auth.roles.manage");
     await assignRole(db, { userId: id, roleKey: "signer", scopeType: "hospital" });
     const { token } = await createSession(db, cfg, id);
-    const { secret } = await enrollTotp(db, cfg, id);
+    const secret = await enrolWithPassword(id, "s3cret-pass-xyz");
     const now = Date.now();
     await confirmTotp(db, cfg, id, authenticator.clone({ epoch: now }).generate(secret));
     const before = await highWater();

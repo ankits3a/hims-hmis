@@ -2,7 +2,7 @@ import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { authSessions, users } from "../db/schema";
 import { randomToken, sha256Hex } from "../crypto";
-import { verifyPassword, verifyPin, resolveBadge } from "./identity";
+import { verifyPassword, verifyPinByUsername, resolveBadge } from "./identity";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -126,13 +126,47 @@ export async function revokeOtherUserSessions(
   return rows.length;
 }
 
-export async function revokeTerminalSessions(db: Db, terminalId: string): Promise<number> {
+/**
+ * ═══ WASA L-07 — THE OUTGOING SESSION IS THE ONE PRESENTED, NEVER THE ONE NAMED ═══
+ *
+ * The fast switch used to call `revokeTerminalSessions(body.terminalId)`: every live session whose
+ * `terminal_id` matched a string the caller chose. `terminal_id` is a LABEL the client supplies at
+ * login and at every switch — nothing issues or verifies it — so any PIN or badge holder could name
+ * another desk's terminal and sign whoever was on it out, mid-shift. A label cannot carry authority.
+ *
+ * The switch now ends exactly the session whose bearer token the caller presents. Holding that
+ * token is the proof of being at that device (the browser on the shared terminal has it), and it
+ * grants nothing new: the holder could already end it with `POST /auth/logout`. The match is by
+ * token hash and ignores liveness, so an already-expired or deactivated occupant's row is closed
+ * too rather than left un-revoked for a reactivation to resurrect.
+ *
+ * NARROWER THAN BEFORE, BY DESIGN: another session that merely shares the label is left alone. On a
+ * shared terminal one browser holds one token, so the chain of switches revokes each occupant in
+ * turn; a second browser profile on the same desk is a different device as far as proof goes.
+ * Server-issued, network-bound terminal ids (WASA's longer recommendation, with H-02) would let a
+ * terminal-wide revoke come back safely; until then there is none.
+ *
+ * Returns the revoked session's terminal label, so the incoming session inherits the DEVICE's label
+ * rather than whatever the body asserted; `undefined` when nothing was presented or it matched no
+ * open session.
+ */
+async function revokePresentedSession(db: Db, token: string | undefined): Promise<string | null | undefined> {
+  if (token === undefined || token === "") return undefined;
   const rows = await db
     .update(authSessions)
     .set({ revokedAt: new Date() })
-    .where(and(eq(authSessions.terminalId, terminalId), isNull(authSessions.revokedAt)))
-    .returning({ id: authSessions.id });
-  return rows.length;
+    .where(and(eq(authSessions.tokenHash, sha256Hex(token)), isNull(authSessions.revokedAt)))
+    .returning({ terminalId: authSessions.terminalId });
+  return rows.length === 0 ? undefined : rows[0]!.terminalId;
+}
+
+/**
+ * The terminal a new switched-in session is recorded against: the outgoing session's label when it
+ * had one, else the body's. It is a LABEL for the audit trail and the UI only — no code path reads
+ * it for authority any more.
+ */
+function incomingTerminal(outgoing: string | null | undefined, asserted: string): string {
+  return outgoing ?? asserted;
 }
 
 export async function loginWithPassword(
@@ -146,29 +180,31 @@ export async function loginWithPassword(
   return { token };
 }
 
+/**
+ * `outgoingToken` is the bearer token of the session this device currently holds, if any (the
+ * controller reads it from the `Authorization` header of the otherwise-public route). A cold
+ * terminal presents none and revokes nothing. Nothing is revoked unless the credential verified.
+ */
 export async function switchWithPin(
   db: Db,
   cfg: AppConfig,
-  input: { username: string; pin: string; terminalId: string },
+  input: { username: string; pin: string; terminalId: string; outgoingToken?: string },
 ): Promise<{ token: string } | null> {
-  const rows = await db.select({ id: users.id }).from(users).where(eq(users.username, input.username));
-  const user = rows[0];
-  if (!user) return null;
-  const ok = await verifyPin(db, user.id, input.pin);
-  if (!ok) return null;
-  await revokeTerminalSessions(db, input.terminalId);
-  const { token } = await createSession(db, cfg, user.id, input.terminalId);
+  const verified = await verifyPinByUsername(db, input.username, input.pin);
+  if (!verified) return null;
+  const outgoing = await revokePresentedSession(db, input.outgoingToken);
+  const { token } = await createSession(db, cfg, verified.userId, incomingTerminal(outgoing, input.terminalId));
   return { token };
 }
 
 export async function switchWithBadge(
   db: Db,
   cfg: AppConfig,
-  input: { badgeToken: string; terminalId: string },
+  input: { badgeToken: string; terminalId: string; outgoingToken?: string },
 ): Promise<{ token: string } | null> {
   const resolved = await resolveBadge(db, cfg, input.badgeToken);
   if (!resolved) return null;
-  await revokeTerminalSessions(db, input.terminalId);
-  const { token } = await createSession(db, cfg, resolved.userId, input.terminalId);
+  const outgoing = await revokePresentedSession(db, input.outgoingToken);
+  const { token } = await createSession(db, cfg, resolved.userId, incomingTerminal(outgoing, input.terminalId));
   return { token };
 }
