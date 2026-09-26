@@ -146,6 +146,15 @@ export const PHARMACY_ERROR_CODES = [
   // ── P1: the desk prints ──
   /** The paper asked for does not exist yet: no bill before the money, no label before the pick. */
   "nothing_to_print",
+  // ── P5 (parity plan): the office's reports ──
+  /** The GSTR-2B file is not the portal's JSON, nor a CSV with a GSTIN, invoice number, date and taxable value. */
+  "gst_statement_unreadable",
+  /** The Tally export before the accountant has confirmed the ledger names once. */
+  "tally_ledgers_unconfirmed",
+  /** A Tally ledger name left empty or longer than 100 characters. */
+  "invalid_tally_ledgers",
+  /** A voucher would not balance: a defect, and the whole file is refused. */
+  "tally_unbalanced",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -243,6 +252,10 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   unknown_short_book_entry: 404,
   short_book_resolved: 409,
   nothing_to_print: 409,
+  gst_statement_unreadable: 400,
+  tally_ledgers_unconfirmed: 409,
+  invalid_tally_ledgers: 400,
+  tally_unbalanced: 500,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

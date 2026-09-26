@@ -513,3 +513,55 @@ export const pharmacyShortBook = pgTable(
     check("pharmacy_short_book_resolved_ck", sql`(${t.resolvedAt} is null) = (${t.resolvedBy} is null) and (${t.resolvedAt} is null) = (${t.resolution} is null)`),
   ],
 );
+
+/**
+ * ═══ PHARMACY PARITY P5 — THE TALLY LEDGER MAPPING (TallyPrime XML, owner ruling 2026-09-25) ═══
+ *
+ * One row (`id = 'main'`): the ledger names the hospital's TallyPrime company uses for the pharmacy's
+ * vouchers (sales, output and input GST, purchases, cash, bank, round-off, the return shortfall, how a
+ * patient is named as a party), as the accountant confirmed them on the office's settings screen.
+ * `ledgers` is `modules/pharmacy/tally.ts`'s `TallyLedgers`, validated there. The ROW'S EXISTENCE is
+ * the confirmation: until the accountant saves it once the export refuses (the defaults are names,
+ * not the company's ledgers), and the census reads the same fact (`pharmacy_tally_ledgers_confirmed`).
+ */
+export const pharmacyTallyConfig = pgTable(
+  "pharmacy_tally_config",
+  {
+    id: text("id").primaryKey(),
+    ledgers: jsonb("ledgers").notNull(),
+    updatedBy: text("updated_by").notNull().references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [check("pharmacy_tally_config_one_row_ck", sql`${t.id} = 'main'`)],
+);
+
+/**
+ * PARITY P5 — EVERY TALLY EXPORT MADE: the range, who and when, how many of each voucher, the total
+ * debited, the SHA-256 of the vouchers file, the ledger mapping it used, and BOTH files as written —
+ * so a re-export of a range is seen before it is made, and an earlier file downloads again byte for
+ * byte (the checksum proves it). Append-only by use: nothing updates or deletes a row.
+ */
+export const pharmacyTallyExports = pgTable(
+  "pharmacy_tally_exports",
+  {
+    id: text("id").primaryKey(),
+    fromDate: date("from_date", { mode: "string" }).notNull(),
+    toDate: date("to_date", { mode: "string" }).notNull(),
+    voucherCount: integer("voucher_count").notNull(),
+    counts: jsonb("counts").notNull(),
+    debitPaise: bigint("debit_paise", { mode: "number" }).notNull(),
+    checksum: text("checksum").notNull(),
+    ledgers: jsonb("ledgers").notNull(),
+    vouchersXml: text("vouchers_xml").notNull(),
+    mastersXml: text("masters_xml").notNull(),
+    exportedBy: text("exported_by").notNull().references(() => users.id),
+    exportedAt: timestamp("exported_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("pharmacy_tally_exports_range_idx").on(t.fromDate, t.toDate),
+    index("pharmacy_tally_exports_at_idx").on(t.exportedAt),
+    check("pharmacy_tally_exports_range_ck", sql`${t.toDate} >= ${t.fromDate}`),
+    check("pharmacy_tally_exports_money_ck", sql`${t.voucherCount} >= 0 and ${t.debitPaise} >= 0`),
+    check("pharmacy_tally_exports_checksum_ck", sql`${t.checksum} ~ '^[0-9a-f]{64}$'`),
+  ],
+);

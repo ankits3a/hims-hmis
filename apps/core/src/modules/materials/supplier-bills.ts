@@ -410,6 +410,35 @@ function wrongStatus(b: BillRow, act: string, need: readonly string[]): Material
 const header = (b: Pick<BillRow, "id" | "billNo" | "vendorId" | "vendorBillNo" | "totalPaise">): { billId: string; billNo: string; vendorId: string; vendorBillNo: string; totalPaise: number } =>
   ({ billId: b.id, billNo: b.billNo, vendorId: b.vendorId, vendorBillNo: b.vendorBillNo, totalPaise: b.totalPaise });
 
+type Change = { field: string; before: string | number | boolean | null; after: string | number | boolean | null };
+type LineMoney = { grnId: string; itemId: string; uom: string; qtyPacks: number; ratePaise: number; gstRateBps: number; taxablePaise: number };
+
+/**
+ * PARITY P5 — WHAT AN EDIT CHANGED, before and after, for the activity view: the header fields that
+ * moved, and per line (`lines.<itemId>.<field>`) the pack, quantity, rate, GST rate and taxable value;
+ * a line added reads `null` before, a line dropped `null` after.
+ */
+export function billChanges(before: BillRow, after: BillRow, beforeLines: readonly LineMoney[], afterLines: readonly LineMoney[]): Change[] {
+  const out: Change[] = [];
+  for (const f of ["vendorBillNo", "billDate", "interState", "taxablePaise", "cgstPaise", "sgstPaise", "igstPaise", "roundOffPaise", "totalPaise"] as const) {
+    if (before[f] !== after[f]) out.push({ field: f, before: before[f], after: after[f] });
+  }
+  const key = (l: LineMoney): string => `${l.grnId}|${l.itemId}`;
+  const old = new Map(beforeLines.map((l) => [key(l), l] as const));
+  const now = new Map(afterLines.map((l) => [key(l), l] as const));
+  for (const k of new Set([...old.keys(), ...now.keys()])) {
+    const a = old.get(k);
+    const b = now.get(k);
+    const itemId = (a ?? b)!.itemId;
+    for (const f of ["uom", "qtyPacks", "ratePaise", "gstRateBps", "taxablePaise"] as const) {
+      const x = a === undefined ? null : a[f];
+      const y = b === undefined ? null : b[f];
+      if (x !== y) out.push({ field: `lines.${itemId}.${f}`, before: x, after: y });
+    }
+  }
+  return out;
+}
+
 /** Postgres' unique violation on the vendor / bill number / FY index, answered as the act would have. */
 function isDuplicateIndex(e: unknown): boolean {
   const err = e as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
@@ -475,7 +504,8 @@ export async function updateSupplierBill(
       }, now);
       await assertNotDuplicate(tx, b.vendorId, h.key, h.fy, billId);
       const interState = patch.interState ?? b.interState;
-      const inputLines: BillLineInput[] = patch.lines ?? (await tx.select().from(supplierBillLines).where(eq(supplierBillLines.billId, billId)))
+      const beforeLines = await tx.select().from(supplierBillLines).where(eq(supplierBillLines.billId, billId));
+      const inputLines: BillLineInput[] = patch.lines ?? beforeLines
         .map((l) => ({ grnId: l.grnId, itemId: l.itemId, uom: l.uom, qtyPacks: l.qtyPacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps }));
       const { lines, grnRows, expectations } = await resolveLines(tx, b.vendorId, inputLines, interState, billId);
       await tx.delete(supplierBillLines).where(eq(supplierBillLines.billId, billId));
@@ -487,7 +517,9 @@ export async function updateSupplierBill(
         ...(patch.note !== undefined ? { note: cleanText(patch.note, "the note") } : {}),
         updatedBy: actor.id, updatedAt: now,
       }).where(eq(supplierBills.id, billId)).returning();
-      await appendEvent(tx, supplierBillUpdated.make({ occurredAt: now, actor, correlationId: billId, payload: { ...header(after!), lines: lines.length } }));
+      await appendEvent(tx, supplierBillUpdated.make({
+        occurredAt: now, actor, correlationId: billId, payload: { ...header(after!), lines: lines.length, changes: billChanges(b, after!, beforeLines, lines) },
+      }));
     });
   } catch (e) {
     if (isDuplicateIndex(e)) throw new MaterialsError("duplicate_bill", "this vendor's bill number is already booked in this financial year");

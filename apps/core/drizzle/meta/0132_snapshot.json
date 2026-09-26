@@ -1,6 +1,6 @@
 {
-  "id": "7587a639-1776-45eb-bc27-16568ca3185e",
-  "prevId": "5ca61cdc-08ba-405f-9641-6e1c51093549",
+  "id": "62ccc6f9-dd73-4d4f-b011-2914ad164ff0",
+  "prevId": "7587a639-1776-45eb-bc27-16568ca3185e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -38992,6 +38992,201 @@
         "staff_credentials_verified_ck": {
           "name": "staff_credentials_verified_ck",
           "value": "(\"staff_credentials\".\"verified_by\" is null) = (\"staff_credentials\".\"verified_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_messages": {
+      "name": "abdm_messages",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_request_id": {
+          "name": "correlation_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "http_status": {
+          "name": "http_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "headers": {
+          "name": "headers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "response_body": {
+          "name": "response_body",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dispatch": {
+          "name": "dispatch",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "abdm_messages_in_request_ux": {
+          "name": "abdm_messages_in_request_ux",
+          "columns": [
+            {
+              "expression": "request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"abdm_messages\".\"direction\" = 'in'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_messages_correlation_idx": {
+          "name": "abdm_messages_correlation_idx",
+          "columns": [
+            {
+              "expression": "correlation_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_messages_kind_created_idx": {
+          "name": "abdm_messages_kind_created_idx",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_messages_patient_idx": {
+          "name": "abdm_messages_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_messages_patient_id_patients_id_fk": {
+          "name": "abdm_messages_patient_id_patients_id_fk",
+          "tableFrom": "abdm_messages",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_messages_direction_ck": {
+          "name": "abdm_messages_direction_ck",
+          "value": "\"abdm_messages\".\"direction\" in ('out', 'in')"
+        },
+        "abdm_messages_dispatch_ck": {
+          "name": "abdm_messages_dispatch_ck",
+          "value": "\"abdm_messages\".\"dispatch\" is null or \"abdm_messages\".\"dispatch\" in ('pending', 'handled', 'unhandled', 'failed')"
         }
       },
       "isRLSEnabled": false

@@ -311,6 +311,103 @@ Measured before planning (2 read-only passes, 2026-09-24):
 - **Activity diff:** before/after of any bill or credit note, from the event log.
 - **Tally export:** vouchers for sales, purchases, returns and payments (format per owner/CA).
 
+**P5 as built — the reports (2026-09-25, lane `pharmacy-p5-reports`, no migration).**
+- One **Reports** side in `/pharmacy/office` (Buy | Pay | Returns | Reports), and its own door
+  `/pharmacy/office/reports` for the owner and the billing office, who buy nothing (the office now
+  shows only the sides a person may open). Numbered list, one screen per report; T W M Y set the range
+  (today / this week from Monday / this month / this FY; custom ≤ 366 days); E exports CSV of the table
+  as seen with its totals row; P prints A4 through the browser (the PO's path); Esc back.
+- Reads federate: billing's new `report-reads.ts` (`invoicesBetween`, `invoiceHeadsByIds`,
+  `invoiceLinesOf`, `creditNotesBetween`, `invoicePayments`, `billingDocumentByNo`) — live documents
+  only, the stored heads never recomputed, chunked under the bind ceiling; materials' new `reports.ts`
+  (`purchaseRegister`, `stockValuationAt`, `nonMovingStock`, `billsForReconciliation`,
+  `findDocumentByNo`, `batchesByIds`); the pharmacy folds them (`sales-register.ts`,
+  `office-reports.ts`, `gstr2b.ts`, `activity.ts`) behind `pharmacy-reports.controller.ts`.
+- **Sales register**: a pharmacy sale is an invoice a dispense or a walk-in / paper sale names, dated by
+  its service day; a refund is a credit note against one, dated the day it was issued (GSTR-1's rule) —
+  so the totals ARE the day book's and GSTR-1's (asserted). Group by bill / item / doctor / patient /
+  pharmacist / tender; a bill opens to its batch lines (a loose-MRP pack residue folds into its drug's
+  line). Tender: a receipt's non-cash tenders are set against the allocation first, cash takes the rest.
+- **Margin** = taxable value − units × the batch's GRN cost (`landed_cost_paise`, per-batch = FIFO);
+  a refund gives its revenue and its units' cost back. By item / category (the formulary dosage form)
+  / doctor. The sales register carries profit and margin % only for a margin holder.
+- **Stock valuation** from the LEDGER to the end of any IST day (today = `stock_balances`, asserted),
+  at GRN cost and at MRP, by batch / item / store; consignment and loaner stock counted apart;
+  IN-TRANSIT included (still the hospital's).
+- **Non-moving**: no `consume` or `issue` out of the store since IST midnight N days ago (30/60/90/180),
+  the window's first day inclusive (asserted both sides of the boundary); agent suggestion per batch:
+  return (P4's draft), write off, or watch.
+- **HSN summary** (GSTR-1 table 12): billing's `gstr1Summary` has no HSN table, so it is folded here
+  from the same stored line heads, HSN = the invoice line's `sac_code` (what the bill prints), × rate ×
+  UQC (tablet → TBS), quantity = base units sold − returned; totals = the invoices' tax − the credit
+  notes' (asserted).
+- **GSTR-2B**: the portal's JSON (or the Excel B2B sheet saved as CSV) is read in the request and never
+  stored; matched by GSTIN + P3's invoice key + date + each head within ₹1 (inclusive, asserted);
+  buckets matched / mismatch / only in 2B / only in books; CDNR listed apart, not matched.
+- **Activity**: from the event log (no new writes); `supplier_bill.updated` now carries `changes`
+  (before/after per header field and per line — additive, optional); every other step's diff is
+  derived from consecutive states.
+- Permissions: `pharmacy.reports.read` (owner, materials_head, pharmacy_incharge, billing_manager) and
+  `pharmacy.reports.margin` (owner, materials_head, pharmacy_incharge). New refusal
+  `gst_statement_unreadable`. Runbook §14.
+- DECIDED (not money, procurement or law):
+  - the purchase register books a bill once ACCEPTED (drafts and held bills are not in the books);
+    purchases net of returns = bills − our debit notes (the vendor's credit confirms a debit note and
+    is not subtracted twice); a vendor credit's GST split is its debit note's, pro rata;
+  - the sales register names patients by name and UHID, no phone (an accounting read, not a contact
+    list; a sealed patient by alias);
+  - margin category = the formulary dosage form (item class for a non-drug);
+  - the 2B's books are the bills dated in the range, plus earlier ones for a late-filed invoice; drafts
+    and cancelled bills are not "in the books".
+- Deferred: matching the 2B's credit/debit notes (CDNR) to our debit notes and vendor credits;
+  Excel (.xlsx) upload of the 2B (save as CSV); IPD / ward issue in the registers (no IPD yet).
+
+**P5 as built — the Tally export (TallyPrime XML, owner ruling 2026-09-25; stacked on the reports; migration 0131 — regenerated after #321 took 0130, SQL byte-identical).**
+- Inside Reports (key 9, `pharmacy.tally.export`: owner, billing_manager). The accountant confirms the
+  ledger names once (L; the defaults are the owner's list — Pharmacy Sales, Output CGST/SGST, Purchase —
+  Medicines, Input CGST/SGST/IGST, Cash, Bank — plus Round Off, Purchase Return Shortfall and Pharmacy
+  Counter Sales). The range's preview shows the count of each voucher, the total, the first vouchers as
+  Tally reads them and any earlier export of overlapping days; X exports.
+- **The party (review of #322, DECIDED — standard Indian practice for B2C counter sales):** a bill with
+  no buyer GSTIN (B2C) posts its Sales, Receipt, Credit Note and refund to ONE ledger, `counterSales`
+  ("Pharmacy Counter Sales", Sundry Debtors, confirmed with the rest); a bill carrying the buyer's GSTIN
+  (B2B) posts to "legal name (GSTIN)", created in the masters with its GSTIN. No patient name, UHID or
+  phone is in either file (asserted on a distinctive name); the masters never create a patient ledger.
+  The export no longer reads patient names at all. (First built with a ledger per patient, "Name
+  (UHID)"; replaced before merge.) Pharmacy bills carry no buyer GSTIN today, so B2B is proven on the
+  pure builder.
+- Tables: `pharmacy_tally_config` (one row; its existence IS the confirmation — census G3
+  `pharmacy_tally_ledgers_confirmed`) and `pharmacy_tally_exports` (range, who, when, counts, debit
+  total, SHA-256 of the vouchers file, the ledger names used, and both files — an earlier file downloads
+  again byte for byte through the app's `Content-Disposition` download path).
+- Two files: the ledgers (REPORTNAME `All Masters`: every ledger the vouchers use, under its group,
+  vendors and B2B buyers with their GSTIN) — imported first — and the vouchers (REPORTNAME `Vouchers`). ENVELOPE →
+  HEADER (`Import Data`) → BODY → IMPORTDATA → REQUESTDESC → REQUESTDATA → TALLYMESSAGE → VOUCHER with
+  VCHTYPE, DATE (YYYYMMDD), VOUCHERNUMBER (ours), PARTYLEDGERNAME, ALLLEDGERENTRIES.LIST (LEDGERNAME,
+  ISDEEMEDPOSITIVE, AMOUNT — a debit negative), a stable REMOTEID (`hmis:<kind>:<id>`) so a re-import
+  alters rather than duplicates.
+- Vouchers: Sales (`INV/…`), Receipt (`RCP/…`, the counter's money: Cash / Bank by tender), Credit Note
+  (`CN/…`), Payment (refund voucher `RFV/…` paid), Purchase (`MSB…`, the vendor's number as REFERENCE),
+  Debit Note (`MDN…`), Journal (the vendor credit adjustment: a credit short of our debit note `MCN…`, or a
+  return closed without credit `MRT…` → Purchase Return Shortfall), Payment (supplier `MPV…`, Cash for
+  mode cash, else Bank). Every voucher balances; one that would not stops the whole file
+  (`tally_unbalanced`). Asserted by parsing the FILE back as XML and summing every VOUCHER, per type
+  (pure) and on a real day (the vendor's Tally ledger nets to what the book owes: nothing).
+- Refusals `tally_ledgers_unconfirmed`, `invalid_tally_ledgers`, `tally_unbalanced`. Runbook §15 with a
+  generated Sales voucher.
+- DECIDED (accounting presentation, not money authority, procurement or law):
+  - receipts and refund payouts are exported too — with the patient as the Sales party (the owner's
+    default), a sale without its receipt would leave every patient a debtor in Tally for ever;
+  - a vendor credit EQUAL to our debit note writes no voucher (the debit note already reduced the vendor;
+    the run's credit offset is inside the payment); a short credit or a closed return is a Journal to
+    Purchase Return Shortfall;
+  - Sales returns and purchase returns post to the Sales / Purchase ledgers by default (their own names
+    on the mapping if the CA keeps separate return ledgers);
+  - the vouchers carry amounts and ledgers, not Tally's GST classification or bill-wise allocation: the
+    CA's Tally company holds the GST setup; GSTR-1/2B are filed from the office's own reports.
+- Deferred: bill-wise allocation (BILLALLOCATIONS) against supplier bills; cost centres; a direct push to
+  Tally over its HTTP port (no external calls from the app); IPD.
+
 **P6 — Law and hygiene**
 - NDPS register (Form 3D/3E) with double-lock custody, if the hospital stocks narcotics (owner ruling).
 - Item Merge (moves history, keeps the audit).

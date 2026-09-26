@@ -1304,6 +1304,15 @@ and the invoice is issued at entry.
 alone, because the register lists patients by name and what they were given. It reads at most a
 month at a time, logs one PHI access row per patient shown, and keeps a sealed patient's name
 behind `patients.confidential.read`.
+**Pharmacy parity P5 gives the office its reports, and adds two `pharmacy.*` strings.**
+`pharmacy.reports.read` goes to `pharmacy_incharge`, and to `owner`, `materials_head` and
+`billing_manager`: the sales and purchase registers, stock valuation, non-moving stock, the HSN
+summary, GSTR-2B against the books and the activity view, all read-only.
+`pharmacy.reports.margin` (cost, profit and margin) goes to `pharmacy_incharge`, `owner` and
+`materials_head`, and never to the counter's `pharmacy` or to `billing_manager`. All of these are
+defaults the owner may change.
+`pharmacy.tally.export` (the TallyPrime export of the pharmacy's vouchers, and the ledger names it
+uses) goes to `owner` and `billing_manager`, the accountant's desk; a default the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1317,6 +1326,8 @@ behind `patients.confidential.read`.
 | `pharmacy.retail.sell` | ✓ | | |
 | `pharmacy.retail.manage` | | | ✓ |
 | `pharmacy.downtime.enter` | ✓ | | |
+| `pharmacy.reports.read` | | | ✓ |
+| `pharmacy.reports.margin` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |

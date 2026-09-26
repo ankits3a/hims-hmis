@@ -66,6 +66,19 @@ export { cashierDay } from "./desk-provider";
 export type { CashierDay } from "./desk-provider";
 export { liveExpectedCashPaise, listSessions } from "./sessions";
 export type { ChargeOrphanRow } from "./daily-close";
+/**
+ * PHARMACY PARITY P5 — the office's registers read billing's money through these, never its tables:
+ * the live invoices of a period, their stored lines, the live credit notes issued in it, and how
+ * each invoice was paid (by tender) and what it still owes.
+ */
+export {
+  billingDocumentByNo, creditNotesBetween, invoiceHeadsByIds, invoiceLinesOf, invoicePayments, invoicesBetween, receiptAllocationsBetween,
+  refundVouchersPaidBetween,
+} from "./report-reads";
+export type {
+  BillingDocRef, CreditNoteLineRead, CreditNoteRead, InvoiceHead, InvoiceLineRead, InvoicePayment, ReceiptAllocationRead, RefundPaidRead, TenderMode,
+} from "./report-reads";
+
 export type { DayBook, Gstr1Row, DailyCloseResult } from "./daily-close";
 export { registerBillingApprovalTypes, BILLING_APPROVAL_TYPES } from "./approval-types";
 export { loadBillingConfig } from "./config";

@@ -359,8 +359,16 @@ const billHeader = { billId: id, billNo: z.string().min(1), vendorId: id, vendor
 export const supplierBillDrafted = defineEvent("supplier_bill.drafted", MODULE, z.object({
   ...billHeader, grnIds: z.array(id).min(1), lines: z.number().int().nonnegative(), source: z.enum(["manual", "agent"]),
 }));
-/** A draft (or a held bill sent back to draft) changed. */
-export const supplierBillUpdated = defineEvent("supplier_bill.updated", MODULE, z.object({ ...billHeader, lines: z.number().int().nonnegative() }));
+/**
+ * A draft (or a held bill sent back to draft) changed. PARITY P5 (additive): `changes` names each
+ * field that moved, before and after — the header's, and each line's (`lines.<itemId>.<field>`) — so
+ * the office's activity view shows what an edit did, not only that it happened.
+ */
+const changeValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+export const supplierBillUpdated = defineEvent("supplier_bill.updated", MODULE, z.object({
+  ...billHeader, lines: z.number().int().nonnegative(),
+  changes: z.array(z.object({ field: z.string().min(1), before: changeValue, after: changeValue })).optional(),
+}));
 /** The three-way match ran: inside the tolerance (`matched`) or not (`held_for_match`, with the lines out and why). */
 export const supplierBillMatched = defineEvent("supplier_bill.matched", MODULE, z.object({
   ...billHeader, expectedTotalPaise: paise, outcome: z.enum(["matched", "held_for_match"]),

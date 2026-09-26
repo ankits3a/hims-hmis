@@ -12,6 +12,7 @@ import {
 } from "../../lib/purchase-api";
 import { Button } from "@/components/ui/button";
 import { PayView } from "./pay";
+import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
 import type { WireOfficeToday, WirePo, WirePoSummary } from "../../lib/purchase-api";
@@ -36,23 +37,33 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
-export function PharmacyOffice(): React.ReactElement {
+type OfficeView = "buy" | "pay" | "returns" | "reports";
+
+/** PARITY P5 — `/pharmacy/office/reports`: the office opened on its Reports side (the owner's and the billing office's door). */
+export function PharmacyOfficeReports(): React.ReactElement {
+  return <PharmacyOffice initialView="reports" />;
+}
+
+export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {}): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
   // PARITY P3 — the office's halves: buying (P2) and paying. `?view=pay` opens on the second — the
   // copilot's payment-run card links there. PARITY P4 adds the third, returning: `?view=returns`,
-  // where the copilot's return card links.
+  // where the copilot's return card links. PARITY P5 adds the fourth, the reports (`?view=reports`,
+  // or `/pharmacy/office/reports`), read by people who buy nothing — so buying is a side too.
+  const canBuy = can("materials.po.raise");
   const canPay = can("materials.bills.manage");
   const canReturn = can("materials.returns.manage") || can("materials.writeoffs.manage") || can("materials.recall.manage");
-  const [view, setView] = useState<"buy" | "pay" | "returns">(() => {
+  const canReport = can("pharmacy.reports.read");
+  const views = ([...(canBuy ? ["buy"] : []), ...(canPay ? ["pay"] : []), ...(canReturn ? ["returns"] : []), ...(canReport ? ["reports"] : [])] as OfficeView[]);
+  const [view, setView] = useState<OfficeView>(() => {
     const v = new URLSearchParams(window.location.search).get("view");
-    return v === "pay" || v === "returns" ? v : "buy";
+    return initialView ?? (v === "pay" || v === "returns" || v === "reports" ? v : "buy");
   });
-  const paying = view === "pay" && canPay;
-  const returning = view === "returns" && canReturn;
-  const shown: "buy" | "pay" | "returns" = paying ? "pay" : returning ? "returns" : "buy";
-  const views = (["buy", ...(canPay ? ["pay"] : []), ...(canReturn ? ["returns"] : [])] as ("buy" | "pay" | "returns")[]);
-  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: shown === "buy" });
+  const shown: OfficeView = views.includes(view) ? view : (views[0] ?? "buy");
+  // Only a buyer asks for the buying side's day: the owner and the billing office (reports only) never
+  // fire a request their grants refuse — not even in the instant before the session's grants load.
+  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: shown === "buy" && canBuy });
   // PARITY P3 — the shell's legend shows the office's keys, not the front desk's.
   useScreenKeys([t(`pharmacyOffice.keys.${shown}`)]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -85,7 +96,7 @@ export function PharmacyOffice(): React.ReactElement {
     <div className="space-y-5 p-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-xl font-semibold">{t("pharmacyOffice.title")}</h1>
-        <span className="text-sm text-muted-foreground">{t("pharmacyOffice.subtitle")}</span>
+        <span className="text-sm text-muted-foreground">{t(shown === "reports" ? "pharmacyOffice.reports.subtitle" : "pharmacyOffice.subtitle")}</span>
         {views.length > 1 && (
           <div className="ml-auto flex gap-1" role="tablist" aria-label={t("pharmacyOffice.views")}>
             {views.map((v) => (
@@ -96,7 +107,7 @@ export function PharmacyOffice(): React.ReactElement {
           </div>
         )}
       </div>
-      {shown === "pay" ? <PayView /> : shown === "returns" ? <ReturnsView /> : (<>
+      {shown === "pay" ? <PayView /> : shown === "returns" ? <ReturnsView /> : shown === "reports" ? <ReportsView /> : (<>
       {today.error !== null && <p role="alert" className="text-sm text-red-600">{materialsErrorText(today.error, t)}</p>}
       {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
 

@@ -244,9 +244,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 81 codes
+## 4. What refuses, and why — all 85 codes
 
-`errors.ts` declares 81, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 85, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -271,6 +271,9 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `authorisation_not_pending` · `unknown_authorisation` | the request was already decided, or does not exist | read the decision on the ticket |
 | `invalid_short_book_entry` · `unknown_short_book_entry` · `short_book_resolved` | a short-book note with no real drug name or a zero quantity; a row that is gone; a row already ordered, received or dismissed | name the drug; re-read `/pharmacy/reorder` |
 | `nothing_to_print` | the desk asked for the bill and labels before the ticket was billed | take the money first; the paper follows the hand-over |
+| `gst_statement_unreadable` | the office's GSTR-2B reconciliation (parity P5) was given a file that is neither the portal's JSON nor a CSV with the supplier GSTIN, invoice number, date and taxable value | §14 — download the JSON from the GST portal, or save the Excel's B2B sheet as CSV |
+| `tally_ledgers_unconfirmed` · `invalid_tally_ledgers` | the Tally export (parity P5) before the accountant confirmed the ledger names; a ledger name left empty or over 100 characters | §15 — Reports → 9 → L, type each name as TallyPrime has it, save |
+| `tally_unbalanced` | a voucher in the Tally export would not balance, so nothing was exported | a defect, not a data-entry mistake — tell IT with the voucher number the message names |
 | `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
 | `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |
@@ -628,3 +631,141 @@ the write-off's approval (`pharmacy_writeoff_approval_registered`).
   dispensed to (names and phone numbers for the callback; reading the list is logged). *Return it to
   the supplier* drafts its return in one tap; a batch nobody can take back is destroyed with a
   write-off. Close the recall when no store holds any of it.
+
+## 14. Knowing — the office's reports (parity P5)
+
+Everything here is at **`/pharmacy/office`, the Reports side** (Buy | Pay | Returns | Reports), or
+straight at **`/pharmacy/office/reports`** — the door for the owner and the billing office, who buy
+nothing. Reading needs `pharmacy.reports.read` (`owner`, `materials_head`, `pharmacy_incharge`,
+`billing_manager`); cost, profit and margin need `pharmacy.reports.margin` as well (`owner`,
+`materials_head`, `pharmacy_incharge` — never the counter, never the billing office). Every report
+only reads: nothing is changed from here, and no migration or seed is needed.
+
+- **Moving around.** The list opens on a number per report: **1** sales register, **2** purchase
+  register, **3** margin (only with the margin grant; the numbers after it shift up without it),
+  then stock valuation, non-moving stock, HSN summary, GSTR-2B and activity. In a report, **T W M Y**
+  set the range to today, this week (Monday on), this month, this financial year; *Custom* takes two
+  dates (at most 366 days). **E** exports the table as you see it to CSV (Excel opens it), totals
+  row included; **P** prints it on A4 (save as PDF from the dialog). **Esc** goes back to the list.
+- **Sales register.** Every pharmacy bill (OPD dispense, walk-in, paper dispense) by its bill's day,
+  and every credit note against one by the day it was issued — so its totals are the day book's and
+  GSTR-1's for the same days. Group by bill, item, doctor, patient, pharmacist or how it was paid; a
+  bill opens (▸) to its batches. Patients show by name and UHID (a sealed patient by alias); no phone.
+- **Purchase register.** Supplier bills once booked as payable (accepted, part paid, paid — not
+  drafts or held bills), our debit notes and the vendors' credit notes, each its own row, with input
+  CGST / SGST / IGST, paid and due. The total line is purchases net of returns.
+- **Margin.** Revenue (the taxable value; GST is not income) less each unit's GRN cost, by item,
+  category (the dosage form) or doctor, net of refunds.
+- **Stock valuation.** Any past day, from the stock ledger: each batch at its GRN cost (per-batch
+  costing, which is FIFO) and at MRP, by batch, item or store. Consignment and loaner stock is the
+  vendor's and is counted apart. Today's quantities are exactly `stock_balances`.
+- **Non-moving stock.** Stock whose item has not left its store (a sale, a dispense or an issue) in
+  30 / 60 / 90 / 180 days, with the agent's suggestion per batch — *return to supplier* (expired
+  within the window, near expiry, or recalled: open Returns and press D), *write off* (expired and
+  cannot go back: W), or *watch* (in date: transfer it, ask the supplier; a person decides).
+- **HSN summary.** GSTR-1 table 12 for the pharmacy: HSN × rate × unit (tablets as TBS), quantity,
+  taxable value and tax, net of credit notes, from the tax stored on each bill.
+- **GSTR-2B.** Download the month's GSTR-2B JSON from the GST portal (or save the Excel's B2B sheet as
+  CSV) and choose it. It is read here and never stored. Each supplier invoice lands in one bucket:
+  *matched* (GSTIN, invoice number, date and every amount within ₹1), *amount or date differs*, *in
+  2B, not in our books* (enter the bill, or ask the supplier), *in our books, not in 2B* (the supplier
+  has not filed: the input credit is at risk). Credit and debit notes in the 2B are listed apart.
+- **Activity.** The period's events on bills, credit notes, supplier bills, payment runs, returns,
+  vendor credits and write-offs; type any document number (INV…, CN…, P…, MSB…, MPR…, MRT…, MDN…,
+  MCN…, MWO…) to open its timeline. An edited supplier bill shows each field before and after; other
+  steps show what moved (status, total, lines) from the step before.
+
+## 15. The Tally export — TallyPrime XML (parity P5, owner ruling 2026-09-25)
+
+Our app is the payables book of record; TallyPrime keeps the hospital's accounts. **Reports → 9 Tally
+export** (at `/pharmacy/office/reports`) hands the accountant every pharmacy voucher of a period as a
+TallyPrime import file. It needs `pharmacy.tally.export` (`owner`, `billing_manager`). Migration
+`0131` adds its two tables; nothing else is seeded.
+
+- **Confirm the ledger names once (L).** Type each ledger exactly as the TallyPrime company names it:
+  the defaults are *Pharmacy Sales*, *Output CGST*, *Output SGST*, *Purchase — Medicines*, *Input
+  CGST*, *Input SGST*, *Input IGST*, *Cash*, *Bank*, *Round Off*, *Purchase Return Shortfall* and
+  *Pharmacy Counter Sales* (the one B2C party, below); the Tally company (empty = the one open in
+  Tally). **Save and confirm.** Until then the export refuses
+  (`tally_ledgers_unconfirmed`) and census row **`pharmacy_tally_ledgers_confirmed`** is RED.
+- **Export (X).** Pick the range (M = this month). The screen shows how many of each voucher the file
+  will carry, the total debited, the first vouchers as Tally will read them, and any earlier export of
+  an overlapping range (who, when, checksum) — a re-export is seen before it is made. **X** records the
+  export and offers two files.
+- **Import in TallyPrime:** *Gateway of Tally → Import → Masters* with the **ledgers (masters) XML**
+  first (choose *Combine* for ledgers that already exist), then *Import → Transactions* with the
+  **vouchers XML**. Every voucher carries a stable `REMOTEID` (`hmis:<kind>:<our id>`), so importing the
+  same file twice alters the vouchers rather than duplicating them.
+- **Every export is recorded** (`pharmacy_tally_exports`: range, who, when, the count of each voucher,
+  the SHA-256 of the vouchers file, the ledger names used, and both files). *Exports made* downloads
+  any earlier file again, byte for byte.
+
+**The party — no patient reaches the books.** A counter bill with no buyer GSTIN (B2C) posts to ONE
+party ledger, *Pharmacy Counter Sales* (Sundry Debtors) — its Sales voucher, its Receipt, its Credit
+Note and its refund Payment — so Tally holds no debtor per patient, and neither file carries a
+patient's name, UHID or phone: `REFERENCE` and `NARRATION` carry only our invoice, receipt, credit-note
+and dispense numbers, and `REMOTEID` our internal id. The counter ledger nets to nothing once the
+day's bills are paid, and to the refunds still owed when a credit note has not yet been paid out. A
+bill that carries the buyer's GSTIN (B2B) posts to the buyer's own ledger, *legal name (GSTIN)*, which
+the masters file creates under Sundry Debtors with its GSTIN. The masters file creates the mapped
+ledgers, the vendors and the B2B buyers — never a patient.
+
+**What each voucher is.** Every one is on our own stable number and date, and balances (the amounts sum
+to zero — a debit is `ISDEEMEDPOSITIVE Yes` with a negative `AMOUNT`); a voucher that would not balance
+stops the whole file (`tally_unbalanced`, a defect to report, never a data-entry fix).
+
+| Voucher | Our document | Debit | Credit |
+|---|---|---|---|
+| Sales | pharmacy bill `INV/…`, its service day | Pharmacy Counter Sales (B2C) or the buyer (B2B), the net payable | Pharmacy Sales (taxable), Output CGST, Output SGST, Round Off (the rupee rounding) |
+| Receipt | the counter's receipt `RCP/…` for pharmacy bills | Cash (cash), Bank (UPI, card) | Pharmacy Counter Sales, or the B2B buyer, for what it settled |
+| Credit Note | credit note `CN/…` against a pharmacy bill, its issue day | Sales returns (taxable), Output CGST, SGST | the bill's party |
+| Payment | refund voucher `RFV/…` paid on a pharmacy credit note | the bill's party | Cash or Bank |
+| Purchase | supplier bill booked as payable `MSB…` (bill date; the vendor's number as REFERENCE) | Purchase — Medicines (taxable), Input CGST + SGST or IGST, Round Off | the vendor |
+| Debit Note | our debit note `MDN…` on a return | the vendor | Purchase returns (taxable), the input tax |
+| Journal | a vendor credit short of our debit note `MCN…`, or a return closed without credit `MRT…` | Purchase Return Shortfall | the vendor |
+| Payment | supplier payment `MPV…` (paid-on date) | the vendor | Cash (mode cash) or Bank (NEFT, RTGS, UPI, cheque) |
+
+A vendor credit EQUAL to our debit note writes no voucher: the debit note already reduced the vendor
+in Tally, and the payment run's credit offset is inside the payment the vendor is paid. So the
+vendor's ledger in Tally equals what the office's payables owe (the test asserts it on a real day).
+
+**A Sales voucher, as written** (`INV/26-27/000001`, 3 tablets of Azee 500 at ₹15 each, paid in cash):
+
+```xml
+<TALLYMESSAGE xmlns:UDF="TallyUDF">
+ <VOUCHER REMOTEID="hmis:sale:01K5ZQ8X4MJ2A7" VCHTYPE="Sales" ACTION="Create" OBJVIEW="Accounting Voucher View">
+  <DATE>20260925</DATE>
+  <EFFECTIVEDATE>20260925</EFFECTIVEDATE>
+  <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
+  <VOUCHERNUMBER>INV/26-27/000001</VOUCHERNUMBER>
+  <REFERENCE>P2609250001</REFERENCE>
+  <PARTYLEDGERNAME>Pharmacy Counter Sales</PARTYLEDGERNAME>
+  <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
+  <NARRATION>Pharmacy bill INV/26-27/000001 (dispense P2609250001)</NARRATION>
+ <ALLLEDGERENTRIES.LIST>
+  <LEDGERNAME>Pharmacy Counter Sales</LEDGERNAME>
+  <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+  <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+  <AMOUNT>-45.00</AMOUNT>
+ </ALLLEDGERENTRIES.LIST>
+ <ALLLEDGERENTRIES.LIST>
+  <LEDGERNAME>Pharmacy Sales</LEDGERNAME>
+  <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+  <ISPARTYLEDGER>No</ISPARTYLEDGER>
+  <AMOUNT>42.86</AMOUNT>
+ </ALLLEDGERENTRIES.LIST>
+ <ALLLEDGERENTRIES.LIST>
+  <LEDGERNAME>Output CGST</LEDGERNAME>
+  <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+  <ISPARTYLEDGER>No</ISPARTYLEDGER>
+  <AMOUNT>1.07</AMOUNT>
+ </ALLLEDGERENTRIES.LIST>
+ <ALLLEDGERENTRIES.LIST>
+  <LEDGERNAME>Output SGST</LEDGERNAME>
+  <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+  <ISPARTYLEDGER>No</ISPARTYLEDGER>
+  <AMOUNT>1.07</AMOUNT>
+ </ALLLEDGERENTRIES.LIST>
+ </VOUCHER>
+</TALLYMESSAGE>
+```

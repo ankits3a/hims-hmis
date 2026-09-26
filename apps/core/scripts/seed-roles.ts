@@ -677,6 +677,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // whole phase, and it belongs with the role that already approves every billing exception,
       // not with the desk that takes the cash.
       "ot.bill.compose",
+      // PHARMACY PARITY P5 — the billing office reads the pharmacy's registers, HSN summary and
+      // GSTR-2B against the books (the accountant's work), but NOT its margin: cost and profit are
+      // the owner's, the head's and the in-charge's. DEFAULT — owner may change.
+      "pharmacy.reports.read",
+      // PHARMACY PARITY P5 — the accountant's act: the TallyPrime export and the ledger names it uses.
+      "pharmacy.tally.export",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -792,6 +798,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.register.read_sealed",
       // PHARMACY P19 — the retail licence is the licensee's document.
       "pharmacy.retail.manage",
+      // PHARMACY PARITY P5 — the pharmacy office's reports, and what the pharmacy earns on what it
+      // sells: the person who carries the money reads the registers, valuation, GSTR-2B and the
+      // margin. Read-only. DEFAULT — owner may change.
+      "pharmacy.reports.read",
+      "pharmacy.reports.margin",
+      // PHARMACY PARITY P5 — the TallyPrime export of the pharmacy's vouchers and its ledger names: the
+      // books are the owner's. DEFAULT — owner may change.
+      "pharmacy.tally.export",
     ],
   },
   {
@@ -1081,6 +1095,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.returns.manage",
       "materials.returns.approve",
       "materials.writeoffs.manage",
+      // PHARMACY PARITY P5 — the office's reports, and the margin: the head buys, so the head reads
+      // what the buying earned and what the shelf is worth. DEFAULT — owner may change.
+      "pharmacy.reports.read",
+      "pharmacy.reports.margin",
       // ─── THE APPROVALS SPINE, 2026-09-20: the same defect as the owner's, one store over ───
       //
       // `materials_head` is the `approverRole` on `materials_near_expiry_acceptance` and held
@@ -1552,6 +1570,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // recall freeze and its register. DECIDED / DEFAULT — owner may change.
       "materials.writeoffs.manage",
       "materials.recall.manage",
+      // PHARMACY PARITY P5 — the pharmacist in charge reads the office's reports and the margin; the
+      // counter's `pharmacy` role reads neither (Healthray's live profit on the sale screen is not
+      // copied). DEFAULT — owner may change.
+      "pharmacy.reports.read",
+      "pharmacy.reports.margin",
     ],
   },
 ];
