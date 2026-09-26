@@ -450,7 +450,7 @@ hospital stocks NDPS and Schedule X drugs).** The law, with sources, is `2026-09
   the manufacturer column (not in the catalogue); walk-in Schedule X; patient returns of controlled drugs; the doctor's
   stock chip reading the cabinet; item merge and SMS (the rest of P6).
 
-**P6 as built — item merge (2026-09-26, lane `pharmacy-item-merge`, migration 0136 `item_merge`).** Healthray's "Merge
+**P6 as built — item merge (2026-09-26, lane `pharmacy-item-merge`, migration 0137 `item_merge` — regenerated after #333 took 0136, SQL byte-identical).** Healthray's "Merge
 Items" moves the history to the surviving item; ours cannot and does not — the ledger, the registers and every money
 document are append-only. A merge moves the LIVE state and leaves the history where it was written.
 - **The act** (materials `item-merge.ts`, the pharmacy's part `pharmacy/item-merge.ts` through `ItemMergeHooks`, in the

@@ -842,7 +842,7 @@ the balance gives Form 3-I's figures (due 31 March); the Form 3J estimate (30 No
 The same medicine registered twice, a typo'd brand, a second row from an opening-stock import — the
 office's **Items** side (`/pharmacy/office?view=items`, `materials.items.merge`: the materials head) lists
 the pairs the agent thinks are one thing twice (the same formulary medicine; or near-identical names over
-the same composition, strength, form and route — never two strengths or two sizes). Migration `0136` adds
+the same composition, strength, form and route — never two strengths or two sizes). Migration `0137` adds
 `items.merged_into_item_id` and `item_merges`.
 
 1. **Open a pair** — the merge sheet shows the item that stays (A) and the duplicate (B) side by side,
