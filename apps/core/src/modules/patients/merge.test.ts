@@ -13,6 +13,7 @@ import { approveRequest } from "../../kernel/approvals/decisions";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { createDraft, activateDefinition } from "../../kernel/workflow/definitions";
 import { registerPatient } from "./registration";
+import { recordAbhaVerifiedByAbdm } from "./abha-verified";
 import { addAllergy } from "./allergies";
 import { linkGuardian } from "./guardians";
 import { storePatientPhoto } from "./photos";
@@ -207,6 +208,27 @@ describe("merge & unmerge (§11.5 — approval-gated, splittable)", () => {
     expect(evs[0]!.correlationId).toBe(unApproval!.instanceId);
 
     await expect(executeUnmerge(db, clerk, mergeRequestId)).rejects.toMatchObject({ code: "merge_not_executed" });
+  });
+
+  /**
+   * ABDM S1 — ONE ABHA, ONE PATIENT survives a merge and its undoing. A merged row is outside the ABHA
+   * indexes, so its winner may take the loser's ABHA; the unmerge that would put two ACTIVE holders
+   * back is refused, and nothing it would have moved has moved.
+   */
+  it("S1: an unmerge that would leave two active holders of one ABHA is refused", async () => {
+    const w = await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Asha Devi", sex: "female", phone: "9876543210" }));
+    const l = await withTx(db, (tx) => registerPatient(tx, clerk, {
+      name: "Asha Debi", sex: "female", phone: "9876543210", abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: "self_declared",
+    }));
+    const req = await withTx(db, (tx) => createMergeRequest(tx, clerk, { winnerId: w.patient.id, loserId: l.patient.id, note: "same person" }));
+    await approveRequest(db, mrdHead, { approvalId: req.approvalId, note: "ok" });
+    await executeMerge(db, clerk, req.mergeRequestId);
+    // the loser is frozen and outside the index: the winner may now hold the same ABHA
+    await withTx(db, (tx) => recordAbhaVerifiedByAbdm(tx, w.patient.id, { abhaNumber: "91-2345-6789-0123", via: "test" }));
+    await withTx(db, (tx) => requestUnmerge(tx, clerk, { mergeRequestId: req.mergeRequestId, note: "different persons", actFirst: true }));
+    await expect(executeUnmerge(db, clerk, req.mergeRequestId)).rejects.toMatchObject({ code: "abha_already_linked" });
+    const [loser] = await db.select().from(patients).where(eq(patients.id, l.patient.id));
+    expect(loser!.status).toBe("merged");
   });
 
   it("unmerge without act-first waits for the grant", async () => {

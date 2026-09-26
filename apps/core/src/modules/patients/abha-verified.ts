@@ -5,8 +5,10 @@ import { normaliseAbhaNumber } from "./abdm";
 import { patientUpdated, identityVersionMinted } from "./events";
 import { mintIdentityVersion } from "./identity";
 import { PatientError } from "./uhid";
+import { abhaRaceError, assertAbhaFree, isAbhaUniqueViolation } from "./abha-holders";
+import { ABDM_DEMOGRAPHICS_KEY, updatePatient } from "./registration";
 import type { Actor } from "@hmis/contracts";
-import type { PatientRow } from "./registration";
+import type { PatientPatch, PatientRow } from "./registration";
 import type { Tx } from "../../kernel/db/client";
 
 /**
@@ -38,7 +40,15 @@ function auditString(v: unknown): string | null {
 export async function recordAbhaVerifiedByAbdm(
   tx: Tx,
   patientId: string,
-  input: { abhaNumber: string; abhaAddress?: string | null; via: string },
+  input: {
+    abhaNumber: string; abhaAddress?: string | null; via: string;
+    /**
+     * ABDM S1 — the hospital user whose act this is (the clerk who linked). Used ONLY to decide
+     * whether an `abha_already_linked` refusal may name the other record's UHID; the write itself
+     * stays the ABDM system actor's.
+     */
+    requestedBy?: Actor | null;
+  },
 ): Promise<{ patient: PatientRow; changed: string[] }> {
   const abhaNumber = normaliseAbhaNumber(input.abhaNumber);
   if (!ABHA_NUMBER_SHAPE.test(abhaNumber)) {
@@ -57,6 +67,8 @@ export async function recordAbhaVerifiedByAbdm(
     abhaAddress: address === "" ? null : address,
     abhaVerificationStatus: "verified",
   };
+  // ABDM S1 — ONE ABHA, ONE PATIENT: ABDM verifying a number does not let it sit on two records.
+  await assertAbhaFree(tx, input.requestedBy ?? null, { abhaNumber: next.abhaNumber, abhaAddress: next.abhaAddress }, patientId);
   const changes = Object.entries(next)
     .map(([field, to]) => ({ field, from: auditString((current as Record<string, unknown>)[field]), to }))
     .filter((c) => c.from !== c.to);
@@ -66,7 +78,11 @@ export async function recordAbhaVerifiedByAbdm(
     .update(patients)
     .set({ ...next, updatedBy: ABDM_ACTOR.id, updatedAt: sql`clock_timestamp()` })
     .where(and(eq(patients.id, patientId), eq(patients.status, "active")))
-    .returning();
+    .returning()
+    .catch((e: unknown) => {
+      if (isAbhaUniqueViolation(e)) throw abhaRaceError();
+      throw e;
+    });
   if (updated.length === 0) throw new PatientError("patient_not_active", "patient was frozen concurrently");
   const row = updated[0]!;
   await appendEvent(tx, patientUpdated.make({ actor: ABDM_ACTOR, patientId, payload: { patientId, changes } }));
@@ -91,4 +107,42 @@ export async function recordAbhaVerifiedByAbdm(
     }));
   }
   return { patient: row, changed: changes.map((c) => c.field) };
+}
+
+/**
+ * ═══ ABDM S1 — TAKING ABDM'S NAME, DATE OF BIRTH AND GENDER ONTO THE RECORD (DECIDED) ═══
+ *
+ * NHA's M1 workbook expects ABDM-verified demographics to be authoritative: after verification
+ * "the fields for name, date of birth and gender are set as non-editable". So linking a verified ABHA
+ * takes ABDM's values — after the clerk has SEEN the differences and accepted them (the abdm module
+ * refuses a link with differences until they have) — and then the lock in `updatePatient` holds them
+ * while the ABHA stays `verified`.
+ *
+ * THROUGH THE AMENDMENT PATH, NOT ROUND IT. This is `updatePatient` with the ONE key to the lock,
+ * so everything an amendment owes still happens: the row lock, the `patient.updated` diff under the
+ * CLERK's actor (they accepted it), a new Class I identity VERSION with `reasonClass:
+ * document_correction` and `evidenceRef: abdm_verified (…)`, and DD5's assurance rule — evidenced at
+ * `abha_verified` with a named reference, so the stamp is held, not raised and not dropped.
+ * Call it BEFORE `recordAbhaVerifiedByAbdm`, in the same transaction.
+ */
+export const ABDM_EVIDENCE_REF = "abdm_verified";
+
+export async function acceptAbdmDemographics(
+  tx: Tx,
+  actor: Actor,
+  patientId: string,
+  fields: Pick<PatientPatch, "name" | "dob" | "dobEstimated" | "administrativeGender">,
+  via: string,
+): Promise<{ patient: PatientRow; changed: string[] }> {
+  const patch: PatientPatch = {};
+  if (fields.name !== undefined) patch.name = fields.name;
+  if (fields.dob !== undefined) patch.dob = fields.dob;
+  if (fields.dobEstimated !== undefined) patch.dobEstimated = fields.dobEstimated;
+  if (fields.administrativeGender !== undefined) patch.administrativeGender = fields.administrativeGender;
+  return updatePatient(tx, actor, patientId, patch, {
+    reasonClass: "document_correction",
+    evidenceRef: `${ABDM_EVIDENCE_REF} (${via})`,
+    evidencedAt: "abha_verified",
+    [ABDM_DEMOGRAPHICS_KEY]: true,
+  });
 }

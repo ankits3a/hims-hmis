@@ -5,7 +5,7 @@ import { Public } from "../../kernel/auth/decorators";
 import { AbdmCallbackGuard } from "./callback.guard";
 import { ABDM_CALLBACKS, abdmCallbackHandler, callbackKind } from "./callbacks";
 import { insertInbound, markDispatch } from "./messages";
-import { loggableHeaders } from "./redact";
+import { INBOUND_SECRET_KEYS, loggableHeaders, redactKeys } from "./redact";
 import { AbdmRuntime } from "./runtime";
 import type { AbdmCallbackRequest } from "./callback.guard";
 
@@ -58,8 +58,11 @@ export class AbdmCallbacksController {
       const v = header(req, name);
       if (v !== null) kept[name] = v;
     }
+    // S2 — the OTP of a link confirm and the link token of on-generate-token never reach the row
+    // (`redact.ts` INBOUND_SECRET_KEYS); the handler below still receives the body as ABDM sent it.
     const messageId = await insertInbound(this.runtime.db, {
-      kind, path, requestId, correlationRequestId, headers: loggableHeaders(kept), body: b, httpStatus: 202,
+      kind, path, requestId, correlationRequestId, headers: loggableHeaders(kept),
+      body: redactKeys(b, INBOUND_SECRET_KEYS), httpStatus: 202,
     });
     if (messageId === null) return; // a retry of a message we already hold
 

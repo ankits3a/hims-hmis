@@ -1,0 +1,2385 @@
+{
+ "source": "ndhm.in@6.5.0 (CC0-1.0) — StructureDefinition snapshots, slimmed by test/helpers/fhir-ig.ts",
+ "profiles": {
+  "DocumentBundle": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/DocumentBundle",
+   "type": "Bundle",
+   "elements": [
+    {
+     "id": "Bundle.meta",
+     "path": "Bundle.meta",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.meta.versionId",
+     "path": "Bundle.meta.versionId",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.identifier",
+     "path": "Bundle.identifier",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.identifier.system",
+     "path": "Bundle.identifier.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.identifier.value",
+     "path": "Bundle.identifier.value",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.type",
+     "path": "Bundle.type",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "document"
+     }
+    },
+    {
+     "id": "Bundle.timestamp",
+     "path": "Bundle.timestamp",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.link.relation",
+     "path": "Bundle.link.relation",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.link.url",
+     "path": "Bundle.link.url",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.entry.request.method",
+     "path": "Bundle.entry.request.method",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.entry.request.url",
+     "path": "Bundle.entry.request.url",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Bundle.entry.response.status",
+     "path": "Bundle.entry.response.status",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "OPConsultRecord": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/OPConsultRecord",
+   "type": "Composition",
+   "elements": [
+    {
+     "id": "Composition.status",
+     "path": "Composition.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type",
+     "path": "Composition.type",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type.coding",
+     "path": "Composition.type.coding",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type.coding.system",
+     "path": "Composition.type.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.type.coding.code",
+     "path": "Composition.type.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "371530004"
+     }
+    },
+    {
+     "id": "Composition.type.coding.display",
+     "path": "Composition.type.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Clinical consultation report"
+     }
+    },
+    {
+     "id": "Composition.subject",
+     "path": "Composition.subject",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.subject.reference",
+     "path": "Composition.subject.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.encounter",
+     "path": "Composition.encounter",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.date",
+     "path": "Composition.date",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.author",
+     "path": "Composition.author",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "Composition.author.reference",
+     "path": "Composition.author.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.title",
+     "path": "Composition.title",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.attester.mode",
+     "path": "Composition.attester.mode",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.relatesTo.code",
+     "path": "Composition.relatesTo.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.relatesTo.target[x]",
+     "path": "Composition.relatesTo.target[x]",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section",
+     "path": "Composition.section",
+     "min": 1,
+     "max": "*",
+     "slicing": {
+      "discriminator": [
+       {
+        "type": "value",
+        "path": "code.coding.code"
+       }
+      ],
+      "rules": "openAtEnd"
+     }
+    },
+    {
+     "id": "Composition.section.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "http://hl7.org/fhir/StructureDefinition/Resource"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:ChiefComplaints",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "ChiefComplaints"
+    },
+    {
+     "id": "Composition.section:ChiefComplaints.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:ChiefComplaints.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "422843007"
+     }
+    },
+    {
+     "id": "Composition.section:ChiefComplaints.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Chief complaint section"
+     }
+    },
+    {
+     "id": "Composition.section:ChiefComplaints.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Condition"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:ChiefComplaints.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:PhysicalExamination",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "PhysicalExamination"
+    },
+    {
+     "id": "Composition.section:PhysicalExamination.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:PhysicalExamination.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "425044008"
+     }
+    },
+    {
+     "id": "Composition.section:PhysicalExamination.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Physical exam section"
+     }
+    },
+    {
+     "id": "Composition.section:PhysicalExamination.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Observation"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:PhysicalExamination.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:Allergies",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "Allergies"
+    },
+    {
+     "id": "Composition.section:Allergies.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:Allergies.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "722446000"
+     }
+    },
+    {
+     "id": "Composition.section:Allergies.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Allergy record"
+     }
+    },
+    {
+     "id": "Composition.section:Allergies.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/AllergyIntolerance"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:Allergies.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:MedicalHistory",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "MedicalHistory"
+    },
+    {
+     "id": "Composition.section:MedicalHistory.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:MedicalHistory.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "371529009"
+     }
+    },
+    {
+     "id": "Composition.section:MedicalHistory.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "History and physical report"
+     }
+    },
+    {
+     "id": "Composition.section:MedicalHistory.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Condition",
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Procedure"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:MedicalHistory.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:FamilyHistory",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "FamilyHistory"
+    },
+    {
+     "id": "Composition.section:FamilyHistory.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:FamilyHistory.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "422432008"
+     }
+    },
+    {
+     "id": "Composition.section:FamilyHistory.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Family history section"
+     }
+    },
+    {
+     "id": "Composition.section:FamilyHistory.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/FamilyMemberHistory"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:FamilyHistory.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:InvestigationAdvice",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "InvestigationAdvice"
+    },
+    {
+     "id": "Composition.section:InvestigationAdvice.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:InvestigationAdvice.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "721963009"
+     }
+    },
+    {
+     "id": "Composition.section:InvestigationAdvice.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Order document"
+     }
+    },
+    {
+     "id": "Composition.section:InvestigationAdvice.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/ServiceRequest"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:InvestigationAdvice.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:Medications",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "Medications"
+    },
+    {
+     "id": "Composition.section:Medications.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:Medications.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "721912009"
+     }
+    },
+    {
+     "id": "Composition.section:Medications.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Medication summary document"
+     }
+    },
+    {
+     "id": "Composition.section:Medications.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/MedicationStatement",
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/MedicationRequest"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:Medications.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:FollowUp",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "FollowUp"
+    },
+    {
+     "id": "Composition.section:FollowUp.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:FollowUp.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "390906007"
+     }
+    },
+    {
+     "id": "Composition.section:FollowUp.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Follow-up encounter"
+     }
+    },
+    {
+     "id": "Composition.section:FollowUp.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Appointment"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:FollowUp.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:Procedure",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "Procedure"
+    },
+    {
+     "id": "Composition.section:Procedure.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:Procedure.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "371525003"
+     }
+    },
+    {
+     "id": "Composition.section:Procedure.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Clinical procedure report"
+     }
+    },
+    {
+     "id": "Composition.section:Procedure.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Procedure"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:Procedure.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:Referral",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "Referral"
+    },
+    {
+     "id": "Composition.section:Referral.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:Referral.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "306206005"
+     }
+    },
+    {
+     "id": "Composition.section:Referral.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Referral to service"
+     }
+    },
+    {
+     "id": "Composition.section:Referral.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/ServiceRequest"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:Referral.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:OtherObservations",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "OtherObservations"
+    },
+    {
+     "id": "Composition.section:OtherObservations.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:OtherObservations.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "404684003"
+     }
+    },
+    {
+     "id": "Composition.section:OtherObservations.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Clinical finding"
+     }
+    },
+    {
+     "id": "Composition.section:OtherObservations.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Observation"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:OtherObservations.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section:DocumentReference",
+     "path": "Composition.section",
+     "min": 0,
+     "max": "1",
+     "sliceName": "DocumentReference"
+    },
+    {
+     "id": "Composition.section:DocumentReference.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section:DocumentReference.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "371530004"
+     }
+    },
+    {
+     "id": "Composition.section:DocumentReference.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Clinical consultation report"
+     }
+    },
+    {
+     "id": "Composition.section:DocumentReference.entry",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/DocumentReference"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section:DocumentReference.entry.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "PrescriptionRecord": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/PrescriptionRecord",
+   "type": "Composition",
+   "elements": [
+    {
+     "id": "Composition.status",
+     "path": "Composition.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type",
+     "path": "Composition.type",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type.coding",
+     "path": "Composition.type.coding",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type.coding.system",
+     "path": "Composition.type.coding.system",
+     "min": 0,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.type.coding.code",
+     "path": "Composition.type.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "440545006"
+     }
+    },
+    {
+     "id": "Composition.type.coding.display",
+     "path": "Composition.type.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Prescription record"
+     }
+    },
+    {
+     "id": "Composition.subject",
+     "path": "Composition.subject",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.subject.reference",
+     "path": "Composition.subject.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.date",
+     "path": "Composition.date",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.author",
+     "path": "Composition.author",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "Composition.author.reference",
+     "path": "Composition.author.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.title",
+     "path": "Composition.title",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.attester.mode",
+     "path": "Composition.attester.mode",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.relatesTo.code",
+     "path": "Composition.relatesTo.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.relatesTo.target[x]",
+     "path": "Composition.relatesTo.target[x]",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section",
+     "path": "Composition.section",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedCode",
+      "value": "440545006"
+     }
+    },
+    {
+     "id": "Composition.section.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedString",
+      "value": "Prescription record"
+     }
+    },
+    {
+     "id": "Composition.section.entry",
+     "path": "Composition.section.entry",
+     "min": 1,
+     "max": "*",
+     "slicing": {
+      "discriminator": [
+       {
+        "type": "value",
+        "path": "type"
+       }
+      ],
+      "rules": "closed"
+     },
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "http://hl7.org/fhir/StructureDefinition/Resource"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section.entry:MedicationRequest",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "*",
+     "sliceName": "MedicationRequest",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/MedicationRequest"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section.entry:MedicationRequest.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section.entry:MedicationRequest.type",
+     "path": "Composition.section.entry.type",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "MedicationRequest"
+     }
+    },
+    {
+     "id": "Composition.section.entry:Binary",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "1",
+     "sliceName": "Binary",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Binary"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section.entry:Binary.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section.entry:Binary.type",
+     "path": "Composition.section.entry.type",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "Binary"
+     }
+    }
+   ]
+  },
+  "DiagnosticReportRecord": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/DiagnosticReportRecord",
+   "type": "Composition",
+   "elements": [
+    {
+     "id": "Composition.status",
+     "path": "Composition.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type",
+     "path": "Composition.type",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type.coding",
+     "path": "Composition.type.coding",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type.coding.system",
+     "path": "Composition.type.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.type.coding.code",
+     "path": "Composition.type.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.type.coding.display",
+     "path": "Composition.type.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.subject",
+     "path": "Composition.subject",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.subject.reference",
+     "path": "Composition.subject.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.date",
+     "path": "Composition.date",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.author",
+     "path": "Composition.author",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "Composition.author.reference",
+     "path": "Composition.author.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.title",
+     "path": "Composition.title",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.attester.mode",
+     "path": "Composition.attester.mode",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.relatesTo.code",
+     "path": "Composition.relatesTo.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.relatesTo.target[x]",
+     "path": "Composition.relatesTo.target[x]",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section",
+     "path": "Composition.section",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section.code.coding.system",
+     "path": "Composition.section.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Composition.section.code.coding.code",
+     "path": "Composition.section.code.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section.code.coding.display",
+     "path": "Composition.section.code.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section.entry",
+     "path": "Composition.section.entry",
+     "min": 1,
+     "max": "2",
+     "slicing": {
+      "discriminator": [
+       {
+        "type": "value",
+        "path": "type"
+       }
+      ],
+      "rules": "closed"
+     },
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "http://hl7.org/fhir/StructureDefinition/Resource"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section.entry:DiagnosticReport",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "1",
+     "sliceName": "DiagnosticReport",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/DiagnosticReportLab",
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/DiagnosticReportImaging"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section.entry:DiagnosticReport.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section.entry:DiagnosticReport.type",
+     "path": "Composition.section.entry.type",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "DiagnosticReport"
+     }
+    },
+    {
+     "id": "Composition.section.entry:DocumentReference",
+     "path": "Composition.section.entry",
+     "min": 0,
+     "max": "1",
+     "sliceName": "DocumentReference",
+     "types": [
+      {
+       "code": "Reference",
+       "targetProfile": [
+        "https://nrces.in/ndhm/fhir/r4/StructureDefinition/DocumentReference"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "Composition.section.entry:DocumentReference.reference",
+     "path": "Composition.section.entry.reference",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Composition.section.entry:DocumentReference.type",
+     "path": "Composition.section.entry.type",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "DocumentReference"
+     }
+    }
+   ]
+  },
+  "Patient": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Patient",
+   "type": "Patient",
+   "elements": [
+    {
+     "id": "Patient.identifier",
+     "path": "Patient.identifier",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "Patient.identifier.type",
+     "path": "Patient.identifier.type",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.identifier.type.coding.system",
+     "path": "Patient.identifier.type.coding.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.identifier.type.coding.code",
+     "path": "Patient.identifier.type.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.identifier.type.coding.display",
+     "path": "Patient.identifier.type.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.identifier.value",
+     "path": "Patient.identifier.value",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.name.text",
+     "path": "Patient.name.text",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.telecom.value",
+     "path": "Patient.telecom.value",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.communication.language",
+     "path": "Patient.communication.language",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.link.other",
+     "path": "Patient.link.other",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Patient.link.type",
+     "path": "Patient.link.type",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "Practitioner": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Practitioner",
+   "type": "Practitioner",
+   "elements": [
+    {
+     "id": "Practitioner.identifier",
+     "path": "Practitioner.identifier",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "Practitioner.identifier.type",
+     "path": "Practitioner.identifier.type",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.identifier.type.coding.system",
+     "path": "Practitioner.identifier.type.coding.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.identifier.type.coding.code",
+     "path": "Practitioner.identifier.type.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.identifier.type.coding.display",
+     "path": "Practitioner.identifier.type.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.identifier.value",
+     "path": "Practitioner.identifier.value",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.name.text",
+     "path": "Practitioner.name.text",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.telecom.value",
+     "path": "Practitioner.telecom.value",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.photo.contentType",
+     "path": "Practitioner.photo.contentType",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.photo.data",
+     "path": "Practitioner.photo.data",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.qualification.code",
+     "path": "Practitioner.qualification.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.qualification.code.coding.system",
+     "path": "Practitioner.qualification.code.coding.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.qualification.code.coding.code",
+     "path": "Practitioner.qualification.code.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Practitioner.qualification.code.coding.display",
+     "path": "Practitioner.qualification.code.coding.display",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "Organization": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Organization",
+   "type": "Organization",
+   "elements": [
+    {
+     "id": "Organization.identifier",
+     "path": "Organization.identifier",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "Organization.identifier.type",
+     "path": "Organization.identifier.type",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.identifier.type.coding.system",
+     "path": "Organization.identifier.type.coding.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.identifier.type.coding.code",
+     "path": "Organization.identifier.type.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.identifier.type.coding.display",
+     "path": "Organization.identifier.type.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.identifier.system",
+     "path": "Organization.identifier.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.identifier.value",
+     "path": "Organization.identifier.value",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.type.coding.system",
+     "path": "Organization.type.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://terminology.hl7.org/CodeSystem/organization-type"
+     }
+    },
+    {
+     "id": "Organization.type.coding.code",
+     "path": "Organization.type.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.type.coding.display",
+     "path": "Organization.type.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.name",
+     "path": "Organization.name",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Organization.telecom.value",
+     "path": "Organization.telecom.value",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "Encounter": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Encounter",
+   "type": "Encounter",
+   "elements": [
+    {
+     "id": "Encounter.status",
+     "path": "Encounter.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.statusHistory.status",
+     "path": "Encounter.statusHistory.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.statusHistory.period",
+     "path": "Encounter.statusHistory.period",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.class",
+     "path": "Encounter.class",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.classHistory.class",
+     "path": "Encounter.classHistory.class",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.classHistory.period",
+     "path": "Encounter.classHistory.period",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.type.coding.system",
+     "path": "Encounter.type.coding.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.type.coding.code",
+     "path": "Encounter.type.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.type.coding.display",
+     "path": "Encounter.type.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.serviceType.coding.system",
+     "path": "Encounter.serviceType.coding.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.serviceType.coding.code",
+     "path": "Encounter.serviceType.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.serviceType.coding.display",
+     "path": "Encounter.serviceType.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.priority.coding.system",
+     "path": "Encounter.priority.coding.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.priority.coding.code",
+     "path": "Encounter.priority.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.priority.coding.display",
+     "path": "Encounter.priority.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.participant.type.coding.system",
+     "path": "Encounter.participant.type.coding.system",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.participant.type.coding.code",
+     "path": "Encounter.participant.type.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.participant.type.coding.display",
+     "path": "Encounter.participant.type.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.reasonCode.coding.system",
+     "path": "Encounter.reasonCode.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Encounter.reasonCode.coding.code",
+     "path": "Encounter.reasonCode.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.reasonCode.coding.display",
+     "path": "Encounter.reasonCode.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.diagnosis.condition",
+     "path": "Encounter.diagnosis.condition",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.diagnosis.use.coding.system",
+     "path": "Encounter.diagnosis.use.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Encounter.diagnosis.use.coding.code",
+     "path": "Encounter.diagnosis.use.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.diagnosis.use.coding.display",
+     "path": "Encounter.diagnosis.use.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Encounter.location.location",
+     "path": "Encounter.location.location",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "Condition": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Condition",
+   "type": "Condition",
+   "elements": [
+    {
+     "id": "Condition.code",
+     "path": "Condition.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Condition.code.coding",
+     "path": "Condition.code.coding",
+     "min": 0,
+     "max": "*",
+     "slicing": {
+      "discriminator": [
+       {
+        "type": "value",
+        "path": "system"
+       }
+      ],
+      "rules": "closed"
+     }
+    },
+    {
+     "id": "Condition.code.coding:ICD-10",
+     "path": "Condition.code.coding",
+     "min": 0,
+     "max": "*",
+     "sliceName": "ICD-10"
+    },
+    {
+     "id": "Condition.code.coding:ICD-10.system",
+     "path": "Condition.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://hl7.org/fhir/sid/icd-10"
+     }
+    },
+    {
+     "id": "Condition.code.coding:ICD-10.code",
+     "path": "Condition.code.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Condition.code.coding:ICD-10.display",
+     "path": "Condition.code.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Condition.code.coding:SNOMEDCT",
+     "path": "Condition.code.coding",
+     "min": 0,
+     "max": "*",
+     "sliceName": "SNOMEDCT"
+    },
+    {
+     "id": "Condition.code.coding:SNOMEDCT.system",
+     "path": "Condition.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Condition.code.coding:SNOMEDCT.code",
+     "path": "Condition.code.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Condition.code.coding:SNOMEDCT.display",
+     "path": "Condition.code.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Condition.subject",
+     "path": "Condition.subject",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "MedicationRequest": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/MedicationRequest",
+   "type": "MedicationRequest",
+   "elements": [
+    {
+     "id": "MedicationRequest.status",
+     "path": "MedicationRequest.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.intent",
+     "path": "MedicationRequest.intent",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.medication[x]",
+     "path": "MedicationRequest.medication[x]",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.medication[x].coding.system",
+     "path": "MedicationRequest.medication[x].coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "MedicationRequest.medication[x].coding.code",
+     "path": "MedicationRequest.medication[x].coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.medication[x].coding.display",
+     "path": "MedicationRequest.medication[x].coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.subject",
+     "path": "MedicationRequest.subject",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.authoredOn",
+     "path": "MedicationRequest.authoredOn",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.requester",
+     "path": "MedicationRequest.requester",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.reasonCode.coding.system",
+     "path": "MedicationRequest.reasonCode.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "MedicationRequest.reasonCode.coding.code",
+     "path": "MedicationRequest.reasonCode.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.reasonCode.coding.display",
+     "path": "MedicationRequest.reasonCode.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction",
+     "path": "MedicationRequest.dosageInstruction",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.additionalInstruction.coding.system",
+     "path": "MedicationRequest.dosageInstruction.additionalInstruction.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.additionalInstruction.coding.code",
+     "path": "MedicationRequest.dosageInstruction.additionalInstruction.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.additionalInstruction.coding.display",
+     "path": "MedicationRequest.dosageInstruction.additionalInstruction.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.route.coding.system",
+     "path": "MedicationRequest.dosageInstruction.route.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.route.coding.code",
+     "path": "MedicationRequest.dosageInstruction.route.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.route.coding.display",
+     "path": "MedicationRequest.dosageInstruction.route.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.method.coding.system",
+     "path": "MedicationRequest.dosageInstruction.method.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.method.coding.code",
+     "path": "MedicationRequest.dosageInstruction.method.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.dosageInstruction.method.coding.display",
+     "path": "MedicationRequest.dosageInstruction.method.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "MedicationRequest.substitution.allowed[x]",
+     "path": "MedicationRequest.substitution.allowed[x]",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "ServiceRequest": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/ServiceRequest",
+   "type": "ServiceRequest",
+   "elements": [
+    {
+     "id": "ServiceRequest.status",
+     "path": "ServiceRequest.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "ServiceRequest.intent",
+     "path": "ServiceRequest.intent",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "ServiceRequest.code.coding.system",
+     "path": "ServiceRequest.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "ServiceRequest.code.coding.code",
+     "path": "ServiceRequest.code.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "ServiceRequest.code.coding.display",
+     "path": "ServiceRequest.code.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "ServiceRequest.subject",
+     "path": "ServiceRequest.subject",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "ServiceRequest.requester",
+     "path": "ServiceRequest.requester",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "DiagnosticReportLab": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/DiagnosticReportLab",
+   "type": "DiagnosticReport",
+   "elements": [
+    {
+     "id": "DiagnosticReport.status",
+     "path": "DiagnosticReport.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.category.coding.system",
+     "path": "DiagnosticReport.category.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "DiagnosticReport.category.coding.code",
+     "path": "DiagnosticReport.category.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.category.coding.display",
+     "path": "DiagnosticReport.category.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.code",
+     "path": "DiagnosticReport.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.code.coding.system",
+     "path": "DiagnosticReport.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://loinc.org"
+     }
+    },
+    {
+     "id": "DiagnosticReport.code.coding.code",
+     "path": "DiagnosticReport.code.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.code.coding.display",
+     "path": "DiagnosticReport.code.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.resultsInterpreter",
+     "path": "DiagnosticReport.resultsInterpreter",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "DiagnosticReport.result",
+     "path": "DiagnosticReport.result",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "DiagnosticReport.media.link",
+     "path": "DiagnosticReport.media.link",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.conclusion",
+     "path": "DiagnosticReport.conclusion",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.conclusionCode.coding.system",
+     "path": "DiagnosticReport.conclusionCode.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "DiagnosticReport.conclusionCode.coding.code",
+     "path": "DiagnosticReport.conclusionCode.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.conclusionCode.coding.display",
+     "path": "DiagnosticReport.conclusionCode.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.presentedForm.contentType",
+     "path": "DiagnosticReport.presentedForm.contentType",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DiagnosticReport.presentedForm.data",
+     "path": "DiagnosticReport.presentedForm.data",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "Observation": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Observation",
+   "type": "Observation",
+   "elements": [
+    {
+     "id": "Observation.status",
+     "path": "Observation.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Observation.code",
+     "path": "Observation.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Observation.code.coding",
+     "path": "Observation.code.coding",
+     "min": 0,
+     "max": "*",
+     "slicing": {
+      "discriminator": [
+       {
+        "type": "value",
+        "path": "system"
+       }
+      ],
+      "rules": "closed"
+     }
+    },
+    {
+     "id": "Observation.code.coding:LOINC",
+     "path": "Observation.code.coding",
+     "min": 0,
+     "max": "*",
+     "sliceName": "LOINC"
+    },
+    {
+     "id": "Observation.code.coding:LOINC.system",
+     "path": "Observation.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://loinc.org"
+     }
+    },
+    {
+     "id": "Observation.code.coding:LOINC.code",
+     "path": "Observation.code.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Observation.code.coding:LOINC.display",
+     "path": "Observation.code.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Observation.code.coding:SNOMEDCT",
+     "path": "Observation.code.coding",
+     "min": 0,
+     "max": "*",
+     "sliceName": "SNOMEDCT"
+    },
+    {
+     "id": "Observation.code.coding:SNOMEDCT.system",
+     "path": "Observation.code.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Observation.code.coding:SNOMEDCT.code",
+     "path": "Observation.code.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Observation.code.coding:SNOMEDCT.display",
+     "path": "Observation.code.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Observation.component.code",
+     "path": "Observation.component.code",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "DocumentReference": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/DocumentReference",
+   "type": "DocumentReference",
+   "elements": [
+    {
+     "id": "DocumentReference.status",
+     "path": "DocumentReference.status",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DocumentReference.relatesTo.code",
+     "path": "DocumentReference.relatesTo.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DocumentReference.relatesTo.target",
+     "path": "DocumentReference.relatesTo.target",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DocumentReference.content",
+     "path": "DocumentReference.content",
+     "min": 1,
+     "max": "*"
+    },
+    {
+     "id": "DocumentReference.content.attachment",
+     "path": "DocumentReference.content.attachment",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DocumentReference.content.attachment.contentType",
+     "path": "DocumentReference.content.attachment.contentType",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "DocumentReference.content.attachment.data",
+     "path": "DocumentReference.content.attachment.data",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  },
+  "Specimen": {
+   "url": "https://nrces.in/ndhm/fhir/r4/StructureDefinition/Specimen",
+   "type": "Specimen",
+   "elements": [
+    {
+     "id": "Specimen.type.coding.system",
+     "path": "Specimen.type.coding.system",
+     "min": 1,
+     "max": "1",
+     "fixed": {
+      "key": "fixedUri",
+      "value": "http://snomed.info/sct"
+     }
+    },
+    {
+     "id": "Specimen.type.coding.code",
+     "path": "Specimen.type.coding.code",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Specimen.type.coding.display",
+     "path": "Specimen.type.coding.display",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Specimen.receivedTime",
+     "path": "Specimen.receivedTime",
+     "min": 1,
+     "max": "1"
+    },
+    {
+     "id": "Specimen.collection.collected[x]",
+     "path": "Specimen.collection.collected[x]",
+     "min": 1,
+     "max": "1"
+    }
+   ]
+  }
+ }
+}

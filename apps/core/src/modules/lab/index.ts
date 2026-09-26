@@ -123,3 +123,6 @@ export { LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, toHttp as labToHttp } from ".
 export { benchArrivals, benchWorklist, labWorklist, publishableOrders, verifyWorklist } from "./worklist";
 export type { BenchArrivalRow, PublishableOrder, WorklistRow } from "./worklist";
 export { LAB_BENCH_NAMES, LAB_BENCH_TOPIC, LAB_REALTIME_NAMES, LAB_TOPIC_SPACES, labTopicRouter, labTopicsFor } from "./realtime";
+// ── ABDM S2 — what the lab releases to the national network (modules/abdm reads only this) ──
+export { encounterNoOfLabOrder, verifiedLabTestsForRelease } from "./abdm-release";
+export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";

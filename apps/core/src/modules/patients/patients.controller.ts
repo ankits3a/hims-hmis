@@ -17,7 +17,7 @@ import { getPatient, registerPatient, updatePatient } from "./registration";
 import { nearMatches } from "./duplicates";
 import { linkedPatients } from "./linked";
 import type { LinkedPatients } from "./linked";
-import { abhaCapability } from "./abdm";
+import { abhaCapabilityFrom } from "./abdm";
 import type { AbhaCapability } from "./abdm";
 import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssurance } from "./identity";
 import { recordPhiAccess } from "../../kernel/phi/audit";
@@ -76,6 +76,14 @@ function toHttp(e: unknown): never {
        field and not only the message's prefix. */
     if (e.code === "abha_verified_only_by_abdm") {
       throw new HttpException({ statusCode: 400, message: e.message, code: e.code, error: "Bad Request" }, 400);
+    }
+    /* ABDM S1 — two refusals a client must tell apart, so both carry the code; the duplicate carries
+       the holder's UHID in `detail` only when this user may see it (`abha-holders.ts`). */
+    if (e.code === "abha_already_linked") {
+      throw new HttpException({ statusCode: 409, message: e.message, code: e.code, detail: e.detail }, 409);
+    }
+    if (e.code === "abha_demographics_locked") {
+      throw new HttpException({ statusCode: 409, message: e.message, code: e.code }, 409);
     }
     if (NOT_FOUND_CODES.has(e.code)) throw new NotFoundException(e.message);
     if (FORBIDDEN_CODES.has(e.code)) throw new ForbiddenException(e.message);
@@ -343,7 +351,8 @@ export class PatientsController {
   @RequirePermission("patients.register", "hospital")
   @Get("abha/capability")
   abhaCapabilityRoute(): AbhaCapability {
-    return abhaCapability();
+    // ABDM S1 — the injected CONFIG, the object the connector reads (`abdm.ts` says why).
+    return abhaCapabilityFrom(this.cfg.abdm);
   }
 
   @RequirePermission("patients.read", "hospital")
