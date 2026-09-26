@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -9,6 +9,9 @@ import {
   purchaseOrderDocument, writeOffManifestDocument,
 } from "./office";
 import { draftPurchaseOrders, planPurchaseDrafts } from "./purchase-drafts";
+import { officeExecuteMerge, officeGetMerge, officeItems, officeMergePreview, officeRaiseMerge } from "./item-merge";
+import type { OfficeItems } from "./item-merge";
+import type { ItemMergeView, MergePreview } from "../materials";
 import type { OfficePay, OfficeRecall, OfficeReturns, OfficeToday } from "./office";
 import type { BillDraft } from "../materials";
 import type { PurchasePlan } from "./purchase-drafts";
@@ -30,6 +33,9 @@ const assignBody = z.object({
 });
 
 const draftReturnsBody = z.object({ vendorIds: z.array(idSchema).max(200).optional() });
+
+const mergePairQuery = z.object({ survivorItemId: idSchema, mergedItemId: idSchema });
+const raiseMergeBody = mergePairQuery.extend({ reason: z.string().trim().min(3).max(500), source: z.enum(["agent", "manual"]).optional() });
 
 function officeHttp(e: unknown): never {
   if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation", { pairKey: e.pairKey });
@@ -137,6 +143,54 @@ export class PharmacyOfficeController {
   async recallReturn(@CurrentActor() actor: Actor, @Param("id") recallId: string): Promise<{ return: ReturnView }> {
     try {
       return { return: await officeReturnFromRecall(this.db, actor, recallId) };
+    } catch (e) { officeHttp(e); }
+  }
+
+  // ═══ PHARMACY P6 (hygiene) — item merge: the duplicates the agent found, the sheet, the act ═══
+
+  /** The items side: the agent's possible duplicates and the merges in flight. */
+  @RequirePermission("materials.items.merge", "hospital")
+  @Get("items")
+  async items(@CurrentActor() actor: Actor): Promise<OfficeItems> {
+    try {
+      return await officeItems(this.db, actor);
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** The merge sheet: A and B side by side, what would move and what stays, and every reason it cannot go ahead now. */
+  @RequirePermission("materials.items.merge", "hospital")
+  @Get("item-merges/preview")
+  async mergePreview(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<MergePreview> {
+    const q = parsed(mergePairQuery, query);
+    try {
+      return await officeMergePreview(this.db, actor, q.survivorItemId, q.mergedItemId);
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** "Merge B into A", with the reason: every rule asked, the approval filed with the medical superintendent. */
+  @RequirePermission("materials.items.merge", "hospital")
+  @Post("item-merges")
+  async raiseMerge(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ merge: ItemMergeView }> {
+    const b = parsed(raiseMergeBody, body);
+    try {
+      return { merge: await officeRaiseMerge(this.db, actor, b) };
+    } catch (e) { officeHttp(e); }
+  }
+
+  @RequirePermission("materials.items.merge", "hospital")
+  @Get("item-merges/:id")
+  async getMerge(@CurrentActor() actor: Actor, @Param("id") mergeId: string): Promise<{ merge: ItemMergeView }> {
+    try {
+      return { merge: await officeGetMerge(this.db, actor, mergeId) };
+    } catch (e) { officeHttp(e); }
+  }
+
+  /** The act, once approved: one transaction, everything asked again. Not undone. */
+  @RequirePermission("materials.items.merge", "hospital")
+  @Post("item-merges/:id/merge")
+  async executeMerge(@CurrentActor() actor: Actor, @Param("id") mergeId: string): Promise<{ merge: ItemMergeView }> {
+    try {
+      return { merge: await officeExecuteMerge(this.db, actor, mergeId) };
     } catch (e) { officeHttp(e); }
   }
 

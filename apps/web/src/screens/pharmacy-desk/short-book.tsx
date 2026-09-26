@@ -200,3 +200,28 @@ export function ReturnPlanCard({ plan, onDone }: { plan: ReturnPlanCardData; onD
     </div>
   );
 }
+
+/**
+ * PHARMACY P6 (hygiene) — "duplicate items dikhao": the agent's list of item-master rows that look like
+ * one thing twice, as the copilot hands it over. It writes nothing; the card opens the office's items
+ * side, where a person opens a pair and raises the merge, and the medical superintendent approves it.
+ */
+export type DuplicateItemsCardData = { kind: "duplicate_items"; href: string; pairs: number; sameMedicine: number };
+
+export function duplicateItemsOf(payload: unknown): DuplicateItemsCardData | null {
+  const p = payload as Partial<DuplicateItemsCardData> | null | undefined;
+  return p != null && p.kind === "duplicate_items" && typeof p.pairs === "number" && p.pairs > 0 ? (p as DuplicateItemsCardData) : null;
+}
+
+export function DuplicateItemsCard({ plan, onDone }: { plan: DuplicateItemsCardData; onDone: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  return (
+    <div data-testid="desk-duplicates-card" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: "1px solid #24413631" }}>
+      <span className="tag" style={{ color: "var(--mint)", flexShrink: 0 }}>{t("pharmacyDesk.duplicates.tag")}</span>
+      <span style={{ flexGrow: 1, fontSize: 12.5, lineHeight: "18px" }}>{t("pharmacyDesk.duplicates.body", { pairs: plan.pairs, sameMedicine: plan.sameMedicine })}</span>
+      <button type="button" className="agdo" onClick={() => { onDone(); void navigate({ to: "/pharmacy/office", search: { view: "items" } as never }); }}>{t("pharmacyDesk.duplicates.open")}</button>
+      <button type="button" onClick={onDone} aria-label={t("pharmacyDesk.short.dismiss")} style={{ color: "var(--agent-dim)", fontSize: 15, lineHeight: "15px" }}>×</button>
+    </div>
+  );
+}

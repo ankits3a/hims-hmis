@@ -966,7 +966,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
        */
       gate: "G1", code: "pharmacy_messaging_provider_live",
       check: async () => pharmacyMessagingProviderLive(),
-      fix: "§17: the owner contracts an SMS gateway (DLT-registered) and/or WhatsApp Business; the operator sets NOTIFY_PROVIDER=live and that channel's keys for the API and the worker, and restarts both",
+      fix: "§18: the owner contracts an SMS gateway (DLT-registered) and/or WhatsApp Business; the operator sets NOTIFY_PROVIDER=live and that channel's keys for the API and the worker, and restarts both",
     },
     {
       /**
@@ -976,7 +976,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
        */
       gate: "G3", code: "pharmacy_dlt_template_ids_recorded",
       check: pharmacyDltTemplateIdsRecorded,
-      fix: "§17: register both messages on the DLT portal (the office's Messages side shows their exact text), then the pharmacist in charge records each content-template id at /pharmacy/office?view=messages",
+      fix: "§18: register both messages on the DLT portal (the office's Messages side shows their exact text), then the pharmacist in charge records each content-template id at /pharmacy/office?view=messages",
     },
   ],
 

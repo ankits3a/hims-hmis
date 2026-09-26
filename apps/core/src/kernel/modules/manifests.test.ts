@@ -23,6 +23,7 @@ import { pcpndtManifest } from "../../modules/pcpndt";
 import { radiologyManifest } from "../../modules/radiology";
 import { pharmacyManifest } from "../../modules/pharmacy";
 import { labManifest } from "../../modules/lab";
+import { abdmManifest } from "../../modules/abdm";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -86,6 +87,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   pcpndtManifest,
   radiologyManifest,
   pharmacyManifest, // PLAN 16c T3
+  abdmManifest, // ABDM S2 — worker-only, the `notify` shape
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -359,7 +361,11 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     // in `workerConsumers`, so installing it in `app.module.ts` would stop the api at startup.
     // It moves to `ALL_MANIFESTS` when it first serves an api route — T5's chain management and
     // T6's ledger reads are the first such things.
-    expect(workerKeys.filter((k) => !allKeys.includes(k))).toEqual(["notify", "obligations"]);
+    // ABDM S2 — `abdm` joins them, the same shape a third time: its only declarations are three
+    // subscriptions whose one handler (`abdm.care_contexts`) exists solely in `workerConsumers`,
+    // and the api serves nothing from the manifest (its callback routes are ABDM's, not a
+    // permission's). Installed LAST in the worker, so it is last here.
+    expect(workerKeys.filter((k) => !allKeys.includes(k))).toEqual(["notify", "obligations", "abdm"]);
 
     // Everything else is shared, and this is the assertion that makes the two lines above a
     // STATEMENT of the difference rather than a licence for any difference at all.
@@ -399,6 +405,6 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PLAN 16c T3 — the pharmacy's `prescription.issued` consumer; installed in both processes.
       "pharmacy",
     ]);
-    expect(workerKeys).toHaveLength(17); // PHASE O T1: 16 -> 17, `obligations`, read off the red run
+    expect(workerKeys).toHaveLength(18); // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`
   });
 });

@@ -192,6 +192,9 @@ export const PHARMACY_ERROR_CODES = [
   "unknown_end_prescriber",
   /** A witnessed act at the cabinet out of shape: not the cabinet's, the Controller's nominee or approval missing. */
   "controlled_act_invalid",
+  // ── PHARMACY P6 (hygiene) — item merge (`item-merge.ts`) ──
+  /** A new use of an item merged into another (register it for sale, re-enable it, give it a shelf): the survivor is used instead. */
+  "item_merged",
   // ── PHARMACY P6 (patient messages) ──
   /** Reminders were asked for a patient who stopped all messages: they resume messages first, in their own words. */
   "messages_stopped",
@@ -316,6 +319,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invalid_end_prescriber: 400,
   unknown_end_prescriber: 404,
   controlled_act_invalid: 409,
+  item_merged: 409,
   messages_stopped: 409,
   invalid_message_setting: 400,
 };

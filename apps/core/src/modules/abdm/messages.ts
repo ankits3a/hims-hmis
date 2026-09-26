@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { abdmMessages } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
@@ -15,12 +15,12 @@ export type AbdmDispatch = "pending" | "handled" | "unhandled" | "failed";
 
 export async function insertOutbound(db: Db, row: {
   kind: string; path: string; requestId: string; headers: Record<string, string>;
-  body: unknown; patientId?: string | null;
+  body: unknown; patientId?: string | null; actorId?: string | null;
 }): Promise<string> {
   const id = newId();
   await db.insert(abdmMessages).values({
     id, direction: "out", kind: row.kind, path: row.path, requestId: row.requestId,
-    headers: row.headers, body: row.body ?? null, patientId: row.patientId ?? null,
+    headers: row.headers, body: row.body ?? null, patientId: row.patientId ?? null, actorId: row.actorId ?? null,
   });
   return id;
 }
@@ -53,8 +53,37 @@ export async function insertInbound(db: Db, row: {
   return inserted[0]?.id ?? null;
 }
 
+/**
+ * ABDM S1 — an inbound message that arrived before its patient existed (a scan-and-share profile)
+ * names them once the counter has linked it, so `listAbdmMessages` audits the read against them.
+ * Only ever fills a null: a message that already names a patient is not re-pointed.
+ */
+export async function attachPatientToMessage(db: Db, id: string, patientId: string): Promise<void> {
+  await db.update(abdmMessages).set({ patientId }).where(and(eq(abdmMessages.id, id), isNull(abdmMessages.patientId)));
+}
+
 export async function markDispatch(db: Db, id: string, dispatch: AbdmDispatch, error: string | null = null): Promise<void> {
   await db.update(abdmMessages).set({ dispatch, error, completedAt: new Date() }).where(eq(abdmMessages.id, id));
+}
+
+/**
+ * ABDM S3 — an inbound DATA PUSH is answered with what its processing decided (202, or a refusal),
+ * unlike a callback's constant 202; the row records that answer and whose data it carried.
+ */
+export async function completeInbound(db: Db, id: string, result: {
+  httpStatus: number; dispatch: AbdmDispatch; error?: string | null; patientId?: string | null;
+}): Promise<void> {
+  await db.update(abdmMessages).set({
+    httpStatus: result.httpStatus, dispatch: result.dispatch, error: result.error ?? null, completedAt: new Date(),
+    ...(result.patientId === undefined || result.patientId === null ? {} : { patientId: result.patientId }),
+  }).where(eq(abdmMessages.id, id));
+}
+
+/** ABDM S3 — what we answered an inbound message the first time (a re-delivered push gets the same answer). */
+export async function inboundAnswer(db: Db, requestId: string): Promise<{ httpStatus: number | null; error: string | null } | null> {
+  const [row] = await db.select({ httpStatus: abdmMessages.httpStatus, error: abdmMessages.error }).from(abdmMessages)
+    .where(and(eq(abdmMessages.direction, "in"), eq(abdmMessages.requestId, requestId)));
+  return row ?? null;
 }
 
 /**

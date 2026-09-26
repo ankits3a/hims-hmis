@@ -9,6 +9,7 @@ import {
   supplierReturns, users, vendors,
 } from "../../kernel/db/schema";
 import { MaterialsError } from "./errors";
+import { batchLineage } from "./items";
 import { stockRecallClosed } from "./events";
 import { istDay } from "./grn";
 import { recallBatch } from "./ledger";
@@ -159,8 +160,9 @@ async function readRecall(db: Db, recallId: string): Promise<RecallView | undefi
     onHand: stockBalances.qtyOnHand, reserved: stockBalances.qtyReserved, frozen: stockBalances.qtyFrozen,
   }).from(stockBalances).innerJoin(resources, eq(resources.id, stockBalances.resourceId))
     .where(and(eq(stockBalances.batchId, x.r.batchId), ne(stockBalances.qtyOnHand, 0))).orderBy(asc(resources.code));
+  // PHARMACY P6 — the physical batch's whole lineage: a duplicate item merged into this one sold it too.
   const dispensed = await db.select().from(stockLedger)
-    .where(and(eq(stockLedger.batchId, x.r.batchId), eq(stockLedger.reason, "consume")))
+    .where(and(inArray(stockLedger.batchId, await batchLineage(db, x.r.batchId)), eq(stockLedger.reason, "consume")))
     .orderBy(desc(stockLedger.seq)).limit(1_000);
   const returns = await db.select({ id: supplierReturns.id, no: supplierReturns.returnNo, status: supplierReturns.status, qty: supplierReturnLines.qtyBase })
     .from(supplierReturnLines).innerJoin(supplierReturns, eq(supplierReturns.id, supplierReturnLines.returnId))

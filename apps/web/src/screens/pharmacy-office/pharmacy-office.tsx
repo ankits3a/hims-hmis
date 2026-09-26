@@ -12,6 +12,7 @@ import {
 } from "../../lib/purchase-api";
 import { Button } from "@/components/ui/button";
 import { ControlledView } from "./controlled";
+import { ItemsView } from "./items";
 import { MessagesView } from "./messages";
 import { PayView } from "./pay";
 import { ReportsView } from "./reports";
@@ -40,7 +41,7 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
-type OfficeView = "buy" | "pay" | "returns" | "reports" | "controlled" | "messages";
+type OfficeView = "buy" | "pay" | "returns" | "reports" | "controlled" | "items" | "messages";
 
 /** PARITY P5 — `/pharmacy/office/reports`: the office opened on its Reports side (the owner's and the billing office's door). */
 export function PharmacyOfficeReports(): React.ReactElement {
@@ -60,15 +61,17 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
   const canReport = can("pharmacy.reports.read");
   // PHARMACY P6 — the fifth side, the controlled-drug cabinet: its custodians, its licence keepers and its register's readers.
   const canControlled = can("pharmacy.ndps.custody") || can("pharmacy.licences.manage") || can("pharmacy.register.read");
-  // PHARMACY P6 (patient messages) — the sixth side: the provider, the DLT ids, the reminder's phone, what was sent.
+  // PHARMACY P6 (hygiene) — the sixth side, the item master's duplicates and their merges: the materials head.
+  const canItems = can("materials.items.merge");
+  // PHARMACY P6 (patient messages) — the seventh side: the provider, the DLT ids, the reminder's phone, what was sent.
   const canMessages = can("pharmacy.messages.manage");
   const views = ([
     ...(canBuy ? ["buy"] : []), ...(canPay ? ["pay"] : []), ...(canReturn ? ["returns"] : []), ...(canReport ? ["reports"] : []),
-    ...(canControlled ? ["controlled"] : []), ...(canMessages ? ["messages"] : []),
+    ...(canControlled ? ["controlled"] : []), ...(canItems ? ["items"] : []), ...(canMessages ? ["messages"] : []),
   ] as OfficeView[]);
   const [view, setView] = useState<OfficeView>(() => {
     const v = new URLSearchParams(window.location.search).get("view");
-    return initialView ?? (v === "pay" || v === "returns" || v === "reports" || v === "controlled" || v === "messages" ? v : "buy");
+    return initialView ?? (v === "pay" || v === "returns" || v === "reports" || v === "controlled" || v === "items" || v === "messages" ? v : "buy");
   });
   const shown: OfficeView = views.includes(view) ? view : (views[0] ?? "buy");
   // Only a buyer asks for the buying side's day: the owner and the billing office (reports only) never
@@ -118,7 +121,7 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
         )}
       </div>
       {canControlled && shown !== "controlled" && <ControlledStrip onOpen={() => setView("controlled")} />}
-      {shown === "pay" ? <PayView /> : shown === "returns" ? <ReturnsView /> : shown === "reports" ? <ReportsView /> : shown === "controlled" ? <ControlledView /> : shown === "messages" ? <MessagesView /> : (<>
+      {shown === "pay" ? <PayView /> : shown === "returns" ? <ReturnsView /> : shown === "reports" ? <ReportsView /> : shown === "controlled" ? <ControlledView /> : shown === "items" ? <ItemsView /> : shown === "messages" ? <MessagesView /> : (<>
       {today.error !== null && <p role="alert" className="text-sm text-red-600">{materialsErrorText(today.error, t)}</p>}
       {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
 

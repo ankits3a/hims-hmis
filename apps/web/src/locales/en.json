@@ -384,9 +384,9 @@
         "explain": "Two records were joined by mistake. Approving splits them back apart."
       },
       "materials_stock_adjustment": {
-        "label": "Stock correction or destruction",
-        "ask": "Correct the store's stock after a physical count, or destroy expired stock that cannot go back",
-        "explain": "A count found more or less stock than the system shows, or stock is to be destroyed under the BMW Rules (the request names the write-off). Approving corrects the stock, or lets it be handed over for destruction."
+        "label": "Stock correction, destruction or item merge",
+        "ask": "Correct the store's stock after a physical count, destroy expired stock that cannot go back, or merge a duplicate item into the one that stays",
+        "explain": "A count found more or less stock than the system shows, stock is to be destroyed under the BMW Rules, or one item is registered twice (the request names which). Approving corrects the stock, lets it be handed over for destruction, or lets the duplicate's stock and open work move to the item that stays — its history stays as written."
       },
       "materials_near_expiry_acceptance": {
         "label": "Stock that expires soon",
@@ -1843,7 +1843,8 @@
     "active": "Active",
     "retired": "Retired",
     "retire": "Retire",
-    "reactivate": "Reactivate"
+    "reactivate": "Reactivate",
+    "mergedInto": "Merged into {{code}}"
   },
   "materialsVendors": {
     "title": "Vendor master",
@@ -1980,7 +1981,13 @@
     "custody_witness_unknown": "The holder or the witness is not an active member of staff.",
     "controlled_outside_custody": "This drug is kept in the controlled-drug cabinet — it cannot go into an open store.",
     "not_a_controlled_item": "The cabinet is reserved for narcotic and Schedule X drugs — this item cannot go in.",
-    "controlled_check_invalid": "The balance check is incomplete — count every batch in the cabinet once, in whole numbers."
+    "controlled_check_invalid": "The balance check is incomplete — count every batch in the cabinet once, in whole numbers.",
+    "unknown_item_merge": "That item merge was not found.",
+    "item_merge_invalid": "These two items are not the same thing — the merge sheet says why (another medicine, composition, base unit or pack, one controlled and one not, or already merged).",
+    "item_merge_blocked": "Open work still names the duplicate item — finish it first; the merge sheet lists each (a held reservation, a dispense, a transfer, an unposted receipt, a return, a count, a recall).",
+    "item_merge_wrong_status": "This merge is not waiting to be carried out — refresh and look at it again.",
+    "item_merge_unapproved": "The medical superintendent has not approved this merge yet — nothing moves before that.",
+    "item_merged": "This item was merged into another — use the item it was merged into."
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -3127,7 +3134,7 @@
         "address": "ABHA address",
         "link": "Link this ABHA",
         "create": "Generate a new ABHA",
-        "verify": "Verify by OTP",
+        "verify": "Verify with ABDM",
         "notConfigured": "This hospital is not connected to ABDM yet, so a new ABHA cannot be created here and a number cannot be verified against the registry. An ABHA the patient already has can still be recorded — it is kept as the patient's own statement until ABDM confirms it."
       },
       "more": {
@@ -3899,6 +3906,7 @@
     "invalid_end_prescriber": "Choose a doctor of this hospital and name the training; a doctor already on the list is ended first.",
     "unknown_end_prescriber": "No such current entry on the list of trained doctors.",
     "controlled_act_invalid": "This act at the cabinet is incomplete — it is not the cabinet's, or the Controller of Drugs' officer or approval is missing.",
+    "item_merged": "This item was merged into another — use the item it was merged into.",
     "messages_stopped": "This patient asked for no messages. Ask them first, turn messages back on, then ask about reminders.",
     "invalid_message_setting": "That is not in the shape the provider issues: the phone needs 10–12 digits with its STD code."
   },
@@ -4495,6 +4503,11 @@
       "idProofHint": "Aadhaar ending 1234",
       "witness": "Witness username",
       "pin": "Witness PIN"
+    },
+    "duplicates": {
+      "tag": "DUPLICATES",
+      "body": "{{pairs}} pairs look like one item registered twice ({{sameMedicine}} the same medicine). The medical superintendent approves each merge.",
+      "open": "Open the office"
     },
     "messages": {
       "title": "Messages",
@@ -5578,7 +5591,9 @@
       "paymentRunPlan": "Ready to draft a payment run — vendors: {{vendors}} · bills: {{bills}} · ₹{{amount}} due by {{until}}. Open the office to make the draft.",
       "paymentRunNothing": "Nothing falls due by {{until}} that a run does not already hold.",
       "returnPlan": "Ready to draft returns — vendors: {{vendors}} · batches: {{batches}} · ₹{{amount}} at cost can go back ({{toDestroy}} can only be destroyed). Open the office to make the drafts.",
-      "returnNothing": "Nothing expired within its window, near expiry or recalled that a return does not already hold ({{toDestroy}} can only be destroyed)."
+      "returnNothing": "Nothing expired within its window, near expiry or recalled that a return does not already hold ({{toDestroy}} can only be destroyed).",
+      "duplicateItems": "{{pairs}} possible duplicate items ({{sameMedicine}} the same medicine twice). Open the office's Items side to review and merge them.",
+      "duplicateItemsNothing": "No two live items look like one thing twice."
     },
     "report": {
       "title": "Your day — {{date}}",
@@ -6020,6 +6035,7 @@
       "returns": "Returns",
       "reports": "Reports",
       "controlled": "Controlled",
+      "items": "Items",
       "messages": "Messages"
     },
     "pay": {
@@ -6201,6 +6217,7 @@
       "returns": "↑↓ move · ⏎ open · E expiry · D drafts · W write-off · R recall · A approve · P print · Esc close",
       "reports": "1–9 open a report · T W M Y range · E export · P print · X Tally export · L ledgers · Esc back",
       "controlled": "L licences · C count the cabinet · R register · B balance · Esc close",
+      "items": "↑↓ move · ⏎ open · N pick two items · S swap · M merge now · Esc close",
       "messages": "Tab moves · ⏎ saves the form · Esc close"
     },
     "returns": {
@@ -6815,6 +6832,136 @@
         "ledgerClosing": "Ledger"
       }
     },
+    "items": {
+      "count": {
+        "duplicates": "Possible duplicates",
+        "awaiting": "Waiting on the medical superintendent",
+        "ready": "Approved — ready to merge"
+      },
+      "agent": {
+        "found_one": "{{count}} pair looks like one item registered twice ({{scanned}} items checked). Open it to see what would move.",
+        "found_other": "{{count}} pairs look like one item registered twice ({{scanned}} items checked). Open one to see what would move.",
+        "nothing": "No two live items look like one thing twice ({{scanned}} items checked)."
+      },
+      "pickTwo": "Pick two items",
+      "why": {
+        "same_medicine": "Same medicine",
+        "same_composition": "Same composition",
+        "similar_name": "Similar name"
+      },
+      "onHandPair": "on hand {{keep}} · {{merge}}",
+      "section": {
+        "ready": "Ready to merge",
+        "duplicates": "The agent's possible duplicates",
+        "awaiting": "Waiting on the medical superintendent",
+        "recent": "Done"
+      },
+      "approval": {
+        "pending": "Waiting on the MS",
+        "granted": "Approved",
+        "rejected": "Refused"
+      },
+      "status": {
+        "requested": "Requested",
+        "merged": "Merged",
+        "refused": "Refused"
+      },
+      "empty": "Nothing to merge: the agent found no duplicates and no merge is in flight.",
+      "sheetTitle": "Merge {{pair}}",
+      "side": {
+        "stays": "Stays (A)",
+        "retired": "Merged into A and retired (B)"
+      },
+      "field": {
+        "class": "Class",
+        "medicine": "Medicine",
+        "baseUom": "Counted in",
+        "packs": "Packs",
+        "barcodes": "Barcodes",
+        "onHand": "On hand",
+        "controlled": "Controlled drug"
+      },
+      "yes": "Yes",
+      "no": "No",
+      "swap": "Swap which one stays",
+      "notOneThing": "These two are not one thing",
+      "finishFirst": "Finish this first",
+      "willMove": "What moves to A",
+      "col": {
+        "store": "Store",
+        "batch": "Batch",
+        "expiry": "Expiry",
+        "qty": "Quantity",
+        "into": "Into A's"
+      },
+      "into": {
+        "new_batch": "same batch, new record",
+        "existing_batch": "A's own batch of that number"
+      },
+      "moves": {
+        "orderLines_one": "{{count}} open purchase-order line",
+        "orderLines_other": "{{count}} open purchase-order lines",
+        "levels_one": "{{count}} min / reorder / max level",
+        "levels_other": "{{count}} min / reorder / max levels",
+        "levelsKept_one": "{{count}} level of B dropped — A's own is kept",
+        "levelsKept_other": "{{count}} levels of B dropped — A's own are kept",
+        "barcodes_one": "{{count}} barcode",
+        "barcodes_other": "{{count}} barcodes",
+        "packs_one": "{{count}} pack unit A lacks",
+        "packs_other": "{{count}} pack units A lacks",
+        "priceRegulation_one": "The price regulation in force (A has none)",
+        "priceRegulation_other": "The price regulations in force (A has none)",
+        "saleItemRetired_one": "B's sale registration is retired — A keeps its own",
+        "saleItemRetired_other": "B's sale registrations are retired — A keeps its own",
+        "saleItemRegistered_one": "A is registered for sale (only B was); B's registration is retired",
+        "saleItemRegistered_other": "A is registered for sale (only B was); B's registration is retired",
+        "shelf_one": "{{count}} shelf label",
+        "shelf_other": "{{count}} shelf labels",
+        "shelfKept_one": "{{count}} shelf label of B dropped — A's own is kept",
+        "shelfKept_other": "{{count}} shelf labels of B dropped — A's own are kept",
+        "shortBook_one": "{{count}} open short-book row",
+        "shortBook_other": "{{count}} open short-book rows",
+        "shortBookClosed_one": "{{count}} open short-book row of B closed — A already has one",
+        "shortBookClosed_other": "{{count}} open short-book rows of B closed — A already has one"
+      },
+      "nothingMoves": "Nothing is on hand or open under B: only the record is retired.",
+      "stays": "What stays, written against B (never rewritten)",
+      "stay": {
+        "ledgerRows_one": "{{count}} stock ledger row",
+        "ledgerRows_other": "{{count}} stock ledger rows",
+        "batches_one": "{{count}} batch record",
+        "batches_other": "{{count}} batch records",
+        "grnLines_one": "{{count}} goods-receipt line",
+        "grnLines_other": "{{count}} goods-receipt lines",
+        "billLines_one": "{{count}} supplier bill line",
+        "billLines_other": "{{count}} supplier bill lines",
+        "returnLines_one": "{{count}} return-to-supplier line",
+        "returnLines_other": "{{count}} return-to-supplier lines",
+        "closedOrderLines_one": "{{count}} closed purchase-order line",
+        "closedOrderLines_other": "{{count}} closed purchase-order lines",
+        "priceRegulations_one": "{{count}} price regulation",
+        "priceRegulations_other": "{{count}} price regulations",
+        "dispenseLines_one": "{{count}} dispense line",
+        "dispenseLines_other": "{{count}} dispense lines",
+        "retailLines_one": "{{count}} walk-in sale line",
+        "retailLines_other": "{{count}} walk-in sale lines",
+        "controlledRegister_one": "{{count}} controlled-drug register row",
+        "controlledRegister_other": "{{count}} controlled-drug register rows"
+      },
+      "irreversible": "A merge is not undone. B's history stays as it was written and every report reads it under A; B can never be ordered, received, sold or switched back on. A wrong merge is corrected by hand — ask IT first.",
+      "reason": "Why these are one item (the MS reads it)",
+      "reasonNeeded": "Say why these two are one item.",
+      "submit": "Submit for approval",
+      "submitted": "Sent to the medical superintendent for approval.",
+      "waitingOnMs": "Waiting on the medical superintendent's approval — nothing moves before it.",
+      "mergeNow": "Merge now",
+      "merged": "Merged. The stock and the open work are A's; B is retired.",
+      "doneSummary": "Merged: {{units}} units moved to A, by {{by}}.",
+      "pickTitle": "Merge two items you choose",
+      "pickKeep": "Search and choose the item that STAYS.",
+      "pickMerge": "Now choose the duplicate that merges into {{keep}}.",
+      "search": "Search by name or code"
+    },
     "messages": {
       "providerOff": "Console only — not sending. Every bill and reminder is written to the log, and nothing reaches a phone until the owner contracts a provider.",
       "providerOn": "Sending: {{channels}}.",
@@ -6822,7 +6969,7 @@
       "needsTitle_other": "{{count}} things before a message reaches a phone",
       "allClear": "Nothing stands between a message and a phone.",
       "needs": {
-        "provider": "The owner contracts an SMS gateway (DLT-registered) or WhatsApp Business; IT sets NOTIFY_PROVIDER=live and its keys (runbook §17.1).",
+        "provider": "The owner contracts an SMS gateway (DLT-registered) or WhatsApp Business; IT sets NOTIFY_PROVIDER=live and its keys (runbook §18.1).",
         "dlt_ids": "Register both messages on the DLT portal with the text below, then record each DLT template id here.",
         "whatsapp_names": "Record the approved WhatsApp template name of each message.",
         "contact_phone": "Record the pharmacy's phone — reminders name it and wait for it."
@@ -6854,6 +7001,150 @@
       "contact": "Pharmacy phone for reminders",
       "contactHint": "A mobile, or a landline with its STD code.",
       "namesOff": "Messages name no medicine. (The owner may allow names later; Schedule X, NDPS and H1 are never named.)"
+    }
+  },
+  "abdm": {
+    "verify": {
+      "open": "Verify with ABDM",
+      "title": "Verify with ABDM",
+      "subtitle": "ABDM sends the patient an OTP; nothing on the record changes until you link.",
+      "close": "Close",
+      "identifier": "ABHA number, ABHA address or the ABHA's mobile",
+      "method": "Send the OTP to",
+      "methodAadhaar": "Aadhaar-linked mobile",
+      "methodMobile": "Mobile on the ABHA",
+      "sendOtp": "Send OTP",
+      "otp": "OTP the patient received",
+      "confirmOtp": "Confirm OTP",
+      "restart": "Start again",
+      "link": "Link to this patient",
+      "use": "Use this ABHA",
+      "showCard": "Show ABHA card",
+      "cardAlt": "The patient's ABHA card",
+      "linked": "Linked. The ABHA is now verified by ABDM on this record.",
+      "mismatchRefused": "ABDM's details differ from this patient's. Check with the patient, tick the box, and link again.",
+      "expired": "This verification has expired. Start again to send a new OTP.",
+      "pendingLink": "Confirmed by ABDM. It will be linked and marked verified as soon as you register.",
+      "mobileHint": "The patient's mobile finds every ABHA linked to it; the OTP then goes to that mobile.",
+      "resend": "Re-send OTP · {{left}} left",
+      "resendIn": "Re-send in {{s}} s",
+      "resendNone": "No more re-sends — start again",
+      "chooseAccount": "ABDM found these ABHAs. Choose the patient's.",
+      "choose": "This one",
+      "downloadCard": "Download ABHA card",
+      "linkedElsewhere": "This ABHA is already linked in HMIS with UHID {{uhid}}. Open that record instead.",
+      "linkedElsewhereHidden": "This ABHA is already linked to another patient record in HMIS."
+    },
+    "create": {
+      "title": "Create an ABHA with Aadhaar",
+      "aadhaar": "Aadhaar number (not stored)",
+      "consent": "The patient agrees to authenticate with Aadhaar so ABDM can create their ABHA. The Aadhaar number is not stored by the hospital.",
+      "sendOtp": "Send Aadhaar OTP",
+      "mobile": "Mobile the ABHA should carry",
+      "created": "ABDM created a new ABHA for this patient.",
+      "existing": "This Aadhaar already has an ABHA — ABDM returned it.",
+      "aadhaarInvalid": "Aadhaar Number is not valid — it is twelve digits.",
+      "mobileNotAadhaar": "{{mobile}} is not the mobile linked with Aadhaar. ABDM sends it an OTP to confirm it.",
+      "mobileSend": "Send OTP to this mobile",
+      "mobileResend": "Re-send",
+      "mobileVerified": "Mobile confirmed by ABDM.",
+      "suggest": "Suggest ABHA addresses",
+      "makeAddress": "Create this ABHA address",
+      "addressRule": "8–18 letters or digits; at most one '.' and one '_', not at the start or the end."
+    },
+    "profile": {
+      "abhaNumber": "ABHA number",
+      "abhaAddress": "ABHA address",
+      "abdmSays": "ABDM",
+      "hospitalSays": "This record",
+      "field": {
+        "name": "Name",
+        "dob": "Birth",
+        "gender": "Gender",
+        "mobile": "Mobile"
+      },
+      "differs": "differs",
+      "willUpdate": "{{field}}: {{from}} → {{to}}",
+      "accept": "I have checked with the patient. Take ABDM's name, birth and gender for this record — they will stay locked while the ABHA is verified.",
+      "authoritative": "ABDM-verified name, birth and gender become the record's and are locked while verified. Mobile and address stay as the hospital keeps them."
+    },
+    "share": {
+      "open": "scan and share",
+      "title": "Scan and share",
+      "subtitle": "Patients scan this QR with the ABHA app; their details arrive here with a token number.",
+      "counter": "counter",
+      "empty": "No shared profiles waiting. They appear here within seconds of a scan.",
+      "token": "token {{n}}",
+      "register": "Register",
+      "findOnFile": "Already on file",
+      "dismiss": "Dismiss",
+      "noMatch": "No one on file matches this mobile or name.",
+      "linkThis": "Link to this patient",
+      "linked": "already linked in HMIS with UHID {{uhid}}",
+      "linkedHidden": "already linked to another record"
+    },
+    "find": {
+      "open": "Find ABHA by Aadhaar",
+      "title": "Find an ABHA with Aadhaar",
+      "consent": "The patient agrees to authenticate with Aadhaar so ABDM can find their ABHA. The Aadhaar number is not stored by the hospital."
+    },
+    "lock": {
+      "note": "Name, date of birth and gender are verified by ABDM and cannot be edited here. Re-verify with ABDM to change them, or remove the verification first."
+    },
+    "external": {
+      "title": "Records from other hospitals",
+      "label": "External — not verified by this hospital. Shown as the other facility sent it, under the patient's ABDM consent, and deleted when that consent ends.",
+      "badge": "External · not verified",
+      "off": "Requesting records through ABDM is not switched on at this hospital.",
+      "noAbha": "The patient has no ABDM-verified ABHA. Verify it at the registration counter to request records from other hospitals.",
+      "requestOpen": "Request records via ABDM",
+      "formNote": "ABDM asks the patient ({{abha}}) to approve this in their ABHA app. Nothing arrives until they do.",
+      "purpose": "Purpose",
+      "purposeName": {
+        "CAREMGT": "Care management",
+        "BTG": "Break the glass (emergency)"
+      },
+      "types": "Record types",
+      "hiType": {
+        "OPConsultation": "OP consultation",
+        "Prescription": "Prescription",
+        "DiagnosticReport": "Diagnostic report",
+        "DischargeSummary": "Discharge summary",
+        "ImmunizationRecord": "Immunization",
+        "HealthDocumentRecord": "Health document",
+        "WellnessRecord": "Wellness record",
+        "Invoice": "Invoice"
+      },
+      "from": "Records from",
+      "to": "Records to",
+      "expires": "Access expires on",
+      "send": "Send the request",
+      "sent": "Request sent. The patient approves it in their ABHA app; the records appear here when their hospital sends them.",
+      "requests": "Requests",
+      "status": {
+        "requested": "Sent",
+        "awaiting_patient": "Waiting for the patient",
+        "granted": "Granted",
+        "denied": "Denied",
+        "expired": "Expired",
+        "revoked": "Revoked",
+        "failed": "Failed"
+      },
+      "artefact": {
+        "GRANTED": "granted",
+        "REVOKED": "revoked",
+        "EXPIRED": "expired"
+      },
+      "erased": "{{count}} record deleted",
+      "erased_other": "{{count}} records deleted",
+      "expiresOn": "expires {{date}}",
+      "check": "Check status",
+      "consentUntil": "Consent until {{date}} — deleted after that",
+      "subject": "Patient in the record: {{name}}",
+      "author": "By {{name}}",
+      "checksumUnverified": "The sender sent no checksum; the encryption still authenticated every byte.",
+      "unreadable": "Nothing readable in this document.",
+      "none": "No records from other hospitals yet."
     }
   }
 }

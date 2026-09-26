@@ -23,7 +23,7 @@
  */
 
 /** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
-export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns";
+export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns" | "find_duplicate_items";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -165,6 +165,16 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("supplier return"), S("purchase return"), S("return to supplier"), S("return to the supplier"), S("return bana"), S("returns bana"),
     S("expiry return"), S("expired maal"), S("wapas bhej"), S("vapas bhej"), S("debit note"), S("वापस भेज"), S("दवा वापस"),
     W("wapas"), W("vapas"), W("वापस"),
+  ],
+  /**
+   * PHARMACY P6 (hygiene, 2026-09-26) — "duplicate items dikhao", "same medicine do baar bana hai": the
+   * agent LISTS the item-master rows that look like one thing twice. Read-only: its card opens the
+   * office's items side, where a person opens a pair, raises the merge and the superintendent approves it.
+   */
+  find_duplicate_items: [
+    S("duplicate item"), S("duplicate items"), S("duplicate medicine"), S("duplicate entries"), S("duplicate entry"), S("merge items"),
+    S("merge item"), S("item merge"), S("do baar"), S("twice in the item"), S("same medicine twice"), S("डुप्लिकेट"), S("दो बार"),
+    W("duplicate"), W("duplicates"), W("merge"),
   ],
 };
 

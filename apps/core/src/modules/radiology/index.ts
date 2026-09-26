@@ -112,3 +112,6 @@ export type {
   PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,
 } from "./applicability";
 export * from "./events";
+// ── ABDM S2 — what radiology releases to the national network (modules/abdm reads only this) ──
+export { signedImagingReportsForRelease } from "./abdm-release";
+export type { ImagingReleaseReport } from "./abdm-release";

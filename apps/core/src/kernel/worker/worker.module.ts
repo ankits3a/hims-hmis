@@ -32,6 +32,7 @@ import {
   RADIOLOGY_ORDER_PLACED_CONSUMER, orderPlacedConsumer, radiologyManifest,
 } from "../../modules/radiology";
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
+import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -181,6 +182,12 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // PLAN 16c T3 — the `prescription.issued` consumer that queues a dispense (D10). Installed in
         // BOTH processes: the API mounts the counter, the worker runs the subscription.
         registry.install(pharmacyManifest);
+        // ABDM S2 — the connector's care-context consumer (`consultation.completed`,
+        // `lab.report_published`, `imaging.report_published` → `abdm.care_contexts`). WORKER-ONLY,
+        // the `notify` / `obligations` shape: its only declarations are those subscriptions, whose
+        // handler exists solely in `workerConsumers` below, so the api must not install it. The
+        // install and the `workerConsumers` entry are ONE edit (`buildSubscriptionBus`).
+        registry.install(abdmManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -249,7 +256,7 @@ export class WorkerModule implements OnModuleDestroy {
  * assertions with a `Db` they already hold, and threading a Nest token through would buy a
  * second way to be wrong.
  */
-export function workerConsumers(db: Db): Record<string, Handler> {
+export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<string, Handler> {
   return {
     [ALERTS_CONSUMER]: alertsConsumer(db),
     [NOTIFY_CONSUMER]: notifyConsumer(db),
@@ -304,6 +311,14 @@ export function workerConsumers(db: Db): Record<string, Handler> {
      * six for the same reason.
      */
     [LAB_INTERFACE_CONSUMER]: labInterfaceConsumer(db),
+    /**
+     * ABDM S2 — the other half of `abdmManifest`'s install above. It is the first consumer that talks
+     * to an EXTERNAL service, so it is the first that needs the config: `worker.ts` passes the
+     * worker's own `AppConfig`, and without one (every assertion that calls `workerConsumers(db)`)
+     * the handler is present — so the bus builds — and does nothing, exactly as a deployment with
+     * ABDM unconfigured does.
+     */
+    [ABDM_CARE_CONTEXT_CONSUMER]: careContextConsumer(db, cfg),
   };
 }
 

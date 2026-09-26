@@ -18,6 +18,7 @@ import {
   purchaseOrderApproved, purchaseOrderCancelled, purchaseOrderDrafted, purchaseOrderReceived, purchaseOrderRejected,
   purchaseOrderSent, purchaseOrderSubmitted, purchaseOrderUpdated, stockLevelSet,
 } from "./events";
+import { assertNotMerged, withMergedAliases } from "./items";
 import { assertVendorPurchasable } from "./vendors";
 import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
@@ -211,6 +212,8 @@ async function resolveLines(tx: Tx, lines: readonly PoLineInput[]): Promise<Reso
   const found = await tx.select().from(items).where(inArray(items.id, ids));
   const byId = new Map(found.map((i) => [i.id, i]));
   const packs = await tx.select().from(itemUoms).where(inArray(itemUoms.itemId, ids));
+  // PHARMACY P6 — an item merged into another is never ordered: the refusal names the survivor.
+  await assertNotMerged(tx, found.filter((i) => i.mergedIntoItemId !== null).map((i) => i.id), "ordering it");
   return lines.map((l) => {
     const item = byId.get(l.itemId);
     if (item === undefined) throw new MaterialsError("unknown_item", `item ${l.itemId} not found`, { itemId: l.itemId });
@@ -769,6 +772,7 @@ export async function setStockLevel(
   await withTx(db, async (tx) => {
     const [item] = await tx.select({ id: items.id }).from(items).where(eq(items.id, input.itemId));
     if (item === undefined) throw new MaterialsError("unknown_item", `item ${input.itemId} not found`, { itemId: input.itemId });
+    await assertNotMerged(tx, [input.itemId], "setting its levels");
     await requireStore(tx, input.storeResourceId);
     const [prev] = await tx.select().from(itemStockLevels)
       .where(and(eq(itemStockLevels.itemId, input.itemId), eq(itemStockLevels.storeResourceId, input.storeResourceId))).for("update");
@@ -841,18 +845,22 @@ export type LastPurchase = {
 export async function lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, LastPurchase>> {
   const out = new Map<string, LastPurchase>();
   if (itemIds.length === 0) return out;
+  // PHARMACY P6 — an item's last purchase may have been booked under a duplicate since merged into it; the
+  // pack is read off the receipt's own item (the merge gave the survivor the same packs).
+  const { ids: readIds, standsFor } = await withMergedAliases(db, itemIds);
   const rows = await db.select({
     itemId: grnLines.itemId, uom: grnLines.uom, unitCost: grnLines.unitCostPaise, mrp: grnLines.mrpPaise, mrpUom: grnLines.mrpUom,
     vendorId: grns.vendorId, vendorStatus: vendors.status, grnNo: grns.grnNo, postedAt: grns.postedAt,
   })
     .from(grnLines).innerJoin(grns, eq(grns.id, grnLines.grnId)).innerJoin(vendors, eq(vendors.id, grns.vendorId))
     .where(and(
-      inArray(grnLines.itemId, [...itemIds]), eq(grns.status, "posted"), eq(grnLines.freeGoods, false), sql`${grnLines.qtyAcceptedBase} > 0`,
+      inArray(grnLines.itemId, readIds), eq(grns.status, "posted"), eq(grnLines.freeGoods, false), sql`${grnLines.qtyAcceptedBase} > 0`,
     ))
     .orderBy(desc(grns.postedAt), desc(grns.grnNo));
-  const packs = await db.select().from(itemUoms).where(inArray(itemUoms.itemId, [...itemIds]));
+  const packs = await db.select().from(itemUoms).where(inArray(itemUoms.itemId, readIds));
   for (const r of rows) {
-    if (out.has(r.itemId)) continue;
+    const key = standsFor.get(r.itemId) ?? r.itemId;
+    if (out.has(key)) continue;
     const mine = packs.filter((p) => p.itemId === r.itemId);
     const pack = mine.find((p) => p.uom.toLowerCase() === r.uom.toLowerCase()) ?? mine.find((p) => p.toBaseMultiplier === 1);
     const multiplier = pack?.toBaseMultiplier ?? 1;
@@ -861,7 +869,7 @@ export async function lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]
       const mrpPack = mine.find((p) => p.uom.toLowerCase() === r.mrpUom!.toLowerCase());
       if (mrpPack !== undefined && (r.mrp * multiplier) % mrpPack.toBaseMultiplier === 0) mrpPaise = (r.mrp * multiplier) / mrpPack.toBaseMultiplier;
     }
-    out.set(r.itemId, {
+    out.set(key, {
       vendorId: r.vendorId, vendorActive: r.vendorStatus === "active", grnNo: r.grnNo, postedAt: r.postedAt?.toISOString() ?? "",
       uom: pack?.uom ?? r.uom, multiplier, ratePaise: r.unitCost * multiplier, mrpPaise,
     });

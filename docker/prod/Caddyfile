@@ -73,6 +73,12 @@
 # a clerk types — a patient's name into `/api/patients/search?q=`, a complaint into
 # `/api/opd/cds/recognise/complaint?text=` — and none of them helps diagnose a 5xx. The keys stay.
 #
+# `pt` is replaced for a harder reason: it is a CREDENTIAL. ABDM's HIU data push is authenticated by
+# a 256-bit token in the address we give ABDM, `/api/abdm/callbacks/hiu/data-push?pt=<token>`. It is
+# a query parameter, not a path segment, precisely so this filter can remove it — Caddy allows one
+# filter per field, and the path is kept on purpose. Measured on caddy:2-alpine v2.11.4: the line
+# records `…/data-push?pt=REDACTED`. The test above also refuses any ABDM route with a `:token` path.
+#
 # ONE SNIPPET, TWO SITES: the HTTPS site and the :80 redirect both `import access_log`, so the 308s
 # land in the same file through the same filter, as they did when the automatic redirect server
 # inherited this site's logger.
@@ -120,6 +126,7 @@
 					replace text REDACTED
 					replace complaint REDACTED
 					replace term REDACTED
+					replace pt REDACTED
 				}
 			}
 		}

@@ -226,12 +226,14 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       // Parity P3: a supplier bill naming a GRN that is not there — the same "no such document".
       unknown_document: ["consumption.ts", "grn.ts", "ledger.ts", "materials.controller.ts", "supplier-bills.ts", "transfers.ts", "vendors.ts"],
       // "no such item".
-      unknown_item: ["grn.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts", "supplier-bills.ts"],
+      // PHARMACY P6: either item of a merge not found — the same "no such item".
+      unknown_item: ["grn.ts", "item-merge.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts", "supplier-bills.ts"],
       // Parity P2 — the act's own grant check, answered as the route guard would (403): counts,
       // adjustments, and the purchase order's raise/read. One meaning: you do not hold the grant.
       // Parity P3: the supplier bill's and the payment run's own grant checks — the same meaning.
       // Parity P4: the return's, the write-off's and the recall's own grant checks — the same meaning.
-      permission_denied: ["adjustments.ts", "counts.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts", "write-offs.ts"],
+      // PHARMACY P6: the item merge's own grant check (raise, merge, the duplicates list) — the same meaning.
+      permission_denied: ["adjustments.ts", "counts.ts", "item-merge.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts", "write-offs.ts"],
       // "say why": a count closed, an order, a bill or a run cancelled, a bill's difference accepted —
       // every one is a free-text reason the act refuses to take empty. One meaning, one remedy.
       // Parity P4: a return cancelled or closed, a credit note cancelled, a recall raised — the same.

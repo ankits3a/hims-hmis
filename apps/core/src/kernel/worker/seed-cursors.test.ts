@@ -13,6 +13,7 @@ import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../..
 import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "../../modules/radiology";
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
+import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -67,7 +68,7 @@ describe("seedCursors", () => {
    * wired a phase early: without a seeded cursor the consumer's first cycle after Plan 15 ships
    * would start from zero and re-walk every event the hospital has ever emitted.
    */
-  it("enumerates workerConsumers(db)'s keys — the kernel THREE, partners, materials, the OT's two, radiology's, pharmacy's and the lab's, and no others", async () => {
+  it("enumerates workerConsumers(db)'s keys — the kernel THREE, partners, materials, the OT's two, radiology's, pharmacy's, the lab's and ABDM's, and no others", async () => {
     const seeded = await seedCursors(db);
     // PLAN 15 T2 / A5 — the fifth. It joins for the reason D10 gives every entry here: a consumer
     // whose cursor is not seeded starts from zero and re-reads the WHOLE subscribed backlog on its
@@ -131,6 +132,15 @@ describe("seedCursors", () => {
          * the reason every entry above gives for being here.
          */
         OBLIGATIONS_CONSUMER,
+        /**
+         * ABDM S2 — the tenth. Its unseeded cursor would re-read every `consultation.completed`,
+         * `lab.report_published` and `imaging.report_published` the hospital has ever emitted the
+         * first time the worker boots with ABDM on — and every one names a visit that could then
+         * be linked to a patient's national health account in a single burst. Seeding at
+         * `max(seq)` is what makes linking start from the day it is switched on; older visits are
+         * reached by the patient's own discovery, which lists every completed visit.
+         */
+        ABDM_CARE_CONTEXT_CONSUMER,
       ].sort());
   });
 

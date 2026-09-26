@@ -43,7 +43,7 @@ async function bootstrap(): Promise<void> {
   // WhatsApp gateways when `NOTIFY_PROVIDER=live` and their keys are set, web push when
   // `NOTIFY_PUSH_PROVIDER=webpush`, the console sinks otherwise. Before this line no provider knob
   // reached the pump at all.
-  registerAllJobs(scheduler, db, registry, workerConsumers(db), cfg, adaptersFor(cfg));
+  registerAllJobs(scheduler, db, registry, workerConsumers(db, cfg), cfg, adaptersFor(cfg));
   scheduler.start();
   console.log(`worker started: jobs=${scheduler.jobs().join(",")}`);
 

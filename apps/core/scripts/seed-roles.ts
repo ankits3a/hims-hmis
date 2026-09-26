@@ -1115,6 +1115,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.returns.manage",
       "materials.returns.approve",
       "materials.writeoffs.manage",
+      // PHARMACY P6 (hygiene) — the head raises the merge of a duplicate item into the one that stays,
+      // with the reason, and carries it out once approved. The approval is the medical superintendent's,
+      // through `materials_stock_adjustment` (never the head who raised it). DEFAULT — owner may change.
+      "materials.items.merge",
       // PHARMACY PARITY P5 — the office's reports, and the margin: the head buys, so the head reads
       // what the buying earned and what the shelf is worth. DEFAULT — owner may change.
       "pharmacy.reports.read",

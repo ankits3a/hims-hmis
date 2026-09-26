@@ -396,6 +396,11 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // Not "at least", not "non-empty" — the six-commit failure this assertion exists for was
       // a bus that WAS non-empty in every test that looked at one.
       expect(pairs).toEqual([
+        // ABDM S2 — the connector's care-context consumer: a completed visit becomes a care
+        // context on the patient's ABHA, and a report published later enriches it. ONE consumer,
+        // three events, one cursor. Worker-only (`abdmManifest`), and it does nothing unless the
+        // worker's own config has ABDM on. `.sort()` puts `abdm.` first.
+        ["abdm.care_contexts", ["consultation.completed", "imaging.report_published", "lab.report_published"]],
         // Plan 11c T1: `ops.mode_changed` is the alerts consumer's THIRD subscription (D4). The
         // array is `.sort()`ed above, so it lands after `notification.failed`.
         // 18a-iii T5 / D7: the radiology chasers are the alerts consumer's FOURTH and FIFTH

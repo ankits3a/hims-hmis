@@ -8,6 +8,7 @@ import { planCustody, writeRegisterRow } from "./controlled";
 import { MaterialsError } from "./errors";
 import { batchRecalled } from "./events";
 import { istDay } from "./grn";
+import { withMergedAliases } from "./items";
 import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -613,7 +614,8 @@ export async function consumedQtyByItem(
   until: Date,
 ): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  const wanted = [...new Set(itemIds)].filter((id) => id !== "");
+  // PHARMACY P6 — an item's velocity includes what the duplicates merged into it consumed before the merge.
+  const { ids: wanted, standsFor } = await withMergedAliases(db, itemIds);
   if (wanted.length === 0) return out;
   const rows = await db.select({
     itemId: stockLedger.itemId,
@@ -625,7 +627,10 @@ export async function consumedQtyByItem(
     sql`${stockLedger.occurredAt} >= ${since}`,
     sql`${stockLedger.occurredAt} < ${until}`,
   )).groupBy(stockLedger.itemId);
-  for (const r of rows) out.set(r.itemId, Number(r.used));
+  for (const r of rows) {
+    const key = standsFor.get(r.itemId) ?? r.itemId;
+    out.set(key, (out.get(key) ?? 0) + Number(r.used));
+  }
   return out;
 }
 
@@ -853,7 +858,8 @@ export async function movementsFor(
   const clauses = [];
   if (filter.batchId !== undefined) clauses.push(eq(stockLedger.batchId, filter.batchId));
   if (filter.resourceId !== undefined) clauses.push(eq(stockLedger.resourceId, filter.resourceId));
-  if (filter.itemId !== undefined) clauses.push(eq(stockLedger.itemId, filter.itemId));
+  // PHARMACY P6 — an item's history includes the rows still written against the duplicates merged into it.
+  if (filter.itemId !== undefined) clauses.push(inArray(stockLedger.itemId, (await withMergedAliases(db, [filter.itemId])).ids));
   if (filter.encounterId !== undefined) clauses.push(eq(stockLedger.encounterId, filter.encounterId));
   const ordering = opts.order === "desc" ? desc(stockLedger.seq) : asc(stockLedger.seq);
   const base = db.select().from(stockLedger);

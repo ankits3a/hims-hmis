@@ -153,6 +153,13 @@ export const materialsManifest: ModuleManifest = {
      * medical superintendent), the route a count's variance takes.
      */
     "materials.writeoffs.manage",
+    /**
+     * PHARMACY P6 (hygiene) — raise "merge this duplicate item into that one" with the reason, and carry
+     * it out once approved (`item-merge.ts`). NOT the approval: that is `materials_stock_adjustment`'s (the
+     * medical superintendent), never the person who raised it. The stock and the open work move; the
+     * history stays written against the duplicate.
+     */
+    "materials.items.merge",
   ],
   /**
    * **PLAN 14 T7 — THE ONE SUBSCRIPTION, LANDED WITH ITS HANDLER IN THIS COMMIT.**
