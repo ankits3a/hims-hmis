@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
@@ -65,6 +65,18 @@ const failedBody = z.object({
 
 const printedBody = z.object({ jobId: z.string().min(1) });
 
+/**
+ * WASA L-12 — a zod refusal is a 400 with the ISSUES, the same helper every module controller
+ * carries (`radiology-http.ts`, `pharmacy-http.ts`, …). `schema.parse(body)` let the ZodError
+ * escape, and Nest turns an unknown error into a 500: the relay author's mistake was reported as
+ * the server's, and a scanner counted four 500s.
+ */
+function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
+  const r = schema.safeParse(body);
+  if (!r.success) throw new BadRequestException(r.error.issues);
+  return r.data;
+}
+
 const reprintBody = z.object({
   jobId: z.string().min(1),
   reason: z.string().max(300).optional(),
@@ -114,7 +126,7 @@ export class PrintingController {
     @CurrentActor() actor: Actor,
     @Body() body: unknown,
   ): Promise<{ jobs: PrintJobPayload[] }> {
-    const input = claimBody.parse(body);
+    const input = parsed(claimBody, body);
     const relayId = this.relayId(actor);
     const jobs = await claimPrintJobs(this.db, {
       relayId,
@@ -297,7 +309,7 @@ export class PrintingController {
   /** Paper came out. Guarded on the claim, so a relay whose lease lapsed cannot overwrite the winner. */
   @Post("printed")
   async printed(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ accepted: boolean }> {
-    const { jobId } = printedBody.parse(body);
+    const { jobId } = parsed(printedBody, body);
     return { accepted: await reportPrinted(this.db, jobId, this.relayId(actor)) };
   }
 
@@ -449,7 +461,7 @@ export class PrintingController {
   /* FD-27 — narrowed off `opd.visits.open`; the whole argument is in `modules/opd/manifest.ts`. */
   @RequirePermission("opd.paper.reprint", "hospital")
   async reprint(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ id: string | null }> {
-    const { jobId, reason } = reprintBody.parse(body);
+    const { jobId, reason } = parsed(reprintBody, body);
     const rows = await this.db.select().from(printJobs).where(eq(printJobs.id, jobId));
     const original = rows[0];
     if (original === undefined) return { id: null };
@@ -609,7 +621,7 @@ export class PrintingController {
    */
   @Post("failed")
   async failed(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ outcome: string }> {
-    const { jobId, error } = failedBody.parse(body);
+    const { jobId, error } = parsed(failedBody, body);
     return { outcome: await reportFailed(this.db, jobId, this.relayId(actor), error) };
   }
 }

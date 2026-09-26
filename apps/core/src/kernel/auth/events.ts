@@ -158,3 +158,129 @@ export const roleRevoked = defineEvent(
     scopeId: z.string().nullable(),
   }),
 );
+
+// ══════════════════ WASA M-05 — THE AUTHENTICATION AUDIT STREAM ══════════════════
+//
+// TEN NEW TYPES, and adding types is the safe direction (the 11e note above). Before these, not
+// one login, logout, terminal switch or TOTP act left an event: failures lived only in
+// `auth_throttle`, which is deleted on success and pruned after an hour, so "who tried to sign in
+// as the owner last night, and from where" had no answer at all.
+//
+// WHAT THEY CARRY. Every row names the client — `ip` (the address the ONE trusted proxy hop
+// reported, `src/http-hardening.ts`) and `userAgent` (bounded) — because CERT-In and ASVS 7.1.3
+// ask for the source of an authentication act, and `auth_sessions` now carries the same pair.
+//
+// WHAT THEY NEVER CARRY. No password, PIN, badge token, TOTP code or TOTP secret, ever — the GC3
+// rule `user.credential_reset` keeps. And a FAILED attempt names the submitted username but never
+// a user id or any "known/unknown" flag: its payload and actor are identical whether or not the
+// username belongs to anybody, so the audit trail is not a membership oracle for whoever can read
+// it. The actor on a failure is `system:auth`, because nobody was authenticated.
+//
+// Written from `auth-audit.ts`, called at the ROUTE layer (the controller and the step-up guard),
+// never from inside `sessions.ts`, `identity.ts` or `totp.ts`.
+
+const client = {
+  ip: z.string().nullable(),
+  userAgent: z.string().nullable(),
+};
+
+export const authLoginSucceeded = defineEvent(
+  "auth.login_succeeded",
+  "auth",
+  z.object({
+    userId: z.string(),
+    sessionId: z.string(),
+    method: z.literal("password"),
+    terminalId: z.string().nullable(),
+    ...client,
+  }),
+);
+
+export const authLoginFailed = defineEvent(
+  "auth.login_failed",
+  "auth",
+  z.object({
+    method: z.enum(["password", "pin", "badge"]),
+    /** As SUBMITTED, cut to 128 characters; `null` for a badge, which submits no username. */
+    username: z.string().max(128).nullable(),
+    terminalId: z.string().max(128).nullable(),
+    ...client,
+  }),
+);
+
+/** A terminal switch opens a session AND ends every other live one on that terminal — the count
+ *  is the second half, and each ended session gets its own `auth.session_revoked`. */
+const terminalSwitch = z.object({
+  userId: z.string(),
+  sessionId: z.string(),
+  terminalId: z.string(),
+  terminalSessionsRevoked: z.number().int(),
+  ...client,
+});
+export const authPinSwitched = defineEvent("auth.pin_switched", "auth", terminalSwitch);
+export const authBadgeSwitched = defineEvent("auth.badge_switched", "auth", terminalSwitch);
+
+/**
+ * A session ended by somebody OTHER than its holder. `userId` is the HOLDER — the person put out
+ * of the terminal — and the envelope's actor is whoever caused it. The other revoking paths are
+ * already evented with a count (`user.deactivated`, `user.credential_reset`,
+ * `user.password_changed`); a holder ending their own session is `auth.logged_out`.
+ */
+export const authSessionRevoked = defineEvent(
+  "auth.session_revoked",
+  "auth",
+  z.object({
+    sessionId: z.string(),
+    userId: z.string(),
+    reason: z.enum(["terminal_switch"]),
+    terminalId: z.string().nullable(),
+  }),
+);
+
+export const authLoggedOut = defineEvent(
+  "auth.logged_out",
+  "auth",
+  z.object({ userId: z.string(), sessionId: z.string(), ...client }),
+);
+
+/** A secret was MINTED (and any previous one replaced) — not yet active until `totp_confirmed`. */
+export const authTotpEnrolled = defineEvent(
+  "auth.totp_enrolled",
+  "auth",
+  z.object({ userId: z.string(), sessionId: z.string().nullable(), ...client }),
+);
+
+export const authTotpConfirmed = defineEvent(
+  "auth.totp_confirmed",
+  "auth",
+  z.object({ userId: z.string(), sessionId: z.string().nullable(), ...client }),
+);
+
+export const authTotpVerified = defineEvent(
+  "auth.totp_verified",
+  "auth",
+  z.object({
+    userId: z.string(),
+    sessionId: z.string(),
+    via: z.enum(["verify_route", "step_up_header"]),
+    ...client,
+  }),
+);
+
+/** A code was SUBMITTED and refused. A step-up with no code at all is a prompt, not an attempt. */
+export const authTotpFailed = defineEvent(
+  "auth.totp_failed",
+  "auth",
+  z.object({
+    userId: z.string(),
+    sessionId: z.string().nullable(),
+    stage: z.enum(["confirm", "verify_route", "step_up_header"]),
+    ...client,
+  }),
+);
+
+/** The M-05 catalogue, for the census in `test/auth-audit.e2e.test.ts`. */
+export const AUTH_AUDIT_EVENTS = [
+  authLoginSucceeded, authLoginFailed, authPinSwitched, authBadgeSwitched, authSessionRevoked,
+  authLoggedOut, authTotpEnrolled, authTotpConfirmed, authTotpVerified, authTotpFailed,
+] as const;
