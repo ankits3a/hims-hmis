@@ -416,7 +416,10 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // Measured from the failing run: `Received length: 70`.
     // PHARMACY PARITY P2 — 70 -> 71 with `/pharmacy/office`, the back office. Measured from the
     // failing run: `Received length: 71`.
-    expect(routes).toHaveLength(71); // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    // PHARMACY PARITY P5 — 71 -> 72 with `/pharmacy/office/reports`, the office opened on its
+    // Reports side (the owner's and the billing office's door). Measured from the failing run:
+    // `Received length: 72`.
+    expect(routes).toHaveLength(72); // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     expect(routes).toContain("/opd/slips");
     expect(routes).toContain("/reports/opd-day");
     expect(routes).toContain("/radiology/radiation-safety");
