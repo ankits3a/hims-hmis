@@ -2,7 +2,7 @@ import {
   BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode,
   HttpException, Inject, NotFoundException, Param, Post, Req, Res, UnauthorizedException,
 } from "@nestjs/common";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -28,6 +28,7 @@ import { users } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
 import { userPasswordChanged } from "./events";
+import { auditLoggedOut, auditLoginFailed, auditSessionOpened, auditTotp, clientContext } from "./auth-audit";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -125,7 +126,11 @@ export class AuthController {
 
   @Public()
   @Post("login")
-  async login(@Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<{ token: string }> {
+  async login(
+    @Req() req: Request,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ token: string }> {
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     await this.refuseIfThrottled(res, "login", parsed.data.username);
@@ -135,44 +140,65 @@ export class AuthController {
       // is byte-identical to the one it always produced: the throttle changes what happens on the
       // SIXTH attempt, never what a wrong password looks like on the first.
       await recordThrottleFailure(this.db, "login", parsed.data.username, new Date());
+      // WASA M-05: the username AS SUBMITTED, never the password — and the same row whether or not
+      // that username exists. A THROTTLED refusal (above) writes no event on purpose: it runs no
+      // verification, and evented it would let one client write unbounded rows into a 120-month
+      // table; the edge log carries those 429s with their address.
+      await auditLoginFailed(this.db, "password", parsed.data, clientContext(req));
       throw new UnauthorizedException();
     }
     await clearThrottle(this.db, "login", parsed.data.username);
+    await auditSessionOpened(this.db, result.token, "password", clientContext(req));
     return result;
   }
 
   @Public()
   @Post("switch/pin")
-  async switchPin(@Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<{ token: string }> {
+  async switchPin(
+    @Req() req: Request,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ token: string }> {
     const parsed = pinSwitchSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     // A separate `kind` from `login` on purpose: a poisoned password counter must not be able to
     // close the terminal switch, which is the path a clinician uses at a shared desk mid-shift.
     // It is also the sharper of the two keyspaces — a four-digit pin is 10,000 values.
     await this.refuseIfThrottled(res, "pin", parsed.data.username);
+    const startedAt = new Date();
     const result = await switchWithPin(this.db, this.cfg, parsed.data);
     if (!result) {
       await recordThrottleFailure(this.db, "pin", parsed.data.username, new Date());
+      await auditLoginFailed(this.db, "pin", parsed.data, clientContext(req));
       throw new UnauthorizedException();
     }
     await clearThrottle(this.db, "pin", parsed.data.username);
+    await auditSessionOpened(this.db, result.token, "pin", clientContext(req), startedAt);
     return result;
   }
 
   @Public()
   @Post("switch/badge")
-  async switchBadge(@Body() body: unknown): Promise<{ token: string }> {
+  async switchBadge(@Req() req: Request, @Body() body: unknown): Promise<{ token: string }> {
     const parsed = badgeSwitchSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const startedAt = new Date();
     const result = await switchWithBadge(this.db, this.cfg, parsed.data);
-    if (!result) throw new UnauthorizedException();
+    if (!result) {
+      // No username (a badge submits none), and never the token: it IS the credential.
+      await auditLoginFailed(this.db, "badge", { terminalId: parsed.data.terminalId }, clientContext(req));
+      throw new UnauthorizedException();
+    }
+    await auditSessionOpened(this.db, result.token, "badge", clientContext(req), startedAt);
     return result;
   }
 
   @Post("logout")
   @HttpCode(204)
   async logout(@Req() req: AuthedRequest): Promise<void> {
-    if (req.hmisSession) await revokeSession(this.db, req.hmisSession.sessionId);
+    const session = req.hmisSession;
+    if (!session) return;
+    await auditLoggedOut(this.db, session, clientContext(req), (tx) => revokeSession(tx, session.sessionId));
   }
 
   /**
@@ -255,20 +281,25 @@ export class AuthController {
   }
 
   @Post("totp/enroll")
-  async totpEnroll(@CurrentActor() actor: Actor): Promise<{ otpauthUrl: string }> {
+  async totpEnroll(@CurrentActor() actor: Actor, @Req() req: AuthedRequest): Promise<{ otpauthUrl: string }> {
     if (actor.type !== "user") throw new ForbiddenException();
     const { otpauthUrl } = await enrollTotp(this.db, this.cfg, actor.id);
+    await auditTotp(this.db, { userId: actor.id, sessionId: req.hmisSession?.sessionId ?? null }, { kind: "enrolled" }, clientContext(req));
     return { otpauthUrl };
   }
 
   @Post("totp/confirm")
   @HttpCode(204)
-  async totpConfirm(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<void> {
+  async totpConfirm(@CurrentActor() actor: Actor, @Req() req: AuthedRequest, @Body() body: unknown): Promise<void> {
     const parsed = z.object({ code: z.string().min(6) }).safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
-    if (actor.type !== "user" || !(await confirmTotp(this.db, this.cfg, actor.id, parsed.data.code))) {
+    if (actor.type !== "user") throw new ForbiddenException("invalid code");
+    const who = { userId: actor.id, sessionId: req.hmisSession?.sessionId ?? null };
+    if (!(await confirmTotp(this.db, this.cfg, actor.id, parsed.data.code))) {
+      await auditTotp(this.db, who, { kind: "failed", stage: "confirm" }, clientContext(req));
       throw new ForbiddenException("invalid code");
     }
+    await auditTotp(this.db, who, { kind: "confirmed" }, clientContext(req));
   }
 
   @Post("totp/verify")
@@ -278,10 +309,13 @@ export class AuthController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     const actor = req.hmisActor;
     if (!actor || actor.type !== "user" || !req.hmisSession) throw new ForbiddenException();
+    const who = { userId: actor.id, sessionId: req.hmisSession.sessionId };
     if (!(await verifyTotpCode(this.db, this.cfg, actor.id, parsed.data.code))) {
+      await auditTotp(this.db, who, { kind: "failed", stage: "verify_route" }, clientContext(req));
       throw new ForbiddenException("invalid code");
     }
     await recordSecondFactor(this.db, req.hmisSession.sessionId);
+    await auditTotp(this.db, who, { kind: "verified", via: "verify_route" }, clientContext(req));
   }
 
   @RequirePermission("auth.break_glass.use", "hospital")

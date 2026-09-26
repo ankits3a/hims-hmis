@@ -41,7 +41,9 @@ https://{$HMIS_UAT_SITE}:8443 {
 		# NO Strict-Transport-Security. UAT answers on an IP with a self-signed certificate; an
 		# HSTS header from here would pin a browser to HTTPS for this host for a year, which is a
 		# durable inconvenience bought for a training box.
+		# WASA L-09, as production: no software banner from the edge or the proxy hop.
 		-Server
+		-Via
 	}
 
 	# The parity line, identical to production's — see docker/prod/Caddyfile for why it is ONE

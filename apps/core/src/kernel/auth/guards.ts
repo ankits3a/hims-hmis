@@ -9,6 +9,7 @@ import { IS_PUBLIC, PERMISSION_KEY, AuthedRequest, PermissionRequirement } from 
 import { hasPermission, requestParam, scopeCtxFromRequest } from "./permissions";
 import { recordSecondFactor, secondFactorFresh, verifyTotpCode } from "./totp";
 import { hasActiveBreakGlass } from "./break-glass";
+import { auditTotp, clientContext } from "./auth-audit";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -117,8 +118,15 @@ export class PermissionGuard implements CanActivate {
       if (!secondFactorFresh(session, this.cfg.secondFactorWindowMinutes)) {
         const code = req.headers["x-totp-code"];
         const ok = typeof code === "string" && (await verifyTotpCode(this.db, this.cfg, actor.id, code));
-        if (!ok) throw new ForbiddenException("second_factor_required");
+        // WASA M-05: a SUBMITTED code is an attempt and is evented either way; no header at all is
+        // the ordinary "please step up" prompt and writes nothing.
+        const who = { userId: actor.id, sessionId: session.sessionId };
+        if (!ok) {
+          if (typeof code === "string") await auditTotp(this.db, who, { kind: "failed", stage: "step_up_header" }, clientContext(req));
+          throw new ForbiddenException("second_factor_required");
+        }
         await recordSecondFactor(this.db, session.sessionId);
+        await auditTotp(this.db, who, { kind: "verified", via: "step_up_header" }, clientContext(req));
       }
     }
     return true;

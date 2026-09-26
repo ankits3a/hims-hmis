@@ -10,10 +10,17 @@
 # transport block, no websocket matcher.
 #
 # TLS: automatic. Caddy provisions and renews a Let's Encrypt certificate for the site address
-# below over ACME, and — because the site is named by hostname with automatic HTTPS on — Caddy
-# also serves the HTTP→HTTPS redirect on :80 itself. There is deliberately NO explicit `http://`
-# site block: one would take :80 away from Caddy's own automatic redirect and ACME handling for
-# no gain. The redirect is proved by drill (308), not asserted here.
+# below over ACME. The HTTP→HTTPS redirect on :80 is now the explicit `http://` site at the foot of
+# this file, and the reason is one header: Caddy's own automatic redirect stamps `Server: Caddy` on
+# every 308 and nothing in the Caddyfile can reach it (WASA L-09). This file used to say an explicit
+# `http://` block would "take :80 away from Caddy's own automatic redirect and ACME handling for no
+# gain" — the gain is now named, and the ACME half does not happen: Caddy answers HTTP-01
+# challenges in the server itself, BEFORE any user route runs, so a site on :80 cannot shadow them
+# (and TLS-ALPN-01 on :443 is untouched either way). The block redirects every host, as the
+# automatic one did, with the same 308 and the same Location. Proved in throwaway caddy:2-alpine
+# containers, never against production: the 308 and its Location unchanged for the named host and
+# for an unknown one, and an HTTP-01 order validated end to end against a private ACME CA with
+# TLS-ALPN-01 disabled, so HTTP-01 through this file was the only way it could succeed.
 #
 # There is NO auth gate in front of the app. Plan 02's auth is the gate; an IP allowlist is a
 # Decisions-§ option the owner can turn on later in one directive.
@@ -30,10 +37,98 @@
 	servers {
 		protocols h1 h2
 	}
+	# WASA L-09: the :80 redirect is the explicit `http://` site at the foot of this file, because
+	# Caddy's automatic one sends `Server: Caddy` and cannot be told not to. This turns off ONLY the
+	# redirect — certificate management and the ACME challenges are untouched.
+	auto_https disable_redirects
+}
+
+# ---------------------------------------------------------------------------------------
+# ACCESS LOGGING — ADDED BY THE 2026-09 POST-DEPLOY SWEEP, BECAUSE EDGE 5xx WAS INVISIBLE.
+#
+# There was no `log` directive here at all, and that does NOT mean "logs to stderr": with none,
+# Caddy's access logging is OFF and `docker logs caddy` carries lifecycle events only. So "no
+# 5xx in the caddy log" proved nothing during the sweep — the log had never held a request line
+# in its life — and live probes had to be substituted for the evidence this should have been.
+#
+# THIS WIDENS WHAT THE EDGE WRITES DOWN, deliberately: every request the site handles now lands
+# on disk, `uri` included, so `/api/patients/<id>` paths and client IPs are in a file. The PATH is
+# NOT redacted and must not be, since it is most of what makes a 5xx line diagnosable. Read the
+# file as what it is: PHI-adjacent.
+#
+# ═══ WASA M-04 — WHAT THE FILTER REMOVES, AND WHY THE LIST IS NOT CADDY'S ═══
+#
+# Caddy's own redaction covers `Authorization` and `Cookie` and NOTHING ELSE. Measured on
+# caddy:2-alpine v2.11.4 in a throwaway container: a request carrying `X-Agent-Key` and
+# `X-Totp-Code` was written here with both values in the clear — and the print relay sends its
+# agent key on every poll. So the filter below replaces, with REDACTED, every request header the
+# API reads (`guards.ts` and every `@Headers(...)`) plus `Cookie`. The two Caddy already redacted
+# are listed too, so a future `log_credentials` cannot quietly reopen them. REPLACE rather than
+# delete: "was a key sent at all?" is a real diagnostic question, and the header NAME answers it.
+#
+# The list is PINNED BY `apps/core/test/caddyfile-hardening.test.ts`, which derives the headers from
+# the API's source — a new credential header in the app with no line here turns it red.
+#
+# The QUERY VALUES of `q`, `text`, `complaint` and `term` are replaced too: they are the free text
+# a clerk types — a patient's name into `/api/patients/search?q=`, a complaint into
+# `/api/opd/cds/recognise/complaint?text=` — and none of them helps diagnose a 5xx. The keys stay.
+#
+# ONE SNIPPET, TWO SITES: the HTTPS site and the :80 redirect both `import access_log`, so the 308s
+# land in the same file through the same filter, as they did when the automatic redirect server
+# inherited this site's logger.
+#
+# WHY /data RATHER THAN /var/log/caddy: this container's only writable mounts are
+# `caddy_data:/data` and `caddy_config:/config` — `./caddy` is `:ro` and is config. Anywhere
+# else is the container's ephemeral filesystem, so a deploy that recreated caddy would erase the
+# log at exactly the moment somebody wants to read it; that is the reasoning `pgbackrest_log`
+# was created under, applied here. Caddy runs as root in this image and creates the missing
+# directory itself (0700) — confirmed in a throwaway caddy:2-alpine, never against production.
+#
+# THE ROLL NUMBERS ARE LOAD-BEARING, NOT HYGIENE: `caddy_data` also holds the ACME account key
+# and the issued certificate, so a log left to grow would take TLS down with it. 10 MiB active +
+# 5 rolled bounds it at ~60 MiB even if nothing compressed; rolled files are gzipped, measured
+# at ~30:1 on these lines (1 MiB of them → 33 KB), so the real footprint is ~12 MiB. Lines run
+# ~335 bytes, so a roll is ~31k requests — days of this hospital, not hours. 720h is retention,
+# which outlives a deploy-to-sweep cycle by a wide margin without turning the volume into an
+# archive; whichever of size, count and age bites first wins.
+#
+# `roll_keep_for`, NOT `roll_keep_days`: the JSON field is `roll_keep_days`, but the Caddyfile
+# adapter knows only the duration form and rejects the other outright — and a config this file
+# cannot adapt is deploy.sh step 6's `caddy reload` failing AFTER the build and the migrations.
+# `720h` adapts to `"roll_keep_days": 30` (checked with `caddy adapt`).
+# ---------------------------------------------------------------------------------------
+(access_log) {
+	log {
+		output file /data/logs/access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		# JSON so the sweep can ask a machine rather than eyeball it: every line carries `status`,
+		# and a 5xx also carries `"level":"error"`, which is the grep that "no 5xx in the caddy log"
+		# was supposed to have been all along. `wrap json` keeps exactly that encoding.
+		format filter {
+			wrap json
+			fields {
+				request>headers>Authorization replace REDACTED
+				request>headers>Cookie replace REDACTED
+				request>headers>X-Agent-Key replace REDACTED
+				request>headers>X-Totp-Code replace REDACTED
+				request>headers>Idempotency-Key replace REDACTED
+				request>uri query {
+					replace q REDACTED
+					replace text REDACTED
+					replace complaint REDACTED
+					replace term REDACTED
+				}
+			}
+		}
+	}
 }
 
 hmis.crkmch.com {
 	encode zstd gzip
+	import access_log
 
 	# Security headers, applied to every response the site produces — proxied and static alike.
 	header {
@@ -43,58 +138,22 @@ hmis.crkmch.com {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Cross-Origin-Opener-Policy "same-origin"
 		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		# WASA L-09: neither the edge nor the proxy hop names its software. `-Via` because
+		# `reverse_proxy` stamps `via: 1.1 Caddy` on every /api response (measured).
 		-Server
+		-Via
 	}
 
-	# ---------------------------------------------------------------------------------------
-	# ACCESS LOGGING — ADDED BY THE 2026-09 POST-DEPLOY SWEEP, BECAUSE EDGE 5xx WAS INVISIBLE.
-	#
-	# There was no `log` directive here at all, and that does NOT mean "logs to stderr": with none,
-	# Caddy's access logging is OFF and `docker logs caddy` carries lifecycle events only. So "no
-	# 5xx in the caddy log" proved nothing during the sweep — the log had never held a request line
-	# in its life — and live probes had to be substituted for the evidence this should have been.
-	#
-	# THIS WIDENS WHAT THE EDGE WRITES DOWN, deliberately: every request the site handles now lands
-	# on disk, `uri` included, so `/api/patients/<id>` paths and client IPs are in a file. Caddy
-	# redacts `Authorization` and `Cookie` to "REDACTED" itself — measured on caddy 2.11.4 in a
-	# throwaway container, not assumed — but the URI is NOT redacted and must not be, since the path
-	# is most of what makes a 5xx line diagnosable. Read the file as what it is: PHI-adjacent.
-	#
-	# WHY /data RATHER THAN /var/log/caddy: this container's only writable mounts are
-	# `caddy_data:/data` and `caddy_config:/config` — `./caddy` is `:ro` and is config. Anywhere
-	# else is the container's ephemeral filesystem, so a deploy that recreated caddy would erase the
-	# log at exactly the moment somebody wants to read it; that is the reasoning `pgbackrest_log`
-	# was created under, applied here. Caddy runs as root in this image and creates the missing
-	# directory itself (0700) — confirmed in a throwaway caddy:2-alpine, never against production.
-	#
-	# THE ROLL NUMBERS ARE LOAD-BEARING, NOT HYGIENE: `caddy_data` also holds the ACME account key
-	# and the issued certificate, so a log left to grow would take TLS down with it. 10 MiB active +
-	# 5 rolled bounds it at ~60 MiB even if nothing compressed; rolled files are gzipped, measured
-	# at ~30:1 on these lines (1 MiB of them → 33 KB), so the real footprint is ~12 MiB. Lines run
-	# ~335 bytes, so a roll is ~31k requests — days of this hospital, not hours. 720h is retention,
-	# which outlives a deploy-to-sweep cycle by a wide margin without turning the volume into an
-	# archive; whichever of size, count and age bites first wins.
-	#
-	# `roll_keep_for`, NOT `roll_keep_days`: the JSON field is `roll_keep_days`, but the Caddyfile
-	# adapter knows only the duration form and rejects the other outright — and a config this file
-	# cannot adapt is deploy.sh step 6's `caddy reload` failing AFTER the build and the migrations.
-	# `720h` adapts to `"roll_keep_days": 30` (checked with `caddy adapt`).
-	#
-	# It covers the :80 redirect too: a plain-HTTP request is logged here with status 308 by the
-	# automatic-HTTPS server. Measured, because the site's logger and that server are not obviously
-	# the same thing — the file header's 308 is now in the log as well as in the drill.
-	# ---------------------------------------------------------------------------------------
-	log {
-		output file /data/logs/access.log {
-			roll_size 10MiB
-			roll_keep 5
-			roll_keep_for 720h
-		}
-		# JSON so the sweep can ask a machine rather than eyeball it: every line carries `status`,
-		# and a 5xx also carries `"level":"error"`, which is the grep that "no 5xx in the caddy log"
-		# was supposed to have been all along.
-		format json
+	# WASA L-09 — CADDY'S OWN ERRORS. The `header` block above never reaches a response Caddy
+	# raises itself (a 405 for `OPTIONS /`, a 502 with the api down): those skip the handler chain
+	# and went out with `Server: Caddy`. The status is Caddy's own and the body stays empty, exactly
+	# what was served before this block existed.
+	handle_errors {
+		header -Server
+		respond "" {err.status_code}
 	}
+
+	# Access logging: see the `(access_log)` snippet above the site — WASA M-04's filter lives there.
 
 	# ---------------------------------------------------------------------------------------
 	# THE PARITY LINE — PLAN 11g / DD1. ONE PREFIX, AND THE ORIGIN NOW HAS ONE RULE:
@@ -133,4 +192,17 @@ hmis.crkmch.com {
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# WASA L-09 — THE :80 REDIRECT, WRITTEN OUT. See the file header: Caddy's automatic redirect
+# stamps `Server: Caddy` on its 308 and no directive reaches it, so `auto_https disable_redirects`
+# (global options) switches it off and this block is the redirect. MEASURED, the other way first:
+# with the automatic one left on, Caddy inserted its own host-matched redirect AHEAD of this
+# catch-all and the banner stayed on exactly the request that matters. `http://` with no host
+# answers every Host, as the automatic catch-all did, and `{host}{uri}` is the same Location.
+# ACME HTTP-01 challenges are still answered by Caddy itself before this route runs.
+http:// {
+	import access_log
+	header -Server
+	redir https://{host}{uri} 308
 }

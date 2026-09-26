@@ -332,7 +332,9 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     expect([me.status, me.body.message]).toEqual([403, "password_change_required"]);
 
     const appended = await eventsSince(before);
-    expect(appended.map((e) => e.name)).toEqual(["user.created"]);
+    // WASA M-05: the login this test performs is evented too — and it carries no credential either,
+    // which the `not.toContain` below now checks across both rows.
+    expect(appended.map((e) => e.name)).toEqual(["user.created", "auth.login_succeeded"]);
     expect(appended[0]!.payload).toEqual({
       userId: res.body.id, username: "asha", fullName: "Asha Verma", hasPin: true, mustChangePassword: true,
     });
@@ -428,7 +430,7 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     await request(server()).get("/auth/me").set("Authorization", `Bearer ${token}`).expect(200);
 
     const names = (await eventsSince(before)).map((e) => e.name);
-    expect(names).toEqual(["user.credential_reset", "user.password_changed"]);
+    expect(names).toEqual(["user.credential_reset", "auth.login_succeeded", "user.password_changed"]);
   });
 
   it("PIN reset does NOT revoke and does NOT force a password change (Q3's two flows, one core)", async () => {
@@ -464,7 +466,8 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     await request(server())
       .get("/auth/me").set("Authorization", `Bearer ${again.body.token as string}`).expect(200);
 
-    expect((await eventsSince(before)).map((e) => e.name)).toEqual(["user.deactivated", "user.reactivated"]);
+    expect((await eventsSince(before)).map((e) => e.name))
+      .toEqual(["user.deactivated", "user.reactivated", "auth.login_succeeded"]);
   });
 
   it("a route that names a user who does not exist is a 404, never a silent success", async () => {

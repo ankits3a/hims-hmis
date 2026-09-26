@@ -323,6 +323,39 @@ describe("FD-24 T2: the print relay's routes", () => {
       .expect((r) => { expect(r.body.jobs).toEqual([]); });
   });
 
+  /**
+   * WASA L-12 — a malformed body is the CALLER's mistake, so it is a 400 that names the issues,
+   * not the 500 `schema.parse` produced by letting a ZodError escape. Scanners count 500s, and a
+   * relay author reading "Internal server error" has nothing to fix.
+   */
+  it("WASA L-12 — a malformed relay body is a 400 with the issues, never a 500", async () => {
+    for (const [route, body] of [
+      ["/print/claim", { destinations: [] }],
+      ["/print/claim", { destinations: "front_desk_thermal" }],
+      ["/print/printed", {}],
+      ["/print/failed", { jobId: "x" }],
+    ] as const) {
+      const res = await request(app.getHttpServer()).post(route).set("x-agent-key", agentKey).send(body);
+      expect([route, res.status]).toEqual([route, 400]);
+      expect([route, Array.isArray(res.body.message)]).toEqual([route, true]);
+    }
+  });
+
+  it("WASA L-12 — a malformed reprint body is a 400 for the clerk too", async () => {
+    const registry = new ModuleRegistry();
+    for (const m of ALL_MANIFESTS) registry.install(m);
+    await syncPermissions(db, registry);
+    await createRole(db, "front_desk_reprint", "Front desk (reprint)");
+    await grantPermissionToRole(db, registry, "front_desk_reprint", "opd.paper.reprint");
+    const desk = await mkUser(db, `desk-${String(Date.now())}`, ["front_desk_reprint"]);
+    const res = await request(app.getHttpServer())
+      .post("/print/reprint")
+      .set("authorization", `Bearer ${desk.token}`)
+      .send({ jobId: 42 });
+    expect(res.status).toBe(400);
+    expect(Array.isArray(res.body.message)).toBe(true);
+  });
+
   it("no agent key, no queue — every route refuses an unauthenticated caller", async () => {
     for (const route of ["/print/claim", "/print/printed", "/print/failed"]) {
       await request(app.getHttpServer()).post(route).send({}).expect(401);
@@ -516,7 +549,9 @@ describe("FD-24 T2: the print relay's routes", () => {
       .post("/print/claim")
       .set("x-agent-key", agentKey)
       .send({ destinations: [], limit: 999 })
-      .expect(500); // zod throws; the shape is refused either way, and nothing is claimed
+      // WASA L-12: this pinned 500 — the ZodError escaping — and called it "refused either way".
+      // It is a 400 now; the property the test exists for (nothing is claimed) is unchanged.
+      .expect(400);
     expect(await db.select().from(printJobs)).toHaveLength(0);
   });
 
