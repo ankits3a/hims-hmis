@@ -94,3 +94,9 @@ export { listDrugDiseaseFor } from "./resolve";
 export type { DrugDiseaseRow } from "./resolve";
 /** The offer a drug-disease alert carries. Declared with the table; the checks read it here. */
 export type { DrugDiseaseAlternative } from "../../kernel/db/schema";
+/**
+ * PHARMACY P6 — the NDPS Act's classes on the moieties: the cited list, the medicine's strictest class,
+ * and the classification (a script's door, `classify-ndps-salts`).
+ */
+export { NDPS_CLASSES, NDPS_LIST, classifyNdpsSalts, ndpsClassByMedicine } from "./ndps";
+export type { NdpsClass, NdpsClassificationReport, NdpsEntry } from "./ndps";

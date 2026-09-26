@@ -51,6 +51,8 @@ const SURFACE = [
   "MAX_PRODUCT_SPECS", // the CDS regimen fill's bound: one regimen, not a catalogue
   "MAX_SUGGESTIONS",
   "MIN_QUERY_CHARS",
+  "NDPS_CLASSES", // PHARMACY P6 — the NDPS Act's two classes
+  "NDPS_LIST", // PHARMACY P6 — the cited list of controlled moieties
   "THERAPEUTIC_DUPLICATE_CLASSES", // P23 — the classes the duplicate-therapy notice knows
   "addInteraction",
   "addMedicine",
@@ -64,6 +66,7 @@ const SURFACE = [
   "allergyClassKeys", // P22 — pure: the classes an allergy record names
   "attestSubstance",
   "catalogueCensus",
+  "classifyNdpsSalts", // PHARMACY P6 — the cited list written onto the catalogue (a script's door)
   "countSalts",
   "equivalentMedicines",
   "formularyHttpStatus",
@@ -76,6 +79,7 @@ const SURFACE = [
   "medicineExists",
   "medicineIdsByBrandNames",
   "medicinesByIds",
+  "ndpsClassByMedicine", // PHARMACY P6 — bounded by MAX_IDS, the strictest class of each medicine's moieties
   "normalizeDrugName",
   "pageInteractions",
   "pageMappingWorklist",

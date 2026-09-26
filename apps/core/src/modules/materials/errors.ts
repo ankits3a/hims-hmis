@@ -275,7 +275,20 @@ export type MaterialsErrorCode =
   /** The recall is not in the state this act needs. */
   | "recall_wrong_status"
   /** A recall is closed only when no store holds any of the batch. */
-  | "recall_stock_remaining";
+  | "recall_stock_remaining"
+  // ── PHARMACY P6 — the controlled-drug cabinet (`controlled.ts`, `controlled-check.ts`) ──
+  /** A movement at the controlled cabinet without a witness, or by a system actor. */
+  | "custody_required"
+  /** The holder named as a witness, or one witness twice. */
+  | "custody_same_person"
+  /** The holder or a witness is not an active member of staff. */
+  | "custody_witness_unknown"
+  /** A narcotic-cabinet item taken into an open store. */
+  | "controlled_outside_custody"
+  /** Anything but a narcotic-cabinet item taken into the cabinet, which is reserved for them (r.65(12)). */
+  | "not_a_controlled_item"
+  /** A balance check or a cabinet act out of shape: not the cabinet, a batch missing from the count, a count below zero. */
+  | "controlled_check_invalid";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.

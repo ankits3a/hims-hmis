@@ -11,7 +11,8 @@ import { MaterialsError } from "./errors";
 import { stockAdjusted } from "./events";
 import { postMovements } from "./ledger";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
+import type { Custody } from "./controlled";
 
 /**
  * ═══ PLAN 14c, SECOND SLICE — A COUNT'S VARIANCE, BOOKED WITH A SECOND KEY ═══
@@ -110,22 +111,42 @@ export async function requestCountAdjustment(
   });
   if (new Set(lineIds).size !== lineIds.length) throw new MaterialsError("already_requested", "a line is named twice");
 
-  const net = planned.reduce((s, p) => s + p.valuePaise, 0);
-  const note = input.note?.trim() ?? "";
-  const approvalId = await withTx(db, async (tx) => {
-    const { approvalId: id } = await requestApproval(tx, actor, {
-      typeKey: STOCK_ADJUSTMENT_APPROVAL_TYPE,
-      subject: { type: "stock_count", id: countId },
-      requestNote: `${String(planned.length)} line(s), net ₹${(net / 100).toFixed(2)}${note === "" ? "" : ` — ${note}`}`,
-    });
-    await tx.insert(stockAdjustments).values(planned.map((p) => ({
-      id: p.id, resourceId: count.resourceId, countId, countLineId: p.line.id, batchId: p.line.batchId, itemId: p.line.itemId,
-      qtyDelta: p.qtyDelta, valuePaise: p.valuePaise, reasonCode: p.reasonCode, note: note === "" ? null : note,
-      approvalId: id, status: "requested", requestedBy: actor.id, requestedAt: now,
-    })));
-    return id;
-  });
+  const approvalId = await withTx(db, (tx) => fileCountAdjustment(tx, actor, {
+    countId, resourceId: count.resourceId,
+    planned: planned.map((p) => ({ lineId: p.line.id, batchId: p.line.batchId, itemId: p.line.itemId, qtyDelta: p.qtyDelta, valuePaise: p.valuePaise, reasonCode: p.reasonCode })),
+    note: input.note,
+  }, now));
   return { approvalId, adjustments: await listAdjustments(db, actor, { approvalId }) };
+}
+
+/**
+ * The request itself, inside the caller's transaction: ONE `materials_stock_adjustment` approval (the
+ * medical superintendent) for the lines, and a `requested` adjustment per line. `requestCountAdjustment`
+ * files it after its grant and variance checks; PHARMACY P6's daily balance check of the controlled
+ * cabinet files it the moment a batch does not balance (`controlled-check.ts`) — the same path, so a
+ * narcotic that is short reaches the same person a cycle count's shortage does.
+ */
+export async function fileCountAdjustment(
+  tx: Tx, actor: Actor,
+  input: {
+    countId: string; resourceId: string; note?: string | null;
+    planned: { lineId: string; batchId: string; itemId: string; qtyDelta: number; valuePaise: number; reasonCode: AdjustmentReason }[];
+  },
+  now: Date,
+): Promise<string> {
+  const net = input.planned.reduce((s, p) => s + p.valuePaise, 0);
+  const note = input.note?.trim() ?? "";
+  const { approvalId } = await requestApproval(tx, actor, {
+    typeKey: STOCK_ADJUSTMENT_APPROVAL_TYPE,
+    subject: { type: "stock_count", id: input.countId },
+    requestNote: `${String(input.planned.length)} line(s), net ₹${(net / 100).toFixed(2)}${note === "" ? "" : ` — ${note}`}`,
+  });
+  await tx.insert(stockAdjustments).values(input.planned.map((p) => ({
+    id: newId(), resourceId: input.resourceId, countId: input.countId, countLineId: p.lineId, batchId: p.batchId, itemId: p.itemId,
+    qtyDelta: p.qtyDelta, valuePaise: p.valuePaise, reasonCode: p.reasonCode, note: note === "" ? null : note,
+    approvalId, status: "requested", requestedBy: actor.id, requestedAt: now,
+  })));
+  return approvalId;
 }
 
 export async function listAdjustments(
@@ -160,10 +181,22 @@ export async function listAdjustments(
  */
 export async function postAdjustments(
   db: Db, actor: Actor, approvalId: string, now: Date,
+  /**
+   * PHARMACY P6 — the controlled cabinet's daily balance check books its own variance, once the medical
+   * superintendent has granted it, by its custodian with a witness (`custody`, the ledger's second key).
+   * That path is open ONLY for a `controlled_check` count — the custodian's grant and the witness's PIN
+   * are asked by the pharmacy's act before it gets here; every other count still needs
+   * `materials.counts.manage`, unchanged.
+   */
+  opts: { custody?: Custody } = {},
 ): Promise<{ posted: number; refused: number }> {
-  await requireManage(db, actor, "booking an adjustment");
   const rows = await db.select().from(stockAdjustments).where(eq(stockAdjustments.approvalId, approvalId));
-  if (rows.length === 0) throw new MaterialsError("unknown_adjustment", `no adjustment was asked under approval ${approvalId}`);
+  if (rows.length === 0) {
+    await requireManage(db, actor, "booking an adjustment");
+    throw new MaterialsError("unknown_adjustment", `no adjustment was asked under approval ${approvalId}`);
+  }
+  const [count] = await db.select({ kind: stockCounts.kind }).from(stockCounts).where(eq(stockCounts.id, rows[0]!.countId));
+  if (opts.custody === undefined || count?.kind !== "controlled_check") await requireManage(db, actor, "booking an adjustment");
   const approval = await getApproval(db, approvalId);
   const open = rows.filter((r) => r.status === "requested");
   if (approval?.status === "rejected") {
@@ -181,6 +214,7 @@ export async function postAdjustments(
     const moved = await postMovements(tx, actor, open.map((r) => ({
       resourceId: r.resourceId, batchId: r.batchId, qtyDelta: r.qtyDelta, reason: "adjust" as const,
       refType: "stock_adjustment", refId: r.id, occurredAt: now,
+      ...(opts.custody === undefined ? {} : { custody: { ...opts.custody, documentRef: opts.custody.documentRef ?? `approval ${approvalId}` } }),
     })));
     const lines = [];
     for (const [i, r] of open.entries()) {

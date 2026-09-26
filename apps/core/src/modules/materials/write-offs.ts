@@ -17,6 +17,7 @@ import { istDay } from "./grn";
 import { postMovements } from "./ledger";
 import { committedByPair, exitAvailable } from "./supplier-returns";
 import type { Actor } from "@hmis/contracts";
+import type { Custody } from "./controlled";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -179,7 +180,11 @@ export async function settleWriteOffs(db: Db, now: Date = new Date(), ids?: read
  * manifest / challan number and the handover date (given now, or when raised). One `adjust` row out
  * per line. A rejected approval settles the write-off as refused instead; a pending one refuses.
  */
-export async function postWriteOff(db: Db, actor: Actor, writeOffId: string, disposal: DisposalInput = {}, now: Date = new Date()): Promise<WriteOffView> {
+export async function postWriteOff(
+  db: Db, actor: Actor, writeOffId: string, disposal: DisposalInput = {}, now: Date = new Date(),
+  /** PHARMACY P6 — at the controlled cabinet the destruction is made under two keys, with anyone else the law needs present. */
+  opts: { custody?: Custody } = {},
+): Promise<WriteOffView> {
   await requirePerm(db, actor, WRITEOFFS_MANAGE, "posting a destruction write-off");
   await settleWriteOffs(db, now, [writeOffId]);
   const [w] = await db.select().from(stockWriteOffs).where(eq(stockWriteOffs.id, writeOffId));
@@ -206,6 +211,9 @@ export async function postWriteOff(db: Db, actor: Actor, writeOffId: string, dis
     const moved = await postMovements(tx, actor, lines.map((l) => ({
       resourceId: w.storeResourceId, batchId: l.batchId, qtyDelta: -l.qtyBase, reason: "adjust" as const,
       refType: "stock_write_off", refId: l.id, occurredAt: now, recallExit: true,
+      ...(opts.custody === undefined ? {} : {
+        custody: { ...opts.custody, counterparty: agency, documentRef: `${w.writeOffNo} · manifest ${manifestNo}`, documentDate: disposalDate },
+      }),
     })));
     for (const [i, l] of lines.entries()) {
       await tx.update(stockWriteOffLines).set({ ledgerEntryId: moved[i]!.ledgerEntryId }).where(eq(stockWriteOffLines.id, l.id));

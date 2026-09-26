@@ -1974,7 +1974,13 @@
     "unknown_recall": "That recall was not found.",
     "recall_open": "This batch is already under an open recall.",
     "recall_wrong_status": "The recall is not open.",
-    "recall_stock_remaining": "Some store still holds this batch — return it or destroy it before closing the recall."
+    "recall_stock_remaining": "Some store still holds this batch — return it or destroy it before closing the recall.",
+    "custody_required": "This is the controlled-drug cabinet — every movement into or out of it needs a second person as witness. Do it from Pharmacy office → Controlled.",
+    "custody_same_person": "The holder and the witness must be two different people.",
+    "custody_witness_unknown": "The holder or the witness is not an active member of staff.",
+    "controlled_outside_custody": "This drug is kept in the controlled-drug cabinet — it cannot go into an open store.",
+    "not_a_controlled_item": "The cabinet is reserved for narcotic and Schedule X drugs — this item cannot go in.",
+    "controlled_check_invalid": "The balance check is incomplete — count every batch in the cabinet once, in whole numbers."
   },
   "materialsGrn": {
     "title": "Goods receipt",
