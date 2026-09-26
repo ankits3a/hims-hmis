@@ -1,3 +1,4 @@
+import { HttpException } from "@nestjs/common";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { authThrottle } from "../db/schema";
 import { withTx } from "../db/client";
@@ -58,7 +59,22 @@ export const THROTTLE_BASE_MS = 60 * 1000;
 /** The ceiling. Reached at the 9th consecutive failure and never exceeded. */
 export const THROTTLE_MAX_MS = 15 * 60 * 1000;
 
-export type ThrottleKind = "login" | "pin";
+/**
+ * One counter per credential path, so a poisoned counter on one cannot close another.
+ *
+ * WASA 2026-09-25 added two, both keyed on what the caller SUBMITTED, exactly like `login`/`pin`:
+ *   - `totp` (M-02) — keyed by the USER ID the session names. Every TOTP check shares it: confirm,
+ *     verify, the step-up `X-Totp-Code` header and the re-enrol proof, so no door is a way round
+ *     another. Six digits with a ±1-step window is three live codes in 10^6; unthrottled, a session
+ *     holder could walk that in minutes.
+ *   - `badge` (L-06) — keyed by the user id the badge token CLAIMS (its second segment, read before
+ *     the HMAC is checked; `badgeThrottleSubject` in `crypto.ts`). The HMAC already makes a forged
+ *     badge infeasible, so this bounds something else: a copied, expired or rotated-out badge being
+ *     replayed at the public route. Same accepted trade as `pin`: someone who knows a user id can
+ *     hold that person's badge switch in backoff for at most 15 minutes, and their PIN and password
+ *     still work.
+ */
+export type ThrottleKind = "login" | "pin" | "totp" | "badge";
 
 /**
  * The longest key this table will store. **It is a correctness bound, not tidiness** (Plan 11g
@@ -188,4 +204,30 @@ export async function clearThrottle(db: Db, kind: ThrottleKind, username: string
   await db
     .delete(authThrottle)
     .where(and(eq(authThrottle.kind, kind), eq(authThrottle.subject, throttleSubject(username))));
+}
+
+/**
+ * The 429 every throttled credential path answers — the SHAPE `POST /auth/login` has shipped since
+ * 11g, in one place now that a guard (`X-Totp-Code`) answers it too.
+ *
+ * `Retry-After` is a real header, not only a body field, because the standard one is what a browser,
+ * a proxy and a future mobile client all already understand. The caller passes the response it can
+ * reach (`@Res({ passthrough: true })` in a handler, `switchToHttp().getResponse()` in a guard).
+ */
+export function tooManyAttempts(
+  res: { setHeader(name: string, value: string): unknown },
+  retryAt: Date,
+  now: number = Date.now(),
+): HttpException {
+  const seconds = Math.max(1, Math.ceil((retryAt.getTime() - now) / 1000));
+  res.setHeader("Retry-After", String(seconds));
+  return new HttpException(
+    {
+      statusCode: 429,
+      code: "too_many_attempts",
+      message: `too many failed attempts — try again in ${seconds}s`,
+      retryAfterSeconds: seconds,
+    },
+    429,
+  );
 }

@@ -37,6 +37,11 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(),
     pinHash: text("pin_hash"),
     badgeVersion: integer("badge_version").notNull().default(0),
+    // WASA L-06 — when the CURRENT badge version was issued; `resolveBadge` refuses a badge older
+    // than `BADGE_MAX_AGE_DAYS` from here. `rotateBadge` writes it with the version bump. The
+    // DEFAULT is the migration path: every row that exists when the column lands carries that
+    // instant, so a badge printed before it keeps working for one max age from the deploy.
+    badgeIssuedAt: timestamp("badge_issued_at", { withTimezone: true }).notNull().defaultNow(),
     active: boolean("active").notNull().default(true),
     // PLAN 11e D1 — the forced-credential-change flag, and it lives on the USER rather than on the
     // session on purpose: it is a fact about the credential, so it must survive every session the
@@ -133,6 +138,10 @@ export const userTotp = pgTable("user_totp", {
   userId: text("user_id").primaryKey().references(() => users.id),
   secretSealed: text("secret_sealed").notNull(), // AES-256-GCM sealed; never plaintext at rest
   enabledAt: timestamp("enabled_at", { withTimezone: true }),
+  // WASA M-02 (ASVS 2.8.4) — the RFC 6238 time-step of the last ACCEPTED code for this secret. A
+  // code is accepted only for a strictly later step, so none can be spent twice. NULL until the
+  // first acceptance, and reset to NULL by every (re-)enrolment: it is a fact about a secret.
+  lastUsedStep: integer("last_used_step"),
 });
 
 export const sodPairs = pgTable("sod_pairs", {
@@ -226,8 +235,10 @@ export const breakGlassGrants = pgTable(
 export const authThrottle = pgTable(
   "auth_throttle",
   {
-    kind: text("kind").notNull(), // 'login' | 'pin'
-    subject: text("subject").notNull(), // the SUBMITTED username, trimmed and lower-cased
+    kind: text("kind").notNull(), // 'login' | 'pin' | 'totp' | 'badge' (`ThrottleKind`)
+    // the SUBMITTED username (login, pin), the session's user id (totp) or the user id a badge
+    // CLAIMS (badge) — trimmed and lower-cased (`throttleSubject`)
+    subject: text("subject").notNull(),
     failures: integer("failures").notNull().default(0),
     // The rolling window's anchor: failures older than the window do not count toward the
     // threshold, so a person who fumbles twice a month is never near it.
