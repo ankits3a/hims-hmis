@@ -1,5 +1,6 @@
-import { constants, createHmac, generateKeyPairSync, privateDecrypt, randomUUID, sign } from "node:crypto";
+import { constants, createHash, createHmac, generateKeyPairSync, privateDecrypt, randomUUID, sign } from "node:crypto";
 import type { KeyObject } from "node:crypto";
+import { FideliusKeyPair, fideliusDecrypt } from "../../src/modules/abdm/fidelius";
 
 /**
  * ═══ ABDM S0 — AN IN-PROCESS FAKE OF THE ABDM GATEWAY, FOR TESTS ONLY ═══
@@ -30,6 +31,18 @@ import type { KeyObject } from "node:crypto";
  * failed enrolment with one that echoes the AADHAAR NUMBER. The tests then read every stored row
  * back as text to prove neither survives. And `shareProfileCallback` builds the signed callback ABDM
  * would post for a scan-and-share, while `POST /patient-share/v3/on-share` records our reply.
+ *
+ * ═══ ABDM S2 — AND THE M2 HIP PATHS, AND AN HIU THAT RECEIVES THE PUSH ═══
+ *
+ * `fake.hip` records every M2 call the hospital makes (generate-token, add-care-contexts — which
+ * REFUSES an `X-LINK-TOKEN` the fake did not issue, ABDM-1038 — context notify, on-discover /
+ * on-init / on-confirm, consent on-notify, HI on-request, HI notify) and answers 202.
+ * `fake.hiu` is the requester: it owns a Fidelius key pair (the SHIPPED implementation, whose
+ * byte-exactness `fidelius.test.ts` proves against the published vector), hands out key material for
+ * a health-information request, and DECRYPTS every pushed entry with its own private key and the
+ * hospital's public key + nonce from the push — so a test asserts the PLAINTEXT bundle the hospital
+ * actually sent, and a push encrypted wrongly fails loudly here. `signedCallback` wraps any body in
+ * the gateway-signed headers ABDM would send it with.
  */
 
 export type FakeGatewayRequest = {
@@ -80,6 +93,36 @@ export type FakeAbdmGateway = {
   shareProfileCallback(o?: {
     requestId?: string; hipId?: string; context?: string; intent?: string; patient?: Record<string, unknown>;
   }): { headers: Record<string, string>; body: Record<string, unknown> };
+  /** S2 — the HIP (M2) side of the gateway. */
+  hip: FakeHip;
+  /** S2 — the HIU the hospital pushes to. */
+  hiu: FakeHiu;
+  /** S2 — any callback body, with the headers ABDM would sign it with. */
+  signedCallback(body: Record<string, unknown>, o?: { requestId?: string; hipId?: string; hiuId?: string }): { headers: Record<string, string>; body: Record<string, unknown> };
+};
+
+export type FakeHipCall = { requestId: string; headers: Record<string, string>; body: Record<string, unknown> };
+export type FakeHip = {
+  /** Every call the hospital made to one M2 path, in order. */
+  calls(path: string): FakeHipCall[];
+  /** Mint the link token ABDM's `on-generate-token` would carry — a JWT whose claims name the ABHA number. */
+  issueLinkToken(abhaAddress: string, abhaNumber?: string): string;
+  /** Every link token issued, by ABHA address. */
+  linkTokens: Map<string, string>;
+};
+export type FakeHiu = {
+  id: string;
+  baseUrl: string;
+  dataPushUrl(consentId: string): string;
+  keyPair: FideliusKeyPair;
+  /** The `keyMaterial` of a health-information request, with this HIU's public key and nonce. */
+  keyMaterial(): Record<string, unknown>;
+  /** Every push page as it arrived (the ciphertext included). */
+  pushes: { url: string; headers: Record<string, string>; body: Record<string, unknown> }[];
+  /** Every entry DECRYPTED, in order, with its checksum re-computed over the plaintext. */
+  received: { careContextReference: string; checksum: string; checksumOk: boolean; plaintext: string; bundle: Record<string, unknown> }[];
+  /** The status the push receiver answers. */
+  pushStatus: number;
 };
 
 export type FakeAbhaAccount = {
@@ -493,6 +536,76 @@ export function createFakeAbdmGateway(opts: {
     },
   };
 
+  // ═══ S2 — THE HIP (M2) PATHS ═══
+  const hipCalls = new Map<string, FakeHipCall[]>();
+  const linkTokens = new Map<string, string>();
+  const record = (req: FakeGatewayRequest): void => {
+    const list = hipCalls.get(req.path) ?? [];
+    list.push({ requestId: req.headers["request-id"] ?? "", headers: req.headers, body: (req.body ?? {}) as Record<string, unknown> });
+    hipCalls.set(req.path, list);
+  };
+  const accepted = (req: FakeGatewayRequest): Response => {
+    if (!bearerOk(req)) return unauthorized();
+    if (req.headers["x-hip-id"] === undefined) return json(400, { error: { code: "ABDM-1000", message: "X-HIP-ID is required" } });
+    record(req);
+    return new Response(null, { status: 202 });
+  };
+  for (const path of [
+    "/v3/token/generate-token", "/hip/v3/link/context/notify",
+    "/user-initiated-linking/v3/patient/care-context/on-discover", "/user-initiated-linking/v3/link/care-context/on-init",
+    "/user-initiated-linking/v3/link/care-context/on-confirm", "/consent/v3/request/hip/on-notify",
+    "/data-flow/v3/health-information/hip/on-request", "/data-flow/v3/health-information/notify",
+  ]) routes[`POST ${path}`] = accepted;
+  routes["POST /hip/v3/link/carecontext"] = (req) => {
+    if (!bearerOk(req)) return unauthorized();
+    const token = req.headers["x-link-token"] ?? "";
+    const address = String(((req.body ?? {}) as { abhaAddress?: unknown }).abhaAddress ?? "");
+    if (linkTokens.get(address) !== token) return json(400, { error: { code: "ABDM-1038", message: "Link token mismatch" } });
+    return accepted(req);
+  };
+  const hip: FakeHip = {
+    calls: (path) => [...(hipCalls.get(path) ?? [])],
+    issueLinkToken: (abhaAddress, abhaNumber = "91-2345-6789-0123") => {
+      const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+      const claims = b64url(JSON.stringify({ abhaNumber, abhaAddress, exp: Math.floor(now() / 1000) + 180 * 86400, jti: randomUUID() }));
+      const token = `${header}.${claims}.${b64url(`sig-${randomUUID()}`)}`;
+      linkTokens.set(abhaAddress, token);
+      return token;
+    },
+    linkTokens,
+  };
+
+  // ═══ S2 — THE HIU THE HOSPITAL PUSHES TO ═══
+  const hiuBase = "https://fake-hiu.test/hiu";
+  const hiu: FakeHiu = {
+    id: "FAKE-HIU-001",
+    baseUrl: hiuBase,
+    dataPushUrl: (consentId) => `${hiuBase}/data/push/${consentId}`,
+    keyPair: FideliusKeyPair.generate(),
+    keyMaterial: () => ({
+      cryptoAlg: "ECDH", curve: "Curve25519",
+      dhPublicKey: { expiry: new Date(now() + 3600_000).toISOString(), parameters: "Curve25519/32byte random key", keyValue: hiu.keyPair.publicKeyX509() },
+      nonce: hiu.keyPair.nonce,
+    }),
+    pushes: [],
+    received: [],
+    pushStatus: 202,
+  };
+  const receivePush = (req: FakeGatewayRequest): Response => {
+    const body = (req.body ?? {}) as { entries?: { content: string; checksum: string; careContextReference: string }[]; keyMaterial?: { dhPublicKey?: { keyValue?: string }; nonce?: string } };
+    hiu.pushes.push({ url: req.url, headers: req.headers, body: body as Record<string, unknown> });
+    const sender = { publicKey: String(body.keyMaterial?.dhPublicKey?.keyValue ?? ""), nonce: String(body.keyMaterial?.nonce ?? "") };
+    for (const e of body.entries ?? []) {
+      const plaintext = fideliusDecrypt(hiu.keyPair, sender, e.content); // throws — loudly — on a wrong encryption
+      hiu.received.push({
+        careContextReference: e.careContextReference, checksum: e.checksum,
+        checksumOk: createHash("md5").update(plaintext, "utf8").digest("hex") === e.checksum,
+        plaintext, bundle: JSON.parse(plaintext) as Record<string, unknown>,
+      });
+    }
+    return new Response(null, { status: hiu.pushStatus });
+  };
+
   const fetchImpl = async (input: string, init: RequestInit = {}): Promise<Response> => {
     const url = new URL(input);
     const method = (init.method ?? "GET").toUpperCase();
@@ -507,6 +620,11 @@ export function createFakeAbdmGateway(opts: {
       const prefix = b.pathname.replace(/\/$/, "");
       return url.origin === b.origin && url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) : null;
     };
+    const hiuPath = under(hiuBase);
+    if (hiuPath !== null) {
+      if (method !== "POST" || !hiuPath.startsWith("/data/push/")) return json(404, { error: "not the fake HIU" });
+      return receivePush({ method, url: input, path: hiuPath, headers, body });
+    }
     const abhaPath = under(abhaBaseUrl);
     const gatewayPath = abhaPath === null ? under(baseUrl) : null;
     if (abhaPath === null && gatewayPath === null) return json(404, { error: "not the fake gateway" });
@@ -557,6 +675,18 @@ export function createFakeAbdmGateway(opts: {
     on: (method, path, responder) => { overrides.set(`${method.toUpperCase()} ${path}`, responder); },
     abha,
     onShares,
+    hip,
+    hiu,
+    signedCallback: (body, o = {}) => ({
+      headers: {
+        Authorization: `Bearer ${jwt({ alg: "RS256", typ: "JWT", kid: current.kid }, defaultClaims(), (input) => sign("sha256", Buffer.from(input), current.privateKey))}`,
+        "REQUEST-ID": o.requestId ?? randomUUID(),
+        TIMESTAMP: new Date(now()).toISOString(),
+        "X-HIP-ID": o.hipId ?? opts.hipId ?? "IN0000000001",
+        ...(o.hiuId === undefined ? {} : { "X-HIU-ID": o.hiuId }),
+      },
+      body,
+    }),
     shareProfileCallback: (o = {}) => {
       const requestId = o.requestId ?? randomUUID();
       const hipId = o.hipId ?? opts.hipId ?? "IN0000000001";

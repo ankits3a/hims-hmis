@@ -88,6 +88,33 @@ Weierstrass form; the research proved the published test vector with `node:crypt
 is not constant-time — S2 chooses a vetted constant-time implementation before any real data moves.
 **Owner rulings pending:** which records are shared; the consent-release policy.
 
+S2 as built (primary M2 reference: the NHA wrapper's V3 `HIPLinkV3Service`, `DiscoveryV3Service`,
+`LinkV3Service`, `ConsentV3Service`, `HIPHealthInformationV3Service`, `EncryptionService`; Care a
+cross-check; every path is listed UNVERIFIED in `modules/abdm/hip-client.ts`):
+- **DECIDED — crypto:** `@noble/curves` 1.9.7 (pinned; audited, constant-time, CJS-compatible — 2.x is
+  ESM-only and jest runs CommonJS) over BouncyCastle's short-Weierstrass `curve25519`; HKDF and
+  AES-GCM from `node:crypto`. `fidelius.test.ts` reproduces the fidelius-cli README vector both ways.
+  We SEND our key as X.509 (the wrapper's and Care's form) and ACCEPT either form.
+- **DECIDED — records (owner ruling pending):** OPConsultRecord, PrescriptionRecord and
+  DiagnosticReportRecord (a lab test → DiagnosticReportLab + Observations, VERIFIED values only; a
+  SIGNED imaging report → a DocumentReference of its text, because DiagnosticReportImaging requires
+  images). Restricted (DD11) tests and studies, unverified or superseded values, drafts and superseded
+  prescriptions are never released. Owed: DischargeSummary, Immunization, Wellness,
+  HealthDocumentRecord, Invoice; vitals/examination/follow-up/referral/advice sections.
+- **DECIDED — care context:** one per COMPLETED OPD visit; reference = visit number, patient reference
+  = UHID, display `OPD visit <visitNo> · <date> · <dept>`. HIP-initiated linking runs in the worker
+  off `consultation.completed` (and enriches on `lab.report_published` / `imaging.report_published`);
+  only for an ABDM-VERIFIED ABHA with an address. Link tokens are stored sealed (never
+  `patients.abha_link_token`, which the counter can write); ≤3 generate-token calls per address per IST day.
+- **DECIDED — discovery:** a VERIFIED ABHA on our record AND agreeing gender, year of birth and name;
+  a near miss is "not found". The mobile + fuzzy fallback is NOT built.
+- **DECIDED — linking OTP:** the HIP sends it through an `OtpSender`; the only sender is a logging
+  one that REFUSES in production (`X-CM-ID: abdm`) — an SMS provider is an owner/procurement item.
+- **DECIDED — consent release (owner ruling pending):** `ABDM_CONSENT_RELEASE=auto` (default) releases
+  exactly within the stored artefact and refuses the whole request otherwise; `manual` holds it (the
+  review step is owed). Every release: `abdm_messages` (push logged as a summary), `phi_access_log`
+  (`abdm.health_information`), event `abdm.health_information_released`.
+
 **S3 — M3 (the hospital fetches records, with consent).** Consent request create/status/artefact;
 health-information request; receive the push, decrypt, and show the records in the consult's history.
 

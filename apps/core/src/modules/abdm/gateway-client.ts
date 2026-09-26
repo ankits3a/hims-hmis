@@ -61,6 +61,12 @@ export type AbdmCallOptions = {
   binary?: boolean;
   /** S1 — the hospital user who caused this request; stored on the log row. */
   actorId?: string | null;
+  /**
+   * S2 — the REQUEST-ID to send, when the caller must record it BEFORE the request leaves: ABDM's
+   * `on-*` callback names it in `response.requestId`, and it can arrive before `call` returns (the
+   * `generate-token` → `on-generate-token` pair). A fresh UUID otherwise.
+   */
+  requestId?: string;
 };
 
 export type AbdmCallResult = {
@@ -239,7 +245,7 @@ export class AbdmGatewayClient {
     for (const k of Object.keys(opts.extraHeaders ?? {})) {
       if (RESERVED_HEADERS.has(k.toLowerCase())) throw new Error(`"${k}" is a reserved ABDM header and is set by the client`);
     }
-    const requestId = randomUUID();
+    const requestId = opts.requestId ?? randomUUID();
     const token = await this.accessToken();
     const first = await this.attempt(method, path, body, opts, requestId, token);
     if (first.status !== 401) return first;

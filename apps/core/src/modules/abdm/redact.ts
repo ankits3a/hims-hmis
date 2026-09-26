@@ -135,3 +135,14 @@ export function redactKeys(v: unknown, secretKeys: ReadonlySet<string> = SECRET_
   }
   return out;
 }
+
+/**
+ * ═══ ABDM S2 — WHAT AN INBOUND CALLBACK CARRIES THAT THE LOG MUST NOT KEEP ═══
+ *
+ * S0 stores every callback body as ABDM sent it. From S2 two callbacks carry credentials:
+ *   · `link/care-context/confirm` — `confirmation.token` is the OTP the patient typed;
+ *   · `hip/token/on-generate-token` — `linkToken` is the X-LINK-TOKEN for that ABHA address, a
+ *     six-month bearer credential (stored only sealed, `abdm_link_tokens`).
+ * The route stores `redactKeys(body, INBOUND_SECRET_KEYS)` and hands the handler the body as sent.
+ */
+export const INBOUND_SECRET_KEYS: ReadonlySet<string> = new Set([...SECRET_KEYS, "linkToken"]);

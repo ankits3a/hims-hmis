@@ -38,9 +38,13 @@ const SHARE = "/abdm/callbacks/api/v3/hip/patient/share";
 /**
  * S1 — the scan-and-share kind now HAS a handler (the abdm module registers it when ABDM is
  * configured), so the registry assertions below run against a kind no slice handles yet.
+ *
+ * S2 — and so, now, does every HIP kind but the deep-link SMS acknowledgement (not built), so that
+ * is the generic kind; the "nobody handles it" and "a handler that throws" cases below moved to
+ * HIU kinds, which S3 owns.
  */
-const GENERIC = "/abdm/callbacks/api/v3/links/context/on-notify";
-const GENERIC_KIND = "callback.links/context/on-notify";
+const GENERIC = "/abdm/callbacks/api/v3/patients/sms/on-notify";
+const GENERIC_KIND = "callback.patients/sms/on-notify";
 
 function workerDbUrl(): string {
   const url = new URL(requireEnv("TEST_DATABASE_URL"));
@@ -105,7 +109,7 @@ describe("ABDM callbacks e2e — configured", () => {
     const rows = await db.select().from(abdmMessages).where(eq(abdmMessages.direction, "in"));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      kind: GENERIC_KIND, path: "/api/v3/links/context/on-notify", httpStatus: 202,
+      kind: GENERIC_KIND, path: "/api/v3/patients/sms/on-notify", httpStatus: 202,
       requestId: "11111111-1111-4111-8111-111111111111", correlationRequestId: "corr-1", dispatch: "handled", body,
     });
     // The inbound JWT is ABDM's credential and is not kept.
@@ -143,15 +147,15 @@ describe("ABDM callbacks e2e — configured", () => {
   });
 
   it("a kind nobody handles yet is logged and still 202", async () => {
-    const res = await post("/abdm/callbacks/api/v3/consent/request/hip/notify", fake.signCallbackJwt(), "55555555-5555-4555-8555-555555555555");
+    const res = await post("/abdm/callbacks/api/v3/hiu/consent/request/on-init", fake.signCallbackJwt(), "55555555-5555-4555-8555-555555555555");
     expect(res.status).toBe(202);
     const [row] = await db.select().from(abdmMessages).where(eq(abdmMessages.requestId, "55555555-5555-4555-8555-555555555555"));
-    expect(row).toMatchObject({ kind: "callback.consent/request/hip/notify", dispatch: "unhandled" });
+    expect(row).toMatchObject({ kind: "callback.hiu/consent/request/on-init", dispatch: "unhandled" });
   });
 
   it("a handler that throws is recorded as failed, and ABDM still gets 202", async () => {
-    unregister.push(registerAbdmCallbackHandler("callback.hip/token/on-generate-token", async () => { throw new Error("handler broke"); }));
-    const res = await post("/abdm/callbacks/api/v3/hip/token/on-generate-token", fake.signCallbackJwt(), "66666666-6666-4666-8666-666666666666");
+    unregister.push(registerAbdmCallbackHandler("callback.hiu/health-information/on-request", async () => { throw new Error("handler broke"); }));
+    const res = await post("/abdm/callbacks/api/v3/hiu/health-information/on-request", fake.signCallbackJwt(), "66666666-6666-4666-8666-666666666666");
     expect(res.status).toBe(202);
     const [row] = await db.select().from(abdmMessages).where(eq(abdmMessages.requestId, "66666666-6666-4666-8666-666666666666"));
     expect(row).toMatchObject({ dispatch: "failed", error: "handler broke" });
@@ -163,8 +167,9 @@ describe("ABDM callbacks e2e — configured", () => {
 
   it("registering a second handler for one kind is refused", () => {
     expect(() => registerAbdmCallbackHandler(GENERIC_KIND, async () => undefined)).toThrow(/already/);
-    // S1 — and the share kind is taken by the module itself while ABDM is configured.
+    // S1 — and the share kind is taken by the module itself while ABDM is configured; S2 — so are the M2 kinds.
     expect(() => registerAbdmCallbackHandler("callback.hip/patient/share", async () => undefined)).toThrow(/already/);
+    expect(() => registerAbdmCallbackHandler("callback.hip/health-information/request", async () => undefined)).toThrow(/already/);
   });
 });
 

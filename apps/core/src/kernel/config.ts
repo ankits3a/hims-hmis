@@ -356,6 +356,20 @@ const configSchema = z.object({
    */
   ABDM_SCAN_SHARE_URL: z.string().default(""),
   /**
+   * ABDM S2 — how a health-information request that matches a GRANTED consent is released. The
+   * owner has not ruled (plan §4 item 4); the DECIDED default is `auto`: released exactly as the
+   * patient's consent artefact allows, nothing outside it, every release logged. `manual` holds the
+   * request for review instead (acknowledged to ABDM, nothing sent; the review step is owed). An enum,
+   * never a boolean, and anything else fails at boot.
+   */
+  ABDM_CONSENT_RELEASE: z.enum(["auto", "manual"]).default("auto"),
+  /**
+   * ABDM S2 — with no SMS sender, the patient-initiated-linking OTP can only reach a sandbox tester
+   * through the server log. That is OFF unless an operator types it: the sandbox runs on the
+   * production box during FT, and an OTP in a log is a credential in a log.
+   */
+  ABDM_SANDBOX_OTP_TO_LOG: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /**
    * PLAN 09 / DD14 — THE FIVE STRUCTURAL-OFF FLAGS. Every one DEFAULTED, every one a two-string
    * enum, and neither of those is a style choice.
    *
@@ -474,6 +488,10 @@ export type AppConfig = {
     abhaCreateByAadhaar: boolean;
     /** ABDM S1 — the scan-and-share QR base, already resolved (never empty). */
     scanShareUrl: string;
+    /** ABDM S2 — `auto` (the DECIDED default) or `manual` release of consented health information. */
+    consentRelease: "auto" | "manual";
+    /** ABDM S2 — sandbox only, and only when `ABDM_SANDBOX_OTP_TO_LOG=true`: the linking OTP goes to the server log. */
+    sandboxOtpToLog: boolean;
   };
   /**
    * Plan 09 / DD14. All five FALSE unless an operator says otherwise, in as many letters. Where
@@ -530,6 +548,7 @@ function abdmFrom(parsed: {
   ABDM_BASE_URL: string; ABDM_ABHA_BASE_URL: string; ABDM_CLIENT_ID: string; ABDM_CLIENT_SECRET: string;
   ABDM_CM_ID: "" | "sbx" | "abdm"; ABDM_HIP_ID: string; ABDM_HIU_ID: string; ABDM_CALLBACK_BASE_URL: string;
   ABDM_JWT_AUDIENCE: string; ABDM_ABHA_CREATE_AADHAAR: boolean; ABDM_SCAN_SHARE_URL: string;
+  ABDM_CONSENT_RELEASE: "auto" | "manual"; ABDM_SANDBOX_OTP_TO_LOG: boolean;
 }): AppConfig["abdm"] {
   const orNull = (v: string): string | null => (v.trim() === "" ? null : v.trim());
   const clientSecret = parsed.ABDM_CLIENT_SECRET === "" ? null : parsed.ABDM_CLIENT_SECRET;
@@ -547,6 +566,8 @@ function abdmFrom(parsed: {
     scanShareUrl: (orNull(parsed.ABDM_SCAN_SHARE_URL) ?? (parsed.ABDM_CM_ID === "abdm"
       ? "https://phr.abdm.gov.in/share-profile"
       : "https://phrsbx.abdm.gov.in/share-profile")).replace(/\/+$/, ""),
+    consentRelease: parsed.ABDM_CONSENT_RELEASE,
+    sandboxOtpToLog: parsed.ABDM_SANDBOX_OTP_TO_LOG,
   } as AppConfig["abdm"];
   Object.defineProperty(abdm, "clientSecret", { value: clientSecret, enumerable: false, writable: false });
   abdm.configured =

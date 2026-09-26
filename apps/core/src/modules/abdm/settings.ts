@@ -27,6 +27,10 @@ export type AbdmSettings = {
   abhaCreateByAadhaar: boolean;
   /** S1 — the scan-and-share QR base (config `ABDM_SCAN_SHARE_URL`, else derived from `cmId`). */
   scanShareUrl: string;
+  /** S2 — `auto` (DECIDED default: release exactly what the consent allows) or `manual` (hold for review). */
+  consentRelease: "auto" | "manual";
+  /** S2 — sandbox only: write the linking OTP to the server log (explicit opt-in, `ABDM_SANDBOX_OTP_TO_LOG`). */
+  sandboxOtpToLog: boolean;
 };
 
 const trimSlash = (s: string): string => s.replace(/\/+$/, "");
@@ -44,6 +48,8 @@ export function abdmSettingsFrom(abdm: AppConfig["abdm"]): AbdmSettings | null {
     jwtAudience: abdm.jwtAudience,
     abhaCreateByAadhaar: abdm.abhaCreateByAadhaar,
     scanShareUrl: abdm.scanShareUrl,
+    consentRelease: abdm.consentRelease,
+    sandboxOtpToLog: abdm.sandboxOtpToLog,
   } as AbdmSettings;
   Object.defineProperty(settings, "clientSecret", { value: abdm.clientSecret!, enumerable: false, writable: false });
   return settings;

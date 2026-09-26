@@ -5,6 +5,7 @@ import { AbdmAbhaController } from "./abha.controller";
 import { AbdmCallbackGuard } from "./callback.guard";
 import { AbdmCallbacksController } from "./callbacks.controller";
 import { callbackKind, registerAbdmCallbackHandler } from "./callbacks";
+import type { AbdmInboundMessage } from "./callbacks";
 import { ABDM_CLOCK, ABDM_FETCH, AbdmRuntime, defaultAbdmFetch } from "./runtime";
 import type { AbdmFetch } from "./gateway-client";
 import type { AppConfig } from "../../kernel/config";
@@ -26,6 +27,10 @@ import type { Db } from "../../kernel/db/client";
  * and registering nothing there keeps S0's one-handler-per-kind rule from firing in the many test
  * apps that boot without ABDM. It is unregistered on shutdown, so a test that boots a second app
  * after closing the first can register again.
+ *
+ * S2 — the M2 handlers join it on the same terms: registered only when configured, unregistered on
+ * shutdown. The connector's MANIFEST (`manifest.ts`) is installed in the WORKER only — its one purpose
+ * is the care-context consumer — so the api still installs no ABDM manifest.
  */
 @Module({
   controllers: [AbdmCallbacksController, AbdmAbhaController],
@@ -48,11 +53,21 @@ export class AbdmModule implements OnModuleInit, OnModuleDestroy {
   constructor(@Inject(AbdmRuntime) private readonly runtime: AbdmRuntime) {}
 
   onModuleInit(): void {
-    const shares = this.runtime.shares;
-    if (shares === null) return;
-    this.unregister.push(
-      registerAbdmCallbackHandler(callbackKind("/api/v3/hip/patient/share"), (m) => shares.handleProfileShare(m)),
-    );
+    const { shares, careContexts, linking, consents, healthInformation } = this.runtime;
+    if (shares === null || careContexts === null || linking === null || consents === null || healthInformation === null) return;
+    const on = (path: string, handler: (m: AbdmInboundMessage) => Promise<void>): void => {
+      this.unregister.push(registerAbdmCallbackHandler(callbackKind(path), handler));
+    };
+    on("/api/v3/hip/patient/share", (m) => shares.handleProfileShare(m));
+    // S2 — M2, the hospital as HIP. `patients/sms/on-notify` (deep-link SMS) stays unhandled: not built.
+    on("/api/v3/hip/token/on-generate-token", (m) => careContexts.handleOnGenerateToken(m));
+    on("/api/v3/link/on_carecontext", (m) => careContexts.handleOnCareContext(m));
+    on("/api/v3/links/context/on-notify", (m) => careContexts.handleContextOnNotify(m));
+    on("/api/v3/hip/patient/care-context/discover", (m) => linking.handleDiscover(m));
+    on("/api/v3/hip/link/care-context/init", (m) => linking.handleLinkInit(m));
+    on("/api/v3/hip/link/care-context/confirm", (m) => linking.handleLinkConfirm(m));
+    on("/api/v3/consent/request/hip/notify", (m) => consents.handleNotify(m));
+    on("/api/v3/hip/health-information/request", (m) => healthInformation.handleRequest(m));
   }
 
   onModuleDestroy(): void {
