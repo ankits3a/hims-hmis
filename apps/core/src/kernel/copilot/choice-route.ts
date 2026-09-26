@@ -79,6 +79,11 @@ const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
     not_for: "a patient returning medicines at the counter; when one medicine expires; ordering or paying suppliers",
     examples: ["expiry return bana do", "expired maal supplier ko wapas bhejo"],
   },
+  find_duplicate_items: {
+    what: "the item master has the SAME medicine or item registered TWICE — list the possible duplicates to merge",
+    not_for: "how much of a medicine is left; ordering, paying or returning to suppliers",
+    examples: ["duplicate items dikhao", "same medicine do baar bana hai"],
+  },
   draft_payment_run: {
     what: "the hospital should PAY its suppliers — draft a payment run from the supplier bills falling due",
     not_for: "a patient's dues or bill; ordering medicines",

@@ -171,3 +171,15 @@ export type {
   ControlledBalance, ControlledBalanceRow, ControlledCheckResult, ControlledCheckSummary, ControlledRegister, ControlledRegisterRow,
   ControlledSheetLine,
 } from "./controlled-check";
+
+// ── PHARMACY P6 (hygiene) — item merge: the stock and the open work move to the survivor, the history stays ──
+export { assertNotMerged, batchLineage, survivorsOf, withMergedAliases } from "./items";
+export { itemFactsThroughMerge } from "./reports";
+export {
+  executeItemMerge, findDuplicateItems, getItemMerge, itemMergePreview, listItemMerges, raiseItemMerge, settleItemMerges,
+  similarNames,
+} from "./item-merge";
+export type {
+  DuplicateSuggestion, DuplicateWhy, ItemMergeHooks, ItemMergeStatus, ItemMergeSummary, ItemMergeView, MergeItemSide, MergePreview,
+  MergeRefusal, MergeRule, MergeStockLine, MergeTally,
+} from "./item-merge";

@@ -1980,7 +1980,13 @@
     "custody_witness_unknown": "The holder or the witness is not an active member of staff.",
     "controlled_outside_custody": "This drug is kept in the controlled-drug cabinet — it cannot go into an open store.",
     "not_a_controlled_item": "The cabinet is reserved for narcotic and Schedule X drugs — this item cannot go in.",
-    "controlled_check_invalid": "The balance check is incomplete — count every batch in the cabinet once, in whole numbers."
+    "controlled_check_invalid": "The balance check is incomplete — count every batch in the cabinet once, in whole numbers.",
+    "unknown_item_merge": "That item merge was not found.",
+    "item_merge_invalid": "These two items are not the same thing — the merge sheet says why (another medicine, composition, base unit or pack, one controlled and one not, or already merged).",
+    "item_merge_blocked": "Open work still names the duplicate item — finish it first; the merge sheet lists each (a held reservation, a dispense, a transfer, an unposted receipt, a return, a count, a recall).",
+    "item_merge_wrong_status": "This merge is not waiting to be carried out — refresh and look at it again.",
+    "item_merge_unapproved": "The medical superintendent has not approved this merge yet — nothing moves before that.",
+    "item_merged": "This item was merged into another — use the item it was merged into."
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -3898,7 +3904,8 @@
     "end_prescriber_not_trained": "This doctor is not on the list of doctors trained to prescribe narcotic drugs here (NDPS Rules r.2(ib)) — the pharmacist in charge records the training.",
     "invalid_end_prescriber": "Choose a doctor of this hospital and name the training; a doctor already on the list is ended first.",
     "unknown_end_prescriber": "No such current entry on the list of trained doctors.",
-    "controlled_act_invalid": "This act at the cabinet is incomplete — it is not the cabinet's, or the Controller of Drugs' officer or approval is missing."
+    "controlled_act_invalid": "This act at the cabinet is incomplete — it is not the cabinet's, or the Controller of Drugs' officer or approval is missing.",
+    "item_merged": "This item was merged into another — use the item it was merged into."
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
