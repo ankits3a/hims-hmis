@@ -1,76 +1,76 @@
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fmtIst } from "../lib/format";
 import { getMode } from "../lib/ops-api";
 import { useAuth } from "../lib/auth";
+import { StationShell } from "../components/station/station-shell";
+import type { StationLink, StationStat } from "../components/station/station-shell";
 
 /**
- * PLAN 17c T1 / D1 — THE LABORATORY'S SEAT FRAME, shared by the five seats.
+ * PLAN 17c T1 / D1, rebuilt by PLAN 17-F F1 — THE LABORATORY'S FIVE STATIONS share one frame.
  *
- * A seat is a place a person stands all day (design boards 1–5): one header that says WHICH seat
- * this is, the IST clock, and the two or three numbers that seat watches, then the working
- * surface below. It wears Desk One through `data-seat="lab"` — `styles.css` scopes the paper /
- * pine tokens to that attribute, and nothing outside the frame changes colour (RC-3's ruling and
- * its limit: a portalled surface stays neutral).
+ * 17c drew each seat as one header (which seat, the IST clock, the two or three numbers it watches)
+ * over a working surface of its own columns. 17-F F1 puts the same screens into the owner-approved
+ * station shell (`components/station/station-shell.tsx`, board `docs/design/2026-09-25-lims-stations/`):
+ * the header carries the station switch and the way out, the lane carries the station's numbers
+ * while nobody is in hand, the centre is the work, and the right column is the seat's one list with
+ * "Clocks running" under it. **No behaviour changed**: every section, control and refusal is the
+ * one 17c shipped, moved into a column, not rewritten.
  *
- * Nothing here narrates. The boards draw a "lab agent" strip; that surface does not exist in the
- * repository (17c D10) and the frame does not pretend it does.
+ * It still wears Desk One through `data-seat="lab"` — `styles.css` scopes the shadcn tokens to that
+ * attribute, so the controls inside keep the paper / pine values they had.
+ *
+ * Nothing here narrates. The board draws a copilot panel; no lab copilot exists in the repository
+ * yet (17c D10), so no station passes one and the list never folds.
  */
 
-/** `HH:MM` in IST through the SPA's one formatter (`fmtIst`), ticking each half-minute. Display only. */
-export function useIstClock(): string {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-  return fmtIst(new Date(now).toISOString());
-}
+export { useIstClock } from "../components/station/station-shell";
+export type SeatStat = StationStat;
 
-export type SeatStat = { label: string; value: string | number; tone?: "plain" | "live" | "waiting" | "danger" };
+export type LabStationKey = "desk" | "collection" | "bench" | "verify" | "reports";
 
-export function LabSeatFrame({
-  title, place, stats, children,
+/** The five stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
+export const LAB_STATIONS: readonly (Omit<StationLink, "label"> & { key: LabStationKey; labelKey: string })[] = [
+  { key: "desk", to: "/lab/desk", labelKey: "nav.labDesk", permission: "lab.desk.operate" },
+  { key: "collection", to: "/lab/collection", labelKey: "nav.labCollection", permission: "lab.collection.operate" },
+  { key: "bench", to: "/lab/bench", labelKey: "nav.labBench", permission: "lab.accession.operate" },
+  { key: "verify", to: "/lab/verify", labelKey: "nav.labVerify", permission: "lab.results.verify" },
+  { key: "reports", to: "/lab/reports", labelKey: "nav.labReports", permission: "lab.reports.print" },
+];
+
+export function LabStation({
+  station, title, place, stats, list, clocks, clocksSummary, clocksAlert, children,
 }: {
+  station: LabStationKey;
   /** The seat's name — "Lab reception". */
   title: string;
   /** Where it stands — "Counter L-01". */
   place: string;
   stats: SeatStat[];
+  /** The seat's queue, in the right column. */
+  list: React.ReactNode;
+  /** What is running out of time, under the list. */
+  clocks?: React.ReactNode;
+  clocksSummary?: React.ReactNode;
+  clocksAlert?: boolean;
   children: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const clock = useIstClock();
   return (
-    <div data-seat="lab" className="min-h-full bg-background text-foreground">
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border px-4 py-3">
-        <div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("lab.seat.department")}</div>
-          <h1 className="text-lg font-semibold leading-tight">{title} <span className="font-normal text-muted-foreground">· {place}</span></h1>
-        </div>
-        <ul className="flex flex-wrap items-center gap-4" aria-label={t("lab.seat.stats")}>
-          {stats.map((s) => (
-            <li key={s.label} className="flex items-baseline gap-2">
-              <span
-                className="text-2xl font-semibold tabular-nums"
-                style={s.tone === "live" ? { color: "var(--state-live)" }
-                  : s.tone === "waiting" ? { color: "var(--state-waiting)" }
-                    : s.tone === "danger" ? { color: "var(--state-danger)" } : undefined}
-              >
-                {s.value}
-              </span>
-              <span className="text-sm text-muted-foreground">{s.label}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="rounded border border-border px-1.5 py-0.5 text-xs">Ctrl K</span>
-          <time className="tabular-nums" data-testid="seat-clock">{clock}</time>
-        </div>
-      </header>
-      <div className="p-4">{children}</div>
-    </div>
+    <StationShell
+      brand={t("lab.seat.department")}
+      stations={LAB_STATIONS.map((s) => ({ key: s.key, to: s.to, permission: s.permission, label: t(s.labelKey) }))}
+      current={station}
+      title={title}
+      place={place}
+      stats={stats}
+      statsLabel={t("lab.seat.stats")}
+      list={list}
+      clocks={clocks}
+      clocksSummary={clocksSummary}
+      clocksAlert={clocksAlert}
+    >
+      {children}
+    </StationShell>
   );
 }
 

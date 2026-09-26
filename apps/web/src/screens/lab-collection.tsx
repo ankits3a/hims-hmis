@@ -5,7 +5,7 @@ import { newIdempotencyKey } from "../lib/api";
 import { awaitingLabels, collectionQueue, drawSpecimen, istToday, labErrorText, printLabels } from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
 import { capFor, drawRank, SpecimenLabel } from "../components/specimen-label";
-import { DowntimeNotice, LabSeatFrame, useDowntime } from "./lab-seat";
+import { DowntimeNotice, LabStation, useDowntime } from "./lab-seat";
 import type { WireAwaitingRow, WireCollectionRow } from "../lib/lab-api";
 
 /**
@@ -136,187 +136,189 @@ export function LabCollection(): React.ReactElement {
   const waitingCount = queue.length;
   const longest = queue.reduce((m, e) => Math.max(m, e.kind === "awaiting" ? e.row.waitingMinutes : Math.max(...e.tubes.map((x) => x.waitingMinutes))), 0);
 
+  /* ── waiting · STAT first, then by arrival ── */
+  const listPane = (
+    <section className="space-y-2" aria-label={t("lab.collection.queue")}>
+      <h2 className="text-sm font-semibold">{t("lab.collection.queue")}</h2>
+      {(awaiting.isError || tubes.isError) && <p role="alert" className="text-sm font-semibold">{t("lab.collection.unavailable")}</p>}
+      <ul className="divide-y divide-border rounded border border-border text-sm">
+        {queue.map((e) => {
+          const token = e.kind === "awaiting" ? e.row.tokenNo : e.tubes[0]!.tokenNo;
+          const name = e.kind === "awaiting" ? e.row.patientDisplay : e.tubes[0]!.patientDisplay;
+          const priority = e.kind === "awaiting" ? e.row.priority : e.tubes[0]!.priority;
+          const fasting = e.kind === "awaiting" ? e.row.requiresFasting : e.tubes.some((x) => x.requiresFasting);
+          const wait = e.kind === "awaiting" ? e.row.waitingMinutes : Math.max(...e.tubes.map((x) => x.waitingMinutes));
+          return (
+            <li key={e.key}>
+              <button type="button"
+                className={`flex w-full items-center gap-3 px-2 py-1.5 text-left hover:bg-muted ${e.key === selectedKey ? "bg-muted" : ""}`}
+                onClick={() => { setSelectedKey(e.key); setError(null); }}>
+                <span className="w-14 shrink-0 font-mono font-semibold">{token === null ? "—" : `T-${String(token)}`}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-medium">{name}</span>
+                  <span className="text-muted-foreground">
+                    {" · "}
+                    {e.kind === "awaiting"
+                      ? t("lab.collection.labelNeeded")
+                      : t("lab.collection.tubeCount", { count: e.tubes.length })}
+                    {fasting && <> · {t("lab.collection.fasting")}</>}
+                  </span>
+                </span>
+                {priority !== "routine" && (
+                  <span className="shrink-0 text-xs font-semibold uppercase" style={{ color: "var(--state-danger)" }}>{priority}</span>
+                )}
+                <span className="shrink-0 tabular-nums text-muted-foreground">{wait} {t("lab.collection.min")}</span>
+              </button>
+            </li>
+          );
+        })}
+        {queue.length === 0 && !awaiting.isPending && !tubes.isPending && (
+          <li className="px-2 py-1.5 text-muted-foreground">{t("lab.collection.empty")}</li>
+        )}
+      </ul>
+      <p className="text-xs text-muted-foreground">{t("lab.collection.wardNote")}</p>
+    </section>
+  );
+
   return (
-    <LabSeatFrame
+    <LabStation
+      station="collection"
       title={t("lab.collection.title")}
       place={t("lab.collection.place")}
       stats={[
         { label: t("lab.collection.waitingStat"), value: waitingCount, tone: waitingCount >= 6 ? "waiting" : "plain" },
         { label: t("lab.collection.longestStat"), value: `${String(longest)} ${t("lab.collection.min")}` },
       ]}
+      list={listPane}
     >
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        {/* ── waiting · STAT first, then by arrival ── */}
-        <section className="space-y-2" aria-label={t("lab.collection.queue")}>
-          <h2 className="text-sm font-semibold">{t("lab.collection.queue")}</h2>
-          {(awaiting.isError || tubes.isError) && <p role="alert" className="text-sm font-semibold">{t("lab.collection.unavailable")}</p>}
-          <ul className="divide-y divide-border rounded border border-border text-sm">
-            {queue.map((e) => {
-              const token = e.kind === "awaiting" ? e.row.tokenNo : e.tubes[0]!.tokenNo;
-              const name = e.kind === "awaiting" ? e.row.patientDisplay : e.tubes[0]!.patientDisplay;
-              const priority = e.kind === "awaiting" ? e.row.priority : e.tubes[0]!.priority;
-              const fasting = e.kind === "awaiting" ? e.row.requiresFasting : e.tubes.some((x) => x.requiresFasting);
-              const wait = e.kind === "awaiting" ? e.row.waitingMinutes : Math.max(...e.tubes.map((x) => x.waitingMinutes));
-              return (
-                <li key={e.key}>
-                  <button type="button"
-                    className={`flex w-full items-center gap-3 px-2 py-1.5 text-left hover:bg-muted ${e.key === selectedKey ? "bg-muted" : ""}`}
-                    onClick={() => { setSelectedKey(e.key); setError(null); }}>
-                    <span className="w-14 shrink-0 font-mono font-semibold">{token === null ? "—" : `T-${String(token)}`}</span>
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="font-medium">{name}</span>
-                      <span className="text-muted-foreground">
-                        {" · "}
-                        {e.kind === "awaiting"
-                          ? t("lab.collection.labelNeeded")
-                          : t("lab.collection.tubeCount", { count: e.tubes.length })}
-                        {fasting && <> · {t("lab.collection.fasting")}</>}
-                      </span>
-                    </span>
-                    {priority !== "routine" && (
-                      <span className="shrink-0 text-xs font-semibold uppercase" style={{ color: "var(--state-danger)" }}>{priority}</span>
-                    )}
-                    <span className="shrink-0 tabular-nums text-muted-foreground">{wait} {t("lab.collection.min")}</span>
-                  </button>
-                </li>
-              );
-            })}
-            {queue.length === 0 && !awaiting.isPending && !tubes.isPending && (
-              <li className="px-2 py-1.5 text-muted-foreground">{t("lab.collection.empty")}</li>
-            )}
-          </ul>
-          <p className="text-xs text-muted-foreground">{t("lab.collection.wardNote")}</p>
-        </section>
+      {/* ── the patient in the chair ── */}
+      <section className="space-y-3">
+        {selected === null && <p className="text-sm text-muted-foreground">{t("lab.collection.pickOne")}</p>}
 
-        {/* ── the patient in the chair ── */}
-        <section className="space-y-3">
-          {selected === null && <p className="text-sm text-muted-foreground">{t("lab.collection.pickOne")}</p>}
-
-          {selected?.kind === "awaiting" && (
-            <div className="space-y-3">
-              <PatientCard
-                display={selected.row.patientDisplay} uhid={selected.row.uhid} encounterNo={selected.row.encounterNo}
-                tokenNo={selected.row.tokenNo} fasting={selected.row.requiresFasting} codes={selected.row.orderableCodes}
-              />
-              {/*
-                17d T6 — THE PRINTER CANNOT PRINT, SO THE KIT DOES. The right-patient scan above is
-                unchanged and still required: downtime relaxes the LABEL's source, never the check
-                that the tube belongs to the person in the chair (DD10 / E1).
-              */}
-              {downtime && (
-                <DowntimeNotice>
-                  <label className="block text-sm">
-                    {t("lab.collection.kitSerial")}
-                    <input
-                      className="mt-1 block rounded border border-input px-2 py-1 font-mono"
-                      placeholder={t("lab.collection.kitSerialHint")}
-                      aria-label={t("lab.collection.kitSerial")}
-                      value={kitSerial}
-                      onChange={(e) => setKitSerial(e.target.value)}
-                    />
-                  </label>
-                </DowntimeNotice>
-              )}
-              <form className="flex flex-wrap items-end gap-2"
-                onSubmit={(e) => { e.preventDefault(); if (scannedUhid !== "") label.mutate(selected.row.orderGroupId); }}>
-                <label className="text-sm">
-                  {t("lab.collection.scan")}
+        {selected?.kind === "awaiting" && (
+          <div className="space-y-3">
+            <PatientCard
+              display={selected.row.patientDisplay} uhid={selected.row.uhid} encounterNo={selected.row.encounterNo}
+              tokenNo={selected.row.tokenNo} fasting={selected.row.requiresFasting} codes={selected.row.orderableCodes}
+            />
+            {/*
+              17d T6 — THE PRINTER CANNOT PRINT, SO THE KIT DOES. The right-patient scan above is
+              unchanged and still required: downtime relaxes the LABEL's source, never the check
+              that the tube belongs to the person in the chair (DD10 / E1).
+            */}
+            {downtime && (
+              <DowntimeNotice>
+                <label className="block text-sm">
+                  {t("lab.collection.kitSerial")}
                   <input
-                    className="mt-1 block rounded border border-input px-2 py-1"
-                    placeholder={t("lab.collection.scanHint")}
-                    value={scannedUhid}
-                    onChange={(e) => setScannedUhid(e.target.value)}
+                    className="mt-1 block rounded border border-input px-2 py-1 font-mono"
+                    placeholder={t("lab.collection.kitSerialHint")}
+                    aria-label={t("lab.collection.kitSerial")}
+                    value={kitSerial}
+                    onChange={(e) => setKitSerial(e.target.value)}
                   />
                 </label>
-                <Button type="submit"
-                  disabled={scannedUhid === "" || label.isPending || (downtime && kitSerial.trim() === "")}>
-                  {t(downtime ? "lab.collection.recordKitLabel" : "lab.collection.printLabels")}
-                </Button>
-              </form>
-              <p className="text-xs text-muted-foreground">{t("lab.collection.noBandNote")}</p>
-            </div>
-          )}
-
-          {selected?.kind === "labelled" && (() => {
-            const first = selected.tubes[0]!;
-            const wristband = scannedGroups[selected.group] === true;
-            const allDrawn = selected.tubes.every((x) => drawn[x.specimenId]);
-            return (
-              <div className="space-y-3">
-                <PatientCard
-                  display={first.patientDisplay} uhid={first.uhid} encounterNo={first.encounterNo}
-                  tokenNo={first.tokenNo} fasting={selected.tubes.some((x) => x.requiresFasting)}
-                  codes={[...new Set(selected.tubes.flatMap((x) => x.orderableCodes))]}
+              </DowntimeNotice>
+            )}
+            <form className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => { e.preventDefault(); if (scannedUhid !== "") label.mutate(selected.row.orderGroupId); }}>
+              <label className="text-sm">
+                {t("lab.collection.scan")}
+                <input
+                  className="mt-1 block rounded border border-input px-2 py-1"
+                  placeholder={t("lab.collection.scanHint")}
+                  value={scannedUhid}
+                  onChange={(e) => setScannedUhid(e.target.value)}
                 />
-                <p className="text-sm">
-                  {wristband
-                    ? <span style={{ color: "var(--state-settled)" }}>{t("lab.collection.wristbandOk")}</span>
-                    : <span className="font-semibold">{t("lab.collection.recheckWarning")}</span>}
-                </p>
+              </label>
+              <Button type="submit"
+                disabled={scannedUhid === "" || label.isPending || (downtime && kitSerial.trim() === "")}>
+                {t(downtime ? "lab.collection.recordKitLabel" : "lab.collection.printLabels")}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t("lab.collection.noBandNote")}</p>
+          </div>
+        )}
 
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold">{t("lab.collection.drawOrder")}</h2>
-                  <Button type="button" variant="outline" size="sm" className="no-print" onClick={() => window.print()}>
-                    {t("lab.collection.printAgain")}
-                  </Button>
-                </div>
-                <ol className="space-y-2" data-testid="tubes">
-                  {selected.tubes.map((tube, i) => (
-                    <li key={tube.specimenId} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded border border-border p-2 text-sm"
-                      data-testid={`tube-${tube.specimenNo}`}>
-                      <span className="text-2xl font-semibold tabular-nums">{i + 1}</span>
-                      <span>
-                        <span className="font-semibold">{capFor(tube.container)}</span>
-                        <span className="text-muted-foreground"> · {tube.specimenType} · {tube.orderableCodes.join(", ")}</span>
-                        <br />
-                        <span className="font-mono">{tube.specimenNo}</span>
-                      </span>
-                      <span className="flex items-center gap-2">
-                        {drawn[tube.specimenId] ? (
-                          <span className="font-semibold" style={{ color: "var(--state-settled)" }}>✓ {t("lab.collection.scanned")}</span>
-                        ) : (
-                          <input
-                            className="w-40 rounded border border-input px-2 py-1 font-mono"
-                            placeholder={t("lab.collection.scanTube")}
-                            aria-label={`${t("lab.collection.scanTube")} ${tube.specimenNo}`}
-                            value={tubeScan[tube.specimenId] ?? ""}
-                            onChange={(e) => scanTube(tube, e.target.value, wristband)}
-                          />
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-                <p className="text-xs text-muted-foreground">{t("lab.collection.drawOrderNote")}</p>
+        {selected?.kind === "labelled" && (() => {
+          const first = selected.tubes[0]!;
+          const wristband = scannedGroups[selected.group] === true;
+          const allDrawn = selected.tubes.every((x) => drawn[x.specimenId]);
+          return (
+            <div className="space-y-3">
+              <PatientCard
+                display={first.patientDisplay} uhid={first.uhid} encounterNo={first.encounterNo}
+                tokenNo={first.tokenNo} fasting={selected.tubes.some((x) => x.requiresFasting)}
+                codes={[...new Set(selected.tubes.flatMap((x) => x.orderableCodes))]}
+              />
+              <p className="text-sm">
+                {wristband
+                  ? <span style={{ color: "var(--state-settled)" }}>{t("lab.collection.wristbandOk")}</span>
+                  : <span className="font-semibold">{t("lab.collection.recheckWarning")}</span>}
+              </p>
 
-                <Button type="button" disabled={!allDrawn} onClick={() => { setSelectedKey(null); void qc.invalidateQueries({ queryKey: ["lab", "collection"] }); }}>
-                  {t("lab.collection.drawnToLab", { count: selected.tubes.length })}
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold">{t("lab.collection.drawOrder")}</h2>
+                <Button type="button" variant="outline" size="sm" className="no-print" onClick={() => window.print()}>
+                  {t("lab.collection.printAgain")}
                 </Button>
-
-                {/* The paper: one label per tube, in order of draw. Only this reaches the printer. */}
-                <div className="specimen-labels flex flex-wrap gap-2 border-t border-border pt-2" data-testid="labels">
-                  {selected.tubes.map((tube) => (
-                    <SpecimenLabel
-                      key={tube.specimenId}
-                      specimenNo={tube.specimenNo}
-                      patientDisplay={tube.patientDisplay}
-                      uhid={tube.uhid}
-                      container={tube.container}
-                      specimenType={tube.specimenType}
-                      codes={tube.orderableCodes}
-                      serviceDate={serviceDate}
-                      tokenNo={tube.tokenNo}
-                    />
-                  ))}
-                </div>
               </div>
-            );
-          })()}
+              <ol className="space-y-2" data-testid="tubes">
+                {selected.tubes.map((tube, i) => (
+                  <li key={tube.specimenId} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded border border-border p-2 text-sm"
+                    data-testid={`tube-${tube.specimenNo}`}>
+                    <span className="text-2xl font-semibold tabular-nums">{i + 1}</span>
+                    <span>
+                      <span className="font-semibold">{capFor(tube.container)}</span>
+                      <span className="text-muted-foreground"> · {tube.specimenType} · {tube.orderableCodes.join(", ")}</span>
+                      <br />
+                      <span className="font-mono">{tube.specimenNo}</span>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      {drawn[tube.specimenId] ? (
+                        <span className="font-semibold" style={{ color: "var(--state-settled)" }}>✓ {t("lab.collection.scanned")}</span>
+                      ) : (
+                        <input
+                          className="w-40 rounded border border-input px-2 py-1 font-mono"
+                          placeholder={t("lab.collection.scanTube")}
+                          aria-label={`${t("lab.collection.scanTube")} ${tube.specimenNo}`}
+                          value={tubeScan[tube.specimenId] ?? ""}
+                          onChange={(e) => scanTube(tube, e.target.value, wristband)}
+                        />
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <p className="text-xs text-muted-foreground">{t("lab.collection.drawOrderNote")}</p>
 
-          {error !== null && <p role="alert" className="text-sm font-semibold">{error}</p>}
-        </section>
-      </div>
-    </LabSeatFrame>
+              <Button type="button" disabled={!allDrawn} onClick={() => { setSelectedKey(null); void qc.invalidateQueries({ queryKey: ["lab", "collection"] }); }}>
+                {t("lab.collection.drawnToLab", { count: selected.tubes.length })}
+              </Button>
+
+              {/* The paper: one label per tube, in order of draw. Only this reaches the printer. */}
+              <div className="specimen-labels flex flex-wrap gap-2 border-t border-border pt-2" data-testid="labels">
+                {selected.tubes.map((tube) => (
+                  <SpecimenLabel
+                    key={tube.specimenId}
+                    specimenNo={tube.specimenNo}
+                    patientDisplay={tube.patientDisplay}
+                    uhid={tube.uhid}
+                    container={tube.container}
+                    specimenType={tube.specimenType}
+                    codes={tube.orderableCodes}
+                    serviceDate={serviceDate}
+                    tokenNo={tube.tokenNo}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {error !== null && <p role="alert" className="text-sm font-semibold">{error}</p>}
+      </section>
+    </LabStation>
   );
 }
 

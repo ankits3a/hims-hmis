@@ -46,11 +46,17 @@
  * make. It is the FD-11 class exactly — green suites, wrong screen — and the only instrument that
  * finds it is a browser.
  */
+/*
+ * PLAN 17-F F1 — `.st`, the station shell, joins the list for the palette ONLY. It deliberately does
+ * not wear `.pp`: `desk-one.css`'s `.pp button` / `.pp input` resets strip the shadcn controls the
+ * lab screens still use (a Chromium walk showed the bench's "Scan the tube" button turn to bare text).
+ */
 .d1,
 .lg,
 .dash,
 .pp,
-.shell {
+.shell,
+.st {
   --paper: #f4f7f4;
   --card: #ffffff;
   --ink: #132420;

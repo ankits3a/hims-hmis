@@ -2549,6 +2549,14 @@
     "id_verified": "ID verified",
     "abha_verified": "ABHA verified"
   },
+  "station": {
+    "switch": "Stations",
+    "menu": "Menu",
+    "list": "List",
+    "lane": "In hand",
+    "right": "List and clocks",
+    "clocks": "Clocks running"
+  },
   "lab": {
     "desk": {
       "title": "Lab reception",
