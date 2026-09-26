@@ -1,4 +1,5 @@
 import { PHARMACY_RX_ISSUED_CONSUMER } from "./consumers";
+import { PHARMACY_MESSAGES_CONSUMER } from "./messages";
 import { pharmacyCopilotTools } from "./copilot-tools";
 import { pharmacyAuthorisationsDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
@@ -106,9 +107,26 @@ export const pharmacyManifest: ModuleManifest = {
      * licence, Form 20F) and the doctors trained to prescribe an essential narcotic drug (NDPS Rules r.2(ib)).
      */
     "pharmacy.licences.manage",
+    /**
+     * PHARMACY P6 (patient messages) — record, at the desk and after asking, what the patient of a ticket in
+     * hand says about being messaged: refill reminders on or off (the opt-in), stop or resume all messages,
+     * the channel and the language. The pharmacist's and the in-charge's.
+     */
+    "pharmacy.messages.consent",
+    /**
+     * PHARMACY P6 — the office's Messages side: the provider's ids for the pharmacy's two templates (the DLT
+     * content-template id, the approved WhatsApp name), the pharmacy's phone for reminders, and what was
+     * sent. The pharmacist in charge and the owner, who contracts the provider.
+     */
+    "pharmacy.messages.manage",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
-  subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],
+  subscriptions: [
+    { event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER },
+    /** PHARMACY P6 (patient messages) — the bill's message, once per invoice, from either counter. */
+    { event: "dispense.handed_over", consumer: PHARMACY_MESSAGES_CONSUMER },
+    { event: "retail.sold", consumer: PHARMACY_MESSAGES_CONSUMER },
+  ],
   orderKinds: [
     {
       kind: "medication",

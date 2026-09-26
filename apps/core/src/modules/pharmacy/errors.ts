@@ -195,6 +195,11 @@ export const PHARMACY_ERROR_CODES = [
   // ── PHARMACY P6 (hygiene) — item merge (`item-merge.ts`) ──
   /** A new use of an item merged into another (register it for sale, re-enable it, give it a shelf): the survivor is used instead. */
   "item_merged",
+  // ── PHARMACY P6 (patient messages) ──
+  /** Reminders were asked for a patient who stopped all messages: they resume messages first, in their own words. */
+  "messages_stopped",
+  /** The pharmacy's reminder phone, a DLT id or a WhatsApp template name is not in the shape the provider issues. */
+  "invalid_message_setting",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -315,6 +320,8 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   unknown_end_prescriber: 404,
   controlled_act_invalid: 409,
   item_merged: 409,
+  messages_stopped: 409,
+  invalid_message_setting: 400,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

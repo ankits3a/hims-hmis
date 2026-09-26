@@ -244,9 +244,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 104 codes
+## 4. What refuses, and why — all 106 codes
 
-`errors.ts` declares 104, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 106, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -284,6 +284,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `end_prescriber_not_trained` · `invalid_end_prescriber` · `unknown_end_prescriber` | the prescriber of a narcotic drug is not on the r.2(ib) list; the entry is out of shape or already there; no such entry | §16 — the pharmacist in charge records the doctor's training |
 | `controlled_act_invalid` | an act at the cabinet that is not the cabinet's, or an NDPS destruction without the Controller's nominee, or a narcotic return without the Controller's approval | §16.4 |
 | `item_merged` | the item was merged into another (a duplicate record retired by the office): it is not registered for sale again, switched back on or given a shelf | use the item it was merged into — §17 |
+| `messages_stopped` · `invalid_message_setting` | refill reminders asked for a patient who stopped all messages; the pharmacy's reminder phone is not 10–12 digits | ask the patient to resume messages first (§18.3); type the phone with its STD code |
 | `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
 | `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |
@@ -864,3 +865,52 @@ the same composition, strength, form and route — never two strengths or two si
 **A merge is not undone.** A wrong one is corrected by hand: register the item again and move the stock
 back with a count adjustment — ask IT first.
 
+## 18. Patient messages — the bill by SMS and the opt-in refill reminder (P6, 2026-09-26)
+
+**What exists.** Two messages through the notify kernel's one outbox (quiet hours, the channel ladder, the
+deceased stop, the patient's STOP all live there), **neither naming a drug**:
+
+| message | when | who gets it | says (English) |
+|---|---|---|---|
+| `pharmacy_bill_ready` | after a hand-over at the desk, or a walk-in sale — once per invoice | any patient with a phone who has not stopped messages; not a zero bill, not a paper dispense | *"<hospital> pharmacy: bill <no> for Rs <amount> is paid (<date>). Keep this message; the counter gives a printed copy on request."* |
+| `pharmacy_refill_due` | a daily job at 10:00 IST, 3 days before a chronic line (≥ 20 days' supply, from dose × frequency) runs out — once per dispense | **only patients who opted in**, and never for a Schedule X or NDPS line | *"<hospital>: your medicines from <date> may be running low. Please visit the hospital pharmacy or call <phone>. To stop these reminders, tell the pharmacy."* |
+
+Both are held between 21:00 and 08:00 IST. Neither raises a "call the patient" task when it cannot be
+delivered. Every log line carries the phone's last four digits only.
+
+**18.1 The provider — procurement, the owner's.** Until it exists, `NOTIFY_PROVIDER=console` and every
+message is a masked log line: the office's Messages side says **"console only — not sending"**, and the
+census row **`pharmacy_messaging_provider_live`** is RED. To switch on:
+
+1. **SMS** — contract a DLT-registered Indian gateway. Register the hospital as a Principal Entity and a
+   six-character sender header on the DLT portal. Then set, for the API **and** the worker:
+   `NOTIFY_PROVIDER=live`, `SMS_GATEWAY_URL`, `SMS_GATEWAY_API_KEY`, `SMS_DLT_ENTITY_ID`, `SMS_DLT_SENDER_ID`.
+   The adapter posts JSON (`to`, `sender`, `entity_id`, `template_id`, `body`, `unicode`); if the contracted
+   gateway names those fields differently, `kernel/notify/providers.ts` `dltSmsAdapter` is the one function
+   to map.
+2. **WhatsApp** (optional) — a WhatsApp Business Cloud API number: `WHATSAPP_PHONE_NUMBER_ID`,
+   `WHATSAPP_ACCESS_TOKEN` (`WHATSAPP_API_VERSION` defaults to `v21.0`).
+3. A channel with only some of its keys is **refused at boot** — set all of them or none.
+
+**18.2 The templates — the office's Messages side** (`/pharmacy/office?view=messages`, the pharmacist in
+charge or the owner). It shows each message's exact text in English and Hindi with `{#var#}` in each
+variable's place — register those texts on the DLT portal (as *service* templates: the bill is
+service-implicit, the reminder **service-explicit**, which needs the patient's consent) and, for WhatsApp,
+submit them to Meta. Then record here each **DLT content-template id** and each **approved WhatsApp template
+name**, and the **pharmacy's phone** the reminder names. Census row **`pharmacy_dlt_template_ids_recorded`**
+turns green when both DLT ids are in. A live SMS gateway **refuses** a message whose template has no DLT id
+(the operator's DLT scrubbing would drop it silently anyway); without the pharmacy's phone the daily job
+holds every reminder.
+
+**18.3 Consent — at the desk, one tap, after asking.** With a patient in hand the desk's left rail shows
+**"SMS reminders: off · turn on"** and the language (हिंदी / English). The bill needs no consent (it is the
+receipt of what they just paid); **the reminder needs the patient's yes**, recorded with who asked, when and
+at which desk. **Stop messages** stops everything, reminders included, for every department. After a stop,
+reminders cannot be turned on until the patient resumes messages (two separate things they say), and
+resuming does not bring reminders back. Replies to an SMS are not read by anything yet — a patient who
+wants to stop tells the counter, which is what the reminder itself says.
+
+**18.4 Checking it.** The hand-over's "what closed" shows the bill message quietly: queued, held for the
+morning, sent by SMS, **logged only (no provider yet)**, or not sent and why (no phone, messages stopped).
+The Messages side counts the last 30 days: sent, logged only, queued, failed, suppressed, expired — and how
+many patients have reminders on and how many stopped.

@@ -5,6 +5,7 @@ import { withTx } from "../db/client";
 import { alerts, approvals } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { notificationFailed } from "../notify/events";
+import { notificationTemplates } from "../notify/templates";
 import { modeChanged } from "../ops/events";
 import { escalationTriggered, respondOverdue } from "../workflow/events";
 import { approvalRequested } from "../approvals/events";
@@ -246,6 +247,10 @@ async function handleEscalationTriggered(db: Db, e: DispatchedEvent): Promise<vo
 async function handleNotificationFailed(db: Db, e: DispatchedEvent): Promise<void> {
   const payload = notificationFailed.payloadSchema.parse(e.payload);
   if (payload.audience !== "patient") return;
+  // PHARMACY P6 — a template that says its failure is not a phone call (a bill receipt the patient holds
+  // on paper, a courtesy reminder) raises no desk task. Read by index, not `templateByKey`: an old row may
+  // name a template since retired, and that must still reach the desk.
+  if (notificationTemplates[payload.templateKey]?.deskFlagOnFailure === false) return;
 
   // Structurally unreachable: `enqueueNotification` refuses a patient-audience row with no
   // `patientId`, and the pump copies that column onto the envelope. If it ever happens, the desk

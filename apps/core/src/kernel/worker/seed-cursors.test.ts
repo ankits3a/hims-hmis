@@ -11,7 +11,7 @@ import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
 import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "../../modules/radiology";
-import { PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
+import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { seedCursors } from "./seed-cursors";
@@ -97,6 +97,13 @@ describe("seedCursors", () => {
         // Plan 15 recorded T2-f.
         RADIOLOGY_ORDER_PLACED_CONSUMER,
         PHARMACY_RX_ISSUED_CONSUMER, // PLAN 16c T3
+        /**
+         * PHARMACY P6 (patient messages) — and this is the consumer whose unseeded cursor would do the
+         * most visible harm: from zero it would walk every hand-over and walk-in sale since P1 and queue a
+         * bill message for each. Each would expire unsent (48 hours after its own sale), but the outbox
+         * would fill with thousands of rows the office then counts. Seeded at `max(seq)`, it begins today.
+         */
+        PHARMACY_MESSAGES_CONSUMER,
         /**
          * PLAN 17-E T7b — THE EIGHTH, and the first whose unseeded cursor would replay a backlog
          * that is genuinely OLD. `interface.down` / `interface.restored` have been raised by the

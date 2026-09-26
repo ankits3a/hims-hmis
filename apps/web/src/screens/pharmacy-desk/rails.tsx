@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchPatientRail } from "../../lib/pharmacy-api";
 import { useTranslation } from "react-i18next";
+import { MessagesChip } from "./messages";
 import { FLOW_STEPS, draftsFirst, flowIndex, holdOf, isMyDraft, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
 import type { WaitTone } from "./model";
 import type { WireCounterSummary, WireDispense, WireMyShift, WireQueueRow } from "../../lib/pharmacy-api";
@@ -148,6 +149,9 @@ export function Dossier({
           )}
         </div>
       )}
+
+      {/* PHARMACY P6 (patient messages) — the consent chip: reminders only with a yes, a stop for everything. */}
+      <MessagesChip dispenseId={inHand.id} />
 
       {/* WHO IS AT THE WINDOW (the board's rail): the visits behind this one, and the courses still running. */}
       {(rail.data?.alreadyTaking.length ?? 0) === 0 ? null : (
