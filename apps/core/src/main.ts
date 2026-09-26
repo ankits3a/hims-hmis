@@ -8,7 +8,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 async function bootstrap(): Promise<void> {
   const cfg = loadConfig();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
-  configureApp(app);
+  configureApp(app, { trustedProxyCidrs: cfg.trustedProxyCidrs ?? undefined });
   app.enableShutdownHooks();
   await app.listen(cfg.port);
 }
