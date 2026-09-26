@@ -11,10 +11,12 @@ import {
   fetchPurchaseOrder, fetchPurchaseVendors, rupees, sendPurchaseOrder, submitPurchaseOrder, updatePurchaseOrder,
 } from "../../lib/purchase-api";
 import { Button } from "@/components/ui/button";
+import { ControlledView } from "./controlled";
 import { PayView } from "./pay";
 import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
+import { fetchControlledToday } from "../../lib/controlled-api";
 import type { WireOfficeToday, WirePo, WirePoSummary } from "../../lib/purchase-api";
 
 /**
@@ -37,7 +39,7 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
-type OfficeView = "buy" | "pay" | "returns" | "reports";
+type OfficeView = "buy" | "pay" | "returns" | "reports" | "controlled";
 
 /** PARITY P5 — `/pharmacy/office/reports`: the office opened on its Reports side (the owner's and the billing office's door). */
 export function PharmacyOfficeReports(): React.ReactElement {
@@ -55,10 +57,15 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
   const canPay = can("materials.bills.manage");
   const canReturn = can("materials.returns.manage") || can("materials.writeoffs.manage") || can("materials.recall.manage");
   const canReport = can("pharmacy.reports.read");
-  const views = ([...(canBuy ? ["buy"] : []), ...(canPay ? ["pay"] : []), ...(canReturn ? ["returns"] : []), ...(canReport ? ["reports"] : [])] as OfficeView[]);
+  // PHARMACY P6 — the fifth side, the controlled-drug cabinet: its custodians, its licence keepers and its register's readers.
+  const canControlled = can("pharmacy.ndps.custody") || can("pharmacy.licences.manage") || can("pharmacy.register.read");
+  const views = ([
+    ...(canBuy ? ["buy"] : []), ...(canPay ? ["pay"] : []), ...(canReturn ? ["returns"] : []), ...(canReport ? ["reports"] : []),
+    ...(canControlled ? ["controlled"] : []),
+  ] as OfficeView[]);
   const [view, setView] = useState<OfficeView>(() => {
     const v = new URLSearchParams(window.location.search).get("view");
-    return initialView ?? (v === "pay" || v === "returns" || v === "reports" ? v : "buy");
+    return initialView ?? (v === "pay" || v === "returns" || v === "reports" || v === "controlled" ? v : "buy");
   });
   const shown: OfficeView = views.includes(view) ? view : (views[0] ?? "buy");
   // Only a buyer asks for the buying side's day: the owner and the billing office (reports only) never
@@ -107,7 +114,8 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
           </div>
         )}
       </div>
-      {shown === "pay" ? <PayView /> : shown === "returns" ? <ReturnsView /> : shown === "reports" ? <ReportsView /> : (<>
+      {canControlled && shown !== "controlled" && <ControlledStrip onOpen={() => setView("controlled")} />}
+      {shown === "pay" ? <PayView /> : shown === "returns" ? <ReturnsView /> : shown === "reports" ? <ReportsView /> : shown === "controlled" ? <ControlledView /> : (<>
       {today.error !== null && <p role="alert" className="text-sm text-red-600">{materialsErrorText(today.error, t)}</p>}
       {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
 
@@ -487,5 +495,22 @@ function PlanSheet({ onClose, onMade }: { onClose: () => void; onMade: (n: numbe
         </div>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * PHARMACY P6 — the office's "needs you today" names the controlled-drug cabinet's own list on every other
+ * side too (a licence inside 60 days, today's balance check, a discrepancy), one line, one key to open it.
+ */
+function ControlledStrip({ onOpen }: { onOpen: () => void }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["pharmacy", "controlled", "today"], queryFn: fetchControlledToday });
+  const n = q.data?.needsYou.length ?? 0;
+  if (n === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded border border-amber-400 bg-amber-50/60 p-2 text-sm" data-testid="controlled-strip">
+      <span className="flex-1">{t("pharmacyOffice.controlled.strip", { count: n, first: t(`pharmacyOffice.controlled.needs.${q.data!.needsYou[0]!.key}`, q.data!.needsYou[0]!.params) })}</span>
+      <Button type="button" variant="outline" onClick={onOpen}>{t("pharmacyOffice.controlled.open")}</Button>
+    </div>
   );
 }

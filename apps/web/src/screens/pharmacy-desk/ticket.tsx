@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Closed } from "./closed";
+import { ControlledStep } from "./controlled";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
 import { DonePaper } from "./paper";
@@ -8,7 +9,7 @@ import type { ShortDrug } from "./short-book";
 import { hindiRefusal, hindiSig } from "./phrasebook";
 import { istToday, sigOf } from "./work";
 import type { CollectResult } from "./lines";
-import type { PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
+import type { ControlledHandover, PickLine, VerifyLine, WireDispense, WirePatientSummary, WireQueueRow } from "../../lib/pharmacy-api";
 
 /**
  * THE MIDDLE COLUMN — the only one that changes with the stage (PD-D1). Idle: whose prescription is
@@ -38,7 +39,7 @@ export function TicketPanel({
   handOverError: string | null;
   /** What was taken, as the bill rail printed it — the done line repeats the server's figure, never a sum of its own. */
   takenLabel: string | null;
-  onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null) => void;
+  onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null, controlled?: ControlledHandover) => void;
   onOpenSlip: () => void;
   onConfirmSlip: () => void;
   /** The line as the rail reads it — the agent's C1 sentence is said over it while nobody is in hand. */
@@ -217,15 +218,18 @@ export function HandOver({
   dispense: WireDispense;
   busy: boolean;
   error: string | null;
-  onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null) => void;
+  onHandOver: (identity: { via: "token" | "phone_last4"; value: string } | null, controlled?: ControlledHandover) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [via, setVia] = useState<"token" | "phone_last4">("token");
   const [value, setValue] = useState("");
-  useEffect(() => { setVia("token"); setValue(""); }, [dispense.id]);
+  /* PHARMACY P6 — a controlled line's witness, retained prescription and collector (`controlled.tsx`). */
+  const [controlled, setControlled] = useState<ControlledHandover | null>(null);
+  useEffect(() => { setVia("token"); setValue(""); setControlled(null); }, [dispense.id]);
   const needsId = dispense.scheduled;
-  const ready = !busy && (!needsId || value.trim() !== "");
-  const go = (): void => { if (ready) onHandOver(needsId ? { via, value: value.trim() } : null); };
+  const needsControlled = (dispense.controlled ?? null) !== null;
+  const ready = !busy && (!needsId || value.trim() !== "") && (!needsControlled || controlled !== null);
+  const go = (): void => { if (ready) onHandOver(needsId ? { via, value: value.trim() } : null, needsControlled && controlled !== null ? controlled : undefined); };
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); go(); }
@@ -285,6 +289,7 @@ export function HandOver({
       ) : (
         <p style={{ margin: "7px 0 0 0", fontSize: 12, color: "var(--dim)" }}>{t("pharmacyDesk.handover.noId")}</p>
       )}
+      <ControlledStep dispense={dispense} onChange={setControlled} />
       <button className="pri" style={{ marginTop: 12 }} disabled={!ready} onClick={go}>
         {t("pharmacyDesk.handover.button")}{" "}
         <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Ctrl ⏎</span>
