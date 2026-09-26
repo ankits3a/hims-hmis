@@ -6,7 +6,7 @@ import { users } from "./auth";
 import { invoiceLines, invoices } from "./billing";
 import { formularyMedicines } from "./formulary";
 import { items, stockBatches, stockLedger, stockReservations } from "./materials";
-import { opdEncounters, opdPrescriptions } from "./opd";
+import { opdDoctors, opdEncounters, opdPrescriptions } from "./opd";
 import { orderItems, orders } from "./orders";
 import { patients } from "./patients";
 import { resources } from "./resources";
@@ -167,6 +167,12 @@ export const pharmacyDispenseLines = pgTable(
     priceWinner: text("price_winner"),
     /** Mirrored from the dispensed medicine at verify so the gate reads one column: `H` | `H1` | `X` | `OTC` | null. */
     scheduleFlag: text("schedule_flag"),
+    /**
+     * PHARMACY P6 — the NDPS Act class of the dispensed medicine (`narcotic` | `psychotropic` | null),
+     * mirrored beside `schedule_flag` at the claim and the verify. A line with either this set or
+     * Schedule X is a CONTROLLED line: it is picked from the cabinet and handed over under two keys.
+     */
+    ndpsClass: text("ndps_class"),
     status: text("status").notNull().default("open"),
     declinedReason: text("declined_reason"),
     declinedBy: text("declined_by"),
@@ -181,6 +187,7 @@ export const pharmacyDispenseLines = pgTable(
     check("pharmacy_dispense_lines_qty_ck", sql`${t.qtyBase} is null or ${t.qtyBase} > 0`),
     check("pharmacy_dispense_lines_winner_ck", sql`${t.priceWinner} is null or ${t.priceWinner} in ('batch_mrp', 'ceiling', 'tariff')`),
     check("pharmacy_dispense_lines_schedule_ck", sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'X', 'OTC')`),
+    check("pharmacy_dispense_lines_ndps_ck", sql`${t.ndpsClass} is null or ${t.ndpsClass} in ('narcotic', 'psychotropic')`),
     check("pharmacy_dispense_lines_declined_ck", sql`${t.status} <> 'declined' or ${t.declinedReason} is not null`),
   ],
 );
@@ -563,5 +570,78 @@ export const pharmacyTallyExports = pgTable(
     check("pharmacy_tally_exports_range_ck", sql`${t.toDate} >= ${t.fromDate}`),
     check("pharmacy_tally_exports_money_ck", sql`${t.voucherCount} >= 0 and ${t.debitPaise} >= 0`),
     check("pharmacy_tally_exports_checksum_ck", sql`${t.checksum} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
+/**
+ * ═══ PHARMACY P6 — THE LICENCES THE CONTROLLED DRUGS NEED (brief 2026-09-26) ═══
+ *
+ * Kind `ndps_rmi`: the State Drugs Controller's recognition of the hospital as a Recognised Medical
+ * Institution under NDPS Rules 1985 r.52C (as amended by G.S.R. 359(E), 5 May 2015) — without it no
+ * essential narcotic drug is possessed or dispensed. Kind `schedule_x`: the drug licence for the retail
+ * sale of Schedule X drugs (D&C Rules 1945, Form 20F). The owner enters each as printed; the counter
+ * refuses the drugs the missing one covers, naming it.
+ *
+ * A row is never edited: a renewal or a correction is a new row, and the latest row of a kind is the
+ * licence (the `pharmacy_retail_licences` rule).
+ */
+export const pharmacyControlledLicences = pgTable(
+  "pharmacy_controlled_licences",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    licenceNo: text("licence_no").notNull(),
+    /** The form the certificate is in, as printed ("Form 20F", "Form 3E" …). */
+    form: text("form").notNull(),
+    issuingAuthority: text("issuing_authority").notNull(),
+    /** The licensee as printed: the hospital's name, and the person named on it (the pharmacist or medical officer in charge). */
+    holderName: text("holder_name").notNull(),
+    responsiblePerson: text("responsible_person").notNull(),
+    validFrom: date("valid_from", { mode: "string" }).notNull(),
+    /** The last day it covers — the certificate's end, or the day the retention fee falls due for one that does not end. */
+    validUntil: date("valid_until", { mode: "string" }).notNull(),
+    /** Where the signed original / scanned copy is kept (a file number, a drawer) — the app keeps no licence image yet. */
+    documentRef: text("document_ref"),
+    note: text("note"),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pharmacy_controlled_licences_kind_idx").on(t.kind, t.recordedAt),
+    check("pharmacy_controlled_licences_kind_ck", sql`${t.kind} in ('ndps_rmi', 'schedule_x')`),
+    check("pharmacy_controlled_licences_dates_ck", sql`${t.validUntil} >= ${t.validFrom}`),
+    check("pharmacy_controlled_licences_text_ck",
+      sql`btrim(${t.licenceNo}) <> '' and btrim(${t.form}) <> '' and btrim(${t.issuingAuthority}) <> '' and btrim(${t.holderName}) <> '' and btrim(${t.responsiblePerson}) <> ''`),
+  ],
+);
+
+/**
+ * PHARMACY P6 — THE DOCTORS WHO MAY PRESCRIBE AN ESSENTIAL NARCOTIC DRUG HERE. NDPS Rules r.2(ib): for the
+ * essential-narcotic-drug chapters the registered medical practitioner is one who "has undergone training in
+ * pain relief and palliative care … or … opioid substitution therapy". A council registration does not say
+ * so; this list does. The pharmacist in charge (or the owner, or the MS) records the training beside the RMI
+ * licence; the counter refuses a narcotic line whose prescriber is not on it.
+ *
+ * Like the register of pharmacists: never edited, a mistake or a departure is ENDED with a reason, and one
+ * doctor has at most one current row.
+ */
+export const pharmacyEndPrescribers = pgTable(
+  "pharmacy_end_prescribers",
+  {
+    id: text("id").primaryKey(),
+    doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
+    /** The course and who ran it, as the certificate says ("IAPC foundation course in palliative care, 2024"). */
+    training: text("training").notNull(),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endedBy: text("ended_by").references(() => users.id),
+    endReason: text("end_reason"),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_end_prescribers_current_ux").on(t.doctorId).where(sql`${t.endedAt} is null`),
+    check("pharmacy_end_prescribers_ended_ck",
+      sql`(${t.endedAt} is null) = (${t.endedBy} is null) and (${t.endedAt} is null) = (${t.endReason} is null)`),
+    check("pharmacy_end_prescribers_text_ck", sql`btrim(${t.training}) <> ''`),
   ],
 );

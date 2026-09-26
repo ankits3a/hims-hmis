@@ -548,6 +548,13 @@ export const stockLedger = pgTable(
     encounterId: text("encounter_id"),
     costCenter: text("cost_center"),
     actorId: text("actor_id").notNull(), // plain text — the `approvals.ts` precedent
+    /**
+     * PHARMACY P6 — THE SECOND KEY. At a controlled store (the NDPS / Schedule X cabinet, `controlled.ts`)
+     * every movement is made by two people: `actor_id` holds the cabinet, `witness_id` witnessed the
+     * movement. `postMovements` refuses a movement there without one; the CHECK refuses one person as both.
+     * Null everywhere else.
+     */
+    witnessId: text("witness_id"),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(), // MAY precede recordedAt
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -558,6 +565,7 @@ export const stockLedger = pgTable(
     /** One of the five CHECKs `materials.test.ts` reads out of `pg_constraint` BY NAME. */
     check("stock_ledger_qty_delta_ck", sql`${t.qtyDelta} <> 0`),
     check("stock_ledger_reason_ck", sql`${t.reason} in ('grn', 'issue', 'receive', 'consume', 'return', 'adjust')`),
+    check("stock_ledger_witness_ck", sql`${t.witnessId} is null or ${t.witnessId} <> ${t.actorId}`),
   ],
 );
 
@@ -1138,11 +1146,19 @@ export const stockCounts = pgTable(
     cancelledBy: text("cancelled_by"),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
+    /**
+     * PHARMACY P6 — `blind` (14c: a system-chosen counter who keeps nothing in the store) or
+     * `controlled_check` (the NDPS / Schedule X cabinet's daily balance check: its holder counts with a
+     * witness, `scheduled_by` = the holder, `counter_user_id` = the witness, so the SoD CHECK below is
+     * also "two different people"). A variance on either goes to the medical superintendent the same way.
+     */
+    kind: text("kind").notNull().default("blind"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("stock_counts_resource_idx").on(t.resourceId, t.frozenAt),
     uniqueIndex("stock_counts_one_counting_uq").on(t.resourceId).where(sql`${t.status} = 'counting'`),
+    check("stock_counts_kind_ck", sql`${t.kind} in ('blind', 'controlled_check')`),
     check("stock_counts_status_ck", sql`${t.status} in ('counting', 'submitted', 'closed', 'cancelled')`),
     check("stock_counts_sod_ck", sql`${t.counterUserId} <> ${t.scheduledBy}`),
     check("stock_counts_counted_ck", sql`(${t.countedAt} is null) = (${t.submittedAt} is null) and (${t.countedAt} is null or ${t.countedAt} >= ${t.frozenAt})`),
@@ -1466,5 +1482,95 @@ export const stockWriteOffLines = pgTable(
     uniqueIndex("stock_write_off_lines_batch_ux").on(t.writeOffId, t.batchId),
     index("stock_write_off_lines_batch_idx").on(t.batchId),
     check("stock_write_off_lines_qty_ck", sql`${t.qtyBase} > 0 and ${t.valuePaise} >= 0`),
+  ],
+);
+
+// ═══════════════════ THE CONTROLLED-DRUG CABINET (PHARMACY P6) ═══════════════════
+//
+// Brief `docs/superpowers/plans/2026-09-26-pharmacy-p6-ndps-schedule-x-law.md`. NDPS narcotic and
+// psychotropic drugs and Schedule X drugs live in a CONTROLLED store (a `store` resource whose
+// attributes say `controlled: true` — the cabinet, `PHARM-NDPS`), and every movement into or out of it
+// is made by two people (`stock_ledger.witness_id`). This register is written by `postMovements`
+// itself, in the same transaction as the ledger row, so it cannot drift from the stock it records.
+
+/**
+ * PHARMACY P6 — THE REGISTER OF THE CABINET: one row per ledger movement at a controlled store, with
+ * the particulars the statutory registers ask for COPIED at write time (the drug as named, the batch,
+ * who it came from or went to, the prescriber and the patient, both keys), and the batch's balance in
+ * the cabinet after the movement, read under the ledger's lock. The NDPS register (NDPS Rules r.52H /
+ * Form 3H) is the rows whose `ndps_class` is set; the Schedule X register (D&C Rules r.65(9)(d)) is the
+ * rows whose `schedule_flag` is `X`; a drug that is both is in both prints.
+ *
+ * ═══ APPEND-ONLY IN THE DATABASE ═══
+ *
+ * The migration carries a trigger that refuses UPDATE and DELETE outright (the `pharmacy_reg_h1` shape,
+ * migration 0056): a wrong entry is corrected by a further movement and its row, never by an edit.
+ */
+export const controlledStockRegister = pgTable(
+  "controlled_stock_register",
+  {
+    seq: bigserial("seq", { mode: "number" }).notNull(),
+    id: text("id").primaryKey(),
+    ledgerEntryId: text("ledger_entry_id").notNull().references(() => stockLedger.id),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    medicineId: text("medicine_id").references(() => formularyMedicines.id),
+    /** As the item master names it at the movement. */
+    drugName: text("drug_name").notNull(),
+    batchNo: text("batch_no").notNull(),
+    expiryDate: date("expiry_date", { mode: "string" }),
+    /** The NDPS class and the D&C schedule of the medicine AT THE MOVEMENT — which register(s) the row belongs to. */
+    ndpsClass: text("ndps_class"),
+    scheduleFlag: text("schedule_flag"),
+    /** The ledger's reason (`grn`, `receive`, `issue`, `consume`, `return`, `adjust`) and its direction. */
+    movement: text("movement").notNull(),
+    direction: text("direction").notNull(),
+    qtyBase: integer("qty_base").notNull(),
+    unit: text("unit").notNull(),
+    /** The batch's quantity in this store after the movement (the running balance), under the ledger's lock. */
+    balanceAfter: integer("balance_after").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    holderId: text("holder_id").notNull(),
+    holderName: text("holder_name").notNull(),
+    witnessId: text("witness_id").notNull(),
+    witnessName: text("witness_name").notNull(),
+    /** The holder's state pharmacy council number when a pharmacist held the key (r.65(21): "signature of the pharmacist"). */
+    holderRegNo: text("holder_reg_no"),
+    /**
+     * Anyone else the act needed present: `[{ userId, name, role }]`. Destruction's officer nominated by the
+     * Controller of Drugs (NDPS Rules r.52V(1)) is not a user of this system, so `userId` is null for them.
+     */
+    extraWitnesses: jsonb("extra_witnesses").$type<{ userId: string | null; name: string; role: string }[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Who it came from or went to: the supplier, the patient, the other store, the disposal agency. */
+    counterparty: text("counterparty"),
+    counterpartyAddress: text("counterparty_address"),
+    /** The supplier's drug licence number (r.65(21): "name, address and licence number of the supplier"). */
+    counterpartyLicence: text("counterparty_licence"),
+    /** The supplier's invoice / challan, the bill, the return note, the destruction manifest — and its date. */
+    documentRef: text("document_ref"),
+    documentDate: date("document_date", { mode: "string" }),
+    /** The prescription's reference (its number and version) on an issue to a patient. */
+    rxRef: text("rx_ref"),
+    patientId: text("patient_id"),
+    prescriberName: text("prescriber_name"),
+    prescriberRegNo: text("prescriber_reg_no"),
+    /** The prescription kept by the pharmacy (a `patient_documents` row) — Schedule X's retained copy. */
+    retainedDocumentId: text("retained_document_id"),
+    /** The person the drug was handed to (the patient or an attendant, with the relation) and the identity they showed. */
+    collectedBy: text("collected_by"),
+    collectedIdProof: text("collected_id_proof"),
+    note: text("note"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("controlled_stock_register_ledger_ux").on(t.ledgerEntryId),
+    index("controlled_stock_register_store_idx").on(t.storeResourceId, t.occurredAt),
+    index("controlled_stock_register_batch_idx").on(t.batchId, t.seq),
+    check("controlled_stock_register_qty_ck", sql`${t.qtyBase} > 0 and ${t.balanceAfter} >= 0`),
+    check("controlled_stock_register_direction_ck", sql`${t.direction} in ('in', 'out')`),
+    check("controlled_stock_register_movement_ck", sql`${t.movement} in ('grn', 'issue', 'receive', 'consume', 'return', 'adjust')`),
+    check("controlled_stock_register_two_keys_ck", sql`${t.witnessId} <> ${t.holderId}`),
+    check("controlled_stock_register_ndps_ck", sql`${t.ndpsClass} is null or ${t.ndpsClass} in ('narcotic', 'psychotropic')`),
   ],
 );
