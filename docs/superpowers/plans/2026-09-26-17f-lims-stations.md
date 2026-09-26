@@ -42,6 +42,9 @@ Quoted as given, 25–26 Sep 2026. Industry exceptions marked DECIDED follow the
     - no auto-verification; batch signing of all-normal reports is allowed, logged per report.
 12. **A held patient copy is released unpaid ONLY by the billing manager, and the dues stay on the account**
     (26 Sep). The doctor's copy is never held.
+13. **The signing pathologist's council registration number stays on the printed lab report** (26 Sep, on this plan's
+    PR), alongside the ruling-11 fields. This is the lab-report exception to the 06 Sep "Doctor ID only" print rule,
+    which still governs the referring doctor.
 
 **Layout rules** (owner, apply to every station): menu in the HEADER; left lane = the patient (or run, or escalation)
 in hand; right = ONE list with NO filter tabs, then "Clocks running" collapsed; opening something shrinks the list to
@@ -179,8 +182,9 @@ called done.
 - Batch-sign all-normal reports, audited per report.
 - Partial report → amendment v2. Send back for rerun (exists).
 - IDSP notifiable register (an L-form draft; the supervisor sends it).
-- Print per ruling 11: add qualification, designation and Doctor ID to the `reports.ts:118` signatory snapshot
-  (additive) and to `lab-report-print.tsx`; the referring doctor as Doctor ID.
+- Print per rulings 11 and 13: add qualification, designation and Doctor ID to the `reports.ts:118` signatory snapshot
+  (additive) and to `lab-report-print.tsx`, keeping the council registration number it already prints; the referring
+  doctor as Doctor ID.
 - Web: `lab-verify.tsx`.
 - Migration.
 
@@ -223,10 +227,10 @@ F1 → F2 ∥ F3 ∥ F4 (F2 holds the billing claim) → F5 → F6 → F7 → F8
 
 ## Open owner items (money / procurement / law only)
 
-- **Procurement:** the WhatsApp/SMS provider (a BSP with delivery and read webhooks). It blocks read receipts, SMS
+- **Procurement:** (owner, 26 Sep: "I will attach later") the WhatsApp/SMS provider (a BSP with delivery and read webhooks). It blocks read receipts, SMS
   fallback delivery, and the OTP for a relative collecting.
-- **Law:** does the council registration number stay on the printed lab report? Today's print shows it; ruling 11
-  did not mention it.
+- ~~**Law:** does the council registration number stay on the printed lab report?~~ Ruled 26 Sep: it stays
+  (ruling 13).
 
 ## Shared files each phase will claim
 
