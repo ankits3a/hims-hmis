@@ -26,6 +26,7 @@
     "seed:materials": "tsx scripts/seed-materials.ts",
     "seed:ot": "tsx scripts/seed-ot.ts",
     "seed:pharmacy": "tsx scripts/seed-pharmacy.ts",
+    "classify:ndps": "tsx scripts/classify-ndps.ts",
     "seed:lab": "tsx scripts/seed-lab.ts",
     "standup:check": "tsx scripts/standup-check.ts",
     "seed:aerb-demo": "tsx scripts/seed-aerb-demo.ts",

@@ -11,7 +11,10 @@ import { medicinesByIds } from "../formulary";
 import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsByIds, materialConsumed } from "../materials";
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
-import { REFUSED_FLAGS, REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { assertControlledLinesAllowed, controlOf } from "./controlled";
+import { prepareControlledHandover } from "./controlled-dispense";
+import type { ControlledHandoverInput } from "./controlled-dispense";
 import { dispenseHandedOver } from "./events";
 import { PharmacyError } from "./errors";
 import { registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
@@ -26,6 +29,8 @@ import type { DispenseView } from "./queue";
 export type HandoverInput = {
   /** D7 — for a scheduled dispense: how the person at the window was confirmed. */
   identity?: { via: "token" | "phone_last4"; value: string };
+  /** PHARMACY P6 — a controlled line's hand-over: the witness, who collected it, the retained prescription. */
+  controlled?: ControlledHandoverInput;
 };
 
 /**
@@ -42,6 +47,11 @@ export type HandoverInput = {
  *   3. The order items go to `completed` (DD4), which closes the envelope.
  *   4. R-4 — one `pharmacy_reg_h1` row per H1 line, Rule 65(3)'s fields COPIED at write time.
  */
+/** The drug as the registers name it: brand, strength and form, else the doctor's words. */
+function medicineName(med: { brandName: string; strengthLabel: string | null; form: string } | undefined, fallback: string): string {
+  return med === undefined ? fallback : `${med.brandName}${med.strengthLabel === null ? "" : ` ${med.strengthLabel}`} ${med.form}`;
+}
+
 export async function handOverDispense(
   db: Db,
   actor: Actor,
@@ -77,18 +87,12 @@ export async function handOverDispense(
 
   const lines = (await linesOf(db, dispenseId)).filter((l) => l.status === "open");
   if (lines.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to hand over");
-  const scheduled = d.scheduled || lines.some((l) => l.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(l.scheduleFlag));
+  const scheduled = d.scheduled || lines.some((l) => (l.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(l.scheduleFlag)) || controlOf(l.scheduleFlag, l.ndpsClass).controlled);
   // R-3 at the LAST gate as well (pass 2 on the verify fix): claim and verify each judge a medicine
   // that the next step may still change, so the schedule this counter may not dispense is refused
   // wherever a line carrying it can be found — including one written before the guard above existed.
-  const refused = lines.find((l) => l.scheduleFlag !== null && (REFUSED_FLAGS as readonly string[]).includes(l.scheduleFlag));
-  if (refused !== undefined) {
-    throw new PharmacyError(
-      "schedule_x_not_dispensed_here",
-      `line ${String(refused.lineIdx + 1)} is Schedule ${String(refused.scheduleFlag)} — not handed over at the OPD counter until double custody (16d)`,
-      { lineIdx: refused.lineIdx, scheduleFlag: refused.scheduleFlag },
-    );
-  }
+  // PHARMACY P6: "may not dispense" is now "has no current licence for" (`assertControlledLinesAllowed`).
+  await assertControlledLinesAllowed(db, lines.map((l) => ({ lineIdx: l.lineIdx, drug: (l.rxLine as RxLine).drug, scheduleFlag: l.scheduleFlag, ndpsClass: l.ndpsClass })), now);
 
   const visible = await getPatient(db, actor, d.patientId);
   if (visible === null) throw new PharmacyError("unknown_dispense", `dispense ${dispenseId} not found`);
@@ -123,6 +127,23 @@ export async function handOverDispense(
   const doctor = await getDoctor(db, rx.doctorId);
   const medicines = await medicinesByIds(db, lines.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
+  /**
+   * PHARMACY P6 — a controlled line (Schedule X, or an NDPS class) leaves the cabinet only when the
+   * prescription carries what the law asks, the pharmacy keeps its copy, who took it is written down,
+   * and a second person witnesses it with their own PIN. `prepareControlledHandover` asks all of it
+   * BEFORE any stock moves and returns each line's register particulars; the ledger then refuses the
+   * cabinet's `consume` without the witness it names (`materials/controlled.ts`).
+   */
+  const controlled = await prepareControlledHandover(db, actor, {
+    lines: lines.map((l) => ({
+      lineIdx: l.lineIdx, drug: medicineName(l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId), (l.rxLine as RxLine).drug),
+      scheduleFlag: l.scheduleFlag, ndpsClass: l.ndpsClass, qtyBase: l.qtyBase, rxLine: l.rxLine as RxLine, status: l.status,
+    })),
+    prescriber: doctor === null ? null : { id: doctor.id, displayName: doctor.displayName, registrationNo: doctor.registrationNo ?? null },
+    patientId: d.patientId, patientName: patient.name, patientAddress: patient.addressLine ?? null,
+    dispenseNo: d.dispenseNo ?? d.id, invoiceId, prescriptionId: rx.id, prescriptionVersion: rx.version, pharmacistRegNo,
+  }, input.controlled, now);
+  let controlledRows = 0;
 
   const ledgerEntryIds: string[] = [];
   let h1Rows = 0;
@@ -188,9 +209,12 @@ export async function handOverDispense(
           { lineIdx: line.lineIdx, batchId: line.batchId, batchNo: batch.batchNo, expiryDate: batch.expiryDate, asOf: istDateOf(now) },
         );
       }
+      const custody = controlled?.custody.get(line.lineIdx);
       const { ledgerEntryId } = await consumeReservation(tx, actor, line.reservationId, {
         reason: "consume", refType: "pharmacy_dispense", refId: d.id, patientId: d.patientId, encounterId: d.encounterId, occurredAt: now,
+        ...(custody === undefined ? {} : { custody }),
       });
+      if (custody !== undefined) controlledRows += 1;
       ledgerEntryIds.push(ledgerEntryId);
       const [uoms, regulation] = await Promise.all([itemUomRows(tx, line.itemId), effectiveRegulation(tx, line.itemId, now)]);
       // As printed and as notified: the ledger event carries the terms, never a tax (pharmacy P1).
@@ -217,7 +241,7 @@ export async function handOverDispense(
           id: newId(), dispenseLineId: line.id, dispensedAt: now, patientId: d.patientId,
           patientName: patient.name, patientAddress: patient.addressLine ?? null,
           prescriberName: doctor?.displayName ?? rx.doctorId, prescriberRegNo: doctor?.registrationNo ?? null,
-          drugName: med === undefined ? (line.rxLine as RxLine).drug : `${med.brandName}${med.strengthLabel === null ? "" : ` ${med.strengthLabel}`} ${med.form}`,
+          drugName: medicineName(med, (line.rxLine as RxLine).drug),
           medicineId: line.dispensedMedicineId, batchNo: batch.batchNo, qtyBase: line.qtyBase, unit: item?.baseUom ?? "unit", recordedBy: actor.id,
           pharmacistRegNo,
         });
@@ -235,6 +259,7 @@ export async function handOverDispense(
       payload: {
         dispenseId: d.id, dispenseNo: d.dispenseNo ?? d.id, patientId: d.patientId, encounterId: d.encounterId, handedOverBy: actor.id,
         ledgerEntryIds, h1RegisterRows: h1Rows, identityConfirmedVia, pharmacistRegNo,
+        controlledRegisterRows: controlledRows, witnessId: controlled?.witnessId ?? null,
       },
     }));
   });

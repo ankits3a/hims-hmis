@@ -10,6 +10,9 @@ import { medicinesByIds, saltsByIds, unreviewedSaltIds } from "../formulary";
 import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { istDateOf } from "./config";
+import { controlledStore, controlOf } from "./controlled";
+import { controlledChecklist } from "./controlled-dispense";
+import type { ControlledChecklist } from "./controlled-dispense";
 import { gstCategoryMap } from "./bill";
 import { quotedAmountPaise, quoteItem } from "./quote";
 import type { Quote } from "./quote";
@@ -236,6 +239,9 @@ export type DispenseLineView = {
   substitutionType: string;
   qtyBase: number | null;
   scheduleFlag: string | null;
+  /** PHARMACY P6 — the NDPS Act class (`narcotic` | `psychotropic`) and whether the line is controlled (that, or Schedule X). */
+  ndpsClass: string | null;
+  controlled: boolean;
   orderedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string } | null;
   dispensedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null } | null;
   item: { id: string; code: string; name: string; baseUom: string; uoms: UomRow[] } | null;
@@ -333,6 +339,11 @@ export type DispenseView = {
   patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
   allergies: { substance: string; severity: string | null }[];
   lines: DispenseLineView[];
+  /**
+   * PHARMACY P6 — for a ticket with a controlled line: what the law asks before the hand-over, each ok or
+   * not (`controlledChecklist`) — the counter agent's card. Null when no open line is controlled.
+   */
+  controlled: ControlledChecklist | null;
 };
 
 /**
@@ -411,12 +422,23 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const asked = await authorisationsOf(db, d.id);
   const transcribedBy = rxRow?.transcribedBy ?? null;
   const names = await userNames(db, [d.claimedBy, transcribedBy]);
+  /**
+   * PHARMACY P6 — a controlled line's stock is in the CABINET, not on the counter's shelf: its
+   * availability, batches and price are read there (the pick reserves there too, `pick.ts`).
+   */
+  const isControlled = (l: { scheduleFlag: string | null; ndpsClass: string | null }): boolean => controlOf(l.scheduleFlag, l.ndpsClass).controlled;
+  const cabinet = lines.some((l) => isControlled(l)) ? await controlledStore(db) : undefined;
+  const controlledItems = new Set(lines.filter((l) => isControlled(l) && l.itemId !== null).map((l) => l.itemId as string));
+  const storeOf = (itemId: string): string | null => (controlledItems.has(itemId) ? (cabinet?.id ?? null) : d.storeResourceId);
   const openItems = lines.filter((l) => l.status === "open" && l.itemId !== null).map((l) => l.itemId as string);
   /* PD-D18 — the shelf label for each item, in THIS dispense's store. */
   const locations = d.storeResourceId === null || itemIds.length === 0 ? new Map<string, string>() : await shelfLocationsFor(db, d.storeResourceId, itemIds);
-  const batchesByItem = d.storeResourceId === null || openItems.length === 0
-    ? new Map<string, DispenseLineView["batches"]>()
-    : await sellableBatchesByItem(db, d.storeResourceId, openItems, now);
+  const batchesByItem = new Map<string, DispenseLineView["batches"]>();
+  for (const store of new Set(openItems.map(storeOf))) {
+    if (store === null) continue;
+    const here = openItems.filter((i) => storeOf(i) === store);
+    for (const [k, v] of await sellableBatchesByItem(db, store, here, now)) batchesByItem.set(k, v);
+  }
   /**
    * One quote per ITEM on the ticket, asked once for the whole view (it is polled). A line the shelf
    * cannot fill has none, and is left out of the running total — a number the server adds up, because
@@ -426,7 +448,8 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   if (d.storeResourceId !== null) {
     const gst = await gstCategoryMap(db);
     for (const itemId of [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))]) {
-      const q = await quoteItem(db, gst, d.storeResourceId, itemId, now);
+      const store = storeOf(itemId);
+      const q = store === null ? null : await quoteItem(db, gst, store, itemId, now);
       if (q !== null) quotes.set(itemId, q);
     }
   }
@@ -450,7 +473,8 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       uoms = await itemUomRows(db, item.id);
       const sale = await getSaleItem(db, item.id);
       saleable = sale !== undefined && sale.active;
-      if (d.storeResourceId !== null) {
+      const store = storeOf(item.id);
+      if (store !== null) {
         // The number on the screen is the number the PICK will honour — same exclusions, one
         // definition (`availableQty`). Summing raw balances here counted recalled and EXPIRED
         // batches the pick refuses, so the counter could promise fifty and then refuse twenty.
@@ -460,12 +484,13 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
         // with it and then returns this view must be answered on ITS clock, or the view it returns
         // contradicts the write that produced it: a batch the pick refused as expired would be
         // reported available. Hence `now`, defaulted rather than required.
-        available = await availableQty(db, d.storeResourceId, item.id, now);
+        available = await availableQty(db, store, item.id, now);
       }
     }
     views.push({
       lineIdx: l.lineIdx, rxLine: l.rxLine as RxLine, status: l.status, declinedReason: l.declinedReason,
       substitutionType: l.substitutionType, qtyBase: l.qtyBase, scheduleFlag: l.scheduleFlag,
+      ndpsClass: l.ndpsClass, controlled: isControlled(l),
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
       dispensedMedicine: dm === undefined ? null : { id: dm.id, brandName: dm.brandName, strengthLabel: dm.strengthLabel, form: dm.form, scheduleFlag: dm.scheduleFlag },
       item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms },
@@ -501,6 +526,14 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     patient: { id: summary.id, uhid: summary.uhid, name: summary.name, alias: summary.alias, restricted: summary.restricted },
     allergies: allergies.map((a) => ({ substance: a.substance, severity: (a as { severity?: string | null }).severity ?? null })),
     lines: views,
+    controlled: d.status === "handed_over" || d.status === "cancelled" ? null : await controlledChecklist(db, {
+      lines: views.map((v) => ({
+        lineIdx: v.lineIdx, drug: v.dispensedMedicine?.brandName ?? v.rxLine.drug, scheduleFlag: v.scheduleFlag, ndpsClass: v.ndpsClass,
+        qtyBase: v.qtyBase, rxLine: v.rxLine, status: v.status,
+      })),
+      prescriber: prescriber === null ? null : { id: prescriber.id, displayName: prescriber.displayName, registrationNo: prescriber.registrationNo ?? null },
+      patientAddress: visible.patient.addressLine ?? null,
+    }, now),
   };
 }
 

@@ -244,9 +244,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 85 codes
+## 4. What refuses, and why — all 103 codes
 
-`errors.ts` declares 85, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 103, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -262,7 +262,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `gst_slab_unknown` | `gst_rate_bps` is not nil / 5 / 12 / 18 % | correct the item (§2.2) |
 | `prescription_superseded` | the doctor re-issued the Rx | take the new one |
 | `dispense_not_in_state` · `line_not_open` | the act does not match the row's state | re-read the queue |
-| `schedule_x_not_dispensed_here` | a Schedule X line — 16d's double custody | back to the doctor / the IPD pharmacy |
+| `schedule_x_not_dispensed_here` | a Schedule X line with no current Form 20F licence on file (P6: with one, the line is a controlled line — §16); always at the walk-in and paper counters | §16 — the pharmacist in charge records the Form 20F; until then, back to the doctor |
 | `unresolved_medicine` | the line names no medicine the formulary knows | back to the doctor |
 | `substitution_not_allowed` | the prescriber marked `noSubstitution` | dispense as written, or call the doctor |
 | `consent_required` | a generic substitution without the patient's consent ticked | ask, then tick |
@@ -274,6 +274,15 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `gst_statement_unreadable` | the office's GSTR-2B reconciliation (parity P5) was given a file that is neither the portal's JSON nor a CSV with the supplier GSTIN, invoice number, date and taxable value | §14 — download the JSON from the GST portal, or save the Excel's B2B sheet as CSV |
 | `tally_ledgers_unconfirmed` · `invalid_tally_ledgers` | the Tally export (parity P5) before the accountant confirmed the ledger names; a ledger name left empty or over 100 characters | §15 — Reports → 9 → L, type each name as TallyPrime has it, save |
 | `tally_unbalanced` | a voucher in the Tally export would not balance, so nothing was exported | a defect, not a data-entry mistake — tell IT with the voucher number the message names |
+| `ndps_not_dispensed_here` | a narcotic (NDPS) line with no current RMI recognition (Form 3G) on file; always at the walk-in and paper counters | §16 — record the Form 3G at Office → Controlled → L |
+| `invalid_controlled_licence` · `controlled_store_missing` | a licence with a field or date missing (or recognition beyond three years); the cabinet `PHARM-NDPS` not seeded | §16 — enter it as printed; run `seed:pharmacy` |
+| `controlled_item_not_in_cabinet` | a controlled medicine whose stock item is not stored as `narcotic` | §16 — run `classify:ndps --apply` and move its stock into the cabinet under two keys |
+| `custody_not_permitted` · `witness_not_permitted` · `custody_same_person` | the holder lacks `pharmacy.ndps.custody`; the witness lacks `pharmacy.ndps.witness`; one person as both keys | §16 — a key-holder and a DIFFERENT witness |
+| `witness_not_confirmed` · `witness_throttled` | the witness's username and PIN do not match; too many wrong PINs | the witness types their own; wait out the lock (the shared-terminal PIN counter) |
+| `controlled_prescription_incomplete` · `controlled_qty_exceeds_prescribed` | the prescription lacks the prescriber's registration number or the patient's address; more than dose × frequency × days | fix the doctor's record / the patient's address; ask the prescriber to state the quantity |
+| `retained_prescription_required` · `endorsement_required` · `collected_by_required` | no photo of the prescription on file; Schedule X not endorsed (r.65(11)(c)); who collected it not recorded | §16.3 — the hand-over's controlled step |
+| `end_prescriber_not_trained` · `invalid_end_prescriber` · `unknown_end_prescriber` | the prescriber of a narcotic drug is not on the r.2(ib) list; the entry is out of shape or already there; no such entry | §16 — the pharmacist in charge records the doctor's training |
+| `controlled_act_invalid` | an act at the cabinet that is not the cabinet's, or an NDPS destruction without the Controller's nominee, or a narcotic return without the Controller's approval | §16.4 |
 | `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
 | `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |
@@ -769,3 +778,60 @@ vendor's ledger in Tally equals what the office's payables owe (the test asserts
  </VOUCHER>
 </TALLYMESSAGE>
 ```
+
+## 16. Narcotic, psychotropic and Schedule X drugs — the cabinet under two keys (P6, owner ruling 2026-09-26)
+
+The law, with sources, is in `docs/superpowers/plans/2026-09-26-pharmacy-p6-ndps-schedule-x-law.md`.
+Migration `0135` adds the register (append-only by trigger), the licences, the trained doctors, and the
+witness column on the ledger. `seed:pharmacy` creates the cabinet `PHARM-NDPS` (census
+**`pharmacy_controlled_store_present`**).
+
+**16.1 Before the first narcotic or Schedule X drug moves** (each a census row, RED until done):
+
+1. **The licences** — at `/pharmacy/office` → **Controlled** → **L** (`pharmacy.licences.manage`: the
+   pharmacist in charge, the owner, the MS). *RMI recognition*: the Form 3G number, the State Drugs
+   Controller, the designated doctor, valid from / until (at most three years; the office warns 60 days
+   ahead, the rule's renewal window) — **`pharmacy_ndps_rmi_licence`**. *Schedule X*: the Form 20F number,
+   the licensing authority, the pharmacist named, and the date the **retention fee** falls due —
+   **`pharmacy_schedule_x_licence`**. Without the first, every narcotic line is refused
+   (`ndps_not_dispensed_here`); without the second, every Schedule X line (`schedule_x_not_dispensed_here`).
+2. **The trained doctors** (NDPS Rules r.2(ib)) — same sheet: pick the doctor, type the course and year —
+   **`pharmacy_end_prescriber_recorded`**. A narcotic line from anyone else is refused at the hand-over.
+3. **Two people** — a key-holder (`pharmacy.ndps.custody`: `pharmacy`, `pharmacy_incharge`) and a
+   DIFFERENT witness (`pharmacy.ndps.witness`: those two, the MS, the materials head), each with a **PIN**
+   set at `/admin/users` — **`pharmacy_custodian_pair_held`**.
+4. **Classify** — `pnpm --filter @hmis/core classify:ndps --as <in-charge>` (a dry run) lists the moieties the
+   cited list classifies, every moiety that LOOKS controlled but is not on the list (a pharmacist rules on
+   each — nothing is guessed), the drug items it will store as `narcotic`, and the controlled stock still
+   outside the cabinet. Then `--apply`. Codeine and morphine products are all treated as controlled
+   until a product exemption exists (the stricter reading).
+5. **Move existing stock in** — issue it from the open shelf to `PHARM-NDPS` (a transfer), then receive it
+   at **Controlled → waiting** under two keys. The ledger now refuses a narcotic-cabinet item entering any
+   open store (`controlled_outside_custody`) and anything else entering the cabinet (`not_a_controlled_item`).
+
+**16.2 Receiving** — a GRN for a controlled drug is captured into `PHARM-NDPS` as usual and gate-QC'd;
+**posting** it is the cabinet's act: Controlled → waiting → the GRN → the witness's username and PIN. The
+materials route refuses it (`custody_required`). The register copies the supplier, its drug licences, the
+invoice and date.
+
+**16.3 At the desk** — a controlled line shows its chip (NDPS narcotic / psychotropic / Schedule X), is
+picked from the cabinet, and at hand-over the counter agent's card lists what the law asks: the licence,
+the prescriber's registration number, the patient's address, the quantity against dose × frequency ×
+days (and, for a narcotic drug, the trained doctor). Then the pharmacist: photographs the prescription
+(the pharmacy's copy — Schedule X's duplicate), ticks the endorsement for Schedule X (the pharmacy's name,
+address and date written on it), writes who took it with the relation and the ID shown, and the witness
+types their username and PIN. One register row per line, both keys on it.
+
+**16.4 The day's balance check, destruction, returns** — **C** counts every batch with a witness. A
+difference files a `materials_stock_adjustment` request to the MS at once; once granted it is booked from
+Controlled → waiting, under two keys. **Destruction** goes through Returns → W (the MS approves), then is
+posted from Controlled → waiting with the **officer nominated by the Controller of Drugs** (name,
+designation, order — r.52V(1)) for an NDPS drug. A narcotic drug returned to a supplier needs the
+Controller's prior approval reference (r.52V(3)).
+
+**16.5 The registers** — **R** prints **Form 3H** (NDPS, per drug per day: opening, received from /
+against, dispensed with each patient's UHID × quantity, closing, signature) or the **Schedule X register**
+(r.65(21)) for up to a month; **B** shows the balance per drug per batch (opening + received − issued −
+destroyed ± adjusted = closing) beside the stock ledger's — a ✗ is a movement the register never saw, an
+incident for IT. The register cannot be edited or deleted (the database refuses). Over a calendar year
+the balance gives Form 3-I's figures (due 31 March); the Form 3J estimate (30 November) is the owner's.

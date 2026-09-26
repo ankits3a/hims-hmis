@@ -3,8 +3,8 @@ import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { resources, sodPairs } from "../src/kernel/db/schema";
-import { createStore, requireStore, setStoreCustodianRoles, storeCustodianRoles } from "../src/modules/materials";
-import { OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE, activatePharmacyDefinitions } from "../src/modules/pharmacy";
+import { createStore, isControlledStore, requireStore, setStoreControlled, setStoreCustodianRoles, storeCustodianRoles } from "../src/modules/materials";
+import { CONTROLLED_STORE_CODE, OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE, activatePharmacyDefinitions } from "../src/modules/pharmacy";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../src/kernel/db/client";
 
@@ -44,8 +44,14 @@ async function findStore(exec: Tx, code: string, siteId = "main"): Promise<strin
  * every deploy; it sells nothing until its Form 20/21 licence is recorded.
  */
 const PHARMACY_STORES = [
-  { code: OPD_PHARMACY_STORE_CODE, name: "OPD pharmacy counter" },
-  { code: RETAIL_PHARMACY_STORE_CODE, name: "Walk-in retail pharmacy" },
+  { code: OPD_PHARMACY_STORE_CODE, name: "OPD pharmacy counter", controlled: false },
+  { code: RETAIL_PHARMACY_STORE_CODE, name: "Walk-in retail pharmacy", controlled: false },
+  /**
+   * PHARMACY P6 — the controlled-drug cabinet (NDPS narcotic and psychotropic drugs, Schedule X): a store
+   * whose `controlled` attribute makes the ledger refuse every movement without a witness and write its
+   * register (`materials/controlled.ts`). Created here, and an existing one is (re)marked controlled.
+   */
+  { code: CONTROLLED_STORE_CODE, name: "Controlled-drug cabinet (NDPS / Schedule X)", controlled: true },
 ] as const;
 
 export async function ensurePharmacyCounter(db: Db, actor: Actor): Promise<PharmacySeedResult> {
@@ -57,11 +63,16 @@ export async function ensurePharmacyCounter(db: Db, actor: Actor): Promise<Pharm
     const id = await withTx(db, async (tx) => {
       const existing = await findStore(tx, store.code);
       if (existing !== undefined) { found.push(store.code); return existing; }
-      const { resourceId } = await createStore(tx, actor, { code: store.code, name: store.name });
+      const { resourceId } = await createStore(tx, actor, { code: store.code, name: store.name, ...(store.controlled ? { attributes: { controlled: true } } : {}) });
       created.push(store.code);
       return resourceId;
     });
     storeIds.push(id);
+    if (store.controlled) {
+      await withTx(db, async (tx) => {
+        if (!isControlledStore(await requireStore(tx, id))) await setStoreControlled(tx, actor, id, true);
+      });
+    }
     const set = await withTx(db, async (tx) => {
       const have = storeCustodianRoles(await requireStore(tx, id));
       if (PHARMACY_CUSTODIAN_ROLES.every((r) => have.includes(r))) return false;

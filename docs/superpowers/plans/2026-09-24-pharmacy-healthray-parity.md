@@ -414,6 +414,42 @@ Measured before planning (2 read-only passes, 2026-09-24):
 - Patient SMS/WhatsApp (bill, refill reminder) once a real provider replaces the console stub in `kernel/notify`.
 - IPD/ward issue from the counter when IPD exists (Healthray's "Patient List" modal) — tracked, not built now.
 
+**P6 as built — the law part (2026-09-26, lane `pharmacy-p6-ndps`, migration 0135; owner ruling 2026-09-26: the
+hospital stocks NDPS and Schedule X drugs).** The law, with sources, is `2026-09-26-pharmacy-p6-ndps-schedule-x-law.md`.
+- **The cabinet at the ledger** (materials `controlled.ts`): a store whose attributes say `controlled: true`
+  (`PHARM-NDPS`, seeded) — every movement there carries a witness (`stock_ledger.witness_id`, CHECK ≠ actor) and writes
+  one `controlled_stock_register` row in the same transaction (running batch balance, both keys, the particulars of
+  Form 3H / 3E and r.65(21)); append-only by trigger. A `narcotic`-storage item never enters an open store; nothing
+  else enters the cabinet. GRN post, transfer issue/receive, supplier-return dispatch, write-off post and a check's
+  adjustment each take the witness through an optional `custody` argument; their materials routes are refused at the
+  cabinet.
+- **Classification**: `formulary_salts.ndps_class` from the cited list (the six essential narcotic drugs incl.
+  ethylmorphine, pethidine, tramadol); a medicine takes its strictest moiety. `classify:ndps` (dry run first) also stores
+  controlled items as `narcotic` and reports stock outside the cabinet. Controlled = Schedule X or any NDPS class.
+- **Licences** (`pharmacy_controlled_licences`: `ndps_rmi` Form 3G ≤ 3 years, `schedule_x` Form 20F to the retention-fee
+  date) and **trained prescribers** (`pharmacy_end_prescribers`, r.2(ib)). The R-3 refusal stays where the licence is
+  missing/lapsed and names it (`schedule_x_not_dispensed_here`, new `ndps_not_dispensed_here`), at claim, verify and
+  hand-over; the walk-in and paper counters refuse both always.
+- **The desk**: a controlled line is picked from the cabinet; `DispenseView.controlled` is the agent's checklist; the
+  hand-over needs the custodian's key, the prescriber's registration number, the patient's address, a computable
+  quantity not exceeded, a retained prescription (`POST …/retained-prescription`, a `consult_prescription` document),
+  the Schedule X endorsement, who collected it, and the witness's username + PIN (PIN throttle, SoD
+  `narcotics_issuer_witness`). No substitution of Schedule X (r.65(11A)).
+- **The office's Controlled side** (`?view=controlled`, a strip on every other side): needs-you-today, licences (L),
+  the day's balance check (C: a `stock_counts` row of kind `controlled_check`; a variance files the MS's
+  `materials_stock_adjustment` request), acts under two keys (the NDPS destruction needs the Controller's nominee,
+  r.52V(1); a narcotic return the Controller's approval ref, r.52V(3)), the registers (R: Form 3H, the Schedule X
+  register, Form 3E; ≤ 31 days; PHI read logged as `pharmacy.controlled_register`) and the balance (B), reconciled to
+  the ledger.
+- Permissions (defaults): `pharmacy.ndps.custody` (pharmacy, in-charge), `pharmacy.ndps.witness` (those, MS, materials
+  head), `pharmacy.licences.manage` (in-charge, owner, MS). Census: `pharmacy_controlled_store_present` (G2),
+  `pharmacy_ndps_rmi_licence`, `pharmacy_schedule_x_licence`, `pharmacy_end_prescriber_recorded` (G3),
+  `pharmacy_custodian_pair_held` (G4). Runbook §16.
+- Deferred: product-level exemptions (low-strength codeine/morphine); the patient's signature in Form 3E; the r.52U
+  holding cap; home care (r.52W); a scanned licence copy; the vendor's postal address (the register shows the GSTIN);
+  the manufacturer column (not in the catalogue); walk-in Schedule X; patient returns of controlled drugs; the doctor's
+  stock chip reading the cabinet; item merge and SMS (the rest of P6).
+
 ## Owner rulings needed (money / procurement / law only — everything else DECIDED as top-hospital practice)
 Carried from the 2026-09-19 back-office report §7:
 - who may raise and approve a PO, and to what value;

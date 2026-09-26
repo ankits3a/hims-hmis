@@ -155,6 +155,43 @@ export const PHARMACY_ERROR_CODES = [
   "invalid_tally_ledgers",
   /** A voucher would not balance: a defect, and the whole file is refused. */
   "tally_unbalanced",
+  // ── PHARMACY P6 — narcotic, psychotropic and Schedule X drugs under the law (`controlled.ts`) ──
+  /** A narcotic drug (NDPS) line without a current RMI recognition (Form 3G) — the refusal names the licence. */
+  "ndps_not_dispensed_here",
+  /** A controlled-drug licence out of shape: a number, form, authority, holder or date missing, or recognition beyond three years. */
+  "invalid_controlled_licence",
+  /** The controlled-drug cabinet `PHARM-NDPS` does not exist (seed:pharmacy creates it). */
+  "controlled_store_missing",
+  /** A controlled medicine whose stock item is not kept in the narcotic cabinet (its storage class is not `narcotic`). */
+  "controlled_item_not_in_cabinet",
+  /** The person holding the cabinet lacks `pharmacy.ndps.custody`. */
+  "custody_not_permitted",
+  /** The witness's username and PIN did not match an active member of staff. */
+  "witness_not_confirmed",
+  /** Too many wrong PINs for that witness: wait, as at the shared-terminal switch. */
+  "witness_throttled",
+  /** The witness lacks `pharmacy.ndps.witness`. */
+  "witness_not_permitted",
+  /** The holder named as the witness: one person cannot be two keys. */
+  "custody_same_person",
+  /** A controlled line's prescription lacks what the law asks: the prescriber's registration number, the patient's address, a stated quantity. */
+  "controlled_prescription_incomplete",
+  /** More than the prescription states (dose × frequency × days). */
+  "controlled_qty_exceeds_prescribed",
+  /** The pharmacy's retained copy of the prescription is not on file (Schedule X's duplicate, D&C r.65(9)(a)). */
+  "retained_prescription_required",
+  /** Who took the controlled drug, and the identity they showed, is not recorded. */
+  "collected_by_required",
+  /** Schedule X: the pharmacist has not endorsed the prescription with the seller's name, address and date (r.65(11)(c)). */
+  "endorsement_required",
+  /** A narcotic line whose prescriber is not on the list of doctors trained under NDPS Rules r.2(ib). */
+  "end_prescriber_not_trained",
+  /** A trained-prescriber entry out of shape, a doctor already on the list, or not a doctor here. */
+  "invalid_end_prescriber",
+  /** No such current trained-prescriber entry. */
+  "unknown_end_prescriber",
+  /** A witnessed act at the cabinet out of shape: not the cabinet's, the Controller's nominee or approval missing. */
+  "controlled_act_invalid",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -256,6 +293,24 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   tally_ledgers_unconfirmed: 409,
   invalid_tally_ledgers: 400,
   tally_unbalanced: 500,
+  ndps_not_dispensed_here: 409,
+  invalid_controlled_licence: 400,
+  controlled_store_missing: 409,
+  controlled_item_not_in_cabinet: 409,
+  custody_not_permitted: 403,
+  witness_not_confirmed: 403,
+  witness_throttled: 429,
+  witness_not_permitted: 403,
+  custody_same_person: 409,
+  controlled_prescription_incomplete: 409,
+  controlled_qty_exceeds_prescribed: 409,
+  retained_prescription_required: 409,
+  collected_by_required: 409,
+  endorsement_required: 409,
+  end_prescriber_not_trained: 409,
+  invalid_end_prescriber: 400,
+  unknown_end_prescriber: 404,
+  controlled_act_invalid: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

@@ -16,8 +16,8 @@ import {
   LAB_DEF_KEYS, RELEASE_UNPAID_APPROVAL_TYPE, analytesFor, listOrderables, rangesFor,
 } from "../src/modules/lab";
 import {
-  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, RETAIL_PHARMACY_STORE_CODE, currentRegistration, gstSlabPlan,
-  listSaleItems, renewalDaysLeft, retailLicenceState, tallyLedgersConfirmed,
+  OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, RETAIL_PHARMACY_STORE_CODE, anyEndPrescriber, controlledLicenceStates, controlledStore,
+  currentRegistration, custodianPairHeld, gstSlabPlan, listSaleItems, renewalDaysLeft, retailLicenceState, tallyLedgersConfirmed,
 } from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
@@ -906,6 +906,55 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       gate: "G3", code: "pharmacy_tally_ledgers_confirmed",
       check: tallyLedgersConfirmed,
       fix: "§15: the accountant opens /pharmacy/office/reports → 9 Tally export → L, types each ledger as TallyPrime names it, and saves",
+    },
+    {
+      /**
+       * PHARMACY P6 — green when `seed:pharmacy` has created the controlled-drug cabinet `PHARM-NDPS` and
+       * marked it controlled (the deploy's act). Without it no narcotic or Schedule X drug can be received,
+       * picked or handed over: the ledger holds them nowhere else.
+       */
+      gate: "G2", code: "pharmacy_controlled_store_present",
+      check: async (db) => (await controlledStore(db)) !== undefined,
+      fix: "§16: done by seed:pharmacy on every deploy — run: pnpm --filter @hmis/core seed:pharmacy",
+    },
+    {
+      /**
+       * PHARMACY P6 — RED until the hospital's recognition as a Recognised Medical Institution (NDPS Rules
+       * r.52-O, Form 3G) is recorded and covers today, and again from the day after it ends. Until then every
+       * narcotic line is refused (`ndps_not_dispensed_here`).
+       */
+      gate: "G3", code: "pharmacy_ndps_rmi_licence",
+      check: async (db) => (await controlledLicenceStates(db, new Date())).ndps_rmi.state === "current",
+      fix: "§16: the pharmacist in charge (or the owner, or the MS) records the Form 3G recognition at /pharmacy/office → Controlled → L — narcotic drugs stay refused until it is current",
+    },
+    {
+      /**
+       * PHARMACY P6 — RED until the Schedule X retail licence (D&C Rules r.61(3), Form 20F) is recorded and
+       * covers today (to the retention-fee date). Until then every Schedule X line is refused, as it always was.
+       */
+      gate: "G3", code: "pharmacy_schedule_x_licence",
+      check: async (db) => (await controlledLicenceStates(db, new Date())).schedule_x.state === "current",
+      fix: "§16: record the Form 20F licence at /pharmacy/office → Controlled → L — Schedule X stays refused until it is current",
+    },
+    {
+      /**
+       * PHARMACY P6 — green once at least one doctor's training in pain relief and palliative care or opioid
+       * substitution therapy is on file (NDPS Rules r.2(ib)). Red until then: no narcotic line can be handed
+       * over, because no prescriber here is one the rules recognise.
+       */
+      gate: "G3", code: "pharmacy_end_prescriber_recorded",
+      check: anyEndPrescriber,
+      fix: "§16: the pharmacist in charge records each trained doctor at /pharmacy/office → Controlled → L (the course and year from the certificate)",
+    },
+    {
+      /**
+       * PHARMACY P6 — green when an ACTIVE person holds `pharmacy.ndps.custody` and a DIFFERENT active person
+       * holds `pharmacy.ndps.witness`: every movement at the cabinet is two people. Red until both seats are
+       * filled — with one, nothing leaves the cabinet.
+       */
+      gate: "G4", code: "pharmacy_custodian_pair_held",
+      check: custodianPairHeld,
+      fix: "§16: assign `pharmacy_incharge` or `pharmacy` (the key) and a second person with `pharmacy.ndps.witness` (a pharmacist, the MS or the materials head) at /admin/users",
     },
   ],
 

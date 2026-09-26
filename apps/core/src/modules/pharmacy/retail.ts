@@ -11,7 +11,7 @@ import {
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { getInvoice, issueInvoice, previewInvoice, withIdempotency } from "../billing";
-import { medicinesByIds, resolveDrugTexts } from "../formulary";
+import { medicinesByIds, ndpsClassByMedicine, resolveDrugTexts } from "../formulary";
 import {
   MaterialsError, availableQty, availableQtyByItem, balances, fefoPick, findStoreByCode, getBatch, itemsByIds, postMovements,
   requireStore, resolveBarcode, returnedQtyByRef,
@@ -347,6 +347,8 @@ async function planLines(db: Db, storeId: string, lines: readonly RetailLineInpu
   if (lines.length > 50) throw new PharmacyError("qty_required", "a walk-in sale carries at most 50 lines");
   const shelf = await shelfByMedicine(db);
   const medicines = await medicinesByIds(db, lines.map((l) => l.medicineId));
+  // PHARMACY P6 — a narcotic or psychotropic drug (NDPS) is never sold here either: it leaves the cabinet only at the OPD counter.
+  const ndps = await ndpsClassByMedicine(db, lines.map((l) => l.medicineId));
   const plan: PlannedLine[] = [];
   for (const [lineIdx, line] of lines.entries()) {
     const n = String(lineIdx + 1);
@@ -363,8 +365,16 @@ async function planLines(db: Db, storeId: string, lines: readonly RetailLineInpu
     if (refused(scheduleFlag)) {
       throw new PharmacyError(
         "schedule_x_not_dispensed_here",
-        `line ${n}: ${medicine.brandName} is Schedule ${String(scheduleFlag)} — not sold at the retail counter until double custody (16d)`,
+        `line ${n}: ${medicine.brandName} is Schedule ${String(scheduleFlag)} — never sold at the walk-in counter or entered from a paper sheet; it leaves the controlled-drug cabinet only at the OPD counter, under the Form 20F licence and two keys`,
         { lineIdx, scheduleFlag },
+      );
+    }
+    const ndpsClass = ndps.get(medicine.id) ?? null;
+    if (ndpsClass !== null) {
+      throw new PharmacyError(
+        "ndps_not_dispensed_here",
+        `line ${n}: ${medicine.brandName} is a ${ndpsClass} drug under the NDPS Act — it leaves the controlled-drug cabinet only at the OPD counter, against this hospital's prescription, under two keys`,
+        { lineIdx, ndpsClass },
       );
     }
     const itemId = entry.item.id;

@@ -1,8 +1,9 @@
 import { inArray } from "drizzle-orm";
 import { opdPrescriptions } from "../../kernel/db/schema";
-import { medicinesByIds, resolveDrugTexts } from "../formulary";
+import { medicinesByIds, ndpsClassByMedicine, resolveDrugTexts } from "../formulary";
 import { availableQtyByItem, findStoreByCode } from "../materials";
-import { OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS } from "./config";
+import { OPD_PHARMACY_STORE_CODE } from "./config";
+import { controlOf, controlledLicenceStates, controlledStore } from "./controlled";
 import { prefillQtyBase } from "./qty";
 import { shelfByMedicine } from "./shelf";
 import { matchesFor, shelfIndex, targetOf } from "./auto-match";
@@ -79,6 +80,22 @@ export async function shelfChecks(
     ...[...matchesOf.values()].flat(),
   ];
   const available = store === undefined || itemIds.length === 0 ? new Map<string, number>() : await availableQtyByItem(db, store.id, [...new Set(itemIds)], now);
+  /*
+    PHARMACY P6 — a controlled medicine (Schedule X, or an NDPS class) is judged as the claim will judge it:
+    refused while the licence it needs is not current (the `scheduleX` mark, "not dispensed here"), and
+    otherwise counted against the CABINET's stock, where it is kept and picked.
+  */
+  const ndps = await ndpsClassByMedicine(db, medicineIds);
+  const controlledIds = medicineIds.filter((m) => controlOf(medicines.get(m)?.scheduleFlag, ndps.get(m)).controlled);
+  const licences = controlledIds.length === 0 ? null : await controlledLicenceStates(db, now);
+  const cabinet = controlledIds.length === 0 ? undefined : await controlledStore(db);
+  const cabinetItems = controlledIds.map((m) => shelf.get(m)?.item.id).filter((i): i is string => i !== undefined);
+  const inCabinet = cabinet === undefined || cabinetItems.length === 0 ? new Map<string, number>() : await availableQtyByItem(db, cabinet.id, cabinetItems, now);
+  const refusedByLaw = (medicineId: string): boolean => {
+    const c = controlOf(medicines.get(medicineId)?.scheduleFlag, ndps.get(medicineId));
+    if (!c.controlled || licences === null) return false;
+    return (c.scheduleX && licences.schedule_x.state !== "current") || (c.ndpsClass === "narcotic" && licences.ndps_rmi.state !== "current");
+  };
 
   for (const t of tickets) {
     const lines = linesByRx.get(t.prescriptionId) ?? [];
@@ -93,12 +110,12 @@ export async function shelfChecks(
       }
       const medicineId = medicineOf(l);
       if (medicineId === null) { check.unplaceable += 1; continue; }
-      const flag = medicines.get(medicineId)?.scheduleFlag ?? null;
-      if (flag !== null && (REFUSED_FLAGS as readonly string[]).includes(flag)) { check.scheduleX = true; continue; }
+      if (refusedByLaw(medicineId)) { check.scheduleX = true; continue; }
       const entry = shelf.get(medicineId);
       if (entry === undefined) { check.notStocked.push(l.drug); continue; }
       const want = prefillQtyBase(l) ?? 1;
-      if ((available.get(entry.item.id) ?? 0) < want) check.short.push(l.drug);
+      const onHand = controlledIds.includes(medicineId) ? inCabinet : available;
+      if ((onHand.get(entry.item.id) ?? 0) < want) check.short.push(l.drug);
       else check.onShelf += 1;
     }
     out.set(t.dispenseId, check);

@@ -4,11 +4,12 @@ import { appendEvent } from "../../kernel/events/append";
 import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { startInstance, transition } from "../../kernel/workflow/instances";
-import { medicinesByIds, resolveDrugTexts } from "../formulary";
+import { medicinesByIds, ndpsClassByMedicine, resolveDrugTexts } from "../formulary";
 import { findStoreByCode, listItems } from "../materials";
 import { findVisitByToken, getPrescription, getVisit, listVisits, verifyPrescriptionQr } from "../opd";
 import { getPatientSummaries, searchPatients, verifyQrScan } from "../patients";
-import { OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { OPD_PHARMACY_STORE_CODE, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { dispenseClaimed, lineMatched } from "./events";
 import { MATCH_ACTOR, chooseMatch, matchesFor, shelfIndex, targetOf } from "./auto-match";
 import type { Matched } from "./auto-match";
@@ -182,6 +183,8 @@ export async function claimDispense(
   ].filter((x): x is string => x !== null));
   const drugItems = await listItems(db, { class: "drug", active: true });
   const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
+  // PHARMACY P6 — the NDPS class beside the schedule flag: together they say which lines are controlled.
+  const ndps = await ndpsClassByMedicine(db, [...medicines.keys()]);
 
   const laid = lines.map((line, lineIdx) => {
     const ordered = line.medicineId ?? null;
@@ -189,21 +192,22 @@ export async function claimDispense(
     const dispensedMedicineId = ordered ?? viaText;
     const med = dispensedMedicineId === null ? undefined : medicines.get(dispensedMedicineId);
     const scheduleFlag = med?.scheduleFlag ?? null;
-    if (scheduleFlag !== null && (REFUSED_FLAGS as readonly string[]).includes(scheduleFlag)) {
-      throw new PharmacyError(
-        "schedule_x_not_dispensed_here",
-        `line ${String(lineIdx + 1)} (${line.drug}) is Schedule ${scheduleFlag} — not dispensed at the OPD counter until double custody (16d)`,
-        { lineIdx, scheduleFlag },
-      );
-    }
+    const ndpsClass = dispensedMedicineId === null ? null : (ndps.get(dispensedMedicineId) ?? null);
     const item = dispensedMedicineId === null ? undefined : itemByMedicine.get(dispensedMedicineId);
     return {
       id: newId(), dispenseId: d.id, lineIdx, rxLine: line,
       orderedMedicineId: ordered, dispensedMedicineId,
       substitutionType: (ordered === null && viaText !== null ? "resolved" : "none") as "resolved" | "none",
-      itemId: (item?.id ?? null) as string | null, qtyBase: prefillQtyBase(line), scheduleFlag: scheduleFlag as string | null, status: "open" as const,
+      itemId: (item?.id ?? null) as string | null, qtyBase: prefillQtyBase(line), scheduleFlag: scheduleFlag as string | null,
+      ndpsClass: ndpsClass as string | null, status: "open" as const,
     };
   });
+  /**
+   * R-3 (owner ruling 2026-09-02) AS PHARMACY P6 LEFT IT: a Schedule X line was refused here outright
+   * "until double custody"; the custody now exists, so the refusal stands exactly where the LICENCE is
+   * missing or lapsed — Form 20F for Schedule X, RMI recognition for a narcotic drug — and names it.
+   */
+  await assertControlledLinesAllowed(db, laid.map((l) => ({ lineIdx: l.lineIdx, drug: l.rxLine.drug, scheduleFlag: l.scheduleFlag, ndpsClass: l.ndpsClass })), now);
   /*
     2026-09-23 — a line the doctor named no brand on (free words, or a formulary generic) is filled
     with the stocked brand of exactly its composition (`auto-match.ts`), before the line is written,
@@ -222,7 +226,7 @@ export async function claimDispense(
       Object.assign(l, { dispensedMedicineId: m.medicineId, itemId: m.itemId, substitutionType: "resolved", scheduleFlag: m.scheduleFlag ?? l.scheduleFlag });
     }
   }
-  const scheduled = laid.some((l) => l.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(l.scheduleFlag));
+  const scheduled = laid.some((l) => (l.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(l.scheduleFlag)) || controlOf(l.scheduleFlag, l.ndpsClass).controlled);
 
   await withTx(db, async (tx) => {
     const won = await tx.update(pharmacyDispenses)
