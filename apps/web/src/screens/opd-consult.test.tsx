@@ -1595,7 +1595,10 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
     expect(document.querySelector(".print-doc")).toHaveTextContent("CRK MEDICAL COLLEGE & HOSPITAL");
     expect(screen.getByRole("button", { name: "Print prescription" })).toBeInTheDocument();
-  });
+    // PHARMACY P6 (patient messages) — the whole issue → 409 → override → re-post → print flow, measured at
+    // 2836 ms alone and 4862–5055 ms under the full suite's load (one red at 5055 on 2026-09-26): a flow test at
+    // the default 5 s cliff. Given the `vitals-bay-stories` sitting's budget; no assertion changes.
+  }, 15_000);
 
   /**
    * The ophthal line (board "Ophthal", 2026-09-23). Both POST bodies are built field by field, so a
