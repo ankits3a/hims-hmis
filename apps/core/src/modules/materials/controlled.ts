@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { controlledStockRegister, items, resources, users } from "../../kernel/db/schema";
 import { updateResource } from "../../kernel/resources/registry";
@@ -6,6 +6,7 @@ import { medicinesByIds, ndpsClassByMedicine } from "../formulary";
 import { TRANSIT_STORE_CODE } from "./config";
 import { MaterialsError } from "./errors";
 import { MATERIALS_RESOURCE_KINDS } from "./kinds";
+import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Tx } from "../../kernel/db/client";
 
@@ -39,8 +40,7 @@ export function isControlledStore(store: { attributes: unknown }): boolean {
 
 /** Marks a store as (or no longer as) a controlled cabinet. The setter MERGES, keeping every other attribute. */
 export async function setStoreControlled(tx: Tx, actor: Actor, storeId: string, controlled: boolean): Promise<void> {
-  const [store] = await tx.select().from(resources).where(eq(resources.id, storeId));
-  if (store === undefined || store.kind !== "store") throw new MaterialsError("unknown_store", `resource ${storeId} is not a store`);
+  const store = await requireStore(tx, storeId);
   await updateResource(tx, actor, MATERIALS_RESOURCE_KINDS, storeId, {
     attributes: { ...(store.attributes as Record<string, unknown>), [CONTROLLED_ATTRIBUTE]: controlled },
   });

@@ -83,6 +83,8 @@ const CENSUS: Record<string, string[]> = {
     "actor_id", "batch_id", "cost_center", "encounter_id", "event_id", "id", "item_id",
     "occurred_at", "patient_id", "qty_delta", "reason", "recorded_at", "ref_id", "ref_type",
     "resource_id", "seq",
+    // PHARMACY P6 — the second key at the controlled cabinet (null everywhere else).
+    "witness_id",
   ],
   stock_balances: [
     "batch_id", "item_id", "qty_frozen", "qty_on_hand", "qty_reserved", "resource_id", "updated_at",

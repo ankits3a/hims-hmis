@@ -277,10 +277,10 @@ export async function isEndPrescriber(db: Db | Tx, doctorId: string): Promise<bo
 
 export type ControlledLine = { lineIdx: number; drug: string; scheduleFlag: string | null; ndpsClass: string | null };
 
-function licenceSentence(s: ControlledLicenceState): string {
-  if (s.state === "missing") return `no ${s.name} is on file`;
-  if (s.state === "not_yet_valid") return `${s.name} ${s.licence!.licenceNo} is valid only from ${s.licence!.validFrom}`;
-  return `${s.name} ${s.licence!.licenceNo} lapsed on ${s.licence!.validUntil}`;
+function stateSentence(s: ControlledLicenceState): string {
+  if (s.state === "missing") return "none is on file";
+  if (s.state === "not_yet_valid") return `licence ${s.licence!.licenceNo} is valid only from ${s.licence!.validFrom}`;
+  return `licence ${s.licence!.licenceNo} lapsed on ${s.licence!.validUntil}`;
 }
 
 /**
@@ -288,7 +288,8 @@ function licenceSentence(s: ControlledLicenceState): string {
  * (`schedule_x_not_dispensed_here`) unless the Form 20F licence covers today; a narcotic line
  * (`ndps_not_dispensed_here`) unless the RMI recognition does. Asked at the claim, at the verify and at
  * the hand-over — every gate that can name a medicine (the R-3 rule). A psychotropic line needs no NDPS
- * licence (r.66: the hospital's drug licence covers it) but is still handed over under two keys.
+ * licence (r.66: the hospital's drug licence covers it) but is still handed over under two keys. The
+ * `detail` is the one R-3 always carried; the sentence names the licence and why it does not cover today.
  */
 export async function assertControlledLinesAllowed(db: Db | Tx, lines: readonly ControlledLine[], now: Date): Promise<void> {
   const controlled = lines.filter((l) => controlOf(l.scheduleFlag, l.ndpsClass).controlled);
@@ -300,15 +301,15 @@ export async function assertControlledLinesAllowed(db: Db | Tx, lines: readonly 
     if (c.scheduleX && states.schedule_x.state !== "current") {
       throw new PharmacyError(
         "schedule_x_not_dispensed_here",
-        `line ${n} (${l.drug}) is Schedule X, dispensed only under ${LICENCE_NAMES.schedule_x} — ${licenceSentence(states.schedule_x)}; the pharmacist in charge records it at the pharmacy office → Controlled`,
-        { lineIdx: l.lineIdx, scheduleFlag: l.scheduleFlag, licence: "schedule_x", licenceState: states.schedule_x.state },
+        `line ${n} (${l.drug}) is Schedule X, dispensed only under a current Schedule X retail drug licence (Form 20F, D&C Rules r.61(3)) — ${stateSentence(states.schedule_x)}; the pharmacist in charge records it at the pharmacy office → Controlled`,
+        { lineIdx: l.lineIdx, scheduleFlag: l.scheduleFlag },
       );
     }
     if (c.ndpsClass === "narcotic" && states.ndps_rmi.state !== "current") {
       throw new PharmacyError(
         "ndps_not_dispensed_here",
-        `line ${n} (${l.drug}) is a narcotic drug under the NDPS Act, dispensed only by a hospital holding ${LICENCE_NAMES.ndps_rmi} — ${licenceSentence(states.ndps_rmi)}; the pharmacist in charge records it at the pharmacy office → Controlled`,
-        { lineIdx: l.lineIdx, ndpsClass: c.ndpsClass, licence: "ndps_rmi", licenceState: states.ndps_rmi.state },
+        `line ${n} (${l.drug}) is a narcotic drug under the NDPS Act, dispensed only by a hospital holding current recognition as a Recognised Medical Institution (Form 3G, NDPS Rules r.52-O) — ${stateSentence(states.ndps_rmi)}; the pharmacist in charge records it at the pharmacy office → Controlled`,
+        { lineIdx: l.lineIdx, ndpsClass: c.ndpsClass },
       );
     }
   }

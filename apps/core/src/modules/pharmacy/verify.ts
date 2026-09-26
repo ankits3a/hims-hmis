@@ -345,11 +345,15 @@ export async function verifyDispense(
      * The law is asked at every gate that can name a medicine.
      *
      * PHARMACY P6 — "asked" now means the licence: a Schedule X or narcotic line is refused, naming the
-     * licence, unless it is current (`assertControlledLinesAllowed`, after the loop, over every line). A
+     * licence, unless it is current (`assertControlledLinesAllowed`, per line, here). A
      * Schedule X line is never substituted in or out (D&C Rules r.65(11A)), and a controlled medicine is
      * dispensed only from an item kept in the narcotic cabinet.
      */
     const control = controlOf(scheduleFlag, ndpsClass);
+    // The licence first (the refusal R-3 always gave), then what the law adds once it is held.
+    if (control.controlled) {
+      await assertControlledLinesAllowed(db, [{ lineIdx: line.lineIdx, drug: med?.brandName ?? rxLine.drug, scheduleFlag, ndpsClass }], now);
+    }
     if (substitution !== null && (control.scheduleX || medicines.get(substitution.from)?.scheduleFlag === "X")) {
       throw new PharmacyError(
         "substitution_not_allowed",
@@ -367,9 +371,6 @@ export async function verifyDispense(
     settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, resolvedHere, scheduleFlag, ndpsClass });
   }
   if (settled.length === 0) throw new PharmacyError("nothing_to_dispense", "every line is declined — cancel the dispense instead");
-  await assertControlledLinesAllowed(db, settled.map((s) => ({
-    lineIdx: s.line.lineIdx, drug: medicines.get(s.dispensedMedicineId)?.brandName ?? (s.line.rxLine as RxLine).drug, scheduleFlag: s.scheduleFlag, ndpsClass: s.ndpsClass,
-  })), now);
 
   // ── D9: the re-check, on what will be handed over ──
   const checkLines: RxLine[] = settled.map((s) => ({ ...(s.line.rxLine as RxLine), medicineId: s.dispensedMedicineId, drug: medicines.get(s.dispensedMedicineId)?.brandName ?? (s.line.rxLine as RxLine).drug }));
