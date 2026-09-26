@@ -1,0 +1,41 @@
+code,name_en,name_hi,discipline,specimen_type,container,min_volume_ml,bench_key,tat_minutes_routine,tat_minutes_stat,requires_fasting,consent_required,sensitive,notifiable,analyte_codes,price_paise
+PRL,Prolactin,,biochemistry,serum,sst,2,IMMUNO-1,480,,false,false,false,false,PRL,55000
+LH,Luteinising hormone (LH),,biochemistry,serum,sst,2,IMMUNO-1,480,,false,false,false,false,LH,45000
+FSH,Follicle-stimulating hormone (FSH),,biochemistry,serum,sst,2,IMMUNO-1,480,,false,false,false,false,FSH,45000
+E2,Oestradiol (E2),,biochemistry,serum,sst,2,IMMUNO-1,480,,false,false,false,false,E2,65000
+TESTO,"Testosterone, total",,biochemistry,serum,sst,2,IMMUNO-1,480,,false,false,false,false,TESTO,70000
+CORT,"Cortisol, morning (8-9 am)",,biochemistry,serum,sst,2,IMMUNO-1,480,,false,false,false,false,CORT_AM,65000
+INSULIN_F,"Insulin, fasting",,biochemistry,serum,sst,2,IMMUNO-1,480,,true,false,false,false,INS_F,70000
+AMH,Anti-Mullerian hormone (AMH),,biochemistry,serum,sst,2,IMMUNO-1,1440,,false,false,false,false,AMH,220000
+CA125,CA-125 (ovarian tumour marker),,biochemistry,serum,sst,2,IMMUNO-1,1440,,false,false,false,false,CA125,110000
+CEA,Carcinoembryonic antigen (CEA),,biochemistry,serum,sst,2,IMMUNO-1,1440,,false,false,false,false,CEA,90000
+AFP,Alpha-fetoprotein (AFP),,biochemistry,serum,sst,2,IMMUNO-1,1440,,false,false,false,false,AFP,90000
+CA199,CA 19-9,,biochemistry,serum,sst,2,IMMUNO-1,1440,,false,false,false,false,CA199,120000
+PTH,"Parathyroid hormone, intact (PTH)",,biochemistry,plasma,edta,2,IMMUNO-1,1440,,false,false,false,false,PTH,150000
+IGE,"IgE, total",,biochemistry,serum,sst,2,IMMUNO-1,1440,,false,false,false,false,IGE,90000
+HSCRP,hs-CRP (cardiac risk),,biochemistry,serum,sst,1,BIOCHEM-1,240,,false,false,false,false,HSCRP,60000
+HCY,Homocysteine,,biochemistry,serum,sst,2,IMMUNO-1,1440,,true,false,false,false,HCY,120000
+NTPROBNP,NT-proBNP,,biochemistry,serum,sst,2,IMMUNO-1,240,60,false,false,false,false,NTBNP,250000
+G6PD,"G6PD, quantitative",,haematology,whole_blood,edta,2,HAEM-1,480,,false,false,false,false,G6PD,60000
+HBELEC,Haemoglobin HPLC (thalassaemia screen),,haematology,whole_blood,edta,2,HAEM-1,2880,,false,false,false,false,HBA2;HBF;HBELEC_INT,110000
+DCT,Direct Coombs test (DAT),,haematology,whole_blood,edta,2,HAEM-1,240,60,false,false,false,false,DCT,35000
+ICT,Indirect Coombs test (antibody screen),,haematology,serum,sst,2,HAEM-1,240,,false,false,false,false,ICT,40000
+BTCT,Bleeding time and clotting time,,haematology,whole_blood,citrate,,COAG-1,60,30,false,false,false,false,BT;CT,15000
+GTT,"Glucose tolerance test, 75 g (3 samples)",,biochemistry,plasma,fluoride,2,BIOCHEM-1,180,,true,false,false,false,GTT_0;GTT_60;GTT_120,35000
+UPROT24,"Urine protein, 24 hours",,biochemistry,urine,urine_container,,BIOCHEM-1,480,,false,false,false,false,UVOL24;UPROT24,35000
+CA_ION,"Calcium, ionised",,biochemistry,whole_blood,edta,1,BIOCHEM-1,120,30,false,false,false,false,CA_ION,45000
+HBEAG,Hepatitis B e antigen (HBeAg),,serology,serum,sst,2,SERO-1,1440,,false,false,false,false,HBEAG,65000
+ANTIHBS,Anti-HBs antibody (immunity),,serology,serum,sst,2,SERO-1,1440,,false,false,false,false,ANTIHBS,80000
+HAVM,Hepatitis A IgM,,serology,serum,sst,2,SERO-1,1440,,false,false,false,true,HAV_IGM,90000
+HEVM,Hepatitis E IgM,,serology,serum,sst,2,SERO-1,1440,,false,false,false,true,HEV_IGM,95000
+TYPHIDOT,Typhoid IgM (Salmonella typhi),,serology,serum,sst,2,SERO-1,240,,false,false,false,true,TYPHI_IGM,50000
+CHIK,Chikungunya IgM,,serology,serum,sst,2,SERO-1,1440,,false,false,false,true,CHIK_IGM,90000
+SCRUB,Scrub typhus IgM,,serology,serum,sst,2,SERO-1,1440,,false,false,false,true,SCRUB_IGM,95000
+LEPTO,Leptospira IgM,,serology,serum,sst,2,SERO-1,1440,,false,false,false,true,LEPTO_IGM,95000
+ANA,Antinuclear antibody (ANA),,serology,serum,sst,2,SERO-1,1440,,false,false,false,false,ANA,90000
+CCP,Anti-CCP antibody,,serology,serum,sst,2,IMMUNO-1,1440,,false,false,false,false,CCP,140000
+HPYLORI,H. pylori stool antigen,,clinical_pathology,stool,stool_container,,CP-1,240,,false,false,false,false,HPYL_AG,90000
+FERTILITY_F,Female fertility profile,,biochemistry,serum,sst,4,IMMUNO-1,1440,,false,false,false,false,LH;FSH;PRL;E2;AMH,380000
+ARTHRITIS,Arthritis profile,,serology,serum,sst,4,SERO-1,1440,,false,false,false,false,RAF;ANA;CCP;URIC;CRP,260000
+FEVER_ADV,Advanced fever panel (monsoon),,serology,serum,sst,4,SERO-1,1440,,false,false,false,true,DEN_NS1;DEN_IGM;DEN_IGG;MP_AG;TYPHI_IGM;CHIK_IGM;SCRUB_IGM;LEPTO_IGM,420000
+HEP_PANEL,Viral hepatitis panel,,serology,serum,sst,4,SERO-1,1440,,false,false,false,true,HBSAG;HBEAG;ANTIHBS;HCV;HAV_IGM;HEV_IGM,390000

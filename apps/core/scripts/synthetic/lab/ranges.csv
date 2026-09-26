@@ -1,0 +1,62 @@
+analyte_code,sex,age_min_days,age_max_days,low,high,text,critical_low,critical_high,source,effective_from
+PRL,female,6570,36500,4.8,23.3,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+PRL,male,6570,36500,4.0,15.2,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+LH,female,6570,36500,,,Follicular 2.4-12.6; mid-cycle 14.0-95.6; luteal 1.0-11.4; post-menopause 7.7-58.5,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+LH,male,6570,36500,1.7,8.6,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+FSH,female,6570,36500,,,Follicular 3.5-12.5; mid-cycle 4.7-21.5; luteal 1.7-7.7; post-menopause 25.8-134.8,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+FSH,male,6570,36500,1.5,12.4,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+E2,female,6570,36500,,,Follicular 12.5-166; ovulation 85.8-498; luteal 43.8-211; post-menopause below 54.7,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+E2,male,6570,36500,25.8,60.7,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+TESTO,male,6570,36500,249,836,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+TESTO,female,6570,36500,8,48,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+CORT_AM,any,6570,36500,6.2,19.4,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+INS_F,any,6570,36500,2.6,24.9,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+AMH,female,6570,36500,,,Age-dependent: 20-29 y 1.5-9.5; 30-39 y 0.7-7.0; 40 y and over 0.1-3.5,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+AMH,male,6570,36500,0.7,19.0,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+CA125,any,6570,36500,,35,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+CEA,any,6570,36500,,5.0,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+AFP,any,6570,36500,,8.1,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+CA199,any,6570,36500,,37,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+PTH,any,6570,36500,15,65,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+IGE,any,6570,36500,,100,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HSCRP,any,6570,36500,,3.0,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HCY,any,6570,36500,5,15,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+NTBNP,any,6570,36500,,125,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+G6PD,any,0,36500,6.97,20.5,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HBA2,any,365,36500,2.0,3.3,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HBF,any,365,36500,,1.0,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HBELEC_INT,any,0,36500,,,Normal pattern,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+DCT,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+ICT,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+BT,any,0,36500,2,7,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+CT,any,0,36500,4,9,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+GTT_0,any,6570,36500,70,99,,40,450,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+GTT_60,any,6570,36500,,180,,40,450,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+GTT_120,any,6570,36500,,139,,40,450,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UVOL24,any,6570,36500,800,2000,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UPROT24,any,6570,36500,,150,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+CA_ION,any,0,36500,1.12,1.32,,0.78,1.58,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HBEAG,any,0,36500,,,Non-reactive,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+ANTIHBS,any,0,36500,10,,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HAV_IGM,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HEV_IGM,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+TYPHI_IGM,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+CHIK_IGM,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+SCRUB_IGM,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+LEPTO_IGM,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+ANA,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+CCP,any,6570,36500,,17,,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+HPYL_AG,any,0,36500,,,Negative,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+PSMEAR,any,0,36500,,,Normocytic normochromic; no abnormal cells,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+ST_COL,any,0,36500,,,Brown,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+ST_CONS,any,0,36500,,,Formed,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+ST_OVA,any,0,36500,,,Not seen,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+ST_RBC,any,0,36500,,,Nil,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+ST_WBC,any,0,36500,,,0-2 /hpf,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UR_APP,any,0,36500,,,Clear,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UR_CAST,any,0,36500,,,Nil,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UR_COL,any,0,36500,,,Pale yellow,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UR_CRYS,any,0,36500,,,Nil,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UR_EPI,any,0,36500,,,0-5 /hpf,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UR_RBC,any,0,36500,,,0-2 /hpf,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26
+UR_WBC,any,0,36500,,,0-5 /hpf,,,"SYNTHETIC - typical adult kit-insert values, not validated for this laboratory",2026-09-26

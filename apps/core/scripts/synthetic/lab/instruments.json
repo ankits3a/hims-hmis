@@ -1,0 +1,207 @@
+[
+  {
+    "code": "AU480",
+    "name": "Beckman Coulter AU480 chemistry analyser",
+    "sampleIdMode": "barcode",
+    "analytes": [
+      "GLUF",
+      "GLUPP",
+      "GLUR",
+      "UREA",
+      "CREA",
+      "URIC",
+      "TBIL",
+      "DBIL",
+      "SGOT",
+      "SGPT",
+      "ALP",
+      "GGT",
+      "TPROT",
+      "ALB",
+      "TC",
+      "TG",
+      "HDL",
+      "CA",
+      "PHOS",
+      "MG",
+      "AMY",
+      "LIP",
+      "CRP",
+      "HSCRP",
+      "FE",
+      "TIBC",
+      "LDH",
+      "CPK",
+      "CKMB",
+      "ASO",
+      "RAF",
+      "GTT_0",
+      "GTT_60",
+      "GTT_120",
+      "UPROT24"
+    ]
+  },
+  {
+    "code": "EL-120",
+    "name": "EL-120 electrolyte analyser (ISE)",
+    "sampleIdMode": "run_sheet",
+    "analytes": [
+      "NA",
+      "K",
+      "CL",
+      "CA_ION"
+    ]
+  },
+  {
+    "code": "Z3",
+    "name": "Zybio Z3 haematology analyser (3-part)",
+    "sampleIdMode": "barcode",
+    "analytes": [
+      "HB",
+      "WBC",
+      "RBC",
+      "HCT",
+      "MCV",
+      "MCH",
+      "MCHC",
+      "RDW",
+      "PLT",
+      "MPV",
+      "NEUT",
+      "LYMPH",
+      "MONO",
+      "EOS",
+      "BASO"
+    ]
+  },
+  {
+    "code": "ESR-20",
+    "name": "Autolab ESR 20 analyser",
+    "sampleIdMode": "run_sheet",
+    "analytes": [
+      "ESR"
+    ]
+  },
+  {
+    "code": "U120",
+    "name": "U120 urine chemistry analyser",
+    "sampleIdMode": "run_sheet",
+    "analytes": [
+      "UR_SG",
+      "UR_PH",
+      "UR_PROT",
+      "UR_GLU",
+      "UR_KET",
+      "UR_BLD",
+      "UR_BIL",
+      "UR_URO",
+      "UR_NIT",
+      "UR_LEU"
+    ]
+  },
+  {
+    "code": "ADX-150",
+    "name": "ADX-150 HPLC analyser (HbA1c, Hb variants)",
+    "sampleIdMode": "barcode",
+    "analytes": [
+      "HBA1C",
+      "HBA2",
+      "HBF"
+    ]
+  },
+  {
+    "code": "C5000",
+    "name": "Quickclia C5000 chemiluminescence immunoassay",
+    "sampleIdMode": "barcode",
+    "analytes": [
+      "TSH",
+      "T3",
+      "T4",
+      "FT3",
+      "FT4",
+      "PRL",
+      "LH",
+      "FSH",
+      "E2",
+      "TESTO",
+      "CORT_AM",
+      "INS_F",
+      "AMH",
+      "PSA",
+      "BHCG",
+      "FERR",
+      "B12",
+      "FOL",
+      "VITD",
+      "CA125",
+      "CEA",
+      "AFP",
+      "CA199",
+      "PTH",
+      "IGE",
+      "NTBNP",
+      "HCY",
+      "ATPO",
+      "PCT"
+    ]
+  },
+  {
+    "code": "EXR-110",
+    "name": "Zybio EXR 110 immunofluorescence analyser",
+    "sampleIdMode": "typed_id",
+    "analytes": [
+      "TROP_I",
+      "DDIM",
+      "CCP"
+    ]
+  },
+  {
+    "code": "COAG-SA",
+    "name": "Semi-automatic coagulometer (no data port)",
+    "sampleIdMode": "typed_id",
+    "analytes": [
+      "PT",
+      "INR",
+      "APTT",
+      "FIB"
+    ]
+  },
+  {
+    "code": "CURIO-G1",
+    "name": "Curio Lab Gen 1 semi-auto chemistry (backup for AU480 and EL-120)",
+    "sampleIdMode": "run_sheet",
+    "analytes": [
+      "GLUF",
+      "GLUR",
+      "UREA",
+      "CREA",
+      "SGOT",
+      "SGPT",
+      "TBIL",
+      "NA",
+      "K",
+      "CL"
+    ]
+  },
+  {
+    "code": "ELISA-1",
+    "name": "ELISA microplate reader (96 wells)",
+    "sampleIdMode": "plate_map",
+    "analytes": [
+      "HBSAG",
+      "HCV",
+      "HIV",
+      "DEN_NS1",
+      "DEN_IGM",
+      "DEN_IGG",
+      "HBEAG",
+      "ANTIHBS",
+      "HAV_IGM",
+      "HEV_IGM",
+      "CHIK_IGM",
+      "SCRUB_IGM",
+      "LEPTO_IGM",
+      "ANA"
+    ]
+  }
+]
