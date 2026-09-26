@@ -115,3 +115,6 @@ export { setShelfLocation, shelfLocationsFor } from "./shelf-locations";
 /** Consult v2 — the doctor's read of the shelf: sellable count per medicine, and alternatives at zero. */
 export { stockForDoctor } from "./doctor-stock";
 export type { DoctorStock, DoctorStockAlternative } from "./doctor-stock";
+
+// ── PARITY P5 — the Tally export: whether the accountant has confirmed the ledger names (the census reads it) ──
+export { tallyLedgersConfirmed } from "./tally";

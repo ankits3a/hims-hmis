@@ -3871,7 +3871,10 @@
     "unknown_short_book_entry": "That short-book line is not there any more.",
     "short_book_resolved": "That shortage was already closed.",
     "nothing_to_print": "Nothing to print yet — the bill and labels print once the ticket is billed.",
-    "gst_statement_unreadable": "This file cannot be read as a GSTR-2B. Download the JSON from the GST portal, or save the Excel's B2B sheet as CSV."
+    "gst_statement_unreadable": "This file cannot be read as a GSTR-2B. Download the JSON from the GST portal, or save the Excel's B2B sheet as CSV.",
+    "tally_ledgers_unconfirmed": "Confirm the Tally ledger names first (Tally → Ledgers): the defaults are names, not your company's ledgers.",
+    "invalid_tally_ledgers": "Every Tally ledger needs a name of 1 to 100 characters.",
+    "tally_unbalanced": "A voucher would not balance, so nothing was exported. Tell IT — this is a defect, not a data entry mistake."
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -6101,7 +6104,7 @@
       "buy": "↑↓ move · ⏎ open · A approve · R reject · Esc close",
       "pay": "↑↓ move · ⏎ open · D draft run · P payables · A accept bill · Esc close",
       "returns": "↑↓ move · ⏎ open · E expiry · D drafts · W write-off · R recall · A approve · P print · Esc close",
-      "reports": "1–8 open a report · T W M Y range · E export · P print · Esc back"
+      "reports": "1–9 open a report · T W M Y range · E export · P print · X Tally export · L ledgers · Esc back"
     },
     "returns": {
       "batches_one": "{{count}} batch",
@@ -6366,7 +6369,8 @@
         "nonMoving": "Non-moving stock",
         "hsn": "HSN summary",
         "gstr2b": "GSTR-2B reconciliation",
-        "activity": "Activity"
+        "activity": "Activity",
+        "tally": "Tally export"
       },
       "about": {
         "sales": "Every sale and refund, by bill, item, doctor, patient, pharmacist or tender.",
@@ -6376,7 +6380,8 @@
         "nonMoving": "Stock that has not moved in 30, 60, 90 or 180 days, and what to do with it.",
         "hsn": "Outward supply by HSN and rate, for GSTR-1.",
         "gstr2b": "The GST portal's 2B set against the bills we booked.",
-        "activity": "What happened to a document, and what each edit changed."
+        "activity": "What happened to a document, and what each edit changed.",
+        "tally": "Every voucher of a period as TallyPrime XML, and the ledger names it uses."
       },
       "preset": {
         "today": "Today",
@@ -6548,6 +6553,62 @@
         "stock_write_off_posted": "Destroyed, posted"
       },
       "subtitle": "What the pharmacy sold, bought and holds"
+    },
+    "tally": {
+      "ledgersConfirmed": "Ledger names confirmed for the Tally company.",
+      "ledgersUnconfirmed": "Confirm the ledger names before the first export — the defaults are names, not your Tally company's ledgers.",
+      "ledgers": "Ledgers",
+      "ledgersTitle": "Tally ledger names",
+      "ledgersNote": "Type each name exactly as the ledger is named in TallyPrime. The masters file creates any that are missing, under the group shown in the runbook; saving confirms the names.",
+      "lastSaved": "Last saved by {{who}} on {{at}}",
+      "companyHint": "Leave empty to import into the company open in Tally",
+      "export": "Export to Tally",
+      "confirmFirst": "Confirm the ledger names first (L).",
+      "summary_one": "{{count}} voucher, {{value}} debited in all.",
+      "summary_other": "{{count}} vouchers, {{value}} debited in all.",
+      "earlier": "These days have been exported before:",
+      "earlierRow": "{{from}} – {{to}} by {{who}} on {{at}}: {{count}} vouchers, checksum {{sum}}",
+      "done_one": "{{count}} voucher exported (checksum {{sum}}). Import the ledgers file first, then the vouchers.",
+      "done_other": "{{count}} vouchers exported (checksum {{sum}}). Import the ledgers file first, then the vouchers.",
+      "mastersFile": "Ledgers (masters) XML",
+      "vouchersFile": "Vouchers XML",
+      "sample": "The first vouchers, as Tally will read them",
+      "history": "Exports made",
+      "historyRow": "{{count}} vouchers by {{who}} on {{at}}",
+      "ledger": "Ledger",
+      "debit": "Debit",
+      "credit": "Credit",
+      "save": "Save and confirm",
+      "cancel": "Cancel",
+      "kind": {
+        "sale": "Sales",
+        "sales_return": "Credit notes",
+        "receipt": "Receipts",
+        "refund": "Refunds paid",
+        "purchase": "Purchases",
+        "purchase_return": "Debit notes",
+        "supplier_payment": "Supplier payments",
+        "credit_shortfall": "Short vendor credits",
+        "return_closed": "Returns closed without credit"
+      },
+      "field": {
+        "companyName": "Tally company",
+        "sales": "Sales",
+        "salesReturns": "Sales returns",
+        "outputCgst": "Output CGST",
+        "outputSgst": "Output SGST",
+        "purchases": "Purchases",
+        "purchaseReturns": "Purchase returns",
+        "inputCgst": "Input CGST",
+        "inputSgst": "Input SGST",
+        "inputIgst": "Input IGST",
+        "cash": "Cash",
+        "bank": "Bank",
+        "roundOff": "Round off",
+        "returnShortfall": "Return shortfall",
+        "counterSales": "Counter sales (B2C party)"
+      },
+      "counterNote": "Every counter bill without a buyer GSTIN posts to this one ledger — no patient names reach Tally. A bill with the buyer's GSTIN posts to the buyer's legal name and GSTIN."
     }
   }
 }

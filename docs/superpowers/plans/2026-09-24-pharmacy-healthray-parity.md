@@ -362,6 +362,52 @@ Measured before planning (2 read-only passes, 2026-09-24):
 - Deferred: matching the 2B's credit/debit notes (CDNR) to our debit notes and vendor credits;
   Excel (.xlsx) upload of the 2B (save as CSV); IPD / ward issue in the registers (no IPD yet).
 
+**P5 as built — the Tally export (TallyPrime XML, owner ruling 2026-09-25; stacked on the reports; migration 0131 — regenerated after #321 took 0130, SQL byte-identical).**
+- Inside Reports (key 9, `pharmacy.tally.export`: owner, billing_manager). The accountant confirms the
+  ledger names once (L; the defaults are the owner's list — Pharmacy Sales, Output CGST/SGST, Purchase —
+  Medicines, Input CGST/SGST/IGST, Cash, Bank — plus Round Off, Purchase Return Shortfall and Pharmacy
+  Counter Sales). The range's preview shows the count of each voucher, the total, the first vouchers as
+  Tally reads them and any earlier export of overlapping days; X exports.
+- **The party (review of #322, DECIDED — standard Indian practice for B2C counter sales):** a bill with
+  no buyer GSTIN (B2C) posts its Sales, Receipt, Credit Note and refund to ONE ledger, `counterSales`
+  ("Pharmacy Counter Sales", Sundry Debtors, confirmed with the rest); a bill carrying the buyer's GSTIN
+  (B2B) posts to "legal name (GSTIN)", created in the masters with its GSTIN. No patient name, UHID or
+  phone is in either file (asserted on a distinctive name); the masters never create a patient ledger.
+  The export no longer reads patient names at all. (First built with a ledger per patient, "Name
+  (UHID)"; replaced before merge.) Pharmacy bills carry no buyer GSTIN today, so B2B is proven on the
+  pure builder.
+- Tables: `pharmacy_tally_config` (one row; its existence IS the confirmation — census G3
+  `pharmacy_tally_ledgers_confirmed`) and `pharmacy_tally_exports` (range, who, when, counts, debit
+  total, SHA-256 of the vouchers file, the ledger names used, and both files — an earlier file downloads
+  again byte for byte through the app's `Content-Disposition` download path).
+- Two files: the ledgers (REPORTNAME `All Masters`: every ledger the vouchers use, under its group,
+  vendors and B2B buyers with their GSTIN) — imported first — and the vouchers (REPORTNAME `Vouchers`). ENVELOPE →
+  HEADER (`Import Data`) → BODY → IMPORTDATA → REQUESTDESC → REQUESTDATA → TALLYMESSAGE → VOUCHER with
+  VCHTYPE, DATE (YYYYMMDD), VOUCHERNUMBER (ours), PARTYLEDGERNAME, ALLLEDGERENTRIES.LIST (LEDGERNAME,
+  ISDEEMEDPOSITIVE, AMOUNT — a debit negative), a stable REMOTEID (`hmis:<kind>:<id>`) so a re-import
+  alters rather than duplicates.
+- Vouchers: Sales (`INV/…`), Receipt (`RCP/…`, the counter's money: Cash / Bank by tender), Credit Note
+  (`CN/…`), Payment (refund voucher `RFV/…` paid), Purchase (`MSB…`, the vendor's number as REFERENCE),
+  Debit Note (`MDN…`), Journal (the vendor credit adjustment: a credit short of our debit note `MCN…`, or a
+  return closed without credit `MRT…` → Purchase Return Shortfall), Payment (supplier `MPV…`, Cash for
+  mode cash, else Bank). Every voucher balances; one that would not stops the whole file
+  (`tally_unbalanced`). Asserted by parsing the FILE back as XML and summing every VOUCHER, per type
+  (pure) and on a real day (the vendor's Tally ledger nets to what the book owes: nothing).
+- Refusals `tally_ledgers_unconfirmed`, `invalid_tally_ledgers`, `tally_unbalanced`. Runbook §15 with a
+  generated Sales voucher.
+- DECIDED (accounting presentation, not money authority, procurement or law):
+  - receipts and refund payouts are exported too — with the patient as the Sales party (the owner's
+    default), a sale without its receipt would leave every patient a debtor in Tally for ever;
+  - a vendor credit EQUAL to our debit note writes no voucher (the debit note already reduced the vendor;
+    the run's credit offset is inside the payment); a short credit or a closed return is a Journal to
+    Purchase Return Shortfall;
+  - Sales returns and purchase returns post to the Sales / Purchase ledgers by default (their own names
+    on the mapping if the CA keeps separate return ledgers);
+  - the vouchers carry amounts and ledgers, not Tally's GST classification or bill-wise allocation: the
+    CA's Tally company holds the GST setup; GSTR-1/2B are filed from the office's own reports.
+- Deferred: bill-wise allocation (BILLALLOCATIONS) against supplier bills; cost centres; a direct push to
+  Tally over its HTTP port (no external calls from the app); IPD.
+
 **P6 — Law and hygiene**
 - NDPS register (Form 3D/3E) with double-lock custody, if the hospital stocks narcotics (owner ruling).
 - Item Merge (moves history, keeps the audit).

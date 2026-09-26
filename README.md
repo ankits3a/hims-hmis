@@ -1311,6 +1311,8 @@ summary, GSTR-2B against the books and the activity view, all read-only.
 `pharmacy.reports.margin` (cost, profit and margin) goes to `pharmacy_incharge`, `owner` and
 `materials_head`, and never to the counter's `pharmacy` or to `billing_manager`. All of these are
 defaults the owner may change.
+`pharmacy.tally.export` (the TallyPrime export of the pharmacy's vouchers, and the ledger names it
+uses) goes to `owner` and `billing_manager`, the accountant's desk; a default the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|

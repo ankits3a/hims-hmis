@@ -6,6 +6,7 @@ import { PharmacyItemsController } from "./pharmacy-items.controller";
 import { PharmacyOfficeController } from "./pharmacy-office.controller";
 import { PharmacyPharmacistsController } from "./pharmacy-pharmacists.controller";
 import { PharmacyReportsController } from "./pharmacy-reports.controller";
+import { PharmacyTallyController } from "./pharmacy-tally.controller";
 import { PharmacyDowntimeController, PharmacyRetailController } from "./pharmacy-retail.controller";
 import { renderPharmacyPaper } from "./print";
 import type { OnModuleInit } from "@nestjs/common";
@@ -29,7 +30,7 @@ export function registerPharmacyPrinting(): () => void {
  * retail counter; P20 the paper-dispense entry; Consult v2 the doctor's read of the shelf; parity
  * P1 the desk's paper.
  */
-@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController] })
+@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController] })
 export class PharmacyModule implements OnModuleInit {
   onModuleInit(): void {
     registerPharmacyPrinting();

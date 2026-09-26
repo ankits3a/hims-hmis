@@ -39,7 +39,7 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
       "pharmacy.pharmacists.manage", "pharmacy.register.read", "pharmacy.register.read_sealed",
       "pharmacy.retail.sell", "pharmacy.retail.manage", "pharmacy.downtime.enter",
       // Parity P5 — the office's reports, and the margin behind its own grant.
-      "pharmacy.reports.read", "pharmacy.reports.margin",
+      "pharmacy.reports.read", "pharmacy.reports.margin", "pharmacy.tally.export",
     ]);
     expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/desk", "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder", "/pharmacy/office", "/pharmacy/office/reports", "/pharmacy/registers/h1", "/pharmacy/leakage", "/pharmacy/retail", "/pharmacy/retail-licence", "/pharmacy/downtime"]);
     expect(pharmacyManifest.subscriptions).toEqual([{ event: "prescription.issued", consumer: "pharmacy.rx_issued" }]);

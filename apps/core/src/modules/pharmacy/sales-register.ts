@@ -553,3 +553,53 @@ export async function hsnReport(db: Db, actor: Actor, input: ReportInput, now: D
     totals: { qty: sum("qty"), taxablePaise: sum("taxablePaise"), cgstPaise: sum("cgstPaise"), sgstPaise: sum("sgstPaise"), igstPaise: sum("igstPaise"), taxPaise: sum("taxPaise"), valuePaise: sum("valuePaise") },
   };
 }
+
+// ═══════════════════════════════════ the period, for the Tally export ═══════════════════════════════════
+
+/** A B2B buyer: the GSTIN billing recorded on the invoice, and the legal name with it. A B2C bill has none. */
+export type SaleBuyer = { gstin: string; legalName: string | null };
+const buyerOf = (h: { buyerGstin: string | null; buyerLegalName: string | null }): SaleBuyer | null => {
+  const gstin = h.buyerGstin?.trim() ?? "";
+  return gstin === "" ? null : { gstin, legalName: h.buyerLegalName?.trim() || null };
+};
+
+export type PeriodSale = {
+  id: string; invoiceNo: string; serviceDay: string; ref: string | null; buyer: SaleBuyer | null;
+  taxableBasePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPayablePaise: number;
+};
+export type PeriodRefund = {
+  id: string; creditNoteNo: string; day: string; invoiceNo: string; buyer: SaleBuyer | null;
+  taxableBasePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number;
+};
+
+/**
+ * PARITY P5 (TALLY) — the period's pharmacy bills and credit notes exactly as the register reads them
+ * (the same `loadPeriod`), each with its B2B buyer if billing recorded one; and a lookup over billing's
+ * hospital-wide receipts and refunds: which of those invoices are the pharmacy's (their numbers and
+ * buyers). NO PATIENT: the books take a counter sale on one ledger, so nothing here reads who the
+ * patient is. The caller has already been gated.
+ */
+export async function pharmacySalesPeriod(db: Db, from: string, to: string): Promise<{
+  sales: PeriodSale[]; refunds: PeriodRefund[];
+  pharmacyInvoices: (invoiceIds: readonly string[]) => Promise<Map<string, { invoiceNo: string; buyer: SaleBuyer | null }>>;
+}> {
+  const p = await loadPeriod(db, from, to, null);
+  return {
+    sales: p.sales.map((h) => ({
+      id: h.id, invoiceNo: h.invoiceNo, serviceDay: h.serviceDay, ref: p.docs.get(h.id)?.ref ?? null, buyer: buyerOf(h),
+      taxableBasePaise: h.taxableBasePaise, cgstPaise: h.cgstPaise, sgstPaise: h.sgstPaise, roundingPaise: h.roundingPaise, netPayablePaise: h.netPayablePaise,
+    })),
+    refunds: p.refunds.map((n) => {
+      const h = p.heads.get(n.invoiceId)!;
+      return {
+        id: n.id, creditNoteNo: n.creditNoteNo, day: n.day, invoiceNo: h.invoiceNo, buyer: buyerOf(h),
+        taxableBasePaise: n.taxableBasePaise, cgstPaise: n.cgstPaise, sgstPaise: n.sgstPaise, roundingPaise: n.roundingPaise, netPaise: n.netPaise,
+      };
+    }),
+    pharmacyInvoices: async (invoiceIds) => {
+      const docs = await saleDocsOf(db, invoiceIds);
+      const heads = await invoiceHeadsByIds(db, [...docs.keys()]);
+      return new Map(heads.map((h) => [h.id, { invoiceNo: h.invoiceNo, buyer: buyerOf(h) }] as const));
+    },
+  };
+}

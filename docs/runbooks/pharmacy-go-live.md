@@ -244,9 +244,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 82 codes
+## 4. What refuses, and why — all 85 codes
 
-`errors.ts` declares 82, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 85, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -272,6 +272,8 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `invalid_short_book_entry` · `unknown_short_book_entry` · `short_book_resolved` | a short-book note with no real drug name or a zero quantity; a row that is gone; a row already ordered, received or dismissed | name the drug; re-read `/pharmacy/reorder` |
 | `nothing_to_print` | the desk asked for the bill and labels before the ticket was billed | take the money first; the paper follows the hand-over |
 | `gst_statement_unreadable` | the office's GSTR-2B reconciliation (parity P5) was given a file that is neither the portal's JSON nor a CSV with the supplier GSTIN, invoice number, date and taxable value | §14 — download the JSON from the GST portal, or save the Excel's B2B sheet as CSV |
+| `tally_ledgers_unconfirmed` · `invalid_tally_ledgers` | the Tally export (parity P5) before the accountant confirmed the ledger names; a ledger name left empty or over 100 characters | §15 — Reports → 9 → L, type each name as TallyPrime has it, save |
+| `tally_unbalanced` | a voucher in the Tally export would not balance, so nothing was exported | a defect, not a data-entry mistake — tell IT with the voucher number the message names |
 | `invalid_shelf_location` | a rack label longer than 24 characters — the line cannot print it | shorten it ("R-12", "rack 3 · shelf 2") |
 | `duplicate_block` · `drug_disease_block` | the medicine chosen for a line nobody could place repeats a moiety already prescribed; or a coded diagnosis forbids a line and no prescriber ruled on it (a reading, or a diagnosis coded after issue) | choose another, decline the line, or back to the doctor |
 | `qty_required` | a line's quantity is blank — SOS/PRN and unknown frequencies do not prefill | type the quantity (§3.3) |
@@ -672,3 +674,98 @@ only reads: nothing is changed from here, and no migration or seed is needed.
   vendor credits and write-offs; type any document number (INV…, CN…, P…, MSB…, MPR…, MRT…, MDN…,
   MCN…, MWO…) to open its timeline. An edited supplier bill shows each field before and after; other
   steps show what moved (status, total, lines) from the step before.
+
+## 15. The Tally export — TallyPrime XML (parity P5, owner ruling 2026-09-25)
+
+Our app is the payables book of record; TallyPrime keeps the hospital's accounts. **Reports → 9 Tally
+export** (at `/pharmacy/office/reports`) hands the accountant every pharmacy voucher of a period as a
+TallyPrime import file. It needs `pharmacy.tally.export` (`owner`, `billing_manager`). Migration
+`0131` adds its two tables; nothing else is seeded.
+
+- **Confirm the ledger names once (L).** Type each ledger exactly as the TallyPrime company names it:
+  the defaults are *Pharmacy Sales*, *Output CGST*, *Output SGST*, *Purchase — Medicines*, *Input
+  CGST*, *Input SGST*, *Input IGST*, *Cash*, *Bank*, *Round Off*, *Purchase Return Shortfall* and
+  *Pharmacy Counter Sales* (the one B2C party, below); the Tally company (empty = the one open in
+  Tally). **Save and confirm.** Until then the export refuses
+  (`tally_ledgers_unconfirmed`) and census row **`pharmacy_tally_ledgers_confirmed`** is RED.
+- **Export (X).** Pick the range (M = this month). The screen shows how many of each voucher the file
+  will carry, the total debited, the first vouchers as Tally will read them, and any earlier export of
+  an overlapping range (who, when, checksum) — a re-export is seen before it is made. **X** records the
+  export and offers two files.
+- **Import in TallyPrime:** *Gateway of Tally → Import → Masters* with the **ledgers (masters) XML**
+  first (choose *Combine* for ledgers that already exist), then *Import → Transactions* with the
+  **vouchers XML**. Every voucher carries a stable `REMOTEID` (`hmis:<kind>:<our id>`), so importing the
+  same file twice alters the vouchers rather than duplicating them.
+- **Every export is recorded** (`pharmacy_tally_exports`: range, who, when, the count of each voucher,
+  the SHA-256 of the vouchers file, the ledger names used, and both files). *Exports made* downloads
+  any earlier file again, byte for byte.
+
+**The party — no patient reaches the books.** A counter bill with no buyer GSTIN (B2C) posts to ONE
+party ledger, *Pharmacy Counter Sales* (Sundry Debtors) — its Sales voucher, its Receipt, its Credit
+Note and its refund Payment — so Tally holds no debtor per patient, and neither file carries a
+patient's name, UHID or phone: `REFERENCE` and `NARRATION` carry only our invoice, receipt, credit-note
+and dispense numbers, and `REMOTEID` our internal id. The counter ledger nets to nothing once the
+day's bills are paid, and to the refunds still owed when a credit note has not yet been paid out. A
+bill that carries the buyer's GSTIN (B2B) posts to the buyer's own ledger, *legal name (GSTIN)*, which
+the masters file creates under Sundry Debtors with its GSTIN. The masters file creates the mapped
+ledgers, the vendors and the B2B buyers — never a patient.
+
+**What each voucher is.** Every one is on our own stable number and date, and balances (the amounts sum
+to zero — a debit is `ISDEEMEDPOSITIVE Yes` with a negative `AMOUNT`); a voucher that would not balance
+stops the whole file (`tally_unbalanced`, a defect to report, never a data-entry fix).
+
+| Voucher | Our document | Debit | Credit |
+|---|---|---|---|
+| Sales | pharmacy bill `INV/…`, its service day | Pharmacy Counter Sales (B2C) or the buyer (B2B), the net payable | Pharmacy Sales (taxable), Output CGST, Output SGST, Round Off (the rupee rounding) |
+| Receipt | the counter's receipt `RCP/…` for pharmacy bills | Cash (cash), Bank (UPI, card) | Pharmacy Counter Sales, or the B2B buyer, for what it settled |
+| Credit Note | credit note `CN/…` against a pharmacy bill, its issue day | Sales returns (taxable), Output CGST, SGST | the bill's party |
+| Payment | refund voucher `RFV/…` paid on a pharmacy credit note | the bill's party | Cash or Bank |
+| Purchase | supplier bill booked as payable `MSB…` (bill date; the vendor's number as REFERENCE) | Purchase — Medicines (taxable), Input CGST + SGST or IGST, Round Off | the vendor |
+| Debit Note | our debit note `MDN…` on a return | the vendor | Purchase returns (taxable), the input tax |
+| Journal | a vendor credit short of our debit note `MCN…`, or a return closed without credit `MRT…` | Purchase Return Shortfall | the vendor |
+| Payment | supplier payment `MPV…` (paid-on date) | the vendor | Cash (mode cash) or Bank (NEFT, RTGS, UPI, cheque) |
+
+A vendor credit EQUAL to our debit note writes no voucher: the debit note already reduced the vendor
+in Tally, and the payment run's credit offset is inside the payment the vendor is paid. So the
+vendor's ledger in Tally equals what the office's payables owe (the test asserts it on a real day).
+
+**A Sales voucher, as written** (`INV/26-27/000001`, 3 tablets of Azee 500 at ₹15 each, paid in cash):
+
+```xml
+<TALLYMESSAGE xmlns:UDF="TallyUDF">
+ <VOUCHER REMOTEID="hmis:sale:01K5ZQ8X4MJ2A7" VCHTYPE="Sales" ACTION="Create" OBJVIEW="Accounting Voucher View">
+  <DATE>20260925</DATE>
+  <EFFECTIVEDATE>20260925</EFFECTIVEDATE>
+  <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
+  <VOUCHERNUMBER>INV/26-27/000001</VOUCHERNUMBER>
+  <REFERENCE>P2609250001</REFERENCE>
+  <PARTYLEDGERNAME>Pharmacy Counter Sales</PARTYLEDGERNAME>
+  <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
+  <NARRATION>Pharmacy bill INV/26-27/000001 (dispense P2609250001)</NARRATION>
+ <ALLLEDGERENTRIES.LIST>
+  <LEDGERNAME>Pharmacy Counter Sales</LEDGERNAME>
+  <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+  <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+  <AMOUNT>-45.00</AMOUNT>
+ </ALLLEDGERENTRIES.LIST>
+ <ALLLEDGERENTRIES.LIST>
+  <LEDGERNAME>Pharmacy Sales</LEDGERNAME>
+  <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+  <ISPARTYLEDGER>No</ISPARTYLEDGER>
+  <AMOUNT>42.86</AMOUNT>
+ </ALLLEDGERENTRIES.LIST>
+ <ALLLEDGERENTRIES.LIST>
+  <LEDGERNAME>Output CGST</LEDGERNAME>
+  <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+  <ISPARTYLEDGER>No</ISPARTYLEDGER>
+  <AMOUNT>1.07</AMOUNT>
+ </ALLLEDGERENTRIES.LIST>
+ <ALLLEDGERENTRIES.LIST>
+  <LEDGERNAME>Output SGST</LEDGERNAME>
+  <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+  <ISPARTYLEDGER>No</ISPARTYLEDGER>
+  <AMOUNT>1.07</AMOUNT>
+ </ALLLEDGERENTRIES.LIST>
+ </VOUCHER>
+</TALLYMESSAGE>
+```

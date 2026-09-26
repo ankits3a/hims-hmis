@@ -71,8 +71,13 @@ export type { ChargeOrphanRow } from "./daily-close";
  * the live invoices of a period, their stored lines, the live credit notes issued in it, and how
  * each invoice was paid (by tender) and what it still owes.
  */
-export { billingDocumentByNo, creditNotesBetween, invoiceHeadsByIds, invoiceLinesOf, invoicePayments, invoicesBetween } from "./report-reads";
-export type { BillingDocRef, CreditNoteLineRead, CreditNoteRead, InvoiceHead, InvoiceLineRead, InvoicePayment, TenderMode } from "./report-reads";
+export {
+  billingDocumentByNo, creditNotesBetween, invoiceHeadsByIds, invoiceLinesOf, invoicePayments, invoicesBetween, receiptAllocationsBetween,
+  refundVouchersPaidBetween,
+} from "./report-reads";
+export type {
+  BillingDocRef, CreditNoteLineRead, CreditNoteRead, InvoiceHead, InvoiceLineRead, InvoicePayment, ReceiptAllocationRead, RefundPaidRead, TenderMode,
+} from "./report-reads";
 
 export type { DayBook, Gstr1Row, DailyCloseResult } from "./daily-close";
 export { registerBillingApprovalTypes, BILLING_APPROVAL_TYPES } from "./approval-types";
