@@ -3134,7 +3134,7 @@
         "address": "ABHA address",
         "link": "Link this ABHA",
         "create": "Generate a new ABHA",
-        "verify": "Verify by OTP",
+        "verify": "Verify with ABDM",
         "notConfigured": "This hospital is not connected to ABDM yet, so a new ABHA cannot be created here and a number cannot be verified against the registry. An ABHA the patient already has can still be recorded — it is kept as the patient's own statement until ABDM confirms it."
       },
       "more": {
@@ -6922,6 +6922,150 @@
       "pickKeep": "Search and choose the item that STAYS.",
       "pickMerge": "Now choose the duplicate that merges into {{keep}}.",
       "search": "Search by name or code"
+    }
+  },
+  "abdm": {
+    "verify": {
+      "open": "Verify with ABDM",
+      "title": "Verify with ABDM",
+      "subtitle": "ABDM sends the patient an OTP; nothing on the record changes until you link.",
+      "close": "Close",
+      "identifier": "ABHA number, ABHA address or the ABHA's mobile",
+      "method": "Send the OTP to",
+      "methodAadhaar": "Aadhaar-linked mobile",
+      "methodMobile": "Mobile on the ABHA",
+      "sendOtp": "Send OTP",
+      "otp": "OTP the patient received",
+      "confirmOtp": "Confirm OTP",
+      "restart": "Start again",
+      "link": "Link to this patient",
+      "use": "Use this ABHA",
+      "showCard": "Show ABHA card",
+      "cardAlt": "The patient's ABHA card",
+      "linked": "Linked. The ABHA is now verified by ABDM on this record.",
+      "mismatchRefused": "ABDM's details differ from this patient's. Check with the patient, tick the box, and link again.",
+      "expired": "This verification has expired. Start again to send a new OTP.",
+      "pendingLink": "Confirmed by ABDM. It will be linked and marked verified as soon as you register.",
+      "mobileHint": "The patient's mobile finds every ABHA linked to it; the OTP then goes to that mobile.",
+      "resend": "Re-send OTP · {{left}} left",
+      "resendIn": "Re-send in {{s}} s",
+      "resendNone": "No more re-sends — start again",
+      "chooseAccount": "ABDM found these ABHAs. Choose the patient's.",
+      "choose": "This one",
+      "downloadCard": "Download ABHA card",
+      "linkedElsewhere": "This ABHA is already linked in HMIS with UHID {{uhid}}. Open that record instead.",
+      "linkedElsewhereHidden": "This ABHA is already linked to another patient record in HMIS."
+    },
+    "create": {
+      "title": "Create an ABHA with Aadhaar",
+      "aadhaar": "Aadhaar number (not stored)",
+      "consent": "The patient agrees to authenticate with Aadhaar so ABDM can create their ABHA. The Aadhaar number is not stored by the hospital.",
+      "sendOtp": "Send Aadhaar OTP",
+      "mobile": "Mobile the ABHA should carry",
+      "created": "ABDM created a new ABHA for this patient.",
+      "existing": "This Aadhaar already has an ABHA — ABDM returned it.",
+      "aadhaarInvalid": "Aadhaar Number is not valid — it is twelve digits.",
+      "mobileNotAadhaar": "{{mobile}} is not the mobile linked with Aadhaar. ABDM sends it an OTP to confirm it.",
+      "mobileSend": "Send OTP to this mobile",
+      "mobileResend": "Re-send",
+      "mobileVerified": "Mobile confirmed by ABDM.",
+      "suggest": "Suggest ABHA addresses",
+      "makeAddress": "Create this ABHA address",
+      "addressRule": "8–18 letters or digits; at most one '.' and one '_', not at the start or the end."
+    },
+    "profile": {
+      "abhaNumber": "ABHA number",
+      "abhaAddress": "ABHA address",
+      "abdmSays": "ABDM",
+      "hospitalSays": "This record",
+      "field": {
+        "name": "Name",
+        "dob": "Birth",
+        "gender": "Gender",
+        "mobile": "Mobile"
+      },
+      "differs": "differs",
+      "willUpdate": "{{field}}: {{from}} → {{to}}",
+      "accept": "I have checked with the patient. Take ABDM's name, birth and gender for this record — they will stay locked while the ABHA is verified.",
+      "authoritative": "ABDM-verified name, birth and gender become the record's and are locked while verified. Mobile and address stay as the hospital keeps them."
+    },
+    "share": {
+      "open": "scan and share",
+      "title": "Scan and share",
+      "subtitle": "Patients scan this QR with the ABHA app; their details arrive here with a token number.",
+      "counter": "counter",
+      "empty": "No shared profiles waiting. They appear here within seconds of a scan.",
+      "token": "token {{n}}",
+      "register": "Register",
+      "findOnFile": "Already on file",
+      "dismiss": "Dismiss",
+      "noMatch": "No one on file matches this mobile or name.",
+      "linkThis": "Link to this patient",
+      "linked": "already linked in HMIS with UHID {{uhid}}",
+      "linkedHidden": "already linked to another record"
+    },
+    "find": {
+      "open": "Find ABHA by Aadhaar",
+      "title": "Find an ABHA with Aadhaar",
+      "consent": "The patient agrees to authenticate with Aadhaar so ABDM can find their ABHA. The Aadhaar number is not stored by the hospital."
+    },
+    "lock": {
+      "note": "Name, date of birth and gender are verified by ABDM and cannot be edited here. Re-verify with ABDM to change them, or remove the verification first."
+    },
+    "external": {
+      "title": "Records from other hospitals",
+      "label": "External — not verified by this hospital. Shown as the other facility sent it, under the patient's ABDM consent, and deleted when that consent ends.",
+      "badge": "External · not verified",
+      "off": "Requesting records through ABDM is not switched on at this hospital.",
+      "noAbha": "The patient has no ABDM-verified ABHA. Verify it at the registration counter to request records from other hospitals.",
+      "requestOpen": "Request records via ABDM",
+      "formNote": "ABDM asks the patient ({{abha}}) to approve this in their ABHA app. Nothing arrives until they do.",
+      "purpose": "Purpose",
+      "purposeName": {
+        "CAREMGT": "Care management",
+        "BTG": "Break the glass (emergency)"
+      },
+      "types": "Record types",
+      "hiType": {
+        "OPConsultation": "OP consultation",
+        "Prescription": "Prescription",
+        "DiagnosticReport": "Diagnostic report",
+        "DischargeSummary": "Discharge summary",
+        "ImmunizationRecord": "Immunization",
+        "HealthDocumentRecord": "Health document",
+        "WellnessRecord": "Wellness record",
+        "Invoice": "Invoice"
+      },
+      "from": "Records from",
+      "to": "Records to",
+      "expires": "Access expires on",
+      "send": "Send the request",
+      "sent": "Request sent. The patient approves it in their ABHA app; the records appear here when their hospital sends them.",
+      "requests": "Requests",
+      "status": {
+        "requested": "Sent",
+        "awaiting_patient": "Waiting for the patient",
+        "granted": "Granted",
+        "denied": "Denied",
+        "expired": "Expired",
+        "revoked": "Revoked",
+        "failed": "Failed"
+      },
+      "artefact": {
+        "GRANTED": "granted",
+        "REVOKED": "revoked",
+        "EXPIRED": "expired"
+      },
+      "erased": "{{count}} record deleted",
+      "erased_other": "{{count}} records deleted",
+      "expiresOn": "expires {{date}}",
+      "check": "Check status",
+      "consentUntil": "Consent until {{date}} — deleted after that",
+      "subject": "Patient in the record: {{name}}",
+      "author": "By {{name}}",
+      "checksumUnverified": "The sender sent no checksum; the encryption still authenticated every byte.",
+      "unreadable": "Nothing readable in this document.",
+      "none": "No records from other hospitals yet."
     }
   }
 }

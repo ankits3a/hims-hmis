@@ -37,7 +37,7 @@ async function bootstrap(): Promise<void> {
   //
   // `cfg` (the whole AppConfig, already resolved above) satisfies `JobIntervals` structurally.
   // `registerAllJobs` no longer reads the environment itself — see its docstring.
-  registerAllJobs(scheduler, db, registry, workerConsumers(db), cfg);
+  registerAllJobs(scheduler, db, registry, workerConsumers(db, cfg), cfg);
   scheduler.start();
   console.log(`worker started: jobs=${scheduler.jobs().join(",")}`);
 

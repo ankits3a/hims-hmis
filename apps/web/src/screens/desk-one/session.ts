@@ -119,6 +119,14 @@ export type Form = {
   // ABHA
   abhaNumber: string;
   abhaAddress: string;
+  /**
+   * ABDM S1 — an ABHA that ABDM has ALREADY confirmed for this person (an OTP verification, or a
+   * profile they shared from their phone), waiting for the UHID. The form still registers the number
+   * as `self_declared` — the counter can never say `verified` — and `enrol` links it the moment the
+   * patient exists, which is when the SERVER stamps it verified. `accept` is the clerk having
+   * accepted ABDM's name, birth and gender (DECIDED: ABDM-verified details are authoritative).
+   */
+  abdmLink: { kind: "abha"; transactionId: string; accept: boolean } | { kind: "share"; shareId: string; accept: boolean } | null;
   // documents
   nationality: string;
   nationalIdType: string;
@@ -163,7 +171,7 @@ export const EMPTY_FORM: Form = {
   title: "", fatherHusbandName: "", dob: "", ageMode: "age", maritalStatus: "", bloodGroup: "",
   altPhone: "", language: "",
   area: "", district: "", stateName: "", pincode: "",
-  abhaNumber: "", abhaAddress: "",
+  abhaNumber: "", abhaAddress: "", abdmLink: null,
   nationality: "", nationalIdType: "", nationalIdNumber: "",
   referredBySource: "", referredByName: "", referredByPhone: "", referredBySpeciality: "",
   religion: "", occupation: "", monthlyIncome: "", legacyUhid: "",
@@ -451,7 +459,9 @@ export function registerBodyOf(
     ...opt("pincode", f.pincode),
     /*
       A RECORDED ABHA IS `self_declared` AND THE SCREEN CANNOT SAY OTHERWISE. Only ABDM answering
-      may move it to `verified`, and this hospital is not connected to ABDM.
+      may move it to `verified` — ABDM S1: even an ABHA ABDM has just confirmed (`abdmLink`) travels
+      as `self_declared` here, and `enrol` links it once the UHID exists, which is where the server
+      stamps it.
     */
     ...(t(f.abhaNumber) === "" && t(f.abhaAddress) === ""
       ? {}

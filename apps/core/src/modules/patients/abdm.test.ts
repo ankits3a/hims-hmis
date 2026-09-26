@@ -25,10 +25,29 @@ describe("abhaCapability — the one configured rule", () => {
     expect(cap.reason).toMatch(/not connected to ABDM yet/);
   });
 
-  it("is configured when every required key is present, and says so in the clerk's words", () => {
+  it("is configured when every required key is present — but verifying also needs the ABHA service", () => {
     const cap = abhaCapability(full);
-    expect(cap).toMatchObject({ configured: true, canRecord: true, canCreate: true, canVerify: true });
-    expect(cap.reason).toBe("ABDM is connected — an ABHA can be created and verified here.");
+    expect(cap).toMatchObject({ configured: true, canRecord: true, canCreate: false, canVerify: false, canScanShare: true });
+    expect(cap.reason).toMatch(/ABHA service is not set up/);
+  });
+
+  /**
+   * ABDM S1 — VERIFY is on whenever ABDM (and its ABHA service) is; CREATE by Aadhaar OTP is OFF until
+   * the owner rules, and only `ABDM_ABHA_CREATE_AADHAAR=true` — in those letters — switches it on.
+   */
+  it("S1: with the ABHA service, verify is ON and create stays OFF by default", () => {
+    const cap = abhaCapability({ ...full, ABDM_ABHA_BASE_URL: "https://abhasbx.abdm.gov.in/abha/api" });
+    expect(cap).toMatchObject({ configured: true, canVerify: true, canCreate: false, canScanShare: true });
+    expect(cap.reason).toMatch(/Creating a new ABHA with Aadhaar is not switched on/);
+  });
+
+  it("S1: create is on only with ABDM_ABHA_CREATE_AADHAAR=true", () => {
+    const withAbha = { ...full, ABDM_ABHA_BASE_URL: "https://abhasbx.abdm.gov.in/abha/api" };
+    expect(abhaCapability({ ...withAbha, ABDM_ABHA_CREATE_AADHAAR: "true" })).toMatchObject({ canVerify: true, canCreate: true });
+    expect(abhaCapability({ ...withAbha, ABDM_ABHA_CREATE_AADHAAR: "false" }).canCreate).toBe(false);
+    expect(() => abhaCapability({ ...withAbha, ABDM_ABHA_CREATE_AADHAAR: "yes" })).toThrow();
+    // the flag alone, without ABDM, switches on nothing
+    expect(abhaCapability({ ...base, ABDM_ABHA_CREATE_AADHAAR: "true" })).toMatchObject({ canCreate: false, canVerify: false, canScanShare: false });
   });
 
   it("recording a number the patient gives never depends on ABDM", () => {

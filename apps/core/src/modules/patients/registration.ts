@@ -12,6 +12,7 @@ import { activeBreakGlass } from "../../kernel/auth/break-glass";
 import { patientCoverages, patientGuardians, patients } from "../../kernel/db/schema";
 import { allocateUhid, PatientError } from "./uhid";
 import { normaliseAbhaNumber } from "./abdm";
+import { abhaRaceError, assertAbhaFree, isAbhaUniqueViolation } from "./abha-holders";
 import type { PatientErrorCode } from "./uhid";
 import {
   guardianLinked, identityAssuranceChanged, identityVersionMinted, patientRegistered, patientUpdated,
@@ -199,6 +200,15 @@ export async function registerPatient(
     throw new PatientError("minor_needs_guardian", "a minor's registration must include a guardian (D-31, DPDP §9)");
   }
 
+  /*
+    ABDM S1 — ONE ABHA, ONE PATIENT, checked BEFORE a UHID is allocated: "ABHA Number should be
+    validated in the database if already exists before creating a new patient id" (NHA FT
+    TAGGING_UNIQUEPATIENTID_UNIQUEABHANUMBER). The index is the arbiter; this is what names the holder.
+  */
+  if (input.abhaNumber !== undefined || input.abhaAddress !== undefined) {
+    await assertAbhaFree(tx, actor, { abhaNumber: input.abhaNumber ?? null, abhaAddress: input.abhaAddress ?? null }, null);
+  }
+
   const patientId = newId();
   const uhid = await allocateUhid(tx);
   const inserted = await tx
@@ -273,7 +283,11 @@ export async function registerPatient(
       createdBy: actor.id,
       updatedBy: actor.id,
     })
-    .returning();
+    .returning()
+    .catch((e: unknown) => {
+      if (isAbhaUniqueViolation(e)) throw abhaRaceError();
+      throw e;
+    });
   const patient = inserted[0]!;
 
   /**
@@ -474,7 +488,23 @@ export type AmendmentContext = {
   evidenceRef?: string | null;
   /** The assurance level the presented evidence itself supports, if any (DD5). */
   evidencedAt?: string | null;
+  /**
+   * ABDM S1 — the ONE key to the demographics lock below, held only by `acceptAbdmDemographics`
+   * (`abha-verified.ts`). A Symbol, and not exported from the module's index: no HTTP body can carry
+   * it and no other module can name it, so the lock has exactly one door and ABDM's answer is it.
+   */
+  [ABDM_DEMOGRAPHICS_KEY]?: true;
 };
+
+/** See `AmendmentContext`. Module-private — `index.ts` does not export it, and must not. */
+export const ABDM_DEMOGRAPHICS_KEY: unique symbol = Symbol("patients.abdm-demographics");
+
+/**
+ * ABDM S1 — WHILE THE ABHA IS `verified`, THESE ARE ABDM'S (DECIDED, following NHA's M1 workbook:
+ * "the fields for name, date of birth and gender are set as non-editable"). Mobile and address stay
+ * the hospital's to edit. `sex` (clinical, Class III) is not locked: it is not an identity claim.
+ */
+const ABDM_LOCKED_FIELDS = ["name", "dob", "dobEstimated", "administrativeGender"] as const;
 
 export async function updatePatient(
   tx: Tx,
@@ -570,6 +600,31 @@ export async function updatePatient(
   }
 
   /**
+   * ABDM S1 — THE DEMOGRAPHICS LOCK. While the record IS verified (its state as this amendment
+   * begins — lowering the stamp in the same request does not unlock it), name, date of birth and
+   * gender are ABDM's, and change only by re-verifying, whose one door is `acceptAbdmDemographics`.
+   * A clerk who must correct them (a legal name change ABDM has not caught up with) first takes the
+   * verification down, in its own audited amendment — which a clerk may always do.
+   */
+  if (
+    current.abhaVerificationStatus === "verified"
+    && changes.some((c) => (ABDM_LOCKED_FIELDS as readonly string[]).includes(c.field))
+    && ctx[ABDM_DEMOGRAPHICS_KEY] !== true
+  ) {
+    throw new PatientError(
+      "abha_demographics_locked",
+      "abha_demographics_locked: name, date of birth and gender come from ABDM while the ABHA is verified — re-verify with ABDM, or take the verification down first",
+    );
+  }
+
+  /* ABDM S1 — one ABHA, one patient, on the amend path too (`abha-holders.ts`). */
+  const nextNumber = changes.some((c) => c.field === "abhaNumber") ? (set.abhaNumber as string | null) : null;
+  const nextAddress = changes.some((c) => c.field === "abhaAddress") ? (set.abhaAddress as string | null) : null;
+  if (nextNumber !== null || nextAddress !== null) {
+    await assertAbhaFree(tx, actor, { abhaNumber: nextNumber, abhaAddress: nextAddress }, patientId);
+  }
+
+  /**
    * PLAN 22c-A T5/DD7 — THE PRIVACY WRITE SPLIT, ENFORCED HERE RATHER THAN ON THE ROUTE.
    *
    * Measured in production at kickoff (spike S5): `patients.update` is held by five roles and
@@ -662,7 +717,11 @@ export async function updatePatient(
     .update(patients)
     .set({ ...set, updatedBy: actor.id, updatedAt: sql`clock_timestamp()` })
     .where(and(eq(patients.id, patientId), eq(patients.status, "active")))
-    .returning();
+    .returning()
+    .catch((e: unknown) => {
+      if (isAbhaUniqueViolation(e)) throw abhaRaceError();
+      throw e;
+    });
   if (updated.length === 0) {
     // Lost a race against a merge freeze between the read and the write.
     throw new PatientError("patient_not_active", "patient was frozen concurrently");

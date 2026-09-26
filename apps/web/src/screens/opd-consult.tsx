@@ -41,6 +41,7 @@ import { CopilotSuggestions, TermInput } from "./opd-consult-suggest";
 import type { WireExamFinding } from "../lib/opd-api";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
+import { ExternalRecordsPanel } from "../components/abdm-external-records";
 import { DrugField } from "../components/drug-field";
 import { SigPanel } from "../components/sig-panel";
 import type { SigPatch } from "../components/sig-panel";
@@ -4076,6 +4077,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         onClose={() => { setHistoryOpen(false); }}
       >
         {active !== null && <HistoryBrowser visits={timelineItems} currentEncounterId={active.encounterId} />}
+        {/* ABDM S3 — records OTHER facilities sent under the patient's ABDM consent: read-only, labelled external, audited */}
+        {active !== null && <ExternalRecordsPanel patientId={active.patientId} encounterId={active.encounterId} />}
         {/* the v1 History tab's views (visits, prescriptions, vitals trend, scanned documents) — kept, now inside the dialog */}
         {active !== null && (
                 <div data-testid="history-v1" style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--line2)" }}>

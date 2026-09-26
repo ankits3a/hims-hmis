@@ -1,5 +1,5 @@
 {
-  "id": "de205370-7f48-4a79-a3c7-d47f1032b08a",
+  "id": "4ee4f5a0-19db-4fa3-bf3c-57886076d9d6",
   "prevId": "ae37ccfb-0af1-48c1-8430-e600f5087feb",
   "version": "7",
   "dialect": "postgresql",
@@ -3448,6 +3448,38 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "patients_abha_number_ux": {
+          "name": "patients_abha_number_ux",
+          "columns": [
+            {
+              "expression": "regexp_replace(\"abha_number\", '[^0-9]', '', 'g')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"patients\".\"abha_number\" is not null and regexp_replace(\"patients\".\"abha_number\", '[^0-9]', '', 'g') <> '' and \"patients\".\"status\" = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "patients_abha_address_ux": {
+          "name": "patients_abha_address_ux",
+          "columns": [
+            {
+              "expression": "lower(btrim(\"abha_address\"))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"patients\".\"abha_address\" is not null and btrim(\"patients\".\"abha_address\") <> '' and \"patients\".\"status\" = 'active'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -16675,219 +16707,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.item_merges": {
-      "name": "item_merges",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "survivor_item_id": {
-          "name": "survivor_item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "merged_item_id": {
-          "name": "merged_item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'manual'"
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'requested'"
-        },
-        "approval_id": {
-          "name": "approval_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_by": {
-          "name": "requested_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_at": {
-          "name": "requested_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "merged_by": {
-          "name": "merged_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "merged_at": {
-          "name": "merged_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "refused_at": {
-          "name": "refused_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "moved": {
-          "name": "moved",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "item_merges_live_ux": {
-          "name": "item_merges_live_ux",
-          "columns": [
-            {
-              "expression": "merged_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"item_merges\".\"status\" in ('requested', 'merged')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "item_merges_survivor_idx": {
-          "name": "item_merges_survivor_idx",
-          "columns": [
-            {
-              "expression": "survivor_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "item_merges_status_idx": {
-          "name": "item_merges_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "requested_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "item_merges_approval_idx": {
-          "name": "item_merges_approval_idx",
-          "columns": [
-            {
-              "expression": "approval_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "item_merges_survivor_item_id_items_id_fk": {
-          "name": "item_merges_survivor_item_id_items_id_fk",
-          "tableFrom": "item_merges",
-          "tableTo": "items",
-          "columnsFrom": [
-            "survivor_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "item_merges_merged_item_id_items_id_fk": {
-          "name": "item_merges_merged_item_id_items_id_fk",
-          "tableFrom": "item_merges",
-          "tableTo": "items",
-          "columnsFrom": [
-            "merged_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "item_merges_distinct_ck": {
-          "name": "item_merges_distinct_ck",
-          "value": "\"item_merges\".\"survivor_item_id\" <> \"item_merges\".\"merged_item_id\""
-        },
-        "item_merges_status_ck": {
-          "name": "item_merges_status_ck",
-          "value": "\"item_merges\".\"status\" in ('requested', 'merged', 'refused')"
-        },
-        "item_merges_source_ck": {
-          "name": "item_merges_source_ck",
-          "value": "\"item_merges\".\"source\" in ('agent', 'manual')"
-        },
-        "item_merges_reason_ck": {
-          "name": "item_merges_reason_ck",
-          "value": "length(btrim(\"item_merges\".\"reason\")) between 3 and 500"
-        },
-        "item_merges_merged_ck": {
-          "name": "item_merges_merged_ck",
-          "value": "(\"item_merges\".\"status\" = 'merged') = (\"item_merges\".\"merged_at\" is not null) and (\"item_merges\".\"merged_at\" is null) = (\"item_merges\".\"merged_by\" is null) and (\"item_merges\".\"status\" <> 'merged' or \"item_merges\".\"moved\" is not null)"
-        },
-        "item_merges_refused_ck": {
-          "name": "item_merges_refused_ck",
-          "value": "(\"item_merges\".\"status\" = 'refused') = (\"item_merges\".\"refused_at\" is not null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.item_price_regulations": {
       "name": "item_price_regulations",
       "schema": "",
@@ -17318,18 +17137,6 @@
           "notNull": true,
           "default": true
         },
-        "merged_into_item_id": {
-          "name": "merged_into_item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "merged_at": {
-          "name": "merged_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -17408,21 +17215,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "items_merged_into_idx": {
-          "name": "items_merged_into_idx",
-          "columns": [
-            {
-              "expression": "merged_into_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -17438,29 +17230,12 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "items_merged_into_item_id_items_id_fk": {
-          "name": "items_merged_into_item_id_items_id_fk",
-          "tableFrom": "items",
-          "tableTo": "items",
-          "columnsFrom": [
-            "merged_into_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "items_merged_ck": {
-          "name": "items_merged_ck",
-          "value": "(\"items\".\"merged_into_item_id\" is null) = (\"items\".\"merged_at\" is null) and (\"items\".\"merged_into_item_id\" is null or (\"items\".\"merged_into_item_id\" <> \"items\".\"id\" and not \"items\".\"active\"))"
-        },
         "items_class_ck": {
           "name": "items_class_ck",
           "value": "\"items\".\"class\" in ('drug', 'consumable', 'consumable_dated', 'reagent', 'implant', 'stationery', 'linen', 'gas', 'asset', 'service')"
@@ -39977,6 +39752,1890 @@
       },
       "isRLSEnabled": false
     },
+    "public.abdm_care_contexts": {
+      "name": "abdm_care_contexts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encounter_id": {
+          "name": "encounter_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hip_id": {
+          "name": "hip_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference_number": {
+          "name": "reference_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_reference": {
+          "name": "patient_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display": {
+          "name": "display",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hi_types": {
+          "name": "hi_types",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "abha_address": {
+          "name": "abha_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "linked_via": {
+          "name": "linked_via",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "link_request_id": {
+          "name": "link_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "linked_at": {
+          "name": "linked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notified_hi_types": {
+          "name": "notified_hi_types",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "notified_at": {
+          "name": "notified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notify_error": {
+          "name": "notify_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_care_contexts_encounter_ux": {
+          "name": "abdm_care_contexts_encounter_ux",
+          "columns": [
+            {
+              "expression": "encounter_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_care_contexts_reference_ux": {
+          "name": "abdm_care_contexts_reference_ux",
+          "columns": [
+            {
+              "expression": "hip_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "reference_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_care_contexts_patient_idx": {
+          "name": "abdm_care_contexts_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_care_contexts_link_request_idx": {
+          "name": "abdm_care_contexts_link_request_idx",
+          "columns": [
+            {
+              "expression": "link_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_care_contexts_patient_id_patients_id_fk": {
+          "name": "abdm_care_contexts_patient_id_patients_id_fk",
+          "tableFrom": "abdm_care_contexts",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_care_contexts_encounter_id_opd_encounters_id_fk": {
+          "name": "abdm_care_contexts_encounter_id_opd_encounters_id_fk",
+          "tableFrom": "abdm_care_contexts",
+          "tableTo": "opd_encounters",
+          "columnsFrom": [
+            "encounter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_care_contexts_status_ck": {
+          "name": "abdm_care_contexts_status_ck",
+          "value": "\"abdm_care_contexts\".\"status\" in ('pending', 'linking', 'linked', 'failed')"
+        },
+        "abdm_care_contexts_via_ck": {
+          "name": "abdm_care_contexts_via_ck",
+          "value": "\"abdm_care_contexts\".\"linked_via\" is null or \"abdm_care_contexts\".\"linked_via\" in ('hip', 'patient')"
+        },
+        "abdm_care_contexts_linked_ck": {
+          "name": "abdm_care_contexts_linked_ck",
+          "value": "(\"abdm_care_contexts\".\"status\" = 'linked') = (\"abdm_care_contexts\".\"linked_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_consents": {
+      "name": "abdm_consents",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "consent_id": {
+          "name": "consent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hip_id": {
+          "name": "hip_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_abha_address": {
+          "name": "patient_abha_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hiu_id": {
+          "name": "hiu_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "purpose_code": {
+          "name": "purpose_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hi_types": {
+          "name": "hi_types",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "care_contexts": {
+          "name": "care_contexts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date_from": {
+          "name": "date_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_to": {
+          "name": "date_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data_erase_at": {
+          "name": "data_erase_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_mode": {
+          "name": "access_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artefact": {
+          "name": "artefact",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signature": {
+          "name": "signature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "granted_at": {
+          "name": "granted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_consents_consent_ux": {
+          "name": "abdm_consents_consent_ux",
+          "columns": [
+            {
+              "expression": "consent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_consents_patient_idx": {
+          "name": "abdm_consents_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_consents_patient_id_patients_id_fk": {
+          "name": "abdm_consents_patient_id_patients_id_fk",
+          "tableFrom": "abdm_consents",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_consents_message_id_abdm_messages_id_fk": {
+          "name": "abdm_consents_message_id_abdm_messages_id_fk",
+          "tableFrom": "abdm_consents",
+          "tableTo": "abdm_messages",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_consents_status_ck": {
+          "name": "abdm_consents_status_ck",
+          "value": "\"abdm_consents\".\"status\" in ('GRANTED', 'REVOKED', 'EXPIRED', 'DENIED')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_external_records": {
+      "name": "abdm_external_records",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "data_request_id": {
+          "name": "data_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "artefact_id": {
+          "name": "artefact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consent_id": {
+          "name": "consent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "care_context_reference": {
+          "name": "care_context_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hip_id": {
+          "name": "hip_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hip_name": {
+          "name": "hip_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hi_type": {
+          "name": "hi_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "record_date": {
+          "name": "record_date",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checksum_verified": {
+          "name": "checksum_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bundle": {
+          "name": "bundle",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_external_records_entry_ux": {
+          "name": "abdm_external_records_entry_ux",
+          "columns": [
+            {
+              "expression": "consent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "care_context_reference",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checksum",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_external_records_patient_idx": {
+          "name": "abdm_external_records_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "record_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_external_records_artefact_idx": {
+          "name": "abdm_external_records_artefact_idx",
+          "columns": [
+            {
+              "expression": "artefact_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_external_records_data_request_id_abdm_hiu_data_requests_id_fk": {
+          "name": "abdm_external_records_data_request_id_abdm_hiu_data_requests_id_fk",
+          "tableFrom": "abdm_external_records",
+          "tableTo": "abdm_hiu_data_requests",
+          "columnsFrom": [
+            "data_request_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_external_records_artefact_id_abdm_hiu_consent_artefacts_id_fk": {
+          "name": "abdm_external_records_artefact_id_abdm_hiu_consent_artefacts_id_fk",
+          "tableFrom": "abdm_external_records",
+          "tableTo": "abdm_hiu_consent_artefacts",
+          "columnsFrom": [
+            "artefact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_external_records_patient_id_patients_id_fk": {
+          "name": "abdm_external_records_patient_id_patients_id_fk",
+          "tableFrom": "abdm_external_records",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.abdm_health_info_requests": {
+      "name": "abdm_health_info_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consent_id": {
+          "name": "consent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hip_id": {
+          "name": "hip_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_from": {
+          "name": "requested_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_to": {
+          "name": "requested_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data_push_url": {
+          "name": "data_push_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refusal": {
+          "name": "refusal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "released": {
+          "name": "released",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "entry_count": {
+          "name": "entry_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pushed_at": {
+          "name": "pushed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notified_at": {
+          "name": "notified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_hi_requests_transaction_ux": {
+          "name": "abdm_hi_requests_transaction_ux",
+          "columns": [
+            {
+              "expression": "transaction_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hi_requests_consent_idx": {
+          "name": "abdm_hi_requests_consent_idx",
+          "columns": [
+            {
+              "expression": "consent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_health_info_requests_patient_id_patients_id_fk": {
+          "name": "abdm_health_info_requests_patient_id_patients_id_fk",
+          "tableFrom": "abdm_health_info_requests",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_health_info_requests_message_id_abdm_messages_id_fk": {
+          "name": "abdm_health_info_requests_message_id_abdm_messages_id_fk",
+          "tableFrom": "abdm_health_info_requests",
+          "tableTo": "abdm_messages",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_hi_requests_status_ck": {
+          "name": "abdm_hi_requests_status_ck",
+          "value": "\"abdm_health_info_requests\".\"status\" in ('refused', 'held', 'transferring', 'transferred', 'failed')"
+        },
+        "abdm_hi_requests_refused_ck": {
+          "name": "abdm_hi_requests_refused_ck",
+          "value": "(\"abdm_health_info_requests\".\"status\" = 'refused') = (\"abdm_health_info_requests\".\"refusal\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_hiu_consent_artefacts": {
+      "name": "abdm_hiu_consent_artefacts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "hiu_request_id": {
+          "name": "hiu_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consent_id": {
+          "name": "consent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetch_request_id": {
+          "name": "fetch_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hip_id": {
+          "name": "hip_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hip_name": {
+          "name": "hip_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "care_contexts": {
+          "name": "care_contexts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "hi_types": {
+          "name": "hi_types",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "date_from": {
+          "name": "date_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "date_to": {
+          "name": "date_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data_erase_at": {
+          "name": "data_erase_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_mode": {
+          "name": "access_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artefact": {
+          "name": "artefact",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signature": {
+          "name": "signature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "erased_at": {
+          "name": "erased_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "erased_count": {
+          "name": "erased_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "erase_reason": {
+          "name": "erase_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_hiu_artefacts_consent_ux": {
+          "name": "abdm_hiu_artefacts_consent_ux",
+          "columns": [
+            {
+              "expression": "consent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hiu_artefacts_request_idx": {
+          "name": "abdm_hiu_artefacts_request_idx",
+          "columns": [
+            {
+              "expression": "hiu_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hiu_artefacts_patient_idx": {
+          "name": "abdm_hiu_artefacts_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hiu_artefacts_erase_idx": {
+          "name": "abdm_hiu_artefacts_erase_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "data_erase_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_hiu_consent_artefacts_hiu_request_id_abdm_hiu_consent_requests_id_fk": {
+          "name": "abdm_hiu_consent_artefacts_hiu_request_id_abdm_hiu_consent_requests_id_fk",
+          "tableFrom": "abdm_hiu_consent_artefacts",
+          "tableTo": "abdm_hiu_consent_requests",
+          "columnsFrom": [
+            "hiu_request_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_hiu_consent_artefacts_patient_id_patients_id_fk": {
+          "name": "abdm_hiu_consent_artefacts_patient_id_patients_id_fk",
+          "tableFrom": "abdm_hiu_consent_artefacts",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_hiu_artefacts_status_ck": {
+          "name": "abdm_hiu_artefacts_status_ck",
+          "value": "\"abdm_hiu_consent_artefacts\".\"status\" in ('GRANTED', 'REVOKED', 'EXPIRED')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_hiu_consent_requests": {
+      "name": "abdm_hiu_consent_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encounter_id": {
+          "name": "encounter_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requester_name": {
+          "name": "requester_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requester_reg_no": {
+          "name": "requester_reg_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hiu_id": {
+          "name": "hiu_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "abha_address": {
+          "name": "abha_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose_code": {
+          "name": "purpose_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hi_types": {
+          "name": "hi_types",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date_from": {
+          "name": "date_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date_to": {
+          "name": "date_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_erase_at": {
+          "name": "data_erase_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consent_request_id": {
+          "name": "consent_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status_checked_at": {
+          "name": "status_checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_hiu_consent_requests_request_ux": {
+          "name": "abdm_hiu_consent_requests_request_ux",
+          "columns": [
+            {
+              "expression": "request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hiu_consent_requests_cr_ux": {
+          "name": "abdm_hiu_consent_requests_cr_ux",
+          "columns": [
+            {
+              "expression": "consent_request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"abdm_hiu_consent_requests\".\"consent_request_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hiu_consent_requests_patient_idx": {
+          "name": "abdm_hiu_consent_requests_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_hiu_consent_requests_patient_id_patients_id_fk": {
+          "name": "abdm_hiu_consent_requests_patient_id_patients_id_fk",
+          "tableFrom": "abdm_hiu_consent_requests",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_hiu_consent_requests_encounter_id_opd_encounters_id_fk": {
+          "name": "abdm_hiu_consent_requests_encounter_id_opd_encounters_id_fk",
+          "tableFrom": "abdm_hiu_consent_requests",
+          "tableTo": "opd_encounters",
+          "columnsFrom": [
+            "encounter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_hiu_consent_requests_status_ck": {
+          "name": "abdm_hiu_consent_requests_status_ck",
+          "value": "\"abdm_hiu_consent_requests\".\"status\" in ('requested', 'awaiting_patient', 'granted', 'denied', 'expired', 'revoked', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_hiu_data_requests": {
+      "name": "abdm_hiu_data_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "artefact_id": {
+          "name": "artefact_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consent_id": {
+          "name": "consent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "push_token_hash": {
+          "name": "push_token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_key": {
+          "name": "public_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nonce": {
+          "name": "nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "private_key_sealed": {
+          "name": "private_key_sealed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "key_expires_at": {
+          "name": "key_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date_from": {
+          "name": "date_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date_to": {
+          "name": "date_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "page_count": {
+          "name": "page_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pages_received": {
+          "name": "pages_received",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::integer[]"
+        },
+        "entry_count": {
+          "name": "entry_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notified_at": {
+          "name": "notified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_hiu_data_requests_request_ux": {
+          "name": "abdm_hiu_data_requests_request_ux",
+          "columns": [
+            {
+              "expression": "request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hiu_data_requests_txn_ux": {
+          "name": "abdm_hiu_data_requests_txn_ux",
+          "columns": [
+            {
+              "expression": "transaction_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"abdm_hiu_data_requests\".\"transaction_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hiu_data_requests_token_ux": {
+          "name": "abdm_hiu_data_requests_token_ux",
+          "columns": [
+            {
+              "expression": "push_token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_hiu_data_requests_artefact_idx": {
+          "name": "abdm_hiu_data_requests_artefact_idx",
+          "columns": [
+            {
+              "expression": "artefact_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_hiu_data_requests_artefact_id_abdm_hiu_consent_artefacts_id_fk": {
+          "name": "abdm_hiu_data_requests_artefact_id_abdm_hiu_consent_artefacts_id_fk",
+          "tableFrom": "abdm_hiu_data_requests",
+          "tableTo": "abdm_hiu_consent_artefacts",
+          "columnsFrom": [
+            "artefact_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_hiu_data_requests_patient_id_patients_id_fk": {
+          "name": "abdm_hiu_data_requests_patient_id_patients_id_fk",
+          "tableFrom": "abdm_hiu_data_requests",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_hiu_data_requests_status_ck": {
+          "name": "abdm_hiu_data_requests_status_ck",
+          "value": "\"abdm_hiu_data_requests\".\"status\" in ('requested', 'acknowledged', 'receiving', 'received', 'failed', 'erased')"
+        },
+        "abdm_hiu_data_requests_key_ck": {
+          "name": "abdm_hiu_data_requests_key_ck",
+          "value": "\"abdm_hiu_data_requests\".\"status\" in ('requested', 'acknowledged', 'receiving') or \"abdm_hiu_data_requests\".\"private_key_sealed\" is null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_link_requests": {
+      "name": "abdm_link_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "link_ref_number": {
+          "name": "link_ref_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hip_id": {
+          "name": "hip_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "abha_address": {
+          "name": "abha_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "care_contexts": {
+          "name": "care_contexts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "otp_hash": {
+          "name": "otp_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "otp_expires_at": {
+          "name": "otp_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_link_requests_ref_ux": {
+          "name": "abdm_link_requests_ref_ux",
+          "columns": [
+            {
+              "expression": "link_ref_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_link_requests_request_ux": {
+          "name": "abdm_link_requests_request_ux",
+          "columns": [
+            {
+              "expression": "request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_link_requests_patient_idx": {
+          "name": "abdm_link_requests_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_link_requests_patient_id_patients_id_fk": {
+          "name": "abdm_link_requests_patient_id_patients_id_fk",
+          "tableFrom": "abdm_link_requests",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_link_requests_status_ck": {
+          "name": "abdm_link_requests_status_ck",
+          "value": "\"abdm_link_requests\".\"status\" in ('otp_sent', 'otp_unsent', 'linked', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_link_tokens": {
+      "name": "abdm_link_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "hip_id": {
+          "name": "hip_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "abha_address": {
+          "name": "abha_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "token_sealed": {
+          "name": "token_sealed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "abha_number": {
+          "name": "abha_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "abdm_link_tokens_request_ux": {
+          "name": "abdm_link_tokens_request_ux",
+          "columns": [
+            {
+              "expression": "request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_link_tokens_address_idx": {
+          "name": "abdm_link_tokens_address_idx",
+          "columns": [
+            {
+              "expression": "hip_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "abha_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_link_tokens_patient_id_patients_id_fk": {
+          "name": "abdm_link_tokens_patient_id_patients_id_fk",
+          "tableFrom": "abdm_link_tokens",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_link_tokens_status_ck": {
+          "name": "abdm_link_tokens_status_ck",
+          "value": "\"abdm_link_tokens\".\"status\" in ('pending', 'received', 'failed')"
+        },
+        "abdm_link_tokens_received_ck": {
+          "name": "abdm_link_tokens_received_ck",
+          "value": "(\"abdm_link_tokens\".\"status\" = 'received') = (\"abdm_link_tokens\".\"token_sealed\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.abdm_messages": {
       "name": "abdm_messages",
       "schema": "",
@@ -40055,6 +41714,12 @@
         },
         "patient_id": {
           "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_id": {
+          "name": "actor_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -40168,6 +41833,267 @@
         "abdm_messages_dispatch_ck": {
           "name": "abdm_messages_dispatch_ck",
           "value": "\"abdm_messages\".\"dispatch\" is null or \"abdm_messages\".\"dispatch\" in ('pending', 'handled', 'unhandled', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.abdm_profile_shares": {
+      "name": "abdm_profile_shares",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hip_id": {
+          "name": "hip_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "counter_id": {
+          "name": "counter_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "intent": {
+          "name": "intent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "abha_number": {
+          "name": "abha_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "abha_address": {
+          "name": "abha_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile": {
+          "name": "profile",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_date": {
+          "name": "token_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_number": {
+          "name": "token_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ack_status": {
+          "name": "ack_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ack_error": {
+          "name": "ack_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "linked_by": {
+          "name": "linked_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "linked_at": {
+          "name": "linked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abdm_profile_shares_request_ux": {
+          "name": "abdm_profile_shares_request_ux",
+          "columns": [
+            {
+              "expression": "request_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_profile_shares_token_ux": {
+          "name": "abdm_profile_shares_token_ux",
+          "columns": [
+            {
+              "expression": "hip_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "token_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "token_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_profile_shares_status_idx": {
+          "name": "abdm_profile_shares_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abdm_profile_shares_address_idx": {
+          "name": "abdm_profile_shares_address_idx",
+          "columns": [
+            {
+              "expression": "hip_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "abha_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "abdm_profile_shares_message_id_abdm_messages_id_fk": {
+          "name": "abdm_profile_shares_message_id_abdm_messages_id_fk",
+          "tableFrom": "abdm_profile_shares",
+          "tableTo": "abdm_messages",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "abdm_profile_shares_patient_id_patients_id_fk": {
+          "name": "abdm_profile_shares_patient_id_patients_id_fk",
+          "tableFrom": "abdm_profile_shares",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abdm_profile_shares_status_ck": {
+          "name": "abdm_profile_shares_status_ck",
+          "value": "\"abdm_profile_shares\".\"status\" in ('pending', 'linked', 'dismissed')"
+        },
+        "abdm_profile_shares_ack_ck": {
+          "name": "abdm_profile_shares_ack_ck",
+          "value": "\"abdm_profile_shares\".\"ack_status\" is null or \"abdm_profile_shares\".\"ack_status\" in ('sent', 'failed')"
+        },
+        "abdm_profile_shares_linked_ck": {
+          "name": "abdm_profile_shares_linked_ck",
+          "value": "(\"abdm_profile_shares\".\"status\" = 'linked') = (\"abdm_profile_shares\".\"patient_id\" is not null)"
         }
       },
       "isRLSEnabled": false
