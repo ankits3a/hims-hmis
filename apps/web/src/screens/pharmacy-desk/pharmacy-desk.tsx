@@ -22,7 +22,7 @@ import type { PaymentRunCardData, PurchasePlanCardData, ReturnPlanCardData, Shor
 import { TicketPanel } from "./ticket";
 import type { DeskLog } from "./log";
 import type { CollectResult } from "./lines";
-import type { PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
+import type { ControlledHandover, PickLine, Tender, VerifyLine, WireDispense, WireFindResult, WirePatientSummary } from "../../lib/pharmacy-api";
 import "../../styles/paper-pine.css";
 import "../desk-one/desk-one.css";
 import "./pharmacy-desk.css";
@@ -292,11 +292,11 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     }
   }, [inHandId, qc, settle, t]);
 
-  const handOver = useCallback(async (identity: { via: "token" | "phone_last4"; value: string } | null): Promise<void> => {
+  const handOver = useCallback(async (identity: { via: "token" | "phone_last4"; value: string } | null, controlled?: ControlledHandover): Promise<void> => {
     if (inHandId === null) return;
     setBusy(true); setHandOverError(null);
     try {
-      const d = await handOverDispense(inHandId, identity, keyFor("handover", inHandId));
+      const d = await handOverDispense(inHandId, identity, keyFor("handover", inHandId), controlled);
       moneyKeys.current.delete(`handover:${inHandId}`);
       settle(d);
       setJustHandedOver(d.id);
@@ -458,7 +458,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onDecline={decline}
               handOverError={handOverError}
               takenLabel={preview.data === undefined ? null : rupees(preview.data.totals.netPayablePaise)}
-              onHandOver={(identity) => void handOver(identity)}
+              onHandOver={(identity, controlled) => void handOver(identity, controlled)}
               onOpenSlip={() => setOverlay("slip")}
               queue={rows}
               onShowLine={() => setOverlay("queue")}

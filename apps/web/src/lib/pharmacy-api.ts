@@ -95,6 +95,26 @@ export type WireDispenseLine = {
    * composition (same salts, strength per salt, form, route). Absent from an older server.
    */
   matchedBy?: "salt" | null;
+  /** PHARMACY P6 — the NDPS Act class, and whether the line is controlled (NDPS or Schedule X). Absent from an older server. */
+  ndpsClass?: string | null;
+  controlled?: boolean;
+};
+/** PHARMACY P6 — what the law asks before a controlled line is handed over, each ok or not (the counter agent's card). */
+export type WireControlledCheck = {
+  key: "licence_schedule_x" | "licence_ndps_rmi" | "prescriber_reg_no" | "trained_prescriber" | "patient_address" | "quantity"
+    | "retained_prescription" | "endorsement" | "collected_by" | "witness";
+  ok: boolean; detail: string; atHandover: boolean;
+};
+export type WireControlledChecklist = {
+  lines: { lineIdx: number; drug: string; scheduleX: boolean; ndpsClass: string | null; prescribedQty: number | null; qtyBase: number | null }[];
+  checks: WireControlledCheck[];
+  blocking: WireControlledCheck["key"][];
+};
+export type ControlledHandover = {
+  witness: { username: string; pin: string };
+  collectedBy: { name: string; relation: string; idProof: string };
+  retainedDocumentId: string;
+  endorsed?: boolean;
 };
 export type WireBatch = { batchId: string; batchNo: string; expiryDate: string | null; available: number };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
@@ -111,6 +131,8 @@ export type WireDispense = {
   transcribedBy?: string | null; transcribedByName?: string | null; slipConfirmedBy?: string | null;
   /** PD-9 — the doctor who wrote this prescription, whom the counter asks. Absent from an older server. */
   prescriberName?: string | null;
+  /** PHARMACY P6 — the controlled lines' checklist; null when none. Absent from an older server. */
+  controlled?: WireControlledChecklist | null;
 };
 /** FD-31 — the pharmacist's cross-confirmation of a transcribed prescription against the paper. */
 export async function confirmDispenseSlip(id: string): Promise<{ slipConfirmedBy: string | null; slipConfirmedAt: string | null }> {
@@ -277,8 +299,12 @@ export type Tender = { mode: "cash" | "upi" | "card"; amountPaise: number; refTe
 export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number }, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/bill`, input, idempotencyKey);
 }
-export async function handOverDispense(id: string, identity: { via: "token" | "phone_last4"; value: string } | null, idempotencyKey: string): Promise<WireDispense> {
-  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/handover`, identity === null ? {} : { identity }, idempotencyKey);
+export async function handOverDispense(
+  id: string, identity: { via: "token" | "phone_last4"; value: string } | null, idempotencyKey: string, controlled?: ControlledHandover,
+): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/handover`, {
+    ...(identity === null ? {} : { identity }), ...(controlled === undefined ? {} : { controlled }),
+  }, idempotencyKey);
 }
 export type WireLabel = {
   dispenseNo: string | null; status: string; patient: { display: string; uhid: string }; handedOverAt: string | null;
@@ -604,4 +630,9 @@ export type WireMyShift = {
 };
 export async function fetchMyShift(): Promise<WireMyShift> {
   return api<WireMyShift>("GET", "/pharmacy/summary/mine");
+}
+
+/** PHARMACY P6 — the pharmacy's copy of a controlled prescription, filed on the patient's record; the hand-over names it. */
+export async function captureRetainedPrescription(id: string, photo: { mimeType: string; imageBase64: string }): Promise<{ documentId: string }> {
+  return api("POST", `/pharmacy/dispenses/${id}/retained-prescription`, { photo });
 }
