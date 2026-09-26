@@ -22,7 +22,7 @@ import type { AbdmCallResult, AbdmGatewayClient } from "./gateway-client";
  * | 8 | in | on-fetch | `{bridge}/api/v3/hiu/consent/on-fetch` | JWT | `{consent:{status,consentDetail,signature},response}` | W | UNVERIFIED |
  * | 9 | out | HI request | `POST {gw}/data-flow/v3/health-information/request` | X-HIU-ID | `{hiRequest:{consent:{id},dateRange:<the ARTEFACT's>,dataPushUrl,keyMaterial:{cryptoAlg:"ECDH",curve:"Curve25519",dhPublicKey:{expiry,parameters,keyValue:<our X.509 key>},nonce}}}` — the artefact's range, or ABDM-1063 (spec §5) | W + C | UNVERIFIED |
  * | 10 | in | on-request | `{bridge}/api/v3/hiu/health-information/on-request` | JWT | `{hiRequest:{transactionId,sessionStatus},error?,response:{requestId}}` | W | UNVERIFIED |
- * | 11 | in | THE PUSH | `POST {dataPushUrl}` = `{ABDM_CALLBACK_BASE_URL}/hiu/data-push/<token>` | see below | `{pageNumber,pageCount,transactionId,entries:[{content,media,checksum,careContextReference}],keyMaterial}` | W (receiver `/v3/transfer/`); C (`…/hiu/health-information/transfer`) | UNVERIFIED |
+ * | 11 | in | THE PUSH | `POST {dataPushUrl}` = `{ABDM_CALLBACK_BASE_URL}/hiu/data-push?pt=<token>` — the token in a QUERY parameter (below); that ABDM keeps a query string on `dataPushUrl` is unconfirmed | see below | `{pageNumber,pageCount,transactionId,entries:[{content,media,checksum,careContextReference}],keyMaterial}` | W (receiver `/v3/transfer/`); C (`…/hiu/health-information/transfer`) | UNVERIFIED |
  * | 12 | out | transfer notify | `POST {gw}/data-flow/v3/health-information/notify` | X-HIU-ID | `{notification:{consentId,transactionId,doneAt,notifier:{type:"HIU",id},statusNotification:{sessionStatus:"TRANSFERRED"|"FAILED",hipId,statusResponses:[{careContextReference,hiStatus:"OK"|"ERRORED",description}]}}}` — W sends TRANSFERRED; N says RECEIVED (untrusted); W puts its id under a header literally named `HIU` (a W defect), C and the spec say X-HIU-ID | W | UNVERIFIED |
  *
  * THE PUSH'S AUTHENTICATION (row 11) — DECIDED, UNVERIFIED. It is not an ABDM callback: W's HIP pushes
@@ -30,10 +30,19 @@ import type { AbdmCallResult, AbdmGatewayClient } from "./gateway-client";
  * C's receiver verifies a gateway JWT; N says "Authorization token is mandatory" (untrusted). Requiring
  * a JWT would refuse every W-based HIP, so the push is authenticated by what only the parties to THIS
  * transfer hold: (1) the 256-bit random token in the `dataPushUrl` we gave ABDM (stored as SHA-256
- * only, scrubbed from the logged request), (2) the transaction id ABDM assigned it, (3) AES-GCM
- * ciphertext that authenticates only under OUR ephemeral key, and (4) the entry checksum. A bearer, if
+ * only, scrubbed from the logged request and from the edge access log), (2) the transaction id ABDM
+ * assigned it, (3) AES-GCM ciphertext that authenticates only under OUR ephemeral key, and (4) the
+ * entry checksum. A bearer, if
  * one comes, is neither required nor trusted. Confirm on the sandbox; pin a JWT check here if ABDM's
  * reference HIP sends one.
+ *
+ * WHERE THE TOKEN RIDES — DECIDED (WASA M-04), UNVERIFIED. In the QUERY parameter `pt`, not the path.
+ * S3 first put it in the path (`…/data-push/<token>`); Caddy's access log keeps the path in the clear
+ * by design (it is what makes a 5xx line diagnosable) and allows one filter per log field, so the
+ * token went to disk. The `request>uri query` filter replaces `pt` (docker/prod/Caddyfile; pinned by
+ * test/caddyfile-hardening.test.ts). UNVERIFIED: whether ABDM (and every HIP) POSTs to `dataPushUrl`
+ * with its query string intact is unconfirmed until the sandbox — the path form was no more verified.
+ * If the sandbox drops it, every push answers 404 `unknown_transfer`, and this is what to revisit.
  *
  * Details still open: the checksum (W sends the literal "string", C sends "", N says MD5 of the
  * plaintext — we REFUSE a real MD5 (hex or base64) that does not match and record the placeholders
@@ -49,8 +58,14 @@ export const HIU_PATHS = {
   hiNotify: "/data-flow/v3/health-information/notify",
 } as const;
 
-/** Our push route, under the callback base (`{ABDM_CALLBACK_BASE_URL}/hiu/data-push/<token>`). */
+/** Our push route, under the callback base (`{ABDM_CALLBACK_BASE_URL}/hiu/data-push?pt=<token>`). */
 export const HIU_PUSH_PREFIX = "/hiu/data-push";
+
+/**
+ * The QUERY parameter that carries the push token — never a path segment (the edge log keeps paths;
+ * its query filter replaces this name). Pinned against the Caddyfile by caddyfile-hardening.test.ts.
+ */
+export const HIU_PUSH_TOKEN_PARAM = "pt";
 
 /**
  * The HL7 v3 PurposeOfUse codes ABDM's consent carries (spec summary §4.3; C `Purpose`). A doctor in a

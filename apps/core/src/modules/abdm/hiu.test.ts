@@ -137,7 +137,8 @@ describe("Hiu — M3", () => {
     const hr = (hi as { hiRequest: Record<string, unknown> }).hiRequest;
     expect(hr.consent).toEqual({ id: "artefact-1" });
     expect(hr.dateRange).toEqual({ from: "2026-07-01T00:00:00.000Z", to: "2026-09-26T00:00:00.000Z" }); // the artefact's, not the ask's
-    expect(hr.dataPushUrl).toMatch(/^https:\/\/hmis\.example\.test\/api\/abdm\/callbacks\/hiu\/data-push\/[A-Za-z0-9_-]{43}$/);
+    // The token rides the `pt` QUERY parameter, which the edge access log redacts — never the path (WASA M-04).
+    expect(hr.dataPushUrl).toMatch(/^https:\/\/hmis\.example\.test\/api\/abdm\/callbacks\/hiu\/data-push\?pt=[A-Za-z0-9_-]{43}$/);
     expect(hr.keyMaterial).toMatchObject({ cryptoAlg: "ECDH", curve: "Curve25519", nonce: README_REQUESTER.nonce, dhPublicKey: { keyValue: README_REQUESTER.x509, parameters: "Curve25519/32byte random key" } });
     expect((await db.select().from(abdmHiuDataRequests))[0]).toMatchObject({ status: "acknowledged", transactionId: "txn-1" });
 
@@ -369,7 +370,10 @@ describe("Hiu — M3", () => {
     for (const secret of [README_REQUESTER.priv, d.toString(), d.toString(16), page.token]) expect(all).not.toContain(secret);
     for (const e of page.body.entries as { content: string }[]) expect(all).not.toContain(e.content.slice(0, 40));
     expect(all).toContain("hiu.data_push");
-    expect(all).toContain("/hiu/data-push/[redacted]"); // the logged request carries the address scrubbed
+    // the logged HI request carries the address scrubbed, and so does the logged push's own path
+    expect(all).toContain("https://hmis.example.test/api/abdm/callbacks/hiu/data-push?pt=[redacted]");
+    const pushes = (await db.select().from(abdmMessages)).filter((m) => m.kind === "hiu.data_push");
+    expect(pushes.map((m) => m.path)).toEqual(["/abdm/callbacks/hiu/data-push?pt=[redacted]"]);
     expect((await db.select().from(abdmHiuDataRequests))[0]!.privateKeySealed).toBeNull();
   });
 

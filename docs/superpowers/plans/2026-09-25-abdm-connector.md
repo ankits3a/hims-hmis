@@ -147,7 +147,10 @@ cross-check; every path is listed UNVERIFIED in `modules/abdm/hiu-client.ts`):
   crypto path); the private half leaves the key object only SEALED (`sealPrivateKey`, AES-GCM under
   `SECRET_KEY`) into `abdm_hiu_data_requests`, and is NULLed when the transfer ends (a CHECK enforces
   it). It is in no `abdm_messages` row.
-- **DECIDED — the push (UNVERIFIED):** `{ABDM_CALLBACK_BASE_URL}/hiu/data-push/<256-bit token>`,
+- **DECIDED — the push (UNVERIFIED):** `{ABDM_CALLBACK_BASE_URL}/hiu/data-push?pt=<256-bit token>` —
+  the token in the `pt` QUERY parameter, not the path (WASA M-04: the edge access log keeps paths in
+  the clear and its `request>uri query` filter replaces `pt`; pinned by `caddyfile-hardening.test.ts`;
+  whether ABDM keeps a query string on `dataPushUrl` is unconfirmed until the sandbox) —
   `@Public()` and not JWT-guarded (the wrapper's HIP sends no Authorization); authenticated by the
   token (SHA-256 stored, scrubbed from the log), the transaction id, the GCM tag under our key, and the
   checksum. Every entry must decrypt, match a real MD5 checksum (the wrapper's placeholder `"string"`

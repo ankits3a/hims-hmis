@@ -16,10 +16,11 @@ import {
 } from "./fidelius";
 import { classifyBundle, summarizeBundle } from "./fhir-read";
 import {
-  ABDM_PURPOSES, ALL_HI_TYPES, CONSULT_PURPOSES, DEFAULT_REQUEST_HI_TYPES, HIU_PUSH_PREFIX, PURPOSE_REF_URI,
+  ABDM_PURPOSES, ALL_HI_TYPES, CONSULT_PURPOSES, DEFAULT_REQUEST_HI_TYPES, HIU_PUSH_PREFIX, HIU_PUSH_TOKEN_PARAM, PURPOSE_REF_URI,
 } from "./hiu-client";
 import { answering, ok2xx } from "./hip-client";
 import { completeInbound, inboundAnswer, insertInbound } from "./messages";
+import { REDACTED } from "./redact";
 import type { Actor } from "@hmis/contracts";
 import type { AbdmInboundMessage } from "./callbacks";
 import type { AbdmPurpose, AnyHiType, HiuClient } from "./hiu-client";
@@ -42,7 +43,8 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   3. PER GRANTED ARTEFACT: `consent/v3/fetch` → `on-fetch` (checked: OUR HIU, THIS patient, still
  *      granted, not past `dataEraseAt`) → `health-information/request` with a FRESH Fidelius key pair,
  *      built from the ARTEFACT's date range (ABDM-1063 otherwise) → `on-request` names the transaction.
- *   4. THE PUSH arrives at `{callback base}/hiu/data-push/<token>` (its authentication: `hiu-client.ts`).
+ *   4. THE PUSH arrives at `{callback base}/hiu/data-push?pt=<token>` (its authentication, and why the
+ *      token is a QUERY parameter and not a path segment: `hiu-client.ts`).
  *      Every entry must decrypt under OUR key, match its checksum, be a FHIR document of an HI type
  *      and a care context THE ARTEFACT names — or the page stores NOTHING and the transfer fails.
  *      Accepted documents are stored as EXTERNAL records (`abdm_external_records`), never merged
@@ -536,7 +538,7 @@ export class Hiu {
       hiRequest: {
         consent: { id: art.consentId },
         dateRange: { from: art.dateFrom!.toISOString(), to: art.dateTo!.toISOString() },
-        dataPushUrl: `${settings.callbackBaseUrl}${HIU_PUSH_PREFIX}/${token}`,
+        dataPushUrl: `${settings.callbackBaseUrl}${HIU_PUSH_PREFIX}?${HIU_PUSH_TOKEN_PARAM}=${token}`,
         keyMaterial: {
           cryptoAlg: FIDELIUS_CRYPTO_ALG, curve: FIDELIUS_CURVE_NAME,
           dhPublicKey: { expiry: keyExpiresAt.toISOString(), parameters: FIDELIUS_KEY_PARAMETERS, keyValue: own.publicKeyX509() },
@@ -610,7 +612,7 @@ export class Hiu {
     const [known] = await db.select({ id: abdmHiuDataRequests.id }).from(abdmHiuDataRequests).where(eq(abdmHiuDataRequests.pushTokenHash, sha256Hex(token)));
     if (!known) return { status: 404, code: "unknown_transfer", message: "no health-information request of this HIU has this push address" };
     const messageId = await insertInbound(db, {
-      kind: "hiu.data_push", path: `/abdm/callbacks${HIU_PUSH_PREFIX}/[token]`, requestId, correlationRequestId: null,
+      kind: "hiu.data_push", path: `/abdm/callbacks${HIU_PUSH_PREFIX}?${HIU_PUSH_TOKEN_PARAM}=${REDACTED}`, requestId, correlationRequestId: null,
       headers, body: summary, httpStatus: 202,
     });
     if (messageId === null) {

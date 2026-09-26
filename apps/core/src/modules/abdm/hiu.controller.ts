@@ -1,8 +1,8 @@
-import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post, Req, Res } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post, Query, Req, Res } from "@nestjs/common";
 import { z } from "zod";
 import { CurrentActor, Public, RequirePermission } from "../../kernel/auth/decorators";
 import { HiuError, readExternalRecords } from "./hiu";
-import { HIU_PUSH_PREFIX } from "./hiu-client";
+import { HIU_PUSH_PREFIX, HIU_PUSH_TOKEN_PARAM } from "./hiu-client";
 import { loggableHeaders } from "./redact";
 import { AbdmRuntime } from "./runtime";
 import type { Actor } from "@hmis/contracts";
@@ -24,11 +24,13 @@ import type { HiuErrorCode, HiuRequestView, PatientExternalRecords } from "./hiu
  * The read works with ABDM off (it reads what is stored and still erases what has expired); the two
  * writes answer 503 `abdm_hiu_not_configured` unless ABDM is configured WITH `ABDM_HIU_ID`.
  *
- * THE PUSH — `POST /abdm/callbacks/hiu/data-push/:token` — is `@Public()` to user auth and NOT behind
- * the callback JWT guard: it is the HIP's POST to the `dataPushUrl` we gave ABDM, which the NHA
+ * THE PUSH — `POST /abdm/callbacks/hiu/data-push?pt=<token>` — is `@Public()` to user auth and NOT
+ * behind the callback JWT guard: it is the HIP's POST to the `dataPushUrl` we gave ABDM, which the NHA
  * wrapper's HIP sends with no Authorization at all. Its authentication is the address itself plus the
  * transaction and the key (`hiu-client.ts` says why, UNVERIFIED). Under `/abdm/callbacks` so the public
- * URL is `{ABDM_CALLBACK_BASE_URL}/hiu/data-push/<token>` behind the existing `/api/*` proxy.
+ * URL is `{ABDM_CALLBACK_BASE_URL}/hiu/data-push?pt=<token>` behind the existing `/api/*` proxy. The
+ * token is a QUERY parameter, never a path segment: the edge access log keeps paths in the clear and
+ * redacts `pt` (WASA M-04; test/caddyfile-hardening.test.ts pins both halves).
  */
 const requestBody = z.object({
   encounterId: z.string().min(1).max(64),
@@ -108,10 +110,13 @@ export class AbdmHiuPushController {
   constructor(@Inject(AbdmRuntime) private readonly runtime: AbdmRuntime) {}
 
   @Public()
-  @Post(":token")
-  async push(@Param("token") token: string, @Req() req: Request, @Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<{ code: string; message: string }> {
+  @Post()
+  async push(@Query(HIU_PUSH_TOKEN_PARAM) pt: unknown, @Req() req: Request, @Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<{ code: string; message: string }> {
     const hiu = this.runtime.hiu;
     if (hiu === null) throw new HttpException({ statusCode: 503, code: "abdm_hiu_not_configured", message: "ABDM not configured" }, 503);
+    // Exactly one `pt`, shaped like a token we issue: a missing, repeated (`?pt=a&pt=b` parses to an
+    // array) or nested value is no address of ours.
+    const token = typeof pt === "string" ? pt : "";
     if (!/^[A-Za-z0-9_-]{32,64}$/.test(token)) throw new HttpException({ statusCode: 404, code: "unknown_transfer", message: "no such push address" }, 404);
     const kept: Record<string, string> = {};
     for (const name of PUSH_HEADERS) {

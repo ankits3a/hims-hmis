@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { completeOutbound, insertOutbound } from "./messages";
 import { loggableHeaders } from "./redact";
 import type { AbdmCallResult, AbdmFetch, AbdmGatewayClient } from "./gateway-client";
@@ -55,6 +55,20 @@ export const HIP_PATHS = {
 /** Wrapper `HIPHealthInformationV3Service`: `int pageSize = 7`, pages numbered from 0. */
 export const PUSH_PAGE_SIZE = 7;
 const PUSH_TIMEOUT_MS = 30_000;
+
+
+/**
+ * WHAT THE LOG KEEPS OF ANOTHER HIU'S `dataPushUrl`. The URL is the peer's, and a peer may carry its
+ * own credential in it — in the path or the query, as ours did before WASA M-04 moved it to `?pt=`.
+ * Our log must not hold someone else's secret, so it keeps the ORIGIN (which HIU) and a SHA-256 of the
+ * whole URL (to correlate retries of one transfer), never the path or the query.
+ */
+export function loggablePushUrl(dataPushUrl: string): string {
+  const digest = createHash("sha256").update(dataPushUrl).digest("hex").slice(0, 16);
+  let origin = "(unparseable)";
+  try { origin = new URL(dataPushUrl).origin; } catch { /* keep the placeholder; the digest still correlates */ }
+  return `${origin}/[redacted]#sha256:${digest}`;
+}
 
 export class HipClient {
   constructor(
@@ -125,7 +139,7 @@ export class HipClient {
       "X-HIP-ID": this.settings.hipId,
     };
     const logId = await insertOutbound(this.deps.db, {
-      kind: "hiu.data_push", path: dataPushUrl, requestId, headers: loggableHeaders(headers), body: summary, patientId,
+      kind: "hiu.data_push", path: loggablePushUrl(dataPushUrl), requestId, headers: loggableHeaders(headers), body: summary, patientId,
     });
     let res: Response;
     try {

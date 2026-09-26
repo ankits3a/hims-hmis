@@ -123,10 +123,15 @@ describe("ABDM S3 e2e — the hospital as HIU", () => {
     await request(app.getHttpServer()).post(`${CB}/consent/request/notify`).set({ "REQUEST-ID": "forged" }).send(notifyBody("REVOKED", null, ["artefact-e2e"])).expect(401);
 
     const page = fake.remoteHip.push(hi.body, { transactionId: "txn-e2e", entries: remoteBundles(fake).map(({ careContextReference, bundle }) => ({ careContextReference, bundle })) });
-    expect(page.path).toMatch(/^\/abdm\/callbacks\/hiu\/data-push\//);
+    // The token rides the `pt` query parameter (the edge log redacts it), never a path segment.
+    expect(page.path).toMatch(/^\/abdm\/callbacks\/hiu\/data-push\?pt=[A-Za-z0-9_-]{43}$/);
     const pushed = await request(app.getHttpServer()).post(page.path).send(page.body).expect(202);
     expect(pushed.body.code).toBe("received");
-    await request(app.getHttpServer()).post("/abdm/callbacks/hiu/data-push/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").send(page.body).expect(404);
+    await request(app.getHttpServer()).post("/abdm/callbacks/hiu/data-push?pt=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").send(page.body).expect(404);
+    // no token, a repeated one, and the REAL token in the old path form: none is an address of ours
+    await request(app.getHttpServer()).post("/abdm/callbacks/hiu/data-push").send(page.body).expect(404);
+    await request(app.getHttpServer()).post(`${page.path}&pt=${page.token}`).send(page.body).expect(404);
+    await request(app.getHttpServer()).post(`/abdm/callbacks/hiu/data-push/${page.token}`).send(page.body).expect(404);
     expect(await db.select().from(abdmExternalRecords)).toHaveLength(4);
 
     const read = await request(app.getHttpServer()).get(`/abdm/hiu/patients/${fx.patientId}/records`).set(as(doctor.token)).expect(200);
@@ -140,6 +145,7 @@ describe("ABDM S3 e2e — the hospital as HIU", () => {
     const log = JSON.stringify(await db.select().from(abdmMessages));
     expect(log).toContain("hiu.data_push");
     expect(log).not.toContain((page.body.entries as { content: string }[])[0]!.content.slice(0, 40));
+    expect(log).not.toContain(page.token);
 
     await callback("/consent/request/notify", notifyBody("REVOKED", null, ["artefact-e2e"])).expect(202);
     expect(await db.select().from(abdmExternalRecords)).toHaveLength(0);

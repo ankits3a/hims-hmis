@@ -1,6 +1,7 @@
 import { constants, createHash, createHmac, generateKeyPairSync, privateDecrypt, randomUUID, sign } from "node:crypto";
 import type { KeyObject } from "node:crypto";
 import { FideliusKeyPair, fideliusDecrypt, fideliusEncrypt } from "../../src/modules/abdm/fidelius";
+import { HIU_PUSH_TOKEN_PARAM } from "../../src/modules/abdm/hiu-client";
 
 /**
  * ═══ ABDM S0 — AN IN-PROCESS FAKE OF THE ABDM GATEWAY, FOR TESTS ONLY ═══
@@ -154,7 +155,8 @@ export type FakeRemoteHip = {
   /**
    * One push page, encrypted to the key material of `hiRequest` (the body WE sent ABDM). `tamper`:
    * `checksum` sends a wrong MD5; `stranger` encrypts to a key that is not ours; `placeholder` sends the
-   * NHA wrapper's literal checksum "string".
+   * NHA wrapper's literal checksum "string". `path` is the address under the API root, its query
+   * string included; `token` is that query's `pt` value.
    */
   push(hiRequest: Record<string, unknown>, o: {
     transactionId: string; entries: { careContextReference: string; bundle: unknown }[];
@@ -639,10 +641,11 @@ export function createFakeAbdmGateway(opts: {
           careContextReference: e.careContextReference,
         };
       });
+      // The HIP POSTs to the address exactly as given — the token rides its `pt` query parameter.
       const url = new URL(hr.dataPushUrl);
-      const token = url.pathname.split("/").pop() ?? "";
+      const token = url.searchParams.get(HIU_PUSH_TOKEN_PARAM) ?? "";
       return {
-        path: url.pathname.replace(/^\/api/, ""), token,
+        path: `${url.pathname.replace(/^\/api/, "")}${url.search}`, token,
         body: {
           pageNumber: p.pageNumber ?? 0, pageCount: p.pageCount ?? 1, transactionId: p.transactionId, entries,
           keyMaterial: {

@@ -66,7 +66,7 @@ export type {
   ConsentRequestInput, ExternalFacility, ExternalRecordView, HiuErrorCode, HiuRequestView, PatientExternalRecords, PushAnswer,
 } from "./hiu";
 export {
-  ABDM_PURPOSES, ALL_HI_TYPES, CONSULT_PURPOSES, DEFAULT_REQUEST_HI_TYPES, HIU_PATHS, HIU_PUSH_PREFIX, HiuClient,
+  ABDM_PURPOSES, ALL_HI_TYPES, CONSULT_PURPOSES, DEFAULT_REQUEST_HI_TYPES, HIU_PATHS, HIU_PUSH_PREFIX, HIU_PUSH_TOKEN_PARAM, HiuClient,
 } from "./hiu-client";
 export type { AbdmPurpose, AnyHiType } from "./hiu-client";
 export { classifyBundle, summarizeBundle } from "./fhir-read";
