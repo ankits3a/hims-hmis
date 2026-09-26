@@ -20,6 +20,7 @@ import * as pharmacyExpiryMod from "../../modules/pharmacy/expiry";
 import * as radiologyChasersMod from "../../modules/radiology/chasers";
 import * as rosterCalendarMod from "../../modules/roster/calendar";
 import * as rosterProposerMod from "../../modules/roster/proposer";
+import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -358,6 +359,16 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("runMonthlyProposals");
       return { skipped: true, drafted: 0, units: 0 };
     }),
+    /**
+     * PHARMACY P6 (patient messages) — the refill reminders, stubbed on `modules/pharmacy/messages` (the
+     * module the index re-exports FROM, the eleventh's rule). Un-stubbed it would read the preferences
+     * and dispenses of a database this CLOCK test has no business touching; its behaviour is asserted
+     * in `modules/pharmacy/messages.test.ts`.
+     */
+    jest.spyOn(pharmacyMessagesMod, "runRefillReminders").mockImplementation(async () => {
+      invoked.push("runRefillReminders");
+      return { held: null, enqueued: [] };
+    }),
   ];
 }
 
@@ -429,7 +440,10 @@ const THE_EIGHTEEN = [
   // PHASE R (R7) — the NINETEENTH, `dailyIst("01:30")`: the roster's duty-window horizon.
   "sweepRosterWindows",
   // PHASE R (R9) — the TWENTIETH, `dailyIst("02:10")`: next month's draft, cut on the 20th.
-  "runMonthlyProposals"
+  "runMonthlyProposals",
+  // PHARMACY P6 (patient messages) — the TWENTY-SECOND, `dailyIst("10:00")`: opt-in refill reminders.
+  // Already past at the pin's 17:30 IST with no heartbeat, so it fires on the first tick, like 01:30 and 02:10.
+  "runRefillReminders",
 ];
 
 /**
@@ -697,7 +711,7 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all twenty-one jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all twenty-two jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
       const spies = spyOnTheThirteen(invoked);

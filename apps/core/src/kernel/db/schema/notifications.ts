@@ -1,4 +1,5 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { users } from "./auth";
 
@@ -68,3 +69,69 @@ export const notifications = pgTable(
     index("notifications_status_updated_at_idx").on(t.status, t.updatedAt),
   ],
 );
+
+/**
+ * ═══ PHARMACY P6 (patient messages) — WHAT A PATIENT SAID ABOUT BEING MESSAGED ═══
+ *
+ * One row per patient, written only by `recordMessagePreference` (`notify/preferences.ts`) and read
+ * by the pump AT SEND TIME (D4: contact truth is never snapshotted) and by `enqueueNotification`.
+ * No row is the default: transactional messages go to the number on record, nothing that needs an
+ * opt-in goes at all.
+ *
+ *   opted_out_at     "stop all messages" (DPDP Act 2023 s.6(4): consent withdrawn as easily as it
+ *                    was given). Every patient-audience message is SUPPRESSED at send while it is set —
+ *                    a bill, a report notice, a reminder alike.
+ *   refill_reminders the one PURPOSE that needs an opt-IN (TRAI TCCCPR 2018 "service explicit"; DPDP
+ *                    s.6 consent per specified purpose). Who asked, when, and at which desk are kept
+ *                    beside it — the consent record the Act asks a Data Fiduciary to be able to show.
+ *   channel          the rung the patient asked for first (`sms` | `whatsapp`); null = the template's own.
+ *   language         the language they asked to be messaged in; null = `patients.language` (§6).
+ *
+ * The history of every change is the `message_preference.recorded` event; this row is the current state.
+ */
+export const patientMessagePreferences = pgTable(
+  "patient_message_preferences",
+  {
+    patientId: text("patient_id").primaryKey().references(() => patients.id),
+    channel: text("channel"),
+    language: text("language"),
+    refillReminders: boolean("refill_reminders").notNull().default(false),
+    remindersConsentAt: timestamp("reminders_consent_at", { withTimezone: true }),
+    remindersConsentBy: text("reminders_consent_by").references(() => users.id),
+    remindersConsentVia: text("reminders_consent_via"),
+    optedOutAt: timestamp("opted_out_at", { withTimezone: true }),
+    optedOutBy: text("opted_out_by").references(() => users.id),
+    optedOutVia: text("opted_out_via"),
+    updatedBy: text("updated_by").notNull().references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("patient_message_preferences_channel_ck", sql`${t.channel} is null or ${t.channel} in ('sms', 'whatsapp')`),
+    check("patient_message_preferences_language_ck", sql`${t.language} is null or ${t.language} in ('hi', 'en')`),
+    // A reminder opt-in carries its record, always: who, when, where.
+    check(
+      "patient_message_preferences_consent_ck",
+      sql`not ${t.refillReminders} or (${t.remindersConsentAt} is not null and ${t.remindersConsentBy} is not null and ${t.remindersConsentVia} is not null)`,
+    ),
+    check("patient_message_preferences_optout_ck", sql`${t.optedOutAt} is null or (${t.optedOutBy} is not null and ${t.optedOutVia} is not null)`),
+    index("patient_message_preferences_reminders_idx").on(t.refillReminders),
+  ],
+);
+
+/**
+ * ═══ PHARMACY P6 (patient messages) — THE PROVIDER'S NAME FOR EACH TEMPLATE ═══
+ *
+ * TRAI's DLT regime refuses any commercial SMS whose text is not a template registered under the
+ * hospital's entity, and the gateway must be told WHICH registration (the DLT content-template id).
+ * WhatsApp Business sends a business-initiated message only as a template Meta has approved, by name.
+ * Both are issued to the hospital by an outside portal after the owner contracts a provider, so they
+ * are DATA recorded on a screen, keyed by our template key — never a code constant and never an env
+ * key. The live SMS adapter REFUSES a template with no DLT id here (`notify/providers.ts`).
+ */
+export const notifyTemplateRegistrations = pgTable("notify_template_registrations", {
+  templateKey: text("template_key").primaryKey(),
+  dltTemplateId: text("dlt_template_id"),
+  whatsappTemplateName: text("whatsapp_template_name"),
+  updatedBy: text("updated_by").notNull().references(() => users.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});

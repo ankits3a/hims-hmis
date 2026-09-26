@@ -6,6 +6,7 @@ import { CONFIG, DB, DB_POOL, MODULE_REGISTRY } from "./kernel/tokens";
 import { ModuleRegistry } from "./kernel/modules/loader";
 import { Scheduler, pgLocks } from "./kernel/worker/scheduler";
 import { registerAllJobs } from "./kernel/worker/jobs";
+import { adaptersFor } from "./kernel/notify/adapters";
 import type { AppConfig } from "./kernel/config";
 import type { Db } from "./kernel/db/client";
 import type { ShutdownLog } from "./kernel/worker/worker.module";
@@ -37,7 +38,12 @@ async function bootstrap(): Promise<void> {
   //
   // `cfg` (the whole AppConfig, already resolved above) satisfies `JobIntervals` structurally.
   // `registerAllJobs` no longer reads the environment itself — see its docstring.
-  registerAllJobs(scheduler, db, registry, workerConsumers(db), cfg);
+  //
+  // PHARMACY P6 (patient messages) — and the pump's ADAPTER SET, from the same config: the SMS and
+  // WhatsApp gateways when `NOTIFY_PROVIDER=live` and their keys are set, web push when
+  // `NOTIFY_PUSH_PROVIDER=webpush`, the console sinks otherwise. Before this line no provider knob
+  // reached the pump at all.
+  registerAllJobs(scheduler, db, registry, workerConsumers(db), cfg, adaptersFor(cfg));
   scheduler.start();
   console.log(`worker started: jobs=${scheduler.jobs().join(",")}`);
 

@@ -26,6 +26,10 @@ describe("the notification template registry (D8)", () => {
       /** PLAN 17 §9.2 F3 / 17b T7 — the fourth kernel edit of the lab's build (spike S7). */
       "patient_lab_report_ready",
       "patient_welcome",
+      // PHARMACY P6 (patient messages, 2026-09-26): 10 -> 12, read off the red run — the pharmacy's bill
+      // and its opt-in refill reminder.
+      "pharmacy_bill_ready",
+      "pharmacy_refill_due",
       // PHASE O T4 (2026-09-21): 7 -> 10, read off the red run. The channel ladder's three —
       // the `now` relay, the `today`/`can_wait` relay, and R9's coalescing digest.
       "staff_alert_digest",

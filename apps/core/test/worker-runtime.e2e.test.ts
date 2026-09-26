@@ -187,6 +187,8 @@ const THE_EIGHTEEN = [
    * 20th and no-ops on every other day, so it heartbeats daily and works monthly.
    */
   "runMonthlyProposals",
+  /** PHARMACY P6 (patient messages) — `dailyIst("10:00")`: the opt-in refill reminders, queued once per dispense. */
+  "runRefillReminders",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -503,6 +505,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           ["allocation.reversed", "credit_note.issued", "payment.received", "payment.refunded"],
         ],
         // PLAN 16c T3 / D10 — the counter's queue: `prescription.issued` → a queued dispense. Sorts before `radiology.*`.
+        // PHARMACY P6 (patient messages) — the bill's message, once per invoice. Sorts after `pharmacy.`
+        // `patient_messages` < `rx_issued`.
+        ["pharmacy.patient_messages", ["dispense.handed_over", "retail.sold"]],
         ["pharmacy.rx_issued", ["prescription.issued"]],
         ["radiology.order_placed", ["order.placed"]],
       ]);

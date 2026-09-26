@@ -192,6 +192,11 @@ export const PHARMACY_ERROR_CODES = [
   "unknown_end_prescriber",
   /** A witnessed act at the cabinet out of shape: not the cabinet's, the Controller's nominee or approval missing. */
   "controlled_act_invalid",
+  // ── PHARMACY P6 (patient messages) ──
+  /** Reminders were asked for a patient who stopped all messages: they resume messages first, in their own words. */
+  "messages_stopped",
+  /** The pharmacy's reminder phone, a DLT id or a WhatsApp template name is not in the shape the provider issues. */
+  "invalid_message_setting",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -311,6 +316,8 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invalid_end_prescriber: 400,
   unknown_end_prescriber: 404,
   controlled_act_invalid: 409,
+  messages_stopped: 409,
+  invalid_message_setting: 400,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

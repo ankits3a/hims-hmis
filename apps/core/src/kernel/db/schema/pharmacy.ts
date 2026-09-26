@@ -543,6 +543,23 @@ export const pharmacyTallyConfig = pgTable(
 );
 
 /**
+ * PHARMACY P6 (patient messages) — the pharmacy's own line for a refill reminder's "call <number>".
+ * ONE ROW (`id = 'main'`, the Tally config's shape), recorded by the pharmacist in charge on the office's
+ * Messages side. Until it exists the daily reminder job holds every reminder: a reminder that tells a
+ * patient to call nobody is worse than none.
+ */
+export const pharmacyMessageSettings = pgTable(
+  "pharmacy_message_settings",
+  {
+    id: text("id").primaryKey(),
+    contactPhone: text("contact_phone").notNull(),
+    updatedBy: text("updated_by").notNull().references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [check("pharmacy_message_settings_one_row_ck", sql`${t.id} = 'main'`)],
+);
+
+/**
  * PARITY P5 — EVERY TALLY EXPORT MADE: the range, who and when, how many of each voucher, the total
  * debited, the SHA-256 of the vouchers file, the ledger mapping it used, and BOTH files as written —
  * so a re-export of a range is seen before it is made, and an earlier file downloads again byte for
