@@ -359,6 +359,24 @@ describe("item merge (pharmacy P6 hygiene)", () => {
     expect(await onHand(b)).toBe(50);
   });
 
+  it("stock that reaches the duplicate while the act runs undoes the whole act — nothing is left on a retired item", async () => {
+    const a = await anItem("GLV7", "Glove size 7");
+    const b = await anItem("GLV7X", "Glove size 7 (dup)");
+    const bb = await received(b, 5, "B-1");
+    const m = await raiseItemMerge(db, head.actor, { survivorItemId: a, mergedItemId: b, reason: "dup" }, {}, at(60));
+    await approveRequest(db, ms.actor, { approvalId: m.approvalId, note: "ok" });
+    // A receipt landing on B inside the act's window, after its stock was moved.
+    const arriving = { move: async (tx: Parameters<typeof postMovement>[0]): Promise<Record<string, number>> => {
+      await postMovement(tx, head.actor, { resourceId: store, batchId: bb.batchId, qtyDelta: 5, reason: "grn", refType: "test", refId: "late", occurredAt: at(61) });
+      return {};
+    } };
+    await expect(executeItemMerge(db, head.actor, m.id, arriving, at(61))).rejects.toMatchObject({
+      code: "item_merge_blocked", detail: { refusals: [expect.objectContaining({ rule: "stock_arrived" })] },
+    });
+    expect([await onHand(a), await onHand(b)]).toEqual([0, 50]);
+    expect((await getItemMerge(db, head.actor, m.id)).status).toBe("requested");
+  });
+
   it("an item merged into the duplicate earlier stands under the survivor too — always one hop", async () => {
     const a = await anItem("GLV7", "Glove size 7");
     const b = await anItem("GLV7X", "Glove size 7 (dup)");

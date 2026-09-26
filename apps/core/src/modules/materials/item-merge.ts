@@ -83,7 +83,8 @@ export type MergeRule =
   | "same_item" | "already_merged" | "survivor_inactive" | "different_class" | "different_drug" | "different_base_unit"
   | "pack_conflict" | "controlled_mismatch" | "request_open"
   | "reserved" | "open_dispense" | "in_transit" | "grn_open" | "return_open" | "write_off_open" | "count_open"
-  | "adjustment_open" | "recalled_stock" | "consignment_stock" | "controlled_stock" | "order_carries_both" | "batch_conflict";
+  | "adjustment_open" | "recalled_stock" | "consignment_stock" | "controlled_stock" | "order_carries_both" | "batch_conflict"
+  | "stock_arrived";
 
 const PAIR_RULES: ReadonlySet<MergeRule> = new Set([
   "same_item", "already_merged", "survivor_inactive", "different_class", "different_drug", "different_base_unit", "pack_conflict",
@@ -575,7 +576,16 @@ export async function executeItemMerge(
     // 5. The pharmacy's part (sale registration, shelf, short book), in this transaction.
     const pharmacy = hooks.move === undefined ? {} : await hooks.move(tx, actor, a, b, now);
 
-    // 6. B retired: merged into A, inactive for ever; whatever was merged into B now stands under A (one hop).
+    // 6. Whatever reached B while the act ran (a receipt posted between the read and the move) would be left on a
+    // retired item: asked again after the move, and the whole act undone if so. Read-committed sees it.
+    const [left] = await tx.select({ n: sql<string>`coalesce(sum(${stockBalances.qtyOnHand}), 0)` }).from(stockBalances).where(eq(stockBalances.itemId, b.id));
+    if (Number(left?.n ?? 0) !== 0) {
+      throw new MaterialsError("item_merge_blocked", `stock of ${b.code} arrived while the merge ran — nothing was merged; try again`, {
+        refusals: [{ rule: "stock_arrived", message: `stock of ${b.code} arrived while the merge ran`, ref: null }],
+      });
+    }
+
+    // 7. B retired: merged into A, inactive for ever; whatever was merged into B now stands under A (one hop).
     await tx.update(items).set({ mergedIntoItemId: a.id, mergedAt: now, active: false, updatedBy: actor.id, updatedAt: now }).where(eq(items.id, b.id));
     await tx.update(items).set({ mergedIntoItemId: a.id, updatedBy: actor.id, updatedAt: now }).where(eq(items.mergedIntoItemId, b.id));
 
