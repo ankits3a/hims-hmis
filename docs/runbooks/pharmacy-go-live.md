@@ -782,7 +782,7 @@ vendor's ledger in Tally equals what the office's payables owe (the test asserts
 ## 16. Narcotic, psychotropic and Schedule X drugs — the cabinet under two keys (P6, owner ruling 2026-09-26)
 
 The law, with sources, is in `docs/superpowers/plans/2026-09-26-pharmacy-p6-ndps-schedule-x-law.md`.
-Migration `0134` adds the register (append-only by trigger), the licences, the trained doctors, and the
+Migration `0135` adds the register (append-only by trigger), the licences, the trained doctors, and the
 witness column on the ledger. `seed:pharmacy` creates the cabinet `PHARM-NDPS` (census
 **`pharmacy_controlled_store_present`**).
 
