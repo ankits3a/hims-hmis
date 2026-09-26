@@ -216,6 +216,113 @@ called done.
 
 F1 → F2 ∥ F3 ∥ F4 (F2 holds the billing claim) → F5 → F6 → F7 → F8 → F9 (needs F2, F5, F6).
 
+## What the roadmap-v3 handoff adds (reviewed 26 Sep)
+
+Source: `docs/superpowers/2026-09-21-HANDOFF-roadmap-v3.md` and its brainstorm materials, both on `lane/roadmap-v3`,
+not on main. Nothing there supersedes ROADMAP v2 until it merges. Every fact below was re-measured on main
+`219e2376` before it was written here.
+
+### S · The lab's stand-up runs beside 17-F, not after it
+
+- **The S-gate has never happened.** `docs/runbooks/lab-go-live.md` "Executed on UAT — **NOT YET RUN**" (§14). This
+  is ROADMAP v2's first Track S milestone, and v2 §0c.5 says new lab series work waits for the lab's pilot (G6).
+  17-F does not wait for it. Instead, the stand-up runs in parallel, on the screens as they are (F1 included), so
+  that each 17-F phase lands into a lab that is actually rehearsing.
+- **"Done" for the lab is the gate ladder, not a green suite:**
+  - G1–G4 = `standup:check lab` shows zero RED rows;
+  - G5 = a dated section titled "Executed on UAT" in the runbook (matched by TITLE text, never by number, and
+    never while it says "NOT YET RUN");
+  - G6 = the pilot harvest's last three rows empty for 7 days, and read;
+  - G7 = the CA-signed tariff.
+- **G5 run by an agent on UAT is a rehearsal (G5-a).** G5 proper needs the department head (the pathologist of
+  record) present.
+- **UAT never receives real patient or legacy data.** The rehearsal uses the golden fixture
+  (`apps/core/test/fixtures/lab-catalogue.json`) or a synthetic sample. The owner's catalogue is loaded with
+  `import:lab-catalogue` (dry-run first) on production only.
+- **What blocks G3/G4 today is owner input, not code** (see open owner items): the catalogue spreadsheet, the
+  pathologist of record, and the four role holders.
+
+### Per-phase additions
+
+- **Every phase:**
+  - Acceptance adds the census row, event or runbook section that proves it (roadmap rule: "a query, an event, a
+    census row … or a dated runbook section").
+  - Each phase's CLOSE lands as a status-board row citing an artefact (merged SHA, file on main), never a task id.
+  - Each phase updates `lab-go-live.md` where it changes the stand-up. §13 (the five-seat walk-through) is rewritten
+    by F1's successor phases as the stations change.
+- **Before naming anything new, name what already occupies the name** (handoff rule 3). Examples:
+  `seed-lab-catalogue.ts` sits beside `import-lab-catalogue.ts`, and the four role keys live in
+  `standup-check.ts:123` `LAB_ROLE_KEYS`. Seams are cited by the signature that carries the property
+  (for example `issueInvoice(exec, actor, input, now)` for F2), not by the HTTP route.
+- **F2:**
+  - The discount approval type needs its own census row, beside G2 `lab_approval_type_registered`.
+  - The roadmap proposes a lab export `unbilledOrdersFor(day)` (a daily unbilled check; **not on main**). If F2
+    builds it, an order held under ruling 1's exceptions (STAT waiver, IPD running bill, credit) must appear in
+    it; there is no orphan-charge scan for the lab today.
+- **F3:**
+  - Label printing goes through the `print_jobs` outbox (`kernel/db/schema/printing.ts`). A lab-label job kind
+    does not exist yet; the roadmap names it `lab_label`.
+  - Closes the census row `lab_printer_destinations` (G3, NOT MODELLED today: "there is no printer destination
+    registry"). Minimum: a per-seat printer record, plus a census row that reads it.
+- **F5:**
+  - QC is not in the roadmap at all. The roadmap waits on "17-E T7's real instrument" (the owner's analyser
+    inventory).
+  - F5 is pilot-critical, not a feature: NABL / ISO 15189 needs QC before real patients.
+  - Add a census row `lab_qc_material_per_analyser` (G3). An analyser with no QC material cannot be released.
+- **F6:**
+  - **Build on what exists; do not write a second escalation system.** Use:
+    - the obligation spine (`kernel/obligations/consumer.ts`: an alert acknowledged `seen` or `owned` stops the
+      respond clock, `handed_over` does not);
+    - the kernel ladder (rung → `duty_manager` → `owner`, `escalation.triggered{fallbackExhausted}`);
+    - the roster (`modules/roster/resolve.ts`, "one named human").
+  - `lab_supervisor` is a ROLE KEY that the roster resolves. Because `kernel/workflow/instances.ts` checks declared
+    roles against `user_roles`, it joins `LAB_ROLE_KEYS` and gets a G4 `lab_role_held_lab_supervisor` row.
+  - **Two ladders, kept apart:**
+    - the critical-call ladder (`criticals.ts` `RUNGS`: ordering clinician → duty officer → patient or attendant)
+      is WHO THE BENCH PHONES;
+    - F6's escalation is WHO IS PAGED WHEN THE CALL IS NOT CLOSED.
+  - The roadmap records that the critical ladder "resolves no role" today; F6 makes each rung resolve to a named
+    person through the roster.
+  - Closes the census row `lab_critical_call_list` (G3, NOT MODELLED: "`opd_doctors` has NO phone column"). Minimum:
+    the rung's contact is read from the roster / staff record, and the printed bench call list is generated, not
+    hand-kept.
+  - Night criticals follow the existing R-014 and the runbook's Drill A ("a critical value at 02:00 with no
+    pathologist logged in").
+  - One limit to carry: the kernel SLA "cannot express a per-priority SLA" (roadmap F18). `sweepLabSla` holds STAT
+    separately. Do not paper over this in F6; name it.
+- **F7:**
+  - Keep the existing lab rulings (`plans/2026-08-29-phase1-17-lims-core.md`, DD11–DD13): R-022 auto-verification
+    ships disabled, R-014 night release, R-018 amendment wording (a new version, never an edit, reissued as
+    AMENDED), R-020 templates only.
+  - The doctor's copy stays English (NABL convention). The roadmap proposes a Hindi patient copy through a per-copy
+    `lang` parameter; the lab report has no such parameter on main.
+  - `lab.sod_violation_blocked` and `lab.report_print_blocked` exist (`modules/lab/events.ts`). The roadmap would
+    list them as protocol-gate events for the 100% audit pillar (`PROTOCOL_GATE_EVENTS`, **not on main**).
+    Batch-sign must emit them per report, the same as single signing.
+  - Batch-sign must never sign a sensitive (HIV) or a critical report in the batch.
+- **F8:**
+  - Closes, in part, the census row `lab_report_ready_notice` (G3, NOT MODELLED: "NO PATIENT MESSAGE LEAVES THE
+    BUILDING").
+  - The row stays NOT MODELLED until the owner attaches the WhatsApp/SMS provider. The build queues and records;
+    it does not claim sent.
+- **F9:**
+  - The escalation inbox is the alerts inbox with the spine's seen / owned / handed-over acts. Do / page / take
+    over / accept-with-reason write those acts; they are not a new table.
+  - Approvals are read from the approvals spine (`kernel/approvals/worklist.ts` `listApprovals`), not a lab-only
+    list.
+  - The roadmap proposes a daily fact sheet (`ops_fact_sheets`, **not on main**) whose sections include open
+    critical calls and the lab harvest. F9's floor read model is built so that sheet can reuse it.
+- **Copilot (all stations):**
+  - Clinical agents are capped at T2–T3: they draft and a human signs.
+  - An agent can never place an order.
+  - Every automation keeps a manual path.
+  - **Nothing with inference runs on production before DPIA v0.2** (counsel;
+    `docs/compliance/2026-08-23-dpia-agentic-runtime-v0.1.md` is v0.1). So the board's copilot drafts (reflex
+    suggestion, report comment, IDSP L-form, run summary, bench move) ship as DETERMINISTIC drafts built from rules
+    and data, or ship behind a kill switch and stay off in production until v0.2.
+- **Later, not 17-F:** the consult room as a sixth ordering seat (17c-ii, `lab_specimens.room_id`) and microbiology
+  (17-M). Both wait for the lab's G6 per ROADMAP v2.
+
 ## DECIDED (open to owner objection)
 
 - a bench review gate before the pathologist;
@@ -226,6 +333,14 @@ F1 → F2 ∥ F3 ∥ F4 (F2 holds the billing claim) → F5 → F6 → F7 → F8
 - no auto-verification.
 
 ## Open owner items (money / procurement / law only)
+
+- **Facts only the owner holds, blocking the lab's G3/G4** (from the roadmap owner's list, still open on main 26 Sep):
+  - the lab catalogue spreadsheet (the loader `import:lab-catalogue` is merged; template
+    `docs/runbooks/lab-catalogue-template.md`);
+  - the pathologist of record;
+  - the four named holders of `lab_reception`, `phlebotomist`, `lab_technician` and `pathologist`;
+  - the analyser inventory (the Curio Lab Gen 1 is known; the rest is owed).
+- **Law:** DPIA v0.2 (counsel) gates every copilot that uses inference on production.
 
 - **Procurement:** (owner, 26 Sep: "I will attach later") the WhatsApp/SMS provider (a BSP with delivery and read webhooks). It blocks read receipts, SMS
   fallback delivery, and the OTP for a relative collecting.
