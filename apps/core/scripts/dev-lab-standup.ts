@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { createDb } from "../src/kernel/db/client";
 import { withTx } from "../src/kernel/db/client";
@@ -56,6 +58,17 @@ import type { Db } from "../src/kernel/db/client";
 const CURATOR = "dr.meera"; // pathologist — drafts the definition, drafts and submits the tariff
 const APPROVER = "ramesh.front"; // owner — approves, and activates
 const SUPERINTENDENT = "supt.rao"; // medical_superintendent — the SECOND pair of hands
+
+/** `orderable_code,price_paise` — the synthetic price book beside the synthetic catalogue. */
+function syntheticLabPrices(): Map<string, number> {
+  const file = resolve(__dirname, "synthetic", "lab", "prices.csv");
+  if (!existsSync(file)) return new Map();
+  const rows = readFileSync(file, "utf8").trim().split(/\r?\n/).slice(1);
+  return new Map(rows.map((line) => {
+    const [code, paise] = line.split(",");
+    return [code!, Number(paise)] as const;
+  }));
+}
 
 async function actorFor(db: Db, username: string): Promise<Actor> {
   const [row] = await db.select({ id: users.id }).from(users).where(eq(users.username, username));
@@ -180,8 +193,15 @@ async function main(): Promise<void> {
        * `tariff_items` row refuses with `tariff_item_missing` long before GST is consulted — which is
        * the refusal a walk meets first and the one people misdiagnose as a GST problem.
        */
+      /**
+       * 17-F S — per-test SYNTHETIC prices from `synthetic/lab/prices.csv` (keyed by orderable code;
+       * a lab service's code is `LAB-<orderable code>`), so a walk sees a plausible bill rather than
+       * ₹300 for everything. Anything not in the file keeps the flat placeholder. Never a real price.
+       */
+      const synthetic = syntheticLabPrices();
       for (const s of priceable) {
-        await withTx(db, (tx) => setTariffItem(tx, curator, versionId, s.id, 30000));
+        const price = synthetic.get(s.code.replace(/^LAB-/, "")) ?? 30000;
+        await withTx(db, (tx) => setTariffItem(tx, curator, versionId, s.id, price));
       }
       const { approvalId } = await withTx(db, (tx) => submitVersion(tx, curator, versionId, "dev stand-up"));
       await approveRequest(db, approver, { approvalId, note: "dev stand-up — synthetic environment" });
