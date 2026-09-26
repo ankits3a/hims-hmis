@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import argon2 from "argon2";
+import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
   createUser, verifyPassword, setPin, verifyPin, rotateBadge, resolveBadge, deactivateUser,
@@ -172,5 +173,89 @@ describe("identity", () => {
     expect(await verifyPassword(db, "gone", "p1234567")).toBeNull();
     expect(await verifyPin(db, id, "112233")).toBe(false);
     expect(await resolveBadge(db, cfg, badge.badgeToken)).toBeNull();
+  });
+
+  /**
+   * WASA L-02 — THE USERNAME-EXISTENCE TIMING ORACLE. An unknown or inactive username used to return
+   * BEFORE argon2 ran, so it answered ~36 ms faster than a wrong password for a real account while
+   * the 401 body stayed identical. Asserted by COUNTING verifies rather than by timing them: a
+   * wall-clock assertion would be the flaky instrument this repository has already retired twice.
+   */
+  describe("WASA L-02 — every miss pays one argon2 verify", () => {
+    afterEach(() => { jest.restoreAllMocks(); });
+
+    it("an UNKNOWN username runs argon2.verify once, and still answers null", async () => {
+      const spy = jest.spyOn(argon2, "verify");
+      expect(await verifyPassword(db, "nobody-at-all", "a-guess-of-some-length")).toBeNull();
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it("an INACTIVE user runs argon2.verify once, and still answers null", async () => {
+      const { id } = await createUser(db, { username: "left", fullName: "Left", password: "s3cret-pass" });
+      await deactivateUser(db, id);
+      const spy = jest.spyOn(argon2, "verify");
+      expect(await verifyPassword(db, "left", "s3cret-pass")).toBeNull();
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it("a PIN check for an unknown, pinless or inactive user runs argon2.verify once each", async () => {
+      const { id: pinless } = await createUser(db, { username: "pinless", fullName: "P", password: "s3cret-pass" });
+      const { id: gone } = await createUser(db, { username: "gone", fullName: "G", password: "s3cret-pass", pin: "112233" });
+      await deactivateUser(db, gone);
+      const spy = jest.spyOn(argon2, "verify");
+      expect(await verifyPin(db, "01NOSUCHUSER0000000000000", "112233")).toBe(false);
+      expect(await verifyPin(db, pinless, "112233")).toBe(false);
+      expect(await verifyPin(db, gone, "112233")).toBe(false);
+      expect(spy).toHaveBeenCalledTimes(3);
+    });
+
+    it("control — a known user's wrong password is also exactly one verify (the two paths are the same shape)", async () => {
+      await createUser(db, { username: "known", fullName: "K", password: "s3cret-pass" });
+      const spy = jest.spyOn(argon2, "verify");
+      expect(await verifyPassword(db, "known", "not-the-password")).toBeNull();
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * WASA L-06 — A BADGE HAS A MAXIMUM AGE. Before this a badge was `b1.userId.version.HMAC` and lived
+   * until somebody rotated it, so a photographed badge was a login for ever. The age is measured
+   * from the rotation that issued the badge's version (`users.badge_issued_at`), server-side, so a
+   * shortened `BADGE_MAX_AGE_DAYS` applies to badges already printed.
+   */
+  describe("WASA L-06 — badge expiry", () => {
+    const DAY = 86_400_000;
+
+    it("the default maximum age is 365 days", () => {
+      expect(cfg.badgeMaxAgeDays).toBe(365);
+    });
+
+    it("a badge resolves up to its maximum age and is refused after it", async () => {
+      const { id } = await createUser(db, { username: "meena", fullName: "Meena", password: "p1234567" });
+      const badge = await rotateBadge(db, cfg, id);
+      expect(await resolveBadge(db, cfg, badge.badgeToken, new Date(Date.now() + 364 * DAY))).toEqual({ userId: id });
+      expect(await resolveBadge(db, cfg, badge.badgeToken, new Date(Date.now() + 366 * DAY))).toBeNull();
+    });
+
+    it("the maximum age is configuration: BADGE_MAX_AGE_DAYS=30 retires a badge after thirty days", async () => {
+      const short = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY!, BADGE_MAX_AGE_DAYS: "30" });
+      const { id } = await createUser(db, { username: "short", fullName: "Short", password: "p1234567" });
+      const badge = await rotateBadge(db, short, id);
+      expect(await resolveBadge(db, short, badge.badgeToken, new Date(Date.now() + 29 * DAY))).toEqual({ userId: id });
+      expect(await resolveBadge(db, short, badge.badgeToken, new Date(Date.now() + 31 * DAY))).toBeNull();
+    });
+
+    it("an aged badge is refused NOW, and rotating starts the new badge's clock at its own issue", async () => {
+      const { id } = await createUser(db, { username: "aged", fullName: "Aged", password: "p1234567" });
+      const old = await rotateBadge(db, cfg, id);
+      // The migration path: a badge printed before the column existed carries the migration's
+      // DEFAULT now() as its issue instant. Ageing that instant is what time does to it.
+      await db.execute(sql`update users set badge_issued_at = now() - interval '400 days' where id = ${id}`);
+      expect(await resolveBadge(db, cfg, old.badgeToken)).toBeNull();
+
+      const fresh = await rotateBadge(db, cfg, id);
+      expect(await resolveBadge(db, cfg, fresh.badgeToken)).toEqual({ userId: id });
+      expect(await resolveBadge(db, cfg, old.badgeToken)).toBeNull(); // the version bump still revokes
+    });
   });
 });

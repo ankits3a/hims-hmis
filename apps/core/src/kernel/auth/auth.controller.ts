@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode,
-  HttpException, Inject, NotFoundException, Param, Post, Req, Res, UnauthorizedException,
+  Inject, NotFoundException, Param, Post, Req, Res, UnauthorizedException,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
@@ -14,9 +14,11 @@ import { setPassword, verifyPassword } from "./identity";
 import { effectivePermissions } from "./permissions";
 import type { EffectivePermissions } from "./permissions";
 import { checkPassword } from "./password-policy";
-import { clearThrottle, recordThrottleFailure, throttleRetryAt } from "./throttle";
+import { clearThrottle, recordThrottleFailure, throttleRetryAt, tooManyAttempts } from "./throttle";
 import type { ThrottleKind } from "./throttle";
 import { confirmTotp, enrollTotp, recordSecondFactor, verifyTotpCode } from "./totp";
+import type { TotpCheck } from "./totp";
+import { badgeThrottleSubject } from "../crypto";
 import { useBreakGlass, pendingReviews, recordReview } from "./break-glass";
 import {
   ElevationAlreadyReviewedError, RoleNotTemporarilyGrantableError, UnknownElevationError,
@@ -65,6 +67,27 @@ const badgeSwitchSchema = z.object({
   badgeToken: z.string().min(1),
   terminalId: z.string().min(1),
 });
+/**
+ * WASA M-02 — what `POST /auth/totp/enroll` accepts as proof. Both optional at the SCHEMA, because
+ * which one is required depends on the account's state (`enrollTotp`): the current code while a
+ * factor is enabled, the password while none is. `min(1)` because both are VERIFIED, not chosen.
+ */
+const totpEnrollSchema = z.object({
+  currentCode: z.string().min(1).optional(),
+  password: z.string().min(1).optional(),
+});
+const totpCodeSchema = z.object({ code: z.string().min(6) });
+
+/**
+ * WASA L-07 — the switch routes are `@Public` (there may be nobody signed in at a cold terminal), so
+ * `AuthGuard` never reads their `Authorization` header. The controller reads it here for ONE
+ * purpose: to name the outgoing session the switch ends (`sessions.ts`). It authorises nothing —
+ * the incoming credential is still the only thing that decides whether the switch happens.
+ */
+function presentedBearer(req: Request): string | undefined {
+  const header = req.headers.authorization;
+  return header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
+}
 
 /**
  * Maps `temp-roles.ts`'s two refusals onto HTTP, in ONE place because both grant routes raise both.
@@ -111,17 +134,18 @@ export class AuthController {
   private async refuseIfThrottled(res: Response, kind: ThrottleKind, username: string): Promise<void> {
     const retryAt = await throttleRetryAt(this.db, kind, username, new Date());
     if (retryAt === null) return;
-    const seconds = Math.max(1, Math.ceil((retryAt.getTime() - Date.now()) / 1000));
-    res.setHeader("Retry-After", String(seconds));
-    throw new HttpException(
-      {
-        statusCode: 429,
-        code: "too_many_attempts",
-        message: `too many failed attempts — try again in ${seconds}s`,
-        retryAfterSeconds: seconds,
-      },
-      429,
-    );
+    throw tooManyAttempts(res, retryAt);
+  }
+
+  /**
+   * WASA M-02 — a TOTP check's refusal, onto HTTP. `throttled` is the same 429 the credential paths
+   * answer; `invalid` stays the 403 `invalid code` these routes have always answered, so a wrong
+   * code and a replayed one are indistinguishable on the wire.
+   */
+  private refuseTotp(res: Response, check: TotpCheck): void {
+    if (check.ok) return;
+    if (check.reason === "throttled") throw tooManyAttempts(res, check.retryAt);
+    throw new ForbiddenException("invalid code");
   }
 
   @Public()
@@ -166,7 +190,7 @@ export class AuthController {
     // It is also the sharper of the two keyspaces — a four-digit pin is 10,000 values.
     await this.refuseIfThrottled(res, "pin", parsed.data.username);
     const startedAt = new Date();
-    const result = await switchWithPin(this.db, this.cfg, parsed.data);
+    const result = await switchWithPin(this.db, this.cfg, { ...parsed.data, outgoingToken: presentedBearer(req) });
     if (!result) {
       await recordThrottleFailure(this.db, "pin", parsed.data.username, new Date());
       await auditLoginFailed(this.db, "pin", parsed.data, clientContext(req));
@@ -179,16 +203,26 @@ export class AuthController {
 
   @Public()
   @Post("switch/badge")
-  async switchBadge(@Req() req: Request, @Body() body: unknown): Promise<{ token: string }> {
+  async switchBadge(
+    @Req() req: Request,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ token: string }> {
     const parsed = badgeSwitchSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    // WASA L-06 — throttled like the PIN, on its own `badge` counter, keyed by the user id the
+    // token CLAIMS (`badgeThrottleSubject`). Consulted before the HMAC or the database is touched.
+    const subject = badgeThrottleSubject(parsed.data.badgeToken);
+    await this.refuseIfThrottled(res, "badge", subject);
     const startedAt = new Date();
-    const result = await switchWithBadge(this.db, this.cfg, parsed.data);
+    const result = await switchWithBadge(this.db, this.cfg, { ...parsed.data, outgoingToken: presentedBearer(req) });
     if (!result) {
-      // No username (a badge submits none), and never the token: it IS the credential.
+      await recordThrottleFailure(this.db, "badge", subject, new Date());
+      // WASA M-05 — no username (a badge submits none), and never the token: it IS the credential.
       await auditLoginFailed(this.db, "badge", { terminalId: parsed.data.terminalId }, clientContext(req));
       throw new UnauthorizedException();
     }
+    await clearThrottle(this.db, "badge", subject);
     await auditSessionOpened(this.db, result.token, "badge", clientContext(req), startedAt);
     return result;
   }
@@ -280,40 +314,77 @@ export class AuthController {
     return { actor, permissions };
   }
 
+  /**
+   * WASA M-02 — ENROLMENT NEEDS PROOF, NOT ONLY A SESSION (`totp.ts` has the full reasoning).
+   *
+   * 403 with a machine-readable `code` for each refusal, because the client has to know WHICH proof
+   * to ask the person for: `password_required` (no factor enabled yet), `current_factor_required`
+   * (one is, and only its current code may replace it), `proof_invalid` (the proof offered was
+   * wrong). A throttled proof is the credential paths' 429.
+   */
   @Post("totp/enroll")
-  async totpEnroll(@CurrentActor() actor: Actor, @Req() req: AuthedRequest): Promise<{ otpauthUrl: string }> {
+  async totpEnroll(
+    @CurrentActor() actor: Actor,
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ otpauthUrl: string }> {
     if (actor.type !== "user") throw new ForbiddenException();
-    const { otpauthUrl } = await enrollTotp(this.db, this.cfg, actor.id);
+    const parsed = totpEnrollSchema.safeParse(body ?? {});
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const result = await enrollTotp(this.db, this.cfg, actor.id, parsed.data);
+    if (!result.ok) {
+      if (result.reason === "throttled") throw tooManyAttempts(res, result.retryAt);
+      if (result.reason === "password_required") {
+        throw new ForbiddenException({ code: "password_required", message: "confirm your password to set up a second factor" });
+      }
+      if (result.reason === "current_code_required") {
+        throw new ForbiddenException({
+          code: "current_factor_required",
+          message: "a second factor is already enabled — enter its current code to replace it",
+        });
+      }
+      throw new ForbiddenException({ code: "proof_invalid", message: "that proof did not verify" });
+    }
+    // WASA M-05 — the proof held and a new pending secret was written.
     await auditTotp(this.db, { userId: actor.id, sessionId: req.hmisSession?.sessionId ?? null }, { kind: "enrolled" }, clientContext(req));
-    return { otpauthUrl };
+    return { otpauthUrl: result.otpauthUrl };
   }
 
   @Post("totp/confirm")
   @HttpCode(204)
-  async totpConfirm(@CurrentActor() actor: Actor, @Req() req: AuthedRequest, @Body() body: unknown): Promise<void> {
-    const parsed = z.object({ code: z.string().min(6) }).safeParse(body);
+  async totpConfirm(
+    @CurrentActor() actor: Actor,
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const parsed = totpCodeSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     if (actor.type !== "user") throw new ForbiddenException("invalid code");
     const who = { userId: actor.id, sessionId: req.hmisSession?.sessionId ?? null };
-    if (!(await confirmTotp(this.db, this.cfg, actor.id, parsed.data.code))) {
-      await auditTotp(this.db, who, { kind: "failed", stage: "confirm" }, clientContext(req));
-      throw new ForbiddenException("invalid code");
-    }
+    const check = await confirmTotp(this.db, this.cfg, actor.id, parsed.data.code);
+    // A throttled request was never checked, so it is not an attempt and writes no event (M-05).
+    if (!check.ok && check.reason !== "throttled") await auditTotp(this.db, who, { kind: "failed", stage: "confirm" }, clientContext(req));
+    this.refuseTotp(res, check);
     await auditTotp(this.db, who, { kind: "confirmed" }, clientContext(req));
   }
 
   @Post("totp/verify")
   @HttpCode(204)
-  async totpVerify(@Req() req: AuthedRequest, @Body() body: unknown): Promise<void> {
-    const parsed = z.object({ code: z.string().min(6) }).safeParse(body);
+  async totpVerify(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const parsed = totpCodeSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     const actor = req.hmisActor;
     if (!actor || actor.type !== "user" || !req.hmisSession) throw new ForbiddenException();
     const who = { userId: actor.id, sessionId: req.hmisSession.sessionId };
-    if (!(await verifyTotpCode(this.db, this.cfg, actor.id, parsed.data.code))) {
-      await auditTotp(this.db, who, { kind: "failed", stage: "verify_route" }, clientContext(req));
-      throw new ForbiddenException("invalid code");
-    }
+    const check = await verifyTotpCode(this.db, this.cfg, actor.id, parsed.data.code);
+    if (!check.ok && check.reason !== "throttled") await auditTotp(this.db, who, { kind: "failed", stage: "verify_route" }, clientContext(req));
+    this.refuseTotp(res, check);
     await recordSecondFactor(this.db, req.hmisSession.sessionId);
     await auditTotp(this.db, who, { kind: "verified", via: "verify_route" }, clientContext(req));
   }
