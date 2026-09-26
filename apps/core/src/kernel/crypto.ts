@@ -54,3 +54,15 @@ export function parseBadgeToken(
   if (!Number.isInteger(badgeVersion) || badgeVersion < 0 || userId === "") return null;
   return { userId, badgeVersion };
 }
+
+/**
+ * WASA L-06 — the throttle key for `POST /auth/switch/badge`: the user id a badge token CLAIMS, read
+ * WITHOUT verifying it. That is deliberate and mirrors `pin`, which keys on the submitted username
+ * whether or not it exists: a forged badge for user X counts against X's counter, so forging does
+ * not buy fresh attempts. A token with no second segment shares one bucket, which can only ever hold
+ * tokens that would never have resolved.
+ */
+export function badgeThrottleSubject(token: string): string {
+  const claimed = token.split(".")[1];
+  return claimed === undefined || claimed === "" ? "(unparseable badge)" : claimed;
+}

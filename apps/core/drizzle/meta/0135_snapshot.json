@@ -1,6 +1,6 @@
 {
-  "id": "5f8a0e6b-d3aa-47b6-88ae-e5b4bb5d9921",
-  "prevId": "fa14007a-f4d6-4483-87ae-7ea83b464f5c",
+  "id": "ae37ccfb-0af1-48c1-8430-e600f5087feb",
+  "prevId": "5f8a0e6b-d3aa-47b6-88ae-e5b4bb5d9921",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14370,6 +14370,12 @@
           "notNull": true,
           "default": 0
         },
+        "ndps_class": {
+          "name": "ndps_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -14456,7 +14462,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "formulary_salts_ndps_class_ck": {
+          "name": "formulary_salts_ndps_class_ck",
+          "value": "\"formulary_salts\".\"ndps_class\" is null or \"formulary_salts\".\"ndps_class\" in ('narcotic', 'psychotropic')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.formulary_staging": {
@@ -15721,6 +15732,394 @@
         "consignment_lots_qty_ck": {
           "name": "consignment_lots_qty_ck",
           "value": "\"consignment_lots\".\"qty_deployed\" + \"consignment_lots\".\"qty_returned\" <= \"consignment_lots\".\"qty_received\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.controlled_stock_register": {
+      "name": "controlled_stock_register",
+      "schema": "",
+      "columns": {
+        "seq": {
+          "name": "seq",
+          "type": "bigserial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ledger_entry_id": {
+          "name": "ledger_entry_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "store_resource_id": {
+          "name": "store_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "medicine_id": {
+          "name": "medicine_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drug_name": {
+          "name": "drug_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_no": {
+          "name": "batch_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiry_date": {
+          "name": "expiry_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ndps_class": {
+          "name": "ndps_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "schedule_flag": {
+          "name": "schedule_flag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "movement": {
+          "name": "movement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty_base": {
+          "name": "qty_base",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "balance_after": {
+          "name": "balance_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holder_id": {
+          "name": "holder_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holder_name": {
+          "name": "holder_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "witness_id": {
+          "name": "witness_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "witness_name": {
+          "name": "witness_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holder_reg_no": {
+          "name": "holder_reg_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "extra_witnesses": {
+          "name": "extra_witnesses",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "counterparty": {
+          "name": "counterparty",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "counterparty_address": {
+          "name": "counterparty_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "counterparty_licence": {
+          "name": "counterparty_licence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document_ref": {
+          "name": "document_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document_date": {
+          "name": "document_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rx_ref": {
+          "name": "rx_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prescriber_name": {
+          "name": "prescriber_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prescriber_reg_no": {
+          "name": "prescriber_reg_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retained_document_id": {
+          "name": "retained_document_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collected_by": {
+          "name": "collected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collected_id_proof": {
+          "name": "collected_id_proof",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "controlled_stock_register_ledger_ux": {
+          "name": "controlled_stock_register_ledger_ux",
+          "columns": [
+            {
+              "expression": "ledger_entry_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "controlled_stock_register_store_idx": {
+          "name": "controlled_stock_register_store_idx",
+          "columns": [
+            {
+              "expression": "store_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "controlled_stock_register_batch_idx": {
+          "name": "controlled_stock_register_batch_idx",
+          "columns": [
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "controlled_stock_register_ledger_entry_id_stock_ledger_id_fk": {
+          "name": "controlled_stock_register_ledger_entry_id_stock_ledger_id_fk",
+          "tableFrom": "controlled_stock_register",
+          "tableTo": "stock_ledger",
+          "columnsFrom": [
+            "ledger_entry_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "controlled_stock_register_store_resource_id_resources_id_fk": {
+          "name": "controlled_stock_register_store_resource_id_resources_id_fk",
+          "tableFrom": "controlled_stock_register",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "store_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "controlled_stock_register_item_id_items_id_fk": {
+          "name": "controlled_stock_register_item_id_items_id_fk",
+          "tableFrom": "controlled_stock_register",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "controlled_stock_register_batch_id_stock_batches_id_fk": {
+          "name": "controlled_stock_register_batch_id_stock_batches_id_fk",
+          "tableFrom": "controlled_stock_register",
+          "tableTo": "stock_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "controlled_stock_register_medicine_id_formulary_medicines_id_fk": {
+          "name": "controlled_stock_register_medicine_id_formulary_medicines_id_fk",
+          "tableFrom": "controlled_stock_register",
+          "tableTo": "formulary_medicines",
+          "columnsFrom": [
+            "medicine_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "controlled_stock_register_qty_ck": {
+          "name": "controlled_stock_register_qty_ck",
+          "value": "\"controlled_stock_register\".\"qty_base\" > 0 and \"controlled_stock_register\".\"balance_after\" >= 0"
+        },
+        "controlled_stock_register_direction_ck": {
+          "name": "controlled_stock_register_direction_ck",
+          "value": "\"controlled_stock_register\".\"direction\" in ('in', 'out')"
+        },
+        "controlled_stock_register_movement_ck": {
+          "name": "controlled_stock_register_movement_ck",
+          "value": "\"controlled_stock_register\".\"movement\" in ('grn', 'issue', 'receive', 'consume', 'return', 'adjust')"
+        },
+        "controlled_stock_register_two_keys_ck": {
+          "name": "controlled_stock_register_two_keys_ck",
+          "value": "\"controlled_stock_register\".\"witness_id\" <> \"controlled_stock_register\".\"holder_id\""
+        },
+        "controlled_stock_register_ndps_ck": {
+          "name": "controlled_stock_register_ndps_ck",
+          "value": "\"controlled_stock_register\".\"ndps_class\" is null or \"controlled_stock_register\".\"ndps_class\" in ('narcotic', 'psychotropic')"
         }
       },
       "isRLSEnabled": false
@@ -18094,6 +18493,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'blind'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -18160,6 +18566,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "stock_counts_kind_ck": {
+          "name": "stock_counts_kind_ck",
+          "value": "\"stock_counts\".\"kind\" in ('blind', 'controlled_check')"
+        },
         "stock_counts_status_ck": {
           "name": "stock_counts_status_ck",
           "value": "\"stock_counts\".\"status\" in ('counting', 'submitted', 'closed', 'cancelled')"
@@ -18270,6 +18680,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "witness_id": {
+          "name": "witness_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "occurred_at": {
           "name": "occurred_at",
@@ -18402,6 +18818,10 @@
         "stock_ledger_reason_ck": {
           "name": "stock_ledger_reason_ck",
           "value": "\"stock_ledger\".\"reason\" in ('grn', 'issue', 'receive', 'consume', 'return', 'adjust')"
+        },
+        "stock_ledger_witness_ck": {
+          "name": "stock_ledger_witness_ck",
+          "value": "\"stock_ledger\".\"witness_id\" is null or \"stock_ledger\".\"witness_id\" <> \"stock_ledger\".\"actor_id\""
         }
       },
       "isRLSEnabled": false
@@ -30661,6 +31081,147 @@
       },
       "isRLSEnabled": false
     },
+    "public.pharmacy_controlled_licences": {
+      "name": "pharmacy_controlled_licences",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "licence_no": {
+          "name": "licence_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "form": {
+          "name": "form",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issuing_authority": {
+          "name": "issuing_authority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holder_name": {
+          "name": "holder_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "responsible_person": {
+          "name": "responsible_person",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_until": {
+          "name": "valid_until",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_ref": {
+          "name": "document_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_by": {
+          "name": "recorded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "pharmacy_controlled_licences_kind_idx": {
+          "name": "pharmacy_controlled_licences_kind_idx",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recorded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_controlled_licences_recorded_by_users_id_fk": {
+          "name": "pharmacy_controlled_licences_recorded_by_users_id_fk",
+          "tableFrom": "pharmacy_controlled_licences",
+          "tableTo": "users",
+          "columnsFrom": [
+            "recorded_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_controlled_licences_kind_ck": {
+          "name": "pharmacy_controlled_licences_kind_ck",
+          "value": "\"pharmacy_controlled_licences\".\"kind\" in ('ndps_rmi', 'schedule_x')"
+        },
+        "pharmacy_controlled_licences_dates_ck": {
+          "name": "pharmacy_controlled_licences_dates_ck",
+          "value": "\"pharmacy_controlled_licences\".\"valid_until\" >= \"pharmacy_controlled_licences\".\"valid_from\""
+        },
+        "pharmacy_controlled_licences_text_ck": {
+          "name": "pharmacy_controlled_licences_text_ck",
+          "value": "btrim(\"pharmacy_controlled_licences\".\"licence_no\") <> '' and btrim(\"pharmacy_controlled_licences\".\"form\") <> '' and btrim(\"pharmacy_controlled_licences\".\"issuing_authority\") <> '' and btrim(\"pharmacy_controlled_licences\".\"holder_name\") <> '' and btrim(\"pharmacy_controlled_licences\".\"responsible_person\") <> ''"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.pharmacy_dispense_lines": {
       "name": "pharmacy_dispense_lines",
       "schema": "",
@@ -30789,6 +31350,12 @@
         },
         "schedule_flag": {
           "name": "schedule_flag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ndps_class": {
+          "name": "ndps_class",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -31003,6 +31570,10 @@
         "pharmacy_dispense_lines_schedule_ck": {
           "name": "pharmacy_dispense_lines_schedule_ck",
           "value": "\"pharmacy_dispense_lines\".\"schedule_flag\" is null or \"pharmacy_dispense_lines\".\"schedule_flag\" in ('H', 'H1', 'X', 'OTC')"
+        },
+        "pharmacy_dispense_lines_ndps_ck": {
+          "name": "pharmacy_dispense_lines_ndps_ck",
+          "value": "\"pharmacy_dispense_lines\".\"ndps_class\" is null or \"pharmacy_dispense_lines\".\"ndps_class\" in ('narcotic', 'psychotropic')"
         },
         "pharmacy_dispense_lines_declined_ck": {
           "name": "pharmacy_dispense_lines_declined_ck",
@@ -31378,6 +31949,134 @@
         "pharmacy_dispenses_identity_ck": {
           "name": "pharmacy_dispenses_identity_ck",
           "value": "\"pharmacy_dispenses\".\"identity_confirmed_via\" is null or \"pharmacy_dispenses\".\"identity_confirmed_via\" in ('token', 'phone_last4')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_end_prescribers": {
+      "name": "pharmacy_end_prescribers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "doctor_id": {
+          "name": "doctor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "training": {
+          "name": "training",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_by": {
+          "name": "recorded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_by": {
+          "name": "ended_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "pharmacy_end_prescribers_current_ux": {
+          "name": "pharmacy_end_prescribers_current_ux",
+          "columns": [
+            {
+              "expression": "doctor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"pharmacy_end_prescribers\".\"ended_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_end_prescribers_doctor_id_opd_doctors_id_fk": {
+          "name": "pharmacy_end_prescribers_doctor_id_opd_doctors_id_fk",
+          "tableFrom": "pharmacy_end_prescribers",
+          "tableTo": "opd_doctors",
+          "columnsFrom": [
+            "doctor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_end_prescribers_recorded_by_users_id_fk": {
+          "name": "pharmacy_end_prescribers_recorded_by_users_id_fk",
+          "tableFrom": "pharmacy_end_prescribers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "recorded_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_end_prescribers_ended_by_users_id_fk": {
+          "name": "pharmacy_end_prescribers_ended_by_users_id_fk",
+          "tableFrom": "pharmacy_end_prescribers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "ended_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_end_prescribers_ended_ck": {
+          "name": "pharmacy_end_prescribers_ended_ck",
+          "value": "(\"pharmacy_end_prescribers\".\"ended_at\" is null) = (\"pharmacy_end_prescribers\".\"ended_by\" is null) and (\"pharmacy_end_prescribers\".\"ended_at\" is null) = (\"pharmacy_end_prescribers\".\"end_reason\" is null)"
+        },
+        "pharmacy_end_prescribers_text_ck": {
+          "name": "pharmacy_end_prescribers_text_ck",
+          "value": "btrim(\"pharmacy_end_prescribers\".\"training\") <> ''"
         }
       },
       "isRLSEnabled": false

@@ -2,7 +2,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { assertNotSodPair, SodViolationError } from "../../kernel/auth/sod";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { verifyPin } from "../../kernel/auth/identity";
+import { verifyPinByUsername } from "../../kernel/auth/identity";
 import { clearThrottle, recordThrottleFailure, throttleRetryAt } from "../../kernel/auth/throttle";
 import { withTx } from "../../kernel/db/client";
 import { pharmacyControlledLicences, pharmacyEndPrescribers, users } from "../../kernel/db/schema";
@@ -334,9 +334,11 @@ export async function verifyWitness(db: Db, actor: Actor, input: WitnessInput, n
   if (retryAt !== null) {
     throw new PharmacyError("witness_throttled", `too many wrong PINs for ${username} — the witness may try again after ${retryAt.toISOString()}`, { retryAt: retryAt.toISOString() });
   }
-  const [user] = await db.select({ id: users.id, fullName: users.fullName, active: users.active }).from(users).where(eq(users.username, username));
-  const ok = user !== undefined && user.active && (await verifyPin(db, user.id, input.pin));
-  if (!ok || user === undefined) {
+  // `verifyPinByUsername` pays one argon2 verify on every miss — unknown, inactive, pinless — so the
+  // witness field answers a real name's wrong PIN and a name that does not exist in the same time (WASA L-02).
+  const verified = await verifyPinByUsername(db, username, input.pin);
+  const [user] = verified === null ? [] : await db.select({ id: users.id, fullName: users.fullName }).from(users).where(eq(users.id, verified.userId));
+  if (user === undefined) {
     await recordThrottleFailure(db, "pin", username, now);
     throw new PharmacyError("witness_not_confirmed", "that username and PIN do not match an active member of staff — the witness types their own");
   }
