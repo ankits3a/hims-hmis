@@ -180,6 +180,18 @@ export async function registerPatient(
   if (isConfidential && (input.alias ?? "").trim() === "") {
     throw new PatientError("alias_required", "a confidential patient needs an alias for public surfaces (§14)");
   }
+  /**
+   * ABDM S0 — A COUNTER CANNOT REGISTER AN ABHA AS `verified`. Only ABDM answering can verify one
+   * (`abha-verified.ts`), and this used to store whatever the client sent. REFUSED rather than
+   * quietly stored as `self_declared`: a clerk whose screen said "verified" and whose record says
+   * otherwise has been told nothing, and would go on believing the stamp.
+   */
+  if (input.abhaVerificationStatus === "verified") {
+    throw new PatientError(
+      "abha_verified_only_by_abdm",
+      "abha_verified_only_by_abdm: an ABHA is verified only by ABDM — register it as self_declared",
+    );
+  }
   // D-31 + DPDP §9: a KNOWN minor must have a guardian at registration. Unknown DOB cannot
   // be enforced against — the desk flow prompts, the rule binds only on data it has.
   const minor = dob !== null && yearsBetween(dob, new Date()) < MAJORITY_AGE_YEARS;
@@ -529,6 +541,32 @@ export async function updatePatient(
 
   if (ctx.reasonClass !== undefined && !isAmendmentReason(ctx.reasonClass)) {
     throw new PatientError("reason_required", `unknown amendment reason "${ctx.reasonClass}"`);
+  }
+
+  /**
+   * ABDM S0 — `verified` IS NOT A PATCHABLE VALUE, IN EITHER OF ITS TWO SHAPES.
+   *
+   *   1. A MOVE to `verified`. Echoing the unchanged status of a record ABDM already verified is not
+   *      a move (the diff above dropped it), so a client that sends the whole form is not refused.
+   *   2. A new ABHA NUMBER OR ADDRESS under a stamp that STAYS `verified` — the stamp would then
+   *      cover an identifier ABDM never saw. The same amendment may take the stamp down to what the
+   *      clerk can vouch for (`self_declared`/`none`); a clerk may always lower it.
+   *
+   * Here, not on the route, for the reason the privacy split below gives: the domain function is
+   * the one every caller travels through. `recordAbhaVerifiedByAbdm` is the only writer of `verified`.
+   */
+  const resultingAbhaStatus = (set.abhaVerificationStatus as string | undefined) ?? current.abhaVerificationStatus;
+  if (changes.some((c) => c.field === "abhaVerificationStatus" && c.to === "verified")) {
+    throw new PatientError(
+      "abha_verified_only_by_abdm",
+      "abha_verified_only_by_abdm: an ABHA is verified only by ABDM — the counter can record self_declared",
+    );
+  }
+  if (resultingAbhaStatus === "verified" && changes.some((c) => c.field === "abhaNumber" || c.field === "abhaAddress")) {
+    throw new PatientError(
+      "abha_verified_only_by_abdm",
+      "abha_verified_only_by_abdm: this ABHA was verified by ABDM — changing the number or address needs the status set to self_declared in the same amendment",
+    );
   }
 
   /**

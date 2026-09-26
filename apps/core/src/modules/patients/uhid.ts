@@ -50,7 +50,13 @@ export type PatientErrorCode =
    * 500 because the record is wrong, not the server.
    */
   | "unsupported_document_type" | "document_too_large" | "document_empty"
-  | "document_not_found" | "document_corrupt";
+  | "document_not_found" | "document_corrupt"
+  /**
+   * ABDM S0 — `abha_verification_status = 'verified'` is ABDM's answer, never a client's claim: the
+   * register and amend paths refuse it (and a number change under it), and `recordAbhaVerifiedByAbdm`
+   * is its one writer. `abha_number_invalid` is that writer refusing a malformed answer.
+   */
+  | "abha_verified_only_by_abdm" | "abha_number_invalid";
 
 export class PatientError extends Error {
   constructor(

@@ -234,6 +234,12 @@ export type PhiSurface =
   /** Consult engine (2026-09-24) — a visit's specialty sections (the eye grids), read with the consult. Appended. */
   | "opd.sections"
   /**
+   * ABDM S0 — the ABDM message log (`abdm_messages`): what the hospital sent the national network
+   * and what the network sent back — from S1 on, ABHA profiles, consent artefacts and FHIR bundles.
+   * One row per distinct patient a read returns. Appended; nothing above changes.
+   */
+  | "abdm.messages"
+  /**
    * PHARMACY P6 — the controlled-drug cabinet's register (Form 3H / the Schedule X register), a month of
    * patients and the narcotic or Schedule X drug each was given. Its own name, the H1 register's reason.
    * Appended; nothing above changes.
