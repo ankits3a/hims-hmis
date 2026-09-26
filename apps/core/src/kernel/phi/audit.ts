@@ -232,7 +232,13 @@ export type PhiSurface =
    */
   | "lab.patient_results" | "imaging.patient_reports" | "pharmacy.patient_dispenses"
   /** Consult engine (2026-09-24) — a visit's specialty sections (the eye grids), read with the consult. Appended. */
-  | "opd.sections";
+  | "opd.sections"
+  /**
+   * PHARMACY P6 — the controlled-drug cabinet's register (Form 3H / the Schedule X register), a month of
+   * patients and the narcotic or Schedule X drug each was given. Its own name, the H1 register's reason.
+   * Appended; nothing above changes.
+   */
+  | "pharmacy.controlled_register";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

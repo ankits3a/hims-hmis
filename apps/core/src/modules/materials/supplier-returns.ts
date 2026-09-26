@@ -22,6 +22,7 @@ import { postMovements } from "./ledger";
 import { lineGstPaise } from "./purchase-orders";
 import { addDays, daysBetween, vendorCredits } from "./supplier-bills";
 import type { Actor } from "@hmis/contracts";
+import type { Custody } from "./controlled";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -796,7 +797,11 @@ export async function assertNotReturnApprover(db: Db, actor: Actor, returnId: st
  * batch through the ledger's `recallExit`), and OUR DEBIT NOTE — its number, today's date, the
  * vendor's GSTIN as it stands, and the lines' GST reversal. Never by whoever approved it.
  */
-export async function dispatchSupplierReturn(db: Db, actor: Actor, returnId: string, now: Date = new Date()): Promise<ReturnView> {
+export async function dispatchSupplierReturn(
+  db: Db, actor: Actor, returnId: string, now: Date = new Date(),
+  /** PHARMACY P6 — goods leaving the controlled cabinet go under two keys; the register names the vendor and the note. */
+  opts: { custody?: Custody } = {},
+): Promise<ReturnView> {
   await requirePerm(db, actor, RETURNS_MANAGE, "dispatching a return to a supplier");
   await assertNotReturnApprover(db, actor, returnId);
   await withTx(db, async (tx) => {
@@ -807,6 +812,7 @@ export async function dispatchSupplierReturn(db: Db, actor: Actor, returnId: str
     const moved = await postMovements(tx, actor, lines.map((l) => ({
       resourceId: l.storeResourceId, batchId: l.batchId, qtyDelta: -l.qtyBase, reason: "return" as const,
       refType: "supplier_return", refId: l.id, occurredAt: now, recallExit: true,
+      ...(opts.custody === undefined ? {} : { custody: { ...opts.custody, documentRef: opts.custody.documentRef ?? r.returnNo } }),
     })));
     for (const [i, l] of lines.entries()) {
       await tx.update(supplierReturnLines).set({ ledgerEntryId: moved[i]!.ledgerEntryId }).where(eq(supplierReturnLines.id, l.id));

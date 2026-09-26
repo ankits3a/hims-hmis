@@ -93,6 +93,19 @@ export const pharmacyManifest: ModuleManifest = {
      * pharmacy voucher of a period, recorded. The owner and the billing office.
      */
     "pharmacy.tally.export",
+    /**
+     * PHARMACY P6 — hold a key of the controlled-drug cabinet (NDPS narcotic and psychotropic, Schedule X):
+     * hand a controlled line over, post a receipt into the cabinet, dispatch or destroy from it, count it
+     * daily. Every such act also needs a witness (below), never the same person.
+     */
+    "pharmacy.ndps.custody",
+    /** PHARMACY P6 — witness a movement at the cabinet, by username and PIN at the holder's terminal. */
+    "pharmacy.ndps.witness",
+    /**
+     * PHARMACY P6 — record the controlled-drug licences (RMI recognition, Form 3G; the Schedule X retail
+     * licence, Form 20F) and the doctors trained to prescribe an essential narcotic drug (NDPS Rules r.2(ib)).
+     */
+    "pharmacy.licences.manage",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],

@@ -1313,6 +1313,13 @@ summary, GSTR-2B against the books and the activity view, all read-only.
 defaults the owner may change.
 `pharmacy.tally.export` (the TallyPrime export of the pharmacy's vouchers, and the ledger names it
 uses) goes to `owner` and `billing_manager`, the accountant's desk; a default the owner may change.
+**Pharmacy P6 keeps narcotic, psychotropic and Schedule X drugs under the law, in a cabinet with two
+keys.** `pharmacy.ndps.custody` (holding a key of the controlled-drug cabinet) goes to `pharmacy` and
+`pharmacy_incharge`. `pharmacy.ndps.witness` (the second person at every movement into or out of it)
+goes to both of them, and to `medical_superintendent` and `materials_head`, who witness but hold no
+key. `pharmacy.licences.manage` (the RMI recognition, the Form 20F licence and the doctors trained
+under NDPS Rules r.2(ib)) goes to `pharmacy_incharge`, `owner` and `medical_superintendent`. All are
+defaults the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1328,6 +1335,9 @@ uses) goes to `owner` and `billing_manager`, the accountant's desk; a default th
 | `pharmacy.downtime.enter` | ✓ | | |
 | `pharmacy.reports.read` | | | ✓ |
 | `pharmacy.reports.margin` | | | ✓ |
+| `pharmacy.ndps.custody` | ✓ | | ✓ |
+| `pharmacy.ndps.witness` | ✓ | | ✓ |
+| `pharmacy.licences.manage` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |

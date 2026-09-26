@@ -651,6 +651,19 @@ const PHARMACY_REPORTS_PAIRS: readonly string[] = [
 const PHARMACY_TALLY_README_PROSE =
   "`pharmacy.tally.export` (the TallyPrime export of the pharmacy's vouchers, and the ledger names it\nuses) goes to `owner` and `billing_manager`";
 const PHARMACY_TALLY_PAIRS: readonly string[] = ["owner/pharmacy.tally.export", "billing_manager/pharmacy.tally.export"];
+/**
+ * PHARMACY P6 — the controlled-drug cabinet's grants outside the pharmacy table: the licences to `owner` and
+ * `medical_superintendent`, and the witness grant to `medical_superintendent` and `materials_head` (none of
+ * them has a pharmacy-table column). The counter's and the in-charge's ticks ARE in the table.
+ */
+const CONTROLLED_README_PROSE =
+  "`pharmacy.ndps.witness` (the second person at every movement into or out of it)\ngoes to both of them, and to `medical_superintendent` and `materials_head`, who witness but hold no\nkey. `pharmacy.licences.manage` (the RMI recognition, the Form 20F licence and the doctors trained\nunder NDPS Rules r.2(ib)) goes to `pharmacy_incharge`, `owner` and `medical_superintendent`.";
+const CONTROLLED_PAIRS: readonly string[] = [
+  "owner/pharmacy.licences.manage",
+  "medical_superintendent/pharmacy.licences.manage",
+  "medical_superintendent/pharmacy.ndps.witness",
+  "materials_head/pharmacy.ndps.witness",
+];
 const PHARMACY_PAIRS: readonly string[] = [
   "pharmacy/orders.place",
   "pharmacy/orders.read",
@@ -816,6 +829,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...APPROVALS_SPINE_PAIRS,
   ...PHARMACY_REPORTS_PAIRS,
   ...PHARMACY_TALLY_PAIRS,
+  ...CONTROLLED_PAIRS,
 ];
 
 type GrantTable = {
@@ -1884,6 +1898,10 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(PHARMACY_REPORTS_README_PROSE);
     expect(readme).toContain(PHARMACY_MARGIN_README_PROSE);
     expect(readme).toContain(PHARMACY_TALLY_README_PROSE);
+    // Pharmacy P6's sentence: who witnesses at the cabinet without a key, and who records its licences.
+    expect(readme).toContain(CONTROLLED_README_PROSE);
+    // One person is never both keys: the witness grant goes wider than the key, never narrower.
+    expect(modelPairs().filter((p) => p.endsWith("/pharmacy.ndps.custody"))).toEqual(["pharmacy/pharmacy.ndps.custody", "pharmacy_incharge/pharmacy.ndps.custody"]);
     // The margin never reaches the counter or the billing office (plan principle 3).
     expect(modelPairs().filter((p) => p.endsWith("/pharmacy.reports.margin"))).toEqual([
       "materials_head/pharmacy.reports.margin", "owner/pharmacy.reports.margin", "pharmacy_incharge/pharmacy.reports.margin",

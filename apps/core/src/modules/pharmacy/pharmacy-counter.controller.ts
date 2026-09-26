@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
-import { CONFIG, DB, MODULE_REGISTRY } from "../../kernel/tokens";
+import { CONFIG, DB, DOCUMENT_STORE, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
@@ -17,6 +17,7 @@ import type { Quote } from "./quote";
 import { billDispense, previewDispenseBill } from "./bill";
 import type { DisplayDraft } from "./bill";
 import { handOverDispense } from "./handover";
+import { captureRetainedPrescription } from "./controlled-dispense";
 import { labelFor } from "./label";
 import { pickDispense } from "./pick";
 import { checkPickScan } from "./scan";
@@ -38,6 +39,7 @@ import type { ReorderAdvice } from "./replenishment";
 import type { CancelBilledResult } from "./refund";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
+import type { DocumentStore } from "../../kernel/documents/store";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 import type { FindResult } from "./claim";
@@ -100,7 +102,15 @@ const resolveShortBody = z.object({ resolution: z.enum(["ordered", "received", "
 const printBody = z.object({ reprint: z.boolean().optional() });
 const handoverBody = z.object({
   identity: z.object({ via: z.enum(["token", "phone_last4"]), value: z.string().min(1).max(12) }).optional(),
+  /** PHARMACY P6 — a controlled line's hand-over (`controlled-dispense.ts`). */
+  controlled: z.object({
+    witness: z.object({ username: z.string().min(1).max(64), pin: z.string().min(1).max(32) }),
+    collectedBy: z.object({ name: z.string().max(120), relation: z.string().max(60), idProof: z.string().max(120) }),
+    retainedDocumentId: idSchema,
+    endorsed: z.boolean().optional(),
+  }).optional(),
 });
+const retainedBody = z.object({ photo: z.object({ mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]), imageBase64: z.string().min(1) }) });
 
 /**
  * PLAN 16c T3 — the counter's routes. `decls` come from the INSTALLED registry (17a F2), the
@@ -113,6 +123,7 @@ export class PharmacyCounterController {
     @Inject(DB) private readonly db: Db,
     @Inject(CONFIG) private readonly cfg: AppConfig,
     @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
+    @Inject(DOCUMENT_STORE) private readonly documents: DocumentStore,
   ) {}
 
   private decls() { return collectOrderKinds(this.registry); }
@@ -351,9 +362,26 @@ export class PharmacyCounterController {
   @Post("dispenses/:id/handover")
   async handover(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DispenseView> {
     const input = parsed(handoverBody, body);
+    // The witness's PIN is never part of what the idempotency record hashes: a four-digit secret in a stored digest is a lookup table.
+    const fingerprint = { id, ...input, ...(input.controlled === undefined ? {} : { controlled: { ...input.controlled, witness: { username: input.controlled.witness.username } } }) };
     try {
-      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.handover, key }, { id, ...input },
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.handover, key }, fingerprint,
         () => handOverDispense(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * PHARMACY P6 — the pharmacy's copy of a controlled prescription (Schedule X's duplicate), photographed
+   * at the desk and filed on the patient's record; the hand-over names the document it returns.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/retained-prescription")
+  async retained(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ documentId: string }> {
+    const input = parsed(retainedBody, body);
+    try {
+      return await captureRetainedPrescription(this.db, this.documents, actor, id, { mimeType: input.photo.mimeType, bytes: Buffer.from(input.photo.imageBase64, "base64") }, new Date());
     } catch (e) {
       return toHttp(e);
     }

@@ -118,3 +118,16 @@ export type { DoctorStock, DoctorStockAlternative } from "./doctor-stock";
 
 // ── PARITY P5 — the Tally export: whether the accountant has confirmed the ledger names (the census reads it) ──
 export { tallyLedgersConfirmed } from "./tally";
+
+// ── PHARMACY P6 — narcotic, psychotropic and Schedule X drugs under the law (brief 2026-09-26) ──
+export { CONTROLLED_STORE_CODE, LICENCE_RENEWAL_NOTICE_DAYS } from "./config";
+export {
+  CONTROLLED_LICENCE_KINDS, CUSTODY_PERMISSION, LICENCES_PERMISSION, WITNESS_PERMISSION, anyEndPrescriber, controlOf, controlledLicenceStates,
+  controlledStore, isEndPrescriber, recordControlledLicence, recordEndPrescriber,
+} from "./controlled";
+export type { ControlledLicenceKind, ControlledLicenceState, ControlledLicenceView, LineControl } from "./controlled";
+export { controlledToday, custodianPairHeld } from "./controlled-office";
+export type { ControlledToday } from "./controlled-office";
+export { PharmacyControlledController } from "./pharmacy-controlled.controller";
+export { classifyControlledDrugs } from "./controlled-classify";
+export type { ControlledClassification } from "./controlled-classify";

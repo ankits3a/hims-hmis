@@ -1,4 +1,5 @@
 import { balances, batchesByNo, itemsByIds, resolveBarcode } from "../materials";
+import { controlOf, requireControlledStore } from "./controlled";
 import { PharmacyError } from "./errors";
 import { parseGs1 } from "./gs1";
 import { getDispenseRow, linesOf } from "./queue";
@@ -61,6 +62,8 @@ export async function checkPickScan(
   if (line === undefined || line.status !== "open" || line.itemId === null || d.storeResourceId === null) {
     throw new PharmacyError("unknown_line", `line ${String(lineIdx + 1)} is not open for picking`, { lineIdx });
   }
-  const m = await resolveScan(db, d.storeResourceId, lineIdx, line.itemId, code);
+  // PHARMACY P6 — a controlled line's pack comes out of the cabinet, so the scan is read there.
+  const store = controlOf(line.scheduleFlag, line.ndpsClass).controlled ? (await requireControlledStore(db)).id : d.storeResourceId;
+  const m = await resolveScan(db, store, lineIdx, line.itemId, code);
   return { itemCode: m.itemCode, batchNo: m.batchNo, expiryDate: m.expiryDate };
 }

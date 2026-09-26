@@ -4,12 +4,14 @@ import { appendEvent } from "../../kernel/events/append";
 import {
   items, stockBalances, stockBatches, stockLedger, stockReservations,
 } from "../../kernel/db/schema";
+import { planCustody, writeRegisterRow } from "./controlled";
 import { MaterialsError } from "./errors";
 import { batchRecalled } from "./events";
 import { istDay } from "./grn";
 import { requireStore } from "./stores";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
+import type { Custody } from "./controlled";
 import { anyOfText } from "../../kernel/db/any-of";
 
 export type LedgerRow = typeof stockLedger.$inferSelect;
@@ -44,6 +46,13 @@ export type MovementInput = {
    * frozen the flag changes nothing — every ordinary check applies.
    */
   recallExit?: boolean;
+  /**
+   * PHARMACY P6 — THE SECOND KEY AND THE REGISTER'S PARTICULARS. Required on every movement at a
+   * controlled store (the NDPS / Schedule X cabinet) and read nowhere else: the acting user is the
+   * holder, `custody.witnessId` the witness, and the rest is what the cabinet's register copies
+   * (`controlled.ts`).
+   */
+  custody?: Custody;
 };
 
 /**
@@ -232,6 +241,10 @@ export async function postMovements(
     }
   }
 
+  // PHARMACY P6 — two people at the cabinet, and a narcotic-cabinet item never onto an open shelf. Asked
+  // here, inside the lock and before anything is written, so a refusal leaves no trace (`controlled.ts`).
+  const custody = await planCustody(tx, actor, inputs, batches);
+
   for (const [key, delta] of net) {
     if (delta >= 0) continue;
     const current = balances.get(key);
@@ -253,7 +266,7 @@ export async function postMovements(
   }
 
   const results: { ledgerEntryId: string; balanceAfter: number }[] = [];
-  for (const m of inputs) {
+  for (const [i, m] of inputs.entries()) {
     /**
      * ═══ CLOSE REVIEW C1 — THE UPSERT IS AN INCREMENT, AND IT MUST STAY ONE ═══
      *
@@ -355,9 +368,13 @@ export async function postMovements(
       patientId: m.patientId ?? null, encounterId: m.encounterId ?? null,
       costCenter: m.costCenter ?? null,
       actorId: actor.id,
+      witnessId: custody.controlled[i] === true ? (m.custody?.witnessId ?? null) : null,
       occurredAt: m.occurredAt,
       ...(m.recordedAt === undefined ? {} : { recordedAt: m.recordedAt }),
     });
+    if (custody.controlled[i] === true) {
+      await writeRegisterRow(tx, actor, custody, m, batches.get(m.batchId)!, { ledgerEntryId, balanceAfter });
+    }
     results.push({ ledgerEntryId, balanceAfter });
   }
   return results;

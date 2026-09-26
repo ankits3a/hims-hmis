@@ -488,6 +488,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "patients.register",
       // PHARMACY P20 — a pharmacist enters the paper dispenses written while the screens were dark.
       "pharmacy.downtime.enter",
+      // PHARMACY P6 — the controlled-drug cabinet: the pharmacist on duty holds a key (hands a narcotic or
+      // Schedule X line over, receives into the cabinet, counts it) and witnesses a colleague's movement —
+      // never their own (`narcotics_issuer_witness`). DEFAULT — owner may change.
+      "pharmacy.ndps.custody",
+      "pharmacy.ndps.witness",
       "orders.place",
       "orders.read",
       "orders.cancel",
@@ -806,6 +811,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY PARITY P5 — the TallyPrime export of the pharmacy's vouchers and its ledger names: the
       // books are the owner's. DEFAULT — owner may change.
       "pharmacy.tally.export",
+      // PHARMACY P6 — the controlled-drug licences (RMI recognition, Form 20F) are the hospital's, and the
+      // owner files them. DEFAULT — owner may change.
+      "pharmacy.licences.manage",
     ],
   },
   {
@@ -887,6 +895,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.register.read_sealed",
       // PHARMACY P19 — and records the retail licence when the owner is away.
       "pharmacy.retail.manage",
+      // PHARMACY P6 — the MS answers to the Drugs Controller for the hospital's recognition as an RMI: records
+      // the controlled-drug licences, and witnesses at the cabinet (a destruction, a discrepancy booked).
+      // DEFAULT — owner may change.
+      "pharmacy.licences.manage",
+      "pharmacy.ndps.witness",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1113,6 +1126,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // in `test/seed-roles.test.ts` now fails if any future type names a role that cannot answer it.
       "approvals.requests.read",
       "approvals.requests.decide",
+      // PHARMACY P6 — the head of stores witnesses a movement at the controlled-drug cabinet (a receipt, a
+      // destruction, a discrepancy booked) but holds no key to it. DEFAULT — owner may change.
+      "pharmacy.ndps.witness",
     ],
   },
   {
@@ -1575,6 +1591,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // copied). DEFAULT — owner may change.
       "pharmacy.reports.read",
       "pharmacy.reports.margin",
+      // PHARMACY P6 — the pharmacist in charge holds the controlled-drug cabinet's key, witnesses, and records
+      // its licences and the doctors trained to prescribe a narcotic drug. DEFAULT — owner may change.
+      "pharmacy.ndps.custody",
+      "pharmacy.ndps.witness",
+      "pharmacy.licences.manage",
     ],
   },
 ];

@@ -42,6 +42,8 @@ export type {
 export { findVisitByToken } from "./encounters";
 // PLAN 16c T4 — the prescriber on the Schedule H1 register (Rule 65(3): name and registration number).
 export { getDoctor } from "./masters";
+// PHARMACY P6 — the controlled-drug licence sheet names which doctors are trained under NDPS Rules r.2(ib).
+export { listDoctors } from "./masters";
 export type { DoctorRow } from "./masters";
 export type { PrescriptionRow } from "./encounters";
 export type { Eye, RxLine, TaperStep } from "./fhir";
