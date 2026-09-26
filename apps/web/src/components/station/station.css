@@ -1,0 +1,117 @@
+/*
+ * PLAN 17-F F1 — the station shell's geometry, from the approved board
+ * (`docs/design/2026-09-25-lims-stations/lab-stations.html`, "three columns: patient lane · work ·
+ * patient list"). The palette is `paper-pine.css`'s `.pp`; nothing here defines a colour of its own.
+ * Dark ink is a highlight only (owner, 25 Sep): no panel here is painted dark.
+ */
+.st {
+  position: fixed; inset: 0; display: flex; flex-direction: column;
+  background: var(--paper); color: var(--ink);
+  font: 13.5px/19px "IBM Plex Sans", "IBM Plex Sans Devanagari", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.st *, .st *::before, .st *::after { box-sizing: border-box; }
+.st .tag {
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
+}
+.st .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.st .kb {
+  display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px; padding: 0 5px;
+  border-radius: 3px; border: 1px solid var(--line); background: var(--card);
+  font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: var(--dim);
+}
+
+/* ── header: brand · station switch · views · Menu · … · List · clock · user · F8 ── */
+.st-top {
+  height: 46px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 16px;
+  background: var(--card); border-bottom: 1px solid var(--line); min-width: 0; position: relative;
+}
+.st-brand { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.st-dia { width: 10px; height: 10px; border-radius: 2px; background: var(--green); transform: rotate(45deg); flex-shrink: 0; }
+.st-bn { font-size: 12.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+.st-switch, .st-views { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.st-switch::-webkit-scrollbar, .st-views::-webkit-scrollbar { display: none; }
+.st-nv {
+  height: 30px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; font-weight: 500; color: var(--dim);
+  white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+}
+.st-nv:hover { background: var(--wash); color: var(--ink); }
+.st-nv[aria-current="page"] { background: var(--wash); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--green); }
+.st-btn {
+  display: none; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--card); font-size: 12.5px; font-weight: 600; color: var(--ink); cursor: pointer;
+}
+.st-btn.st-cmd { display: inline-flex; height: 26px; border-color: var(--ink); }
+.st-drop {
+  position: absolute; top: 44px; left: 12px; z-index: 45; display: grid; min-width: 230px; padding: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 12px 28px rgba(19, 36, 32, .16);
+}
+.st-drop .st-nv { height: 34px; }
+.st-drop-stations { display: none; }
+.st-grow { flex-grow: 1; }
+.st-clock { font-size: 11.5px; color: var(--dim); white-space: nowrap; }
+.st-user { font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+/* ── body: lane 296 · centre · right 352 ── */
+.st-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 296px minmax(0, 1fr) 352px; position: relative; }
+.st-lane { border-right: 1px solid var(--line); background: var(--card); overflow-y: auto; min-height: 0; padding: 18px 18px 26px; }
+.st-title { margin: 8px 0 0; font-size: 19px; line-height: 25px; font-weight: 700; letter-spacing: -.01em; }
+.st-place { margin: 2px 0 0; font-size: 12.5px; color: var(--dim); }
+.st-stats { list-style: none; margin: 14px 0 0; padding: 0; }
+.st-stats li { display: flex; align-items: baseline; gap: 8px; margin-top: 7px; }
+.st-stats li span { flex-grow: 1; font-size: 12.5px; color: var(--dim); }
+.st-stats li b { font-size: 16px; font-weight: 600; }
+.st-centre { min-width: 0; min-height: 0; overflow-y: auto; padding: 18px 22px 22px; }
+.st-right {
+  border-left: 1px solid var(--line); background: var(--paper); overflow-y: auto; min-height: 0; padding: 14px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.st-right > * { flex-shrink: 0; }
+.st-plmin {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 11px 12px;
+  border-radius: 8px; background: var(--card); border: 1px solid var(--line); font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.st-clocks { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
+.st-clocks[data-alert="true"] { border-color: var(--red-line); box-shadow: inset 3px 0 0 var(--red); }
+.st-fold { display: flex; align-items: center; gap: 9px; width: 100%; padding: 11px 14px; background: none; border: 0; cursor: pointer; text-align: left; color: var(--ink); }
+.st-fold b { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.st-fold-s { flex-grow: 1; min-width: 0; font-size: 11.5px; color: var(--dim); }
+.st-chev { color: var(--dim); transition: transform .15s; }
+.st-fold[aria-expanded="true"] .st-chev { transform: rotate(180deg); }
+.st-clocks-body { padding: 10px 14px 14px; border-top: 1px solid var(--line2); }
+.st-scrim { display: none; }
+
+/* below 1280: the list is a drawer */
+@media (max-width: 1279px) {
+  .st-body { grid-template-columns: 272px minmax(0, 1fr); overflow: hidden; }
+  .st-right {
+    position: absolute; top: 0; right: 0; bottom: 0; width: min(352px, 100vw); z-index: 30;
+    transform: translateX(105%);
+  }
+  .st.list-open .st-right { transform: none; box-shadow: -12px 0 32px rgba(19, 36, 32, .18); }
+  .st.list-open .st-scrim { display: block; position: absolute; inset: 0; z-index: 20; background: rgba(19, 36, 32, .28); }
+  .st-listbtn { display: inline-flex; }
+}
+/* below 1100: the header's own views fold into the Menu */
+@media (max-width: 1099px) {
+  .st-views { display: none; }
+  .st-menubtn.has-views { display: inline-flex; }
+}
+/* 1000 and below: the station switch moves into the Menu too */
+@media (max-width: 1000px) {
+  .st-switch { display: none; }
+  .st-menubtn { display: inline-flex; }
+  .st-drop-stations { display: grid; }
+}
+/* phone: lane over centre, one scroll */
+@media (max-width: 899px) {
+  .st-body { display: block; overflow-y: auto; overflow-x: hidden; }
+  .st-lane { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .st-centre { overflow: visible; padding-inline: 16px; }
+  .st-right { position: fixed; top: 46px; bottom: 0; }
+}
+@media (max-width: 720px) {
+  .st-top { gap: 8px; padding: 0 12px; }
+  .st-bn, .st-user { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .st-chev { transition: none; } }
