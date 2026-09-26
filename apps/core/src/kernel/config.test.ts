@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { loadConfig } from "./config";
 
 const base = {
@@ -193,5 +194,61 @@ describe("loadConfig — triageChoice", () => {
     const cfg = loadConfig({ ...base, TRIAGE_TYPESAFE_API_KEY: "k", TRIAGE_TYPESAFE_MIN_CONFIDENCE: "0.7" });
     expect(cfg.triageChoice).toMatchObject({ apiKey: "k", minConfidence: 0.7 });
     expect(() => loadConfig({ ...base, TRIAGE_TYPESAFE_MIN_CONFIDENCE: "-1" })).toThrow();
+  });
+});
+
+/**
+ * ABDM S0 — the connector's settings. `configured` is ONE rule, computed here and read by both of
+ * its readers (`modules/patients/abdm.ts`'s capability and `modules/abdm`'s runtime), so the counter
+ * can never say "connected" while the callback routes answer 503, or the reverse.
+ */
+describe("loadConfig — abdm", () => {
+  const full = {
+    ...base,
+    ABDM_BASE_URL: "https://dev.abdm.gov.in/api/hiecm",
+    ABDM_CLIENT_ID: "SBX_0001",
+    ABDM_CLIENT_SECRET: "s3cr3t-value-never-logged",
+    ABDM_HIP_ID: "IN0000000001",
+    ABDM_CALLBACK_BASE_URL: "https://hmis.example.test/api/abdm/callbacks",
+  };
+
+  it("is INERT from an environment that names none of its keys", () => {
+    expect(Object.keys(base).some((k) => k.startsWith("ABDM_"))).toBe(false);
+    const { abdm } = loadConfig(base);
+    expect(abdm).toMatchObject({
+      baseUrl: null, abhaBaseUrl: null, clientId: null, hipId: null, hiuId: null, callbackBaseUrl: null,
+      cmId: "sbx", jwtAudience: "account", configured: false,
+    });
+    expect(abdm.clientSecret).toBeNull();
+  });
+
+  it("is configured only when gateway, client id, secret, HIP id and callback base are ALL present", () => {
+    expect(loadConfig(full).abdm.configured).toBe(true);
+    for (const key of ["ABDM_BASE_URL", "ABDM_CLIENT_ID", "ABDM_CLIENT_SECRET", "ABDM_HIP_ID", "ABDM_CALLBACK_BASE_URL"] as const) {
+      expect({ key, configured: loadConfig({ ...full, [key]: "" }).abdm.configured }).toEqual({ key, configured: false });
+    }
+    // The FD-12 triple alone — the old rule — is no longer enough.
+    expect(loadConfig({ ...base, ABDM_BASE_URL: full.ABDM_BASE_URL, ABDM_CLIENT_ID: "x", ABDM_CLIENT_SECRET: "y" }).abdm.configured).toBe(false);
+    // The optional ones do not gate it.
+    expect(loadConfig({ ...full, ABDM_HIU_ID: "", ABDM_ABHA_BASE_URL: "" }).abdm.configured).toBe(true);
+  });
+
+  it("reads X-CM-ID as sbx | abdm, an EMPTY value as the sbx default, and refuses anything else at boot", () => {
+    expect(loadConfig({ ...full, ABDM_CM_ID: "abdm" }).abdm.cmId).toBe("abdm");
+    expect(loadConfig({ ...full, ABDM_CM_ID: "" }).abdm.cmId).toBe("sbx");
+    expect(() => loadConfig({ ...full, ABDM_CM_ID: "prod" })).toThrow();
+  });
+
+  it("honours the optional keys", () => {
+    const { abdm } = loadConfig({ ...full, ABDM_HIU_ID: "HIU-1", ABDM_ABHA_BASE_URL: "https://abhasbx.abdm.gov.in/abha/api", ABDM_JWT_AUDIENCE: "other" });
+    expect(abdm).toMatchObject({ hiuId: "HIU-1", abhaBaseUrl: "https://abhasbx.abdm.gov.in/abha/api", jwtAudience: "other" });
+  });
+
+  it("keeps the client secret readable but out of every serialisation of the config", () => {
+    const cfg = loadConfig(full);
+    expect(cfg.abdm.clientSecret).toBe(full.ABDM_CLIENT_SECRET);
+    expect(JSON.stringify(cfg)).not.toContain(full.ABDM_CLIENT_SECRET);
+    expect(inspect(cfg, { depth: 5 })).not.toContain(full.ABDM_CLIENT_SECRET);
+    expect(`${JSON.stringify({ ...cfg.abdm })}`).not.toContain(full.ABDM_CLIENT_SECRET);
   });
 });

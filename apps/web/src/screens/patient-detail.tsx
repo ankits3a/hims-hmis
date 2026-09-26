@@ -386,13 +386,16 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
             <div className="grid grid-cols-2 gap-3">
               <TextField name="abhaAddress" label={t("register.abhaAddress")} />
               <TextField name="abhaNumber" label={t("register.abhaNumber")} />
+              {/* ABDM S0 — `verified` is ABDM's answer, never a clerk's pick: the server refuses a move to
+                  it (400 `abha_verified_only_by_abdm`). It is listed only so a record ABDM verified
+                  still SHOWS its stamp — and a clerk may still take the stamp down. */}
               <SelectField
                 name="abhaVerificationStatus"
                 label={t("patient.abha")}
                 options={[
                   { value: "none", label: "none" },
                   { value: "self_declared", label: "self_declared" },
-                  { value: "verified", label: "verified" },
+                  ...(patient.abhaVerificationStatus === "verified" ? [{ value: "verified", label: "verified" }] : []),
                 ]}
               />
             </div>

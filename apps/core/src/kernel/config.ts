@@ -305,6 +305,31 @@ const configSchema = z.object({
   ABDM_CLIENT_ID: z.string().default(""),
   ABDM_CLIENT_SECRET: z.string().default(""),
   /**
+   * ABDM S0 — the rest of what the connector needs (plan 2026-09-25-abdm-connector.md §3). The same
+   * B1 discipline: every key DEFAULTS, so an environment that names none of them parses and the
+   * connector is OFF. `ABDM_BASE_URL` above keeps its name and is the HIE-CM GATEWAY base.
+   *
+   *   ABDM_BASE_URL          gateway: sandbox https://dev.abdm.gov.in/api/hiecm · production
+   *                          https://apis.abdm.gov.in/api/hiecm (NHA wrapper application-v3.properties)
+   *   ABDM_ABHA_BASE_URL     the ABHA (M1) API base — S1's, optional here
+   *   ABDM_CM_ID             `X-CM-ID`: `sbx` (sandbox, the default) | `abdm` (production) — NHA wrapper
+   *                          README. EMPTY reads as the default; anything else fails at boot.
+   *   ABDM_HIP_ID            this hospital's HFR facility id, sent as `X-HIP-ID`
+   *   ABDM_HIU_ID            optional — the HIU id, once M3 is on
+   *   ABDM_CALLBACK_BASE_URL the bridge URL registered with ABDM: https://<host>/api/abdm/callbacks
+   *   ABDM_JWT_AUDIENCE      the `aud` a callback JWT must carry. UNVERIFIED: `account` is what the
+   *                          open-source Care connector checks; confirm on the sandbox portal.
+   *
+   * `configured` (below) needs the gateway, the client id and secret, the HIP id and the callback
+   * base — the least with which a callback can be verified and answered.
+   */
+  ABDM_ABHA_BASE_URL: z.string().default(""),
+  ABDM_CM_ID: z.enum(["", "sbx", "abdm"]).default(""),
+  ABDM_HIP_ID: z.string().default(""),
+  ABDM_HIU_ID: z.string().default(""),
+  ABDM_CALLBACK_BASE_URL: z.string().default(""),
+  ABDM_JWT_AUDIENCE: z.string().default("account"),
+  /**
    * PLAN 09 / DD14 — THE FIVE STRUCTURAL-OFF FLAGS. Every one DEFAULTED, every one a two-string
    * enum, and neither of those is a style choice.
    *
@@ -394,11 +419,29 @@ export type AppConfig = {
   speechApiToken: string;
   /**
    * FD-12 — the ABDM (ABHA) gateway. Shaped like `triage` above because it is the same kind of
-   * thing: an external provider whose absence is a NORMAL state, not a misconfiguration. All three
-   * null ⇒ the counter can still RECORD an ABHA the patient reads out, and cannot create or verify
-   * one. `modules/patients/abdm.ts` is the only reader.
+   * thing: an external provider whose absence is a NORMAL state, not a misconfiguration. Not
+   * `configured` ⇒ the counter can still RECORD an ABHA the patient reads out, and cannot create or
+   * verify one, and every ABDM route answers 503.
+   *
+   * ABDM S0 — `configured` is computed HERE, once, and read by both readers:
+   * `modules/patients/abdm.ts` (the counter's capability) and `modules/abdm` (the connector). Two
+   * copies of the rule would let the counter say "connected" while the callbacks answer 503.
+   * `clientSecret` is a NON-ENUMERABLE property: readable by the one caller that sends it, absent
+   * from every `JSON.stringify`, spread and `inspect` of the config.
    */
-  abdm: { baseUrl: string | null; clientId: string | null; clientSecret: string | null };
+  abdm: {
+    /** The HIE-CM gateway base. */
+    baseUrl: string | null;
+    abhaBaseUrl: string | null;
+    clientId: string | null;
+    clientSecret: string | null;
+    cmId: "sbx" | "abdm";
+    hipId: string | null;
+    hiuId: string | null;
+    callbackBaseUrl: string | null;
+    jwtAudience: string;
+    configured: boolean;
+  };
   /**
    * Plan 09 / DD14. All five FALSE unless an operator says otherwise, in as many letters. Where
    * each one takes effect is its own task's business — `priceDraft` for benefits (T4), the accrual
@@ -447,6 +490,32 @@ function vapidFrom(parsed: {
     privateKey: parsed.WEB_PUSH_VAPID_PRIVATE_KEY,
     subject: parsed.WEB_PUSH_VAPID_SUBJECT,
   };
+}
+
+/** ABDM S0 — see `AppConfig.abdm`. The secret is attached non-enumerable, never copied by value. */
+function abdmFrom(parsed: {
+  ABDM_BASE_URL: string; ABDM_ABHA_BASE_URL: string; ABDM_CLIENT_ID: string; ABDM_CLIENT_SECRET: string;
+  ABDM_CM_ID: "" | "sbx" | "abdm"; ABDM_HIP_ID: string; ABDM_HIU_ID: string; ABDM_CALLBACK_BASE_URL: string;
+  ABDM_JWT_AUDIENCE: string;
+}): AppConfig["abdm"] {
+  const orNull = (v: string): string | null => (v.trim() === "" ? null : v.trim());
+  const clientSecret = parsed.ABDM_CLIENT_SECRET === "" ? null : parsed.ABDM_CLIENT_SECRET;
+  const abdm = {
+    baseUrl: orNull(parsed.ABDM_BASE_URL),
+    abhaBaseUrl: orNull(parsed.ABDM_ABHA_BASE_URL),
+    clientId: orNull(parsed.ABDM_CLIENT_ID),
+    cmId: parsed.ABDM_CM_ID === "" ? "sbx" : parsed.ABDM_CM_ID,
+    hipId: orNull(parsed.ABDM_HIP_ID),
+    hiuId: orNull(parsed.ABDM_HIU_ID),
+    callbackBaseUrl: orNull(parsed.ABDM_CALLBACK_BASE_URL),
+    jwtAudience: orNull(parsed.ABDM_JWT_AUDIENCE) ?? "account",
+    configured: false,
+  } as AppConfig["abdm"];
+  Object.defineProperty(abdm, "clientSecret", { value: clientSecret, enumerable: false, writable: false });
+  abdm.configured =
+    abdm.baseUrl !== null && abdm.clientId !== null && clientSecret !== null &&
+    abdm.hipId !== null && abdm.callbackBaseUrl !== null;
+  return abdm;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -506,11 +575,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerLabSweepIntervalMs: parsed.WORKER_LAB_SWEEP_INTERVAL_MS,
     searchRateLimit: parsed.SEARCH_RATE_LIMIT,
     searchRateWindowSec: parsed.SEARCH_RATE_WINDOW_SEC,
-    abdm: {
-      baseUrl: parsed.ABDM_BASE_URL === "" ? null : parsed.ABDM_BASE_URL,
-      clientId: parsed.ABDM_CLIENT_ID === "" ? null : parsed.ABDM_CLIENT_ID,
-      clientSecret: parsed.ABDM_CLIENT_SECRET === "" ? null : parsed.ABDM_CLIENT_SECRET,
-    },
+    abdm: abdmFrom(parsed),
     speechProvider: parsed.SPEECH_PROVIDER,
     speechAccountId: parsed.SPEECH_ACCOUNT_ID,
     speechApiToken: parsed.SPEECH_API_TOKEN,
