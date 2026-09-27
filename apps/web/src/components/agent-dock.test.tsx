@@ -21,6 +21,14 @@ function line(text: string, kind: AgentLine["kind"] = "did"): AgentLine {
 }
 
 describe("AgentDock", () => {
+  it("the question box shrinks on a phone instead of pushing the page 132 px wide (prod walk, /my-day at 390, 2026-09-27)", () => {
+    render(<AgentDock answer={null} log={[]} onAsk={() => undefined} placeholder="ask" idle="idle" />);
+    const box = screen.getByTestId("agent-ask");
+    expect(box.style.width).not.toBe("300px");
+    expect(box.style.width).toMatch(/^clamp\(/);
+    expect((box.closest("form") as HTMLFormElement).style.minWidth).toMatch(/^0(px)?$/);
+  });
+
   it("says what it can see before it is asked — an agent with no stated scope invites the wrong question", () => {
     render(
       <AgentDock answer={null} log={[]} onAsk={() => undefined} placeholder="ask" idle="I read this screen only." />,

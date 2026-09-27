@@ -237,7 +237,7 @@ export function AgentDock(
           {latest === undefined ? idle : `${latest.at} ${latest.text}`}
         </span>
         <form
-          style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}
+          style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 1, minWidth: 0 }}
           /*
             ═══ FD-25 — ASKING OPENS THE PANEL, BECAUSE THE ANSWER LIVES IN IT ═══
 
@@ -264,7 +264,9 @@ export function AgentDock(
             onChange={(e) => { setDraft(e.target.value); }}
             placeholder={placeholder}
             style={{
-              width: 300, height: 28, borderRadius: 6, border: "1px solid #24413655",
+              /* A phone is narrower than 300 px of question box plus the bar around it: /my-day at 390 px
+                 overflowed by 132 px (prod walk, 2026-09-27). The box shrinks; 300 px stays the desktop width. */
+              width: "clamp(120px, 30vw, 300px)", height: 28, borderRadius: 6, border: "1px solid #24413655",
               background: "#0c1f1a", color: "var(--agent-fg)", padding: "0 10px", fontSize: 11.5,
             }}
           />
