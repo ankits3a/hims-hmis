@@ -8,6 +8,16 @@ import { renderWithProviders, stubFetch } from "../test-utils";
 import { OpdConsult } from "./opd-consult";
 
 /**
+ * THE TIME BUDGET — 15 s for every test in this file, not vitest's default 5 s. Almost every test here
+ * mounts the whole consult screen, and under the full web suite's parallel load a flow test runs at
+ * about twice its solo time. On 2026-09-26 that tipped two tests over the 5 s cliff with no code
+ * change: P24 at 5105 ms (the pre-deploy full suite on main 5cd1fb19) and K48 at 5055 ms (a pharmacy
+ * lane's full suite). A budget changes no assertion, and a test that genuinely hangs still fails, at
+ * 15 s. It is the budget `vitals-bay-stories` already carries.
+ */
+vi.setConfig({ testTimeout: 15_000 });
+
+/**
  * PLAN 07d T6 — the screen gained ONE router component (`<Link to="/my-day">`), and a `<Link>`
  * needs a `RouterProvider` that `renderWithProviders` does not build. The house convention is to
  * mock `@tanstack/react-router` down to exactly what the screen uses — and the factory returns ONLY
