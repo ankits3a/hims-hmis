@@ -245,12 +245,13 @@ describe("loadConfig — abdm", () => {
   });
 
   /**
-   * ABDM S1 — Aadhaar-OTP ABHA creation is OFF until the owner rules, and only the literal string
-   * "true" turns it on: "false", "1" and "yes" must never be read as on. The scan-and-share QR base
-   * follows X-CM-ID unless an operator names one.
+   * ABDM S1 — Aadhaar-OTP ABHA creation: the owner ruled YES (2026-09-26), so the flag defaults ON;
+   * only the literal string "false" switches it off, and "1", "yes" and "TRUE" are refused at boot.
+   * It still does nothing unless ABDM itself is configured. The scan-and-share QR base follows
+   * X-CM-ID unless an operator names one.
    */
-  it("S1: the create flag is off by default, on only for \"true\", and refuses anything else at boot", () => {
-    expect(loadConfig(full).abdm.abhaCreateByAadhaar).toBe(false);
+  it("S1: the create flag is ON by default (owner ruled 2026-09-26), off only for \"false\", and refuses anything else at boot", () => {
+    expect(loadConfig(full).abdm.abhaCreateByAadhaar).toBe(true);
     expect(loadConfig({ ...full, ABDM_ABHA_CREATE_AADHAAR: "false" }).abdm.abhaCreateByAadhaar).toBe(false);
     expect(loadConfig({ ...full, ABDM_ABHA_CREATE_AADHAAR: "true" }).abdm.abhaCreateByAadhaar).toBe(true);
     for (const v of ["1", "yes", "TRUE"]) expect(() => loadConfig({ ...full, ABDM_ABHA_CREATE_AADHAAR: v })).toThrow();

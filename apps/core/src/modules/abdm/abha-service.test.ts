@@ -271,8 +271,8 @@ describe("AbhaService", () => {
     expect(chosen).toMatchObject({ stage: "authenticated", profile: { abhaNumber: "91-1111-2222-3333", name: "Second Person" } });
   });
 
-  it("FIND BY AADHAAR (VRFY_ABHA_401–405): OFF with the create flag; on, it finds, re-sends only with the number typed again, and stores no Aadhaar", async () => {
-    const off = setup();
+  it("FIND BY AADHAAR (VRFY_ABHA_401–405): OFF when the create flag is set false; on, it finds, re-sends only with the number typed again, and stores no Aadhaar", async () => {
+    const off = setup({ ABDM_ABHA_CREATE_AADHAAR: "false" });
     await expect(off.svc.startFindByAadhaar(clerk, { aadhaar: "555566667777", patientConsented: true })).rejects.toMatchObject({ code: "abha_find_by_aadhaar_disabled" });
     expect(off.fake.requests).toHaveLength(0);
 
@@ -325,8 +325,8 @@ describe("AbhaService", () => {
     expect(fake.requests).toHaveLength(0);
   });
 
-  it("CREATE is refused while the flag is off — and nothing about the Aadhaar number is sent or kept", async () => {
-    const { fake, svc } = setup();
+  it("CREATE is refused while the flag is set false — and nothing about the Aadhaar number is sent or kept", async () => {
+    const { fake, svc } = setup({ ABDM_ABHA_CREATE_AADHAAR: "false" });
     const err = await svc.startCreate(clerk, { aadhaar: "9876 5432 1098", patientConsented: true }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AbhaFlowError);
     expect((err as AbhaFlowError).code).toBe("abha_create_disabled");

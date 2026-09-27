@@ -32,16 +32,19 @@ describe("abhaCapability — the one configured rule", () => {
   });
 
   /**
-   * ABDM S1 — VERIFY is on whenever ABDM (and its ABHA service) is; CREATE by Aadhaar OTP is OFF until
-   * the owner rules, and only `ABDM_ABHA_CREATE_AADHAAR=true` — in those letters — switches it on.
+   * ABDM S1 — VERIFY is on whenever ABDM (and its ABHA service) is; CREATE by Aadhaar OTP is ON by
+   * default since the owner ruled yes (2026-09-26), and only `ABDM_ABHA_CREATE_AADHAAR=false` — in
+   * those letters — switches it off.
    */
-  it("S1: with the ABHA service, verify is ON and create stays OFF by default", () => {
-    const cap = abhaCapability({ ...full, ABDM_ABHA_BASE_URL: "https://abhasbx.abdm.gov.in/abha/api" });
-    expect(cap).toMatchObject({ configured: true, canVerify: true, canCreate: false, canScanShare: true });
-    expect(cap.reason).toMatch(/Creating a new ABHA with Aadhaar is not switched on/);
+  it("S1: with the ABHA service, verify is ON and create is ON by default; \"false\" switches create off", () => {
+    const withAbha = { ...full, ABDM_ABHA_BASE_URL: "https://abhasbx.abdm.gov.in/abha/api" };
+    expect(abhaCapability(withAbha)).toMatchObject({ configured: true, canVerify: true, canCreate: true, canScanShare: true });
+    const off = abhaCapability({ ...withAbha, ABDM_ABHA_CREATE_AADHAAR: "false" });
+    expect(off).toMatchObject({ configured: true, canVerify: true, canCreate: false, canScanShare: true });
+    expect(off.reason).toMatch(/Creating a new ABHA with Aadhaar is not switched on/);
   });
 
-  it("S1: create is on only with ABDM_ABHA_CREATE_AADHAAR=true", () => {
+  it("S1: create follows ABDM_ABHA_CREATE_AADHAAR, and needs ABDM itself", () => {
     const withAbha = { ...full, ABDM_ABHA_BASE_URL: "https://abhasbx.abdm.gov.in/abha/api" };
     expect(abhaCapability({ ...withAbha, ABDM_ABHA_CREATE_AADHAAR: "true" })).toMatchObject({ canVerify: true, canCreate: true });
     expect(abhaCapability({ ...withAbha, ABDM_ABHA_CREATE_AADHAAR: "false" }).canCreate).toBe(false);

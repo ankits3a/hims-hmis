@@ -23,7 +23,7 @@ import type { PatientRow } from "../patients";
  *     resend(handle)                                → at most 2 re-sends, 60 s apart        CRT_106, VRFY_305/405
  *     otp(handle, otp)                              → the session, or accounts to choose    VRFY_303/404
  *     choose(handle, abhaNumber)                    → the chosen account's session
- *   CREATE (refused `abha_create_disabled` until `ABDM_ABHA_CREATE_AADHAAR=true`):
+ *   CREATE (on by default — owner ruled yes 2026-09-26; `abha_create_disabled` when `ABDM_ABHA_CREATE_AADHAAR=false`):
  *     create(aadhaar, consent) → otp(handle, otp, mobile) → the ABHA                       CRT_101–107, 113
  *     mobile/otp → mobile/verify                    → a different mobile, checked by ABDM  CRT_109
  *     address-suggestions → address                 → the ABHA address                     CRT_112
@@ -278,7 +278,7 @@ export class AbhaService {
     return this.view(actor, t, sent.message);
   }
 
-  /** VRFY_ABHA_401–405 — "find ABHA" by Aadhaar. Gated with Aadhaar creation: OFF until the owner rules. */
+  /** VRFY_ABHA_401–405 — "find ABHA" by Aadhaar. Gated with Aadhaar creation (on by default since the owner's 2026-09-26 ruling). */
   async startFindByAadhaar(actor: Actor, input: { aadhaar: string; patientConsented: boolean; patientId?: string | null }): Promise<AbhaFlowView> {
     const { settings, abha } = this.on();
     if (!settings.abhaCreateByAadhaar) {
@@ -468,7 +468,7 @@ export class AbhaService {
     return { patientId: patient.id, changed, comparison, demographicsApplied: changes };
   }
 
-  // ═══ CREATE (off until the owner rules) ═══
+  // ═══ CREATE (owner ruled yes 2026-09-26: on by default, `ABDM_ABHA_CREATE_AADHAAR=false` switches it off) ═══
 
   isCreateEnabled(): boolean {
     return this.deps.settings?.abhaCreateByAadhaar === true;

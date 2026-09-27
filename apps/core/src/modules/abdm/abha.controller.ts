@@ -143,7 +143,7 @@ export class AbdmAbhaController {
     return guarded(() => this.runtime.abhaService.startVerification(actor, b));
   }
 
-  // ——— create an ABHA by Aadhaar OTP (403 abha_create_disabled until the owner rules) ———
+  // ——— create an ABHA by Aadhaar OTP (403 abha_create_disabled when ABDM_ABHA_CREATE_AADHAAR=false; on by default since the 2026-09-26 ruling) ———
 
   @RequirePermission("patients.register", "hospital")
   @Post("abha/create")

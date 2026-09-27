@@ -23,7 +23,7 @@ export type AbdmSettings = {
   /** What `PATCH /gateway/v3/bridge/url` registers; callbacks arrive at `{this}/api/v3/...`. No trailing slash. */
   callbackBaseUrl: string;
   jwtAudience: string;
-  /** S1 — Aadhaar-OTP ABHA creation. OFF until the owner rules (config `ABDM_ABHA_CREATE_AADHAAR`). */
+  /** S1 — Aadhaar-OTP ABHA creation. ON by default — owner ruled yes 2026-09-26 (config `ABDM_ABHA_CREATE_AADHAAR`). */
   abhaCreateByAadhaar: boolean;
   /** S1 — the scan-and-share QR base (config `ABDM_SCAN_SHARE_URL`, else derived from `cmId`). */
   scanShareUrl: string;

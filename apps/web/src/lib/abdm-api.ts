@@ -74,7 +74,7 @@ export function startAbhaVerification(body: { identifier: string; method: "aadha
   return api("POST", "/abdm/abha/verify", body);
 }
 
-/** 403 `abha_create_disabled` until the owner rules — the screen does not draw the button then. */
+/** On by default since the owner ruled yes (2026-09-26); 403 `abha_create_disabled` only when ABDM_ABHA_CREATE_AADHAAR=false, and the screen does not draw the button then. */
 export function startAbhaCreate(body: { aadhaar: string; patientConsented: boolean; patientId?: string | null }): Promise<WireAbhaFlow> {
   return api("POST", "/abdm/abha/create", body);
 }

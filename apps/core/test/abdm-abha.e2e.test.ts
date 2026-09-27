@@ -28,7 +28,7 @@ import type { Db } from "../src/kernel/db/client";
  *
  *   · verify an ABHA by OTP → link it → the patient is `verified`, and no response the browser saw
  *     carried ABDM's txnId or the patient's X-token;
- *   · create is 403 `abha_create_disabled` while the owner has not ruled — and the Aadhaar number in
+ *   · create is 403 `abha_create_disabled` while `ABDM_ABHA_CREATE_AADHAAR=false` — and the Aadhaar number in
  *     the body never reaches ABDM or a row;
  *   · scan and share: ABDM's signed callback → a pending share → the counter's list → the ordinary
  *     `POST /patients` pre-filled from it → the link; a retried REQUEST-ID is one share, one reply.
@@ -91,6 +91,8 @@ describe("ABDM S1 e2e — configured, create OFF", () => {
       ABDM_BASE_URL: fake.baseUrl, ABDM_ABHA_BASE_URL: fake.abha.baseUrl,
       ABDM_CLIENT_ID: "SBX_0001", ABDM_CLIENT_SECRET: SECRET, ABDM_HIP_ID: HIP,
       ABDM_CALLBACK_BASE_URL: "https://hmis.example.test/api/abdm/callbacks",
+      // The owner ruled create ON (2026-09-26, the default); this suite pins the switched-OFF refusal.
+      ABDM_ABHA_CREATE_AADHAAR: "false",
     });
     app = await boot(cfg, fake);
   });

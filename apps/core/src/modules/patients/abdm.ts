@@ -64,9 +64,9 @@ export function abhaCapabilityFrom(abdm: AppConfig["abdm"]): AbhaCapability {
   const { configured, abhaBaseUrl, abhaCreateByAadhaar } = abdm;
   /*
     ABDM S1 — VERIFY needs the ABHA service's base URL as well as the gateway (S0's `configured`
-    does not require it, because callbacks do not). CREATE additionally needs the owner's ruling on
-    Aadhaar-OTP creation at the counter, which is `ABDM_ABHA_CREATE_AADHAAR` — off by default, and
-    while it is off the button is not drawn at all.
+    does not require it, because callbacks do not). CREATE additionally needs
+    `ABDM_ABHA_CREATE_AADHAAR` — ON by default since the owner ruled yes (2026-09-26); set to
+    `false` it is off and the button is not drawn at all.
   */
   const canVerify = configured && abhaBaseUrl !== null;
   const canCreate = canVerify && abhaCreateByAadhaar;
