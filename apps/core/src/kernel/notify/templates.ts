@@ -18,6 +18,26 @@ export type NotificationTemplate = {
   waApprovalStatus: "not_submitted" | "pending" | "approved" | "rejected"; // data for §19, later
   expiresAt(params: Record<string, unknown>, occurredAt: Date): Date; // D5 — anchored on MEANING, never elapsed time
   render: Record<"hi" | "en", (params: Record<string, unknown>) => string>; // both, or no compile
+  /**
+   * PHARMACY P6 (patient messages) — the PURPOSE a patient must have opted IN to before this template
+   * may be enqueued or sent (`patient_message_preferences`). Absent = transactional, sent unless the
+   * patient opted out of everything. `enqueueNotification` refuses without the opt-in and the pump
+   * suppresses a row whose opt-in was withdrawn after it was queued.
+   */
+  requiresOptIn?: "refill_reminders";
+  /**
+   * PHARMACY P6 — the template's variables IN ORDER, for a provider that fills a registered template
+   * rather than sending our text: WhatsApp's body parameters `{{1}}…{{n}}`. The DLT SMS sends the
+   * rendered text, which must match the registration with these values in its `{#var#}` slots.
+   */
+  variables?: (params: Record<string, unknown>) => string[];
+  /**
+   * PHARMACY P6 — `false` when a patient message that cannot be delivered is NOT a phone call for the
+   * duty manager (`alerts/consumer.ts` raises the `manual_notify` desk task otherwise). A bill receipt
+   * the patient already holds on paper, and a courtesy reminder, are not worth a person's call; a report
+   * that is ready is. Absent = the desk task, as every template before this one.
+   */
+  deskFlagOnFailure?: false;
 };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -46,6 +66,96 @@ function formatSlotTime(params: Record<string, unknown>): string {
 
 const expiresAtSlotStart = (params: Record<string, unknown>): Date => new Date(paramStr(params, "slotStart"));
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * PHARMACY P6 — THE PHARMACY'S TWO PATIENT MESSAGES, AND WHAT THEY MAY NOT SAY
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * **No drug is named, and no diagnosis can be inferred.** A message sits on a lock screen in a shared
+ * house, in a chat backup and with a telecom operator; "your Tenofovir" or "your Olanzapine" is a
+ * diagnosis delivered to whoever holds the phone, and a Schedule X, NDPS or H1 name must never leave the
+ * building at all. The bill says the hospital, the bill number, the amount and the day — the printed
+ * bill at the counter carries the lines. The reminder says the day the medicines were bought. A
+ * producer that is ever allowed to add names (an owner flag, OFF) passes them in `drugs`, already
+ * filtered; these bodies never look anything up.
+ *
+ * Plain "Rs", not "₹", in English: the rupee sign turns an SMS into UCS-2 and halves what one segment
+ * carries. The Hindi bodies are UCS-2 regardless.
+ *
+ * Both name a phone number only as a param (`contactPhone`), and neither says "reply STOP": no inbound
+ * route exists to hear a reply, so the reminder tells the patient where a stop IS heard — the counter.
+ */
+/** `YYYY-MM-DD` (an IST calendar date) → "26 Sep 2026". */
+function formatIsoDay(params: Record<string, unknown>, key: string): string {
+  const d = new Date(`${paramStr(params, key)}T00:00:00+05:30`);
+  return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: IST_TIME_ZONE }).format(d);
+}
+
+/** Paise → "1,234.50" (Indian grouping, two decimals). */
+function formatRupees(params: Record<string, unknown>): string {
+  const paise = Number(params.amountPaise);
+  return (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** The optional, pre-filtered names: " (A, B)" or nothing. */
+function drugsClause(params: Record<string, unknown>): string {
+  const v = params.drugs;
+  return typeof v === "string" && v.trim() !== "" ? ` (${v.trim()})` : "";
+}
+
+const pharmacyTemplates: Record<string, NotificationTemplate> = {
+  /**
+   * Producer: `dispense.handed_over` and `retail.sold` (modules/pharmacy/messages.ts), ONCE per invoice.
+   * Transactional — the receipt of money the patient has just paid — so it goes to the number on record
+   * unless they opted out of everything. Routine, so a bill paid at 23:00 waits for 08:00 (D7, the same
+   * law as every routine patient message). Dies 48 h after the sale: a receipt two days late is noise.
+   * SMS first: a pharmacy bill is the one message a patient expects as a text.
+   */
+  pharmacy_bill_ready: {
+    key: "pharmacy_bill_ready",
+    version: 1,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    channels: ["sms", "whatsapp"],
+    waApprovalStatus: "not_submitted",
+    deskFlagOnFailure: false,
+    expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 48 * HOUR_MS),
+    variables: (params) => [paramStr(params, "hospital"), paramStr(params, "billNo"), formatRupees(params), formatIsoDay(params, "paidOn")],
+    render: {
+      en: (params) =>
+        `${paramStr(params, "hospital")} pharmacy: bill ${paramStr(params, "billNo")} for Rs ${formatRupees(params)} is paid (${formatIsoDay(params, "paidOn")}). Keep this message; the counter gives a printed copy on request.`,
+      hi: (params) =>
+        `${paramStr(params, "hospital")} फार्मेसी: बिल ${paramStr(params, "billNo")}, राशि ₹${formatRupees(params)}, का भुगतान हो गया (${formatIsoDay(params, "paidOn")})। यह संदेश रखें; छपी प्रति काउंटर पर कभी भी मिल जाएगी।`,
+    },
+  },
+
+  /**
+   * Producer: the daily refill job (`runRefillReminders`), ONCE per dispense. It needs the patient's
+   * OPT-IN to refill reminders (`requiresOptIn`) — TRAI's "service explicit" class and a DPDP purpose of
+   * its own — recorded with who asked, when and where. Routine: quiet hours hold it (21:00–08:00 IST).
+   * Dies at the end of the day the medicines run out: after that it is not a reminder, it is a lapse.
+   */
+  pharmacy_refill_due: {
+    key: "pharmacy_refill_due",
+    version: 1,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    channels: ["sms", "whatsapp"],
+    waApprovalStatus: "not_submitted",
+    requiresOptIn: "refill_reminders",
+    deskFlagOnFailure: false,
+    expiresAt: (params) => new Date(new Date(`${paramStr(params, "runsOutOn")}T00:00:00+05:30`).getTime() + 24 * HOUR_MS),
+    variables: (params) => [paramStr(params, "hospital"), formatIsoDay(params, "since"), paramStr(params, "contactPhone")],
+    render: {
+      en: (params) =>
+        `${paramStr(params, "hospital")}: your medicines${drugsClause(params)} from ${formatIsoDay(params, "since")} may be running low. Please visit the hospital pharmacy or call ${paramStr(params, "contactPhone")}. To stop these reminders, tell the pharmacy.`,
+      hi: (params) =>
+        `${paramStr(params, "hospital")}: ${formatIsoDay(params, "since")} को ली गई आपकी दवाइयाँ${drugsClause(params)} जल्द ख़त्म हो सकती हैं। कृपया अस्पताल की फार्मेसी आएँ या ${paramStr(params, "contactPhone")} पर कॉल करें। ये याद-संदेश बंद कराने के लिए फार्मेसी में बताएँ।`,
+    },
+  },
+};
 export const notificationTemplates: Record<string, NotificationTemplate> = {
   // Producer: patient.registered (modules/patients/events.ts). D8: patient/routine, dies 24h
   // after registration — a welcome nobody read in a day is stale, not late.
@@ -311,6 +421,9 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
         `${paramStr(params, "kind")} काम आपकी प्रतीक्षा में हैं। खोलें: ${paramStr(params, "link")}`,
     },
   },
+
+  // PHARMACY P6 — the pharmacy's bill and refill reminder (defined above, with what they may not say).
+  ...pharmacyTemplates,
 };
 
 export function templateByKey(key: string): NotificationTemplate {

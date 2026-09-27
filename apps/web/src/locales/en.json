@@ -3906,7 +3906,9 @@
     "invalid_end_prescriber": "Choose a doctor of this hospital and name the training; a doctor already on the list is ended first.",
     "unknown_end_prescriber": "No such current entry on the list of trained doctors.",
     "controlled_act_invalid": "This act at the cabinet is incomplete — it is not the cabinet's, or the Controller of Drugs' officer or approval is missing.",
-    "item_merged": "This item was merged into another — use the item it was merged into."
+    "item_merged": "This item was merged into another — use the item it was merged into.",
+    "messages_stopped": "This patient asked for no messages. Ask them first, turn messages back on, then ask about reminders.",
+    "invalid_message_setting": "That is not in the shape the provider issues: the phone needs 10–12 digits with its STD code."
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -4506,6 +4508,41 @@
       "tag": "DUPLICATES",
       "body": "{{pairs}} pairs look like one item registered twice ({{sameMedicine}} the same medicine). The medical superintendent approves each merge.",
       "open": "Open the office"
+    },
+    "messages": {
+      "title": "Messages",
+      "noPhone": "No phone on record — nothing can be sent.",
+      "remindersOff": "SMS reminders: off · turn on",
+      "remindersOffWa": "WhatsApp reminders: off · turn on",
+      "remindersOn": "SMS reminders: on",
+      "remindersOnWa": "WhatsApp reminders: on",
+      "turnOff": "turn off",
+      "askFirst": "Ask first: “May we send you a reminder when your medicines are about to run out?”",
+      "consentBy": "Said yes {{when}}, recorded by {{who}}.",
+      "stoppedPill": "Messages stopped",
+      "stoppedBy": "Asked to stop {{when}} — recorded by {{who}}. No bill, report or reminder is sent.",
+      "resume": "Turn messages back on",
+      "stop": "Stop all messages",
+      "language": "Messages in",
+      "hi": "हिंदी",
+      "en": "English",
+      "readOnly": "Only a pharmacist records a patient's answer.",
+      "bill": {
+        "not_yet": "",
+        "pending": "Bill message: being prepared…",
+        "queued": "Bill message: queued.",
+        "held_quiet_hours": "Bill message: held until {{time}} (no messages at night).",
+        "sending": "Bill message: sending…",
+        "sent_sms": "Bill sent by SMS.",
+        "sent_whatsapp": "Bill sent on WhatsApp.",
+        "logged_only": "Bill message recorded, not sent — no SMS provider yet.",
+        "stopped": "No bill message: the patient asked for no messages.",
+        "no_phone": "No bill message: no phone on record.",
+        "zero_bill": "No bill message: nothing was charged.",
+        "suppressed": "Bill message not sent: the patient asked for no messages.",
+        "expired": "Bill message not sent: it expired before it could go.",
+        "failed": "Bill message could not be delivered."
+      }
     }
   },
   "pharmacyAuthorise": {
@@ -5998,7 +6035,8 @@
       "returns": "Returns",
       "reports": "Reports",
       "controlled": "Controlled",
-      "items": "Items"
+      "items": "Items",
+      "messages": "Messages"
     },
     "pay": {
       "count": {
@@ -6179,7 +6217,8 @@
       "returns": "↑↓ move · ⏎ open · E expiry · D drafts · W write-off · R recall · A approve · P print · Esc close",
       "reports": "1–9 open a report · T W M Y range · E export · P print · X Tally export · L ledgers · Esc back",
       "controlled": "L licences · C count the cabinet · R register · B balance · Esc close",
-      "items": "↑↓ move · ⏎ open · N pick two items · S swap · M merge now · Esc close"
+      "items": "↑↓ move · ⏎ open · N pick two items · S swap · M merge now · Esc close",
+      "messages": "Tab moves · ⏎ saves the form · Esc close"
     },
     "returns": {
       "batches_one": "{{count}} batch",
@@ -6922,6 +6961,46 @@
       "pickKeep": "Search and choose the item that STAYS.",
       "pickMerge": "Now choose the duplicate that merges into {{keep}}.",
       "search": "Search by name or code"
+    },
+    "messages": {
+      "providerOff": "Console only — not sending. Every bill and reminder is written to the log, and nothing reaches a phone until the owner contracts a provider.",
+      "providerOn": "Sending: {{channels}}.",
+      "needsTitle_one": "One thing before a message reaches a phone",
+      "needsTitle_other": "{{count}} things before a message reaches a phone",
+      "allClear": "Nothing stands between a message and a phone.",
+      "needs": {
+        "provider": "The owner contracts an SMS gateway (DLT-registered) or WhatsApp Business; IT sets NOTIFY_PROVIDER=live and its keys (runbook §18.1).",
+        "dlt_ids": "Register both messages on the DLT portal with the text below, then record each DLT template id here.",
+        "whatsapp_names": "Record the approved WhatsApp template name of each message.",
+        "contact_phone": "Record the pharmacy's phone — reminders name it and wait for it."
+      },
+      "counts": "Last 30 days",
+      "count": {
+        "sent": "sent",
+        "loggedOnly": "logged only",
+        "queued": "queued",
+        "failed": "failed",
+        "suppressed": "not sent (patient's word)",
+        "expired": "expired"
+      },
+      "remindersOn": "patients with reminders on",
+      "stopped": "patients who stopped messages",
+      "templates": "The two messages",
+      "purpose": {
+        "bill": "Bill — after a sale (service, no consent needed)",
+        "refill": "Refill reminder — only with the patient's yes (service-explicit)"
+      },
+      "dltText": "Register this text on DLT",
+      "variables_one": "One variable",
+      "variables_other": "{{count}} variables",
+      "dltId": "DLT template id",
+      "waName": "WhatsApp template name",
+      "notRecorded": "not recorded",
+      "save": "Save",
+      "saved": "Saved.",
+      "contact": "Pharmacy phone for reminders",
+      "contactHint": "A mobile, or a landline with its STD code.",
+      "namesOff": "Messages name no medicine. (The owner may allow names later; Schedule X, NDPS and H1 are never named.)"
     }
   },
   "abdm": {

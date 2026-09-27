@@ -4,6 +4,7 @@ import { PharmacyControlledController } from "./pharmacy-controlled.controller";
 import { PharmacyCounterController } from "./pharmacy-counter.controller";
 import { PharmacyDoctorController } from "./pharmacy-doctor.controller";
 import { PharmacyItemsController } from "./pharmacy-items.controller";
+import { PharmacyMessagesController } from "./pharmacy-messages.controller";
 import { PharmacyOfficeController } from "./pharmacy-office.controller";
 import { PharmacyPharmacistsController } from "./pharmacy-pharmacists.controller";
 import { PharmacyReportsController } from "./pharmacy-reports.controller";
@@ -29,9 +30,9 @@ export function registerPharmacyPrinting(): () => void {
  * PLAN 16c — the module. T1 shipped it inert; T2 mounted the sale-items controller, T3 the
  * counter's (the `LabModule` precedent). P2 mounted the register of pharmacists; P19 the walk-in
  * retail counter; P20 the paper-dispense entry; Consult v2 the doctor's read of the shelf; parity
- * P1 the desk's paper.
+ * P1 the desk's paper; P6 (patient messages) the desk's consent chip and the office's Messages side.
  */
-@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController, PharmacyControlledController] })
+@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController, PharmacyControlledController, PharmacyMessagesController] })
 export class PharmacyModule implements OnModuleInit {
   onModuleInit(): void {
     registerPharmacyPrinting();

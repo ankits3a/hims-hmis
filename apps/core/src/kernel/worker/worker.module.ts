@@ -31,7 +31,7 @@ import { pcpndtManifest } from "../../modules/pcpndt";
 import {
   RADIOLOGY_ORDER_PLACED_CONSUMER, orderPlacedConsumer, radiologyManifest,
 } from "../../modules/radiology";
-import { PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, rxIssuedConsumer } from "../../modules/pharmacy";
+import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
@@ -288,6 +288,10 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // ordering module can be added without this line changing.
     [RADIOLOGY_ORDER_PLACED_CONSUMER]: orderPlacedConsumer(db),
     [PHARMACY_RX_ISSUED_CONSUMER]: rxIssuedConsumer(db),
+    // PHARMACY P6 (patient messages) — the bill's message, once per invoice. `pharmacyManifest` declares
+    // `dispense.handed_over` and `retail.sold` -> `pharmacy.patient_messages` in the commit that adds this
+    // line; one without the other is a boot error (amendment 6).
+    [PHARMACY_MESSAGES_CONSUMER]: pharmacyMessagesConsumer(db),
     // PLAN 15 T5 / DD9 — the scan's asynchronous half. `otManifest` declares
     // `material.consumed` -> `ot.implant_confirmed` in the commit that adds this line.
     [OT_IMPLANT_CONFIRMED_CONSUMER]: implantConfirmedConsumer(db),
