@@ -1,4 +1,7 @@
 import webpush from "web-push";
+import { maskPhone } from "./mask";
+import { dltSmsAdapter, whatsappCloudAdapter } from "./providers";
+import type { FetchLike } from "./providers";
 import type { AppConfig } from "../config";
 
 /**
@@ -17,15 +20,40 @@ import type { AppConfig } from "../config";
  * and makes the other three read this constant. The comment on `sent_channel` stays a comment,
  * because a SQL column cannot import a TypeScript union — it is updated in the same commit.
  */
+export { maskPhone };
+
 export const NOTIFY_CHANNELS = ["whatsapp", "sms", "web_push"] as const;
 export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
 
+/**
+ * What the pump tells an adapter besides the address and the text. `notificationId` is the original
+ * contract; the rest arrived with PHARMACY P6 (patient messages) and is OPTIONAL, so every adapter and
+ * fake written before it still satisfies the type. A real provider needs them: the DLT gateway must
+ * name the registered template, WhatsApp fills an approved template by name, language and variables.
+ */
+export type SendMeta = {
+  notificationId: string;
+  templateKey?: string;
+  language?: "hi" | "en";
+  /** The template's variables in order (`NotificationTemplate.variables`), or absent. */
+  variables?: string[];
+  /** The provider's ids for this template (`notify_template_registrations`), or nulls. */
+  registration?: { dltTemplateId: string | null; whatsappTemplateName: string | null };
+};
+
 export type ChannelAdapter = {
   channel: NotifyChannel;
+  /**
+   * PHARMACY P6 — TRUE ON A CONSOLE SINK: it "accepts" a message and nothing leaves the building. The
+   * pump reads it to keep a patient off a sink rung when a real gateway serves another rung of the same
+   * ladder (a live SMS gateway beside a WhatsApp still on the console would otherwise "send" every
+   * message to the log and mark it sent). Absent = a real adapter, which every test fake is.
+   */
+  sink?: boolean;
   send(
     to: string,
     text: string,
-    meta: { notificationId: string },
+    meta: SendMeta,
   ): Promise<{
     providerMessageId: string | null;
     /**
@@ -40,12 +68,22 @@ export type ChannelAdapter = {
 
 const LOG_BODY_CHARS = 80;
 
-/** One structured line per send — channel, recipient, the notification id, a truncated body. */
+/** A push `to` is a list of per-browser capability URLs: the log says how many, never which. */
+function pushSummary(to: string): string {
+  try {
+    const n = decodePushAddresses(to).length;
+    return `[${String(n)} push subscription${n === 1 ? "" : "s"}]`;
+  } catch {
+    return "[unreadable push address]";
+  }
+}
+
+/** One structured line per send — channel, the MASKED recipient, the notification id, a truncated body. */
 function logConsoleSend(channel: ChannelAdapter["channel"], to: string, text: string, notificationId: string): void {
   console.log(
     JSON.stringify({
       channel,
-      to,
+      to: channel === "web_push" ? pushSummary(to) : maskPhone(to),
       notificationId,
       text: text.slice(0, LOG_BODY_CHARS),
     }),
@@ -54,6 +92,7 @@ function logConsoleSend(channel: ChannelAdapter["channel"], to: string, text: st
 
 export const consoleWhatsappAdapter: ChannelAdapter = {
   channel: "whatsapp",
+  sink: true,
   async send(to, text, meta) {
     logConsoleSend("whatsapp", to, text, meta.notificationId);
     return { providerMessageId: null };
@@ -62,6 +101,7 @@ export const consoleWhatsappAdapter: ChannelAdapter = {
 
 export const consoleSmsAdapter: ChannelAdapter = {
   channel: "sms",
+  sink: true,
   async send(to, text, meta) {
     logConsoleSend("sms", to, text, meta.notificationId);
     return { providerMessageId: null };
@@ -70,6 +110,7 @@ export const consoleSmsAdapter: ChannelAdapter = {
 
 export const consoleWebPushAdapter: ChannelAdapter = {
   channel: "web_push",
+  sink: true,
   async send(to, text, meta) {
     logConsoleSend("web_push", to, text, meta.notificationId);
     return { providerMessageId: null };
@@ -189,7 +230,10 @@ export function webPushAdapter(vapid: { publicKey: string; privateKey: string; s
  * the hospital to wait for the purchases before turning on the channel RO-4 asked for first.
  */
 export function adaptersFor(
-  cfg: Pick<AppConfig, "notifyProvider" | "notifyPushProvider" | "webPushVapid">,
+  cfg: Pick<AppConfig, "notifyProvider" | "notifyPushProvider" | "webPushVapid">
+    & Partial<Pick<AppConfig, "notifySms" | "notifyWhatsapp">>,
+  /** Tests hand a recording fake; production uses the platform's `fetch`. */
+  fetchImpl: FetchLike = (input, init) => fetch(input, init),
 ): Record<ChannelAdapter["channel"], ChannelAdapter> {
   let push: ChannelAdapter;
   switch (cfg.notifyPushProvider) {
@@ -215,6 +259,20 @@ export function adaptersFor(
   switch (cfg.notifyProvider) {
     case "console":
       return { whatsapp: consoleWhatsappAdapter, sms: consoleSmsAdapter, web_push: push };
+    /**
+     * PHARMACY P6 (patient messages) — each channel on its own gateway WHEN ITS KEYS ARE SET, else on
+     * the sink. `loadConfig` has already refused a half-configured channel, so a null here means "not
+     * contracted" and nothing else.
+     */
+    case "live": {
+      const sms = cfg.notifySms ?? null;
+      const wa = cfg.notifyWhatsapp ?? null;
+      return {
+        whatsapp: wa === null ? consoleWhatsappAdapter : whatsappCloudAdapter(wa, fetchImpl),
+        sms: sms === null ? consoleSmsAdapter : dltSmsAdapter(sms, fetchImpl),
+        web_push: push,
+      };
+    }
     default: {
       const exhaustive: never = cfg.notifyProvider;
       throw new Error(`adaptersFor: unmapped NOTIFY_PROVIDER ${String(exhaustive)}`);

@@ -8,6 +8,16 @@ import { renderWithProviders, stubFetch } from "../test-utils";
 import { OpdConsult } from "./opd-consult";
 
 /**
+ * THE TIME BUDGET — 15 s for every test in this file, not vitest's default 5 s. Almost every test here
+ * mounts the whole consult screen, and under the full web suite's parallel load a flow test runs at
+ * about twice its solo time. On 2026-09-26 that tipped two tests over the 5 s cliff with no code
+ * change: P24 at 5105 ms (the pre-deploy full suite on main 5cd1fb19) and K48 at 5055 ms (a pharmacy
+ * lane's full suite). A budget changes no assertion, and a test that genuinely hangs still fails, at
+ * 15 s. It is the budget `vitals-bay-stories` already carries.
+ */
+vi.setConfig({ testTimeout: 15_000 });
+
+/**
  * PLAN 07d T6 — the screen gained ONE router component (`<Link to="/my-day">`), and a `<Link>`
  * needs a `RouterProvider` that `renderWithProviders` does not build. The house convention is to
  * mock `@tanstack/react-router` down to exactly what the screen uses — and the factory returns ONLY
@@ -1595,7 +1605,10 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
     expect(document.querySelector(".print-doc")).toHaveTextContent("CRK MEDICAL COLLEGE & HOSPITAL");
     expect(screen.getByRole("button", { name: "Print prescription" })).toBeInTheDocument();
-  });
+    // PHARMACY P6 (patient messages) — the whole issue → 409 → override → re-post → print flow, measured at
+    // 2836 ms alone and 4862–5055 ms under the full suite's load (one red at 5055 on 2026-09-26): a flow test at
+    // the default 5 s cliff. Given the `vitals-bay-stories` sitting's budget; no assertion changes.
+  }, 15_000);
 
   /**
    * The ophthal line (board "Ophthal", 2026-09-23). Both POST bodies are built field by field, so a

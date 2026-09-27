@@ -4,6 +4,7 @@ import type { Actor } from "@hmis/contracts";
 import { notifications } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { notificationExpired } from "./events";
+import { consentsTo, messagePreferenceOf } from "./preferences";
 import { templateByKey } from "./templates";
 import type { Tx } from "../db/client";
 
@@ -107,6 +108,22 @@ export async function enqueueNotification(
     }
     if (patientId !== null) {
       throw new Error(`enqueueNotification: template "${input.templateKey}" is ${template.audience}-audience but a patientId was given`);
+    }
+  }
+
+  /**
+   * PHARMACY P6 (patient messages) — THE OPT-IN BRACE. A template that names a purpose
+   * (`requiresOptIn`, the refill reminder today) is enqueued only for a patient who opted IN to that
+   * purpose and has not stopped messages. The pump asks again at send time (the consent may be withdrawn
+   * while the row waits) — this is the brace, that is the belt, and a producer that forgot to ask is a
+   * defect this refuses loudly rather than a message a patient never agreed to.
+   */
+  if (template.requiresOptIn !== undefined && patientId !== null) {
+    if (!consentsTo(await messagePreferenceOf(tx, patientId), template.requiresOptIn)) {
+      throw new Error(
+        `enqueueNotification: template "${input.templateKey}" needs the patient's opt-in to ` +
+          `"${template.requiresOptIn}", which is not on record (or messages are stopped)`,
+      );
     }
   }
 

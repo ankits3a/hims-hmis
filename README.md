@@ -1328,6 +1328,11 @@ goes to both of them, and to `medical_superintendent` and `materials_head`, who 
 key. `pharmacy.licences.manage` (the RMI recognition, the Form 20F licence and the doctors trained
 under NDPS Rules r.2(ib)) goes to `pharmacy_incharge`, `owner` and `medical_superintendent`. All are
 defaults the owner may change.
+**Pharmacy P6 lets the patient hear: a bill by SMS, and a refill reminder only if they said yes.**
+`pharmacy.messages.consent` (recording, at the desk, whether the patient wants refill reminders or no
+messages at all) goes to `pharmacy` and `pharmacy_incharge`. `pharmacy.messages.manage` (the DLT
+template ids, the WhatsApp template names and the pharmacy's phone on the office's Messages side) goes to
+`pharmacy_incharge` and `owner`, who contracts the provider. Both are defaults the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1346,6 +1351,8 @@ defaults the owner may change.
 | `pharmacy.ndps.custody` | ✓ | | ✓ |
 | `pharmacy.ndps.witness` | ✓ | | ✓ |
 | `pharmacy.licences.manage` | | | ✓ |
+| `pharmacy.messages.consent` | ✓ | | ✓ |
+| `pharmacy.messages.manage` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |
