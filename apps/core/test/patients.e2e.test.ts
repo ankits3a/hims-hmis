@@ -159,6 +159,43 @@ describe("patients e2e", () => {
       .expect(201);
   });
 
+  /**
+   * WASA N-01 — REGISTRATION REFUSES A KEY IT DOES NOT KNOW, as the amendment body has since C1.
+   * zod strips unknown keys by default, so `blood_group` in snake_case (a plausible integration) or
+   * a stray `isVip` came back 201 with that value silently gone. Silence on an unknown key is the
+   * wrong default for the route that creates a person's record: the caller learns nothing was kept
+   * only weeks later, from the record.
+   */
+  it("N-01: an unknown key is a 400 that names it, and nothing is registered", async () => {
+    for (const extra of [{ blood_group: "B+" }, { isVip: true }, { balanceOverride: 0 }]) {
+      const res = await request(app.getHttpServer())
+        .post("/patients").set(...auth(clerkToken))
+        .send({ name: "Stray Key", sex: "female", phone: "9812300001", ...extra })
+        .expect(400);
+      expect(JSON.stringify(res.body)).toContain(Object.keys(extra)[0]);
+    }
+    const found = await request(app.getHttpServer())
+      .get("/patients/search").query({ q: "9812300001" }).set(...auth(clerkToken)).expect(200);
+    expect(found.body.items).toHaveLength(0);
+  });
+
+  it("N-01: the keys the Desk One form sends are all still accepted", async () => {
+    // `apps/web/src/screens/desk-one/session.ts` `registerBodyOf` — every scalar it can emit.
+    await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken))
+      .send({
+        name: "Full Form", sex: "female", phone: "9812300002", ageYears: 34, addressLine: "12 Civil Lines",
+        altPhone: "9812300003", title: "Mrs", fatherHusbandName: "Ravi Kumar", maritalStatus: "married",
+        bloodGroup: "B+", language: "hi", district: "Kanpur Nagar", stateName: "Uttar Pradesh", pincode: "208001",
+        abhaNumber: "12-3456-7890-1234", abhaAddress: "full.form@abdm", abhaVerificationStatus: "self_declared",
+        nationality: "Indian", nationalIdType: "aadhaar", nationalIdMasked: "1234", religion: "Hindu",
+        occupation: "Teacher", monthlyIncomePaise: 2_500_000, legacyUhid: "OLD-778", promotionalOptIn: true,
+        referredBySource: "doctor", referredByName: "Dr Mehta", referredByPhone: "9812300004",
+        referredBySpeciality: "Cardiology", acknowledgedDuplicates: true,
+      })
+      .expect(201);
+  });
+
   it("photo round-trips as base64 JSON — a ~300 kB body proves the parser bump", async () => {
     const reg = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))

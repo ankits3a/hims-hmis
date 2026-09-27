@@ -85,6 +85,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
+      # WASA M-08 — A NEW HIGH IN WHAT SHIPS FAILS THE BUILD. `--prod` because the image installs
+      # production dependencies only (Dockerfile `prod-deps`); dev-only advisories (esbuild under
+      # drizzle-kit, vitest 3) never reach the server and are tracked, not gated. The one exemption,
+      # `pnpm.auditConfig.ignoreGhsas` in the root package.json, is drizzle-orm's identifier-escaping
+      # advisory, back-ported by `patches/drizzle-orm@0.40.1.patch`; test/drizzle-identifier-escaping
+      # proves the patch is live and fails the day the exemption outlives the version it stands for.
+      # A step here rather than a job, for the reason the relay's step below gives (required checks).
+      - run: pnpm audit --prod --audit-level high
       # THE PRINT RELAY IS A DEPENDENCY-FREE .mjs OUTSIDE BOTH TEST PROJECTS, so until FD-25 nothing
       # in this repository ever executed it: `tools/` is not a workspace package, so `pnpm typecheck`
       # never reads it despite the `// @ts-check` at its head, and apps/core's jest rootDir and

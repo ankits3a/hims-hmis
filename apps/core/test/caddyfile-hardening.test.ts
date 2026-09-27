@@ -238,3 +238,68 @@ describe("WASA L-09 — the edge does not name its software", () => {
     expect(http.lines).toEqual(expect.arrayContaining(["header -Server", "redir https://{host}{uri} 308"]));
   });
 });
+
+/**
+ * WASA M-01 — A CONTENT-SECURITY-POLICY, REPORT-ONLY FIRST. The SPA keeps its bearer token in
+ * `localStorage`, so any XSS reads it; a CSP is the control that makes an injected script fail to
+ * run at all. It ships as `-Report-Only` so a directive the app really needs shows up as a console
+ * report rather than a broken screen, and the NEXT change flips the header name to enforce it.
+ */
+describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
+  const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
+  const uat = parseCaddyfile(readFileSync(UAT_CADDYFILE, "utf8"));
+  const HEADER = "Content-Security-Policy-Report-Only";
+
+  /** The one CSP line in a site's `header` block, as directive → sources. */
+  function policyOf(tree: Block, site: RegExp, name: string): Map<string, string[]> {
+    const header = only(only(tree, site, `${name} site`), /^header$/, `${name} header block`);
+    const lines = header.lines.filter((l) => /^Content-Security-Policy/.test(l));
+    expect([name, lines.length]).toEqual([name, 1]);
+    const m = new RegExp(`^${HEADER} "([^"]+)"$`).exec(lines[0]!);
+    if (m === null) throw new Error(`${name}: CSP line is not \`${HEADER} "<policy>"\`: ${lines[0]!}`);
+    return new Map(m[1]!.split(";").map((d) => d.trim()).filter((d) => d !== "").map((d) => {
+      const [directive, ...sources] = d.split(/\s+/);
+      return [directive!, sources];
+    }));
+  }
+
+  for (const [name, tree, site] of [
+    ["prod", prod, /^hmis\.crkmch\.com$/],
+    ["uat", uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/],
+  ] as const) {
+    it(`${name}: no framing, no plugins, and scripts only from this origin`, () => {
+      const p = policyOf(tree, site, name);
+      expect(p.get("frame-ancestors")).toEqual(["'none'"]);
+      expect(p.get("object-src")).toEqual(["'none'"]);
+      expect(p.get("default-src")).toEqual(["'self'"]);
+      expect(p.get("base-uri")).toEqual(["'self'"]);
+      expect(p.get("form-action")).toEqual(["'self'"]);
+      // The directive the whole policy exists for: no inline script and no eval, ever.
+      expect(p.get("script-src")).toEqual(["'self'"]);
+    });
+  }
+
+  it("production and UAT send the SAME policy, so UAT is where a violation shows first", () => {
+    const text = (tree: Block, site: RegExp): string | undefined =>
+      only(only(tree, site, "site"), /^header$/, "header block").lines.find((l) => l.startsWith("Content-Security-Policy"));
+    const prodPolicy = text(prod, /^hmis\.crkmch\.com$/);
+    expect(prodPolicy).toMatch(/^Content-Security-Policy/); // not two absences agreeing
+    expect(text(uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/)).toBe(prodPolicy);
+  });
+});
+
+/**
+ * OWNER RULING 2026-09-27: "the site should allow the webcam on its pages". Desk One photographs the
+ * paper slip (`slip-capture.tsx`), and `camera=()` blocked getUserMedia on every page, which left only
+ * the file-input fallback. `camera=(self)` lets our own origin use the camera and still refuses it to
+ * any embedded third party. Geolocation and the microphone stay off: nothing here uses them.
+ */
+describe("Owner 2026-09-27 — the site's own pages may use the camera", () => {
+  const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
+
+  it("Permissions-Policy grants camera to self only, and keeps geolocation and microphone off", () => {
+    const header = only(only(prod, /^hmis\.crkmch\.com$/, "prod site"), /^header$/, "prod header block");
+    const policy = header.lines.filter((l) => l.startsWith("Permissions-Policy "));
+    expect(policy).toEqual(['Permissions-Policy "geolocation=(), microphone=(), camera=(self)"']);
+  });
+});
