@@ -1,6 +1,7 @@
 import {
   bigint, bigserial, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { agents } from "./auth";
 
 // PLAN 11c — the six OPERATIONS tables: what mode the hospital is in, what the go-live gate last
 // said, whether the devices are alive, and which paper serials were handed out when the screens
@@ -111,6 +112,14 @@ export const interfaces = pgTable(
     status: text("status").notNull().default("unknown"), // unknown | up | down
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * WASA L-08 — THE ONE AGENT WHOSE HEARTBEAT THIS DEVICE ACCEPTS. `POST /ops/interfaces/:id/
+     * heartbeat` refuses a user, and refuses any agent but this one, so an outage cannot be hidden by
+     * somebody else saying "it is up". NULL = no agent bound yet: such a device accepts NO heartbeat
+     * (it stays `unknown`, which the sweep never downs), and the operator binds one by registering
+     * the device with `agentId`.
+     */
+    agentId: text("agent_id").references(() => agents.id),
   },
   (t) => [index("interfaces_status_active_idx").on(t.status, t.active)],
 );

@@ -711,16 +711,32 @@ export class PatientsController {
     return { items: await listAllergies(this.db, found.patient.id) };
   }
 
+  /**
+   * WASA L-05 — THE PARENT IN THE PATH, RESOLVED THE WAY THE READS RESOLVE IT. The three child
+   * routes below used to act on the child id alone and never read `:id`, so patient A's URL could
+   * correct patient B's allergy, and the sealed-record gate the GETs run was skipped entirely.
+   * `getPatient` walks the merge chain and applies that gate (a §14 record without the grant or a
+   * live break-glass is `null`, exactly as on read); the CANONICAL id it returns is then what the
+   * child must belong to — checked inside the service, in the write's own transaction.
+   */
+  private async parentPatientId(actor: Actor, id: string): Promise<string> {
+    const found = await getPatient(this.db, actor, id);
+    if (!found) throw new NotFoundException(`unknown patient ${id}`);
+    return found.patient.id;
+  }
+
   @RequirePermission("patients.update", "hospital")
   @Post(":id/allergies/:allergyId/entered-in-error")
   async allergyError(
     @CurrentActor() actor: Actor,
+    @Param("id") id: string,
     @Param("allergyId") allergyId: string,
     @Body() body: unknown,
   ): Promise<{ ok: true }> {
     const b = parsed(reasonBody, body);
+    const patientId = await this.parentPatientId(actor, id);
     try {
-      await withTx(this.db, (tx) => markAllergyEnteredInError(tx, actor, allergyId, b.reason));
+      await withTx(this.db, (tx) => markAllergyEnteredInError(tx, actor, allergyId, b.reason, patientId));
       return { ok: true };
     } catch (e) {
       toHttp(e);
@@ -756,12 +772,14 @@ export class PatientsController {
   @Patch(":id/guardians/:guardianId")
   async patchGuardian(
     @CurrentActor() actor: Actor,
+    @Param("id") id: string,
     @Param("guardianId") guardianId: string,
     @Body() body: unknown,
   ): Promise<{ ok: true }> {
     const b = parsed(guardianPatchBody, body);
+    const patientId = await this.parentPatientId(actor, id);
     try {
-      await withTx(this.db, (tx) => updateGuardianAuthority(tx, actor, guardianId, b));
+      await withTx(this.db, (tx) => updateGuardianAuthority(tx, actor, guardianId, b, patientId));
       return { ok: true };
     } catch (e) {
       toHttp(e);
@@ -770,9 +788,14 @@ export class PatientsController {
 
   @RequirePermission("patients.update", "hospital")
   @Post(":id/guardians/:guardianId/end")
-  async endGuardianRoute(@CurrentActor() actor: Actor, @Param("guardianId") guardianId: string): Promise<{ ok: true }> {
+  async endGuardianRoute(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Param("guardianId") guardianId: string,
+  ): Promise<{ ok: true }> {
+    const patientId = await this.parentPatientId(actor, id);
     try {
-      await withTx(this.db, (tx) => endGuardian(tx, actor, guardianId));
+      await withTx(this.db, (tx) => endGuardian(tx, actor, guardianId, patientId));
       return { ok: true };
     } catch (e) {
       toHttp(e);

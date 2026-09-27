@@ -53,10 +53,10 @@ describe("allergies", () => {
       addAllergy(tx, clerk, id, { substance: "sulfa", source: "registration" }),
     );
     await expect(
-      withTx(db, (tx) => markAllergyEnteredInError(tx, clerk, allergyId, "   ")),
+      withTx(db, (tx) => markAllergyEnteredInError(tx, clerk, allergyId, "   ", id)),
     ).rejects.toMatchObject({ code: "reason_required" });
 
-    await withTx(db, (tx) => markAllergyEnteredInError(tx, clerk, allergyId, "wrong patient selected"));
+    await withTx(db, (tx) => markAllergyEnteredInError(tx, clerk, allergyId, "wrong patient selected", id));
     const list = await listAllergies(db, id);
     expect(list).toHaveLength(1); // never deleted — the trail stays (E-8)
     expect(list[0]!.status).toBe("entered_in_error");
@@ -70,7 +70,7 @@ describe("allergies", () => {
 
     // double-correction loses the conditional UPDATE
     await expect(
-      withTx(db, (tx) => markAllergyEnteredInError(tx, clerk, allergyId, "again")),
+      withTx(db, (tx) => markAllergyEnteredInError(tx, clerk, allergyId, "again", id)),
     ).rejects.toMatchObject({ code: "allergy_not_active" });
   });
 
@@ -80,7 +80,7 @@ describe("allergies", () => {
       withTx(db, (tx) => addAllergy(tx, { type: "agent", id: "a" }, id, { substance: "x", source: "registration" })),
     ).rejects.toMatchObject({ code: "user_actor_required" });
     await expect(
-      withTx(db, (tx) => markAllergyEnteredInError(tx, clerk, "01NOSUCH00000000000000000", "r")),
+      withTx(db, (tx) => markAllergyEnteredInError(tx, clerk, "01NOSUCH00000000000000000", "r", id)),
     ).rejects.toMatchObject({ code: "allergy_not_found" });
   });
 });

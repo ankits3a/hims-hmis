@@ -95,8 +95,15 @@ On the server, once. The key is shown once and only its SHA-256 is stored.
 
 ```bash
 cd /opt/hmis-prod/apps/core
-DATABASE_URL=<prod url> AGENT_NAME=print-relay-hajipur pnpm tsx scripts/create-agent.ts
+DATABASE_URL=<prod url> AGENT_NAME=print-relay-hajipur \
+  AGENT_PRINT_DESTINATIONS=front_desk_thermal,front_desk_a4,pharmacy_thermal \
+  pnpm tsx scripts/create-agent.ts
 ```
+
+**WASA M-10 — the key only claims the destinations it is granted.** `AGENT_PRINT_DESTINATIONS` must
+list exactly the logical destinations the relay's `queues` map to a printer; an agent created without
+it is refused by `POST /print/claim` (403 `print_relay_not_registered`). Change the grant later with
+`scripts/set-agent-print-destinations.ts` — `docs/runbooks/wasa-database-roles.md` §4.
 
 Put it in `/etc/hmis-print-relay.json` on the relay PC, `chmod 600`. If it leaks, revoke it with the
 agent kill switch — immediate, no deploy.

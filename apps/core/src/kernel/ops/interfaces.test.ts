@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { events, interfaces } from "../db/schema";
+import { agents, events, interfaces } from "../db/schema";
 import {
   INTERFACE_STALE_AFTER_DEFAULT_MS,
   InterfaceError,
@@ -14,8 +14,13 @@ import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 import type { InterfaceView } from "./interfaces";
 
-/** A device agent, not a person. 12a's agent grants are the future tightening (D6 / the route comment). */
+/**
+ * A device agent, not a person — and since WASA L-08 THE agent each seeded interface is bound to:
+ * `recordHeartbeat` accepts a beat only from the agent registered for that device.
+ */
 const DEVICE: Actor = { type: "agent", id: "01HDEVICEAGENT0000000000001" };
+/** A real, valid agent that is NOT the one bound to the device — the L-08 impostor. */
+const STRANGER: Actor = { type: "agent", id: "01HSTRANGERAGENT00000000001" };
 const OPERATOR: Actor = { type: "user", id: "01HOPSOPERATOR000000000001" };
 
 /** Every instant in this suite is derived from this pin — nothing reads the wall clock (§3.31). */
@@ -35,6 +40,10 @@ describe("kernel ops — interface heartbeats, the tenth job (11c D6)", () => {
   });
   beforeEach(async () => {
     await truncateAll(db);
+    await db.insert(agents).values([
+      { id: DEVICE.id, name: "device-agent", apiKeyHash: "device-key-hash" },
+      { id: STRANGER.id, name: "stranger-agent", apiKeyHash: "stranger-key-hash" },
+    ]);
   });
 
   /** Register, then force the row into an arbitrary observed state — the fixture, stated in SQL. */
@@ -52,6 +61,7 @@ describe("kernel ops — interface heartbeats, the tenth job (11c D6)", () => {
         name: input.name,
         location: "opd-desk-1",
         staleAfterMs: input.staleAfterMs ?? INTERFACE_STALE_AFTER_DEFAULT_MS,
+        agentId: DEVICE.id,
       },
       NOW,
     );
@@ -277,8 +287,50 @@ describe("kernel ops — interface heartbeats, the tenth job (11c D6)", () => {
 
   it("V11: a heartbeat for an id that does not exist is a refusal, not a silent no-op", async () => {
     await expect(
-      recordHeartbeat(db, OPERATOR, "01HNOSUCHINTERFACE000000001", NOW),
+      recordHeartbeat(db, DEVICE, "01HNOSUCHINTERFACE000000001", NOW),
     ).rejects.toBeInstanceOf(InterfaceError);
+    expect(await db.select().from(interfaces)).toEqual([]);
+  });
+
+  // ─────────── WASA L-08 — only the device's own agent may say it is alive ───────────
+  //
+  // The route was authenticated-only and `:id` was never bound to the caller, so ANY signed-in
+  // actor could post "up" for any device — and a device that is really down could be kept looking
+  // alive, with no `interface.down` ever raised. Every refusal below leaves the row exactly as it
+  // was and appends nothing.
+
+  it("L08-1: a USER's heartbeat is refused — a person is not a device — and nothing moves", async () => {
+    const printer = await seed({ name: "Label printer" });
+    await expect(recordHeartbeat(db, OPERATOR, printer.id, NOW))
+      .rejects.toMatchObject({ code: "heartbeat_agent_only" });
+    expect(await rowOf(printer.id)).toMatchObject({ status: "unknown", lastSeenAt: null });
+  });
+
+  it("L08-2: ANOTHER agent's heartbeat is refused, and cannot restore a device that is down", async () => {
+    const printer = await seed({ name: "Ward printer", staleAfterMs: 2 * MINUTE, status: "up", lastSeenAt: before(5 * MINUTE) });
+    await sweepInterfaceHeartbeats(db, NOW);
+    expect((await rowOf(printer.id)).status).toBe("down");
+
+    await expect(recordHeartbeat(db, STRANGER, printer.id, NOW))
+      .rejects.toMatchObject({ code: "heartbeat_agent_mismatch" });
+    expect(await rowOf(printer.id)).toMatchObject({ status: "down", lastSeenAt: before(5 * MINUTE) });
+    expect(await eventsNamed("interface.restored")).toEqual([]);
+
+    // …while its own agent still can.
+    expect(await recordHeartbeat(db, DEVICE, printer.id, NOW)).toMatchObject({ status: "up", restored: true });
+  });
+
+  it("L08-3: a device registered with NO agent accepts no heartbeat from anybody — it stays `unknown`", async () => {
+    const unbound = await registerInterface(db, { kind: "printer", name: "Unbound", location: null, staleAfterMs: 60_000 }, NOW);
+    await expect(recordHeartbeat(db, DEVICE, unbound.id, NOW))
+      .rejects.toMatchObject({ code: "interface_agent_unbound" });
+    expect(await rowOf(unbound.id)).toMatchObject({ status: "unknown", lastSeenAt: null, agentId: null });
+  });
+
+  it("L08-4: registering a device for an agent that does not exist is refused, and no row is written", async () => {
+    await expect(registerInterface(
+      db, { kind: "printer", name: "Ghost-bound", location: null, staleAfterMs: 60_000, agentId: "01HNOSUCHAGENT000000000001" }, NOW,
+    )).rejects.toMatchObject({ code: "agent_not_found" });
     expect(await db.select().from(interfaces)).toEqual([]);
   });
 
