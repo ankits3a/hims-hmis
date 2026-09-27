@@ -1,6 +1,7 @@
 import { isNull, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { phiAccessLog, retentionLegalHolds } from "../db/schema";
+import { withTx } from "../db/client";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
@@ -238,7 +239,34 @@ export type PhiSurface =
    * and what the network sent back — from S1 on, ABHA profiles, consent artefacts and FHIR bundles.
    * One row per distinct patient a read returns. Appended; nothing above changes.
    */
-  | "abdm.messages";
+  | "abdm.messages"
+  /**
+   * PHARMACY P6 — the controlled-drug cabinet's register (Form 3H / the Schedule X register), a month of
+   * patients and the narcotic or Schedule X drug each was given. Its own name, the H1 register's reason.
+   * Appended; nothing above changes.
+   */
+  | "pharmacy.controlled_register"
+  /**
+   * ABDM S1 — the patient's ABHA profile (and card) as ABDM returned it after an OTP verification,
+   * read for a named patient: at the OTP step when the flow was opened from their record, and at the
+   * comparison and the link. Appended.
+   */
+  | "abdm.abha_profile"
+  /** ABDM S1 — a scan-and-share profile, audited against the patient it was linked to. Appended. */
+  | "abdm.profile_share"
+  /**
+   * ABDM S2 — a visit's records RELEASED to another institution under the patient's ABDM consent
+   * (one row per care context per release, the encounter named). The reader is the connector acting
+   * for the patient's consent, not a person, and the row is what answers "who received her records".
+   * Appended.
+   */
+  | "abdm.health_information"
+  /**
+   * ABDM S3 — records RECEIVED from other facilities under the patient's ABDM consent (the hospital
+   * as HIU), read in the consult's history ("Records from other hospitals"). One row per read that
+   * returned any. Appended; nothing above changes.
+   */
+  | "abdm.external_records";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";
@@ -372,14 +400,26 @@ export async function prunePhiAccessLog(
   if (holds.some((h) => h.patientId === null)) return 0;
   const held = holds.map((h) => h.patientId).filter((p): p is string => p !== null);
 
-  const deleted = await db
-    .delete(phiAccessLog)
-    .where(sql`${phiAccessLog.id} in (
-      select id from ${phiAccessLog}
-      where ${lt(phiAccessLog.at, cutoff)}
-      ${held.length === 0 ? sql`` : sql`and ${phiAccessLog.patientId} not in ${held}`}
-      limit ${batchSize}
-    )`)
-    .returning({ id: phiAccessLog.id });
+  /*
+    WASA M-07 — THE TABLE IS APPEND-ONLY AT THE DATABASE (`phi_access_log_append_only`), AND THIS IS
+    ITS ONE DOOR. The trigger lets a DELETE through only when (1) this transaction has named itself
+    the retention prune and (2) the row is older than the database's own floor (1094 days by the
+    DB clock — one day of skew margin under PHI_ACCESS_RETAIN_DAYS). The setting is `set_config(…,
+    true)`: TRANSACTION-LOCAL, so it ends with this transaction and can never ride a pooled
+    connection into somebody else's statement. Lowering `retainDays` below the floor is refused by
+    the database, loudly — a shorter window is a migration, not an argument.
+  */
+  const deleted = await withTx(db, async (tx) => {
+    await tx.execute(sql`select set_config('hmis.retention_prune', 'phi_access_log', true)`);
+    return tx
+      .delete(phiAccessLog)
+      .where(sql`${phiAccessLog.id} in (
+        select id from ${phiAccessLog}
+        where ${lt(phiAccessLog.at, cutoff)}
+        ${held.length === 0 ? sql`` : sql`and ${phiAccessLog.patientId} not in ${held}`}
+        limit ${batchSize}
+      )`)
+      .returning({ id: phiAccessLog.id });
+  });
   return deleted.length;
 }

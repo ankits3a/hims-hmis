@@ -244,6 +244,25 @@ describe("loadConfig — abdm", () => {
     expect(abdm).toMatchObject({ hiuId: "HIU-1", abhaBaseUrl: "https://abhasbx.abdm.gov.in/abha/api", jwtAudience: "other" });
   });
 
+  /**
+   * ABDM S1 — Aadhaar-OTP ABHA creation: the owner ruled YES (2026-09-26), so the flag defaults ON;
+   * only the literal string "false" switches it off, and "1", "yes" and "TRUE" are refused at boot.
+   * It still does nothing unless ABDM itself is configured. The scan-and-share QR base follows
+   * X-CM-ID unless an operator names one.
+   */
+  it("S1: the create flag is ON by default (owner ruled 2026-09-26), off only for \"false\", and refuses anything else at boot", () => {
+    expect(loadConfig(full).abdm.abhaCreateByAadhaar).toBe(true);
+    expect(loadConfig({ ...full, ABDM_ABHA_CREATE_AADHAAR: "false" }).abdm.abhaCreateByAadhaar).toBe(false);
+    expect(loadConfig({ ...full, ABDM_ABHA_CREATE_AADHAAR: "true" }).abdm.abhaCreateByAadhaar).toBe(true);
+    for (const v of ["1", "yes", "TRUE"]) expect(() => loadConfig({ ...full, ABDM_ABHA_CREATE_AADHAAR: v })).toThrow();
+  });
+
+  it("S1: the scan-and-share QR base follows X-CM-ID, and an operator's value wins", () => {
+    expect(loadConfig(full).abdm.scanShareUrl).toBe("https://phrsbx.abdm.gov.in/share-profile");
+    expect(loadConfig({ ...full, ABDM_CM_ID: "abdm" }).abdm.scanShareUrl).toBe("https://phr.abdm.gov.in/share-profile");
+    expect(loadConfig({ ...full, ABDM_SCAN_SHARE_URL: "https://example.test/qr/" }).abdm.scanShareUrl).toBe("https://example.test/qr");
+  });
+
   it("keeps the client secret readable but out of every serialisation of the config", () => {
     const cfg = loadConfig(full);
     expect(cfg.abdm.clientSecret).toBe(full.ABDM_CLIENT_SECRET);

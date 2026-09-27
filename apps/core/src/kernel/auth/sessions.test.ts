@@ -1,8 +1,9 @@
+import argon2 from "argon2";
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { createUser, setPin, rotateBadge, deactivateUser, reactivateUser, setPassword } from "./identity";
 import {
-  createSession, findLiveSession, revokeSession, revokeUserSessions, revokeTerminalSessions,
+  createSession, findLiveSession, revokeSession, revokeUserSessions,
   loginWithPassword, switchWithPin, switchWithBadge,
 } from "./sessions";
 import { loadConfig } from "../config";
@@ -94,12 +95,8 @@ describe("sessions", () => {
     expect(await revokeUserSessions(db, userId)).toBe(2);
     expect(await findLiveSession(db, a.token)).toBeNull();
     expect(await findLiveSession(db, b.token)).toBeNull();
-
-    const c = await createSession(db, cfg, userId, "counter-9");
-    const d = await createSession(db, cfg, userId, "counter-9");
-    expect(await revokeTerminalSessions(db, "counter-9")).toBe(2);
-    expect(await findLiveSession(db, c.token)).toBeNull();
-    expect(await findLiveSession(db, d.token)).toBeNull();
+    // (`revokeTerminalSessions` — revoke by a client-chosen terminal LABEL — was removed with
+    // WASA L-07; the "WASA L-07" block below is what replaced it.)
   });
 
   it("loginWithPassword returns a token only on valid credentials", async () => {
@@ -115,7 +112,10 @@ describe("sessions", () => {
     const u2 = await mkUser("second");
     await setPin(db, u2, "482913");
     const s1 = await loginWithPassword(db, cfg, { username: "first", password: "s3cret-pass", terminalId: "ward-3" });
-    const switched = await switchWithPin(db, cfg, { username: "second", pin: "482913", terminalId: "ward-3" });
+    // WASA L-07: the outgoing session is the one the terminal PRESENTS, never a label it names.
+    const switched = await switchWithPin(db, cfg, {
+      username: "second", pin: "482913", terminalId: "ward-3", outgoingToken: s1!.token,
+    });
     expect(switched).not.toBeNull();
     expect(await findLiveSession(db, s1!.token)).toBeNull(); // outgoing user is gone
     expect((await findLiveSession(db, switched!.token))!.userId).toBe(u2);
@@ -127,9 +127,79 @@ describe("sessions", () => {
     await mkUser("second");
     const badge = await rotateBadge(db, cfg, u1);
     const outgoing = await loginWithPassword(db, cfg, { username: "second", password: "s3cret-pass", terminalId: "ward-3" });
-    const s = await switchWithBadge(db, cfg, { badgeToken: badge.badgeToken, terminalId: "ward-3" });
+    const s = await switchWithBadge(db, cfg, {
+      badgeToken: badge.badgeToken, terminalId: "ward-3", outgoingToken: outgoing!.token,
+    });
     expect((await findLiveSession(db, s!.token))!.userId).toBe(u1);
     expect(await findLiveSession(db, outgoing!.token)).toBeNull(); // outgoing user is gone
     expect(await switchWithBadge(db, cfg, { badgeToken: "b1.fake.1.sig", terminalId: "ward-3" })).toBeNull();
+  });
+
+  /**
+   * WASA L-07 — `terminalId` IS A CLIENT-CHOSEN LABEL, SO IT MUST NOT CARRY AUTHORITY. The switch
+   * used to revoke every live session whose label matched the body's `terminalId`, so any PIN or
+   * badge holder could name somebody else's terminal and sign them out of it. The outgoing session
+   * is now the one the caller PRESENTS (its bearer token): holding it is the proof of being at that
+   * device, and it is exactly what `POST /auth/logout` already lets its holder end.
+   */
+  describe("WASA L-07 — the switch revokes what it is handed, never what it names", () => {
+    it("a PIN switch naming ANOTHER terminal's id leaves that terminal's session alive", async () => {
+      await mkUser("victim");
+      const attacker = await mkUser("attacker");
+      await setPin(db, attacker, "482913");
+      const victim = await loginWithPassword(db, cfg, { username: "victim", password: "s3cret-pass", terminalId: "counter-1" });
+
+      const switched = await switchWithPin(db, cfg, { username: "attacker", pin: "482913", terminalId: "counter-1" });
+      expect(switched).not.toBeNull(); // the attacker's own credential is real, so they DO get a session
+      expect(await findLiveSession(db, victim!.token)).not.toBeNull(); // …and the victim keeps theirs
+    });
+
+    it("a badge switch naming ANOTHER terminal's id leaves that terminal's session alive", async () => {
+      await mkUser("victim");
+      const holder = await mkUser("holder");
+      const badge = await rotateBadge(db, cfg, holder);
+      const victim = await loginWithPassword(db, cfg, { username: "victim", password: "s3cret-pass", terminalId: "counter-1" });
+
+      expect(await switchWithBadge(db, cfg, { badgeToken: badge.badgeToken, terminalId: "counter-1" })).not.toBeNull();
+      expect(await findLiveSession(db, victim!.token)).not.toBeNull();
+    });
+
+    it("the presented outgoing session dies, a different session sharing its label does not, and the label carries over", async () => {
+      await mkUser("first");
+      const u2 = await mkUser("second");
+      await mkUser("third");
+      await setPin(db, u2, "482913");
+      const outgoing = await loginWithPassword(db, cfg, { username: "first", password: "s3cret-pass", terminalId: "ward-3" });
+      const bystander = await loginWithPassword(db, cfg, { username: "third", password: "s3cret-pass", terminalId: "ward-3" });
+
+      const switched = await switchWithPin(db, cfg, {
+        username: "second", pin: "482913", terminalId: "a-label-the-body-made-up", outgoingToken: outgoing!.token,
+      });
+      expect(await findLiveSession(db, outgoing!.token)).toBeNull();
+      expect(await findLiveSession(db, bystander!.token)).not.toBeNull();
+      // The device's label is the outgoing session's, not whatever the body asserted.
+      expect((await findLiveSession(db, switched!.token))!.terminalId).toBe("ward-3");
+    });
+
+    it("a refused switch revokes nothing, even when it presents the outgoing token", async () => {
+      await mkUser("first");
+      const u2 = await mkUser("second");
+      await setPin(db, u2, "482913");
+      const outgoing = await loginWithPassword(db, cfg, { username: "first", password: "s3cret-pass", terminalId: "ward-3" });
+      expect(await switchWithPin(db, cfg, {
+        username: "second", pin: "000000", terminalId: "ward-3", outgoingToken: outgoing!.token,
+      })).toBeNull();
+      expect(await findLiveSession(db, outgoing!.token)).not.toBeNull();
+    });
+  });
+
+  it("WASA L-02 — an UNKNOWN username at the PIN switch still pays one argon2 verify", async () => {
+    const spy = jest.spyOn(argon2, "verify");
+    try {
+      expect(await switchWithPin(db, cfg, { username: "no-such-clinician", pin: "482913", terminalId: "t" })).toBeNull();
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

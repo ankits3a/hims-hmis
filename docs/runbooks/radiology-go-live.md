@@ -121,6 +121,10 @@ radiologist is the second clinical opinion on a gate the technologist raised.
 **Signing needs a second factor.** `POST /radiology/studies/:id/reports/sign` refuses
 `second_factor_required` on a stale session. Every radiologist enrols TOTP
 (`/auth/totp/enroll` → `confirm`) **before** their first reporting session, not during it.
+Since WASA M-02, enrolling needs the account password in the body (`{ "password": … }`), replacing
+an enabled factor needs its CURRENT code (`{ "currentCode": … }`) — the password alone will not do —
+and every code is single-use: the code that confirmed the enrolment cannot also sign, so wait for
+the authenticator's next code.
 
 ---
 

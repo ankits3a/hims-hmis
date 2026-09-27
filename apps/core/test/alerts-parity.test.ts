@@ -168,10 +168,14 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // is why an absent series is the right alarm: a job that never ran would stop every unit
         // getting next month's rota and look exactly like a quiet month.
         "runMonthlyProposals",
+        // PHARMACY P6 (patient messages) — the twenty-second. Daily at 10:00 IST, so leg 1b; and an
+        // absent series is its alarm too: a reminder job that never runs looks exactly like patients
+        // who simply did not need a refill this week.
+        "runRefillReminders",
       ].sort(),
     );
-    expect(registered).toHaveLength(21); // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(21); // no job registered twice
+    expect(registered).toHaveLength(22); // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(22); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

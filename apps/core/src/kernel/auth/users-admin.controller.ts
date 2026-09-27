@@ -493,7 +493,7 @@ export class UsersAdminController {
    * PIN RESET: policy-checked, and it revokes NOTHING and sets NO flag (Q3).
    *
    * A PIN is the shared-terminal fast-switch credential, not a way into the system from anywhere:
-   * `switchWithPin` already revokes that terminal's sessions on every switch. A changed PIN implies
+   * `switchWithPin` already ends the outgoing session the terminal presents (WASA L-07). A changed PIN implies
    * no password compromise, so killing the person's sessions would be a punishment for a routine
    * act — and forcing a PASSWORD change after a PIN reset would be an unrelated demand.
    */

@@ -2,6 +2,7 @@ import {
   CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable, UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import type { Response } from "express";
 import { CONFIG, DB } from "../tokens";
 import { findLiveSession } from "./sessions";
 import { findAgentByKey } from "./agents";
@@ -10,6 +11,7 @@ import { hasPermission, requestParam, scopeCtxFromRequest } from "./permissions"
 import { recordSecondFactor, secondFactorFresh, verifyTotpCode } from "./totp";
 import { hasActiveBreakGlass } from "./break-glass";
 import { auditTotp, clientContext } from "./auth-audit";
+import { tooManyAttempts } from "./throttle";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -117,12 +119,18 @@ export class PermissionGuard implements CanActivate {
       if (!session) throw new ForbiddenException("second factor requires a user session");
       if (!secondFactorFresh(session, this.cfg.secondFactorWindowMinutes)) {
         const code = req.headers["x-totp-code"];
-        const ok = typeof code === "string" && (await verifyTotpCode(this.db, this.cfg, actor.id, code));
-        // WASA M-05: a SUBMITTED code is an attempt and is evented either way; no header at all is
-        // the ordinary "please step up" prompt and writes nothing.
+        // No header is not an ATTEMPT — a client learns it needs one from this 403 — so it is neither
+        // counted nor evented. A header that is present is a TOTP verification like any other: throttled
+        // on the user's one `totp` counter and single-use (WASA M-02), and evented either way (WASA M-05).
+        // A throttled request was never checked, so it writes no event — as a throttled login does not.
+        if (typeof code !== "string") throw new ForbiddenException("second_factor_required");
         const who = { userId: actor.id, sessionId: session.sessionId };
-        if (!ok) {
-          if (typeof code === "string") await auditTotp(this.db, who, { kind: "failed", stage: "step_up_header" }, clientContext(req));
+        const check = await verifyTotpCode(this.db, this.cfg, actor.id, code);
+        if (!check.ok) {
+          if (check.reason === "throttled") {
+            throw tooManyAttempts(ctx.switchToHttp().getResponse<Response>(), check.retryAt);
+          }
+          await auditTotp(this.db, who, { kind: "failed", stage: "step_up_header" }, clientContext(req));
           throw new ForbiddenException("second_factor_required");
         }
         await recordSecondFactor(this.db, session.sessionId);

@@ -143,6 +143,16 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.returnPlan",
   /** Nothing expired within the window, near expiry or recalled that a return does not already hold. */
   "copilot.answer.returnNothing",
+
+  /*
+    ═══ find_duplicate_items (pharmacy office, P6 hygiene) — "duplicate items dikhao", "same medicine do baar" ═══
+    A LIST, never a write: how many pairs of item-master rows look like one thing twice; its `payload`
+    links to /pharmacy/office?view=items, where a person opens a pair and raises the merge.
+  */
+  /** "5 possible duplicates (3 the same medicine twice) — open the office." */
+  "copilot.answer.duplicateItems",
+  /** No two live items look like one thing twice. */
+  "copilot.answer.duplicateItemsNothing",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];

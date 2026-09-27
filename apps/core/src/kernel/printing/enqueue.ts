@@ -104,6 +104,16 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   opd_glasses_rx: "front_desk_a4",
 };
 
+/**
+ * WASA M-10 — every destination a job can carry, as a value: what an agent's print grant
+ * (`agents.print_destinations`) is validated against. DERIVED from `DESTINATION_OF` rather than
+ * listed, because a destination no document maps to can never hold a job, so granting it would
+ * mean nothing — and a list kept beside the table is a list that drifts from it.
+ */
+export const PRINT_DESTINATIONS: readonly PrintDestination[] = Object.freeze(
+  [...new Set(Object.values(DESTINATION_OF))].sort(),
+);
+
 export type EnqueuePrintInput = {
   document: PrintDocument;
   /**

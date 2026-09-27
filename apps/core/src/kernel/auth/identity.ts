@@ -2,7 +2,7 @@ import argon2 from "argon2";
 import { eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { users } from "../db/schema";
-import { makeBadgeToken, parseBadgeToken } from "../crypto";
+import { makeBadgeToken, parseBadgeToken, randomToken } from "../crypto";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -118,6 +118,31 @@ export async function createUser(
   return { id };
 }
 
+/**
+ * ═══ WASA L-02 — EVERY MISS PAYS ONE ARGON2 VERIFY ═══
+ *
+ * An unknown or inactive username used to return BEFORE argon2 ran, so it answered one verify
+ * (~36 ms at the production cost above) sooner than a wrong password for a live account. The 401
+ * body was identical; the clock was not, and that is a username-existence oracle on a public route.
+ * Every credential miss now verifies the candidate against this dummy hash instead, so both paths
+ * do the same work and still answer the same `null`.
+ *
+ * The dummy is minted LAZILY with `argon2Options()` rather than embedded as a literal, so its cost
+ * is whatever real hashes cost in this process: production cost in production, and the harness's
+ * cheap cost under test (where a production-cost dummy would make every unknown-user test ~36 ms
+ * slower than the known-user one it is compared with). The very first miss in a process pays one
+ * extra hash; that is a single, un-repeatable sample and not an oracle. Its plaintext is random and
+ * never leaves this closure, so nothing can ever verify against it.
+ */
+let dummyHash: Promise<string> | undefined;
+async function burnOneVerify(candidate: string): Promise<void> {
+  dummyHash ??= argon2.hash(randomToken(), argon2Options()).catch((e: unknown) => {
+    dummyHash = undefined; // a failed mint must not be cached for the life of the process
+    throw e;
+  });
+  await argon2.verify(await dummyHash, candidate);
+}
+
 export async function verifyPassword(
   db: Db,
   username: string,
@@ -125,7 +150,10 @@ export async function verifyPassword(
 ): Promise<{ userId: string } | null> {
   const rows = await db.select().from(users).where(eq(users.username, username));
   const user = rows[0];
-  if (!user || !user.active) return null;
+  if (!user || !user.active) {
+    await burnOneVerify(password);
+    return null;
+  }
   const ok = await argon2.verify(user.passwordHash, password);
   return ok ? { userId: user.id } : null;
 }
@@ -166,8 +194,30 @@ export async function setPin(db: Db, userId: string, pin: string): Promise<void>
 export async function verifyPin(db: Db, userId: string, pin: string): Promise<boolean> {
   const rows = await db.select().from(users).where(eq(users.id, userId));
   const user = rows[0];
-  if (!user || !user.active || user.pinHash === null) return false;
+  if (!user || !user.active || user.pinHash === null) {
+    await burnOneVerify(pin); // WASA L-02, the PIN half — see `burnOneVerify`
+    return false;
+  }
   return argon2.verify(user.pinHash, pin);
+}
+
+/**
+ * The PIN switch's lookup, by the SUBMITTED username. It lives here rather than in `sessions.ts` so
+ * the unknown-username branch pays the same verify as every other miss (WASA L-02) — the switch
+ * used to return before any argon2 for a name that did not exist.
+ */
+export async function verifyPinByUsername(
+  db: Db,
+  username: string,
+  pin: string,
+): Promise<{ userId: string } | null> {
+  const rows = await db.select({ id: users.id }).from(users).where(eq(users.username, username));
+  const user = rows[0];
+  if (!user) {
+    await burnOneVerify(pin);
+    return null;
+  }
+  return (await verifyPin(db, user.id, pin)) ? { userId: user.id } : null;
 }
 
 export async function rotateBadge(
@@ -175,25 +225,47 @@ export async function rotateBadge(
   cfg: AppConfig,
   userId: string,
 ): Promise<{ badgeToken: string; badgeVersion: number }> {
+  const now = new Date();
   const rows = await db
     .update(users)
-    .set({ badgeVersion: sql<number>`${users.badgeVersion} + 1`, updatedAt: new Date() })
+    .set({ badgeVersion: sql<number>`${users.badgeVersion} + 1`, badgeIssuedAt: now, updatedAt: now })
     .where(eq(users.id, userId))
     .returning({ badgeVersion: users.badgeVersion });
   const badgeVersion = rows[0]!.badgeVersion;
   return { badgeToken: makeBadgeToken(cfg.secretKey, userId, badgeVersion), badgeVersion };
 }
 
+/**
+ * ═══ WASA L-06 — A BADGE HAS A MAXIMUM AGE ═══
+ *
+ * A badge token is `b1.userId.version.HMAC` and, until this, lived until somebody rotated it: a
+ * photographed or copied badge was a login for ever. It now also dies `BADGE_MAX_AGE_DAYS` (default
+ * 365) after the rotation that issued its version.
+ *
+ * THE ISSUE INSTANT IS SERVER-SIDE (`users.badge_issued_at`), NOT A NEW FIELD IN THE TOKEN, for three
+ * reasons: badges already printed keep their format and keep working; a SHORTENED max age applies
+ * to badges already in pockets, which a timestamp baked into the token could never do; and the
+ * version bump that already revokes is the same write that restarts the clock, so the two can never
+ * disagree.
+ *
+ * THE MIGRATION PATH. The column arrives `NOT NULL DEFAULT now()`, so every row that existed when it
+ * was added carries the migration's instant. A badge printed before this change therefore keeps
+ * working for exactly one max age from the deploy, then is refused and must be re-issued with
+ * `rotateBadge` (which today has no production caller: no route or script prints badges, so the
+ * measured expectation is that there are none to re-issue).
+ */
 export async function resolveBadge(
   db: Db,
   cfg: AppConfig,
   badgeToken: string,
+  now: Date = new Date(),
 ): Promise<{ userId: string } | null> {
   const parsed = parseBadgeToken(cfg.secretKey, badgeToken);
   if (!parsed) return null;
   const rows = await db.select().from(users).where(eq(users.id, parsed.userId));
   const user = rows[0];
   if (!user || !user.active || user.badgeVersion !== parsed.badgeVersion) return null;
+  if (now.getTime() - user.badgeIssuedAt.getTime() > cfg.badgeMaxAgeDays * 86_400_000) return null;
   return { userId: user.id };
 }
 

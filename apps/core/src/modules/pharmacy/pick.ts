@@ -6,6 +6,7 @@ import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { availableQty, balances, fefoPick, getBatch, reserveStock } from "../materials";
 import { PICK_RESERVATION_MINUTES, istDateOf } from "./config";
+import { controlOf, requireControlledStore } from "./controlled";
 import { dispensePicked } from "./events";
 import { PharmacyError } from "./errors";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
@@ -58,14 +59,21 @@ export async function pickDispense(
   const d = await getDispenseRow(db, dispenseId);
   if (d.status !== "verified") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}, not verified`, { status: d.status });
   if (d.storeResourceId === null) throw new PharmacyError("store_missing", "the claim named no store");
-  const store = d.storeResourceId;
   const lines = await linesOf(db, dispenseId);
   const edits = new Map((input.lines ?? []).map((l) => [l.lineIdx, l]));
+  /**
+   * PHARMACY P6 — A CONTROLLED LINE IS PICKED FROM THE CABINET. Narcotic, psychotropic and Schedule X
+   * stock lives only in `PHARM-NDPS` (the ledger refuses it anywhere else), so the reservation is taken
+   * there; the hand-over consumes it there, under two keys, and writes the register. Every other line is
+   * picked at the counter's own store, as before.
+   */
+  const cabinet = lines.some((l) => l.status === "open" && controlOf(l.scheduleFlag, l.ndpsClass).controlled) ? await requireControlledStore(db) : undefined;
 
-  type Plan = { lineId: string; lineIdx: number; itemId: string; batchId: string; qtyBase: number; fefoOverride: boolean; pickNote: string | null; scanned: boolean };
+  type Plan = { lineId: string; lineIdx: number; itemId: string; batchId: string; qtyBase: number; fefoOverride: boolean; pickNote: string | null; scanned: boolean; store: string };
   const plan: Plan[] = [];
   for (const line of lines) {
     if (line.status !== "open") continue;
+    const store = cabinet !== undefined && controlOf(line.scheduleFlag, line.ndpsClass).controlled ? cabinet.id : d.storeResourceId;
     if (line.itemId === null || line.qtyBase === null) throw new PharmacyError("qty_required", `line ${String(line.lineIdx + 1)} has no item or quantity`);
     const edit = edits.get(line.lineIdx);
     const qty = edit?.qtyBase ?? line.qtyBase;
@@ -104,7 +112,7 @@ export async function pickDispense(
         throw new PharmacyError("fefo_override_unavailable", `line ${String(line.lineIdx + 1)}: batch ${named} cannot cover ${String(qty)} at this store`, { lineIdx: line.lineIdx, available });
       }
       const offered = await fefoPick(db, store, line.itemId, qty, now);
-      plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned });
+      plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned, store });
       continue;
     }
     const offered = await fefoPick(db, store, line.itemId, qty, now);
@@ -120,14 +128,14 @@ export async function pickDispense(
         { lineIdx: line.lineIdx, offered, available },
       );
     }
-    plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: first.batchId, qtyBase: qty, fefoOverride: false, pickNote: partial ? note : null, scanned });
+    plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: first.batchId, qtyBase: qty, fefoOverride: false, pickNote: partial ? note : null, scanned, store });
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to pick");
 
   await withTx(db, async (tx) => {
     const expiresAt = new Date(now.getTime() + PICK_RESERVATION_MINUTES * 60_000);
     for (const p of plan) {
-      const { reservationId } = await reserveStock(tx, actor, { resourceId: store, batchId: p.batchId, qty: p.qtyBase, refType: "pharmacy_dispense", refId: p.lineId, expiresAt });
+      const { reservationId } = await reserveStock(tx, actor, { resourceId: p.store, batchId: p.batchId, qty: p.qtyBase, refType: "pharmacy_dispense", refId: p.lineId, expiresAt });
       await tx.update(pharmacyDispenseLines)
         .set({ batchId: p.batchId, reservationId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride, pickNote: p.pickNote })
         .where(eq(pharmacyDispenseLines.id, p.lineId));

@@ -1,7 +1,7 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
-import { interfaces } from "../db/schema";
+import { agents, interfaces } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
 import { interfaceDown, interfaceRestored } from "./events";
@@ -72,6 +72,12 @@ export const interfaceRegistrationSchema = z.object({
     .int()
     .min(INTERFACE_STALE_AFTER_MIN_MS)
     .default(INTERFACE_STALE_AFTER_DEFAULT_MS),
+  /**
+   * WASA L-08 — the agent whose heartbeat this device accepts (`agents.id`). Optional so a device
+   * can be registered before its agent exists, but a device with NO agent accepts no heartbeat at
+   * all: it stays `unknown`, which the sweep never downs.
+   */
+  agentId: z.string().min(1).nullish(),
 });
 export type InterfaceRegistration = z.infer<typeof interfaceRegistrationSchema>;
 
@@ -85,12 +91,25 @@ export type InterfaceView = {
   status: InterfaceStatus;
   lastSeenAt: string | null;
   active: boolean;
+  /** WASA L-08 — the one agent whose heartbeat this device accepts; null = none bound yet. */
+  agentId: string | null;
 };
+
+/**
+ * `interface_not_found` is a 404. The WASA L-08 heartbeat refusals are 403s — the caller is not the
+ * device — and `agent_not_found` at registration is a 400 the operator fixes in the body.
+ */
+export type InterfaceErrorCode =
+  | "interface_not_found"
+  | "heartbeat_agent_only"
+  | "heartbeat_agent_mismatch"
+  | "interface_agent_unbound"
+  | "agent_not_found";
 
 /** The house convention for a refusal a controller maps once (`ModeError` beside it, `ApprovalError`). */
 export class InterfaceError extends Error {
   constructor(
-    readonly code: "interface_not_found",
+    readonly code: InterfaceErrorCode,
     message?: string,
   ) {
     super(message ?? code);
@@ -113,6 +132,7 @@ function toView(row: Row): InterfaceView {
     status: row.status as InterfaceStatus,
     lastSeenAt: row.lastSeenAt === null ? null : row.lastSeenAt.toISOString(),
     active: row.active,
+    agentId: row.agentId,
   };
 }
 
@@ -131,6 +151,12 @@ export async function registerInterface(
   input: InterfaceRegistration,
   now: Date = new Date(),
 ): Promise<InterfaceView> {
+  const agentId = input.agentId ?? null;
+  if (agentId !== null) {
+    // Named, not left to the FK: a mistyped agent id is the operator's to fix (400), not a 500.
+    const found = await db.select({ id: agents.id }).from(agents).where(eq(agents.id, agentId));
+    if (found.length === 0) throw new InterfaceError("agent_not_found", `no agent ${agentId}`);
+  }
   const id = newId();
   const rows = await db
     .insert(interfaces)
@@ -144,6 +170,7 @@ export async function registerInterface(
       lastSeenAt: null,
       active: true,
       createdAt: now,
+      agentId,
     })
     .returning();
   return toView(rows[0]!);
@@ -195,6 +222,16 @@ export type HeartbeatResult = {
  * `active` IS NOT CONSULTED. A retired device that starts talking again is recorded as alive
  * because that is what happened; `active` gates the SWEEP's population (see `deactivateInterface`),
  * not the truth of a heartbeat.
+ *
+ * ═══ WASA L-08 — ONLY THE DEVICE'S OWN AGENT MAY SAY IT IS ALIVE ═══
+ *
+ * A heartbeat used to be accepted from ANY authenticated actor for ANY id, so a device that was
+ * really down could be kept looking `up` by anybody — the one failure this framework exists to
+ * surface, hidden by the framework. Three refusals, in this order, each before anything moves:
+ *   · a non-agent actor — `heartbeat_agent_only` (checked before the row is read, so a person learns
+ *     nothing about which ids exist);
+ *   · a device with no agent bound — `interface_agent_unbound`;
+ *   · an agent that is not the bound one — `heartbeat_agent_mismatch`.
  */
 export async function recordHeartbeat(
   db: Db,
@@ -202,18 +239,33 @@ export async function recordHeartbeat(
   id: string,
   now: Date = new Date(),
 ): Promise<HeartbeatResult> {
+  if (actor.type !== "agent") {
+    throw new InterfaceError(
+      "heartbeat_agent_only",
+      "interface heartbeats come from the device's own agent, not from a person",
+    );
+  }
   return withTx(db, async (tx: Tx): Promise<HeartbeatResult> => {
     // The `down` claim first, and it returns the row as it looks AFTER the update — so the
     // instant the outage is measured from is read BEFORE, in the same statement's WHERE-matched
     // row, by selecting it here rather than trusting the returned (already-moved) value.
     const before = await tx
-      .select({ status: interfaces.status, lastSeenAt: interfaces.lastSeenAt })
+      .select({ status: interfaces.status, lastSeenAt: interfaces.lastSeenAt, agentId: interfaces.agentId })
       .from(interfaces)
       .where(eq(interfaces.id, id))
       .for("update");
     const prior = before[0];
     if (prior === undefined) {
       throw new InterfaceError("interface_not_found", `no interface ${id}`);
+    }
+    if (prior.agentId === null) {
+      throw new InterfaceError(
+        "interface_agent_unbound",
+        `interface ${id} has no agent bound, so it accepts no heartbeat — register the device with its agentId`,
+      );
+    }
+    if (prior.agentId !== actor.id) {
+      throw new InterfaceError("heartbeat_agent_mismatch", `interface ${id} is bound to another agent`);
     }
 
     const won = await tx

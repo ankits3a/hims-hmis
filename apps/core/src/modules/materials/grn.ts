@@ -5,14 +5,14 @@ import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import {
-  consignmentLots, grnLines, grns, purchaseOrders, stockBatches, vendorDocuments,
+  consignmentLots, grnLines, grns, purchaseOrders, stockBatches, vendorDocuments, vendors,
 } from "../../kernel/db/schema";
 import { applyReceiptToPo, assertReceivableAgainstPo } from "./purchase-orders";
 import { DEEMED_SUPPLY_DAYS } from "./config";
 import { NEAR_EXPIRY_APPROVAL_TYPE } from "./approval-types";
 import { MaterialsError } from "./errors";
 import { grnLineRejected, grnReceived, grnRejected } from "./events";
-import { effectiveRegulation, itemUomRows, itemsByIds } from "./items";
+import { assertNotMerged, effectiveRegulation, itemUomRows, itemsByIds } from "./items";
 import { getBatch, postMovements } from "./ledger";
 import { qcLine } from "./qc";
 import { requireStore } from "./stores";
@@ -21,6 +21,7 @@ import { packPriceOf, toBase } from "./uom";
 import type { PackPrice } from "./uom";
 import type { QcContext, RuleCode } from "./qc";
 import type { Actor } from "@hmis/contracts";
+import type { Custody } from "./controlled";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export type GrnRow = typeof grns.$inferSelect;
@@ -208,6 +209,8 @@ export async function captureGrn(
   // refused at the gate, not discovered at post.
   await assertVendorPurchasable(tx, input.vendorId);
   await requireStore(tx, input.storeResourceId);
+  // PHARMACY P6 — an item merged into another is never received: the survivor is (`item-merge.ts`).
+  await assertNotMerged(tx, input.lines.map((l) => l.itemId), "receiving it");
 
   // `series.ts` requires a date ALREADY resolved to the hospital's day — "a date that has already
   // been resolved to the hospital's day must not be re-derived from an instant by a second piece of
@@ -374,6 +377,11 @@ export async function postGrn(
   actor: Actor,
   grnId: string,
   now: Date,
+  /**
+   * PHARMACY P6 — a GRN into the controlled cabinet is posted under two keys; the register copies the
+   * supplier, its drug licences and the invoice from the GRN itself (`supplierCustody`).
+   */
+  opts: { custody?: Custody } = {},
 ): Promise<{ status: string; ledgerEntryIds: string[] }> {
   const grn = await requireGrn(tx, grnId);
   if (grn.status === "posted") {
@@ -398,6 +406,8 @@ export async function postGrn(
   const lines = await tx.select().from(grnLines).where(eq(grnLines.grnId, grnId)).orderBy(asc(grnLines.id));
   const acceptedLines = lines.filter((l) => l.qtyAcceptedBase > 0);
   const rejectedLines = lines.filter((l) => l.qtyAcceptedBase === 0);
+  // PHARMACY P6 — nor posted onto one merged since the capture (a merge waits for open receipts; this is the race).
+  await assertNotMerged(tx, acceptedLines.map((l) => l.itemId), "posting stock onto it");
 
   // ── A17: the approval's STATUS, never merely its presence ──
   if (acceptedLines.some((l) => l.nearExpiry)) {
@@ -441,6 +451,7 @@ export async function postGrn(
   }
 
   const ownership = ownershipFor(grn.source);
+  const custody = opts.custody === undefined ? undefined : await supplierCustody(tx, grn, opts.custody);
   const movements: Parameters<typeof postMovements>[2] = [];
   const lots: { line: GrnLineRow; batchId: string }[] = [];
 
@@ -480,6 +491,7 @@ export async function postGrn(
     movements.push({
       resourceId: grn.storeResourceId, batchId, qtyDelta: line.qtyAcceptedBase,
       reason: "grn", refType: "grn", refId: grnId, occurredAt: new Date(`${grn.challanDate}T00:00:00Z`),
+      ...(custody === undefined ? {} : { custody }),
     });
     if (grn.source === "consignment_challan") lots.push({ line, batchId });
   }
@@ -692,6 +704,27 @@ async function requireGrn(tx: Tx | Db, grnId: string): Promise<GrnRow> {
   const row = rows[0];
   if (row === undefined) throw new MaterialsError("unknown_document", `GRN ${grnId} not found`);
   return row;
+}
+
+/**
+ * PHARMACY P6 — the Schedule X register's "name, address and licence number of the supplier" (D&C Rules
+ * r.65(21)) and Form 3H's "received from … consignment note / bill / invoice", read off the GRN's vendor:
+ * its legal name, its GSTIN (the vendor master keeps no postal address yet), its drug licences (Form
+ * 20B / 21B documents), and the invoice (or challan) number and date.
+ */
+async function supplierCustody(tx: Tx, grn: GrnRow, custody: Custody): Promise<Custody> {
+  const [vendor] = await tx.select({ legalName: vendors.legalName, gstin: vendors.gstin }).from(vendors).where(eq(vendors.id, grn.vendorId));
+  const licences = await tx.select({ type: vendorDocuments.type, number: vendorDocuments.number }).from(vendorDocuments)
+    .where(and(eq(vendorDocuments.vendorId, grn.vendorId), sql`${vendorDocuments.type} in ('drug_licence_20b', 'drug_licence_21b')`));
+  return {
+    ...custody,
+    counterparty: vendor?.legalName ?? grn.vendorId,
+    counterpartyAddress: vendor?.gstin == null ? null : `GSTIN ${vendor.gstin}`,
+    counterpartyLicence: licences.length === 0 ? null : licences.map((l) => l.number).join(", "),
+    documentRef: grn.invoiceNo ?? `challan ${grn.challanNo}`,
+    documentDate: grn.challanDate,
+    note: custody.note ?? `GRN ${grn.grnNo}`,
+  };
 }
 
 export async function getGrn(db: Db | Tx, grnId: string): Promise<GrnWithLines | undefined> {

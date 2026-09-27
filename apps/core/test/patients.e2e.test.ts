@@ -12,7 +12,7 @@ import { authManifest } from "../src/kernel/auth/manifest";
 import { workflowManifest } from "../src/kernel/workflow/manifest";
 import { approvalsManifest } from "../src/kernel/approvals/manifest";
 import { patientsManifest } from "../src/modules/patients";
-import { registrationConfig, patientIdentityVersions, events } from "../src/kernel/db/schema";
+import { registrationConfig, patientIdentityVersions, events, patients, patientAllergies, patientGuardians } from "../src/kernel/db/schema";
 import { eq } from "drizzle-orm";
 import { resolveIdentityAt } from "../src/modules/patients/identity";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
@@ -159,6 +159,43 @@ describe("patients e2e", () => {
       .expect(201);
   });
 
+  /**
+   * WASA N-01 — REGISTRATION REFUSES A KEY IT DOES NOT KNOW, as the amendment body has since C1.
+   * zod strips unknown keys by default, so `blood_group` in snake_case (a plausible integration) or
+   * a stray `isVip` came back 201 with that value silently gone. Silence on an unknown key is the
+   * wrong default for the route that creates a person's record: the caller learns nothing was kept
+   * only weeks later, from the record.
+   */
+  it("N-01: an unknown key is a 400 that names it, and nothing is registered", async () => {
+    for (const extra of [{ blood_group: "B+" }, { isVip: true }, { balanceOverride: 0 }]) {
+      const res = await request(app.getHttpServer())
+        .post("/patients").set(...auth(clerkToken))
+        .send({ name: "Stray Key", sex: "female", phone: "9812300001", ...extra })
+        .expect(400);
+      expect(JSON.stringify(res.body)).toContain(Object.keys(extra)[0]);
+    }
+    const found = await request(app.getHttpServer())
+      .get("/patients/search").query({ q: "9812300001" }).set(...auth(clerkToken)).expect(200);
+    expect(found.body.items).toHaveLength(0);
+  });
+
+  it("N-01: the keys the Desk One form sends are all still accepted", async () => {
+    // `apps/web/src/screens/desk-one/session.ts` `registerBodyOf` — every scalar it can emit.
+    await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken))
+      .send({
+        name: "Full Form", sex: "female", phone: "9812300002", ageYears: 34, addressLine: "12 Civil Lines",
+        altPhone: "9812300003", title: "Mrs", fatherHusbandName: "Ravi Kumar", maritalStatus: "married",
+        bloodGroup: "B+", language: "hi", district: "Kanpur Nagar", stateName: "Uttar Pradesh", pincode: "208001",
+        abhaNumber: "12-3456-7890-1234", abhaAddress: "full.form@abdm", abhaVerificationStatus: "self_declared",
+        nationality: "Indian", nationalIdType: "aadhaar", nationalIdMasked: "1234", religion: "Hindu",
+        occupation: "Teacher", monthlyIncomePaise: 2_500_000, legacyUhid: "OLD-778", promotionalOptIn: true,
+        referredBySource: "doctor", referredByName: "Dr Mehta", referredByPhone: "9812300004",
+        referredBySpeciality: "Cardiology", acknowledgedDuplicates: true,
+      })
+      .expect(201);
+  });
+
   it("photo round-trips as base64 JSON — a ~300 kB body proves the parser bump", async () => {
     const reg = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
@@ -202,6 +239,97 @@ describe("patients e2e", () => {
     await request(app.getHttpServer())
       .post(`/patients/${id}/guardians/${guardians.body.items[0].guardian.id}/end`)
       .set(...auth(clerkToken)).expect(201);
+  });
+
+  /**
+   * ═══ WASA L-05 — A CHILD ROUTE ACTS ONLY ON A CHILD OF THE PATIENT IN ITS PATH ═══
+   *
+   * `POST :id/allergies/:allergyId/entered-in-error`, `PATCH :id/guardians/:guardianId` and
+   * `POST :id/guardians/:guardianId/end` used to act on the child id alone — `:id` was never read —
+   * so patient A's URL could correct patient B's allergy, and the sealed-record gate the READS run
+   * was skipped. Now the parent is resolved through `getPatient` first (merge chain + the sealed
+   * gate) and a child of anybody else is a 404, with nothing written.
+   */
+  describe("WASA L-05 — nested routes are bound to their parent", () => {
+    async function aMinor(name: string): Promise<{ id: string; allergyId: string; guardianId: string }> {
+      const reg = await request(app.getHttpServer())
+        .post("/patients").set(...auth(clerkToken))
+        .send({ name, sex: "other", ageYears: 10, guardian: { name: `${name} parent`, relationship: "mother" } })
+        .expect(201);
+      const id = reg.body.patient.id as string;
+      const allergy = await request(app.getHttpServer())
+        .post(`/patients/${id}/allergies`).set(...auth(clerkToken))
+        .send({ substance: "penicillin", severity: "severe", source: "registration" }).expect(201);
+      const guardians = await request(app.getHttpServer())
+        .get(`/patients/${id}/guardians`).set(...auth(clerkToken)).expect(200);
+      return { id, allergyId: allergy.body.allergyId as string, guardianId: guardians.body.items[0].guardian.id as string };
+    }
+    const allergyStatus = async (id: string): Promise<string> =>
+      (await db.select().from(patientAllergies).where(eq(patientAllergies.id, id)))[0]!.status;
+    const guardianRow = async (id: string) =>
+      (await db.select().from(patientGuardians).where(eq(patientGuardians.id, id)))[0]!;
+
+    it("allergy entered-in-error under ANOTHER patient's id is a 404 and the allergy stays active", async () => {
+      const a = await aMinor("Parent Path A");
+      const b = await aMinor("Child Owner B");
+      const res = await request(app.getHttpServer())
+        .post(`/patients/${a.id}/allergies/${b.allergyId}/entered-in-error`)
+        .set(...auth(clerkToken)).send({ reason: "wrong record" });
+      expect(res.status).toBe(404);
+      expect(await allergyStatus(b.allergyId)).toBe("active");
+    });
+
+    it("guardian PATCH under ANOTHER patient's id is a 404 and the guardian is unchanged; under its own it succeeds", async () => {
+      const a = await aMinor("Parent Path C");
+      const b = await aMinor("Child Owner D");
+      const before = await guardianRow(b.guardianId);
+      const res = await request(app.getHttpServer())
+        .patch(`/patients/${a.id}/guardians/${b.guardianId}`)
+        .set(...auth(clerkToken)).send({ dsr: true });
+      expect(res.status).toBe(404);
+      expect(await guardianRow(b.guardianId)).toEqual(before);
+
+      await request(app.getHttpServer())
+        .patch(`/patients/${b.id}/guardians/${b.guardianId}`)
+        .set(...auth(clerkToken)).send({ dsr: true }).expect(200);
+      expect((await guardianRow(b.guardianId)).authorityDsr).toBe(true);
+    });
+
+    it("guardian END under ANOTHER patient's id is a 404 and the guardian stays active", async () => {
+      const a = await aMinor("Parent Path E");
+      const b = await aMinor("Child Owner F");
+      const res = await request(app.getHttpServer())
+        .post(`/patients/${a.id}/guardians/${b.guardianId}/end`)
+        .set(...auth(clerkToken));
+      expect(res.status).toBe(404);
+      expect((await guardianRow(b.guardianId)).status).toBe("active");
+    });
+
+    it("the SEALED-record gate runs first: an updater without the confidential grant gets 404 and writes nothing", async () => {
+      const sealed = await aMinor("Sealed Patient G");
+      await db.update(patients).set({ isConfidential: true }).where(eq(patients.id, sealed.id));
+      await createRole(db, "reg_update_only", "Updates, no sealed read");
+      await grantPermissionToRole(db, registry, "reg_update_only", "patients.update");
+      await grantPermissionToRole(db, registry, "reg_update_only", "patients.read");
+      const { id: userId } = await createUser(db, { username: "updater", fullName: "updater", password: "p1234567" });
+      const { token } = await createSession(db, cfg, userId);
+      await assignRole(db, { userId, roleKey: "reg_update_only", scopeType: "hospital" });
+
+      const allergy = await request(app.getHttpServer())
+        .post(`/patients/${sealed.id}/allergies/${sealed.allergyId}/entered-in-error`)
+        .set(...auth(token)).send({ reason: "wrong record" });
+      expect(allergy.status).toBe(404);
+      const patch = await request(app.getHttpServer())
+        .patch(`/patients/${sealed.id}/guardians/${sealed.guardianId}`)
+        .set(...auth(token)).send({ dsr: true });
+      expect(patch.status).toBe(404);
+      const end = await request(app.getHttpServer())
+        .post(`/patients/${sealed.id}/guardians/${sealed.guardianId}/end`)
+        .set(...auth(token));
+      expect(end.status).toBe(404);
+      expect(await allergyStatus(sealed.allergyId)).toBe("active");
+      expect(await guardianRow(sealed.guardianId)).toMatchObject({ status: "active", authorityDsr: false });
+    });
   });
 
   it("QR: card payload prints, verify resolves, tampering answers ok:false over HTTP 200 (route order proven)", async () => {

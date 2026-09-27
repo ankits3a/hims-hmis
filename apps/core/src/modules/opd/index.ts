@@ -42,6 +42,8 @@ export type {
 export { findVisitByToken } from "./encounters";
 // PLAN 16c T4 — the prescriber on the Schedule H1 register (Rule 65(3): name and registration number).
 export { getDoctor } from "./masters";
+// PHARMACY P6 — the controlled-drug licence sheet names which doctors are trained under NDPS Rules r.2(ib).
+export { listDoctors } from "./masters";
 export type { DoctorRow } from "./masters";
 export type { PrescriptionRow } from "./encounters";
 export type { Eye, RxLine, TaperStep } from "./fhir";
@@ -69,3 +71,9 @@ export type { WalkInInput, WalkInResult, WalkInDeferredResult, DuplicateCandidat
 // reach it through the module boundary rather than the file, like every other service here.
 export { CANCEL_WINDOW_MS, cancelEscalation, cancelMsRemaining, demandRecheck, escalate, escalationFor } from "./escalation";
 export type { EscalationState, EscalationView } from "./escalation";
+// ── ABDM S2 — what a completed OPD visit releases to the national network (modules/abdm reads only this) ──
+export { completedVisitIdsOf, completedVisitsForRelease } from "./abdm-release";
+export type { OpdReleaseDiagnosis, OpdReleaseVisit } from "./abdm-release";
+// ── ABDM S3 — a request for a patient's records from OTHER facilities rides the consult's own guard:
+//    the encounter's treating doctor, resolved from opd_doctors.user_id (D5), never from a role ──
+export { requireTreatingDoctor } from "./consultation";

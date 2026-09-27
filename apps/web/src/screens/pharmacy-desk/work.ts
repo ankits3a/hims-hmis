@@ -75,7 +75,12 @@ export function blockedOf(line: WireDispenseLine): Blocked | null {
   /* A collected line holds its own stock — the shelf reading 0 afterwards is the reservation, not a block. */
   if (line.pickedBatch != null) return null;
   if (line.dispensedMedicine === null) return "unresolved";
-  if (line.scheduleFlag === "X") return "schedule_x";
+  /*
+    PHARMACY P6 — a Schedule X line reaches the desk only if the claim found a current Form 20F licence;
+    such a line is CONTROLLED (picked from the cabinet, handed over under two keys), not blocked. An older
+    server that does not say `controlled` still refuses it, so the block stays for that one.
+  */
+  if (line.scheduleFlag === "X" && line.controlled !== true) return "schedule_x";
   if (line.item === null) return "not_stocked";
   if (!line.saleable) return "not_saleable";
   if ((line.available ?? 0) === 0) return "empty";

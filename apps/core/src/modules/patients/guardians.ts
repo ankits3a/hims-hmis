@@ -118,6 +118,11 @@ export async function linkGuardian(
   return { guardianId };
 }
 
+/**
+ * WASA L-05 — `patientId` (on this and on `endGuardian`) is the CANONICAL id of the patient in the
+ * route's path, already resolved through `getPatient` (merge chain + sealed-record gate). A guardian
+ * of anybody else is `guardian_not_found` — the same 404 as a missing id — and nothing is written.
+ */
 export async function updateGuardianAuthority(
   tx: Tx,
   actor: Actor,
@@ -128,11 +133,14 @@ export async function updateGuardianAuthority(
     validTo?: Date | null;
     consentNote?: string | null;
   },
+  patientId: string,
 ): Promise<void> {
   if (actor.type !== "user") throw new PatientError("user_actor_required");
   const rows = await tx.select().from(patientGuardians).where(eq(patientGuardians.id, guardianId));
   const guardian = rows[0];
-  if (!guardian) throw new PatientError("guardian_not_found", `unknown guardian ${guardianId}`);
+  if (!guardian || guardian.patientId !== patientId) {
+    throw new PatientError("guardian_not_found", `unknown guardian ${guardianId}`);
+  }
   if (guardian.status !== "active") throw new PatientError("guardian_not_active");
 
   const set: Record<string, unknown> = {};
@@ -169,10 +177,12 @@ export async function updateGuardianAuthority(
   );
 }
 
-export async function endGuardian(tx: Tx, actor: Actor, guardianId: string): Promise<void> {
+export async function endGuardian(tx: Tx, actor: Actor, guardianId: string, patientId: string): Promise<void> {
   if (actor.type !== "user") throw new PatientError("user_actor_required");
   const rows = await tx.select({ patientId: patientGuardians.patientId }).from(patientGuardians).where(eq(patientGuardians.id, guardianId));
-  if (rows.length === 0) throw new PatientError("guardian_not_found", `unknown guardian ${guardianId}`);
+  if (rows.length === 0 || rows[0]!.patientId !== patientId) {
+    throw new PatientError("guardian_not_found", `unknown guardian ${guardianId}`);
+  }
 
   const updated = await tx
     .update(patientGuardians)

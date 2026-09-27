@@ -97,10 +97,24 @@ export const formularySalts = pgTable(
      * is offered first.
      */
     productCount: integer("product_count").notNull().default(0),
+    /**
+     * ═══ PHARMACY P6 — THE NDPS ACT'S CLASS OF THIS MOIETY (null = not classified) ═══
+     *
+     * `narcotic` — a narcotic drug under the NDPS Act 1985 s.2(xiv) (opium, morphine, fentanyl, pethidine,
+     * methadone, codeine …), the essential narcotic drugs of s.2(viiia) among them; `psychotropic` — a
+     * psychotropic substance in the Act's Schedule (s.2(xxiii)), tramadol since S.O. 1761(E) of 2018.
+     * A property of the SUBSTANCE, which is where the Act's schedules put it, so every brand that contains
+     * the moiety is controlled by it (`medicinesByIds` derives the medicine's class, strictest first).
+     * Set from the cited list in `modules/formulary/ndps.ts` by `classify-ndps-salts`; a moiety the list
+     * does not name stays null and is reported, never guessed (brief
+     * `docs/superpowers/plans/2026-09-26-pharmacy-p6-ndps-schedule-x-law.md`).
+     */
+    ndpsClass: text("ndps_class"),
     active: boolean("active").notNull().default(true),
     ...auditColumns,
   },
   (t) => [
+    check("formulary_salts_ndps_class_ck", sql`${t.ndpsClass} is null or ${t.ndpsClass} in ('narcotic', 'psychotropic')`),
     // Case-insensitive uniqueness: "Amoxicillin" and "amoxicillin" are one moiety, and two rows
     // for one moiety would split every check that groups by it.
     uniqueIndex("formulary_salts_name_lower_ux").using("btree", sql`lower(${t.name})`),

@@ -16,7 +16,8 @@ describe("consoleWhatsappAdapter / consoleSmsAdapter", () => {
       const line = JSON.parse(spy.mock.calls[0]?.[0] as string) as Record<string, unknown>;
       expect(line).toEqual({
         channel: "whatsapp",
-        to: "9876543210",
+        // PHARMACY P6 — the log line carries the last four digits and no more (patient messages brief).
+        to: "******3210",
         notificationId: "notif-1",
         text: "hello there",
       });
@@ -37,7 +38,7 @@ describe("consoleWhatsappAdapter / consoleSmsAdapter", () => {
       const line = JSON.parse(spy.mock.calls[0]?.[0] as string) as Record<string, unknown>;
       expect(line).toEqual({
         channel: "sms",
-        to: "9876543210",
+        to: "******3210",
         notificationId: "notif-2",
         text: "hello there",
       });
@@ -55,6 +56,27 @@ describe("consoleWhatsappAdapter / consoleSmsAdapter", () => {
       const line = JSON.parse(spy.mock.calls[0]?.[0] as string) as { text: string };
       expect(line.text).toBe(longText.slice(0, 80));
       expect(line.text.length).toBe(80);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  /**
+   * PHARMACY P6 (patient messages) — THE LOG IS NOT A PHONE BOOK. The console sink is what production
+   * runs until a provider is contracted, so its log line is the one place every patient's number would
+   * otherwise accumulate in clear. Nothing that follows the last four digits is written; a push line
+   * says how many browsers, never an endpoint (an endpoint is a per-person capability URL).
+   */
+  it("masks the number in every console line, and names no push endpoint", async () => {
+    const spy = jest.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await consoleSmsAdapter.send("+91 98765 43210", "bill", { notificationId: "n-m1" });
+      await consoleWhatsappAdapter.send("9876543210", "bill", { notificationId: "n-m2" });
+      await consoleWebPushAdapter.send(encodePushAddresses([{ endpoint: "https://fcm.example.test/x/SECRET", p256dh: "k", auth: "a" }]), "t", { notificationId: "n-m3" });
+      const lines = spy.mock.calls.map((c) => c[0] as string);
+      expect(lines.join("\n")).not.toMatch(/98765|8765432|SECRET|fcm\.example/);
+      expect((JSON.parse(lines[0]!) as { to: string }).to).toBe("********3210");
+      expect((JSON.parse(lines[2]!) as { to: string }).to).toBe("[1 push subscription]");
     } finally {
       spy.mockRestore();
     }

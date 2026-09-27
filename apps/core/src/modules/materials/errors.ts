@@ -275,7 +275,33 @@ export type MaterialsErrorCode =
   /** The recall is not in the state this act needs. */
   | "recall_wrong_status"
   /** A recall is closed only when no store holds any of the batch. */
-  | "recall_stock_remaining";
+  | "recall_stock_remaining"
+  // ── PHARMACY P6 — the controlled-drug cabinet (`controlled.ts`, `controlled-check.ts`) ──
+  /** A movement at the controlled cabinet without a witness, or by a system actor. */
+  | "custody_required"
+  /** The holder named as a witness, or one witness twice. */
+  | "custody_same_person"
+  /** The holder or a witness is not an active member of staff. */
+  | "custody_witness_unknown"
+  /** A narcotic-cabinet item taken into an open store. */
+  | "controlled_outside_custody"
+  /** Anything but a narcotic-cabinet item taken into the cabinet, which is reserved for them (r.65(12)). */
+  | "not_a_controlled_item"
+  /** A balance check or a cabinet act out of shape: not the cabinet, a batch missing from the count, a count below zero. */
+  | "controlled_check_invalid"
+  // ── PHARMACY P6 — item merge (`item-merge.ts`) ──
+  /** No such item merge. */
+  | "unknown_item_merge"
+  /** The two items are not one thing: another class, composition, base unit or pack, one controlled and one not, already merged. `detail.refusals` names each rule. */
+  | "item_merge_invalid"
+  /** The duplicate still has open work that names it (a reservation, a dispense, stock in transit, an unposted receipt…). `detail.refusals` names each. */
+  | "item_merge_blocked"
+  /** The merge is not in the state this act needs. */
+  | "item_merge_wrong_status"
+  /** The merge's approval is not granted yet: nothing moves before it is. */
+  | "item_merge_unapproved"
+  /** A new use of an item that was merged into another — order, receive, level or edit the survivor instead. */
+  | "item_merged";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
@@ -292,7 +318,7 @@ const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([
   "unknown_item", "unknown_vendor", "unknown_store", "unknown_batch",
   "unknown_document", "unknown_count", "unknown_adjustment", "unknown_purchase_order",
   "unknown_supplier_bill", "unknown_payment_run",
-  "unknown_supplier_return", "unknown_write_off", "unknown_recall",
+  "unknown_supplier_return", "unknown_write_off", "unknown_recall", "unknown_item_merge",
 ]);
 
 export function materialsHttpStatus(code: MaterialsErrorCode): number {
