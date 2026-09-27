@@ -496,6 +496,27 @@ a finding and the pilot does not start until it is understood. The census report
 
 ---
 
+## Rehearsal on a synthetic database (G5-a), 2026-09-26
+
+**This is a rehearsal, not G5.** G5 is the section below, run by the department head on UAT. This one was
+run by an agent, on synthetic data, on the dev instance, at the owner's request ("use synthetic data for the
+pathologist of record … users … the analyser list").
+
+- **Command:** `tools/lab-synthetic.sh hmis_lab_synth`. It creates the database on `:5433`, migrates, runs the
+  deploy's seed order, then adds the synthetic staff, the golden catalogue, the synthetic supplement, the
+  paperwork (department, pathologist of record, `opd_visit`, GST placeholder, priced tariff) and the room
+  (benches, analysers). The data is in `apps/core/scripts/synthetic/lab/` (README there).
+- **Before:** `standup:check lab: rows=18 red=12 not_modelled=4`, on the same database after the deploy seeds
+  alone.
+- **After:** `standup:check lab: rows=18 red=0 not_modelled=4`, on a fresh database and again on a re-run of
+  the same database.
+- **Found on the way:**
+  - The golden fixture leaves 13 descriptive analytes (urine and stool microscopy, the smear) with no band, so
+    `lab_range_sources_present` can never pass on it alone. The synthetic supplement gives them text bands.
+  - The owner's real catalogue must band every analyte too, or this row stays RED.
+- **Not yet rehearsed:** the §13 five-seat walk-through, Drills A–D and the analyser bridge step 3b. G1–G4
+  green on synthetic data says the stand-up can be done; it does not say the seats work end to end.
+
 ## 14. Executed on UAT — **NOT YET RUN**
 
 **This section is the phase's gate.** 11i closes when this is performed and dated, not when a test

@@ -1,0 +1,91 @@
+[
+  {
+    "username": "ramesh.front",
+    "fullName": "Ramesh Khanna",
+    "roles": [
+      "owner"
+    ],
+    "why": "owner: approves and activates the tariff and the opd_visit definition (dev-lab-standup APPROVER)"
+  },
+  {
+    "username": "supt.rao",
+    "fullName": "Dr Suresh Rao",
+    "roles": [
+      "medical_superintendent"
+    ],
+    "why": "the second key of the two-key definition ceremony (dev-lab-standup SUPERINTENDENT)"
+  },
+  {
+    "username": "anita.admin",
+    "fullName": "Anita Menon",
+    "roles": [
+      "admin"
+    ],
+    "why": "the SECOND administrator the runbook's precondition 1.3 asks for"
+  },
+  {
+    "username": "dr.meera",
+    "fullName": "Dr Meera Iyer",
+    "roles": [
+      "pathologist"
+    ],
+    "why": "pathologist of record: signs reports, manages catalogue and instruments (dev-lab-standup CURATOR)"
+  },
+  {
+    "username": "dr.farhan",
+    "fullName": "Dr Farhan Qureshi",
+    "roles": [
+      "pathologist"
+    ],
+    "why": "a second pathologist, so verify-not-own-entry and night cover can be rehearsed"
+  },
+  {
+    "username": "sanjay.lab",
+    "fullName": "Sanjay Verma",
+    "roles": [
+      "lab_reception",
+      "cashier"
+    ],
+    "why": "lab reception counter L-01; cashier because every receipt needs the acting user's open drawer"
+  },
+  {
+    "username": "vikas.phlebo",
+    "fullName": "Vikas Yadav",
+    "roles": [
+      "phlebotomist"
+    ],
+    "why": "collection chair"
+  },
+  {
+    "username": "abha.tech",
+    "fullName": "Abha Rani",
+    "roles": [
+      "lab_technician"
+    ],
+    "why": "bench technician"
+  },
+  {
+    "username": "nitin.tech",
+    "fullName": "Nitin Joshi",
+    "roles": [
+      "lab_technician"
+    ],
+    "why": "second technician: the absurd-value override needs a second person"
+  },
+  {
+    "username": "priya.billing",
+    "fullName": "Priya Nair",
+    "roles": [
+      "billing_manager"
+    ],
+    "why": "the only role that may release a held report unpaid (ruling 12)"
+  },
+  {
+    "username": "bridge.au480",
+    "fullName": "AU480 interface (service account)",
+    "roles": [
+      "lab_bridge"
+    ],
+    "why": "the analyser bridge's own account, never a technologist's login (runbook \u00a711 step 2)"
+  }
+]
