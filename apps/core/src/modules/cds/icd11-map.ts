@@ -5,9 +5,9 @@
  * of loading `10To11MapToOneCategory.txt`: bytes in, rows out, no database. `scripts/icd11-load.ts`
  * is the half that writes, and `icd11-lookup.ts` the half that reads.
  *
- * No row of WHO's file is in this repository and none may be (the licence's §1.2.4 is unruled — see
- * `icd11_map_rows` in `kernel/db/schema/clinical-coding.ts`). Every test of this parser runs on
- * SYNTHETIC rows in WHO's format.
+ * No row of WHO's file is in this repository, and none will be: the owner's 2026-09-26 ruling (licence
+ * §1.2.4 settled) lets the loader DOWNLOAD the release at run time (`scripts/icd11-who-release.ts`),
+ * not commit it. Every test of this parser runs on SYNTHETIC rows in WHO's format.
  *
  * ═══ THE FORMAT, MEASURED ON THE 2026-01 RELEASE BEFORE A LINE OF THIS WAS WRITTEN ═══
  *
