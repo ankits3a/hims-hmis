@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { pharmacyDispenses, pharmacyShortBook } from "../../kernel/db/schema";
-import { findStoreByCode, planPaymentRun, planSupplierReturns, sellableBatchesByItem } from "../materials";
+import { findDuplicateItems, findStoreByCode, planPaymentRun, planSupplierReturns, sellableBatchesByItem } from "../materials";
 import { getPatientSummaries } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { planPurchaseDrafts } from "./purchase-drafts";
@@ -272,6 +272,29 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
         },
         payload,
       };
+    },
+  },
+  /**
+   * PHARMACY P6 (hygiene) — "duplicate items dikhao": the item-master rows that look like one thing twice
+   * (`materials/item-merge.ts` `findDuplicateItems`: the same formulary medicine, or near-identical names
+   * over the same composition). Read-only like every tool here: the card opens the office's items side,
+   * where a person opens a pair and raises the merge; the medical superintendent approves it.
+   *
+   * Gated on `materials.items.merge` — the copilot offers the list to exactly the people who may raise one.
+   */
+  {
+    intent: "find_duplicate_items",
+    permission: "materials.items.merge",
+    needsSubject: false,
+    async run(ctx): Promise<CopilotAnswer> {
+      const { suggestions } = await findDuplicateItems(ctx.db, ctx.actor);
+      const sameMedicine = suggestions.filter((x) => x.why === "same_medicine").length;
+      const payload = {
+        kind: "duplicate_items", href: "/pharmacy/office?view=items", pairs: suggestions.length, sameMedicine,
+        first: suggestions.slice(0, 5).map((x) => ({ keep: x.survivor.name, merge: x.merged.name, why: x.why })),
+      };
+      if (suggestions.length === 0) return { key: "copilot.answer.duplicateItemsNothing", params: {}, payload };
+      return { key: "copilot.answer.duplicateItems", params: { pairs: suggestions.length, sameMedicine }, payload };
     },
   },
 ];

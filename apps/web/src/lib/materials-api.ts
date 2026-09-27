@@ -27,6 +27,8 @@ export type WireItem = {
   baseUom: string; batchTracked: boolean; serialTracked: boolean;
   storageClass: string; shelfLifeDays: number | null;
   abcClass: string | null; vedClass: string | null; active: boolean;
+  /** PHARMACY P6 — set once the item was merged into another (it is then inactive for ever). */
+  mergedIntoItemId?: string | null;
 };
 
 export type WireItemUom = {

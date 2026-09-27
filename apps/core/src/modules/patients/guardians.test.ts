@@ -73,14 +73,14 @@ describe("guardians", () => {
     const at18 = new Date(Date.UTC(2027, 7, 14));
     expect(effectiveGuardianAuthority(patient, guardian, at18)).toEqual(NO_AUTHORITY);
     // and an explicit validTo in the past does the same
-    await withTx(db, (tx) => updateGuardianAuthority(tx, clerk, guardianId, { validTo: new Date(Date.UTC(2020, 0, 1)) }));
+    await withTx(db, (tx) => updateGuardianAuthority(tx, clerk, guardianId, { validTo: new Date(Date.UTC(2020, 0, 1)) }, patientId));
     const g2 = (await db.select().from(patientGuardians).where(eq(patientGuardians.id, guardianId)))[0]!;
     expect(effectiveGuardianAuthority(patient, g2, NOW)).toEqual(NO_AUTHORITY);
   });
 
   it("updateGuardianAuthority events the EFFECTIVE authority; endGuardian is single-winner", async () => {
     const { patientId, guardianId } = await minorWithGuardian(dobAged(10));
-    await withTx(db, (tx) => updateGuardianAuthority(tx, clerk, guardianId, { dsr: true, messages: false }));
+    await withTx(db, (tx) => updateGuardianAuthority(tx, clerk, guardianId, { dsr: true, messages: false }, patientId));
     let evs = await authorityEventsFor(guardianId);
     expect(evs).toHaveLength(1);
     // PLAN DEFECT fix: the plan's cast here drops `dsr`/`messages`, which the `let` above
@@ -91,8 +91,8 @@ describe("guardians", () => {
     expect(payload.authority.dsr).toBe(true);
     expect(payload.authority.messages).toBe(false);
 
-    await withTx(db, (tx) => endGuardian(tx, clerk, guardianId));
-    await expect(withTx(db, (tx) => endGuardian(tx, clerk, guardianId))).rejects.toMatchObject({
+    await withTx(db, (tx) => endGuardian(tx, clerk, guardianId, patientId));
+    await expect(withTx(db, (tx) => endGuardian(tx, clerk, guardianId, patientId))).rejects.toMatchObject({
       code: "guardian_not_active",
     });
     evs = await authorityEventsFor(guardianId);
@@ -114,7 +114,7 @@ describe("guardians", () => {
     // the clock updateGuardianAuthority computes with) the patch stores dsr/messages true, yet
     // the event payload must be all-false. Only a computed authority can produce that.
     const major = await minorWithGuardian(dobAged(20));
-    await withTx(db, (tx) => updateGuardianAuthority(tx, clerk, major.guardianId, { dsr: true, messages: true }));
+    await withTx(db, (tx) => updateGuardianAuthority(tx, clerk, major.guardianId, { dsr: true, messages: true }, major.patientId));
     const majorRow = (await db.select().from(patientGuardians).where(eq(patientGuardians.id, major.guardianId)))[0]!;
     expect(majorRow.authorityDsr).toBe(true);
     expect(majorRow.authorityMessages).toBe(true);
@@ -130,7 +130,7 @@ describe("guardians", () => {
     const turned18 = await minorWithGuardian(dobAged(18)); // flips (birthday today)
     const adult20 = await minorWithGuardian(dobAged(20)); // flips (registered via test backdate)
     const ended = await minorWithGuardian(dobAged(19));
-    await withTx(db, (tx) => endGuardian(tx, clerk, ended.guardianId)); // 'ended' — sweep must not touch
+    await withTx(db, (tx) => endGuardian(tx, clerk, ended.guardianId, ended.patientId)); // 'ended' — sweep must not touch
 
     const flipped = await sweepGuardianMajority(db, NOW);
     expect(flipped).toBe(2);

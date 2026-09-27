@@ -12,7 +12,7 @@ import { DEEMED_SUPPLY_DAYS } from "./config";
 import { NEAR_EXPIRY_APPROVAL_TYPE } from "./approval-types";
 import { MaterialsError } from "./errors";
 import { grnLineRejected, grnReceived, grnRejected } from "./events";
-import { effectiveRegulation, itemUomRows, itemsByIds } from "./items";
+import { assertNotMerged, effectiveRegulation, itemUomRows, itemsByIds } from "./items";
 import { getBatch, postMovements } from "./ledger";
 import { qcLine } from "./qc";
 import { requireStore } from "./stores";
@@ -209,6 +209,8 @@ export async function captureGrn(
   // refused at the gate, not discovered at post.
   await assertVendorPurchasable(tx, input.vendorId);
   await requireStore(tx, input.storeResourceId);
+  // PHARMACY P6 — an item merged into another is never received: the survivor is (`item-merge.ts`).
+  await assertNotMerged(tx, input.lines.map((l) => l.itemId), "receiving it");
 
   // `series.ts` requires a date ALREADY resolved to the hospital's day — "a date that has already
   // been resolved to the hospital's day must not be re-derived from an instant by a second piece of
@@ -404,6 +406,8 @@ export async function postGrn(
   const lines = await tx.select().from(grnLines).where(eq(grnLines.grnId, grnId)).orderBy(asc(grnLines.id));
   const acceptedLines = lines.filter((l) => l.qtyAcceptedBase > 0);
   const rejectedLines = lines.filter((l) => l.qtyAcceptedBase === 0);
+  // PHARMACY P6 — nor posted onto one merged since the capture (a merge waits for open receipts; this is the race).
+  await assertNotMerged(tx, acceptedLines.map((l) => l.itemId), "posting stock onto it");
 
   // ── A17: the approval's STATUS, never merely its presence ──
   if (acceptedLines.some((l) => l.nearExpiry)) {

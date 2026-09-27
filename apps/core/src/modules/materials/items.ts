@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
-  itemBarcodes, itemPriceRegulations, itemUoms, items,
+  itemBarcodes, itemPriceRegulations, itemUoms, items, stockBatches,
 } from "../../kernel/db/schema";
 import { medicineExists } from "../formulary";
 import { MaterialsError } from "./errors";
@@ -56,12 +56,96 @@ function isUniqueViolation(e: unknown): boolean {
  * first, silently, for ever.
  */
 
-/** The item, or `unknown_item`. Used by every writer below and by T6's gate. */
+/**
+ * The item, or `unknown_item`. Used by every writer below and by T6's gate.
+ *
+ * PHARMACY P6 — and never an item that was MERGED into another (`item-merge.ts`): a merged item is
+ * history, and a new unit, barcode, price or edit on it would be a second live record of one thing —
+ * the duplicate the merge retired. The survivor is named so the person edits that instead.
+ */
 async function requireItem(tx: Tx, itemId: string): Promise<ItemRow> {
   const rows = await tx.select().from(items).where(eq(items.id, itemId));
   const row = rows[0];
   if (row === undefined) throw new MaterialsError("unknown_item", `item ${itemId} not found`);
+  if (row.mergedIntoItemId !== null) await refuseMerged(tx, [row], "editing it");
   return row;
+}
+
+/** `item_merged`, naming the survivor of the first merged item among `rows` — one read, only on refusal. */
+async function refuseMerged(db: Db | Tx, rows: readonly ItemRow[], doing: string): Promise<void> {
+  const merged = rows.find((r) => r.mergedIntoItemId !== null);
+  if (merged === undefined) return;
+  const [survivor] = await db.select({ id: items.id, code: items.code, name: items.name }).from(items).where(eq(items.id, merged.mergedIntoItemId!));
+  throw new MaterialsError(
+    "item_merged",
+    `item ${merged.code} was merged into ${survivor?.code ?? "another item"}${survivor === undefined ? "" : ` (${survivor.name})`} — use that item; ${doing} is refused for a merged item`,
+    { itemId: merged.id, itemCode: merged.code, survivorItemId: merged.mergedIntoItemId, survivorCode: survivor?.code ?? null, survivorName: survivor?.name ?? null },
+  );
+}
+
+/**
+ * PHARMACY P6 — the refusal every NEW use of an item asks (an order line, a receipt, a level): an item
+ * merged into another is not ordered, received or levelled; the survivor is. Unknown ids are the
+ * caller's own refusal to make.
+ */
+export async function assertNotMerged(db: Db | Tx, itemIds: readonly string[], doing: string): Promise<void> {
+  const wanted = [...new Set(itemIds)].filter((x) => x !== "");
+  if (wanted.length === 0) return;
+  const rows = await db.select().from(items).where(and(inArray(items.id, wanted), sql`${items.mergedIntoItemId} is not null`));
+  await refuseMerged(db, rows, doing);
+}
+
+// ═══════════════════ PHARMACY P6 — READING THROUGH A MERGE ═══════════════════
+//
+// A merged item's history stays written against its own id (the plan doc's "Item merge as built").
+// Every read that aggregates by item over HISTORY therefore resolves it: `survivorsOf` maps an id to
+// the item it now stands under (itself when never merged), and `withMergedAliases` widens a set of
+// items to the ids whose history each stands for. `items.merged_into_item_id` is always ONE hop — a
+// survivor merged later re-points the items merged into it in the same act — so neither walks a chain.
+
+/** id → the item it resolves to: its survivor when merged, else itself. An unknown id maps to itself. */
+export async function survivorsOf(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(itemIds)].filter((x) => x !== "");
+  const out = new Map(wanted.map((id) => [id, id] as const));
+  if (wanted.length === 0) return out;
+  const rows = await db.select({ id: items.id, into: items.mergedIntoItemId }).from(items)
+    .where(and(inArray(items.id, wanted), sql`${items.mergedIntoItemId} is not null`));
+  for (const r of rows) if (r.into !== null) out.set(r.id, r.into);
+  return out;
+}
+
+/**
+ * The ids to READ for these items: each id itself plus every item merged into it, and `standsFor`
+ * mapping each read id back to the asked id it counts under. Two ids asked separately never share a
+ * merged item (one hop, one survivor).
+ */
+export async function withMergedAliases(
+  db: Db | Tx, itemIds: readonly string[],
+): Promise<{ ids: string[]; standsFor: Map<string, string> }> {
+  const wanted = [...new Set(itemIds)].filter((x) => x !== "");
+  const standsFor = new Map(wanted.map((id) => [id, id] as const));
+  if (wanted.length === 0) return { ids: [], standsFor };
+  const rows = await db.select({ id: items.id, into: items.mergedIntoItemId }).from(items).where(inArray(items.mergedIntoItemId, wanted));
+  for (const r of rows) if (r.into !== null && !standsFor.has(r.id)) standsFor.set(r.id, r.into);
+  return { ids: [...standsFor.keys()], standsFor };
+}
+
+/**
+ * One PHYSICAL batch across merges: this batch, plus — when its item is a survivor — the batches of the
+ * same number and ownership under the items merged into it, which is where the merge moved its stock
+ * from. A recall's callback list reads the whole lineage: a patient dispensed the batch before the
+ * merge is still a patient who took it.
+ */
+export async function batchLineage(db: Db | Tx, batchId: string): Promise<string[]> {
+  const [b] = await db.select({ itemId: stockBatches.itemId, batchNo: stockBatches.batchNo, ownership: stockBatches.ownership })
+    .from(stockBatches).where(eq(stockBatches.id, batchId));
+  if (b === undefined) return [batchId];
+  const aliases = (await withMergedAliases(db, [b.itemId])).ids.filter((id) => id !== b.itemId);
+  if (aliases.length === 0) return [batchId];
+  const same = await db.select({ id: stockBatches.id }).from(stockBatches).where(and(
+    inArray(stockBatches.itemId, aliases), sql`lower(${stockBatches.batchNo}) = ${b.batchNo.trim().toLowerCase()}`, eq(stockBatches.ownership, b.ownership),
+  ));
+  return [batchId, ...same.map((x) => x.id)];
 }
 
 /**

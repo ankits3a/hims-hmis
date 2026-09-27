@@ -141,10 +141,18 @@ export const cancelRun = async (id: string, reason: string): Promise<WireRun> =>
 export const recordPayment = async (id: string, vendorId: string, input: { mode: PaymentMode; reference: string | null; paidOn: string | null }): Promise<WireRun> =>
   (await api<{ run: WireRun }>("POST", `/materials/payment-runs/${id}/vendors/${vendorId}/pay`, input)).run;
 
-/** A CSV cell: quoted when it carries a comma, a quote or a line break. */
+/**
+ * A CSV cell: quoted when it carries a comma, a quote or a line break (CR included, per RFC 4180).
+ *
+ * WASA L-03, as the kernel's `report/csv.ts` does it: a TEXT cell starting `= + - @`, a tab or a CR
+ * is a formula to a spreadsheet, so it gets a leading `'` and is shown, never run. A supplier's name
+ * or bill number is typed by a person and this file is opened by the accounts office. A JS number is
+ * never prefixed, and neither is a string that is only a number (`csvRupees` of a credit note).
+ */
 function cell(v: string | number): string {
-  const s = String(v);
-  const needsQuotes = s.includes('"') || s.includes(",") || s.includes("\n");
+  const raw = String(v);
+  const s = typeof v === "string" && /^[=+\-@\t\r]/.test(raw) && !/^[+-]?\d[\d,]*(\.\d+)?$/.test(raw) ? `'${raw}` : raw;
+  const needsQuotes = /[",\r\n]/.test(s);
   return needsQuotes ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 

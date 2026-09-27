@@ -381,16 +381,21 @@ describe("Plan 07 read helpers: summaries + merged losers", () => {
       expect(normaliseIdTail("12")).toBe("12"); // shorter than four is stored as given, not padded
     });
 
-    /* An ABHA number is a MATCH KEY; two spellings of one number are two patients to every lookup. */
+    /*
+      An ABHA number is a MATCH KEY; two spellings of one number are two patients to every lookup.
+      ABDM S1 — and since one ABHA may now belong to ONE patient (FT TAGGING_UNIQUEPATIENTID_…), the
+      second registration below is the proof: its differently-typed spelling is recognised as the SAME
+      number and refused, where it used to be stored beside the first as a second holder.
+    */
     test("an ABHA number is normalised to its printed form however the clerk types it", async () => {
       const { patient: bare } = await withTx(db, (tx) => registerPatient(tx, clerk, {
         ...baseInput, abhaNumber: "12345678901234",
       }));
-      const { patient: spaced } = await withTx(db, (tx) => registerPatient(tx, clerk, {
-        name: "Second Person", sex: "male", abhaNumber: "12 3456 7890 1234",
-      }));
       expect(bare.abhaNumber).toBe("12-3456-7890-1234");
-      expect(spaced.abhaNumber).toBe(bare.abhaNumber);
+      expect(normaliseAbhaNumber("12 3456 7890 1234")).toBe(bare.abhaNumber);
+      await expect(withTx(db, (tx) => registerPatient(tx, clerk, {
+        name: "Second Person", sex: "male", abhaNumber: "12 3456 7890 1234",
+      }))).rejects.toMatchObject({ code: "abha_already_linked" });
       expect(normaliseAbhaNumber("not-a-number")).toBe("not-a-number");
     });
 

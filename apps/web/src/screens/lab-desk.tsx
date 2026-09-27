@@ -9,7 +9,7 @@ import {
 } from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "../lib/auth";
-import { LabSeatFrame, sexAge } from "./lab-seat";
+import { LabStation, sexAge } from "./lab-seat";
 import type {
   DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireLabDoctor, WireOrderable, WirePricedDraft,
 } from "../lib/lab-api";
@@ -281,378 +281,380 @@ export function LabDesk(): React.ReactElement {
 
   const waiting = (portal.data ?? []).length;
 
+  /* ── arrived on the portal · no typing needed ── */
+  const listPane = (
+    <section className="space-y-2" aria-label={t("lab.desk.portal")}>
+      <h2 className="text-sm font-semibold">{t("lab.desk.portal")}</h2>
+      <p className="text-xs text-muted-foreground">{t("lab.desk.portalHint")}</p>
+      {/*
+        A REFUSAL IS A SENTENCE, NOT A BLANK. Gating the query alone would replace a misleading
+        error with an empty panel and no explanation, which is worse: a refusal presented as a
+        failure teaches a user to ignore it, and a refusal presented as NOTHING teaches it faster.
+        So the seat is told what it may not see, and by which grant.
+      */}
+      {!maySeePortal && <p className="text-sm">{t("lab.desk.portalNotPermitted")}</p>}
+      {maySeePortal && portal.isError && <p className="text-sm">{t("lab.desk.portalUnavailable")}</p>}
+      <ul className="divide-y divide-border rounded border border-border text-sm">
+        {(portal.data ?? []).slice(0, 12).map((row) => (
+          <li key={row.specimenId} className="flex items-center justify-between gap-2 px-2 py-1.5">
+            <span className="truncate">
+              <span className="font-medium">{row.patientDisplay}</span>
+              <span className="text-muted-foreground"> · {row.container} · {row.specimenType}</span>
+            </span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">{row.waitingMinutes} {t("lab.desk.min")}</span>
+          </li>
+        ))}
+        {portal.data !== undefined && portal.data.length === 0 && (
+          <li className="px-2 py-1.5 text-muted-foreground">{t("lab.desk.portalEmpty")}</li>
+        )}
+      </ul>
+    </section>
+  );
+
   return (
-    <LabSeatFrame
+    <LabStation
+      station="desk"
       title={t("lab.desk.title")}
       place={t("lab.desk.place")}
       stats={[
         { label: t("lab.desk.arrivedToday"), value: waiting, tone: "live" },
       ]}
+      list={listPane}
     >
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        {/* ── arrived on the portal · no typing needed ── */}
-        <section className="space-y-2" aria-label={t("lab.desk.portal")}>
-          <h2 className="text-sm font-semibold">{t("lab.desk.portal")}</h2>
-          <p className="text-xs text-muted-foreground">{t("lab.desk.portalHint")}</p>
-          {/*
-            A REFUSAL IS A SENTENCE, NOT A BLANK. Gating the query alone would replace a misleading
-            error with an empty panel and no explanation, which is worse: a refusal presented as a
-            failure teaches a user to ignore it, and a refusal presented as NOTHING teaches it faster.
-            So the seat is told what it may not see, and by which grant.
-          */}
-          {!maySeePortal && <p className="text-sm">{t("lab.desk.portalNotPermitted")}</p>}
-          {maySeePortal && portal.isError && <p className="text-sm">{t("lab.desk.portalUnavailable")}</p>}
-          <ul className="divide-y divide-border rounded border border-border text-sm">
-            {(portal.data ?? []).slice(0, 12).map((row) => (
-              <li key={row.specimenId} className="flex items-center justify-between gap-2 px-2 py-1.5">
-                <span className="truncate">
-                  <span className="font-medium">{row.patientDisplay}</span>
-                  <span className="text-muted-foreground"> · {row.container} · {row.specimenType}</span>
-                </span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">{row.waitingMinutes} {t("lab.desk.min")}</span>
-              </li>
-            ))}
-            {portal.data !== undefined && portal.data.length === 0 && (
-              <li className="px-2 py-1.5 text-muted-foreground">{t("lab.desk.portalEmpty")}</li>
+      {/* ── walk-in with a slip · one field, three doors ── */}
+      <section className="space-y-3">
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") find.mutate(); }}
+        >
+          <label className="flex-1 text-sm">
+            <span className="sr-only">{t("lab.desk.find")}</span>
+            <input
+              ref={fieldRef}
+              className="w-full rounded border border-input bg-card px-3 py-2 text-base"
+              placeholder={t("lab.desk.findPlaceholder")}
+              aria-label={t("lab.desk.find")}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </label>
+          <Button type="submit" disabled={find.isPending || q.trim() === ""}>{t("lab.desk.findGo")}</Button>
+        </form>
+
+        {hits !== null && selected === null && (
+          <div className="space-y-1">
+            {hits.length === 0 && (
+              <p className="text-sm">
+                {t("lab.desk.noHit")}{" "}
+                <button type="button" className="underline" onClick={() => setRegistering(true)}>
+                  {t("lab.desk.registerNew")}
+                </button>
+              </p>
             )}
-          </ul>
-        </section>
-
-        {/* ── walk-in with a slip · one field, three doors ── */}
-        <section className="space-y-3">
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") find.mutate(); }}
-          >
-            <label className="flex-1 text-sm">
-              <span className="sr-only">{t("lab.desk.find")}</span>
-              <input
-                ref={fieldRef}
-                className="w-full rounded border border-input bg-card px-3 py-2 text-base"
-                placeholder={t("lab.desk.findPlaceholder")}
-                aria-label={t("lab.desk.find")}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </label>
-            <Button type="submit" disabled={find.isPending || q.trim() === ""}>{t("lab.desk.findGo")}</Button>
-          </form>
-
-          {hits !== null && selected === null && (
-            <div className="space-y-1">
-              {hits.length === 0 && (
-                <p className="text-sm">
-                  {t("lab.desk.noHit")}{" "}
-                  <button type="button" className="underline" onClick={() => setRegistering(true)}>
-                    {t("lab.desk.registerNew")}
+            {hits.length > 1 && <p className="text-xs text-muted-foreground">{t("lab.desk.confirmByName")}</p>}
+            <ul className="divide-y divide-border rounded border border-border text-sm">
+              {hits.map((h) => (
+                <li key={`${h.patient.id}-${h.visit?.encounterId ?? "none"}`}>
+                  <button type="button" className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left hover:bg-muted"
+                    onClick={() => choose(h)}>
+                    <span>
+                      <span className="font-medium">{h.patient.display}</span>
+                      <span className="text-muted-foreground"> · {sexAge(h.patient.administrativeGender, h.patient.dob)} · {h.patient.uhid}</span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {h.visit === null ? t("lab.desk.noVisitToday")
+                        : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}`}
+                    </span>
                   </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {registering && (
+          <form
+            className="grid grid-cols-2 gap-2 rounded border border-border p-3 text-sm md:grid-cols-4"
+            aria-label={t("lab.desk.registerNew")}
+            onSubmit={(e) => { e.preventDefault(); register.mutate(); }}
+          >
+            <label>{t("lab.desk.regName")}
+              <input className="mt-1 w-full rounded border border-input px-2 py-1" value={fields.name}
+                onChange={(e) => setFields((f) => ({ ...f, name: e.target.value }))} />
+            </label>
+            <label>{t("lab.desk.regPhone")}
+              <input className="mt-1 w-full rounded border border-input px-2 py-1" value={fields.phone}
+                onChange={(e) => setFields((f) => ({ ...f, phone: e.target.value }))} />
+            </label>
+            <label>{t("lab.desk.regAge")}
+              <input className="mt-1 w-full rounded border border-input px-2 py-1" inputMode="numeric" value={fields.ageYears}
+                onChange={(e) => setFields((f) => ({ ...f, ageYears: e.target.value }))} />
+            </label>
+            <label>{t("lab.desk.regSex")}
+              <select className="mt-1 w-full rounded border border-input px-2 py-1" value={fields.sex}
+                onChange={(e) => setFields((f) => ({ ...f, sex: e.target.value as RegisterFields["sex"] }))}>
+                {sexOptions.map((s) => <option key={s} value={s}>{t(`lab.desk.sex.${s}`)}</option>)}
+              </select>
+            </label>
+            <div className="col-span-2 flex gap-2 md:col-span-4">
+              <Button type="submit" disabled={fields.name.trim() === "" || register.isPending}>{t("lab.desk.regSave")}</Button>
+              <Button type="button" variant="outline" onClick={() => setRegistering(false)}>{t("lab.desk.cancel")}</Button>
+            </div>
+          </form>
+        )}
+
+        {selected !== null && (
+          <div className="space-y-3">
+            {/* ── the patient, confirmed ── */}
+            <div className="rounded border border-border bg-card p-3 text-sm" data-testid="patient-card">
+              <div className="flex flex-wrap items-baseline gap-x-3">
+                <span className="text-lg font-semibold">{selected.patient.display}</span>
+                <span>{sexAge(selected.patient.administrativeGender, selected.patient.dob)}</span>
+                <span className="text-muted-foreground">{selected.patient.uhid}</span>
+                {selected.patient.restricted && <span className="font-semibold">{t("lab.desk.restricted")}</span>}
+              </div>
+              {selected.visit !== null ? (
+                <p className="text-muted-foreground">
+                  {t("lab.desk.visit")} {selected.visit.encounterNo}
+                  {selected.visit.doctorName !== null && <> · {selected.visit.doctorName}</>}
+                  {selected.visit.departmentName !== null && <>, {selected.visit.departmentName}</>}
+                  {selected.visit.tokenNo !== null && <> · {t("lab.desk.token")} <span className="font-semibold text-foreground">T-{selected.visit.tokenNo}</span></>}
+                </p>
+              ) : (
+                <p className="text-muted-foreground">{t("lab.desk.walkInNote")}</p>
+              )}
+              {selected.orders.length > 0 && (
+                <p className="text-muted-foreground">
+                  {t("lab.desk.alreadyOnVisit")}: {selected.orders.map((o) => `${o.orderNo} (${String(o.itemCount)})`).join(", ")}
                 </p>
               )}
-              {hits.length > 1 && <p className="text-xs text-muted-foreground">{t("lab.desk.confirmByName")}</p>}
-              <ul className="divide-y divide-border rounded border border-border text-sm">
-                {hits.map((h) => (
-                  <li key={`${h.patient.id}-${h.visit?.encounterId ?? "none"}`}>
-                    <button type="button" className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left hover:bg-muted"
-                      onClick={() => choose(h)}>
-                      <span>
-                        <span className="font-medium">{h.patient.display}</span>
-                        <span className="text-muted-foreground"> · {sexAge(h.patient.administrativeGender, h.patient.dob)} · {h.patient.uhid}</span>
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {h.visit === null ? t("lab.desk.noVisitToday")
-                          : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}`}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
             </div>
-          )}
 
-          {registering && (
-            <form
-              className="grid grid-cols-2 gap-2 rounded border border-border p-3 text-sm md:grid-cols-4"
-              aria-label={t("lab.desk.registerNew")}
-              onSubmit={(e) => { e.preventDefault(); register.mutate(); }}
-            >
-              <label>{t("lab.desk.regName")}
-                <input className="mt-1 w-full rounded border border-input px-2 py-1" value={fields.name}
-                  onChange={(e) => setFields((f) => ({ ...f, name: e.target.value }))} />
+            {/* ── tests on the prescription ── */}
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold">{t("lab.desk.rxLines")}</h2>
+              {selected.visit !== null && selected.visit.advised.some((a) => a.orderable === null) && (
+                <p className="text-xs">{t("lab.desk.notInCatalogue")}: {selected.visit.advised.filter((a) => a.orderable === null).map((a) => a.code).join(", ")}</p>
+              )}
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="py-1">{t("lab.desk.test")}</th>
+                    <th>{t("lab.desk.tube")}</th>
+                    <th>{t("lab.desk.onSlip")}</th>
+                    <th className="text-right">{t("lab.desk.price")}</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l) => {
+                    const line = priced?.lines.find((p) => p.serviceId === l.orderable.serviceId) ?? null;
+                    return (
+                      <tr key={l.orderable.serviceId} className="border-t border-border">
+                        <td className="py-1">
+                          <span className="font-medium">{l.orderable.code}</span> · {l.orderable.nameEn}
+                          {l.orderable.consentRequired && <span className="ml-1 font-semibold">{t("lab.desk.consentTag")}</span>}
+                          {l.orderable.sensitive && <span className="ml-1 font-semibold">{t("lab.desk.sensitiveTag")}</span>}
+                          {l.source === "advised" && <span className="ml-1 text-xs text-muted-foreground">{t("lab.desk.fromRx")}</span>}
+                          {l.orderable.consentRequired && l.alreadyOrderedItemId === null && (
+                            <input
+                              className="ml-2 rounded border border-input px-2 py-0.5"
+                              placeholder={t("lab.desk.consentRecordedBy")}
+                              aria-label={`${t("lab.desk.consentRecordedBy")} ${l.orderable.code}`}
+                              value={consents[l.orderable.serviceId] ?? ""}
+                              onChange={(e) => setConsents((c) => ({ ...c, [l.orderable.serviceId]: e.target.value }))}
+                            />
+                          )}
+                        </td>
+                        <td className="text-muted-foreground">{l.orderable.container}</td>
+                        <td>
+                          {l.alreadyOrderedItemId !== null ? (
+                            <span className="text-xs">{t("lab.desk.alreadyOrdered")}</span>
+                          ) : (
+                            <label className="flex items-center gap-1">
+                              <input type="checkbox" checked={!l.onCredit}
+                                aria-label={`${t("lab.desk.billedHere")} ${l.orderable.code}`}
+                                onChange={(e) => setLines((prev) => prev.map((x) => (
+                                  x.orderable.serviceId === l.orderable.serviceId ? { ...x, onCredit: !e.target.checked } : x
+                                )))} />
+                              <span>{l.onCredit ? t("lab.desk.onCredit") : t("lab.desk.billedHere")}</span>
+                            </label>
+                          )}
+                        </td>
+                        <td className="text-right tabular-nums">{line === null ? "—" : fmtPaise(line.netPaise)}</td>
+                        <td className="text-right">
+                          {l.alreadyOrderedItemId === null && (
+                            <button type="button" className="text-xs underline"
+                              aria-label={`${t("lab.desk.remove")} ${l.orderable.code}`}
+                              onClick={() => touchLines((prev) => prev.filter((x) => x.orderable.serviceId !== l.orderable.serviceId))}>
+                              {t("lab.desk.remove")}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {lines.length === 0 && (
+                    <tr><td colSpan={5} className="py-2 text-muted-foreground">{t("lab.desk.noLines")}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── add from the catalogue ── */}
+            <div className="space-y-1">
+              <label className="text-sm">
+                {t("lab.desk.search")}
+                <input className="mt-1 w-full rounded border border-input px-2 py-1" value={query}
+                  onChange={(e) => setQuery(e.target.value)} />
               </label>
-              <label>{t("lab.desk.regPhone")}
-                <input className="mt-1 w-full rounded border border-input px-2 py-1" value={fields.phone}
-                  onChange={(e) => setFields((f) => ({ ...f, phone: e.target.value }))} />
-              </label>
-              <label>{t("lab.desk.regAge")}
-                <input className="mt-1 w-full rounded border border-input px-2 py-1" inputMode="numeric" value={fields.ageYears}
-                  onChange={(e) => setFields((f) => ({ ...f, ageYears: e.target.value }))} />
-              </label>
-              <label>{t("lab.desk.regSex")}
-                <select className="mt-1 w-full rounded border border-input px-2 py-1" value={fields.sex}
-                  onChange={(e) => setFields((f) => ({ ...f, sex: e.target.value as RegisterFields["sex"] }))}>
-                  {sexOptions.map((s) => <option key={s} value={s}>{t(`lab.desk.sex.${s}`)}</option>)}
+              {catalogue.data !== undefined && catalogue.data.length > 0 && (
+                <ul className="max-h-40 space-y-1 overflow-auto text-sm">
+                  {catalogue.data.slice(0, 12).map((o) => (
+                    <li key={o.serviceId} className="flex items-center justify-between gap-2">
+                      <span>
+                        {o.code} · {o.nameEn}
+                        {o.consentRequired && <span className="ml-1 font-semibold">{t("lab.desk.consentTag")}</span>}
+                        {o.sensitive && <span className="ml-1 font-semibold">{t("lab.desk.sensitiveTag")}</span>}
+                      </span>
+                      <Button type="button" size="sm" variant="outline" onClick={() => {
+                        touchLines((prev) => (prev.some((x) => x.orderable.serviceId === o.serviceId)
+                          ? prev
+                          : [...prev, { orderable: o, source: "added", onCredit: false, alreadyOrderedItemId: null }]));
+                        setQuery("");
+                      }}>{t("lab.desk.add")}</Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* ── what Vikas will draw · decided from the tests ── */}
+            {priced !== null && (
+              <div className="rounded border border-border p-2 text-sm" data-testid="tube-plan">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("lab.desk.tubes")}</h2>
+                <ul className="flex flex-wrap gap-3">
+                  {priced.tubes.map((tube) => (
+                    <li key={`${tube.container}-${tube.specimenType}`}>
+                      <span className="font-medium">{tube.container}</span>
+                      <span className="text-muted-foreground"> · {tube.codes.join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("lab.desk.tubesNote", { count: priced.tubes.length })}
+                </p>
+              </div>
+            )}
+
+            {warnings !== null && warnings.length > 0 && (
+              <section className="space-y-1 rounded border p-2 text-sm" style={{ borderColor: "var(--state-waiting)" }}>
+                <h2 className="font-semibold">{t("lab.desk.duplicates")}</h2>
+                <p className="text-xs text-muted-foreground">{t("lab.desk.duplicatesNote")}</p>
+                {warnings.map((w) => (
+                  <label key={w.duplicateOfItemId} className="flex items-start gap-2">
+                    <input type="checkbox" checked={acknowledged.includes(w.duplicateOfItemId)}
+                      onChange={(e) => setAcknowledged((a) => (
+                        e.target.checked ? [...a, w.duplicateOfItemId] : a.filter((x) => x !== w.duplicateOfItemId)
+                      ))} />
+                    <span>{w.reason}</span>
+                  </label>
+                ))}
+              </section>
+            )}
+
+            {/* ── priority · referred by · money ── */}
+            <div className="grid gap-2 md:grid-cols-3">
+              <label className="text-sm">
+                {t("lab.desk.priority")}
+                <select className="mt-1 w-full rounded border border-input px-2 py-1" value={priority}
+                  onChange={(e) => setPriority(e.target.value as typeof priority)}>
+                  <option value="routine">{t("lab.desk.routine")}</option>
+                  <option value="urgent">{t("lab.desk.urgent")}</option>
+                  <option value="stat">{t("lab.desk.stat")}</option>
                 </select>
               </label>
-              <div className="col-span-2 flex gap-2 md:col-span-4">
-                <Button type="submit" disabled={fields.name.trim() === "" || register.isPending}>{t("lab.desk.regSave")}</Button>
-                <Button type="button" variant="outline" onClick={() => setRegistering(false)}>{t("lab.desk.cancel")}</Button>
-              </div>
-            </form>
-          )}
-
-          {selected !== null && (
-            <div className="space-y-3">
-              {/* ── the patient, confirmed ── */}
-              <div className="rounded border border-border bg-card p-3 text-sm" data-testid="patient-card">
-                <div className="flex flex-wrap items-baseline gap-x-3">
-                  <span className="text-lg font-semibold">{selected.patient.display}</span>
-                  <span>{sexAge(selected.patient.administrativeGender, selected.patient.dob)}</span>
-                  <span className="text-muted-foreground">{selected.patient.uhid}</span>
-                  {selected.patient.restricted && <span className="font-semibold">{t("lab.desk.restricted")}</span>}
-                </div>
-                {selected.visit !== null ? (
-                  <p className="text-muted-foreground">
-                    {t("lab.desk.visit")} {selected.visit.encounterNo}
-                    {selected.visit.doctorName !== null && <> · {selected.visit.doctorName}</>}
-                    {selected.visit.departmentName !== null && <>, {selected.visit.departmentName}</>}
-                    {selected.visit.tokenNo !== null && <> · {t("lab.desk.token")} <span className="font-semibold text-foreground">T-{selected.visit.tokenNo}</span></>}
-                  </p>
-                ) : (
-                  <p className="text-muted-foreground">{t("lab.desk.walkInNote")}</p>
-                )}
-                {selected.orders.length > 0 && (
-                  <p className="text-muted-foreground">
-                    {t("lab.desk.alreadyOnVisit")}: {selected.orders.map((o) => `${o.orderNo} (${String(o.itemCount)})`).join(", ")}
-                  </p>
-                )}
-              </div>
-
-              {/* ── tests on the prescription ── */}
-              <div className="space-y-1">
-                <h2 className="text-sm font-semibold">{t("lab.desk.rxLines")}</h2>
-                {selected.visit !== null && selected.visit.advised.some((a) => a.orderable === null) && (
-                  <p className="text-xs">{t("lab.desk.notInCatalogue")}: {selected.visit.advised.filter((a) => a.orderable === null).map((a) => a.code).join(", ")}</p>
-                )}
-                <table className="w-full text-sm">
-                  <thead className="text-left text-xs text-muted-foreground">
-                    <tr>
-                      <th className="py-1">{t("lab.desk.test")}</th>
-                      <th>{t("lab.desk.tube")}</th>
-                      <th>{t("lab.desk.onSlip")}</th>
-                      <th className="text-right">{t("lab.desk.price")}</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map((l) => {
-                      const line = priced?.lines.find((p) => p.serviceId === l.orderable.serviceId) ?? null;
-                      return (
-                        <tr key={l.orderable.serviceId} className="border-t border-border">
-                          <td className="py-1">
-                            <span className="font-medium">{l.orderable.code}</span> · {l.orderable.nameEn}
-                            {l.orderable.consentRequired && <span className="ml-1 font-semibold">{t("lab.desk.consentTag")}</span>}
-                            {l.orderable.sensitive && <span className="ml-1 font-semibold">{t("lab.desk.sensitiveTag")}</span>}
-                            {l.source === "advised" && <span className="ml-1 text-xs text-muted-foreground">{t("lab.desk.fromRx")}</span>}
-                            {l.orderable.consentRequired && l.alreadyOrderedItemId === null && (
-                              <input
-                                className="ml-2 rounded border border-input px-2 py-0.5"
-                                placeholder={t("lab.desk.consentRecordedBy")}
-                                aria-label={`${t("lab.desk.consentRecordedBy")} ${l.orderable.code}`}
-                                value={consents[l.orderable.serviceId] ?? ""}
-                                onChange={(e) => setConsents((c) => ({ ...c, [l.orderable.serviceId]: e.target.value }))}
-                              />
-                            )}
-                          </td>
-                          <td className="text-muted-foreground">{l.orderable.container}</td>
-                          <td>
-                            {l.alreadyOrderedItemId !== null ? (
-                              <span className="text-xs">{t("lab.desk.alreadyOrdered")}</span>
-                            ) : (
-                              <label className="flex items-center gap-1">
-                                <input type="checkbox" checked={!l.onCredit}
-                                  aria-label={`${t("lab.desk.billedHere")} ${l.orderable.code}`}
-                                  onChange={(e) => setLines((prev) => prev.map((x) => (
-                                    x.orderable.serviceId === l.orderable.serviceId ? { ...x, onCredit: !e.target.checked } : x
-                                  )))} />
-                                <span>{l.onCredit ? t("lab.desk.onCredit") : t("lab.desk.billedHere")}</span>
-                              </label>
-                            )}
-                          </td>
-                          <td className="text-right tabular-nums">{line === null ? "—" : fmtPaise(line.netPaise)}</td>
-                          <td className="text-right">
-                            {l.alreadyOrderedItemId === null && (
-                              <button type="button" className="text-xs underline"
-                                aria-label={`${t("lab.desk.remove")} ${l.orderable.code}`}
-                                onClick={() => touchLines((prev) => prev.filter((x) => x.orderable.serviceId !== l.orderable.serviceId))}>
-                                {t("lab.desk.remove")}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {lines.length === 0 && (
-                      <tr><td colSpan={5} className="py-2 text-muted-foreground">{t("lab.desk.noLines")}</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* ── add from the catalogue ── */}
-              <div className="space-y-1">
+              {selected.visit === null && (
                 <label className="text-sm">
-                  {t("lab.desk.search")}
-                  <input className="mt-1 w-full rounded border border-input px-2 py-1" value={query}
-                    onChange={(e) => setQuery(e.target.value)} />
+                  {t("lab.desk.referredBy")}
+                  <input className="mt-1 w-full rounded border border-input px-2 py-1" value={referrerName}
+                    onChange={(e) => setReferrerName(e.target.value)} />
                 </label>
-                {catalogue.data !== undefined && catalogue.data.length > 0 && (
-                  <ul className="max-h-40 space-y-1 overflow-auto text-sm">
-                    {catalogue.data.slice(0, 12).map((o) => (
-                      <li key={o.serviceId} className="flex items-center justify-between gap-2">
-                        <span>
-                          {o.code} · {o.nameEn}
-                          {o.consentRequired && <span className="ml-1 font-semibold">{t("lab.desk.consentTag")}</span>}
-                          {o.sensitive && <span className="ml-1 font-semibold">{t("lab.desk.sensitiveTag")}</span>}
-                        </span>
-                        <Button type="button" size="sm" variant="outline" onClick={() => {
-                          touchLines((prev) => (prev.some((x) => x.orderable.serviceId === o.serviceId)
-                            ? prev
-                            : [...prev, { orderable: o, source: "added", onCredit: false, alreadyOrderedItemId: null }]));
-                          setQuery("");
-                        }}>{t("lab.desk.add")}</Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {/* ── what Vikas will draw · decided from the tests ── */}
-              {priced !== null && (
-                <div className="rounded border border-border p-2 text-sm" data-testid="tube-plan">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("lab.desk.tubes")}</h2>
-                  <ul className="flex flex-wrap gap-3">
-                    {priced.tubes.map((tube) => (
-                      <li key={`${tube.container}-${tube.specimenType}`}>
-                        <span className="font-medium">{tube.container}</span>
-                        <span className="text-muted-foreground"> · {tube.codes.join(", ")}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {t("lab.desk.tubesNote", { count: priced.tubes.length })}
-                  </p>
-                </div>
               )}
-
-              {warnings !== null && warnings.length > 0 && (
-                <section className="space-y-1 rounded border p-2 text-sm" style={{ borderColor: "var(--state-waiting)" }}>
-                  <h2 className="font-semibold">{t("lab.desk.duplicates")}</h2>
-                  <p className="text-xs text-muted-foreground">{t("lab.desk.duplicatesNote")}</p>
-                  {warnings.map((w) => (
-                    <label key={w.duplicateOfItemId} className="flex items-start gap-2">
-                      <input type="checkbox" checked={acknowledged.includes(w.duplicateOfItemId)}
-                        onChange={(e) => setAcknowledged((a) => (
-                          e.target.checked ? [...a, w.duplicateOfItemId] : a.filter((x) => x !== w.duplicateOfItemId)
-                        ))} />
-                      <span>{w.reason}</span>
-                    </label>
-                  ))}
-                </section>
-              )}
-
-              {/* ── priority · referred by · money ── */}
-              <div className="grid gap-2 md:grid-cols-3">
+              {selected.visit === null && labDoctors.length > 1 && (
                 <label className="text-sm">
-                  {t("lab.desk.priority")}
-                  <select className="mt-1 w-full rounded border border-input px-2 py-1" value={priority}
-                    onChange={(e) => setPriority(e.target.value as typeof priority)}>
-                    <option value="routine">{t("lab.desk.routine")}</option>
-                    <option value="urgent">{t("lab.desk.urgent")}</option>
-                    <option value="stat">{t("lab.desk.stat")}</option>
+                  {t("lab.desk.pathologistOfRecord")}
+                  <select className="mt-1 w-full rounded border border-input px-2 py-1" value={walkInDoctorId}
+                    aria-label={t("lab.desk.pathologistOfRecord")}
+                    onChange={(e) => setWalkInDoctorId(e.target.value)}>
+                    <option value="">—</option>
+                    {labDoctors.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}
                   </select>
                 </label>
-                {selected.visit === null && (
-                  <label className="text-sm">
-                    {t("lab.desk.referredBy")}
-                    <input className="mt-1 w-full rounded border border-input px-2 py-1" value={referrerName}
-                      onChange={(e) => setReferrerName(e.target.value)} />
-                  </label>
-                )}
-                {selected.visit === null && labDoctors.length > 1 && (
-                  <label className="text-sm">
-                    {t("lab.desk.pathologistOfRecord")}
-                    <select className="mt-1 w-full rounded border border-input px-2 py-1" value={walkInDoctorId}
-                      aria-label={t("lab.desk.pathologistOfRecord")}
-                      onChange={(e) => setWalkInDoctorId(e.target.value)}>
-                      <option value="">—</option>
-                      {labDoctors.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}
-                    </select>
-                  </label>
-                )}
-                <label className="text-sm">
-                  {t("lab.desk.tender")}
-                  <select className="mt-1 w-full rounded border border-input px-2 py-1" value={tender}
-                    onChange={(e) => setTender(e.target.value as typeof tender)}>
-                    <option value="cash">{t("lab.desk.cash")}</option>
-                    <option value="card">{t("lab.desk.card")}</option>
-                    <option value="upi">{t("lab.desk.upi")}</option>
-                  </select>
-                </label>
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={reflexConsent} onChange={(e) => setReflexConsent(e.target.checked)} />
-                {t("lab.desk.reflexConsent")}
+              )}
+              <label className="text-sm">
+                {t("lab.desk.tender")}
+                <select className="mt-1 w-full rounded border border-input px-2 py-1" value={tender}
+                  onChange={(e) => setTender(e.target.value as typeof tender)}>
+                  <option value="cash">{t("lab.desk.cash")}</option>
+                  <option value="card">{t("lab.desk.card")}</option>
+                  <option value="upi">{t("lab.desk.upi")}</option>
+                </select>
               </label>
-
-              {priced !== null && (
-                <div className="rounded border border-border bg-card p-2 text-sm" data-testid="money">
-                  <p><span className="font-semibold">{t("lab.desk.collectNow")}:</span> {fmtPaise(paidPaise)}</p>
-                  {anyCredit && (
-                    <p>
-                      <span className="font-semibold">{t("lab.desk.onCreditTotal")}:</span> {fmtPaise(creditPaise)}
-                      <span className="text-xs text-muted-foreground"> — {t("lab.desk.billLaterNote")}</span>
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" disabled={orderableLines.length === 0 || check.isPending} onClick={() => check.mutate()}>
-                  {t("lab.desk.checkDuplicates")}
-                </Button>
-                <Button
-                  type="button"
-                  disabled={
-                    orderableLines.length === 0 || missingConsent.length > 0 || unacknowledged.length > 0
-                    /** Taking money needs a PRICE, and the price is the server's. */
-                    || priced === null || place.isPending || check.isPending
-                    /** Two pathologists: the walk-in names one (F6). */
-                    || (selected.visit === null && labDoctors.length > 1 && walkInDoctorId === "")
-                  }
-                  onClick={() => place.mutate()}
-                >
-                  {t("lab.desk.save")}
-                </Button>
-              </div>
-              {missingConsent.length > 0 && (
-                <p className="text-sm font-semibold">
-                  {t("lab.desk.consentNeeded")}: {missingConsent.map((l) => l.orderable.code).join(", ")}
-                </p>
-              )}
             </div>
-          )}
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={reflexConsent} onChange={(e) => setReflexConsent(e.target.checked)} />
+              {t("lab.desk.reflexConsent")}
+            </label>
 
-          {error !== null && <p role="alert" className="text-sm font-semibold">{error}</p>}
-          {placed !== null && (
-            <section className="space-y-1 rounded border border-border bg-card p-3 text-sm" data-testid="placed">
-              <p className="font-semibold">{t("lab.desk.placed")}: {placed.orderNo}</p>
-              <p>{t("lab.desk.visit")}: {placed.encounterNo} · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}
-                {placed.invoice.creditExtended && <> · {t("lab.desk.creditExtended")}</>}</p>
-              <p className="text-muted-foreground">{t("lab.desk.sentToCollection")}</p>
-            </section>
-          )}
-        </section>
-      </div>
-    </LabSeatFrame>
+            {priced !== null && (
+              <div className="rounded border border-border bg-card p-2 text-sm" data-testid="money">
+                <p><span className="font-semibold">{t("lab.desk.collectNow")}:</span> {fmtPaise(paidPaise)}</p>
+                {anyCredit && (
+                  <p>
+                    <span className="font-semibold">{t("lab.desk.onCreditTotal")}:</span> {fmtPaise(creditPaise)}
+                    <span className="text-xs text-muted-foreground"> — {t("lab.desk.billLaterNote")}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" disabled={orderableLines.length === 0 || check.isPending} onClick={() => check.mutate()}>
+                {t("lab.desk.checkDuplicates")}
+              </Button>
+              <Button
+                type="button"
+                disabled={
+                  orderableLines.length === 0 || missingConsent.length > 0 || unacknowledged.length > 0
+                  /** Taking money needs a PRICE, and the price is the server's. */
+                  || priced === null || place.isPending || check.isPending
+                  /** Two pathologists: the walk-in names one (F6). */
+                  || (selected.visit === null && labDoctors.length > 1 && walkInDoctorId === "")
+                }
+                onClick={() => place.mutate()}
+              >
+                {t("lab.desk.save")}
+              </Button>
+            </div>
+            {missingConsent.length > 0 && (
+              <p className="text-sm font-semibold">
+                {t("lab.desk.consentNeeded")}: {missingConsent.map((l) => l.orderable.code).join(", ")}
+              </p>
+            )}
+          </div>
+        )}
+
+        {error !== null && <p role="alert" className="text-sm font-semibold">{error}</p>}
+        {placed !== null && (
+          <section className="space-y-1 rounded border border-border bg-card p-3 text-sm" data-testid="placed">
+            <p className="font-semibold">{t("lab.desk.placed")}: {placed.orderNo}</p>
+            <p>{t("lab.desk.visit")}: {placed.encounterNo} · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}
+              {placed.invoice.creditExtended && <> · {t("lab.desk.creditExtended")}</>}</p>
+            <p className="text-muted-foreground">{t("lab.desk.sentToCollection")}</p>
+          </section>
+        )}
+      </section>
+    </LabStation>
   );
 }

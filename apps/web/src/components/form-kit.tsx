@@ -63,6 +63,7 @@ export function TextField({
   placeholder,
   className,
   onChange,
+  readOnly,
 }: {
   name: string;
   label: string;
@@ -70,6 +71,8 @@ export function TextField({
   autoFocus?: boolean;
   placeholder?: string;
   className?: string;
+  /** Shown, not editable — the value stays registered, so it is never dirty and never sent. */
+  readOnly?: boolean;
   /**
    * Runs BESIDE the form's own change handler, never instead of it — this is react-hook-form's
    * `register(name, { onChange })` affordance, exposed rather than re-implemented. Added by Plan
@@ -90,6 +93,8 @@ export function TextField({
         type={type}
         autoFocus={autoFocus}
         placeholder={placeholder}
+        readOnly={readOnly}
+        aria-readonly={readOnly === true ? true : undefined}
         className="w-full rounded border px-2 py-1"
         {...register(name, onChange === undefined ? {} : { onChange })}
       />
@@ -103,18 +108,30 @@ export function SelectField({
   label,
   options,
   className,
+  disabled,
 }: {
   name: string;
   label: string;
   options: { value: string; label: string }[];
   className?: string;
+  /**
+   * Shown, not changeable. NOT the `disabled` attribute: react-hook-form reads a disabled field as
+   * `undefined`, and a `form.reset(values)` after a save would then blank it. The control is made
+   * inert instead (no pointer, no focus, no keys), so its value stays registered and is never dirty.
+   */
+  disabled?: boolean;
 }): React.ReactElement {
   const { register, formState } = useFormContext();
   const error = fieldError(formState.errors as Record<string, unknown>, name);
   return (
     <div className={className}>
       <label className="block text-sm font-medium" htmlFor={`f-${name}`}>{label}</label>
-      <select id={`f-${name}`} data-field className="w-full rounded border px-2 py-1" {...register(name)}>
+      <select
+        id={`f-${name}`} data-field className="w-full rounded border px-2 py-1" {...register(name)}
+        {...(disabled === true
+          ? { "aria-disabled": true, tabIndex: -1, style: { pointerEvents: "none", opacity: 0.6 }, onKeyDown: (e: React.KeyboardEvent) => { e.preventDefault(); } }
+          : {})}
+      >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}

@@ -89,11 +89,18 @@ export async function listAllergies(db: Db, patientId: string): Promise<AllergyR
     .orderBy(desc(patientAllergies.recordedAt));
 }
 
+/**
+ * WASA L-05 — `patientId` is the CANONICAL id of the patient in the route's path (the caller has
+ * already resolved it through `getPatient`, which runs the merge chain and the sealed-record gate).
+ * An allergy of anybody else is `allergy_not_found`: the same 404 as an id that does not exist, so
+ * the path cannot be used to probe which ids exist elsewhere, and nothing is written.
+ */
 export async function markAllergyEnteredInError(
   tx: Tx,
   actor: Actor,
   allergyId: string,
   reason: string,
+  patientId: string,
 ): Promise<void> {
   if (actor.type !== "user") throw new PatientError("user_actor_required");
   const trimmed = typeof reason === "string" ? reason.trim() : "";
@@ -101,7 +108,7 @@ export async function markAllergyEnteredInError(
 
   const rows = await tx.select().from(patientAllergies).where(eq(patientAllergies.id, allergyId));
   const row = rows[0];
-  if (!row) throw new PatientError("allergy_not_found", `unknown allergy ${allergyId}`);
+  if (!row || row.patientId !== patientId) throw new PatientError("allergy_not_found", `unknown allergy ${allergyId}`);
 
   const updated = await tx
     .update(patientAllergies)

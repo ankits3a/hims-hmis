@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchClosing } from "../../lib/pharmacy-api";
+import { BillMessageLine } from "./messages";
 import { ticketLabel } from "./model";
 import { istToday } from "./work";
 
@@ -86,6 +87,8 @@ export function Closed({ dispenseId }: { dispenseId: string }): React.ReactEleme
           <div style={{ fontSize: 12.5, lineHeight: "18px", marginTop: 5 }}>{b.body}</div>
         </div>
       ))}
+      {/* PHARMACY P6 (patient messages) — quietly: where the bill's SMS is. */}
+      <BillMessageLine dispenseId={dispenseId} />
     </div>
   );
 }

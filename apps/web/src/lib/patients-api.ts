@@ -234,6 +234,8 @@ export type WireAbhaCapability = {
   canRecord: boolean;
   canCreate: boolean;
   canVerify: boolean;
+  /** ABDM S1 — the counter's scan-and-share QR and pending list. Absent from a pre-S1 server: read as false. */
+  canScanShare?: boolean;
   reason: string;
 };
 

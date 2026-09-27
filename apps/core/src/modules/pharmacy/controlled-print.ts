@@ -1,4 +1,5 @@
 import { esc } from "../../kernel/printing/render";
+import { survivorsOf } from "../materials";
 import { loadOpdConfig } from "../opd";
 import { readControlledBalance, readControlledRegister } from "./controlled-office";
 import { istDateOf } from "./config";
@@ -58,9 +59,17 @@ async function frame(db: Db, title: string, form: string, period: string, pages:
 
 type Row = ControlledRegisterView["rows"][number];
 
-function byDrug(rows: readonly Row[]): Map<string, Row[]> {
+/**
+ * The register's pages, one per drug. PHARMACY P6 — a drug is its item AFTER merges: the rows of a
+ * duplicate since merged into another stay as written (the register is append-only) and print on the
+ * survivor's page, so the page's running balance is the whole drug's (`through`, from `survivorsOf`).
+ */
+function byDrug(rows: readonly Row[], through: ReadonlyMap<string, string>): Map<string, Row[]> {
   const out = new Map<string, Row[]>();
-  for (const r of rows) out.set(r.itemId, [...(out.get(r.itemId) ?? []), r]);
+  for (const r of rows) {
+    const key = through.get(r.itemId) ?? r.itemId;
+    out.set(key, [...(out.get(key) ?? []), r]);
+  }
   return out;
 }
 
@@ -69,11 +78,17 @@ const signature = `<footer><div>Full name / designation: ____________________</d
 async function form3h(db: Db, actor: Actor, from: string, to: string): Promise<RenderedDocument> {
   const reg = await readControlledRegister(db, actor, { register: "ndps", from, to });
   const balance = await readControlledBalance(db, actor, { from, to });
-  const openingOf = (itemId: string): number => balance.rows.filter((b) => b.itemId === itemId).reduce((s, b) => s + b.opening, 0);
+  const through = await survivorsOf(db, [...balance.rows.map((b) => b.itemId), ...reg.rows.map((r) => r.itemId)]);
+  const k = (itemId: string): string => through.get(itemId) ?? itemId;
+  const openingOf = (key: string): number => balance.rows.filter((b) => k(b.itemId) === key).reduce((s, b) => s + b.opening, 0);
   const drugs = new Map<string, { name: string; unit: string }>();
-  for (const b of balance.rows) if (b.ndpsClass !== null) drugs.set(b.itemId, { name: b.drugName, unit: b.unit });
-  for (const r of reg.rows) drugs.set(r.itemId, { name: r.drugName, unit: r.unit });
-  const rowsBy = byDrug(reg.rows);
+  // A page is named as the survivor names the drug; a merged duplicate's name only when the survivor has no row.
+  const name = (itemId: string, drug: { name: string; unit: string }): void => {
+    if (!drugs.has(k(itemId)) || itemId === k(itemId)) drugs.set(k(itemId), drug);
+  };
+  for (const b of balance.rows) if (b.ndpsClass !== null) name(b.itemId, { name: b.drugName, unit: b.unit });
+  for (const r of reg.rows) name(r.itemId, { name: r.drugName, unit: r.unit });
+  const rowsBy = byDrug(reg.rows, through);
   const pages = [...drugs.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([itemId, drug]) => {
     let running = openingOf(itemId);
     const rows = rowsBy.get(itemId) ?? [];
@@ -106,7 +121,7 @@ async function form3h(db: Db, actor: Actor, from: string, to: string): Promise<R
 
 async function scheduleX(db: Db, actor: Actor, from: string, to: string): Promise<RenderedDocument> {
   const reg = await readControlledRegister(db, actor, { register: "x", from, to });
-  const pages = [...byDrug(reg.rows).values()].sort((a, b) => a[0]!.drugName.localeCompare(b[0]!.drugName)).map((rows) => {
+  const pages = [...byDrug(reg.rows, await survivorsOf(db, reg.rows.map((r) => r.itemId))).values()].sort((a, b) => a[0]!.drugName.localeCompare(b[0]!.drugName)).map((rows) => {
     const body = rows.map((r) => {
       const supplied = r.direction === "out";
       return `<tr><td>#${String(r.seq)}</td><td>${dayLabel(istDay(r.occurredAt))}</td>

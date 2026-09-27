@@ -42,9 +42,16 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
       "pharmacy.reports.read", "pharmacy.reports.margin", "pharmacy.tally.export",
       // P6 — the controlled-drug cabinet's key, its witness, and its licences.
       "pharmacy.ndps.custody", "pharmacy.ndps.witness", "pharmacy.licences.manage",
+      // P6 (patient messages) — the desk's consent chip, and the office's Messages side.
+      "pharmacy.messages.consent", "pharmacy.messages.manage",
     ]);
     expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/desk", "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder", "/pharmacy/office", "/pharmacy/office/reports", "/pharmacy/registers/h1", "/pharmacy/leakage", "/pharmacy/retail", "/pharmacy/retail-licence", "/pharmacy/downtime"]);
-    expect(pharmacyManifest.subscriptions).toEqual([{ event: "prescription.issued", consumer: "pharmacy.rx_issued" }]);
+    expect(pharmacyManifest.subscriptions).toEqual([
+      { event: "prescription.issued", consumer: "pharmacy.rx_issued" },
+      // P6 (patient messages) — the bill's message, from either counter.
+      { event: "dispense.handed_over", consumer: "pharmacy.patient_messages" },
+      { event: "retail.sold", consumer: "pharmacy.patient_messages" },
+    ]);
     const all = installed().allPermissions();
     for (const p of pharmacyManifest.permissions) expect(all).toContain(p);
   });

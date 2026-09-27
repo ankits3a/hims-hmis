@@ -87,6 +87,9 @@ const NOT_SECRET: ReadonlyMap<string, string> = new Map([
   ["Content-Type", "the media type of the ABDM gateway call (modules/abdm/gateway-client.ts); not a credential"],
   ["X-Hip-Id", "this facility's public HFR/HIP id on ABDM calls and callbacks (modules/abdm); an identifier, not a credential"],
   ["X-Hiu-Id", "this facility's public HIU id on ABDM calls and callbacks (modules/abdm); an identifier, not a credential"],
+  // ABDM S1–S3. Again one read and one write, neither a secret:
+  ["Request-Id", "ABDM's per-request UUID, read by modules/abdm/hiu.ts to de-duplicate a push page; correlation, not a credential"],
+  ["X-Cm-Id", "the consent-manager id (\"sbx\"/\"abdm\") that modules/abdm/gateway-client.ts sets on gateway calls; not a credential"],
 ]);
 
 /** Every request header the API reads, from its source, canonicalised and sorted. */
@@ -151,12 +154,61 @@ describe("WASA M-04 — the edge access log redacts every credential the API acc
     expect(find(log, /^request>uri (?!query)/)).toEqual([]);
   });
 
+  it("redacts `pt`, the ABDM HIU push token — the one credential that rides a query string", () => {
+    const query = only(log, /^request>uri query$/, "uri query filter");
+    expect(query.lines).toContain("replace pt REDACTED");
+  });
+
   it("both the HTTPS site and the :80 redirect site write through that one snippet", () => {
     for (const site of [/^hmis\.crkmch\.com$/, /^http:\/\/$/]) {
       expect(only(prod, site, `site ${site.source}`).lines).toContain("import access_log");
     }
     // And nothing logs around it: a second, unfiltered `log` would reopen the leak.
     expect(find(prod, /^log$/)).toHaveLength(1);
+  });
+});
+
+/**
+ * ABDM S3 — THE PUSH TOKEN MUST NOT RETURN TO THE PATH. The HIU's data-push address carries a 256-bit
+ * token that authenticates the push. S3 first put it in the PATH (`…/data-push/<token>`), and the
+ * access log above keeps the path in the clear by design — so the credential went to disk. It now
+ * rides the `pt` query parameter, which the uri query filter replaces. These pin both halves: no ABDM
+ * route takes a token as a path parameter, and the name the push reads is the name the log redacts.
+ */
+describe("WASA M-04 — the ABDM push token rides the query, where the edge log redacts it", () => {
+  const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
+  const log = only(only(prod, /^\(access_log\)$/, "(access_log) snippet"), /^log$/, "log block inside the snippet");
+  const ABDM = resolve(CORE_SRC, "modules", "abdm");
+  const sources = readdirSync(ABDM)
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+    .map((file) => ({ file, text: readFileSync(resolve(ABDM, file), "utf8") }));
+  const source = (file: string): string => {
+    const hit = sources.find((s) => s.file === file);
+    if (hit === undefined) throw new Error(`modules/abdm/${file} is gone — this census is stale`);
+    return hit.text;
+  };
+  // Every path parameter an ABDM string declares (`":id"`, `"patients/:patientId/records"`), and every
+  // `@Param("…")` a handler takes — from the source, so a new route is in the census without an edit.
+  const pathParams = sources.flatMap(({ file, text }) => [...text.matchAll(/(?<=["'`/]):([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => ({ file, name: m[1]! })));
+  const paramReads = sources.flatMap(({ file, text }) => [...text.matchAll(/@Param\(\s*["'`]([^"'`]+)["'`]/g)].map((m) => ({ file, name: m[1]! })));
+
+  it("the census is non-vacuous: the three ABDM controllers and the path parameters they do declare", () => {
+    expect(sources.filter((s) => /@Controller\(/.test(s.text)).map((s) => s.file)).toEqual(expect.arrayContaining(["abha.controller.ts", "callbacks.controller.ts", "hiu.controller.ts"]));
+    expect(pathParams.map((p) => p.name)).toEqual(expect.arrayContaining(["id", "patientId"]));
+    expect(paramReads.map((p) => p.name)).toEqual(expect.arrayContaining(["id", "patientId"]));
+  });
+
+  it("no ABDM route declares a path parameter named token, and no handler reads one", () => {
+    expect(pathParams.filter((p) => /token/i.test(p.name))).toEqual([]);
+    expect(paramReads.filter((p) => /token/i.test(p.name))).toEqual([]);
+    for (const { file, text } of sources.filter((s) => /@Controller\(/.test(s.text))) expect([file, /:token\b/.test(text)]).toEqual([file, false]);
+  });
+
+  it("the push reads its token from the query parameter the edge log redacts", () => {
+    const name = /export const HIU_PUSH_TOKEN_PARAM = "([A-Za-z0-9_]+)";/.exec(source("hiu-client.ts"))?.[1];
+    expect(name).toBe("pt");
+    expect(source("hiu.controller.ts")).toMatch(/@Query\(HIU_PUSH_TOKEN_PARAM\)/);
+    expect(only(log, /^request>uri query$/, "uri query filter").lines).toContain(`replace ${name!} REDACTED`);
   });
 });
 
@@ -184,5 +236,70 @@ describe("WASA L-09 — the edge does not name its software", () => {
   it("the :80 redirect is still a 308 to the same URL, now without the banner", () => {
     const http = only(prod, /^http:\/\/$/, "http:// site");
     expect(http.lines).toEqual(expect.arrayContaining(["header -Server", "redir https://{host}{uri} 308"]));
+  });
+});
+
+/**
+ * WASA M-01 — A CONTENT-SECURITY-POLICY, REPORT-ONLY FIRST. The SPA keeps its bearer token in
+ * `localStorage`, so any XSS reads it; a CSP is the control that makes an injected script fail to
+ * run at all. It ships as `-Report-Only` so a directive the app really needs shows up as a console
+ * report rather than a broken screen, and the NEXT change flips the header name to enforce it.
+ */
+describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
+  const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
+  const uat = parseCaddyfile(readFileSync(UAT_CADDYFILE, "utf8"));
+  const HEADER = "Content-Security-Policy-Report-Only";
+
+  /** The one CSP line in a site's `header` block, as directive → sources. */
+  function policyOf(tree: Block, site: RegExp, name: string): Map<string, string[]> {
+    const header = only(only(tree, site, `${name} site`), /^header$/, `${name} header block`);
+    const lines = header.lines.filter((l) => /^Content-Security-Policy/.test(l));
+    expect([name, lines.length]).toEqual([name, 1]);
+    const m = new RegExp(`^${HEADER} "([^"]+)"$`).exec(lines[0]!);
+    if (m === null) throw new Error(`${name}: CSP line is not \`${HEADER} "<policy>"\`: ${lines[0]!}`);
+    return new Map(m[1]!.split(";").map((d) => d.trim()).filter((d) => d !== "").map((d) => {
+      const [directive, ...sources] = d.split(/\s+/);
+      return [directive!, sources];
+    }));
+  }
+
+  for (const [name, tree, site] of [
+    ["prod", prod, /^hmis\.crkmch\.com$/],
+    ["uat", uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/],
+  ] as const) {
+    it(`${name}: no framing, no plugins, and scripts only from this origin`, () => {
+      const p = policyOf(tree, site, name);
+      expect(p.get("frame-ancestors")).toEqual(["'none'"]);
+      expect(p.get("object-src")).toEqual(["'none'"]);
+      expect(p.get("default-src")).toEqual(["'self'"]);
+      expect(p.get("base-uri")).toEqual(["'self'"]);
+      expect(p.get("form-action")).toEqual(["'self'"]);
+      // The directive the whole policy exists for: no inline script and no eval, ever.
+      expect(p.get("script-src")).toEqual(["'self'"]);
+    });
+  }
+
+  it("production and UAT send the SAME policy, so UAT is where a violation shows first", () => {
+    const text = (tree: Block, site: RegExp): string | undefined =>
+      only(only(tree, site, "site"), /^header$/, "header block").lines.find((l) => l.startsWith("Content-Security-Policy"));
+    const prodPolicy = text(prod, /^hmis\.crkmch\.com$/);
+    expect(prodPolicy).toMatch(/^Content-Security-Policy/); // not two absences agreeing
+    expect(text(uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/)).toBe(prodPolicy);
+  });
+});
+
+/**
+ * OWNER RULING 2026-09-27: "the site should allow the webcam on its pages". Desk One photographs the
+ * paper slip (`slip-capture.tsx`), and `camera=()` blocked getUserMedia on every page, which left only
+ * the file-input fallback. `camera=(self)` lets our own origin use the camera and still refuses it to
+ * any embedded third party. Geolocation and the microphone stay off: nothing here uses them.
+ */
+describe("Owner 2026-09-27 — the site's own pages may use the camera", () => {
+  const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
+
+  it("Permissions-Policy grants camera to self only, and keeps geolocation and microphone off", () => {
+    const header = only(only(prod, /^hmis\.crkmch\.com$/, "prod site"), /^header$/, "prod header block");
+    const policy = header.lines.filter((l) => l.startsWith("Permissions-Policy "));
+    expect(policy).toEqual(['Permissions-Policy "geolocation=(), microphone=(), camera=(self)"']);
   });
 });
