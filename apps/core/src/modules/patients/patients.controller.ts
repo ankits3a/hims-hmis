@@ -190,7 +190,14 @@ const registerBody = z.object({
   coverages: z.array(coverageBody).max(10).optional(),
   // D9 (DPDP): opt-IN means the patient acted — default false, never pre-checked (T6).
   promotionalOptIn: z.boolean().default(false),
-});
+})
+  /**
+   * WASA N-01 — REGISTRATION REFUSES AN UNKNOWN KEY, for the reason `patchBody` below does (C1's
+   * second close review): zod strips what it does not know, so `blood_group` in snake_case or a stray
+   * `isVip` came back 201 with the value silently gone. Every key Desk One (`registerBodyOf`) and the
+   * lab desk send is declared above, so this refuses only what was already being discarded.
+   */
+  .strict();
 
 const patchBody = registerBody
   // FD-8 — `acknowledgedDuplicates` is a REGISTRATION-time judgement and must not leak into PATCH

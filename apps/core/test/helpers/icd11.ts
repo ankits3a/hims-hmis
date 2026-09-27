@@ -1,10 +1,12 @@
+import { crc32, deflateRawSync } from "node:zlib";
 import { icd11MapLoads, icd11MapRows } from "../../src/kernel/db/schema";
 import type { Db } from "../../src/kernel/db/client";
 
 /**
  * ═══ SYNTHETIC ROWS IN WHO'S ICD-10 → ICD-11 FORMAT — AND ONLY SYNTHETIC ═══
  *
- * WHO's mapping data may not be committed (licence §1.2.4 is unruled; see `icd11_map_rows`). Every
+ * WHO's mapping data is not committed: the owner's 2026-09-26 ruling lets the loader DOWNLOAD it at run
+ * time (`--from-who`), and the repository still holds none of it. Every
  * row here is MADE UP: ICD-10 codes in the X00 range, ICD-11 codes beginning `ZZ` (no such ICD-11
  * stem exists), titles that say "Synthetic", URIs on the reserved `.invalid` domain. Only the SHAPE
  * is WHO's — the header, the tabs, the CRLF, the stray stamp cell and the three edge cases — because
@@ -51,4 +53,56 @@ export async function seedIcd11Release(
     icd11FoundationUri: r.mapKind === "no_mapping" ? "No Mapping" : `https://synthetic.invalid/entity/${String(i)}`,
     mapKind: r.mapKind ?? "mapped",
   })));
+}
+
+export type SyntheticZipEntry = {
+  name: string; data: Buffer;
+  /** 8 deflates (the default), 0 stores; any other number is written as given over the raw bytes. */
+  method?: number;
+  /** General-purpose flags, written to both headers — bit 0 is "encrypted". */
+  flags?: number;
+};
+
+/**
+ * A ZIP ARCHIVE BUILT HERE, BYTE BY BYTE, SO NO TEST EVER TOUCHES WHO'S FILE. Local headers, then the
+ * central directory, then the 22-byte end record with no comment — so `zip.length - 22` is the end
+ * record and a test can tamper with a field at a known offset.
+ */
+export function syntheticZip(entries: SyntheticZipEntry[]): Buffer {
+  const parts: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+  for (const e of entries) {
+    const method = e.method ?? 8;
+    const body = method === 8 ? deflateRawSync(e.data) : e.data;
+    const name = Buffer.from(e.name, "utf8");
+    const crc = crc32(e.data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(e.flags ?? 0, 6);
+    local.writeUInt16LE(method, 8); local.writeUInt32LE(crc, 14); local.writeUInt32LE(body.length, 18);
+    local.writeUInt32LE(e.data.length, 22); local.writeUInt16LE(name.length, 26);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(e.flags ?? 0, 8);
+    cd.writeUInt16LE(method, 10); cd.writeUInt32LE(crc, 16); cd.writeUInt32LE(body.length, 20);
+    cd.writeUInt32LE(e.data.length, 24); cd.writeUInt16LE(name.length, 28); cd.writeUInt32LE(offset, 42);
+    parts.push(local, name, body);
+    central.push(cd, name);
+    offset += local.length + name.length + body.length;
+  }
+  const cdBytes = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(cdBytes.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, cdBytes, end]);
+}
+
+/** WHO's archive in miniature: the one-to-one file among the decoys whose names it contains. */
+export function syntheticWhoZip(text = syntheticWhoMap(), method = 8): Buffer {
+  const decoy = (name: string): SyntheticZipEntry => ({ name, data: Buffer.from(`decoy ${name}\r\n`, "utf8") });
+  return syntheticZip([
+    decoy("10To11MapToMultipleCategories.txt"),
+    decoy("foundation_10To11MapToOneCategory.txt"),
+    { name: "10To11MapToOneCategory.txt", data: Buffer.from(text, "utf8"), method },
+    decoy("readme.txt"),
+  ]);
 }
