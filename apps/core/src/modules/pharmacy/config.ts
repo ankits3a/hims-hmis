@@ -32,8 +32,28 @@ export const PHARMACY_SUBSTITUTION_ENABLED = true;
 /** D7 — the schedules whose hand-over needs `pharmacy.dispense.scheduled` (a registered pharmacist). */
 export const SCHEDULED_FLAGS = ["H", "H1"] as const;
 
-/** R-3 (owner ruling 2026-09-02) — refused at the OPD counter until 16d's double custody. */
+/**
+ * R-3 (owner ruling 2026-09-02) — refused at the OPD counter until 16d's double custody. PHARMACY P6 (owner
+ * ruling 2026-09-26): still refused WITHOUT a current Form 20F licence, and at the walk-in and paper
+ * counters always; with the licence the line is a controlled one (`controlled.ts`), picked from the cabinet
+ * and handed over under two keys.
+ */
 export const REFUSED_FLAGS = ["X"] as const;
+
+/**
+ * PHARMACY P6 — the controlled-drug cabinet: a materials store whose attributes say `controlled: true`,
+ * where every narcotic, psychotropic and Schedule X drug is kept (D&C Rules r.65(12): "under lock and key
+ * in a cupboard or drawer reserved solely for" them) and every movement is made by two people. Seeded by
+ * `seed:pharmacy`.
+ */
+export const CONTROLLED_STORE_CODE = "PHARM-NDPS";
+
+/**
+ * PHARMACY P6 — a controlled-drug licence inside its last this-many days is due for renewal: RMI
+ * recognition is applied for "at least sixty days before the expiry" (NDPS Rules r.52-O); the same notice
+ * serves the Form 20F retention fee.
+ */
+export const LICENCE_RENEWAL_NOTICE_DAYS = 60;
 
 /** R-4 — the schedule whose hand-over writes a register row (Rule 65(3)). */
 export const REGISTER_FLAGS = ["H1"] as const;
@@ -99,3 +119,30 @@ export const RETAIL_RETURN_REF_TYPE = "pharmacy_retail_return";
  * not procurement authority — a default a pharmacist edits on every order).
  */
 export const PURCHASE_DEFAULT_LEAD_DAYS = 3;
+
+/**
+ * PHARMACY P6 (patient messages) — the pharmacy's two templates in the notify kernel's registry
+ * (`kernel/notify/templates.ts`): the bill after a sale, the opt-in refill reminder.
+ */
+export const PHARMACY_BILL_TEMPLATE = "pharmacy_bill_ready";
+export const PHARMACY_REFILL_TEMPLATE = "pharmacy_refill_due";
+export const PHARMACY_MESSAGE_TEMPLATES = [PHARMACY_BILL_TEMPLATE, PHARMACY_REFILL_TEMPLATE] as const;
+
+/**
+ * PHARMACY P6 — the refill reminder's three numbers. DECIDED as common Indian retail-pharmacy practice
+ * (no owner ruling needed: not money, procurement or law):
+ *   - remind 3 days before the medicines run out — time to come in, not so early it is forgotten;
+ *   - only a line lasting 20 days or more is "chronic-looking": a 5-day antibiotic is finished, not refilled;
+ *   - look back 200 days, which holds a six-month course with a margin.
+ */
+export const REFILL_REMINDER_LEAD_DAYS = 3;
+export const REFILL_MIN_SUPPLY_DAYS = 20;
+export const REFILL_LOOKBACK_DAYS = 200;
+
+/**
+ * PHARMACY P6 — MAY A REMINDER NAME THE MEDICINES? OFF. The owner may switch it on; until then a message
+ * names no drug at all, because a name on a shared phone is a diagnosis. Even ON, a Schedule X, NDPS or
+ * H1 line is never named (`messages.ts` `namableDrugs`) — and turning it on means registering the
+ * named wording with DLT and WhatsApp first, or the gateways will drop every such message.
+ */
+export const REFILL_REMINDER_NAMES_DRUGS = false;

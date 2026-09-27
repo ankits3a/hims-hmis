@@ -11,6 +11,14 @@ export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./
  * module's S1 handlers call it after ABDM has answered. The counter paths refuse `verified`.
  */
 export { ABDM_ACTOR, recordAbhaVerifiedByAbdm } from "./abha-verified";
+/**
+ * ABDM S1 — taking ABDM's name, date of birth and gender at the link (through `updatePatient`, with
+ * the lock's one key — the key itself is NOT exported), and the one-ABHA-one-patient lookup the abdm
+ * module uses to tell a clerk which record already holds an ABHA.
+ */
+export { ABDM_EVIDENCE_REF, acceptAbdmDemographics } from "./abha-verified";
+export { abhaAlreadyLinked, findAbhaHolder, holderUhidVisibleTo } from "./abha-holders";
+export type { AbhaHolder } from "./abha-holders";
 export type { CoverageInput, GuardianInput, PatientPatch, PatientRow, RegisterPatientInput } from "./registration";
 export { getPatientSummaries, listMergedLoserIds } from "./registration"; // Plan 07 read helpers
 export type { PatientSummary } from "./registration";
@@ -36,6 +44,8 @@ export { searchPatients, visiblePatientIds } from "./search";
  * through this seam, rather than a second INSERT in the pharmacy.
  */
 export { captureDocument } from "./documents";
+// PHARMACY P6 — the controlled hand-over checks the retained prescription is this patient's document.
+export { listDocuments } from "./documents";
 export type { MatchLane, PatientSearchResult } from "./search";
 /** FD-8 — the near-match probe, shared by `POST /patients` and the walk-in. */
 export { nearMatches } from "./duplicates";

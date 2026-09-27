@@ -6,6 +6,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { printJobs, users } from "../db/schema";
 import { claimPrintJobs, reportFailed, reportPrinted } from "./claim";
+import { agentPrintDestinations } from "../auth/agents";
 import { enqueuePrintJob } from "./enqueue";
 import { withTx } from "../db/client";
 import { renderDocument } from "./render";
@@ -37,11 +38,11 @@ import type { Db } from "../db/client";
  * and stores only its SHA-256, and `AuthGuard` already honours the per-agent kill switch, so an
  * abused relay credential is revoked without a deploy.
  *
- * **STATED PLAINLY AS A LIMITATION, because it is one:** until Plan 12 lands agent permissions, ANY
- * agent may serve the print queue. Today that set is empty — nothing else in this system uses agent
- * auth — so the practical exposure is that a future agent created for another purpose could also
- * drain print jobs. Tightening this to a per-agent destination grant is the obvious first use of
- * `agent_permissions` when it exists.
+ * **THE LIMITATION THIS PARAGRAPH USED TO STATE IS CLOSED (WASA M-10).** It said ANY agent could
+ * serve the print queue until agent permissions existed — and the synthetic audit proved it, draining
+ * every destination with two unrelated keys. The grant no longer waits for Plan 12: each agent
+ * carries `agents.print_destinations`, a claim is intersected with it, and an agent with none is
+ * refused outright (see `claim` below). Plan 12's `agent_permissions` may later subsume the column.
  *
  * **AND THE RELAY IS A PHI PROCESSOR — SAID PLAINLY, BECAUSE T3 CHANGED THIS.** An earlier draft of
  * this header claimed a claim "returns identifiers, not patient data". That was true when the claim
@@ -125,12 +126,48 @@ export class PrintingController {
   async claim(
     @CurrentActor() actor: Actor,
     @Body() body: unknown,
-  ): Promise<{ jobs: PrintJobPayload[] }> {
+  ): Promise<{ jobs: PrintJobPayload[]; refusedDestinations: string[] }> {
     const input = parsed(claimBody, body);
     const relayId = this.relayId(actor);
+
+    /*
+      ═══ WASA M-10 — THE CLAIM IS BOUND TO THE AGENT'S OWN GRANT ═══
+
+      `destinations` used to be trusted as sent, so ANY agent key — a lab bridge's, a leaked relay's
+      — could name every printer and walk away with its rendered documents, patient names and all
+      (the synthetic audit drained three printers with two unrelated keys). The request is now only
+      ever INTERSECTED with `agents.print_destinations`:
+
+        · an agent with no grant is not a print relay — 403 `print_relay_not_registered`, before a
+          single row is touched;
+        · a request naming only ungranted destinations — 403 `print_destination_not_granted`, not an
+          empty 201 a misconfigured relay would poll forever in silence;
+        · a request that is PARTLY outside the grant claims the granted part and names the rest in
+          `refusedDestinations`, so one printer added to the relay's config ahead of its grant does
+          not stop the counter's slips — and the relay's log says exactly what to grant.
+
+      Nothing outside the grant is ever claimed, so nothing outside it is ever rendered or leaves.
+    */
+    const granted = new Set(await agentPrintDestinations(this.db, relayId));
+    if (granted.size === 0) {
+      throw new ForbiddenException({
+        code: "print_relay_not_registered",
+        message: "this agent holds no print destinations — grant them with scripts/set-agent-print-destinations.ts",
+      });
+    }
+    const requested = [...new Set(input.destinations)].sort();
+    const destinations = requested.filter((d) => granted.has(d));
+    const refusedDestinations = requested.filter((d) => !granted.has(d));
+    if (destinations.length === 0) {
+      throw new ForbiddenException({
+        code: "print_destination_not_granted",
+        message: `this agent may not claim ${refusedDestinations.join(", ")}`,
+        refusedDestinations,
+      });
+    }
     const jobs = await claimPrintJobs(this.db, {
       relayId,
-      destinations: input.destinations,
+      destinations,
       limit: input.limit,
     });
 
@@ -268,7 +305,7 @@ export class PrintingController {
       if (requestedBy !== null) askedBy.add(requestedBy);
       disclosed.set(job.patientId, askedBy);
     }
-    const claimed = `print relay ${relayId} claimed ${String(out.length)} document(s) for ${input.destinations.join(", ")}`;
+    const claimed = `print relay ${relayId} claimed ${String(out.length)} document(s) for ${destinations.join(", ")}`;
     for (const [rawPatientId, askedBy] of disclosed) {
       /* THE CANONICAL ID, because that is what `recordPhiAccess` documents its column to be and
          what `prunePhiAccessLog`'s legal-hold clamp matches on. A print job carries the id the
@@ -303,7 +340,7 @@ export class PrintingController {
         });
       }
     }
-    return { jobs: out };
+    return { jobs: out, refusedDestinations };
   }
 
   /** Paper came out. Guarded on the claim, so a relay whose lease lapsed cannot overwrite the winner. */

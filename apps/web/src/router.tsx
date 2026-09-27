@@ -1023,12 +1023,16 @@ const labDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/desk",
   component: LabDesk,
+  /** PLAN 17-F F1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const labCollectionRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/collection",
   component: LabCollection,
+  /** PLAN 17-F F1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 /**
@@ -1085,18 +1089,24 @@ const labBenchRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/bench",
   component: LabBench,
+  /** PLAN 17-F F1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const labVerifyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/verify",
   component: LabVerify,
+  /** PLAN 17-F F1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 /** PLAN 17c T5 — the report centre. Path matches `labManifest.menu` exactly. */
 const labReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/reports",
   component: LabReports,
+  /** PLAN 17-F F1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const opdAppointmentsRoute = createRoute({

@@ -8,7 +8,7 @@ import { findStoreByCode } from "../materials";
 import { OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE } from "./config";
 import { PharmacyError } from "./errors";
 import { shelfLocationSet } from "./events";
-import { getSaleItem } from "./sale-items";
+import { getSaleItem, refuseMergedItem } from "./sale-items";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -34,6 +34,7 @@ export async function setShelfLocation(
   if (!counters.some((s) => s !== undefined && s.id === input.storeResourceId)) {
     throw new PharmacyError("store_missing", "a shelf location is kept for a pharmacy counter's store only");
   }
+  await refuseMergedItem(db, input.itemId, "giving it a shelf");
   if ((await getSaleItem(db, input.itemId)) === undefined) {
     throw new PharmacyError("unknown_sale_item", "only an item the counter sells has a place on its shelf");
   }

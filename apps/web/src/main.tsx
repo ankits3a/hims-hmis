@@ -1,3 +1,4 @@
+import "./zod-jitless"; // FIRST: before any module builds a zod schema (WASA M-01 — see the file)
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";

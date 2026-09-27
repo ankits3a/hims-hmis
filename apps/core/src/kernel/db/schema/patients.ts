@@ -194,6 +194,18 @@ export const patients = pgTable(
     index("patients_alt_phone_idx").using("btree", t.altPhone.op("text_pattern_ops")),
     // Name prefix search on lower(name) — expression index, same opclass reasoning.
     index("patients_name_idx").using("btree", sql`lower(${t.name}) text_pattern_ops`),
+    /**
+     * ABDM S1 — ONE ABHA, ONE PATIENT (NHA FT case TAGGING_UNIQUEPATIENTID_UNIQUEABHANUMBER). The
+     * number is compared by its DIGITS and the address case-blind, so no spelling of one ABHA can sit
+     * on two records; blanks never collide; merged (frozen) rows are outside the index — see
+     * `modules/patients/abha-holders.ts`, which checks first so a refusal can name the holder.
+     */
+    uniqueIndex("patients_abha_number_ux")
+      .on(sql`regexp_replace(${t.abhaNumber}, '[^0-9]', '', 'g')`)
+      .where(sql`${t.abhaNumber} is not null and regexp_replace(${t.abhaNumber}, '[^0-9]', '', 'g') <> '' and ${t.status} = 'active'`),
+    uniqueIndex("patients_abha_address_ux")
+      .on(sql`lower(btrim(${t.abhaAddress}))`)
+      .where(sql`${t.abhaAddress} is not null and btrim(${t.abhaAddress}) <> '' and ${t.status} = 'active'`),
   ],
 );
 

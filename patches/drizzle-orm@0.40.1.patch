@@ -1,0 +1,26 @@
+diff --git a/pg-core/dialect.cjs b/pg-core/dialect.cjs
+index 52acbfb6038fb1bbba4e34115d75a22bb0f9ab1a..b8069a2ea1165d74544c7ce5a262cb11f3376b4d 100644
+--- a/pg-core/dialect.cjs
++++ b/pg-core/dialect.cjs
+@@ -73,7 +73,7 @@ class PgDialect {
+     });
+   }
+   escapeName(name) {
+-    return `"${name}"`;
++    return `"${name.replace(/"/g, '""')}"`;
+   }
+   escapeParam(num) {
+     return `$${num + 1}`;
+diff --git a/pg-core/dialect.js b/pg-core/dialect.js
+index d7985c81f3d224f7671efe72e79b14153d5ca8ce..ebdd9c50d3d84c1930678d66fa23246d893ae26d 100644
+--- a/pg-core/dialect.js
++++ b/pg-core/dialect.js
+@@ -71,7 +71,7 @@ class PgDialect {
+     });
+   }
+   escapeName(name) {
+-    return `"${name}"`;
++    return `"${name.replace(/"/g, '""')}"`;
+   }
+   escapeParam(num) {
+     return `$${num + 1}`;

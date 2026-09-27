@@ -29,6 +29,50 @@ describe("csv (07c T3)", () => {
     });
   });
 
+  /**
+   * WASA L-03 — CSV / FORMULA INJECTION. A spreadsheet EVALUATES a cell that begins `=`, `+`, `-`
+   * or `@` (and one that begins with a tab or CR, which Excel strips before looking). A patient
+   * registered as `=HYPERLINK("http://evil","Click")` reached `/me/report.csv` verbatim and became a
+   * live link in the reconciler's Excel. OWASP's rule: prefix such a cell with `'`, which makes the
+   * spreadsheet show the text and never run it. The kernel does it, so every export inherits it.
+   */
+  describe("L-03 — a cell that would be a formula is written as text", () => {
+    it("prefixes each OWASP trigger character with a single quote", () => {
+      expect(csvField("=1+1")).toBe("'=1+1");
+      expect(csvField("+cmd|' /C calc'!A0")).toBe("'+cmd|' /C calc'!A0");
+      expect(csvField("-2+3+cmd|' /C calc'!A0")).toBe("'-2+3+cmd|' /C calc'!A0");
+      expect(csvField("@SUM(A1:A9)")).toBe("'@SUM(A1:A9)");
+      expect(csvField("\t=1+1")).toBe("'\t=1+1");
+    });
+
+    it("neutralises FIRST and quotes after, so the prefix sits inside the quotes", () => {
+      // The audit's own payload: a quote inside, so the field is quoted and the quotes doubled.
+      expect(csvField('=HYPERLINK("http://evil","Click")')).toBe('"\'=HYPERLINK(""http://evil"",""Click"")"');
+      // A leading CR both triggers and needs quoting.
+      expect(csvField("\r=1+1")).toBe('"\'\r=1+1"');
+    });
+
+    it("leaves a plain number — and the money this app formats — as a number", () => {
+      // An inert numeric shape cannot call anything, and a refund column must still sum.
+      for (const n of ["-150", "+5", "-0.50", "-₹150.00"]) expect(csvField(n)).toBe(n);
+      // `formatPaise` groups thousands, so the comma still quotes the field — but no `'` goes in.
+      expect(csvField("-₹1,500.00")).toBe('"-₹1,500.00"');
+      expect(csvField("-1,23,456.78")).toBe('"-1,23,456.78"');
+    });
+
+    it("only the FIRST character decides, and an already-neutralised cell is not prefixed twice", () => {
+      expect(csvField("Asha-Devi")).toBe("Asha-Devi");
+      expect(csvField("a=b")).toBe("a=b");
+      // `opd/report-render.ts` `sheetText` already writes `'=…`; the kernel must not add a second `'`.
+      expect(csvField("'=1+1")).toBe("'=1+1");
+    });
+
+    it("a whole export carries the neutralised name in its column", () => {
+      const doc = toCsv([["UHID", "Name"], ["W00110199", '=HYPERLINK("http://evil")']]);
+      expect(doc).toBe('﻿UHID,Name\r\nW00110199,"\'=HYPERLINK(""http://evil"")"\r\n');
+    });
+  });
+
   describe("the document", () => {
     it("leads with a BOM, because Excel reads UTF-8 as ANSI without one", () => {
       // Half this hospital's patient names are Devanagari; without the BOM they arrive as mojibake.

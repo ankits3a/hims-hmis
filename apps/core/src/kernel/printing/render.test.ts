@@ -15,14 +15,14 @@ import { CREST_PNG_DATA_URI } from "./crest";
 import { qrSvg } from "./qr";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { breakGlassGrants, opdDepartments, opdEncounters, opdSectionRecords, opdVitals, patientAllergies, patients, phiAccessLog, printJobs, users } from "../db/schema";
+import { agents, breakGlassGrants, opdDepartments, opdEncounters, opdSectionRecords, opdVitals, patientAllergies, patients, phiAccessLog, printJobs, users } from "../db/schema";
 /* FD-25 §14 — the fixtures the confidentiality rows need: the grant, the queue row, and the one
    production caller that has to thread the requester through. */
 import { grantPermissionToRole, syncPermissions } from "../auth/permissions";
 import { useBreakGlass } from "../auth/break-glass";
 import { ModuleRegistry } from "../modules/loader";
 import { patientsManifest } from "../../modules/patients";
-import { enqueuePrintJob } from "./enqueue";
+import { PRINT_DESTINATIONS, enqueuePrintJob } from "./enqueue";
 import { registerOpdGlassesPrinting } from "../../modules/opd/glasses-print";
 import { PrintingController } from "./printing.controller";
 import { withTx } from "../db/client";
@@ -62,6 +62,11 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     const patient = await mkPatient(db, clerk.actor, { name: "Muskan Arora", sex: "female", ageYears: 28 });
     const visit = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: doctor.doctorId }, MON);
     encounterId = visit.encounter.id;
+    // WASA M-10 — the rows below drive `PrintingController.claim` as agent `relay-1`, and a claim
+    // is now bound to the agent's own grant: the relay exists, and is granted every destination.
+    await db.insert(agents).values({
+      id: "relay-1", name: "render-test-relay", apiKeyHash: "render-test-relay-key", printDestinations: [...PRINT_DESTINATIONS],
+    });
   });
 
   describe("the token slip — 72 mm thermal", () => {
@@ -459,7 +464,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
         const added = await withTx(db, (tx) =>
           addAllergy(tx, clerk.actor, rows[0]!.patientId, { substance: "Sulfa drugs", reaction: "rash", source: "registration" }));
         await withTx(db, (tx) =>
-          markAllergyEnteredInError(tx, clerk.actor, added.allergyId, "recorded against the wrong patient"));
+          markAllergyEnteredInError(tx, clerk.actor, added.allergyId, "recorded against the wrong patient", rows[0]!.patientId));
         const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
         expect(doc!.html).not.toContain("SULFA DRUGS");
         /* A retraction leaves the register EMPTY, so the sheet falls back to the blank strip. */

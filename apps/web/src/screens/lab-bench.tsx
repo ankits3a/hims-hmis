@@ -11,7 +11,7 @@ import { useRealtime } from "../lib/realtime";
 import { Button } from "@/components/ui/button";
 import { RerunChoicePair } from "../components/lab-rerun-choice";
 import { capFor } from "../components/specimen-label";
-import { DowntimeNotice, LabSeatFrame, useDowntime } from "./lab-seat";
+import { DowntimeNotice, LabStation, useDowntime } from "./lab-seat";
 import type { CriticalRung, WireBenchArrival, WireWorklistRow } from "../lib/lab-api";
 
 /**
@@ -248,8 +248,213 @@ export function LabBench(): React.ReactElement {
     return { done, total, ready, owed };
   }
 
+  /* ── arrived · not yet received ── */
+  const listPane = (
+    <section className="space-y-2" aria-label={t("lab.bench.arrivals")}>
+      <h2 className="text-sm font-semibold">{t("lab.bench.arrivals")}</h2>
+      {arrivals.isError && <p role="alert" className="text-sm font-semibold">{t("lab.bench.arrivalsUnavailable")}</p>}
+      <ul className="divide-y divide-border rounded border border-border text-sm">
+        {(hit.kind === "arrival" ? [hit.row] : arrived).map((a) => (
+          <li key={a.specimenId} className={`space-y-1 px-2 py-1.5 ${hit.kind === "arrival" && hit.row.specimenId === a.specimenId ? "bg-muted" : ""}`}
+            data-testid={`arrival-${a.specimenNo}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate">
+                <span className="font-medium">{a.patientDisplay}</span>
+                {a.priority !== "routine" && <span className="ml-1 text-xs font-semibold uppercase" style={{ color: "var(--state-danger)" }}>{a.priority}</span>}
+                <br />
+                <span className="font-mono">{a.specimenNo}</span>
+                <span className="text-muted-foreground"> · {capFor(a.container)} · {a.orderableCodes.join(", ")}</span>
+              </span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{a.waitingMinutes} {t("lab.bench.min")}</span>
+            </div>
+            {!a.wristbandScanned && (
+              <p className="text-xs font-semibold">{t("lab.bench.noBand")} — {t("lab.bench.recheckHint")}</p>
+            )}
+            {(hit.kind === "arrival" && hit.row.specimenId === a.specimenId) && (
+              <div className="space-y-2 pt-1">
+                {!a.wristbandScanned && (
+                  <label className="block text-sm">
+                    {t("lab.bench.recheckBy")}
+                    <input className="mt-1 block w-full rounded border border-input px-2 py-1" value={recheckBy}
+                      onChange={(e) => setRecheckBy(e.target.value)} />
+                  </label>
+                )}
+                {/*
+                  17d T2 — design board EdgeCases #12. Typing the number stays ALLOWED: a
+                  laboratory that refused the tube would be discarding a patient's blood over a
+                  printer. What it may not be is SILENT, so declaring it opens a witness and a
+                  reason, and Receive waits for both.
+                */}
+                {/*
+                  17d T6 — the tube arrived wearing a KIT serial rather than a printed barcode,
+                  and this is where the two are mapped to each other (E20). Not required: a tube
+                  drawn before the outage still carries its printed label, and demanding a kit
+                  serial for it would stop the bench working on the tubes that are fine.
+                */}
+                {downtime && (
+                  <DowntimeNotice>
+                    <label className="block text-sm">
+                      {t("lab.bench.kitSerial")}
+                      <input
+                        className="mt-1 block w-full rounded border border-input px-2 py-1 font-mono"
+                        placeholder={t("lab.bench.kitSerialHint")}
+                        aria-label={t("lab.bench.kitSerial")}
+                        value={kitSerial}
+                        onChange={(e) => setKitSerial(e.target.value)}
+                      />
+                    </label>
+                  </DowntimeNotice>
+                )}
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={relabelling}
+                    onChange={(e) => setRelabelling(e.target.checked)} />
+                  {t("lab.bench.relabelToggle")}
+                </label>
+                {relabelling && (
+                  <div className="space-y-2 rounded border border-border p-2">
+                    <p className="text-xs text-muted-foreground">{t("lab.bench.relabelHint")}</p>
+                    <label className="block text-sm">
+                      {t("lab.bench.relabelWitness")}
+                      <input className="mt-1 block w-full rounded border border-input px-2 py-1"
+                        value={relabelWitness} onChange={(e) => setRelabelWitness(e.target.value)} />
+                    </label>
+                    <label className="block text-sm">
+                      {t("lab.bench.relabelReason")}
+                      <input className="mt-1 block w-full rounded border border-input px-2 py-1"
+                        value={relabelReason} onChange={(e) => setRelabelReason(e.target.value)} />
+                    </label>
+                  </div>
+                )}
+                <Button type="button"
+                  disabled={accession.isPending
+                    || (!a.wristbandScanned && recheckBy.trim() === "")
+                    || (relabelling && (relabelWitness.trim() === "" || relabelReason.trim() === ""))}
+                  onClick={() => accession.mutate(a.specimenNo)}>
+                  {t("lab.bench.receive")}
+                </Button>
+                <details className="text-sm">
+                  <summary className="cursor-pointer">{t("lab.bench.rejectTitle")}</summary>
+                  <div className="mt-1 flex flex-wrap items-end gap-2">
+                    <label>{t("lab.bench.rejectReason")}
+                      <select className="ml-2 rounded border border-input px-2 py-1" value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value as typeof rejectReason)}>
+                        {REJECT_REASONS.map((r) => <option key={r} value={r}>{t(`lab.bench.reason_${r}`)}</option>)}
+                      </select>
+                    </label>
+                    <label>{t("lab.bench.attributableTo")}
+                      <select className="ml-2 rounded border border-input px-2 py-1" value={attributableTo}
+                        onChange={(e) => setAttributableTo(e.target.value)}>
+                        {["collection", "transport", "lab", "patient"].map((x) => <option key={x} value={x}>{t(`lab.bench.blame_${x}`)}</option>)}
+                      </select>
+                    </label>
+                    <Button type="button" variant="outline" disabled={refuse.isPending} onClick={() => refuse.mutate(a.specimenNo)}>
+                      {t("lab.bench.reject")}
+                    </Button>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t("lab.bench.rejectHint")}</p>
+                </details>
+              </div>
+            )}
+          </li>
+        ))}
+        {arrived.length === 0 && !arrivals.isPending && hit.kind !== "arrival" && (
+          <li className="px-2 py-1.5 text-muted-foreground">{t("lab.bench.arrivalsEmpty")}</li>
+        )}
+      </ul>
+    </section>
+  );
+
+  /* ── critical values — telephone now ── */
+  const clocksPane = (
+    <section className="space-y-2" aria-label={t("lab.bench.criticalsOpen")}>
+      <h2 className="text-sm font-bold" style={openCalls.length > 0 ? { color: "var(--state-danger)" } : undefined}>
+        {t("lab.bench.criticalsOpen")}
+      </h2>
+      {!criticals.isError && openCalls.length === 0 && <p className="text-sm text-muted-foreground">—</p>}
+      {!criticals.isError && openCalls.map((c) => (
+        <div key={c.id} className="space-y-1 rounded border-2 p-2 text-sm" style={{ borderColor: "var(--state-danger)" }}>
+          <p className="font-semibold">
+            {c.patientDisplay} · {c.analyteCode} {c.value} {c.unit ?? ""} {c.flag ?? ""}
+          </p>
+          {c.supersededBy != null && (
+            <p className="font-bold">
+              {t("lab.bench.retracted", { value: c.supersededBy.value, flag: c.supersededBy.flag ?? "" })}
+            </p>
+          )}
+          <p className="text-xs">
+            {c.orderNo} · {t("lab.bench.callOpenedAt")} {c.openedAt} · {t("lab.bench.attempts")}: {c.attempts.length}
+          </p>
+          {/*
+            17d T3 / D5 — THE CLOCK IS ADVISORY AND SAYS SO. It colours past the target and
+            refuses nothing: a technologist holding a potassium of 6.8 is never told by software
+            that they may not make a phone call.
+          */}
+          <p className="text-xs font-semibold tabular-nums"
+            style={c.minutesOpen > c.targetMinutes ? { color: "var(--state-danger)" } : undefined}>
+            {t("lab.bench.openFor", { minutes: c.minutesOpen, target: c.targetMinutes })}
+          </p>
+          {/*
+            D4 — THE LADDER, DRAWN. Three rows, each saying who was tried and what came of it,
+            so the person taking over at 07:00 reads the hospital's attempts rather than
+            re-deriving them from a count.
+          */}
+          <ol className="space-y-0.5 text-xs" aria-label={t("lab.bench.ladder")}>
+            {CRITICAL_RUNGS.map((rung) => {
+              const tries = c.attempts.filter((at) => at.rung === rung);
+              const spoken = tries.some((at) => at.outcome === "spoke");
+              return (
+                <li key={rung} className={spoken ? "font-semibold" : "text-muted-foreground"}>
+                  {spoken ? "✓" : tries.length > 0 ? "·" : "○"} {t(`lab.bench.rung_${rung}`)}
+                  {tries.length > 0 && (
+                    <span> — {tries.map((at) => `${at.contact} (${t(`lab.bench.outcome_${at.outcome}`)})`).join("; ")}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+          {c.nextRung !== null && (
+            <p className="text-xs font-semibold">{t("lab.bench.tryNext", { rung: t(`lab.bench.rung_${c.nextRung}`) })}</p>
+          )}
+          <div className="flex flex-wrap items-end gap-2">
+            <select className="rounded border border-input px-2 py-1" aria-label={t("lab.bench.rung")}
+              value={rungs[c.id] ?? c.nextRung ?? "ordering_clinician"}
+              onChange={(e) => setRungs((x) => ({ ...x, [c.id]: e.target.value as CriticalRung }))}>
+              {CRITICAL_RUNGS.map((r) => (
+                <option key={r} value={r}>{t(`lab.bench.rung_${r}`)}</option>
+              ))}
+            </select>
+            <input className="rounded border border-input px-2 py-1" placeholder={t("lab.bench.contact")}
+              aria-label={`${t("lab.bench.contact")} ${c.patientDisplay}`}
+              value={contacts[c.id] ?? ""}
+              onChange={(e) => setContacts((x) => ({ ...x, [c.id]: e.target.value }))} />
+            <select className="rounded border border-input px-2 py-1" aria-label={t("lab.bench.outcome")}
+              value={outcomes[c.id] ?? "no_answer"}
+              onChange={(e) => setOutcomes((x) => ({ ...x, [c.id]: e.target.value as CallOutcome }))}>
+              {(["no_answer", "engaged", "message_left", "spoke"] as const).map((o) => (
+                <option key={o} value={o}>{t(`lab.bench.outcome_${o}`)}</option>
+              ))}
+            </select>
+            <input className="rounded border border-input px-2 py-1" placeholder={t("lab.bench.readback")}
+              aria-label={`${t("lab.bench.readback")} ${c.patientDisplay}`}
+              value={readbacks[c.id] ?? ""}
+              onChange={(e) => setReadbacks((x) => ({ ...x, [c.id]: e.target.value }))} />
+            <Button type="button" disabled={ack.isPending}
+              onClick={() => ack.mutate({
+                callId: c.id, outcome: outcomes[c.id] ?? "no_answer",
+                rung: rungs[c.id] ?? c.nextRung ?? "ordering_clinician",
+              })}>
+              {t("lab.bench.record")}
+            </Button>
+          </div>
+          <p className="text-xs">{t("lab.bench.readbackRule")}</p>
+        </div>
+      ))}
+    </section>
+  );
+
   return (
-    <LabSeatFrame
+    <LabStation
+      station="bench"
       title={t("lab.bench.title")}
       place={t("lab.bench.place")}
       stats={[
@@ -258,6 +463,10 @@ export function LabBench(): React.ReactElement {
         { label: t("lab.bench.onBenchStat"), value: worklist.length },
         { label: connected ? t("lab.bench.live") : t("lab.bench.offline"), value: "●", tone: connected ? "live" : "plain" },
       ]}
+      list={listPane}
+      clocks={clocksPane}
+      clocksSummary={`${String(openCalls.length)} ${t("lab.bench.criticalStat")}`}
+      clocksAlert={openCalls.length > 0}
     >
       <form
         className="mb-3 flex flex-wrap items-end gap-2"
@@ -292,383 +501,181 @@ export function LabBench(): React.ReactElement {
         </p>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
-        {/* ── arrived · not yet received ── */}
-        <section className="space-y-2" aria-label={t("lab.bench.arrivals")}>
-          <h2 className="text-sm font-semibold">{t("lab.bench.arrivals")}</h2>
-          {arrivals.isError && <p role="alert" className="text-sm font-semibold">{t("lab.bench.arrivalsUnavailable")}</p>}
-          <ul className="divide-y divide-border rounded border border-border text-sm">
-            {(hit.kind === "arrival" ? [hit.row] : arrived).map((a) => (
-              <li key={a.specimenId} className={`space-y-1 px-2 py-1.5 ${hit.kind === "arrival" && hit.row.specimenId === a.specimenId ? "bg-muted" : ""}`}
-                data-testid={`arrival-${a.specimenNo}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate">
-                    <span className="font-medium">{a.patientDisplay}</span>
-                    {a.priority !== "routine" && <span className="ml-1 text-xs font-semibold uppercase" style={{ color: "var(--state-danger)" }}>{a.priority}</span>}
-                    <br />
-                    <span className="font-mono">{a.specimenNo}</span>
-                    <span className="text-muted-foreground"> · {capFor(a.container)} · {a.orderableCodes.join(", ")}</span>
-                  </span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{a.waitingMinutes} {t("lab.bench.min")}</span>
-                </div>
-                {!a.wristbandScanned && (
-                  <p className="text-xs font-semibold">{t("lab.bench.noBand")} — {t("lab.bench.recheckHint")}</p>
-                )}
-                {(hit.kind === "arrival" && hit.row.specimenId === a.specimenId) && (
-                  <div className="space-y-2 pt-1">
-                    {!a.wristbandScanned && (
-                      <label className="block text-sm">
-                        {t("lab.bench.recheckBy")}
-                        <input className="mt-1 block w-full rounded border border-input px-2 py-1" value={recheckBy}
-                          onChange={(e) => setRecheckBy(e.target.value)} />
-                      </label>
-                    )}
-                    {/*
-                      17d T2 — design board EdgeCases #12. Typing the number stays ALLOWED: a
-                      laboratory that refused the tube would be discarding a patient's blood over a
-                      printer. What it may not be is SILENT, so declaring it opens a witness and a
-                      reason, and Receive waits for both.
-                    */}
-                    {/*
-                      17d T6 — the tube arrived wearing a KIT serial rather than a printed barcode,
-                      and this is where the two are mapped to each other (E20). Not required: a tube
-                      drawn before the outage still carries its printed label, and demanding a kit
-                      serial for it would stop the bench working on the tubes that are fine.
-                    */}
-                    {downtime && (
-                      <DowntimeNotice>
-                        <label className="block text-sm">
-                          {t("lab.bench.kitSerial")}
-                          <input
-                            className="mt-1 block w-full rounded border border-input px-2 py-1 font-mono"
-                            placeholder={t("lab.bench.kitSerialHint")}
-                            aria-label={t("lab.bench.kitSerial")}
-                            value={kitSerial}
-                            onChange={(e) => setKitSerial(e.target.value)}
-                          />
-                        </label>
-                      </DowntimeNotice>
-                    )}
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={relabelling}
-                        onChange={(e) => setRelabelling(e.target.checked)} />
-                      {t("lab.bench.relabelToggle")}
-                    </label>
-                    {relabelling && (
-                      <div className="space-y-2 rounded border border-border p-2">
-                        <p className="text-xs text-muted-foreground">{t("lab.bench.relabelHint")}</p>
-                        <label className="block text-sm">
-                          {t("lab.bench.relabelWitness")}
-                          <input className="mt-1 block w-full rounded border border-input px-2 py-1"
-                            value={relabelWitness} onChange={(e) => setRelabelWitness(e.target.value)} />
-                        </label>
-                        <label className="block text-sm">
-                          {t("lab.bench.relabelReason")}
-                          <input className="mt-1 block w-full rounded border border-input px-2 py-1"
-                            value={relabelReason} onChange={(e) => setRelabelReason(e.target.value)} />
-                        </label>
-                      </div>
-                    )}
-                    <Button type="button"
-                      disabled={accession.isPending
-                        || (!a.wristbandScanned && recheckBy.trim() === "")
-                        || (relabelling && (relabelWitness.trim() === "" || relabelReason.trim() === ""))}
-                      onClick={() => accession.mutate(a.specimenNo)}>
-                      {t("lab.bench.receive")}
-                    </Button>
-                    <details className="text-sm">
-                      <summary className="cursor-pointer">{t("lab.bench.rejectTitle")}</summary>
-                      <div className="mt-1 flex flex-wrap items-end gap-2">
-                        <label>{t("lab.bench.rejectReason")}
-                          <select className="ml-2 rounded border border-input px-2 py-1" value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value as typeof rejectReason)}>
-                            {REJECT_REASONS.map((r) => <option key={r} value={r}>{t(`lab.bench.reason_${r}`)}</option>)}
-                          </select>
-                        </label>
-                        <label>{t("lab.bench.attributableTo")}
-                          <select className="ml-2 rounded border border-input px-2 py-1" value={attributableTo}
-                            onChange={(e) => setAttributableTo(e.target.value)}>
-                            {["collection", "transport", "lab", "patient"].map((x) => <option key={x} value={x}>{t(`lab.bench.blame_${x}`)}</option>)}
-                          </select>
-                        </label>
-                        <Button type="button" variant="outline" disabled={refuse.isPending} onClick={() => refuse.mutate(a.specimenNo)}>
-                          {t("lab.bench.reject")}
-                        </Button>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{t("lab.bench.rejectHint")}</p>
-                    </details>
-                  </div>
-                )}
-              </li>
-            ))}
-            {arrived.length === 0 && !arrivals.isPending && hit.kind !== "arrival" && (
-              <li className="px-2 py-1.5 text-muted-foreground">{t("lab.bench.arrivalsEmpty")}</li>
-            )}
-          </ul>
-        </section>
+      {/* ── on the bench · results as they arrive ── */}
+      <section className="space-y-3" aria-label={t("lab.bench.onBench")}>
+        <h2 className="text-sm font-semibold">{t("lab.bench.onBench")}</h2>
+        {work.isError
+          ? <p role="alert" className="text-sm font-semibold">{t("lab.bench.worklistUnavailable")}</p>
+          : shownWork.length === 0 && !work.isPending && <p className="text-sm text-muted-foreground">{t("lab.bench.empty")}</p>}
+        {shownWork.map((row) => {
+          const filled = filledOf(row);
+          const elapsed = row.tatStartedAt === null ? null : Math.max(0, Math.floor((Date.now() - new Date(row.tatStartedAt).getTime()) / 60_000));
+          return (
+            <article key={row.orderItemId} className="space-y-2 rounded border border-border bg-card p-3" data-testid={`item-${row.orderItemId}`}>
+              <header className="flex flex-wrap items-baseline gap-x-3 text-sm">
+                <span className="text-base font-semibold">{row.patientDisplay}</span>
+                <span className="font-mono text-muted-foreground">{row.specimenNo ?? "—"}</span>
+                <span className="font-semibold">{row.orderableCode}</span>
+                <span className="text-muted-foreground">{row.orderableName}</span>
+                {row.priority !== "routine" && <span className="text-xs font-semibold uppercase" style={{ color: "var(--state-danger)" }}>{row.priority}</span>}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {elapsed !== null && <>{t("lab.bench.tat")} {elapsed} {t("lab.bench.min")} · </>}
+                  {t("lab.bench.filled", { done: filled.done, total: filled.total })}
+                  {/*
+                    17-E T7 — said in the HEADER, because the grid below may be scrolled past and a
+                    run choice is the one thing on this row that no amount of keying will clear.
+                  */}
+                  {filled.owed > 0 && (
+                    <span className="ml-2 font-semibold" style={{ color: "var(--state-danger)" }}>
+                      {t("lab.bench.rerunOwed", { count: filled.owed })}
+                    </span>
+                  )}
+                </span>
+              </header>
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="py-1">{t("lab.bench.gridAnalyte")}</th>
+                    <th>{t("lab.bench.gridResult")}</th>
+                    <th>{t("lab.bench.gridUnit")}</th>
+                    <th>{t("lab.bench.gridRef")}</th>
+                    <th>{t("lab.bench.gridFlag")}</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {row.analytes.map((a) => {
+                    const cell = key(row.orderItemId, a.analyteId);
+                    const tone = flagTone(a.flag);
+                    /** 17-E T7 — non-empty only while a run choice is owed; see `WireAnalyteRow`. */
+                    const owed = a.rerunChoice;
+                    const ref = a.refText ?? (a.refLow !== null || a.refHigh !== null ? `${a.refLow ?? ""} – ${a.refHigh ?? ""}` : "");
+                    /*
+                      17-E T7 / D18 — AN UNCHOSEN PAIR GETS THE ROW, not the value column. The
+                      analyte has two live measurements and no reportable value, so the grid's
+                      other columns have nothing true to say: the reference band and the unit
+                      belong to a number, and `a.flag` is null precisely because no number is
+                      chosen. What this row must carry instead is both runs, each with its own
+                      flag, and the reason — so it carries them across the whole width.
 
-        {/* ── on the bench · results as they arrive ── */}
-        <section className="space-y-3" aria-label={t("lab.bench.onBench")}>
-          <h2 className="text-sm font-semibold">{t("lab.bench.onBench")}</h2>
-          {work.isError
-            ? <p role="alert" className="text-sm font-semibold">{t("lab.bench.worklistUnavailable")}</p>
-            : shownWork.length === 0 && !work.isPending && <p className="text-sm text-muted-foreground">{t("lab.bench.empty")}</p>}
-          {shownWork.map((row) => {
-            const filled = filledOf(row);
-            const elapsed = row.tatStartedAt === null ? null : Math.max(0, Math.floor((Date.now() - new Date(row.tatStartedAt).getTime()) / 60_000));
-            return (
-              <article key={row.orderItemId} className="space-y-2 rounded border border-border bg-card p-3" data-testid={`item-${row.orderItemId}`}>
-                <header className="flex flex-wrap items-baseline gap-x-3 text-sm">
-                  <span className="text-base font-semibold">{row.patientDisplay}</span>
-                  <span className="font-mono text-muted-foreground">{row.specimenNo ?? "—"}</span>
-                  <span className="font-semibold">{row.orderableCode}</span>
-                  <span className="text-muted-foreground">{row.orderableName}</span>
-                  {row.priority !== "routine" && <span className="text-xs font-semibold uppercase" style={{ color: "var(--state-danger)" }}>{row.priority}</span>}
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {elapsed !== null && <>{t("lab.bench.tat")} {elapsed} {t("lab.bench.min")} · </>}
-                    {t("lab.bench.filled", { done: filled.done, total: filled.total })}
-                    {/*
-                      17-E T7 — said in the HEADER, because the grid below may be scrolled past and a
-                      run choice is the one thing on this row that no amount of keying will clear.
-                    */}
-                    {filled.owed > 0 && (
-                      <span className="ml-2 font-semibold" style={{ color: "var(--state-danger)" }}>
-                        {t("lab.bench.rerunOwed", { count: filled.owed })}
-                      </span>
-                    )}
-                  </span>
-                </header>
-                <table className="w-full text-sm">
-                  <thead className="text-left text-xs text-muted-foreground">
-                    <tr>
-                      <th className="py-1">{t("lab.bench.gridAnalyte")}</th>
-                      <th>{t("lab.bench.gridResult")}</th>
-                      <th>{t("lab.bench.gridUnit")}</th>
-                      <th>{t("lab.bench.gridRef")}</th>
-                      <th>{t("lab.bench.gridFlag")}</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {row.analytes.map((a) => {
-                      const cell = key(row.orderItemId, a.analyteId);
-                      const tone = flagTone(a.flag);
-                      /** 17-E T7 — non-empty only while a run choice is owed; see `WireAnalyteRow`. */
-                      const owed = a.rerunChoice;
-                      const ref = a.refText ?? (a.refLow !== null || a.refHigh !== null ? `${a.refLow ?? ""} – ${a.refHigh ?? ""}` : "");
-                      /*
-                        17-E T7 / D18 — AN UNCHOSEN PAIR GETS THE ROW, not the value column. The
-                        analyte has two live measurements and no reportable value, so the grid's
-                        other columns have nothing true to say: the reference band and the unit
-                        belong to a number, and `a.flag` is null precisely because no number is
-                        chosen. What this row must carry instead is both runs, each with its own
-                        flag, and the reason — so it carries them across the whole width.
-
-                        It must NOT fall through to the branch below: there `a.value === null` opens
-                        an empty entry box, and inviting a THIRD measurement is not the act this
-                        analyte is waiting for.
-                      */
-                      if (owed.length > 0) {
-                        return (
-                          <tr key={a.analyteId} className="border-t border-border">
-                            <td className="py-1 pr-2">{a.nameEn} <span className="text-xs text-muted-foreground">{a.code}</span></td>
-                            <td colSpan={5} className="py-1">
-                              <RerunChoicePair
-                                runs={owed}
-                                name={`rerun-${cell}`}
-                                analyteLabel={`${row.orderableCode} ${a.code}`}
-                                pending={choose.isPending}
-                                onChoose={(v) => choose.mutate(v)}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      }
+                      It must NOT fall through to the branch below: there `a.value === null` opens
+                      an empty entry box, and inviting a THIRD measurement is not the act this
+                      analyte is waiting for.
+                    */
+                    if (owed.length > 0) {
                       return (
                         <tr key={a.analyteId} className="border-t border-border">
                           <td className="py-1 pr-2">{a.nameEn} <span className="text-xs text-muted-foreground">{a.code}</span></td>
-                          <td className="pr-2">
-                            {a.value === null ? (
-                              <input
-                                className="w-28 rounded border border-input px-2 py-0.5 tabular-nums"
-                                aria-label={`${row.orderableCode} ${a.code}`}
-                                value={values[cell] ?? ""}
-                                onChange={(e) => setValues((v) => ({ ...v, [cell]: e.target.value }))}
-                              />
-                            ) : (
-                              <span className={`tabular-nums ${tone === "critical" ? "font-bold" : tone === "abnormal" ? "font-semibold" : ""}`}
-                                style={tone === "critical" ? { color: "var(--state-danger)" } : undefined}>
-                                {a.value}
-                              </span>
-                            )}
-                          </td>
-                          <td className="pr-2 text-xs text-muted-foreground">{a.unit ?? ""}</td>
-                          <td className="pr-2 text-xs text-muted-foreground">{ref}</td>
-                          <td className="pr-2 font-semibold">{a.flag ?? ""}</td>
-                          <td className="whitespace-nowrap">
-                            {a.value === null && (
-                              <>
-                                <Button type="button" size="sm" variant="outline"
-                                  onClick={() => post.mutate({
-                                    orderItemId: row.orderItemId, analyteId: a.analyteId,
-                                    value: values[cell] ?? "",
-                                    ...(overrideFor === cell && overrideBy !== "" ? { by: overrideBy } : {}),
-                                  })}
-                                >{t("lab.bench.save")}</Button>
-                                <button type="button" className="ml-2 text-xs underline"
-                                  onClick={() => setOverrideFor(overrideFor === cell ? null : cell)}>
-                                  {t("lab.bench.override")}
-                                </button>
-                                {overrideFor === cell && (
-                                  <input
-                                    className="ml-2 rounded border border-input px-2 py-0.5"
-                                    placeholder={t("lab.bench.overrideByHint")}
-                                    aria-label={t("lab.bench.overrideBy")}
-                                    value={overrideBy}
-                                    onChange={(e) => setOverrideBy(e.target.value)}
-                                  />
-                                )}
-                                {/*
-                                  17d T1 — THE SUSPECTED SWAP. Not a line in the shared error strip:
-                                  it names the OTHER barcode so the technologist can pick that tube
-                                  up, and it asks for a second person by login before the value is
-                                  allowed through. The server refuses again if the second person is
-                                  the enterer — this field is the prompt, never the control.
-                                */}
-                                {swap !== null && swap.cell === cell && (
-                                  <div role="alert" className="mt-2 rounded border-2 p-2 text-xs"
-                                    style={{ borderColor: "var(--state-danger)" }}>
-                                    <p className="font-bold">{t("lab.bench.swapSuspected")}</p>
-                                    <p className="mt-1">{swap.message}</p>
-                                    {swap.suspectSpecimenNos.length > 0 && (
-                                      <p className="mt-1 font-semibold tabular-nums">
-                                        {t("lab.bench.swapCheckTubes", { nos: swap.suspectSpecimenNos.join(", ") })}
-                                      </p>
-                                    )}
-                                    <label className="mt-2 flex items-center gap-2">
-                                      <span>{t("lab.bench.vouchBy")}</span>
-                                      <input
-                                        className="rounded border border-input px-2 py-0.5"
-                                        placeholder={t("lab.bench.overrideByHint")}
-                                        aria-label={t("lab.bench.vouchBy")}
-                                        value={vouchBy}
-                                        onChange={(e) => setVouchBy(e.target.value)}
-                                      />
-                                      <Button type="button" size="sm" variant="outline"
-                                        disabled={vouchBy.trim() === ""}
-                                        onClick={() => post.mutate({
-                                          orderItemId: row.orderItemId, analyteId: a.analyteId,
-                                          value: values[cell] ?? "", vouch: vouchBy.trim(),
-                                        })}
-                                      >{t("lab.bench.vouchSave")}</Button>
-                                    </label>
-                                  </div>
-                                )}
-                              </>
-                            )}
+                          <td colSpan={5} className="py-1">
+                            <RerunChoicePair
+                              runs={owed}
+                              name={`rerun-${cell}`}
+                              analyteLabel={`${row.orderableCode} ${a.code}`}
+                              pending={choose.isPending}
+                              onChoose={(v) => choose.mutate(v)}
+                            />
                           </td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-                <div className="flex items-center gap-3">
-                  <Button type="button" disabled={!filled.ready || saveAll.isPending} onClick={() => saveAll.mutate(row)}>
-                    {t("lab.bench.saveAll")}
-                  </Button>
-                  <span className="text-xs text-muted-foreground">{t("lab.bench.saveAllHint")}</span>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-
-        {/* ── critical values — telephone now ── */}
-        <section className="space-y-2" aria-label={t("lab.bench.criticalsOpen")}>
-          <h2 className="text-sm font-bold" style={openCalls.length > 0 ? { color: "var(--state-danger)" } : undefined}>
-            {t("lab.bench.criticalsOpen")}
-          </h2>
-          {!criticals.isError && openCalls.length === 0 && <p className="text-sm text-muted-foreground">—</p>}
-          {!criticals.isError && openCalls.map((c) => (
-            <div key={c.id} className="space-y-1 rounded border-2 p-2 text-sm" style={{ borderColor: "var(--state-danger)" }}>
-              <p className="font-semibold">
-                {c.patientDisplay} · {c.analyteCode} {c.value} {c.unit ?? ""} {c.flag ?? ""}
-              </p>
-              {c.supersededBy != null && (
-                <p className="font-bold">
-                  {t("lab.bench.retracted", { value: c.supersededBy.value, flag: c.supersededBy.flag ?? "" })}
-                </p>
-              )}
-              <p className="text-xs">
-                {c.orderNo} · {t("lab.bench.callOpenedAt")} {c.openedAt} · {t("lab.bench.attempts")}: {c.attempts.length}
-              </p>
-              {/*
-                17d T3 / D5 — THE CLOCK IS ADVISORY AND SAYS SO. It colours past the target and
-                refuses nothing: a technologist holding a potassium of 6.8 is never told by software
-                that they may not make a phone call.
-              */}
-              <p className="text-xs font-semibold tabular-nums"
-                style={c.minutesOpen > c.targetMinutes ? { color: "var(--state-danger)" } : undefined}>
-                {t("lab.bench.openFor", { minutes: c.minutesOpen, target: c.targetMinutes })}
-              </p>
-              {/*
-                D4 — THE LADDER, DRAWN. Three rows, each saying who was tried and what came of it,
-                so the person taking over at 07:00 reads the hospital's attempts rather than
-                re-deriving them from a count.
-              */}
-              <ol className="space-y-0.5 text-xs" aria-label={t("lab.bench.ladder")}>
-                {CRITICAL_RUNGS.map((rung) => {
-                  const tries = c.attempts.filter((at) => at.rung === rung);
-                  const spoken = tries.some((at) => at.outcome === "spoke");
-                  return (
-                    <li key={rung} className={spoken ? "font-semibold" : "text-muted-foreground"}>
-                      {spoken ? "✓" : tries.length > 0 ? "·" : "○"} {t(`lab.bench.rung_${rung}`)}
-                      {tries.length > 0 && (
-                        <span> — {tries.map((at) => `${at.contact} (${t(`lab.bench.outcome_${at.outcome}`)})`).join("; ")}</span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-              {c.nextRung !== null && (
-                <p className="text-xs font-semibold">{t("lab.bench.tryNext", { rung: t(`lab.bench.rung_${c.nextRung}`) })}</p>
-              )}
-              <div className="flex flex-wrap items-end gap-2">
-                <select className="rounded border border-input px-2 py-1" aria-label={t("lab.bench.rung")}
-                  value={rungs[c.id] ?? c.nextRung ?? "ordering_clinician"}
-                  onChange={(e) => setRungs((x) => ({ ...x, [c.id]: e.target.value as CriticalRung }))}>
-                  {CRITICAL_RUNGS.map((r) => (
-                    <option key={r} value={r}>{t(`lab.bench.rung_${r}`)}</option>
-                  ))}
-                </select>
-                <input className="rounded border border-input px-2 py-1" placeholder={t("lab.bench.contact")}
-                  aria-label={`${t("lab.bench.contact")} ${c.patientDisplay}`}
-                  value={contacts[c.id] ?? ""}
-                  onChange={(e) => setContacts((x) => ({ ...x, [c.id]: e.target.value }))} />
-                <select className="rounded border border-input px-2 py-1" aria-label={t("lab.bench.outcome")}
-                  value={outcomes[c.id] ?? "no_answer"}
-                  onChange={(e) => setOutcomes((x) => ({ ...x, [c.id]: e.target.value as CallOutcome }))}>
-                  {(["no_answer", "engaged", "message_left", "spoke"] as const).map((o) => (
-                    <option key={o} value={o}>{t(`lab.bench.outcome_${o}`)}</option>
-                  ))}
-                </select>
-                <input className="rounded border border-input px-2 py-1" placeholder={t("lab.bench.readback")}
-                  aria-label={`${t("lab.bench.readback")} ${c.patientDisplay}`}
-                  value={readbacks[c.id] ?? ""}
-                  onChange={(e) => setReadbacks((x) => ({ ...x, [c.id]: e.target.value }))} />
-                <Button type="button" disabled={ack.isPending}
-                  onClick={() => ack.mutate({
-                    callId: c.id, outcome: outcomes[c.id] ?? "no_answer",
-                    rung: rungs[c.id] ?? c.nextRung ?? "ordering_clinician",
-                  })}>
-                  {t("lab.bench.record")}
+                    }
+                    return (
+                      <tr key={a.analyteId} className="border-t border-border">
+                        <td className="py-1 pr-2">{a.nameEn} <span className="text-xs text-muted-foreground">{a.code}</span></td>
+                        <td className="pr-2">
+                          {a.value === null ? (
+                            <input
+                              className="w-28 rounded border border-input px-2 py-0.5 tabular-nums"
+                              aria-label={`${row.orderableCode} ${a.code}`}
+                              value={values[cell] ?? ""}
+                              onChange={(e) => setValues((v) => ({ ...v, [cell]: e.target.value }))}
+                            />
+                          ) : (
+                            <span className={`tabular-nums ${tone === "critical" ? "font-bold" : tone === "abnormal" ? "font-semibold" : ""}`}
+                              style={tone === "critical" ? { color: "var(--state-danger)" } : undefined}>
+                              {a.value}
+                            </span>
+                          )}
+                        </td>
+                        <td className="pr-2 text-xs text-muted-foreground">{a.unit ?? ""}</td>
+                        <td className="pr-2 text-xs text-muted-foreground">{ref}</td>
+                        <td className="pr-2 font-semibold">{a.flag ?? ""}</td>
+                        <td className="whitespace-nowrap">
+                          {a.value === null && (
+                            <>
+                              <Button type="button" size="sm" variant="outline"
+                                onClick={() => post.mutate({
+                                  orderItemId: row.orderItemId, analyteId: a.analyteId,
+                                  value: values[cell] ?? "",
+                                  ...(overrideFor === cell && overrideBy !== "" ? { by: overrideBy } : {}),
+                                })}
+                              >{t("lab.bench.save")}</Button>
+                              <button type="button" className="ml-2 text-xs underline"
+                                onClick={() => setOverrideFor(overrideFor === cell ? null : cell)}>
+                                {t("lab.bench.override")}
+                              </button>
+                              {overrideFor === cell && (
+                                <input
+                                  className="ml-2 rounded border border-input px-2 py-0.5"
+                                  placeholder={t("lab.bench.overrideByHint")}
+                                  aria-label={t("lab.bench.overrideBy")}
+                                  value={overrideBy}
+                                  onChange={(e) => setOverrideBy(e.target.value)}
+                                />
+                              )}
+                              {/*
+                                17d T1 — THE SUSPECTED SWAP. Not a line in the shared error strip:
+                                it names the OTHER barcode so the technologist can pick that tube
+                                up, and it asks for a second person by login before the value is
+                                allowed through. The server refuses again if the second person is
+                                the enterer — this field is the prompt, never the control.
+                              */}
+                              {swap !== null && swap.cell === cell && (
+                                <div role="alert" className="mt-2 rounded border-2 p-2 text-xs"
+                                  style={{ borderColor: "var(--state-danger)" }}>
+                                  <p className="font-bold">{t("lab.bench.swapSuspected")}</p>
+                                  <p className="mt-1">{swap.message}</p>
+                                  {swap.suspectSpecimenNos.length > 0 && (
+                                    <p className="mt-1 font-semibold tabular-nums">
+                                      {t("lab.bench.swapCheckTubes", { nos: swap.suspectSpecimenNos.join(", ") })}
+                                    </p>
+                                  )}
+                                  <label className="mt-2 flex items-center gap-2">
+                                    <span>{t("lab.bench.vouchBy")}</span>
+                                    <input
+                                      className="rounded border border-input px-2 py-0.5"
+                                      placeholder={t("lab.bench.overrideByHint")}
+                                      aria-label={t("lab.bench.vouchBy")}
+                                      value={vouchBy}
+                                      onChange={(e) => setVouchBy(e.target.value)}
+                                    />
+                                    <Button type="button" size="sm" variant="outline"
+                                      disabled={vouchBy.trim() === ""}
+                                      onClick={() => post.mutate({
+                                        orderItemId: row.orderItemId, analyteId: a.analyteId,
+                                        value: values[cell] ?? "", vouch: vouchBy.trim(),
+                                      })}
+                                    >{t("lab.bench.vouchSave")}</Button>
+                                  </label>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="flex items-center gap-3">
+                <Button type="button" disabled={!filled.ready || saveAll.isPending} onClick={() => saveAll.mutate(row)}>
+                  {t("lab.bench.saveAll")}
                 </Button>
+                <span className="text-xs text-muted-foreground">{t("lab.bench.saveAllHint")}</span>
               </div>
-              <p className="text-xs">{t("lab.bench.readbackRule")}</p>
-            </div>
-          ))}
-        </section>
-      </div>
-    </LabSeatFrame>
+            </article>
+          );
+        })}
+      </section>
+    </LabStation>
   );
 }

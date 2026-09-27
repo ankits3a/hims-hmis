@@ -56,7 +56,14 @@ export type PatientErrorCode =
    * register and amend paths refuse it (and a number change under it), and `recordAbhaVerifiedByAbdm`
    * is its one writer. `abha_number_invalid` is that writer refusing a malformed answer.
    */
-  | "abha_verified_only_by_abdm" | "abha_number_invalid";
+  | "abha_verified_only_by_abdm" | "abha_number_invalid"
+  /**
+   * ABDM S1 — `abha_already_linked`: another active patient holds this ABHA number or address (one
+   * ABHA, one patient — `abha-holders.ts`); `detail.uhid` names them only to someone who may see
+   * them. `abha_demographics_locked`: name, date of birth and gender are ABDM's while the ABHA is
+   * `verified`, and change only by re-verifying (`abha-verified.ts`).
+   */
+  | "abha_already_linked" | "abha_demographics_locked";
 
 export class PatientError extends Error {
   constructor(

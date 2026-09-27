@@ -1031,6 +1031,7 @@ split is what those pairs will hang on.
 | `materials.returns.manage` | ✓ | | ✓ |
 | `materials.returns.approve` | ✓ | | |
 | `materials.writeoffs.manage` | ✓ | | |
+| `materials.items.merge` | ✓ | | |
 
 `owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
 which that role already holds, and a `materials.*` string for it would be a second door to one
@@ -1079,6 +1080,13 @@ recorded under `materials.bills.manage`, and a credit short of the debit note al
 medical superintendent approves it through `materials_stock_adjustment`, the route a count's
 variance takes. `pharmacy_incharge` also gains `materials.recall.manage` to act on a drug alert. All
 of these are defaults the owner may change.
+
+**Pharmacy P6 merges a duplicate item, and adds one `materials.*` string.** `materials.items.merge` goes
+to `materials_head` alone: the head raises "merge this duplicate into the item that stays" with the
+reason, and carries it out once the medical superintendent has approved it through
+`materials_stock_adjustment` (never the head who raised it). The stock on hand and the open work move
+to the item that stays; the history stays written against the duplicate. This is a default the owner
+may change.
 
 **Two approval types, registered by `seed:materials` in the deploy path.**
 `materials_near_expiry_acceptance` (approver `materials_head`, 240-minute SLA) gates posting a GRN
@@ -1313,6 +1321,18 @@ summary, GSTR-2B against the books and the activity view, all read-only.
 defaults the owner may change.
 `pharmacy.tally.export` (the TallyPrime export of the pharmacy's vouchers, and the ledger names it
 uses) goes to `owner` and `billing_manager`, the accountant's desk; a default the owner may change.
+**Pharmacy P6 keeps narcotic, psychotropic and Schedule X drugs under the law, in a cabinet with two
+keys.** `pharmacy.ndps.custody` (holding a key of the controlled-drug cabinet) goes to `pharmacy` and
+`pharmacy_incharge`. `pharmacy.ndps.witness` (the second person at every movement into or out of it)
+goes to both of them, and to `medical_superintendent` and `materials_head`, who witness but hold no
+key. `pharmacy.licences.manage` (the RMI recognition, the Form 20F licence and the doctors trained
+under NDPS Rules r.2(ib)) goes to `pharmacy_incharge`, `owner` and `medical_superintendent`. All are
+defaults the owner may change.
+**Pharmacy P6 lets the patient hear: a bill by SMS, and a refill reminder only if they said yes.**
+`pharmacy.messages.consent` (recording, at the desk, whether the patient wants refill reminders or no
+messages at all) goes to `pharmacy` and `pharmacy_incharge`. `pharmacy.messages.manage` (the DLT
+template ids, the WhatsApp template names and the pharmacy's phone on the office's Messages side) goes to
+`pharmacy_incharge` and `owner`, who contracts the provider. Both are defaults the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1328,6 +1348,11 @@ uses) goes to `owner` and `billing_manager`, the accountant's desk; a default th
 | `pharmacy.downtime.enter` | ✓ | | |
 | `pharmacy.reports.read` | | | ✓ |
 | `pharmacy.reports.margin` | | | ✓ |
+| `pharmacy.ndps.custody` | ✓ | | ✓ |
+| `pharmacy.ndps.witness` | ✓ | | ✓ |
+| `pharmacy.licences.manage` | | | ✓ |
+| `pharmacy.messages.consent` | ✓ | | ✓ |
+| `pharmacy.messages.manage` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |

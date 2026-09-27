@@ -116,6 +116,12 @@ export const dispenseHandedOver = defineEvent("dispense.handed_over", MODULE, z.
    * scheduled line may be handed over by the aide, who has none, so it is nullable by design.
    */
   pharmacistRegNo: z.string().min(1).nullable().default(null),
+  /**
+   * PHARMACY P6 — the controlled lines' register rows (the cabinet's, `controlled_stock_register`) and the
+   * witness who held the second key. Additive: earlier payloads parse as none and null.
+   */
+  controlledRegisterRows: z.number().int().nonnegative().default(0),
+  witnessId: id.nullable().default(null),
 }));
 
 export const dispenseCancelled = defineEvent("dispense.cancelled", MODULE, z.object({
@@ -208,6 +214,37 @@ export const shortBookResolved = defineEvent("short_book.resolved", MODULE, z.ob
   entryId: id, storeResourceId: id, resolution: z.enum(["ordered", "received", "dismissed"]),
 }));
 
+/** PHARMACY P6 — a controlled-drug licence (RMI recognition, Form 20F) was recorded. */
+export const controlledLicenceRecorded = defineEvent("controlled.licence_recorded", MODULE, z.object({
+  licenceId: id, kind: z.enum(["ndps_rmi", "schedule_x"]), licenceNo: z.string().min(1), form: z.string().min(1),
+  validFrom: z.string().min(1), validUntil: z.string().min(1),
+}));
+
+/** PHARMACY P6 — a doctor's training under NDPS Rules r.2(ib) was recorded; they may prescribe a narcotic drug here. */
+export const endPrescriberRecorded = defineEvent("controlled.prescriber_recorded", MODULE, z.object({
+  entryId: id, doctorId: id, training: z.string().min(1),
+}));
+
+/** PHARMACY P6 — a trained-prescriber entry was ended (the doctor left, or it was recorded in error). */
+export const endPrescriberEnded = defineEvent("controlled.prescriber_ended", MODULE, z.object({
+  entryId: id, doctorId: id, reason: z.string().min(1),
+}));
+
+/** PHARMACY P6 — the cabinet's balance check: who held, who witnessed, whether it balanced, and the MS's request if not. */
+export const controlledChecked = defineEvent("controlled.checked", MODULE, z.object({
+  countId: id, storeResourceId: id, holderId: id, witnessId: id, batches: z.number().int().nonnegative(),
+  balanced: z.boolean(), approvalId: id.nullable(),
+}));
+
+/**
+ * PHARMACY P6 — an act at the cabinet made under two keys from the office: a GRN posted into it, a transfer
+ * received into it, a return dispatched from it, a destruction, a balance check's adjustment booked.
+ */
+export const controlledActWitnessed = defineEvent("controlled.act_witnessed", MODULE, z.object({
+  act: z.enum(["grn_post", "transfer_receive", "return_dispatch", "write_off_post", "adjustment_post"]),
+  refId: id, storeResourceId: id, holderId: id, witnessId: id, officers: z.number().int().nonnegative(),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -216,4 +253,5 @@ export const PHARMACY_EVENTS = [
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,
   retailSold, retailLicenceRecorded, retailLineReturned,
   shortBookNoted, shortBookResolved,
+  controlledLicenceRecorded, endPrescriberRecorded, endPrescriberEnded, controlledChecked, controlledActWitnessed,
 ] as const;

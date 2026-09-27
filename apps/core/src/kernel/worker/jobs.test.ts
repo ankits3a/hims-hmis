@@ -216,6 +216,33 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
     const pump = registeredPump();
     expect(pump).toEqual(expect.objectContaining({ name: "runNotifyPump", every: 5000 }));
   });
+
+  /**
+   * PHARMACY P6 (patient messages) — THE ADAPTER SET REACHES THE PUMP. Until this task the worker called
+   * `runNotifyPump(db, { now, stuckAfterMs })` and the pump fell back to its own console sinks, so no
+   * provider knob — `NOTIFY_PROVIDER`, `NOTIFY_PUSH_PROVIDER` — was ever obeyed (the R2 defect above, on a
+   * different key). A set handed to `registerAllJobs` must be the one the registered job sends through:
+   * a queued welcome goes out through the recording adapter and nowhere else.
+   */
+  it("sends through the adapter set it was handed — the provider configuration takes effect", async () => {
+    await db.delete(notifications).where(eq(notifications.id, STUCK_ROW));
+    await db.insert(notifications).values({
+      id: "01HR02JOBSQUEUEDROW000001", audience: "patient", patientId: PATIENT, templateKey: "patient_welcome",
+      params: { uhid: "HMS-00000001-5" }, dedupeKey: "n:p6:adapters:1", occurredAt: NOON,
+      expiresAt: new Date(NOON.getTime() + 24 * 3600_000),
+    });
+    const sent: string[] = [];
+    const recording = (channel: "whatsapp" | "sms" | "web_push") => ({
+      channel, async send(to: string) { sent.push(`${channel}:${to}`); return { providerMessageId: "p-1" }; },
+    });
+    const specs: JobSpec[] = [];
+    registerAllJobs(recordingScheduler(specs), db, new ModuleRegistry(), {}, INTERVALS,
+      { whatsapp: recording("whatsapp"), sms: recording("sms"), web_push: recording("web_push") });
+    await specs.find((s) => s.name === "runNotifyPump")!.run(NOON);
+    expect(sent).toEqual(["whatsapp:9876500001"]);
+    const row = (await db.select().from(notifications).where(eq(notifications.id, "01HR02JOBSQUEUEDROW000001")))[0]!;
+    expect(row).toMatchObject({ status: "sent", sentChannel: "whatsapp" });
+  });
 });
 
 /**
@@ -354,7 +381,7 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // nothing. T5 did not read it, and found this file, that file and `alerts.yml`'s three places by
     // going red instead. The tax is identical either way; the difference is whether it is paid once
     // or discovered three times.
-    expect(specs).toHaveLength(21); // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(specs).toHaveLength(22); // PHARMACY P6 (patient messages): +1, runRefillReminders (dailyIst 10:00), read off the red run // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );

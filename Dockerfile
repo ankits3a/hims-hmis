@@ -41,6 +41,9 @@ WORKDIR /app
 # ------------------------------------------------------------------------------------------
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# `pnpm.patchedDependencies` (WASA M-08: drizzle-orm's identifier-escaping back-port) — the lockfile
+# names each patch by path and hash, so the install refuses without these files.
+COPY patches patches
 COPY apps/core/package.json apps/core/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
@@ -77,6 +80,7 @@ COPY --from=build /app/apps/web/dist /srv
 # ------------------------------------------------------------------------------------------
 FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches patches
 COPY apps/core/package.json apps/core/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json

@@ -542,6 +542,9 @@ function LineRow({
                   </button>
                 ) : <span className="pill" data-testid={`${id}-matched`} title={t("pharmacyDesk.matchedBySaltTitle")}>{t("pharmacyDesk.matchedBySalt")}</span>
               ) : null}
+              {line.controlled === true && line.ndpsClass != null ? (
+                <span className="pill rd" data-testid={`${id}-controlled`} title={t("pharmacyDesk.controlled.cabinetTitle")}>{t(`pharmacyDesk.controlled.${line.ndpsClass}`)}</span>
+              ) : null}
               {line.scheduleFlag === "H1" ? <span className="pill rd">H1</span>
                 : line.scheduleFlag === "X" ? <span className="pill rd">{t("pharmacyDesk.scheduleX")}</span>
                   : line.partlyChecked === true ? <span className="pill gd">{t("pharmacyDesk.notChecked")}</span> : null}

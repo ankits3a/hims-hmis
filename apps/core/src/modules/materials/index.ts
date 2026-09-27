@@ -98,7 +98,7 @@ export {
 } from "./approval-types";
 export { PO_HEAD_APPROVAL_LIMIT_PAISE, PO_RECEIPT_TOLERANCE_BPS } from "./config";
 export {
-  OPEN_PO_STATUSES, allowedReceiptBase, approvalTierFor, cancelPurchaseOrder, createPurchaseOrder, decidePurchaseOrder,
+  OPEN_PO_STATUSES, allowedReceiptBase, approvalTierFor, assertNotPoApprover, purchaseOrderOfGrn, cancelPurchaseOrder, createPurchaseOrder, decidePurchaseOrder,
   getPurchaseOrder, lastPurchaseByItem, lineGstPaise, listPurchaseOrders, onOrderAt, overduePurchaseOrders,
   purchasableVendors, purchaseOrdersAwaiting, receivableLines, sendPurchaseOrder, setStockLevel, settlePurchaseOrders,
   stockLevelsAt, submitPurchaseOrder, updatePurchaseOrder,
@@ -159,3 +159,27 @@ export type {
   BatchFacts, MaterialsDocKind, MaterialsDocRef, NonMovingReport, NonMovingRow, NonMovingSuggestion, PurchaseAdjustment, PurchaseRegister,
   PurchaseRegisterLine, PurchaseRegisterRow, ReconBill, StockValuation, SupplierPaymentRead, ValuationGroup, ValuationRow,
 } from "./reports";
+
+// ── PHARMACY P6 — the controlled-drug cabinet: two keys at the ledger, its register, its balance and its daily check ──
+export { CONTROLLED_ATTRIBUTE, isControlledStore, setStoreControlled } from "./controlled";
+export type { Custody } from "./controlled";
+export {
+  controlledAdjustmentsToBook, controlledBalance, controlledCheckSheet, controlledChecksOn, controlledRegisterRows, openControlledDiscrepancies,
+  recordControlledCheck,
+} from "./controlled-check";
+export type {
+  ControlledBalance, ControlledBalanceRow, ControlledCheckResult, ControlledCheckSummary, ControlledRegister, ControlledRegisterRow,
+  ControlledSheetLine,
+} from "./controlled-check";
+
+// ── PHARMACY P6 (hygiene) — item merge: the stock and the open work move to the survivor, the history stays ──
+export { assertNotMerged, batchLineage, survivorsOf, withMergedAliases } from "./items";
+export { itemFactsThroughMerge } from "./reports";
+export {
+  executeItemMerge, findDuplicateItems, getItemMerge, itemMergePreview, listItemMerges, raiseItemMerge, settleItemMerges,
+  similarNames,
+} from "./item-merge";
+export type {
+  DuplicateSuggestion, DuplicateWhy, ItemMergeHooks, ItemMergeStatus, ItemMergeSummary, ItemMergeView, MergeItemSide, MergePreview,
+  MergeRefusal, MergeRule, MergeStockLine, MergeTally,
+} from "./item-merge";

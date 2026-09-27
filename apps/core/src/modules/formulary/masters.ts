@@ -66,14 +66,14 @@ function isUniqueViolation(e: unknown): boolean {
 export async function addSalt(
   tx: Tx,
   actor: Actor,
-  input: { name: string; aliases?: string[]; drugClass?: string | null; atcCode?: string | null },
+  input: { name: string; aliases?: string[]; drugClass?: string | null; atcCode?: string | null; ndpsClass?: "narcotic" | "psychotropic" | null },
 ): Promise<{ saltId: string }> {
   const saltId = newId();
   const aliases = input.aliases ?? [];
   try {
     await tx.insert(formularySalts).values({
       id: saltId, name: input.name, aliases,
-      drugClass: input.drugClass ?? null, atcCode: input.atcCode ?? null,
+      drugClass: input.drugClass ?? null, atcCode: input.atcCode ?? null, ndpsClass: input.ndpsClass ?? null,
       createdBy: actor.id, updatedBy: actor.id,
     });
   } catch (e) {
@@ -96,7 +96,11 @@ export async function updateSalt(
   tx: Tx,
   actor: Actor,
   saltId: string,
-  patch: { name?: string; aliases?: string[]; drugClass?: string | null; atcCode?: string | null; active?: boolean; allergyClasses?: string[] },
+  patch: {
+    name?: string; aliases?: string[]; drugClass?: string | null; atcCode?: string | null; active?: boolean; allergyClasses?: string[];
+    /** PHARMACY P6 — the NDPS Act's class (`ndps.ts`). */
+    ndpsClass?: "narcotic" | "psychotropic" | null;
+  },
 ): Promise<void> {
   const existing = await tx.select().from(formularySalts).where(eq(formularySalts.id, saltId));
   if (existing[0] === undefined) throw new FormularyError("unknown_salt", `moiety ${saltId} not found`);

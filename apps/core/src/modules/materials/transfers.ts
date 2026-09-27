@@ -9,6 +9,7 @@ import { fefoPick, getBatch, postMovements } from "./ledger";
 import { ensureTransitStore, requireStore, storeCustodianRoles } from "./stores";
 import type { MovementInput } from "./ledger";
 import type { Actor } from "@hmis/contracts";
+import type { Custody } from "./controlled";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export type TransferRow = typeof transfers.$inferSelect;
@@ -69,6 +70,8 @@ export async function issueStock(
     note?: string | null;
     occurredAt: Date;
     siteId?: string;
+    /** PHARMACY P6 — out of the controlled cabinet only under two keys (the register names the store it went to). */
+    custody?: Custody;
   },
 ): Promise<{ transferId: string; lines: { transferLineId: string; batchId: string; qtyIssued: number }[] }> {
   if (input.lines.length === 0) {
@@ -173,6 +176,9 @@ export async function issueStock(
     movements.push({
       resourceId: input.fromResourceId, batchId: r.batchId, qtyDelta: -r.qty,
       reason: "issue", refType: "transfer", refId: transferId, occurredAt: input.occurredAt,
+      ...(input.custody === undefined ? {} : {
+        custody: { ...input.custody, counterparty: input.custody.counterparty ?? (await requireStore(tx, input.toResourceId)).name, documentRef: `transfer ${transferId}` },
+      }),
     });
     movements.push({
       resourceId: transitId, batchId: r.batchId, qtyDelta: r.qty,
@@ -221,6 +227,8 @@ export async function receiveStock(
   lines: { lineId: string; qtyReceived: number }[],
   occurredAt: Date,
   siteId?: string,
+  /** PHARMACY P6 — into the controlled cabinet only under two keys (the register names the store it came from). */
+  opts: { custody?: Custody } = {},
 ): Promise<{ status: string; shortfalls: { transferLineId: string; qtyShort: number }[] }> {
   const rows = await tx.select().from(transfers).where(eq(transfers.id, transferId));
   const transfer = rows[0];
@@ -312,6 +320,9 @@ export async function receiveStock(
       movements.push({
         resourceId: transfer.toResourceId, batchId: line.batchId, qtyDelta: l.qtyReceived,
         reason: "receive", refType: "transfer", refId: transferId, occurredAt,
+        ...(opts.custody === undefined ? {} : {
+          custody: { ...opts.custody, counterparty: opts.custody.counterparty ?? (await requireStore(tx, transfer.fromResourceId)).name, documentRef: `transfer ${transferId}` },
+        }),
       });
     }
     confirmed.push({ transferLineId: line.id, batchId: line.batchId, qtyReceived: l.qtyReceived });

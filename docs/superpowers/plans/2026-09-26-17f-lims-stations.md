@@ -123,6 +123,19 @@ called done.
 - Rewrap the five lab screens with **no behaviour change**.
 - Claims: `router.tsx`.
 
+**F1 as built (26 Sep, lane `lims-f1-shell`).**
+- `apps/web/src/components/station/station-shell.tsx` + `station.css`; `LabStation` in `screens/lab-seat.tsx`
+  replaces `LabSeatFrame` and supplies the five stations with the same grants as `router.tsx`'s NAV.
+- The five lab routes carry `staticData.fullViewport`; the shell draws `ModeBanner` itself. The way out is the
+  station switch and F8 (the hospital palette).
+- Each screen's queue section moved into the right column unchanged; the Bench's critical calls are its
+  "Clocks running", folded unless a call is open. The lane shows the seat's own numbers (nobody-in-hand state).
+- No lab copilot exists yet, so no station passes one and the list never folds. The shell supports it.
+- `.st` joins `paper-pine.css` for the palette only. It does not wear `.pp`: that class's button/input resets
+  stripped the shadcn controls (caught in a Chromium walk, not by vitest).
+- One existing test changed its query, not its guard: `lab-verify.test.tsx` DD11 waited on `getByText(/Verify/i)`,
+  which now also matches the switch's "Verify & report"; it waits on the seat's h1 instead.
+
 ### F2 · Reception counter
 - Core:
   - `lab_tokens`: a daily sequence; one token joins the orders of several visits of one patient;

@@ -52,7 +52,10 @@ export const notificationSuppressed = defineEvent(
     notificationId: z.string().min(1),
     templateKey: z.string().min(1),
     audience: audienceSchema,
-    reason: z.enum(["deceased", "promotional_blocked", "merge_unresolvable"]),
+    // PHARMACY P6 (patient messages) — `opted_out`: the patient asked for no messages at all;
+    // `no_consent`: the template needs an opt-in (`requiresOptIn`) the patient has not given, or took back
+    // after the row was queued. Both are the patient's own word, read at send time (D4).
+    reason: z.enum(["deceased", "promotional_blocked", "merge_unresolvable", "opted_out", "no_consent"]),
   }),
 );
 
@@ -63,5 +66,38 @@ export const notificationExpired = defineEvent(
     notificationId: z.string().min(1),
     templateKey: z.string().min(1),
     audience: audienceSchema,
+  }),
+);
+
+/**
+ * PHARMACY P6 (patient messages) — the patient said something about being messaged, and a person at a
+ * desk recorded it: the consent record (who = the actor, when = the envelope, how = `via`, what =
+ * `change`), with the state it left behind. The envelope's `patientId` carries the patient (§10.5).
+ */
+export const messagePreferenceRecorded = defineEvent(
+  "message_preference.recorded",
+  MODULE,
+  z.object({
+    change: z.enum(["reminders_on", "reminders_off", "stopped", "resumed", "channel", "language"]),
+    via: z.enum(["pharmacy_desk", "front_desk"]),
+    refillReminders: z.boolean(),
+    optedOut: z.boolean(),
+    channel: z.enum(["sms", "whatsapp"]).nullable(),
+    language: z.enum(["hi", "en"]).nullable(),
+  }),
+);
+
+/**
+ * PHARMACY P6 (patient messages) — the provider's ids for one template were recorded on a screen: the
+ * DLT content-template id the portal issued, the name WhatsApp approved. Who (actor) and when
+ * (envelope) are the audit; the ids are not secrets.
+ */
+export const templateRegistrationRecorded = defineEvent(
+  "template_registration.recorded",
+  MODULE,
+  z.object({
+    templateKey: z.string().min(1),
+    dltTemplateId: z.string().min(1).nullable(),
+    whatsappTemplateName: z.string().min(1).nullable(),
   }),
 );

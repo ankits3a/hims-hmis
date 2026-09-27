@@ -3,9 +3,9 @@ import "../lib/i18n";
 import { ICD11_CITATION, Icd11Citation, Icd11Pill, Icd11Scope } from "./icd11";
 
 /**
- * The ICD-11 pill and WHO's citation. The code and title are SYNTHETIC — WHO's mapping data may not
- * be in this repository (licence §1.2.4, unruled) — but the citation is WHO's own §1.3 text, which
- * is exactly the one string here that must be verbatim.
+ * The ICD-11 pill and WHO's citation. The code and title are SYNTHETIC — WHO's mapping data is
+ * downloaded at load time and never committed (owner ruling 2026-09-26, licence §1.2.4) — but the
+ * citation is WHO's own §1.3 text, which is exactly the one string here that must be verbatim.
  */
 const REF = { code: "ZZ00&ZZ9P1", title: "Synthetic title", uri: "https://synthetic.invalid/release/2026-01/mms/1", release: "2026-01" };
 

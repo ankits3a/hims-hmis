@@ -5,10 +5,11 @@ import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { placeOrder } from "../../kernel/orders/place";
 import { transition } from "../../kernel/workflow/instances";
-import { equivalentMedicines, isEquivalentMedicine, medicinesByIds } from "../formulary";
+import { equivalentMedicines, isEquivalentMedicine, medicinesByIds, ndpsClassByMedicine } from "../formulary";
 import { availableQtyByItem, listItems, releaseReservation } from "../materials";
 import { getEncounter, getPrescription, runRxChecks } from "../opd";
 import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
@@ -278,10 +279,12 @@ export async function verifyDispense(
   ].filter((x): x is string => x !== null));
   const drugItems = await listItems(db, { class: "drug", active: true });
   const itemByMedicine = new Map(drugItems.filter((i) => i.formularyMedicineId !== null).map((i) => [i.formularyMedicineId as string, i]));
+  // PHARMACY P6 — the NDPS class of every medicine this dispense may name, beside its schedule flag.
+  const ndps = await ndpsClassByMedicine(db, [...medicines.keys()]);
 
   type Settled = {
     line: (typeof lines)[number]; qtyBase: number; dispensedMedicineId: string; itemId: string; serviceId: string;
-    substitution: { from: string; to: string } | null; resolvedHere: boolean; scheduleFlag: string | null;
+    substitution: { from: string; to: string } | null; resolvedHere: boolean; scheduleFlag: string | null; ndpsClass: string | null;
   };
   const settled: Settled[] = [];
   let substitutions = 0;
@@ -334,23 +337,38 @@ export async function verifyDispense(
     }
     const med = medicines.get(dispensedMedicineId);
     const scheduleFlag = med?.scheduleFlag ?? null;
+    const ndpsClass = ndps.get(dispensedMedicineId) ?? null;
     /**
-     * R-3, AT THE SECOND GATE TOO (close review, 16c §8.5 pass 1). `claimDispense` refuses a
-     * Schedule X line before any line is written — but it judges the medicine the PRESCRIPTION
-     * named, and this function is allowed to change it: a substitution swaps in a different
-     * medicine, and the equality it must satisfy (salts, strength, form, route) says nothing about
-     * schedule. A controlled brand sharing a salt set with an uncontrolled one — or one row whose
-     * `schedule_flag` was typed wrong — walked past the claim's guard and out of the window, with
-     * no double custody and no register. The law is asked at every gate that can name a medicine.
+     * R-3, AT THE SECOND GATE TOO (close review, 16c §8.5 pass 1). `claimDispense` judges the medicine the
+     * PRESCRIPTION named, and this function is allowed to change it: a substitution swaps in a different
+     * medicine, and the equality it must satisfy (salts, strength, form, route) says nothing about schedule.
+     * The law is asked at every gate that can name a medicine.
+     *
+     * PHARMACY P6 — "asked" now means the licence: a Schedule X or narcotic line is refused, naming the
+     * licence, unless it is current (`assertControlledLinesAllowed`, per line, here). A
+     * Schedule X line is never substituted in or out (D&C Rules r.65(11A)), and a controlled medicine is
+     * dispensed only from an item kept in the narcotic cabinet.
      */
-    if (scheduleFlag !== null && (REFUSED_FLAGS as readonly string[]).includes(scheduleFlag)) {
+    const control = controlOf(scheduleFlag, ndpsClass);
+    // The licence first (the refusal R-3 always gave), then what the law adds once it is held.
+    if (control.controlled) {
+      await assertControlledLinesAllowed(db, [{ lineIdx: line.lineIdx, drug: med?.brandName ?? rxLine.drug, scheduleFlag, ndpsClass }], now);
+    }
+    if (substitution !== null && (control.scheduleX || medicines.get(substitution.from)?.scheduleFlag === "X")) {
       throw new PharmacyError(
-        "schedule_x_not_dispensed_here",
-        `line ${String(line.lineIdx + 1)} would dispense ${med?.brandName ?? rxLine.drug}, Schedule ${scheduleFlag} — not dispensed at the OPD counter until double custody (16d)`,
-        { lineIdx: line.lineIdx, scheduleFlag },
+        "substitution_not_allowed",
+        `line ${String(line.lineIdx + 1)} is Schedule X — it is dispensed as prescribed, never substituted (D&C Rules r.65(11A))`,
+        { lineIdx: line.lineIdx },
       );
     }
-    settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, resolvedHere, scheduleFlag });
+    if (control.controlled && item.storageClass !== "narcotic") {
+      throw new PharmacyError(
+        "controlled_item_not_in_cabinet",
+        `line ${String(line.lineIdx + 1)}: ${med?.brandName ?? rxLine.drug} is a controlled drug but its stock item ${item.code} is stored as ${item.storageClass} — set its storage class to narcotic and keep its stock in the cabinet`,
+        { lineIdx: line.lineIdx, itemId: item.id },
+      );
+    }
+    settled.push({ line, qtyBase, dispensedMedicineId, itemId: item.id, serviceId: sale.serviceId, substitution, resolvedHere, scheduleFlag, ndpsClass });
   }
   if (settled.length === 0) throw new PharmacyError("nothing_to_dispense", "every line is declined — cancel the dispense instead");
 
@@ -395,7 +413,8 @@ export async function verifyDispense(
       { hits: refused.drugDisease },
     );
   }
-  const scheduled = settled.some((s) => s.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(s.scheduleFlag));
+  // A controlled line is handed over by a registered pharmacist against a confirmed identity too (P6).
+  const scheduled = settled.some((s) => (s.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(s.scheduleFlag)) || controlOf(s.scheduleFlag, s.ndpsClass).controlled);
   const declinedCount = lines.filter((l) => l.status === "declined").length;
 
   await withTx(db, async (tx) => {
@@ -416,7 +435,7 @@ export async function verifyDispense(
     for (const [i, s] of settled.entries()) {
       await tx.update(pharmacyDispenseLines).set({
         qtyBase: s.qtyBase, dispensedMedicineId: s.dispensedMedicineId, itemId: s.itemId, orderItemId: placed.itemIds[i]!,
-        scheduleFlag: s.scheduleFlag,
+        scheduleFlag: s.scheduleFlag, ndpsClass: s.ndpsClass,
         ...(s.substitution === null ? {} : { substitutionType: "generic", consentBy: actor.id, consentAt: now }),
         ...(s.resolvedHere ? { substitutionType: "resolved" } : {}),
       }).where(eq(pharmacyDispenseLines.id, s.line.id));

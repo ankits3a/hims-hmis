@@ -21,7 +21,10 @@ export function configureApp(
   // Before the parsers, so even a 400/413 the parser raises carries it.
   app.use(noStore);
   app.useBodyParser("json", { limit: "1mb" });
-  app.useBodyParser("urlencoded", { extended: true });
+  // WASA M-08: NO `urlencoded` parser. Nothing this API serves sends a form body — the SPA, the print
+  // relay and ABDM's callbacks all send JSON — and the one that was registered here handed every
+  // pre-auth request body to `qs` (`extended: true`), whose DoS advisories were the reachable half of
+  // M-08. A form-encoded POST now reaches its handler with no body and fails its schema, as it should.
   // Express stamps `X-Powered-By: Express` on every response: it names the stack to an attacker
   // and tells a user nothing. Disabled HERE, not in main.ts, so production and every e2e app get
   // it from the one shared place — a second call site is a second chance to forget.
