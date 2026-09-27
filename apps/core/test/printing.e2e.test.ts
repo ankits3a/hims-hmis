@@ -14,7 +14,7 @@ import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { withTx } from "../src/kernel/db/client";
 import { opdEncounters, opdSectionRecords, phiAccessLog, printJobs } from "../src/kernel/db/schema";
-import { enqueuePrintJob } from "../src/kernel/printing/enqueue";
+import { PRINT_DESTINATIONS, enqueuePrintJob } from "../src/kernel/printing/enqueue";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Db } from "../src/kernel/db/client";
 
@@ -49,7 +49,14 @@ describe("FD-24 T2: the print relay's routes", () => {
   });
   beforeEach(async () => {
     await truncateAll(db);
-    ({ apiKey: agentKey } = await createAgent(db, `print-relay-${String(Date.now())}`));
+    /*
+      WASA M-10 — THE RELAY IS GRANTED ITS DESTINATIONS, EXPLICITLY. An agent created with no grant
+      is not a print relay and the queue refuses it (the rows at the end of this file); this one is
+      the site's relay and serves every destination the server declares.
+    */
+    ({ apiKey: agentKey } = await createAgent(db, `print-relay-${String(Date.now())}`, {
+      printDestinations: [...PRINT_DESTINATIONS],
+    }));
   });
 
   /**
@@ -592,5 +599,78 @@ describe("FD-24 T2: the print relay's routes", () => {
     expect(glasses).toBeDefined();
     expect(glasses.html).toContain("Spectacle prescription");
     expect(glasses.html).toContain("−1.25");
+  });
+
+  /**
+   * ═══ WASA M-10 — A CLAIM IS BOUND TO THE RELAY'S OWN DESTINATIONS ═══
+   *
+   * The synthetic audit drained `[icu-printer, billing-desk, pharmacy-counter]` with two unrelated
+   * agent keys: the claim trusted whatever destinations the CALLER listed, so any agent key — a lab
+   * bridge's, a leaked relay's — pulled every printer's rendered documents, patient names and all.
+   * An agent now claims only the intersection of what it asks for and what it is granted.
+   */
+  describe("WASA M-10 — the claim is bound to the agent's granted destinations", () => {
+    const queuedIds = async (): Promise<string[]> =>
+      (await db.select().from(printJobs).where(eq(printJobs.status, "queued"))).map((j) => j.id).sort();
+
+    it("an agent with NO print grant is refused outright, and nothing leaves the queue", async () => {
+      await realVisit();
+      const before = await queuedIds();
+      expect(before.length).toBeGreaterThan(0);
+      const { apiKey } = await createAgent(db, "lab-bridge");
+      const res = await request(app.getHttpServer())
+        .post("/print/claim").set("x-agent-key", apiKey)
+        .send({ destinations: [...PRINT_DESTINATIONS], limit: 50 });
+      expect([res.status, res.body.code]).toEqual([403, "print_relay_not_registered"]);
+      expect(await queuedIds()).toEqual(before);
+      expect(await db.select().from(phiAccessLog)).toEqual([]);
+    });
+
+    it("asking for a destination outside the grant claims ONLY the granted part and names the rest", async () => {
+      const { encounterId } = await realVisit();
+      const enc = (await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)))[0]!;
+      await withTx(db, (tx) => enqueuePrintJob(tx, {
+        document: "vitals_slip", params: { encounterId }, dedupeKey: `vitals:${encounterId}`,
+        patientId: enc.patientId, encounterId,
+      }));
+      const thermal = (await db.select().from(printJobs).where(eq(printJobs.destination, "front_desk_thermal")))
+        .map((j) => j.id).sort();
+      expect(thermal.length).toBeGreaterThan(0);
+
+      const { apiKey } = await createAgent(db, "vitals-relay", { printDestinations: ["vitals_thermal"] });
+      const res = await request(app.getHttpServer())
+        .post("/print/claim").set("x-agent-key", apiKey)
+        .send({ destinations: ["vitals_thermal", "front_desk_thermal"], limit: 50 })
+        .expect(201);
+      expect(res.body.refusedDestinations).toEqual(["front_desk_thermal"]);
+      expect(res.body.jobs.map((j: { destination: string }) => j.destination)).not.toContain("front_desk_thermal");
+      // The front desk's slips were never touched: still queued, never claimed by anybody.
+      const after = await db.select().from(printJobs).where(eq(printJobs.destination, "front_desk_thermal"));
+      expect(after.map((j) => [j.id, j.status, j.claimedBy]).sort()).toEqual(
+        thermal.map((id) => [id, "queued", null]).sort(),
+      );
+    });
+
+    it("asking ONLY for destinations outside the grant is a 403, not an empty success", async () => {
+      await realVisit();
+      const before = await queuedIds();
+      const { apiKey } = await createAgent(db, "pharmacy-relay", { printDestinations: ["pharmacy_thermal"] });
+      const res = await request(app.getHttpServer())
+        .post("/print/claim").set("x-agent-key", apiKey)
+        .send({ destinations: ["front_desk_thermal", "front_desk_a4"], limit: 50 });
+      expect([res.status, res.body.code]).toEqual([403, "print_destination_not_granted"]);
+      expect(res.body.refusedDestinations).toEqual(["front_desk_a4", "front_desk_thermal"]);
+      expect(await queuedIds()).toEqual(before);
+    });
+
+    it("a granted relay is unaffected: its claim carries an empty refusal list", async () => {
+      await realVisit();
+      const res = await request(app.getHttpServer())
+        .post("/print/claim").set("x-agent-key", agentKey)
+        .send({ destinations: ["front_desk_thermal"], limit: 50 })
+        .expect(201);
+      expect(res.body.jobs.length).toBeGreaterThan(0);
+      expect(res.body.refusedDestinations).toEqual([]);
+    });
   });
 });

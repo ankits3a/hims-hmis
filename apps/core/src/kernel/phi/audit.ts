@@ -1,6 +1,7 @@
 import { isNull, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { phiAccessLog, retentionLegalHolds } from "../db/schema";
+import { withTx } from "../db/client";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
@@ -399,14 +400,26 @@ export async function prunePhiAccessLog(
   if (holds.some((h) => h.patientId === null)) return 0;
   const held = holds.map((h) => h.patientId).filter((p): p is string => p !== null);
 
-  const deleted = await db
-    .delete(phiAccessLog)
-    .where(sql`${phiAccessLog.id} in (
-      select id from ${phiAccessLog}
-      where ${lt(phiAccessLog.at, cutoff)}
-      ${held.length === 0 ? sql`` : sql`and ${phiAccessLog.patientId} not in ${held}`}
-      limit ${batchSize}
-    )`)
-    .returning({ id: phiAccessLog.id });
+  /*
+    WASA M-07 — THE TABLE IS APPEND-ONLY AT THE DATABASE (`phi_access_log_append_only`), AND THIS IS
+    ITS ONE DOOR. The trigger lets a DELETE through only when (1) this transaction has named itself
+    the retention prune and (2) the row is older than the database's own floor (1094 days by the
+    DB clock — one day of skew margin under PHI_ACCESS_RETAIN_DAYS). The setting is `set_config(…,
+    true)`: TRANSACTION-LOCAL, so it ends with this transaction and can never ride a pooled
+    connection into somebody else's statement. Lowering `retainDays` below the floor is refused by
+    the database, loudly — a shorter window is a migration, not an argument.
+  */
+  const deleted = await withTx(db, async (tx) => {
+    await tx.execute(sql`select set_config('hmis.retention_prune', 'phi_access_log', true)`);
+    return tx
+      .delete(phiAccessLog)
+      .where(sql`${phiAccessLog.id} in (
+        select id from ${phiAccessLog}
+        where ${lt(phiAccessLog.at, cutoff)}
+        ${held.length === 0 ? sql`` : sql`and ${phiAccessLog.patientId} not in ${held}`}
+        limit ${batchSize}
+      )`)
+      .returning({ id: phiAccessLog.id });
+  });
   return deleted.length;
 }

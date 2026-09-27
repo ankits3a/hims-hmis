@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable, text, integer, boolean, timestamp, primaryKey, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -130,6 +131,16 @@ export const agents = pgTable(
     apiKeyHash: text("api_key_hash").notNull(),
     killSwitch: boolean("kill_switch").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * WASA M-10 — the print destinations this agent may CLAIM (`POST /print/claim`). Empty = the
+     * agent is not a print relay and the queue refuses it outright; a relay is served only the
+     * intersection of what it asks for and what is listed here, so a leaked lab-bridge key or a
+     * second site's relay cannot drain another printer's rendered PHI. Set at creation
+     * (`AGENT_PRINT_DESTINATIONS` on `scripts/create-agent.ts`) or later with
+     * `scripts/set-agent-print-destinations.ts`. The migration that added it granted every agent
+     * that had ever claimed a job the destinations declared at that time — see its header.
+     */
+    printDestinations: text("print_destinations").array().notNull().default(sql`'{}'::text[]`),
   },
   (t) => [uniqueIndex("agents_name_ux").on(t.name), uniqueIndex("agents_key_ux").on(t.apiKeyHash)],
 );

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { grantLabResultPermissions, seedLabDeskBase } from "../../../test/helpers/lab";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
+import { createAgent } from "../../kernel/auth/agents";
 import { labInstruments, resources } from "../../kernel/db/schema";
 import {
   recordHeartbeat, registerInterface, sweepInterfaceHeartbeats,
@@ -48,6 +49,7 @@ describe("17-E T7b — an analyser whose bridge stops talking goes `interface_do
   let instrumentId: string;
   let resourceId: string;
   let interfaceId: string;
+  let bridgeAgentId: string;
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => { await teardown(); });
@@ -62,8 +64,10 @@ describe("17-E T7b — an analyser whose bridge stops talking goes `interface_do
     }));
     const [row] = await db.select().from(labInstruments).where(eq(labInstruments.id, instrumentId));
     resourceId = row!.resourceId;
+    // WASA L-08 — the bridge heartbeats as ITS OWN agent, the only actor the device accepts.
+    ({ id: bridgeAgentId } = await createAgent(db, "anl-chem-1-bridge"));
     const iface = await registerInterface(db, {
-      kind: "other", name: "ANL-CHEM-1 bridge", staleAfterMs: 60_000,
+      kind: "other", name: "ANL-CHEM-1 bridge", staleAfterMs: 60_000, agentId: bridgeAgentId,
     }, T0);
     interfaceId = iface.id;
   });
@@ -166,7 +170,7 @@ describe("17-E T7b — an analyser whose bridge stops talking goes `interface_do
     expect(await statusOf()).toBe("available");
 
     /** Now it speaks once, then goes quiet for longer than its own 60 s window. */
-    await recordHeartbeat(db, fx.pathologist.actor, interfaceId, later(1_000));
+    await recordHeartbeat(db, { type: "agent", id: bridgeAgentId }, interfaceId, later(1_000));
     const downed = await sweepInterfaceHeartbeats(db, later(1_000 + 120_000));
     expect(downed.map((d) => d.interfaceId)).toContain(interfaceId);
 

@@ -1,6 +1,6 @@
 import {
-  BadRequestException, Body, ConflictException, Controller, Get, Inject, NotFoundException, Param,
-  Post,
+  BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Inject,
+  NotFoundException, Param, Post,
 } from "@nestjs/common";
 import { desc } from "drizzle-orm";
 import { z } from "zod";
@@ -90,13 +90,20 @@ function toHttp(e: unknown): never {
  * T3's own mapper, kept SEPARATE from `toHttp` above rather than folded into it.
  *
  * `ModeError` is a refusal about STATE — a transition the matrix or the go-live gate will not
- * allow — and its whole vocabulary maps to 400/409. `InterfaceError` has exactly one code and it
- * means "no such row", which is a 404 and nothing else. Widening `toHttp` with a second error
- * class and a third status would make T2's four routes depend on a branch none of them can reach.
+ * allow — and its whole vocabulary maps to 400/409. `InterfaceError` means "no such row" (404) —
+ * and since WASA L-08 also "you are not this device's agent" (403) and, at registration, "no such
+ * agent" (400). Widening `toHttp` with a second error class would make T2's four routes depend on
+ * branches none of them can reach.
  */
+const INTERFACE_FORBIDDEN_CODES = new Set<string>([
+  "heartbeat_agent_only", "heartbeat_agent_mismatch", "interface_agent_unbound",
+]);
 function interfaceToHttp(e: unknown): never {
   if (e instanceof InterfaceError) {
-    throw new NotFoundException({ code: e.code, message: e.message });
+    const body = { code: e.code, message: e.message };
+    if (INTERFACE_FORBIDDEN_CODES.has(e.code)) throw new ForbiddenException(body);
+    if (e.code === "agent_not_found") throw new BadRequestException(body);
+    throw new NotFoundException(body);
   }
   throw e; // anything unrecognised is a genuine bug: 500, loudly
 }
@@ -257,7 +264,7 @@ export class OpsController {
   //   GET  /ops/interfaces                 AUTHENTICATED-ONLY — no permission
   //   POST /ops/interfaces                 ops.interface.manage (hospital)
   //   POST /ops/interfaces/:id/deactivate  ops.interface.manage (hospital)
-  //   POST /ops/interfaces/:id/heartbeat   AUTHENTICATED-ONLY — no permission
+  //   POST /ops/interfaces/:id/heartbeat   AUTHENTICATED-ONLY — no permission, BOUND TO THE AGENT (L-08)
   //
   // MANAGING the registry is administration: who owns a printer and how long it may stay quiet
   // before somebody is woken up is a configuration act, and `ops.interface.manage` is the
@@ -267,8 +274,11 @@ export class OpsController {
   // am still here", once a minute, forever. Minting a permission for it would oblige every device
   // agent to hold a grant before it could report at all, which turns a monitoring surface into a
   // provisioning problem and makes SILENCE the default failure mode of the thing whose entire job
-  // is to notice silence. It is authenticated-only today, and PLAN 12a's AGENT GRANTS ARE ITS
-  // FUTURE TIGHTENING: when an agent identity can hold scoped grants, this route takes one.
+  // is to notice silence. It still mints no permission — but since WASA L-08 it is BOUND TO
+  // IDENTITY: `recordHeartbeat` refuses a person (403 `heartbeat_agent_only`), a device with no
+  // agent bound (403 `interface_agent_unbound`) and any agent but the one registered for the device
+  // (403 `heartbeat_agent_mismatch`). Before that, anybody signed in could keep a dead device
+  // looking alive. The binding is `interfaces.agent_id`, set by `POST /ops/interfaces` (`agentId`).
   //
   // The read mints no permission for the same reason `GET /ops/mode` does not (see the header):
   // the interface list is what the ops desk looks at to see whether the hospital's devices are
@@ -293,7 +303,11 @@ export class OpsController {
     // describe it. Same refusal shape — the issue list, as a 400.
     const r = interfaceRegistrationSchema.safeParse(body);
     if (!r.success) throw new BadRequestException(r.error.issues);
-    return registerInterface(this.db, r.data);
+    try {
+      return await registerInterface(this.db, r.data);
+    } catch (e) {
+      interfaceToHttp(e);
+    }
   }
 
   /** Retire a device: it leaves the SWEEP's population and its status column is left as it stands. */

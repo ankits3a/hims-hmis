@@ -10,6 +10,7 @@ import { events, interfaces, operatingModeChanges, roles } from "../src/kernel/d
 import { loadConfig, requireEnv } from "../src/kernel/config";
 import { createUser } from "../src/kernel/auth/identity";
 import { createSession } from "../src/kernel/auth/sessions";
+import { createAgent } from "../src/kernel/auth/agents";
 import { assignRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { upsertAdjustmentRule, upsertGstSettings } from "../src/modules/tariff";
@@ -150,6 +151,10 @@ describe("ops lifecycle e2e (HTTP) — commissioning to downtime to recovery", (
   let kitA: KitResult;
   let kitB: KitResult;
   let printerId: string;
+  /** WASA L-08 — the printer's OWN agent, and a valid agent that is somebody else's. */
+  let deviceAgentId: string;
+  let deviceKey: string;
+  let strangerKey: string;
 
   beforeAll(async () => {
     ({ db, teardown } = await setupTestDb());
@@ -179,6 +184,9 @@ describe("ops lifecycle e2e (HTTP) — commissioning to downtime to recovery", (
     // just not the one the kit routes require. A decorator carrying ANY existing-but-wrong
     // permission string would pass a role-less sweep; it cannot pass this pair.
     await grantPermissionToRole(db, registry, "ops_observer", OPS_INTERFACE_MANAGE);
+
+    ({ id: deviceAgentId, apiKey: deviceKey } = await createAgent(db, "ops_lifecycle_label_printer"));
+    ({ apiKey: strangerKey } = await createAgent(db, "ops_lifecycle_other_device"));
   });
 
   afterAll(async () => {
@@ -532,7 +540,7 @@ describe("ops lifecycle e2e (HTTP) — commissioning to downtime to recovery", (
     const registered = await request(server())
       .post("/ops/interfaces")
       .set("Authorization", `Bearer ${dutyToken}`)
-      .send({ kind: "printer", name: "front-desk label printer", location: "OPD", staleAfterMs: 30_000 });
+      .send({ kind: "printer", name: "front-desk label printer", location: "OPD", staleAfterMs: 30_000, agentId: deviceAgentId });
     expect(registered.status).toBe(201);
     expect(registered.body).toMatchObject({ status: "unknown", lastSeenAt: null, active: true });
     printerId = registered.body.id;
@@ -542,9 +550,25 @@ describe("ops lifecycle e2e (HTTP) — commissioning to downtime to recovery", (
     expect(await sweepInterfaceHeartbeats(db, new Date("2099-01-01T00:00:00.000Z"))).toEqual([]);
     expect(await eventNamesSince(beforeFirstSweep)).toEqual([]);
 
-    const beat = await request(server())
+    // WASA L-08 — NOBODY BUT THE DEVICE'S OWN AGENT MAY SAY IT IS ALIVE. The duty manager holds every
+    // ops permission and is still a person, not the printer; another device's valid key is still
+    // not this printer's. Both are refused and the row stays `unknown` (never seen, never downed).
+    const byPerson = await request(server())
       .post(`/ops/interfaces/${printerId}/heartbeat`)
       .set("Authorization", `Bearer ${dutyToken}`)
+      .send({});
+    expect([byPerson.status, byPerson.body.code]).toEqual([403, "heartbeat_agent_only"]);
+    const byStranger = await request(server())
+      .post(`/ops/interfaces/${printerId}/heartbeat`)
+      .set("x-agent-key", strangerKey)
+      .send({});
+    expect([byStranger.status, byStranger.body.code]).toEqual([403, "heartbeat_agent_mismatch"]);
+    expect((await db.select().from(interfaces).where(eq(interfaces.id, printerId)))[0])
+      .toMatchObject({ status: "unknown", lastSeenAt: null });
+
+    const beat = await request(server())
+      .post(`/ops/interfaces/${printerId}/heartbeat`)
+      .set("x-agent-key", deviceKey)
       .send({});
     expect(beat.status).toBe(201);
     expect(beat.body).toMatchObject({ status: "up", restored: false, eventId: null }); // unknown→up is silent
@@ -566,7 +590,7 @@ describe("ops lifecycle e2e (HTTP) — commissioning to downtime to recovery", (
     const beforeRestore = await eventHighWater();
     const again = await request(server())
       .post(`/ops/interfaces/${printerId}/heartbeat`)
-      .set("Authorization", `Bearer ${dutyToken}`)
+      .set("x-agent-key", deviceKey)
       .send({});
     expect(again.body).toMatchObject({ status: "up", restored: true });
     expect(typeof again.body.eventId).toBe("string");
@@ -576,7 +600,7 @@ describe("ops lifecycle e2e (HTTP) — commissioning to downtime to recovery", (
     const beforeQuiet = await eventHighWater();
     const third = await request(server())
       .post(`/ops/interfaces/${printerId}/heartbeat`)
-      .set("Authorization", `Bearer ${dutyToken}`)
+      .set("x-agent-key", deviceKey)
       .send({});
     expect(third.body).toMatchObject({ status: "up", restored: false, eventId: null });
     expect(await eventNamesSince(beforeQuiet)).toEqual([]);
