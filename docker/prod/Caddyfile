@@ -144,7 +144,7 @@ hmis.crkmch.com {
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Cross-Origin-Opener-Policy "same-origin"
-		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
 		# WASA M-01 — A CONTENT-SECURITY-POLICY, REPORT-ONLY UNTIL THE NEXT CHANGE ENFORCES IT.
 		# The SPA holds its bearer token in localStorage, so an injected script owns the session;
 		# `script-src 'self'` (no inline, no eval) is what makes one fail to run at all. Each other

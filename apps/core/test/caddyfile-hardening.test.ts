@@ -287,3 +287,19 @@ describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
     expect(text(uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/)).toBe(prodPolicy);
   });
 });
+
+/**
+ * OWNER RULING 2026-09-27: "the site should allow the webcam on its pages". Desk One photographs the
+ * paper slip (`slip-capture.tsx`), and `camera=()` blocked getUserMedia on every page, which left only
+ * the file-input fallback. `camera=(self)` lets our own origin use the camera and still refuses it to
+ * any embedded third party. Geolocation and the microphone stay off: nothing here uses them.
+ */
+describe("Owner 2026-09-27 — the site's own pages may use the camera", () => {
+  const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
+
+  it("Permissions-Policy grants camera to self only, and keeps geolocation and microphone off", () => {
+    const header = only(only(prod, /^hmis\.crkmch\.com$/, "prod site"), /^header$/, "prod header block");
+    const policy = header.lines.filter((l) => l.startsWith("Permissions-Policy "));
+    expect(policy).toEqual(['Permissions-Policy "geolocation=(), microphone=(), camera=(self)"']);
+  });
+});
