@@ -694,6 +694,23 @@ describe("opd e2e", () => {
     expect(refused.body.message).toContain("opd.vitals.history.read");
   });
 
+  /*
+    The bay records allergies (`patients.update`) but does not hold `opd.consult`. The completion
+    route is gated on the permission that WRITES an allergy, so the nurse gets the same coded pick
+    the doctor gets — an uncoded `pencilin` typed at the bay never fires the penicillin block.
+  */
+  it("the allergen completion answers the bay, which records allergies but does not consult", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/opd/cds/complete/allergen?q=penicillin").set(...auth(vitalsDesk.token)).expect(200);
+    const items = res.body.items as { term: string; kind: string; allergenClass: string | null }[];
+    expect(items.some((h) => h.kind === "class" && h.allergenClass !== null)).toBe(true);
+    expect(res.body.known).toBe(true);
+
+    const refused = await request(app.getHttpServer())
+      .get("/opd/cds/complete/allergen?q=penicillin").set(...auth(rando.token)).expect(403);
+    expect(refused.body.message).toContain("patients.update");
+  });
+
   it("VD-1 — the danger protocol over HTTP: recheck, double-confirm, and the ten seconds", async () => {
     const patientId = await registerPatientOverHttp("VD1 Patient 4", "9876543204");
     const open = await request(app.getHttpServer())
