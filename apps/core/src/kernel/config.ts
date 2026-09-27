@@ -41,6 +41,15 @@ export type NotifyProvider = z.infer<typeof notifyProviderSchema>;
  * RO-4 asked for first. One knob would have made the hospital wait for the purchases.
  */
 const notifyPushProviderSchema = z.enum(["console", "webpush"]);
+/**
+ * ABDM × MSG91 (owner ruling 2026-09-26: "MSG91 SMS Sender") — WHICH SMS gateway `live` means.
+ * `gateway` is the pharmacy's generic DLT aggregator (the four `SMS_*` keys); `msg91` is MSG91's Flow
+ * API, OFF — the console sink — until `MSG91_AUTH_KEY` is set. Either way `NOTIFY_PROVIDER=live` is
+ * still the master switch: `console` keeps SMS on the sink whatever keys are set.
+ */
+const notifySmsProviderSchema = z.enum(["gateway", "msg91"]);
+/** MSG91's Flow API v5 send endpoint (docs.msg91.com — "Send SMS via Flow"). */
+export const MSG91_FLOW_URL = "https://control.msg91.com/api/v5/flow";
 export type NotifyPushProvider = z.infer<typeof notifyPushProviderSchema>;
 
 const configSchema = z.object({
@@ -105,6 +114,19 @@ const configSchema = z.object({
   SMS_DLT_ENTITY_ID: z.string().default(""),
   /** The six-character sender header registered on DLT (e.g. `HOSPTL`). */
   SMS_DLT_SENDER_ID: z.string().default(""),
+  /**
+   * ABDM × MSG91 — `NOTIFY_SMS_PROVIDER=msg91` puts SMS on MSG91's Flow API. MSG91 does not send our
+   * text: it sends the template created in its panel (which carries the DLT template id) with our
+   * variables as `VAR1..n`. So each DLT content-template id the office records maps to the MSG91
+   * template made for it — `MSG91_TEMPLATE_IDS=<dltId>:<msg91TemplateId>,…`, refused at boot when
+   * malformed. `SMS_DLT_SENDER_ID` above is sent as `sender` when set; `SMS_GATEWAY_URL` and
+   * `SMS_GATEWAY_API_KEY` belong to `gateway` and are refused beside `msg91`. The auth key is attached
+   * NON-ENUMERABLE, the other secrets' shape.
+   */
+  NOTIFY_SMS_PROVIDER: notifySmsProviderSchema.default("gateway"),
+  MSG91_AUTH_KEY: z.string().default(""),
+  MSG91_TEMPLATE_IDS: z.string().default(""),
+  MSG91_FLOW_URL: z.string().default(""),
   /**
    * PHARMACY P6 (patient messages) — WHATSAPP BUSINESS CLOUD API. A business-initiated message is a
    * PRE-APPROVED template (its name per template is data, recorded beside the DLT id); the two keys
@@ -368,13 +390,15 @@ const configSchema = z.object({
   ABDM_CALLBACK_BASE_URL: z.string().default(""),
   ABDM_JWT_AUDIENCE: z.string().default("account"),
   /**
-   * ABDM S1 — CREATING an ABHA by Aadhaar OTP at the counter. BUILT, and OFF until the owner rules
-   * (plan §4 item 2: it is Aadhaar e-KYC at a hospital desk, which is law). The same two-string enum
+   * ABDM S1 — CREATING an ABHA by Aadhaar OTP at the counter. The owner ruled YES (2026-09-26), so it
+   * defaults ON; `false` switches it off. It does nothing while ABDM itself is unconfigured (the
+   * credentials are still owed), so the flip changes nothing until they exist (plan §4 item 2: it is
+   * Aadhaar e-KYC at a hospital desk, which is law, hence the owner's). The same two-string enum
    * as the DD14 flags below, for the same reason: "false" must never read as on. While off, the
    * create routes refuse with 403 `abha_create_disabled` and the counter hides the button.
    * VERIFYING an ABHA the patient already has is NOT behind this flag — it is on whenever ABDM is.
    */
-  ABDM_ABHA_CREATE_AADHAAR: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  ABDM_ABHA_CREATE_AADHAAR: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
   /**
    * ABDM S1 — the base of the counter's scan-and-share QR. Empty ⇒ derived from `ABDM_CM_ID`:
    * sandbox `https://phrsbx.abdm.gov.in/share-profile`, production `https://phr.abdm.gov.in/share-profile`
@@ -396,6 +420,13 @@ const configSchema = z.object({
    * production box during FT, and an OTP in a log is a credential in a log.
    */
   ABDM_SANDBOX_OTP_TO_LOG: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /**
+   * ABDM S2 × MSG91 — the DLT content-template id of the linking-OTP SMS (`modules/abdm/sms-otp-sender.ts`
+   * gives the text to register). Read only when SMS is on a real gateway; empty then ⇒ the OTP is
+   * REFUSED with a clear error, never sent unregistered. Under MSG91 it also needs its
+   * `MSG91_TEMPLATE_IDS` entry.
+   */
+  ABDM_LINK_OTP_DLT_TEMPLATE_ID: z.string().default(""),
   /**
    * PLAN 09 / DD14 — THE FIVE STRUCTURAL-OFF FLAGS. Every one DEFAULTED, every one a two-string
    * enum, and neither of those is a style choice.
@@ -465,7 +496,7 @@ export type AppConfig = {
    * API key is attached NON-ENUMERABLE (the ABDM secret's shape): a config object logged or spread
    * never carries it.
    */
-  notifySms: { gatewayUrl: string; entityId: string; senderId: string; apiKey: string } | null;
+  notifySms: SmsGatewayConfig | Msg91Config | null;
   /** PHARMACY P6 — WhatsApp Cloud API, or NULL on the sink. The access token is non-enumerable. */
   notifyWhatsapp: { phoneNumberId: string; apiVersion: string; baseUrl: string; accessToken: string } | null;
   /** 11i T3 — "UAT", "TRAINING", …; `null` on production, where the key is never set. */
@@ -520,7 +551,7 @@ export type AppConfig = {
     callbackBaseUrl: string | null;
     jwtAudience: string;
     configured: boolean;
-    /** ABDM S1 — Aadhaar-OTP ABHA creation at the counter. False unless `ABDM_ABHA_CREATE_AADHAAR=true`. */
+    /** ABDM S1 — Aadhaar-OTP ABHA creation at the counter. True unless `ABDM_ABHA_CREATE_AADHAAR=false` (owner ruled yes 2026-09-26). */
     abhaCreateByAadhaar: boolean;
     /** ABDM S1 — the scan-and-share QR base, already resolved (never empty). */
     scanShareUrl: string;
@@ -528,6 +559,8 @@ export type AppConfig = {
     consentRelease: "auto" | "manual";
     /** ABDM S2 — sandbox only, and only when `ABDM_SANDBOX_OTP_TO_LOG=true`: the linking OTP goes to the server log. */
     sandboxOtpToLog: boolean;
+    /** ABDM S2 × MSG91 — the linking-OTP SMS's DLT template id, or null (then an SMS OTP is refused). */
+    linkOtpDltTemplateId: string | null;
   };
   /**
    * Plan 09 / DD14. All five FALSE unless an operator says otherwise, in as many letters. Where
@@ -579,8 +612,17 @@ function vapidFrom(parsed: {
   };
 }
 
+/** PHARMACY P6 — the generic DLT aggregator (`NOTIFY_SMS_PROVIDER=gateway`). */
+export type SmsGatewayConfig = { provider: "gateway"; gatewayUrl: string; entityId: string; senderId: string; apiKey: string };
+/** ABDM × MSG91 — MSG91's Flow API. `templateIds` maps a DLT content-template id to MSG91's template id. */
+export type Msg91Config = {
+  provider: "msg91"; flowUrl: string; senderId: string | null; templateIds: Readonly<Record<string, string>>; authKey: string;
+};
+
 type ChannelKeys = {
   NOTIFY_PROVIDER: NotifyProvider;
+  NOTIFY_SMS_PROVIDER: "gateway" | "msg91";
+  MSG91_AUTH_KEY: string; MSG91_TEMPLATE_IDS: string; MSG91_FLOW_URL: string;
   SMS_GATEWAY_URL: string; SMS_GATEWAY_API_KEY: string; SMS_DLT_ENTITY_ID: string; SMS_DLT_SENDER_ID: string;
   WHATSAPP_PHONE_NUMBER_ID: string; WHATSAPP_ACCESS_TOKEN: string; WHATSAPP_API_VERSION: string; WHATSAPP_API_BASE_URL: string;
 };
@@ -600,13 +642,52 @@ function channelKeys(provider: NotifyProvider, label: string, keys: readonly (re
   return Object.fromEntries(keys.map(([k, v]) => [k, v.trim()]));
 }
 
+/** `<dltId>:<msg91TemplateId>,…` → a map; anything else refused at boot, naming the entry. */
+function msg91TemplateIdsFrom(raw: string): Readonly<Record<string, string>> {
+  const map: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const entry of raw.split(",").map((e) => e.trim()).filter((e) => e !== "")) {
+    const m = /^(\d{10,30})\s*:\s*([A-Za-z0-9]{6,64})$/.exec(entry);
+    if (m === null) {
+      throw new Error(`MSG91_TEMPLATE_IDS entry "${entry}" is not <dltTemplateId>:<msg91TemplateId> — the DLT id is the number the DLT portal issued, the MSG91 id is the template id copied from MSG91's panel`);
+    }
+    if (Object.hasOwn(map, m[1]!)) throw new Error(`MSG91_TEMPLATE_IDS names DLT template ${m[1]!} twice`);
+    map[m[1]!] = m[2]!;
+  }
+  return Object.freeze(map);
+}
+
+/**
+ * ABDM × MSG91 — null (the sink) unless `live` AND `MSG91_AUTH_KEY` is set: "OFF until the key is set"
+ * is the rule, so a sender header or a template map typed in advance switches nothing on.
+ */
+function msg91From(parsed: ChannelKeys): Msg91Config | null {
+  if (parsed.NOTIFY_PROVIDER !== "live") return null;
+  const authKey = parsed.MSG91_AUTH_KEY.trim();
+  if (authKey === "") return null;
+  const stray = ([["SMS_GATEWAY_URL", parsed.SMS_GATEWAY_URL], ["SMS_GATEWAY_API_KEY", parsed.SMS_GATEWAY_API_KEY]] as const)
+    .filter(([, v]) => v.trim() !== "").map(([k]) => k);
+  if (stray.length > 0) {
+    throw new Error(`NOTIFY_SMS_PROVIDER=msg91 does not use ${stray.join(", ")} — clear them (they belong to NOTIFY_SMS_PROVIDER=gateway)`);
+  }
+  const sender = parsed.SMS_DLT_SENDER_ID.trim();
+  const cfg = {
+    provider: "msg91",
+    flowUrl: parsed.MSG91_FLOW_URL.trim() === "" ? MSG91_FLOW_URL : parsed.MSG91_FLOW_URL.trim(),
+    senderId: sender === "" ? null : sender,
+    templateIds: msg91TemplateIdsFrom(parsed.MSG91_TEMPLATE_IDS),
+  } as Msg91Config;
+  Object.defineProperty(cfg, "authKey", { value: authKey, enumerable: false, writable: false });
+  return cfg;
+}
+
 function smsGatewayFrom(parsed: ChannelKeys): AppConfig["notifySms"] {
+  if (parsed.NOTIFY_SMS_PROVIDER === "msg91") return msg91From(parsed);
   const k = channelKeys(parsed.NOTIFY_PROVIDER, "SMS", [
     ["SMS_GATEWAY_URL", parsed.SMS_GATEWAY_URL], ["SMS_GATEWAY_API_KEY", parsed.SMS_GATEWAY_API_KEY],
     ["SMS_DLT_ENTITY_ID", parsed.SMS_DLT_ENTITY_ID], ["SMS_DLT_SENDER_ID", parsed.SMS_DLT_SENDER_ID],
   ]);
   if (k === null) return null;
-  const sms = { gatewayUrl: k.SMS_GATEWAY_URL!, entityId: k.SMS_DLT_ENTITY_ID!, senderId: k.SMS_DLT_SENDER_ID! } as NonNullable<AppConfig["notifySms"]>;
+  const sms = { provider: "gateway", gatewayUrl: k.SMS_GATEWAY_URL!, entityId: k.SMS_DLT_ENTITY_ID!, senderId: k.SMS_DLT_SENDER_ID! } as NonNullable<AppConfig["notifySms"]>;
   Object.defineProperty(sms, "apiKey", { value: k.SMS_GATEWAY_API_KEY!, enumerable: false, writable: false });
   return sms;
 }
@@ -631,7 +712,7 @@ function whatsappCloudFrom(parsed: ChannelKeys): AppConfig["notifyWhatsapp"] {
  */
 export function patientMessagingLive(env: NodeJS.ProcessEnv = process.env): { sms: boolean; whatsapp: boolean } {
   const parsed = configSchema.pick({
-    NOTIFY_PROVIDER: true, SMS_GATEWAY_URL: true, SMS_GATEWAY_API_KEY: true, SMS_DLT_ENTITY_ID: true, SMS_DLT_SENDER_ID: true,
+    NOTIFY_PROVIDER: true, NOTIFY_SMS_PROVIDER: true, MSG91_AUTH_KEY: true, MSG91_TEMPLATE_IDS: true, MSG91_FLOW_URL: true, SMS_GATEWAY_URL: true, SMS_GATEWAY_API_KEY: true, SMS_DLT_ENTITY_ID: true, SMS_DLT_SENDER_ID: true,
     WHATSAPP_PHONE_NUMBER_ID: true, WHATSAPP_ACCESS_TOKEN: true, WHATSAPP_API_VERSION: true, WHATSAPP_API_BASE_URL: true,
   }).parse(env);
   return { sms: smsGatewayFrom(parsed) !== null, whatsapp: whatsappCloudFrom(parsed) !== null };
@@ -642,7 +723,7 @@ function abdmFrom(parsed: {
   ABDM_BASE_URL: string; ABDM_ABHA_BASE_URL: string; ABDM_CLIENT_ID: string; ABDM_CLIENT_SECRET: string;
   ABDM_CM_ID: "" | "sbx" | "abdm"; ABDM_HIP_ID: string; ABDM_HIU_ID: string; ABDM_CALLBACK_BASE_URL: string;
   ABDM_JWT_AUDIENCE: string; ABDM_ABHA_CREATE_AADHAAR: boolean; ABDM_SCAN_SHARE_URL: string;
-  ABDM_CONSENT_RELEASE: "auto" | "manual"; ABDM_SANDBOX_OTP_TO_LOG: boolean;
+  ABDM_CONSENT_RELEASE: "auto" | "manual"; ABDM_SANDBOX_OTP_TO_LOG: boolean; ABDM_LINK_OTP_DLT_TEMPLATE_ID: string;
 }): AppConfig["abdm"] {
   const orNull = (v: string): string | null => (v.trim() === "" ? null : v.trim());
   const clientSecret = parsed.ABDM_CLIENT_SECRET === "" ? null : parsed.ABDM_CLIENT_SECRET;
@@ -662,6 +743,7 @@ function abdmFrom(parsed: {
       : "https://phrsbx.abdm.gov.in/share-profile")).replace(/\/+$/, ""),
     consentRelease: parsed.ABDM_CONSENT_RELEASE,
     sandboxOtpToLog: parsed.ABDM_SANDBOX_OTP_TO_LOG,
+    linkOtpDltTemplateId: orNull(parsed.ABDM_LINK_OTP_DLT_TEMPLATE_ID.trim()),
   } as AppConfig["abdm"];
   Object.defineProperty(abdm, "clientSecret", { value: clientSecret, enumerable: false, writable: false });
   abdm.configured =

@@ -1,6 +1,9 @@
-import { maskPhone } from "./mask";
+import { MSG91_FLOW_URL } from "../config";
+import { maskPhone, maskPhonesIn } from "./mask";
 import type { ChannelAdapter } from "./adapters";
-import type { AppConfig } from "../config";
+import type { AppConfig, Msg91Config, SmsGatewayConfig } from "../config";
+
+export { MSG91_FLOW_URL };
 
 /**
  * ═══ PHARMACY P6 (patient messages) — THE TWO REAL GATEWAYS, OFF UNTIL THE OWNER CONTRACTS ONE ═══
@@ -33,7 +36,10 @@ export type FetchLike = (
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 export class ProviderRefusedError extends Error {
-  constructor(readonly code: "dlt_template_unregistered" | "whatsapp_template_unapproved" | "not_an_indian_mobile", message: string) {
+  constructor(
+    readonly code: "dlt_template_unregistered" | "msg91_template_unmapped" | "whatsapp_template_unapproved" | "not_an_indian_mobile",
+    message: string,
+  ) {
     super(message);
     this.name = "ProviderRefusedError";
   }
@@ -65,17 +71,23 @@ function messageIdOf(body: unknown): string | null {
   return null;
 }
 
-export function dltSmsAdapter(cfg: NonNullable<AppConfig["notifySms"]>, fetchImpl: FetchLike): ChannelAdapter {
+/** The DLT content-template id this message is registered under, or a `dlt_template_unregistered` refusal. */
+function dltIdOrRefuse(meta: Parameters<ChannelAdapter["send"]>[2]): string {
+  const dlt = meta.registration?.dltTemplateId?.trim() ?? "";
+  if (dlt === "") {
+    throw new ProviderRefusedError(
+      "dlt_template_unregistered",
+      `SMS refused: template "${meta.templateKey ?? "unknown"}" has no DLT template id recorded — the operator's DLT scrubbing would drop it. Record the id the DLT portal issued (office → Messages).`,
+    );
+  }
+  return dlt;
+}
+
+export function dltSmsAdapter(cfg: Omit<SmsGatewayConfig, "provider">, fetchImpl: FetchLike): ChannelAdapter {
   return {
     channel: "sms",
     async send(to, text, meta) {
-      const dlt = meta.registration?.dltTemplateId?.trim() ?? "";
-      if (dlt === "") {
-        throw new ProviderRefusedError(
-          "dlt_template_unregistered",
-          `SMS refused: template "${meta.templateKey ?? "unknown"}" has no DLT template id recorded — the operator's DLT scrubbing would drop it. Record the id the DLT portal issued (office → Messages).`,
-        );
-      }
+      const dlt = dltIdOrRefuse(meta);
       const res = await fetchImpl(cfg.gatewayUrl, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
@@ -86,6 +98,73 @@ export function dltSmsAdapter(cfg: NonNullable<AppConfig["notifySms"]>, fetchImp
       });
       if (!res.ok) throw new Error(`SMS gateway answered HTTP ${String(res.status)} for ${maskPhone(to)}`);
       return { providerMessageId: messageIdOf(await res.json().catch(() => null)) };
+    },
+  };
+}
+
+/**
+ * ═══ ABDM × MSG91 — MSG91's FLOW API v5 (owner ruling 2026-09-26: "MSG91 SMS Sender") ═══
+ *
+ *   POST https://control.msg91.com/api/v5/flow
+ *   headers  authkey: <MSG91_AUTH_KEY>, content-type: application/json
+ *   body     { template_id, sender?, short_url: "0", recipients: [{ mobiles: "91XXXXXXXXXX", VAR1, VAR2, … }] }
+ *   answer   { type: "success", message: "<request id>" } | { type: "error", message: "<reason>" }
+ *
+ * Confirmed against MSG91's published docs (api.msg91.com/apidoc/textsms/send-sms-flow.php and the
+ * MSG91 help centre): the endpoint, the `authkey` header, `template_id` (successor of `flow_id`),
+ * `recipients[].mobiles` in international format, `short_url` "1"/"0", and the success/error answer.
+ * UNVERIFIED until the first sandbox send with the owner's key:
+ *   · the VARIABLE NAMES. MSG91 fills a template's `##name##` slots from same-named recipient keys; this
+ *     adapter sends the template's variables IN ORDER as `VAR1..VARn`, so each MSG91 template must be
+ *     written with `##VAR1##`, `##VAR2##`, … in the DLT template's `{#var#}` positions;
+ *   · whether `sender` is still read by control.msg91.com (the template carries its own sender header);
+ *     it is sent when `SMS_DLT_SENDER_ID` is set and omitted otherwise;
+ *   · whether a 2xx answer can carry `type: "error"` — handled as a failure either way.
+ *
+ * MSG91 does not send our rendered text: it sends ITS template, which is where the DLT template id and
+ * the entity id live. So the DLT refusal is kept (no DLT id ⇒ `dlt_template_unregistered`), and a DLT
+ * id with no MSG91 template mapped to it (`MSG91_TEMPLATE_IDS`) is refused `msg91_template_unmapped` —
+ * both before any request. Every error names the number by its last four digits only, and provider
+ * prose is masked and stripped of the auth key before it reaches `last_error` or a log.
+ */
+export function msg91SmsAdapter(cfg: Omit<Msg91Config, "provider">, fetchImpl: FetchLike): ChannelAdapter {
+  const clean = (v: unknown): string => {
+    const raw = typeof v === "string" ? v : "";
+    return maskPhonesIn(cfg.authKey === "" ? raw : raw.split(cfg.authKey).join("[redacted]")).slice(0, 200);
+  };
+  return {
+    channel: "sms",
+    async send(to, _text, meta) {
+      const dlt = dltIdOrRefuse(meta);
+      const templateId = Object.hasOwn(cfg.templateIds, dlt) ? cfg.templateIds[dlt] : undefined;
+      if (templateId === undefined) {
+        throw new ProviderRefusedError(
+          "msg91_template_unmapped",
+          `SMS refused: DLT template ${dlt} ("${meta.templateKey ?? "unknown"}") has no MSG91 template — create it in MSG91 with this DLT id and add ${dlt}:<MSG91 template id> to MSG91_TEMPLATE_IDS.`,
+        );
+      }
+      const recipient: Record<string, string> = { mobiles: toIndianMsisdn(to) };
+      (meta.variables ?? []).forEach((v, i) => { recipient[`VAR${String(i + 1)}`] = v; });
+      const res = await fetchImpl(cfg.flowUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json", authkey: cfg.authKey },
+        body: JSON.stringify({
+          template_id: templateId,
+          ...(cfg.senderId === null ? {} : { sender: cfg.senderId }),
+          short_url: "0",
+          recipients: [recipient],
+        }),
+      });
+      const answer: unknown = await res.json().catch(() => null);
+      const b = typeof answer === "object" && answer !== null ? (answer as Record<string, unknown>) : {};
+      if (!res.ok) {
+        const why = clean(b.message);
+        throw new Error(`MSG91 answered HTTP ${String(res.status)} for ${maskPhone(to)}${why === "" ? "" : `: ${why}`}`);
+      }
+      if (b.type !== "success") {
+        throw new Error(`MSG91 did not accept the SMS for ${maskPhone(to)}: ${clean(b.message) || "no reason given"}`);
+      }
+      return { providerMessageId: typeof b.message === "string" && b.message !== "" ? b.message : messageIdOf(answer) };
     },
   };
 }

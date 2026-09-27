@@ -1,6 +1,6 @@
 import webpush from "web-push";
 import { maskPhone } from "./mask";
-import { dltSmsAdapter, whatsappCloudAdapter } from "./providers";
+import { dltSmsAdapter, msg91SmsAdapter, whatsappCloudAdapter } from "./providers";
 import type { FetchLike } from "./providers";
 import type { AppConfig } from "../config";
 
@@ -269,7 +269,7 @@ export function adaptersFor(
       const wa = cfg.notifyWhatsapp ?? null;
       return {
         whatsapp: wa === null ? consoleWhatsappAdapter : whatsappCloudAdapter(wa, fetchImpl),
-        sms: sms === null ? consoleSmsAdapter : dltSmsAdapter(sms, fetchImpl),
+        sms: sms === null ? consoleSmsAdapter : sms.provider === "msg91" ? msg91SmsAdapter(sms, fetchImpl) : dltSmsAdapter(sms, fetchImpl),
         web_push: push,
       };
     }

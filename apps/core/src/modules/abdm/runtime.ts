@@ -9,14 +9,16 @@ import { HealthInformation } from "./health-information";
 import { HipClient } from "./hip-client";
 import { Hiu } from "./hiu";
 import { HiuClient } from "./hiu-client";
-import { LoggingOtpSender, PatientLinking } from "./patient-linking";
+import { PatientLinking } from "./patient-linking";
 import { ProfileShares } from "./profile-shares";
 import { abdmSettingsFrom } from "./settings";
+import { linkingOtpSender } from "./sms-otp-sender";
 import type { FideliusKeyPair } from "./fidelius";
 import type { AbdmFetch } from "./gateway-client";
 import type { OtpSender } from "./patient-linking";
 import type { AbdmSettings } from "./settings";
 import type { AppConfig } from "../../kernel/config";
+import type { FetchLike } from "../../kernel/notify/providers";
 import type { Db } from "../../kernel/db/client";
 
 /** The fetch the connector uses. A token so tests (and nothing else) can replace it with the fake gateway. */
@@ -45,8 +47,13 @@ export const defaultAbdmFetch: AbdmFetch = (url, init) => fetch(url, init);
  * `ABDM_HIU_ID` is set — an HIU needs its own id, and the plan's config says M3 is off until then.
  */
 export type AbdmRuntimeOptions = {
-  /** S2 — the linking OTP's sender. Default `LoggingOtpSender` (no SMS provider exists yet). */
+  /**
+   * S2 — the linking OTP's sender. Default `linkingOtpSender`: SMS (MSG91) when the kernel's SMS
+   * channel is on a real gateway, else `LoggingOtpSender`.
+   */
   otpSender?: OtpSender;
+  /** Tests only: the fetch the SMS OTP sender's gateway uses (default: the platform's `fetch`). */
+  smsFetch?: FetchLike;
   /** S2 — tests only: a known Fidelius key pair per transfer. */
   keyPair?: () => FideliusKeyPair;
   /** S3 — tests only: a known Fidelius key pair per health-information REQUEST (the HIU's half). */
@@ -91,7 +98,7 @@ export class AbdmRuntime {
       this.hip = hip;
       this.careContexts = new CareContexts({ db, settings, hip, secretKey: cfg.secretKey, now });
       this.linking = new PatientLinking({
-        db, settings, hip, secretKey: cfg.secretKey, now, otp: opts.otpSender ?? new LoggingOtpSender(settings.cmId, settings.sandboxOtpToLog),
+        db, settings, hip, secretKey: cfg.secretKey, now, otp: opts.otpSender ?? linkingOtpSender(cfg, settings, opts.smsFetch),
       });
       const consents = new Consents({ db, settings, hip, now });
       this.consents = consents;

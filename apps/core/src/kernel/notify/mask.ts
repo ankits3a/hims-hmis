@@ -13,3 +13,12 @@ export function maskPhone(to: string): string {
   if (digits.length <= 4) return "*".repeat(digits.length);
   return `${"*".repeat(digits.length - 4)}${digits.slice(-4)}`;
 }
+
+/**
+ * ABDM × MSG91 — the same rule for a number buried in PROVIDER PROSE ("Invalid mobile 919876543210"):
+ * every run of seven or more digits (spaces, dashes and a leading `+` allowed inside it) keeps its last
+ * four. A provider's error text is data we did not write, and it lands in `last_error` and in logs.
+ */
+export function maskPhonesIn(text: string): string {
+  return text.replace(/\+?\d[\d\s-]{5,}\d/g, (m) => maskPhone(m));
+}

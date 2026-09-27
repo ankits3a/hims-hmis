@@ -4,12 +4,15 @@ import { createFakeAbdmGateway } from "../../../test/helpers/abdm-fake-gateway";
 import {
   ABHA_ADDRESS, ABHA_NUMBER, HIP, SECRET, VISIT_A, VISIT_B, hipRuntime, inbound, seedHipFixture,
 } from "../../../test/helpers/abdm-hip";
-import { abdmCareContexts, abdmLinkRequests, abdmMessages } from "../../kernel/db/schema";
+import { abdmCareContexts, abdmLinkRequests, abdmMessages, users } from "../../kernel/db/schema";
+import { withTx } from "../../kernel/db/client";
+import { messagePreferenceOf, recordMessagePreference } from "../../kernel/notify/preferences";
 import { HIP_PATHS } from "./hip-client";
 import { LINK_OTP_MAX_ATTEMPTS, LoggingOtpSender } from "./patient-linking";
 import type { OtpSender } from "./patient-linking";
 import type { HipFixture } from "../../../test/helpers/abdm-hip";
 import type { Db } from "../../kernel/db/client";
+import type { FetchLike } from "../../kernel/notify/providers";
 
 /**
  * ABDM S2 — PATIENT-INITIATED LINKING against the fake (FT USER_INIT_LINK_603–607): discovery by a
@@ -150,6 +153,47 @@ describe("PatientLinking — discover, init (our OTP), confirm", () => {
     // Sandbox, but no operator opt-in: refused — an OTP in a server log is a credential in a log.
     await expect(new LoggingOtpSender("sbx").send({ mobile: "9876543210", patientId: "p" }, "123456", "t")).rejects.toThrow(/ABDM_SANDBOX_OTP_TO_LOG/);
     await expect(new LoggingOtpSender("sbx", true).send({ mobile: "9876543210", patientId: "p" }, "123456", "t")).resolves.toBeUndefined();
+  });
+
+  /**
+   * DECIDED 2026-09-27: the linking OTP is TRANSACTIONAL and the patient asked for it (they started the
+   * link in their PHR app), so a "stop all messages" on their record does not block it. The OTP goes
+   * out on the hospital's SMS channel (MSG91 here) straight from the sender — not through the pump,
+   * whose consent rules are for messages the hospital starts.
+   */
+  it("WITH MSG91 CONFIGURED the OTP goes out by SMS — even to a patient who said STOP to messages", async () => {
+    await db.insert(users).values({ id: "01HLINKDESKUSER0000000001", username: "link.desk", fullName: "Desk", staffCode: "EMP-7701", passwordHash: "x" });
+    await withTx(db, (tx) => recordMessagePreference(tx, { type: "user", id: "01HLINKDESKUSER0000000001" }, fx.patientId, { kind: "stop" }, "front_desk", now()));
+    expect((await messagePreferenceOf(db, fx.patientId))?.optedOut).not.toBeNull();
+
+    const calls: { url: string; headers: Record<string, string>; body: Record<string, unknown> }[] = [];
+    const smsFetch: FetchLike = async (url, init) => {
+      calls.push({ url, headers: init.headers, body: JSON.parse(init.body) as Record<string, unknown> });
+      return { ok: true, status: 200, json: async () => ({ type: "success", message: "req-1" }) };
+    };
+    const fake = createFakeAbdmGateway({ clientId: "SBX_0001", clientSecret: SECRET, now: () => clock, hipId: HIP });
+    const linking = hipRuntime(db, fake, now, { smsFetch }, {
+      NOTIFY_PROVIDER: "live", NOTIFY_SMS_PROVIDER: "msg91", MSG91_AUTH_KEY: "msg91-key",
+      MSG91_TEMPLATE_IDS: "1107161234567890123:66f0a1b2c3d4e5f601234567", ABDM_LINK_OTP_DLT_TEMPLATE_ID: "1107161234567890123",
+    }).linking!;
+    await linking.handleLinkInit(await inbound(db, "/api/v3/hip/link/care-context/init", fake.signedCallback(initBody([VISIT_A]))));
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://control.msg91.com/api/v5/flow");
+    expect(calls[0]!.headers.authkey).toBe("msg91-key");
+    const recipients = calls[0]!.body.recipients as { mobiles: string; VAR1: string }[];
+    expect(recipients).toEqual([{ mobiles: "919876543210", VAR1: expect.stringMatching(/^\d{6}$/) as string }]);
+    const [onInit] = fake.hip.calls(HIP_PATHS.onInit);
+    expect(onInit!.body.error).toBeUndefined();
+    expect(onInit!.body.link).toMatchObject({ authenticationType: "MEDIATE" });
+    const [req] = await db.select().from(abdmLinkRequests);
+    expect(req).toMatchObject({ status: "otp_sent", error: null });
+
+    // the OTP MSG91 carried is the one that confirms
+    const ref = (onInit!.body.link as { referenceNumber: string }).referenceNumber;
+    await linking.handleLinkConfirm(await inbound(db, "/api/v3/hip/link/care-context/confirm",
+      fake.signedCallback({ confirmation: { linkRefNumber: ref, token: recipients[0]!.VAR1 } })));
+    expect((await db.select().from(abdmCareContexts)).map((r) => r.status)).toEqual(["linked"]);
   });
 
   it("THE OTP IS IN NO STORED ROW: the confirm callback's token is redacted, the link request keeps only an HMAC", async () => {

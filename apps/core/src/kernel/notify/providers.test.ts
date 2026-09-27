@@ -1,7 +1,7 @@
 import { inspect } from "node:util";
 import { loadConfig, patientMessagingLive } from "../config";
 import { adaptersFor, consoleSmsAdapter, consoleWebPushAdapter, consoleWhatsappAdapter, maskPhone } from "./adapters";
-import { ProviderRefusedError, dltSmsAdapter, toIndianMsisdn, whatsappCloudAdapter } from "./providers";
+import { MSG91_FLOW_URL, ProviderRefusedError, dltSmsAdapter, msg91SmsAdapter, toIndianMsisdn, whatsappCloudAdapter } from "./providers";
 import type { FetchLike } from "./providers";
 
 /**
@@ -145,9 +145,116 @@ describe("adaptersFor and the config — ready to switch on, OFF until configure
 
   it("never lets a secret out through a logged or spread config", () => {
     const cfg = loadConfig({ ...base, ...SMS_KEYS, SMS_GATEWAY_API_KEY: "sms-SECRET-1", NOTIFY_PROVIDER: "live", WHATSAPP_PHONE_NUMBER_ID: "1", WHATSAPP_ACCESS_TOKEN: "wa-SECRET-2" });
-    expect(cfg.notifySms!.apiKey).toBe("sms-SECRET-1");
+    expect((cfg.notifySms as { apiKey: string }).apiKey).toBe("sms-SECRET-1");
     expect(cfg.notifyWhatsapp!.accessToken).toBe("wa-SECRET-2");
     const shown = `${JSON.stringify(cfg.notifySms)} ${JSON.stringify({ ...cfg.notifyWhatsapp })} ${inspect(cfg.notifySms)} ${inspect(cfg.notifyWhatsapp)}`;
     expect(shown).not.toMatch(/SECRET/);
+  });
+});
+
+/**
+ * ABDM × MSG91 (owner ruled 2026-09-26: "MSG91 SMS Sender") — the SMS channel on MSG91's Flow API v5.
+ * MSG91 does not send our text: it sends ITS template (which carries the DLT template id) with our
+ * variables filled. So a message needs the DLT id AND the MSG91 template that id maps to.
+ */
+const DLT = "1107161234567890123";
+const FLOW = "66f0a1b2c3d4e5f601234567";
+const MSG91_CFG = (() => {
+  const c = { flowUrl: MSG91_FLOW_URL, senderId: "HOSPTL", templateIds: { [DLT]: FLOW } as Record<string, string> } as { flowUrl: string; senderId: string | null; templateIds: Readonly<Record<string, string>>; authKey: string };
+  Object.defineProperty(c, "authKey", { value: "msg91-SECRET-authkey", enumerable: false });
+  return c;
+})();
+
+describe("the MSG91 SMS gateway (Flow API v5)", () => {
+  it("posts the MSG91 template, the sender and ONE recipient in 91XXXXXXXXXX with the variables as VAR1..n, with the authkey header — never our free text", async () => {
+    const calls: Call[] = [];
+    const sms = msg91SmsAdapter(MSG91_CFG, recordingFetch(calls, { json: { message: "5762846b4f8d285d378b4567", type: "success" } }));
+    const out = await sms.send("+91 98765-43210", "FREE TEXT THAT MUST NOT BE SENT", {
+      notificationId: "m1", templateKey: "pharmacy_bill_ready", variables: ["PB-1", "12.00"], registration: REG(DLT, null),
+    });
+    expect(out).toEqual({ providerMessageId: "5762846b4f8d285d378b4567" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://control.msg91.com/api/v5/flow");
+    expect(calls[0]!.headers).toEqual({ "content-type": "application/json", accept: "application/json", authkey: "msg91-SECRET-authkey" });
+    expect(calls[0]!.body).toEqual({
+      template_id: FLOW, sender: "HOSPTL", short_url: "0",
+      recipients: [{ mobiles: "919876543210", VAR1: "PB-1", VAR2: "12.00" }],
+    });
+    expect(JSON.stringify(calls[0]!.body)).not.toContain("FREE TEXT");
+  });
+
+  it("REFUSES a template with no DLT id (dlt_template_unregistered) and a DLT id MSG91 has no template for (msg91_template_unmapped) — and never calls MSG91", async () => {
+    const calls: Call[] = [];
+    const sms = msg91SmsAdapter(MSG91_CFG, recordingFetch(calls));
+    for (const registration of [undefined, REG(null, null), REG("  ", null)]) {
+      await expect(sms.send("9876543210", "t", { notificationId: "m2", templateKey: "pharmacy_bill_ready", ...(registration === undefined ? {} : { registration }) }))
+        .rejects.toThrow(expect.objectContaining({ name: "ProviderRefusedError", code: "dlt_template_unregistered" }));
+    }
+    await expect(sms.send("9876543210", "t", { notificationId: "m3", templateKey: "pharmacy_refill_due", registration: REG("1107999999999999999", null) }))
+      .rejects.toThrow(expect.objectContaining({ name: "ProviderRefusedError", code: "msg91_template_unmapped" }));
+    expect(calls).toEqual([]);
+  });
+
+  it("REFUSES a number that is not an Indian mobile before anything leaves, and the refusal shows only the last four digits", async () => {
+    const calls: Call[] = [];
+    const sms = msg91SmsAdapter(MSG91_CFG, recordingFetch(calls));
+    const err = await sms.send("5876543210", "t", { notificationId: "m4", registration: REG(DLT, null) }).catch((e: Error) => e);
+    expect(err).toMatchObject({ name: "ProviderRefusedError", code: "not_an_indian_mobile" });
+    expect((err as Error).message).toContain("******3210");
+    expect((err as Error).message).not.toContain("587654");
+    expect(calls).toEqual([]);
+  });
+
+  it("an HTTP error, and a 200 whose body says type:error, both FAIL — naming only the last four digits, never the auth key", async () => {
+    for (const answer of [
+      { ok: false, status: 401, json: { type: "error", message: "Authentication failure for authkey msg91-SECRET-authkey" } },
+      { ok: true, status: 200, json: { type: "error", message: "Invalid mobile number 919876543210" } },
+    ]) {
+      const calls: Call[] = [];
+      const err = await msg91SmsAdapter(MSG91_CFG, recordingFetch(calls, answer))
+        .send("9876543210", "t", { notificationId: "m5", registration: REG(DLT, null) }).catch((e: Error) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(ProviderRefusedError); // transient: the pump may retry the rung
+      const msg = (err as Error).message;
+      expect(msg).toContain("3210");
+      expect(msg).not.toMatch(/98765|919876543210|SECRET/);
+    }
+  });
+});
+
+describe("MSG91 in the config — OFF until MSG91_AUTH_KEY is set", () => {
+  const base = { DATABASE_URL: "postgres://u:p@host:5433/db", SECRET_KEY: "ab".repeat(32) };
+  const MSG91 = { NOTIFY_PROVIDER: "live", NOTIFY_SMS_PROVIDER: "msg91", SMS_DLT_SENDER_ID: "HOSPTL", MSG91_TEMPLATE_IDS: `${DLT}:${FLOW}` };
+
+  it("with no auth key SMS stays on the console sink — nothing leaves", () => {
+    const cfg = loadConfig({ ...base, ...MSG91 });
+    expect(cfg.notifySms).toBeNull();
+    expect(adaptersFor(cfg).sms).toBe(consoleSmsAdapter);
+    expect(patientMessagingLive({ ...MSG91 })).toEqual({ sms: false, whatsapp: false });
+  });
+
+  it("NOTIFY_PROVIDER=console keeps SMS on the sink even with the key set", () => {
+    const cfg = loadConfig({ ...base, ...MSG91, NOTIFY_PROVIDER: "console", MSG91_AUTH_KEY: "k" });
+    expect(cfg.notifySms).toBeNull();
+    expect(adaptersFor(cfg).sms).toBe(consoleSmsAdapter);
+  });
+
+  it("with the key, SMS goes to MSG91's flow endpoint through the injected fetch", async () => {
+    const cfg = loadConfig({ ...base, ...MSG91, MSG91_AUTH_KEY: "msg91-SECRET-3" });
+    expect(cfg.notifySms).toMatchObject({ provider: "msg91", flowUrl: "https://control.msg91.com/api/v5/flow", senderId: "HOSPTL", templateIds: { [DLT]: FLOW } });
+    const calls: Call[] = [];
+    const map = adaptersFor(cfg, recordingFetch(calls, { json: { type: "success", message: "r1" } }));
+    expect(map.sms.sink).toBeUndefined();
+    await map.sms.send("9876543210", "t", { notificationId: "m6", variables: ["x"], registration: REG(DLT, null) });
+    expect(calls.map((c) => [c.url, c.headers.authkey, c.body.template_id])).toEqual([["https://control.msg91.com/api/v5/flow", "msg91-SECRET-3", FLOW]]);
+    expect(patientMessagingLive({ ...MSG91, MSG91_AUTH_KEY: "k" })).toEqual({ sms: true, whatsapp: false });
+    const shown = `${JSON.stringify(cfg.notifySms)} ${JSON.stringify({ ...cfg.notifySms })} ${inspect(cfg.notifySms)}`;
+    expect(shown).not.toMatch(/SECRET/);
+  });
+
+  it("REFUSES at boot a malformed template map, and the other gateway's keys under msg91", () => {
+    expect(() => loadConfig({ ...base, ...MSG91, MSG91_AUTH_KEY: "k", MSG91_TEMPLATE_IDS: "not-a-map" })).toThrow(/MSG91_TEMPLATE_IDS/);
+    expect(() => loadConfig({ ...base, ...MSG91, MSG91_AUTH_KEY: "k", SMS_GATEWAY_URL: "https://sms.example.test" })).toThrow(/SMS_GATEWAY_URL/);
+    expect(() => loadConfig({ ...base, ...MSG91, NOTIFY_SMS_PROVIDER: "twilio" })).toThrow();
   });
 });

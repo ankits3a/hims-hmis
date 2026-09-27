@@ -76,8 +76,9 @@ is listed UNVERIFIED in `modules/abdm/abha-client.ts`):
 - **DECIDED — scan-and-share tokens** are per facility per IST day from 1, 1800 s (Care's default);
   a re-scan by the same ABHA address keeps its token. A share with no ABHA number links the share
   and stamps nothing.
-- `ABDM_ABHA_CREATE_AADHAAR` (default `false`) is the create switch; while off, create answers
-  403 `abha_create_disabled` and the counter does not draw the button.
+- `ABDM_ABHA_CREATE_AADHAAR` is the create switch — default `true` since the owner ruled YES
+  (2026-09-26); set `false` and create answers 403 `abha_create_disabled` and the counter does not
+  draw the button. It does nothing while ABDM itself is unconfigured.
 
 **S2 — M2 (the hospital shares its records).** Care-context linking (HIP-initiated with a link
 token; patient-initiated discovery/link callbacks); context notify after each visit; consent
@@ -108,8 +109,16 @@ cross-check; every path is listed UNVERIFIED in `modules/abdm/hip-client.ts`):
   `patients.abha_link_token`, which the counter can write); ≤3 generate-token calls per address per IST day.
 - **DECIDED — discovery:** a VERIFIED ABHA on our record AND agreeing gender, year of birth and name;
   a near miss is "not found". The mobile + fuzzy fallback is NOT built.
-- **DECIDED — linking OTP:** the HIP sends it through an `OtpSender`; the only sender is a logging
-  one that REFUSES in production (`X-CM-ID: abdm`) — an SMS provider is an owner/procurement item.
+- **DECIDED — linking OTP:** the HIP sends it through an `OtpSender`. With the hospital's SMS
+  channel live (MSG91, owner ruling 2026-09-26) it is `SmsOtpSender` on that channel, with its own
+  DLT template id (`ABDM_LINK_OTP_DLT_TEMPLATE_ID`; none ⇒ refused, never sent); otherwise the logging
+  sender, which REFUSES in production (`X-CM-ID: abdm`) and logs only with `ABDM_SANDBOX_OTP_TO_LOG=true`.
+
+**DECIDED 2026-09-27**
+- The linking OTP is TRANSACTIONAL and requested by the patient (they start the link in their PHR
+  app), so the patient's "stop all messages" preference does NOT block it. It is sent straight to
+  the SMS adapter, not through the notify pump whose consent rules govern messages the hospital
+  starts. Never logged; a provider error that echoes it is scrubbed before it is stored or answered.
 - **DECIDED — consent release (owner ruling pending):** `ABDM_CONSENT_RELEASE=auto` (default) releases
   exactly within the stored artefact and refuses the whole request otherwise; `manual` holds it (the
   review step is owed). Every release: `abdm_messages` (push logged as a summary), `phi_access_log`
@@ -173,7 +182,8 @@ cross-check; every path is listed UNVERIFIED in `modules/abdm/hiu-client.ts`):
 ## 4. Owner rulings still open (law / money)
 
 1. Scope and order — this plan assumes M1 → M2 → M3.
-2. ABHA creation by Aadhaar OTP at the counter — built, OFF by config until ruled.
+2. ~~ABHA creation by Aadhaar OTP at the counter — built, OFF by config until ruled.~~ RULED YES
+   2026-09-26: `ABDM_ABHA_CREATE_AADHAAR` now defaults `true` (live once ABDM's credentials exist).
 3. Which records are shared under M2 — assumed: OPD prescription, lab reports, radiology reports.
 4. Consent release — assumed: automatic release exactly matching the patient's ABDM consent, every release logged.
 5. DHIS (the incentive scheme) — money; not built.

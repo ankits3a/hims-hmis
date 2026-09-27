@@ -31,8 +31,10 @@ import type { Db } from "../../kernel/db/client";
  *     second step) — such a patient is not found.
  *   · INIT (`hip/link/care-context/init`) — the picked care contexts are re-checked as THIS patient's
  *     and unlinked, a link reference is minted, and WE send the OTP (FT FAQ Q35) through the
- *     `OtpSender`. There is no SMS sender yet (an owner/procurement item — a DLT-registered template),
- *     so the only sender is `LoggingOtpSender`, which REFUSES in production (`X-CM-ID: abdm`) and in
+ *     `OtpSender`. With the kernel's SMS channel live (MSG91, owner ruling 2026-09-26) that is
+ *     `SmsOtpSender` (`sms-otp-sender.ts`) on its own DLT template id — and the patient's "stop all
+ *     messages" does NOT block it (DECIDED 2026-09-27: transactional, and the patient asked for it).
+ *     Without live SMS it is `LoggingOtpSender`, which REFUSES in production (`X-CM-ID: abdm`) and in
  *     the sandbox REFUSES too unless an operator sets `ABDM_SANDBOX_OTP_TO_LOG=true`, when it writes
  *     the OTP to the server log so the functional test can be run. A refused send
  *     answers on-init with an error; nothing is linked.
@@ -58,7 +60,7 @@ export class OtpSenderUnavailable extends Error {
 }
 
 /**
- * THE ONLY OTP SENDER THERE IS, UNTIL AN SMS PROVIDER IS BOUGHT. It sends nothing. In PRODUCTION
+ * THE OTP SENDER WHILE SMS IS ON THE CONSOLE SINK (no `MSG91_AUTH_KEY` / no live gateway). It sends nothing. In PRODUCTION
  * (`cmId === "abdm"`) it refuses every send — a patient must never be told an OTP went to their phone
  * when none did. In the SANDBOX it refuses as well unless `toLog` is set (`ABDM_SANDBOX_OTP_TO_LOG`):
  * FT runs on the production box, and an OTP in a server log is a credential in a log, so writing one
