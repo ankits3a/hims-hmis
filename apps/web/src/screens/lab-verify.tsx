@@ -11,7 +11,7 @@ import { useRealtime } from "../lib/realtime";
 import { RerunChoicePair } from "../components/lab-rerun-choice";
 import { LabReportPrint } from "../components/lab-report-print";
 import { Button } from "@/components/ui/button";
-import { LabSeatFrame } from "./lab-seat";
+import { LabStation } from "./lab-seat";
 import type { WireCriticalCall, WireReportView, WireWorklistRow } from "../lib/lab-api";
 
 /**
@@ -180,8 +180,104 @@ export function LabVerify(): React.ReactElement {
   const criticalCount = ordered.filter((r) => r.hasCritical || r.openCall).length;
   const oldest = ordered.reduce((m, r) => Math.max(m, r.ageMinutes), 0);
 
+  /* ── awaiting signature · criticals and STAT first ── */
+  const listPane = (
+    <section className="space-y-2" aria-label={t("lab.verify.queue")}>
+      <h2 className="text-sm font-semibold">{t("lab.verify.queue")}</h2>
+      {queue.isError
+        ? <p role="alert" className="text-sm font-semibold">{t("lab.verify.unavailable")}</p>
+        : groups.length === 0 && !queue.isPending && <p className="text-sm text-muted-foreground">{t("lab.verify.empty")}</p>}
+      <ul className="divide-y divide-border rounded border border-border text-sm" data-testid="verify-queue">
+        {groups.map((g) => {
+          const first = g.rows[0]!;
+          const urgent = g.rows.some((r) => r.hasCritical || r.openCall);
+          return (
+            <li key={g.orderId}>
+              <button type="button"
+                className={`flex w-full items-center gap-3 px-2 py-1.5 text-left hover:bg-muted ${g.orderId === selectedOrder ? "bg-muted" : ""}`}
+                onClick={() => { setSelectedOrder(g.orderId); setError(null); }}>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-medium">{first.patientDisplay}</span>
+                  <span className="text-muted-foreground"> · {g.rows.map((r) => r.orderableCode).join(" · ")}</span>
+                  {urgent && <span className="ml-1 font-semibold" style={{ color: "var(--state-danger)" }}>
+                    {g.rows.some((r) => r.openCall) ? t("lab.verify.criticalCall") : "!!"}
+                  </span>}
+                </span>
+                {first.priority !== "routine" && (
+                  <span className="shrink-0 text-xs font-semibold uppercase" style={{ color: "var(--state-danger)" }}>{first.priority}</span>
+                )}
+                <span className="shrink-0 tabular-nums text-muted-foreground">{Math.max(...g.rows.map((r) => r.ageMinutes))} {t("lab.verify.min")}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-xs text-muted-foreground">{t("lab.verify.autoVerifyNote")}</p>
+
+      {/*
+        ═══ DD11 — RELEASED OVERNIGHT, AWAITING THE SECOND PAIR OF HANDS ═══
+
+        Shown only when there is something to work, because a heading over an empty list on every
+        day shift is how a reviewer learns to skip the section on the morning it is not empty.
+
+        Each row carries WHO released it alone. That is the fact the review is about, and a queue
+        that hid it behind a click would be worked by clicking.
+      */}
+      {(nights.data ?? []).length > 0 && (
+        <section className="space-y-2 pt-2" aria-label={t("lab.verify.nightQueue")}>
+          <h2 className="text-sm font-semibold">{t("lab.verify.nightQueue")}</h2>
+          <p className="text-xs text-muted-foreground">{t("lab.verify.nightQueueHint")}</p>
+          <ul className="divide-y divide-border rounded border border-border">
+            {(nights.data ?? []).map((r) => (
+              <li key={r.resultId} data-testid={`night-${r.resultId}`} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                <span className="font-semibold">{r.patientDisplay}</span>
+                <span className="text-muted-foreground">{r.analyteCode} {r.value}{r.unit !== null && ` ${r.unit}`}</span>
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  {t("lab.verify.releasedBy", { who: r.releasedBy })}
+                </span>
+                <Button type="button" variant="outline" size="sm" disabled={review.isPending}
+                  onClick={() => { review.mutate(r.resultId); }}>
+                  {t("lab.verify.reviewed")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <h2 className="pt-2 text-sm font-semibold">{t("lab.verify.publishQueue")}</h2>
+      {publishable.isError
+        ? <p role="alert" className="text-sm font-semibold">{t("lab.verify.unavailable")}</p>
+        : (publishable.data ?? []).length === 0 && <p className="text-sm text-muted-foreground">{t("lab.verify.publishEmpty")}</p>}
+      {(publishable.data ?? []).map((o) => (
+        <article key={o.orderId} className="flex flex-wrap items-baseline gap-2 rounded border border-border p-2 text-sm">
+          <span className="font-mono">{o.orderNo}</span>
+          <span>{o.patientDisplay}</span>
+          <span className="text-xs text-muted-foreground">{o.orderables.join(", ")} · {o.completedCount}/{o.itemCount}</span>
+          {o.amendsReportId != null ? (
+            <Button type="button" size="sm" disabled={publish.isPending}
+              onClick={() => publish.mutate({ orderId: o.orderId, partial: !o.complete, amendsReportId: o.amendsReportId })}>
+              {t("lab.verify.publishRest")}
+            </Button>
+          ) : o.complete ? (
+            <Button type="button" size="sm" disabled={publish.isPending}
+              onClick={() => publish.mutate({ orderId: o.orderId, partial: false, amendsReportId: null })}>
+              {t("lab.verify.publish")}
+            </Button>
+          ) : (
+            <Button type="button" size="sm" disabled={publish.isPending}
+              onClick={() => publish.mutate({ orderId: o.orderId, partial: true, amendsReportId: null })}>
+              {t("lab.verify.publishPartial")}
+            </Button>
+          )}
+        </article>
+      ))}
+    </section>
+  );
+
   return (
-    <LabSeatFrame
+    <LabStation
+      station="verify"
       title={t("lab.verify.title")}
       place={t("lab.verify.place")}
       stats={[
@@ -190,263 +286,169 @@ export function LabVerify(): React.ReactElement {
         { label: t("lab.verify.oldestStat"), value: `${String(oldest)} ${t("lab.verify.min")}` },
         { label: connected ? t("lab.verify.live") : t("lab.verify.offline"), value: "●", tone: connected ? "live" : "plain" },
       ]}
+      list={listPane}
     >
       {error !== null && <p role="alert" className="mb-3 text-sm font-semibold">{error}</p>}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        {/* ── awaiting signature · criticals and STAT first ── */}
-        <section className="space-y-2" aria-label={t("lab.verify.queue")}>
-          <h2 className="text-sm font-semibold">{t("lab.verify.queue")}</h2>
-          {queue.isError
-            ? <p role="alert" className="text-sm font-semibold">{t("lab.verify.unavailable")}</p>
-            : groups.length === 0 && !queue.isPending && <p className="text-sm text-muted-foreground">{t("lab.verify.empty")}</p>}
-          <ul className="divide-y divide-border rounded border border-border text-sm" data-testid="verify-queue">
-            {groups.map((g) => {
-              const first = g.rows[0]!;
-              const urgent = g.rows.some((r) => r.hasCritical || r.openCall);
-              return (
-                <li key={g.orderId}>
-                  <button type="button"
-                    className={`flex w-full items-center gap-3 px-2 py-1.5 text-left hover:bg-muted ${g.orderId === selectedOrder ? "bg-muted" : ""}`}
-                    onClick={() => { setSelectedOrder(g.orderId); setError(null); }}>
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="font-medium">{first.patientDisplay}</span>
-                      <span className="text-muted-foreground"> · {g.rows.map((r) => r.orderableCode).join(" · ")}</span>
-                      {urgent && <span className="ml-1 font-semibold" style={{ color: "var(--state-danger)" }}>
-                        {g.rows.some((r) => r.openCall) ? t("lab.verify.criticalCall") : "!!"}
-                      </span>}
-                    </span>
-                    {first.priority !== "routine" && (
-                      <span className="shrink-0 text-xs font-semibold uppercase" style={{ color: "var(--state-danger)" }}>{first.priority}</span>
-                    )}
-                    <span className="shrink-0 tabular-nums text-muted-foreground">{Math.max(...g.rows.map((r) => r.ageMinutes))} {t("lab.verify.min")}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="text-xs text-muted-foreground">{t("lab.verify.autoVerifyNote")}</p>
-
-          {/*
-            ═══ DD11 — RELEASED OVERNIGHT, AWAITING THE SECOND PAIR OF HANDS ═══
-
-            Shown only when there is something to work, because a heading over an empty list on every
-            day shift is how a reviewer learns to skip the section on the morning it is not empty.
-
-            Each row carries WHO released it alone. That is the fact the review is about, and a queue
-            that hid it behind a click would be worked by clicking.
-          */}
-          {(nights.data ?? []).length > 0 && (
-            <section className="space-y-2 pt-2" aria-label={t("lab.verify.nightQueue")}>
-              <h2 className="text-sm font-semibold">{t("lab.verify.nightQueue")}</h2>
-              <p className="text-xs text-muted-foreground">{t("lab.verify.nightQueueHint")}</p>
-              <ul className="divide-y divide-border rounded border border-border">
-                {(nights.data ?? []).map((r) => (
-                  <li key={r.resultId} data-testid={`night-${r.resultId}`} className="flex items-center gap-2 px-2 py-1.5 text-sm">
-                    <span className="font-semibold">{r.patientDisplay}</span>
-                    <span className="text-muted-foreground">{r.analyteCode} {r.value}{r.unit !== null && ` ${r.unit}`}</span>
-                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                      {t("lab.verify.releasedBy", { who: r.releasedBy })}
-                    </span>
-                    <Button type="button" variant="outline" size="sm" disabled={review.isPending}
-                      onClick={() => { review.mutate(r.resultId); }}>
-                      {t("lab.verify.reviewed")}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <h2 className="pt-2 text-sm font-semibold">{t("lab.verify.publishQueue")}</h2>
-          {publishable.isError
-            ? <p role="alert" className="text-sm font-semibold">{t("lab.verify.unavailable")}</p>
-            : (publishable.data ?? []).length === 0 && <p className="text-sm text-muted-foreground">{t("lab.verify.publishEmpty")}</p>}
-          {(publishable.data ?? []).map((o) => (
-            <article key={o.orderId} className="flex flex-wrap items-baseline gap-2 rounded border border-border p-2 text-sm">
-              <span className="font-mono">{o.orderNo}</span>
-              <span>{o.patientDisplay}</span>
-              <span className="text-xs text-muted-foreground">{o.orderables.join(", ")} · {o.completedCount}/{o.itemCount}</span>
-              {o.amendsReportId != null ? (
-                <Button type="button" size="sm" disabled={publish.isPending}
-                  onClick={() => publish.mutate({ orderId: o.orderId, partial: !o.complete, amendsReportId: o.amendsReportId })}>
-                  {t("lab.verify.publishRest")}
-                </Button>
-              ) : o.complete ? (
-                <Button type="button" size="sm" disabled={publish.isPending}
-                  onClick={() => publish.mutate({ orderId: o.orderId, partial: false, amendsReportId: null })}>
-                  {t("lab.verify.publish")}
-                </Button>
-              ) : (
-                <Button type="button" size="sm" disabled={publish.isPending}
-                  onClick={() => publish.mutate({ orderId: o.orderId, partial: true, amendsReportId: null })}>
-                  {t("lab.verify.publishPartial")}
-                </Button>
-              )}
-            </article>
-          ))}
-        </section>
-
-        {/* ── the patient's results, against range, previous and the clock ── */}
-        <section className="space-y-3">
-          {selected === null && open === null && <p className="text-sm text-muted-foreground">{t("lab.verify.pickOne")}</p>}
-          {selected !== null && (() => {
-            const first = selected.rows[0]!;
-            const unsigned = selected.rows.flatMap((r) => r.analytes.filter((a) => a.resultId !== null && a.verificationStatus === "unverified"));
-            return (
-              <div className="space-y-3" data-testid="verify-detail">
-                <div className="rounded border border-border bg-card p-3 text-sm">
-                  <div className="flex flex-wrap items-baseline gap-x-3">
-                    <span className="text-lg font-semibold">{first.patientDisplay}</span>
-                    <span className="font-mono text-muted-foreground">{first.orderNo}</span>
-                    <span className="text-muted-foreground">{first.encounterNo}</span>
-                  </div>
-                  <p className="text-muted-foreground">
-                    {selected.rows.map((r) => {
-                      const over = r.ageMinutes > r.tatTargetMinutes;
-                      return (
-                        <span key={r.orderItemId} className="mr-3">
-                          {r.orderableCode}: {t("lab.verify.tatOf", { elapsed: r.ageMinutes, target: r.tatTargetMinutes })}{" "}
-                          <span style={{ color: over ? "var(--state-danger)" : "var(--state-settled)" }}>
-                            {over ? t("lab.verify.breached") : t("lab.verify.insideTarget")}
-                          </span>
-                        </span>
-                      );
-                    })}
-                  </p>
-                  {selected.rows.some((r) => r.openCall) && (
-                    <p className="font-semibold" style={{ color: "var(--state-danger)" }}>{t("lab.verify.criticalCall")}</p>
-                  )}
+      {/* ── the patient's results, against range, previous and the clock ── */}
+      <section className="space-y-3">
+        {selected === null && open === null && <p className="text-sm text-muted-foreground">{t("lab.verify.pickOne")}</p>}
+        {selected !== null && (() => {
+          const first = selected.rows[0]!;
+          const unsigned = selected.rows.flatMap((r) => r.analytes.filter((a) => a.resultId !== null && a.verificationStatus === "unverified"));
+          return (
+            <div className="space-y-3" data-testid="verify-detail">
+              <div className="rounded border border-border bg-card p-3 text-sm">
+                <div className="flex flex-wrap items-baseline gap-x-3">
+                  <span className="text-lg font-semibold">{first.patientDisplay}</span>
+                  <span className="font-mono text-muted-foreground">{first.orderNo}</span>
+                  <span className="text-muted-foreground">{first.encounterNo}</span>
                 </div>
+                <p className="text-muted-foreground">
+                  {selected.rows.map((r) => {
+                    const over = r.ageMinutes > r.tatTargetMinutes;
+                    return (
+                      <span key={r.orderItemId} className="mr-3">
+                        {r.orderableCode}: {t("lab.verify.tatOf", { elapsed: r.ageMinutes, target: r.tatTargetMinutes })}{" "}
+                        <span style={{ color: over ? "var(--state-danger)" : "var(--state-settled)" }}>
+                          {over ? t("lab.verify.breached") : t("lab.verify.insideTarget")}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </p>
+                {selected.rows.some((r) => r.openCall) && (
+                  <p className="font-semibold" style={{ color: "var(--state-danger)" }}>{t("lab.verify.criticalCall")}</p>
+                )}
+              </div>
 
-                {selected.rows.map((row) => (
-                  <table key={row.orderItemId} className="w-full text-sm" data-testid={`panel-${row.orderableCode}`}>
-                    <caption className="py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {row.orderableName} · {row.specimenNo ?? "—"}
-                    </caption>
-                    <thead className="text-left text-xs text-muted-foreground">
-                      <tr>
-                        <th className="py-1">{t("lab.verify.colAnalyte")}</th>
-                        <th>{t("lab.verify.colResult")}</th>
-                        <th>{t("lab.verify.colFlag")}</th>
-                        <th>{t("lab.verify.colRef")}</th>
-                        <th>{t("lab.verify.colPrev")}</th>
-                        <th>{t("lab.verify.colNote")}</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/*
-                        17-E T7 — `resultId` is null for an analyte awaiting a rerun choice, so this
-                        filter USED TO DROP THE ROW ENTIRELY: the pathologist saw a complete-looking
-                        panel, pressed sign, and met `rerun_unchosen` about an analyte that was not on
-                        the screen. An unchosen pair is kept and given its own row below.
-                      */}
-                      {row.analytes.filter((a) => a.resultId !== null || a.rerunChoice.length > 0).map((a) => {
-                        const tone = flagTone(a.flag);
-                        const delta = deltaText(a.value, a.previous?.value ?? null);
-                        if (a.rerunChoice.length > 0) {
-                          return (
-                            <tr key={a.analyteId} className="border-t border-border" data-testid={`row-${a.code}`}>
-                              <td className="py-1 pr-2">{a.nameEn}</td>
-                              <td colSpan={6} className="py-1">
-                                <RerunChoicePair
-                                  runs={a.rerunChoice}
-                                  name={`rerun-${row.orderItemId}-${a.analyteId}`}
-                                  analyteLabel={`${row.orderableCode} ${a.code}`}
-                                  pending={choose.isPending}
-                                  onChoose={(v) => choose.mutate(v)}
-                                />
-                              </td>
-                            </tr>
-                          );
-                        }
+              {selected.rows.map((row) => (
+                <table key={row.orderItemId} className="w-full text-sm" data-testid={`panel-${row.orderableCode}`}>
+                  <caption className="py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {row.orderableName} · {row.specimenNo ?? "—"}
+                  </caption>
+                  <thead className="text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="py-1">{t("lab.verify.colAnalyte")}</th>
+                      <th>{t("lab.verify.colResult")}</th>
+                      <th>{t("lab.verify.colFlag")}</th>
+                      <th>{t("lab.verify.colRef")}</th>
+                      <th>{t("lab.verify.colPrev")}</th>
+                      <th>{t("lab.verify.colNote")}</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/*
+                      17-E T7 — `resultId` is null for an analyte awaiting a rerun choice, so this
+                      filter USED TO DROP THE ROW ENTIRELY: the pathologist saw a complete-looking
+                      panel, pressed sign, and met `rerun_unchosen` about an analyte that was not on
+                      the screen. An unchosen pair is kept and given its own row below.
+                    */}
+                    {row.analytes.filter((a) => a.resultId !== null || a.rerunChoice.length > 0).map((a) => {
+                      const tone = flagTone(a.flag);
+                      const delta = deltaText(a.value, a.previous?.value ?? null);
+                      if (a.rerunChoice.length > 0) {
                         return (
                           <tr key={a.analyteId} className="border-t border-border" data-testid={`row-${a.code}`}>
                             <td className="py-1 pr-2">{a.nameEn}</td>
-                            <td className={`pr-2 tabular-nums ${tone === "critical" ? "font-bold" : tone === "abnormal" ? "font-semibold" : ""}`}
-                              style={tone === "critical" ? { color: "var(--state-danger)" } : undefined}>
-                              {a.value} <span className="text-xs text-muted-foreground">{a.unit ?? ""}</span>
-                            </td>
-                            <td className="pr-2 font-semibold">{a.flag ?? ""}</td>
-                            <td className="pr-2 text-xs text-muted-foreground">
-                              {a.refLow !== null && a.refHigh !== null ? `${a.refLow} – ${a.refHigh}` : (a.refText ?? "")}
-                            </td>
-                            <td className="pr-2 tabular-nums">{a.previous === null ? t("lab.verify.noPrev") : a.previous.value}</td>
-                            <td className="pr-2 text-xs text-muted-foreground">
-                              {delta !== null && a.previous !== null && (
-                                <span>{t("lab.verify.delta", { delta, when: `${String(daysAgo(a.previous.at))} d` })}</span>
-                              )}
-                              {a.verificationStatus === "verified" && <span className="ml-1">{t("lab.verify.signed")}</span>}
-                            </td>
-                            <td className="whitespace-nowrap">
-                              {a.verificationStatus === "unverified" && (
-                                <>
-                                  <Button type="button" size="sm" variant="outline" onClick={() => sign.mutate(a.resultId!)}>
-                                    {t("lab.verify.sign")}
-                                  </Button>
-                                  <button type="button" className="ml-2 text-xs underline" onClick={() => rerun.mutate(a.resultId!)}>
-                                    {t("lab.verify.rerun")}
-                                  </button>
-                                </>
-                              )}
+                            <td colSpan={6} className="py-1">
+                              <RerunChoicePair
+                                runs={a.rerunChoice}
+                                name={`rerun-${row.orderItemId}-${a.analyteId}`}
+                                analyteLabel={`${row.orderableCode} ${a.code}`}
+                                pending={choose.isPending}
+                                onChoose={(v) => choose.mutate(v)}
+                              />
                             </td>
                           </tr>
                         );
-                      })}
-                    </tbody>
-                  </table>
-                ))}
+                      }
+                      return (
+                        <tr key={a.analyteId} className="border-t border-border" data-testid={`row-${a.code}`}>
+                          <td className="py-1 pr-2">{a.nameEn}</td>
+                          <td className={`pr-2 tabular-nums ${tone === "critical" ? "font-bold" : tone === "abnormal" ? "font-semibold" : ""}`}
+                            style={tone === "critical" ? { color: "var(--state-danger)" } : undefined}>
+                            {a.value} <span className="text-xs text-muted-foreground">{a.unit ?? ""}</span>
+                          </td>
+                          <td className="pr-2 font-semibold">{a.flag ?? ""}</td>
+                          <td className="pr-2 text-xs text-muted-foreground">
+                            {a.refLow !== null && a.refHigh !== null ? `${a.refLow} – ${a.refHigh}` : (a.refText ?? "")}
+                          </td>
+                          <td className="pr-2 tabular-nums">{a.previous === null ? t("lab.verify.noPrev") : a.previous.value}</td>
+                          <td className="pr-2 text-xs text-muted-foreground">
+                            {delta !== null && a.previous !== null && (
+                              <span>{t("lab.verify.delta", { delta, when: `${String(daysAgo(a.previous.at))} d` })}</span>
+                            )}
+                            {a.verificationStatus === "verified" && <span className="ml-1">{t("lab.verify.signed")}</span>}
+                          </td>
+                          <td className="whitespace-nowrap">
+                            {a.verificationStatus === "unverified" && (
+                              <>
+                                <Button type="button" size="sm" variant="outline" onClick={() => sign.mutate(a.resultId!)}>
+                                  {t("lab.verify.sign")}
+                                </Button>
+                                <button type="button" className="ml-2 text-xs underline" onClick={() => rerun.mutate(a.resultId!)}>
+                                  {t("lab.verify.rerun")}
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ))}
 
-                <div className="flex items-center gap-3">
-                  <Button type="button" disabled={unsigned.length === 0 || signAll.isPending} onClick={() => signAll.mutate(selected.rows)}>
-                    {t("lab.verify.signAll", { count: unsigned.length })}
-                  </Button>
-                  <span className="text-xs text-muted-foreground">{t("lab.verify.signAllHint")}</span>
-                </div>
+              <div className="flex items-center gap-3">
+                <Button type="button" disabled={unsigned.length === 0 || signAll.isPending} onClick={() => signAll.mutate(selected.rows)}>
+                  {t("lab.verify.signAll", { count: unsigned.length })}
+                </Button>
+                <span className="text-xs text-muted-foreground">{t("lab.verify.signAllHint")}</span>
               </div>
-            );
-          })()}
+            </div>
+          );
+        })()}
 
-          {open !== null && (
-            <section className="space-y-2 border-t border-border pt-3">
-              <h2 className="text-sm font-semibold">
-                {t("lab.verify.report")} {open.snapshot.orderNo} · v{open.version}
-              </h2>
-              {!open.delivery.allowed && (
-                <p role="alert" className="text-sm font-semibold">
-                  {t("lab.verify.held", {
-                    amount: (open.delivery.outstandingPaise / 100).toFixed(2),
-                    count: open.delivery.unpaidInvoiceIds.length,
-                  })}
-                </p>
-              )}
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="text-sm">
-                  {t("lab.verify.channel")}
-                  <select className="mt-1 block rounded border border-input px-2 py-1" value={channel}
-                    onChange={(e) => setChannel(e.target.value as typeof channel)}>
-                    {open.channels.map((c) => <option key={c} value={c}>{t(`lab.verify.channel_${c}`)}</option>)}
-                  </select>
-                </label>
-                <label className="text-sm">
-                  {t("lab.verify.collector")}
-                  <input className="mt-1 block rounded border border-input px-2 py-1" value={collector}
-                    onChange={(e) => setCollector(e.target.value)} />
-                </label>
-                <Button
-                  type="button"
-                  disabled={!open.delivery.allowed || hand.isPending || (channel !== "whatsapp" && collector.trim() === "")}
-                  onClick={() => hand.mutate({ reportId: open.reportId, channel })}
-                >{t("lab.verify.print")}</Button>
-              </div>
-              {/* The document is rendered ONLY when it may be handed over (17b close review, web MAJOR). */}
-              {open.delivery.allowed
-                ? <LabReportPrint report={open} />
-                : <p className="text-sm">{t("lab.verify.heldNoPreview")}</p>}
-            </section>
-          )}
-        </section>
-      </div>
-    </LabSeatFrame>
+        {open !== null && (
+          <section className="space-y-2 border-t border-border pt-3">
+            <h2 className="text-sm font-semibold">
+              {t("lab.verify.report")} {open.snapshot.orderNo} · v{open.version}
+            </h2>
+            {!open.delivery.allowed && (
+              <p role="alert" className="text-sm font-semibold">
+                {t("lab.verify.held", {
+                  amount: (open.delivery.outstandingPaise / 100).toFixed(2),
+                  count: open.delivery.unpaidInvoiceIds.length,
+                })}
+              </p>
+            )}
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-sm">
+                {t("lab.verify.channel")}
+                <select className="mt-1 block rounded border border-input px-2 py-1" value={channel}
+                  onChange={(e) => setChannel(e.target.value as typeof channel)}>
+                  {open.channels.map((c) => <option key={c} value={c}>{t(`lab.verify.channel_${c}`)}</option>)}
+                </select>
+              </label>
+              <label className="text-sm">
+                {t("lab.verify.collector")}
+                <input className="mt-1 block rounded border border-input px-2 py-1" value={collector}
+                  onChange={(e) => setCollector(e.target.value)} />
+              </label>
+              <Button
+                type="button"
+                disabled={!open.delivery.allowed || hand.isPending || (channel !== "whatsapp" && collector.trim() === "")}
+                onClick={() => hand.mutate({ reportId: open.reportId, channel })}
+              >{t("lab.verify.print")}</Button>
+            </div>
+            {/* The document is rendered ONLY when it may be handed over (17b close review, web MAJOR). */}
+            {open.delivery.allowed
+              ? <LabReportPrint report={open} />
+              : <p className="text-sm">{t("lab.verify.heldNoPreview")}</p>}
+          </section>
+        )}
+      </section>
+    </LabStation>
   );
 }

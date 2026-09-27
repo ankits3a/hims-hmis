@@ -117,7 +117,8 @@ it("DD11 — with nothing released overnight the section is absent, not an empty
   mockRoutes({ "GET /api/lab/verify/night-releases": { status: 200, body: [] } });
   renderWithProviders(<LabVerify />);
 
-  await waitFor(() => expect(screen.getByText(/Verify/i)).toBeInTheDocument());
+  // 17-F F1: the station switch also says "Verify & report", so wait on the seat's own heading.
+  await waitFor(() => expect(screen.getByRole("heading", { level: 1, name: /Verify/i })).toBeInTheDocument());
   expect(screen.queryByText(/awaiting the second pair of hands/i)).not.toBeInTheDocument();
 });
 
