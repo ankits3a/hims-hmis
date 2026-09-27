@@ -244,7 +244,28 @@ export type PhiSurface =
    * patients and the narcotic or Schedule X drug each was given. Its own name, the H1 register's reason.
    * Appended; nothing above changes.
    */
-  | "pharmacy.controlled_register";
+  | "pharmacy.controlled_register"
+  /**
+   * ABDM S1 — the patient's ABHA profile (and card) as ABDM returned it after an OTP verification,
+   * read for a named patient: at the OTP step when the flow was opened from their record, and at the
+   * comparison and the link. Appended.
+   */
+  | "abdm.abha_profile"
+  /** ABDM S1 — a scan-and-share profile, audited against the patient it was linked to. Appended. */
+  | "abdm.profile_share"
+  /**
+   * ABDM S2 — a visit's records RELEASED to another institution under the patient's ABDM consent
+   * (one row per care context per release, the encounter named). The reader is the connector acting
+   * for the patient's consent, not a person, and the row is what answers "who received her records".
+   * Appended.
+   */
+  | "abdm.health_information"
+  /**
+   * ABDM S3 — records RECEIVED from other facilities under the patient's ABDM consent (the hospital
+   * as HIU), read in the consult's history ("Records from other hospitals"). One row per read that
+   * returned any. Appended; nothing above changes.
+   */
+  | "abdm.external_records";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

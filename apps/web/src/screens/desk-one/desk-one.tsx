@@ -543,6 +543,31 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
           }
         })();
       }
+
+      /*
+        ═══ ABDM S1 — THE ABHA ABDM CONFIRMED BEFORE THE UHID EXISTED IS LINKED NOW ═══
+
+        The form carried the number as `self_declared` (the counter can never say `verified`); the
+        link is where the SERVER stamps it verified from ABDM's answer. Not awaited into the
+        registration for the photo's reason: a link that fails must not make a successful
+        registration look failed — the patient is registered either way, and the log says which.
+      */
+      const pendingLink = f.abdmLink;
+      if (pendingLink !== null) {
+        void (async () => {
+          const { abdmErrorText, linkAbha, linkShare } = await import("../../lib/abdm-api");
+          try {
+            if (pendingLink.kind === "abha") {
+              await linkAbha(pendingLink.transactionId, { patientId: res.patient.id, acceptAbdmDemographics: pendingLink.accept });
+            } else {
+              await linkShare(pendingLink.shareId, { patientId: res.patient.id, acceptAbdmDemographics: pendingLink.accept });
+            }
+            setS((prev) => ({ ...prev, log: logged(prev.log, `ABHA verified by ABDM and linked to ${res.patient.uhid}`, "ok") }));
+          } catch (e) {
+            setS((prev) => ({ ...prev, log: logged(prev.log, `the ABHA could not be linked — ${abdmErrorText(e)}. It is on the record as the patient's own statement.`, "warn") }));
+          }
+        })();
+      }
     } catch (e) {
       const candidates = duplicateCandidates(e);
       if (candidates !== null) {

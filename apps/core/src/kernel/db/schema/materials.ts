@@ -3,6 +3,7 @@ import {
   bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text,
   timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { formularyMedicines } from "./formulary";
 import { resources } from "./resources";
 
@@ -192,6 +193,16 @@ export const items = pgTable(
     abcClass: text("abc_class"), // consumption-value class — 14b's replenishment reads it
     vedClass: text("ved_class"), // vital/essential/desirable — 14b's, same
     active: boolean("active").notNull().default(true),
+    /**
+     * PHARMACY P6 — ITEM MERGE. Set once, when this item (a duplicate row of the same thing) was merged
+     * into the item named here by an approved `item_merges` act. Its history stays written against THIS
+     * id — ledger rows, batches, GRN and bill lines, dispense lines, registers — and every read that
+     * aggregates by item resolves it to the survivor (`modules/materials/item-merge.ts`). Always ONE hop:
+     * when the survivor is itself merged later, the items merged into it are re-pointed in the same act.
+     * NULL for every item that was never merged.
+     */
+    mergedIntoItemId: text("merged_into_item_id").references((): AnyPgColumn => items.id),
+    mergedAt: timestamp("merged_at", { withTimezone: true }),
     ...auditColumns,
   },
   (t) => [
@@ -199,6 +210,12 @@ export const items = pgTable(
     uniqueIndex("items_code_lower_ux").using("btree", sql`lower(${t.code})`),
     index("items_class_active_idx").on(t.class, t.active),
     index("items_formulary_medicine_idx").on(t.formularyMedicineId),
+    index("items_merged_into_idx").on(t.mergedIntoItemId),
+    /**
+     * A merged item is never its own survivor, carries the instant it was merged, and is never active
+     * again: a merge is not undone by flipping `active` (the plan doc's "Item merge as built").
+     */
+    check("items_merged_ck", sql`(${t.mergedIntoItemId} is null) = (${t.mergedAt} is null) and (${t.mergedIntoItemId} is null or (${t.mergedIntoItemId} <> ${t.id} and not ${t.active}))`),
     check("items_class_ck", sql`${t.class} in ('drug', 'consumable', 'consumable_dated', 'reagent', 'implant', 'stationery', 'linen', 'gas', 'asset', 'service')`),
     check("items_storage_class_ck", sql`${t.storageClass} in ('ambient', 'cold_2_8', 'frozen', 'narcotic', 'flammable')`),
     /**
@@ -1572,5 +1589,59 @@ export const controlledStockRegister = pgTable(
     check("controlled_stock_register_movement_ck", sql`${t.movement} in ('grn', 'issue', 'receive', 'consume', 'return', 'adjust')`),
     check("controlled_stock_register_two_keys_ck", sql`${t.witnessId} <> ${t.holderId}`),
     check("controlled_stock_register_ndps_ck", sql`${t.ndpsClass} is null or ${t.ndpsClass} in ('narcotic', 'psychotropic')`),
+  ],
+);
+
+// ═══════════════════════════ ITEM MERGE (PHARMACY P6, HYGIENE) ═══════════════════════════
+
+/**
+ * PHARMACY P6 — MERGE A DUPLICATE ITEM: one row per governed act "merge item B into item A".
+ * Module logic `modules/materials/item-merge.ts`; the plan doc's "Item merge as built".
+ *
+ *   requested (the materials head, with the reason) ─ approval `materials_stock_adjustment` (the medical
+ *   superintendent; never the requester) ─granted→ merged (one transaction, by a holder of
+ *   `materials.items.merge`)                        ─rejected→ refused, nothing moved
+ *
+ * HISTORY IS NOT REWRITTEN. B's ledger rows, batches, GRN / bill / return lines, dispense lines and
+ * registers keep pointing at B; `items.merged_into_item_id` says where B went and every aggregating read
+ * resolves it. What MOVES is live, mutable state: stock on hand (an `adjust` pair per batch per store,
+ * `ref_type = 'item_merge'`, into a batch of A with the same number, expiry, MRP and cost), open order
+ * lines, levels, shelf locations, open short-book rows, barcodes, pack units, the sale registration.
+ * `moved` records what the act moved, as it moved it — the merge's own record, never recomputed.
+ *
+ * One live act per merged item (a partial unique index): the same B cannot be requested twice, and a
+ * merged B is never requested again.
+ */
+export const itemMerges = pgTable(
+  "item_merges",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    /** A — the item that stays and takes B's live state. */
+    survivorItemId: text("survivor_item_id").notNull().references(() => items.id),
+    /** B — the duplicate that is retired. */
+    mergedItemId: text("merged_item_id").notNull().references(() => items.id),
+    reason: text("reason").notNull(),
+    /** `agent` when raised from the agent's "possible duplicates" list, `manual` otherwise. */
+    source: text("source").notNull().default("manual"),
+    status: text("status").notNull().default("requested"),
+    approvalId: text("approval_id").notNull(), // plain text — the `vendor_bank_changes` precedent
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    mergedBy: text("merged_by"),
+    mergedAt: timestamp("merged_at", { withTimezone: true }),
+    refusedAt: timestamp("refused_at", { withTimezone: true }),
+    moved: jsonb("moved").$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    uniqueIndex("item_merges_live_ux").on(t.mergedItemId).where(sql`${t.status} in ('requested', 'merged')`),
+    index("item_merges_survivor_idx").on(t.survivorItemId),
+    index("item_merges_status_idx").on(t.status, t.requestedAt),
+    index("item_merges_approval_idx").on(t.approvalId),
+    check("item_merges_distinct_ck", sql`${t.survivorItemId} <> ${t.mergedItemId}`),
+    check("item_merges_status_ck", sql`${t.status} in ('requested', 'merged', 'refused')`),
+    check("item_merges_source_ck", sql`${t.source} in ('agent', 'manual')`),
+    check("item_merges_reason_ck", sql`length(btrim(${t.reason})) between 3 and 500`),
+    check("item_merges_merged_ck", sql`(${t.status} = 'merged') = (${t.mergedAt} is not null) and (${t.mergedAt} is null) = (${t.mergedBy} is null) and (${t.status} <> 'merged' or ${t.moved} is not null)`),
+    check("item_merges_refused_ck", sql`(${t.status} = 'refused') = (${t.refusedAt} is not null)`),
   ],
 );

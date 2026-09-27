@@ -1,11 +1,14 @@
 import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
-import { notifications, patients, pushSubscriptions, users } from "../db/schema";
+import { notifications, notifyTemplateRegistrations, patients, pushSubscriptions, users } from "../db/schema";
 import { withTx } from "../db/client";
 import type { Db, Tx } from "../db/client";
 import { appendEvent } from "../events/append";
 import { PushSubscriptionGoneError, adaptersFor, encodePushAddresses } from "./adapters";
-import type { ChannelAdapter, PushAddress } from "./adapters";
+import type { ChannelAdapter, PushAddress, SendMeta } from "./adapters";
+import { consentsTo, messagePreferenceOf } from "./preferences";
+import type { MessagePreference } from "./preferences";
+import { ProviderRefusedError } from "./providers";
 import {
   notificationExpired,
   notificationFailed,
@@ -191,7 +194,7 @@ async function markExpired(tx: Tx, row: NotificationRow, now: Date): Promise<voi
 async function markSuppressed(
   tx: Tx,
   row: NotificationRow,
-  reason: "deceased" | "promotional_blocked" | "merge_unresolvable",
+  reason: "deceased" | "promotional_blocked" | "merge_unresolvable" | "opted_out" | "no_consent",
   now: Date,
 ): Promise<void> {
   if (!(await settle(tx, row, { status: "suppressed", lastError: reason }, now))) return;
@@ -333,14 +336,48 @@ type SendPlan =
       to: string;
       text: string;
       templateVersion: number;
+      /** PHARMACY P6 — what a real provider needs besides the text (`SendMeta`). */
+      meta: Omit<SendMeta, "notificationId">;
     };
+
+/**
+ * PHARMACY P6 (patient messages) — the patient's word, over the WHOLE merge chain: a merge says the
+ * records are one person, so a STOP said on either is theirs (the deceased rule's reasoning). The opt-in
+ * and the choices are read from the survivor first, then the others in chain order.
+ */
+async function preferenceOfChain(tx: Tx, chain: PatientRow[]): Promise<{ stopped: boolean; best: MessagePreference | null }> {
+  const prefs: MessagePreference[] = [];
+  for (const p of [...chain].reverse()) {
+    const pref = await messagePreferenceOf(tx, p.id);
+    if (pref !== null) prefs.push(pref);
+  }
+  return { stopped: prefs.some((p) => p.optedOut !== null), best: prefs[0] ?? null };
+}
+
+/**
+ * PHARMACY P6 — THE PATIENT LADDER, AS THE PATIENT AND THE GATEWAYS LEAVE IT. Two adjustments, patient
+ * audience only (a staff row's `rung` is an index `runReachLadder` chose in the template's own order,
+ * and moving the ladder under it would send on the wrong channel):
+ *   1. the channel the patient asked for goes first, when the template's ladder carries it at all (a
+ *      template that narrowed itself to SMS stays SMS);
+ *   2. when a real gateway serves some rung, the SINK rungs drop out — otherwise a live SMS beside a
+ *      WhatsApp still on the console would "send" every message to a log line and mark it sent. With no
+ *      real gateway anywhere nothing drops: that is today's console-only hospital, unchanged.
+ */
+function patientLadder(channels: Channel[], pref: MessagePreference | null, adapters: AdapterSet): Channel[] {
+  let ladder = [...channels];
+  const first = pref?.channel ?? null;
+  if (first !== null && ladder.includes(first)) ladder = [first, ...ladder.filter((c) => c !== first)];
+  const real = ladder.filter((c) => adapters[c].sink !== true);
+  return real.length > 0 ? real : ladder;
+}
 
 /**
  * THE SUPPRESSION GAUNTLET, IN D4'S ORDER, on a row this cycle has already claimed. Returns
  * either a message to hand an adapter, or `done` — meaning this row has already been written to
  * its terminal state (or deferred) inside this transaction.
  */
-async function prepareRow(tx: Tx, row: NotificationRow, now: Date): Promise<SendPlan> {
+async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: AdapterSet): Promise<SendPlan> {
   // ── 1. EXPIRY (D5). CHECKED FIRST because a stale message is dead no matter what else is
   // true, and because this is the replay defense: a re-dispatched last-month booking expires
   // here instead of confirming an appointment that has already happened.
@@ -366,6 +403,19 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date): Promise<Send
   // how a bereaved family gets an appointment reminder.
   if (chain.some((p) => p.deceasedAt !== null)) {
     await markSuppressed(tx, row, "deceased", now);
+    return { kind: "done" };
+  }
+
+  // ── 2b. THE PATIENT'S OWN WORD (PHARMACY P6, DPDP). A STOP suppresses every patient message, the
+  // transactional ones included; a template needing an opt-in is suppressed without one — including an
+  // opt-in taken back after this row was queued, which `enqueueNotification` could not have seen.
+  const word = row.audience === "patient" ? await preferenceOfChain(tx, chain) : { stopped: false, best: null };
+  if (word.stopped) {
+    await markSuppressed(tx, row, "opted_out", now);
+    return { kind: "done" };
+  }
+  if (template.requiresOptIn !== undefined && !(row.audience === "patient" && consentsTo(word.best, template.requiresOptIn))) {
+    await markSuppressed(tx, row, "no_consent", now);
     return { kind: "done" };
   }
 
@@ -396,7 +446,8 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date): Promise<Send
   // and two keys — so "what is this person's address" is not answerable until you know which
   // channel is being asked about. Resolving the phone first would have declared a doctor with
   // no phone number unreachable by push, which is exactly backwards.
-  const channels = template.channels ?? DEFAULT_CHANNELS;
+  const templateLadder = template.channels ?? DEFAULT_CHANNELS;
+  const channels = row.audience === "patient" ? patientLadder(templateLadder, word.best, adapters) : templateLadder;
   const channel = channels[row.rung];
   if (channel === undefined) {
     await markUndeliverable(tx, row, "ladder_exhausted", now, row.lastError ?? "ladder exhausted");
@@ -430,11 +481,15 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date): Promise<Send
 
   // ── 6. RENDER. Patient language is read from `patients.language` at send (D8); staff and
   // owner render `en`.
+  // PHARMACY P6: the language the patient asked to be messaged in, when they said one.
+  const asked = word.best?.language ?? null;
   const language: "hi" | "en" =
-    row.audience !== "patient" ? "en" : patient?.language === "en" ? "en" : "hi";
+    row.audience !== "patient" ? "en" : (asked ?? patient?.language) === "en" ? "en" : "hi";
   let text: string;
+  let variables: string[] | undefined;
   try {
     text = template.render[language](row.params);
+    variables = template.variables?.(row.params);
   } catch (err) {
     // A RENDER THROW IS NOT A CHANNEL FAILURE AND NEVER ENTERS THE LADDER (D3). Retrying a
     // render cannot fix params — the second attempt renders the same wrong object with the same
@@ -444,7 +499,16 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date): Promise<Send
     return { kind: "done" };
   }
 
-  return { kind: "send", channel, channels: [...channels], to, text, templateVersion: template.version };
+  // PHARMACY P6: the provider's ids for this template — a live DLT gateway refuses without its id.
+  const reg = (await tx.select().from(notifyTemplateRegistrations).where(eq(notifyTemplateRegistrations.templateKey, row.templateKey)))[0];
+  return {
+    kind: "send", channel, channels: [...channels], to, text, templateVersion: template.version,
+    meta: {
+      templateKey: row.templateKey, language,
+      ...(variables === undefined ? {} : { variables }),
+      registration: { dltTemplateId: reg?.dltTemplateId ?? null, whatsappTemplateName: reg?.whatsappTemplateName ?? null },
+    },
+  };
 }
 
 /**
@@ -498,7 +562,9 @@ async function recordAttemptFailure(
 ): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
   const attempted = row.attempts + 1;
-  const advance = attempted >= maxAttemptsPerRung;
+  // PHARMACY P6 — a provider's REFUSAL (no DLT id, no approved template, not a mobile) is not transient:
+  // the second and third attempts would ask the same question. The rung advances at once.
+  const advance = attempted >= maxAttemptsPerRung || err instanceof ProviderRefusedError;
   const nextRung = advance ? row.rung + 1 : row.rung;
 
   if (nextRung >= channels.length) {
@@ -622,12 +688,12 @@ export async function runNotifyPump(db: Db, opts: NotifyPumpOptions = {}): Promi
 
   for (const row of claimed) {
     try {
-      const plan = await withTx(db, (tx) => prepareRow(tx, row, now));
+      const plan = await withTx(db, (tx) => prepareRow(tx, row, now, adapters));
       if (plan.kind === "done") continue;
 
       let result: Awaited<ReturnType<ChannelAdapter["send"]>>;
       try {
-        result = await adapters[plan.channel].send(plan.to, plan.text, { notificationId: row.id });
+        result = await adapters[plan.channel].send(plan.to, plan.text, { notificationId: row.id, ...plan.meta });
       } catch (err) {
         // Every subscription gone: close them all, then let the ladder climb to the next rung.
         // Without this the pump would retry three times against endpoints that will answer 410

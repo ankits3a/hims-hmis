@@ -18,6 +18,7 @@ import {
 import {
   OPD_PHARMACY_STORE_CODE, PHARMACIST_ROLE, PHARMACY_DEF_KEYS, RETAIL_PHARMACY_STORE_CODE, anyEndPrescriber, controlledLicenceStates, controlledStore,
   currentRegistration, custodianPairHeld, gstSlabPlan, listSaleItems, renewalDaysLeft, retailLicenceState, tallyLedgersConfirmed,
+  pharmacyDltTemplateIdsRecorded, pharmacyMessagingProviderLive,
 } from "../src/modules/pharmacy";
 import {
   DAYCARE_CASE_DEF_KEY, DEFINITION_PUBLISH_APPROVAL_TYPE, DEPOSIT_EXCEPTION_APPROVAL_TYPE,
@@ -955,6 +956,27 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       gate: "G4", code: "pharmacy_custodian_pair_held",
       check: custodianPairHeld,
       fix: "§16: assign `pharmacy_incharge` or `pharmacy` (the key) and a second person with `pharmacy.ndps.witness` (a pharmacist, the MS or the materials head) at /admin/users",
+    },
+    {
+      /**
+       * PHARMACY P6 (patient messages) — RED until a real gateway carries patient messages: the owner has
+       * contracted a DLT-registered SMS aggregator or a WhatsApp Business provider (procurement), and the
+       * operator has set `NOTIFY_PROVIDER=live` with that channel's keys. Until then every bill and reminder
+       * is a masked log line. G1: it is a fact about the box's environment, and no seed moves it.
+       */
+      gate: "G1", code: "pharmacy_messaging_provider_live",
+      check: async () => pharmacyMessagingProviderLive(),
+      fix: "§18: the owner contracts an SMS gateway (DLT-registered) and/or WhatsApp Business; the operator sets NOTIFY_PROVIDER=live and that channel's keys for the API and the worker, and restarts both",
+    },
+    {
+      /**
+       * PHARMACY P6 (patient messages) — RED until the DLT content-template id of BOTH the bill and the
+       * reminder is recorded. A live SMS gateway refuses a template without one (TRAI would drop it anyway),
+       * so the bill would never reach a phone.
+       */
+      gate: "G3", code: "pharmacy_dlt_template_ids_recorded",
+      check: pharmacyDltTemplateIdsRecorded,
+      fix: "§18: register both messages on the DLT portal (the office's Messages side shows their exact text), then the pharmacist in charge records each content-template id at /pharmacy/office?view=messages",
     },
   ],
 

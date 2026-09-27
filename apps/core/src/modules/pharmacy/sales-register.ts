@@ -2,7 +2,7 @@ import { inArray } from "drizzle-orm";
 import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, pharmacyRetailSaleLines, pharmacyRetailSales } from "../../kernel/db/schema";
 import { creditNotesBetween, invoiceHeadsByIds, invoiceLinesOf, invoicePayments, invoicesBetween } from "../billing";
 import { medicinesByIds } from "../formulary";
-import { batchesByIds, itemsByIds, listStores } from "../materials";
+import { batchesByIds, itemsByIds, listStores, survivorsOf } from "../materials";
 import { getDoctor } from "../opd";
 import { getPatientSummaries } from "../patients";
 import { userNames } from "./queue";
@@ -105,6 +105,10 @@ async function saleDocsOf(db: Db, invoiceIds: readonly string[]): Promise<Map<st
       lines: rLines.filter((l) => l.saleId === s.id).map((l) => ({ saleLineId: l.id, invoiceLineId: l.invoiceLineId, itemId: l.itemId, batchId: l.batchId, qtyBase: l.qtyBase })),
     });
   }
+  // PHARMACY P6 — a line sold as an item since merged into another counts under the survivor (by item,
+  // category, HSN); the line itself, its batch and its invoice line are untouched.
+  const through = await survivorsOf(db, [...out.values()].flatMap((d) => d.lines.map((l) => l.itemId)));
+  for (const d of out.values()) for (const l of d.lines) l.itemId = through.get(l.itemId) ?? l.itemId;
   return out;
 }
 

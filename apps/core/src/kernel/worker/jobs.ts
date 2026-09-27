@@ -14,13 +14,14 @@ import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
 import { runReachLadder } from "../notify/reach";
+import type { ChannelAdapter, NotifyChannel } from "../notify/adapters";
 import { createEventPartitions } from "./partitions";
 import { retentionSweep } from "../retention/sweep";
 import { istDayString } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
-import { sweepExpiredPicks } from "../../modules/pharmacy";
+import { runRefillReminders, sweepExpiredPicks } from "../../modules/pharmacy";
 import { sweepCriticalChaser, sweepUnreadWatchman } from "../../modules/radiology";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -190,6 +191,12 @@ export type JobIntervals = Pick<
  * green on exactly one machine in the world and red on CI for six consecutive commits. The
  * caller resolves config; this function is handed the three numbers it actually uses.
  */
+/**
+ * PHARMACY P6 (patient messages) — the refill reminders, at 10:00 IST: inside the message hours
+ * (08:00–21:00, D7), so nothing it queues waits overnight, and after the morning's first patients have
+ * been served, so a reminder never races a refill bought at 09:00.
+ */
+const REFILL_REMINDERS_IST = "10:00";
 const ROSTER_WINDOWS_IST = "01:30";
 /** After the window sweep, and long before anybody opens a clinic. */
 const ROSTER_PROPOSALS_IST = "02:10";
@@ -200,6 +207,15 @@ export function registerAllJobs(
   registry: ModuleRegistry,
   consumers: Record<string, Handler>,
   intervals: JobIntervals,
+  /**
+   * PHARMACY P6 (patient messages) — THE ADAPTER SET THE PUMP SENDS THROUGH, resolved by the caller
+   * from its config (`worker.ts`: `adaptersFor(cfg)`). Until now nothing reached the pump but its own
+   * console default, so `NOTIFY_PROVIDER` and `NOTIFY_PUSH_PROVIDER` were parsed and never obeyed — the
+   * `NOTIFY_STUCK_AFTER_MS` scar twice over. Optional so every census test that registers the grid keeps
+   * its shape; absent means the pump's console default, exactly as before. `jobs.test.ts` asserts a set
+   * handed here is the one the registered job sends through.
+   */
+  notifyAdapters?: Record<NotifyChannel, ChannelAdapter>,
 ): void {
   const bus = buildSubscriptionBus(registry, consumers);
 
@@ -290,7 +306,9 @@ export function registerAllJobs(
     name: "runNotifyPump",
     every: intervals.workerNotifyIntervalMs,
     run: async (now) => {
-      await runNotifyPump(db, { now, stuckAfterMs: intervals.notifyStuckAfterMs });
+      await runNotifyPump(db, {
+        now, stuckAfterMs: intervals.notifyStuckAfterMs, ...(notifyAdapters === undefined ? {} : { adapters: notifyAdapters }),
+      });
     },
   });
   /**
@@ -510,5 +528,16 @@ export function registerAllJobs(
     name: "runMonthlyProposals",
     dailyIst: ROSTER_PROPOSALS_IST,
     run: async (now) => { await runMonthlyProposals(db, now); },
+  });
+  /**
+   * PHARMACY P6 (patient messages) — the refill reminders, once a day at 10:00 IST. It only ENQUEUES
+   * (for opted-in patients, once per dispense — the dedupe key is the dispense) and the pump sends, so
+   * on a hospital still on the console sink it heartbeats and queues exactly what a live gateway would
+   * send. With no pharmacy phone recorded it holds everything and says so (`held`).
+   */
+  scheduler.register({
+    name: "runRefillReminders",
+    dailyIst: REFILL_REMINDERS_IST,
+    run: async (now) => { await runRefillReminders(db, now); },
   });
 }

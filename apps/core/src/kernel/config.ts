@@ -26,9 +26,14 @@ export function requireEnv(name: string): string {
   return value;
 }
 
-/** Plan 10 D11: the enum widens when a real provider lands; a new member's config key becomes
- * required-only-when-selected via a zod refinement at that point, not here. */
-const notifyProviderSchema = z.enum(["console"]);
+/**
+ * Plan 10 D11: the enum widens when a real provider lands — and PHARMACY P6 (patient messages) is
+ * that day. `console` keeps SMS and WhatsApp on the log sink whatever else is set; `live` hands each
+ * channel to its gateway WHEN THAT CHANNEL'S KEYS ARE ALL SET (`smsGatewayFrom`, `whatsappCloudFrom`)
+ * and leaves a channel with none of its keys on the sink. A channel with SOME of its keys is refused
+ * at boot, the VAPID rule: half a gateway is a deployment that looks healthy and sends nothing.
+ */
+const notifyProviderSchema = z.enum(["console", "live"]);
 export type NotifyProvider = z.infer<typeof notifyProviderSchema>;
 /**
  * PHASE O T4 — A SECOND PROVIDER KNOB, BECAUSE PUSH NEEDS NOTHING BOUGHT. WhatsApp and SMS wait
@@ -87,6 +92,28 @@ const configSchema = z.object({
    * five minutes, and a sweep that ran every five could spend the whole of it before noticing.
    */
   WORKER_REACH_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  /**
+   * PHARMACY P6 (patient messages) — THE SMS GATEWAY, a DLT-registered Indian aggregator. TRAI's
+   * TCCCPR 2018 lets no commercial SMS through that is not a template registered on the DLT portal
+   * under the hospital's entity (PE) id and one of its sender headers; the template ids themselves
+   * are DATA the office records per template (`notify_template_registrations`), never a key here.
+   * All four empty is "no gateway contracted" and the channel stays on the sink; all four set is a
+   * gateway; anything between is refused at boot. Every one defaulted — the B1 scar above.
+   */
+  SMS_GATEWAY_URL: z.string().default(""),
+  SMS_GATEWAY_API_KEY: z.string().default(""),
+  SMS_DLT_ENTITY_ID: z.string().default(""),
+  /** The six-character sender header registered on DLT (e.g. `HOSPTL`). */
+  SMS_DLT_SENDER_ID: z.string().default(""),
+  /**
+   * PHARMACY P6 (patient messages) — WHATSAPP BUSINESS CLOUD API. A business-initiated message is a
+   * PRE-APPROVED template (its name per template is data, recorded beside the DLT id); the two keys
+   * are the phone number's id and a system-user access token. Same all-or-nothing rule as the SMS keys.
+   */
+  WHATSAPP_PHONE_NUMBER_ID: z.string().default(""),
+  WHATSAPP_ACCESS_TOKEN: z.string().default(""),
+  WHATSAPP_API_VERSION: z.string().default("v21.0"),
+  WHATSAPP_API_BASE_URL: z.string().default("https://graph.facebook.com"),
   WEB_PUSH_VAPID_PUBLIC_KEY: z.string().default(""),
   WEB_PUSH_VAPID_PRIVATE_KEY: z.string().default(""),
   /** `mailto:` or an https URL — the push services require a way to contact the sender. */
@@ -341,6 +368,35 @@ const configSchema = z.object({
   ABDM_CALLBACK_BASE_URL: z.string().default(""),
   ABDM_JWT_AUDIENCE: z.string().default("account"),
   /**
+   * ABDM S1 — CREATING an ABHA by Aadhaar OTP at the counter. BUILT, and OFF until the owner rules
+   * (plan §4 item 2: it is Aadhaar e-KYC at a hospital desk, which is law). The same two-string enum
+   * as the DD14 flags below, for the same reason: "false" must never read as on. While off, the
+   * create routes refuse with 403 `abha_create_disabled` and the counter hides the button.
+   * VERIFYING an ABHA the patient already has is NOT behind this flag — it is on whenever ABDM is.
+   */
+  ABDM_ABHA_CREATE_AADHAAR: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /**
+   * ABDM S1 — the base of the counter's scan-and-share QR. Empty ⇒ derived from `ABDM_CM_ID`:
+   * sandbox `https://phrsbx.abdm.gov.in/share-profile`, production `https://phr.abdm.gov.in/share-profile`
+   * (UNVERIFIED — see `modules/abdm/profile-shares.ts`). Set it when the HFR portal's generator
+   * says otherwise.
+   */
+  ABDM_SCAN_SHARE_URL: z.string().default(""),
+  /**
+   * ABDM S2 — how a health-information request that matches a GRANTED consent is released. The
+   * owner has not ruled (plan §4 item 4); the DECIDED default is `auto`: released exactly as the
+   * patient's consent artefact allows, nothing outside it, every release logged. `manual` holds the
+   * request for review instead (acknowledged to ABDM, nothing sent; the review step is owed). An enum,
+   * never a boolean, and anything else fails at boot.
+   */
+  ABDM_CONSENT_RELEASE: z.enum(["auto", "manual"]).default("auto"),
+  /**
+   * ABDM S2 — with no SMS sender, the patient-initiated-linking OTP can only reach a sandbox tester
+   * through the server log. That is OFF unless an operator types it: the sandbox runs on the
+   * production box during FT, and an OTP in a log is a credential in a log.
+   */
+  ABDM_SANDBOX_OTP_TO_LOG: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /**
    * PLAN 09 / DD14 — THE FIVE STRUCTURAL-OFF FLAGS. Every one DEFAULTED, every one a two-string
    * enum, and neither of those is a style choice.
    *
@@ -403,6 +459,15 @@ export type AppConfig = {
    * configuration, and `adaptersFor` should not have to re-check what the parse already knows.
    */
   webPushVapid: { publicKey: string; privateKey: string; subject: string } | null;
+  /**
+   * PHARMACY P6 (patient messages) — the SMS gateway, or NULL when SMS stays on the console sink
+   * (`NOTIFY_PROVIDER=console`, or `live` with no SMS keys). Null-or-complete, the VAPID shape. The
+   * API key is attached NON-ENUMERABLE (the ABDM secret's shape): a config object logged or spread
+   * never carries it.
+   */
+  notifySms: { gatewayUrl: string; entityId: string; senderId: string; apiKey: string } | null;
+  /** PHARMACY P6 — WhatsApp Cloud API, or NULL on the sink. The access token is non-enumerable. */
+  notifyWhatsapp: { phoneNumberId: string; apiVersion: string; baseUrl: string; accessToken: string } | null;
   /** 11i T3 — "UAT", "TRAINING", …; `null` on production, where the key is never set. */
   environmentLabel: string | null;
   /** WASA M-05 — `TRUSTED_PROXY_CIDRS` split; `null` ⇒ `DEFAULT_TRUSTED_PROXY_CIDRS`. */
@@ -455,6 +520,14 @@ export type AppConfig = {
     callbackBaseUrl: string | null;
     jwtAudience: string;
     configured: boolean;
+    /** ABDM S1 — Aadhaar-OTP ABHA creation at the counter. False unless `ABDM_ABHA_CREATE_AADHAAR=true`. */
+    abhaCreateByAadhaar: boolean;
+    /** ABDM S1 — the scan-and-share QR base, already resolved (never empty). */
+    scanShareUrl: string;
+    /** ABDM S2 — `auto` (the DECIDED default) or `manual` release of consented health information. */
+    consentRelease: "auto" | "manual";
+    /** ABDM S2 — sandbox only, and only when `ABDM_SANDBOX_OTP_TO_LOG=true`: the linking OTP goes to the server log. */
+    sandboxOtpToLog: boolean;
   };
   /**
    * Plan 09 / DD14. All five FALSE unless an operator says otherwise, in as many letters. Where
@@ -506,11 +579,70 @@ function vapidFrom(parsed: {
   };
 }
 
+type ChannelKeys = {
+  NOTIFY_PROVIDER: NotifyProvider;
+  SMS_GATEWAY_URL: string; SMS_GATEWAY_API_KEY: string; SMS_DLT_ENTITY_ID: string; SMS_DLT_SENDER_ID: string;
+  WHATSAPP_PHONE_NUMBER_ID: string; WHATSAPP_ACCESS_TOKEN: string; WHATSAPP_API_VERSION: string; WHATSAPP_API_BASE_URL: string;
+};
+
+/**
+ * PHARMACY P6 (patient messages) — one channel's key set: all empty ⇒ null (the sink), all set ⇒ the
+ * values, some set ⇒ a boot refusal naming the missing ones. Only consulted under `NOTIFY_PROVIDER=live`:
+ * `console` means the sink whatever keys a deployment happens to carry.
+ */
+function channelKeys(provider: NotifyProvider, label: string, keys: readonly (readonly [string, string])[]): Record<string, string> | null {
+  if (provider !== "live") return null;
+  const missing = keys.filter(([, v]) => v.trim() === "").map(([k]) => k);
+  if (missing.length === keys.length) return null;
+  if (missing.length > 0) {
+    throw new Error(`NOTIFY_PROVIDER=live has a partial ${label} gateway: set ${missing.join(", ")} too, or clear the others to leave ${label} on the console sink`);
+  }
+  return Object.fromEntries(keys.map(([k, v]) => [k, v.trim()]));
+}
+
+function smsGatewayFrom(parsed: ChannelKeys): AppConfig["notifySms"] {
+  const k = channelKeys(parsed.NOTIFY_PROVIDER, "SMS", [
+    ["SMS_GATEWAY_URL", parsed.SMS_GATEWAY_URL], ["SMS_GATEWAY_API_KEY", parsed.SMS_GATEWAY_API_KEY],
+    ["SMS_DLT_ENTITY_ID", parsed.SMS_DLT_ENTITY_ID], ["SMS_DLT_SENDER_ID", parsed.SMS_DLT_SENDER_ID],
+  ]);
+  if (k === null) return null;
+  const sms = { gatewayUrl: k.SMS_GATEWAY_URL!, entityId: k.SMS_DLT_ENTITY_ID!, senderId: k.SMS_DLT_SENDER_ID! } as NonNullable<AppConfig["notifySms"]>;
+  Object.defineProperty(sms, "apiKey", { value: k.SMS_GATEWAY_API_KEY!, enumerable: false, writable: false });
+  return sms;
+}
+
+function whatsappCloudFrom(parsed: ChannelKeys): AppConfig["notifyWhatsapp"] {
+  const k = channelKeys(parsed.NOTIFY_PROVIDER, "WhatsApp", [
+    ["WHATSAPP_PHONE_NUMBER_ID", parsed.WHATSAPP_PHONE_NUMBER_ID], ["WHATSAPP_ACCESS_TOKEN", parsed.WHATSAPP_ACCESS_TOKEN],
+  ]);
+  if (k === null) return null;
+  const wa = {
+    phoneNumberId: k.WHATSAPP_PHONE_NUMBER_ID!, apiVersion: parsed.WHATSAPP_API_VERSION.trim(), baseUrl: parsed.WHATSAPP_API_BASE_URL.trim(),
+  } as NonNullable<AppConfig["notifyWhatsapp"]>;
+  Object.defineProperty(wa, "accessToken", { value: k.WHATSAPP_ACCESS_TOKEN!, enumerable: false, writable: false });
+  return wa;
+}
+
+/**
+ * PHARMACY P6 (patient messages) — the census's question, asked of the ENVIRONMENT the census runs in
+ * (`standup:check` in the deployed container): is at least one patient channel on a real gateway?
+ * It parses only the notify keys, through the same schema `loadConfig` uses, so it cannot disagree
+ * with the worker about what "configured" means — and it needs no `DATABASE_URL` to answer.
+ */
+export function patientMessagingLive(env: NodeJS.ProcessEnv = process.env): { sms: boolean; whatsapp: boolean } {
+  const parsed = configSchema.pick({
+    NOTIFY_PROVIDER: true, SMS_GATEWAY_URL: true, SMS_GATEWAY_API_KEY: true, SMS_DLT_ENTITY_ID: true, SMS_DLT_SENDER_ID: true,
+    WHATSAPP_PHONE_NUMBER_ID: true, WHATSAPP_ACCESS_TOKEN: true, WHATSAPP_API_VERSION: true, WHATSAPP_API_BASE_URL: true,
+  }).parse(env);
+  return { sms: smsGatewayFrom(parsed) !== null, whatsapp: whatsappCloudFrom(parsed) !== null };
+}
+
 /** ABDM S0 — see `AppConfig.abdm`. The secret is attached non-enumerable, never copied by value. */
 function abdmFrom(parsed: {
   ABDM_BASE_URL: string; ABDM_ABHA_BASE_URL: string; ABDM_CLIENT_ID: string; ABDM_CLIENT_SECRET: string;
   ABDM_CM_ID: "" | "sbx" | "abdm"; ABDM_HIP_ID: string; ABDM_HIU_ID: string; ABDM_CALLBACK_BASE_URL: string;
-  ABDM_JWT_AUDIENCE: string;
+  ABDM_JWT_AUDIENCE: string; ABDM_ABHA_CREATE_AADHAAR: boolean; ABDM_SCAN_SHARE_URL: string;
+  ABDM_CONSENT_RELEASE: "auto" | "manual"; ABDM_SANDBOX_OTP_TO_LOG: boolean;
 }): AppConfig["abdm"] {
   const orNull = (v: string): string | null => (v.trim() === "" ? null : v.trim());
   const clientSecret = parsed.ABDM_CLIENT_SECRET === "" ? null : parsed.ABDM_CLIENT_SECRET;
@@ -524,6 +656,12 @@ function abdmFrom(parsed: {
     callbackBaseUrl: orNull(parsed.ABDM_CALLBACK_BASE_URL),
     jwtAudience: orNull(parsed.ABDM_JWT_AUDIENCE) ?? "account",
     configured: false,
+    abhaCreateByAadhaar: parsed.ABDM_ABHA_CREATE_AADHAAR,
+    scanShareUrl: (orNull(parsed.ABDM_SCAN_SHARE_URL) ?? (parsed.ABDM_CM_ID === "abdm"
+      ? "https://phr.abdm.gov.in/share-profile"
+      : "https://phrsbx.abdm.gov.in/share-profile")).replace(/\/+$/, ""),
+    consentRelease: parsed.ABDM_CONSENT_RELEASE,
+    sandboxOtpToLog: parsed.ABDM_SANDBOX_OTP_TO_LOG,
   } as AppConfig["abdm"];
   Object.defineProperty(abdm, "clientSecret", { value: clientSecret, enumerable: false, writable: false });
   abdm.configured =
@@ -559,6 +697,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
     workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
     webPushVapid: vapidFrom(parsed),
+    notifySms: smsGatewayFrom(parsed),
+    notifyWhatsapp: whatsappCloudFrom(parsed),
     triage: {
       baseUrl: parsed.TRIAGE_BASE_URL ?? null,
       apiKey: parsed.TRIAGE_API_KEY ?? null,

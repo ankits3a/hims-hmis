@@ -20,6 +20,8 @@ import { usePatientInHand } from "../lib/patient-in-hand";
 import { ageOf, sexLetter } from "./desk-one/model";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AbdmVerifyPanel } from "../components/abdm-verify";
+import { abhaCapability } from "../lib/patients-api";
 
 // Wire shapes (patients.controller.ts) — every Date column arrives JSON-serialized as an
 // ISO string, so these are the on-the-wire types, not the drizzle $inferSelect ones.
@@ -240,8 +242,39 @@ const patchSchema = z.object({
 });
 type PatchFormValues = z.infer<typeof patchSchema>;
 
+/**
+ * ABDM S1 — "Verify with ABDM" on the patient's own record: drawn only when this hospital can verify
+ * (the capability, asked under `patients.register` — a reader without it sees no button), and it
+ * LINKS to this patient, through the server's one writer of `verified`. It opens in a dialog so its
+ * inputs are outside the demographics <form>: Enter in the OTP box must not submit the record.
+ */
+function AbdmVerifyForPatient({ patient, onLinked }: { patient: PatientRow; onLinked: () => Promise<void> }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const capability = useQuery({ queryKey: ["abha-capability"], queryFn: abhaCapability, staleTime: 5 * 60 * 1000, retry: false });
+  if (capability.data?.canVerify !== true) return null;
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button type="button" className="sec" data-testid="patient-abdm-verify">{t("abdm.verify.open")}</button>
+      </DialogTrigger>
+      <DialogContent className="pp">
+        <DialogHeader><DialogTitle>{t("abdm.verify.title")}</DialogTitle></DialogHeader>
+        <AbdmVerifyPanel
+          mode="verify"
+          patientId={patient.id}
+          initialIdentifier={patient.abhaNumber ?? patient.abhaAddress ?? ""}
+          onLinked={() => { void onLinked(); }}
+          onClose={() => setOpen(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactElement {
   const { t } = useTranslation();
+  const abdmLocked = patient.abhaVerificationStatus === "verified";
   const queryClient = useQueryClient();
   const patientId = patient.id;
   const [serverError, setServerError] = useState<string | null>(null);
@@ -315,15 +348,21 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
       <p style={{ fontSize: 12, color: "var(--dim)" }} data-testid="identity-assurance">
         {t("patient.identityAssurance")}: <span className="font-medium">{t(`assurance.${patient.identityAssurance}`, patient.identityAssurance)}</span>
       </p>
+      {/* ABDM S1 — DECIDED (NHA M1 workbook): while the ABHA is verified, name, birth and gender are ABDM's.
+          The server refuses an amendment of them (409 `abha_demographics_locked`); the form says so first. */}
+      {abdmLocked ? (
+        <p data-testid="abdm-demographics-locked" style={{ fontSize: 12, color: "var(--dim)" }}>{t("abdm.lock.note")}</p>
+      ) : null}
       <FormProvider {...form}>
         <FormKit onSubmit={onSave} className="max-w-3xl">
           <div className="grid grid-cols-2 gap-3">
-            <TextField name="name" label={t("register.name")} />
+            <TextField name="name" label={t("register.name")} readOnly={abdmLocked} />
             <TextField name="phone" label={t("register.phone")} />
             <TextField name="altPhone" label={t("register.altPhone")} />
-            <TextField name="dob" label={t("register.dob")} type="date" />
+            <TextField name="dob" label={t("register.dob")} type="date" readOnly={abdmLocked} />
             <SelectField
               name="administrativeGender"
+              disabled={abdmLocked}
               label={t("patient.administrativeGender")}
               options={[
                 { value: "unknown", label: t("register.unknown") },
@@ -402,6 +441,21 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
             {patient.abhaLinkToken !== null && (
               <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("patient.abha")}: {patient.abhaLinkToken}</p>
             )}
+            <AbdmVerifyForPatient
+              patient={patient}
+              onLinked={async () => {
+                // The refetch the invalidation triggers is the read (one PHI row, not two).
+                await queryClient.invalidateQueries({ queryKey: ["patient", patientId] });
+                const fresh = queryClient.getQueryData<{ patient: PatientRow }>(["patient", patientId]);
+                if (fresh !== undefined) {
+                  // The record changed under the form: move its BASELINE, so the fields are not dirty
+                  // and the next save does not send the old ABHA back.
+                  form.resetField("abhaNumber", { defaultValue: fresh.patient.abhaNumber ?? "" });
+                  form.resetField("abhaAddress", { defaultValue: fresh.patient.abhaAddress ?? "" });
+                  form.resetField("abhaVerificationStatus", { defaultValue: fresh.patient.abhaVerificationStatus as PatchFormValues["abhaVerificationStatus"] });
+                }
+              }}
+            />
           </fieldset>
           {serverError !== null && <p role="alert" className="text-sm text-red-600">{serverError}</p>}
           <button className="pri" type="submit" disabled={form.formState.isSubmitting}>{t("patient.save")}</button>

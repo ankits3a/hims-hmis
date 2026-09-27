@@ -53,6 +53,7 @@
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@noble/curves": "1.9.7",
     "argon2": "^0.41.0",
     "drizzle-orm": "^0.40.0",
     "otplib": "^12.0.1",

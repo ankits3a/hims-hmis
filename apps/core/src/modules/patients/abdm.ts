@@ -1,4 +1,5 @@
 import { loadConfig } from "../../kernel/config";
+import type { AppConfig } from "../../kernel/config";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -34,8 +35,13 @@ export type AbhaCapability = {
   canRecord: boolean;
   /** Minting a new ABHA for a patient who has none. Requires ABDM. */
   canCreate: boolean;
-  /** Confirming a number against the registry by OTP. Requires ABDM. */
+  /** Confirming a number against the registry by OTP. Requires ABDM and its ABHA service. */
   canVerify: boolean;
+  /**
+   * ABDM S1 — the counter's scan-and-share QR and pending list. Requires ABDM (the share arrives as
+   * an ABDM callback). Additive: no existing reader of this payload depends on its absence.
+   */
+  canScanShare: boolean;
   /** Said in the clerk's terms, not the operator's, because the clerk is who reads it. */
   reason: string;
 };
@@ -44,15 +50,39 @@ export function abhaCapability(env: NodeJS.ProcessEnv = process.env): AbhaCapabi
   // ABDM S0 — the SAME rule the connector reads (`AppConfig.abdm.configured`), never a local copy:
   // gateway + client id + secret + HIP id + callback base. The old three-key rule said "connected"
   // on a deployment whose callback routes answer 503.
-  const { configured } = loadConfig(env).abdm;
+  return abhaCapabilityFrom(loadConfig(env).abdm);
+}
+
+/**
+ * ABDM S1 — THE SAME ANSWER FROM THE SAME OBJECT THE CONNECTOR READS. The route used to call
+ * `abhaCapability()`, which re-parses `process.env`; the connector reads the injected `CONFIG`. In
+ * production both come from one environment, but any process whose config is built rather than read
+ * (every e2e test, and any future caller) got a counter saying "not connected" beside a connector
+ * that was — found by `test/abdm-abha.e2e.test.ts`. The route now passes `CONFIG`'s own `abdm`.
+ */
+export function abhaCapabilityFrom(abdm: AppConfig["abdm"]): AbhaCapability {
+  const { configured, abhaBaseUrl, abhaCreateByAadhaar } = abdm;
+  /*
+    ABDM S1 — VERIFY needs the ABHA service's base URL as well as the gateway (S0's `configured`
+    does not require it, because callbacks do not). CREATE additionally needs the owner's ruling on
+    Aadhaar-OTP creation at the counter, which is `ABDM_ABHA_CREATE_AADHAAR` — off by default, and
+    while it is off the button is not drawn at all.
+  */
+  const canVerify = configured && abhaBaseUrl !== null;
+  const canCreate = canVerify && abhaCreateByAadhaar;
   return {
     configured,
     canRecord: true,
-    canCreate: configured,
-    canVerify: configured,
-    reason: configured
-      ? "ABDM is connected — an ABHA can be created and verified here."
-      : "This hospital is not connected to ABDM yet, so a new ABHA cannot be created here and a number cannot be verified. An ABHA the patient already has can still be recorded.",
+    canCreate,
+    canVerify,
+    canScanShare: configured,
+    reason: !configured
+      ? "This hospital is not connected to ABDM yet, so a new ABHA cannot be created here and a number cannot be verified. An ABHA the patient already has can still be recorded."
+      : !canVerify
+        ? "ABDM is connected, but its ABHA service is not set up here yet, so a number cannot be verified. An ABHA the patient already has can still be recorded."
+        : canCreate
+          ? "ABDM is connected — an ABHA can be verified by OTP, or created with the patient's Aadhaar."
+          : "ABDM is connected — an ABHA the patient already has can be verified by OTP. Creating a new ABHA with Aadhaar is not switched on at this hospital.",
   };
 }
 
