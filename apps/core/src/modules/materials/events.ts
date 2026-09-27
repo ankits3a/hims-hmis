@@ -452,6 +452,27 @@ export const stockRecallClosed = defineEvent("stock_recall.closed", MODULE, z.ob
   recallId: id, recallNo: z.string().min(1), batchId: id, closedBy: id, note: z.string(),
 }));
 
+// ═══ PHARMACY P6 — ITEM MERGE (`item-merge.ts`) ═══
+
+const mergeHeader = { mergeId: id, survivorItemId: id, mergedItemId: id, approvalId: id };
+
+/** "Merge item B into item A" asked for, with the reason; the approval filed (`materials_stock_adjustment`, the medical superintendent's). */
+export const itemMergeRequested = defineEvent("item_merge.requested", MODULE, z.object({
+  ...mergeHeader, reason: z.string().min(1), source: z.enum(["agent", "manual"]),
+}));
+/** The approval refused: nothing moved, B stays an item of its own. */
+export const itemMergeRefused = defineEvent("item_merge.refused", MODULE, z.object({ ...mergeHeader }));
+/**
+ * B merged into A in one transaction: B is retired (`items.merged_into_item_id`), its stock moved by an
+ * `adjust` pair per batch per store (`ref_type = 'item_merge'`), and its open orders, levels, barcodes,
+ * packs and sale registration moved or retired. Counts only — the act's full record is `item_merges.moved`.
+ */
+export const itemMerged = defineEvent("item.merged", MODULE, z.object({
+  ...mergeHeader, mergedBy: id,
+  batchesMoved: z.number().int().nonnegative(), unitsMoved: qty, orderLinesMoved: z.number().int().nonnegative(),
+  barcodesMoved: z.number().int().nonnegative(), ledgerEntryIds: z.array(id),
+}));
+
 export const MATERIALS_EVENTS = [
   itemRegistered, itemUpdated,
   vendorRegistered, vendorUpdated, vendorStatusChanged,
@@ -470,4 +491,5 @@ export const MATERIALS_EVENTS = [
   supplierReturnDrafted, supplierReturnUpdated, supplierReturnApproved, supplierReturnDispatched, supplierReturnCancelled,
   supplierReturnClosed, supplierCreditRecorded, supplierCreditCancelled,
   stockWriteOffRequested, stockWriteOffRefused, stockWriteOffPosted, stockRecallClosed,
+  itemMergeRequested, itemMergeRefused, itemMerged,
 ] as const;

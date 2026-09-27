@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { pharmacyShortBook, users } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
-import { findStoreByCode, itemsByIds } from "../materials";
+import { findStoreByCode, itemsByIds, survivorsOf } from "../materials";
 import { OPD_PHARMACY_STORE_CODE } from "./config";
 import { PharmacyError } from "./errors";
 import { shortBookNoted, shortBookResolved } from "./events";
@@ -51,7 +51,8 @@ async function storeIdOf(db: Db | Tx, code: string | undefined): Promise<string>
 export async function addShortBookEntry(
   db: Db, actor: Actor, input: AddShortBookInput, now: Date,
 ): Promise<{ entry: ShortBookEntry; created: boolean }> {
-  const itemId = input.itemId ?? null;
+  // PHARMACY P6 — a shortage noted against an item merged into another is the survivor's shortage.
+  const itemId = input.itemId == null ? null : ((await survivorsOf(db, [input.itemId])).get(input.itemId) ?? input.itemId);
   let drugName = input.drugName.trim().replace(/\s+/g, " ");
   if (itemId !== null) {
     const item = (await itemsByIds(db, [itemId])).get(itemId);

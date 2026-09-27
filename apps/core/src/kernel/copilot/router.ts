@@ -81,6 +81,7 @@ function buildSystemPrompt(): string {
     "draft_purchase_orders — the pharmacy should order from its suppliers: draft purchase orders to review",
     "draft_payment_run — the hospital should pay its suppliers: draft a payment run of the bills falling due",
     "draft_supplier_returns — expired, near-expiry or recalled medicines should go back to the suppliers: draft the returns",
+    "find_duplicate_items — the same medicine or item is registered twice in the item master: list the possible duplicates",
     "none           — anything else at all, including anything you are unsure about",
     "",
     "The question may be English, Hindi, or romanised Hinglish.",

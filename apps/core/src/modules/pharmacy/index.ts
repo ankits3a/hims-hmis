@@ -131,3 +131,12 @@ export type { ControlledToday } from "./controlled-office";
 export { PharmacyControlledController } from "./pharmacy-controlled.controller";
 export { classifyControlledDrugs } from "./controlled-classify";
 export type { ControlledClassification } from "./controlled-classify";
+
+// ── PHARMACY P6 (patient messages) — the bill and the opt-in refill reminder, through the notify kernel ──
+export { PHARMACY_BILL_TEMPLATE, PHARMACY_MESSAGE_TEMPLATES, PHARMACY_REFILL_TEMPLATE, REFILL_MIN_SUPPLY_DAYS, REFILL_REMINDER_LEAD_DAYS, REFILL_REMINDER_NAMES_DRUGS } from "./config";
+export {
+  PHARMACY_MESSAGES_CONSUMER, enqueueBillMessage, handlePharmacyMessageEvent, messagesOffice, namableDrugs, patientMessagesFor,
+  pharmacyDltTemplateIdsRecorded, pharmacyMessagesConsumer, pharmacyMessagingProviderLive, recordContactPhone, refillDue,
+  runRefillReminders, supplyDays,
+} from "./messages";
+export type { BillMessageState, MessagesOffice, PatientMessagesView, RefillLine, RefillRunResult } from "./messages";

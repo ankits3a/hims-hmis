@@ -410,7 +410,7 @@ Measured before planning (2 read-only passes, 2026-09-24):
 
 **P6 — Law and hygiene**
 - NDPS register (Form 3D/3E) with double-lock custody, if the hospital stocks narcotics (owner ruling).
-- Item Merge (moves history, keeps the audit).
+- Item Merge (moves the live state, keeps the history where it was written — built, see "P6 as built — item merge").
 - Patient SMS/WhatsApp (bill, refill reminder) once a real provider replaces the console stub in `kernel/notify`.
 - IPD/ward issue from the counter when IPD exists (Healthray's "Patient List" modal) — tracked, not built now.
 
@@ -449,6 +449,110 @@ hospital stocks NDPS and Schedule X drugs).** The law, with sources, is `2026-09
   holding cap; home care (r.52W); a scanned licence copy; the vendor's postal address (the register shows the GSTIN);
   the manufacturer column (not in the catalogue); walk-in Schedule X; patient returns of controlled drugs; the doctor's
   stock chip reading the cabinet; item merge and SMS (the rest of P6).
+
+**P6 as built — item merge (2026-09-26, lane `pharmacy-item-merge`, migration 0137 `item_merge` — regenerated after #333 took 0136, SQL byte-identical).** Healthray's "Merge
+Items" moves the history to the surviving item; ours cannot and does not — the ledger, the registers and every money
+document are append-only. A merge moves the LIVE state and leaves the history where it was written.
+- **The act** (materials `item-merge.ts`, the pharmacy's part `pharmacy/item-merge.ts` through `ItemMergeHooks`, in the
+  same transaction): `materials_head` raises "merge B into A" with the reason (`materials.items.merge`); the approval is
+  the EXISTING `materials_stock_adjustment` type — **the medical superintendent**, the route a count's variance and a
+  destruction take (DECIDED: reuse an existing approver; the kernel refuses the requester deciding); once granted, a
+  holder of `materials.items.merge` presses Merge now — ONE transaction, both items and the merge row locked, every rule
+  asked again. A rejected approval settles the merge as refused on the next read.
+- **Tables**: `items.merged_into_item_id` + `merged_at` (CHECK `items_merged_ck`: set together, never the item itself,
+  and a merged item is never active again — the database refuses re-activation); `item_merges` (reason, source
+  agent/manual, status requested → merged | refused, approval, who/when, `moved` = what the act moved, as it moved it;
+  one live act per merged item by a partial unique index). **Always one hop**: merging A later re-points the items
+  merged into A.
+- **What moves**: stock on hand per batch per store by an `adjust` pair (`ref_type = 'item_merge'`) through
+  `postMovements` — out of B's batch, into A's batch of the SAME number, expiry, MRP, cost, supplier, receipt line and
+  ownership (created, or A's own of that number when identical); open PO lines (re-pointed; `received_base` travels);
+  min/reorder/max (A's own wins where both exist, B's then dropped); barcodes; the pack units A lacks; the price
+  regulation in force when A has none (copied, append-only); the sale registration (B retired; A registered with its
+  own `RX-` service only when it never was); shelf labels (A's wins); open short-book rows (A's wins, B's dismissed).
+  DECIDED: `adjust` rather than a seventh ledger reason — the reasons are a CHECK the controlled register and every
+  report read, and the pair nets to zero in every item-level total once B resolves to A.
+- **What stays**: B's ledger rows, batches, GRN / bill / return / write-off lines, closed orders, price regulations,
+  dispense and walk-in lines, H1 and controlled-register rows — asserted byte-for-byte (a checksum) after the merge.
+- **Reads resolve B → A** (`survivorsOf`, `withMergedAliases`, `itemFactsThroughMerge`, `batchLineage`): reorder
+  velocity (`consumedQtyByItem`), stock valuation on ANY day, non-moving (B's sales count as A's), the agent's last
+  purchase, an item's movements, the purchase register, the sales register / margin / HSN (by item and category),
+  Form 3H and Schedule X pages, and a recall's callback list (the physical batch's lineage — a patient dispensed B's
+  batch before the merge is still a patient who took it). Live reads (balances, FEFO, expiry, the desk's shelf and
+  auto-match) need nothing: B holds no stock and is inactive, so the desk's FEFO candidates for A include B's moved
+  batches (asserted end to end: the next dispense picks B's earlier-expiring batch).
+- **Refused — the pair is not one thing** (`item_merge_invalid`): the same item; either already merged; the survivor
+  inactive; another class; drugs neither the same formulary medicine nor `isEquivalentMedicine` (same salts, strength,
+  form, route); another base unit; a pack of the same name with another multiplier; one controlled (NDPS class,
+  Schedule X, narcotic storage) and the other not; a merge already waiting on either item.
+  **Blocked — open work names B** (`item_merge_blocked`): a held reservation; a dispense not handed over; a transfer in
+  transit or with a discrepancy; an unposted GRN; a draft/approved return; a requested write-off; an open count or count
+  adjustment; recalled stock or an open recall; consignment/loaner stock or an open lot; controlled stock on hand; an
+  open order carrying both; a batch of the same number on A with another expiry, MRP or cost.
+- **New use of B is refused** (`item_merged`, naming the survivor): order line, GRN capture and post, stock level, item
+  edit / unit / barcode / price, sale registration, switching its sale back on, a shelf label. A short-book note
+  against B lands on A.
+- **Screens**: the office's sixth side **Items** (`?view=items`, `materials.items.merge`): the agent's possible
+  duplicates (same formulary medicine; near-identical names — same letters bar two, the SAME numbers — over the same
+  composition, or the same class and base unit for a non-drug), waiting on the MS, ready to merge, done. The merge sheet
+  shows A and B side by side, what moves (stock batch by batch, orders, levels, barcodes, packs, sale, shelf, short
+  book), what stays, every refusal split into "not one thing" / "finish this first", and says a merge is not undone.
+  Keys (legend via `useScreenKeys`): ↑↓ ⏎, N pick two items by hand, S swap which stays, ⏎ in the reason submits, M
+  merge now. The MS decides in `/approvals` (the request note names both items, the stock that moves and the reason).
+  `/materials/items` shows a merged item as "Merged into …" with no reactivate. Copilot `find_duplicate_items`
+  ("duplicate items dikhao"), read-only, gated on `materials.items.merge`; its desk card opens the items side.
+- Permission `materials.items.merge` (materials_head). No new approval type, no census row (the MS approver-held row
+  exists: `pharmacy_writeoff_approver_held`). Events `item_merge.requested`, `item_merge.refused`, `item.merged`.
+  Runbook §17.
+- DECIDED (not money, procurement or law): approver = the medical superintendent through `materials_stock_adjustment`;
+  raise and merge = the materials head; the survivor proposed by the agent is the one with more stock (then the older,
+  then the lower code) and the person may swap; "possible duplicates" shows at most 50 pairs over at most 5,000 items.
+- Deferred: **unmerge** (it would have to split history the merge never rewrote plus stock that has since moved — a
+  wrong merge is corrected by hand: register the item again and move the stock with a count adjustment); merging
+  controlled stock between two item records under two keys (refused while any controlled stock is on hand); merging
+  two lines of one open order (refused — edit the order first); per-rate-contract or vendor-item links (none exist).
+**P6 as built — patient messages (2026-09-26, lane `pharmacy-patient-messages`, migration 0138).** A bill by SMS and an
+opt-in refill reminder, on the notify kernel's one outbox — no second messaging system. Runbook §18.
+- **Templates** in `kernel/notify/templates.ts` (en + hi): `pharmacy_bill_ready` (transactional, SMS first) and
+  `pharmacy_refill_due` (`requiresOptIn: "refill_reminders"`). **Neither names a drug.** Bill = hospital, bill number,
+  amount, day; reminder = hospital, the day the medicines were bought, the pharmacy's phone, "tell the pharmacy" to stop.
+- **Triggers**: a `pharmacy.patient_messages` consumer on `dispense.handed_over` and `retail.sold`, idempotent by
+  invoice (dedupe key = the invoice id); a daily job `runRefillReminders` at 10:00 IST, once per dispense.
+- **Consent (kernel `patient_message_preferences`, `notify/preferences.ts`)**: one row per patient, the current state
+  with who/when/where; every change is a `message_preference.recorded` event. The pump honours a STOP for EVERY patient
+  message (suppressed `opted_out`), re-checks the reminder opt-in at send (`no_consent`), and obeys the patient's
+  language and first channel. `enqueueNotification` refuses an opt-in template without the opt-in.
+- **Provider** (`NOTIFY_PROVIDER=live` + a channel's keys; console otherwise): `kernel/notify/providers.ts` —
+  a DLT-registered SMS gateway (refuses a template with no DLT content-template id) and the WhatsApp Business Cloud API
+  (refuses a template with no approved name). The ids are data on the office's Messages side
+  (`notify_template_registrations`). `registerAllJobs` now hands the pump `adaptersFor(cfg)` — until this PR no provider
+  knob reached the pump at all (see "Finding" below). Phones are masked to the last four digits in every log line.
+- **Screens**: the desk rail's consent chip ("SMS reminders: off · turn on", the language, "Stop all messages"); the
+  hand-over's quiet bill line; the office's Messages side (`?view=messages`: provider state, the DLT text with
+  `{#var#}`, the ids, the pharmacy's phone, 30-day counts, reminders-on / stopped counts).
+- Permissions (defaults): `pharmacy.messages.consent` (pharmacy, in-charge), `pharmacy.messages.manage` (in-charge,
+  owner). Census: `pharmacy_messaging_provider_live` (G1), `pharmacy_dlt_template_ids_recorded` (G3).
+- DECIDED (not money, procurement or law; standard Indian-hospital practice):
+  - the bill is transactional (TRAI "service implicit"): no opt-in, to the number on record, never after a STOP; not for
+    a zero bill, a paper dispense typed in after an outage, or a patient with no phone;
+  - the reminder is TRAI "service explicit" and a DPDP purpose of its own: opt-IN only, one tap at a desk after asking;
+  - STOP stops every department's messages and withdraws the reminder opt-in; after a STOP reminders cannot be switched
+    on until the patient resumes messages; resuming does not bring reminders back;
+  - reminder arithmetic: supply = quantity ÷ (dose × doses/day) from the prescription's words; chronic-looking = ≥ 20
+    days; remind 3 days before the first chronic line runs out; look back 200 days; a later sale of the same item (either
+    counter) is a refill; a Schedule X / NDPS line never prompts a reminder;
+  - both messages are routine: held 21:00–08:00 IST (the kernel's law); the bill expires 48 h after the sale, the
+    reminder at the end of the day the medicines run out; neither raises a "call the patient" desk task when undelivered;
+  - the message language is the patient's own word at the desk, else the registered `patients.language`;
+  - naming drugs: OFF (`REFILL_REMINDER_NAMES_DRUGS`); even ON, no Schedule X, NDPS or H1 name can enter a message.
+- DEFAULT (procurement, the owner's): which SMS gateway and WhatsApp BSP; registering the entity, header and the two
+  templates on DLT; submitting the WhatsApp templates. Until then: console only, census row RED.
+- Finding: `NOTIFY_PUSH_PROVIDER=webpush` was parsed and never obeyed by the worker (the pump always fell back to its
+  console set). Threading `adaptersFor(cfg)` into the pump fixes that too — a deployment that already set it will start
+  pushing after this deploys.
+- Deferred: inbound STOP replies (needs the contracted gateway's callback); the front desk's own consent chip (Desk One);
+  a hospital-wide Messages screen for the other departments' templates (they will need DLT ids too once SMS is live);
+  delivery receipts (`notification.delivered`); WhatsApp named-drug variants.
 
 ## Owner rulings needed (money / procurement / law only — everything else DECIDED as top-hospital practice)
 Carried from the 2026-09-19 back-office report §7:

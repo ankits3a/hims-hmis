@@ -47,8 +47,13 @@ const AUDIT = { createdBy: "t", updatedBy: "t" };
 const CENSUS: Record<string, string[]> = {
   items: [
     "abc_class", "active", "base_uom", "batch_tracked", "class", "code", "created_at", "created_by",
-    "formulary_medicine_id", "gst_rate_bps", "hsn_code", "id", "name", "serial_tracked",
+    "formulary_medicine_id", "gst_rate_bps", "hsn_code", "id", "merged_at", "merged_into_item_id", "name", "serial_tracked",
     "shelf_life_days", "storage_class", "updated_at", "updated_by", "ved_class",
+  ],
+  /** PHARMACY P6 (hygiene) — one row per governed "merge item B into item A" (`modules/materials/item-merge.ts`). */
+  item_merges: [
+    "approval_id", "id", "merged_at", "merged_by", "merged_item_id", "moved", "reason", "refused_at", "requested_at", "requested_by",
+    "source", "status", "survivor_item_id",
   ],
   item_uoms: ["id", "is_issue_uom", "is_purchase_uom", "item_id", "to_base_multiplier", "uom"],
   item_barcodes: ["code", "id", "item_id", "pack_uom", "vendor_id"],
@@ -216,8 +221,8 @@ describe("the materials tables (Plan 14 T1)", () => {
    * each, and the prose count followed the bullets rather than the tables. Recorded here as a
    * number rather than only in CLOSE, so the next phase that reads this family counts what exists.
    */
-  it("there are exactly THIRTY of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(30);
+  it("there are exactly THIRTY-ONE of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(31);
   });
 
   // ───────────────────── the five semantic CHECKs, read out BY NAME ─────────────────────
@@ -462,8 +467,9 @@ describe("the materials tables (Plan 14 T1)", () => {
       select count(*)::int as "n" from pg_constraint c join pg_class t on t.oid = c.conrelid
       where t.relname = 'items' and c.contype = 'f'
     `)).rows as { n: number }[];
-    // Exactly ONE foreign key on `items`, and it is `formulary_medicine_id`.
-    expect(rows[0]?.n).toBe(1);
+    // Exactly TWO foreign keys on `items`: `formulary_medicine_id`, and (PHARMACY P6, item merge) the
+    // self-reference `merged_into_item_id`. Neither is `base_uom`.
+    expect(rows[0]?.n).toBe(2);
   });
 
   /**
