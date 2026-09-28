@@ -2032,7 +2032,8 @@
     "item_merge_blocked": "Open work still names the duplicate item — finish it first; the merge sheet lists each (a held reservation, a dispense, a transfer, an unposted receipt, a return, a count, a recall).",
     "item_merge_wrong_status": "This merge is not waiting to be carried out — refresh and look at it again.",
     "item_merge_unapproved": "The medical superintendent has not approved this merge yet — nothing moves before that.",
-    "item_merged": "This item was merged into another — use the item it was merged into."
+    "item_merged": "This item was merged into another — use the item it was merged into.",
+    "ledger_invalid": "The ledger's dates or filter do not fit: dates are YYYY-MM-DD, the from date comes first, and a batch belongs to the item."
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -6049,7 +6050,8 @@
         "retail": "Retail licence (Form 20/21)",
         "pharmacists": "Pharmacists & registrations",
         "messages": "Patient messages & consent",
-        "reports": "Reports"
+        "reports": "Reports",
+        "ledger": "Stock ledger — where it went"
       }
     },
     "today": {
@@ -7069,6 +7071,60 @@
         "closeNote": "Closing note",
         "close": "Close the recall",
         "closed": "Recall {{no}} closed."
+      },
+      "manual": {
+        "new": "New return",
+        "title": "New return to a supplier",
+        "intro": "Damaged, short-expiry or recalled stock going back to the supplier whose GRN brought it in. Saved as a draft; the head approves it, somebody else dispatches it and the debit note is issued.",
+        "pickSupplier": "Pick the supplier…",
+        "noSuppliers": "No store holds stock bought from a supplier — nothing can go back.",
+        "noGstin": "No GSTIN on record",
+        "window": "takes expired stock back for {{days}} days after expiry",
+        "search": "Add a batch",
+        "searchPlaceholder": "Item name, code or batch number",
+        "noneFound": "Nothing from this supplier matches.",
+        "exp": "exp {{date}}",
+        "pastWindow": "Past return window",
+        "free": "free {{qty}}",
+        "onReturn": "On this return",
+        "add": "Add",
+        "noLines": "No lines yet — search the supplier's stock above.",
+        "remove": "Remove batch {{batch}}",
+        "qtyFor": "Quantity of batch {{batch}}",
+        "unitFor": "Unit for batch {{batch}}",
+        "reasonFor": "Reason for batch {{batch}}",
+        "note": "Note",
+        "notePlaceholder": "What is wrong with it — crushed carton, broken seal…",
+        "noteFor": "Note for batch {{batch}}",
+        "over": "More than is free — at most {{qty}}",
+        "badQty": "A whole number above zero",
+        "returnNote": "Note for the whole return",
+        "returnNotePlaceholder": "Optional — e.g. the supplier's rep collects on Friday",
+        "summary_one": "{{count}} line · {{amount}} at cost before GST",
+        "summary_other": "{{count}} lines · {{amount}} at cost before GST",
+        "save": "Save as draft",
+        "after": "Nothing leaves the store until the return is approved and dispatched.",
+        "made": "Return {{no}} drafted — the head approves it next.",
+        "saved": "Return {{no}} saved.",
+        "edit": "Edit lines",
+        "editHint": "Every line is checked again on save and again at approval.",
+        "discard": "Discard changes",
+        "saveEdit": "Save the draft"
+      },
+      "refusal": {
+        "no_lines": "A return carries at least one line.",
+        "too_many_lines": "A return carries at most 300 lines — split it into two.",
+        "duplicate_line": "The same batch from the same store is on the return twice — keep one line.",
+        "in_transit": "That stock is in transit — receive it at the store first, then return it.",
+        "other_supplier": "Batch {{batchNo}} came from another supplier — it goes back to the vendor whose GRN brought it in.",
+        "bad_reason": "Pick a reason for every line.",
+        "not_recalled": "Batch {{batchNo}} is not recalled — pick another reason.",
+        "not_expired": "Batch {{batchNo}} has not expired yet — pick another reason.",
+        "not_near_expiry": "Batch {{batchNo}} is not within {{days}} days of its expiry — pick another reason.",
+        "bad_qty": "The quantity of batch {{batchNo}} is not a whole number above zero.",
+        "insufficient_stock": "Only {{available}} of batch {{batchNo}} is free to return (the rest is reserved, frozen or on another document); the line asks {{required}}.",
+        "return_window_passed": "Batch {{batchNo}} is past the supplier's return window (until {{returnableUntil}}) — it is destroyed with a write-off, not returned.",
+        "not_returnable": "Batch {{batchNo}} is not the hospital's purchased stock — it cannot go back on a debit note."
       }
     },
     "reports": {
@@ -7776,6 +7832,67 @@
         "history": "Relevant history (pregnancy, liver or kidney disease, alcohol …)",
         "save": "Record reaction",
         "saveHint": "Recording writes the allergy. Sending to PvPI is a separate step."
+      }
+    },
+    "ledger": {
+      "title": "Stock ledger — where it went",
+      "sub": "Every movement of one item, in the order it happened, with the balance after each.",
+      "item": "Item",
+      "itemPlaceholder": "Type an item name or code",
+      "noItems": "No item matches.",
+      "change": "Change",
+      "store": "Store",
+      "allStores": "All stores",
+      "batch": "Batch",
+      "allBatches": "All batches",
+      "badRange": "The from date comes on or before the to date.",
+      "pickItem": "Pick an item to see where its stock came from and where it went.",
+      "sum": {
+        "opening": "Opening",
+        "in": "In",
+        "out": "Out",
+        "closing": "Closing"
+      },
+      "truncated": "Showing the first {{count}} movements — narrow the dates, the store or the batch to see the rest.",
+      "col": {
+        "when": "When",
+        "kind": "What",
+        "doc": "Document",
+        "store": "Store",
+        "in": "In",
+        "out": "Out",
+        "balance": "Balance",
+        "who": "By"
+      },
+      "openingAll": "Opening balance",
+      "openingOn": "Opening balance on {{date}}",
+      "closingNow": "Closing balance — now",
+      "closingOn": "Closing balance on {{date}}",
+      "none": "No movements in this range.",
+      "foot": "In, out and balance are in {{uom}}. Opening + in − out = closing.",
+      "kind": {
+        "grn": "GRN in",
+        "dispense": "Dispensed",
+        "sale": "Counter sale",
+        "consume": "Used",
+        "patient_return": "Patient return",
+        "transfer_out": "Transfer out",
+        "transfer_in": "Transfer in",
+        "supplier_return": "Returned to supplier",
+        "adjustment": "Count adjustment",
+        "write_off": "Written off",
+        "merge": "Item merge",
+        "issue": "Issued",
+        "receive": "Received",
+        "return": "Returned",
+        "adjust": "Adjusted"
+      },
+      "doc": {
+        "return": "Return",
+        "writeoff": "Write-off",
+        "grn": "GRN",
+        "transfer": "Transfer",
+        "count": "Count"
       }
     }
   },

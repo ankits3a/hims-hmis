@@ -95,7 +95,7 @@ const ret = (over: Partial<WireReturn> = {}): WireReturn => ({
   lines: [{
     id: "rl-1", itemId: "i-croc", itemCode: "CROC500", itemName: "Crocin 500 tablet", hsnCode: "30049099", baseUom: "tablet", pack: { uom: "strip", multiplier: 10 },
     batchId: "b-1", batchNo: "CR-1", expiryDate: "2026-10-20", storeResourceId: "s-opd", storeCode: "PHARM-OPD", storeName: "OPD pharmacy",
-    reason: "near_expiry", qtyBase: 104, ratePaise: 250, taxablePaise: 26_000, gstRateBps: 1200, cgstPaise: 1_560, sgstPaise: 1_560, igstPaise: 0, totalPaise: 29_120, ledgerEntryId: null,
+    reason: "near_expiry", qtyBase: 104, ratePaise: 250, taxablePaise: 26_000, gstRateBps: 1200, cgstPaise: 1_560, sgstPaise: 1_560, igstPaise: 0, totalPaise: 29_120, ledgerEntryId: null, note: null,
   }],
   credit: null, ...over,
 });

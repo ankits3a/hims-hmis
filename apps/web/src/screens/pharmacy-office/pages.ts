@@ -29,6 +29,7 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "stock", key: "opening", perms: ["materials.grn.capture"], was: "/materials/grn" },
   { side: "stock", key: "counts", perms: ["materials.counts.perform"], was: "/materials/counts" },
   { side: "stock", key: "transfers", perms: ["materials.stock.read"], was: "/materials/transfers" },
+  { side: "stock", key: "ledger", perms: ["materials.stock.read"], was: null },
   { side: "stock", key: "downtime", perms: ["pharmacy.downtime.enter"], was: "/pharmacy/downtime" },
   { side: "items", key: "master", perms: ["materials.items.manage"], was: "/materials/items" },
   { side: "items", key: "sells", perms: ["pharmacy.sale_items.manage"], was: "/pharmacy/items" },
