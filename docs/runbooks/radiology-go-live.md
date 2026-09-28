@@ -156,6 +156,28 @@ So `seed:radiology` is the only writer of an imaging device, and the honest inst
 cannot commission a machine on a Sunday without an engineer. It is recorded here so nobody looks for
 a screen, and it is the same shape as §0 — a capability whose door was never built.
 
+### 5a. The two portables (18-S RS2b)
+
+`seed:radiology` creates **seven** machines: the five department machines and two that go to the
+bed, each carrying `attributes.portable = true`:
+
+| Code | Name | Modality | AERB |
+|---|---|---|---|
+| `PX-1` | Portable X-ray | xray (ionising) | **needs its own licence** |
+| `USG-P1` | Portable ultrasound | usg | none (it needs its PCPNDT machine entry instead) |
+
+`attributes.portable` is the only thing that lets a study be booked at a bedside — before this seed
+nothing wrote it, and every bedside booking was refused `device_not_portable`. A deployment that
+already ran the seed gets both machines by re-running it; the study-type book is left alone.
+
+**PX-1 is seeded WITHOUT an AERB licence, on purpose.** A placeholder licence would be the hospital
+claiming paper it does not hold. So after the seed, `PX-1` appears in `GET /aerb/licences/gaps`, on
+the red *machines emitting with no licence* block of `/radiology/radiation-safety`, as **"not
+licensed"** in the reception machine list, and the standup check's `radiology_devices_licensed` row
+is red — **until the RSO files the portable unit's real certificate** (§7). Until then any portable
+X-ray acquisition is refused `device_not_licensed`, exactly as a fixed room's would be. If the
+hospital has no portable X-ray, retire the resource rather than leave it unlicensed.
+
 ---
 
 ## 6. The tariff and the GST category
@@ -186,6 +208,8 @@ a department with no tariff will never discover its AERB problem.
 deployed, an ionising study cannot be acquired on a machine with no active licence — the refusal
 names the machine and the date and points at the RSO. Ultrasound and MRI are unaffected; the gate is
 keyed on the study type's `ionising` flag.
+
+The portable X-ray (`PX-1`, §5a) is a machine in its own right and needs its own certificate.
 
 **`GET /aerb/licences/gaps` coming back empty is the check.** So is the red *machines emitting with
 no licence* block on `/radiology/radiation-safety` emptying — they read the same data.
@@ -226,7 +250,17 @@ number is what the route actually returns.
      `radiology.orders.place`" — is green on any hospital with one doctor, so it would certify nothing
      (a row green on its own emptiness). Walking this step once is the check.
 1. `POST /radiology/orders` → `201`, an `R…` order number and an `X…` accession appears at reception.
-2. Schedule it onto a machine → `201`.
+2. Schedule it onto a machine → `201`. At `/radiology/reception` pick the machine from the list
+   (code · name · room; *portable* and *not licensed* are marked). **For a bedside study** pick a
+   portable machine (`PX-1`, `USG-P1`): an *At the bedside* field opens — type the ward and bed
+   (`Ward 3 · bed 12`) and book. The study then appears on the technologist's **Portable round**
+   (`/radiology/portable`, `radiology.acquire`), grouped by ward, and each row opens the study
+   console. Booking a study that carries a bed onto a fixed machine is refused
+   `device_not_portable` (booking with the field empty is not enough — the server keeps the place
+   until it is cleared). The desk then either picks a portable machine, or presses *Bring to the
+   department instead*, which rebooks with the bed explicitly cleared. Ordering
+   from the ward itself arrives with the IPD plan: the core accepts `bedsideLocation` on an order
+   item today (`imaging.bedside_requested`), and no screen sends it yet.
 3. Check in → `201`, and the open gates come back named.
 4. Satisfy each gate. **The evidence IS the body**, not nested: identity is
    `{"secondIdentifier":"uhid","value":"U…"}`, pregnancy is `{"declared":true,"lmpDate":"…"}`.
