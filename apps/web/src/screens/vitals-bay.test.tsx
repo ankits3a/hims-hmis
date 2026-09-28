@@ -361,6 +361,13 @@ describe("VD-2 — the allergy step, and it never bleeds between patients", () =
       },
       "GET /api/patients/P-A/allergies": () => ALLERGIES["P-A"],
       "GET /api/patients/P-B/allergies": () => ALLERGIES["P-B"],
+      /* The doctor's allergen completion — a class for `penic…`, nothing and `known: false` otherwise. */
+      "GET /api/opd/cds/complete/allergen": (_init?: RequestInit, url?: string) => {
+        const q = new URL(url ?? "", "http://x").searchParams.get("q")?.toLowerCase() ?? "";
+        return q.startsWith("peni")
+          ? { items: [{ term: "Penicillins / Beta-Lactams", kind: "class", allergenClass: "penicillin", saltId: null, blocks: ["Amoxicillin"] }], known: true }
+          : { items: [], known: false };
+      },
       "POST /api/patients/P-A/allergies": (init?: RequestInit) => {
         const b = JSON.parse(String(init?.body)) as { substance: string; severity: string; reaction?: string };
         ALLERGIES["P-A"] = { items: [{ id: "AL-A1", substance: b.substance, reaction: b.reaction ?? null, severity: b.severity, status: "active" }] };
@@ -405,6 +412,40 @@ describe("VD-2 — the allergy step, and it never bleeds between patients", () =
     /* Read BACK from the server, not painted optimistically: the chip proves the re-read landed. */
     await waitFor(() => expect(screen.getByTestId("allergy-chips").textContent).toContain("Sulfa drugs"));
     expect(screen.queryByTestId("allergy-none")).not.toBeInTheDocument();
+  });
+
+  /*
+    Owner, 2026-09-27: the bay's field did not suggest while the doctor's did. A pick must carry the
+    CLASS to the server — that is what fires the prescription block by identity, not by spelling —
+    and free text the guard cannot match must say so under the box.
+  */
+  it("suggests allergens as the nurse types, and a pick saves the coded class", async () => {
+    ALLERGIES["P-A"] = { items: [] };
+    stubBayWithAllergies();
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+    await user.type(screen.getByTestId("identify"), "118{Enter}");
+    await waitFor(() => expect(screen.getByTestId("allergy-none")).toBeInTheDocument());
+
+    await user.click(screen.getByTestId("allergy-open"));
+    await user.type(screen.getByTestId("allergy-substance"), "xyz");
+    await waitFor(() => expect(screen.getByTestId("allergy-unknown")).toBeInTheDocument());
+
+    await user.clear(screen.getByTestId("allergy-substance"));
+    await user.type(screen.getByTestId("allergy-substance"), "penic");
+    await waitFor(() => expect(screen.getByTestId("allergy-hits")).toBeInTheDocument());
+    expect(screen.queryByTestId("allergy-unknown")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("allergy-hit-Penicillins / Beta-Lactams"));
+    expect(screen.getByTestId("allergy-substance")).toHaveValue("Penicillins / Beta-Lactams");
+    expect(screen.queryByTestId("allergy-hits")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("allergy-save"));
+    await waitFor(() => expect(postedAllergies()).toHaveLength(1));
+    expect(postedAllergies()[0]).toEqual({
+      substance: "Penicillins / Beta-Lactams", severity: "mild", source: "vitals",
+      saltId: null, allergenClass: "penicillin",
+    });
   });
 
   it("the next patient's register is THEIRS — the previous allergen is gone, and a blank substance cannot be saved", async () => {

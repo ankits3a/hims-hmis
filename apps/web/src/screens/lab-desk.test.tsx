@@ -151,7 +151,7 @@ it("the TOKEN door: one hit is the person, and the consult's Rx lines are on the
   /** The unbilled line: HbA1c on credit ⇒ receipt for CBC alone, credit block for the rest (D3). */
   await userEvent.click(screen.getByLabelText("billed here HBA1C"));
   expect(screen.getByTestId("money")).toHaveTextContent("Collect now: ₹300.00");
-  expect(screen.getByTestId("money")).toHaveTextContent("On credit: ₹400.00");
+  expect(screen.getByTestId("money")).toHaveTextContent("Pay at the report: ₹400.00");
 
   await userEvent.click(screen.getByRole("button", { name: /Save/ }));
   await waitFor(() => expect(screen.getByTestId("placed")).toHaveTextContent("L2609010102"));
@@ -165,7 +165,7 @@ it("the TOKEN door: one hit is the person, and the consult's Rx lines are on the
   expect(sent.items.map((i) => i.serviceId)).toEqual(["svc-cbc", "svc-hba1c"]);
   expect(sent.receipt).toEqual({ tenders: [{ mode: "cash", amountPaise: 30000 }] });
   expect(sent.credit).toEqual({ reason: "rx_line_unpaid" });
-  expect(screen.getByTestId("placed")).toHaveTextContent("balance on credit");
+  expect(screen.getByTestId("placed")).toHaveTextContent("balance collected before the report");
 });
 
 it("the NAME door lists candidates to confirm; a patient with no visit goes through the WALK-IN door", async () => {

@@ -89,7 +89,9 @@ describe("invoiceAccrualView: DD19's seam, on live money", () => {
         { lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 },
         { lineId: newId(), serviceId: base.genericServiceId, qty: 1 },
       ],
-      credit: { reason: "settles at the dues counter" },
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the fixture only needs an unpaid
+      // invoice, so it is a held bill, not credit.
+      holdUntilPaid: { reason: "settles at the dues counter" },
     }, NOW);
     expect(issued.totals.netPayablePaise).toBe(156_000);
     const found = await getInvoice(db, issued.invoiceId);

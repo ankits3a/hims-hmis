@@ -346,6 +346,8 @@ describe("the words behind the screen", () => {
   */
   const SERVER_TYPES = [
     "billing_discount", "billing_clearance_discount", "billing_credit_extension", "billing_refund", "billing_variance",
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the owner-approved credit and unpaid-report release.
+    "billing_credit_owner", "lab_release_unpaid_owner",
     "lab_release_unpaid", "patient_merge", "patient_unmerge", "materials_stock_adjustment",
     "materials_near_expiry_acceptance", "materials_vendor_bank_change", "materials_po_approval", "materials_po_approval_owner", "materials_payment_run_approval",
     "imaging_definition_publish",

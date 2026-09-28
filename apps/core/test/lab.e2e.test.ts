@@ -250,7 +250,9 @@ describe("the laboratory over HTTP (17b T8)", () => {
       })
       .expect(201);
     const order = placed.body as { orderId: string; orderGroupId: string; itemIds: string[]; invoice: { invoiceId: string; creditExtended: boolean } };
-    expect(order.invoice.creditExtended).toBe(true);
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — a lab bill is never credit: the unpaid
+    // line is HELD (holdUntilPaid) and the report waits behind the interlock.
+    expect(order.invoice.creditExtended).toBe(false);
 
     /* ── 2. COLLECTION: on the awaiting list with the token, then labels, then one scan per tube ── */
     const awaiting = await request(server()).get(`/lab/collection/awaiting?serviceDate=${fx.serviceDate}`).set(...auth(op.token)).expect(200);

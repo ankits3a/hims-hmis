@@ -302,6 +302,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * `opd.consult` is the whole prescribing surface, and drafting is strictly less than issuing.
        */
       "opd.prescription.draft",
+      // PHARMACY STAGE D1 — a doctor who sees a reaction reports it to the ADR register (PvPI form); the
+      // allergy it writes blocks the drug on the next prescription. DEFAULT — owner may change.
+      "pharmacy.adr.record",
     ],
   },
   /**
@@ -504,6 +507,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "billing.invoice.read",
       "billing.receipt.record",
       "billing.session.own",
+      // PHARMACY STAGE D1 — the pharmacist reports a suspected adverse drug reaction (the PvPI form); the
+      // report writes the patient's allergy in the same transaction. DEFAULT — owner may change.
+      "pharmacy.adr.record",
     ],
   },
   {
@@ -907,6 +913,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // DEFAULT — owner may change.
       "pharmacy.licences.manage",
       "pharmacy.ndps.witness",
+      // PHARMACY STAGE D1 — the MS chairs pharmacovigilance: assesses causality, sends to PvPI, closes.
+      // DEFAULT — owner may change.
+      "pharmacy.adr.manage",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1612,6 +1621,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // owner may change.
       "pharmacy.messages.consent",
       "pharmacy.messages.manage",
+      // PHARMACY STAGE D1 — the in-charge reports ADRs and manages the register: WHO-UMC causality, sent to
+      // PvPI, closed. DEFAULT — owner may change.
+      "pharmacy.adr.record",
+      "pharmacy.adr.manage",
     ],
   },
 ];

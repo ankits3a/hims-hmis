@@ -14,6 +14,7 @@ import { RETAIL_PHARMACY_STORE_CODE } from "./config";
 import { pickDispense } from "./pick";
 import { cancelBilledDispense } from "./refund";
 import { previewRetailSale, recordRetailLicence, sellRetail } from "./retail";
+import { gstr3bReport } from "./gstr3b";
 import { hsnReport, marginReport, salesRegister } from "./sales-register";
 import { verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
@@ -184,5 +185,17 @@ describe("the sales register, the margin and the HSN summary (parity P5)", () =>
     expect(r.totals.valuePaise).toBe(r.totals.taxablePaise + r.totals.cgstPaise + r.totals.sgstPaise);
     // Azee is 5%, Crocin 12%: two rows, tablets counted as TBS.
     expect(r.rows.map((x) => [x.rateBps, x.uqc, x.qty])).toEqual([[500, "TBS", 3], [1200, "TBS", 25]]);
+  });
+
+  it("GAP A4 — GSTR-3B: 3.1(a) is GSTR-1's taxable lines net of credit notes, split by rate; with no purchases the whole tax is cash; a pharmacist is refused", async () => {
+    await aDay();
+    const hsn = await hsnReport(db, accounts.actor, range, MON3);
+    const r = await gstr3bReport(db, accounts.actor, range, MON3);
+    expect(r.outward.taxable).toEqual({ taxablePaise: hsn.totals.taxablePaise, igstPaise: 0, cgstPaise: hsn.totals.cgstPaise, sgstPaise: hsn.totals.sgstPaise });
+    expect(r.outward.byRate.map((b) => b.rateBps)).toEqual([500, 1200]);
+    expect(r.outward.nilExempt.taxablePaise).toBe(0);
+    expect(r.itc.net).toEqual({ igstPaise: 0, cgstPaise: 0, sgstPaise: 0 });
+    expect(r.payable.cashPaise).toBe(hsn.totals.cgstPaise + hsn.totals.sgstPaise);
+    await expect(gstr3bReport(db, fx.pharmacist.actor, range, MON3)).rejects.toMatchObject({ code: "permission_denied" });
   });
 });

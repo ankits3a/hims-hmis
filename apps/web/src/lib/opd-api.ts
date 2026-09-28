@@ -774,6 +774,16 @@ export function fetchPreStage(encounterId: string): Promise<WirePreStage> {
   return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prestage`);
 }
 
+/** `GET /opd/cds/complete/allergen` — a rule class, or a moiety out of the formulary. */
+export type WireAllergenHit = {
+  term: string; kind: "class" | "moiety"; allergenClass: string | null; saltId: string | null; blocks: string[];
+};
+
+/** Gated on `patients.update` — the permission that records an allergy — so the bay can ask too. */
+export function completeAllergen(q: string): Promise<{ items: WireAllergenHit[]; known: boolean }> {
+  return api("GET", `/opd/cds/complete/allergen?q=${encodeURIComponent(q)}`);
+}
+
 // ——— VD-2 T2 — the capture body, the save result, and the danger-range config the tiles mirror ———
 export type WireBandConfig = {
   key: WireBandKey; upToAgeYears: number | null;

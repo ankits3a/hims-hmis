@@ -981,6 +981,20 @@
       "when": 1790480536883,
       "tag": "0139_wasa_audit_append_only_agent_bindings",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1790573091770,
+      "tag": "0140_item_master_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1790587141887,
+      "tag": "0141_pharmacy_adr_reports",
+      "breakpoints": true
     }
   ]
 }

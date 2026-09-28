@@ -27,6 +27,8 @@ export type WireItem = {
   baseUom: string; batchTracked: boolean; serialTracked: boolean;
   storageClass: string; shelfLifeDays: number | null;
   abcClass: string | null; vedClass: string | null; active: boolean;
+  /** GAP CLOSURE A2 — the marketer, the usual lead time, and the NABH safety flags. Absent from an older server. */
+  manufacturer?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
   /** PHARMACY P6 — set once the item was merged into another (it is then inactive for ever). */
   mergedIntoItemId?: string | null;
 };
@@ -36,7 +38,11 @@ export type WireItemUom = {
   isPurchaseUom: boolean; isIssueUom: boolean;
 };
 
-export type WireItemDetail = WireItem & { uoms: WireItemUom[]; barcodes: { id: string; code: string; packUom: string }[] };
+export type WireItemDetail = WireItem & {
+  uoms: WireItemUom[]; barcodes: { id: string; code: string; packUom: string }[];
+  /** GAP CLOSURE A2 — a drug's formulary medicine and its schedule (the catalogue owns it). Absent from an older server. */
+  medicineName?: string | null; scheduleFlag?: string | null;
+};
 
 /** MASKED. See the header — `accountNo` is `"••••9012"`, and there is no unmasked shape here. */
 export type WireVendor = {
@@ -112,6 +118,7 @@ export type CreateItemInput = {
   code: string; name: string; class: string; baseUom: string; batchTracked: boolean;
   formularyMedicineId?: string | null; hsnCode?: string | null; gstRateBps?: number | null;
   shelfLifeDays?: number | null; storageClass?: string;
+  manufacturer?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
   uoms?: { uom: string; toBaseMultiplier: number }[];
 };
 
@@ -384,3 +391,29 @@ export async function fetchAdjustments(countId: string): Promise<WireAdjustment[
 export async function postAdjustment(approvalId: string): Promise<{ posted: number; refused: number }> {
   return api("POST", `/materials/adjustments/${encodeURIComponent(approvalId)}/post`, {});
 }
+
+// ── Gap closure A1 — the opening-stock sheet (`/pharmacy/opening-stock`, gated on `materials.grn.capture`) ──
+export type WireOpeningGrnState = "new" | "captured" | "posted" | "awaiting_approval" | "approved" | "rejected";
+export type WireOpeningCheck = {
+  fileHash: string;
+  rows: {
+    line: number; brand: string; itemCode: string | null; itemName: string | null; batch: string; expiryDate: string;
+    packs: number; packSize: number; uom: string | null; newUom: boolean; near: boolean; mrpPaise: number;
+    costPerBasePaise: number; rack: string; reasons: string[];
+  }[];
+  grns: { challanNo: string; near: boolean; lines: number; state: WireOpeningGrnState; grnNo: string | null }[];
+  refusals: number; units: number; newUoms: number; needsVendor: boolean; zeroCost: number; racks: number;
+  authority: { permission: string; held: boolean; why: "new_pack_sizes" | "opening_vendor" | "racks" }[];
+};
+export type WireOpeningCapture = {
+  captured: { grnId: string; grnNo: string; challanNo: string; near: boolean; lines: number }[];
+  alreadyOnBooks: number; uomsAdded: number; vendorCreated: boolean; racksSet: number; racksLeft: number;
+};
+
+/** Judge every row of the sheet. Writes nothing. */
+export const checkOpeningStock = (content: string): Promise<WireOpeningCheck> =>
+  api<WireOpeningCheck>("POST", "/pharmacy/opening-stock/check", { content });
+
+/** Judge it again on the server and capture it as GRNs for the pharmacist's QC. */
+export const captureOpeningStock = (content: string): Promise<WireOpeningCapture> =>
+  api<WireOpeningCapture>("POST", "/pharmacy/opening-stock/capture", { content });

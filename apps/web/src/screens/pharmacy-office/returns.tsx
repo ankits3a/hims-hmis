@@ -37,7 +37,7 @@ import type {
  *   - R raises a RECALL on a batch; its sheet shows where the batch sits and who it was dispensed to
  *     (read-only, for the callback), and one tap drafts its return.
  */
-type Open =
+export type Open =
   | { kind: "expiry"; preset: ExpiryPreset }
   | { kind: "plan" }
   | { kind: "return"; id: string }
@@ -54,11 +54,12 @@ const rowCls = "flex w-full flex-wrap items-center gap-3 px-3 py-2 text-left tex
 const toPaise = (text: string): number => Math.round(Number(text || "0") * 100);
 const todayIst = (): string => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
 
-export function ReturnsView(): React.ReactElement {
+/** B2 — `initialOpen`: the office's Today list opens this side on one document's sheet. */
+export function ReturnsView({ initialOpen }: { initialOpen?: Open } = {}): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
   const q = useQuery({ queryKey: ["pharmacy", "office", "returns"], queryFn: fetchOfficeReturns });
-  const [open, setOpen] = useState<Open | null>(null);
+  const [open, setOpen] = useState<Open | null>(initialOpen ?? null);
   const [notice, setNotice] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const d = q.data;

@@ -528,6 +528,7 @@ function LineRow({
               <span className="pill on">
                 {t("pharmacyDesk.generic")} · {t("pharmacyDesk.sub.insteadOf", { brand: sub !== null ? given.brandName : (line.orderedMedicine?.brandName ?? rx.drug) })}
               </span>
+              {safetyPills(line, id, t)}
             </span>
           ) : chooseSub ? (
             <button type="button" className="choose" disabled={busy || !substitutable(line)} onClick={onSubstitute}>{t("pharmacyDesk.sub.open")}</button>
@@ -542,6 +543,7 @@ function LineRow({
                   </button>
                 ) : <span className="pill" data-testid={`${id}-matched`} title={t("pharmacyDesk.matchedBySaltTitle")}>{t("pharmacyDesk.matchedBySalt")}</span>
               ) : null}
+              {safetyPills(line, id, t)}
               {line.controlled === true && line.ndpsClass != null ? (
                 <span className="pill rd" data-testid={`${id}-controlled`} title={t("pharmacyDesk.controlled.cabinetTitle")}>{t(`pharmacyDesk.controlled.${line.ndpsClass}`)}</span>
               ) : null}
@@ -754,5 +756,22 @@ export function LineSheet({ title, onClose, children }: { title: string; onClose
         <div style={{ padding: "16px 18px 18px 18px" }}>{children}</div>
       </div>
     </div>
+  );
+}
+
+/**
+ * GAP CLOSURE A2 — the item master's NABH safety flags on the line. LASA (look-alike / sound-alike) is
+ * gold: read the strip against the prescription twice. High alert is red. Both ride on the item the
+ * counter is GIVING, so a substitute carries its own flags, not the ordered brand's.
+ */
+function safetyPills(line: WireDispenseLine, id: string, t: (key: string) => string): React.ReactElement | null {
+  const lasa = line.item?.lasa === true;
+  const high = line.item?.highAlert === true;
+  if (!lasa && !high) return null;
+  return (
+    <>
+      {high ? <span className="pill rd" data-testid={`${id}-high-alert`} title={t("pharmacyDesk.safety.highAlertTitle")}>{t("pharmacyDesk.safety.highAlert")}</span> : null}
+      {lasa ? <span className="pill gd" data-testid={`${id}-lasa`} title={t("pharmacyDesk.safety.lasaTitle")}>{t("pharmacyDesk.safety.lasa")}</span> : null}
+    </>
   );
 }

@@ -5,6 +5,10 @@
  */
 export const PHARMACY_ERROR_CODES = [
   "permission_denied",
+  /** STAGE D1 — the ADR register: a report that does not say enough, one not on file, a later act on a closed one. */
+  "invalid_adr",
+  "unknown_adr",
+  "adr_closed",
   // ── sale items and the price rule (T2) ──
   "unknown_item",
   "not_a_drug",
@@ -200,6 +204,11 @@ export const PHARMACY_ERROR_CODES = [
   "messages_stopped",
   /** The pharmacy's reminder phone, a DLT id or a WhatsApp template name is not in the shape the provider issues. */
   "invalid_message_setting",
+  // ── GAP CLOSURE A1 (2026-09-28): the opening-stock sheet from a screen (`opening-stock.ts`) ──
+  /** Not the template: a required column missing, an unknown column, no rows, or too many rows. */
+  "opening_stock_unreadable",
+  /** A row was refused (not on the shelf, expired, a bad MRP…): the sheet is received whole or not at all. */
+  "opening_stock_refused",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -235,6 +244,9 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   substitution_not_allowed: 409,
   consent_required: 409,
   allergy_block: 409,
+  invalid_adr: 400,
+  unknown_adr: 404,
+  adr_closed: 409,
   interaction_block: 409,
   qty_required: 400,
   store_missing: 409,
@@ -322,6 +334,8 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   item_merged: 409,
   messages_stopped: 409,
   invalid_message_setting: 400,
+  opening_stock_unreadable: 400,
+  opening_stock_refused: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

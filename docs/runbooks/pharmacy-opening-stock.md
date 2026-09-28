@@ -34,7 +34,22 @@ Rules the script enforces, so you learn them from the sheet and not at the count
   needs a materials head on the command (`--head`).
 - Two rows with the same brand and batch are refused — add the packs together.
 
-## 2. Order of the day
+## 2. From the screen (no engineer needed)
+
+`/materials/grn` → **Opening stock sheet** (gap closure A1, 2026-09-28). Whoever captures deliveries
+(`materials.grn.capture`, normally the storekeeper) picks the CSV and presses **Check**. Every row is judged
+exactly as the script below judges it, and nothing is written. **Capture as GRNs** stays off until no row is
+refused. It then books one GRN per supplier and stops. The pharmacist opens each GRN in the list below it,
+runs QC and posts, as for any delivery. A short-dated GRN asks for the near-expiry approval first.
+
+- A sheet that adds a pack size or creates the OPENING STOCK supplier needs `materials.items.manage` /
+  `materials.vendors.manage`. Check says so before anything is written; the materials head uploads that sheet.
+- Rack labels are set only when the uploader holds `pharmacy.sale_items.manage`. Otherwise Check says how
+  many are left for the pharmacist in charge.
+- The same file twice captures nothing. The script below picks up GRNs the screen captured, QCs and posts
+  them, and never captures them again.
+
+## 3. From the command line (order of the day)
 
 ```
 # 0. who: a storekeeper, a registered pharmacist, a materials head — real accounts, made at /admin/users
@@ -59,7 +74,7 @@ The whole sheet is received in one transaction or not at all, and the same file 
 the second time (its challan is `OPENING/<file hash>`). Every line goes through the real GRN gate:
 the storekeeper captures, the pharmacist signs QC and posts.
 
-## 3. What each script is
+## 4. What each script is
 
 | script | writes |
 |---|---|

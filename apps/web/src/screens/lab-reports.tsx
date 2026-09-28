@@ -30,8 +30,9 @@ import type { WirePatientReportRow, WireReportNotice, WireReportView } from "../
  * ═══ HELD IS A SENTENCE, RELEASE IS AN APPROVAL ═══
  *
  * "Held: ₹1,150 outstanding" — the print lights the moment billing settles it. If the patient
- * cannot pay today, the counter ASKS: a `lab_release_unpaid` approval about the order, decided by
- * the billing manager (DD6), and the granted id is what `releaseUnpaid` takes. The dues stand.
+ * cannot pay today, the counter ASKS: a `lab_release_unpaid_owner` approval about the order, decided
+ * by the OWNER (ruling 2026-09-28: credit is the owner's; it was the billing manager under DD6), and the
+ * granted id is what `releaseUnpaid` takes. The dues stand.
  *
  * Sensitive tests: in person only, to the patient — the channels the server published decide,
  * and no message ever went out (T7 A7).

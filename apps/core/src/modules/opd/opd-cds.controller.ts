@@ -185,8 +185,15 @@ export class OpdCdsController {
    * TYPED reaches any rule at all, using the same token test the guard itself uses. The field warns
    * on false — it never refuses. Free text is legal here and must stay so; a patient who says "the
    * red syrup gave him a rash" has told the doctor something worth keeping.
+   *
+   * GATED ON THE WRITE IT SERVES, not on the consult. Every seat that records an allergy holds
+   * `patients.update` (`POST /patients/:id/allergies`), and the vitals bay records them without
+   * holding `opd.consult` — so under the old gate the nurse typed free text only, and a misspelt
+   * allergen from the bay stayed silent at the prescription. Every seeded `opd.consult` holder
+   * also holds `patients.update`, so no doctor lost the field. The answer is the rule catalogue
+   * and the moiety table; no patient data rides on it.
    */
-  @RequirePermission("opd.consult", "hospital")
+  @RequirePermission("patients.update", "hospital")
   @Get("complete/allergen")
   async completeAllergen(@Query() query: unknown): Promise<{ items: AllergenHit[]; known: boolean }> {
     const q = parsed(completeQuery, query);

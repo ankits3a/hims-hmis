@@ -329,3 +329,8 @@ export const searchMedicines = async (q: string, limit = 10): Promise<WireMedici
   (await api<{ items: WireMedicineHit[] }>(
     "GET", `/formulary/medicines/search?q=${encodeURIComponent(q)}&limit=${String(limit)}`,
   )).items;
+
+/** GAP CLOSURE A2 — the law's class of a medicine, set from the item master (`formulary.manage`). */
+export async function setMedicineSchedule(medicineId: string, scheduleFlag: "H" | "H1" | "X" | "OTC" | null): Promise<void> {
+  await api<{ ok: true }>("PATCH", `/formulary/medicines/${medicineId}`, { scheduleFlag });
+}

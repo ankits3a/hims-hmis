@@ -254,10 +254,10 @@ it("DD6 — a HELD report reaches the browser as a verdict, never as a page; rel
   expect(within(card).queryByRole("button", { name: "Print & hand over" })).toBeNull();
   expect(document.querySelector(".print-doc")).toBeNull();
 
-  await userEvent.click(within(card).getByRole("button", { name: "Ask the billing manager to release" }));
+  await userEvent.click(within(card).getByRole("button", { name: "Ask the owner to release" }));
   await waitFor(() => expect(card).toHaveTextContent(/approval apr-77/));
   const asked = seen.find((s) => s.path === "/api/approvals")!.body as { typeKey: string; subject: { type: string; id: string }; amountPaise: number };
-  expect([asked.typeKey, asked.subject.id, asked.amountPaise]).toEqual(["lab_release_unpaid", "o-2", 115000]);
+  expect([asked.typeKey, asked.subject.id, asked.amountPaise]).toEqual(["lab_release_unpaid_owner", "o-2", 115000]);
 
   const release = within(card).getByRole("button", { name: "Release and hand over" });
   expect(release).toBeDisabled();

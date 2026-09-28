@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchBench, fetchEscalation, fetchPreStage, setBenchState, todayIst } from "../lib/opd-api";
-import type { WireBenchRow, WireDoctorSummary, WirePreStage, WireVitalKey, WireVitalsSaveResult } from "../lib/opd-api";
+import { completeAllergen, fetchBench, fetchEscalation, fetchPreStage, setBenchState, todayIst } from "../lib/opd-api";
+import type { WireAllergenHit, WireBenchRow, WireDoctorSummary, WirePreStage, WireVitalKey, WireVitalsSaveResult } from "../lib/opd-api";
 import { CaptureCore, SavedBannerView, bandFor, flagOf, humanDate, istClock, rangesFrom, readLane, writeLane } from "./vitals-bay-capture";
 import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
 import {
@@ -228,13 +228,46 @@ function AllergyStep({ patientId }: { patientId: string }): React.ReactElement {
   const [severity, setSeverity] = useState<"mild" | "moderate" | "severe">("mild");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  /*
+    THE SAME TYPEAHEAD THE DOCTOR HAS (`opd-consult.tsx`), for the same reason: the prescription
+    guard matches free text on word tokens, so a `pencilin` typed here never fires the penicillin
+    block. A pick carries the class; it is CLEARED on the next keystroke, because a code left behind
+    after the words changed is a block recorded against a substance nobody named. Free text still
+    saves — the line under the box says when the guard will find no rule for it.
+  */
+  const [pick, setPick] = useState<WireAllergenHit | null>(null);
+  const [hits, setHits] = useState<WireAllergenHit[]>([]);
+  const [known, setKnown] = useState(true);
 
   const queryKey = ["patient-allergies", patientId];
   const allergies = useQuery({ queryKey, queryFn: () => listAllergies(patientId), retry: false });
   /* ACTIVE only — a retracted row is history, never a warning. The filter lives in `patients-api`. */
   const active = activeAllergies(allergies.data?.items);
 
-  const reset = (): void => { setSubstance(""); setReaction(""); setSeverity("mild"); setFailed(false); };
+  /* 120 ms debounce, three-character floor, and `asked` so a slow answer to an old prefix loses. */
+  const asked = useRef("");
+  useEffect(() => {
+    const q = substance.trim();
+    asked.current = q;
+    if (!open || q.length < 3) { setHits([]); setKnown(true); return; }
+    let live = true;
+    const timer = setTimeout(() => {
+      completeAllergen(q)
+        .then((r) => {
+          if (!live || asked.current !== q) return;
+          setHits(r.items);
+          setKnown(r.known);
+        })
+        /* A suggester that is down leaves a plain text box that still saves, and no false warning. */
+        .catch(() => { if (live) { setHits([]); setKnown(true); } });
+    }, 120);
+    return () => { live = false; clearTimeout(timer); };
+  }, [substance, open]);
+
+  const reset = (): void => {
+    setSubstance(""); setReaction(""); setSeverity("mild"); setFailed(false);
+    setPick(null); setHits([]); setKnown(true);
+  };
 
   const save = async (): Promise<void> => {
     const s = substance.trim();
@@ -247,6 +280,10 @@ function AllergyStep({ patientId }: { patientId: string }): React.ReactElement {
         ...(reaction.trim() === "" ? {} : { reaction: reaction.trim() }),
         severity,
         source: "vitals",
+        /* The code rides only when it still belongs to these words. */
+        ...(pick !== null && pick.term.toLowerCase() === s.toLowerCase()
+          ? { saltId: pick.saltId, allergenClass: pick.allergenClass }
+          : {}),
       });
       await queryClient.invalidateQueries({ queryKey });
       reset();
@@ -280,11 +317,53 @@ function AllergyStep({ patientId }: { patientId: string }): React.ReactElement {
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11 }}>
             {t("vitalsBay.allergy.substance")}
-            <input
-              data-testid="allergy-substance" autoFocus value={substance}
-              onChange={(e) => { setSubstance(e.target.value); }}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                data-testid="allergy-substance" autoFocus value={substance} autoComplete="off"
+                style={{ width: "100%" }}
+                onChange={(e) => {
+                  setSubstance(e.target.value);
+                  setPick(null); // the code belonged to the OLD words
+                }}
+              />
+              {hits.length > 0 && (
+                <ul
+                  data-testid="allergy-hits"
+                  style={{
+                    position: "absolute", zIndex: 5, top: "100%", left: 0, right: 0, margin: "2px 0 0",
+                    padding: 0, listStyle: "none", background: "var(--paper)",
+                    border: "1px solid var(--line)", borderRadius: 5, maxHeight: 180, overflowY: "auto",
+                  }}
+                >
+                  {hits.map((h) => (
+                    <li key={`${h.kind}-${h.term}`}>
+                      <button
+                        type="button" data-testid={`allergy-hit-${h.term}`}
+                        onMouseDown={(e) => { e.preventDefault(); }}
+                        onClick={() => { setSubstance(h.term); setPick(h); setHits([]); setKnown(true); }}
+                        style={{
+                          display: "block", width: "100%", textAlign: "left", padding: "4px 7px",
+                          border: "none", background: "none", cursor: "pointer", fontSize: 12,
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>{h.term}</span>
+                        {h.blocks.length > 0 && (
+                          <span className="mo" style={{ display: "block", fontSize: 10.5, color: "var(--faint)" }}>
+                            {t("opdConsult.allergyBlocks", { list: h.blocks.slice(0, 4).join(", ") })}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </label>
+          {!known && pick === null && substance.trim().length >= 3 && (
+            <p data-testid="allergy-unknown" style={{ margin: 0, fontSize: 11, color: "var(--gold)" }}>
+              {t("opdConsult.allergyUnknown")}
+            </p>
+          )}
           <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11 }}>
             {t("vitalsBay.allergy.reaction")}
             <input data-testid="allergy-reaction" value={reaction} onChange={(e) => { setReaction(e.target.value); }} />

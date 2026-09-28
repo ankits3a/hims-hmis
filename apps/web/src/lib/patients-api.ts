@@ -373,6 +373,8 @@ export function addAllergy(
     substance: string; reaction?: string; severity: "mild" | "moderate" | "severe";
     /* The server's own enum (`allergyBody`), which already named the bay before a bay could use it. */
     source: "registration" | "vitals" | "consult";
+    /* The coded allergen — sent only when the seat PICKED it from `completeAllergen`. */
+    saltId?: string | null; allergenClass?: string | null;
   },
 ): Promise<unknown> {
   return api("POST", `/patients/${encodeURIComponent(patientId)}/allergies`, body);

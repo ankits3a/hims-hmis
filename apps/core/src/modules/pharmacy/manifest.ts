@@ -119,6 +119,16 @@ export const pharmacyManifest: ModuleManifest = {
      * sent. The pharmacist in charge and the owner, who contracts the provider.
      */
     "pharmacy.messages.manage",
+    /**
+     * STAGE D1 — report a suspected adverse drug reaction (the PvPI form): the report, and one allergy per
+     * suspected medicine written in the same transaction. The pharmacist, the in-charge and a doctor.
+     */
+    "pharmacy.adr.record",
+    /**
+     * STAGE D1 — act on a report: WHO-UMC causality, sent to PvPI, closed. The pharmacist in charge and the
+     * medical superintendent.
+     */
+    "pharmacy.adr.manage",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [

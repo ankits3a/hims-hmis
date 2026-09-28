@@ -33,6 +33,7 @@ import type { WireCoverage } from "../lib/patients-api";
 import { fetchCurrentSession, fetchPatientBalance } from "../lib/billing-api";
 import type { WireDueRow } from "../lib/billing-api";
 import type { TenderMode } from "../lib/billing-api";
+import { OwnerCreditAsk } from "./owner-credit-ask";
 
 /**
  * THE BILLING COUNTER (Plan 08 §11 / D2 / D3 / D7 / D8) — the cashier's one screen: pick the
@@ -179,7 +180,8 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
   const [panRequired, setPanRequired] = useState(false);
   const [creditReason, setCreditReason] = useState("");
   const [creditApprovalId, setCreditApprovalId] = useState("");
-  const [creditApprovalRequired, setCreditApprovalRequired] = useState(false);
+  /* GAP A3 — the owner's granted credit approval, handed over by `OwnerCreditAsk`. */
+  const onCreditGranted = useCallback((id: string | null) => { setCreditApprovalId(id ?? ""); }, []);
   const [draftId, setDraftId] = useState(newDraftId);
   /*
    * ═══ FD-7 T6 — THE SCHEME RAIL FINALLY HAS A CASHIER ═══
@@ -742,7 +744,6 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
       // The two refusals that ASK FOR SOMETHING rather than just refusing: reveal the control the
       // cashier now needs. Everything else is read and acted on outside this screen.
       if (code === "pan_required") setPanRequired(true);
-      if (code === "credit_approval_required") setCreditApprovalRequired(true);
     }
   };
 
@@ -885,7 +886,6 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
               setEncounterId("");
               setCreditReason("");
               setCreditApprovalId("");
-              setCreditApprovalRequired(false);
               setPanNumber("");
               setForm60(false);
               setPanRequired(false);
@@ -1721,15 +1721,11 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                     {t("billing.counter.creditReason")}
                   </label>
                   <input id="counter-credit-reason" className="in" value={creditReason} onChange={(e) => setCreditReason(e.target.value)} />
-                  {creditApprovalRequired && (
-                    <div data-testid="credit-approval-wait" style={{ marginTop: 11, paddingTop: 9, borderTop: "1px solid var(--line2)" }}>
-                      <p style={{ margin: 0, fontSize: 12, color: "var(--gold)" }}>{t("billing.counter.creditApprovalWait")}</p>
-                      <label className="tag" htmlFor="counter-credit-approval" style={{ display: "block", margin: "9px 0 5px" }}>
-                        {t("billing.counter.approvalId")}
-                      </label>
-                      <input id="counter-credit-approval" className="in mo" value={creditApprovalId} onChange={(e) => setCreditApprovalId(e.target.value)} />
-                    </div>
-                  )}
+                  {/* GAP A3 — owner ruling 2026-09-28: every credit is the OWNER's to approve. */}
+                  <OwnerCreditAsk
+                    draftId={draftId} patientId={resolvedPatientId} amountPaise={remainderPaise} reason={creditReason}
+                    amountText={fmtPaise(remainderPaise)} onGranted={onCreditGranted}
+                  />
                 </div>
               )}
 
