@@ -255,7 +255,12 @@
     "unmergeNote": "Why must this be split?",
     "actFirst": "Act first (patient-safety) — review after",
     "unmergeExecute": "Execute unmerge",
-    "differs": "differs"
+    "differs": "differs",
+    "hitAge": "age {{age}}",
+    "hitDob": "DOB {{dob}}",
+    "change": "Change",
+    "alreadyPicked": "already {{side}}",
+    "sameRecord": "Record A and Record B are the same patient record. Pick two different records to merge."
   },
   "inbox": {
     "title": "Approvals",
