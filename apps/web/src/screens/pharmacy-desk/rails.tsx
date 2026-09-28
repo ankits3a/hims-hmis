@@ -47,7 +47,10 @@ export function Dossier({
       { label: t("pharmacyDesk.day.handedOverMine"), value: String(shift.handedOver), testId: "desk-shift-handed" },
       { label: t("pharmacyDesk.day.moneyMine"), value: rupees(shift.takenPaise), ...(modes === "" ? {} : { sub: modes }), testId: "desk-shift-money" },
       ...(shift.returns + shift.refunds > 0 ? [{ label: t("pharmacyDesk.day.returnsRefunds"), value: `${String(shift.returns)} · ${String(shift.refunds)}`, testId: "desk-shift-returns" }] : []),
-      ...(shift.drawer === null ? [] : [{ label: t("pharmacyDesk.day.drawerHolds"), value: rupees(shift.drawer.expectedCashPaise), testId: "desk-shift-drawer" }]),
+      /* OWNER RULING 2026-09-28 — BLIND COUNT: before her count the server leaves the expected figure off; the float is what she may see. */
+      ...(shift.drawer === null ? [] : shift.drawer.expectedCashPaise === undefined
+        ? [{ label: t("pharmacyDesk.day.drawerFloat"), value: rupees(shift.drawer.openingFloatPaise), testId: "desk-shift-drawer-float" }]
+        : [{ label: t("pharmacyDesk.day.drawerHolds"), value: rupees(shift.drawer.expectedCashPaise), testId: "desk-shift-drawer" }]),
       ...(summary === null ? [] : [{ label: t("pharmacyDesk.day.declined"), value: String(summary.declinedLines) }]),
       { label: t("pharmacyDesk.day.inLine"), value: String(queued) },
     ] : summary === null ? [] : [

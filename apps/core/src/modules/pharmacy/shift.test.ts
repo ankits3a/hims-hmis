@@ -1,7 +1,8 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { openSessionFor } from "../../../test/helpers/billing";
+import { grantDrawerSupervisor, openSessionFor, submitCountFor } from "../../../test/helpers/billing";
 import { MON, MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
-import { testCfg } from "../../../test/helpers/opd";
+import { ensureRole, testCfg } from "../../../test/helpers/opd";
+import { assignRole } from "../../kernel/auth/permissions";
 import { billDispense, previewDispenseBill } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
@@ -46,7 +47,7 @@ describe("the pharmacist's shift (pharmacy P1)", () => {
     return preview.totals.netPayablePaise;
   }
 
-  it("says what this pharmacist handed over and took, by tender, and what their drawer should hold", async () => {
+  it("says what this pharmacist handed over and took, by tender, and her open drawer — but not what it should hold (blind count)", async () => {
     await openSessionFor(db, { id: fx.pharmacist.id }, 50_000);
     const cash = await sold("cash");
     const upi = await sold("upi");
@@ -59,8 +60,28 @@ describe("the pharmacist's shift (pharmacy P1)", () => {
       byMode: { cash, upi, card: 0 },
       returns: 0,
       refunds: 0,
-      drawer: { status: "open", openingFloatPaise: 50_000, expectedCashPaise: 50_000 + cash },
+      drawer: { status: "open", openingFloatPaise: 50_000 },
     });
+    // OWNER RULING 2026-09-28 — BLIND COUNT: her drawer is open and uncounted, so what it should
+    // hold is not in the response at all — not zero, not null, ABSENT.
+    expect(s.drawer).not.toHaveProperty("expectedCashPaise");
+  });
+
+  it("blind count: once her count is submitted, the drawer's holder reads the expected cash again", async () => {
+    await openSessionFor(db, { id: fx.pharmacist.id }, 50_000);
+    const cash = await sold("cash");
+    // after her count (short → closing) the figure is hers again
+    expect(await submitCountFor(db, fx.pharmacist, { "10000": 1 })).toEqual({ status: "closing" });
+    expect((await myShift(db, fx.pharmacist.actor, MON3)).drawer).toMatchObject({ status: "closing", expectedCashPaise: 50_000 + cash });
+  });
+
+  it("blind count: a pharmacist who ALSO supervises drawers sees her open drawer's expected cash", async () => {
+    await ensureRole(db, "blind_supervisor_t");
+    await grantDrawerSupervisor(db, "blind_supervisor_t");
+    await assignRole(db, { userId: fx.pharmacist.id, roleKey: "blind_supervisor_t", scopeType: "hospital" });
+    await openSessionFor(db, { id: fx.pharmacist.id }, 50_000);
+    const cash = await sold("cash");
+    expect((await myShift(db, fx.pharmacist.actor, MON3)).drawer).toMatchObject({ status: "open", expectedCashPaise: 50_000 + cash });
   });
 
   it("is somebody else's nothing: another login at the same counter sees its own zeros and no drawer", async () => {

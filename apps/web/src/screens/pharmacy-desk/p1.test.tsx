@@ -203,4 +203,14 @@ describe("sales today on the idle rail (parity P1)", () => {
     expect(screen.getByTestId("desk-shift-drawer")).toHaveTextContent("₹2,500");
     expect(screen.getByTestId("desk-keys")).toHaveTextContent("note a shortage");
   });
+
+  it("BLIND COUNT (owner ruling 2026-09-28): an uncounted drawer the server sends without an expected figure shows the float, never a 'should hold'", async () => {
+    mockRoutes(base(() => dispense("claimed"), {
+      "GET /api/pharmacy/summary/mine": { status: 200, body: { ...SHIFT, drawer: { status: "open", openingFloatPaise: 50_000 } } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByTestId("desk-shift-drawer-float")).toHaveTextContent("drawer float₹500");
+    expect(screen.queryByTestId("desk-shift-drawer")).toBeNull();
+    expect(screen.queryByText("drawer should hold")).toBeNull();
+  });
 });

@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { events, pharmacyDispenses } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
-import { cashierDay, listSessions, liveExpectedCashPaise } from "../billing";
+import { cashierDay, listSessions, liveExpectedCashPaise, mayReadExpectedCash } from "../billing";
 import { istDateOf } from "./config";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -20,7 +20,8 @@ import type { Db } from "../../kernel/db/client";
  *     (`dispense.line_returned`, `retail.line_returned`) and a paid ticket refunded
  *     (`dispense.cancelled` carrying a credit note);
  *   - the drawer: my open (or closing) cash session, and what it should hold NOW by the close's own
- *     formula (`liveExpectedCashPaise`, D5). Null when I hold none.
+ *     formula (`liveExpectedCashPaise`, D5) — once counted, or to a drawer supervisor (blind count,
+ *     OWNER RULING 2026-09-28). Null when I hold none.
  *
  * Read-only, and nothing new is stored: a figure on this strip that disagreed with the close would
  * be a figure nobody could defend.
@@ -33,7 +34,8 @@ export type MyShift = {
   receipts: number;
   returns: number;
   refunds: number;
-  drawer: { status: string; openingFloatPaise: number; expectedCashPaise: number } | null;
+  /** `expectedCashPaise` is ABSENT before the count unless the reader supervises drawers (blind count, below). */
+  drawer: { status: string; openingFloatPaise: number; expectedCashPaise?: number } | null;
 };
 
 export async function myShift(db: Db, actor: Actor, now: Date): Promise<MyShift> {
@@ -52,8 +54,15 @@ export async function myShift(db: Db, actor: Actor, now: Date): Promise<MyShift>
   const refunds = evs.filter((e) => e.name === "dispense.cancelled" && typeof (e.payload as { creditNoteId?: unknown }).creditNoteId === "string").length;
 
   const session = (await listSessions(db, { cashierUserId: actor.id })).find((s) => s.status === "open" || s.status === "closing");
+  /*
+   * OWNER RULING 2026-09-28 — BLIND COUNT. A pharmacist's drawer is a cashier's drawer: before her
+   * count is submitted the strip does not carry what it should hold — the key is left off the
+   * response, so `GET /pharmacy/summary/mine` has nothing to read. `mayReadExpectedCash` (billing)
+   * is the one rule: a `billing.session.read` holder, or any drawer already counted, still gets it.
+   */
   const drawer = session === undefined ? null : {
-    status: session.status, openingFloatPaise: session.openingFloatPaise, expectedCashPaise: await liveExpectedCashPaise(db, session),
+    status: session.status, openingFloatPaise: session.openingFloatPaise,
+    ...(await mayReadExpectedCash(db, actor, session) ? { expectedCashPaise: await liveExpectedCashPaise(db, session) } : {}),
   };
   return {
     day, handedOver: done?.n ?? 0, takenPaise: money.totalPaise, byMode: { ...money.byMode }, receipts: money.receipts,

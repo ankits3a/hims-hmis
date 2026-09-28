@@ -20,7 +20,7 @@ import { registerBillingApprovalTypes } from "../../src/modules/billing/approval
 import { loadBillingConfig } from "../../src/modules/billing/config";
 import { nextDocNo } from "../../src/modules/billing/series";
 import { istDay } from "../../src/modules/billing/time";
-import { openSession } from "../../src/modules/billing/sessions";
+import { beginClose, openSession } from "../../src/modules/billing/sessions";
 import { CREDIT_EXTEND_PERMISSION, issueInvoice, previewInvoice } from "../../src/modules/billing/invoices";
 import { requestCredit } from "../../src/modules/billing/credit-requests";
 import type { Db } from "../../src/kernel/db/client";
@@ -191,6 +191,12 @@ export async function openSessionFor(db: Db, cashier: { id: string }, floatPaise
   return { id };
 }
 
+/** Submits a cashier's close count through the shipped `beginClose` (a mismatch leaves the drawer `closing`). */
+export async function submitCountFor(db: Db, cashier: { id: string }, denominations: Record<string, number>): Promise<{ status: string }> {
+  const row = await beginClose(db, { type: "user", id: cashier.id }, { denominations });
+  return { status: row.status };
+}
+
 /**
  * A fully settled invoice for one service, paid in EXACT cash - the fixture T6-T8 start from.
  * The cashier must ALREADY hold an open session (`openSessionFor`): a receipt is drawer-bound
@@ -252,6 +258,21 @@ export async function grantCreditExtend(db: Db, roleKey = "cashier"): Promise<vo
   });
   await syncPermissions(db, registry);
   await grantPermissionToRole(db, registry, roleKey, CREDIT_EXTEND_PERMISSION);
+}
+
+/**
+ * OWNER RULING 2026-09-28 — BLIND COUNT. Grants `billing.session.read` — the existing "oversight of
+ * cashier sessions somebody else owns" permission, which is what lets a supervisor still read a
+ * drawer's expected cash before its count — through the same registry-checked path as above.
+ * (`seedBillingBase` makes `billing_manager` a bare role; this is what gives it the supervisor's
+ * read in a unit test.)
+ */
+export async function grantDrawerSupervisor(db: Db, roleKey = "billing_manager"): Promise<void> {
+  const permission = "billing.session.read";
+  const registry = new ModuleRegistry();
+  registry.install({ key: "billing", title: "Billing", menu: [], permissions: [permission], subscriptions: [] });
+  await syncPermissions(db, registry);
+  await grantPermissionToRole(db, registry, roleKey, permission);
 }
 
 /**

@@ -2,7 +2,7 @@ import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { cashierSessions, invoices, receiptTenders, receipts } from "../../kernel/db/schema";
 import { billingRange } from "./range";
 import { enteredInErrorDocIds } from "./daily-close";
-import { liveExpectedCashPaise } from "./sessions";
+import { liveExpectedCashPaise, mayReadExpectedCash } from "./sessions";
 import { formatPaise } from "../../kernel/report/money";
 import type { TenderTotals } from "./daily-close";
 import type { DeskCard, DeskProvider, DeskProviderCtx, DeskStat, ReportSection } from "../../kernel/desk/types";
@@ -83,8 +83,9 @@ export async function cashierDay(exec: Db | Tx, userId: string, day: string): Pr
 
 /**
  * FD-1 T3 — THE DRAWER on the collections card: the session this person holds open, its float,
- * and the cash it should hold now (`liveExpectedCashPaise`, the close's own formula — D5). No
- * session open says so in words; a cashier with a drawer sees "counted at close, against this".
+ * and the cash it should hold now (`liveExpectedCashPaise`, the close's own formula — D5) — the
+ * latter only where the blind count allows it (OWNER RULING 2026-09-28, below). No session open
+ * says so in words.
  */
 async function drawerStats(ctx: DeskProviderCtx): Promise<DeskStat[]> {
   const open = await ctx.db.select().from(cashierSessions)
@@ -96,9 +97,18 @@ async function drawerStats(ctx: DeskProviderCtx): Promise<DeskStat[]> {
   // Three reads, NOT one snapshot (pass 2): a transaction here would be READ COMMITTED — each
   // SELECT its own snapshot — and would only add two round trips inside the 250 ms budget. A receipt
   // landing between the sums shows for one poll; the close's transaction is the figure of record.
+  const float: DeskStat = { key: "desk.billing.float", value: formatPaise(session.openingFloatPaise), href: "/billing/session" };
+  /*
+   * OWNER RULING 2026-09-28 — BLIND COUNT. Before the count (`open`) the expected figure is not on
+   * this card for the drawer's own holder: the stat is ABSENT, not blanked, so the /me/desk JSON
+   * carries nothing to read. A reader holding `billing.session.read` (a billing manager with her
+   * own drawer) still gets it, and so does everyone once the count is in (`closing`). See
+   * `mayReadExpectedCash` in sessions.ts.
+   */
+  if (!(await mayReadExpectedCash(ctx.db, ctx.reader, session))) return [float];
   const expected = await liveExpectedCashPaise(ctx.db, session);
   return [
-    { key: "desk.billing.float", value: formatPaise(session.openingFloatPaise), href: "/billing/session" },
+    float,
     { key: "desk.billing.expectedCash", value: formatPaise(expected), href: "/billing/session" },
   ];
 }

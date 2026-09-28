@@ -6,6 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { assertPaise } from "../tariff";
 import { BillingError } from "./errors";
 import { expectedCash, sumDenominations } from "./cash-math";
@@ -162,6 +163,34 @@ export async function liveExpectedCashPaise(exec: Db | Tx, session: Pick<Cashier
   const cashVouchers = await sumCashVouchersPaidPaise(exec, session.id);
   const changeGiven = await sumChangeGivenPaise(exec, session.id);
   return expectedCash(session.openingFloatPaise, cashTenders, cashVouchers, changeGiven);
+}
+
+/**
+ * ═══ OWNER RULING 2026-09-28 — BLIND COUNT ═══
+ *
+ * *"The cashier must never see her own drawer's EXPECTED cash before she has submitted her count —
+ * on any screen, card, API response or copilot answer. A supervisor / billing manager may still see
+ * it."* A count taken against a figure on the screen is not a count, it is a copy: the cashier who
+ * can read what the drawer should hold types that number, and a short drawer closes clean.
+ *
+ * So every surface that carries a LIVE expected figure asks THIS function first, and a `false`
+ * means the figure is not sent at all — hiding it in the UI would leave it readable in the JSON.
+ * Only WHO receives it and WHEN changes; `liveExpectedCashPaise` above is untouched.
+ *
+ *   - `open` is BEFORE the count. The figure goes only to a holder of `billing.session.read` — the
+ *     existing "oversight of cashier sessions somebody else owns" grant (`billing_manager`, `owner`),
+ *     which is what supervisor means here. No new permission.
+ *   - anything else (`closing`, `closed`) is AFTER the count was submitted; the close screen already
+ *     shows counted vs expected there, and so may everybody else.
+ *
+ * `viewer` is the person LOOKING (a desk's `reader`), never the drawer's owner as such.
+ */
+export const DRAWER_SUPERVISOR_PERMISSION = "billing.session.read";
+
+export async function mayReadExpectedCash(db: Db, viewer: Actor, session: Pick<CashierSessionRow, "status">): Promise<boolean> {
+  if (session.status !== "open") return true;
+  if (viewer.type !== "user") return false;
+  return hasPermission(db, viewer.id, DRAWER_SUPERVISOR_PERMISSION, "hospital");
 }
 
 /**
