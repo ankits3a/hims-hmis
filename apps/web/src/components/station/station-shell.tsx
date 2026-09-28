@@ -68,7 +68,7 @@ const TONE: Record<NonNullable<StationStat["tone"]>, string | undefined> = {
 };
 
 export function StationShell({
-  brand, stations, current, title, place, stats, statsLabel,
+  brand, stations, current, title, place, stats, statsLabel, laneHead = true, status,
   lane, list, listSummary, clocks, clocksSummary, clocksAlert = false,
   copilot, inHand = false, views, children,
 }: {
@@ -83,6 +83,14 @@ export function StationShell({
   /** The two or three numbers the station watches, shown in the lane while nobody is in hand. */
   stats: StationStat[];
   statsLabel: string;
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — the slip desk's board draws its lane with no station title and no
+   * standing numbers: the lane is the person in hand, or "Nobody in hand" and the day, and the
+   * screen's name sits over the centre. `false` leaves the lane to `lane` alone. Default unchanged.
+   */
+  laneHead?: boolean;
+  /** UX-AUDIT 2026-09-28 · BOARD — one status pill at the header's right, before the clock ("9 slips not yet photographed"). */
+  status?: React.ReactNode;
   /** The lane's content below the station's day: the patient, run or escalation in hand. */
   lane?: React.ReactNode;
   /** The right column's one list. */
@@ -176,6 +184,7 @@ export function StationShell({
           </div>
         )}
         <div className="st-grow" />
+        {status}
         <button
           type="button"
           className="st-btn st-listbtn"
@@ -196,16 +205,20 @@ export function StationShell({
       <ModeBanner />
       <div className="st-body">
         <aside className="st-lane" aria-label={t("station.lane")}>
-          <h1 className="st-title">{title}</h1>
-          <p className="st-place">{place}</p>
-          <ul className="st-stats" aria-label={statsLabel}>
-            {stats.map((s) => (
-              <li key={s.label}>
-                <span>{s.label}</span>
-                <b className="mo" style={s.tone === undefined ? undefined : { color: TONE[s.tone] }}>{s.value}</b>
-              </li>
-            ))}
-          </ul>
+          {laneHead && (
+            <>
+              <h1 className="st-title">{title}</h1>
+              <p className="st-place">{place}</p>
+              <ul className="st-stats" aria-label={statsLabel}>
+                {stats.map((s) => (
+                  <li key={s.label}>
+                    <span>{s.label}</span>
+                    <b className="mo" style={s.tone === undefined ? undefined : { color: TONE[s.tone] }}>{s.value}</b>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {lane}
         </aside>
         <main className="st-centre">{children}</main>

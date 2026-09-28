@@ -760,6 +760,8 @@ const slipCaptureRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/slips",
   component: SlipCapture,
+  // UX-AUDIT 2026-09-28 · BOARD — the slip desk wears the station shell, which owns the viewport.
+  staticData: { fullViewport: true },
 });
 
 const vitalsBayRoute = createRoute({
