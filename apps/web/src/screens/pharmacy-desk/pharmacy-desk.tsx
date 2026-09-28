@@ -271,6 +271,26 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     }
   }, [inHandId, qc, settle, t]);
 
+  /* GAP A3b — the whole bill on the owner's granted credit; billing re-checks the grant against this dispense and amount. */
+  const billOnCredit = useCallback(async (credit: { reason: string; approvalId: string }): Promise<void> => {
+    if (inHandId === null) return;
+    setBusy(true); setBillError(null);
+    try {
+      const d = await billDispense(inHandId, { tenders: [], credit }, keyFor("bill", inHandId));
+      moneyKeys.current.delete(`bill:${inHandId}`);
+      settle(d);
+      say(t("pharmacyDesk.log.billedOnCredit"));
+    } catch (e) {
+      answered("bill", inHandId, e);
+      const text = e instanceof ApiError ? pharmacyErrorText(e, t) : t("pharmacyDesk.bill.networkRetry");
+      setBillError(text);
+      say(text, "err");
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "dispense", inHandId] });
+    } finally {
+      setBusy(false);
+    }
+  }, [inHandId, qc, settle, t]);
+
   const takeMoney = useCallback(async (tenders: Tender[], changePaise: number): Promise<void> => {
     if (inHandId === null) return;
     setBusy(true); setBillError(null);
@@ -482,6 +502,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               error={billError}
               now={now}
               onTake={(tenders, change) => void takeMoney(tenders, change)}
+              onCredit={(credit) => void billOnCredit(credit)}
               onDraft={draft}
               onOpenDrawer={() => void navigate({ to: "/billing/session" })}
             />

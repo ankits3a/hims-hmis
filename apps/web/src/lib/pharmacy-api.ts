@@ -297,7 +297,8 @@ export async function previewBill(id: string): Promise<WirePricedDraft> {
   return api<WirePricedDraft>("GET", `/pharmacy/dispenses/${id}/bill/preview`);
 }
 export type Tender = { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string };
-export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number }, idempotencyKey: string): Promise<WireDispense> {
+/** GAP A3b — `credit`: the whole bill on the OWNER's granted `billing_credit_owner` approval (tenders empty). */
+export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string } }, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/bill`, input, idempotencyKey);
 }
 export async function handOverDispense(

@@ -10,7 +10,8 @@
     "theme": "Theme",
     "themeDark": "Dark",
     "themeLight": "Light",
-    "search": "Search — the cursor starts here"
+    "search": "Search — the cursor starts here",
+    "menu": "Menu"
   },
   "nav": {
     "formularyAdmin": "Formulary",
@@ -96,7 +97,6 @@
     "search": "/ — Search",
     "new": "F4 New patient",
     "confirm": "Ctrl+⏎ Confirm",
-    "release": "Esc Release the patient",
     "book": "F7 Appointments"
   },
   "login": {
@@ -255,7 +255,12 @@
     "unmergeNote": "Why must this be split?",
     "actFirst": "Act first (patient-safety) — review after",
     "unmergeExecute": "Execute unmerge",
-    "differs": "differs"
+    "differs": "differs",
+    "hitAge": "age {{age}}",
+    "hitDob": "DOB {{dob}}",
+    "change": "Change",
+    "alreadyPicked": "already {{side}}",
+    "sameRecord": "Record A and Record B are the same patient record. Pick two different records to merge."
   },
   "inbox": {
     "title": "Approvals",
@@ -633,6 +638,12 @@
     "newDate": "New date",
     "needsRebooking": "Needs rebooking",
     "backToList": "Back to list",
+    "bookingFor": "Booking for",
+    "changePatient": "Change",
+    "choosePatientFirst": "Choose the patient first — the times unlock once the desk knows who the booking is for.",
+    "slotBooked": "Booked",
+    "confirmTitle": "Confirm this booking",
+    "confirmBooking": "Confirm booking",
     "status": {
       "booked": "Booked",
       "checked_in": "Checked in",
@@ -1383,8 +1394,13 @@
     "short": "Short",
     "over": "Over",
     "cancel": "Cancel",
-    "confirmClose": "Confirm close",
-    "approvalPending": "Variance approval {{approvalId}} is pending — a billing manager other than you must decide it.",
+    "confirmClose": "Finish closing",
+    "confirmCloseHint": "After a billing manager approves the variance, press Finish closing to close this drawer. Until then it will not close.",
+    "notApprovedYet": "Not approved yet. A billing manager has to approve this variance before the drawer can close.",
+    "approvalPending": "Waiting for a billing manager to approve this variance. It has to be someone other than you.",
+    "approvalPendingSince": "Waiting since {{time}} for a billing manager to approve this variance. It has to be someone other than you.",
+    "approvalGranted": "A billing manager approved this variance. Finish closing to close the drawer.",
+    "approvalRejected": "A billing manager did not approve this variance. Withdraw the count and count the drawer again.",
     "lockout": "Your drawer is awaiting a variance approval. You cannot take money at the counter until a billing manager approves this variance, because every receipt and cash voucher payment needs an OPEN session.",
     "status": {
       "open": "OPEN",
@@ -3985,7 +4001,15 @@
     "opening_stock_refused": "Some rows were refused, so nothing was captured. Check the sheet, fix those rows and try again.",
     "invalid_adr": "The reaction report is incomplete or inconsistent — check the dates and the medicines",
     "unknown_adr": "No such reaction report",
-    "adr_closed": "This reaction report is closed"
+    "adr_closed": "This reaction report is closed",
+    "invalid_incident": "The incident report contradicts itself or is incomplete — check the category against near miss / error, and the line",
+    "unknown_incident": "No such medication incident",
+    "incident_closed": "This medication incident is closed",
+    "cold_chain_excursion_open": "This batch is on hold after a fridge temperature excursion — call the pharmacy in-charge",
+    "invalid_cold_chain": "The fridge reading or decision does not add up — check min, current and max, and decide every held batch",
+    "unknown_cold_unit": "No such fridge",
+    "unknown_excursion": "No such temperature excursion",
+    "excursion_closed": "This temperature excursion is already closed"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -4245,7 +4269,8 @@
       "handedOver": "handed over to {{who}}",
       "draftClaimOnly": "saved as a draft — your claim stays",
       "draftHeld": "saved as a draft — the strips are held until {{time}}",
-      "slipConfirmed": "confirmed the slip against the paper"
+      "slipConfirmed": "confirmed the slip against the paper",
+      "billedOnCredit": "billed on the owner's credit"
     },
     "status": {
       "claimed": "claimed",
@@ -4326,7 +4351,10 @@
       "upiRef": "UPI reference (UTR)",
       "upiRefHint": "12 digits on their phone's receipt",
       "cardRef": "card approval code",
-      "cardRefHint": "on the terminal's slip"
+      "cardRefHint": "on the terminal's slip",
+      "creditOpen": "On credit — only the owner approves",
+      "creditReason": "Why on credit (the owner reads this)",
+      "creditBill": "Bill {{amount}} on the owner's credit"
     },
     "handover": {
       "title": "hand it over",
@@ -4482,7 +4510,8 @@
     "menu": {
       "batch": "Batch & shelf",
       "qty": "Change the quantity",
-      "decline": "Decline this line"
+      "decline": "Decline this line",
+      "nearMiss": "Record a near miss"
     },
     "partialOwed": "giving {{n}} of {{of}} — say why under ⋯ before the tick counts",
     "partialSaid": "giving {{n}} of {{of}} — {{reason}}",
@@ -4626,6 +4655,14 @@
       "highAlertTitle": "High-alert medicine (NABH): check the drug, dose and patient twice before handing over.",
       "lasa": "LASA",
       "lasaTitle": "Look-alike / sound-alike: read the strip against the prescription twice."
+    },
+    "nearMiss": {
+      "title": "Near miss — {{drug}}",
+      "lead": "{{drug}}, line {{line}}. The patient and the item are taken from this line.",
+      "category": "NCC MERP category",
+      "blameFree": "Blame-free: the log shows your role. Only the in-charge and the MS see who reported.",
+      "save": "Record near miss",
+      "done": "{{no}} recorded. Thank you — a near miss logged is one not repeated."
     }
   },
   "pharmacyAuthorise": {
@@ -6162,7 +6199,14 @@
         "adrNo": "Report",
         "seriousness": "Seriousness",
         "onset": "Reaction started",
-        "suspect": "Suspected medicine"
+        "suspect": "Suspected medicine",
+        "incidentNo": "Incident",
+        "category": "NCC MERP category",
+        "stage": "Stage",
+        "excursionNo": "Excursion",
+        "fridge": "Fridge",
+        "heldBatches": "Batches on hold",
+        "slot": "Reading due"
       },
       "copilot": {
         "tag": "Office copilot · drafted, not done",
@@ -6566,6 +6610,42 @@
           "why": "Every suspected adverse drug reaction is reported to PvPI (NABH MOM). A non-serious one has no 15-day clock but still goes.",
           "pri": "Open the ADR register",
           "who": "Pharmacist in charge or the medical superintendent"
+        },
+        "incident_review_overdue": {
+          "title": "{{no}} — harmful medication error not reviewed in 24 h",
+          "sub": "NCC MERP {{category}} · not yet reviewed",
+          "act": "Review",
+          "head": "Review the medication incident",
+          "why": "An error at NCC MERP E or above reached the patient and may have harmed them. It is reviewed — root cause and action taken — within 24 hours.",
+          "pri": "Open the incident log",
+          "who": "Pharmacist in charge or the medical superintendent"
+        },
+        "incident_review": {
+          "title": "{{no}} — medication incident to review",
+          "sub": "NCC MERP {{category}} · not yet reviewed",
+          "act": "Review",
+          "head": "Review the medication incident",
+          "why": "Every medication error and near miss is reviewed for its root cause and the action taken (NABH MOM). A near miss is the cheapest lesson the pharmacy gets.",
+          "pri": "Open the incident log",
+          "who": "Pharmacist in charge or the medical superintendent"
+        },
+        "cold_excursion_open": {
+          "title": "{{no}} — fridge {{label}} went out of range; {{batches}} cold batches on hold",
+          "sub": "{{store}} · the held stock does not leave until it is decided",
+          "act": "Decide",
+          "head": "Decide the held cold stock",
+          "why": "A reading outside the fridge's range (2–8 °C unless set otherwise) holds every cold batch that was in that store. Release each against the product's stability data, or write it off (D&C Rules: store as the label directs).",
+          "pri": "Open the fridge log",
+          "who": "Pharmacist in charge or the materials head"
+        },
+        "cold_reading_missed": {
+          "title": "{{label}} — the {{slot}} reading was missed",
+          "sub": "{{store}} · read the fridge now and note why it was late",
+          "act": "Read now",
+          "head": "Read the fridge",
+          "why": "Fridges are read at 09:00 and 17:00 (NABH MOM: the cold chain is monitored and documented). A gap in the log is a gap in the proof that the stock was kept cold.",
+          "pri": "Open the fridge log",
+          "who": "Pharmacist, aide or storekeeper"
         }
       }
     },
@@ -7766,6 +7846,175 @@
         "history": "Relevant history (pregnancy, liver or kidney disease, alcohol …)",
         "save": "Record reaction",
         "saveHint": "Recording writes the allergy. Sending to PvPI is a separate step."
+      }
+    },
+    "incidents": {
+      "title": "Medication errors and near misses",
+      "lead_one": "Newest first. {{count}} is not yet reviewed.",
+      "lead_other": "Newest first. {{count}} are not yet reviewed.",
+      "record": "Record an incident",
+      "export": "Export CSV",
+      "empty": "No medication error or near miss has been recorded.",
+      "recorded": "{{no}} recorded.",
+      "blameFree": "Blame-free: the log shows the reporter's role. Only the pharmacist in charge and the medical superintendent see who reported; the export never names anyone.",
+      "patientHidden": "Sealed record",
+      "reporterNamed": "{{name}} ({{role}})",
+      "category": "category {{c}}",
+      "line": "line {{n}}",
+      "state": {
+        "closed": "Closed",
+        "reviewed": "Reviewed",
+        "late": "Not reviewed · {{hours}} h",
+        "toReview": "To review"
+      },
+      "kind": {
+        "near_miss": "Near miss",
+        "error": "Error"
+      },
+      "kindHint": {
+        "near_miss": "Near miss — caught before it reached the patient (A–B)",
+        "error": "Error — it reached the patient (C–I)"
+      },
+      "merp": {
+        "A": "A — circumstances that could cause an error",
+        "B": "B — error occurred, did not reach the patient",
+        "C": "C — reached the patient, no harm",
+        "D": "D — reached the patient, needed monitoring",
+        "E": "E — temporary harm, needed intervention",
+        "F": "F — temporary harm, hospitalisation",
+        "G": "G — permanent harm",
+        "H": "H — intervention to sustain life",
+        "I": "I — contributed to death"
+      },
+      "stage": {
+        "prescribing": "Prescribing",
+        "transcribing": "Transcribing",
+        "dispensing": "Dispensing",
+        "administration": "Administration",
+        "monitoring": "Monitoring"
+      },
+      "type": {
+        "wrong_drug": "Wrong drug",
+        "wrong_strength": "Wrong strength",
+        "wrong_dose": "Wrong dose",
+        "wrong_quantity": "Wrong quantity",
+        "wrong_patient": "Wrong patient",
+        "wrong_route": "Wrong route",
+        "expired": "Expired drug",
+        "lasa_mixup": "LASA mix-up",
+        "omission": "Omission",
+        "other": "Other"
+      },
+      "factor": {
+        "lasa": "Look-alike / sound-alike name",
+        "look_alike_packaging": "Look-alike packaging",
+        "illegible_rx": "Illegible prescription",
+        "workload": "Workload",
+        "interruption": "Interruption",
+        "other": "Other"
+      },
+      "indicator": {
+        "title": "Errors per 1,000 dispensed lines",
+        "hint": "By month. Dispensed lines are counter hand-overs plus walk-in sale lines.",
+        "cell": "{{errors}} errors · {{near}} near misses · {{lines}} lines"
+      },
+      "f": {
+        "category": "NCC MERP category",
+        "stage": "Stage",
+        "type": "What went wrong",
+        "factors": "Contributing factors",
+        "item": "Item",
+        "dispense": "Dispense",
+        "patient": "Patient",
+        "reporter": "Reported by",
+        "recorded": "Recorded"
+      },
+      "ev": {
+        "reviewed": "Reviewed — cause: {{cause}}; action: {{action}}",
+        "closed": "Closed",
+        "closedNote": "Closed: {{note}}"
+      },
+      "act": {
+        "cause": "Root cause",
+        "action": "Action taken",
+        "review": "Record review",
+        "revise": "Revise review",
+        "closeNote": "Closing note (optional)",
+        "close": "Close incident"
+      },
+      "form": {
+        "kind": "Did it reach the patient?",
+        "what": "What happened",
+        "patient": "Patient (optional)",
+        "patientFind": "UHID, name or phone",
+        "find": "Find",
+        "change": "Change",
+        "save": "Record incident",
+        "saveHint": "Your role is shown on the log, not your name."
+      }
+    },
+    "coldChain": {
+      "title": "Fridge temperature log",
+      "lead": "Read at 09:00 and 17:00 IST. A reading outside the range holds the store's cold stock until the in-charge decides it.",
+      "addUnit": "Add a fridge",
+      "editUnit": "Edit",
+      "empty": "No fridge is registered yet.",
+      "range": "{{low}}–{{high}} °C",
+      "inactive": "Inactive",
+      "excursionOpen_one": "{{no}} open · {{count}} batch on hold",
+      "excursionOpen_other": "{{no}} open · {{count}} batches on hold",
+      "slot": {
+        "done": "read",
+        "due": "due now",
+        "missed": "missed",
+        "upcoming": "later",
+        "not_due": "not due"
+      },
+      "slotLabel": "{{slot}} · {{state}}",
+      "last": "Last read {{when}} · {{c}} °C (min {{min}}, max {{max}})",
+      "never": "Not read yet",
+      "record": "Record reading",
+      "save": "Save reading",
+      "recorded": "Reading saved.",
+      "recordedOpened_one": "Out of range — {{no}} opened; {{count}} batch is on hold. Call the pharmacy in-charge.",
+      "recordedOpened_other": "Out of range — {{no}} opened; {{count}} batches are on hold. Call the pharmacy in-charge.",
+      "notOrdered": "Min, current and max must read low to high — check which is which on the thermometer.",
+      "willHold": "This reading is outside the fridge's range. Saving it holds every cold batch in this store until the pharmacy in-charge decides it.",
+      "history": "Readings · {{label}} · last 7 days",
+      "historyEmpty": "No readings in the last 7 days.",
+      "outOfRange": "out of range",
+      "saveUnit": "Save fridge",
+      "f": {
+        "current": "Now (°C)",
+        "min": "Min since reset (°C)",
+        "max": "Max since reset (°C)",
+        "note": "Note (optional)",
+        "takenAt": "Taken",
+        "by": "By",
+        "store": "Store",
+        "label": "Fridge name (as on the door)",
+        "low": "Lowest allowed (°C)",
+        "high": "Highest allowed (°C)",
+        "active": "In use"
+      },
+      "decision": {
+        "release": "Released",
+        "write_off": "Written off"
+      },
+      "ex": {
+        "title": "Temperature excursions",
+        "none": "No excursion is open.",
+        "open": "Open",
+        "closedPill": "Closed",
+        "opened": "Opened {{when}} · read {{c}} °C (min {{min}}, max {{max}}) against {{low}}–{{high}} °C",
+        "noBatches": "No cold stock was on hand in the store — close it with a note.",
+        "release": "Release",
+        "writeOff": "Write off",
+        "reason": "Why it is still good — the product's stability data",
+        "note": "Closing note (optional)",
+        "close": "Close excursion",
+        "callInCharge": "The held stock does not leave until the pharmacy in-charge decides it.",
+        "closed": "Closed {{when}} by {{by}}"
       }
     }
   },
