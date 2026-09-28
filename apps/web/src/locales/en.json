@@ -3115,7 +3115,7 @@
       "notLicensed": "not licensed",
       "bedside": "At the bedside",
       "bedsidePlaceholder": "Ward 3 · bed 12",
-      "bedsideHint": "Ward and bed — the machine goes to the patient. Leave empty to bring the patient to the department.",
+      "bedsideHint": "Ward and bed — the machine goes to the patient.",
       "clearBed": "Bring to the department instead"
     },
     "study": {
