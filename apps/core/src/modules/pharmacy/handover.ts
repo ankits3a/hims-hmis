@@ -12,6 +12,7 @@ import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsBy
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
 import { REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { assertNoColdChainHold } from "./cold-chain";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { prepareControlledHandover } from "./controlled-dispense";
 import type { ControlledHandoverInput } from "./controlled-dispense";
@@ -93,6 +94,9 @@ export async function handOverDispense(
   // wherever a line carrying it can be found — including one written before the guard above existed.
   // PHARMACY P6: "may not dispense" is now "has no current licence for" (`assertControlledLinesAllowed`).
   await assertControlledLinesAllowed(db, lines.map((l) => ({ lineIdx: l.lineIdx, drug: (l.rxLine as RxLine).drug, scheduleFlag: l.scheduleFlag, ndpsClass: l.ndpsClass })), now);
+  // STAGE D3 — a batch a fridge excursion holds (or one written off after it) does not leave until the
+  // pharmacy in-charge has decided it: the store's frozen list, checked at the last gate.
+  await assertNoColdChainHold(db, d.storeResourceId, lines.map((l) => ({ lineIdx: l.lineIdx, batchId: l.batchId })));
 
   const visible = await getPatient(db, actor, d.patientId);
   if (visible === null) throw new PharmacyError("unknown_dispense", `dispense ${dispenseId} not found`);

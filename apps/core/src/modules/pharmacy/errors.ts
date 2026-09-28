@@ -13,6 +13,15 @@ export const PHARMACY_ERROR_CODES = [
   "invalid_incident",
   "unknown_incident",
   "incident_closed",
+  /**
+   * STAGE D3 — the fridge log: a batch held by an open cold-chain excursion (or written off after one) may not
+   * leave; a reading, fridge or close that does not make sense; a fridge or excursion not on file; a closed one.
+   */
+  "cold_chain_excursion_open",
+  "invalid_cold_chain",
+  "unknown_cold_unit",
+  "unknown_excursion",
+  "excursion_closed",
   // ── sale items and the price rule (T2) ──
   "unknown_item",
   "not_a_drug",
@@ -254,6 +263,11 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invalid_incident: 400,
   unknown_incident: 404,
   incident_closed: 409,
+  cold_chain_excursion_open: 409,
+  invalid_cold_chain: 400,
+  unknown_cold_unit: 404,
+  unknown_excursion: 404,
+  excursion_closed: 409,
   interaction_block: 409,
   qty_required: 400,
   store_missing: 409,
