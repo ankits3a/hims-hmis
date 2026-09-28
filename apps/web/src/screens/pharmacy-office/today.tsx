@@ -98,6 +98,8 @@ export function routeOf(row: WireNeedRow, which: "pri" | "sec"): Go | null {
       return pri ? { to: "view", view: "returns", open: { kind: "plan" } } : { to: "view", view: "returns", open: { kind: "expiry", preset: row.kind === "expiry" ? "90" : "expired" } };
     case "grn_qc": case "opening_qc": return pri ? { to: "route", path: "/materials/grn" } : null;
     case "pharmacist_trial": case "pharmacist_expiring": case "pharmacist_lapsed": return pri ? { to: "route", path: "/pharmacy/pharmacists" } : null;
+    // Stage D1 — an ADR not yet sent to PvPI: the register is a page of Law.
+    case "adr_pvpi_overdue": case "adr_pvpi_serious": case "adr_pvpi": return pri ? { to: "view", view: "law" } : null;
     default:
       if (row.kind.startsWith("retail_licence_")) return pri ? { to: "route", path: "/pharmacy/retail-licence" } : null;
       if (row.kind.startsWith("cabinet_")) return pri ? { to: "view", view: "law", page: "controlled" } : null;

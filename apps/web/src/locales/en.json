@@ -3972,7 +3972,10 @@
     "messages_stopped": "This patient asked for no messages. Ask them first, turn messages back on, then ask about reminders.",
     "invalid_message_setting": "That is not in the shape the provider issues: the phone needs 10–12 digits with its STD code.",
     "opening_stock_unreadable": "That is not the opening-stock template: a column is missing or misspelt, or the sheet is empty or longer than 2,000 rows. Download the template.",
-    "opening_stock_refused": "Some rows were refused, so nothing was captured. Check the sheet, fix those rows and try again."
+    "opening_stock_refused": "Some rows were refused, so nothing was captured. Check the sheet, fix those rows and try again.",
+    "invalid_adr": "The reaction report is incomplete or inconsistent — check the dates and the medicines",
+    "unknown_adr": "No such reaction report",
+    "adr_closed": "This reaction report is closed"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -6145,7 +6148,11 @@
         "returnable": "Returnable (drafted)",
         "toDestroy": "Write-off (BMW)",
         "challan": "Challan",
-        "grns": "GRNs"
+        "grns": "GRNs",
+        "adrNo": "Report",
+        "seriousness": "Seriousness",
+        "onset": "Reaction started",
+        "suspect": "Suspected medicine"
       },
       "copilot": {
         "tag": "Office copilot · drafted, not done",
@@ -6522,6 +6529,33 @@
           "pri": "Open the GRN desk",
           "who": "Pharmacist (materials.grn.qc)",
           "clock": "Opening stock QC"
+        },
+        "adr_pvpi_overdue": {
+          "title": "{{no}} — serious reaction not sent to PvPI",
+          "sub": "{{drugs}} · reported {{days}} days ago",
+          "act": "Send to PvPI",
+          "head": "Send the ADR report to PvPI",
+          "why": "PvPI asks for a serious adverse drug reaction within 15 days of the hospital knowing of it. This one is past that.",
+          "pri": "Open the ADR register",
+          "who": "Pharmacist in charge or the medical superintendent"
+        },
+        "adr_pvpi_serious": {
+          "title": "{{no}} — serious reaction to send to PvPI",
+          "sub": "{{drugs}} · reported {{days}} days ago",
+          "act": "Send to PvPI",
+          "head": "Send the ADR report to PvPI",
+          "why": "PvPI asks for a serious adverse drug reaction within 15 days. Print the form, send it through the AMC, the ADR PvPI app or e-mail, and record the send.",
+          "pri": "Open the ADR register",
+          "who": "Pharmacist in charge or the medical superintendent"
+        },
+        "adr_pvpi": {
+          "title": "{{no}} — reaction not yet sent to PvPI",
+          "sub": "{{drugs}} · reported {{days}} days ago",
+          "act": "Send to PvPI",
+          "head": "Send the ADR report to PvPI",
+          "why": "Every suspected adverse drug reaction is reported to PvPI (NABH MOM). A non-serious one has no 15-day clock but still goes.",
+          "pri": "Open the ADR register",
+          "who": "Pharmacist in charge or the medical superintendent"
         }
       }
     },
@@ -7613,6 +7647,116 @@
       "contact": "Pharmacy phone for reminders",
       "contactHint": "A mobile, or a landline with its STD code.",
       "namesOff": "Messages name no medicine. (The owner may allow names later; Schedule X, NDPS and H1 are never named.)"
+    },
+    "adr": {
+      "title": "Adverse drug reactions",
+      "lead_one": "Reported reactions, newest first. {{count}} is not yet sent to PvPI.",
+      "lead_other": "Reported reactions, newest first. {{count}} are not yet sent to PvPI.",
+      "report": "Report a reaction",
+      "empty": "No adverse drug reaction has been reported.",
+      "recorded": "{{no}} recorded. The suspected medicines are on the patient's allergy list.",
+      "patientHidden": "Sealed record",
+      "onset": "onset {{date}}",
+      "print": "Print PvPI form",
+      "allergyNote": "Each suspected medicine was written to the patient's allergy list when this was reported (✓ = picked from the formulary, so every brand of it is caught).",
+      "state": {
+        "closed": "Closed",
+        "sent": "Sent {{date}}",
+        "late": "{{days}} d late to PvPI",
+        "due": "{{days}} d left to send",
+        "toSend": "Not sent to PvPI"
+      },
+      "seriousness": {
+        "death": "Death",
+        "life_threatening": "Life threatening",
+        "hospitalisation": "Hospitalisation",
+        "disability": "Disability",
+        "congenital_anomaly": "Congenital anomaly",
+        "other_medically_important": "Other medically important",
+        "not_serious": "Not serious"
+      },
+      "outcome": {
+        "recovered": "Recovered",
+        "recovering": "Recovering",
+        "not_recovered": "Not recovered",
+        "fatal": "Fatal",
+        "unknown": "Unknown"
+      },
+      "challenge": {
+        "yes": "Yes",
+        "no": "No",
+        "unknown": "Unknown",
+        "na": "Not applicable"
+      },
+      "causality": {
+        "certain": "Certain",
+        "probable": "Probable / likely",
+        "possible": "Possible",
+        "unlikely": "Unlikely",
+        "conditional": "Conditional / unclassified",
+        "unclassifiable": "Unassessable / unclassifiable"
+      },
+      "channel": {
+        "amc": "AMC (ADR monitoring centre)",
+        "pvpi_app": "ADR PvPI app",
+        "email": "E-mail"
+      },
+      "f": {
+        "onset": "Reaction started",
+        "recovery": "Recovered on",
+        "seriousness": "Seriousness",
+        "outcome": "Outcome",
+        "dechallenge": "Abated when stopped",
+        "rechallenge": "Reappeared when restarted",
+        "reporter": "Reporter ID",
+        "causality": "WHO-UMC causality",
+        "drug": "Suspected medicine",
+        "batch": "Batch",
+        "dose": "Dose",
+        "dates": "Given"
+      },
+      "ev": {
+        "causality": "Causality assessed: {{grade}}",
+        "sent": "Sent to PvPI {{date}} by {{channel}} · ref {{ref}}",
+        "closed": "Closed",
+        "closedNote": "Closed: {{note}}"
+      },
+      "act": {
+        "causality": "WHO-UMC causality",
+        "save": "Record",
+        "sentOn": "Sent on",
+        "channel": "How",
+        "ref": "PvPI / AMC reference",
+        "sent": "Mark sent to PvPI",
+        "closeWhy": "Why close without sending",
+        "closeNote": "Closing note (optional)",
+        "close": "Close report"
+      },
+      "form": {
+        "patient": "Patient",
+        "patientFind": "UHID, name or phone",
+        "find": "Find",
+        "change": "Change",
+        "suspects": "Suspected medicines",
+        "suspectsHint": "Pick the moiety from the formulary so every brand of it is blocked on the next prescription. Each suspect is added to the patient's allergy list.",
+        "moiety": "Moiety (formulary)",
+        "moietyFind": "Type 2 letters",
+        "brand": "Brand or name as given",
+        "route": "Route",
+        "frequency": "Frequency",
+        "started": "Started",
+        "stopped": "Stopped",
+        "addSuspect": "Add another medicine",
+        "reaction": "The reaction",
+        "describe": "Describe the reaction or problem",
+        "more": "More (optional)",
+        "weight": "Weight (kg)",
+        "concomitants": "Other medicines taken (one per line)",
+        "tests": "Relevant tests with dates",
+        "history": "Relevant history (pregnancy, liver or kidney disease, alcohol …)",
+        "save": "Record reaction",
+        "saveHint": "Recording writes the allergy. Sending to PvPI is a separate step."
+      }
     }
   },
   "abdm": {
