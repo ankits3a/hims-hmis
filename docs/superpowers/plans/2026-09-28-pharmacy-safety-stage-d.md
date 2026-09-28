@@ -398,6 +398,9 @@ and the refusal says who to appoint.
   suspect. Under `pharmacy.adr.record` only. The patient and suspect stay editable on the sheet.
 - D5 HTTP e2e (deferral closed): `test/pharmacy-antimicrobial.e2e.test.ts` — the three routes' refusals, ask →
   steward reads → `/approvals` grant → verify, and the self-approval refusal over HTTP.
+- Browser walk (stub API, Chromium, 1920/1440/1280/1024/768/390): the four pages and the stewardship editor show no
+  document overflow at any width. The ADR register at 390 scrolled sideways inside `.pof-page` (431 > 390): the grid's
+  single column below `lg` was `auto`, so a truncated suspect line set its width. Fixed with `grid-cols-[minmax(0,1fr)]`.
 
 ## Order
 

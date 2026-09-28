@@ -78,7 +78,8 @@ export function AdrRegisterView(): React.ReactElement {
       {notice !== null && <p role="status" className="text-sm text-green-700" data-testid="adr-notice">{notice}</p>}
       {q.data !== undefined && items.length === 0 && <p className="text-sm text-muted-foreground" data-testid="adr-empty">{t("pharmacyOffice.adr.empty")}</p>}
       {items.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          {/* One column below lg is minmax(0,1fr), not `auto`: a truncated suspect line must not size the page wider than a phone. */}
           <ul className="divide-y rounded border" data-testid="adr-list">
             {items.map((r) => {
               const pill = statePill(r, t);
