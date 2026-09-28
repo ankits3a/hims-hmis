@@ -206,6 +206,11 @@ export type RegisterItemInput = {
   shelfLifeDays?: number | null;
   abcClass?: string | null;
   vedClass?: string | null;
+  /** GAP CLOSURE A2 — the marketer on the pack, the usual supplier's lead time, and the NABH safety flags. */
+  manufacturer?: string | null;
+  leadTimeDays?: number | null;
+  lasa?: boolean;
+  highAlert?: boolean;
   /** Additional units BEYOND the base. The base row is created by this function, never passed in. */
   uoms?: { uom: string; toBaseMultiplier: number; isPurchaseUom?: boolean; isIssueUom?: boolean }[];
   barcodes?: { code: string; packUom: string; vendorId?: string | null }[];
@@ -243,6 +248,8 @@ export async function registerItem(
       storageClass: input.storageClass ?? "ambient",
       shelfLifeDays: input.shelfLifeDays ?? null,
       abcClass: input.abcClass ?? null, vedClass: input.vedClass ?? null,
+      manufacturer: input.manufacturer ?? null, leadTimeDays: input.leadTimeDays ?? null,
+      lasa: input.lasa ?? false, highAlert: input.highAlert ?? false,
       createdBy: actor.id, updatedBy: actor.id,
     });
   } catch (e) {
@@ -295,6 +302,7 @@ export async function updateItem(
     hsnCode?: string | null; gstRateBps?: number | null; serialTracked?: boolean;
     storageClass?: string; shelfLifeDays?: number | null;
     abcClass?: string | null; vedClass?: string | null; active?: boolean;
+    manufacturer?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
   },
 ): Promise<void> {
   const existing = await requireItem(tx, itemId);

@@ -27,6 +27,8 @@ export type WireItem = {
   baseUom: string; batchTracked: boolean; serialTracked: boolean;
   storageClass: string; shelfLifeDays: number | null;
   abcClass: string | null; vedClass: string | null; active: boolean;
+  /** GAP CLOSURE A2 — the marketer, the usual lead time, and the NABH safety flags. Absent from an older server. */
+  manufacturer?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
   /** PHARMACY P6 — set once the item was merged into another (it is then inactive for ever). */
   mergedIntoItemId?: string | null;
 };
@@ -36,7 +38,11 @@ export type WireItemUom = {
   isPurchaseUom: boolean; isIssueUom: boolean;
 };
 
-export type WireItemDetail = WireItem & { uoms: WireItemUom[]; barcodes: { id: string; code: string; packUom: string }[] };
+export type WireItemDetail = WireItem & {
+  uoms: WireItemUom[]; barcodes: { id: string; code: string; packUom: string }[];
+  /** GAP CLOSURE A2 — a drug's formulary medicine and its schedule (the catalogue owns it). Absent from an older server. */
+  medicineName?: string | null; scheduleFlag?: string | null;
+};
 
 /** MASKED. See the header — `accountNo` is `"••••9012"`, and there is no unmasked shape here. */
 export type WireVendor = {
@@ -112,6 +118,7 @@ export type CreateItemInput = {
   code: string; name: string; class: string; baseUom: string; batchTracked: boolean;
   formularyMedicineId?: string | null; hsnCode?: string | null; gstRateBps?: number | null;
   shelfLifeDays?: number | null; storageClass?: string;
+  manufacturer?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
   uoms?: { uom: string; toBaseMultiplier: number }[];
 };
 

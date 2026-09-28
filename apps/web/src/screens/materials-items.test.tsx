@@ -146,4 +146,41 @@ describe("MaterialsItems", () => {
     expect(sent.batchTracked).toBe(false);
     expect(await screen.findByRole("status")).toHaveTextContent("GLV-M registered");
   });
+
+  /**
+   * GAP CLOSURE A2 — the edit panel. It patches the item's own fields in one PATCH, with an empty
+   * manufacturer sent as null. The drug's schedule is the formulary's: without `formulary.manage` it is
+   * shown and cannot be changed, and no formulary PATCH is sent.
+   */
+  it("edits HSN, storage, manufacturer, lead time and the LASA / high-alert flags; the schedule is read-only without formulary.manage", async () => {
+    mockRoutes({
+      "GET /api/materials/items": { status: 200, body: { items: ITEMS } },
+      "GET /api/materials/items/it-1": {
+        status: 200,
+        body: { item: { ...ITEMS[0], uoms: [], barcodes: [], manufacturer: null, leadTimeDays: null, lasa: false, highAlert: false, medicineName: "Crocin 500", scheduleFlag: "OTC" } },
+      },
+      "PATCH /api/materials/items/it-1": { status: 200, body: { ok: true } },
+    });
+    renderWithProviders(<MaterialsItems />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit CROC500" }));
+    const hsn = await screen.findByLabelText("HSN code");
+    await waitFor(() => { expect(hsn).toHaveValue("30049099"); });
+    expect(screen.getByLabelText("Schedule of Crocin 500")).toBeDisabled();
+    expect(screen.getByText(/only someone who manages the formulary can change it/)).toBeInTheDocument();
+
+    await user.clear(hsn);
+    await user.type(hsn, "30049011");
+    await user.selectOptions(screen.getByLabelText("Storage"), "cold_2_8");
+    await user.type(screen.getByLabelText("Supplier lead time (days)"), "5");
+    await user.click(screen.getByLabelText("Look-alike / sound-alike (LASA)"));
+    await user.click(screen.getByLabelText("High-alert medicine"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("CROC500 saved.")).toBeInTheDocument();
+    expect(bodiesOf("PATCH", "/materials/items/it-1")).toEqual([{
+      hsnCode: "30049011", storageClass: "cold_2_8", shelfLifeDays: 1095, manufacturer: null, leadTimeDays: 5, lasa: true, highAlert: true,
+    }]);
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/formulary/medicines/"))).toBe(false);
+  });
 });
