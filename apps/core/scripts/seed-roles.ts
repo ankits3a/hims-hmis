@@ -455,7 +455,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // own; `orders.place/read/cancel` because the claim PLACES the `medication` order (D1, the
       // `lab_reception` shape); and the four billing strings `lab_reception` holds for the same
       // reason — a department counter that bills at the window issues the invoice itself (S3).
-      // NOT `billing.credit.extend`: credit holds for IPD/TPA are 16d's.
+      // `billing.credit.extend` came later (gap A3b, below), as the right to ASK the owner — never to extend.
       "pharmacy.dispense.place",
       "pharmacy.dispense.read",
       "pharmacy.dispense.scheduled",
@@ -485,6 +485,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",
       "billing.refund.request",
+      // GAP A3b (owner ruling 2026-09-28: "nobody can issue credit except owner", whole hospital) — this
+      // is the right to ASK the owner (`POST /billing/credit-requests`) and to bill against the owner's
+      // GRANTED approval for that exact amount. It extends no credit on its own: `issueInvoice` refuses
+      // every credit remainder without the owner's grant.
+      "billing.credit.extend",
       // PHARMACY P19 — the walk-in counter: sell, and register the customer who has no UHID yet.
       // `sellRetail` asserts `patients.register` itself, and only on the branch that registers.
       "pharmacy.retail.sell",
