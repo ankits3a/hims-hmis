@@ -5,6 +5,7 @@ import {
   checkInStudy, fetchWorklist, radiologyErrorText, scheduleStudy, walkIn,
 } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
+import { RadiologyStation } from "./radiology-station";
 
 /**
  * PLAN 18a T9 — **IMAGING RECEPTION: the desk that books the scan and checks the patient in.**
@@ -47,9 +48,49 @@ export function RadiologyReception(): React.ReactElement {
     onError: (e) => { setError(radiologyErrorText(e)); },
   });
 
+  const rows = q.data?.rows ?? [];
+  /**
+   * PLAN 18-S RS1 — the desk's queue moves into the station's right column with the same rows and
+   * the same three acts per row. The 352px column cannot hold the old five-cell table (the walk at
+   * 1440 clipped Walk in and Check in off the edge), so each row stacks: who, what, then the acts.
+   * The booking inputs and what check-in opened stay in the centre, which is the work.
+   */
+  const queue = (
+    <ul className="space-y-2" data-testid="radiology-desk-queue">
+      {rows.map((r) => (
+        <li key={r.studyId} data-testid={`row-${r.studyId}`} className="rounded border bg-card p-2 text-sm">
+          <div className="flex justify-between gap-2">
+            <b>{r.patientName}</b>
+            <span className="mo text-xs">{r.accessionNo}</span>
+          </div>
+          <div className="text-xs text-muted-foreground">{r.studyTypeCode} · {r.status}</div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            <Button size="sm" onClick={() => { book.mutate(r.studyId); }}>{t("radiology.reception.book")}</Button>
+            <Button size="sm" variant="outline" onClick={() => { walk.mutate(r.studyId); }}>
+              {t("radiology.reception.walkIn")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { arrive.mutate(r.studyId); }}>
+              {t("radiology.reception.checkIn")}
+            </Button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+
+
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">{t("radiology.reception.title")}</h1>
+    <RadiologyStation
+      station="desk"
+      title={t("radiology.reception.title")}
+      place={t("radiology.station.deskPlace")}
+      stats={[
+        { label: t("radiology.station.onList"), value: rows.length },
+        { label: t("radiology.station.stat"), value: rows.filter((r) => r.priority === "stat").length, tone: "danger" },
+      ]}
+      list={queue}
+    >
+    <div className="space-y-4">
 
       <div className="flex flex-wrap gap-2 items-end">
         <label className="flex flex-col text-sm">
@@ -82,28 +123,7 @@ export function RadiologyReception(): React.ReactElement {
           </div>
         )
         : null}
-
-      <table className="w-full text-sm">
-        <tbody>
-          {(q.data?.rows ?? []).map((r) => (
-            <tr key={r.studyId} data-testid={`row-${r.studyId}`}>
-              <td>{r.accessionNo}</td>
-              <td>{r.patientName}</td>
-              <td>{r.studyTypeCode}</td>
-              <td>{r.status}</td>
-              <td className="flex gap-1">
-                <Button onClick={() => { book.mutate(r.studyId); }}>{t("radiology.reception.book")}</Button>
-                <Button variant="outline" onClick={() => { walk.mutate(r.studyId); }}>
-                  {t("radiology.reception.walkIn")}
-                </Button>
-                <Button variant="outline" onClick={() => { arrive.mutate(r.studyId); }}>
-                  {t("radiology.reception.checkIn")}
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
+    </RadiologyStation>
   );
 }

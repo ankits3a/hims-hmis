@@ -112,6 +112,33 @@ describe("the bill rail and the hand-over (PD-6)", () => {
     expect(screen.getByTestId("desk-ticker")).not.toHaveTextContent("₹50.00");
   });
 
+  /**
+   * GAP A3b — owner ruling 2026-09-28: nobody but the owner gives credit. The desk asks for the exact bill on
+   * this dispense, waits for the owner, and bills with no tender and no drawer once the grant is in.
+   */
+  it("GAP A3b — credit: the desk asks the OWNER for the whole bill, and bills on the grant with no tender and no drawer", async () => {
+    let current = dispense("d1", "picked");
+    mockRoutes(base(() => current, null, {
+      "POST /api/billing/credit-requests": { status: 201, body: { approvalId: "ap-9" } },
+      "GET /api/billing/credit-requests/ap-9": { status: 200, body: { approvalId: "ap-9", status: "granted", amountPaise: 4500, draftId: "d1", decisionNote: "ok" } },
+      "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("d1", "billed"); return { status: 201, body: current }; },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    expect(await within(rail).findByTestId("desk-payable")).toHaveTextContent("₹45.00");
+    await userEvent.click(within(rail).getByTestId("desk-credit-open"));
+    expect(within(rail).getByTestId("owner-credit-ask")).toBeDisabled(); // the owner reads a reason
+    await userEvent.type(within(rail).getByTestId("desk-credit-reason"), "regular patient, pays Friday");
+    await userEvent.click(within(rail).getByTestId("owner-credit-ask"));
+    await waitFor(() => expect(calls("POST", "/billing/credit-requests").map((c) => c.body)).toEqual([
+      { draftId: "d1", patientId: "p", amountPaise: 4500, reason: "regular patient, pays Friday" },
+    ]));
+    await userEvent.click(await within(rail).findByTestId("desk-credit-bill"));
+    await waitFor(() => expect(calls("POST", "/d1/bill").map((c) => c.body)).toEqual([
+      { tenders: [], credit: { reason: "regular patient, pays Friday", approvalId: "ap-9" } },
+    ]));
+  });
+
   it("LOOSE-MRP — the bill rail shows ONE row per drug: 20 tablets of a ₹35.50/15 strip is 1 strip + 5 tablet at ₹47.30, never a ₹0.10 row", async () => {
     // The server folds the pack residue into its drug (`bill.ts` displayDraft); the rail words it.
     const merged: WirePricedDraft = {
