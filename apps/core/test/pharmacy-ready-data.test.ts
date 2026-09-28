@@ -3,7 +3,7 @@ import { withTx } from "../src/kernel/db/client";
 import { formularyMedicines, stockBatches, vendors } from "../src/kernel/db/schema";
 import { grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { addMedicine, saltIdsByNames } from "../src/modules/formulary";
-import { availableQty, balances, listItems, releaseReservation, reserveStock } from "../src/modules/materials";
+import { availableQty, balances, getGrn, listItems, releaseReservation, reserveStock } from "../src/modules/materials";
 import { getSaleItem, shelfLocationsFor } from "../src/modules/pharmacy";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { issueRx, line, seedPharmacyBase } from "./helpers/pharmacy";
@@ -18,6 +18,7 @@ import { applyShelf, planShelf } from "../scripts/load-pharmacy-shelf";
 import { TRIAL_VENDOR_CODE, applyTrialStock, planTrialStock, requireTrialConsent } from "../scripts/load-trial-stock";
 import { TRIAL_WIPE_REF_TYPE, applyWipe, planWipe } from "../scripts/wipe-trial-stock";
 import { applyOpeningStock, expiryOf, namesFor, planOpeningStock, rupeesToPaise } from "../scripts/import-opening-stock";
+import { captureOpeningStock, openingAuthority, readOpeningSheet } from "../src/modules/pharmacy/opening-stock";
 import type { Bundle, BundleBrand } from "../scripts/build-pharmacy-starter-list";
 import type { Person } from "../scripts/pharmacy-shelf-common";
 import type { PharmacyFixture } from "./helpers/pharmacy";
@@ -285,6 +286,48 @@ describe("pharmacy-ready scripts", () => {
     expect(again.grns.every((g) => g.state === "posted")).toBe(true);
     expect((await applyOpeningStock(db, { storekeeper: head, qc: pharmacist, head }, again, now)).posted).toBe(0);
     expect(await availableQty(db, fx.storeId, fx.item.crocin, now)).toBe(30);
+  });
+
+  it("opening stock from the SCREEN: the sheet is judged whole, captured as GRNs by the uploader and left for the pharmacist's QC; the script picks them up without capturing twice", async () => {
+    expect(() => readOpeningSheet("brand,batch\nDolo,1\n")).toThrow(expect.objectContaining({ code: "opening_stock_unreadable" }));
+    expect(() => readOpeningSheet("brand,batch,expiry,mrp_per_pack,pack_size,packs,shelf\n")).toThrow(/unknown column\(s\): shelf/);
+    await loadShelf();
+    const now = new Date();
+    const y = now.getUTCFullYear() + 1;
+    const sheet = (rows: string[]): string => `brand,batch,expiry,mrp_per_pack,pack_size,packs,rack,supplier_name,purchase_rate_per_pack\n${rows.join("\n")}\n`;
+    const bad = sheet([`Crocn 500,C1,08/${String(y)},40.00,10,3,,,`]);
+    await expect(captureOpeningStock(db, head, await planOpeningStock(db, readOpeningSheet(bad), bad, now), now))
+      .rejects.toMatchObject({ code: "opening_stock_refused" });
+
+    const good = sheet([`Crocin 500,C1,08/${String(y)},40.00,10,3,R-9,,28.00`, `Brufen 400,B1,08/${String(y)},45.00,15,2,,,`]);
+    const plan = await planOpeningStock(db, readOpeningSheet(good), good, now);
+    // The sheet needs a new pack size (strip15) and the OPENING STOCK vendor: the uploader is told at Check.
+    expect(await openingAuthority(db, head, plan)).toEqual([
+      { permission: "materials.items.manage", why: "new_pack_sizes", held: false },
+      { permission: "materials.vendors.manage", why: "opening_vendor", held: false },
+      { permission: "pharmacy.sale_items.manage", why: "racks", held: true },
+    ]);
+    await expect(captureOpeningStock(db, head, plan, now)).rejects.toMatchObject({
+      code: "permission_denied", detail: { lacking: ["materials.items.manage", "materials.vendors.manage"] },
+    });
+    for (const p of ["materials.items.manage", "materials.vendors.manage"]) await grantPermissionToRole(db, fx.registry, "pharmacy", p);
+
+    const done = await captureOpeningStock(db, head, await planOpeningStock(db, readOpeningSheet(good), good, now), now);
+    expect(done).toMatchObject({ alreadyOnBooks: 0, uomsAdded: 1, vendorCreated: true, racksSet: 1, racksLeft: 0 });
+    expect(done.captured).toHaveLength(1);
+    // Captured is paperwork: nothing is on the shelf until the pharmacist passes it.
+    expect((await getGrn(db, done.captured[0]!.grnId))?.status).toBe("gate_qc");
+    expect(await availableQty(db, fx.storeId, fx.item.crocin, now)).toBe(0);
+
+    const again = await planOpeningStock(db, readOpeningSheet(good), good, now);
+    expect(again.grns.map((g) => g.state)).toEqual(["captured"]);
+    expect((await captureOpeningStock(db, head, again, now))).toMatchObject({ captured: [], alreadyOnBooks: 1 });
+
+    // The engineer's door QCs and posts what the screen captured, as the pharmacist, and captures nothing new.
+    const posted = await applyOpeningStock(db, { storekeeper: head, qc: pharmacist, head }, await planOpeningStock(db, readOpeningSheet(good), good, now), now);
+    expect(posted).toMatchObject({ posted: 1, unitsPosted: 60, uomsAdded: 0 });
+    expect(await availableQty(db, fx.storeId, fx.item.crocin, now)).toBe(30);
+    expect((await planOpeningStock(db, readOpeningSheet(good), good, now)).grns.map((g) => g.state)).toEqual(["posted"]);
   });
 
   it("the fixture's permissions are what the scripts would demand of real people", async () => {

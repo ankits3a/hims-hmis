@@ -54,51 +54,8 @@ export async function resolvePerson(db: Db, username: string | undefined, permis
 
 // ═══════════════════════════════════ CSV ═══════════════════════════════════
 
-export type CsvRow = { line: number; cells: Record<string, string> };
-export type CsvFile = { header: string[]; rows: CsvRow[]; comments: string[] };
-
-/** One physical line into fields, RFC 4180 quoting ("" is a quote inside a quoted field). */
-export function splitCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let quoted = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i]!;
-    if (quoted) {
-      if (ch === "\"") {
-        if (line[i + 1] === "\"") { cur += "\""; i += 1; } else quoted = false;
-      } else cur += ch;
-      continue;
-    }
-    if (ch === "\"") { quoted = true; continue; }
-    if (ch === ",") { out.push(cur.trim()); cur = ""; continue; }
-    cur += ch;
-  }
-  out.push(cur.trim());
-  return out;
-}
-
-/**
- * A file whose lines starting `#` are COMMENTS (the starter list's provenance header lives there),
- * whose first other line is the header, and whose blank lines are skipped. Line numbers are what a
- * text editor shows, so an error message can be followed with a finger.
- */
-export function parseCsv(text: string): CsvFile {
-  const lines = text.replace(/^﻿/, "").split(/\r?\n/);
-  const comments: string[] = [];
-  let header: string[] | undefined;
-  const rows: CsvRow[] = [];
-  lines.forEach((raw, idx) => {
-    if (raw.trim() === "") return;
-    if (raw.trimStart().startsWith("#")) { comments.push(raw.trimStart().replace(/^#\s?/, "")); return; }
-    if (header === undefined) { header = splitCsvLine(raw).map((h) => h.toLowerCase()); return; }
-    const values = splitCsvLine(raw);
-    const cells: Record<string, string> = {};
-    header.forEach((h, i) => { cells[h] = values[i] ?? ""; });
-    rows.push({ line: idx + 1, cells });
-  });
-  return { header: header ?? [], rows, comments };
-}
+export { parseCsv, splitCsvLine } from "../src/modules/pharmacy/csv";
+export type { CsvFile, CsvRow } from "../src/modules/pharmacy/csv";
 
 function csvField(v: string | number | null | undefined): string {
   const s = v === null || v === undefined ? "" : String(v);

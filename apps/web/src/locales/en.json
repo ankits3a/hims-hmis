@@ -2059,6 +2059,35 @@
       "label": "Purchase order",
       "none": "No order",
       "prefilled": "Lines filled from {{poNo}} — what is still owed."
+    },
+    "opening": {
+      "title": "Opening stock sheet",
+      "template": "Download the template",
+      "explain": "The pharmacist's count of the real shelf, one row per brand and batch. Check reads every row and writes nothing. Capture books it as goods receipts — one per supplier — for the pharmacist to QC and post below. Nothing is on the shelf until they do.",
+      "file": "Sheet (CSV)",
+      "check": "Check",
+      "capture": "Capture as GRNs",
+      "summary": "{{file}}: {{rows}} rows · {{refused}} refused · {{units}} units",
+      "refusedWhole": "Fix the refused rows and check again — the sheet is received whole or not at all.",
+      "needs_new_pack_sizes": "This sheet adds pack sizes to items. That needs {{permission}} — ask the materials head to upload it.",
+      "needs_opening_vendor": "This sheet creates the OPENING STOCK supplier. That needs {{permission}} — ask the materials head to upload it.",
+      "racksLeft_one": "{{count}} rack label will not be set: that needs the pharmacist in charge (Pharmacy sale items).",
+      "racksLeft_other": "{{count}} rack labels will not be set: that needs the pharmacist in charge (Pharmacy sale items).",
+      "zeroCost_one": "{{count}} row has no purchase rate — it is received at cost ₹0 and shows as such in valuation.",
+      "zeroCost_other": "{{count}} rows have no purchase rate — they are received at cost ₹0 and show as such in valuation.",
+      "state_captured": "{{challan}} is already captured as {{grnNo}} — waiting for QC below.",
+      "state_awaiting_approval": "{{challan}} ({{grnNo}}) waits for the near-expiry approval in Approvals.",
+      "state_approved": "{{challan}} ({{grnNo}}) is approved — post it below.",
+      "state_posted": "{{challan}} ({{grnNo}}) is already on the shelf.",
+      "state_rejected": "{{challan}} ({{grnNo}}) was rejected at approval.",
+      "line": "Line",
+      "packs": "Packs",
+      "newPack": "new pack size",
+      "ok": "ready",
+      "captured_one": "{{count}} GRN captured — open it, run QC and post. Nothing is on the shelf yet.",
+      "captured_other": "{{count}} GRNs captured — open each, run QC and post. Nothing is on the shelf yet.",
+      "capturedLine": "{{lines}} lines, awaiting QC",
+      "capturedNear": "{{lines}} short-dated lines — after QC, request the near-expiry approval"
     }
   },
   "otList": {
@@ -3916,7 +3945,9 @@
     "controlled_act_invalid": "This act at the cabinet is incomplete — it is not the cabinet's, or the Controller of Drugs' officer or approval is missing.",
     "item_merged": "This item was merged into another — use the item it was merged into.",
     "messages_stopped": "This patient asked for no messages. Ask them first, turn messages back on, then ask about reminders.",
-    "invalid_message_setting": "That is not in the shape the provider issues: the phone needs 10–12 digits with its STD code."
+    "invalid_message_setting": "That is not in the shape the provider issues: the phone needs 10–12 digits with its STD code.",
+    "opening_stock_unreadable": "That is not the opening-stock template: a column is missing or misspelt, or the sheet is empty or longer than 2,000 rows. Download the template.",
+    "opening_stock_refused": "Some rows were refused, so nothing was captured. Check the sheet, fix those rows and try again."
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",

@@ -6,6 +6,7 @@ import { PharmacyDoctorController } from "./pharmacy-doctor.controller";
 import { PharmacyItemsController } from "./pharmacy-items.controller";
 import { PharmacyMessagesController } from "./pharmacy-messages.controller";
 import { PharmacyOfficeController } from "./pharmacy-office.controller";
+import { PharmacyOpeningStockController } from "./pharmacy-opening-stock.controller";
 import { PharmacyPharmacistsController } from "./pharmacy-pharmacists.controller";
 import { PharmacyReportsController } from "./pharmacy-reports.controller";
 import { PharmacyTallyController } from "./pharmacy-tally.controller";
@@ -32,7 +33,7 @@ export function registerPharmacyPrinting(): () => void {
  * retail counter; P20 the paper-dispense entry; Consult v2 the doctor's read of the shelf; parity
  * P1 the desk's paper; P6 (patient messages) the desk's consent chip and the office's Messages side.
  */
-@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController, PharmacyControlledController, PharmacyMessagesController] })
+@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController, PharmacyControlledController, PharmacyMessagesController, PharmacyOpeningStockController] })
 export class PharmacyModule implements OnModuleInit {
   onModuleInit(): void {
     registerPharmacyPrinting();

@@ -279,4 +279,57 @@ describe("MaterialsGrn", () => {
     expect(screen.getByText(/tr-1/)).toBeInTheDocument();
     expect(screen.getByText("tr-1 · 1 short line")).toBeInTheDocument();
   });
+
+  /**
+   * GAP CLOSURE A1 — the opening-stock sheet. A refused row keeps Capture disabled and says why in the
+   * server's words; a clean sheet is captured, and the result says plainly that NOTHING is on the shelf
+   * until the pharmacist runs QC and posts — capture is paperwork, not receipt.
+   */
+  it("opening stock: Check judges every row, a refused row keeps Capture off, and a clean sheet is captured for QC", async () => {
+    const row = (over: Partial<Record<string, unknown>> = {}) => ({
+      line: 2, brand: "Dolo 650", itemCode: "DOLO650", itemName: "Dolo 650 tablet", batch: "D1", expiryDate: "2027-08-31",
+      packs: 12, packSize: 15, uom: "strip15", newUom: false, near: false, mrpPaise: 3360, costPerBasePaise: 160, rack: "A1", reasons: [],
+      ...over,
+    });
+    const check = (rows: unknown[], refusals: number, grnState = "new") => ({
+      fileHash: "abc1234567", rows, refusals, units: 180, newUoms: 0, needsVendor: false, zeroCost: 0, racks: 1,
+      grns: [{ challanNo: "OPENING/abc1234567", near: false, lines: 1, state: grnState, grnNo: grnState === "new" ? null : "GRN2609280001" }],
+      authority: [{ permission: "pharmacy.sale_items.manage", why: "racks", held: true }],
+    });
+    let checks = 0;
+    const replies = [
+      check([row({ reasons: ['not on the shelf: "Dolo 65O" — did you mean: Dolo 650 tablet'] })], 1),
+      check([row()], 0),
+      check([row()], 0, "captured"),
+    ];
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/pharmacy/opening-stock/check": () => ({ status: 200, body: replies[Math.min(checks++, replies.length - 1)] }),
+      "POST /api/pharmacy/opening-stock/capture": {
+        status: 201,
+        body: { captured: [{ grnId: "g-9", grnNo: "GRN2609280001", challanNo: "OPENING/abc1234567", near: false, lines: 1 }], alreadyOnBooks: 0, uomsAdded: 0, vendorCreated: false, racksSet: 1, racksLeft: 0 },
+      },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    const user = userEvent.setup();
+
+    const csv = "brand,batch,expiry,mrp_per_pack,pack_size,packs\nDolo 650,D1,08/2027,33.60,15,12\n";
+    await user.upload(await screen.findByLabelText("Sheet (CSV)"), new File([csv], "shelf.csv", { type: "text/csv" }));
+    const capture = screen.getByRole("button", { name: "Capture as GRNs" });
+    expect(capture).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    expect(await screen.findByText(/did you mean: Dolo 650 tablet/)).toBeInTheDocument();
+    expect(screen.getByText(/received whole or not at all/)).toBeInTheDocument();
+    expect(capture).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    await waitFor(() => { expect(capture).toBeEnabled(); });
+    await user.click(capture);
+    expect(await screen.findByText(/1 GRN captured — open it, run QC and post\. Nothing is on the shelf yet\./)).toBeInTheDocument();
+    expect(bodiesOf("POST", "/pharmacy/opening-stock/capture")).toEqual([{ content: csv }]);
+    // After capture the re-check reports the GRN on the books, and Capture is off — the same sheet twice captures nothing.
+    expect(await screen.findByText(/already captured as GRN2609280001/)).toBeInTheDocument();
+    expect(capture).toBeDisabled();
+  });
 });
