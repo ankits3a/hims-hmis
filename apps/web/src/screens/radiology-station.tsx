@@ -18,12 +18,14 @@ import type { StationLink, StationStat } from "../components/station/station-she
  * the department turns green.
  */
 
-export type RadiologyStationKey = "desk" | "worklist" | "safety";
+export type RadiologyStationKey = "desk" | "worklist" | "portable" | "safety";
 
 /** The browsable stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
 export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: RadiologyStationKey; labelKey: string })[] = [
   { key: "desk", to: "/radiology/reception", labelKey: "nav.radiologyReception", permission: "radiology.schedule" },
   { key: "worklist", to: "/radiology/worklist", labelKey: "nav.radiologyWorklist", permission: "radiology.worklist.read" },
+  /** 18-S RS2b — the technologist's round of the beds the trolley goes to. */
+  { key: "portable", to: "/radiology/portable", labelKey: "nav.radiologyPortable", permission: "radiology.acquire" },
   { key: "safety", to: "/radiology/radiation-safety", labelKey: "nav.radiationSafety", permission: "aerb.registers.read" },
 ];
 

@@ -122,6 +122,8 @@ export const RADIOLOGY_ERROR_CODES = [
   "unknown_administration",
   /** ── 18a-iii T3 — a bedside location on a machine that does not leave the department ── */
   "device_not_portable",
+  /** ── 18-S RS2b — an order's bedside location that is blank or longer than the column's rule ── */
+  "invalid_bedside_location",
   /**
    * ── 18a-iii T4 — an outside film recorded at the acquisition console ──
    *
@@ -198,6 +200,7 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   vial_expired: 422,
   unknown_administration: 404,
   device_not_portable: 422,
+  invalid_bedside_location: 422,
   outside_study_only: 422,
 
   second_factor_required: 403,
