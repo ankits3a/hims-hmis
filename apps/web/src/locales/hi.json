@@ -633,6 +633,12 @@
     "newDate": "नई तिथि",
     "needsRebooking": "पुनर्बुकिंग आवश्यक",
     "backToList": "सूची पर वापस जाएँ",
+    "bookingFor": "किसके लिए बुकिंग",
+    "changePatient": "बदलें",
+    "choosePatientFirst": "पहले मरीज़ चुनें — मरीज़ तय होते ही समय खुल जाएँगे।",
+    "slotBooked": "बुक",
+    "confirmTitle": "यह बुकिंग पक्की करें",
+    "confirmBooking": "बुकिंग पक्की करें",
     "status": {
       "booked": "बुक",
       "checked_in": "चेक-इन हो गया",

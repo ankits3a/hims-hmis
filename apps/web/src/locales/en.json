@@ -633,6 +633,12 @@
     "newDate": "New date",
     "needsRebooking": "Needs rebooking",
     "backToList": "Back to list",
+    "bookingFor": "Booking for",
+    "changePatient": "Change",
+    "choosePatientFirst": "Choose the patient first — the times unlock once the desk knows who the booking is for.",
+    "slotBooked": "Booked",
+    "confirmTitle": "Confirm this booking",
+    "confirmBooking": "Confirm booking",
     "status": {
       "booked": "Booked",
       "checked_in": "Checked in",

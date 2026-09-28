@@ -26,7 +26,21 @@ describe("AgentDock", () => {
     const box = screen.getByTestId("agent-ask");
     expect(box.style.width).not.toBe("300px");
     expect(box.style.width).toMatch(/^clamp\(/);
-    expect((box.closest("form") as HTMLFormElement).style.minWidth).toMatch(/^0(px)?$/);
+  });
+
+  /*
+    UX-AUDIT 2026-09-28 — THE FIX ABOVE WAS HALF A FIX. At 390 on /opd/appointments the ask box
+    still ended at x=401 and its F2 keycap at x=431: the page scrolled sideways by 41 px. The box
+    did shrink to its 120 px floor, but its FORM was `flexShrink: 1; minWidth: 0`, so the row
+    squeezed the form to 40 px and the 120 px input spilled out of it over the LOG button. The
+    ticker is the thing that is meant to give way (it ellipsises); the form is already sized by
+    the box's clamp and must not be squeezed below it.
+  */
+  it("the ask form is never squeezed below its own box — the ticker gives way instead (UX-AUDIT 2026-09-28, 431 px at 390)", () => {
+    render(<AgentDock answer={null} log={[]} onAsk={() => undefined} placeholder="ask" idle="idle" />);
+    const form = screen.getByTestId("agent-ask").closest("form") as HTMLFormElement;
+    expect(form.style.flexShrink).toBe("0");
+    expect(screen.getByTestId("agent-ticker").style.minWidth).toMatch(/^0(px)?$/);
   });
 
   it("says what it can see before it is asked — an agent with no stated scope invites the wrong question", () => {
