@@ -298,6 +298,46 @@ The role is held in addition to the person's clinical role. A steward may not ap
 **Census row:** RED until at least one user holds `antimicrobial_steward`. Until then a restricted line cannot leave,
 and the refusal says who to appoint.
 
+**As built (2026-09-28, migration 0144):**
+- Two columns on `formulary_medicines`: `aware_category` (null / Access / Watch / Reserve, CHECK) and
+  `antimicrobial_restricted` (boolean, default false). On the PRODUCT, not the moiety: AWaRe classifies combinations
+  as their own entries (ceftazidime is Watch, ceftazidime-avibactam Reserve) and some moieties by route (fosfomycin
+  and minocycline IV Reserve, oral Watch).
+- DECIDED: no binding table. The approval is the kernel's row: type `pharmacy_restricted_antimicrobial`, subject
+  `{ pharmacy_dispense_moieties, "<dispenseId>|<sorted salt ids>" }`, the patient. The gate re-reads the rows at the
+  act and checks type, subject and patient on each (the `assertGrantedApproval` shape). The kernel row already holds
+  requester, requested-at, decider and note, and a decided row is never edited. Bound to the MOIETY SET, so a generic
+  substitution needs no second approval.
+- The cited list is `modules/formulary/aware.ts` (WHO/MHP/HPS/EML/2023.04): 23 Access, 32 Watch (the 4 carbapenems among
+  them), 28 Reserve entries by moiety set and route; `seed:pharmacy` writes it onto every systemic product whose
+  class is still null, and only ever raises `antimicrobial_restricted`. The Indian market's irrational FDCs stay null.
+- DECIDED: the type is `urgent`, 240 min SLA (the other urgent types'), no act-first; approver `antimicrobial_steward`.
+- DECIDED — self-approval: the kernel's `requester_approver` pair refuses the requester (the pharmacist), not the
+  prescriber, and the approval knows no prescriber. So the gate refuses at execute a grant whose decider is the
+  prescribing doctor's user (`antimicrobial_self_approval`); the counter asks again and another steward decides.
+  `kernel/**` untouched. The inbox card tells a steward who wrote the prescription.
+- The gate `assertStewardApprovals` in `verifyDispense` (after the four books) and `handOverDispense` (a product
+  restricted after verify is caught at the window). Codes `antimicrobial_steward_approval_required` (names the drug
+  and the authorisation sheet), `antimicrobial_steward_not_appointed`, `antimicrobial_self_approval`.
+- DECIDED — retail: a restricted antimicrobial is REFUSED at the walk-in counter (`restricted_antimicrobial_walk_in`),
+  not gated: the steward reviews an indication this hospital's doctor wrote, and an outside paper prescription has
+  neither — the Schedule X / NDPS reasoning. A paper dispense (P20) is recorded, as for the cold-chain hold.
+- Desk: the line says where it stands with the steward; ⋯ "Ask the antimicrobial steward" (indication, culture
+  sent, planned days — pre-filled from the prescription's course) files the approval
+  (`POST /pharmacy/dispenses/:id/lines/:idx/steward`, `pharmacy.dispense.place`, a registered pharmacist); the state is
+  `GET /pharmacy/dispenses/:id/steward`. The decision is made in /approvals; the card shows the prescription line
+  from `GET /pharmacy/steward-requests/:approvalId` under `pharmacy.antimicrobial.approve`.
+- Role `antimicrobial_steward` (held with a clinical role): `pharmacy.antimicrobial.approve`, `approvals.requests.read`,
+  `approvals.requests.decide`. README prose, not a fifth table.
+- `/formulary/admin` gains the stewardship editor (AWaRe class, "Restricted — needs steward approval") through the
+  medicine PATCH under `formulary.manage`; `GET /formulary/medicines/:id/stewardship` reads one product.
+- Census `antimicrobial_steward_appointed` (G4, RED until an active holder). Office LAW (read under
+  `pharmacy.licences.manage`): `steward_not_appointed` red tier 0 while restricted products exist; `steward_approval_waiting`
+  amber per ask pending over 4 h.
+- Deferred: pre-filling the ask from the CDS AMSP card's `micro_order`/`max_days` (the desk has no CDS payload today);
+  an ask from a line that is no longer editable (verified, billed) has a server path but no desk control; an HTTP e2e
+  of the three routes.
+
 ## Order
 
 D1 → D2 → D3 → D5 → D4.

@@ -3,6 +3,7 @@ import { hasPermission } from "../../kernel/auth/permissions";
 import { grnLines, vendors } from "../../kernel/db/schema";
 import { MaterialsError, listGrns } from "../materials";
 import { ADR_MANAGE_PERMISSION, ADR_SERIOUS_REPORT_DAYS, adrAwaitingPvpi, isSerious } from "./adr";
+import { stewardToday } from "./antimicrobial";
 import { COLDCHAIN_MANAGE_PERMISSION, COLDCHAIN_RECORD_PERMISSION, coldChainToday } from "./cold-chain";
 import { istDateOf } from "./config";
 import { INCIDENT_REVIEW_HOURS, INCIDENT_REVIEW_PERMISSION, incidentsAwaitingReview, isHarmCategory } from "./incidents";
@@ -13,6 +14,7 @@ import { officePay, officeReturns, officeToday } from "./office";
 import { listPharmacists } from "./pharmacists";
 import { retailLicenceState } from "./retail";
 import type { AdrAwaitingPvpi } from "./adr";
+import type { StewardToday } from "./antimicrobial";
 import type { ColdChainToday } from "./cold-chain";
 import type { IncidentAwaitingReview } from "./incidents";
 import type { ControlledToday } from "./controlled-office";
@@ -60,11 +62,12 @@ import type { Db } from "../../kernel/db/client";
  * ═══ THE RANKING ═══
  *
  * `tier` then `key` then `id`. Law lapsed or missing, a serious ADR past PvPI's 15 days, a harmful (E–I)
- * medication incident unreviewed past 24 hours, and a fridge excursion still open (0); law lapsing —
+ * medication incident unreviewed past 24 hours, a fridge excursion still open, and no antimicrobial steward appointed
+ * while restricted products exist (0); law lapsing —
  * the retail licence, a cabinet licence, a pharmacist's registration, a serious ADR inside its 15 days (1,
  * fewest days first); money deadlines — overdue payables and MSME
  * bills due this week (2); what waits on this person's decision — a PO, a payment run, a recall, any other
- * unreviewed medication incident (3); held
+ * unreviewed medication incident, a steward approval waiting past 4 hours (3); held
  * bills, overdue orders, the cabinet's day, a fridge reading missed today (4); credit notes and write-offs to post, other bills due, an ADR
  * that is not serious still to send (5);
  * expiry and write-offs with the MS (6); pharmacists on a trial number (7); GRNs waiting for QC (8);
@@ -90,7 +93,7 @@ export type NeedFact = { k: string; raw?: true; v: string | number; as: "text" |
 export type NeedRef = {
   kind:
     | "po" | "purchasePlan" | "grnDesk" | "bill" | "run" | "payRun" | "return" | "writeoff" | "recall" | "returnPlan"
-    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr" | "incident" | "coldUnit" | "coldExcursion";
+    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr" | "incident" | "coldUnit" | "coldExcursion" | "steward";
   id: string | null;
 };
 
@@ -140,6 +143,11 @@ export type NeedInputs = {
   incidents: IncidentAwaitingReview[] | null;
   /** Stage D3 — open fridge excursions and today's missed readings; read under `pharmacy.coldchain.record` or `.manage`. */
   cold: ColdChainToday | null;
+  /**
+   * Stage D5 — the antimicrobial steward: nobody appointed, and approvals waiting past 4 h; read under
+   * `pharmacy.licences.manage`, the in-charge's grant for what the law needs in place before a drug may leave.
+   */
+  steward: StewardToday | null;
 };
 
 const DAY = 86_400_000;
@@ -407,6 +415,20 @@ export function buildNeeds(input: NeedInputs, now: Date): OfficeNeeds {
     }
   }
 
+  // ── LAW: the antimicrobial steward (stage D5) — nobody appointed red at tier 0, an ask waiting past 4 h amber ──
+  const steward = input.steward;
+  if (steward !== null) {
+    if (steward.notAppointed) {
+      push({ id: "law:steward", source: "LAW", kind: "steward_not_appointed", params: {}, clock: { code: "missing", tone: "rd" }, ref: { kind: "steward", id: null }, tier: 0, key: 1 });
+    }
+    for (const w of steward.waiting) {
+      const waited = minutesSince(w.requestedAt, now);
+      push({ id: `law:steward:${w.approvalId}`, source: "LAW", kind: "steward_approval_waiting", params: { no: w.dispenseNo ?? "", hours: Math.floor(waited / 60) },
+        clock: { code: "waited", n: waited, tone: "gd" }, ref: { kind: "steward", id: w.approvalId }, tier: 3, key: -waited,
+        facts: [{ k: "dispenseNo", v: w.dispenseNo ?? "", as: "text" }] });
+    }
+  }
+
   // ── STOCK: the fridges (stage D3) — an open excursion red at tier 0, a reading missed today amber ──
   const cold = input.cold;
   if (cold !== null) {
@@ -430,7 +452,7 @@ export function buildNeeds(input: NeedInputs, now: Date): OfficeNeeds {
       case "PAY": return input.pay !== null;
       case "RETURN": return input.returns !== null;
       case "STOCK": return input.returns !== null || input.grns !== null || input.cold !== null;
-      case "LAW": return input.retail !== null || input.cabinet !== null || input.adr !== null || input.incidents !== null;
+      case "LAW": return input.retail !== null || input.cabinet !== null || input.adr !== null || input.incidents !== null || input.steward !== null;
       case "PEOPLE": return input.pharmacists !== null;
     }
     return false;
@@ -480,10 +502,10 @@ async function grnsAtQc(db: Db): Promise<GrnAtQc[]> {
 
 /** `GET /pharmacy/office/needs` — every side this person may read, federated and ranked. */
 export async function officeNeeds(db: Db, actor: Actor, now: Date = new Date()): Promise<OfficeNeeds> {
-  const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null, cold: null };
+  const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null, cold: null, steward: null };
   if (actor.type !== "user") return buildNeeds(empty, now);
   const id = actor.id;
-  const [buy, pay, returns, grns, retail, cabinet, pharmacists, adr, incidents, cold] = await Promise.all([
+  const [buy, pay, returns, grns, retail, cabinet, pharmacists, adr, incidents, cold, steward] = await Promise.all([
     side(db, id, ["materials.po.raise"], () => officeToday(db, actor, now)),
     side(db, id, ["materials.bills.manage"], () => officePay(db, actor, now)),
     side(db, id, ["materials.returns.manage"], () => officeReturns(db, actor, now)),
@@ -494,6 +516,7 @@ export async function officeNeeds(db: Db, actor: Actor, now: Date = new Date()):
     side(db, id, [ADR_MANAGE_PERMISSION], () => adrAwaitingPvpi(db, actor)),
     side(db, id, [INCIDENT_REVIEW_PERMISSION], () => incidentsAwaitingReview(db, actor)),
     side(db, id, [COLDCHAIN_RECORD_PERMISSION, COLDCHAIN_MANAGE_PERMISSION], () => coldChainToday(db, actor, now)),
+    side(db, id, [LICENCES_PERMISSION], () => stewardToday(db, now)),
   ]);
-  return buildNeeds({ buy, pay, returns, grns, retail, cabinet, pharmacists, adr, incidents, cold }, now);
+  return buildNeeds({ buy, pay, returns, grns, retail, cabinet, pharmacists, adr, incidents, cold, steward }, now);
 }

@@ -452,9 +452,20 @@
         "label": "Hand over an unpaid lab report",
         "ask": "Release {{patient}}'s report with {{amount}} still unpaid",
         "explain": "The report leaves before the money — that is credit, and only you approve it. The amount stays owed."
+      },
+      "pharmacy_restricted_antimicrobial": {
+        "label": "Restricted antimicrobial",
+        "ask": "Approve a restricted antimicrobial for {{patient}}",
+        "explain": "The pharmacy may hand this Reserve or restricted antibiotic over for this prescription. You may not approve a prescription you wrote yourself."
       }
     },
-    "openRun": "Open the run"
+    "openRun": "Open the run",
+    "steward": {
+      "line": "{{brand}} — {{dose}} {{frequency}}",
+      "days": "{{n}} days",
+      "prescriber": "Prescribed by {{name}}",
+      "ownPrescription": "You wrote this prescription — another steward must approve it; a grant from you will not let it leave the pharmacy."
+    }
   },
   "opd": {
     "labels": {
@@ -878,6 +889,20 @@
       "ownMoietyAsk": "None of these — is {{name}} itself the moiety?",
       "ownMoietyCaution": "Only if {{name}} is not a salt, ester or hydrate of another moiety. A salt recorded as a moiety splits every check that should group it with its base.",
       "findIt": "Find {{name}}"
+    },
+    "stewardship": {
+      "title": "Antimicrobial stewardship",
+      "intro": "Set a product's WHO AWaRe class, and whether dispensing it needs the antimicrobial steward's approval. Reserve products and carbapenems start restricted; the hospital may restrict more.",
+      "searchLabel": "Find a product",
+      "searchPlaceholder": "Type a brand or moiety, e.g. meropenem",
+      "aware": "WHO AWaRe class",
+      "awareNone": "Not classified",
+      "Access": "Access",
+      "Watch": "Watch",
+      "Reserve": "Reserve",
+      "restricted": "Restricted — needs steward approval",
+      "save": "Save",
+      "saved": "Saved {{name}}"
     }
   },
   "opdConsult": {
@@ -4027,7 +4052,11 @@
     "invalid_cold_chain": "The fridge reading or decision does not add up — check min, current and max, and decide every held batch",
     "unknown_cold_unit": "No such fridge",
     "unknown_excursion": "No such temperature excursion",
-    "excursion_closed": "This temperature excursion is already closed"
+    "excursion_closed": "This temperature excursion is already closed",
+    "antimicrobial_steward_approval_required": "This is a restricted antimicrobial — ask the antimicrobial steward from the line's ⋯ menu and wait for the approval",
+    "antimicrobial_steward_not_appointed": "Nobody is appointed antimicrobial steward — a restricted antimicrobial cannot leave until the hospital appoints one",
+    "antimicrobial_self_approval": "The prescribing doctor approved their own prescription — ask the antimicrobial steward again so another steward decides",
+    "restricted_antimicrobial_walk_in": "A restricted antimicrobial is not sold at the walk-in counter — only at the OPD counter, on this hospital's prescription, with the steward's approval"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -4681,6 +4710,22 @@
       "blameFree": "Blame-free: the log shows your role. Only the in-charge and the MS see who reported.",
       "save": "Record near miss",
       "done": "{{no}} recorded. Thank you — a near miss logged is one not repeated."
+    },
+    "steward": {
+      "ask": "Ask the antimicrobial steward",
+      "why": "{{drug}} is a restricted antimicrobial (WHO AWaRe Reserve or hospital policy). The steward decides in Approvals; it leaves only once approved.",
+      "indication": "Indication",
+      "indicationPlaceholder": "e.g. culture-proven ESBL urinary infection",
+      "cultureSent": "A culture was sent",
+      "plannedDays": "Planned days",
+      "send": "Send to the steward",
+      "incomplete": "Say the indication and a planned course of 1 to 90 days",
+      "needed": "{{drug}} is a restricted antimicrobial — ask the antimicrobial steward from ⋯ before the check.",
+      "waiting": "Waiting for the antimicrobial steward on {{drug}} — keep serving the next patient; the ticket stays yours.",
+      "granted": "The antimicrobial steward approved {{drug}}: {{note}}",
+      "rejected": "The antimicrobial steward did not approve {{drug}}: {{note}} — decline the line, or send the patient back to the doctor.",
+      "selfApproved": "{{drug}} was approved by the prescribing doctor themselves — ask again so another steward decides.",
+      "notAppointed": "{{drug}} is a restricted antimicrobial and nobody is appointed antimicrobial steward — call the pharmacist in charge."
     }
   },
   "pharmacyAuthorise": {
@@ -6711,6 +6756,24 @@
           "why": "Fridges are read at 09:00 and 17:00 (NABH MOM: the cold chain is monitored and documented). A gap in the log is a gap in the proof that the stock was kept cold.",
           "pri": "Open the fridge log",
           "who": "Pharmacist, aide or storekeeper"
+        },
+        "steward_not_appointed": {
+          "title": "No antimicrobial steward is appointed",
+          "sub": "Restricted antimicrobials are in the formulary · none can leave the counter until one is appointed",
+          "act": "Appoint",
+          "head": "Appoint an antimicrobial steward",
+          "why": "Reserve and restricted antimicrobials need the steward's prior approval (ICMR AMSP 2018). Appoint the infectious-disease physician, else the clinical microbiologist, else the AMSP lead the medical superintendent names.",
+          "pri": "Open users and roles",
+          "who": "The administrator, on the medical superintendent's word"
+        },
+        "steward_approval_waiting": {
+          "title": "{{no}} — a restricted antimicrobial has waited {{hours}} h for the steward",
+          "sub": "The patient's medicine is held until the antimicrobial steward decides",
+          "act": "Chase",
+          "head": "Chase the steward's decision",
+          "why": "A restricted antimicrobial leaves only with the steward's approval; an urgent request is decided within four hours.",
+          "pri": "Open approvals",
+          "who": "The antimicrobial steward"
         }
       }
     },
