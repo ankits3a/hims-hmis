@@ -12,6 +12,9 @@ import { findRecentItems } from "../../kernel/orders/read";
 import { withTx } from "../../kernel/db/client";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { RadiologyError } from "./errors";
+import { appendEvent } from "../../kernel/events/append";
+import { BEDSIDE_LOCATION_MAX_LENGTH } from "./kinds";
+import { imagingBedsideRequested } from "./events";
 import { pcpndtApplicability } from "./applicability";
 import { studyTypeByService as studyTypeByServiceOwned } from "./study-types";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -56,6 +59,14 @@ export type PlaceImagingItemInput = {
   /** DD10b — passed TOGETHER with `duplicateReason` to override the 24-hour window. */
   duplicateOfItemId?: string | null;
   duplicateReason?: string | null;
+  /**
+   * 18-S RS2b — the ward and bed, when the machine must go to the patient (the IPD plan's ward
+   * order calls this). Trimmed; blank or over `BEDSIDE_LOCATION_MAX_LENGTH` is refused
+   * `invalid_bedside_location`. Recorded as `imaging.bedside_requested` in this transaction, and the
+   * `radiology.order_placed` consumer copies it onto the study. Booking that study on a machine
+   * without `attributes.portable` is then refused `device_not_portable` until the desk clears it.
+   */
+  bedsideLocation?: string | null;
 };
 
 type PlaceImagingOrderBase = {
@@ -245,6 +256,22 @@ function missingReferrer(): never {
   );
 }
 
+/** 18-S RS2b — an item's bedside location, trimmed; `null` when none; refused when blank or too long. */
+function bedsideOf(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null) return null;
+  const place = raw.trim();
+  if (place.length === 0 || place.length > BEDSIDE_LOCATION_MAX_LENGTH) {
+    throw new RadiologyError(
+      "invalid_bedside_location",
+      place.length === 0
+        ? "the bedside location is blank — give the ward and bed (e.g. \"Ward 3 · bed 12\"), or leave it out for a department study"
+        : `the bedside location is ${String(place.length)} characters — at most ${String(BEDSIDE_LOCATION_MAX_LENGTH)}: the ward and bed, not a note`,
+      { bedsideLocation: raw },
+    );
+  }
+  return place;
+}
+
 export async function placeImagingOrder(
   db: Db,
   actor: Actor,
@@ -275,6 +302,8 @@ export async function placeImagingOrder(
         }
 
         /** (1) DD9 — the encounter must still be one a scan can hang off. */
+        const bedsides = input.items.map((item) => bedsideOf(item.bedsideLocation));
+
         await assertEncounterOpen(tx, input.encounterNo, now);
 
         /** (2) DD14 — applicability per item, from the PUBLISHED book and the patient's record. */
@@ -408,6 +437,21 @@ export async function placeImagingOrder(
                   ?? (input.referrer ? await resolveExternalReferrer(tx, actor, input.referrer) : missingReferrer()),
               })
             : await placeOrder(tx, actor, decls, common);
+
+        /** 18-S RS2b — the bedside request, in the order's own transaction (see the event's header). */
+        const requested = placed.itemIds.flatMap((orderItemId, i) => {
+          const bedsideLocation = bedsides[i];
+          return bedsideLocation ? [{ orderItemId, bedsideLocation }] : [];
+        });
+        if (requested.length > 0) {
+          await appendEvent(tx, imagingBedsideRequested.make({
+            payload: { orderId: placed.orderId, items: requested },
+            actor,
+            patientId: input.patientId,
+            correlationId: placed.orderId,
+            occurredAt: now,
+          }));
+        }
 
         return {
           orderId: placed.orderId,

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
+import { BEDSIDE_LOCATION_MAX_LENGTH } from "./kinds";
 
 /**
  * PLAN 18a T2 / §4.2 — the radiology module's event surface. `entity.verb_past`, module carried
@@ -168,6 +169,27 @@ export const imagingReportUnread = defineEvent("imaging.report_unread", MODULE, 
   reportId: id, studyId: id, unreadHours: z.number().int().nonnegative(),
 }));
 
+/**
+ * ═══ 18-S RS2b — THE ORDER ASKED FOR THE MACHINE TO COME TO THE BED ═══
+ *
+ * The ward door's core half, built ahead of IPD. `placeImagingOrder` appends this, in the ORDER's
+ * transaction, when an item carries a `bedsideLocation`; the `radiology.order_placed` consumer reads
+ * it back by the order id and copies each place onto the study it creates.
+ *
+ * **Why an event rather than a column.** The study does not exist at placement — the consumer makes
+ * it — and `order_items` is the kernel's envelope, with no field a department may write its own
+ * facts into. A radiology side table would be a migration for one string per item. The event log
+ * is already this module's to append to, is visible to the consumer because it commits with the
+ * order (`order.placed` is dispatched after the same commit), and is itself the record a later
+ * question needs: *who asked for the trolley to go to bed 12, and when*.
+ *
+ * The payload carries the place, which is a ward and a bed and not a finding; no name.
+ */
+export const imagingBedsideRequested = defineEvent("imaging.bedside_requested", MODULE, z.object({
+  orderId: id,
+  items: z.array(z.object({ orderItemId: id, bedsideLocation: z.string().min(1).max(BEDSIDE_LOCATION_MAX_LENGTH) })).min(1),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -183,4 +205,5 @@ export const RADIOLOGY_EVENTS = [
   imagingOutsideStudyRegistered,
   imagingCriticalOverdue,
   imagingReportUnread,
+  imagingBedsideRequested,
 ] as const;
