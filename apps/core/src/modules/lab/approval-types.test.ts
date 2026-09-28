@@ -44,7 +44,7 @@ describe("the lab approval type (Plan 17 T2 / DD6)", () => {
   }
 
   /**
-   * ═══ THE APPROVER IS THE MONEY OFFICE, AND THAT IS THE DECISION ═══
+   * ═══ THE APPROVER WAS THE MONEY OFFICE (the retired `lab_release_unpaid`; GAP A3 below moved the live key to the OWNER) ═══
    *
    * `billing_manager`, not the pathologist. The interlock exists to collect a self-pay balance; the
    * decision to hand the document over anyway is a decision to carry a receivable. The pathologist
@@ -57,11 +57,19 @@ describe("the lab approval type (Plan 17 T2 / DD6)", () => {
    * is a printed or messaged copy for the patient. There is no version of that which cannot wait
    * for a reply — and an act-first release would be indistinguishable from no interlock.
    */
-  it("declares exactly one type: `lab_release_unpaid`, approved by billing_manager, no act-first", () => {
-    expect(LAB_APPROVAL_TYPES).toHaveLength(1);
-    const [spec] = LAB_APPROVAL_TYPES;
-    expect([spec!.typeKey, spec!.approverRole, spec!.actFirstAllowed, spec!.urgencyClass, spec!.closureSlaMinutes])
-      .toEqual([RELEASE_UNPAID_APPROVAL_TYPE, "billing_manager", false, "urgent", 60]);
+  /**
+   * GAP A3 (owner ruling 2026-09-28: credit is the owner's) — releasing a report unpaid IS credit, so
+   * the live key is now `lab_release_unpaid_owner`, approved by the OWNER. The original
+   * `lab_release_unpaid` (billing_manager) stays registered so past releases still read, and nothing
+   * new asks for it.
+   */
+  it("declares two types: the retired `lab_release_unpaid` (billing_manager) and the live `lab_release_unpaid_owner`, approved by the owner, no act-first", () => {
+    expect(LAB_APPROVAL_TYPES).toHaveLength(2);
+    const [retired, live] = LAB_APPROVAL_TYPES;
+    expect([retired!.typeKey, retired!.approverRole, retired!.actFirstAllowed, retired!.urgencyClass, retired!.closureSlaMinutes])
+      .toEqual(["lab_release_unpaid", "billing_manager", false, "urgent", 60]);
+    expect([live!.typeKey, live!.approverRole, live!.actFirstAllowed, live!.urgencyClass, live!.closureSlaMinutes])
+      .toEqual([RELEASE_UNPAID_APPROVAL_TYPE, "owner", false, "urgent", 60]);
   });
 
   /**
@@ -72,15 +80,20 @@ describe("the lab approval type (Plan 17 T2 / DD6)", () => {
    * with the whole interlock override unregistered behind it.
    */
   it("the type key is snake_case, because the definition key it produces must be", () => {
-    expect(RELEASE_UNPAID_APPROVAL_TYPE).toBe("lab_release_unpaid");
+    expect(RELEASE_UNPAID_APPROVAL_TYPE).toBe("lab_release_unpaid_owner"); // GAP A3
+    for (const spec of LAB_APPROVAL_TYPES) expect(spec.typeKey).toMatch(/^[a-z][a-z0-9_]*$/);
     expect(RELEASE_UNPAID_APPROVAL_TYPE).toMatch(/^[a-z][a-z0-9_]*$/);
   });
 
-  it("registers the type and activates exactly one definition version", async () => {
+  it("registers both types and activates exactly one definition version each", async () => {
     await registerLabApprovalTypes(db, activator);
     const registered = await withTx(db, (tx: Tx) => getApprovalType(tx, RELEASE_UNPAID_APPROVAL_TYPE));
-    expect(registered?.approverRole).toBe("billing_manager");
-    expect(await definitionVersions()).toEqual([{ key: "approval_lab_release_unpaid", versions: 1 }]);
+    expect(registered?.approverRole).toBe("owner"); // GAP A3 (owner ruling 2026-09-28: credit is the owner's)
+    const retired = await withTx(db, (tx: Tx) => getApprovalType(tx, "lab_release_unpaid"));
+    expect(retired?.approverRole).toBe("billing_manager");
+    expect(await definitionVersions()).toEqual([
+      { key: "approval_lab_release_unpaid", versions: 1 }, { key: "approval_lab_release_unpaid_owner", versions: 1 },
+    ]);
   });
 
   /**
@@ -90,7 +103,9 @@ describe("the lab approval type (Plan 17 T2 / DD6)", () => {
   it("a second run registers nothing new and drafts NO second version", async () => {
     await registerLabApprovalTypes(db, activator);
     await registerLabApprovalTypes(db, activator);
-    expect(await definitionVersions()).toEqual([{ key: "approval_lab_release_unpaid", versions: 1 }]);
+    expect(await definitionVersions()).toEqual([
+      { key: "approval_lab_release_unpaid", versions: 1 }, { key: "approval_lab_release_unpaid_owner", versions: 1 },
+    ]);
     const registered = await withTx(db, (tx: Tx) => getApprovalType(tx, RELEASE_UNPAID_APPROVAL_TYPE));
     expect(registered?.typeKey).toBe(RELEASE_UNPAID_APPROVAL_TYPE);
   });

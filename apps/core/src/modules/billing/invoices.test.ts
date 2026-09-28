@@ -284,17 +284,42 @@ describe("issueInvoice: the one-transaction issue (D2)", () => {
     expect(await rowCounts()).toEqual({ invoices: 0, lines: 0, receipts: 0, allocations: 0 });
   });
 
-  test("with the permission and a remainder under the cap: credit extended, reason stored, state partial", async () => {
+  // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the cap no longer exempts a small
+  // remainder: the permission alone, under the cap, is now REFUSED.
+  test("with the permission and a remainder under the cap but NO owner approval: credit_approval_required, nothing persists", async () => {
+    await grantCreditExtend();
+    const cashier = await cashierWithSession("cashier-credit-nocap");
+    const patientId = await mkTestPatient();
+
+    // netPayable 56000 (derived in test 2) - receipt 20000 = remainder 36000 <= creditCap 500000.
+    await expect(
+      issueInvoice(db, cashier.actor, {
+        draftId: newId(), patientId,
+        lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 1 }],
+        receipt: { tenders: [{ mode: "cash", amountPaise: 20_000 }] },
+        credit: { reason: "patient will clear the balance tomorrow" },
+      }, NOW),
+    ).rejects.toMatchObject({ code: "credit_approval_required", detail: { remainderPaise: 36_000, approverRole: "owner" } });
+    expect(await rowCounts()).toEqual({ invoices: 0, lines: 0, receipts: 0, allocations: 0 });
+  });
+
+  // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the old "under the cap" happy path,
+  // now carried by an OWNER-granted `billing_credit_owner` approval for the exact remainder.
+  test("an owner-granted billing_credit_owner approval for the exact remainder: credit extended, reason stored, state partial", async () => {
     await grantCreditExtend();
     const cashier = await cashierWithSession("cashier-credit-ok");
     const patientId = await mkTestPatient();
 
-    // netPayable 56000 (derived in test 2) - receipt 20000 = remainder 36000 <= creditCap 500000.
+    const draftId = newId();
+    const approvalId = await grantedApproval({
+      typeKey: CREDIT_APPROVAL_TYPE, subjectType: CREDIT_APPROVAL_SUBJECT, subjectId: draftId,
+      patientId, amountPaise: 36_000, requester: cashier.actor, approver: base.owner,
+    });
     const result = await issueInvoice(db, cashier.actor, {
-      draftId: newId(), patientId,
+      draftId, patientId,
       lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 1 }],
       receipt: { tenders: [{ mode: "cash", amountPaise: 20_000 }] },
-      credit: { reason: "patient will clear the balance tomorrow" },
+      credit: { reason: "patient will clear the balance tomorrow", approvalId },
     }, NOW);
 
     expect(result.allocatedPaise).toBe(20_000);
@@ -303,7 +328,7 @@ describe("issueInvoice: the one-transaction issue (D2)", () => {
 
     const found = await getInvoice(db, result.invoiceId);
     expect(found!.invoice).toMatchObject({
-      creditExtended: true, creditReason: "patient will clear the balance tomorrow", creditApprovalId: null,
+      creditExtended: true, creditReason: "patient will clear the balance tomorrow", creditApprovalId: approvalId,
     });
     const extended = await db.select().from(events).where(eq(events.name, "invoice.credit_extended"));
     expect(extended).toHaveLength(1);
@@ -329,16 +354,49 @@ describe("issueInvoice: the one-transaction issue (D2)", () => {
     expect(await rowCounts()).toEqual({ invoices: 0, lines: 0, receipts: 0, allocations: 0 });
   });
 
-  test("a granted billing_credit_extension approval bound to the draft issues; a wrong-subject one is refused", async () => {
+  // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the grant must be the OWNER's type:
+  // a billing manager's `billing_credit_extension` no longer covers any credit, and the owner's grant
+  // binds draft, patient AND the exact amount.
+  test("a granted billing_credit_owner approval bound to the draft issues; a wrong-subject, wrong-amount or old billing_credit_extension one is refused", async () => {
     await grantCreditExtend();
     const cashier = await cashierWithSession("cashier-credit-approved");
     const manager = await mkManager("manager-credit");
     const patientId = await mkTestPatient();
+    expect(CREDIT_APPROVAL_TYPE).toBe("billing_credit_owner");
+
+    // The OLD type, granted by a billing manager for the exact draft/patient/amount, is refused.
+    const oldDraftId = newId();
+    const oldTypeApprovalId = await grantedApproval({
+      typeKey: "billing_credit_extension", subjectType: CREDIT_APPROVAL_SUBJECT, subjectId: oldDraftId,
+      patientId, amountPaise: 672_000, requester: cashier.actor, approver: manager.actor,
+    });
+    await expect(
+      issueInvoice(db, cashier.actor, {
+        draftId: oldDraftId, patientId,
+        lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 12 }],
+        credit: { reason: "a manager's grant is no longer credit", approvalId: oldTypeApprovalId },
+      }, NOW),
+    ).rejects.toMatchObject({ code: "approval_subject_mismatch" });
+
+    // An owner grant for a DIFFERENT amount than the remainder is refused.
+    const shortDraftId = newId();
+    const shortApprovalId = await grantedApproval({
+      typeKey: CREDIT_APPROVAL_TYPE, subjectType: CREDIT_APPROVAL_SUBJECT, subjectId: shortDraftId,
+      patientId, amountPaise: 600_000, requester: cashier.actor, approver: base.owner,
+    });
+    await expect(
+      issueInvoice(db, cashier.actor, {
+        draftId: shortDraftId, patientId,
+        lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 12 }],
+        credit: { reason: "the owner approved less than this", approvalId: shortApprovalId },
+      }, NOW),
+    ).rejects.toMatchObject({ code: "approval_subject_mismatch" });
+    expect(await rowCounts()).toEqual({ invoices: 0, lines: 0, receipts: 0, allocations: 0 });
 
     const draftId = newId();
     const approvalId = await grantedApproval({
       typeKey: CREDIT_APPROVAL_TYPE, subjectType: CREDIT_APPROVAL_SUBJECT, subjectId: draftId,
-      patientId, amountPaise: 672_000, requester: cashier.actor, approver: manager.actor,
+      patientId, amountPaise: 672_000, requester: cashier.actor, approver: base.owner,
     });
 
     const result = await issueInvoice(db, cashier.actor, {
@@ -355,7 +413,7 @@ describe("issueInvoice: the one-transaction issue (D2)", () => {
     // subject cannot cover this one (M-I1): the binding is checked, not merely the grant.
     const strayApprovalId = await grantedApproval({
       typeKey: CREDIT_APPROVAL_TYPE, subjectType: CREDIT_APPROVAL_SUBJECT, subjectId: newId(),
-      patientId, amountPaise: 672_000, requester: cashier.actor, approver: manager.actor,
+      patientId, amountPaise: 672_000, requester: cashier.actor, approver: base.owner,
     });
     await expect(
       issueInvoice(db, cashier.actor, {
@@ -367,6 +425,8 @@ describe("issueInvoice: the one-transaction issue (D2)", () => {
     expect(await listInvoices(db, { patientId })).toHaveLength(1);
   });
 
+  // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — each credit leg now carries its own
+  // owner grant, so the outstanding cap is exercised on genuinely approved credit.
   test("the per-patient outstanding cap warns in warn mode and refuses in block mode", async () => {
     await grantCreditExtend();
     const cashier = await cashierWithSession("cashier-outstanding");
@@ -375,25 +435,63 @@ describe("issueInvoice: the one-transaction issue (D2)", () => {
     // the seeded "warn" for the first leg.
     await withTx(db, (tx) => updateBillingConfig(tx, { outstandingCapPaise: 40_000 }));
 
+    const ownerCredit = async (draftId: string): Promise<string> => grantedApproval({
+      typeKey: CREDIT_APPROVAL_TYPE, subjectType: CREDIT_APPROVAL_SUBJECT, subjectId: draftId,
+      patientId, amountPaise: 56_000, requester: cashier.actor, approver: base.owner,
+    });
+
     // prospective outstanding = 0 + 56000 > 40000 -> WARNED, and the invoice still issues.
+    const firstDraft = newId();
     const warned = await issueInvoice(db, cashier.actor, {
-      draftId: newId(), patientId,
+      draftId: firstDraft, patientId,
       lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 1 }],
-      credit: { reason: "regular patient, settles weekly" },
+      credit: { reason: "regular patient, settles weekly", approvalId: await ownerCredit(firstDraft) },
     }, NOW);
     expect(warned.warnings).toEqual(["outstanding_cap"]);
     expect(await outstandingOf(db, warned.invoiceId)).toBe(56_000);
 
     await withTx(db, (tx) => updateBillingConfig(tx, { outstandingCapMode: "block" }));
-    // prospective = 56000 already carried + 56000 = 112000 > 40000 -> REFUSED.
+    // prospective = 56000 already carried + 56000 = 112000 > 40000 -> REFUSED, even with the owner's grant.
+    const secondDraft = newId();
+    const secondApproval = await ownerCredit(secondDraft);
+    await expect(
+      issueInvoice(db, cashier.actor, {
+        draftId: secondDraft, patientId,
+        lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 1 }],
+        credit: { reason: "regular patient, settles weekly", approvalId: secondApproval },
+      }, NOW),
+    ).rejects.toMatchObject({ code: "outstanding_cap_exceeded" });
+    expect(await listInvoices(db, { patientId })).toHaveLength(1);
+  });
+
+  // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the INTERNAL hold lane: a bill waiting
+  // for money on a thing the hospital still holds is NOT credit, needs no permission or approval, and
+  // is persisted unsettled with credit_extended = false so no fee gate reads it as paid.
+  test("holdUntilPaid persists an UNSETTLED invoice with creditExtended=false, no permission, no credit event", async () => {
+    const cashier = await cashierWithSession("cashier-hold"); // holds NO billing.credit.extend
+    const patientId = await mkTestPatient();
+
+    const held = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId,
+      lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 1 }],
+      holdUntilPaid: { reason: "report held until paid" },
+    }, NOW);
+    expect(held.creditExtended).toBe(false);
+    expect(held.settlement).toEqual({ state: "unpaid", outstandingPaise: 56_000 });
+    const found = await getInvoice(db, held.invoiceId);
+    expect(found!.invoice).toMatchObject({
+      creditExtended: false, creditReason: "report held until paid", creditApprovalId: null,
+    });
+    expect(await db.select().from(events).where(eq(events.name, "invoice.credit_extended"))).toHaveLength(0);
+
+    // A blank hold reason is no hold: it lands on the no-credit refusal.
     await expect(
       issueInvoice(db, cashier.actor, {
         draftId: newId(), patientId,
         lines: [{ lineId: "L1", serviceId: base.genericServiceId, qty: 1 }],
-        credit: { reason: "regular patient, settles weekly" },
+        holdUntilPaid: { reason: "  " },
       }, NOW),
-    ).rejects.toMatchObject({ code: "outstanding_cap_exceeded" });
-    expect(await listInvoices(db, { patientId })).toHaveLength(1);
+    ).rejects.toMatchObject({ code: "unsettled_issue_refused" });
   });
 
   test("a requiresApproval discount needs a granted billing_discount approval bound to draft+line+amount", async () => {

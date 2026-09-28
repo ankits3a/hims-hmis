@@ -667,26 +667,21 @@ describe("BillingCounter", () => {
     // §269ST is a refusal, not a prompt: nothing on the screen offers to retry it away, and the
     // PAN lane — which IS a prompt — must NOT open for it.
     expect(screen.queryByLabelText("PAN")).toBeNull();
-    expect(screen.queryByTestId("credit-approval-wait")).toBeNull();
+    expect(screen.queryByTestId("owner-credit")).toBeNull();
   });
 
-  it("the credit lane: the remainder is shown, the reason is mandatory BEFORE any request, and credit_approval_required opens the approval-id lane", async () => {
+  /**
+   * GAP A3 — owner ruling 2026-09-28: "nobody can issue credit except owner", whole hospital. The
+   * remainder is shown, the reason is still mandatory before any request, and the counter ASKS THE
+   * OWNER for the exact remainder on this draft; the owner's granted approval rides on the issue.
+   */
+  it("the credit lane: the remainder is shown, the reason is mandatory, the cashier asks the OWNER for that amount, and the grant rides on the issue", async () => {
     searchState.current = { encounterId: "enc-1" };
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /api/billing/invoices": (init, callIndex) => {
-        if (callIndex === 0) {
-          return {
-            status: 409,
-            body: {
-              statusCode: 409, code: "credit_approval_required",
-              message: "36000p exceeds the per-invoice credit cap 20000p",
-              detail: { remainderPaise: 36000, creditCapPaise: 20000 },
-            },
-          };
-        }
-        return { status: 201, body: { ...ISSUED, allocatedPaise: 20000, creditExtended: true, settlement: { state: "partial", outstandingPaise: 36000 } } };
-      },
+      "POST /api/billing/credit-requests": { status: 201, body: { approvalId: "ap-7" } },
+      "GET /api/billing/credit-requests/ap-7": { status: 200, body: { approvalId: "ap-7", status: "granted", amountPaise: 36000, draftId: "d", decisionNote: "ok" } },
+      "POST /api/billing/invoices": { status: 201, body: { ...ISSUED, allocatedPaise: 20000, creditExtended: true, settlement: { state: "partial", outstandingPaise: 36000 } } },
       "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
     });
     renderWithProviders(<BillingCounter />);
@@ -699,32 +694,24 @@ describe("BillingCounter", () => {
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "200");
     expect(await screen.findByTestId("credit-remainder")).toHaveTextContent("₹360.00");
 
-    // D2 step 3 / owner ruling 2: unsettled without a reason is refused BEFORE the request. The
-    // button is not disabled, so "no request was sent" has exactly one cause.
+    // Unsettled without a reason is refused BEFORE the request; the owner cannot be asked without one either.
     await clickIssue(user);
     await act(async () => {
       await Promise.resolve();
     });
     expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(0);
     expect(screen.getByTestId("counter-error")).toHaveTextContent("A reason is required to extend credit");
+    expect(screen.getByTestId("owner-credit-ask")).toBeDisabled();
 
     await user.type(screen.getByLabelText("Credit reason"), "camp patient, dues cleared Friday");
-    await clickIssue(user);
+    await user.click(screen.getByTestId("owner-credit-ask"));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/credit-requests")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/credit-requests")[0]).toMatchObject({ amountPaise: 36000, reason: "camp patient, dues cleared Friday" });
+    expect(await screen.findByTestId("owner-credit-granted")).toHaveTextContent("The owner approved ₹360.00 on credit");
 
+    await clickIssue(user);
     await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
-    expect(bodiesOf("POST", "/api/billing/invoices")[0]!.credit).toEqual({ reason: "camp patient, dues cleared Friday" });
-
-    // above the cap the server asks for a granted approval; the screen opens the lane for its id
-    // (the server's body carries the CAP, never an approval id — the cashier brings that from the
-    // approvals inbox) and the retry posts it.
-    expect(await screen.findByTestId("credit-approval-wait")).toBeInTheDocument();
-    expect(screen.getByTestId("counter-error")).toHaveTextContent("exceeds the per-invoice credit cap");
-
-    await user.type(screen.getByLabelText("Approval id", { selector: "#counter-credit-approval" }), "ap-7");
-    await clickIssue(user);
-
-    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(2));
-    expect(bodiesOf("POST", "/api/billing/invoices")[1]!.credit).toEqual({
+    expect(bodiesOf("POST", "/api/billing/invoices")[0]!.credit).toEqual({
       reason: "camp patient, dues cleared Friday",
       approvalId: "ap-7",
     });

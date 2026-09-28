@@ -2225,9 +2225,10 @@ describe("approvals — every approver role can answer what is routed to it", ()
   ];
 
   /** The pin that makes an empty sweep visible: a zero-length list would pass every loop below. */
-  it("the tree registers nineteen approval types across eight modules", () => {
-    expect(ALL_APPROVAL_TYPES).toHaveLength(19); // pharmacy parity P3: +1, the supplier payment run; P2: +2, the purchase order's two tiers
-    expect(new Set(ALL_APPROVAL_TYPES.map((t) => t.typeKey)).size).toBe(19);
+  it("the tree registers twenty-one approval types across eight modules", () => {
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's): +2, `billing_credit_owner` and `lab_release_unpaid_owner`, both approver owner.
+    expect(ALL_APPROVAL_TYPES).toHaveLength(21); // pharmacy parity P3: +1, the supplier payment run; P2: +2, the purchase order's two tiers
+    expect(new Set(ALL_APPROVAL_TYPES.map((t) => t.typeKey)).size).toBe(21);
   });
 
   it("every approverRole is a role the model defines", () => {

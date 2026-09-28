@@ -83,6 +83,7 @@ const feeQuoteReferralQuery = z
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
+import { creditRequestStatus, requestCredit } from "./credit-requests";
 import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
@@ -356,6 +357,11 @@ const invoicesQuery = z.object({
   encounterId: z.string().min(1).optional(),
 });
 
+/** GAP A3 — the counter's ask: which draft, whose, how much would go out unpaid, and why. */
+const creditRequestBody = z.object({
+  draftId: z.string().min(1).max(64), patientId: z.string().min(1).max(64),
+  amountPaise: z.number().int().positive(), reason: z.string().trim().min(1).max(500),
+});
 const creditNoteLineSchema = z.object({ invoiceLineId: z.string().min(1), qty: z.number() });
 /** The invoice id rides the PATH, so the body carries the discriminated remainder of D4's shape. */
 const creditNoteBody = z.discriminatedUnion("kind", [
@@ -501,6 +507,25 @@ export class BillingController {
   ) {}
 
   // ——— invoices ———————————————————————————————————————————————————————————————————————————————
+
+  /**
+   * GAP A3 — ask the OWNER for credit on a draft, for the exact amount that would go out unpaid.
+   * Route-gated on `billing.invoice.issue` (every counter that bills holds it); `requestCredit` checks
+   * `billing.credit.extend` inside, the manifest's rule for that permission.
+   */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Post("credit-requests")
+  async requestCredit(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ approvalId: string }> {
+    const b = parsed(creditRequestBody, body);
+    try { return await requestCredit(this.db, actor, b); } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Get("credit-requests/:approvalId")
+  async creditRequest(@Param("approvalId") approvalId: string): Promise<Awaited<ReturnType<typeof creditRequestStatus>>> {
+    try { return await creditRequestStatus(this.db, approvalId); } catch (e) { toHttp(e); }
+  }
+
 
   @RequirePermission("billing.invoice.issue", "hospital")
   @Post("invoices")
