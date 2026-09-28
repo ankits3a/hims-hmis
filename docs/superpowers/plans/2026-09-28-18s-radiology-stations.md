@@ -1,6 +1,6 @@
 # Plan 18-S — the radiology department, from the approved board to code
 
-Status: **PROPOSED** (28 Sep 2026). No phase starts before the owner approves this plan's PR.
+Status: **APPROVED by the owner, 28 Sep 2026** ("all approved", on PR #368), including every DECIDED ruling below. Phases start in order.
 
 ## Context
 
