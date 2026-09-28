@@ -109,6 +109,16 @@
 }
 
 @theme inline {
+  /*
+   * SHELL-UX — THE PRODUCT'S TYPEFACE IS THE DEFAULT, NOT AN OPT-IN. Plex was self-hosted and loaded,
+   * but only the shell chrome and the rebuilt screens (`.d1`, `.cx`, `.dash`, `.lg`) asked for it, so
+   * every other screen body — /opd/desk, /billing/*, /pharmacy/retail, /merge and the rest — rendered
+   * in the system stack under a Plex header (audit 2026-09-28, computed style). Tailwind v4's preflight
+   * reads `--font-sans` for `html` and form controls inherit it. Devanagari second, so Hindi falls
+   * through to Plex's own face rather than the OS's.
+   */
+  --font-sans: "IBM Plex Sans", "IBM Plex Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

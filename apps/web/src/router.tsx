@@ -319,6 +319,15 @@ function ShellChrome(): React.ReactElement {
    */
   const [theme, setThemeState] = useState(storedTheme);
   useEffect(() => { applyTheme(theme); }, [theme]);
+  /*
+   * SHELL-UX — BELOW 1100 px THE PLACES FOLD INTO ONE "Menu" BUTTON (owner's counter-screen rule,
+   * 2026-09-25). The audit rendered the wrapped nav at 390 px as three to five rows, 105–201 px past
+   * the phone's edge for anybody holding many grants, and every screen scrolled sideways with it. The
+   * CSS hides the row and shows the button; this state opens it. Any navigation closes it, so the
+   * list never sits over the screen the person just asked for.
+   */
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
   /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -357,6 +366,15 @@ function ShellChrome(): React.ReactElement {
             <span className="who">{username}</span>
           </>
         )}
+        <button
+          type="button"
+          className="menu-btn"
+          aria-expanded={menuOpen}
+          aria-controls="shell-nav"
+          onClick={() => { setMenuOpen((open) => !open); }}
+        >
+          {t("app.menu")}
+        </button>
         <div className="right">
           <span className="mo clock">{istDateLabel()} · {istClock()} IST</span>
           {/*
@@ -395,7 +413,11 @@ function ShellChrome(): React.ReactElement {
         one of these and the parity test that guards D1 still passes; restore the old edge
         matcher and it fails. The two are deliberately independent.
       */}
-      <nav className="nav">
+      <nav
+        id="shell-nav"
+        className={menuOpen ? "nav open" : "nav"}
+        onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { e.stopPropagation(); setMenuOpen(false); } }}
+      >
         {NAV_GROUPS.map((group) => {
           const entries = NAV.filter((e) => e.group === group && navVisible(e, can));
           if (entries.length === 0) return null;
@@ -442,6 +464,7 @@ function Shell(): React.ReactElement {
   const fullViewport = useRouterState({
     select: (s) => s.matches.some((m) => m.staticData.fullViewport === true),
   });
+  const { can } = useAuth();
 
   /*
     The chrome is built inside the ternary and not above it, so a route that owns the viewport never
@@ -459,7 +482,7 @@ function Shell(): React.ReactElement {
         <div className="flex-1">
           <Outlet />
         </div>
-        <ShortcutLegend />
+        <ShortcutLegend can={can} />
       </div>
   );
 
