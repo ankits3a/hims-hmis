@@ -116,7 +116,8 @@ describe("the office's Controlled side (pharmacy P6)", () => {
   });
 
   it("another side of the office carries the cabinet's list in one line", async () => {
-    window.history.replaceState(null, "", "/pharmacy/office");
+    // B2 — Today carries the cabinet's needs as rows of the list; the other sides keep the one-line strip.
+    window.history.replaceState(null, "", "/pharmacy/office?view=buy");
     mock({ "GET /pharmacy/controlled/today": TODAY, "GET /pharmacy/office/today": { awaitingYou: [], drafts: [], waiting: [], toReceive: [], overdue: [], shortages: [], plan: { orders: 0, lines: 0, unassigned: 0, unmatched: 0, alreadyDrafted: 0 } } },
       [...KEEPER, "materials.po.raise"]);
     renderWithRouter(<PharmacyOffice />);

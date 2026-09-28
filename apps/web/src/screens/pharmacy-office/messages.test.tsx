@@ -86,6 +86,8 @@ describe("the office's Messages side (P6 patient messages)", () => {
     renderWithRouter(<PharmacyOffice />);
     await waitFor(() => expect(calls.some((c) => c.path === "/auth/me")).toBe(true));
     expect(screen.queryByTestId("office-view-messages")).toBeNull();
+    // B2 — Messages sits under the header's Law, which this grant does not open either.
+    expect(screen.queryByTestId("office-view-law")).toBeNull();
     expect(calls.some((c) => c.path === "/pharmacy/office/messages")).toBe(false);
   });
 });

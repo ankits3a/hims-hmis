@@ -33,7 +33,7 @@ import type {
  * Keys: ↑/↓ walk the rows, ⏎ opens one; D makes the agent's draft run; P opens payables; in a sheet
  * ⏎ on the bill number saves and matches, A accepts a matched bill, Esc closes.
  */
-type Open =
+export type Open =
   | { kind: "grn"; grnId: string }
   | { kind: "bill"; billId: string }
   | { kind: "run"; runId: string }
@@ -53,12 +53,13 @@ const RUN_TONE: Record<string, string> = {
 const toPaise = (text: string): number => Math.round(Number(text || "0") * 100);
 const toRupeeText = (paise: number): string => (paise / 100).toFixed(2);
 
-export function PayView(): React.ReactElement {
+/** B2 — `initialOpen`: the office's Today list opens this side on one document's sheet. */
+export function PayView({ initialOpen }: { initialOpen?: Open } = {}): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
   const qc = useQueryClient();
   const pay = useQuery({ queryKey: ["pharmacy", "office", "pay"], queryFn: fetchOfficePay });
-  const [open, setOpen] = useState<Open | null>(null);
+  const [open, setOpen] = useState<Open | null>(initialOpen ?? null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
