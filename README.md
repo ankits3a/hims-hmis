@@ -1388,9 +1388,10 @@ with the prescriber as the responsible clinician (the `lab_reception` shape), an
 requires the kernel permission AND the kind's own. `pharmacy` also carries the four cashier strings
 its window needs — `billing.invoice.issue`, `billing.invoice.read`, `billing.receipt.record`,
 `billing.session.own` — the `lab_reception` precedent, for the same reason: a counter that could
-pick but not bill would be a split with nothing to compensate for it. It does NOT gain
-`billing.credit.extend`: an OPD dispense is paid before the drug leaves, and the credit holds for
-IPD and TPA are 16d's. `pharmacy_assistant` gains `orders.read`, `patients.read` (the allergy
+pick but not bill would be a split with nothing to compensate for it. It gains
+`billing.credit.extend` only as the right to ASK: the owner ruled on 2026-09-28 that nobody but the owner
+issues credit, so an OPD dispense is paid before the drug leaves unless the owner grants that exact amount on
+credit (gap A3b). `pharmacy_assistant` gains `orders.read`, `patients.read` (the allergy
 register at the window, Group B's reason) and `formulary.read`, and no billing string at all — the
 aide picks, the pharmacist bills; the shelf it picks from is read for it by the counter's own routes. Both roles carry grants and, on this
 deployment, **no holders** until a registered pharmacist is assigned.

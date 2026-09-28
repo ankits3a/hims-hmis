@@ -18,6 +18,7 @@ import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { prepareControlledHandover } from "./controlled-dispense";
 import type { ControlledHandoverInput } from "./controlled-dispense";
 import { dispenseHandedOver } from "./events";
+import { ownerCreditCovers } from "./credit";
 import { PharmacyError } from "./errors";
 import { registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
 import { batchTermsPerBase } from "./price";
@@ -167,7 +168,7 @@ export async function handOverDispense(
      * money the same way the ledger's own writes are.
      */
     const settlement = await invoiceSettlement(tx, invoiceId);
-    if (settlement.state !== "settled") {
+    if (settlement.state !== "settled" && !(await ownerCreditCovers(tx, invoiceId))) {
       throw new PharmacyError(
         "invoice_not_settled",
         `₹${(settlement.outstandingPaise / 100).toFixed(2)} is outstanding on this bill — the medicine stays at the counter until it is paid or the bill is corrected`,

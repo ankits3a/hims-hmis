@@ -4298,7 +4298,8 @@
       "handedOver": "{{who}} को सौंपी",
       "draftClaimOnly": "ड्राफ़्ट सहेजा — आपका दावा बना है",
       "draftHeld": "ड्राफ़्ट सहेजा — पत्ते {{time}} तक रुके हैं",
-      "slipConfirmed": "पर्ची का काग़ज़ से मिलान किया"
+      "slipConfirmed": "पर्ची का काग़ज़ से मिलान किया",
+      "billedOnCredit": "मालिक के उधार पर बिल हुआ"
     },
     "status": {
       "claimed": "ली गई",
@@ -4379,7 +4380,10 @@
       "upiRef": "UPI संदर्भ (UTR)",
       "upiRefHint": "उनके फ़ोन की रसीद पर 12 अंक",
       "cardRef": "कार्ड अनुमोदन कोड",
-      "cardRefHint": "मशीन की पर्ची पर"
+      "cardRefHint": "मशीन की पर्ची पर",
+      "creditOpen": "उधार — केवल मालिक अनुमति देते हैं",
+      "creditReason": "उधार क्यों (मालिक यह पढ़ते हैं)",
+      "creditBill": "{{amount}} मालिक के उधार पर बिल करें"
     },
     "handover": {
       "title": "सौंपें",

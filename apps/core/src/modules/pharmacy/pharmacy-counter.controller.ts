@@ -85,12 +85,14 @@ const pickBody = z.object({
   })).optional(),
 });
 const billBody = z.object({
-  tenders: z.array(z.object({ mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().nonnegative(), refText: z.string().max(120).optional() })).min(1),
+  tenders: z.array(z.object({ mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().nonnegative(), refText: z.string().max(120).optional() })),
   panNumber: z.string().max(20).optional(),
   form60: z.boolean().optional(),
   changeGivenPaise: z.number().int().nonnegative().optional(),
   tags: z.array(z.string().min(1)).optional(),
-});
+  /** GAP A3b — on credit, on the owner's granted approval; billing checks the grant against the dispense and amount. */
+  credit: z.object({ reason: z.string().trim().min(1).max(500), approvalId: z.string().min(1).max(64) }).optional(),
+}).refine((b) => b.tenders.length > 0 || b.credit !== undefined, { message: "a bill is paid by a tender, or on the owner's credit", path: ["tenders"] });
 /** P1 — the short book. `itemId` when the counter knows the drug; the name as said otherwise. */
 const shortBookBody = z.object({
   itemId: idSchema.optional(),
