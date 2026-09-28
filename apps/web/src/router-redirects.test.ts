@@ -67,3 +67,40 @@ describe("the retired pharmacy counter forwards to the desk (parity P1)", () => 
     expect(router.state.location.pathname).toBe("/pharmacy/desk");
   });
 });
+
+/**
+ * GAP-CLOSURE B3 — the twelve stores screens folded into the pharmacy office. Every old address is on
+ * somebody's bookmark bar or in another screen's link; each lands on its own page of the office.
+ */
+describe("the folded stores screens forward into the office (gap-closure B3)", () => {
+  afterAll(() => { setToken(null); });
+
+  const table: [string, string, string][] = [
+    ["/pharmacy/reorder", "buy", "reorder"],
+    ["/materials/vendors", "buy", "vendors"],
+    ["/materials/grn", "stock", "grn"],
+    ["/materials/counts", "stock", "counts"],
+    ["/materials/transfers", "stock", "transfers"],
+    ["/pharmacy/downtime", "stock", "downtime"],
+    ["/materials/items", "items", "master"],
+    ["/pharmacy/items", "items", "sells"],
+    ["/formulary/admin", "items", "formulary"],
+    ["/pharmacy/registers/h1", "law", "h1"],
+    ["/pharmacy/retail-licence", "law", "retail"],
+    ["/pharmacy/pharmacists", "law", "pharmacists"],
+  ];
+
+  it.each(table)("forwards %s to /pharmacy/office?view=%s&page=%s", async (from, view, page) => {
+    await loadAt(from);
+    expect(router.state.location.pathname).toBe("/pharmacy/office");
+    expect(router.state.location.search).toEqual({ view, page });
+  });
+
+  it("leaves the office's own Reports door and the retail counter alone", async () => {
+    // Non-vacuity: a router that forwarded every /pharmacy path would pass the table above.
+    await loadAt("/pharmacy/office/reports");
+    expect(router.state.location.pathname).toBe("/pharmacy/office/reports");
+    await loadAt("/pharmacy/retail");
+    expect(router.state.location.pathname).toBe("/pharmacy/retail");
+  });
+});

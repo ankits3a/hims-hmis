@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pharmacy Office — the header menu</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4f7f4; }
+  a { color: #0e6b4e; text-decoration: none; }
+  a:hover { color: #0a5039; }
+  .d1 { --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed; --dim:#5c6f66; --wash:#eef3ef;
+        --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35); --gold-ink:#9a6208; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45); }
+  .d1 * { box-sizing: border-box; }
+  .d1 .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; }
+  .d1 .tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .d1 .kb { display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 18px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--line); background: var(--card); font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: var(--dim); }
+  .d1 .nav { display: inline-flex; align-items: center; height: 46px; padding: 0 11px; font-size: 12.5px; font-weight: 500; color: var(--dim); border-bottom: 2px solid transparent; }
+  .d1 .nav.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--green); }
+  .d1 .col { display: flex; flex-direction: column; gap: 2px; }
+  .d1 .ent { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 6px; }
+  .d1 .ent:hover { background: var(--wash); }
+  .d1 .ent b { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .d1 .was { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--dim); }
+  .d1 .new { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--gold-ink); }
+</style>
+</helmet>
+<div class="d1" style="width: 1440px; height: 820px; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font-family: 'IBM Plex Sans', system-ui, sans-serif">
+  <header style="height: 46px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 16px; background: #ffffff; border-bottom: 1px solid var(--line)">
+    <div style="display: flex; align-items: center; gap: 9px; padding-right: 14px; margin-right: 6px; border-right: 1px solid var(--line)">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"></path></svg>
+      <span class="mo" style="font-size: 12px; font-weight: 700; letter-spacing: .12em">PHARMACY OFFICE</span>
+    </div>
+    <nav aria-label="Office" style="display: flex; align-items: center">
+      <a class="nav" href="#">Today</a><a class="nav on" href="#">Buy ▾</a><a class="nav" href="#">Pay</a><a class="nav" href="#">Returns</a><a class="nav" href="#">Stock</a><a class="nav" href="#">Items</a><a class="nav" href="#">Law</a><a class="nav" href="#">Reports</a>
+    </nav>
+  </header>
+
+  <div style="margin: 0 16px; background: #ffffff; border: 1px solid var(--line); border-top: none; border-radius: 0 0 10px 10px; padding: 18px 18px 20px; box-shadow: 0 10px 28px rgba(19,36,32,.10)">
+    <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px">
+      <span class="tag">Every screen, one menu</span>
+      <span style="font-size: 12px; color: var(--dim)">Grey = the address it has today, which redirects here. Gold = new in this phase. Keys work from anywhere in the office.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 14px">
+      <div class="col">
+        <div class="tag" style="padding: 0 10px 6px">Buy <span class="kb">B</span></div>
+        <a class="ent" href="#"><b>Purchase orders</b><span class="was">office · Buy tab</span></a>
+        <a class="ent" href="#"><b>Shelf — reorder &amp; short book</b><span class="was">/pharmacy/reorder</span></a>
+        <a class="ent" href="#"><b>Suppliers</b><span class="was">/materials/vendors</span></a>
+      </div>
+      <div class="col">
+        <div class="tag" style="padding: 0 10px 6px">Pay <span class="kb">Y</span></div>
+        <a class="ent" href="#"><b>Supplier bills &amp; match</b><span class="was">office · Pay tab</span></a>
+        <a class="ent" href="#"><b>Payment runs</b><span class="was">office · Pay tab</span></a>
+        <a class="ent" href="#"><b>Supplier ledger &amp; summary</b><span class="was">office · Pay tab</span></a>
+      </div>
+      <div class="col">
+        <div class="tag" style="padding: 0 10px 6px">Returns <span class="kb">R</span></div>
+        <a class="ent" href="#"><b>Returns to supplier</b><span class="was">office · Returns tab</span><span class="new">+ manual / damaged (A5)</span></a>
+        <a class="ent" href="#"><b>Expiry — 30 / 60 / 90</b><span class="was">office · Returns tab</span></a>
+        <a class="ent" href="#"><b>Write-offs &amp; recalls</b><span class="was">office · Returns tab</span></a>
+      </div>
+      <div class="col">
+        <div class="tag" style="padding: 0 10px 6px">Stock <span class="kb">S</span></div>
+        <a class="ent" href="#"><b>Goods receipt (GRN)</b><span class="was">/materials/grn</span></a>
+        <a class="ent" href="#"><b>Opening stock sheet</b><span class="was">/materials/grn</span></a>
+        <a class="ent" href="#"><b>Counts</b><span class="was">/materials/counts</span></a>
+        <a class="ent" href="#"><b>Transfers &amp; indents</b><span class="was">/materials/transfers</span><span class="new">+ indent (A6)</span></a>
+        <a class="ent" href="#"><b>Stock ledger — where it went</b><span class="new">new (A5)</span></a>
+        <a class="ent" href="#"><b>Paper dispenses after downtime</b><span class="was">/pharmacy/downtime</span></a>
+      </div>
+      <div class="col">
+        <div class="tag" style="padding: 0 10px 6px">Items <span class="kb">I</span></div>
+        <a class="ent" href="#"><b>Item master</b><span class="was">/materials/items</span></a>
+        <a class="ent" href="#"><b>What the counter sells · GST slab</b><span class="was">/pharmacy/items</span></a>
+        <a class="ent" href="#"><b>Formulary</b><span class="was">/formulary/admin</span></a>
+        <a class="ent" href="#"><b>Duplicates &amp; merge</b><span class="was">office · Items tab</span></a>
+        <a class="ent" href="#"><b>Rack &amp; strip labels</b><span class="new">new (A6)</span></a>
+      </div>
+      <div class="col">
+        <div class="tag" style="padding: 0 10px 6px">Law <span class="kb">L</span></div>
+        <a class="ent" href="#"><b>H1 register</b><span class="was">/pharmacy/registers/h1</span></a>
+        <a class="ent" href="#"><b>Narcotics &amp; Schedule X</b><span class="was">office · Controlled tab</span></a>
+        <a class="ent" href="#"><b>Retail licence (Form 20/21)</b><span class="was">/pharmacy/retail-licence</span></a>
+        <a class="ent" href="#"><b>Pharmacists &amp; registrations</b><span class="was">/pharmacy/pharmacists</span></a>
+        <a class="ent" href="#"><b>Patient messages &amp; consent</b><span class="was">office · Messages tab</span></a>
+      </div>
+      <div class="col">
+        <div class="tag" style="padding: 0 10px 6px">Reports <span class="kb">P</span></div>
+        <a class="ent" href="#"><b>Sales · purchases · margin</b><span class="was">/pharmacy/office/reports</span></a>
+        <a class="ent" href="#"><b>Valuation · non-moving · HSN</b><span class="was">/pharmacy/office/reports</span></a>
+        <a class="ent" href="#"><b>GSTR-2B · GSTR-3B</b><span class="was">/pharmacy/office/reports</span><span class="new">3B new (A4)</span></a>
+        <a class="ent" href="#"><b>Activity · Tally export</b><span class="was">/pharmacy/office/reports</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin: 22px 16px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+    <div style="background: #ffffff; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px">
+      <div class="tag">The app's sidebar, STORES group</div>
+      <div style="display: flex; gap: 24px; margin-top: 10px; font-size: 12.5px">
+        <div style="flex: 1">
+          <div style="color: var(--dim); margin-bottom: 6px">Today — 14 links</div>
+          <div class="mo" style="font-size: 11px; line-height: 18px; color: var(--dim)">Formulary · Items · Vendors · Goods receipt · Stock counts · Stock transfers · Pharmacy sale items · Pharmacists · Reorder list · Pharmacy office · Pharmacy reports · H1 register · Retail licence · Paper dispenses</div>
+        </div>
+        <div style="flex: 1">
+          <div style="color: var(--green); font-weight: 600; margin-bottom: 6px">After — 2 links</div>
+          <div style="font-size: 13px; line-height: 22px">Pharmacy desk<br>Pharmacy office</div>
+        </div>
+      </div>
+    </div>
+    <div style="background: #ffffff; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px">
+      <div class="tag">Inside every section</div>
+      <p style="margin: 10px 0 0; font-size: 12.5px; line-height: 19px">One list, no filter tabs, the newest first. Opening a row puts the document in the left lane, with the one act it needs at the bottom. A form to add something opens as a sheet from a key (<span class="kb">N</span> new), never as a form above the list. The same paper-and-pine look as the desk; a person's permissions decide which menu entries they see.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

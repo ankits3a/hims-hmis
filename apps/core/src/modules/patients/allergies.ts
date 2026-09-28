@@ -28,8 +28,13 @@ export async function addAllergy(
      * posting to `/patients/:id/allergies` must not be able to CLAIM a radiology provenance for a
      * line they typed. The fourth value is reachable only through `recordContrastReaction`, which
      * derives the substance from the administration row rather than from anything a human typed.
+     *
+     * PHARMACY STAGE D1 — `pharmacy` is the fifth: a reported adverse drug reaction writes one allergy
+     * per suspected moiety in the same transaction as the ADR report (`pharmacy/adr.ts`). It stays off
+     * `/patients/:id/allergies` for the same reason `radiology` does — the provenance is earned by the
+     * ADR register, never claimed by a typist.
      */
-    source: "registration" | "vitals" | "consult" | "radiology";
+    source: "registration" | "vitals" | "consult" | "radiology" | "pharmacy";
     /**
      * ═══ THE CODED ALLERGEN — SET WHEN THE ALLERGY WAS PICKED, NEVER INFERRED HERE ═══
      *

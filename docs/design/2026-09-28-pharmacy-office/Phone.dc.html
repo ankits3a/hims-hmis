@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pharmacy Office — phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4f7f4; }
+  a { color: #0e6b4e; text-decoration: none; }
+  a:hover { color: #0a5039; }
+  .d1 { --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed; --dim:#5c6f66; --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+        --gold-ink:#9a6208; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45); --red:#b23a30; --red-soft:rgba(178,58,48,.08); --red-line:rgba(178,58,48,.4); --mint:#35c48f; }
+  .d1 * { box-sizing: border-box; }
+  .d1 button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+  .d1 .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; }
+  .d1 .tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .d1 .src { display: inline-flex; align-items: center; justify-content: center; min-width: 54px; height: 19px; padding: 0 5px; border-radius: 3px; font-family: "IBM Plex Mono", monospace; font-size: 8.5px; font-weight: 700; letter-spacing: .1em; border: 1px solid var(--line); color: var(--dim); background: #eef3ef; }
+  .d1 .pill { display: inline-flex; align-items: center; height: 21px; padding: 0 7px; border-radius: 4px; font-size: 10px; font-weight: 600; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+  .d1 .pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }
+  .d1 .pill.rd { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+  .d1 .prow { display: flex; flex-direction: column; gap: 5px; width: 100%; padding: 12px 14px; min-height: 64px; border-top: 1px solid var(--line2); }
+</style>
+</helmet>
+<div class="d1" style="width: 390px; height: 844px; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+  <header style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #ffffff; border-bottom: 1px solid var(--line)">
+    <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"></path></svg>
+    <span class="mo" style="font-size: 11.5px; font-weight: 700; letter-spacing: .12em; flex-grow: 1">OFFICE · TODAY</span>
+    <button type="button" aria-label="Open the office menu" style="display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; font-size: 12.5px; font-weight: 600">Menu ▾</button>
+  </header>
+  <div style="padding: 12px 12px 0; display: flex; flex-direction: column; gap: 10px">
+    <button type="button" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--green-line); border-radius: 8px; background: #ffffff; box-shadow: inset 3px 0 0 var(--mint)">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--mint); flex-shrink: 0"></span>
+      <span style="flex-grow: 1; font-size: 12px; line-height: 16px">Copilot drafted <b>2 POs</b>, <b>a payment run</b> and <b>3 returns</b> — review</span>
+      <span aria-hidden="true" style="color: var(--dim)">›</span>
+    </button>
+    <div style="display: flex; align-items: baseline; gap: 8px">
+      <h1 style="margin: 0; font-size: 17px; font-weight: 600">Needs you today</h1>
+      <span style="font-size: 11.5px; color: var(--dim)">10</span>
+    </div>
+  </div>
+  <div style="margin: 8px 12px 0; background: #ffffff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden">
+    <button type="button" class="prow"><span style="display: flex; gap: 8px; align-items: center"><span class="src">LAW</span><span class="pill rd">6 d</span></span><span style="font-size: 13px; font-weight: 600; line-height: 18px">Retail licence Form 20/21 lapses Sun 4 Oct</span></button>
+    <button type="button" class="prow"><span style="display: flex; gap: 8px; align-items: center"><span class="src">PAY</span><span class="pill gd">4 d</span></span><span style="font-size: 13px; font-weight: 600; line-height: 18px">3 MSME bills cross 45 days Fri — ₹1,84,300</span></button>
+    <button type="button" class="prow"><span style="display: flex; gap: 8px; align-items: center"><span class="src">BUY</span><span class="pill">2 h 30 m</span></span><span style="font-size: 13px; font-weight: 600; line-height: 18px">PO-2026-014 · Medplus — ₹1,12,800 to approve</span></button>
+    <button type="button" class="prow"><span style="display: flex; gap: 8px; align-items: center"><span class="src">BUY</span><span class="pill">today</span></span><span style="font-size: 13px; font-weight: 600; line-height: 18px">GRN2609280003 — 2 lines short against PO-2026-011</span></button>
+    <button type="button" class="prow"><span style="display: flex; gap: 8px; align-items: center"><span class="src">PAY</span><span class="pill">1 d</span></span><span style="font-size: 13px; font-weight: 600; line-height: 18px">Bill MSB2609270004 is ₹1,212 over its GRN</span></button>
+    <button type="button" class="prow"><span style="display: flex; gap: 8px; align-items: center"><span class="src">RETURN</span><span class="pill">13 d</span></span><span style="font-size: 13px; font-weight: 600; line-height: 18px">Credit note awaited from Cipla — ₹8,450</span></button>
+    <button type="button" class="prow"><span style="display: flex; gap: 8px; align-items: center"><span class="src">STOCK</span><span class="pill">90 d</span></span><span style="font-size: 13px; font-weight: 600; line-height: 18px">14 batches expire within 90 days — ₹23,900</span></button>
+  </div>
+  <div style="padding: 10px 12px; font-size: 11px; color: var(--dim)">Tapping a row opens it full screen with its one act pinned at the bottom; back returns to the list.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -709,6 +709,19 @@ your reasoning from the diff, and cannot re-derive a test result you never took.
 well it is described and however confident the description.** Treat a handoff's "what is already
 fixed — verify by reading, then move on" as "what is already WRITTEN". Run it first.
 
+### 9.6a AN OWNER'S AUDIT QUESTION IS A READ-ONLY FAN-OUT WITH A WORD CAP — added 2026-09-28 (pharmacy gap closure, ledger §2.168)
+
+When the owner asks "are we missing anything / does it match the design", do not read the sources in the main
+session.
+- Send one read-only agent per question. Give each the claim to TEST, the file list, and a report cap of ≤ 1,000
+  words with file:line evidence.
+- Spot-check the headline absences yourself with one grep each, and look at two screenshots.
+- On 2026-09-28 three such agents cost 416k subagent tokens in total and returned about 9k tokens of verdict. The
+  sources they read (131 KB of notes, 14 screens, the P1–P6 code) would have been re-billed on every main-session
+  turn after them.
+- Before offering a deploy, check the integration checkout for dirty files outside `docs/` (§2.168). `deploy.sh`
+  refuses them, and "ready to deploy" is a claim about that tree.
+
 ### 9.7 BRIEF THE CLOSE REVIEWER AT THE OPERANDS, NOT THE BRANCHES — added 2026-08-28 (Plan 15 close, ledger §2.128)
 
 Three phases running, the close reviewer has returned more than the phase's own instruments found,

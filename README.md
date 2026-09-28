@@ -1333,6 +1333,10 @@ defaults the owner may change.
 messages at all) goes to `pharmacy` and `pharmacy_incharge`. `pharmacy.messages.manage` (the DLT
 template ids, the WhatsApp template names and the pharmacy's phone on the office's Messages side) goes to
 `pharmacy_incharge` and `owner`, who contracts the provider. Both are defaults the owner may change.
+**Pharmacy stage D1 reports adverse drug reactions to PvPI, and every report writes the patient's allergy.**
+`pharmacy.adr.record` (reporting a suspected adverse drug reaction on the PvPI form) goes to `pharmacy`,
+`pharmacy_incharge` and `doctor`. `pharmacy.adr.manage` (WHO-UMC causality, sent to PvPI, closed) goes to
+`pharmacy_incharge` and `medical_superintendent`. Both are defaults the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1353,6 +1357,8 @@ template ids, the WhatsApp template names and the pharmacy's phone on the office
 | `pharmacy.licences.manage` | | | ✓ |
 | `pharmacy.messages.consent` | ✓ | | ✓ |
 | `pharmacy.messages.manage` | | | ✓ |
+| `pharmacy.adr.record` | ✓ | | ✓ |
+| `pharmacy.adr.manage` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |

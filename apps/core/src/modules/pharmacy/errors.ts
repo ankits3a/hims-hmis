@@ -5,6 +5,10 @@
  */
 export const PHARMACY_ERROR_CODES = [
   "permission_denied",
+  /** STAGE D1 — the ADR register: a report that does not say enough, one not on file, a later act on a closed one. */
+  "invalid_adr",
+  "unknown_adr",
+  "adr_closed",
   // ── sale items and the price rule (T2) ──
   "unknown_item",
   "not_a_drug",
@@ -240,6 +244,9 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   substitution_not_allowed: 409,
   consent_required: 409,
   allergy_block: 409,
+  invalid_adr: 400,
+  unknown_adr: 404,
+  adr_closed: 409,
   interaction_block: 409,
   qty_required: 400,
   store_missing: 409,

@@ -39,8 +39,10 @@ spot-checks by hand. This phase answers them.
 
 ## Owed by the owner (money / law)
 
-- Patient GSTIN on the pharmacy bill (B2B input credit): yes or no?
-- Old MRP next to new MRP at the counter: yes or no?
+None open. The three below were ruled on 2026-09-28 (asked in hmis-10's session, answered "No." to each):
+- **Patient GSTIN on the pharmacy bill: NO.** Every pharmacy bill stays B2C.
+- **Old MRP beside the new MRP at the counter: NO.**
+- **Home delivery / online orders: NO.** Do not build them.
 
 ## Stages (each = one PR on this lane or a sibling lane, CI-gated, one migration per PR, numbered at rebase)
 
@@ -116,7 +118,7 @@ interlock). Releasing that report unpaid IS credit.
 | Path | Today | After |
 |---|---|---|
 | OPD counter: a credit-extended invoice lets the consult start (`billing/gate.ts` `feeCovered`) | the cashier (`billing.credit.extend`) up to `creditCapPaise`, with no approval; `billing_credit_extension` (approver **billing_manager**) above it | every remainder needs a GRANTED `billing_credit_extension`, whose approver is **owner** |
-| Lab desk: order with part payment, `credit: {reason}` (`lab-desk.tsx:79`, `lab/desk.ts:442`) | lab reception holds `billing.credit.extend` | the same owner approval, or collect in full |
+| Lab desk: order with part payment, `credit: {reason}` (`lab-desk.tsx:79`, `lab/desk.ts:442`) | lab reception holds `billing.credit.extend` | **held, not credit (built #347):** the interlock holds EVERY unpaid lab report, so the desk's balance is a hold; the desk says "pay at the report" |
 | Lab reflex / add-on at the bench (`lab/verify.ts:680`) | a credit invoice, issued automatically | an unpaid invoice HELD by the interlock, with no credit flag and no approval: collected before the report goes |
 | Lab report released unpaid (`lab_release_unpaid`) | approver **billing_manager** | approver **owner** |
 | Pharmacy: medicines handed over unpaid | impossible (money before the drug) | a desk "credit" tender raises the owner's approval, and the dispense holds until it is granted |
@@ -127,8 +129,8 @@ change):**
    remainder needs the granted approval; `creditCapPaise` stays in config, but credit stops reading it.
 2. An internal-only `holdUntilPaid: {reason}` on `issueInvoice`, for the lab's reflex and add-on bills. It is not on
    the HTTP route. It persists the invoice unsettled with `credit_extended = false`, so no fee gate treats it as paid.
-3. Lab desk: on `credit_approval_required`, the screen offers "Ask the owner" (it files the approval). The order
-   goes through once it is granted.
+3. Lab desk: no ask needed. Its balance is held until the report (see the table). The ask lives on the billing
+   counter, as "Ask the owner for ₹X on credit" (`owner-credit-ask.tsx`), and the pharmacy will reuse it.
 4. Pharmacy desk: a "Credit — owner approves" tender, the same approval, with the dispense held at `picked`.
 5. Test fixtures that used `credit: {reason}` as a shortcut for "an unpaid invoice" (about 30 files) move to a helper
    that files and grants the approval, or to `holdUntilPaid`.
@@ -139,3 +141,27 @@ change):**
 nothing is the owner setting `creditCapPaise` to 0 in `/billing/config`. Then every credit asks for approval,
 though still from the billing manager until step 1 lands. The lab reflex path, which passes no approval, would
 then refuse. So this stop is NOT applied until step 2 is in.
+
+## Stage D — pharmacy safety (added 2026-09-28 from hmis-10's Healthray re-review; built in lane `pharmacy-safety` by hmis-10)
+
+**Owner ruling, 2026-09-28, verbatim:** "IPD, Emergency, Insurance/TPA, Blood Bank, Dailysis, Immunisation, Ambulance,
+mortuary each will have individual brainstorm session. For now, let's only focus on Pharmacy department."
+
+The owner ruled on none of the D items individually. Each item below is the standard Indian-corporate-hospital
+answer, DECIDED.
+
+**How the absences were measured:** `grep -rniE` over `apps/core/src`, `apps/web/src` and `packages/contracts` on
+`main` @ 63fd0e67, excluding tests and locales, with several spellings per item. The hit lists are in the table.
+
+| # | What | Measured absence | Basis | Plugs into |
+|---|---|---|---|---|
+| D1 | ADR / pharmacovigilance: a suspected-ADR report, which also writes the patient's allergy in the same transaction | only the radiology contrast reactions exist (`radiology/reactions.ts`, `imaging_contrast_reactions`); reuse that shape | PvPI (IPC Ghaziabad, MoHFW), Suspected ADR Reporting Form; NABH MOM | office **Law** menu; a "needs you" row until submitted to the AMC |
+| D2 | Medication-error and near-miss log | no hits (two unrelated "near miss" uses in abdm and lab) | NABH MOM; NCC MERP index A–I; the error rate is a quality indicator | office **Law** menu; the desk's ⋯ gets "record a near miss" |
+| D3 | Fridge cold-chain temperature log | "fridge" exists only as a free-text shelf label (`shelf-locations.ts:18`) | Drugs & Cosmetics Rules 1945, storage as labelled; NABH MOM storage | office **Stock** menu; a missed reading or an excursion is a "needs you" row |
+| D4 | Crash-cart / emergency-tray check and restock (OPD, radiology and OT trays; ER trays go to the ER brainstorm) | zero hits | NABH MOM (emergency medicines standardised, checked, replenished) | office **Stock** menu; a check that is due is a "needs you" row |
+| D5 | Reserve-tier antibiotic gate (WHO AWaRe Reserve) | `cds/guardrails.ts:156-165` is advisory amber only | ICMR AMSP 2018: Reserve agents need prior authorisation by the ID physician or microbiologist | a `kernel/approvals` type; the approver is the role holding a new antimicrobial-authorise permission; the dispense holds until granted; the ask goes into the pharmacy desk's authorisation sheet |
+| D6 | Ward returns | zero hits | — | **waits for the IPD brainstorm** (ruling above) |
+
+- **Standard numbers:** confirm the NABH 5th edition MOM numbers from the text before quoting them in any screen or print.
+- **Migrations:** each D PR takes the next free number at rebase, and pharmacy-safety tells this lane before each rebase.
+- **"Needs you" rows:** D rows join `GET /pharmacy/office/needs` (`pharmacy/office-needs.ts`, B2 #349) as new sources, after #349 merges.

@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
-import { useScreenKeys } from "../../lib/keyboard";
 import { materialsErrorText } from "../../lib/materials-api";
+import { NEEDS_GRANTS, fetchOfficeNeeds } from "../../lib/office-needs-api";
 import { printInFrame } from "../../lib/print-api";
 import {
   cancelPurchaseOrder, decidePurchaseOrder, draftOrders, fetchOfficeToday, fetchPoDocument, fetchPurchasePlan,
   fetchPurchaseOrder, fetchPurchaseVendors, rupees, sendPurchaseOrder, submitPurchaseOrder, updatePurchaseOrder,
 } from "../../lib/purchase-api";
+import { useCopilot } from "../../lib/use-copilot";
+import { usePaletteOptional } from "../../components/command-palette";
 import { Button } from "@/components/ui/button";
+import { istClock, istDateLabel } from "../desk-one/model";
 import { ControlledView } from "./controlled";
 import { ItemsView } from "./items";
 import { MessagesView } from "./messages";
@@ -18,20 +21,50 @@ import { PayView } from "./pay";
 import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
+import { TodayDesk, money0 } from "./today";
 import { fetchControlledToday } from "../../lib/controlled-api";
+import { FormularyAdmin } from "../formulary-admin";
+import { MaterialsCounts } from "../materials-counts";
+import { MaterialsGrn } from "../materials-grn";
+import { MaterialsItems } from "../materials-items";
+import { MaterialsTransfers } from "../materials-transfers";
+import { MaterialsVendors } from "../materials-vendors";
+import { PharmacyDowntime } from "../pharmacy-downtime";
+import { PharmacyH1Register } from "../pharmacy-h1-register";
+import { PharmacyItems } from "../pharmacy-items";
+import { PharmacyPharmacists } from "../pharmacy-pharmacists";
+import { PharmacyReorder } from "../pharmacy-reorder";
+import { PharmacyRetailLicence } from "../pharmacy-retail-licence";
+import { OFFICE_PAGES, OFFICE_REDIRECTS, SIDE_KEYS } from "./pages";
+import type { OfficePage } from "./pages";
+import type { Open as PayOpen } from "./pay";
+import type { Open as ReturnsOpen } from "./returns";
+import type { Go, OfficeView } from "./today";
 import type { WireOfficeToday, WirePo, WirePoSummary } from "../../lib/purchase-api";
+import "../../styles/paper-pine.css";
+import "../desk-one/desk-one.css";
+import "./pharmacy-office.css";
 
 /**
- * ═══ PHARMACY PARITY P2 — THE BACK OFFICE ═══
+ * ═══ PHARMACY PARITY P2 → GAP-CLOSURE B2 — THE BACK OFFICE ═══
  *
- * One screen (the Desk One pattern): it opens on what needs this person today — orders awaiting
- * their approval, drafts to review, orders overdue, orders waiting on somebody else, orders to
- * receive, and the counter's open shortages — and every row opens its sheet. The agent's card says
- * what it would draft and a person presses the button; nothing is submitted, approved or sent by
- * anybody but a person.
+ * B2 rebuilt the frame to the owner-approved office board (Main / Menu / Phone artboards, 28 Sep
+ * 2026): the office owns the viewport as the pharmacy desk does, the seven tabs became the header's
+ * menu — Today · Buy · Pay · Returns · Stock · Items · Law · Reports — and it opens on TODAY, one
+ * ranked list of everything this person may act on (`today.tsx`, `GET /pharmacy/office/needs`).
  *
- * Keys: ↑/↓ move between orders, ⏎ opens one; on the sheet A approves and R rejects (when the order
- * is this person's to decide), Esc closes. Exceptions (cancel) sit behind ⋯.
+ * The other sides are the screens the office already had, kept working and reachable from the menu:
+ * Buy is P2's order list (below), Pay P3's, Returns P4's, Items and Law (the controlled cabinet and
+ * the patient messages) P6's, Reports P5's.
+ *
+ * B3 folded the fourteen "stores" nav leaves in (the Menu artboard): a side with more than one entry
+ * opens a dropdown, and an entry renders its existing screen inside the frame, under `.pof-legacy`.
+ * `pages.ts` holds the entries, their grants and the old addresses that now redirect here. The URL
+ * is the state — `?view=<side>&page=<entry>` — so reload and back/forward land where the person was;
+ * `?view=controlled` and `?view=messages` open those pages of Law.
+ *
+ * Every act from the list opens the existing sheet or screen for that document; nothing is submitted,
+ * approved, paid or posted by anybody but a person.
  */
 type Section = { key: keyof Pick<WireOfficeToday, "awaitingYou" | "drafts" | "overdue" | "waiting" | "toReceive">; rows: WirePoSummary[] };
 
@@ -41,49 +74,339 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
-type OfficeView = "buy" | "pay" | "returns" | "reports" | "controlled" | "items" | "messages";
+const MENU: readonly OfficeView[] = ["today", "buy", "pay", "returns", "stock", "items", "law", "reports"];
+
+/**
+ * B3 — where the office is: `?view=<side>&page=<entry>`. `controlled` and `messages` were sides of their
+ * own before B2 and are Law's pages now, so an old bookmark still opens them.
+ */
+type Where = { view: OfficeView | null; page: string | null };
+function whereOf(search: Record<string, unknown>): Where {
+  const v = typeof search.view === "string" ? search.view : null;
+  const page = typeof search.page === "string" ? search.page : null;
+  if (v === "controlled" || v === "messages") return { view: "law", page: v };
+  return { view: MENU.includes(v as OfficeView) ? (v as OfficeView) : null, page };
+}
+const windowSearch = (): Record<string, unknown> => Object.fromEntries(new URLSearchParams(window.location.search));
+
+/** True below `px` — the board's phone layout. jsdom has no `matchMedia`, so a test renders the desk. */
+function useNarrow(px: number): boolean {
+  const query = `(max-width: ${String(px)}px)`;
+  const [narrow, setNarrow] = useState(() => typeof window.matchMedia === "function" && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const m = window.matchMedia(query);
+    const on = (): void => setNarrow(m.matches);
+    on();
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, [query]);
+  return narrow;
+}
 
 /** PARITY P5 — `/pharmacy/office/reports`: the office opened on its Reports side (the owner's and the billing office's door). */
 export function PharmacyOfficeReports(): React.ReactElement {
   return <PharmacyOffice initialView="reports" />;
 }
 
-export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {}): React.ReactElement {
-  const { t } = useTranslation();
-  const { can } = useAuth();
-  // PARITY P3 — the office's halves: buying (P2) and paying. `?view=pay` opens on the second — the
-  // copilot's payment-run card links there. PARITY P4 adds the third, returning: `?view=returns`,
-  // where the copilot's return card links. PARITY P5 adds the fourth, the reports (`?view=reports`,
-  // or `/pharmacy/office/reports`), read by people who buy nothing — so buying is a side too.
-  const canBuy = can("materials.po.raise");
-  const canPay = can("materials.bills.manage");
-  const canReturn = can("materials.returns.manage") || can("materials.writeoffs.manage") || can("materials.recall.manage");
-  const canReport = can("pharmacy.reports.read");
-  // PHARMACY P6 — the fifth side, the controlled-drug cabinet: its custodians, its licence keepers and its register's readers.
+/** B3 — the page of a side, rendered inside the frame: the office's own sides and the folded screens as they are. */
+function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: ReturnsOpen }, buy: React.ReactElement): React.ReactElement | null {
+  switch (key) {
+    case "orders": return buy;
+    case "reorder": return <PharmacyReorder />;
+    case "vendors": return <MaterialsVendors />;
+    case "bills": return <PayView key={`pay-${String(seed.n)}`} {...(seed.pay === undefined ? {} : { initialOpen: seed.pay })} />;
+    case "returns": return <ReturnsView key={`ret-${String(seed.n)}`} {...(seed.returns === undefined ? {} : { initialOpen: seed.returns })} />;
+    case "grn": case "opening": return <MaterialsGrn />;
+    case "counts": return <MaterialsCounts />;
+    case "transfers": return <MaterialsTransfers />;
+    case "downtime": return <PharmacyDowntime />;
+    case "master": return <MaterialsItems />;
+    case "sells": return <PharmacyItems />;
+    case "formulary": return <FormularyAdmin />;
+    case "duplicates": return <ItemsView />;
+    case "h1": return <PharmacyH1Register />;
+    case "controlled": return <ControlledView />;
+    case "retail": return <PharmacyRetailLicence />;
+    case "pharmacists": return <PharmacyPharmacists />;
+    case "messages": return <MessagesView />;
+    case "reports": return <ReportsView />;
+    default: return null;
+  }
+}
+
+export function PharmacyOffice({ initialView }: { initialView?: OfficeView | "controlled" | "messages" } = {}): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const { can, username } = useAuth();
+  const navigate = useNavigate();
+  const palette = usePaletteOptional();
+  const narrow = useNarrow(900);
+
+  const canToday = NEEDS_GRANTS.some((g) => can(g));
   const canControlled = can("pharmacy.ndps.custody") || can("pharmacy.licences.manage") || can("pharmacy.register.read");
-  // PHARMACY P6 (hygiene) — the sixth side, the item master's duplicates and their merges: the materials head.
-  const canItems = can("materials.items.merge");
-  // PHARMACY P6 (patient messages) — the seventh side: the provider, the DLT ids, the reminder's phone, what was sent.
-  const canMessages = can("pharmacy.messages.manage");
-  const views = ([
-    ...(canBuy ? ["buy"] : []), ...(canPay ? ["pay"] : []), ...(canReturn ? ["returns"] : []), ...(canReport ? ["reports"] : []),
-    ...(canControlled ? ["controlled"] : []), ...(canItems ? ["items"] : []), ...(canMessages ? ["messages"] : []),
-  ] as OfficeView[]);
-  const [view, setView] = useState<OfficeView>(() => {
-    const v = new URLSearchParams(window.location.search).get("view");
-    return initialView ?? (v === "pay" || v === "returns" || v === "reports" || v === "controlled" || v === "items" || v === "messages" ? v : "buy");
-  });
-  const shown: OfficeView = views.includes(view) ? view : (views[0] ?? "buy");
-  // Only a buyer asks for the buying side's day: the owner and the billing office (reports only) never
-  // fire a request their grants refuse — not even in the instant before the session's grants load.
-  const today = useQuery({ queryKey: ["pharmacy", "office"], queryFn: fetchOfficeToday, enabled: shown === "buy" && canBuy });
-  // PARITY P3 — the shell's legend shows the office's keys, not the front desk's.
-  useScreenKeys([t(`pharmacyOffice.keys.${shown}`)]);
-  const [openId, setOpenId] = useState<string | null>(null);
+  /* B3 — an entry shows when the person holds the grant its old nav row (or its side) required. */
+  const pagesOf = (side: OfficeView): OfficePage[] => OFFICE_PAGES.filter((p) => p.side === side && p.perms.some((g) => can(g)));
+  const views = MENU.filter((v) => (v === "today" ? canToday : pagesOf(v).length > 0));
+
+  // The URL is the office's state: `?view=&page=` from the router, else the route's own side
+  // (`/pharmacy/office/reports`), else the address bar as the browser loaded it.
+  const routed = useSearch({ strict: false }) as Record<string, unknown>;
+  const where = typeof routed.view === "string" ? whereOf(routed)
+    : initialView !== undefined ? whereOf({ view: initialView })
+    : whereOf(windowSearch());
+  const want = where.view ?? "today";
+  const shown: OfficeView = views.includes(want) ? want : (views[0] ?? "today");
+  const sidePages = shown === "today" ? [] : pagesOf(shown);
+  const page: OfficePage | null = sidePages.find((p) => p.key === where.page) ?? sidePages[0] ?? null;
+
+  // Only a holder of one of the list's sides asks for it; the owner and the billing office (reports
+  // only) never fire a request for a list that would be empty — not even before the grants load.
+  const needs = useQuery({ queryKey: ["pharmacy", "office", "needs"], queryFn: fetchOfficeNeeds, enabled: shown === "today" && canToday, refetchInterval: 60_000 });
+  const copilot = useCopilot();
+  const [po, setPo] = useState<{ id: string; decide: boolean; reject: boolean } | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [seed, setSeed] = useState<{ n: number; pay?: PayOpen; returns?: ReturnsOpen }>({ n: 0 });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [full, setFull] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(id); }, []);
 
+  /* B3 — the header menu's open dropdown (a side with more than one entry). */
+  const [drop, setDrop] = useState<OfficeView | null>(null);
+
+  /** Every move inside the office is a URL, so reload and back/forward land where the person was. */
+  const open = (v: OfficeView, pageKey?: string): void => {
+    setDrop(null); setMenuOpen(false); setNotice(null);
+    void navigate({ to: "/pharmacy/office", search: pageKey === undefined ? { view: v } : { view: v, page: pageKey } });
+  };
+  /** A side with one entry opens; a side with several opens its dropdown (from a key, focused on its first entry). */
+  const openSide = (v: OfficeView, fromKey: boolean): void => {
+    if (v === "today" || pagesOf(v).length <= 1) { open(v); return; }
+    setDrop((d) => (d === v && !fromKey ? null : v));
+    if (fromKey) setTimeout(() => document.querySelector<HTMLButtonElement>(`[data-drop="${v}"] [role="menuitem"]`)?.focus(), 0);
+  };
+  const go = (g: Go): void => {
+    if (g.to === "po") { setPo({ id: g.id, decide: g.decide, reject: g.reject === true }); return; }
+    if (g.to === "plan") { setPlanOpen(true); return; }
+    if (g.to === "route") {
+      // A screen that folded into the office opens as its page here, not by a round trip through its old address.
+      const folded = OFFICE_REDIRECTS[g.path];
+      if (folded !== undefined) open(folded.view, folded.page);
+      else void navigate({ to: g.path });
+      return;
+    }
+    setSeed((s) => ({ n: s.n + 1, ...(g.view === "pay" && g.open !== undefined ? { pay: g.open as PayOpen } : {}), ...(g.view === "returns" && g.open !== undefined ? { returns: g.open as ReturnsOpen } : {}) }));
+    open(g.view, g.page);
+  };
+
+  // The opening-stock sheet lives on the goods-receipt screen; its menu entry brings it into view.
+  const pageKey = page?.key ?? null;
+  useEffect(() => {
+    if (pageKey !== "opening") return;
+    const id = setTimeout(() => document.getElementById("opening-stock-title")?.scrollIntoView({ block: "start" }), 0);
+    return () => clearTimeout(id);
+  }, [pageKey]);
+
+  // A dropdown closes on a click anywhere outside it.
+  useEffect(() => {
+    if (drop === null) return;
+    const onDown = (e: MouseEvent): void => {
+      if (!(e.target instanceof Node) || document.querySelector(`[data-navi="${drop}"]`)?.contains(e.target) !== true) setDrop(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [drop]);
+
+  /*
+   * The board's keys — B buy · Y pay · R returns · S stock · I items · L law · P reports — open a side's
+   * menu. They are live on Today and while a dropdown is open; on a side, its screen owns its letters
+   * (the controlled cabinet's C and L, a sheet's A and R), so the menu never steals one. Never while
+   * typing, never with a modifier (the owner's ruling: no chord a browser claims), never over a sheet.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "Escape" && drop !== null) { e.preventDefault(); setDrop(null); return; }
+      if (e.defaultPrevented || po !== null || planOpen || narrow) return;
+      const el = e.target as HTMLElement | null;
+      if (el !== null && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      if (shown !== "today" && drop === null) return;
+      const side = views.find((v) => SIDE_KEYS[v] !== undefined && SIDE_KEYS[v] === e.key.toUpperCase());
+      if (side === undefined) return;
+      e.preventDefault();
+      openSide(side, true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  /* ↑/↓ walk a dropdown's entries; ⏎ is the entry's own button. */
+  const onDropKey = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = e.key === "ArrowDown" ? Math.min(items.length - 1, i + 1) : Math.max(0, i - 1);
+    items[next]?.focus();
+    e.preventDefault();
+  };
+  const onCopilot = (which: "po" | "pay" | "returns"): void => {
+    if (which === "po") go({ to: "plan" });
+    else if (which === "pay") go({ to: "view", view: "pay" });
+    else go({ to: "view", view: "returns", open: { kind: "plan" } });
+  };
+  const ask = useCallback((q: string): void => { copilot.ask(q); }, [copilot]);
+
+  const d = needs.data;
+  const law = d?.rows.find((r) => (r.source === "LAW" || r.source === "PEOPLE") && r.tier <= 1) ?? null;
+  const duePaise = d?.money?.dueThisWeekPaise ?? 0;
+  const viewTitle = t(`pharmacyOffice.today.menu.${shown}`);
+
+  const buy = <BuyView onOpen={(id, decide) => setPo({ id, decide, reject: false })} onPlan={() => setPlanOpen(true)} />;
+  const legacy = (
+    <div className="pof-legacy space-y-5">
+      {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
+      {canControlled && shown !== "law" && shown !== "today" && <ControlledStrip onOpen={() => open("law", "controlled")} />}
+      {page !== null && pageBody(page.key, seed, buy)}
+    </div>
+  );
+  const pageTitle = (p: OfficePage): string => t(`pharmacyOffice.menu.page.${p.key}`);
+  const wasLine = (p: OfficePage): React.ReactElement | null => p.was === null ? null : <span className="was">{t("pharmacyOffice.menu.was", { path: p.was })}</span>;
+
+  const sheets = (
+    <div className="pof-legacy">
+      {po !== null && (
+        <PoSheet id={po.id} canDecide={po.decide} startRejecting={po.reject} onClose={() => setPo(null)} onDone={setNotice} />
+      )}
+      {planOpen && (
+        <PlanSheet
+          onClose={() => setPlanOpen(false)}
+          onMade={(n, first) => { setPlanOpen(false); setNotice(t("pharmacyOffice.agent.made", { count: n })); if (first !== null) setPo({ id: first, decide: false, reject: false }); }}
+        />
+      )}
+    </div>
+  );
+
+  return (
+    <div className="d1 pof" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"} data-seat="pharmacy-office" data-testid="pharmacy-office">
+      {narrow ? (
+        !full && (
+          <header className="pof-ptop">
+            <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e" /></svg>
+            <span className="mo" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".12em", flexGrow: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {t("pharmacyOffice.today.phoneWordmark", { view: viewTitle.toUpperCase() })}
+            </span>
+            {views.length > 1 && (
+              <button type="button" className="pof-pmenu" aria-label={t("pharmacyOffice.today.menuAria")} aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)} data-testid="office-menu">
+                {t("pharmacyOffice.today.menuButton")} ▾
+              </button>
+            )}
+            {menuOpen && (
+              <nav className="pof-drop" aria-label={t("pharmacyOffice.today.menuLabel")}>
+                {views.map((v) => {
+                  const list = v === "today" ? [] : pagesOf(v);
+                  if (list.length <= 1) {
+                    return <button key={v} type="button" aria-current={v === shown ? "page" : undefined} data-testid={`office-view-${v}`} onClick={() => open(v)}>{t(`pharmacyOffice.today.menu.${v}`)}</button>;
+                  }
+                  // B3 — a side with several entries lists them under its name.
+                  return (
+                    <div key={v} role="group" aria-label={t(`pharmacyOffice.today.menu.${v}`)} data-testid={`office-group-${v}`}>
+                      <div className="tag pof-drop-head">{t(`pharmacyOffice.today.menu.${v}`)}</div>
+                      {list.map((p) => (
+                        <button key={p.key} type="button" className="pof-drop-ent" aria-current={v === shown && p.key === page?.key ? "page" : undefined} data-testid={`office-entry-${p.key}`} onClick={() => open(v, p.key)}>
+                          {pageTitle(p)}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              </nav>
+            )}
+          </header>
+        )
+      ) : (
+        <header className="pof-top">
+          <div className="pof-brand">
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e" /></svg>
+            <span className="mo" style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".12em", whiteSpace: "nowrap" }}>{t("pharmacyOffice.today.wordmark")}</span>
+          </div>
+          <nav aria-label={t("pharmacyOffice.today.menuLabel")} className="pof-nav">
+            {views.map((v) => {
+              const list = v === "today" ? [] : pagesOf(v);
+              const multi = list.length > 1;
+              return (
+                <span key={v} className="pof-navi" data-navi={v}>
+                  <button
+                    type="button" className={`nav${v === shown ? " on" : ""}${multi ? " dd" : ""}`} aria-current={v === shown ? "page" : undefined}
+                    aria-haspopup={multi ? "menu" : undefined} aria-expanded={multi ? drop === v : undefined}
+                    data-testid={`office-view-${v}`} onClick={() => openSide(v, false)}
+                  >
+                    {t(`pharmacyOffice.today.menu.${v}`)}
+                  </button>
+                  {multi && drop === v && (
+                    <div className="pof-dd" role="menu" aria-label={t(`pharmacyOffice.today.menu.${v}`)} data-drop={v} data-testid={`office-drop-${v}`} onKeyDown={onDropKey}>
+                      <div className="tag pof-dd-head">
+                        {t(`pharmacyOffice.today.menu.${v}`)}
+                        {SIDE_KEYS[v] !== undefined && <span className="kb">{SIDE_KEYS[v]}</span>}
+                      </div>
+                      {list.map((p) => (
+                        <button
+                          key={p.key} type="button" role="menuitem" className={v === shown && p.key === page?.key ? "pof-ent on" : "pof-ent"}
+                          data-testid={`office-entry-${p.key}`} onClick={() => open(v, p.key)}
+                        >
+                          <b>{pageTitle(p)}</b>
+                          {wasLine(p)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
+          <div style={{ flexGrow: 1 }} />
+          {duePaise > 0 && <span className="pill gd" data-testid="pill-due">{t("pharmacyOffice.today.pill.due", { amount: money0(duePaise) })}</span>}
+          {law !== null && (
+            <span className="pill rd" style={{ marginLeft: 6 }} data-testid="pill-law">
+              {law.clock.code === "days_left" ? t("pharmacyOffice.today.pill.lawDays", { count: law.clock.n ?? 0 }) : t("pharmacyOffice.today.pill.lawLapsed")}
+            </span>
+          )}
+          <span className="mo pof-clock">{istDateLabel(now)} · {istClock(now)}</span>
+          <span className="pof-user">{username ?? ""}</span>
+        </header>
+      )}
+
+      {shown === "today" ? (
+        <TodayDesk
+          data={d} error={needs.error === null ? null : materialsErrorText(needs.error, t)} narrow={narrow} keysLive={po === null && !planOpen}
+          onGo={go} onCopilot={onCopilot} onAsk={ask} answer={copilot.answer} busy={copilot.busy}
+          onCommand={palette === null ? null : () => palette.open()} onFullScreen={setFull}
+        />
+      ) : (
+        <div className="pof-page" data-testid={`office-page-${shown}`} data-page={page?.key}>
+          {legacy}
+        </div>
+      )}
+      {shown === "today" && notice !== null && (
+        <p role="status" style={{ position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 45, margin: 0, padding: "9px 14px", borderRadius: 7, border: "1px solid var(--green-line)", background: "var(--card)", color: "var(--green)", fontSize: 13, fontWeight: 500 }}>{notice}</p>
+      )}
+      {sheets}
+    </div>
+  );
+}
+
+/**
+ * PARITY P2 — the Buy side: what needs this person on the buying side — orders awaiting their
+ * approval, drafts to review, orders overdue, orders waiting on somebody else, orders to receive, and
+ * the counter's open shortages — and every row opens its sheet. The agent's card says what it would
+ * draft and a person presses the button.
+ *
+ * Keys: ↑/↓ move between orders, ⏎ opens one; on the sheet A approves and R rejects (when the order
+ * is this person's to decide), Esc closes. Exceptions (cancel) sit behind ⋯.
+ */
+function BuyView({ onOpen, onPlan }: { onOpen: (id: string, decide: boolean) => void; onPlan: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const today = useQuery({ queryKey: ["pharmacy", "office", "today"], queryFn: fetchOfficeToday });
+  const listRef = useRef<HTMLDivElement>(null);
   const d = today.data;
   const sections: Section[] = d === undefined ? [] : [
     { key: "awaitingYou", rows: d.awaitingYou },
@@ -106,25 +429,8 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
   };
 
   return (
-    <div className="space-y-5 p-4">
-      <div className="flex flex-wrap items-baseline gap-3">
-        <h1 className="text-xl font-semibold">{t("pharmacyOffice.title")}</h1>
-        <span className="text-sm text-muted-foreground">{t(shown === "reports" ? "pharmacyOffice.reports.subtitle" : "pharmacyOffice.subtitle")}</span>
-        {views.length > 1 && (
-          <div className="ml-auto flex gap-1" role="tablist" aria-label={t("pharmacyOffice.views")}>
-            {views.map((v) => (
-              <Button key={v} type="button" role="tab" aria-selected={v === shown} data-testid={`office-view-${v}`} variant={v === shown ? "default" : "outline"} onClick={() => setView(v)}>
-                {t(`pharmacyOffice.view.${v}`)}
-              </Button>
-            ))}
-          </div>
-        )}
-      </div>
-      {canControlled && shown !== "controlled" && <ControlledStrip onOpen={() => setView("controlled")} />}
-      {shown === "pay" ? <PayView /> : shown === "returns" ? <ReturnsView /> : shown === "reports" ? <ReportsView /> : shown === "controlled" ? <ControlledView /> : shown === "items" ? <ItemsView /> : shown === "messages" ? <MessagesView /> : (<>
+    <>
       {today.error !== null && <p role="alert" className="text-sm text-red-600">{materialsErrorText(today.error, t)}</p>}
-      {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
-
       {d !== undefined && (
         <>
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6" data-testid="office-counts">
@@ -132,7 +438,7 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
               ["awaitingYou", d.awaitingYou.length], ["drafts", d.drafts.length], ["overdue", d.overdue.length],
               ["waiting", d.waiting.length], ["toReceive", d.toReceive.length], ["shortages", d.shortages.length],
             ] as const).map(([k, n]) => (
-              <div key={k} className={`rounded border p-3 ${n > 0 && (k === "awaitingYou" || k === "overdue") ? "border-amber-400" : ""}`} data-testid={`count-${k}`}>
+              <div key={k} className={`rounded border bg-white p-3 ${n > 0 && (k === "awaitingYou" || k === "overdue") ? "border-amber-400" : ""}`} data-testid={`count-${k}`}>
                 <div className="text-2xl font-semibold tabular-nums">{n}</div>
                 <div className="text-xs text-muted-foreground">{t(`pharmacyOffice.count.${k}`)}</div>
               </div>
@@ -148,7 +454,7 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
                   : t("pharmacyOffice.agent.can", { orders: d.plan.orders, lines: d.plan.lines, unassigned: d.plan.unassigned })}
                 {d.plan.unmatched > 0 && <span className="block text-xs text-muted-foreground">{t("pharmacyOffice.agent.unmatched", { count: d.plan.unmatched })}</span>}
               </span>
-              <Button type="button" disabled={d.plan.orders + d.plan.unassigned === 0} onClick={() => setPlanOpen(true)}>
+              <Button type="button" disabled={d.plan.orders + d.plan.unassigned === 0} onClick={onPlan}>
                 {t("pharmacyOffice.agent.review")}
               </Button>
             </div>
@@ -158,13 +464,13 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
             {sections.filter((s) => s.rows.length > 0).map((s) => (
               <section key={s.key} data-testid={`section-${s.key}`}>
                 <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t(`pharmacyOffice.count.${s.key}`)}</h2>
-                <ul className="divide-y rounded border">
+                <ul className="divide-y rounded border bg-white">
                   {s.rows.map((p) => (
                     <li key={p.id}>
                       <button
                         type="button" data-po-row data-testid={`po-row-${p.poNo}`}
                         className="flex w-full flex-wrap items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
-                        onClick={() => setOpenId(p.id)}
+                        onClick={() => onOpen(p.id, mineToDecide.has(p.id))}
                       >
                         <span className="font-mono text-xs">{p.poNo}</span>
                         <span className="flex-1 font-medium">{p.vendorName}</span>
@@ -185,25 +491,15 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView } = {
           {d.shortages.length > 0 && (
             <p className="text-sm">
               {t("pharmacyOffice.shortages", { count: d.shortages.length })}{" "}
-              <Link to="/pharmacy/reorder" className="underline">{t("pharmacyOffice.openReorder")}</Link>
+              <Link to="/pharmacy/office" search={{ view: "buy", page: "reorder" }} className="underline">{t("pharmacyOffice.openReorder")}</Link>
             </p>
           )}
         </>
       )}
-
-      {openId !== null && (
-        <PoSheet id={openId} canDecide={mineToDecide.has(openId)} onClose={() => setOpenId(null)} onDone={setNotice} />
-      )}
-      {planOpen && (
-        <PlanSheet
-          onClose={() => setPlanOpen(false)}
-          onMade={(n, first) => { setPlanOpen(false); setNotice(t("pharmacyOffice.agent.made", { count: n })); if (first !== null) setOpenId(first); }}
-        />
-      )}
-      </>)}
-    </div>
+    </>
   );
 }
+
 
 type EditLine = { itemId: string; name: string; code: string; uom: string; multiplier: number; qty: string; free: string; rate: string; gst: string; mrp: string };
 
@@ -221,7 +517,9 @@ function editable(po: WirePo): EditLine[] {
  * THE PURCHASE ORDER SHEET: its lines, its totals, and the one or two acts its status allows. A
  * draft's lines are typed in place; everything else reads.
  */
-function PoSheet({ id, canDecide, onClose, onDone }: { id: string; canDecide: boolean; onClose: () => void; onDone: (msg: string) => void }): React.ReactElement {
+function PoSheet({ id, canDecide, startRejecting = false, onClose, onDone }: {
+  id: string; canDecide: boolean; startRejecting?: boolean; onClose: () => void; onDone: (msg: string) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -229,7 +527,8 @@ function PoSheet({ id, canDecide, onClose, onDone }: { id: string; canDecide: bo
   const [lines, setLines] = useState<EditLine[] | null>(null);
   const [expected, setExpected] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [rejecting, setRejecting] = useState(false);
+  // B2 — the Today list's "Reject with a reason" opens the sheet already asking for the reason.
+  const [rejecting, setRejecting] = useState(startRejecting && canDecide);
   const [more, setMore] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -394,7 +693,7 @@ function PoSheet({ id, canDecide, onClose, onDone }: { id: string; canDecide: bo
                 <Button type="button" disabled={busy} onClick={() => void act(() => sendPurchaseOrder(id), t("pharmacyOffice.sheet.sent"))}>{t("pharmacyOffice.sheet.send")}</Button>
               )}
               {(p.status === "sent" || p.status === "part_received" || p.status === "approved") && (
-                <Link to="/materials/grn" className="text-sm underline">{t("pharmacyOffice.sheet.receive")}</Link>
+                <Link to="/pharmacy/office" search={{ view: "stock", page: "grn" }} className="text-sm underline">{t("pharmacyOffice.sheet.receive")}</Link>
               )}
               <Button type="button" variant="outline" onClick={() => void print()}>{t("pharmacyOffice.sheet.print")}</Button>
               {raiser && ["draft", "pending_approval", "approved", "sent"].includes(p.status) && (

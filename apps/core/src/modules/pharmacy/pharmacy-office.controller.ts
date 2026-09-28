@@ -8,9 +8,11 @@ import {
   debitNoteDocument, officeBillDraft, officeDraftReturns, officePay, officeRecall, officeReturnFromRecall, officeReturns, officeToday,
   purchaseOrderDocument, writeOffManifestDocument,
 } from "./office";
+import { officeNeeds } from "./office-needs";
 import { draftPurchaseOrders, planPurchaseDrafts } from "./purchase-drafts";
 import { officeExecuteMerge, officeGetMerge, officeItems, officeMergePreview, officeRaiseMerge } from "./item-merge";
 import type { OfficeItems } from "./item-merge";
+import type { OfficeNeeds } from "./office-needs";
 import type { ItemMergeView, MergePreview } from "../materials";
 import type { OfficePay, OfficeRecall, OfficeReturns, OfficeToday } from "./office";
 import type { BillDraft } from "../materials";
@@ -45,6 +47,19 @@ function officeHttp(e: unknown): never {
 @Controller("pharmacy/office")
 export class PharmacyOfficeController {
   constructor(@Inject(DB) private readonly db: Db) {}
+
+  /**
+   * GAP-CLOSURE B2 — the office's one "needs you today" list. AUTHENTICATED-ONLY, deliberately: each
+   * side inside is read only under the grant its own route above asks (`office-needs.ts`), so a person
+   * sees exactly the sides they hold and somebody with none gets an empty list — never a 403 that would
+   * hide the sides they do hold.
+   */
+  @Get("needs")
+  async needs(@CurrentActor() actor: Actor): Promise<OfficeNeeds> {
+    try {
+      return await officeNeeds(this.db, actor, new Date());
+    } catch (e) { officeHttp(e); }
+  }
 
   @RequirePermission("materials.po.raise", "hospital")
   @Get("today")

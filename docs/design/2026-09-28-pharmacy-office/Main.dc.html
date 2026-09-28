@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pharmacy Office — needs you today</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f4f7f4; }
+  a { color: #0e6b4e; text-decoration: none; }
+  a:hover { color: #0a5039; }
+  .d1 { --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed; --dim:#5c6f66; --wash:#eef3ef;
+        --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35); --gold:#dd8f1c; --gold-ink:#9a6208;
+        --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45); --red:#b23a30; --red-soft:rgba(178,58,48,.08);
+        --red-line:rgba(178,58,48,.4); --mint:#35c48f; }
+  .d1 * { box-sizing: border-box; }
+  .d1 button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+  .d1 input { font: inherit; color: inherit; }
+  .d1 .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .d1 .tag { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .d1 .kb { display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px; padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); background: var(--card); font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: var(--dim); }
+  .d1 .pri { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 6px; background: var(--green); color: #f2faf6; font-size: 13px; font-weight: 600; border: 1px solid var(--green); }
+  .d1 .sec { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 40px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); font-size: 12.5px; font-weight: 500; }
+  .d1 .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  .d1 .pill { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px; font-size: 10.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--dim); white-space: nowrap; }
+  .d1 .pill.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+  .d1 .pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-ink); }
+  .d1 .pill.rd { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+  .d1 .src { display: inline-flex; align-items: center; justify-content: center; width: 62px; height: 20px; border-radius: 3px; font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 700; letter-spacing: .1em; border: 1px solid var(--line); color: var(--dim); background: var(--wash); flex-shrink: 0; }
+  .d1 .nav { display: inline-flex; align-items: center; height: 46px; padding: 0 11px; font-size: 12.5px; font-weight: 500; color: var(--dim); border-bottom: 2px solid transparent; }
+  .d1 .nav.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--green); }
+  .d1 .row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 9px 14px; border-top: 1px solid var(--line2); }
+  .d1 .row:hover { background: var(--wash); }
+  .d1 .row.sel { background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); }
+  .d1 .fact { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line2); font-size: 12.5px; }
+  .d1 .agdo { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 5px; background: var(--green); color: #f2faf6; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+</style>
+</helmet>
+<div class="d1" style="width: 1440px; height: 960px; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+
+  <header style="height: 46px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 16px; background: var(--card); border-bottom: 1px solid var(--line)">
+    <div style="display: flex; align-items: center; gap: 9px; padding-right: 14px; margin-right: 6px; border-right: 1px solid var(--line)">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"></path></svg>
+      <span class="mo" style="font-size: 12px; font-weight: 700; letter-spacing: .12em">PHARMACY OFFICE</span>
+    </div>
+    <nav aria-label="Office" style="display: flex; align-items: center">
+      <a class="nav on" href="#">Today</a>
+      <a class="nav" href="#">Buy</a>
+      <a class="nav" href="#">Pay</a>
+      <a class="nav" href="#">Returns</a>
+      <a class="nav" href="#">Stock</a>
+      <a class="nav" href="#">Items</a>
+      <a class="nav" href="#">Law</a>
+      <a class="nav" href="#">Reports</a>
+    </nav>
+    <div style="flex-grow: 1"></div>
+    <span class="pill gd">₹1,84,300 due this week</span>
+    <span class="pill rd" style="margin-left: 6px">licence lapses in 6 d</span>
+    <span class="mo" style="margin: 0 14px; font-size: 11px; color: var(--dim)">MON 28 SEPT · 11:40</span>
+    <span style="font-size: 12.5px; font-weight: 600">Owner</span>
+  </header>
+
+  <div style="flex-grow: 1; display: flex; min-height: 0">
+
+    <aside aria-label="In hand" style="width: 296px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--card)">
+      <sc-if value="{{ none }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 20px 18px; display: flex; flex-direction: column; gap: 18px">
+          <div class="tag">Nothing in hand</div>
+          <p style="margin: 0; font-size: 13px; line-height: 19px; color: var(--dim)">Open a row. It stays in this lane until Esc, with the one act it needs at the bottom.</p>
+          <div>
+            <div class="tag" style="margin-bottom: 6px">Keys</div>
+            <div style="display: flex; flex-direction: column; gap: 7px; font-size: 12px">
+              <div style="display: flex; gap: 8px; align-items: center"><span class="kb">↑↓</span>move</div>
+              <div style="display: flex; gap: 8px; align-items: center"><span class="kb">⏎</span>open</div>
+              <div style="display: flex; gap: 8px; align-items: center"><span class="kb">A</span>do the act</div>
+              <div style="display: flex; gap: 8px; align-items: center"><span class="kb">F2</span>ask the office copilot</div>
+              <div style="display: flex; gap: 8px; align-items: center"><span class="kb">F8</span>command</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ some }}" hint-placeholder-val="{{ true }}">
+        <div style="flex-grow: 1; display: flex; flex-direction: column; min-height: 0">
+          <div style="padding: 18px 18px 10px">
+            <div style="display: flex; align-items: center; gap: 8px"><span class="src">{{ cur.src }}</span><span class="mo" style="font-size: 11px; color: var(--dim)">{{ cur.doc }}</span></div>
+            <h2 style="margin: 10px 0 0; font-size: 16px; line-height: 22px; font-weight: 600">{{ cur.head }}</h2>
+          </div>
+          <div style="padding: 0 18px; flex-grow: 1; overflow: auto">
+            <sc-for list="{{ cur.facts }}" as="f" hint-placeholder-count="4">
+              <div class="fact"><span style="color: var(--dim)">{{ f.k }}</span><span class="mo" style="text-align: right">{{ f.v }}</span></div>
+            </sc-for>
+            <div class="tag" style="margin: 16px 0 6px">Why it is here</div>
+            <p style="margin: 0; font-size: 12.5px; line-height: 18px">{{ cur.why }}</p>
+          </div>
+          <div style="padding: 12px 18px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px">
+            <button type="button" class="pri" style="width: 100%">{{ cur.pri }} <span class="kb" style="background: transparent; color: #cfe8dc; border-color: #3f8a70">A</span></button>
+            <button type="button" class="sec" style="width: 100%">{{ cur.sec }}</button>
+            <span style="font-size: 11px; color: var(--dim)">{{ cur.who }}</span>
+          </div>
+        </div>
+      </sc-if>
+    </aside>
+
+    <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 18px 20px 0">
+      <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px">
+        <h1 style="margin: 0; font-size: 20px; font-weight: 600">Needs you today</h1>
+        <span style="font-size: 12.5px; color: var(--dim)">10 things, most urgent first · buying, paying, returns, stock, law and people in one list</span>
+      </div>
+      <div class="box" style="flex-grow: 1; overflow: hidden; display: flex; flex-direction: column">
+        <sc-for list="{{ items }}" as="it" hint-placeholder-count="10">
+          <button type="button" class="{{ it.cls }}" onClick="{{ it.pick }}">
+            <span class="src">{{ it.src }}</span>
+            <span style="flex-grow: 1; min-width: 0">
+              <span style="display: block; font-size: 13.5px; font-weight: 600">{{ it.title }}</span>
+              <span style="display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px">{{ it.sub }}</span>
+            </span>
+            <span class="{{ it.clockCls }}">{{ it.clock }}</span>
+            <span class="mo" style="width: 150px; text-align: right; font-size: 11.5px; font-weight: 600; color: var(--green)">{{ it.act }} →</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="height: 16px"></div>
+    </main>
+
+    <aside aria-label="Copilot and clocks" style="width: 352px; flex-shrink: 0; border-left: 1px solid var(--line); padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; background: var(--paper)">
+      <section class="box" style="padding: 14px; border-color: var(--green-line); box-shadow: inset 3px 0 0 var(--mint)">
+        <div style="display: flex; align-items: center; gap: 8px"><span style="width: 7px; height: 7px; border-radius: 50%; background: var(--mint)"></span><span class="tag" style="color: var(--green)">Office copilot · drafted, not done</span></div>
+        <div style="display: flex; flex-direction: column; margin-top: 10px">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line2)">
+            <span style="flex-grow: 1; font-size: 12.5px; line-height: 17px"><b>2 purchase orders</b> from the reorder list and 4 short-book lines · ₹61,200 · priced at last PTR</span>
+            <button type="button" class="agdo">Review</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line2)">
+            <span style="flex-grow: 1; font-size: 12.5px; line-height: 17px"><b>A payment run</b> of 3 MSME bills due Fri, less ₹8,450 credit · ₹1,75,850</span>
+            <button type="button" class="agdo">Review</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line2)">
+            <span style="flex-grow: 1; font-size: 12.5px; line-height: 17px"><b>3 expiry returns</b>, one per supplier, inside each return window · ₹14,700</span>
+            <button type="button" class="agdo">Review</button>
+          </div>
+        </div>
+        <label style="display: block; margin-top: 10px">
+          <span class="tag">Ask</span>
+          <span style="display: flex; align-items: center; gap: 8px; margin-top: 5px; height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card)">
+            <input type="text" placeholder="Cipla ka kitna baaki hai?" aria-label="Ask the office copilot" style="flex-grow: 1; border: none; outline: none; background: transparent; font-size: 12.5px">
+            <span class="kb">F2</span>
+          </span>
+        </label>
+        <p style="margin: 8px 0 0; font-size: 11px; line-height: 15px; color: var(--dim)">Nothing with money or stock posts until a person opens the draft and confirms it.</p>
+      </section>
+
+      <section class="box" style="padding: 0">
+        <button type="button" onClick="{{ toggleClocks }}" aria-expanded="{{ clocksOpen }}" style="width: 100%; display: flex; align-items: center; gap: 8px; padding: 12px 14px">
+          <span class="tag" style="flex-grow: 1">Clocks running · 5</span>
+          <span style="font-size: 11.5px; color: var(--gold-ink); font-weight: 600">MSME 45 d: Fri</span>
+          <span aria-hidden="true" style="color: var(--dim)">{{ chev }}</span>
+        </button>
+        <sc-if value="{{ clocksOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 0 14px 10px">
+            <div class="fact"><span>MSME 45-day (3 bills)</span><span class="mo" style="color: var(--gold-ink)">4 d</span></div>
+            <div class="fact"><span>Retail licence Form 20/21</span><span class="mo" style="color: var(--red)">6 d</span></div>
+            <div class="fact"><span>Credit note awaited · Cipla</span><span class="mo">13 d</span></div>
+            <div class="fact"><span>PO approval · PO-2026-014</span><span class="mo">2 h 30 m</span></div>
+            <div class="fact"><span>NDPS Form 3G recognition</span><span class="mo">211 d</span></div>
+          </div>
+        </sc-if>
+      </section>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: 1, clocksOpen: false }; }
+  renderVals() {
+    const tone = { rd: 'pill rd', gd: 'pill gd', on: 'pill on', no: 'pill' };
+    const rows = [
+      { src: 'LAW', title: 'Retail drug licence (Form 20 / 21) lapses on Sun 4 Oct', sub: 'Walk-in counter stops selling the day it lapses · licence F20-RJ-2231', clock: '6 d', tone: 'rd', act: 'Record renewal',
+        doc: 'F20-RJ-2231', head: 'Retail licence lapses in 6 days', facts: [{ k: 'Form 20', v: 'F20-RJ-2231' }, { k: 'Form 21', v: 'F21-RJ-2231' }, { k: 'Valid to', v: '04 Oct 2026' }, { k: 'Pharmacist in charge', v: '[NAME]' }],
+        why: 'The walk-in counter refuses every sale once the licence on file does not cover today (Drugs and Cosmetics Act §18(c)). The renewal is filed with the licensing authority; this records the new numbers and dates.', pri: 'Record the renewed licence', sec: 'Remind me tomorrow', who: 'Recorded by the pharmacist in charge or the owner' },
+      { src: 'PAY', title: '3 MSME bills cross 45 days on Fri 3 Oct — ₹1,84,300', sub: 'Sun Pharma Distributors · Medplus Distributors · Anand Medical Agencies', clock: '4 d', tone: 'gd', act: 'Prepare run',
+        doc: 'MPR (draft)', head: 'Pay 3 MSME bills before the 45-day line', facts: [{ k: 'MSB2609020004 · Sun Pharma', v: '₹92,400' }, { k: 'MSB2609030011 · Medplus', v: '₹58,600' }, { k: 'MSB2609040002 · Anand', v: '₹33,300' }, { k: 'Less credit · Cipla MCN', v: '−₹8,450' }, { k: 'Payable', v: '₹1,75,850' }],
+        why: 'MSMED Act §15: a micro or small supplier is paid within 45 days of acceptance, or interest runs at three times the bank rate and the amount is disallowed under §43B(h). The copilot drafted the run; the materials head prepares it and the owner authorises it.', pri: 'Open the drafted run', sec: 'Pay only the oldest', who: 'Prepared by materials head · authorised by owner · recorded by accounts' },
+      { src: 'BUY', title: 'PO-2026-014 · Medplus Distributors Pvt Ltd — ₹1,12,800 awaits your approval', sub: '9 lines from the reorder list · raised by the storekeeper at 09:10 · above ₹50,000, so it is the owner’s to approve', clock: '2 h 30 m', tone: 'no', act: 'Approve',
+        doc: 'PO-2026-014', head: 'Approve a purchase order', facts: [{ k: 'Vendor', v: 'Medplus Distributors' }, { k: 'Lines', v: '9' }, { k: 'Value', v: '₹1,12,800' }, { k: 'Expected', v: 'Wed 30 Sep' }, { k: 'Raised by', v: 'storekeeper' }],
+        why: 'Every PO is approved before it is sent. The approver cannot be the person who later receives the goods (separation of duties: approver ≠ GRN receiver).', pri: 'Approve PO-2026-014', sec: 'Reject with a reason', who: 'Approver ≠ receiver — enforced' },
+      { src: 'BUY', title: 'GRN2609280003 received against PO-2026-011 — 2 lines short', sub: 'Pan 40 · 60 of 100 strips · Montair LC · 0 of 30 · the PO stays part-received', clock: 'today', tone: 'no', act: 'Keep open',
+        doc: 'GRN2609280003', head: 'A delivery came in short', facts: [{ k: 'Pan 40', v: '60 / 100' }, { k: 'Montair LC', v: '0 / 30' }, { k: 'Other lines', v: '7 complete' }],
+        why: 'Short supply stays open on the PO until it arrives or someone closes it short with a reason. The supplier bill is matched only to what was received.', pri: 'Keep the PO open', sec: 'Close short with a reason', who: 'Storekeeper or materials head' },
+      { src: 'PAY', title: 'Bill MSB2609270004 held for match — ₹1,212 over the GRN', sub: 'Anand Medical Agencies · beyond the ±1% or ₹10 tolerance', clock: '1 d', tone: 'no', act: 'Decide',
+        doc: 'MSB2609270004', head: 'A bill does not match its delivery', facts: [{ k: 'Bill', v: '₹48,212' }, { k: 'GRN value', v: '₹47,000' }, { k: 'Difference', v: '₹1,212' }, { k: 'Tolerance', v: '±1% or ₹10' }],
+        why: 'Three-way match: PO, GRN and bill. A difference beyond tolerance is accepted only by someone who holds that authority, with a reason; otherwise it goes back to the vendor.', pri: 'Ask the vendor for a revised bill', sec: 'Accept the difference with a reason', who: 'Accepting needs materials.bills.accept_difference' },
+      { src: 'RETURN', title: 'Credit note awaited from Cipla — debit note MDN2609150002 · ₹8,450', sub: '13 days since dispatch · the payment run offsets it once recorded', clock: '13 d', tone: 'no', act: 'Record note',
+        doc: 'MDN2609150002', head: 'Record the supplier’s credit note', facts: [{ k: 'Debit note', v: '₹8,450' }, { k: 'Dispatched', v: '15 Sep' }, { k: 'Batches', v: '4 · expiry' }],
+        why: 'Our debit note is a claim; the supplier’s credit note confirms it. Recording it lets the next payment run offset the amount.', pri: 'Record the credit note', sec: 'Chase Cipla', who: 'Materials head' },
+      { src: 'STOCK', title: '14 batches expire within 90 days — ₹23,900 at cost', sub: '9 returnable to 3 suppliers inside their windows · 5 past the window: write off', clock: '90 d', tone: 'no', act: 'Draft returns',
+        doc: 'Expiry · 90 d', head: 'Short-dated stock', facts: [{ k: 'Returnable', v: '9 batches · ₹14,700' }, { k: 'Write-off (BMW)', v: '5 batches · ₹9,200' }, { k: 'Nearest', v: 'Azee 500 · 12 Oct' }],
+        why: 'A batch returned inside the supplier’s window comes back as credit; after it, it is destroyed under the Bio-Medical Waste Rules and written off with the MS’s approval.', pri: 'Review the 3 drafted returns', sec: 'Open the expiry report', who: 'Returns: materials head · write-off: MS approves' },
+      { src: 'STOCK', title: 'Count CNT-0928 found +30 Dolo 650 (batch DOBS4521)', sub: 'Blind count variance · booked only after the MS approves', clock: 'pending', tone: 'no', act: 'Open',
+        doc: 'CNT-0928', head: 'Stock found in a count', facts: [{ k: 'Item', v: 'Dolo 650' }, { k: 'Batch', v: 'DOBS4521' }, { k: 'Books', v: '150' }, { k: 'Counted', v: '180' }],
+        why: 'Found stock is never added silently: the count’s variance is booked when the medical superintendent approves it.', pri: 'Open the count', sec: 'Ask for a recount', who: 'Materials head asks · MS decides' },
+      { src: 'PEOPLE', title: 'Pharmacist registration TRIAL-KJ-0001 is a trial number', sub: 'Bills and the H1 register print TRIAL until the real council number is recorded', clock: 'open', tone: 'gd', act: 'Record number',
+        doc: 'TRIAL-KJ-0001', head: 'Replace the trial registration', facts: [{ k: 'Pharmacist', v: 'kavita.joshi' }, { k: 'Council', v: '[COUNCIL]' }, { k: 'Number', v: '[NUMBER]' }, { k: 'Valid until', v: '[DATE]' }],
+        why: 'Pharmacy Act 1948: only a registered pharmacist dispenses. A trial number keeps the counter working in rehearsal; it is not a registration.', pri: 'Record the real registration', sec: 'Later', who: 'Pharmacist in charge files it (never its holder)' },
+      { src: 'STOCK', title: 'Opening stock: 2 GRNs captured, waiting for the pharmacist’s QC', sub: 'OPENING/3fa9c01b2e · 212 lines · nothing is on the shelf until posted', clock: 'today', tone: 'on', act: 'Open GRNs',
+        doc: 'OPENING/3fa9c01b2e', head: 'Opening stock waiting for QC', facts: [{ k: 'GRNs', v: '2' }, { k: 'Lines', v: '212' }, { k: 'Short-dated', v: '6 (own GRN)' }],
+        why: 'The sheet was captured by the storekeeper; the pharmacist runs QC and posts each GRN, the same two-person gate as a delivery.', pri: 'Open the first GRN', sec: 'Open the sheet', who: 'Pharmacist (materials.grn.qc)' },
+    ];
+    const items = rows.map((r, i) => ({ ...r, cls: i === this.state.sel ? 'row sel' : 'row', clockCls: tone[r.tone], pick: () => this.setState({ sel: i }) }));
+    const cur = this.state.sel === null ? null : rows[this.state.sel];
+    return {
+      items, cur: cur ?? rows[0], none: cur === null, some: cur !== null,
+      clocksOpen: this.state.clocksOpen, chev: this.state.clocksOpen ? '▴' : '▾',
+      toggleClocks: () => this.setState({ clocksOpen: !this.state.clocksOpen }),
+    };
+  }
+}
+</script>
+</body>
+</html>

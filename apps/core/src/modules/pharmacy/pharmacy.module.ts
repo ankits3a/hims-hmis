@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { registerDocumentRenderer } from "../../kernel/printing/render";
+import { PharmacyAdrController } from "./pharmacy-adr.controller";
 import { PharmacyControlledController } from "./pharmacy-controlled.controller";
 import { PharmacyCounterController } from "./pharmacy-counter.controller";
 import { PharmacyDoctorController } from "./pharmacy-doctor.controller";
@@ -31,9 +32,9 @@ export function registerPharmacyPrinting(): () => void {
  * PLAN 16c — the module. T1 shipped it inert; T2 mounted the sale-items controller, T3 the
  * counter's (the `LabModule` precedent). P2 mounted the register of pharmacists; P19 the walk-in
  * retail counter; P20 the paper-dispense entry; Consult v2 the doctor's read of the shelf; parity
- * P1 the desk's paper; P6 (patient messages) the desk's consent chip and the office's Messages side.
+ * P1 the desk's paper; P6 (patient messages) the desk's consent chip and the office's Messages side; stage D1 the ADR register.
  */
-@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController, PharmacyControlledController, PharmacyMessagesController, PharmacyOpeningStockController] })
+@Module({ controllers: [PharmacyItemsController, PharmacyCounterController, PharmacyPharmacistsController, PharmacyRetailController, PharmacyDowntimeController, PharmacyDoctorController, PharmacyOfficeController, PharmacyReportsController, PharmacyTallyController, PharmacyControlledController, PharmacyMessagesController, PharmacyOpeningStockController, PharmacyAdrController] })
 export class PharmacyModule implements OnModuleInit {
   onModuleInit(): void {
     registerPharmacyPrinting();
