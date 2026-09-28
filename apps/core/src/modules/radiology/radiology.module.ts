@@ -13,6 +13,7 @@ import { RadiologyBillDecisionsController } from "./radiology-bill-decisions.con
 import { RadiologyReportsController } from "./radiology-reports.controller";
 import { RadiologyMwlController } from "./radiology-mwl.controller";
 import { RadiologyImagesController } from "./radiology-images.controller";
+import { RadiologyFloorController } from "./radiology-floor.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -48,6 +49,7 @@ import { RadiologyImagesController } from "./radiology-images.controller";
     RadiologyReportsController,
     RadiologyMwlController,
     RadiologyImagesController,
+    RadiologyFloorController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {

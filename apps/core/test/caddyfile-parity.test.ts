@@ -419,7 +419,7 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // PHARMACY PARITY P5 — 71 -> 72 with `/pharmacy/office/reports`, the office opened on its
     // Reports side (the owner's and the billing office's door). Measured from the failing run:
     // `Received length: 72`.
-    expect(routes).toHaveLength(72); // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    expect(routes).toHaveLength(73); // 18-S RS2b: 72 -> 73, `/radiology/portable` — the portable round (measured: `Received length: 73`) // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     expect(routes).toContain("/opd/slips");
     expect(routes).toContain("/reports/opd-day");
     expect(routes).toContain("/radiology/radiation-safety");
@@ -470,6 +470,7 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     expect(routes).toContain("/opd/vitals/bay");
     expect(routes).toContain("/radiology/reception");
     expect(routes).toContain("/radiology/worklist");
+    expect(routes).toContain("/radiology/portable"); // 18-S RS2b
     // The three parameterised ones too: a parameterised path is still a SPA path, and if
     // `/radiology` ever became a proxied prefix these are the legs that would catch it.
     expect(routes).toContain("/radiology/studies/$studyId");

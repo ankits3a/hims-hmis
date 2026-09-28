@@ -121,6 +121,27 @@ export const fetchImagingDoor = (encounterNo: string) =>
 export const placeImagingOrder = (body: PlaceImagingOrderBody, idempotencyKey: string) =>
   api<{ orderId: string; orderNo: string; itemIds: string[] }>("POST", "/radiology/orders", body, idempotencyKey);
 
+/* ── 18-S RS2b — the machine list and the portable round ── */
+
+/** `GET /radiology/devices` — every bookable imaging machine (`devices.ts`). */
+export type WireImagingDevice = {
+  id: string; code: string; name: string; modality: string; room: string | null;
+  portable: boolean; status: string; ionising: boolean;
+  /** Ionising machines only; `null` when AERB licenses none (ultrasound, MRI). */
+  licensedNow: boolean | null;
+};
+
+/** `GET /radiology/portable/round` — `bedside.ts`'s `BedsideStudyRow`. */
+export type WireBedsideStudy = {
+  studyId: string; accessionNo: string; status: string; priority: string; studyTypeCode: string;
+  bedsideLocation: string; scheduledAt: string | null; deviceResourceId: string | null;
+  deviceCode: string | null; encounterNo: string; patientId: string; patientName: string; restricted: boolean;
+};
+
+export const fetchImagingDevices = () => api<{ devices: WireImagingDevice[] }>("GET", "/radiology/devices");
+
+export const fetchPortableRound = () => api<{ rows: WireBedsideStudy[] }>("GET", "/radiology/portable/round");
+
 /* ── reads ── */
 
 export const fetchWorklist = (view: "floor" | "unread" | "all" = "floor") =>
@@ -148,7 +169,11 @@ export const fetchDeviceDiary = (deviceResourceId: string) =>
 
 /* ── intents ── */
 
-export const scheduleStudy = (studyId: string, body: { deviceResourceId: string; scheduledAt: string }) =>
+export const scheduleStudy = (
+  studyId: string,
+  /** `bedsideLocation` — 18-S RS2b: only for a portable machine; the server refuses the rest. */
+  body: { deviceResourceId: string; scheduledAt: string; bedsideLocation?: string | null },
+) =>
   api("POST", `/radiology/studies/${studyId}/schedule`, body);
 
 export const walkIn = (studyId: string) =>

@@ -603,6 +603,23 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(after.body.lines[0].alreadyOrderedOrderNo).toBe(placed.body.orderNo);
   }, 60_000);
 
+  /**
+   * 18-S RS2b — the two floor reads over HTTP: the machine list a counter books from, and the
+   * technologist's portable round. The radiologist holds the worklist read but not `acquire`.
+   */
+  it("GET /radiology/devices and /radiology/portable/round answer behind their own permissions", async () => {
+    expect((await request(server()).get("/radiology/devices")).status).toBe(401);
+    expect((await get("/radiology/devices", counter.token)).status).toBe(403);
+    const list = await get("/radiology/devices", radiologist.token);
+    expect(list.status).toBe(200);
+    expect((list.body as { devices: { code: string; licensedNow: boolean | null }[] }).devices
+      .map((d) => [d.code, d.licensedNow])).toEqual([["DEV-CT", true], ["DEV-USG", null]]);
+
+    expect((await get("/radiology/portable/round", radiologist.token)).status).toBe(403);
+    const round = await get("/radiology/portable/round", radiographer.token);
+    expect([round.status, round.body]).toEqual([200, { rows: [] }]);
+  }, 60_000);
+
   it("the `imaging` order kind resolves off the REAL manifest, not off a fixture decl", async () => {
     const registry = new ModuleRegistry();
     for (const m of ALL_MANIFESTS) registry.install(m);

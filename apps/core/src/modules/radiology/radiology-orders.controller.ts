@@ -36,6 +36,11 @@ const itemSchema = z.object({
   duplicateOfItemId: idSchema.nullish(),
   duplicateReason: z.string().min(1).max(400).nullish(),
   parentItemId: idSchema.nullish(),
+  /**
+   * 18-S RS2b — the ward and bed, for a study the machine goes to. Carried to the service, which
+   * trims it and owns the refusal (`invalid_bedside_location`); the bound here only caps the body.
+   */
+  bedsideLocation: z.string().max(400).nullish(),
 });
 
 const orderBody = z.object({
