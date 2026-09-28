@@ -104,6 +104,12 @@ export type { ReportContent, ReportRow } from "./reports";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
 export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
+// 18-S RS2b — the machine list, the portable round, and `bedsideStudiesFor`: THE IPD SEAM. The ward
+// screen the IPD plan builds imports it from here; it has no route of its own until then.
+export { imagingDevices } from "./devices";
+export type { ImagingDeviceRow } from "./devices";
+export { bedsideStudiesFor, portableRound } from "./bedside";
+export type { BedsideStudyRow } from "./bedside";
 export { DICOM_UID_MAX_LENGTH, STUDY_UID_ROOT, isValidDicomUid, mintStudyInstanceUid } from "./uid";
 export {
   DEVICE_AE_TITLE_ATTRIBUTE, DICOM_MODALITY, MWL_READ, MWL_STATUSES, istDayWindow, mwlExport,
