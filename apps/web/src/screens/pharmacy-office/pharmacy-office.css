@@ -58,11 +58,17 @@
 .d1 .pof-legacy input:focus, .d1 .pof-legacy textarea:focus { outline: revert-layer; }
 .d1 .pof-legacy *, .d1 .pof-legacy *::before, .d1 .pof-legacy *::after { box-sizing: revert-layer; }
 
-.d1.pof .pof-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.d1.pof .pof-link { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }
-.d1.pof .pof-link:hover { border-color: var(--green-line); }
-.d1.pof .pof-link b { font-size: 13px; font-weight: 600; color: var(--ink); }
-.d1.pof .pof-link span { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--dim); }
+
+/* ── B3: the header menu's dropdowns (Menu.dc.html) ── */
+.d1.pof .pof-navi { position: relative; display: inline-flex; }
+.d1.pof .nav.dd::after { content: "▾"; margin-left: 5px; font-size: 10px; color: var(--dim); }
+.d1.pof .pof-dd { position: absolute; top: 100%; left: 0; z-index: 46; min-width: 290px; display: flex; flex-direction: column; gap: 2px; padding: 12px 8px 10px; background: var(--card); border: 1px solid var(--line); border-top: none; border-radius: 0 0 10px 10px; box-shadow: 0 10px 28px rgba(19,36,32,.10); }
+.d1.pof .pof-dd-head { display: flex; align-items: center; gap: 6px; padding: 0 10px 6px; }
+.d1.pof .pof-ent { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 8px 10px; border-radius: 6px; text-align: left; }
+.d1.pof .pof-ent:hover, .d1.pof .pof-ent:focus-visible { background: var(--wash); outline: none; }
+.d1.pof .pof-ent.on { background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); }
+.d1.pof .pof-ent b { font-size: 13px; font-weight: 600; color: var(--ink); }
+.d1.pof .pof-ent .was { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--dim); }
 
 /* ── the phone (Phone.dc.html) ── */
 .d1.pof .pof-ptop { height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--card); border-bottom: 1px solid var(--line); position: relative; }
@@ -70,6 +76,9 @@
 .d1.pof .pof-drop { position: absolute; right: 12px; top: 50px; z-index: 45; min-width: 200px; padding: 5px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 14px 40px rgba(19,36,32,.18); }
 .d1.pof .pof-drop button { display: flex; width: 100%; min-height: 44px; align-items: center; padding: 0 12px; border-radius: 5px; font-size: 13px; }
 .d1.pof .pof-drop button:hover, .d1.pof .pof-drop button[aria-current="page"] { background: var(--wash); font-weight: 600; }
+.d1.pof .pof-drop { max-height: calc(100vh - 64px); overflow-y: auto; }
+.d1.pof .pof-drop-head { padding: 10px 12px 2px; }
+.d1.pof .pof-drop button.pof-drop-ent { padding-left: 20px; }
 .d1.pof .pof-pscroll { flex-grow: 1; overflow-y: auto; min-height: 0; }
 .d1.pof .prow { flex-shrink: 0; display: flex; flex-direction: column; gap: 5px; width: 100%; padding: 12px 14px; min-height: 64px; border-top: 1px solid var(--line2); }
 .d1.pof .prow:first-child { border-top: none; }
