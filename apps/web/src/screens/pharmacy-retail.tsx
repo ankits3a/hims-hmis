@@ -1,55 +1,93 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "../lib/auth";
 import { newIdempotencyKey } from "../lib/api";
-import { fmtIst } from "../lib/format";
-import { fetchInvoicePrint } from "../lib/billing-api";
+import { fmtIst, useDebounced } from "../lib/format";
+import { fetchCurrentSession, fetchInvoicePrint } from "../lib/billing-api";
 import { duplicateCandidates } from "../lib/patients-api";
 import { todayIst } from "../lib/opd-api";
 import {
-  acceptRetailReturn, fetchRetailSale, fetchRetailSaleByBill, fetchRetailSales, fetchRetailState, pharmacyErrorText, previewRetailSale,
-  searchRetailShelf, sellRetail,
+  acceptRetailReturn, fetchMyRegistration, fetchRetailSale, fetchRetailSaleByBill, fetchRetailSales, fetchRetailState, pharmacyErrorText,
+  previewRetailSale, searchRetailShelf, sellRetail,
 } from "../lib/pharmacy-api";
 import { InvoicePrint } from "../components/invoice-print";
+import { parseRupees } from "../components/money-input";
 import { PatientPicker } from "../components/patient-picker";
 import { PharmacyBillAnnex } from "../components/pharmacy-bill-annex";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { istClock, istDateLabel } from "./desk-one/model";
+import { rupees } from "./pharmacy-desk/bill";
+import { expiryLabel } from "./pharmacy-desk/work";
 import { downscaleToJpeg } from "./slip-capture";
 import type { WirePatientHit } from "../lib/patients-api";
 import type {
-  RetailCustomer, RetailPrescription, WireLabel, WireRetailPreview, WireRetailSale, WireRetailShelfEntry,
+  RetailCustomer, RetailPrescription, WireLabel, WireRetailPreview, WireRetailSale, WireRetailSaleRow, WireRetailShelfEntry,
 } from "../lib/pharmacy-api";
+import "../styles/paper-pine.css";
+import "./desk-one/desk-one.css";
+import "./pharmacy-desk/pharmacy-desk.css";
+import "./pharmacy-retail.css";
 
 /**
  * ═══ PHARMACY P19 — THE WALK-IN RETAIL COUNTER ═══
  *
- * Phase doc `docs/superpowers/plans/2026-09-17-phase-pharmacy-p19-retail-sales.md`. One sale, top to
- * bottom: who is buying (found, or registered here), what (typed or scanned), the prescription when
- * a line needs one, the money. The server judges every gate — the licence, the schedule, the
- * pharmacist's registration, allergies — and this screen shows its refusal as a sentence.
+ * Phase doc `docs/superpowers/plans/2026-09-17-phase-pharmacy-p19-retail-sales.md`. The server
+ * judges every gate — the licence, the schedule, the pharmacist's registration, allergies — and this
+ * screen shows its refusal as a sentence.
+ *
+ * ═══ UX-AUDIT 2026-09-28 — THE COUNTER WEARS THE PHARMACY DESK ═══
+ *
+ * Decision: `docs/superpowers/decisions/2026-09-28-pharmacy-retail.md`. The screen was one stacked
+ * column; it is now the desk's frame (`Desk.dc.html`): the customer in hand in the LEFT lane, one
+ * numbered flow in the CENTRE (Medicines → Prescription, when a line is Schedule H/H1 → Bill) with
+ * a PINNED bar that offers the single next act, and the day's sales in the RIGHT column, where a
+ * return is its own entry point rather than a form in the middle of a sale. Below 1280 px the list
+ * is a drawer; below 768 px the lane stacks above the flow and the bar is fixed to the screen's foot.
+ * Layout classes are `rt-*` under `.d1` (`pharmacy-retail.css`): the unlayered `.d1 button` reset
+ * would strip Tailwind utilities, so nothing here leans on them.
  */
 type CartLine = { entry: WireRetailShelfEntry; qty: string };
 type NewCustomer = { name: string; sex: "male" | "female" | "other"; age: string; phone: string; address: string };
-type Customer = { kind: "existing"; id: string; label: string } | { kind: "new"; draft: NewCustomer };
+type Customer = { kind: "existing"; id: string; name: string; uhid: string } | { kind: "new"; draft: NewCustomer };
 type RxDraft = { prescriberName: string; prescriberRegNo: string; prescriberAddress: string; rxDate: string; photo: string | null };
+type Mode = "cash" | "upi" | "card";
 
 const EMPTY_NEW: NewCustomer = { name: "", sex: "female", age: "", phone: "", address: "" };
 const EMPTY_RX: RxDraft = { prescriberName: "", prescriberRegNo: "", prescriberAddress: "", rxDate: "", photo: null };
-const rupees = (paise: number): string => `₹${(paise / 100).toFixed(2)}`;
 /** "15/09/2026, 10:30", in the hospital's time whatever the desk machine's zone. */
 const soldOn = (iso: string): string => {
   const d = todayIst(new Date(iso));
   return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}, ${fmtIst(iso)}`;
 };
+/** `2026-09-15` → `15/09/2026`, the way the hospital writes a date. */
+const dmy = (iso: string): string => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : iso);
 
-/** The chemist's annex, from the sale: batch, expiry and the pharmacist, as the counter's bill carries them. */
+/**
+ * UX-AUDIT 2026-09-28 — the prescription date is typed as the prescription prints it, dd/mm/yyyy
+ * (a native date field showed mm/dd/yyyy on the counter's browser). Slashes are put in as the
+ * pharmacist types; the wire keeps ISO. Null for anything that is not a real calendar day.
+ */
+export function parseDmy(text: string): string | null {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text.trim());
+  if (m === null) return null;
+  const iso = `${m[3]!}-${m[2]!}-${m[1]!}`;
+  const d = new Date(`${iso}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;
+}
+function maskDmy(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter((x) => x !== "").join("/");
+}
+const scheduled = (flag: string | null): flag is "H" | "H1" => flag === "H" || flag === "H1";
+const customerOf = (s: WireRetailSaleRow): string => s.customer?.name ?? s.customer?.alias ?? s.customer?.uhid ?? "—";
+
 /**
  * P19b — a sealed pack comes back against its bill. The server judges O-7 (the 7 days, the sealed
  * pack, whole strips, the storage class, the batch's shelf life, what is left to return); this form
  * offers only what is left, and sends nothing until the pharmacist attests the pack is sealed.
+ * UX-AUDIT 2026-09-28 — opened from the day's list as its own sheet, never inside a sale.
  */
-function RetailReturn(): React.ReactElement {
+function RetailReturn({ onClose }: { onClose: () => void }): React.ReactElement {
   const { t } = useTranslation();
   const [billNo, setBillNo] = useState("");
   const [sale, setSale] = useState<WireRetailSale | null>(null);
@@ -91,55 +129,62 @@ function RetailReturn(): React.ReactElement {
   };
 
   return (
-    <section className="space-y-2 rounded border p-3">
-      <h2 className="font-semibold">{t("pharmacyRetail.returnTitle")}</h2>
-      <p className="max-w-3xl text-xs text-muted-foreground">{t("pharmacyRetail.returnIntro")}</p>
-      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (billNo.trim() !== "") void find(); }}>
-        <Input aria-label={t("pharmacyRetail.billNo")} placeholder={t("pharmacyRetail.billNo")} value={billNo} onChange={(e) => setBillNo(e.target.value)} className="max-w-xs" />
-        <Button type="submit" variant="outline">{t("pharmacyRetail.findBill")}</Button>
-      </form>
-      {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {sale !== null && (
-        <div className="space-y-2" data-testid="retail-return">
-          <p className="text-sm font-medium">{t("pharmacyRetail.returnSale", { no: sale.invoiceNo, name: sale.patient.name, when: soldOn(sale.soldAt) })}</p>
-          <table className="text-sm">
-            <tbody>
-              {sale.lines.map((l) => (
-                <tr key={l.lineIdx} data-testid={`return-line-${String(l.lineIdx)}`}>
-                  <td className="pr-3">{l.drugName}</td>
-                  <td className="whitespace-nowrap pr-3 font-mono">{l.batchNo}</td>
-                  <td className="whitespace-nowrap pr-3">{t("pharmacyRetail.returnLineState", { sold: l.qtyBase, back: l.returnedQtyBase ?? 0 })}</td>
-                  <td>
-                    {leftOf(l) > 0 && (
-                      <Input aria-label={t("pharmacyRetail.returnQty", { drug: l.drugName })} inputMode="numeric" className="w-20" value={qty[l.lineIdx] ?? ""}
-                        onChange={(e) => setQty({ ...qty, [l.lineIdx]: e.target.value.replace(/\D/g, "") })} />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="text-sm">{t("pharmacyRetail.returnReason")}
-              <Input aria-label={t("pharmacyRetail.returnReason")} value={reason} onChange={(e) => setReason(e.target.value)} />
-            </label>
-            <label className="text-sm">{t("pharmacyRetail.returnClass")}
-              <select aria-label={t("pharmacyRetail.returnClass")} className="ml-1 rounded border px-2 py-1" value={reasonClass}
-                onChange={(e) => setReasonClass(e.target.value as "genuine" | "mistake")}>
-                <option value="genuine">{t("pharmacyRetail.returnClass_genuine")}</option>
-                <option value="mistake">{t("pharmacyRetail.returnClass_mistake")}</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-sm">
+    <div className="ovl rt-ovl" role="dialog" aria-modal="true" aria-label={t("pharmacyRetail.returnTitle")} onClick={onClose}>
+      <div className="box rt-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="rt-sheet-head">
+          <h2 className="rt-h2">{t("pharmacyRetail.returnTitle")}</h2>
+          <button type="button" className="sec" onClick={onClose}>{t("pharmacyRetail.close")} <span className="kb">Esc</span></button>
+        </div>
+        <p className="rt-note">{t("pharmacyRetail.returnIntro")}</p>
+        <form className="rt-row" onSubmit={(e) => { e.preventDefault(); if (billNo.trim() !== "") void find(); }}>
+          <input className="in mo" aria-label={t("pharmacyRetail.billNo")} placeholder={t("pharmacyRetail.billNo")} value={billNo} onChange={(e) => setBillNo(e.target.value)} autoFocus />
+          <button type="submit" className="sec grn">{t("pharmacyRetail.findBill")}</button>
+        </form>
+        {error !== null && <p role="alert" className="rt-err">{error}</p>}
+        {sale !== null && (
+          <div className="rt-stack" data-testid="retail-return">
+            <p className="rt-strong">{t("pharmacyRetail.returnSale", { no: sale.invoiceNo, name: sale.patient.name, when: soldOn(sale.soldAt) })}</p>
+            <div className="rt-tablewrap">
+              <table className="rt-table">
+                <tbody>
+                  {sale.lines.map((l) => (
+                    <tr key={l.lineIdx} data-testid={`return-line-${String(l.lineIdx)}`}>
+                      <td>{l.drugName}</td>
+                      <td className="mo">{l.batchNo}</td>
+                      <td className="rt-nowrap">{t("pharmacyRetail.returnLineState", { sold: l.qtyBase, back: l.returnedQtyBase ?? 0 })}</td>
+                      <td>
+                        {leftOf(l) > 0 && (
+                          <input className="in rt-qty" aria-label={t("pharmacyRetail.returnQty", { drug: l.drugName })} inputMode="numeric" value={qty[l.lineIdx] ?? ""}
+                            onChange={(e) => setQty({ ...qty, [l.lineIdx]: e.target.value.replace(/\D/g, "") })} />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="rt-grid2">
+              <label className="rt-field"><span className="tag">{t("pharmacyRetail.returnReason")}</span>
+                <input className="in" aria-label={t("pharmacyRetail.returnReason")} value={reason} onChange={(e) => setReason(e.target.value)} />
+              </label>
+              <label className="rt-field"><span className="tag">{t("pharmacyRetail.returnClass")}</span>
+                <select className="in" aria-label={t("pharmacyRetail.returnClass")} value={reasonClass}
+                  onChange={(e) => setReasonClass(e.target.value as "genuine" | "mistake")}>
+                  <option value="genuine">{t("pharmacyRetail.returnClass_genuine")}</option>
+                  <option value="mistake">{t("pharmacyRetail.returnClass_mistake")}</option>
+                </select>
+              </label>
+            </div>
+            <label className="rt-check">
               <input type="checkbox" checked={sealed} onChange={(e) => setSealed(e.target.checked)} />
               {t("pharmacyRetail.returnSealed")}
             </label>
-            <Button type="button" disabled={!valid} onClick={() => { void accept(); }}>{t("pharmacyRetail.returnSubmit")}</Button>
+            <div><button type="button" className="pri" disabled={!valid} onClick={() => { void accept(); }}>{t("pharmacyRetail.returnSubmit")}</button></div>
+            {done !== null && <p className="rt-ok" data-testid="retail-returned">{t("pharmacyRetail.returned", { no: done })}</p>}
           </div>
-          {done !== null && <p className="text-sm text-green-800" data-testid="retail-returned">{t("pharmacyRetail.returned", { no: done })}</p>}
-        </div>
-      )}
-    </section>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -154,27 +199,142 @@ function annexOf(sale: WireRetailSale): WireLabel {
   };
 }
 
-export function PharmacyRetail(): React.ReactElement {
+/**
+ * UX-AUDIT 2026-09-28 — the medicine field is a typeahead over the walk-in shelf: typing lists what
+ * is on it (no Find button), ↑/↓ and Enter add the highlighted one. A scanner types and presses
+ * Enter: a pack whose barcode names exactly one batch goes straight into the cart, as before.
+ */
+function ShelfSearch({ onAdd }: { onAdd: (entry: WireRetailShelfEntry) => void }): React.ReactElement {
   const { t } = useTranslation();
+  const listId = useId();
+  const [q, setQ] = useState("");
+  const [active, setActive] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const debounced = useDebounced(q.trim(), 200);
+  /* The list closes a beat after the field loses focus (so a click on an option lands first); a stale close must not shut a list reopened since. */
+  const closing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reopen = (): void => { if (closing.current !== null) { clearTimeout(closing.current); closing.current = null; } setOpen(true); };
+  useEffect(() => () => { if (closing.current !== null) clearTimeout(closing.current); }, []);
+  const found = useQuery({
+    queryKey: ["pharmacy", "retail", "shelf", debounced],
+    queryFn: () => searchRetailShelf(debounced),
+    enabled: debounced.length >= 2,
+    retry: false,
+  });
+  const items = found.data ?? [];
+  useEffect(() => { setActive(0); }, [found.data]);
+
+  const add = (entry: WireRetailShelfEntry): void => {
+    if (entry.available === 0) return;
+    onAdd(entry); setQ(""); setOpen(false); setError(null);
+  };
+  const enter = async (): Promise<void> => {
+    const text = q.trim();
+    if (text === "") return;
+    if (open && debounced === text && items.length > 0) { add(items[Math.min(active, items.length - 1)]!); return; }
+    /* A scan arrives faster than the debounce: ask now. */
+    try {
+      const now = await searchRetailShelf(text);
+      if (now.length === 1 && now[0]!.scannedBatchId !== null) { add(now[0]!); return; }
+      reopen();
+    } catch (e) {
+      setError(pharmacyErrorText(e, t));
+    }
+  };
+
+  const showList = open && debounced.length >= 2 && found.data !== undefined;
+  return (
+    <div className="rt-combo">
+      <input
+        className="in"
+        role="combobox"
+        aria-expanded={showList}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={showList && items.length > 0 ? `${listId}-${String(active)}` : undefined}
+        aria-label={t("pharmacyRetail.search")}
+        placeholder={t("pharmacyRetail.searchPlaceholder")}
+        autoComplete="off"
+        value={q}
+        onChange={(e) => { setQ(e.target.value); reopen(); setError(null); }}
+        onFocus={reopen}
+        onBlur={() => { closing.current = setTimeout(() => { closing.current = null; setOpen(false); }, 150); }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); reopen(); setActive((a) => Math.min(a + 1, Math.max(items.length - 1, 0))); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+          else if (e.key === "Enter") { e.preventDefault(); void enter(); }
+          else if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); }
+        }}
+      />
+      {showList && (
+        <ul id={listId} role="listbox" aria-label={t("pharmacyRetail.results")} className="rt-options">
+          {items.length === 0 && <li className="rt-option rt-muted" role="presentation">{t("pharmacyRetail.notOnShelf")}</li>}
+          {items.map((f, i) => (
+            <li
+              key={f.itemId}
+              id={`${listId}-${String(i)}`}
+              role="option"
+              aria-selected={i === active}
+              aria-disabled={f.available === 0}
+              className={i === active ? "rt-option sel" : "rt-option"}
+              onMouseDown={(e) => { e.preventDefault(); add(f); }}
+              onMouseEnter={() => setActive(i)}
+            >
+              <span className="rt-grow">
+                <span className="rt-strong">{f.brandName}</span> <span className="rt-muted">{f.strengthLabel ?? ""} {f.form}</span>
+              </span>
+              {scheduled(f.scheduleFlag) && <span className="pill rd">{t("pharmacyRetail.schedule", { flag: f.scheduleFlag })}</span>}
+              <span className={f.available === 0 ? "rt-muted mo" : "mo"}>{t("pharmacyRetail.available", { count: f.available, unit: f.baseUom })}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error !== null && <p role="alert" className="rt-err">{error}</p>}
+    </div>
+  );
+}
+
+export function PharmacyRetail(): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const { username } = useAuth();
   const qc = useQueryClient();
   const state = useQuery({ queryKey: ["pharmacy", "retail", "state"], queryFn: fetchRetailState });
   const today = useQuery({ queryKey: ["pharmacy", "retail", "sales"], queryFn: () => fetchRetailSales() });
+  /* The desk's header, the same two preconditions: may this login sell a scheduled drug, and is a drawer open to take money. */
+  const registration = useQuery({ queryKey: ["pharmacy", "pharmacists", "me"], queryFn: fetchMyRegistration, staleTime: 5 * 60_000, retry: false });
+  const drawer = useQuery({ queryKey: ["billing", "session", "current"], queryFn: fetchCurrentSession, refetchInterval: 60_000, retry: false });
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [newDraft, setNewDraft] = useState<NewCustomer>(EMPTY_NEW);
   const [registering, setRegistering] = useState(false);
   const [matches, setMatches] = useState<WirePatientHit[] | null>(null);
-  const [q, setQ] = useState("");
-  const [found, setFound] = useState<WireRetailShelfEntry[] | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [preview, setPreview] = useState<WireRetailPreview | null>(null);
   const [rx, setRx] = useState<RxDraft>(EMPTY_RX);
-  const [mode, setMode] = useState<"cash" | "upi" | "card">("cash");
+  const [mode, setMode] = useState<Mode>("cash");
   const [tendered, setTendered] = useState("");
   const [ref, setRef] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sold, setSold] = useState<WireRetailSale | null>(null);
   const [printing, setPrinting] = useState<string | null>(null);
   const [saleKey, setSaleKey] = useState(newIdempotencyKey);
+  const [busy, setBusy] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
+  const [returning, setReturning] = useState(false);
+  const [clock, setClock] = useState(() => istClock());
+  useEffect(() => {
+    const id = setInterval(() => { setClock(istClock()); }, 15_000);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") return;
+      if (returning) setReturning(false);
+      else if (listOpen) setListOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [listOpen, returning]);
 
   const printSale = useQuery({ queryKey: ["pharmacy", "retail", "sale", printing], queryFn: () => fetchRetailSale(printing ?? ""), enabled: printing !== null });
   const printInvoice = useQuery({
@@ -190,32 +350,24 @@ export function PharmacyRetail(): React.ReactElement {
   const cartValid = cart.length > 0 && cart.every((c) => /^\d+$/.test(c.qty) && Number(c.qty) > 0);
   const invalidate = (): void => { setPreview(null); };
 
-  const search = async (): Promise<void> => {
-    setError(null);
-    try {
-      const items = await searchRetailShelf(q.trim());
-      // A scanned pack with exactly one match goes straight into the cart.
-      if (items.length === 1 && items[0]!.scannedBatchId !== null) { add(items[0]!); return; }
-      setFound(items);
-    } catch (e) {
-      setError(pharmacyErrorText(e, t));
-    }
-  };
   const add = (entry: WireRetailShelfEntry): void => {
     setCart((c) => [...c, { entry, qty: "" }]);
-    setFound(null); setQ(""); invalidate();
+    invalidate();
   };
 
   const runPreview = async (): Promise<void> => {
-    setError(null);
+    setError(null); setBusy(true);
     try {
       const p = await previewRetailSale({
         ...(customer?.kind === "existing" ? { patientId: customer.id } : {}), lines: cartLines(),
       });
       setPreview(p);
-      setTendered(String(p.totals.netPayablePaise / 100));
+      /* UX-AUDIT 2026-09-28 — nothing is prefilled: the cash box waits for what the customer hands over. */
+      setTendered("");
     } catch (e) {
       setError(pharmacyErrorText(e, t));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -251,20 +403,27 @@ export function PharmacyRetail(): React.ReactElement {
     };
   };
 
+  const payable = preview?.totals.netPayablePaise ?? 0;
+  const cashParse = parseRupees(tendered);
+  const cashPaise = cashParse.ok ? cashParse.paise : undefined;
+  /* A UPI or card payment is the bill's amount exactly; only cash is counted, and its change given. */
+  const amountPaise = mode === "cash" ? (cashPaise ?? 0) : payable;
+
   const sell = async (acknowledged = false): Promise<void> => {
     const who = customerBody(acknowledged);
     if (who === null || preview === null) return;
     setError(null);
-    const prescription: RetailPrescription | undefined = preview.prescriptionRequired && rx.photo !== null ? {
+    const rxIso = parseDmy(rx.rxDate);
+    const prescription: RetailPrescription | undefined = preview.prescriptionRequired && rx.photo !== null && rxIso !== null ? {
       prescriberName: rx.prescriberName, prescriberRegNo: rx.prescriberRegNo, prescriberAddress: rx.prescriberAddress,
-      rxDate: rx.rxDate, photo: { mimeType: "image/jpeg", imageBase64: rx.photo },
+      rxDate: rxIso, photo: { mimeType: "image/jpeg", imageBase64: rx.photo },
     } : undefined;
-    const amountPaise = Math.round(Number(tendered) * 100);
+    setBusy(true);
     try {
       const sale = await sellRetail({
         customer: who, lines: cartLines(), ...(prescription === undefined ? {} : { prescription }),
         tenders: [{ mode, amountPaise, ...(ref.trim() === "" ? {} : { refText: ref.trim() }) }],
-        ...(mode === "cash" && amountPaise > preview.totals.netPayablePaise ? { changeGivenPaise: amountPaise - preview.totals.netPayablePaise } : {}),
+        ...(mode === "cash" && amountPaise > payable ? { changeGivenPaise: amountPaise - payable } : {}),
       }, saleKey);
       setSold(sale); setMatches(null);
       await qc.invalidateQueries({ queryKey: ["pharmacy", "retail", "sales"] });
@@ -272,6 +431,8 @@ export function PharmacyRetail(): React.ReactElement {
       const candidates = duplicateCandidates(e);
       if (candidates !== null) { setMatches(candidates); return; }
       setError(pharmacyErrorText(e, t));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -284,7 +445,7 @@ export function PharmacyRetail(): React.ReactElement {
     const failed = printSale.error ?? printInvoice.error;
     return (
       <div data-seat="pharmacy-retail" className="min-h-screen space-y-3 p-4">
-        <Button type="button" variant="outline" className="no-print" onClick={() => setPrinting(null)}>{t("pharmacyRetail.backToCounter")}</Button>
+        <button type="button" className="no-print rounded border px-3 py-1 text-sm" onClick={() => setPrinting(null)}>{t("pharmacyRetail.backToCounter")}</button>
         {failed !== null && <p role="alert" className="text-sm text-red-700">{pharmacyErrorText(failed, t)}</p>}
         {printSale.data !== undefined && printInvoice.data !== undefined && (
           <InvoicePrint data={printInvoice.data} rows={printSale.data.billRows ?? null} annex={(
@@ -294,7 +455,7 @@ export function PharmacyRetail(): React.ReactElement {
                 <p className="text-xs" data-testid="bill-prescriber">
                   {t("pharmacyRetail.billPrescriber", {
                     name: printSale.data.prescription.prescriberName, reg: printSale.data.prescription.prescriberRegNo,
-                    address: printSale.data.prescription.prescriberAddress, date: printSale.data.prescription.rxDate,
+                    address: printSale.data.prescription.prescriberAddress, date: dmy(printSale.data.prescription.rxDate),
                   })}
                 </p>
               )}
@@ -307,236 +468,348 @@ export function PharmacyRetail(): React.ReactElement {
 
   const licence = state.data;
   const shut = licence !== undefined && licence.state !== "current";
-  const rxComplete = rx.prescriberName.trim() !== "" && rx.prescriberRegNo.trim() !== "" && rx.prescriberAddress.trim() !== "" && rx.rxDate !== "" && rx.photo !== null;
+  const rxIso = parseDmy(rx.rxDate);
+  const rxFuture = rxIso !== null && rxIso > todayIst();
+  const rxComplete = rx.prescriberName.trim() !== "" && rx.prescriberRegNo.trim() !== "" && rx.prescriberAddress.trim() !== ""
+    && rxIso !== null && !rxFuture && rx.photo !== null;
   const newValid = newDraft.name.trim() !== "" && (newDraft.phone === "" || /^[6-9]\d{9}$/.test(newDraft.phone)) && (newDraft.age === "" || /^\d{1,3}$/.test(newDraft.age));
-  const canSell = !shut && customer !== null && preview !== null && (!preview.prescriptionRequired || rxComplete)
-    && Number(tendered) * 100 >= preview.totals.netPayablePaise && (mode === "cash" || ref.trim() !== "");
   const blocked = preview?.checks !== null && preview?.checks !== undefined
     && (preview.checks.allergies.length > 0 || preview.checks.interactions.some((i) => i.severity === "severe"));
+  const moneyOk = preview !== null && (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : ref.trim() !== "");
+  const canSell = !shut && !busy && customer !== null && preview !== null && (!preview.prescriptionRequired || rxComplete) && moneyOk && !blocked;
+  const byIdx = new Map((preview?.lines ?? []).map((l) => [l.lineIdx, l] as const));
+  const rxNeeded = preview?.prescriptionRequired ?? cart.some((c) => scheduled(c.entry.scheduleFlag));
+  const rows = today.data ?? [];
+
+  /* The pinned bar: ONE next act, and the reason it is not open yet said beside it. */
+  const step = sold !== null ? 3 : preview === null ? 1 : preview.prescriptionRequired && !rxComplete ? 2 : 3;
+  const why: string | null = sold !== null ? null
+    : shut ? t("pharmacyRetail.why.shut")
+      : cart.length === 0 ? t("pharmacyRetail.why.empty")
+        : !cartValid ? t("pharmacyRetail.why.qty")
+          : preview === null ? t("pharmacyRetail.why.price")
+            : customer === null ? t("pharmacyRetail.why.customer")
+              : blocked ? t("pharmacyRetail.why.blocked")
+                : preview.prescriptionRequired && !rxComplete ? t("pharmacyRetail.why.rx")
+                  : !moneyOk ? (mode === "cash" ? t("pharmacyRetail.why.cash", { amount: rupees(payable) }) : t("pharmacyRetail.why.ref"))
+                    : null;
+
+  const stepLabel = [t("pharmacyRetail.step.medicines"), t("pharmacyRetail.step.prescription"), t("pharmacyRetail.step.bill")];
 
   return (
-    <div data-seat="pharmacy-retail" className="min-h-screen space-y-5 p-4">
-      <h1 className="text-xl font-semibold">{t("pharmacyRetail.title")}</h1>
-      <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyRetail.intro")}</p>
-      {shut && (
-        <p role="alert" data-testid="retail-shut" className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-          {t(`pharmacyRetail.shut_${licence.state}`, { to: licence.licence?.validTo ?? "" })}
-        </p>
-      )}
-      {licence?.state === "current" && licence.daysLeft !== null && licence.daysLeft <= 60 && (
-        <p role="status" className="rounded bg-amber-100 p-2 text-sm text-amber-900">{t("pharmacyRetail.licenceEnds", { count: licence.daysLeft, to: licence.licence?.validTo ?? "" })}</p>
-      )}
-      {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
-
-      {sold !== null ? (
-        <section className="space-y-2 rounded border p-3" data-testid="retail-sold">
-          <p className="font-medium text-green-800">{t("pharmacyRetail.sold", { invoice: sold.invoiceNo, amount: rupees(sold.netPaise), name: sold.patient.name })}</p>
-          {sold.patient.registeredHere && <p className="text-sm">{t("pharmacyRetail.registeredAs", { uhid: sold.patient.uhid })}</p>}
-          {sold.scheduled && <p className="text-sm">{t("pharmacyRetail.stampRx")}</p>}
-          <div className="flex gap-2">
-            <Button type="button" onClick={() => setPrinting(sold.id)}>{t("pharmacyRetail.printBill")}</Button>
-            <Button type="button" variant="outline" onClick={reset}>{t("pharmacyRetail.nextSale")}</Button>
+    <div className="d1" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"} data-seat="pharmacy-retail">
+      <div className="rt-frame">
+        <div className="top rt-top">
+          <div className="rt-brand">
+            <div className="rt-diamond" />
+            <span className="mo rt-word">{t("pharmacyRetail.wordmark")}</span>
           </div>
-        </section>
-      ) : (
-        <>
-          <section className="space-y-2">
-            <h2 className="font-semibold">{t("pharmacyRetail.customer")}</h2>
+          <span className="rt-where">
+            {t("pharmacyRetail.where")} · <strong>{username ?? t("pharmacyDesk.thisDesk")}</strong>
+          </span>
+          {registration.data === undefined ? null : registration.data.registration === null ? (
+            <span className="pill rd" data-testid="retail-registered">{t("pharmacyDesk.header.notRegistered")}</span>
+          ) : (
+            <span className="pill on" data-testid="retail-registered" title={registration.data.registration.council}>
+              {t("pharmacyDesk.header.registered", { no: registration.data.registration.registrationNo })}
+            </span>
+          )}
+          {drawer.isPending ? null : drawer.data?.session?.status === "open" ? (
+            <span className="pill">{t("pharmacyDesk.header.drawerOpen", { float: rupees(drawer.data.session.openingFloatPaise) })}</span>
+          ) : (
+            <span className="pill gd">{t("pharmacyDesk.header.noDrawer")}</span>
+          )}
+          <span className="pill">PHARM-RETAIL</span>
+          <div className="rt-grow" />
+          <span className="mo rt-clock">{istDateLabel()} · {clock}</span>
+          <button type="button" className="pill rt-listbtn" aria-expanded={listOpen} onClick={() => setListOpen((o) => !o)}>
+            {t("pharmacyRetail.todayCount", { count: rows.length })}
+          </button>
+        </div>
+
+        <div className="rt-body">
+          {/* ── LEFT: the customer in hand ── */}
+          <aside className="rt-lane" aria-label={t("pharmacyRetail.customer")}>
+            <p className="tag">{customer === null ? t("pharmacyRetail.nobodyInHand") : t("pharmacyRetail.inHand")}</p>
             {customer === null && !registering && (
-              <div className="space-y-2">
-                <PatientPicker autoFocus onPick={(hit) => { setCustomer({ kind: "existing", id: hit.id, label: `${hit.name ?? hit.uhid} · ${hit.uhid}` }); invalidate(); }} />
-                <Button type="button" variant="outline" size="sm" onClick={() => setRegistering(true)}>{t("pharmacyRetail.newCustomer")}</Button>
+              <div className="rt-stack">
+                <p className="rt-note">{t("pharmacyRetail.findHint")}</p>
+                <div className="rt-pick">
+                  <PatientPicker autoFocus onPick={(hit) => { setCustomer({ kind: "existing", id: hit.id, name: hit.name ?? hit.uhid, uhid: hit.uhid }); invalidate(); }} />
+                </div>
+                <button type="button" className="sec" onClick={() => setRegistering(true)}>{t("pharmacyRetail.newCustomer")}</button>
               </div>
             )}
             {customer === null && registering && (
-              <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); if (newValid) setCustomer({ kind: "new", draft: newDraft }); }}>
-                <label className="text-sm">{t("pharmacyRetail.name")}
-                  <Input value={newDraft.name} onChange={(e) => setNewDraft({ ...newDraft, name: e.target.value })} />
+              <form className="rt-stack" onSubmit={(e) => { e.preventDefault(); if (newValid) setCustomer({ kind: "new", draft: newDraft }); }}>
+                <label className="rt-field"><span className="tag">{t("pharmacyRetail.name")}</span>
+                  <input className="in" aria-label={t("pharmacyRetail.name")} value={newDraft.name} onChange={(e) => setNewDraft({ ...newDraft, name: e.target.value })} autoFocus />
                 </label>
-                <label className="text-sm">{t("pharmacyRetail.sex")}
-                  <select className="ml-1 rounded border px-2 py-1" value={newDraft.sex} onChange={(e) => setNewDraft({ ...newDraft, sex: e.target.value as NewCustomer["sex"] })}>
-                    <option value="female">{t("pharmacyRetail.sex_female")}</option>
-                    <option value="male">{t("pharmacyRetail.sex_male")}</option>
-                    <option value="other">{t("pharmacyRetail.sex_other")}</option>
-                  </select>
+                <div className="rt-grid2">
+                  <label className="rt-field"><span className="tag">{t("pharmacyRetail.sex")}</span>
+                    <select className="in" aria-label={t("pharmacyRetail.sex")} value={newDraft.sex} onChange={(e) => setNewDraft({ ...newDraft, sex: e.target.value as NewCustomer["sex"] })}>
+                      <option value="female">{t("pharmacyRetail.sex_female")}</option>
+                      <option value="male">{t("pharmacyRetail.sex_male")}</option>
+                      <option value="other">{t("pharmacyRetail.sex_other")}</option>
+                    </select>
+                  </label>
+                  <label className="rt-field"><span className="tag">{t("pharmacyRetail.age")}</span>
+                    <input className="in" aria-label={t("pharmacyRetail.age")} inputMode="numeric" value={newDraft.age} onChange={(e) => setNewDraft({ ...newDraft, age: e.target.value })} />
+                  </label>
+                </div>
+                <label className="rt-field"><span className="tag">{t("pharmacyRetail.mobile")}</span>
+                  <input className="in mo" aria-label={t("pharmacyRetail.mobile")} inputMode="tel" value={newDraft.phone} onChange={(e) => setNewDraft({ ...newDraft, phone: e.target.value })} />
                 </label>
-                <label className="text-sm">{t("pharmacyRetail.age")}
-                  <Input inputMode="numeric" className="w-20" value={newDraft.age} onChange={(e) => setNewDraft({ ...newDraft, age: e.target.value })} />
+                <label className="rt-field"><span className="tag">{t("pharmacyRetail.address")}</span>
+                  <input className="in" aria-label={t("pharmacyRetail.address")} value={newDraft.address} onChange={(e) => setNewDraft({ ...newDraft, address: e.target.value })} />
                 </label>
-                <label className="text-sm">{t("pharmacyRetail.mobile")}
-                  <Input inputMode="tel" className="w-36" value={newDraft.phone} onChange={(e) => setNewDraft({ ...newDraft, phone: e.target.value })} />
-                </label>
-                <label className="text-sm">{t("pharmacyRetail.address")}
-                  <Input value={newDraft.address} onChange={(e) => setNewDraft({ ...newDraft, address: e.target.value })} />
-                </label>
-                <Button type="submit" size="sm" disabled={!newValid}>{t("pharmacyRetail.useCustomer")}</Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setRegistering(false)}>{t("pharmacyRetail.findInstead")}</Button>
+                <div className="rt-row">
+                  <button type="submit" className="pri" disabled={!newValid}>{t("pharmacyRetail.useCustomer")}</button>
+                  <button type="button" className="sec" onClick={() => setRegistering(false)}>{t("pharmacyRetail.findInstead")}</button>
+                </div>
               </form>
             )}
             {customer !== null && (
-              <p className="text-sm" data-testid="retail-customer">
-                {customer.kind === "existing" ? customer.label : t("pharmacyRetail.toRegister", { name: customer.draft.name })}
-                <Button type="button" variant="link" size="sm" onClick={() => { setCustomer(null); setMatches(null); invalidate(); }}>{t("pharmacyRetail.change")}</Button>
-              </p>
+              <div className="rt-who" data-testid="retail-customer">
+                <p className="rt-name">{customer.kind === "existing" ? customer.name : customer.draft.name}</p>
+                <p className="mo rt-muted">
+                  {customer.kind === "existing" ? customer.uhid : t("pharmacyRetail.toRegisterNote")}
+                </p>
+                <button type="button" className="rt-link" onClick={() => { setCustomer(null); setMatches(null); invalidate(); }}>{t("pharmacyRetail.change")}</button>
+              </div>
             )}
             {matches !== null && (
-              <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm" data-testid="retail-matches">
+              <div className="rt-warn" data-testid="retail-matches">
                 <p>{t("pharmacyRetail.matches")}</p>
-                <ul className="my-1 space-y-1">
+                <ul className="rt-stack">
                   {matches.map((m) => (
-                    <li key={m.id} className="flex items-center gap-2">
+                    <li key={m.id} className="rt-stack-tight">
                       <span>{m.name} · {m.uhid}{m.phone === null ? "" : ` · ${m.phone}`}</span>
-                      <Button type="button" size="sm" variant="outline" onClick={() => {
-                        setCustomer({ kind: "existing", id: m.id, label: `${m.name} · ${m.uhid}` }); setMatches(null); invalidate();
-                      }}>{t("pharmacyRetail.useThis")}</Button>
+                      <button type="button" className="sec" onClick={() => {
+                        setCustomer({ kind: "existing", id: m.id, name: m.name ?? m.uhid, uhid: m.uhid }); setMatches(null); invalidate();
+                      }}>{t("pharmacyRetail.useThis")}</button>
                     </li>
                   ))}
                 </ul>
-                <Button type="button" size="sm" onClick={() => { void sell(true); }}>{t("pharmacyRetail.someoneNew")}</Button>
+                <button type="button" className="sec grn" onClick={() => { void sell(true); }}>{t("pharmacyRetail.someoneNew")}</button>
               </div>
             )}
-          </section>
+            {preview?.checks === null && customer?.kind === "new" && <p className="rt-note">{t("pharmacyRetail.noHistory")}</p>}
+          </aside>
 
-          <section className="space-y-2">
-            <h2 className="font-semibold">{t("pharmacyRetail.medicines")}</h2>
-            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") void search(); }}>
-              <Input aria-label={t("pharmacyRetail.search")} placeholder={t("pharmacyRetail.search")} value={q} onChange={(e) => setQ(e.target.value)} className="max-w-md" />
-              <Button type="submit" variant="outline">{t("pharmacyRetail.find")}</Button>
-            </form>
-            {found !== null && found.length === 0 && <p className="text-sm text-muted-foreground">{t("pharmacyRetail.notOnShelf")}</p>}
-            {found !== null && found.length > 0 && (
-              <ul className="space-y-1" aria-label={t("pharmacyRetail.results")}>
-                {found.map((f) => (
-                  <li key={f.itemId} className="flex items-center gap-2 text-sm">
-                    <span>{f.brandName} {f.strengthLabel ?? ""} {f.form}</span>
-                    {f.scheduleFlag === "H" || f.scheduleFlag === "H1" ? <span className="rounded bg-red-100 px-1 text-xs text-red-800">{t("pharmacyRetail.schedule", { flag: f.scheduleFlag })}</span> : null}
-                    <span className="text-muted-foreground">{t("pharmacyRetail.available", { count: f.available, unit: f.baseUom })}</span>
-                    <Button type="button" size="sm" variant="outline" disabled={f.available === 0} onClick={() => add(f)}>{t("pharmacyRetail.add")}</Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {cart.length > 0 && (
-              <table className="text-sm">
-                <tbody>
-                  {cart.map((c, i) => (
-                    <tr key={`${c.entry.itemId}-${String(i)}`} data-testid={`cart-${String(i)}`}>
-                      <td className="pr-2">{c.entry.brandName} {c.entry.strengthLabel ?? ""} {c.entry.form}</td>
-                      <td className="pr-2">
-                        {c.entry.scheduleFlag === "H" || c.entry.scheduleFlag === "H1" ? <span className="rounded bg-red-100 px-1 text-xs text-red-800">{t("pharmacyRetail.schedule", { flag: c.entry.scheduleFlag })}</span> : null}
-                      </td>
-                      <td className="pr-2">
-                        <Input aria-label={t("pharmacyRetail.qtyOf", { name: c.entry.brandName })} inputMode="numeric" className="w-20" value={c.qty}
-                          onChange={(e) => { const v = e.target.value; setCart((all) => all.map((x, j) => (j === i ? { ...x, qty: v } : x))); invalidate(); }} />
-                      </td>
-                      <td className="pr-2 text-muted-foreground">{c.entry.baseUom}</td>
-                      <td><Button type="button" size="sm" variant="link" onClick={() => { setCart((all) => all.filter((_, j) => j !== i)); invalidate(); }}>{t("pharmacyRetail.remove")}</Button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <Button type="button" variant="outline" disabled={!cartValid} onClick={() => { void runPreview(); }}>{t("pharmacyRetail.price")}</Button>
-          </section>
+          {/* ── CENTRE: one numbered flow, and the bar that offers the next act ── */}
+          <main className="rt-centre">
+            <div className="rt-scroll">
+              <div className="rt-head">
+                <h1 className="rt-h1">{t("pharmacyRetail.title")}</h1>
+                <ol className="rt-steps" aria-label={t("pharmacyRetail.stepsLabel")}>
+                  {stepLabel.map((label, i) => {
+                    const n = i + 1;
+                    const skip = n === 2 && !rxNeeded;
+                    return (
+                      <li key={label} className={skip ? "rt-step skip" : n === step ? "rt-step now" : n < step ? "rt-step done" : "rt-step"} aria-current={n === step ? "step" : undefined}>
+                        <span className="rt-dot">{n}</span>{label}{skip ? <span className="rt-muted"> · {t("pharmacyRetail.step.notNeeded")}</span> : null}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+              {shut && (
+                <p role="alert" data-testid="retail-shut" className="rt-bad">
+                  {t(`pharmacyRetail.shut_${licence.state}`, { to: licence.licence?.validTo === undefined ? "" : dmy(licence.licence.validTo) })}
+                </p>
+              )}
+              {licence?.state === "current" && licence.daysLeft !== null && licence.daysLeft <= 60 && (
+                <p role="status" className="rt-warn">{t("pharmacyRetail.licenceEnds", { count: licence.daysLeft, to: licence.licence?.validTo === undefined ? "" : dmy(licence.licence.validTo) })}</p>
+              )}
+              {error !== null && <p role="alert" className="rt-bad">{error}</p>}
 
-          {preview !== null && (
-            <section className="space-y-2" data-testid="retail-preview">
-              <table className="text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted-foreground">
-                    <th className="pr-3 font-normal">{t("pharmacyBill.drug")}</th>
-                    <th className="pr-3 font-normal">{t("pharmacyBill.batch")}</th>
-                    <th className="pr-3 font-normal">{t("pharmacyBill.expiry")}</th>
-                    <th className="text-right font-normal">{t("pharmacyBill.qty")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.lines.map((l) => (
-                    <tr key={l.lineIdx}>
-                      <td className="pr-3">{l.brandName} {l.strengthLabel ?? ""}</td>
-                      <td className="pr-3 font-mono">{l.batchNo}</td>
-                      <td className="pr-3">{l.expiryDate ?? ""}</td>
-                      <td className="text-right">{l.qtyBase}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="font-medium" data-testid="retail-total">{t("pharmacyRetail.total", { amount: rupees(preview.totals.netPayablePaise) })}</p>
-              {preview.checks !== null && preview.checks.allergies.map((a) => (
-                <p key={`a-${String(a.lineIdx)}-${a.substance}`} role="alert" className="text-sm text-red-700">{t("pharmacyRetail.allergy", { substance: a.substance })}</p>
-              ))}
-              {preview.checks !== null && preview.checks.interactions.map((h, i) => (
-                <p key={`i-${String(i)}`} className={h.severity === "severe" ? "text-sm text-red-700" : "text-sm text-amber-800"}>{h.note}</p>
-              ))}
-              {preview.checks === null && customer?.kind === "new" && <p className="text-xs text-muted-foreground">{t("pharmacyRetail.noHistory")}</p>}
-
-              {preview.prescriptionRequired && (
-                <fieldset className="space-y-2 rounded border p-2" data-testid="retail-rx">
-                  <legend className="px-1 text-sm font-medium">{t("pharmacyRetail.rxTitle")}</legend>
-                  <div className="flex flex-wrap gap-2">
-                    <label className="text-sm">{t("pharmacyRetail.prescriberName")}
-                      <Input value={rx.prescriberName} onChange={(e) => setRx({ ...rx, prescriberName: e.target.value })} />
-                    </label>
-                    <label className="text-sm">{t("pharmacyRetail.prescriberRegNo")}
-                      <Input value={rx.prescriberRegNo} onChange={(e) => setRx({ ...rx, prescriberRegNo: e.target.value })} />
-                    </label>
-                    <label className="text-sm">{t("pharmacyRetail.prescriberAddress")}
-                      <Input value={rx.prescriberAddress} onChange={(e) => setRx({ ...rx, prescriberAddress: e.target.value })} />
-                    </label>
-                    <label className="text-sm">{t("pharmacyRetail.rxDate")}
-                      <Input type="date" value={rx.rxDate} onChange={(e) => setRx({ ...rx, rxDate: e.target.value })} />
-                    </label>
+              {sold !== null ? (
+                <section className="box rt-card" data-testid="retail-sold">
+                  <p className="rt-okbig">{t("pharmacyRetail.sold", { invoice: sold.invoiceNo, amount: rupees(sold.netPaise), name: sold.patient.name })}</p>
+                  {sold.patient.registeredHere && <p>{t("pharmacyRetail.registeredAs", { uhid: sold.patient.uhid })}</p>}
+                  {sold.scheduled && <p>{t("pharmacyRetail.stampRx")}</p>}
+                  <div className="rt-row">
+                    <button type="button" className="sec grn" onClick={() => setPrinting(sold.id)}>{t("pharmacyRetail.printBill")}</button>
                   </div>
-                  <label className="block text-sm">{t("pharmacyRetail.rxPhoto")}
-                    <input type="file" accept="image/*" capture="environment" className="ml-2" onChange={(e) => { void onPhoto(e.target.files?.[0]); }} />
-                  </label>
-                  {rx.photo !== null && <p className="text-xs text-green-700">{t("pharmacyRetail.photoReady")}</p>}
-                </fieldset>
-              )}
+                </section>
+              ) : (
+                <>
+                  <section className="box rt-card rt-medcard" aria-labelledby="rt-s1">
+                    <h2 id="rt-s1" className="rt-h2"><span className="rt-dot">1</span>{t("pharmacyRetail.medicines")}</h2>
+                    <ShelfSearch onAdd={add} />
+                    {cart.length > 0 && (
+                      <div className="rt-tablewrap">
+                        <table className="rt-table rt-cart" data-testid="retail-cart">
+                          <thead>
+                            <tr>
+                              <th className="tag">{t("pharmacyBill.drug")}</th>
+                              <th className="tag">{t("pharmacyBill.qty")}</th>
+                              <th className="tag">{t("pharmacyBill.batch")}</th>
+                              <th className="tag">{t("pharmacyBill.expiry")}</th>
+                              <th className="tag rt-num">{t("pharmacyRetail.rate")}</th>
+                              <th className="tag rt-num">{t("pharmacyRetail.gst")}</th>
+                              <th className="tag rt-num">{t("pharmacyRetail.amount")}</th>
+                              <th><span className="sr-only">{t("pharmacyRetail.remove")}</span></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cart.map((c, i) => {
+                              const p = byIdx.get(i);
+                              return (
+                                <tr key={`${c.entry.itemId}-${String(i)}`} data-testid={`cart-${String(i)}`}>
+                                  <td>
+                                    <span className="rt-strong">{c.entry.brandName}</span> <span className="rt-muted">{c.entry.strengthLabel ?? ""} {c.entry.form}</span>
+                                    {scheduled(c.entry.scheduleFlag) ? <> <span className="pill rd">{t("pharmacyRetail.schedule", { flag: c.entry.scheduleFlag })}</span></> : null}
+                                  </td>
+                                  <td className="rt-nowrap" data-label={t("pharmacyBill.qty")}>
+                                    <input className="in rt-qty mo" aria-label={t("pharmacyRetail.qtyOf", { name: c.entry.brandName })} inputMode="numeric" value={c.qty}
+                                      onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); setCart((all) => all.map((x, j) => (j === i ? { ...x, qty: v } : x))); invalidate(); }} />
+                                    <span className="rt-muted"> {c.entry.baseUom}</span>
+                                  </td>
+                                  <td className="mo rt-nowrap" data-label={t("pharmacyBill.batch")}>{p?.batchNo ?? "—"}</td>
+                                  <td className="mo rt-nowrap" data-label={t("pharmacyBill.expiry")}>{p === undefined ? "—" : expiryLabel(p.expiryDate)}</td>
+                                  <td className="mo rt-num" data-label={t("pharmacyRetail.rate")}>{p?.price === undefined ? "—" : rupees(p.price.unitPaise)}</td>
+                                  <td className="mo rt-num" data-label={t("pharmacyRetail.gst")}>{p?.price === undefined ? "—" : `${String(p.price.gstRateBps / 100)}% · ${rupees(p.price.taxPaise)}`}</td>
+                                  <td className="mo rt-num rt-strong" data-label={t("pharmacyRetail.amount")}>{p?.price === undefined ? "—" : rupees(p.price.amountPaise)}</td>
+                                  <td><button type="button" className="rt-link" onClick={() => { setCart((all) => all.filter((_, j) => j !== i)); invalidate(); }}>{t("pharmacyRetail.remove")}</button></td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {preview !== null && (
+                      <dl className="rt-totals" data-testid="retail-totals">
+                        <dt>{t("pharmacyRetail.gross")}</dt><dd className="mo">{rupees(preview.totals.grossPaise)}</dd>
+                        {preview.totals.discountPaise > 0 && <><dt>{t("pharmacyRetail.discount")}</dt><dd className="mo">− {rupees(preview.totals.discountPaise)}</dd></>}
+                        <dt>{t("pharmacyRetail.gstInside")}</dt><dd className="mo">{rupees(preview.totals.taxPaise)}</dd>
+                        <dt className="rt-pay">{t("pharmacyRetail.payable")}</dt><dd className="mo rt-pay" data-testid="retail-total">{rupees(preview.totals.netPayablePaise)}</dd>
+                      </dl>
+                    )}
+                    {preview !== null && <p className="rt-note">{t("pharmacyRetail.mrpNote")}</p>}
+                    {preview?.checks?.allergies.map((a) => (
+                      <p key={`a-${String(a.lineIdx)}-${a.substance}`} role="alert" className="rt-bad">{t("pharmacyRetail.allergy", { substance: a.substance })}</p>
+                    ))}
+                    {preview?.checks?.interactions.map((h, i) => (
+                      <p key={`i-${String(i)}`} className={h.severity === "severe" ? "rt-bad" : "rt-warn"}>{h.note}</p>
+                    ))}
+                  </section>
 
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="text-sm">{t("pharmacyRetail.mode")}
-                  <select className="ml-1 rounded border px-2 py-1" value={mode} onChange={(e) => setMode(e.target.value as "cash" | "upi" | "card")}>
-                    <option value="cash">{t("pharmacyRetail.mode_cash")}</option>
-                    <option value="upi">{t("pharmacyRetail.mode_upi")}</option>
-                    <option value="card">{t("pharmacyRetail.mode_card")}</option>
-                  </select>
-                </label>
-                <label className="text-sm">{t("pharmacyRetail.tendered")}
-                  <Input inputMode="decimal" className="w-28" value={tendered} onChange={(e) => setTendered(e.target.value)} />
-                </label>
-                {mode !== "cash" && (
-                  <label className="text-sm">{t("pharmacyRetail.reference")}
-                    <Input value={ref} onChange={(e) => setRef(e.target.value)} />
-                  </label>
-                )}
-                <Button type="button" disabled={!canSell || blocked} onClick={() => { void sell(); }}>{t("pharmacyRetail.sell")}</Button>
+                  {preview !== null && preview.prescriptionRequired && (
+                    <section className="box rt-card" data-testid="retail-rx" aria-labelledby="rt-s2">
+                      <h2 id="rt-s2" className="rt-h2"><span className="rt-dot">2</span>{t("pharmacyRetail.rxTitle")}</h2>
+                      <div className="rt-grid2">
+                        <label className="rt-field"><span className="tag">{t("pharmacyRetail.prescriberName")}</span>
+                          <input className="in" aria-label={t("pharmacyRetail.prescriberName")} value={rx.prescriberName} onChange={(e) => setRx({ ...rx, prescriberName: e.target.value })} />
+                        </label>
+                        <label className="rt-field"><span className="tag">{t("pharmacyRetail.prescriberRegNo")}</span>
+                          <input className="in mo" aria-label={t("pharmacyRetail.prescriberRegNo")} value={rx.prescriberRegNo} onChange={(e) => setRx({ ...rx, prescriberRegNo: e.target.value })} />
+                        </label>
+                        <label className="rt-field rt-span2"><span className="tag">{t("pharmacyRetail.prescriberAddress")}</span>
+                          <input className="in" aria-label={t("pharmacyRetail.prescriberAddress")} value={rx.prescriberAddress} onChange={(e) => setRx({ ...rx, prescriberAddress: e.target.value })} />
+                        </label>
+                        <label className="rt-field"><span className="tag">{t("pharmacyRetail.rxDate")}</span>
+                          <input className="in mo" aria-label={t("pharmacyRetail.rxDate")} inputMode="numeric" placeholder={t("pharmacyRetail.dateFormat")}
+                            value={rx.rxDate} onChange={(e) => setRx({ ...rx, rxDate: maskDmy(e.target.value) })} />
+                          {rx.rxDate.length === 10 && rxIso === null && <span className="rt-err">{t("pharmacyRetail.dateInvalid")}</span>}
+                          {rxFuture && <span className="rt-err">{t("pharmacyRetail.dateFuture")}</span>}
+                        </label>
+                        <label className="rt-field"><span className="tag">{t("pharmacyRetail.rxPhoto")}</span>
+                          <input type="file" accept="image/*" capture="environment" aria-label={t("pharmacyRetail.rxPhoto")} onChange={(e) => { void onPhoto(e.target.files?.[0]); }} />
+                          {rx.photo !== null && <span className="rt-ok">{t("pharmacyRetail.photoReady")}</span>}
+                        </label>
+                      </div>
+                    </section>
+                  )}
+
+                  {preview !== null && (
+                    <section className="box rt-card" aria-labelledby="rt-s3">
+                      <h2 id="rt-s3" className="rt-h2"><span className="rt-dot">3</span>{t("pharmacyRetail.step.bill")}</h2>
+                      <div className="rt-seg" role="radiogroup" aria-label={t("pharmacyRetail.mode")}>
+                        {(["cash", "upi", "card"] as const).map((m) => (
+                          <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "rt-segb on" : "rt-segb"} onClick={() => setMode(m)}>
+                            {t(`pharmacyRetail.mode_${m}`)}
+                          </button>
+                        ))}
+                      </div>
+                      {mode === "cash" ? (
+                        <div className="rt-row rt-end">
+                          <label className="rt-field"><span className="tag">{t("pharmacyRetail.tendered")}</span>
+                            <input className="in mo rt-money" aria-label={t("pharmacyRetail.tendered")} inputMode="decimal" placeholder={(payable / 100).toFixed(2)}
+                              value={tendered} onChange={(e) => setTendered(e.target.value)} />
+                          </label>
+                          <button type="button" className="sec" onClick={() => setTendered((payable / 100).toFixed(2))}>{t("pharmacyRetail.exact", { amount: rupees(payable) })}</button>
+                        </div>
+                      ) : (
+                        <div className="rt-row rt-end">
+                          <p className="rt-strong">{t("pharmacyRetail.charge", { amount: rupees(payable) })}</p>
+                          <label className="rt-field"><span className="tag">{t("pharmacyRetail.reference")}</span>
+                            <input className="in mo" aria-label={t("pharmacyRetail.reference")} value={ref} onChange={(e) => setRef(e.target.value)} />
+                          </label>
+                        </div>
+                      )}
+                      {mode === "cash" && !cashParse.ok && <p className="rt-err">{t("pharmacyRetail.cashInvalid")}</p>}
+                      {mode === "cash" && cashPaise !== undefined && cashPaise > payable && (
+                        <p className="rt-strong" data-testid="retail-change">{t("pharmacyRetail.change_due", { amount: rupees(cashPaise - payable) })}</p>
+                      )}
+                    </section>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="rt-bar" data-testid="retail-bar">
+              <div className="rt-grow">
+                <p className="tag">{t("pharmacyRetail.stepOf", { n: step, label: stepLabel[step - 1] })}</p>
+                <p className="rt-barwhy">{sold !== null ? t("pharmacyRetail.why.sold") : why ?? t("pharmacyRetail.why.ready")}</p>
               </div>
-              {mode === "cash" && Number(tendered) * 100 > preview.totals.netPayablePaise && (
-                <p className="text-sm" data-testid="retail-change">{t("pharmacyRetail.change_due", { amount: rupees(Math.round(Number(tendered) * 100) - preview.totals.netPayablePaise) })}</p>
+              {sold !== null ? (
+                <button type="button" className="pri" onClick={reset}>{t("pharmacyRetail.nextSale")}</button>
+              ) : preview === null ? (
+                <button type="button" className="pri" disabled={!cartValid || busy} onClick={() => { void runPreview(); }}>{t("pharmacyRetail.price")}</button>
+              ) : (
+                <button type="button" className="pri" aria-label={t("pharmacyRetail.sell")} disabled={!canSell} onClick={() => { void sell(); }}>
+                  {t("pharmacyRetail.sell")} · {rupees(payable)}
+                </button>
               )}
-            </section>
-          )}
-        </>
-      )}
+            </div>
+          </main>
 
-      <RetailReturn />
-
-      <section className="space-y-1">
-        <h2 className="font-semibold">{t("pharmacyRetail.today")}</h2>
-        {today.data !== undefined && today.data.length === 0 && <p className="text-sm text-muted-foreground">{t("pharmacyRetail.noneToday")}</p>}
-        <ul className="text-sm">
-          {(today.data ?? []).map((s) => (
-            <li key={s.id} className="flex items-center gap-2" data-testid={`retail-row-${s.id}`}>
-              <span>{fmtIst(s.soldAt)}</span>
-              <span className="font-mono">{s.invoiceNo}</span>
-              <span>{rupees(s.netPaise)}</span>
-              {s.scheduled && <span className="rounded bg-red-100 px-1 text-xs text-red-800">{t("pharmacyRetail.onRx")}</span>}
-              <Button type="button" size="sm" variant="link" onClick={() => setPrinting(s.id)}>{t("pharmacyRetail.printBill")}</Button>
-            </li>
-          ))}
-        </ul>
-      </section>
+          {/* ── RIGHT: the day's walk-in sales; a return starts here, never inside a sale ── */}
+          {listOpen && <div className="rt-scrim" onClick={() => setListOpen(false)} aria-hidden="true" />}
+          <aside className={listOpen ? "rt-list open" : "rt-list"} aria-label={t("pharmacyRetail.today")}>
+            <div className="rt-listhead">
+              <p className="tag">{t("pharmacyRetail.todayTag", { count: rows.length })}</p>
+              <button type="button" className="rt-link rt-closelist" onClick={() => setListOpen(false)}>{t("pharmacyRetail.close")}</button>
+            </div>
+            <div className="rt-listact">
+              <button type="button" className="sec" onClick={() => setReturning(true)}>{t("pharmacyRetail.returnTitle")}</button>
+            </div>
+            <h2 className="sr-only">{t("pharmacyRetail.today")}</h2>
+            {today.data !== undefined && rows.length === 0 && <p className="rt-note rt-pad">{t("pharmacyRetail.noneToday")}</p>}
+            <ul className="rt-sales">
+              {rows.map((s) => (
+                <li key={s.id} data-testid={`retail-row-${s.id}`} className="rt-sale">
+                  <div className="rt-saletop">
+                    <span className="rt-strong rt-ellipsis">{customerOf(s)}</span>
+                    <span className="mo rt-strong">{rupees(s.netPaise)}</span>
+                  </div>
+                  <div className="rt-salebot">
+                    <span className="mo rt-muted">{fmtIst(s.soldAt)}</span>
+                    <span className="mo rt-muted rt-ellipsis">{s.invoiceNo}</span>
+                    {s.scheduled && <span className="pill rd">{t("pharmacyRetail.onRx")}</span>}
+                    <span className="rt-grow" />
+                    <button type="button" className="rt-link" onClick={() => setPrinting(s.id)}>{t("pharmacyRetail.printBill")}</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        </div>
+      </div>
+      {returning && <RetailReturn onClose={() => setReturning(false)} />}
     </div>
   );
 }

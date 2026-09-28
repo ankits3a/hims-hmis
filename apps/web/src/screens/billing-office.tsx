@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { MoneyInput } from "../components/money-input";
+import { PatientPicker } from "../components/patient-picker";
+import type { PatientPickerHit } from "../components/patient-picker";
 import { SubmitButton } from "../components/submit-button";
 import { fmtPaise } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
 import { api } from "../lib/api";
-import { billingErrorMessage } from "../lib/billing-api";
+import { billingErrorMessage, billingPatientLabel } from "../lib/billing-api";
 import type { WireChargeOrphan } from "../lib/billing-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,10 +34,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  *  · **GUARD FLAGS ARE WARNINGS, NOT BLOCKS.** `terminal_encounter` and `delivered_line` ride the
  *    approval payload so the approver knows WHY a voucher is escalated (D6 guards 2+3); nothing is
  *    auto-blocked, and a flagged voucher stays fully actionable on this screen.
- *  · **NO PATIENT NAME LOOKUP.** `GET /billing/refunds` carries `patientId` and no name — unlike
- *    every other reader on this surface — and this worklist is CROSS-PATIENT, so rendering names
- *    would mean one `getPatientSummaries` round trip per row. Voucher number, amount and status
- *    are a legitimate back-office worklist; the patient id is rendered as the identifier it is.
+ *  · **NO PATIENT NAME LOOKUP FROM THE BROWSER.** The worklist is CROSS-PATIENT, so a name read
+ *    per row would be an N+1. UX-AUDIT 2026-09-28: the office was reading "Patient: p-1" off every
+ *    voucher, so `GET /billing/refunds` now carries the alias-safe summary (uhid, name, alias,
+ *    restricted) from ONE server-side `getPatientSummaries` batch — the `listMismatches`
+ *    precedent. The screen still makes no patient call of its own, and a restricted row renders
+ *    its alias through `billingPatientLabel`, never a name (§14).
  *  · **NO IDENTITY DOCUMENT REFERENCE IS EVER RENDERED.** `GET /billing/refunds` stopped sending
  *    `payeeIdRef` in `30a272d`; `toVoucherRow` below is a second belt that keeps a future
  *    regression off the screen. The pay form COLLECTS a reference — the server requires one at pay
@@ -83,17 +87,23 @@ type WireRefundVoucher = {
   paidBy: string | null;
   paidAt: string | null;
   cashierSessionId: string | null;
+  /** UX-AUDIT 2026-09-28 — the alias-safe summary; `name` is null exactly when `restricted`. */
+  uhid: string;
+  name: string | null;
+  alias: string | null;
+  restricted: boolean;
 };
 
-/** The EIGHT fields of a voucher this worklist renders. Nothing else survives `toVoucherRow`. */
+/** The TWELVE fields of a voucher this worklist renders. Nothing else survives `toVoucherRow`. */
 type VoucherRow = {
   id: string; voucherNo: string; patientId: string; kind: RefundKind;
   amountPaise: number; method: RefundMethod; status: "issued" | "paid";
   guardFlags: string[];
+  uhid: string; name: string | null; alias: string | null; restricted: boolean;
 };
 
 /**
- * THE PROJECTION. The route answers with a row shaped by the server and this screen takes the eight
+ * THE PROJECTION. The route answers with a row shaped by the server and this screen takes the twelve
  * fields it renders, dropping the rest — including anything a future regression adds back beside
  * the payee columns. `payeeName`/`payeeIdType` are legitimate at PAY time and are typed into the
  * form there; they are not worklist columns, so they do not survive here either.
@@ -108,8 +118,37 @@ function toVoucherRow(row: WireRefundVoucher): VoucherRow {
     method: row.method,
     status: row.status,
     guardFlags: Array.isArray(row.guardFlags) ? row.guardFlags.map(String) : [],
+    uhid: row.uhid ?? "",
+    name: row.name ?? null,
+    alias: row.alias ?? null,
+    restricted: row.restricted === true,
   };
 }
+
+/** `GET /billing/receipts?patientId=` — the four fields the void lane's receipt list renders. */
+type WireReceiptListRow = { id: string; receiptNo: string; receivedAt: string; totalPaise: number };
+
+/**
+ * ═══ UX-AUDIT 2026-09-28 — "settled 48000p vs expected 49250p (tolerance 100p)" ═══
+ *
+ * `mismatchNote` is written by `recon.ts` (`mismatchNoteFor`) and STORED on the tender, so a server
+ * change would fix only tomorrow's rows. The note is rendered here in rupees, formatted by the same
+ * `fmtPaise` every other figure on this screen goes through. The known shape is re-said in the
+ * operator's language; any other note keeps its words and only has its paise figures converted.
+ */
+const MISMATCH_NOTE = /^settled (\d+)p vs expected (\d+)p \(tolerance (\d+)p\)$/;
+function mismatchNoteText(note: string, t: (key: string, opts: Record<string, string>) => string): string {
+  const m = MISMATCH_NOTE.exec(note);
+  if (m !== null) {
+    return t("billingOffice.recon.mismatchNote", {
+      settled: fmtPaise(Number(m[1])), expected: fmtPaise(Number(m[2])), tolerance: fmtPaise(Number(m[3])),
+    });
+  }
+  return note.replace(/\b(\d+)p\b/g, (_, digits: string) => fmtPaise(Number(digits)));
+}
+
+/** The visit types `opd.visitType.*` already names; anything else falls to the unknown label or its own word. */
+const KNOWN_VISIT_TYPES = ["new", "revisit", "renewal", "referral"];
 
 type WireRequestRefundResult = {
   approvalId: string; instanceId: string; patientId: string;
@@ -200,6 +239,8 @@ export function BillingOffice(): React.ReactElement {
   // ——— refunds: request → issue → pay, and the entered-in-error correction ———
   const [kind, setKind] = useState<RefundKind>("advance_refund");
   const [subject, setSubject] = useState("");
+  /** UX-AUDIT 2026-09-28 — the patient an advance refund is for, picked; `subject` carries its id. */
+  const [refundPatient, setRefundPatient] = useState<PatientPickerHit | null>(null);
   const [amountPaise, setAmountPaise] = useState<number | undefined>(undefined);
   const [reasonClass, setReasonClass] = useState<ReasonClass>("mistake");
   const [reason, setReason] = useState("");
@@ -218,6 +259,14 @@ export function BillingOffice(): React.ReactElement {
   const [paid, setPaid] = useState<WirePayRefundResult | null>(null);
 
   const [eieReceiptId, setEieReceiptId] = useState("");
+  /**
+   * UX-AUDIT 2026-09-28 — the void lane took a raw receipt id. Staff hold the PRINTED receipt
+   * number, so the lane is patient → their receipts (the shipped `GET /billing/receipts?patientId=`
+   * read, the dues screen's precedent; no new route) with a number filter over that list.
+   */
+  const [eiePatient, setEiePatient] = useState<PatientPickerHit | null>(null);
+  const [eieReceiptNo, setEieReceiptNo] = useState("");
+  const [eieFilter, setEieFilter] = useState("");
   const [eieReason, setEieReason] = useState("");
   const [eieConfirming, setEieConfirming] = useState(false);
   const [eieError, setEieError] = useState<string | null>(null);
@@ -285,6 +334,19 @@ export function BillingOffice(): React.ReactElement {
     queryFn: () => api<{ items: WireChargeOrphan[] }>("GET", `/billing/charge-orphans?serviceDate=${encodeURIComponent(day)}`),
     enabled: tab === "orphans",
     refetchInterval: POLL_MS,
+  });
+
+  const eieReceipts = useQuery({
+    queryKey: ["billing-office", "eie-receipts", eiePatient?.id ?? ""],
+    queryFn: async () => {
+      const res = await api<{ items: WireReceiptListRow[] }>(
+        "GET", `/billing/receipts?patientId=${encodeURIComponent(eiePatient?.id ?? "")}`,
+      );
+      // THE PROJECTION: four fields, the dues screen's discipline — nothing else of a receipt row
+      // (the Rule 114B capture above all) is carried into this screen's state.
+      return res.items.map((r) => ({ id: r.id, receiptNo: r.receiptNo, receivedAt: r.receivedAt, totalPaise: r.totalPaise }));
+    },
+    enabled: tab === "refunds" && eiePatient !== null,
   });
 
   const gstr1 = useQuery({
@@ -435,6 +497,7 @@ export function BillingOffice(): React.ReactElement {
       }, idemKey);
       setEieDone(result);
       setEieReceiptId("");
+      setEieReceiptNo("");
       setEieReason("");
       await refresh();
     } catch (e) {
@@ -488,6 +551,19 @@ export function BillingOffice(): React.ReactElement {
     </div>
   );
 
+  /** The picked patient as the picker gave it: a search/scan hit always carries a UHID, not always a name. */
+  const hit2label = (hit: PatientPickerHit): string => hit.name ?? hit.uhid;
+
+  const visitTypeLabel = (visitType: string): string =>
+    KNOWN_VISIT_TYPES.includes(visitType)
+      ? t(`opd.visitType.${visitType}`)
+      : visitType === "unknown" ? t("billingOffice.orphans.typeUnknown") : visitType;
+
+  const eieNeedle = eieFilter.trim().toLowerCase();
+  const eieReceiptRows = (eieReceipts.data ?? []).filter(
+    (r) => eieNeedle === "" || r.receiptNo.toLowerCase().includes(eieNeedle),
+  );
+
   // ——— tabs ———
 
   const refundsTab = (
@@ -503,6 +579,7 @@ export function BillingOffice(): React.ReactElement {
               onChange={(e) => {
                 setKind(e.target.value as RefundKind);
                 setSubject("");
+                setRefundPatient(null);
               }}
               className="w-full rounded border px-2 py-1"
             >
@@ -510,18 +587,51 @@ export function BillingOffice(): React.ReactElement {
               <option value="invoice_refund">{t("billingOffice.request.kindInvoice")}</option>
             </select>
           </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium" htmlFor="refund-subject">
-              {kind === "advance_refund" ? t("billingOffice.request.patient") : t("billingOffice.request.creditNote")}
-            </label>
-            <input
-              id="refund-subject"
-              value={subject}
-              autoComplete="off"
-              onChange={(e) => setSubject(e.target.value)}
-              className="w-full rounded border px-2 py-1"
-            />
-          </div>
+          {kind === "advance_refund" ? (
+            /* UX-AUDIT 2026-09-28 — this was a text box that took the raw internal patient id. It is
+               the app's shared picker now (name / UHID / phone, or a card scan); the id it yields is
+               what the request body carries, exactly as before. */
+            <div className="space-y-1" data-testid="refund-patient">
+              <p className="block text-sm font-medium">{t("billingOffice.request.patient")}</p>
+              {refundPatient === null ? (
+                <PatientPicker
+                  onPick={(hit) => {
+                    setRefundPatient(hit);
+                    setSubject(hit.id);
+                  }}
+                />
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 rounded border p-2 text-sm">
+                  <span data-testid="refund-patient-picked" className="font-medium">{hit2label(refundPatient)}</span>
+                  <span className="font-mono text-xs text-neutral-600">{refundPatient.uhid}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid="refund-patient-change"
+                    onClick={() => {
+                      setRefundPatient(null);
+                      setSubject("");
+                    }}
+                  >
+                    {t("billingOffice.change")}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="block text-sm font-medium" htmlFor="refund-subject">
+                {t("billingOffice.request.creditNote")}
+              </label>
+              <input
+                id="refund-subject"
+                value={subject}
+                autoComplete="off"
+                onChange={(e) => setSubject(e.target.value)}
+                className="w-full rounded border px-2 py-1"
+              />
+            </div>
+          )}
           <MoneyInput id="refund-amount" label={t("billingOffice.request.amount")} onChange={setAmountPaise} />
           <div className="space-y-1">
             <label className="block text-sm font-medium" htmlFor="refund-reason-class">
@@ -594,16 +704,75 @@ export function BillingOffice(): React.ReactElement {
         {/* ——— the correction lane: voiding a receipt reverses everything it settled ——— */}
         <div className="space-y-2 rounded border p-2">
           <h2 className="text-sm font-semibold">{t("billingOffice.eie.title")}</h2>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium" htmlFor="eie-receipt">{t("billingOffice.eie.receipt")}</label>
-            <input
-              id="eie-receipt"
-              value={eieReceiptId}
-              autoComplete="off"
-              onChange={(e) => setEieReceiptId(e.target.value)}
-              className="w-full rounded border px-2 py-1"
-            />
+          <div className="space-y-1" data-testid="eie-patient">
+            <p className="block text-sm font-medium">{t("billingOffice.eie.patient")}</p>
+            {eiePatient === null ? (
+              <PatientPicker
+                onPick={(hit) => {
+                  setEiePatient(hit);
+                  setEieReceiptId("");
+                  setEieReceiptNo("");
+                  setEieFilter("");
+                }}
+              />
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 rounded border p-2 text-sm">
+                <span data-testid="eie-patient-picked" className="font-medium">{hit2label(eiePatient)}</span>
+                <span className="font-mono text-xs text-neutral-600">{eiePatient.uhid}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="eie-patient-change"
+                  onClick={() => {
+                    setEiePatient(null);
+                    setEieReceiptId("");
+                    setEieReceiptNo("");
+                  }}
+                >
+                  {t("billingOffice.change")}
+                </Button>
+              </div>
+            )}
           </div>
+          {eiePatient !== null && (
+            <div className="space-y-1">
+              <label className="block text-sm font-medium" htmlFor="eie-receipt-filter">{t("billingOffice.eie.receipt")}</label>
+              <input
+                id="eie-receipt-filter"
+                value={eieFilter}
+                autoComplete="off"
+                placeholder={t("billingOffice.eie.receiptFilter")}
+                onChange={(e) => setEieFilter(e.target.value)}
+                className="w-full rounded border px-2 py-1 font-mono text-sm"
+              />
+              {eieReceiptRows.length === 0 ? (
+                <p data-testid="eie-no-receipts" className="text-sm text-neutral-500">
+                  {eieReceipts.isLoading ? t("billingOffice.eie.loadingReceipts") : t("billingOffice.eie.noReceipts")}
+                </p>
+              ) : (
+                <ul className="max-h-56 space-y-1 overflow-y-auto">
+                  {eieReceiptRows.map((r) => (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        data-testid={`eie-receipt-${r.id}`}
+                        aria-pressed={eieReceiptId === r.id}
+                        onClick={() => {
+                          setEieReceiptId(r.id);
+                          setEieReceiptNo(r.receiptNo);
+                        }}
+                        className={`flex w-full flex-wrap items-center justify-between gap-2 rounded border px-2 py-1 text-left text-sm ${eieReceiptId === r.id ? "border-blue-500 bg-blue-50" : "hover:bg-neutral-50"}`}
+                      >
+                        <span className="font-mono">{r.receiptNo}</span>
+                        <span className="text-xs text-neutral-600">{r.receivedAt.slice(0, 10)}</span>
+                        <span className="tabular-nums">{fmtPaise(r.totalPaise)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <div className="space-y-1">
             <label className="block text-sm font-medium" htmlFor="eie-reason">{t("billingOffice.eie.reason")}</label>
             <input
@@ -650,9 +819,11 @@ export function BillingOffice(): React.ReactElement {
                   <span data-testid={`voucher-amount-${row.id}`} className="tabular-nums">{fmtPaise(row.amountPaise)}</span>
                   <span className="text-neutral-600">{t(`billingOffice.kind.${row.kind}`)}</span>
                   <span className="text-neutral-600">{t(`billingOffice.method.${row.method}`)}</span>
-                  {/* patientId, not a name: no lookup per row (carried item 10) */}
+                  {/* UX-AUDIT 2026-09-28: the alias-safe name the server batched, and the UHID staff
+                      search by — never the internal id. A restricted row shows its alias. */}
                   <span data-testid={`voucher-patient-${row.id}`} className="text-xs text-neutral-500">
-                    {t("billingOffice.worklist.patient")}: {row.patientId}
+                    {t("billingOffice.worklist.patient")}: {billingPatientLabel(row)}
+                    {row.uhid !== "" && <span className="ml-1 font-mono">{row.uhid}</span>}
                   </span>
                 </div>
                 {row.guardFlags.length > 0 && (
@@ -806,7 +977,11 @@ export function BillingOffice(): React.ReactElement {
                     </span>
                   </span>
                 </div>
-                {row.mismatchNote !== null && <p className="text-xs text-neutral-500">{row.mismatchNote}</p>}
+                {row.mismatchNote !== null && (
+                  <p data-testid={`mismatch-note-${row.tenderId}`} className="text-xs text-neutral-500">
+                    {mismatchNoteText(row.mismatchNote, t)}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
@@ -958,7 +1133,10 @@ export function BillingOffice(): React.ReactElement {
       )}
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as OfficeTab)}>
-        <TabsList>
+        {/* UX-AUDIT 2026-09-28: at 390 px the five triggers ran to x=455 and widened the page
+            (scrollWidth 463). The strip WRAPS inside its own width now — no redesign (that is the
+            later rebuild), only a free height so a second row has room and `flex-wrap` to take it. */}
+        <TabsList data-testid="office-tabs" className="max-w-full flex-wrap justify-start group-data-[orientation=horizontal]/tabs:h-auto">
           <TabsTrigger value="refunds" data-testid="tab-refunds">{t("billingOffice.tabs.refunds")}</TabsTrigger>
           <TabsTrigger value="recon" data-testid="tab-recon">{t("billingOffice.tabs.recon")}</TabsTrigger>
           <TabsTrigger value="daybook" data-testid="tab-daybook">{t("billingOffice.tabs.dayBook")}</TabsTrigger>
@@ -988,7 +1166,7 @@ export function BillingOffice(): React.ReactElement {
                 {(orphans.data?.items ?? []).map((o) => (
                   <tr key={o.encounterId} data-testid={`orphan-${o.encounterId}`}>
                     <td className="mo">{o.visitNo}</td>
-                    <td>{o.visitType}</td>
+                    <td data-testid={`orphan-type-${o.encounterId}`}>{visitTypeLabel(o.visitType)}</td>
                     <td className="mo">{o.serviceDate}</td>
                   </tr>
                 ))}
@@ -1004,7 +1182,7 @@ export function BillingOffice(): React.ReactElement {
         <DialogContent>
           <DialogHeader><DialogTitle>{t("billingOffice.eie.confirmTitle")}</DialogTitle></DialogHeader>
           <p data-testid="eie-cascade" className="text-sm">
-            {t("billingOffice.eie.cascade", { receiptId: eieReceiptId })}
+            {t("billingOffice.eie.cascade", { receiptId: eieReceiptNo === "" ? eieReceiptId : eieReceiptNo })}
           </p>
           <div className="flex gap-2">
             <SubmitButton data-testid="eie-confirm-submit" onClick={(k) => markEnteredInError(k)}>

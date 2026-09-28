@@ -102,6 +102,11 @@ const FLAGGED_VOUCHER = {
   paidBy: null,
   paidAt: null,
   cashierSessionId: null,
+  // UX-AUDIT 2026-09-28 — the alias-safe summary the route now batches server-side.
+  uhid: "HMS-00000001-7",
+  name: "Sunil Sharma",
+  alias: null,
+  restricted: false,
 };
 
 const PAID_VOUCHER = {
@@ -119,9 +124,34 @@ const PAID_VOUCHER = {
   status: "paid",
   paidBy: "u-2",
   paidAt: "2026-08-19T14:00:00.000Z",
+  // A SEALED record: the server sends the alias and no name, and the row must render the alias.
+  uhid: "HMS-00000002-5",
+  name: null,
+  alias: "Patient S-9",
+  restricted: true,
 };
 
 const VOUCHERS = { items: [FLAGGED_VOUCHER, PAID_VOUCHER] };
+
+// ——— picker + receipt fixtures (UX-AUDIT 2026-09-28) ————————————————————————————————————————————
+
+const SEARCH_HIT = {
+  id: "p-1", uhid: "HMS-00000001-7", name: "Sunil Sharma", phone: "9876500001",
+  administrativeGender: "male", dob: "1980-02-02", isConfidential: false, hasPhoto: false,
+};
+
+/** Two receipts for the patient; the filter must narrow by the PRINTED number, the body must carry the id. */
+const PATIENT_RECEIPTS = {
+  items: [
+    { id: "rcp-7", receiptNo: "RCP/26-27/000071", receivedAt: "2026-08-19T10:00:00.000Z", totalPaise: 50_000, patientId: "p-1", panCaptured: false },
+    { id: "rcp-8", receiptNo: "RCP/26-27/000088", receivedAt: "2026-08-19T11:00:00.000Z", totalPaise: 20_000, patientId: "p-1", panCaptured: false },
+  ],
+};
+
+async function pickPatient(user: ReturnType<typeof userEvent.setup>, within_: HTMLElement): Promise<void> {
+  await user.type(within(within_).getByLabelText("Search"), "Sunil");
+  await user.click(await within(within_).findByRole("button", { name: /Sunil Sharma/ }));
+}
 
 // ——— recon fixtures ———————————————————————————————————————————————————————————————————————————
 
@@ -269,6 +299,7 @@ describe("BillingOffice", () => {
   it("files a refund request with INTEGER PAISE and the guard flags the server computed, then issues the voucher against the granted approval", async () => {
     mockRoutes({
       "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "GET /api/patients/search": { status: 200, body: { items: [SEARCH_HIT] } },
       "POST /api/billing/refunds/request": {
         status: 201,
         body: {
@@ -290,7 +321,11 @@ describe("BillingOffice", () => {
     renderWithProviders(<BillingOffice />);
     const user = userEvent.setup();
 
-    await user.type(await screen.findByLabelText("Patient"), "p-1");
+    // UX-AUDIT 2026-09-28 — the patient is PICKED by name, never typed as an internal id; the id
+    // the picker yields is what the body carries.
+    await pickPatient(user, await screen.findByTestId("refund-patient"));
+    expect(screen.getByTestId("refund-patient-picked")).toHaveTextContent("Sunil Sharma");
+    expect(screen.queryByLabelText("Patient")).toBeNull();
     await user.type(screen.getByLabelText("Refund amount"), "2500");
     await user.selectOptions(screen.getByLabelText("Reason class"), "genuine");
     await user.type(screen.getByLabelText("Reason"), "patient discharged, advance unused");
@@ -329,7 +364,7 @@ describe("BillingOffice", () => {
     expect(screen.getByTestId("issue-done")).toHaveTextContent("RV/26-27/000031");
   });
 
-  it("the worklist renders guard flags as WARNINGS, renders no payee identity reference even though the fixture carries one, and looks up no patient name (no N+1)", async () => {
+  it("the worklist renders guard flags as WARNINGS, renders no payee identity reference even though the fixture carries one, and names each patient from the row itself — alias for a sealed record, no N+1", async () => {
     mockRoutes({ "GET /api/billing/refunds": { status: 200, body: VOUCHERS } });
     renderWithProviders(<BillingOffice />);
 
@@ -359,12 +394,17 @@ describe("BillingOffice", () => {
     expect(document.body.textContent).not.toContain("XXXX-1234-5678");
 
     /**
-     * NO N+1. `GET /billing/refunds` returns `patientId` and no patient name (carried item 10), and
-     * this worklist is CROSS-PATIENT, so rendering names would mean one lookup per row. The
-     * voucher number, the amount and the status are a legitimate back-office worklist; the patient
-     * id is rendered as the identifier it is.
+     * UX-AUDIT 2026-09-28 — the row read "Patient: p-1". The name and UHID now ride the row from
+     * ONE server-side batch, so there is still NO N+1: the screen makes no patient call of its own.
+     * A sealed record renders its alias and never a name (§14).
      */
-    expect(within(row).getByTestId("voucher-patient-rv-1")).toHaveTextContent("p-1");
+    const patient = within(row).getByTestId("voucher-patient-rv-1");
+    expect(patient).toHaveTextContent("Sunil Sharma");
+    expect(patient).toHaveTextContent("HMS-00000001-7");
+    expect(patient).not.toHaveTextContent("p-1");
+    const sealed = within(paidRow).getByTestId("voucher-patient-rv-2");
+    expect(sealed).toHaveTextContent("Patient S-9");
+    expect(sealed).not.toHaveTextContent("p-2");
     expect(fetchCalls().filter((c) => c.path.startsWith("/api/patients"))).toHaveLength(0);
     expect(fetchCalls().filter((c) => c.path.startsWith("/api/billing/patients"))).toHaveLength(0);
   });
@@ -479,6 +519,13 @@ describe("BillingOffice", () => {
     expect(within(row).getByTestId("mismatch-expected-tn-1")).toHaveTextContent("₹492.50");
     expect(within(row).getByTestId("mismatch-settled-tn-1")).toHaveTextContent("₹480.00");
     expect(within(row).getByTestId("mismatch-receipt-tn-1")).toHaveTextContent("RCP/26-27/000012");
+
+    // UX-AUDIT 2026-09-28 — the stored note is rendered in rupees, never as raw "48000p".
+    const note = within(row).getByTestId("mismatch-note-tn-1");
+    expect(note).toHaveTextContent("₹480.00");
+    expect(note).toHaveTextContent("₹492.50");
+    expect(note).toHaveTextContent("₹1.00");
+    expect(note.textContent).not.toMatch(/\d+p\b/);
   });
 
   it("K46/W-10: the day book renders the API's numbers VERBATIM — the fixture's mode figures deliberately do not add up to its total, and the total that renders is the API's", async () => {
@@ -617,9 +664,11 @@ describe("BillingOffice", () => {
     expect(screen.getByTestId("gstr1-total-base-27AABCU9603R1ZM")).toHaveTextContent("₹688.75");
   });
 
-  it("the entered-in-error lane asks before it acts, names the cascade, and posts { receiptId, reason }", async () => {
+  it("the entered-in-error lane finds the receipt by patient and PRINTED number, asks before it acts, names the cascade, and posts { receiptId, reason }", async () => {
     mockRoutes({
       "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "GET /api/patients/search": { status: 200, body: { items: [SEARCH_HIT] } },
+      "GET /api/billing/receipts": { status: 200, body: PATIENT_RECEIPTS },
       "POST /api/billing/eie": {
         status: 201,
         body: { markId: "eie-1", reversedAllocationIds: ["alc-1", "alc-2"] },
@@ -628,7 +677,14 @@ describe("BillingOffice", () => {
     renderWithProviders(<BillingOffice />);
     const user = userEvent.setup();
 
-    await user.type(await screen.findByLabelText("Receipt to void"), "rcp-7");
+    // UX-AUDIT 2026-09-28 — no raw id box: patient → their receipts, narrowed by the printed number.
+    expect(screen.queryByLabelText("Receipt to void")).toBeNull();
+    await pickPatient(user, await screen.findByTestId("eie-patient"));
+    await screen.findByTestId("eie-receipt-rcp-8");
+    expect(callsTo("GET", "/api/billing/receipts")[0]!.url).toContain("patientId=p-1");
+    await user.type(screen.getByLabelText("Receipt to void"), "000071");
+    expect(screen.queryByTestId("eie-receipt-rcp-8")).toBeNull();
+    await user.click(screen.getByTestId("eie-receipt-rcp-7"));
     await user.type(screen.getByLabelText("Reason for voiding"), "keyed against the wrong patient");
     await user.click(screen.getByTestId("eie-open"));
 
@@ -639,6 +695,8 @@ describe("BillingOffice", () => {
     expect(within(dialog).getByTestId("eie-cascade")).toHaveTextContent(
       "Every allocation this receipt made will be reversed",
     );
+    // The dialog names the receipt by the number on the paper, not by its internal id.
+    expect(within(dialog).getByTestId("eie-cascade")).toHaveTextContent("RCP/26-27/000071");
 
     await user.click(within(dialog).getByTestId("eie-confirm-submit"));
     await waitFor(() => expect(callsTo("POST", "/api/billing/eie")).toHaveLength(1));
@@ -647,6 +705,42 @@ describe("BillingOffice", () => {
       reason: "keyed against the wrong patient",
     });
     expect(await screen.findByTestId("eie-done")).toHaveTextContent("2");
+  });
+
+  it("UX-AUDIT 2026-09-28: unbilled visits name the visit type in words, never the raw enum", async () => {
+    mockRoutes({
+      "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "GET /api/billing/charge-orphans": {
+        status: 200,
+        body: {
+          items: [
+            { encounterId: "enc-1", patientId: "p-1", feeServiceId: "svc-1", visitNo: "V-1", visitType: "new", serviceDate: TODAY_IST },
+            { encounterId: "enc-2", patientId: "p-2", feeServiceId: "svc-1", visitNo: "V-2", visitType: "revisit", serviceDate: TODAY_IST },
+            { encounterId: "enc-3", patientId: "p-3", feeServiceId: "svc-1", visitNo: "V-3", visitType: "unknown", serviceDate: TODAY_IST },
+          ],
+        },
+      },
+    });
+    renderWithProviders(<BillingOffice />);
+    const user = userEvent.setup();
+    await openTab(user, "Unbilled visits");
+    expect(await screen.findByTestId("orphan-type-enc-1")).toHaveTextContent(/^New$/);
+    expect(screen.getByTestId("orphan-type-enc-2")).toHaveTextContent(/^Revisit$/);
+    expect(screen.getByTestId("orphan-type-enc-3")).toHaveTextContent(/^Not recorded$/);
+  });
+
+  /**
+   * UX-AUDIT 2026-09-28 — at 390 px the five-tab strip ran to x=455 and widened the page. jsdom has
+   * no layout, so this pins the MECHANISM (the strip wraps inside its own width); the measurement
+   * itself was taken in real Chromium at 390 and 1440 for the PR.
+   */
+  it("UX-AUDIT 2026-09-28: the five-tab strip wraps inside its own width instead of widening the page", async () => {
+    mockRoutes({ "GET /api/billing/refunds": { status: 200, body: { items: [] } } });
+    renderWithProviders(<BillingOffice />);
+    const strip = await screen.findByRole("tablist");
+    expect(strip.className).toMatch(/\bflex-wrap\b/);
+    expect(strip.className).toMatch(/\bmax-w-full\b/);
+    expect(strip.className).not.toMatch(/(^|\s)group-data-\[orientation=horizontal\]\/tabs:h-9(\s|$)/);
   });
 
   it("a 403 on any tab's read renders the SHARED error state, and the screen assumes nothing about which permission guards which route", async () => {
