@@ -954,6 +954,10 @@
     "overrideMatch": "पंक्ति {{n}}: {{substance}}",
     "overrideReasonRequired": "हर विरोध के लिए कारण आवश्यक है",
     "overrideConfirm": "अधिरोहित कर जारी करें",
+    "rxRequired": {"drug": "दवा लिखें या चुनें", "dose": "खुराक लिखें, जैसे 500 mg", "route": "मार्ग चुनें", "frequency": "कितनी बार — चुनें", "days": "दिन 0 से बड़ी पूर्ण संख्या हों"},
+    "overrideMatchDrug": "{{drug}} दर्ज एलर्जी से मेल खाती है: {{substance}}",
+    "overrideMatchSeverity": "{{severity}} दर्ज",
+    "rxIssued": {"heading": "जारी · संस्करण {{n}} · {{at}}", "note": "यह पर्चा फ़ार्मेसी तक पहुँच चुका है। नीचे जो लिखा जाएगा वह नया संस्करण बनकर इसकी जगह लेगा।", "print": "प्रिंट", "amend": "बदलें (संस्करण {{n}})"},
     "followUp": "फ़ॉलो-अप",
     "followUpDefault": "{{days}} दिन (डिफ़ॉल्ट)",
     "extension": "{{days}} दिन (विस्तार)",
@@ -1164,7 +1168,7 @@
     }
   },
   "rx": {
-    "regNo": "पंजीकरण सं.",
+    "doctorId": "डॉक्टर आईडी",
     "uhid": "UHID",
     "visitNo": "विज़िट क्रमांक",
     "age": "आयु",
@@ -5827,6 +5831,7 @@
     }
   },
   "opdConsultV2": {
+    "rxIssuedStrip": "जारी · संस्करण {{n}}: {{lines}}",
     "add": "जोड़ें",
     "allergyList": "एलर्जी: {{list}}",
     "altHead": "{{drug}} · स्टॉक 0",
@@ -6064,6 +6069,8 @@
     }
   },
   "opdEye": {
+    "summaryIop": "IOP",
+    "summaryGlasses": "चश्मा",
     "tab": "आँख",
     "test": "जाँच",
     "od": "दायीं आँख (OD)",

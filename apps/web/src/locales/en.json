@@ -954,6 +954,10 @@
     "overrideMatch": "Line {{n}}: {{substance}}",
     "overrideReasonRequired": "A reason is required for every conflict",
     "overrideConfirm": "Override and issue",
+    "rxRequired": {"drug": "Write or pick the medicine", "dose": "Write the dose, e.g. 500 mg", "route": "Choose the route", "frequency": "Choose how often", "days": "Days must be a whole number above 0"},
+    "overrideMatchDrug": "{{drug}} matches the recorded allergy: {{substance}}",
+    "overrideMatchSeverity": "recorded as {{severity}}",
+    "rxIssued": {"heading": "Issued · version {{n}} · {{at}}", "note": "This prescription has reached the pharmacy. Anything written below issues a new version that replaces it.", "print": "Print", "amend": "Change it (version {{n}})"},
     "followUp": "Follow-up",
     "followUpDefault": "{{days}} days (default)",
     "extension": "{{days}} days (extension)",
@@ -1164,7 +1168,7 @@
     }
   },
   "rx": {
-    "regNo": "Reg. No.",
+    "doctorId": "Doctor ID",
     "uhid": "UHID",
     "visitNo": "Visit no",
     "age": "Age",
@@ -5827,6 +5831,7 @@
     }
   },
   "opdConsultV2": {
+    "rxIssuedStrip": "Issued · version {{n}}: {{lines}}",
     "add": "Add",
     "allergyList": "Allergy: {{list}}",
     "altHead": "{{drug}} · 0 in stock",
@@ -6064,6 +6069,8 @@
     }
   },
   "opdEye": {
+    "summaryIop": "IOP",
+    "summaryGlasses": "Glasses",
     "tab": "Eye",
     "test": "Test",
     "od": "Right eye (OD)",

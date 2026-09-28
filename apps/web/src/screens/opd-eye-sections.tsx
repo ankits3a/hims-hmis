@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { ApiError, api } from "../lib/api";
 
 /**
@@ -48,6 +49,43 @@ function num(s: string): number | null {
   if (t === "") return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * CONSULT WALK 2026-09-28 (defect G) — the eye sections as ONE summary line for "what will be saved"
+ * and the work strip, which listed every base section and none of these. Only what was recorded is
+ * named; a section left empty says nothing. `items` is the count the Summary shows.
+ */
+export function eyeSummary(t: TFunction, data: WireVisitSections | undefined): { text: string; items: number } {
+  if (data === undefined || data.profile === null) return { text: "", items: 0 };
+  const parts: string[] = [];
+  const pair = (label: string, p: Partial<Pair> | undefined): void => {
+    const od = (p?.od ?? "").trim();
+    const os = (p?.os ?? "").trim();
+    if (od !== "" || os !== "") parts.push(`${label} OD ${od === "" ? "—" : od} / OS ${os === "" ? "—" : os}`);
+  };
+  const vision = data.records["eye.vision"]?.body as Partial<Record<string, Pair>> | undefined;
+  for (const r of VISION_ROWS) pair(t(`opdEye.vision.${r}`), vision?.[r]);
+  const iop = data.records["eye.iop"]?.body as { method?: string | null; od?: number | null; os?: number | null } | undefined;
+  if (iop !== undefined && ((iop.od ?? null) !== null || (iop.os ?? null) !== null)) {
+    parts.push(`${t("opdEye.summaryIop")}${iop.method == null ? "" : ` (${iop.method})`} OD ${iop.od == null ? "—" : String(iop.od)} / OS ${iop.os == null ? "—" : String(iop.os)}`);
+  }
+  const slit = data.records["eye.slit_lamp"]?.body as Partial<Record<string, Pair>> | undefined;
+  for (const r of SLIT_LAMP_ROWS) pair(t(`opdEye.slit.${r}`), slit?.[r]);
+  const glasses = data.records["eye.glasses_rx"]?.body as Partial<Record<"od" | "os", Lens>> | undefined;
+  const lens = (l: Lens | undefined): string => {
+    if (l === undefined) return "";
+    const bits = [
+      l.sph === null ? "" : `${t("opdEye.lens.sph")} ${fmtPower(l.sph)}`,
+      l.cyl === null ? "" : `${t("opdEye.lens.cyl")} ${fmtPower(l.cyl)}`,
+      l.axis === null ? "" : `${t("opdEye.lens.axis")} ${String(l.axis)}`,
+      l.add === null ? "" : `${t("opdEye.lens.add")} ${fmtPower(l.add)}`,
+    ].filter((b) => b !== "");
+    return bits.join(" ");
+  };
+  const g = { od: lens(glasses?.od), os: lens(glasses?.os) };
+  if (g.od !== "" || g.os !== "") parts.push(`${t("opdEye.summaryGlasses")} OD ${g.od === "" ? "—" : g.od} / OS ${g.os === "" ? "—" : g.os}`);
+  return { text: parts.join(" · "), items: parts.length };
 }
 
 function useSection<T>(encounterId: string, key: SectionKey, data: WireVisitSections | undefined, empty: () => T, leaseBody: () => Record<string, string>) {
