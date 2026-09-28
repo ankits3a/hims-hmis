@@ -4269,7 +4269,8 @@
       "handedOver": "handed over to {{who}}",
       "draftClaimOnly": "saved as a draft — your claim stays",
       "draftHeld": "saved as a draft — the strips are held until {{time}}",
-      "slipConfirmed": "confirmed the slip against the paper"
+      "slipConfirmed": "confirmed the slip against the paper",
+      "billedOnCredit": "billed on the owner's credit"
     },
     "status": {
       "claimed": "claimed",
@@ -4350,7 +4351,10 @@
       "upiRef": "UPI reference (UTR)",
       "upiRefHint": "12 digits on their phone's receipt",
       "cardRef": "card approval code",
-      "cardRefHint": "on the terminal's slip"
+      "cardRefHint": "on the terminal's slip",
+      "creditOpen": "On credit — only the owner approves",
+      "creditReason": "Why on credit (the owner reads this)",
+      "creditBill": "Bill {{amount}} on the owner's credit"
     },
     "handover": {
       "title": "hand it over",
