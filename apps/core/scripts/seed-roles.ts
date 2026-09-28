@@ -1290,10 +1290,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   //      the decision, the lists are the guard (17c §8.8).
   //   3. **`phlebotomist` reads the worklist and touches no result.** The chair needs to know WHO
   //      is next and WHAT tube; it never needs a number.
-  //   4. **`lab.reports.release_unpaid` goes to `billing_manager` and to nobody in the lab.** The
-  //      interlock collects a self-pay balance (DD6); the decision to hand the document over anyway
-  //      is a decision to carry a receivable, and that is the money office's to make. The lab asks;
-  //      billing answers. See `modules/lab/approval-types.ts`.
+  //   4. **`lab.reports.release_unpaid` — the DECISION is the owner's approval, the ACT is the
+  //      counter's.** The interlock collects a self-pay balance (DD6); handing the document over
+  //      anyway is carrying a receivable, which since 2026-09-28 only the OWNER approves
+  //      (`lab_release_unpaid_owner`). `lab_reception` performs the approved hand-over (it holds the
+  //      print it needs); `billing_manager` keeps the string from DD6. See `modules/lab/approval-types.ts`.
   //
   // ═══ `billing.credit.extend` ON THREE OF THE FOUR, AND IT IS A MEASUREMENT, NOT A PREFERENCE ═══
   //
@@ -1396,6 +1397,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * it at all, and the seat's button was a 403 for everyone (17c close review pass 1, F2a).
        */
       "approvals.requests.create",
+      /**
+       * OWNER RULING 2026-09-28 (credit is the owner's, gap A3) + THE §13 WALK FINDING (same day).
+       * The DECISION to release a held report unpaid is the OWNER's approval (`lab_release_unpaid_owner`),
+       * bound to one order and spent on one hand-over. The ACT is a print at this counter, and
+       * `releaseUnpaid` is `printReport`: it needs `lab.reports.print` (held here) AND this route's
+       * grant. The billing manager held this string without `lab.reports.print`, so NOBODY could complete
+       * a release — the counter got 403 and the billing office could not open the counter. The control
+       * is the approval (`assertReleaseApproval`: granted, owner type, this order, used once), not who
+       * clicks; the counter asks, the owner decides, the counter hands over.
+       */
+      "lab.reports.release_unpaid",
     ],
   },
   /**
