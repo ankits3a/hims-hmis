@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderWithProviders } from "../test-utils";
+import { renderWithRouter } from "../test-utils";
 import { todayIst } from "../lib/opd-api";
 import { BillingOffice } from "./billing-office";
 
@@ -282,8 +282,30 @@ function taxHead(basePaise: number, rateBps: number): number {
 
 // ——— helpers ——————————————————————————————————————————————————————————————————————————————————
 
-async function openTab(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
-  await user.click(screen.getByRole("tab", { name }));
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — the five tabs became pages of a header menu, each at its own URL, so a
+ * test opens the office ON its page (`/billing/office?view=&page=`) the way a bookmark or the menu does.
+ */
+function renderAt(query: string): void {
+  renderWithRouter(<BillingOffice />, `/billing/office?${query}`);
+}
+
+/** A needs feed carrying one voucher to pay — the flow a voucher row's Pay opens on Today. */
+function needsWithVoucher(v: typeof FLAGGED_VOUCHER): unknown {
+  return {
+    asOf: NOW_ISO, day: TODAY_IST,
+    rows: [{
+      id: `pay:${v.id}`, kind: "pay_voucher", source: "PAY", state: "open", tier: 1, since: v.issuedAt, ageMinutes: 30, daysLeft: null, tone: "no",
+      patient: { patientId: v.patientId, uhid: v.uhid, name: v.name, alias: v.alias, restricted: v.restricted },
+      params: {
+        voucherId: v.id, voucherNo: v.voucherNo, amountPaise: v.amountPaise, method: v.method, refundKind: v.kind, reasonClass: v.reasonClass,
+        reason: v.reason, guardFlags: v.guardFlags, invoiceNo: null, creditNoteNo: null, requestedAt: v.issuedAt, requestedBy: "Arjun Mehta",
+        approvedAt: v.issuedAt, approvedBy: "Neha Kulkarni", issuedAt: v.issuedAt, issuedBy: "Arjun Mehta", bankAbovePaise: 1_000_000,
+      },
+    }],
+    money: { toPayPaise: v.amountPaise, toPayCount: 1, shortPaise: 0 },
+    limits: { reconChargeManagerMaxPaise: 5_000, refundOwnerAbovePaise: 2_500_000, reconTolerancePaise: 100 },
+  };
 }
 
 describe("BillingOffice", () => {
@@ -318,7 +340,7 @@ describe("BillingOffice", () => {
         },
       },
     });
-    renderWithProviders(<BillingOffice />);
+    renderAt("view=refunds&page=request");
     const user = userEvent.setup();
 
     // UX-AUDIT 2026-09-28 — the patient is PICKED by name, never typed as an internal id; the id
@@ -366,7 +388,7 @@ describe("BillingOffice", () => {
 
   it("the worklist renders guard flags as WARNINGS, renders no payee identity reference even though the fixture carries one, and names each patient from the row itself — alias for a sealed record, no N+1", async () => {
     mockRoutes({ "GET /api/billing/refunds": { status: 200, body: VOUCHERS } });
-    renderWithProviders(<BillingOffice />);
+    renderAt("view=refunds&page=all");
 
     const row = await screen.findByTestId("voucher-row-rv-1");
     expect(within(row).getByTestId("voucher-no-rv-1")).toHaveTextContent("RV/26-27/000004");
@@ -409,9 +431,11 @@ describe("BillingOffice", () => {
     expect(fetchCalls().filter((c) => c.path.startsWith("/api/billing/patients"))).toHaveLength(0);
   });
 
-  it("NOT OVER-BROAD: a guard-flagged voucher is still fully actionable — the pay lane opens on the flagged row and the payment posts", async () => {
+  it("NOT OVER-BROAD: a guard-flagged voucher is still fully actionable — Pay opens its flow on Today and the payment posts", async () => {
     mockRoutes({
       "GET /api/billing/refunds": { status: 200, body: VOUCHERS },
+      "GET /api/billing/office/needs": { status: 200, body: needsWithVoucher(FLAGGED_VOUCHER) },
+      "GET /api/billing/sessions/current": { status: 200, body: { session: { id: "cs-1", status: "open", openedAt: "2026-08-19T18:32:00.000Z" } } },
       "POST /api/billing/refunds/rv-1/pay": {
         status: 201,
         body: {
@@ -421,7 +445,7 @@ describe("BillingOffice", () => {
         },
       },
     });
-    renderWithProviders(<BillingOffice />);
+    renderAt("view=refunds&page=pay");
     const user = userEvent.setup();
 
     // The flagged row's pay control is present and ENABLED — a warning is not a block.
@@ -429,23 +453,27 @@ describe("BillingOffice", () => {
     expect(payButton).toBeEnabled();
     await user.click(payButton);
 
-    await user.type(screen.getByLabelText("Payee name"), "Ramesh Kumar");
-    await user.selectOptions(screen.getByLabelText("Payee ID type"), "aadhaar");
-    await user.type(screen.getByLabelText("Payee ID reference"), "1234-5678-9012");
-    await user.click(screen.getByTestId("pay-submit"));
+    // UX-AUDIT 2026-09-28 · BOARD — the voucher is now in hand on Today, its flags still in view.
+    const hand = await screen.findByTestId("in-hand");
+    expect(within(hand).getByTestId("hand-flags")).toHaveTextContent("Encounter already closed");
+    await user.clear(screen.getByTestId("payee-name"));
+    await user.type(screen.getByTestId("payee-name"), "Ramesh Kumar");
+    await user.selectOptions(screen.getByTestId("payee-id-type"), "aadhaar");
+    await user.click(screen.getByTestId("hand-act"));
 
     await waitFor(() => expect(callsTo("POST", "/api/billing/refunds/rv-1/pay")).toHaveLength(1));
+    // OWNER RULING 2026-09-28 — Aadhaar is never stored: the body carries the name and the ID TYPE, no number.
     expect(bodiesOf("POST", "/api/billing/refunds/rv-1/pay")[0]).toEqual({
       payeeName: "Ramesh Kumar",
       payeeIdType: "aadhaar",
-      payeeIdRef: "1234-5678-9012",
     });
-    expect(await screen.findByTestId("pay-done")).toHaveTextContent("RV/26-27/000004");
+    expect(await screen.findByTestId("office-notice")).toHaveTextContent("RV/26-27/000004");
   });
 
-  it("the pay lane mirrors the server's mandatory payee identity in the browser and renders a bank_transfer_required refusal inline", async () => {
+  it("the pay flow mirrors the server's mandatory payee identity in the browser and renders a bank_transfer_required refusal inline", async () => {
     mockRoutes({
-      "GET /api/billing/refunds": { status: 200, body: VOUCHERS },
+      "GET /api/billing/office/needs": { status: 200, body: needsWithVoucher(FLAGGED_VOUCHER) },
+      "GET /api/billing/sessions/current": { status: 200, body: { session: null } },
       "POST /api/billing/refunds/rv-1/pay": {
         status: 400,
         body: {
@@ -456,26 +484,23 @@ describe("BillingOffice", () => {
         },
       },
     });
-    renderWithProviders(<BillingOffice />);
+    renderAt("view=today&open=pay:rv-1");
     const user = userEvent.setup();
 
-    await user.click(await screen.findByTestId("voucher-pay-rv-1"));
-
-    // Empty payee identity is refused in the browser, before anything leaves it. The server is the
-    // authority (`payRefundBody` requires all three); this is a mirror, and it is stated as one.
-    await user.click(screen.getByTestId("pay-submit"));
+    await screen.findByTestId("in-hand");
+    await user.clear(screen.getByTestId("payee-name"));
+    // An empty payee identity is refused in the browser, before anything leaves it. The server is the
+    // authority (`payRefundBody` requires the name and the ID type); this is a mirror.
+    await user.click(screen.getByTestId("hand-act"));
     expect(callsTo("POST", "/api/billing/refunds/rv-1/pay")).toHaveLength(0);
-    expect(screen.getByTestId("pay-error")).toHaveTextContent(
-      "The payee's name, identity document type and reference are all required",
-    );
+    expect(screen.getByTestId("hand-error")).toHaveTextContent("Type the payee’s name and choose the ID shown.");
 
-    await user.type(screen.getByLabelText("Payee name"), "Ramesh Kumar");
-    await user.selectOptions(screen.getByLabelText("Payee ID type"), "aadhaar");
-    await user.type(screen.getByLabelText("Payee ID reference"), "1234-5678-9012");
-    await user.click(screen.getByTestId("pay-submit"));
+    await user.type(screen.getByTestId("payee-name"), "Ramesh Kumar");
+    await user.selectOptions(screen.getByTestId("payee-id-type"), "pan");
+    await user.click(screen.getByTestId("hand-act"));
 
     await waitFor(() => expect(callsTo("POST", "/api/billing/refunds/rv-1/pay")).toHaveLength(1));
-    const refusal = await screen.findByTestId("pay-error");
+    const refusal = await screen.findByTestId("hand-error");
     expect(refusal).toHaveAttribute("role", "alert");
     expect(refusal).toHaveTextContent("must be paid by bank transfer");
   });
@@ -486,11 +511,10 @@ describe("BillingOffice", () => {
       "GET /api/billing/recon/mismatches": { status: 200, body: MISMATCHES },
       "POST /api/billing/recon/upload": { status: 201, body: UPLOAD_RESULT },
     });
-    renderWithProviders(<BillingOffice />);
+    renderAt("view=recon&page=upload");
     const user = userEvent.setup();
 
-    await openTab(user, "Reconciliation");
-    await user.type(screen.getByLabelText("Settlement CSV"), CSV);
+    await user.type(await screen.findByLabelText("Settlement CSV"), CSV);
     await user.selectOptions(screen.getByLabelText("Statement source"), "card");
     await user.click(screen.getByTestId("recon-submit"));
 
@@ -513,6 +537,10 @@ describe("BillingOffice", () => {
     // Unmatched refs are REPORTED, never guessed onto a tender (D7).
     expect(screen.getByTestId("recon-unmatched-refs")).toHaveTextContent("UPI-404");
 
+    // UX-AUDIT 2026-09-28 · BOARD — the mismatches are their own page of Reconciliation.
+    await user.click(screen.getByTestId("recon-to-mismatches"));
+    await screen.findByTestId("mismatch-row-tn-1");
+
     // The worklist row carries BOTH numbers — a mismatch the operator cannot see both sides of is
     // not a worklist, it is a rumour.
     const row = screen.getByTestId("mismatch-row-tn-1");
@@ -533,10 +561,7 @@ describe("BillingOffice", () => {
       "GET /api/billing/refunds": { status: 200, body: { items: [] } },
       "GET /api/billing/day-book": { status: 200, body: DAY_BOOK_INCONSISTENT },
     });
-    renderWithProviders(<BillingOffice />);
-    const user = userEvent.setup();
-
-    await openTab(user, "Day book");
+    renderAt("view=daybook");
     await screen.findByTestId("daybook-receipts-total");
 
     /**
@@ -575,10 +600,7 @@ describe("BillingOffice", () => {
       "GET /api/billing/refunds": { status: 200, body: { items: [] } },
       "GET /api/billing/day-book": { status: 200, body: DAY_BOOK_CONSISTENT },
     });
-    renderWithProviders(<BillingOffice />);
-    const user = userEvent.setup();
-
-    await openTab(user, "Day book");
+    renderAt("view=daybook");
     await screen.findByTestId("daybook-receipts-total");
 
     const modes = DAY_BOOK_CONSISTENT.receipts.byMode;
@@ -599,10 +621,7 @@ describe("BillingOffice", () => {
       "GET /api/billing/refunds": { status: 200, body: { items: [] } },
       "GET /api/billing/day-book": { status: 200, body: DAY_BOOK_INCONSISTENT },
     });
-    renderWithProviders(<BillingOffice />);
-    const user = userEvent.setup();
-
-    await openTab(user, "Day book");
+    renderAt("view=daybook");
     await waitFor(() => expect(callsTo("GET", "/api/billing/day-book").length).toBeGreaterThan(0));
 
     // The pinned instant is 19:30Z on the 19th — 01:00 IST on the 20th. The day asked for is the
@@ -621,13 +640,12 @@ describe("BillingOffice", () => {
       "GET /api/billing/refunds": { status: 200, body: { items: [] } },
       "GET /api/billing/gstr1": { status: 200, body: GSTR1 },
     });
-    renderWithProviders(<BillingOffice />);
+    renderAt("view=gstr1");
     const user = userEvent.setup();
 
-    await openTab(user, "GSTR-1");
     // `input[type=date]` is driven with `fireEvent.change` — `userEvent.type` types characters into
     // a control whose value is a whole date, and jsdom accepts only the complete 'YYYY-MM-DD'.
-    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-08-01" } });
+    fireEvent.change(await screen.findByLabelText("From"), { target: { value: "2026-08-01" } });
     fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-08-31" } });
     await user.click(screen.getByTestId("gstr1-run"));
 
@@ -674,7 +692,7 @@ describe("BillingOffice", () => {
         body: { markId: "eie-1", reversedAllocationIds: ["alc-1", "alc-2"] },
       },
     });
-    renderWithProviders(<BillingOffice />);
+    renderAt("view=receipts&page=void");
     const user = userEvent.setup();
 
     // UX-AUDIT 2026-09-28 — no raw id box: patient → their receipts, narrowed by the printed number.
@@ -721,26 +739,26 @@ describe("BillingOffice", () => {
         },
       },
     });
-    renderWithProviders(<BillingOffice />);
-    const user = userEvent.setup();
-    await openTab(user, "Unbilled visits");
+    renderAt("view=unbilled");
     expect(await screen.findByTestId("orphan-type-enc-1")).toHaveTextContent(/^New$/);
     expect(screen.getByTestId("orphan-type-enc-2")).toHaveTextContent(/^Revisit$/);
     expect(screen.getByTestId("orphan-type-enc-3")).toHaveTextContent(/^Not recorded$/);
+    // UX-AUDIT 2026-09-28 · BOARD — a way out: the billing counter, opened on that visit.
+    expect(screen.getByTestId("orphan-raise-enc-1")).toHaveAttribute("href", "/billing?encounterId=enc-1");
+    // …and a date of its own, asked of the server as the IST day.
+    expect(callsTo("GET", "/api/billing/charge-orphans")[0]!.url).toContain(`serviceDate=${TODAY_IST}`);
+    expect(screen.getByTestId(`orphan-${"enc-1"}`)).toHaveTextContent("20-Aug-2026");
   });
 
-  /**
-   * UX-AUDIT 2026-09-28 — at 390 px the five-tab strip ran to x=455 and widened the page. jsdom has
-   * no layout, so this pins the MECHANISM (the strip wraps inside its own width); the measurement
-   * itself was taken in real Chromium at 390 and 1440 for the PR.
-   */
-  it("UX-AUDIT 2026-09-28: the five-tab strip wraps inside its own width instead of widening the page", async () => {
+  it("UX-AUDIT 2026-09-28 · BOARD: no tab strip — the header menu opens pages by URL, and the old ?tab= state redirects to its page", async () => {
     mockRoutes({ "GET /api/billing/refunds": { status: 200, body: { items: [] } } });
-    renderWithProviders(<BillingOffice />);
-    const strip = await screen.findByRole("tablist");
-    expect(strip.className).toMatch(/\bflex-wrap\b/);
-    expect(strip.className).toMatch(/\bmax-w-full\b/);
-    expect(strip.className).not.toMatch(/(^|\s)group-data-\[orientation=horizontal\]\/tabs:h-9(\s|$)/);
+    renderAt("tab=orphans");
+    expect(await screen.findByTestId("office-page-unbilled")).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("office-view-refunds"));
+    await user.click(await screen.findByTestId("office-entry-all"));
+    expect(await screen.findByTestId("office-page-refunds")).toHaveAttribute("data-page", "all");
   });
 
   it("a 403 on any tab's read renders the SHARED error state, and the screen assumes nothing about which permission guards which route", async () => {
@@ -764,7 +782,7 @@ describe("BillingOffice", () => {
         },
       },
     });
-    renderWithProviders(<BillingOffice />);
+    renderAt("view=refunds&page=all");
     const user = userEvent.setup();
 
     const first = await screen.findByTestId("load-error");
@@ -773,7 +791,7 @@ describe("BillingOffice", () => {
     // The worklist is simply absent — no half-rendered table, no invented empty state.
     expect(screen.queryByTestId("voucher-row-rv-1")).toBeNull();
 
-    await openTab(user, "Day book");
+    await user.click(screen.getByTestId("office-view-daybook"));
     const second = await screen.findByTestId("load-error");
     expect(second).toHaveTextContent("this account may not read billing reports");
     expect(screen.queryByTestId("daybook-receipts-total")).toBeNull();

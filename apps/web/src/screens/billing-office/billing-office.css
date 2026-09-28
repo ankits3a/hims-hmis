@@ -1,0 +1,92 @@
+/*
+ * ═══ UX-AUDIT 2026-09-28 · BOARD — THE BILLING BACK OFFICE'S OWN PIECES ═══
+ *
+ * Transcribed from the approved billing back office board (docs/design/2026-09-28-ux-audit/
+ * billing-back-office.html). The frame wears the pharmacy office's classes (`.d1.pof` — header, menu,
+ * dropdowns, lane, phone) so both back offices read as one product; what is here is only what the
+ * billing board draws that the pharmacy one does not: the numbered steps, the pinned act, the list on
+ * the right, the money grid and the options. Every selector is scoped under `.d1.bof`.
+ */
+
+.d1.bof .src.rd { color: var(--red); border-color: var(--red-line); background: var(--red-soft); }
+
+/* ── three columns: lane · centre (steps + pinned act) · list ── */
+.d1.bof .bof-body { min-width: 0; }
+.d1.bof .bof-centre { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: var(--paper); min-height: 0; }
+.d1.bof .bof-idle { align-items: center; justify-content: center; padding: 24px; }
+.d1.bof .bof-list { width: 352px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--paper); display: flex; flex-direction: column; padding: 14px 14px 12px; gap: 12px; overflow-y: auto; min-height: 0; }
+.d1.bof .bof-centre-list .bof-list { width: auto; border-left: none; flex-grow: 1; padding: 18px 20px; }
+
+/* list rows */
+.d1.bof .bof-row { display: flex; gap: 10px; width: 100%; padding: 10px 12px; border-top: 1px solid var(--line2); align-items: flex-start; text-align: left; min-height: 44px; }
+.d1.bof .box > .bof-row:first-child { border-top: none; }
+.d1.bof .bof-row:hover { background: var(--wash); }
+.d1.bof .bof-row:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.d1.bof .bof-row.sel { background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); }
+.d1.bof .bof-row .t { display: block; font-size: 12px; font-weight: 600; line-height: 17px; }
+.d1.bof .bof-row .s { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; line-height: 15px; }
+.d1.bof .bof-row .n { font-size: 10px; color: var(--faint); width: 14px; padding-top: 3px; flex-shrink: 0; }
+.d1.bof .bof-row .pill { flex-shrink: 0; height: 21px; padding: 0 8px; }
+.d1.bof .bof-row .src { width: 64px; }
+
+/* the flow */
+.d1.bof .bof-flowhd { padding: 18px 24px 12px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.d1.bof .bof-flowhd h1 { margin: 0; font-size: 19px; font-weight: 600; }
+.d1.bof .bof-flowhd span { font-size: 12.5px; color: var(--dim); }
+.d1.bof .bof-flow { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
+.d1.bof .bof-step { display: flex; gap: 14px; padding: 13px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.d1.bof .bof-step .num { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700; border: 1px solid var(--line); color: var(--dim); background: var(--wash); }
+.d1.bof .bof-step.done .num { background: var(--green); border-color: var(--green); color: #fff; }
+.d1.bof .bof-step.now { border-color: var(--green-line); box-shadow: inset 3px 0 0 var(--green); }
+.d1.bof .bof-step.now .num { border-color: var(--green); color: var(--green); background: var(--card); }
+.d1.bof .bof-step h3 { margin: 2px 0 3px; font-size: 13.5px; font-weight: 600; }
+.d1.bof .bof-step .m { font-size: 12px; color: var(--dim); line-height: 17px; }
+.d1.bof .bof-fld { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
+.d1.bof .bof-fld > span { font-size: 11.5px; font-weight: 600; }
+.d1.bof .bof-fld .in { height: 36px; font-size: 12.5px; padding: 0 10px; }
+
+/* the pinned act */
+.d1.bof .bof-bar { flex-shrink: 0; padding: 12px 24px; background: var(--card); border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+.d1.bof .bof-bar .why { flex-grow: 1; min-width: 0; font-size: 11.5px; color: var(--dim); line-height: 16px; }
+.d1.bof .bof-bar .pri { min-width: 260px; white-space: nowrap; }
+.d1.bof .bof-bar .sec { height: 40px; }
+.d1.bof .bof-bar.phone { padding: 12px 16px; flex-direction: column; align-items: stretch; gap: 8px; }
+.d1.bof .bof-bar.phone .pri { width: 100%; min-width: 0; white-space: normal; }
+.d1.bof .bof-bar.phone .sec { width: 100%; height: 34px; order: 3; }
+.d1.bof .bof-bar.phone .why { order: 0; }
+.d1.bof .bof-bar.phone .pri, .d1.bof .bof-bar.phone .pill { order: 2; }
+.d1.bof .bof-bar.phone .kb { display: none; }
+.d1.bof a.pri { text-decoration: none; }
+
+/* options + money */
+.d1.bof .bof-opt { display: flex; gap: 10px; align-items: flex-start; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); font-size: 12.5px; line-height: 17px; text-align: left; width: 100%; }
+.d1.bof .bof-opt.on { border-color: var(--green-line); background: var(--green-soft); }
+.d1.bof .bof-opt:disabled { opacity: .5; }
+.d1.bof .bof-opt .radio { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--faint); flex-shrink: 0; margin-top: 2px; }
+.d1.bof .bof-opt.on .radio { border: 4px solid var(--green); }
+.d1.bof .bof-opt b { font-weight: 600; }
+.d1.bof .bof-money { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.d1.bof .bof-money > div { background: var(--wash); border-radius: 6px; padding: 8px 10px; }
+.d1.bof .bof-money > div.diff { background: var(--red-soft); }
+.d1.bof .bof-money .k { font-size: 10.5px; color: var(--dim); }
+.d1.bof .bof-money .v { font-family: "IBM Plex Mono", monospace; font-size: 14px; font-weight: 600; margin-top: 2px; }
+.d1.bof .bof-money > div.diff .v { color: var(--red); }
+
+/* the header's count badge that opens the list drawer (1100–1280) */
+.d1.bof .bof-badge { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--green-line); border-radius: 6px; background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.d1.bof .bof-drawer { position: fixed; top: 46px; right: 0; bottom: 0; z-index: 46; width: min(380px, 100vw); display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--paper); border-left: 1px solid var(--line); box-shadow: -10px 0 28px rgba(19,36,32,.12); }
+.d1.bof .bof-drawer .bof-list { width: auto; border-left: none; padding: 0; flex-grow: 1; }
+
+/* the phone */
+.d1.bof .bof-full { position: fixed; inset: 0; z-index: 44; display: flex; flex-direction: column; background: var(--paper); }
+.d1.bof .bof-full .pof-ptop { gap: 10px; }
+.d1.bof .bof-full .bof-money { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.d1.bof .pof-legacy .bof-page-note { font-size: 12px; color: var(--dim); }
+
+@media (max-width: 1280px) {
+  .d1.bof .pof-lane { width: 252px; }
+}
+@media (max-width: 1100px) {
+  .d1.bof .bof-bar .pri { min-width: 0; white-space: normal; }
+  .d1.bof .bof-money { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
