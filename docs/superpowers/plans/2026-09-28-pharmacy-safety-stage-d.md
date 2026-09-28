@@ -82,6 +82,27 @@ and the next dispense then refuse the drug through the existing allergy book. `a
 
 **Desk entry:** "Report a reaction" on the patient in hand.
 
+**As built (2026-09-28, migration 0141):**
+- Three append-only tables: `pharmacy_adr_reports`, `pharmacy_adr_suspects` (one row per suspected medicine,
+  `allergy_id NOT NULL`), `pharmacy_adr_events`. One trigger function refuses UPDATE and DELETE on all three.
+- Routes under `/pharmacy/adr`: list, get, the PvPI form (`/:id/document`), record (`pharmacy.adr.record`,
+  idempotent), events (`pharmacy.adr.manage`), and a moiety picker (`/salts`).
+- The office's LAW side reads `adrAwaitingPvpi` under `pharmacy.adr.manage`.
+- The screen is `screens/pharmacy-office/adr.tsx` (`AdrRegisterView`). It is wired as an office page (Law) after B3
+  (#352) merges; until then it is unrouted.
+- DECIDED: every suspected medicine writes an allergy, one per distinct moiety (two brands of one moiety share one
+  allergy). The substance is the formulary moiety's name when picked, else the typed name. This follows the
+  rx-checks rule: over-warning costs one reasoned override, a miss costs a patient.
+- DECIDED: severity from seriousness. Death, life-threatening, hospitalisation, disability and congenital anomaly
+  are `severe`; other medically important is `moderate`; not serious is `mild`.
+- DECIDED: the register is read by holders of `record` OR `manage`. The route is authenticated-only and the service
+  checks, as for the controlled register, so the MS reads without the record grant.
+- DECIDED: causality may be re-assessed (the latest counts); a report is sent to PvPI once and closed once; a
+  closed report takes no further act; closing a report never sent needs a reason.
+- DECIDED: the printed form carries the patient's initials (blank for a sealed record the reader may not see),
+  age, gender and weight, and the reporter's staff ID, never a name (owner ruling 2026-09-06).
+- Deferred: the desk's "Report a reaction" on the patient in hand; the office menu entry (after #352).
+
 ## D2 — medication error and near miss
 
 **Basis:**

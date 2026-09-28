@@ -244,9 +244,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 108 codes
+## 4. What refuses, and why — all 111 codes
 
-`errors.ts` declares 108, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 111, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -315,6 +315,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `sheet_invalid` · `sheet_already_entered` | a paper dispense (P20) scanned from something that is not a downtime kit's receipt sheet, or a sheet already entered | §10 — scan the QR on the receipt sheet; open the entry already made |
 | `invalid_dispense_time` · `not_in_downtime` · `backfill_window_closed` | the time on the sheet is in the future, before the kit was printed, outside a declared outage, or more than 7 days ago | §10 — check the time written on the sheet; an older sheet is an incident for the pharmacist in charge |
 | `batch_required` · `unknown_pharmacist` | a paper line without its batch, or a person named as handing it over who is not pharmacy staff | copy the batch from the sheet; name the pharmacist who was on duty |
+| `invalid_adr` · `unknown_adr` · `adr_closed` | an ADR report is incomplete (no suspected medicine, a future date, a dispense of another patient), not on file, or already closed | fix the form; a closed report takes no further act — report again if it recurs |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:
 `version_not_active` (§1.7) · `no_open_session` (§1.8) · `billing_not_configured` ·

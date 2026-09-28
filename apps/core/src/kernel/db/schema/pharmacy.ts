@@ -1,14 +1,14 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
+  bigint, bigserial, boolean, check, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { users } from "./auth";
 import { invoiceLines, invoices } from "./billing";
-import { formularyMedicines } from "./formulary";
+import { formularyMedicines, formularySalts } from "./formulary";
 import { items, stockBatches, stockLedger, stockReservations } from "./materials";
 import { opdDoctors, opdEncounters, opdPrescriptions } from "./opd";
 import { orderItems, orders } from "./orders";
-import { patients } from "./patients";
+import { patientAllergies, patients } from "./patients";
 import { resources } from "./resources";
 import { services } from "./tariff";
 
@@ -660,5 +660,146 @@ export const pharmacyEndPrescribers = pgTable(
     check("pharmacy_end_prescribers_ended_ck",
       sql`(${t.endedAt} is null) = (${t.endedBy} is null) and (${t.endedAt} is null) = (${t.endReason} is null)`),
     check("pharmacy_end_prescribers_text_ck", sql`btrim(${t.training}) <> ''`),
+  ],
+);
+
+/**
+ * ═══ PHARMACY STAGE D1 — THE ADVERSE DRUG REACTION REGISTER (PvPI Suspected ADR Reporting Form) ═══
+ *
+ * Three tables, all APPEND-ONLY by trigger (migration hand-carries them, the `pharmacy_reg_h1` shape):
+ *
+ *   `pharmacy_adr_reports`  — one reaction as it was reported: the patient, what happened, when, how serious,
+ *                             how it ended, dechallenge/rechallenge, who reported it. The form's sections A, B and D.
+ *   `pharmacy_adr_suspects` — the suspected medicines (section C, item 8). Each carries `allergy_id NOT NULL`:
+ *                             recording the reaction WRITES the patient's allergy in the same transaction, so a
+ *                             suspect that did not reach the allergy book is a row the database cannot hold
+ *                             (the `imaging_contrast_reactions` rule, 18a-iii D2).
+ *   `pharmacy_adr_events`   — every later act: WHO-UMC causality assessed, sent to PvPI, closed. A state change is a
+ *                             new row, never an edit.
+ *
+ * Concomitant medicines (item 11) are a jsonb list on the report: they are context for the assessor and write
+ * no allergy, so they need no key of their own.
+ */
+export const ADR_SERIOUSNESS = [
+  "death", "life_threatening", "hospitalisation", "disability", "congenital_anomaly", "other_medically_important", "not_serious",
+] as const;
+export type AdrSeriousness = (typeof ADR_SERIOUSNESS)[number];
+export const ADR_OUTCOMES = ["recovered", "recovering", "not_recovered", "fatal", "unknown"] as const;
+export type AdrOutcome = (typeof ADR_OUTCOMES)[number];
+/** Items 9 and 10 of the form: did it abate when the drug stopped, did it come back when it was restarted. */
+export const ADR_CHALLENGE = ["yes", "no", "unknown", "na"] as const;
+export type AdrChallenge = (typeof ADR_CHALLENGE)[number];
+export const ADR_EVENT_KINDS = ["causality_assessed", "sent_to_pvpi", "closed"] as const;
+export type AdrEventKind = (typeof ADR_EVENT_KINDS)[number];
+/** The WHO-UMC causality categories. */
+export const ADR_CAUSALITY = ["certain", "probable", "possible", "unlikely", "conditional", "unclassifiable"] as const;
+export type AdrCausality = (typeof ADR_CAUSALITY)[number];
+/** How the form went to PvPI: the AMC (ADR monitoring centre) it is attached to, the ADR PvPI app, or e-mail. */
+export const ADR_CHANNELS = ["amc", "pvpi_app", "email"] as const;
+export type AdrChannel = (typeof ADR_CHANNELS)[number];
+
+const inList = (xs: readonly string[]): string => xs.map((x) => `'${x}'`).join(", ");
+
+export type AdrConcomitant = { name: string; dose: string | null; route: string | null; startDate: string | null; stopDate: string | null; indication: string | null };
+
+export const pharmacyAdrReports = pgTable(
+  "pharmacy_adr_reports",
+  {
+    id: text("id").primaryKey(),
+    /** The register's own serial — `ADR-000042` on screen and on paper. An append-only table never re-uses one. */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** Item 7 — the reaction in the reporter's words. */
+    reaction: text("reaction").notNull(),
+    /** Item 5 — the day it started; item 6 — the day it resolved, when it has. */
+    onsetDate: date("onset_date", { mode: "string" }).notNull(),
+    recoveryDate: date("recovery_date", { mode: "string" }),
+    seriousness: text("seriousness").notNull(),
+    outcome: text("outcome").notNull(),
+    dechallenge: text("dechallenge").notNull(),
+    rechallenge: text("rechallenge").notNull(),
+    /** Item 4. */
+    weightKg: numeric("weight_kg", { precision: 5, scale: 1 }),
+    /** Item 11 — concomitant medicines, including self-medication and herbal remedies. */
+    concomitants: jsonb("concomitants").$type<AdrConcomitant[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Item 12 — relevant tests and laboratory data, with dates. */
+    relevantTests: text("relevant_tests"),
+    /** Item 13 — relevant medical and medication history (pregnancy, hepatic or renal dysfunction, alcohol …). */
+    relevantHistory: text("relevant_history"),
+    reportedBy: text("reported_by").notNull().references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_adr_reports_seq_ux").on(t.seq),
+    index("pharmacy_adr_reports_patient_idx").on(t.patientId),
+    index("pharmacy_adr_reports_created_idx").on(t.createdAt),
+    check("pharmacy_adr_reports_seriousness_ck", sql.raw(`seriousness in (${inList(ADR_SERIOUSNESS)})`)),
+    check("pharmacy_adr_reports_outcome_ck", sql.raw(`outcome in (${inList(ADR_OUTCOMES)})`)),
+    check("pharmacy_adr_reports_dechallenge_ck", sql.raw(`dechallenge in (${inList(ADR_CHALLENGE)})`)),
+    check("pharmacy_adr_reports_rechallenge_ck", sql.raw(`rechallenge in (${inList(ADR_CHALLENGE)})`)),
+    check("pharmacy_adr_reports_reaction_ck", sql`btrim(${t.reaction}) <> ''`),
+    check("pharmacy_adr_reports_recovery_ck", sql`${t.recoveryDate} is null or ${t.recoveryDate} >= ${t.onsetDate}`),
+    check("pharmacy_adr_reports_concomitants_ck", sql`jsonb_typeof(${t.concomitants}) = 'array'`),
+  ],
+);
+
+export const pharmacyAdrSuspects = pgTable(
+  "pharmacy_adr_suspects",
+  {
+    id: text("id").primaryKey(),
+    reportId: text("report_id").notNull().references(() => pharmacyAdrReports.id),
+    /** 1-based order on the form. */
+    position: integer("position").notNull(),
+    /** The moiety, when the drug is in the formulary — what the allergy book matches the next prescription by. */
+    saltId: text("salt_id").references(() => formularySalts.id),
+    /** The drug as the form names it (brand or generic). */
+    name: text("name").notNull(),
+    itemId: text("item_id").references(() => items.id),
+    batchNo: text("batch_no"),
+    manufacturer: text("manufacturer"),
+    dose: text("dose"),
+    route: text("route"),
+    frequency: text("frequency"),
+    indication: text("indication"),
+    startDate: date("start_date", { mode: "string" }),
+    stopDate: date("stop_date", { mode: "string" }),
+    /** The dispense it was handed over on, when the pharmacy gave it. */
+    dispenseId: text("dispense_id").references(() => pharmacyDispenses.id),
+    /** The patient's allergy this suspect wrote — NOT NULL: the loop has to close (D1). */
+    allergyId: text("allergy_id").notNull().references(() => patientAllergies.id),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_adr_suspects_position_ux").on(t.reportId, t.position),
+    check("pharmacy_adr_suspects_name_ck", sql`btrim(${t.name}) <> ''`),
+    check("pharmacy_adr_suspects_dates_ck", sql`${t.stopDate} is null or ${t.startDate} is null or ${t.stopDate} >= ${t.startDate}`),
+  ],
+);
+
+export const pharmacyAdrEvents = pgTable(
+  "pharmacy_adr_events",
+  {
+    id: text("id").primaryKey(),
+    reportId: text("report_id").notNull().references(() => pharmacyAdrReports.id),
+    kind: text("kind").notNull(),
+    /** `causality_assessed` — the WHO-UMC category. */
+    causality: text("causality"),
+    /** `sent_to_pvpi` — the day it went, how, and the reference PvPI or the AMC gave back. */
+    sentOn: date("sent_on", { mode: "string" }),
+    channel: text("channel"),
+    pvpiRef: text("pvpi_ref"),
+    note: text("note"),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pharmacy_adr_events_report_idx").on(t.reportId, t.recordedAt),
+    /** A report goes to PvPI once and closes once; causality may be re-assessed. */
+    uniqueIndex("pharmacy_adr_events_sent_ux").on(t.reportId).where(sql`kind = 'sent_to_pvpi'`),
+    uniqueIndex("pharmacy_adr_events_closed_ux").on(t.reportId).where(sql`kind = 'closed'`),
+    check("pharmacy_adr_events_kind_ck", sql.raw(`kind in (${inList(ADR_EVENT_KINDS)})`)),
+    check("pharmacy_adr_events_causality_ck",
+      sql.raw(`(kind = 'causality_assessed') = (causality is not null) and (causality is null or causality in (${inList(ADR_CAUSALITY)}))`)),
+    check("pharmacy_adr_events_sent_ck",
+      sql.raw(`(kind = 'sent_to_pvpi') = (sent_on is not null and channel is not null) and (channel is null or channel in (${inList(ADR_CHANNELS)})) and (kind = 'sent_to_pvpi' or pvpi_ref is null)`)),
   ],
 );
