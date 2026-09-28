@@ -197,7 +197,7 @@ describe("the restricted-antimicrobial gate (pharmacy stage D5)", () => {
   });
 
   it("the office's LAW side: red when restricted products exist and nobody is appointed; amber per ask waiting over four hours", async () => {
-    const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null, cold: null, steward: null };
+    const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null, cold: null, steward: null, trays: null };
     const out = buildNeeds({ ...empty, steward: { notAppointed: true, waiting: [{ approvalId: "a1", dispenseNo: "RX-1", requestedAt: new Date(MON.getTime() - 5 * 3_600_000).toISOString() }] } }, MON);
     expect(out.sides).toEqual(["LAW"]);
     expect(out.rows.map((r) => [r.kind, r.tier, r.clock.tone])).toEqual([["steward_not_appointed", 0, "rd"], ["steward_approval_waiting", 3, "gd"]]);

@@ -1351,6 +1351,11 @@ Both are defaults the owner may change.
 `pharmacy.antimicrobial.approve` (reading a restricted-antimicrobial request's prescription line and prescriber)
 and the approvals pair `approvals.requests.read` and `approvals.requests.decide`, because it is the approver of
 `pharmacy_restricted_antimicrobial`. A steward may not approve their own prescription.
+**Pharmacy stage D4 checks the emergency trays: daily seal, monthly full, and after every use.**
+`pharmacy.trays.check` (checking a tray, restocking a deficient one from `PHARM-OPD`, receiving a restock) goes to
+`pharmacy`, `pharmacy_assistant`, `pharmacy_incharge`, `ot_nurse`, `recovery_nurse`, `radiographer` and
+`daycare_coordinator`. `pharmacy.trays.manage` (setting up a tray, naming its keepers, keeping its list) goes to
+`pharmacy_incharge`. Both are defaults the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1377,6 +1382,8 @@ and the approvals pair `approvals.requests.read` and `approvals.requests.decide`
 | `pharmacy.incidents.review` | | | ✓ |
 | `pharmacy.coldchain.record` | ✓ | ✓ | |
 | `pharmacy.coldchain.manage` | | | ✓ |
+| `pharmacy.trays.check` | ✓ | ✓ | ✓ |
+| `pharmacy.trays.manage` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |

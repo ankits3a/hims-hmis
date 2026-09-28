@@ -264,6 +264,51 @@ brainstorms, where most use happens.
 - a tray deficient and not restocked;
 - a tray item expiring in 30 days or less.
 
+**As built (2026-09-28, migration 0145):**
+- Three tables. `pharmacy_tray_templates` (the list: tray, item, par, optional expiry margin in days, active) is a
+  master row edited in place under `manage`, every save a `trays.template_saved` event with the before and the after;
+  the trigger refuses DELETE and any change of tray, item or creator (D3's fridge shape). `pharmacy_tray_checks`
+  (`TC-000001`) and `pharmacy_tray_check_lines` are append-only by trigger; a check's ONE change is its restock
+  (`restock_transfer_id`, `restocked_by`, `restocked_at`), once, from null, all three together (the shared rules'
+  status-column exception).
+- A tray is created through `materials.createStore` as a child of `PHARM-OPD`, `attributes` `{ tray: true, location,
+  custodianRoles, setUpAt }`, code `TRAY-<NAME>`. Routes under `/pharmacy/trays`: list (either grant, inside), set up
+  (`manage`), keepers (`manage`), template line (`manage`), item picker (`manage`), a tray's checks (either), record a
+  check (`check`, idempotent), restock (`check`), receive (`check`).
+- DECIDED — who sets up a tray: `pharmacy.trays.manage` (the in-charge) creates the child store through the
+  materials service, NOT `materials.stores.manage`, which the in-charge does not hold. This door makes only one shape of
+  store (a tray under PHARM-OPD). No grant was widened; the owner may prefer the materials head to create it.
+- DECIDED — who restocks: `pharmacy.trays.check` AND a keeper of `PHARM-OPD` (its `custodianRoles`, `pharmacy` and
+  `pharmacy_assistant` via `seed:pharmacy`). The nurse who keeps the tray cannot issue from the pharmacy's shelf. The
+  restock calls `materials.issueStock` inside the pharmacy transaction without `materials.stock.issue` (which the
+  pharmacist does not hold) — the same shape as the dispense posting `consume` without a materials grant.
+- DECIDED — who receives: the tray's keepers (`custodianRoles`, chosen from the seven `check` roles), through
+  `POST /pharmacy/trays/checks/:id/receive` under `check`, which calls `materials.receiveStock`; that refuses the
+  issuer and anyone not keeping the tray. The OT nurse and the radiographer hold no `materials.stock.receive`, so the
+  materials route alone would have left them unable to sign.
+- DECIDED — the result is the server's. A line is `short` below par; `expiring` when its earliest expiry is on or
+  before today (IST) + the margin (30 unless the template says otherwise) — `qty_expiring` defaults to all present,
+  and a count that contradicts the date is refused. A daily check is `seal_mismatch` when the seal seen is not the one
+  the tray's latest check recorded (new seal, else seal seen); after a restock the tray was opened, so the next check
+  starts the chain again. A seal mismatch is not restocked: it asks for a full check.
+- DECIDED — restock = per line `max(par − present, 0) + qty_expiring`, stored on the line (`qty_restock`), issued as
+  one transfer FEFO from PHARM-OPD. Only the tray's LATEST check may be restocked (a later count supersedes).
+- DECIDED — the consumption path: an after-use check posts `consume` ledger rows at the tray (ref_type
+  `pharmacy_tray_check`, the patient when named) for the tray's on-hand less what is present, earliest expiry first
+  (`qty_used` on the line). The same movement the dispense hand-over and the walk-in sale post; not an adjustment,
+  because the stock was used, not lost. A monthly or daily discrepancy with the ledger posts nothing: it is a count
+  variance for 14c's counts.
+- DECIDED — schedule: the daily check is met by ANY check that IST day and missed after 10:00 IST; the monthly is met
+  by a `monthly_full` or `after_use` check (both are full open counts) in the IST month and missed after the 7th. A
+  tray set up after a deadline did not miss it. A check may be entered up to 24 h late, never from the future.
+- Office STOCK (read under `check` OR `manage`): `tray_deficient` red tier 0 (latest check deficient, no restock
+  transfer), `tray_daily_missed` and `tray_monthly_missed` amber tier 4, `tray_expiring` amber tier 6 (tray ledger
+  batches expiring within 30 days).
+- The screen is `screens/pharmacy-office/trays.tsx` (`TrayChecksView`), unrouted; the lead wires it under Stock.
+- Deferred: a patient picker on the after-use sheet (the API takes `patientId`; the sheet sends the event text only);
+  returning the expiring units the restock replaced (the tray's keeper transfers them back); renaming, moving or
+  retiring a tray (a tray that moves is a new tray); charging the patient (ER / IPD brainstorms); the office menu entry.
+
 ## D5 — Reserve/restricted antimicrobial approval gate
 
 **Basis:**
