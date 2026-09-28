@@ -44,6 +44,8 @@ supervisor still reads a cashier's collected today; the cashier's own `/me/brief
 Side effect, accepted: a nightly rollup of a day whose drawer is still open stores that day without
 the money facts; the 3-day lookback re-rolls it once the count is in.
 
-Not changed, for the record: `GET /billing/invoices` lists invoice amounts to `billing.invoice.read`
-holders; at a pay-first counter the invoiced total approximates collections. Not in this ruling's
-scope as given; flagged.
+**DECIDED (2026-09-28): the blind count hides TOTALS and EXPECTED figures, not the individual
+transactions a cashier or pharmacist handled** — reprints, lookups and the retail day list need them,
+and standard counter practice is the same. So these stay as they are:
+- `GET /billing/invoices` — the invoice list, amounts included, to `billing.invoice.read` holders.
+- `GET /pharmacy/retail/sales` — the walk-in counter's day list, each sale's amount and seller included.
