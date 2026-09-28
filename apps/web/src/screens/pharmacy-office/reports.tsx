@@ -5,7 +5,7 @@ import { useAuth } from "../../lib/auth";
 import { downloadCsv, toCsv } from "../../lib/payables-api";
 import { pharmacyErrorText } from "../../lib/pharmacy-api";
 import {
-  MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, fetchActivity, fetchActivityFeed, fetchHsn, fetchMargin,
+  MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, fetchActivity, fetchActivityFeed, fetchGstr3b, fetchHsn, fetchMargin,
   fetchNonMoving, fetchPurchaseRegister, fetchReportStores, fetchSalesRegister, fetchValuation, money, pct, printReport, reconcileGstr2b,
   todayIst, trimGstr2bJson,
 } from "../../lib/reports-api";
@@ -27,8 +27,10 @@ import type {
  * Cost, profit and margin appear only for a holder of `pharmacy.reports.margin` — the server leaves
  * them out for anybody else, and the margin report is not offered.
  */
-export type ReportKey = "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "activity" | "tally";
-const ALL_REPORTS: readonly ReportKey[] = ["sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "activity", "tally"];
+export type ReportKey = "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally";
+const ALL_REPORTS: readonly ReportKey[] = ["sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally"];
+/** The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten). */
+const keyOf = (i: number): string => (i === 9 ? "0" : String(i + 1));
 
 type Col<R> = { key: string; label: string; num?: boolean; money?: boolean; value: (r: R) => string | number | null };
 type Totals = Record<string, string | number | null>;
@@ -65,8 +67,8 @@ export function ReportsView({ initial = null }: { initial?: ReportKey | null }):
   const onKey = (e: React.KeyboardEvent): void => {
     const typing = ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement).tagName);
     if (typing || open !== null || e.ctrlKey || e.metaKey || e.altKey) return;
-    const n = Number(e.key);
-    if (Number.isInteger(n) && n >= 1 && n <= reports.length) { e.preventDefault(); setOpen(reports[n - 1]!); }
+    const i = reports.findIndex((_, k) => keyOf(k) === e.key);
+    if (i >= 0) { e.preventDefault(); setOpen(reports[i]!); }
   };
   if (open !== null) return <ReportScreen report={open} onBack={() => setOpen(null)} />;
   return (
@@ -77,7 +79,7 @@ export function ReportsView({ initial = null }: { initial?: ReportKey | null }):
           <li key={r}>
             <button type="button" data-testid={`report-${r}`} className="flex h-full w-full flex-col items-start gap-1 rounded border p-3 text-left hover:bg-muted focus:bg-muted focus:outline-none" onClick={() => setOpen(r)}>
               <span className="flex w-full items-center gap-2 font-medium">
-                <kbd className="rounded border px-1 text-xs">{i + 1}</kbd>
+                <kbd className="rounded border px-1 text-xs">{keyOf(i)}</kbd>
                 <span className="flex-1">{t(`pharmacyOffice.reports.name.${r}`)}</span>
               </span>
               <span className="text-xs text-muted-foreground">{t(`pharmacyOffice.reports.about.${r}`)}</span>
@@ -130,6 +132,7 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "nonMoving" && <NonMovingReport {...bind} />}
       {report === "hsn" && <HsnReport {...bind} />}
       {report === "gstr2b" && <Gstr2bReport {...bind} />}
+      {report === "gstr3b" && <Gstr3bReport {...bind} />}
       {report === "activity" && <ActivityReport {...bind} />}
       {report === "tally" && <TallyScreen {...bind} />}
     </div>
@@ -608,6 +611,57 @@ function HsnReport({ sheet, presetRef }: Bind): React.ReactElement {
       <p className="text-xs text-muted-foreground">{t("pharmacyOffice.reports.hsnNote")}</p>
       <Status loading={q.isLoading} error={q.error} />
       {d !== undefined && <Table testId="hsn-table" cols={cols} rows={d.rows} rowKey={(r) => `${r.hsn}-${String(r.rateBps)}-${r.uqc}`} totals={totals} />}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ GSTR-3B from the books (GAP A4) ═══════════════════════════════════
+
+/**
+ * One table in the return's own order — 3.1(a), 3.1(c), 4(A)(5), 4(B)(2), 4(C), 6.1 — so E and P hand the
+ * accountant the figures to key into the portal. Read-only: filing stays theirs.
+ */
+function Gstr3bReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "gstr3b", range], queryFn: () => fetchGstr3b(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  type Row = { key: string; section: string; what: string; taxable: number | null; igst: number | null; cgst: number | null; sgst: number | null; strong?: boolean };
+  const G = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.gstr3b.${k}`, o);
+  const rows: Row[] = d === undefined ? [] : [
+    ...d.outward.byRate.map((b) => ({ key: `r${String(b.rateBps)}`, section: "3.1(a)", what: G("outwardAt", { rate: b.rateBps / 100 }), taxable: b.taxablePaise, igst: 0, cgst: b.cgstPaise, sgst: b.sgstPaise })),
+    { key: "a", section: "3.1(a)", what: G("outward"), taxable: d.outward.taxable.taxablePaise, igst: d.outward.taxable.igstPaise, cgst: d.outward.taxable.cgstPaise, sgst: d.outward.taxable.sgstPaise, strong: true },
+    { key: "c", section: "3.1(c)", what: G("nilExempt"), taxable: d.outward.nilExempt.taxablePaise, igst: null, cgst: null, sgst: null },
+    { key: "itc", section: "4(A)(5)", what: G("itcAvailable", { count: d.itc.bills }), taxable: d.itc.available.taxablePaise, igst: d.itc.available.igstPaise, cgst: d.itc.available.cgstPaise, sgst: d.itc.available.sgstPaise },
+    { key: "rev", section: "4(B)(2)", what: G("itcReversed", { count: d.itc.debitNotes }), taxable: d.itc.reversed.taxablePaise, igst: d.itc.reversed.igstPaise, cgst: d.itc.reversed.cgstPaise, sgst: d.itc.reversed.sgstPaise },
+    { key: "net", section: "4(C)", what: G("itcNet"), taxable: null, igst: d.itc.net.igstPaise, cgst: d.itc.net.cgstPaise, sgst: d.itc.net.sgstPaise, strong: true },
+    { key: "byIgst", section: "6.1", what: G("paidByIgst"), taxable: null, igst: d.payable.igst.byIgstPaise, cgst: d.payable.cgst.byIgstPaise, sgst: d.payable.sgst.byIgstPaise },
+    { key: "byOwn", section: "6.1", what: G("paidByOwn"), taxable: null, igst: d.payable.igst.byOwnPaise, cgst: d.payable.cgst.byOwnPaise, sgst: d.payable.sgst.byOwnPaise },
+    { key: "cash", section: "6.1", what: G("cash"), taxable: null, igst: d.payable.igst.cashPaise, cgst: d.payable.cgst.cashPaise, sgst: d.payable.sgst.cashPaise, strong: true },
+    { key: "carry", section: "", what: G("carry"), taxable: null, igst: d.payable.igst.carryForwardPaise, cgst: d.payable.cgst.carryForwardPaise, sgst: d.payable.sgst.carryForwardPaise },
+  ];
+  const cols: Col<Row>[] = [
+    { key: "section", label: G("section"), value: (r) => r.section },
+    { key: "what", label: G("what"), value: (r) => r.what },
+    { key: "taxable", label: L("taxable"), money: true, value: (r) => r.taxable },
+    { key: "igst", label: L("igst"), money: true, value: (r) => r.igst },
+    { key: "cgst", label: L("cgst"), money: true, value: (r) => r.cgst },
+    { key: "sgst", label: L("sgst"), money: true, value: (r) => r.sgst },
+  ];
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.gstr3b"), subtitle: rangeText(d.from, d.to), file: `gstr3b-${d.from}-${d.to}`, cols: cols as Col<never>[], rows, totals: null };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} />
+      <p className="text-xs text-muted-foreground">{G("note")}</p>
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <Table testId="gstr3b-table" cols={cols} rows={rows} rowKey={(r) => r.key} totals={null} rowClass={(r) => (r.strong === true ? "font-semibold" : "")} />
+          <p className="text-sm font-medium" data-testid="gstr3b-cash">{G("cashTotal", { amount: money(d.payable.cashPaise) })}</p>
+          {d.creditNotesUnsplitPaise > 0 && <p className="text-sm text-amber-700">{G("creditNotes", { amount: money(d.creditNotesUnsplitPaise) })}</p>}
+        </>
+      )}
     </div>
   );
 }

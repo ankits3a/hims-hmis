@@ -138,6 +138,17 @@ export const fetchReportStores = async (): Promise<{ code: string; name: string 
 export const fetchSalesRegister = (r: RangeInput, groupBy: SalesGroupBy): Promise<WireSalesRegister> => api("GET", `${BASE}/sales${query({ ...r, groupBy })}`);
 export const fetchMargin = (r: RangeInput, groupBy: MarginGroupBy): Promise<WireMarginReport> => api("GET", `${BASE}/margin${query({ ...r, groupBy })}`);
 export const fetchHsn = (r: RangeInput): Promise<WireHsnReport> => api("GET", `${BASE}/hsn${query(r)}`);
+/** GAP A4 — the period's GSTR-3B figures from the books (`pharmacy/gstr3b.ts`). */
+export type WireGstr3bHeads = { taxablePaise: number; igstPaise: number; cgstPaise: number; sgstPaise: number };
+export type WireSetOff = { liabilityPaise: number; byIgstPaise: number; byOwnPaise: number; cashPaise: number; carryForwardPaise: number };
+export type WireGstr3b = {
+  from: string; to: string; preset: string;
+  outward: { taxable: WireGstr3bHeads; nilExempt: { taxablePaise: number }; byRate: { rateBps: number; taxablePaise: number; cgstPaise: number; sgstPaise: number }[] };
+  itc: { available: WireGstr3bHeads; reversed: WireGstr3bHeads; net: { igstPaise: number; cgstPaise: number; sgstPaise: number }; bills: number; debitNotes: number };
+  creditNotesUnsplitPaise: number;
+  payable: { igst: WireSetOff; cgst: WireSetOff; sgst: WireSetOff; cashPaise: number };
+};
+export const fetchGstr3b = (r: RangeInput): Promise<WireGstr3b> => api("GET", `${BASE}/gstr3b${query(r)}`);
 export const fetchPurchaseRegister = (r: RangeInput): Promise<WirePurchaseRegister> => api("GET", `${BASE}/purchases${query(r)}`);
 export const fetchValuation = (asOf: string, store: string): Promise<WireValuation> => api("GET", `${BASE}/valuation${query({ asOf, store })}`);
 export const fetchNonMoving = (days: number, store: string): Promise<WireNonMoving> => api("GET", `${BASE}/non-moving${query({ days, store })}`);

@@ -6553,6 +6553,7 @@
         "nonMoving": "Non-moving stock",
         "hsn": "HSN summary",
         "gstr2b": "GSTR-2B reconciliation",
+        "gstr3b": "GSTR-3B summary",
         "activity": "Activity",
         "tally": "Tally export"
       },
@@ -6564,6 +6565,7 @@
         "nonMoving": "Stock that has not moved in 30, 60, 90 or 180 days, and what to do with it.",
         "hsn": "Outward supply by HSN and rate, for GSTR-1.",
         "gstr2b": "The GST portal's 2B set against the bills we booked.",
+        "gstr3b": "The month's return from the books: outward tax, ITC and the cash to pay.",
         "activity": "What happened to a document, and what each edit changed.",
         "tally": "Every voucher of a period as TallyPrime XML, and the ledger names it uses."
       },
@@ -6736,7 +6738,26 @@
         "stock_write_off_refused": "Write-off refused",
         "stock_write_off_posted": "Destroyed, posted"
       },
-      "subtitle": "What the pharmacy sold, bought and holds"
+      "subtitle": "What the pharmacy sold, bought and holds",
+      "gstr3b": {
+        "section": "Table",
+        "what": "What",
+        "outwardAt": "Outward taxable supplies at {{rate}}%",
+        "outward": "Outward taxable supplies (other than zero-rated, nil-rated and exempt)",
+        "nilExempt": "Nil-rated and exempt supplies (healthcare services, 0% lines)",
+        "itcAvailable_one": "ITC — all other ({{count}} supplier bill booked)",
+        "itcAvailable_other": "ITC — all other ({{count}} supplier bills booked)",
+        "itcReversed_one": "ITC reversed — {{count}} debit note (goods returned)",
+        "itcReversed_other": "ITC reversed — {{count}} debit notes (goods returned)",
+        "itcNet": "Net ITC available",
+        "paidByIgst": "Tax paid through IGST credit",
+        "paidByOwn": "Tax paid through its own credit",
+        "cash": "Tax payable in cash",
+        "carry": "Credit carried forward",
+        "note": "From the hospital's books, for every bill it issued (a return is per GSTIN). Claim no more ITC than GSTR-2B shows — reconcile it first. Set-off follows rule 88A: IGST credit first, then CGST and SGST each against its own head. Filing stays the accountant's act on the portal.",
+        "cashTotal": "Payable in cash for the period: {{amount}}",
+        "creditNotes": "Vendor credit notes of {{amount}} carry no tax split in the books — reverse their ITC by hand."
+      }
     },
     "tally": {
       "ledgersConfirmed": "Ledger names confirmed for the Tally company.",
