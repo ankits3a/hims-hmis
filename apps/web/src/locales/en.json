@@ -8243,7 +8243,7 @@
       "find": "Visit number",
       "findPlaceholder": "V2609280001",
       "findButton": "Find",
-      "visitLine": "{{visitNo}} · Dr {{doctor}} · {{department}}",
+      "visitLine": "{{visitNo}} · {{doctor}} · {{department}}",
       "noVisit": "Type the visit number from the slip or the token.",
       "advised": "Advised by the doctor"
     },

@@ -8243,7 +8243,7 @@
       "find": "विज़िट नंबर",
       "findPlaceholder": "V2609280001",
       "findButton": "खोजें",
-      "visitLine": "{{visitNo}} · डॉ {{doctor}} · {{department}}",
+      "visitLine": "{{visitNo}} · {{doctor}} · {{department}}",
       "noVisit": "पर्ची या टोकन से विज़िट नंबर लिखें।",
       "advised": "डॉक्टर की सलाह"
     },

@@ -90,3 +90,15 @@ it("shows a slot clash with the server's own message", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Book" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(/already has a live booking.*slot_taken/);
 });
+
+/**
+ * PLAN 18-S RS2 — the ordering door is the seat's CENTRE (18a-iv D1: at the top of reception, not a
+ * new screen), and the right-hand list stays the queue alone ("nothing duplicates the right list").
+ */
+it("mounts the ordering door in the centre, never in the right-hand queue", async () => {
+  mockRoutes({ "GET /api/radiology/worklist": { status: 200, body: { rows: [ROW] } } });
+  renderWithProviders(<RadiologyReception />);
+  const door = await screen.findByTestId("imaging-desk-door");
+  expect(screen.getByTestId("station-right")).not.toContainElement(door);
+  expect(screen.getByLabelText("Visit number")).toBeInTheDocument();
+});
