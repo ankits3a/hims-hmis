@@ -6163,6 +6163,159 @@
     "printEmpty": "No lens power is saved yet — nothing to print.",
     "printFailed": "Not sent to the printer — {{reason}}"
   },
+  "opdPaeds": {
+    "tab": "Child",
+    "childTitle": "Child",
+    "ageYmd": "{{y}} y {{m}} m {{d}} d",
+    "noDob": "Date of birth not recorded",
+    "dob": "DOB {{date}}",
+    "sex": {
+      "boy": "Boy",
+      "girl": "Girl"
+    },
+    "dobEstimated": "DOB estimated — enter the true date of birth to chart growth",
+    "adult": "18 years or older — no growth chart applies",
+    "informantTitle": "Informant · who gave the history",
+    "informantName": "Informant's name",
+    "relation": {
+      "mother": "Mother",
+      "father": "Father",
+      "both_parents": "Both parents",
+      "grandparent": "Grandparent",
+      "guardian": "Guardian",
+      "self": "The child",
+      "other": "Other"
+    },
+    "growthTitle": "Growth · z-score and centile",
+    "weight": "Weight",
+    "noWeight": "No weight on record — record vitals",
+    "weightToday": "TODAY'S VITALS",
+    "weightStale": "Not weighed today — last weight {{days}} days old ({{date}}); re-weigh",
+    "lengthCm": "Length / height (cm)",
+    "fromVitals": "From today's vitals",
+    "measuredHow": "Measured how",
+    "measure": {
+      "length": "Lying (length)",
+      "height": "Standing (height)"
+    },
+    "headCircCm": "Head circumference (cm)",
+    "growthRule": "Not saved — a length needs how it was measured (lying or standing), within 30–220 cm; head circumference within 20–70 cm.",
+    "col": {
+      "indicator": "Indicator",
+      "measurement": "Measurement",
+      "z": "Z-score",
+      "centile": "Centile"
+    },
+    "indicator": {
+      "wfa": "Weight-for-age",
+      "lhfa": "Length/height-for-age",
+      "hcfa": "Head circumference-for-age",
+      "bfa": "BMI-for-age"
+    },
+    "reason": {
+      "not_measured": "Not measured",
+      "dob_estimated": "DOB is estimated — no z-score",
+      "sex_not_charted": "The WHO standards chart boys and girls only",
+      "iap_2015_lms_unpublished": "IAP 2015 reference values are not published — no z-score from 5 years",
+      "who_hc_under_5_only": "Head circumference is charted under 5 years only",
+      "weight_not_today": "Needs today's weight",
+      "out_of_range": "Outside the reference table"
+    },
+    "implausible": "Far outside the reference — check the measurement",
+    "growthSource": "Under 5 years: WHO Child Growth Standards 2006 (LMS). 5–18 years: IAP 2015 charts — z-scores wait for the published LMS values.",
+    "birthTitle": "Birth history",
+    "gestationWeeks": "Gestation (weeks)",
+    "birthWeightKg": "Birth weight (kg)",
+    "delivery": "Mode of delivery",
+    "deliveryMode": {
+      "normal_vaginal": "Normal vaginal",
+      "assisted_vaginal": "Assisted vaginal",
+      "lscs_elective": "LSCS — elective",
+      "lscs_emergency": "LSCS — emergency"
+    },
+    "nicu": "NICU stay",
+    "yesNo": {
+      "no": "No",
+      "yes": "Yes"
+    },
+    "nicuDays": "NICU days",
+    "note": "Note",
+    "birthNote": "Birth note (cried at birth, jaundice, …)",
+    "birthRule": "Not saved — gestation 22–44 weeks, birth weight 0.3–6.5 kg.",
+    "immTitle": "Immunisation · IAP 2023",
+    "immNoDob": "No date of birth on record — the timetable counts from it.",
+    "immFailed": "Not saved — {{reason}}",
+    "dueNow": "Due and overdue · {{n}}",
+    "nothingDue": "Nothing due today.",
+    "status": {
+      "overdue": "OVERDUE",
+      "due": "DUE",
+      "upcoming": "UPCOMING",
+      "given": "GIVEN",
+      "given_today": "GIVEN TODAY",
+      "optional": "OPTIONAL",
+      "waiting": "WAITING",
+      "not_applicable": "NOT APPLICABLE"
+    },
+    "dueOn": "due {{date}}",
+    "giveToday": "Given today",
+    "batch": "Batch no.",
+    "site": "Site",
+    "sites": {
+      "left_thigh": "Left thigh",
+      "right_thigh": "Right thigh",
+      "left_deltoid": "Left deltoid",
+      "right_deltoid": "Right deltoid",
+      "left_upper_arm": "Left upper arm",
+      "right_upper_arm": "Right upper arm",
+      "oral": "Oral"
+    },
+    "brand": "Brand (optional)",
+    "recordGiven": "Record",
+    "cancel": "Cancel",
+    "givenTodayTitle": "Given today",
+    "batchSite": "Batch {{batch}} · {{site}}",
+    "inError": "Entered in error — {{reason}}",
+    "markError": "Mark in error",
+    "errorReason": "Why is it in error?",
+    "markErrorSave": "Mark",
+    "upcoming": "Coming up",
+    "givenEarlier": "Already given · {{n}}",
+    "where": {
+      "today": "Today",
+      "here": "This hospital",
+      "earlier": "Card / parent"
+    },
+    "addFromCard": "Add a dose from the card",
+    "dose": "Dose",
+    "givenOn": "Given on",
+    "givenWhere": "Where given",
+    "add": "Add",
+    "immSource": "Timetable: {{source}}. National programme (UIP) differences are shown as notes. The vaccination-card print comes later.",
+    "milestonesTitle": "Developmental milestones",
+    "domain": {
+      "grossMotor": "Gross motor",
+      "fineMotor": "Fine motor",
+      "language": "Language",
+      "social": "Social"
+    },
+    "milestone": {
+      "achieved": "Achieved for age",
+      "delayed": "Delayed"
+    },
+    "feedingTitle": "Feeding",
+    "feedingMode": "Feeding",
+    "feeding": {
+      "exclusive_breast": "Exclusive breastfeeding",
+      "breast_and_formula": "Breast + formula",
+      "formula": "Formula",
+      "complementary_with_breast": "Complementary + breastfeeding",
+      "complementary_no_breast": "Complementary, no breastfeeding",
+      "family_diet": "Family diet"
+    },
+    "complementaryFrom": "Complementary from (months)",
+    "feedingNote": "Feeding note"
+  },
   "pharmacyOffice": {
     "menu": {
       "was": "was {{path}}",
