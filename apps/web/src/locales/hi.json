@@ -6064,6 +6064,159 @@
     "printEmpty": "अभी कोई लेंस पावर सहेजी नहीं गई — प्रिंट करने को कुछ नहीं।",
     "printFailed": "प्रिंटर को नहीं भेजा गया — {{reason}}"
   },
+  "opdPaeds": {
+    "tab": "बच्चा",
+    "childTitle": "बच्चा",
+    "ageYmd": "{{y}} व {{m}} मा {{d}} दि",
+    "noDob": "जन्म तिथि दर्ज नहीं",
+    "dob": "जन्म तिथि {{date}}",
+    "sex": {
+      "boy": "लड़का",
+      "girl": "लड़की"
+    },
+    "dobEstimated": "जन्म तिथि अनुमानित — वृद्धि चार्ट के लिए सही जन्म तिथि दर्ज करें",
+    "adult": "18 वर्ष या अधिक — वृद्धि चार्ट लागू नहीं",
+    "informantTitle": "सूचक · इतिहास किसने बताया",
+    "informantName": "सूचक का नाम",
+    "relation": {
+      "mother": "माँ",
+      "father": "पिता",
+      "both_parents": "माता-पिता दोनों",
+      "grandparent": "दादा-दादी / नाना-नानी",
+      "guardian": "अभिभावक",
+      "self": "बच्चा स्वयं",
+      "other": "अन्य"
+    },
+    "growthTitle": "वृद्धि · z-स्कोर और सेंटाइल",
+    "weight": "वज़न",
+    "noWeight": "वज़न दर्ज नहीं — वाइटल्स दर्ज करें",
+    "weightToday": "आज के वाइटल्स",
+    "weightStale": "आज वज़न नहीं लिया — पिछला वज़न {{days}} दिन पुराना ({{date}}); दोबारा तौलें",
+    "lengthCm": "लंबाई / ऊँचाई (सेमी)",
+    "fromVitals": "आज के वाइटल्स से",
+    "measuredHow": "कैसे मापा",
+    "measure": {
+      "length": "लेटाकर (लंबाई)",
+      "height": "खड़ा करके (ऊँचाई)"
+    },
+    "headCircCm": "सिर की परिधि (सेमी)",
+    "growthRule": "सहेजा नहीं — लंबाई के साथ मापने का तरीका (लेटाकर या खड़ा करके) बताएँ, 30–220 सेमी; सिर की परिधि 20–70 सेमी।",
+    "col": {
+      "indicator": "सूचकांक",
+      "measurement": "माप",
+      "z": "Z-स्कोर",
+      "centile": "सेंटाइल"
+    },
+    "indicator": {
+      "wfa": "आयु के अनुसार वज़न",
+      "lhfa": "आयु के अनुसार लंबाई/ऊँचाई",
+      "hcfa": "आयु के अनुसार सिर की परिधि",
+      "bfa": "आयु के अनुसार BMI"
+    },
+    "reason": {
+      "not_measured": "मापा नहीं गया",
+      "dob_estimated": "जन्म तिथि अनुमानित — z-स्कोर नहीं",
+      "sex_not_charted": "WHO मानक केवल लड़के और लड़कियों के लिए हैं",
+      "iap_2015_lms_unpublished": "IAP 2015 संदर्भ मान प्रकाशित नहीं — 5 वर्ष से z-स्कोर नहीं",
+      "who_hc_under_5_only": "सिर की परिधि केवल 5 वर्ष तक चार्ट होती है",
+      "weight_not_today": "आज का वज़न चाहिए",
+      "out_of_range": "संदर्भ तालिका से बाहर"
+    },
+    "implausible": "संदर्भ से बहुत बाहर — माप जाँचें",
+    "growthSource": "5 वर्ष से कम: WHO बाल वृद्धि मानक 2006 (LMS)। 5–18 वर्ष: IAP 2015 चार्ट — z-स्कोर प्रकाशित LMS मानों की प्रतीक्षा में।",
+    "birthTitle": "जन्म का इतिहास",
+    "gestationWeeks": "गर्भकाल (सप्ताह)",
+    "birthWeightKg": "जन्म के समय वज़न (किग्रा)",
+    "delivery": "प्रसव का तरीका",
+    "deliveryMode": {
+      "normal_vaginal": "सामान्य प्रसव",
+      "assisted_vaginal": "सहायक योनि प्रसव",
+      "lscs_elective": "LSCS — नियोजित",
+      "lscs_emergency": "LSCS — आपातकालीन"
+    },
+    "nicu": "NICU में भर्ती",
+    "yesNo": {
+      "no": "नहीं",
+      "yes": "हाँ"
+    },
+    "nicuDays": "NICU दिन",
+    "note": "टिप्पणी",
+    "birthNote": "जन्म टिप्पणी (जन्म पर रोया, पीलिया, …)",
+    "birthRule": "सहेजा नहीं — गर्भकाल 22–44 सप्ताह, जन्म वज़न 0.3–6.5 किग्रा।",
+    "immTitle": "टीकाकरण · IAP 2023",
+    "immNoDob": "जन्म तिथि दर्ज नहीं — समय-सारणी उसी से गिनी जाती है।",
+    "immFailed": "सहेजा नहीं — {{reason}}",
+    "dueNow": "देय और विलंबित · {{n}}",
+    "nothingDue": "आज कुछ देय नहीं।",
+    "status": {
+      "overdue": "विलंबित",
+      "due": "देय",
+      "upcoming": "आगामी",
+      "given": "दिया गया",
+      "given_today": "आज दिया",
+      "optional": "वैकल्पिक",
+      "waiting": "प्रतीक्षा",
+      "not_applicable": "लागू नहीं"
+    },
+    "dueOn": "देय {{date}}",
+    "giveToday": "आज दिया",
+    "batch": "बैच नं.",
+    "site": "स्थान",
+    "sites": {
+      "left_thigh": "बायाँ जाँघ",
+      "right_thigh": "दायाँ जाँघ",
+      "left_deltoid": "बायाँ डेल्टॉइड",
+      "right_deltoid": "दायाँ डेल्टॉइड",
+      "left_upper_arm": "बायाँ ऊपरी बाँह",
+      "right_upper_arm": "दायाँ ऊपरी बाँह",
+      "oral": "मुँह से"
+    },
+    "brand": "ब्रांड (वैकल्पिक)",
+    "recordGiven": "दर्ज करें",
+    "cancel": "रद्द करें",
+    "givenTodayTitle": "आज दिए गए",
+    "batchSite": "बैच {{batch}} · {{site}}",
+    "inError": "गलती से दर्ज — {{reason}}",
+    "markError": "गलती चिह्नित करें",
+    "errorReason": "गलती क्यों है?",
+    "markErrorSave": "चिह्नित करें",
+    "upcoming": "आगामी",
+    "givenEarlier": "पहले दिए गए · {{n}}",
+    "where": {
+      "today": "आज",
+      "here": "इस अस्पताल में",
+      "earlier": "कार्ड / अभिभावक"
+    },
+    "addFromCard": "कार्ड से खुराक जोड़ें",
+    "dose": "खुराक",
+    "givenOn": "कब दिया",
+    "givenWhere": "कहाँ दिया",
+    "add": "जोड़ें",
+    "immSource": "समय-सारणी: {{source}}। राष्ट्रीय कार्यक्रम (UIP) के अंतर टिप्पणी के रूप में दिखाए गए हैं। टीकाकरण कार्ड प्रिंट बाद में आएगा।",
+    "milestonesTitle": "विकास के पड़ाव",
+    "domain": {
+      "grossMotor": "स्थूल गतिक",
+      "fineMotor": "सूक्ष्म गतिक",
+      "language": "भाषा",
+      "social": "सामाजिक"
+    },
+    "milestone": {
+      "achieved": "आयु अनुसार प्राप्त",
+      "delayed": "विलंबित"
+    },
+    "feedingTitle": "आहार",
+    "feedingMode": "आहार",
+    "feeding": {
+      "exclusive_breast": "केवल स्तनपान",
+      "breast_and_formula": "स्तनपान + फॉर्मूला",
+      "formula": "फॉर्मूला",
+      "complementary_with_breast": "पूरक आहार + स्तनपान",
+      "complementary_no_breast": "पूरक आहार, स्तनपान नहीं",
+      "family_diet": "पारिवारिक भोजन"
+    },
+    "complementaryFrom": "पूरक आहार कब से (महीने)",
+    "feedingNote": "आहार टिप्पणी"
+  },
   "pharmacyOffice": {
     "menu": {
       "was": "पहले {{path}}",
