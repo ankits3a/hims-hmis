@@ -78,7 +78,8 @@
     "materialsTransfers": "Stock transfers",
     "opdDayReport": "OPD report",
     "pharmacyOffice": "Pharmacy office",
-    "pharmacyReports": "Pharmacy reports"
+    "pharmacyReports": "Pharmacy reports",
+    "radiologyPortable": "Portable round"
   },
   "palette": {
     "title": "Search",
@@ -3108,7 +3109,13 @@
       "book": "Book",
       "walkIn": "Walk in",
       "checkIn": "Check in",
-      "checkedIn": "Checked in. These safety gates are now open and the console clears them:"
+      "checkedIn": "Checked in. These safety gates are now open and the console clears them:",
+      "devicePick": "Choose a machine",
+      "portable": "portable",
+      "notLicensed": "not licensed",
+      "bedside": "At the bedside",
+      "bedsidePlaceholder": "Ward 3 · bed 12",
+      "bedsideHint": "Ward and bed — the machine goes to the patient. Leave empty to bring the patient to the department."
     },
     "study": {
       "unknown": "No such study, or you may not see it.",
@@ -3167,6 +3174,16 @@
       "chaperone_present": "Chaperone",
       "laterality_confirm": "Side",
       "mlc_check": "MLC"
+    },
+    "portable": {
+      "title": "Portable round",
+      "place": "Wards · at the bedside",
+      "beds": "Beds",
+      "wards": "Wards",
+      "next": "Next bed",
+      "open": "Open study",
+      "empty": "No bedside studies on the round.",
+      "ipdNote": "Ordering a portable study from the ward arrives with the IPD plan. Until then a study reaches this round when the imaging desk books it on a portable machine with a ward and bed."
     }
   },
   "pcpndt": {
