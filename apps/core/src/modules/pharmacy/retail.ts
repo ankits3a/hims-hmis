@@ -19,6 +19,7 @@ import {
 import { runRxChecks } from "../opd";
 import { captureDocument, getPatient, getPatientSummaries, nearMatches, registerPatient, resolvePatientId } from "../patients";
 import { displayDraft, gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, winnerOf } from "./bill";
+import { assertNoColdChainHold } from "./cold-chain";
 import { billRowsForInvoice, counterPacks } from "./bill-rows";
 import type { BillRow } from "./bill-rows";
 import {
@@ -624,6 +625,9 @@ async function recordSale(
     }
 
     const plan = await planLines(db, store.id, input.lines, ctx.at);
+    // STAGE D3 — a walk-in sale does not take a batch a fridge excursion holds. A paper dispense is a record
+    // of medicine already handed over during an outage, so it is recorded, not refused (the P20 rule).
+    if (ctx.channel === "walk_in") await assertNoColdChainHold(db, store.id, plan.map((p) => ({ lineIdx: p.lineIdx, batchId: p.batchId })));
     const scheduled = plan.some((p) => isScheduled(p.scheduleFlag));
     const rx = rxInput === undefined ? null : cleanPrescription(rxInput, ctx.at);
     let pharmacistRegNo: string | null = null;

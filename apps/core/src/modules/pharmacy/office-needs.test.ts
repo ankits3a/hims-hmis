@@ -7,6 +7,7 @@ import { withTx } from "../../kernel/db/client";
 import { formularySalts, pharmacyPharmacistRegistrations } from "../../kernel/db/schema";
 import { eq } from "drizzle-orm";
 import { recordAdr } from "./adr";
+import { recordIncident } from "./incidents";
 import { createStore } from "../materials";
 import { RETAIL_PHARMACY_STORE_CODE } from "./config";
 import { NEED_SOURCES, buildNeeds, officeNeeds } from "./office-needs";
@@ -99,7 +100,7 @@ const GRNS = [
   { id: "g3", grnNo: "GRN2609270009", challanNo: "CH-5561", vendorName: "Anand Medical Agencies", lines: 7, createdAt: "2026-09-27T09:00:00.000Z" },
 ];
 
-const ALL: NeedInputs = { buy: BUY, pay: PAY, returns: RETURNS, grns: GRNS, retail: RETAIL, cabinet: CABINET, pharmacists: PHARMACISTS, adr: null };
+const ALL: NeedInputs = { buy: BUY, pay: PAY, returns: RETURNS, grns: GRNS, retail: RETAIL, cabinet: CABINET, pharmacists: PHARMACISTS, adr: null, incidents: null, cold: null };
 
 /** Stage D1 — three reports not yet sent to PvPI: serious and 20 days old, serious and 3 days old, not serious and 30 days old. */
 const ADR: NonNullable<NeedInputs["adr"]> = [
@@ -173,7 +174,7 @@ describe("buildNeeds — the ADR side of LAW (pharmacy stage D1)", () => {
   });
 
   it("the ADR side alone is enough to list LAW", () => {
-    const out = buildNeeds({ buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: [] }, NOW);
+    const out = buildNeeds({ buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: [], incidents: null, cold: null }, NOW);
     expect(out.sides).toEqual(["LAW"]);
     expect(out.rows).toEqual([]);
   });
@@ -224,6 +225,20 @@ describe("officeNeeds — each side only under its own grant (gap-closure B2)", 
     expect(out.sides).toEqual(["LAW"]);
     expect(out.rows.map((r) => [r.id, r.kind])).toEqual([[`law:adr:${reportId}`, "adr_pvpi_serious"]]);
     expect((await officeNeeds(db, fx.pharmacist.actor, NOW)).rows.some((r) => r.id.startsWith("law:adr:"))).toBe(false);
+  });
+
+  it("pharmacy.incidents.review brings the incident side: an unreviewed near miss is a LAW row; a recorder without review sees none (stage D2)", async () => {
+    await grantPermissionToRole(db, fx.registry, "pharmacy", "pharmacy.incidents.record");
+    const { incidentId } = await recordIncident(db, fx.pharmacist.actor, {
+      kind: "near_miss", stage: "dispensing", type: "wrong_strength", category: "B", whatHappened: "650 picked for 500; caught at the check",
+    }, NOW);
+    await ensureRole(db, "incident_reviewer");
+    await grantPermissionToRole(db, fx.registry, "incident_reviewer", "pharmacy.incidents.review");
+    const ms = await mkUser(db, "the.reviewer", ["incident_reviewer"]);
+    const out = await officeNeeds(db, ms.actor, NOW);
+    expect(out.sides).toEqual(["LAW"]);
+    expect(out.rows.map((r) => [r.id, r.kind])).toEqual([[`law:incident:${incidentId}`, "incident_review"]]);
+    expect((await officeNeeds(db, fx.pharmacist.actor, NOW)).rows.some((r) => r.id.startsWith("law:incident:"))).toBe(false);
   });
 
   it("the grant that manages the retail licence brings its row, ranked first while no licence is on file", async () => {

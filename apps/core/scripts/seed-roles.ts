@@ -305,6 +305,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — a doctor who sees a reaction reports it to the ADR register (PvPI form); the
       // allergy it writes blocks the drug on the next prescription. DEFAULT — owner may change.
       "pharmacy.adr.record",
+      // PHARMACY STAGE D2 — a doctor who catches a medication error or near miss logs it (blame-free: the
+      // log shows the role, the name only to the reviewer). DEFAULT — owner may change.
+      "pharmacy.incidents.record",
     ],
   },
   /**
@@ -510,6 +513,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — the pharmacist reports a suspected adverse drug reaction (the PvPI form); the
       // report writes the patient's allergy in the same transaction. DEFAULT — owner may change.
       "pharmacy.adr.record",
+      // PHARMACY STAGE D2 — the pharmacist logs a medication error or near miss from the desk line's ⋯ menu.
+      // DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      // PHARMACY STAGE D3 — the pharmacist reads the fridge at 09:00 and 17:00 IST (current, min, max); an
+      // out-of-range reading holds the store's cold batches. DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },
   {
@@ -916,6 +925,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — the MS chairs pharmacovigilance: assesses causality, sends to PvPI, closes.
       // DEFAULT — owner may change.
       "pharmacy.adr.manage",
+      // PHARMACY STAGE D2 — the MS reviews medication errors and near misses (root cause, action taken) and
+      // closes them; the only other reader told the reporter's name. DEFAULT — owner may change.
+      "pharmacy.incidents.review",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1149,6 +1161,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P6 — the head of stores witnesses a movement at the controlled-drug cabinet (a receipt, a
       // destruction, a discrepancy booked) but holds no key to it. DEFAULT — owner may change.
       "pharmacy.ndps.witness",
+      // PHARMACY STAGE D3 — the head of stores keeps the fridges' master (which store, what range) and closes
+      // an excursion: release each held batch with its reason, or write it off. DEFAULT — owner may change.
+      "pharmacy.coldchain.manage",
     ],
   },
   {
@@ -1168,6 +1183,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.stock.receive",
       // 14c — the storekeeper counts other stores (the pharmacy's, a ward's), never the one they keep.
       "materials.counts.perform",
+      // PHARMACY STAGE D3 — the storekeeper reads the main store's fridge on the same schedule as the counter's.
+      // DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1584,6 +1602,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       "patients.read",
       "formulary.read",
+      // PHARMACY STAGE D2 — the aide who picks is the one who sees the look-alike box: a near miss is theirs
+      // to log. Blame-free; the reviewer alone is told who. DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      // PHARMACY STAGE D3 — the aide reads the fridge when the pharmacist is at the window. DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },  /**
    * PHARMACY P17 — THE PHARMACIST IN CHARGE, held IN ADDITION to `pharmacy`. The pharmacist named on
@@ -1625,6 +1648,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PvPI, closed. DEFAULT — owner may change.
       "pharmacy.adr.record",
       "pharmacy.adr.manage",
+      // PHARMACY STAGE D2 — the in-charge logs medication errors and near misses and reviews them: root
+      // cause, action taken, closed. DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      "pharmacy.incidents.review",
+      // PHARMACY STAGE D3 — the in-charge adds and edits the fridges and closes an excursion: every held batch
+      // released with its stability reason or written off. DEFAULT — owner may change.
+      "pharmacy.coldchain.manage",
     ],
   },
 ];
