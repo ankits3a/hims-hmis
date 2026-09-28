@@ -1501,7 +1501,11 @@
       "cascade": "Every allocation this receipt made will be reversed and the bills it settled go back to outstanding. Receipt {{receiptId}} cannot be un-voided.",
       "confirm": "Void the receipt",
       "done_one": "The receipt is voided and {{count}} allocation was reversed.",
-      "done_other": "The receipt is voided and {{count}} allocations were reversed."
+      "done_other": "The receipt is voided and {{count}} allocations were reversed.",
+      "patient": "Patient whose receipt it is",
+      "receiptFilter": "Type the printed receipt number to narrow the list",
+      "noReceipts": "This patient has no receipt to void",
+      "loadingReceipts": "Loading this patient’s receipts…"
     },
     "recon": {
       "title": "Upload a settlement statement",
@@ -1520,7 +1524,8 @@
       "worklist": "Mismatched tenders",
       "noMismatches": "No tender is mismatched",
       "expected": "Expected",
-      "settled": "Settled"
+      "settled": "Settled",
+      "mismatchNote": "The statement settled {{settled}} against {{expected}} expected; the tolerance is {{tolerance}}."
     },
     "dayBook": {
       "day": "Day",
@@ -1554,8 +1559,10 @@
       "none": "Every visit on {{day}} that owed a consultation fee has a bill against it.",
       "visit": "Visit",
       "type": "Visit type",
-      "date": "Date"
-    }
+      "date": "Date",
+      "typeUnknown": "Not recorded"
+    },
+    "change": "Change"
   },
   "alerts": {
     "title": "Alerts",
