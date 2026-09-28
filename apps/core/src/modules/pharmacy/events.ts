@@ -258,6 +258,19 @@ export const adrEventRecorded = defineEvent("adr.event_recorded", MODULE, z.obje
   reportId: id, eventId: id, kind: z.enum(["causality_assessed", "sent_to_pvpi", "closed"]),
 }));
 
+/**
+ * STAGE D2 — a medication error or near miss was recorded. Codes only: the narrative stays in the log, and the
+ * reporter is the envelope's actor (the audit trail), never a payload field a consumer could display.
+ */
+export const incidentRecorded = defineEvent("incident.recorded", MODULE, z.object({
+  incidentId: id, kind: z.enum(["near_miss", "error"]), category: z.string().min(1), stage: z.string().min(1), type: z.string().min(1),
+}));
+
+/** STAGE D2 — a later act on a medication incident: reviewed (root cause, action taken) or closed. */
+export const incidentEventRecorded = defineEvent("incident.event_recorded", MODULE, z.object({
+  incidentId: id, eventId: id, kind: z.enum(["reviewed", "closed"]),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -267,5 +280,5 @@ export const PHARMACY_EVENTS = [
   retailSold, retailLicenceRecorded, retailLineReturned,
   shortBookNoted, shortBookResolved,
   controlledLicenceRecorded, endPrescriberRecorded, endPrescriberEnded, controlledChecked, controlledActWitnessed,
-  adrReported, adrEventRecorded,
+  adrReported, adrEventRecorded, incidentRecorded, incidentEventRecorded,
 ] as const;

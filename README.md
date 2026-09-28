@@ -1337,6 +1337,11 @@ template ids, the WhatsApp template names and the pharmacy's phone on the office
 `pharmacy.adr.record` (reporting a suspected adverse drug reaction on the PvPI form) goes to `pharmacy`,
 `pharmacy_incharge` and `doctor`. `pharmacy.adr.manage` (WHO-UMC causality, sent to PvPI, closed) goes to
 `pharmacy_incharge` and `medical_superintendent`. Both are defaults the owner may change.
+**Pharmacy stage D2 logs medication errors and near misses, blame-free.**
+`pharmacy.incidents.record` (logging a medication error or near miss, NCC MERP A–I) goes to `pharmacy`,
+`pharmacy_assistant`, `pharmacy_incharge` and `doctor`. `pharmacy.incidents.review` (root cause, action taken,
+closed; the only grant told the reporter's name) goes to `pharmacy_incharge` and `medical_superintendent`.
+Both are defaults the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1359,6 +1364,8 @@ template ids, the WhatsApp template names and the pharmacy's phone on the office
 | `pharmacy.messages.manage` | | | ✓ |
 | `pharmacy.adr.record` | ✓ | | ✓ |
 | `pharmacy.adr.manage` | | | ✓ |
+| `pharmacy.incidents.record` | ✓ | ✓ | ✓ |
+| `pharmacy.incidents.review` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |

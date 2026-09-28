@@ -9,6 +9,7 @@ import type { ShortDrug } from "./short-book";
 import { quoteAmountPaise } from "../../lib/pharmacy-bill";
 import { ResolveSheet } from "./resolve";
 import { CopilotOffer, firstLineNeedingHelp } from "./copilot";
+import { NearMissForm } from "./near-miss";
 
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import { SubstituteSheet } from "./substitute";
@@ -60,6 +61,10 @@ export function LineList({
   const qc = useQueryClient();
   /* PD-9 — the counter asks the prescriber, by name; the server holds the Act's registration check. */
   const canAsk = can("pharmacy.dispense.place");
+  /* STAGE D2 — a near miss caught on this line is logged from its ⋯ menu, the line pre-filled (blame-free). */
+  const canNearMiss = can("pharmacy.incidents.record");
+  const [nearMiss, setNearMiss] = useState<number | null>(null);
+  const [nearMissSaid, setNearMissSaid] = useState<string | null>(null);
   const askAbout = async (lineIdx: number, blocks: readonly WireAlternativeBlock[], note: string): Promise<string | null> => {
     try {
       for (const b of blocks) await askPrescriber(dispense.id, lineIdx, { book: b.book, about: b.key, ...(note.trim() === "" ? {} : { note: note.trim() }) });
@@ -249,6 +254,7 @@ export function LineList({
             onSubstitute={() => setSubbing(l.lineIdx)}
             onResolve={() => setResolving(l.lineIdx)}
             onOpenBatch={batchable(l) ? () => setBatchFor(l.lineIdx) : null}
+            onNearMiss={canNearMiss ? () => { setNearMissSaid(null); setNearMiss(l.lineIdx); } : null}
             onFocusLine={() => { setFocusLine(l.lineIdx); onFocusDrug?.(drugOf(l)); }}
             onDecline={(reason, alsoShort) => void decline(l.lineIdx, reason, alsoShort)}
           />
@@ -303,6 +309,17 @@ export function LineList({
           }}
         />
       )}
+      {nearMiss !== null ? (() => {
+        const l = dispense.lines.find((x) => x.lineIdx === nearMiss);
+        const drug = l === undefined ? "" : (l.dispensedMedicine?.brandName ?? l.rxLine.drug);
+        return (
+          <LineSheet title={t("pharmacyDesk.nearMiss.title", { drug })} onClose={() => setNearMiss(null)}>
+            <NearMissForm dispenseId={dispense.id} lineIdx={nearMiss} drug={drug}
+              onDone={(no) => { setNearMiss(null); setNearMissSaid(t("pharmacyDesk.nearMiss.done", { no })); }} onCancel={() => setNearMiss(null)} />
+          </LineSheet>
+        );
+      })() : null}
+      {nearMissSaid !== null ? <p role="status" data-testid="near-miss-said" style={{ margin: "12px 0 0 0", fontSize: 12.5, color: "var(--green)" }}>{nearMissSaid}</p> : null}
       {busy ? <p role="status" style={{ margin: "12px 0 0 0", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.collecting")}</p> : null}
       {/* A refusal that landed on its lines is said there, once — not again under the list. */}
       {ticketError !== null && Object.keys(errors).length === 0
@@ -326,7 +343,7 @@ type SheetKind = "qty" | "where" | "ask";
 type Note = { text: string; tone: "red" | "gold" | "green" | "dim"; testId?: string; alert?: boolean };
 
 function LineRow({
-  line, tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve, onOpenBatch, onFocusLine,
+  line, tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve, onOpenBatch, onFocusLine, onNearMiss,
 }: {
   line: WireDispenseLine;
   tick: Tick | undefined;
@@ -350,6 +367,8 @@ function LineRow({
   /** The FEFO batch & shelf sheet for this line, or null when its batch is not the pharmacist's to choose. */
   onOpenBatch: (() => void) | null;
   onFocusLine: () => void;
+  /** STAGE D2 — log a near miss caught on this line (the line pre-filled); null for a reader who may not record. */
+  onNearMiss: (() => void) | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [menu, setMenu] = useState(false);
@@ -465,6 +484,7 @@ function LineRow({
     ] : []),
     ...(onAsk !== null && unasked.length > 0 ? [{ key: "ask", label: t("pharmacyDesk.auth.ask", { doctor }), act: () => { setAsking(""); setSheetError(null); setSheet("ask"); }, disabled: busy }] : []),
     ...(onPlace === null ? [] : [{ key: "where", label: line.location == null ? t("pharmacyDesk.rack.ask") : t("pharmacyDesk.rack.change"), act: () => { setPlacing(line.location ?? ""); setSheetError(null); setSheet("where"); } }]),
+    ...(onNearMiss === null ? [] : [{ key: "nearMiss", label: t("pharmacyDesk.menu.nearMiss"), act: onNearMiss }]),
     { key: "decline", label: t("pharmacyDesk.menu.decline"), act: () => { setWhy(""); setShortChoice(null); onToggleDecline(true); } },
   ];
 

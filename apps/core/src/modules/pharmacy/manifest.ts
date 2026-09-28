@@ -129,6 +129,16 @@ export const pharmacyManifest: ModuleManifest = {
      * medical superintendent.
      */
     "pharmacy.adr.manage",
+    /**
+     * STAGE D2 — record a medication error or near miss (NCC MERP A–I). The pharmacist, the aide, the
+     * in-charge and a doctor: the log is blame-free, so whoever sees it records it.
+     */
+    "pharmacy.incidents.record",
+    /**
+     * STAGE D2 — review an incident (root cause, action taken) and close it; the only grant that is told the
+     * reporter's name. The pharmacist in charge and the medical superintendent.
+     */
+    "pharmacy.incidents.review",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [

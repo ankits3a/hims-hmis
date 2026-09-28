@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint, bigserial, boolean, check, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { users } from "./auth";
+import { roles, users } from "./auth";
 import { invoiceLines, invoices } from "./billing";
 import { formularyMedicines, formularySalts } from "./formulary";
 import { items, stockBatches, stockLedger, stockReservations } from "./materials";
@@ -801,5 +801,110 @@ export const pharmacyAdrEvents = pgTable(
       sql.raw(`(kind = 'causality_assessed') = (causality is not null) and (causality is null or causality in (${inList(ADR_CAUSALITY)}))`)),
     check("pharmacy_adr_events_sent_ck",
       sql.raw(`(kind = 'sent_to_pvpi') = (sent_on is not null and channel is not null) and (channel is null or channel in (${inList(ADR_CHANNELS)})) and (kind = 'sent_to_pvpi' or pvpi_ref is null)`)),
+  ],
+);
+
+/**
+ * ═══ PHARMACY STAGE D2 — THE MEDICATION ERROR AND NEAR-MISS LOG (NABH MOM, NCC MERP index A–I) ═══
+ *
+ * Two tables, both APPEND-ONLY by trigger (the migration hand-carries it, the D1 shape):
+ *
+ *   `pharmacy_medication_incidents`       — one incident as it was reported: near miss or error, the stage it
+ *                                           happened at, what went wrong, the NCC MERP category, what
+ *                                           contributed, what happened in the reporter's words. Optionally
+ *                                           the patient, the dispense line and the item it concerned.
+ *   `pharmacy_medication_incident_events` — every later act: `reviewed` (root cause, action taken) and
+ *                                           `closed`. A state change is a new row, never an edit.
+ *
+ * ═══ BLAME-FREE ═══
+ *
+ * `reported_by` is the reporter's user id — the audit trail keeps it. `reporter_role` is the role through
+ * which that person held `pharmacy.incidents.record` WHEN they reported, snapshotted so a later change of
+ * post does not rewrite who-reported-as-what. Only a holder of `pharmacy.incidents.review` is ever told the
+ * name; everyone else, and every export and report, sees the role (`modules/pharmacy/incidents.ts`).
+ *
+ * ═══ KIND AGREES WITH CATEGORY — a CHECK, not a convention ═══
+ *
+ * NCC MERP: A (circumstances capable of causing error) and B (an error that did not reach the patient) are
+ * near misses; C–I reached the patient and are errors. The NABH indicator counts errors per 1,000 dispensed
+ * lines, so a row whose kind contradicts its category would silently move the hospital's number.
+ */
+export const MED_INCIDENT_KINDS = ["near_miss", "error"] as const;
+export type MedIncidentKind = (typeof MED_INCIDENT_KINDS)[number];
+export const MED_INCIDENT_STAGES = ["prescribing", "transcribing", "dispensing", "administration", "monitoring"] as const;
+export type MedIncidentStage = (typeof MED_INCIDENT_STAGES)[number];
+export const MED_INCIDENT_TYPES = [
+  "wrong_drug", "wrong_strength", "wrong_dose", "wrong_quantity", "wrong_patient", "wrong_route", "expired", "lasa_mixup", "omission", "other",
+] as const;
+export type MedIncidentType = (typeof MED_INCIDENT_TYPES)[number];
+/** The NCC MERP Index for Categorizing Medication Errors. */
+export const NCC_MERP_CATEGORIES = ["A", "B", "C", "D", "E", "F", "G", "H", "I"] as const;
+export type NccMerpCategory = (typeof NCC_MERP_CATEGORIES)[number];
+/** A and B never reached the patient. */
+export const NEAR_MISS_CATEGORIES = ["A", "B"] as const;
+export const MED_INCIDENT_FACTORS = ["lasa", "look_alike_packaging", "illegible_rx", "workload", "interruption", "other"] as const;
+export type MedIncidentFactor = (typeof MED_INCIDENT_FACTORS)[number];
+export const MED_INCIDENT_EVENT_KINDS = ["reviewed", "closed"] as const;
+export type MedIncidentEventKind = (typeof MED_INCIDENT_EVENT_KINDS)[number];
+
+export const pharmacyMedicationIncidents = pgTable(
+  "pharmacy_medication_incidents",
+  {
+    id: text("id").primaryKey(),
+    /** The log's own serial — `MI-000042` on screen. An append-only table never re-uses one. */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
+    kind: text("kind").notNull(),
+    stage: text("stage").notNull(),
+    type: text("type").notNull(),
+    category: text("category").notNull(),
+    patientId: text("patient_id").references(() => patients.id),
+    dispenseLineId: text("dispense_line_id").references(() => pharmacyDispenseLines.id),
+    itemId: text("item_id").references(() => items.id),
+    /** Contributing factors, a multi-select; each a member of `MED_INCIDENT_FACTORS`. */
+    factors: text("factors").array().notNull().default(sql`'{}'::text[]`),
+    whatHappened: text("what_happened").notNull(),
+    /** The audit trail's reporter. Shown by name only to `pharmacy.incidents.review`. */
+    reportedBy: text("reported_by").notNull().references(() => users.id),
+    /** The role the reporter recorded under, snapshotted — what everyone else, and every export, is shown. */
+    reporterRole: text("reporter_role").notNull().references(() => roles.key),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_medication_incidents_seq_ux").on(t.seq),
+    index("pharmacy_medication_incidents_created_idx").on(t.createdAt),
+    index("pharmacy_medication_incidents_patient_idx").on(t.patientId),
+    check("pharmacy_medication_incidents_kind_ck", sql.raw(`kind in (${inList(MED_INCIDENT_KINDS)})`)),
+    check("pharmacy_medication_incidents_stage_ck", sql.raw(`stage in (${inList(MED_INCIDENT_STAGES)})`)),
+    check("pharmacy_medication_incidents_type_ck", sql.raw(`type in (${inList(MED_INCIDENT_TYPES)})`)),
+    check("pharmacy_medication_incidents_category_ck", sql.raw(`category in (${inList(NCC_MERP_CATEGORIES)})`)),
+    /** NCC MERP: A–B never reached the patient (near miss); C–I did (error). The indicator counts on this. */
+    check("pharmacy_medication_incidents_kind_category_ck",
+      sql.raw(`(kind = 'near_miss') = (category in (${inList(NEAR_MISS_CATEGORIES)}))`)),
+    check("pharmacy_medication_incidents_factors_ck", sql.raw(`factors <@ array[${inList(MED_INCIDENT_FACTORS)}]::text[]`)),
+    check("pharmacy_medication_incidents_what_ck", sql`btrim(${t.whatHappened}) <> ''`),
+  ],
+);
+
+export const pharmacyMedicationIncidentEvents = pgTable(
+  "pharmacy_medication_incident_events",
+  {
+    id: text("id").primaryKey(),
+    incidentId: text("incident_id").notNull().references(() => pharmacyMedicationIncidents.id),
+    kind: text("kind").notNull(),
+    /** `reviewed` — why it happened, and what was changed so it does not happen again. */
+    rootCause: text("root_cause"),
+    actionTaken: text("action_taken"),
+    note: text("note"),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pharmacy_medication_incident_events_incident_idx").on(t.incidentId, t.recordedAt),
+    /** An incident closes once; a review may be revised (the latest counts). */
+    uniqueIndex("pharmacy_medication_incident_events_closed_ux").on(t.incidentId).where(sql`kind = 'closed'`),
+    check("pharmacy_medication_incident_events_kind_ck", sql.raw(`kind in (${inList(MED_INCIDENT_EVENT_KINDS)})`)),
+    check("pharmacy_medication_incident_events_review_ck",
+      sql.raw(`(kind = 'reviewed') = (root_cause is not null and btrim(root_cause) <> '' and action_taken is not null and btrim(action_taken) <> '')
+        and (kind = 'reviewed' or (root_cause is null and action_taken is null))`)),
   ],
 );
