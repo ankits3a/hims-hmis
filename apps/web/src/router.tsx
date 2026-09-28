@@ -1282,6 +1282,8 @@ const instrumentReconcileRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter/reconcile",
   component: InstrumentReconcile,
+  // UX-AUDIT 2026-09-28 · BOARD — the screen wears the station shell, which owns the viewport.
+  staticData: { fullViewport: true },
 });
 
 /**

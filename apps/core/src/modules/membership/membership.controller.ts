@@ -16,7 +16,9 @@ import { enrolMember } from "./enrolment";
 import { graceHonor, recogniseForActor } from "./recognition";
 import { importHolderBook } from "./import/importer";
 import { listQuarantine } from "./import/quarantine";
-import { dismissMatch, listLapsedRestores, listMatchQueue, resolveMatch } from "./import/match-queue";
+import {
+  DISMISS_REASONS, dismissMatch, listLapsedRestores, listMatchQueue, markLapsedRestoreChecked, resolveMatch,
+} from "./import/match-queue";
 import { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./search-providers";
 import type { GraceHonorResult, RecognitionResult } from "./recognition";
 import type { HolderBookImportResult } from "./import/importer";
@@ -107,12 +109,21 @@ const resolveMatchBody = z.object({
   queueItemId: z.string().min(1),
   patientId: z.string().min(1),
   note: z.string().max(1000).optional(),
+  // UX-AUDIT 2026-09-28 · BOARD — the weak-link confirm; `resolveMatch` decides when it is needed.
+  confirmWeak: z.boolean().optional(),
 });
 
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — a preset `reason` may stand alone; `dismissMatch` requires the note
+ * when there is no reason or the reason is "other", so the rule has one home.
+ */
 const dismissMatchBody = z.object({
   queueItemId: z.string().min(1),
-  note: z.string().min(1).max(1000),
+  note: z.string().max(1000).optional(),
+  reason: z.enum(DISMISS_REASONS).optional(),
 });
+
+const lapsedCheckedBody = z.object({ movementId: z.string().min(1) });
 
 const graceHonorBody = z.object({
   cardCode: z.string().min(1),
@@ -364,6 +375,24 @@ export class MembershipController {
     const b = parsed(dismissMatchBody, body);
     try {
       return await dismissMatch(this.db, actor, b, new Date());
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — "Mark checked" on a lapsed restore. Same grant as the queue it
+   * clears; it writes who looked and when, and changes no benefit.
+   */
+  @RequirePermission("membership.reconcile.operate", "hospital")
+  @Post("reconcile/lapsed/checked")
+  async reconcileLapsedChecked(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+  ): Promise<{ movementId: string; checkedAt: Date }> {
+    const b = parsed(lapsedCheckedBody, body);
+    try {
+      return await markLapsedRestoreChecked(this.db, actor, b, new Date());
     } catch (e) {
       toHttp(e);
     }
