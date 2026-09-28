@@ -116,7 +116,7 @@ interlock). Releasing that report unpaid IS credit.
 | Path | Today | After |
 |---|---|---|
 | OPD counter: a credit-extended invoice lets the consult start (`billing/gate.ts` `feeCovered`) | the cashier (`billing.credit.extend`) up to `creditCapPaise`, with no approval; `billing_credit_extension` (approver **billing_manager**) above it | every remainder needs a GRANTED `billing_credit_extension`, whose approver is **owner** |
-| Lab desk: order with part payment, `credit: {reason}` (`lab-desk.tsx:79`, `lab/desk.ts:442`) | lab reception holds `billing.credit.extend` | the same owner approval, or collect in full |
+| Lab desk: order with part payment, `credit: {reason}` (`lab-desk.tsx:79`, `lab/desk.ts:442`) | lab reception holds `billing.credit.extend` | **held, not credit (built #347):** the interlock holds EVERY unpaid lab report, so the desk's balance is a hold; the desk says "pay at the report" |
 | Lab reflex / add-on at the bench (`lab/verify.ts:680`) | a credit invoice, issued automatically | an unpaid invoice HELD by the interlock, with no credit flag and no approval: collected before the report goes |
 | Lab report released unpaid (`lab_release_unpaid`) | approver **billing_manager** | approver **owner** |
 | Pharmacy: medicines handed over unpaid | impossible (money before the drug) | a desk "credit" tender raises the owner's approval, and the dispense holds until it is granted |
@@ -127,8 +127,8 @@ change):**
    remainder needs the granted approval; `creditCapPaise` stays in config, but credit stops reading it.
 2. An internal-only `holdUntilPaid: {reason}` on `issueInvoice`, for the lab's reflex and add-on bills. It is not on
    the HTTP route. It persists the invoice unsettled with `credit_extended = false`, so no fee gate treats it as paid.
-3. Lab desk: on `credit_approval_required`, the screen offers "Ask the owner" (it files the approval). The order
-   goes through once it is granted.
+3. Lab desk: no ask needed. Its balance is held until the report (see the table). The ask lives on the billing
+   counter, as "Ask the owner for ₹X on credit" (`owner-credit-ask.tsx`), and the pharmacy will reuse it.
 4. Pharmacy desk: a "Credit — owner approves" tender, the same approval, with the dispense held at `picked`.
 5. Test fixtures that used `credit: {reason}` as a shortcut for "an unpaid invoice" (about 30 files) move to a helper
    that files and grants the approval, or to `holdUntilPaid`.

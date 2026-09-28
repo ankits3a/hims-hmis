@@ -1,0 +1,18 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-09-28T06:20:00Z" },
+  "title": "Pharmacy Office board",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 960, "title": "Office — needs you today (click a row)", "is_interactive": true },
+    "Menu.dc.html": { "x": 0, "y": 1080, "w": 1440, "h": 820, "title": "Where the 14 screens went — the header menu" },
+    "Phone.dc.html": { "x": 1520, "y": 0, "w": 390, "h": 844, "title": "Office on a phone (390)" }
+  },
+  "order": ["Main.dc.html", "Menu.dc.html", "Phone.dc.html"],
+  "notes": {
+    "t1": { "x": 0, "y": -300, "text": "Pharmacy Office — one back office, not 14 menu leaves", "kind": "title1", "maxW": 1910 },
+    "n1": { "x": 1520, "y": 900, "w": 390, "text": "Layout rule (owner, 25 Sep): menu in the HEADER; left lane = the document in hand; right = the copilot's drafts, then Clocks running collapsed. One unfiltered list, no filter tabs. Every act a person confirms; the copilot only drafts.", "size": "s" }
+  },
+  "designSystems": []
+}
