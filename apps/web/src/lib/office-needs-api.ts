@@ -19,7 +19,7 @@ export type WireNeedFact = { k: string; raw?: true; v: string | number; as: "tex
 export type WireNeedRef = {
   kind:
     | "po" | "purchasePlan" | "grnDesk" | "bill" | "run" | "payRun" | "return" | "writeoff" | "recall" | "returnPlan"
-    | "grn" | "retailLicence" | "cabinet" | "pharmacist";
+    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr";
   id: string | null;
 };
 
@@ -51,4 +51,6 @@ export const fetchOfficeNeeds = (): Promise<WireOfficeNeeds> => api("GET", "/pha
 export const NEEDS_GRANTS = [
   "materials.po.raise", "materials.bills.manage", "materials.returns.manage", "materials.grn.qc", "pharmacy.retail.manage",
   "pharmacy.ndps.custody", "pharmacy.licences.manage", "pharmacy.register.read", "pharmacy.pharmacists.manage",
+  // Stage D1 — the ADR register's LAW rows (a report not yet sent to PvPI).
+  "pharmacy.adr.manage",
 ] as const;

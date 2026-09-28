@@ -44,6 +44,8 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
       "pharmacy.ndps.custody", "pharmacy.ndps.witness", "pharmacy.licences.manage",
       // P6 (patient messages) — the desk's consent chip, and the office's Messages side.
       "pharmacy.messages.consent", "pharmacy.messages.manage",
+      // Stage D1 — the ADR register: report a reaction; causality, sent to PvPI, closed.
+      "pharmacy.adr.record", "pharmacy.adr.manage",
     ]);
     expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/desk", "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder", "/pharmacy/office", "/pharmacy/office/reports", "/pharmacy/registers/h1", "/pharmacy/leakage", "/pharmacy/retail", "/pharmacy/retail-licence", "/pharmacy/downtime"]);
     expect(pharmacyManifest.subscriptions).toEqual([
