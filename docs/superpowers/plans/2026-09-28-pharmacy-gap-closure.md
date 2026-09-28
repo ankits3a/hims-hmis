@@ -39,8 +39,10 @@ spot-checks by hand. This phase answers them.
 
 ## Owed by the owner (money / law)
 
-- Patient GSTIN on the pharmacy bill (B2B input credit): yes or no?
-- Old MRP next to new MRP at the counter: yes or no?
+None open. The three below were ruled on 2026-09-28 (asked in hmis-10's session, answered "No." to each):
+- **Patient GSTIN on the pharmacy bill: NO.** Every pharmacy bill stays B2C.
+- **Old MRP beside the new MRP at the counter: NO.**
+- **Home delivery / online orders: NO.** Do not build them.
 
 ## Stages (each = one PR on this lane or a sibling lane, CI-gated, one migration per PR, numbered at rebase)
 
