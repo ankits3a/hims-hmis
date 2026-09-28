@@ -1766,7 +1766,105 @@
       "outside_window": "This coupon is outside its hours",
       "min_bill_not_met": "The bill is below this coupon's minimum"
     },
-    "disclosureLabel": "Please tell the member:"
+    "disclosureLabel": "Please tell the member:",
+    "subtitle": "कार्ड पहचान · scan, check, carry it to the bill",
+    "inHand": "In hand",
+    "laneEmpty": "Scan or type a card and it appears here: its number, whether it can be used today, who holds it and what is left on it.",
+    "putDown": "put the card down",
+    "step1": "Scan or type the card",
+    "scanHint": "Card number, mobile or holder name. Enter recognises what you typed.",
+    "recognisedAt": "Recognised {{time}}",
+    "noMatch": {
+      "title": "No card in the holder book matches {{code}}.",
+      "body": "Check the digits, or search by the holder's mobile. If the partner's list has not reached us yet, a supervisor can allow it once (grace honour).",
+      "grace": "Grace honour needs a front office supervisor's approval before anything applies. Until then the visit is billed at the full rate."
+    },
+    "next": "Next",
+    "another": "Recognise another card",
+    "act": {
+      "take_to_bill": "Take to the bill",
+      "bill_full_rate": "Bill at full rate",
+      "reconcile": "Send to Reconcile",
+      "open_billing": "Open the bill"
+    },
+    "dock": {
+      "noMatch": "Bill without the card, or ask a supervisor for grace honour",
+      "coupon": "Type {{code}} on the bill; the bill checks it",
+      "reconcile": "Link the holder in Reconcile before this card is used:",
+      "fullRate": "No card benefit. Bill today's visit at the hospital's full rate",
+      "pickVisit": "Pick today's visit to carry this card to its bill",
+      "bill": "Bill {{visit}} for",
+      "withCard": "with card"
+    },
+    "standing": {
+      "usable": "Active",
+      "expired": "Expired {{date}}",
+      "suspended": "Suspended",
+      "cancelled": "Cancelled",
+      "not_yet_valid": "Starts {{date}}"
+    },
+    "cannotUse": "cannot be used",
+    "left": "{{remaining}} of {{granted}}",
+    "onTheBill": "balance left: see the bill",
+    "everyVisit": "every visit",
+    "holder": "Holder",
+    "name": "Name",
+    "linkedTo": "Card linked to",
+    "linkedYes": "this patient ✓",
+    "linkedNo": "nobody yet",
+    "card": "Card",
+    "valid": "Valid",
+    "from": "From",
+    "origin": {
+      "import": "Holder book",
+      "counter": "Enrolled at the counter",
+      "grace": "Grace honour"
+    },
+    "checked": "checked",
+    "queue": "Queue",
+    "benefits": "Benefits",
+    "benefitsLeft": "Benefits · left this year",
+    "countsOnly": "Counts of visits only. No rupee figure is shown at the counter; the saving is worked out once, on the bill.",
+    "step2": "Which of today's visits is it for?",
+    "unlinked": {
+      "title": "This card is not linked to a patient yet.",
+      "body": "A card nobody is linked to is never applied at the counter. Reconcile links the holder first; until then bill at the full rate."
+    },
+    "refuse": {
+      "expired": "This card expired on {{date}}.",
+      "suspended": "The card's issuer has paused this card.",
+      "cancelled": "This card has been cancelled.",
+      "not_yet_valid": "This card starts on {{date}}.",
+      "body": "Nothing on it applies to today's bill. Card sales and renewals are not done at this counter; the member can ask the card's issuer."
+    },
+    "visitsAtBill": "The visit is picked on the bill.",
+    "visitsLoading": "Reading today's visits…",
+    "noVisit": "No visit today for this patient. Send them to Desk One first, then come back to the card.",
+    "opened": "opened {{time}}",
+    "cardApplies": "Card applies",
+    "fullRate": "Full rate",
+    "visitsFrom": "Visits are read from OPD for this UHID. A patient with no visit today is sent to Desk One first.",
+    "step3": "What the bill will do with this card",
+    "willVisits": "{{remaining}} of {{granted}} left before this bill",
+    "twoBenefits": "If two benefits reach one line",
+    "largerWins": "the larger one wins; they never add up",
+    "onlyOnIssue": "The benefit is worked out by the bill, on the bill. Nothing is used up until the bill is issued; cancelling the bill gives the visit back.",
+    "step4": "Say this to the member",
+    "verbatim": "The server's own sentence, shown word for word.",
+    "today": "Cards today · {{count}}",
+    "needsYouFirst": "needs you first",
+    "todayEmpty": "No card recognised at this counter today.",
+    "row": {
+      "unknown": "Not in the book",
+      "noHolder": "Holder not linked",
+      "couponOnly": "Coupon handed over",
+      "noMatch": "no match",
+      "coupon": "coupon",
+      "active": "active",
+      "toLink": "to link",
+      "expired": "expired",
+      "blocked": "blocked"
+    }
   },
   "instrumentReconcile": {
     "title": "Card reconcile queue",
