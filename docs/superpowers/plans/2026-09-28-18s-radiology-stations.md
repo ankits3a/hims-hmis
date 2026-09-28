@@ -207,6 +207,56 @@ templates, co-sign, follow-ups and peer review).
 - **Journeys:** J1 hop 1, J3 hop 1, J9 last hop.
 - Claims: the OPD consult screen (coordinate with the doctor-consult lane) and `router.tsx`.
 
+**RS2 as built** (PR #377, merged `ed7330c5`, 28 Sep): the consult panel and the desk door over one read,
+`GET /radiology/advised`. The ward door is deferred to IPD; RS2b below builds its radiology half. What was built, the
+DECIDED choices and the test counts are recorded once, in §8 CLOSE of
+`2026-09-06-phase1-18a-iv-radiology-ordering-door.md`.
+
+**RS1 as built** (PR #374, merged 28 Sep): three browsable stations (imaging reception, worklist, radiation
+safety); the study console and the report sit inside the worklist station. `StationShell` gained a `seat` prop.
+
+### RS2b · The portable and bedside door (built ahead of IPD)
+
+Owner, 28 Sep: *"work on the deferred items. We will connect it later when full IPD plan is built."*
+There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929.
+
+**Built**
+- **Machines that go to the bed (data).** `seed:radiology` writes `PX-1` (portable X-ray, ionising)
+  and `USG-P1` (portable ultrasound), each `attributes.portable = true` — the writer 18a-iii F2 said
+  was missing. Find-or-create; an active (governed) study-type book is still left alone. **No AERB
+  licence is seeded:** `PX-1` is a licence gap (`/aerb/licences/gaps`, standup `radiology_devices_licensed`
+  red) until the RSO files its real certificate.
+- **`GET /radiology/devices`** (`radiology.worklist.read` — the one grant the receptionist and the
+  technologist share; there is no either-of decorator): every bookable imaging machine with code,
+  name, room (parent resource), `portable`, status, `ionising` and AERB `licensedNow` from
+  `modules/aerb`'s own read. Retired and non-vocabulary devices are not listed.
+- **`GET /radiology/portable/round`** (`radiology.acquire`): bedside studies booked on a portable
+  machine, scheduled → in_acquisition, by place then slot; names through `displayName`; one
+  `imaging.worklist` PHI row per patient.
+- **Bedside at order time.** An imaging order item takes `bedsideLocation` (trimmed, 1–120, else
+  `invalid_bedside_location`). Placement appends `imaging.bedside_requested` in the order's
+  transaction; the `radiology.order_placed` consumer copies it onto the study. `resolveBedside` is
+  unchanged, so a fixed machine refuses `device_not_portable` until the desk clears the bed.
+  No migration (the event log carries it; `order_items` is the kernel's envelope).
+- **Reception** books from the machine list (portable / not licensed marked) with an *At the bedside*
+  field for a portable machine, and offers *Bring to the department instead* after
+  `device_not_portable`.
+- **`/radiology/portable`** — the *Portable round* station, grouped by ward, each row opening the
+  study console, with a note that ward ordering arrives with IPD.
+
+**The seams the IPD plan calls**
+- `bedsideStudiesFor(db, actor, locationPrefix)` from `modules/radiology/index.ts` — a ward's bedside
+  studies (booked or not yet booked) by whole-word, case-insensitive place prefix ("Ward 3" never
+  returns "Ward 30"), in the round's row shape. No route; the IPD route owns the permission.
+- `placeImagingOrder(..., { items: [{ serviceId, bedsideLocation: "Ward 3 · bed 12" }] })` — the
+  ward order (also accepted on `POST /radiology/orders`).
+
+**Left for IPD**
+- The ward screen (the IPD tracker) that calls `bedsideStudiesFor` and places the ward order.
+- The porter request and transport status (who takes the trolley, when it left, when it came back).
+- NPO / fasting and transport-fitness status on the bedside study, shown to the technologist.
+- Choosing ward and bed from the IPD bed board instead of free text (today the place is a string).
+
 ### RS3 · Front desk counter, diary, display
 - **Web `desk:counter`:** Studies → Checks → Bill → Slot & slip.
   - Payers: self-pay, corporate, TPA with the pre-auth hold (ruling 8), IPD running bill, ER bill-follows.
