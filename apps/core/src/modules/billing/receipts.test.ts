@@ -273,9 +273,11 @@ describe("receipts and allocations: the patient money ledger (D1)", () => {
     const before = await patientBalance(db, cashier.actor, patientId);
     expect(before).toMatchObject({ patientId, advancePaise: 30_000, outstandingPaise: 100_000 });
     expect(before.dues).toHaveLength(1);
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the fixture's dues are a HELD bill
+    // (holdUntilPaid), not credit, and the reader carries that flag through as false.
     expect(before.dues[0]).toMatchObject({
       invoiceId: dues.invoiceId, invoiceNo: dues.invoiceNo, netPayablePaise: 100_000,
-      outstandingPaise: 100_000, creditExtended: true, restricted: false, name: "Ledger Patient",
+      outstandingPaise: 100_000, creditExtended: false, restricted: false, name: "Ledger Patient",
     });
 
     await allocateReceipt(

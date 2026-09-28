@@ -4,11 +4,47 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ageOf } from "./desk-one/model";
 
 type SearchHit = {
   id: string; uhid: string; name: string; phone: string | null; administrativeGender: string;
   dob: string | null; isConfidential: boolean; hasPhoto: boolean;
+  // Present on the wire since FD-11 (search.ts) — optional here so an older payload still renders.
+  district?: string | null;
 };
+
+/**
+ * UX-AUDIT 2026-09-28 — TWO "ASHA DEVI" ROWS COULD NOT BE TOLD APART BEFORE ONE WAS PICKED.
+ *
+ * A real-Chromium walk of /merge searched "asha" and got two buttons reading `Asha Devi · HMS…`,
+ * with nothing but the UHID between them — on the one screen whose whole job is deciding whether two
+ * records are the same human being. `GET /patients/search` already returns everything needed to
+ * tell them apart (sex, date of birth, mobile, district; see `PatientSearchResult`), so this is a
+ * rendering fix and the shared `patients` contract is untouched.
+ *
+ * The mobile is masked the way every list row in the app masks it — `•••••• 3210`, the rule in
+ * `search-provider.ts`'s `toHit` (DD8: a list row is not a record; the full number is on the
+ * comparison below, behind the pick). Age comes from Desk One's `ageOf`, so the two screens can
+ * never disagree about how old the same patient is.
+ */
+function maskedPhone(phone: string | null): string | null {
+  if (phone === null || phone === "") return null;
+  return `•••••• ${phone.replace(/\D/g, "").slice(-4)}`;
+}
+
+function HitDetails({ hit }: { hit: SearchHit }): React.ReactElement {
+  const { t } = useTranslation();
+  const age = ageOf(hit.dob);
+  const parts = [
+    // `ageOf` gives "36" for years and "5m" under one — the unit rides with the number either way.
+    age === "" ? null : t("merge.hitAge", { age: age.endsWith("m") ? age : `${age}y` }),
+    t(`register.${hit.administrativeGender}`, { defaultValue: hit.administrativeGender }),
+    hit.dob === null ? null : t("merge.hitDob", { dob: hit.dob.slice(0, 10) }),
+    maskedPhone(hit.phone),
+    hit.district ?? null,
+  ].filter((p): p is string => p !== null && p !== "");
+  return <span className="block text-xs text-neutral-600">{parts.join(" · ")}</span>;
+}
 
 // Wire shape (patients.controller.ts) — the subset this screen's comparison table needs.
 // The SAME shape backs both the live GET /patients/:id fetch (picker phase) and the frozen
@@ -65,9 +101,21 @@ function useDebounced(value: string, ms: number): string {
 
 // ——— Picker: T14's search query shape, one selectable result per side ———
 
+/*
+  UX-AUDIT 2026-09-28 — THE SAME RECORD COULD BE PICKED AS BOTH A AND B.
+
+  The walk picked HMS0000001234 on both sides and "Request merge" stayed enabled; the server refuses
+  it (`merge_same_patient`, 409), but only after the clerk has typed a reason and pressed the button.
+  So the other side's pick arrives here as `takenId`: its row still renders (hiding it would make a
+  search look like it lost a patient) but disabled, saying which side already holds it. A picked
+  side can be changed, because a pick that cannot be undone is a screen you reload to recover from.
+*/
 function PatientPicker({
-  label, hit, onPick, side,
-}: { label: string; hit: SearchHit | null; onPick: (h: SearchHit) => void; side: string }): React.ReactElement {
+  label, hit, onPick, onClear, side, takenId, takenLabel,
+}: {
+  label: string; hit: SearchHit | null; onPick: (h: SearchHit) => void; onClear: () => void; side: string;
+  takenId: string | null; takenLabel: string;
+}): React.ReactElement {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
   const debounced = useDebounced(q, 250);
@@ -80,9 +128,15 @@ function PatientPicker({
   if (hit !== null) {
     return (
       <div className="rounded border p-2">
-        <p className="text-xs font-medium text-neutral-500">{label}</p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs font-medium text-neutral-500">{label}</p>
+          <button type="button" onClick={onClear} className="text-xs text-neutral-600 underline">
+            {t("merge.change")}
+          </button>
+        </div>
         <p className="font-medium">{hit.name}</p>
         <p className="font-mono text-xs text-neutral-600">{hit.uhid}</p>
+        <HitDetails hit={hit} />
       </div>
     );
   }
@@ -97,16 +151,22 @@ function PatientPicker({
         className="w-full rounded border px-2 py-1"
       />
       <div className="space-y-1">
-        {search.data?.items.map((h) => (
-          <button
-            key={h.id}
-            type="button"
-            onClick={() => onPick(h)}
-            className="block w-full rounded border px-2 py-1 text-left text-sm hover:bg-neutral-50"
-          >
-            {h.name} · <span className="font-mono text-xs">{h.uhid}</span>
-          </button>
-        ))}
+        {search.data?.items.map((h) => {
+          const taken = h.id === takenId;
+          return (
+            <button
+              key={h.id}
+              type="button"
+              onClick={() => onPick(h)}
+              disabled={taken}
+              className="block w-full rounded border px-2 py-1 text-left text-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+            >
+              <span className="break-words">{h.name}</span> · <span className="font-mono text-xs">{h.uhid}</span>
+              {taken && <span className="ml-1 text-xs font-medium text-amber-700">({t("merge.alreadyPicked", { side: takenLabel })})</span>}
+              <HitDetails hit={h} />
+            </button>
+          );
+        })}
         {search.data !== undefined && search.data.items.length === 0 && (
           <p className="text-xs text-neutral-500">{t("search.none")}</p>
         )}
@@ -140,9 +200,20 @@ function ComparisonTable({
       right: rightAllergyCount !== null ? String(rightAllergyCount) : "—",
     },
   ];
+  /*
+    UX-AUDIT 2026-09-28 — AT 390 px RECORD B AND EVERY "differs" MARKER WERE OFF-SCREEN.
+
+    Four `whitespace-nowrap` columns inside the table's own horizontal scroller put Record B and the
+    marker at x≈660 on a 390 px phone: the page did not overflow, so nothing looked broken, and the
+    one column that answers "are these the same person?" was simply not there. Below `sm` each field
+    row becomes a small grid — label and marker on the first line, then A and B stacked, each
+    captioned — and values wrap. From `sm` up it is the same four-column table as before; it is
+    still one `<tr>` per field either way, so a row and its marker stay one element.
+  */
+  const cell = "whitespace-normal break-words sm:table-cell";
   return (
     <Table>
-      <TableHeader>
+      <TableHeader className="hidden sm:table-header-group">
         <TableRow>
           <TableHead />
           <TableHead>{t("merge.left")}</TableHead>
@@ -154,11 +225,20 @@ function ComparisonTable({
         {rows.map((r) => {
           const differs = r.left !== r.right;
           return (
-            <TableRow key={r.label} className={differs ? "bg-amber-50" : undefined}>
-              <TableCell className="font-medium">{r.label}</TableCell>
-              <TableCell>{r.left}</TableCell>
-              <TableCell>{r.right}</TableCell>
-              <TableCell>
+            <TableRow
+              key={r.label}
+              className={`grid grid-cols-[1fr_auto] sm:table-row ${differs ? "bg-amber-50" : ""}`}
+            >
+              <TableCell className={`${cell} order-1 pb-0 font-medium sm:pb-2`}>{r.label}</TableCell>
+              <TableCell className={`${cell} order-3 col-span-2 py-1 sm:py-2`}>
+                <span className="mr-2 text-xs text-neutral-500 sm:hidden">{t("merge.left")}</span>
+                {r.left}
+              </TableCell>
+              <TableCell className={`${cell} order-4 col-span-2 pt-0 sm:pt-2`}>
+                <span className="mr-2 text-xs text-neutral-500 sm:hidden">{t("merge.right")}</span>
+                {r.right}
+              </TableCell>
+              <TableCell className={`${cell} order-2 pb-0 text-right sm:pb-2 sm:text-left`}>
                 {differs && <span className="text-xs font-medium text-amber-700">{t("merge.differs")}</span>}
               </TableCell>
             </TableRow>
@@ -332,8 +412,17 @@ export function MergeReview(): React.ReactElement {
     refetchInterval: 5_000,
   });
 
+  /*
+    UX-AUDIT 2026-09-28 — the picker refuses the same SEARCH row on both sides, but two different
+    rows can still RESOLVE to one record (`GET /patients/:id` follows a merged record to its winner —
+    `resolvedFrom`). Compared on the resolved ids, so the screen never offers a merge the server will
+    refuse as `merge_same_patient`.
+  */
+  const sameRecord = leftPatient.data !== undefined && rightPatient.data !== undefined
+    && leftPatient.data.patient.id === rightPatient.data.patient.id;
+
   const submit = async (): Promise<void> => {
-    if (winner === null || leftPatient.data === undefined || rightPatient.data === undefined) return;
+    if (winner === null || sameRecord || leftPatient.data === undefined || rightPatient.data === undefined) return;
     const trimmed = note.trim();
     if (trimmed === "") return;
     setSubmitError(null);
@@ -362,11 +451,18 @@ export function MergeReview(): React.ReactElement {
     <div className="space-y-6 p-6">
       <h1 className="text-xl font-semibold">{t("merge.title")}</h1>
       <p className="text-sm text-neutral-500">{t("merge.pickTwo")}</p>
-      <div className="grid grid-cols-2 gap-4">
-        <PatientPicker side="left" label={t("merge.left")} hit={left} onPick={setLeft} />
-        <PatientPicker side="right" label={t("merge.right")} hit={right} onPick={setRight} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <PatientPicker
+          side="left" label={t("merge.left")} hit={left} onPick={setLeft} onClear={() => { setLeft(null); setWinner(null); }}
+          takenId={right?.id ?? null} takenLabel={t("merge.right")}
+        />
+        <PatientPicker
+          side="right" label={t("merge.right")} hit={right} onPick={setRight} onClear={() => { setRight(null); setWinner(null); }}
+          takenId={left?.id ?? null} takenLabel={t("merge.left")}
+        />
       </div>
-      {leftPatient.data !== undefined && rightPatient.data !== undefined && (
+      {sameRecord && <p role="alert" className="text-sm text-red-600">{t("merge.sameRecord")}</p>}
+      {leftPatient.data !== undefined && rightPatient.data !== undefined && !sameRecord && (
         <>
           <ComparisonTable
             left={leftPatient.data.patient}
@@ -396,7 +492,7 @@ export function MergeReview(): React.ReactElement {
             />
           </div>
           {submitError !== null && <p role="alert" className="text-sm text-red-600">{submitError}</p>}
-          <Button onClick={() => void submit()} disabled={winner === null || note.trim() === ""}>
+          <Button onClick={() => void submit()} disabled={winner === null || sameRecord || note.trim() === ""}>
             {t("merge.submit")}
           </Button>
         </>

@@ -54,10 +54,24 @@ export const LAB_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number
     actFirstAllowed: false,
     closureSlaMinutes: 60,
   },
+  /**
+   * OWNER RULING 2026-09-28 (gap closure A3) — releasing a report unpaid IS credit (a document leaves
+   * without the money), and "nobody can issue credit except owner". The approver moves from the
+   * billing manager to the OWNER under a new key: a registered type's approver cannot change in place,
+   * and `lab_release_unpaid` above stays registered so past releases still read.
+   */
+  {
+    typeKey: "lab_release_unpaid_owner",
+    title: "Release an unpaid lab report — only the owner approves",
+    approverRole: "owner",
+    urgencyClass: "urgent",
+    actFirstAllowed: false,
+    closureSlaMinutes: 60,
+  },
 ];
 
 /** The type key, for callers that must not retype a string the engine matches exactly. */
-export const RELEASE_UNPAID_APPROVAL_TYPE = "lab_release_unpaid";
+export const RELEASE_UNPAID_APPROVAL_TYPE = "lab_release_unpaid_owner";
 
 /** The DRAFTER half of the `approval_<typeKey>` definition — a system identity, distinct from any
  *  caller-supplied activator, which is all `assertNotSodPair` compares. */

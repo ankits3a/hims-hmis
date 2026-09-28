@@ -83,7 +83,9 @@ describe("the lab delivery interlock (17b T7)", () => {
       patientId: fx.patientId,
       encounterId: fx.encounterNo,
       lines: [{ lineId: newId(), serviceId: serviceIdForLabCode("CRP"), qty: 1 }],
-      credit: { reason: "a second counter document on the same visit" },
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — a lab bill is never credit; it is
+      // HELD until paid (the report is locked by this very interlock).
+      holdUntilPaid: { reason: "a second counter document on the same visit" },
     }, AT);
     const [secondLine] = await db.select().from(invoiceLines)
       .where(eq(invoiceLines.invoiceId, second.invoiceId));
@@ -169,7 +171,9 @@ describe("the lab delivery interlock (17b T7)", () => {
         */
         { lineId: newId(), serviceId: serviceIdForLabCode("CRP"), qty: 1 },
       ],
-      credit: { reason: "billed as one document at the counter" },
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — a lab bill is never credit; it is
+      // HELD until paid (the report is locked by this very interlock).
+      holdUntilPaid: { reason: "billed as one document at the counter" },
     }, AT);
     const mixedLines = await db.select().from(invoiceLines)
       .where(eq(invoiceLines.invoiceId, mixed.invoiceId));

@@ -110,6 +110,12 @@ export function LabDesk(): React.ReactElement {
   const [tender, setTender] = useState<"cash" | "card" | "upi">("cash");
   const [idempotencyKey, setIdempotencyKey] = useState(() => newIdempotencyKey());
   const [placed, setPlaced] = useState<WireDeskOrder | null>(null);
+  /*
+   * GAP A3 — a lab balance is no longer CREDIT on the server (the owner's alone since 2026-09-28): it
+   * is a bill held for collection before the report (DD23), so `creditExtended` reads false. The
+   * placed note says there is a balance from what THIS screen sent, not from that flag.
+   */
+  const placedWithBalance = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { fieldRef.current?.focus(); }, []);
@@ -230,6 +236,7 @@ export function LabDesk(): React.ReactElement {
     mutationFn: () => {
       if (selected === null) throw new Error("no patient");
       const money = moneyBlockFor(priced, orderableLines, tender, t("lab.desk.creditReason"));
+      placedWithBalance.current = money.credit !== undefined;
       const body: DeskOrderRequest = {
         patientId: selected.patient.id, serviceDate, priority, reflexConsent,
         acknowledgedDuplicates: acknowledged,
@@ -650,7 +657,7 @@ export function LabDesk(): React.ReactElement {
           <section className="space-y-1 rounded border border-border bg-card p-3 text-sm" data-testid="placed">
             <p className="font-semibold">{t("lab.desk.placed")}: {placed.orderNo}</p>
             <p>{t("lab.desk.visit")}: {placed.encounterNo} · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}
-              {placed.invoice.creditExtended && <> · {t("lab.desk.creditExtended")}</>}</p>
+              {(placed.invoice.creditExtended || placedWithBalance.current) && <> · {t("lab.desk.creditExtended")}</>}</p>
             <p className="text-muted-foreground">{t("lab.desk.sentToCollection")}</p>
           </section>
         )}

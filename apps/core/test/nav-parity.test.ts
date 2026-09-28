@@ -82,6 +82,22 @@ function navEntries(source: string): { to: string; permission: string }[] {
   return rows;
 }
 
+const OFFICE_PAGES_TS = resolve(REPO_ROOT, "apps", "web", "src", "screens", "pharmacy-office", "pages.ts");
+
+/**
+ * GAP-CLOSURE B3 — the `{ side, key, perms, was }` rows of the pharmacy office's `OFFICE_PAGES`. Throws
+ * rather than returning `[]`, for the same §2.49 reason `navEntries` does.
+ */
+function officePages(source: string): { key: string; perms: string[]; was: string | null }[] {
+  const rows: { key: string; perms: string[]; was: string | null }[] = [];
+  for (const m of source.matchAll(/\{\s*side:\s*"\w+",\s*key:\s*"(\w+)",\s*perms:\s*\[([^\]]*)\],\s*was:\s*(null|"[^"]+")\s*\}/g)) {
+    const perms = [...(m[2] as string).matchAll(/"([^"]+)"/g)].map((p) => p[1] as string);
+    rows.push({ key: m[1] as string, perms, was: m[3] === "null" ? null : (m[3] as string).slice(1, -1) });
+  }
+  if (rows.length === 0) throw new Error("pages.ts: OFFICE_PAGES parsed to zero entries — this parser is stale");
+  return rows;
+}
+
 /** Every `menu` entry every installed manifest declares, as `path → permission`. */
 function manifestMenu(): Map<string, string> {
   const out = new Map<string, string>();
@@ -126,7 +142,14 @@ describe("SPA navigation ↔ module manifest parity (Plan 14 close, F1)", () => 
    * survives a refactor of the parser.
    */
   it("the three materials entries pair as DD11 and DD16 rule them", () => {
-    const byPath = new Map(nav.map((n) => [n.to, n.permission]));
+    /*
+     * GAP-CLOSURE B3 — these three are pages of the pharmacy office's menu now, not `NAV` rows, and the
+     * office's page table (`pages.ts`) is what decides who is shown them. The pairing is asserted
+     * THERE: the page whose old address is the path must be opened by exactly the manifest's permission.
+     */
+    const byPath = new Map(officePages(readFileSync(OFFICE_PAGES_TS, "utf8"))
+      .filter((p) => p.was !== null && p.key !== "opening")
+      .map((p) => [p.was as string, p.perms.join("|")]));
     expect({
       items: byPath.get("/materials/items"),
       vendors: byPath.get("/materials/vendors"),
@@ -139,5 +162,25 @@ describe("SPA navigation ↔ module manifest parity (Plan 14 close, F1)", () => 
       vendors: "materials.vendors.manage",
       grn: "materials.stock.read",
     });
+  });
+
+  /**
+   * GAP-CLOSURE B3 — THE OFFICE'S MENU IS THE NAV'S COPY NOW, FOR THE TWELVE SCREENS IT FOLDED IN.
+   *
+   * Twelve stores rows left `NAV` for `/pharmacy/office`'s header menu. Each menu entry is shown to the
+   * holder of the permission its row required, and that permission is still the manifest's pairing
+   * for the old path — so the F1 drift this file exists for can now happen in `pages.ts` instead.
+   * Every entry whose old address a manifest declares must be opened by that manifest's permission.
+   * (`opening` shares `/materials/grn` with the goods receipt and is opened by the capturer's grant,
+   * DD8's other hand, so it is the one entry excused.)
+   */
+  it("every office page with an old address in a manifest is opened by that manifest's permission", () => {
+    const folded = officePages(readFileSync(OFFICE_PAGES_TS, "utf8"))
+      .filter((p) => p.was !== null && p.key !== "opening" && menu.has(p.was));
+    expect(folded.length).toBeGreaterThanOrEqual(10);
+    const drift = folded
+      .filter((p) => !p.perms.includes(menu.get(p.was as string) as string))
+      .map((p) => ({ page: p.key, was: p.was, office: p.perms, manifest: menu.get(p.was as string) }));
+    expect({ drift }).toEqual({ drift: [] });
   });
 });

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { grantCreditExtend, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
+import { grantCreditExtend, grantOwnerCredit, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import {
   allocateReceipt, encounterFeeStatuses, issueCreditNote, issueInvoice, markEnteredInError,
@@ -121,13 +121,16 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
     expect(weird.has("dc-1")).toBe(false);
   });
 
+  // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — credit is extended only on the OWNER's
+  // grant for the exact remainder (the 50 000 consult fee).
   it("credit extension reads as credit, and flips the board the moment it is extended", async () => {
     await grantCreditExtend(db, "cashier");
     const v = await newVisit("9899100003");
+    const approvalId = await grantOwnerCredit(db, clerk, base.owner, { draftId: "fs-d3", patientId: v.patientId, amountPaise: 50_000 });
     await issueInvoice(db, clerk, {
       draftId: "fs-d3", patientId: v.patientId, encounterId: v.encounter.id,
       lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }],
-      credit: { reason: "employer letter on file" },
+      credit: { reason: "employer letter on file", approvalId },
     });
     expect((await encounterFeeStatuses(db, [v.encounter])).get(v.encounter.id)).toBe("credit");
     const flipped = await flips();
@@ -295,10 +298,12 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
   it("an allocation that CLOSES the fee invoice later in the day flips the board too", async () => {
     await grantCreditExtend(db, "cashier");
     const v = await newVisit("9899100006");
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the credit leg carries the owner's grant.
+    const approvalId = await grantOwnerCredit(db, clerk, base.owner, { draftId: "fs-d6", patientId: v.patientId, amountPaise: 50_000 });
     const issued = await issueInvoice(db, clerk, {
       draftId: "fs-d6", patientId: v.patientId, encounterId: v.encounter.id,
       lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }],
-      credit: { reason: "pays after darshan" },
+      credit: { reason: "pays after darshan", approvalId },
     });
     const beforeCount = (await flips()).length; // 1 — the credit extension itself
     const receipt = await recordReceipt(db, clerk, { patientId: v.patientId, tenders: [{ mode: "cash", amountPaise: 50_000 }] });

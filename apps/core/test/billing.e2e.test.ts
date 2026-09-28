@@ -111,6 +111,8 @@ describe("billing e2e", () => {
   let cashier: { id: string; token: string };
   let cashier2: { id: string; token: string };
   let manager: { id: string; token: string };
+  /** GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the only role that grants credit. */
+  let owner: { id: string; token: string };
   let rando: { id: string; token: string };
   let dra: { doctorId: string; userId: string; token: string };
 
@@ -152,6 +154,10 @@ describe("billing e2e", () => {
     cashier = await mkUser(db, "counter_cashier", ["cashier", "vitals_desk"]);
     cashier2 = await mkCashier(db, "other_cashier");
     manager = await mkBillingManager(db, "counter_manager");
+    for (const p of ["approvals.requests.read", "approvals.requests.decide"]) {
+      await grantPermissionToRole(db, registry, "owner", p);
+    }
+    owner = await mkUser(db, "counter_owner", ["owner"]);
     // A live session with NO role at all: the sweep must prove the ROUTES refuse, not that an
     // unauthenticated request 401s.
     rando = await mkUser(db, "rando_no_perms", []);
@@ -161,6 +167,19 @@ describe("billing e2e", () => {
 
   const http = () => request(app.getHttpServer());
   const auth = (token: string): [string, string] => ["Authorization", `Bearer ${token}`];
+
+  /**
+   * GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the counter asks over its own route for
+   * the exact amount that would go out unpaid, and the OWNER grants it over the approvals route.
+   */
+  const ownerCredit = async (draftId: string, patientId: string, amountPaise: number, reason: string): Promise<string> => {
+    const asked = await http().post("/billing/credit-requests").set(...auth(cashier.token))
+      .send({ draftId, patientId, amountPaise, reason }).expect(201);
+    const approvalId = asked.body.approvalId as string;
+    await http().post(`/approvals/${approvalId}/approve`).set(...auth(owner.token))
+      .send({ note: "owner grants the credit" }).expect(201);
+    return approvalId;
+  };
 
   const registerPatient = async (name: string, phone: string): Promise<string> => {
     const reg = await http().post("/patients").set(...auth(cashier.token))
@@ -518,10 +537,28 @@ describe("billing e2e", () => {
     const patientId = await registerPatient("Meena Bai", "9876543212");
     await openSession(cashier.token);
 
-    const issued = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — without the owner's grant the issue is
+    // refused 409 credit_approval_required; the counter asks, the owner grants, then it issues.
+    const refused = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
       draftId: "draft-dues-1", patientId,
       lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
       credit: { reason: "the patient settles at the dues counter" },
+    }).expect(409);
+    expect(refused.body.code).toBe("credit_approval_required");
+    // A billing manager cannot grant it — the approver is the owner.
+    const asked = await http().post("/billing/credit-requests").set(...auth(cashier.token))
+      .send({ draftId: "draft-dues-1", patientId, amountPaise: 56_000, reason: "the patient settles at the dues counter" })
+      .expect(201);
+    await http().post(`/approvals/${asked.body.approvalId as string}/approve`).set(...auth(manager.token))
+      .send({ note: "not mine to grant" }).expect(409); // role_denied: the transition allows owner only
+    const pending = await http().get(`/billing/credit-requests/${asked.body.approvalId as string}`).set(...auth(cashier.token)).expect(200);
+    expect(pending.body).toMatchObject({ status: "pending", amountPaise: 56_000, draftId: "draft-dues-1" });
+    await http().post(`/approvals/${asked.body.approvalId as string}/approve`).set(...auth(owner.token))
+      .send({ note: "owner grants the credit" }).expect(201);
+    const issued = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-dues-1", patientId,
+      lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
+      credit: { reason: "the patient settles at the dues counter", approvalId: asked.body.approvalId as string },
     }).expect(201);
     expect(issued.body.creditExtended).toBe(true);
     expect(issued.body.settlement.state).toBe("unpaid");
@@ -558,10 +595,13 @@ describe("billing e2e", () => {
     expect(balance.body.advancePaise).toBe(100_000);
     expect(balance.body.outstandingPaise).toBe(0);
 
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — `settleFromReceipts` is not on the HTTP
+    // body, so the later bill is issued on the owner's credit grant and then cleared from the advance.
+    const laterApproval = await ownerCredit("draft-adv-1", patientId, 50_000, "settled from the patient's advance");
     const later = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
       draftId: "draft-adv-1", patientId,
       lines: [{ lineId: "l1", serviceId: base.consultNewServiceId, qty: 1 }],
-      credit: { reason: "settled from the patient's advance" },
+      credit: { reason: "settled from the patient's advance", approvalId: laterApproval },
     }).expect(201);
     await http().post(`/billing/receipts/${receipt.body.receiptId}/allocations`).set(...auth(cashier.token))
       .send({ invoiceId: later.body.invoiceId, amountPaise: 50_000 }).expect(201);

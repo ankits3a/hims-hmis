@@ -22,6 +22,7 @@ import { nextDocNo } from "../../src/modules/billing/series";
 import { istDay } from "../../src/modules/billing/time";
 import { openSession } from "../../src/modules/billing/sessions";
 import { CREDIT_EXTEND_PERMISSION, issueInvoice, previewInvoice } from "../../src/modules/billing/invoices";
+import { requestCredit } from "../../src/modules/billing/credit-requests";
 import type { Db } from "../../src/kernel/db/client";
 import type { IssueInvoiceResult } from "../../src/modules/billing/invoices";
 
@@ -254,24 +255,64 @@ export async function grantCreditExtend(db: Db, roleKey = "cashier"): Promise<vo
 }
 
 /**
- * An invoice left carrying DUES - the fixture T6's ledger tests start from. The cashier must
- * already hold `billing.credit.extend` (`grantCreditExtend`), and an open session too whenever a
- * part payment is taken: an unsettled invoice can ONLY be persisted through D2's credit lane, so
- * the dues this ledger clears are always credit-extended dues.
+ * GAP A3 (owner ruling 2026-09-28: credit is the owner's) — files a `billing_credit_owner` request
+ * through the shipped `requestCredit` (the requester must hold `billing.credit.extend`) and has the
+ * OWNER grant it through the kernel's own `approveRequest`. Returns the approval id the counter then
+ * passes as `credit.approvalId`. `amountPaise` must be the invoice's exact remainder.
+ */
+export async function grantOwnerCredit(
+  db: Db,
+  requester: Actor,
+  owner: Actor,
+  input: { draftId: string; patientId: string; amountPaise: number; reason?: string },
+): Promise<string> {
+  const { approvalId } = await requestCredit(db, requester, {
+    draftId: input.draftId, patientId: input.patientId, amountPaise: input.amountPaise,
+    reason: input.reason ?? "fixture: the owner lets this go out unpaid",
+  });
+  await approveRequest(db, owner, { approvalId, note: "owner grants the credit (test)" });
+  return approvalId;
+}
+
+/**
+ * An invoice left carrying DUES - the fixture T6's ledger tests start from. An open session is
+ * needed whenever a part payment is taken.
+ *
+ * GAP A3 (owner ruling 2026-09-28: credit is the owner's) — by default the dues are an internal
+ * `holdUntilPaid` bill (UNSETTLED, `creditExtended = false`, no approval): the ledger tests only need
+ * an unpaid invoice. Pass `ownerCredit` for a genuinely CREDIT-EXTENDED invoice: the cashier (who must
+ * then hold `billing.credit.extend`, `grantCreditExtend`) files the request and that owner grants it
+ * for the exact remainder.
  */
 export async function issueDuesInvoice(
   db: Db,
   cashier: { id: string; actor: Actor },
-  input: { patientId: string; serviceId: string; qty?: number; receiptPaise?: number; encounterId?: string },
+  input: {
+    patientId: string; serviceId: string; qty?: number; receiptPaise?: number; encounterId?: string;
+    ownerCredit?: { owner: Actor };
+  },
 ): Promise<IssueInvoiceResult> {
   const receiptPaise = input.receiptPaise ?? 0;
+  const draftId = newId();
+  const lines = [{ lineId: newId(), serviceId: input.serviceId, qty: input.qty ?? 1 }];
+  const reason = "fixture: the patient settles at the dues counter";
+  let unpaid: { credit: { reason: string; approvalId: string } } | { holdUntilPaid: { reason: string } };
+  if (input.ownerCredit !== undefined) {
+    const preview = await previewInvoice(db, { encounterId: input.encounterId, patientId: input.patientId, lines });
+    const approvalId = await grantOwnerCredit(db, cashier.actor, input.ownerCredit.owner, {
+      draftId, patientId: input.patientId, amountPaise: preview.totals.netPayablePaise - receiptPaise, reason,
+    });
+    unpaid = { credit: { reason, approvalId } };
+  } else {
+    unpaid = { holdUntilPaid: { reason } };
+  }
   return issueInvoice(db, cashier.actor, {
-    draftId: newId(),
+    draftId,
     patientId: input.patientId,
     encounterId: input.encounterId,
-    lines: [{ lineId: newId(), serviceId: input.serviceId, qty: input.qty ?? 1 }],
+    lines,
     receipt: receiptPaise > 0 ? { tenders: [{ mode: "cash", amountPaise: receiptPaise }] } : undefined,
-    credit: { reason: "fixture: the patient settles at the dues counter" },
+    ...unpaid,
   });
 }
 
