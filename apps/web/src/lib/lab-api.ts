@@ -478,12 +478,12 @@ export const reportsForPatient = (patientId: string): Promise<WirePatientReports
 export const deliveryRegister = (serviceDate: string): Promise<WireDeliveryRegisterRow[]> =>
   api("GET", `/lab/reports/register?serviceDate=${serviceDate}`);
 
-/** DD6 — the release of a HELD report is a `lab_release_unpaid` approval ABOUT THE ORDER, decided by the billing manager. */
+/** DD6 — the release of a HELD report is a `lab_release_unpaid_owner` approval ABOUT THE ORDER, decided by the OWNER (credit ruling 2026-09-28). */
 export const requestReleaseApproval = (
   body: { orderId: string; patientId: string; amountPaise: number; note: string },
 ): Promise<{ approvalId: string }> =>
   api("POST", "/approvals", {
-    typeKey: "lab_release_unpaid", subject: { type: "lab_report", id: body.orderId },
+    typeKey: "lab_release_unpaid_owner", subject: { type: "lab_report", id: body.orderId },
     patientId: body.patientId, amountPaise: body.amountPaise, requestNote: body.note,
   });
 

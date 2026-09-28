@@ -38,6 +38,8 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
   let fx: LabDeskFixture;
   let cashier: { id: string; actor: Actor };
   let billingManager: { id: string; actor: Actor };
+  /** GAP A3 (owner ruling 2026-09-28: credit is the owner's) — releasing unpaid is the OWNER's grant. */
+  let owner: { id: string; actor: Actor };
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => { await teardown(); });
@@ -48,6 +50,7 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
     cashier = await mkCashier(db, "lab.cashier");
     await openSessionFor(db, cashier, 0);
     billingManager = await mkUser(db, "mr.rao", ["billing_manager"]);
+    owner = await mkUser(db, "mr.owner", ["owner"]);
     await grantPermissionToRole(db, fx.registry, "billing_manager", "lab.reports.release_unpaid");
     await grantPermissionToRole(db, fx.registry, "billing_manager", "lab.reports.print");
     await grantPermissionToRole(db, fx.registry, "billing_manager", "lab.results.read");
@@ -134,7 +137,7 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
       patientId: fx.patientId,
       requestNote: "patient travelling tonight, balance to be cleared on return",
     }));
-    await approveRequest(db, billingManager.actor, { approvalId, note: "carry the receivable" });
+    await approveRequest(db, owner.actor, { approvalId, note: "carry the receivable" }); // GAP A3: the owner grants
 
     const printed = await releaseUnpaid(db, billingManager.actor, {
       reportId: report.reportId, approvalId, collectorIdentity: "the patient, UHID card seen",
@@ -179,9 +182,23 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
       typeKey: RELEASE_UNPAID_APPROVAL_TYPE,
       subject: { type: "lab_report", id: other.orderId }, patientId: fx.patientId,
     }));
-    await approveRequest(db, billingManager.actor, { approvalId: elsewhere.approvalId, note: "ok" });
+    await approveRequest(db, owner.actor, { approvalId: elsewhere.approvalId, note: "ok" });
     await expect(releaseUnpaid(db, billingManager.actor, {
       reportId: report.reportId, approvalId: elsewhere.approvalId, collectorIdentity: "the patient",
+    }, AT)).rejects.toMatchObject({ code: "release_approval_invalid" });
+
+    /**
+     * GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the RETIRED type, `lab_release_unpaid`,
+     * granted by a billing manager for THIS order, releases nothing: only the owner's type does.
+     */
+    expect(RELEASE_UNPAID_APPROVAL_TYPE).toBe("lab_release_unpaid_owner");
+    const retired = await withTx(db, (tx) => requestApproval(tx, fx.desk.actor, {
+      typeKey: "lab_release_unpaid",
+      subject: { type: "lab_report", id: run.orderId }, patientId: fx.patientId,
+    }));
+    await approveRequest(db, billingManager.actor, { approvalId: retired.approvalId, note: "the old desk grant" });
+    await expect(releaseUnpaid(db, billingManager.actor, {
+      reportId: report.reportId, approvalId: retired.approvalId, collectorIdentity: "the patient",
     }, AT)).rejects.toMatchObject({ code: "release_approval_invalid" });
 
     expect(await db.select().from(labReportDeliveries)).toHaveLength(0);
@@ -422,7 +439,7 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
       typeKey: RELEASE_UNPAID_APPROVAL_TYPE,
       subject: { type: "lab_report", id: run.orderId }, patientId: fx.patientId,
     }));
-    await approveRequest(db, billingManager.actor, { approvalId, note: "carry it" });
+    await approveRequest(db, owner.actor, { approvalId, note: "carry it" }); // GAP A3: the owner grants
 
     await releaseUnpaid(db, billingManager.actor, {
       reportId: report.reportId, approvalId, collectorIdentity: "the patient",
@@ -499,7 +516,7 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
       patientId: fx.patientId,
       requestNote: "patient travelling tonight",
     }));
-    await approveRequest(db, billingManager.actor, { approvalId, note: "carry the receivable" });
+    await approveRequest(db, owner.actor, { approvalId, note: "carry the receivable" }); // GAP A3: the owner grants
     const released = await releaseUnpaid(db, billingManager.actor, {
       reportId: v1.reportId, approvalId, collectorIdentity: "the patient, UHID card seen",
     }, AT);
@@ -612,8 +629,9 @@ describe("the report centre (17c T5)", () => {
     const { approvalId } = await withTx(db, (tx) => requestApproval(tx, fx.desk.actor, {
       typeKey: RELEASE_UNPAID_APPROVAL_TYPE, subject: { type: "lab_report", id: run.orderId }, patientId: fx.patientId,
     }));
-    const billingManager = await mkUser(db, "lab.centre.bm", ["billing_manager"]);
-    await approveRequest(db, billingManager.actor, { approvalId, note: "carry the receivable" });
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the owner grants the release.
+    const owner = await mkUser(db, "lab.centre.owner", ["owner"]);
+    await approveRequest(db, owner.actor, { approvalId, note: "carry the receivable" });
     await releaseUnpaid(db, fx.desk.actor, { reportId: report.reportId, approvalId, collectorIdentity: "the patient" }, AT);
     const after = await reportsForPatient(db, fx.desk.actor, fx.patientId, AT);
     /** THE KILL: before this fix the release spent the approval and the counter still had no page. */

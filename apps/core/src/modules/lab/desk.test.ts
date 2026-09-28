@@ -535,6 +535,8 @@ describe("the reception seat (17c T1)", () => {
     expect((await db.select().from(opdEncounters)).length).toBe(afterFirst + 1);
   });
 
+  // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the desk's `credit: {reason}` now becomes
+  // a HOLD: the unpaid line is not credit (creditExtended false), and the interlock still holds it.
   it("A3: a line ON CREDIT beside paid lines is HELD at delivery until the invoice settles (D3)", async () => {
     await openSessionFor(db, fx.desk, 0);
     const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
@@ -545,7 +547,7 @@ describe("the reception seat (17c T1)", () => {
       receipt: { tenders: [{ mode: "cash", amountPaise: 30000 }] },
       credit: { reason: "rx_line_unpaid" },
     }));
-    expect(placed.invoice.creditExtended).toBe(true);
+    expect(placed.invoice.creditExtended).toBe(false);
     const held = await deliveryAllowed(db, placed.orderId);
     expect([held.allowed, held.reason, held.outstandingPaise]).toEqual([false, "unpaid_invoices", 30000]);
     const cashier = await mkCashier(db, "lab.desk.cashier");

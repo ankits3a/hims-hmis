@@ -121,7 +121,8 @@ describe("the accrual replay: a backfill that is the same code, not a second imp
         { lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 },
         { lineId: newId(), serviceId: base.genericServiceId, qty: 1 },
       ],
-      credit: { reason: "settles at the dues counter" },
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — a fixture that only needs dues: a held bill, not credit.
+      holdUntilPaid: { reason: "settles at the dues counter" },
     }, NOW);
     const lineIds = (await getInvoice(db, issued.invoiceId))!.lines.map((l) => l.id);
 

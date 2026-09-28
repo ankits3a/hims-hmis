@@ -60,8 +60,17 @@ import type { Db, Tx } from "../../kernel/db/client";
 /** The permission the credit lane needs (owner ruling 2). T11's manifest declares it. */
 export const CREDIT_EXTEND_PERMISSION = "billing.credit.extend";
 
-/** The two approval types this transaction checks on execute, and the subjects they bind to. */
-export const CREDIT_APPROVAL_TYPE = "billing_credit_extension";
+/**
+ * The two approval types this transaction checks on execute, and the subjects they bind to.
+ *
+ * OWNER RULING 2026-09-28 (gap closure A3) — "nobody can issue credit except owner", scope WHOLE
+ * HOSPITAL. Credit used to need `billing_credit_extension` (approver billing_manager) only above
+ * `creditCapPaise`; below it the cashier's own `billing.credit.extend` was enough. It is now
+ * `billing_credit_owner`, approver OWNER, on EVERY remainder. The old type stays registered and
+ * unused: an approval type's approver cannot be changed in place (`kernel/approvals/types.ts`
+ * registers once), and a new key makes an old grant useless for new credit, which is the point.
+ */
+export const CREDIT_APPROVAL_TYPE = "billing_credit_owner";
 export const CREDIT_APPROVAL_SUBJECT = "billing_credit";
 export const DISCOUNT_APPROVAL_TYPE = "billing_discount";
 export const DISCOUNT_APPROVAL_SUBJECT = "billing_discount";
@@ -101,6 +110,14 @@ export type IssueInvoiceInput = {
     changeGivenPaise?: number;
   };
   credit?: { reason: string; approvalId?: string };
+  /**
+   * GAP CLOSURE A3 — INTERNAL ONLY, never on the HTTP body. An invoice raised unpaid for a thing
+   * the hospital still HOLDS: the lab's reflex and add-on lines, whose report stays locked until
+   * the money is in (DD23's interlock). It is not credit — nothing has left — so it needs no
+   * approval, and it is persisted with `credit_extended = false`, so no fee gate reads it as paid.
+   * `reason` is kept in `credit_reason` so the dues screen can say why the bill is open.
+   */
+  holdUntilPaid?: { reason: string };
   discountApprovals?: Record<string, string>; // lineId -> approvalId, for `requiresApproval` winners
   /**
    * PLAN 15 T7 / DD12 — **SETTLE FROM MONEY THE HOSPITAL ALREADY HOLDS.**
@@ -1198,49 +1215,58 @@ export async function issueInvoice(
       // unsettled invoice: that is the invariant that stops a counter minting dues silently.
       const warnings: string[] = [];
       let creditBlock: { reason: string; approvalId?: string } | null = null;
+      let holdBlock: { reason: string } | null = null;
       if (remainderPaise > 0) {
         const credit = input.credit;
-        // A credit block without a reason is not a credit block (the reason is mandatory, owner
-        // ruling 2) — so it lands on the same refusal as no credit block at all.
-        if (credit === undefined || credit.reason.trim() === "") {
-          throw new BillingError(
-            "unsettled_issue_refused",
-            `${String(remainderPaise)}p would be left unsettled and no credit extension was requested`,
-            { remainderPaise },
-          );
-        }
-        if (!(await hasPermission(db, actor.id, CREDIT_EXTEND_PERMISSION, "hospital"))) {
-          throw new BillingError("credit_permission_required", `extending credit needs ${CREDIT_EXTEND_PERMISSION}`);
-        }
-        if (remainderPaise > cfg.creditCapPaise) {
+        const hold = input.holdUntilPaid;
+        if (credit === undefined && hold !== undefined && hold.reason.trim() !== "") {
+          // The thing is still held; this is a bill waiting to be collected, not credit (A3).
+          holdBlock = { reason: hold.reason };
+        } else {
+          // A credit block without a reason is not a credit block (the reason is mandatory, owner
+          // ruling 2) — so it lands on the same refusal as no credit block at all.
+          if (credit === undefined || credit.reason.trim() === "") {
+            throw new BillingError(
+              "unsettled_issue_refused",
+              `${String(remainderPaise)}p would be left unsettled and no credit extension was requested`,
+              { remainderPaise },
+            );
+          }
+          if (!(await hasPermission(db, actor.id, CREDIT_EXTEND_PERMISSION, "hospital"))) {
+            throw new BillingError("credit_permission_required", `extending credit needs ${CREDIT_EXTEND_PERMISSION}`);
+          }
+          // OWNER RULING 2026-09-28 — EVERY remainder needs the owner's granted approval. The cap no
+          // longer exempts anything; `creditCapPaise` is kept in config and read by nothing here.
           if (credit.approvalId === undefined) {
             throw new BillingError(
               "credit_approval_required",
-              `${String(remainderPaise)}p exceeds the per-invoice credit cap ${String(cfg.creditCapPaise)}p`,
-              { remainderPaise, creditCapPaise: cfg.creditCapPaise },
+              `${String(remainderPaise)}p would go out on credit — only the owner can approve credit`,
+              { remainderPaise, approverRole: "owner" },
             );
           }
+          // The owner approved THIS amount on THIS draft for THIS patient; a bigger remainder is a new ask.
           await assertGrantedApproval(db, credit.approvalId, {
             typeKey: CREDIT_APPROVAL_TYPE,
             subjectType: CREDIT_APPROVAL_SUBJECT,
             subjectId: input.draftId,
             patientId: input.patientId,
+            amountPaise: remainderPaise,
           });
-        }
-        if (cfg.outstandingCapMode !== "off") {
-          const prospectivePaise = (await patientOutstandingPaise(tx, input.patientId)) + remainderPaise;
-          if (prospectivePaise > cfg.outstandingCapPaise) {
-            if (cfg.outstandingCapMode === "block") {
-              throw new BillingError(
-                "outstanding_cap_exceeded",
-                `patient dues would reach ${String(prospectivePaise)}p against a cap of ${String(cfg.outstandingCapPaise)}p`,
-                { prospectivePaise, outstandingCapPaise: cfg.outstandingCapPaise },
-              );
+          if (cfg.outstandingCapMode !== "off") {
+            const prospectivePaise = (await patientOutstandingPaise(tx, input.patientId)) + remainderPaise;
+            if (prospectivePaise > cfg.outstandingCapPaise) {
+              if (cfg.outstandingCapMode === "block") {
+                throw new BillingError(
+                  "outstanding_cap_exceeded",
+                  `patient dues would reach ${String(prospectivePaise)}p against a cap of ${String(cfg.outstandingCapPaise)}p`,
+                  { prospectivePaise, outstandingCapPaise: cfg.outstandingCapPaise },
+                );
+              }
+              warnings.push("outstanding_cap");
             }
-            warnings.push("outstanding_cap");
           }
+          creditBlock = { reason: credit.reason, approvalId: credit.approvalId };
         }
-        creditBlock = { reason: credit.reason, approvalId: credit.approvalId };
       }
 
       // The two §15 numbers are persisted EXACTLY as `totalInvoice` returned them — sums of the
@@ -1263,7 +1289,7 @@ export async function issueInvoice(
         roundingPaise: totals.roundingPaise,
         netPayablePaise: totals.netPayablePaise,
         creditExtended: creditBlock !== null,
-        creditReason: creditBlock?.reason ?? null,
+        creditReason: creditBlock?.reason ?? holdBlock?.reason ?? null,
         creditApprovalId: creditBlock?.approvalId ?? null,
         issuedBy: actor.id,
         issuedAt: now,

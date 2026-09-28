@@ -100,6 +100,12 @@ type DeskOrderBase = {
   draftId?: string;
   receipt?: IssueInvoiceInput["receipt"];
   credit?: { reason: string; approvalId?: string };
+  /**
+   * GAP A3 (owner: credit is the owner's, 2026-09-28) — an add-on's bill waits for the money while the
+   * REPORT is held (DD23's interlock), so it is not credit and needs no approval. Only `addOnOrder`
+   * sets it; the counter's own order still needs the owner's credit approval to leave money unpaid.
+   */
+  holdUntilPaid?: { reason: string };
   tags?: string[];
   placedAt?: Date;
 };
@@ -439,7 +445,15 @@ export async function deskOrder(
       lines: input.items.map((item) => ({ lineId: newId(), serviceId: item.serviceId, qty: 1 })),
       tags: input.tags,
       receipt: input.receipt,
-      credit: input.credit,
+      /*
+       * GAP A3 (owner ruling 2026-09-28: credit is the owner's, hospital-wide) — a lab bill never goes
+       * out on CREDIT: whatever is not paid at the counter waits while the REPORT is held by DD23's
+       * interlock, and releasing that report unpaid is the owner's approval (`lab_release_unpaid_owner`).
+       * So the counter's `credit: {reason}` is carried as the hold's reason, and no credit is extended.
+       */
+      ...(input.holdUntilPaid !== undefined
+        ? { holdUntilPaid: input.holdUntilPaid }
+        : input.credit !== undefined ? { holdUntilPaid: { reason: input.credit.reason } } : {}),
     },
     now,
   );
@@ -642,7 +656,8 @@ export async function addOnOrder(
       itemOrigin: "addon",
       draftId: input.draftId,
       receipt: input.receipt,
-      credit: input.credit,
+      // GAP A3 — the add-on's balance is collected before its report goes (the interlock), not credited.
+      holdUntilPaid: { reason: input.credit?.reason ?? "add-on at the chair — collected before the report is released" },
       placedAt: input.placedAt,
       /**
        * THE ADD-ON IS THE DUPLICATE THE DOCTOR JUST ASKED FOR. Running the detector here would

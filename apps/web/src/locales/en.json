@@ -437,6 +437,16 @@
         "label": "Supplier payment run",
         "ask": "Authorise paying suppliers {{amount}}",
         "explain": "The materials head or the pharmacist in charge prepared a run of supplier bills to pay. Authorising lets somebody else pay them and record it; you cannot record it yourself."
+      },
+      "billing_credit_owner": {
+        "label": "Credit (only you approve)",
+        "ask": "Let {{patient}} leave {{amount}} unpaid",
+        "explain": "The bill is issued now and this amount is owed. Your ruling: nobody but the owner gives credit."
+      },
+      "lab_release_unpaid_owner": {
+        "label": "Hand over an unpaid lab report",
+        "ask": "Release {{patient}}'s report with {{amount}} still unpaid",
+        "explain": "The report leaves before the money — that is credit, and only you approve it. The amount stays owed."
       }
     },
     "openRun": "Open the run"
@@ -2655,7 +2665,7 @@
       "fromRx": "Rx",
       "alreadyOrdered": "already ordered",
       "billedHere": "billed here",
-      "onCredit": "on credit",
+      "onCredit": "pay at the report",
       "remove": "Remove",
       "noLines": "No tests yet — add them from the prescription below.",
       "search": "Add a test",
@@ -2681,13 +2691,13 @@
       "consentNeeded": "Consent is required before these can be ordered",
       "reflexConsent": "Patient agrees that follow-on tests may be added and billed",
       "collectNow": "Collect now",
-      "onCreditTotal": "On credit",
+      "onCreditTotal": "Pay at the report",
       "billLaterNote": "The tube is drawn either way. The report is held until the balance is settled.",
       "creditReason": "rx_line_unpaid",
       "save": "Save — send to collection",
       "placed": "Order placed",
       "invoice": "Invoice",
-      "creditExtended": "balance on credit",
+      "creditExtended": "balance collected before the report",
       "sentToCollection": "The patient walks to the chair; their tubes are in the collection queue.",
       "regName": "Name",
       "regPhone": "Mobile",
@@ -7237,5 +7247,13 @@
       "unreadable": "Nothing readable in this document.",
       "none": "No records from other hospitals yet."
     }
+  },
+  "ownerCredit": {
+    "explain": "Only the owner can let money go out unpaid. Ask, and the bill can be issued the moment the owner says yes.",
+    "ask": "Ask the owner for {{amount}} on credit",
+    "reasonFirst": "Write the reason first — the owner reads it.",
+    "pending": "Waiting for the owner to decide {{amount}} on credit…",
+    "granted": "The owner approved {{amount}} on credit — issue the bill.",
+    "rejected": "The owner said no: {{note}} Collect the money, or change the bill."
   }
 }
