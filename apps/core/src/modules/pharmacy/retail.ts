@@ -17,9 +17,9 @@ import {
   requireStore, resolveBarcode, returnedQtyByRef,
 } from "../materials";
 import { runRxChecks } from "../opd";
-import { captureDocument, getPatient, nearMatches, registerPatient, resolvePatientId } from "../patients";
-import { gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, winnerOf } from "./bill";
-import { billRowsForInvoice } from "./bill-rows";
+import { captureDocument, getPatient, getPatientSummaries, nearMatches, registerPatient, resolvePatientId } from "../patients";
+import { displayDraft, gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, winnerOf } from "./bill";
+import { billRowsForInvoice, counterPacks } from "./bill-rows";
 import type { BillRow } from "./bill-rows";
 import {
   DOWNTIME_BACKFILL_DAYS, OPD_PHARMACY_STORE_CODE, REFUSED_FLAGS, REGISTER_FLAGS, RETAIL_PHARMACY_STORE_CODE, RETAIL_REF_TYPE,
@@ -448,6 +448,13 @@ export type RetailPreview = {
   lines: {
     lineIdx: number; medicineId: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null;
     itemId: string; batchId: string; batchNo: string; expiryDate: string | null; qtyBase: number; fefoOverride: boolean;
+    /**
+     * UX-AUDIT 2026-09-28 — the line's money, as billing's own preview priced it: the counter showed
+     * only "To pay", and a customer asks what each strip costs. One row per drug (a pack residue is
+     * folded in, never re-priced — `displayDraft`); MRP is tax inclusive, so `taxPaise` sits INSIDE
+     * `amountPaise`. Read-only: the sale re-prices from scratch and this changes nothing it does.
+     */
+    price: { unitPaise: number; grossPaise: number; discountPaise: number; taxPaise: number; gstRateBps: number; amountPaise: number };
   }[];
   totals: { grossPaise: number; discountPaise: number; taxPaise: number; netPayablePaise: number };
   /** Null when no customer was named yet: nothing to check against. */
@@ -501,20 +508,30 @@ async function previewAt(
   }
   const batches = new Map<string, Awaited<ReturnType<typeof getBatch>>>();
   for (const p of plan) batches.set(p.batchId, await getBatch(db, p.batchId));
+  const rows = displayDraft(draft, plan.map((p, i) => ({ ...priced[i]!, itemId: p.itemId })), await counterPacks(db, plan.map((p) => p.itemId))).lines;
   return {
     licence,
     prescriptionRequired: plan.some((p) => isScheduled(p.scheduleFlag)),
-    lines: plan.map((p) => ({
+    lines: plan.map((p, i) => ({
       lineIdx: p.lineIdx, medicineId: p.medicine.id, brandName: p.medicine.brandName, strengthLabel: p.medicine.strengthLabel,
       form: p.medicine.form, scheduleFlag: p.scheduleFlag, itemId: p.itemId, batchId: p.batchId,
       batchNo: batches.get(p.batchId)?.batchNo ?? "", expiryDate: batches.get(p.batchId)?.expiryDate ?? null,
       qtyBase: p.qtyBase, fefoOverride: p.fefoOverride,
+      price: priceOf(rows[i]),
     })),
     totals: {
       grossPaise: draft.totals.grossPaise, discountPaise: draft.totals.discountPaise,
       taxPaise: draft.totals.cgstPaise + draft.totals.sgstPaise, netPayablePaise: draft.totals.netPayablePaise,
     },
     checks,
+  };
+}
+
+function priceOf(row: ReturnType<typeof displayDraft>["lines"][number] | undefined): RetailPreview["lines"][number]["price"] {
+  if (row === undefined) throw new PharmacyError("not_found", "a priced line is missing from billing's preview");
+  return {
+    unitPaise: row.unitPaise, grossPaise: row.grossPaise, discountPaise: row.discountPaise,
+    taxPaise: row.gst.cgstPaise + row.gst.sgstPaise, gstRateBps: row.gst.exempt ? 0 : row.gst.rateBps, amountPaise: row.netPaise,
   };
 }
 
@@ -969,13 +986,22 @@ export type RetailSaleRow = {
   id: string; channel: "walk_in" | "downtime"; soldAt: string; soldBy: string; enteredAt: string;
   invoiceId: string; invoiceNo: string; netPaise: number;
   scheduled: boolean; lineCount: number; registeredHere: boolean;
+  /**
+   * UX-AUDIT 2026-09-28 — who bought it, so the till's list reads as the counter's day and not as a
+   * column of bill numbers. Named through `getPatientSummaries`, the same display read the pharmacy
+   * queue names its patients with: a RESTRICTED customer comes back with no name (alias or UHID
+   * only), so the seal holds on this list exactly as it does on the queue. Opening the sale is still
+   * the logged PHI read (`getRetailSale`).
+   */
+  customer: { uhid: string; name: string | null; alias: string | null } | null;
   /** P20 — the downtime sheet a paper dispense was written on. */
   sheet: { desk: string; serial: number } | null;
 };
 
 /**
- * One IST day's walk-in sales, newest first. No customer is named: the list is the till's, and a
- * sale is opened (and its read logged) to see who bought it.
+ * One IST day's walk-in sales, newest first, each with its customer's display name (UX-AUDIT
+ * 2026-09-28: a restricted customer is not named). The sale itself is opened, and that read
+ * logged, to see anything more.
  */
 export async function listRetailSales(db: Db, actor: Actor, day: string): Promise<RetailSaleRow[]> {
   await requirePermission(db, actor, SELL, "listing walk-in sales");
@@ -984,18 +1010,21 @@ export async function listRetailSales(db: Db, actor: Actor, day: string): Promis
   const sales = await db.select().from(pharmacyRetailSales)
     .where(and(eq(pharmacyRetailSales.channel, "walk_in"), gte(pharmacyRetailSales.soldAt, start), lt(pharmacyRetailSales.soldAt, end)))
     .orderBy(desc(pharmacyRetailSales.soldAt), desc(pharmacyRetailSales.id)).limit(500);
-  return saleRows(db, sales);
+  return saleRows(db, sales, actor);
 }
 
-async function saleRows(db: Db, sales: (typeof pharmacyRetailSales.$inferSelect)[]): Promise<RetailSaleRow[]> {
+async function saleRows(db: Db, sales: (typeof pharmacyRetailSales.$inferSelect)[], actor: Actor | null = null): Promise<RetailSaleRow[]> {
   const out: RetailSaleRow[] = [];
+  const who = new Map((actor === null ? [] : await getPatientSummaries(db, actor, sales.map((s) => s.patientId))).map((p) => [p.requestedId, p] as const));
   for (const s of sales) {
+    const person = who.get(s.patientId);
     const invoice = await getInvoice(db, s.invoiceId);
     out.push({
       id: s.id, channel: s.channel as RetailSaleRow["channel"], soldAt: s.soldAt.toISOString(), soldBy: s.soldBy,
       enteredAt: s.createdAt.toISOString(), invoiceId: s.invoiceId,
       invoiceNo: invoice?.invoice.invoiceNo ?? "", netPaise: invoice?.invoice.netPayablePaise ?? 0,
       scheduled: s.scheduled, lineCount: invoice?.lines.length ?? 0, registeredHere: s.registeredHere,
+      customer: person === undefined ? null : { uhid: person.uhid, name: person.name, alias: person.alias },
       sheet: s.downtimeKitId === null ? null : { desk: s.downtimeDesk ?? "", serial: s.downtimeSerial ?? 0 },
     });
   }
