@@ -5,14 +5,16 @@ import { useAuth } from "../../lib/auth";
 import { downloadCsv, toCsv } from "../../lib/payables-api";
 import { pharmacyErrorText } from "../../lib/pharmacy-api";
 import {
-  MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, fetchActivity, fetchActivityFeed, fetchGstr3b, fetchHsn, fetchMargin,
-  fetchNonMoving, fetchPurchaseRegister, fetchReportStores, fetchSalesRegister, fetchValuation, money, pct, printReport, reconcileGstr2b,
-  todayIst, trimGstr2bJson,
+  MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, STOCK_IN_KINDS, STOCK_OUT_KINDS, fetchActivity, fetchActivityFeed,
+  fetchCatalogue, fetchDailyStock, fetchGstr3b, fetchHsn, fetchLossRegister, fetchMargin, fetchNonMoving, fetchPurchaseRegister, fetchReportStores,
+  fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
 } from "../../lib/reports-api";
+import { downloadXlsx, toXlsx } from "../../lib/xlsx";
 import { Button } from "@/components/ui/button";
 import { TallyReport } from "./tally";
 import type {
-  MarginGroupBy, RangeInput, ReconBucket, ReportPreset, SalesGroupBy, WireActivity, WireGstr2b, WireSalesRow,
+  AbcClass, MarginGroupBy, RangeInput, ReconBucket, ReportPreset, SalesGroupBy, WireActivity, WireActivityEntry, WireCatalogueRow, WireDailyStockRow,
+  WireGstr2b, WireLossRow, WireSalesRow, WireTopSellingRow,
 } from "../../lib/reports-api";
 
 /**
@@ -21,16 +23,27 @@ import type {
  * The office's fourth side. It opens on the list of reports, each on a number key; a report is one
  * screen: its filters (a range — today, this week, this month, this financial year or custom — and a
  * store, and what it groups by), a table with a totals row, a row that opens to its lines where that
- * helps, and E to export it as CSV (Excel opens it) and P to print it on A4 (save as PDF from the
- * dialog). Esc goes back to the list. Everything here READS; nothing is changed from a report.
+ * helps, and E to export it as an Excel workbook (.xlsx, typed cells — stage C), C as CSV, and P to
+ * print it on A4 (save as PDF from the dialog). Esc goes back to the list. Everything here READS;
+ * nothing is changed from a report.
  *
  * Cost, profit and margin appear only for a holder of `pharmacy.reports.margin` — the server leaves
  * them out for anybody else, and the margin report is not offered.
  */
-export type ReportKey = "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally";
-const ALL_REPORTS: readonly ReportKey[] = ["sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally"];
-/** The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten). */
-const keyOf = (i: number): string => (i === 9 ? "0" : String(i + 1));
+export type ReportKey =
+  | "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally"
+  | "topSelling" | "losses" | "dailyStock" | "catalogue";
+const ALL_REPORTS: readonly ReportKey[] = [
+  "sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally",
+  "topSelling", "losses", "dailyStock", "catalogue",
+];
+/**
+ * The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten), then letters (stage C made it
+ * fourteen). The letters skip every key a report screen answers (T W M Y presets, E C P exports, the
+ * Tally export's X and L) and the office board's side keys (B Y R S I L P), so no key means two things.
+ */
+const EXTRA_KEYS = ["A", "D", "F", "G", "H", "J", "K", "N", "O", "U", "V", "Z"] as const;
+export const keyOf = (i: number): string => (i < 9 ? String(i + 1) : i === 9 ? "0" : EXTRA_KEYS[i - 10] ?? "");
 
 type Col<R> = { key: string; label: string; num?: boolean; money?: boolean; value: (r: R) => string | number | null };
 type Totals = Record<string, string | number | null>;
@@ -43,12 +56,25 @@ const csvText = (c: { money?: boolean }, v: string | number | null): string | nu
 /** What E and P act on: the table as the person sees it. */
 type Sheet = { title: string; subtitle: string; file: string; cols: Col<never>[]; rows: unknown[]; totals: Totals | null };
 
-function exportSheet(s: Sheet): void {
+function exportCsv(s: Sheet): void {
   const cols = s.cols as Col<unknown>[];
   const body = s.rows.map((r) => cols.map((c) => csvText(c, c.value(r))));
   const tail = s.totals === null ? [] : [cols.map((c) => csvText(c, s.totals![c.key] ?? null))];
   downloadCsv(`${s.file}.csv`, toCsv(cols.map((c) => c.label), [...body, ...tail]));
 }
+/** A cell as Excel should hold it: money as rupees (a number, formatted), a count as a number, the rest as text. */
+const xlsxValue = (c: { money?: boolean }, v: string | number | null): string | number | null =>
+  v === null ? null : c.money === true && typeof v === "number" ? v / 100 : v;
+/** STAGE C — the same table as a real .xlsx: typed cells, money as rupees, a bold header and totals row. */
+export function sheetToXlsx(s: Sheet): Uint8Array {
+  const cols = s.cols as Col<unknown>[];
+  return toXlsx({
+    name: s.title, header: cols.map((c) => c.label), money: cols.map((c) => c.money === true),
+    rows: s.rows.map((r) => cols.map((c) => xlsxValue(c, c.value(r)))),
+    totals: s.totals === null ? null : cols.map((c) => xlsxValue(c, s.totals![c.key] ?? null)),
+  });
+}
+function exportXlsx(s: Sheet): void { downloadXlsx(`${s.file}.xlsx`, sheetToXlsx(s)); }
 function printSheet(s: Sheet): boolean {
   const cols = s.cols as Col<unknown>[];
   return printReport(
@@ -67,7 +93,7 @@ export function ReportsView({ initial = null }: { initial?: ReportKey | null }):
   const onKey = (e: React.KeyboardEvent): void => {
     const typing = ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement).tagName);
     if (typing || open !== null || e.ctrlKey || e.metaKey || e.altKey) return;
-    const i = reports.findIndex((_, k) => keyOf(k) === e.key);
+    const i = reports.findIndex((_, k) => keyOf(k) !== "" && keyOf(k) === e.key.toUpperCase());
     if (i >= 0) { e.preventDefault(); setOpen(reports[i]!); }
   };
   if (open !== null) return <ReportScreen report={open} onBack={() => setOpen(null)} />;
@@ -97,7 +123,8 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
   const presetRef = useRef<((p: ReportPreset) => void) | null>(null);
   const keysRef = useRef<((key: string) => boolean) | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const exportNow = (): void => { if (sheet.current !== null) exportSheet(sheet.current); };
+  const exportNow = (): void => { if (sheet.current !== null) exportXlsx(sheet.current); };
+  const exportCsvNow = (): void => { if (sheet.current !== null) exportCsv(sheet.current); };
   const printNow = (): void => { if (sheet.current !== null && !printSheet(sheet.current)) setNotice(t("pharmacyOffice.reports.printFailed")); };
   const onKey = (e: React.KeyboardEvent): void => {
     const typing = ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement).tagName);
@@ -106,6 +133,7 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
     const k = e.key.toLowerCase();
     if (keysRef.current !== null && keysRef.current(k)) { e.preventDefault(); return; }
     if (k === "e") { e.preventDefault(); exportNow(); return; }
+    if (k === "c") { e.preventDefault(); exportCsvNow(); return; }
     if (k === "p") { e.preventDefault(); printNow(); return; }
     const preset = ({ t: "today", w: "week", m: "month", y: "fy" } as Record<string, ReportPreset | undefined>)[k];
     if (preset !== undefined && presetRef.current !== null) { e.preventDefault(); presetRef.current(preset); }
@@ -120,7 +148,8 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
         <Button type="button" variant="ghost" onClick={onBack}>← {t("pharmacyOffice.reports.back")} <kbd className="ml-1 rounded border px-1 text-xs">Esc</kbd></Button>
         <h2 className="flex-1 text-lg font-semibold">{t(`pharmacyOffice.reports.name.${report}`)}</h2>
         {report !== "tally" && (<>
-          <Button type="button" variant="outline" data-testid="report-export" onClick={exportNow}>{t("pharmacyOffice.reports.export")} <kbd className="ml-1 rounded border px-1 text-xs">E</kbd></Button>
+          <Button type="button" variant="outline" data-testid="report-export" onClick={exportNow}>{t("pharmacyOffice.reports.exportXlsx")} <kbd className="ml-1 rounded border px-1 text-xs">E</kbd></Button>
+          <Button type="button" variant="outline" data-testid="report-export-csv" onClick={exportCsvNow}>{t("pharmacyOffice.reports.exportCsv")} <kbd className="ml-1 rounded border px-1 text-xs">C</kbd></Button>
           <Button type="button" variant="outline" data-testid="report-print" onClick={printNow}>{t("pharmacyOffice.reports.print")} <kbd className="ml-1 rounded border px-1 text-xs">P</kbd></Button>
         </>)}
       </div>
@@ -135,6 +164,10 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "gstr3b" && <Gstr3bReport {...bind} />}
       {report === "activity" && <ActivityReport {...bind} />}
       {report === "tally" && <TallyScreen {...bind} />}
+      {report === "topSelling" && <TopSellingReport {...bind} />}
+      {report === "losses" && <LossReport {...bind} />}
+      {report === "dailyStock" && <DailyStockReport {...bind} />}
+      {report === "catalogue" && <CatalogueReport {...bind} />}
     </div>
   );
 }
@@ -755,12 +788,14 @@ function ActivityReport({ sheet, presetRef }: Bind): React.ReactElement {
   const [no, setNo] = useState("");
   const [doc, setDoc] = useState<WireActivity | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** STAGE C — the entry whose two versions are shown side by side. */
+  const [compare, setCompare] = useState<number | null>(null);
   const feed = useQuery({ queryKey: ["pharmacy", "reports", "activity", range], queryFn: () => fetchActivityFeed(range) });
   const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
   const open = async (docNo: string): Promise<void> => {
     if (docNo.trim() === "") return;
     setError(null);
-    try { setDoc(await fetchActivity(docNo.trim())); setNo(docNo.trim()); } catch (e) { setDoc(null); setError(pharmacyErrorText(e, t)); }
+    try { setDoc(await fetchActivity(docNo.trim())); setNo(docNo.trim()); setCompare(null); } catch (e) { setDoc(null); setError(pharmacyErrorText(e, t)); }
   };
   type FeedRow = NonNullable<typeof feed.data>["rows"][number];
   const feedCols: Col<FeedRow>[] = [
@@ -796,6 +831,12 @@ function ActivityReport({ sheet, presetRef }: Bind): React.ReactElement {
                   <span className="font-medium">{t(`pharmacyOffice.reports.event.${e.name.replace(".", "_")}`, { defaultValue: e.name })}</span>
                   {e.status !== null && <span className="rounded bg-muted px-1 text-xs">{e.status.replace(/_/g, " ")}</span>}
                   <span className="flex-1 text-xs text-muted-foreground">{e.actorName} · {new Date(e.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
+                  {e.changes.length > 0 && e.state !== undefined && (
+                    <Button type="button" size="sm" variant={compare === i ? "default" : "outline"} data-testid={`activity-compare-${String(i)}`} aria-pressed={compare === i}
+                      onClick={() => setCompare(compare === i ? null : i)}>
+                      {t("pharmacyOffice.reports.sideBySide")}
+                    </Button>
+                  )}
                 </div>
                 {Object.keys(e.facts).length > 0 && (
                   <div className="text-xs text-muted-foreground">{Object.entries(e.facts).map(([k, v]) => `${k}: ${fmt(k, v)}`).join(" · ")}</div>
@@ -808,6 +849,7 @@ function ActivityReport({ sheet, presetRef }: Bind): React.ReactElement {
                     ))}</tbody>
                   </table>
                 )}
+                {compare === i && <VersionsSideBySide doc={doc} i={i} fmt={fmt} />}
               </li>
             ))}
           </ol>
@@ -833,6 +875,268 @@ function ActivityReport({ sheet, presetRef }: Bind): React.ReactElement {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ STAGE C — top-selling items ═══════════════════════════════════
+
+const ABC_TONE: Record<AbcClass, string> = { A: "bg-emerald-800 text-white", B: "bg-amber-600 text-white", C: "bg-slate-400 text-white" };
+
+function TopSellingReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const [by, setBy] = useState<"value" | "units">("value");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "top-selling", range], queryFn: () => fetchTopSelling(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const cols: Col<WireTopSellingRow>[] = [
+    { key: "rank", label: L("rank"), num: true, value: (r) => r.rank },
+    { key: "code", label: L("code"), value: (r) => r.itemCode },
+    { key: "item", label: L("item"), value: (r) => r.itemName },
+    { key: "qty", label: L("qty"), num: true, value: (r) => r.qtyBase },
+    { key: "unitShare", label: L("unitShare"), num: true, value: (r) => pct(r.unitShareBps) },
+    { key: "value", label: L("salesValue"), money: true, value: (r) => r.valuePaise },
+    { key: "valueShare", label: L("valueShare"), num: true, value: (r) => pct(r.valueShareBps) },
+    { key: "cumulative", label: L("cumulative"), num: true, value: (r) => pct(r.cumulativeValueBps) },
+    { key: "abc", label: L("abc"), value: (r) => r.abc },
+  ];
+  const rows = d === undefined ? [] : by === "value" ? d.byValue : d.byUnits;
+  const totals: Totals | null = d === undefined ? null : { rank: null, item: t("pharmacyOffice.reports.allItems", { count: d.totals.items }), qty: d.totals.qtyBase, value: d.totals.valuePaise };
+  if (d !== undefined) {
+    sheet.current = {
+      title: `${t("pharmacyOffice.reports.name.topSelling")} · ${t(`pharmacyOffice.reports.topBy.${by}`)}`, subtitle: rangeText(d.from, d.to),
+      file: `top-selling-${by}-${d.from}-${d.to}`, cols: cols as Col<never>[], rows, totals,
+    };
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <RangeBar range={range} onChange={setRange} />
+        <Choice label={L("rankBy")} testId="top-by" value={by} options={["value", "units"] as const} onChange={setBy} text={(v) => t(`pharmacyOffice.reports.topBy.${v}`)} />
+      </div>
+      <p className="text-xs text-muted-foreground">{t("pharmacyOffice.reports.topNote")}</p>
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <div className="grid gap-2 sm:grid-cols-3" data-testid="abc-classes">
+            {(["A", "B", "C"] as const).map((c) => (
+              <div key={c} className="flex items-center gap-2 rounded border p-2 text-sm" data-testid={`abc-${c}`}>
+                <span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${ABC_TONE[c]}`}>{c}</span>
+                <span className="flex-1">{t(`pharmacyOffice.reports.abc.${c}`, { count: d.classes[c].items })}</span>
+                <b className="tabular-nums">{money(d.classes[c].valuePaise)}</b>
+              </div>
+            ))}
+          </div>
+          <Table testId="top-table" cols={cols} rows={rows} rowKey={(r) => r.itemId} totals={totals} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ STAGE C — the loss-booking register ═══════════════════════════════════
+
+function LossReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "losses", range], queryFn: () => fetchLossRegister(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const reason = (r: string): string => t(`pharmacyOffice.reports.lossReason.${r}`, { defaultValue: r });
+  const cols: Col<WireLossRow>[] = [
+    { key: "date", label: L("date"), value: (r) => r.date },
+    { key: "no", label: L("docNo"), value: (r) => r.docNo ?? t("pharmacyOffice.reports.countVariance") },
+    { key: "store", label: L("store"), value: (r) => r.storeCode },
+    { key: "item", label: L("item"), value: (r) => r.itemName },
+    { key: "batch", label: L("batch"), value: (r) => r.batchNo },
+    { key: "expiry", label: L("expiry"), value: (r) => r.expiryDate ?? "—" },
+    { key: "qty", label: L("qty"), num: true, value: (r) => r.qtyBase },
+    { key: "value", label: L("costLost"), money: true, value: (r) => r.valuePaise },
+    { key: "reason", label: L("reason"), value: (r) => reason(r.reason) },
+    { key: "approvedBy", label: L("approvedBy"), value: (r) => r.approvedBy ?? "—" },
+    { key: "disposal", label: L("disposal"), value: (r) => (r.disposalAgency === null ? "—" : `${r.disposalAgency} · ${r.manifestNo ?? ""}`) },
+  ];
+  const totals: Totals | null = d === undefined ? null : { date: t("pharmacyOffice.reports.totals"), qty: d.totals.qtyBase, value: d.totals.valuePaise };
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.losses"), subtitle: rangeText(d.from, d.to), file: `loss-register-${d.from}-${d.to}`, cols: cols as Col<never>[], rows: d.rows, totals };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} />
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <div className="flex flex-wrap gap-2 text-sm" data-testid="loss-by-reason">
+            {d.byReason.map((g) => (
+              <span key={g.reason} className="rounded border px-2 py-1" data-testid={`loss-reason-${g.reason}`}>
+                {reason(g.reason)} · {t("pharmacyOffice.reports.lossLines", { count: g.lines })} · <b className="tabular-nums">{money(g.valuePaise)}</b>
+              </span>
+            ))}
+            <span className="rounded border border-red-300 bg-red-50 px-2 py-1 font-medium">{L("costLost")} <b className="tabular-nums">{money(d.totals.valuePaise)}</b></span>
+          </div>
+          <Table testId="loss-table" cols={cols} rows={d.rows} rowKey={(r) => `${r.source}-${r.docId}-${r.batchId}`} totals={totals} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ STAGE C — daily stock ═══════════════════════════════════
+
+function DailyStockReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "today");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "daily-stock", range], queryFn: () => fetchDailyStock(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const cols: Col<WireDailyStockRow>[] = [
+    { key: "item", label: L("item"), value: (r) => r.itemName },
+    { key: "code", label: L("code"), value: (r) => r.itemCode },
+    { key: "uom", label: L("unit"), value: (r) => r.baseUom },
+    { key: "opening", label: L("opening"), num: true, value: (r) => r.openingQty },
+    ...STOCK_IN_KINDS.map((k): Col<WireDailyStockRow> => ({ key: `in.${k}`, label: t(`pharmacyOffice.reports.stockIn.${k}`), num: true, value: (r) => r.in[k] })),
+    { key: "inQty", label: L("totalIn"), num: true, value: (r) => r.inQty },
+    ...STOCK_OUT_KINDS.map((k): Col<WireDailyStockRow> => ({ key: `out.${k}`, label: t(`pharmacyOffice.reports.stockOut.${k}`), num: true, value: (r) => r.out[k] })),
+    { key: "outQty", label: L("totalOut"), num: true, value: (r) => r.outQty },
+    { key: "closing", label: L("closing"), num: true, value: (r) => r.closingQty },
+  ];
+  const totals: Totals | null = d === undefined ? null : {
+    item: t("pharmacyOffice.reports.totals"), opening: d.totals.openingQty, inQty: d.totals.inQty, outQty: d.totals.outQty, closing: d.totals.closingQty,
+    ...Object.fromEntries(STOCK_IN_KINDS.map((k) => [`in.${k}`, d.rows.reduce((s, r) => s + r.in[k], 0)])),
+    ...Object.fromEntries(STOCK_OUT_KINDS.map((k) => [`out.${k}`, d.rows.reduce((s, r) => s + r.out[k], 0)])),
+  };
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.dailyStock"), subtitle: `${rangeText(d.from, d.to)}${range.store === "" ? "" : ` · ${range.store}`}`, file: `daily-stock-${range.store || "all"}-${d.from}-${d.to}`, cols: cols as Col<never>[], rows: d.rows, totals };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} />
+      <p className="text-xs text-muted-foreground">{t("pharmacyOffice.reports.dailyStockNote")}</p>
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <Table testId="daily-stock-table" cols={cols} rows={d.rows} rowKey={(r) => r.itemId} totals={totals}
+          rowClass={(r) => (r.openingQty + r.inQty - r.outQty !== r.closingQty ? "bg-red-50 text-red-700" : "")} />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ STAGE C — the item catalogue ═══════════════════════════════════
+
+function CatalogueReport({ sheet }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [store, setStore] = useState("");
+  const [find, setFind] = useState("");
+  const stores = useQuery({ queryKey: ["pharmacy", "reports", "stores"], queryFn: fetchReportStores });
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "catalogue", store], queryFn: () => fetchCatalogue(store) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const yes = (b: boolean): string => (b ? t("pharmacyOffice.reports.yes") : "");
+  const one = store !== "";
+  const level = (r: WireCatalogueRow): WireCatalogueRow["levels"][number] | null => r.levels[0] ?? null;
+  const cols: Col<WireCatalogueRow>[] = [
+    { key: "code", label: L("code"), value: (r) => r.code },
+    { key: "name", label: L("item"), value: (r) => r.name },
+    { key: "class", label: L("class"), value: (r) => r.class },
+    { key: "hsn", label: L("hsn"), value: (r) => r.hsnCode ?? "—" },
+    { key: "gst", label: L("gstRate"), value: (r) => (r.gstRateBps === null ? "—" : `${String(r.gstRateBps / 100)}%`) },
+    { key: "schedule", label: L("schedule"), value: (r) => r.schedule ?? "—" },
+    { key: "storage", label: L("storage"), value: (r) => t(`pharmacyOffice.reports.storage.${r.storageClass}`, { defaultValue: r.storageClass }) },
+    { key: "manufacturer", label: L("manufacturer"), value: (r) => r.manufacturer ?? "—" },
+    { key: "lead", label: L("leadDays"), num: true, value: (r) => r.leadTimeDays },
+    { key: "lasa", label: L("lasa"), value: (r) => yes(r.lasa) },
+    { key: "highAlert", label: L("highAlert"), value: (r) => yes(r.highAlert) },
+    { key: "packs", label: L("packs"), value: (r) => [`1 ${r.baseUom}`, ...r.packs.map((p) => `${p.uom} = ${String(p.toBase)}`)].join(" · ") },
+    ...(one ? [
+      { key: "min", label: L("min"), num: true, value: (r: WireCatalogueRow) => level(r)?.minBase ?? null },
+      { key: "reorder", label: L("reorder"), num: true, value: (r: WireCatalogueRow) => level(r)?.reorderBase ?? null },
+      { key: "max", label: L("max"), num: true, value: (r: WireCatalogueRow) => level(r)?.maxBase ?? null },
+    ] : [
+      { key: "levels", label: L("levels"), value: (r: WireCatalogueRow) => r.levels.map((l) => `${l.storeCode} ${String(l.minBase)}/${String(l.reorderBase)}/${String(l.maxBase)}`).join(" · ") || "—" },
+    ]),
+    { key: "rack", label: L("rack"), value: (r) => r.racks.map((x) => (one ? x.location : `${x.storeCode} ${x.location}`)).join(" · ") || "—" },
+  ];
+  const needle = find.trim().toLowerCase();
+  const rows = d === undefined ? [] : needle === "" ? d.rows : d.rows.filter((r) => r.code.toLowerCase().includes(needle) || r.name.toLowerCase().includes(needle));
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.catalogue"), subtitle: `${todayIst()}${one ? ` · ${store}` : ""}`, file: `item-catalogue-${store || "all"}-${todayIst()}`, cols: cols as Col<never>[], rows, totals: null };
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <select aria-label={t("pharmacyOffice.reports.store")} className="rounded border px-1 py-0.5" value={store} onChange={(e) => setStore(e.target.value)} data-testid="catalogue-store">
+          <option value="">{t("pharmacyOffice.reports.allStores")}</option>
+          {(stores.data ?? []).map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
+        </select>
+        <input aria-label={t("pharmacyOffice.reports.findItem")} placeholder={t("pharmacyOffice.reports.findItem")} className="w-56 max-w-full rounded border px-2 py-0.5" value={find} onChange={(e) => setFind(e.target.value)} data-testid="catalogue-find" />
+        {d !== undefined && <span className="text-muted-foreground">{t("pharmacyOffice.reports.itemCount", { count: rows.length })}</span>}
+      </div>
+      <p className="text-xs text-muted-foreground">{t("pharmacyOffice.reports.catalogueNote")}</p>
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && <Table testId="catalogue-table" cols={cols} rows={rows} rowKey={(r) => r.id} totals={null}
+        rowClass={(r) => (r.highAlert ? "text-red-800" : r.lasa ? "text-amber-800" : "")} />}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ STAGE C — two versions of a document, side by side ═══════════════════════════════════
+
+type Scalar = string | number | boolean | null;
+
+/**
+ * The document before and after one entry of its timeline (Healthray s17): the version before is the
+ * previous entry's state with this entry's own `before` values laid over it; the version after is the
+ * entry's state. Every field either version has is listed, in the same order on both sides, and a
+ * field that changed is marked on both.
+ */
+export function versionsOf(doc: WireActivity, i: number): { fields: string[]; before: Record<string, Scalar>; after: Record<string, Scalar>; changed: Set<string> } | null {
+  const e = doc.entries[i];
+  if (e === undefined || e.state === undefined) return null;
+  const before: Record<string, Scalar> = { ...(i > 0 ? doc.entries[i - 1]!.state ?? {} : {}) };
+  for (const c of e.changes) before[c.field] = c.before;
+  const after = e.state;
+  const all = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+  const lineField = (f: string): boolean => f.startsWith("lines.");
+  const fields = [...all.filter((f) => f === "status"), ...all.filter((f) => f !== "status" && !lineField(f)), ...all.filter(lineField).sort()];
+  const changed = new Set(fields.filter((f) => (before[f] ?? null) !== (after[f] ?? null)));
+  return { fields, before, after, changed };
+}
+
+function VersionsSideBySide({ doc, i, fmt }: { doc: WireActivity; i: number; fmt: (field: string, v: Scalar) => string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const v = versionsOf(doc, i);
+  if (v === null) return null;
+  const e = doc.entries[i]!;
+  const prev = i > 0 ? doc.entries[i - 1]! : null;
+  const label = (f: string): string => doc.labels?.[f] ?? e.changes.find((c) => c.field === f)?.label ?? f;
+  const when = (x: WireActivityEntry): string => new Date(x.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "short", timeStyle: "short" });
+  const event = (x: WireActivityEntry): string => t(`pharmacyOffice.reports.event.${x.name.replace(".", "_")}`, { defaultValue: x.name });
+  const side = (which: "before" | "after"): React.ReactElement => {
+    const values = which === "before" ? v.before : v.after;
+    const head = which === "before"
+      ? (prev === null ? t("pharmacyOffice.reports.versionNone") : `${event(prev)} · ${when(prev)}`)
+      : `${event(e)} · ${when(e)}`;
+    return (
+      <div className="min-w-0 rounded border" data-testid={`version-${which}`}>
+        <div className={`border-b px-2 py-1 text-xs font-medium ${which === "before" ? "bg-red-50" : "bg-green-50"}`}>
+          {t(`pharmacyOffice.reports.version.${which}`)} <span className="font-normal text-muted-foreground">· {head}</span>
+        </div>
+        <table className="w-full text-xs [&_td]:px-2 [&_td]:py-0.5">
+          <tbody>
+            {v.fields.map((f) => {
+              const moved = v.changed.has(f);
+              const has = Object.prototype.hasOwnProperty.call(values, f);
+              return (
+                <tr key={f} data-testid={`version-${which}-${f}`} data-changed={moved ? "yes" : "no"} className={moved ? (which === "before" ? "bg-red-50" : "bg-green-50 font-medium") : ""}>
+                  <td className="w-1/2 break-words text-muted-foreground">{label(f)}</td>
+                  <td className={`break-words tabular-nums ${moved && which === "before" ? "line-through decoration-red-400" : ""}`}>{has ? fmt(f, values[f] ?? null) : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+  return (
+    <div className="mt-2 grid gap-2 sm:grid-cols-2" data-testid={`activity-versions-${String(i)}`}>
+      {side("before")}
+      {side("after")}
     </div>
   );
 }
