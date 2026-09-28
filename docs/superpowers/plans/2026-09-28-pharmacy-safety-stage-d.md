@@ -383,6 +383,22 @@ and the refusal says who to appoint.
   an ask from a line that is no longer editable (verified, billed) has a server path but no desk control; an HTTP e2e
   of the three routes.
 
+## Wiring — the menu entries, the desk's reaction report, the D5 e2e (lane `pharmacy-safety-wire`)
+
+- Office menu (B3's `pages.ts`, all `was: null`): Law → `adr` (`pharmacy.adr.record` | `.manage`), `incidents`
+  (`pharmacy.incidents.record` | `.review`); Stock → `cold` (`pharmacy.coldchain.record` | `.manage`), `trays`
+  (`pharmacy.trays.check` | `.manage`). The Today rows of D1–D4 (`routeOf`) now open their page
+  (`?view=law&page=adr` …), not only the side. Closes the D1–D4 "office menu entry" deferrals.
+- DECIDED: D5's stewardship editor stays where D5 mounted it — inside `/formulary/admin`, i.e. the office's
+  Items → Formulary page (`formulary.manage`), beside the product it edits. No separate `stewardship` page.
+- Steward reach: `antimicrobial_steward` holds `approvals.requests.read` + `.decide` (the `/approvals` nav row is
+  `approvals.requests.read`), and the inbox renders `pharmacy_restricted_antimicrobial`. No gap; no seed change.
+- Desk "Report a reaction" (D1 deferral closed): a button under the ticket's lines opens D1's `AdrRecordForm` for
+  the patient in hand; the line's ⋯ entry also puts that line's medicine (and its picked batch) as the first
+  suspect. Under `pharmacy.adr.record` only. The patient and suspect stay editable on the sheet.
+- D5 HTTP e2e (deferral closed): `test/pharmacy-antimicrobial.e2e.test.ts` — the three routes' refusals, ask →
+  steward reads → `/approvals` grant → verify, and the self-approval refusal over HTTP.
+
 ## Order
 
 D1 → D2 → D3 → D5 → D4.

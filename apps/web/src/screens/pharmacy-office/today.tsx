@@ -99,13 +99,13 @@ export function routeOf(row: WireNeedRow, which: "pri" | "sec"): Go | null {
     case "grn_qc": case "opening_qc": return pri ? { to: "route", path: "/materials/grn" } : null;
     case "pharmacist_trial": case "pharmacist_expiring": case "pharmacist_lapsed": return pri ? { to: "route", path: "/pharmacy/pharmacists" } : null;
     // Stage D1 — an ADR not yet sent to PvPI: the register is a page of Law.
-    case "adr_pvpi_overdue": case "adr_pvpi_serious": case "adr_pvpi": return pri ? { to: "view", view: "law" } : null;
+    case "adr_pvpi_overdue": case "adr_pvpi_serious": case "adr_pvpi": return pri ? { to: "view", view: "law", page: "adr" } : null;
     // Stage D2 — a medication incident not yet reviewed: the log is a page of Law.
-    case "incident_review_overdue": case "incident_review": return pri ? { to: "view", view: "law" } : null;
+    case "incident_review_overdue": case "incident_review": return pri ? { to: "view", view: "law", page: "incidents" } : null;
     // Stage D3 — the fridge log is a page of Stock: an open excursion to decide, a reading missed today.
-    case "cold_excursion_open": case "cold_reading_missed": return pri ? { to: "view", view: "stock" } : null;
+    case "cold_excursion_open": case "cold_reading_missed": return pri ? { to: "view", view: "stock", page: "cold" } : null;
     // Stage D4 — the emergency trays are a page of Stock: a deficient tray to restock, a check missed, stock expiring.
-    case "tray_deficient": case "tray_daily_missed": case "tray_monthly_missed": case "tray_expiring": return pri ? { to: "view", view: "stock" } : null;
+    case "tray_deficient": case "tray_daily_missed": case "tray_monthly_missed": case "tray_expiring": return pri ? { to: "view", view: "stock", page: "trays" } : null;
     // Stage D5 — the steward is appointed at users and roles; an ask waiting is decided in Approvals.
     case "steward_not_appointed": return pri ? { to: "route", path: "/admin/users" } : null;
     case "steward_approval_waiting": return pri ? { to: "route", path: "/approvals" } : null;

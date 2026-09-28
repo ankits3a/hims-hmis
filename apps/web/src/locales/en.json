@@ -4582,7 +4582,14 @@
       "batch": "Batch & shelf",
       "qty": "Change the quantity",
       "decline": "Decline this line",
-      "nearMiss": "Record a near miss"
+      "nearMiss": "Record a near miss",
+      "reaction": "Report a reaction"
+    },
+    "reaction": {
+      "open": "Report a reaction",
+      "title": "Report an adverse reaction",
+      "titleDrug": "Report a reaction — {{drug}}",
+      "done": "{{no}} recorded. The allergy is on the patient's record; the office sends it to PvPI."
     },
     "partialOwed": "giving {{n}} of {{of}} — say why under ⋯ before the tick counts",
     "partialSaid": "giving {{n}} of {{of}} — {{reason}}",
@@ -6354,6 +6361,8 @@
         "counts": "Counts",
         "transfers": "Transfers & indents",
         "downtime": "Paper dispenses after downtime",
+        "cold": "Fridge temperature log",
+        "trays": "Crash cart & emergency trays",
         "master": "Item master",
         "sells": "What the counter sells · GST slab",
         "formulary": "Formulary",
@@ -6363,6 +6372,8 @@
         "retail": "Retail licence (Form 20/21)",
         "pharmacists": "Pharmacists & registrations",
         "messages": "Patient messages & consent",
+        "adr": "Adverse drug reactions (PvPI)",
+        "incidents": "Medication errors & near misses",
         "reports": "Reports"
       }
     },

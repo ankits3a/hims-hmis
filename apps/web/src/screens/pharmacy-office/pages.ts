@@ -30,6 +30,9 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "stock", key: "counts", perms: ["materials.counts.perform"], was: "/materials/counts" },
   { side: "stock", key: "transfers", perms: ["materials.stock.read"], was: "/materials/transfers" },
   { side: "stock", key: "downtime", perms: ["pharmacy.downtime.enter"], was: "/pharmacy/downtime" },
+  // Stage D3 / D4 — the fridge log and the emergency trays.
+  { side: "stock", key: "cold", perms: ["pharmacy.coldchain.record", "pharmacy.coldchain.manage"], was: null },
+  { side: "stock", key: "trays", perms: ["pharmacy.trays.check", "pharmacy.trays.manage"], was: null },
   { side: "items", key: "master", perms: ["materials.items.manage"], was: "/materials/items" },
   { side: "items", key: "sells", perms: ["pharmacy.sale_items.manage"], was: "/pharmacy/items" },
   { side: "items", key: "formulary", perms: ["formulary.manage"], was: "/formulary/admin" },
@@ -39,6 +42,9 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "law", key: "retail", perms: ["pharmacy.retail.manage"], was: "/pharmacy/retail-licence" },
   { side: "law", key: "pharmacists", perms: ["pharmacy.pharmacists.manage"], was: "/pharmacy/pharmacists" },
   { side: "law", key: "messages", perms: ["pharmacy.messages.manage"], was: null },
+  // Stage D1 / D2 — the ADR register (PvPI) and the medication error and near-miss log.
+  { side: "law", key: "adr", perms: ["pharmacy.adr.record", "pharmacy.adr.manage"], was: null },
+  { side: "law", key: "incidents", perms: ["pharmacy.incidents.record", "pharmacy.incidents.review"], was: null },
   { side: "reports", key: "reports", perms: ["pharmacy.reports.read"], was: null },
 ];
 
