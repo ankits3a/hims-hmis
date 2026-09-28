@@ -2631,3 +2631,32 @@ source-order guard. **Two review passes, ten findings, and the second pass's fiv
 inside the first pass's own remediation**, including the same emptiness defect a third time, in the
 fix for it. A close that stopped at one pass would have shipped all five. The review passes earned
 the phase; the mutants mostly confirmed, and the single refuting one bought the guard.
+
+### 2.168 AN AUDIT IS A FAN-OUT OF READ-ONLY AGENTS WITH A WORD CAP; THE MAIN SESSION READS VERDICTS, NOT SOURCES — and "deployable" includes the integration checkout's own dirty files
+
+**Specimen (pharmacy gap closure, 2026-09-28, LIGHT lane, in-session).** The owner asked two audit questions.
+First: are we missing anything planned against Healthray? Second: do 14 screens match the design assets? A third
+question followed: where are we against both Healthray notes, 131 KB of AI-written prose? Three read-only agents
+answered them:
+- the plan-vs-built audit: 139.6k subagent tokens, 59 tool calls;
+- the Chromium UI walk: 159.0k tokens, 66 calls, 34 screenshots;
+- the Healthray inventory map: 117.2k tokens, 60 calls.
+
+Each was capped at about 900–1,000 words of report. The main session held the verdicts, about 3k tokens each, and
+spot-checked four absence claims with single greps (GSTR-3B, LASA, IPD tables, pharmacy credit). All four held. It
+looked at two screenshots itself, which is the `verify-ui-against-the-board` rule. It never re-read the sources.
+What the spend bought:
+- 9 unbuilt plan items;
+- 78 Healthray items classified (30 built / 30 partial / 18 absent);
+- 14 of 14 screens shown off-design, plus a 778 px overflow on every shell screen at 390 px;
+- two PRs built on those findings the same day (A1 opening stock, A2 item master).
+
+**The second half cost a whole turn.** With A1 and A2 green on `main`, `deploy.sh` refused: `/opt/hmis` carried
+the owner's uncommitted `.claude/settings.json` (the dirty-tree guard exempts only `docs/`). The session had
+reported "ready to deploy" without looking.
+
+**The mechanical form:**
+- Before offering a deploy, run `git -C /opt/hmis status --porcelain | grep -vE '^\?\? docs/'`. If it prints
+  anything, the owner must decide (commit it, or set it aside by path) BEFORE you report "deployable".
+- Brief every audit agent with an explicit word cap, and with the claim it must TEST, not survey ("be adversarial:
+  'we are not missing anything' is what you are testing").

@@ -225,6 +225,14 @@
       "contextPerCall": 192867,
       "calls": 860,
       "note": "wf_c3569b4f ONLY — the first reading's total included another session's LIVE workflow, caught by re-running and watching it grow (ledger 2.167); never quote the TOTAL line on a shared box. `subagentTokens` here is OUTPUT only and is NOT what earlier rows put in this column — compare per-call and per-task shape across that boundary, never the raw figure. THE FINDING: lever 1 was already pulled (the EXECUTE-PROMPT forbade the ledger and the brief), the legitimate papers were ~25.2k tokens against 192,867/call, so ~87% was accumulated in-run — turn mix, Bash 702 of 860 against Read 51 (method 9.11). WHAT IT BOUGHT: 38 mutants with ONE survivor (R8's source-order guard) and two review passes whose second pass found five findings all inside the first pass's own remediation. Ten PRs, none deployed."
+    },
+    {
+      "phase": "pharmacy-gap-closure-A1-A2",
+      "lane": "LIGHT (in-session + 4 Agent subagents)",
+      "tasks": 2,
+      "agents": 4,
+      "subagentTokens": 415800,
+      "note": "2026-09-28. Three read-only audit agents (139.6k, 159.0k, 117.2k) answered the owner's audit questions with <=1,000-word verdicts; a fourth (A3 test fixtures) was still running at deploy. Main-session cost is NOT measured here (LIGHT) — only the owner's /cost sees it, so do not compare this row's subagent figure to a HEAVY phase's. Bought: 9 unbuilt plan items, 78 Healthray items classified, 14/14 screens shown off-design, A1+A2 shipped and deployed 5f4b597d. Waste: one turn lost to deploy.sh's dirty-tree refusal on the owner's .claude/settings.json (ledger 2.168)."
     }
   ]
 }
