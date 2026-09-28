@@ -9,6 +9,7 @@ import { equivalentMedicines, isEquivalentMedicine, medicinesByIds, ndpsClassByM
 import { availableQtyByItem, listItems, releaseReservation } from "../materials";
 import { getEncounter, getPrescription, runRxChecks } from "../opd";
 import { PHARMACY_SUBSTITUTION_ENABLED, REFUSED_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { assertStewardApprovals, prescriberUserOf } from "./antimicrobial";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
@@ -413,6 +414,15 @@ export async function verifyDispense(
       { hits: refused.drugDisease },
     );
   }
+  /*
+    STAGE D5 — a restricted antimicrobial (WHO AWaRe Reserve, a carbapenem, or the hospital's own) needs the
+    antimicrobial steward's GRANTED approval bound to this dispense and moiety set, by a steward who is not the
+    prescriber. Asked of what will actually be handed over, after the prescriber's own books.
+  */
+  await assertStewardApprovals(db, { id: d.id, patientId: d.patientId }, await prescriberUserOf(db, rx.doctorId), settled.map((s) => {
+    const medicine = medicines.get(s.dispensedMedicineId);
+    return { lineIdx: s.line.lineIdx, drug: medicine?.brandName ?? (s.line.rxLine as RxLine).drug, medicine };
+  }));
   // A controlled line is handed over by a registered pharmacist against a confirmed identity too (P6).
   const scheduled = settled.some((s) => (s.scheduleFlag !== null && (SCHEDULED_FLAGS as readonly string[]).includes(s.scheduleFlag)) || controlOf(s.scheduleFlag, s.ndpsClass).controlled);
   const declinedCount = lines.filter((l) => l.status === "declined").length;
