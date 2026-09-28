@@ -8,22 +8,22 @@ const SEARCH_PLACEHOLDER = /Phone number, UHID, or name/;
 
 const LEFT_HIT = {
   id: "p-1", uhid: "HMS0000000001", name: "Asha Devi", phone: "9876543210",
-  sex: "female", dob: "1990-04-02", isConfidential: false, hasPhoto: false,
+  administrativeGender: "female", dob: "1990-04-02", isConfidential: false, hasPhoto: false,
 };
 const RIGHT_HIT = {
   id: "p-2", uhid: "HMS0000000002", name: "Asha Devi", phone: "9876500000",
-  sex: "female", dob: "1990-04-02", isConfidential: false, hasPhoto: false,
+  administrativeGender: "female", dob: "1990-04-02", isConfidential: false, hasPhoto: false,
 };
 
 // Identical on every field except phone — teeth: only the phone row may show "differs".
 const LEFT_PATIENT = {
   id: "p-1", uhid: "HMS0000000001", name: "Asha Devi", phone: "9876543210",
-  dob: "1990-04-02T00:00:00.000Z", sex: "female", addressLine: "12 MG Road",
+  dob: "1990-04-02T00:00:00.000Z", administrativeGender: "female", addressLine: "12 MG Road",
   abhaAddress: "asha@abdm", abhaNumber: null,
 };
 const RIGHT_PATIENT = {
   id: "p-2", uhid: "HMS0000000002", name: "Asha Devi", phone: "9876500000",
-  dob: "1990-04-02T00:00:00.000Z", sex: "female", addressLine: "12 MG Road",
+  dob: "1990-04-02T00:00:00.000Z", administrativeGender: "female", addressLine: "12 MG Road",
   abhaAddress: "asha@abdm", abhaNumber: null,
 };
 
@@ -54,6 +54,12 @@ const baseRoutes = {
   "GET /api/patients/p-1/allergies": { items: [] },
   "GET /api/patients/p-2/allergies": { items: [] },
 };
+
+/*
+  UX-AUDIT 2026-09-28 — the three defects a real-Chromium walk of /merge found. Each test below was
+  run against origin/main's merge-review.tsx first and failed there.
+*/
+const THIRD_HIT = { ...RIGHT_HIT, id: "p-3", uhid: "HMS0000000003" };
 
 describe("MergeReview", () => {
   beforeEach(() => {
@@ -137,5 +143,73 @@ describe("MergeReview", () => {
 
     expect(await screen.findByText("pending")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Execute merge" })).toBeDisabled();
+  });
+
+  it("UX-AUDIT 2026-09-28: a record picked as A is offered disabled as B while the other record stays pickable", async () => {
+    stubFetch(baseRoutes);
+    renderWithProviders(<MergeReview />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getAllByPlaceholderText(SEARCH_PLACEHOLDER)[0]!, "asha");
+    await user.click(await screen.findByRole("button", { name: /HMS0000000001/ }));
+    await user.type(screen.getAllByPlaceholderText(SEARCH_PLACEHOLDER)[0]!, "asha");
+
+    const sameAgain = await screen.findByRole("button", { name: /HMS0000000001/ });
+    expect(sameAgain).toBeDisabled();
+    expect(sameAgain).toHaveTextContent("already Record A");
+    // Teeth: the OTHER record is still pickable — the guard is about identity, not about side B.
+    expect(screen.getByRole("button", { name: /HMS0000000002/ })).toBeEnabled();
+  });
+
+  it("UX-AUDIT 2026-09-28: two search rows that resolve to ONE record refuse the merge before a reason is typed", async () => {
+    stubFetch({
+      ...baseRoutes,
+      "GET /api/patients/search": { items: [LEFT_HIT, THIRD_HIT] },
+      // p-3 was merged into p-1 — GET /patients/:id follows the chain to the winner.
+      "GET /api/patients/p-3": { patient: LEFT_PATIENT, resolvedFrom: "p-3" },
+      "GET /api/patients/p-3/allergies": { items: [] },
+    });
+    renderWithProviders(<MergeReview />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getAllByPlaceholderText(SEARCH_PLACEHOLDER)[0]!, "asha");
+    await user.click(await screen.findByRole("button", { name: /HMS0000000001/ }));
+    await user.type(screen.getAllByPlaceholderText(SEARCH_PLACEHOLDER)[0]!, "asha");
+    await user.click(await screen.findByRole("button", { name: /HMS0000000003/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("same patient record");
+    expect(screen.queryByRole("button", { name: "Request merge" })).toBeNull();
+    expect(fetchCalls().some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("UX-AUDIT 2026-09-28: each search row carries age, sex, DOB and the masked mobile — never the full number", async () => {
+    stubFetch(baseRoutes);
+    renderWithProviders(<MergeReview />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getAllByPlaceholderText(SEARCH_PLACEHOLDER)[0]!, "asha");
+    const a = await screen.findByRole("button", { name: /HMS0000000001/ });
+    const b = screen.getByRole("button", { name: /HMS0000000002/ });
+    expect(a).toHaveTextContent(/age \d+y/);
+    expect(a).toHaveTextContent("Female");
+    expect(a).toHaveTextContent("DOB 1990-04-02");
+    expect(a).toHaveTextContent("•••••• 3210");
+    expect(b).toHaveTextContent("•••••• 0000");
+    // A list row is not a record (DD8): the full mobile must not be in the button.
+    expect(a).not.toHaveTextContent("9876543210");
+  });
+
+  it("UX-AUDIT 2026-09-28: every comparison row captions its own A and B values, so a stacked phone layout stays readable", async () => {
+    stubFetch(baseRoutes);
+    renderWithProviders(<MergeReview />);
+    const user = userEvent.setup();
+
+    await pickBoth(user);
+
+    const phoneRow = (await screen.findByText("Mobile number")).closest("tr")!;
+    const [aCell, bCell] = [within(phoneRow).getByText("9876543210").closest("td")!, within(phoneRow).getByText("9876500000").closest("td")!];
+    expect(within(aCell).getByText("Record A")).toBeInTheDocument();
+    expect(within(bCell).getByText("Record B")).toBeInTheDocument();
+    expect(within(phoneRow).getByText("differs")).toBeInTheDocument();
   });
 });

@@ -233,6 +233,14 @@
       "agents": 4,
       "subagentTokens": 415800,
       "note": "2026-09-28. Three read-only audit agents (139.6k, 159.0k, 117.2k) answered the owner's audit questions with <=1,000-word verdicts; a fourth (A3 test fixtures) was still running at deploy. Main-session cost is NOT measured here (LIGHT) — only the owner's /cost sees it, so do not compare this row's subagent figure to a HEAVY phase's. Bought: 9 unbuilt plan items, 78 Healthray items classified, 14/14 screens shown off-design, A1+A2 shipped and deployed 5f4b597d. Waste: one turn lost to deploy.sh's dirty-tree refusal on the owner's .claude/settings.json (ledger 2.168)."
+    },
+    {
+      "phase": "pharmacy-gap-closure-A3-A4-B2-B3",
+      "lane": "LIGHT (in-session + 3 Agent subagents)",
+      "tasks": 4,
+      "agents": 3,
+      "subagentTokens": 879000,
+      "note": "2026-09-28, deployed 2194011e. Agents: A3 test fixtures 192.4k (1,992 tests green), B2 office build 384.8k, B3 fold 302.0k. Each builder was briefed with the approved board file and CLAUDE.md, not the ledger, and verified in Chromium at 6 widths. Main-session cost unmeasured (LIGHT) — only the owner's /cost sees it. Waste: two red CI rounds on #347 (lab-reports.test.tsx and seed-lab.test.ts enumerate registered approval types outside the changed module) — ledger 2.169, method 9.6b. Bought: owner-only credit hospital-wide, GSTR-3B, the approved office in production."
     }
   ]
 }

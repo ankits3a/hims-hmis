@@ -297,7 +297,8 @@ export async function previewBill(id: string): Promise<WirePricedDraft> {
   return api<WirePricedDraft>("GET", `/pharmacy/dispenses/${id}/bill/preview`);
 }
 export type Tender = { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string };
-export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number }, idempotencyKey: string): Promise<WireDispense> {
+/** GAP A3b — `credit`: the whole bill on the OWNER's granted `billing_credit_owner` approval (tenders empty). */
+export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string } }, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/bill`, input, idempotencyKey);
 }
 export async function handOverDispense(
@@ -464,6 +465,8 @@ export type WireRetailPreview = {
   lines: {
     lineIdx: number; medicineId: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null;
     itemId: string; batchId: string; batchNo: string; expiryDate: string | null; qtyBase: number; fefoOverride: boolean;
+    /** UX-AUDIT 2026-09-28 — the line's rate, GST (inside the MRP) and amount. Absent from an older server. */
+    price?: { unitPaise: number; grossPaise: number; discountPaise: number; taxPaise: number; gstRateBps: number; amountPaise: number };
   }[];
   totals: { grossPaise: number; discountPaise: number; taxPaise: number; netPayablePaise: number };
   checks: {
@@ -505,6 +508,8 @@ export type WireRetailSale = {
 export type WireRetailSaleRow = {
   id: string; soldAt: string; soldBy: string; invoiceId: string; invoiceNo: string; netPaise: number;
   scheduled: boolean; lineCount: number; registeredHere: boolean;
+  /** UX-AUDIT 2026-09-28 — who bought it; a restricted customer has no name. Absent from an older server. */
+  customer?: { uhid: string; name: string | null; alias: string | null } | null;
   /** P20 — absent from an older server. */
   channel?: "walk_in" | "downtime"; enteredAt?: string; sheet?: { desk: string; serial: number } | null;
 };

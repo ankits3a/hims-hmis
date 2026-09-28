@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
+import { setToken } from "../lib/api";
 import { BillingSession } from "./billing-session";
 
 type Reply = { status: number; body: unknown };
@@ -212,6 +213,8 @@ describe("BillingSession", () => {
     // THE MONEY ASSERTION, on the figure the cashier reads BEFORE she commits. W-7 folds face
     // value instead of paise and renders ₹71.00 here.
     expect(screen.getByTestId("counted-total")).toHaveTextContent("₹7,100.00");
+    // THE BLIND COUNT (kept by UX-AUDIT 2026-09-28): no expected figure until the count is in.
+    expect(screen.queryByText(/Expected/)).toBeNull();
 
     await user.click(screen.getByTestId("close-submit"));
     await waitFor(() => expect(callsTo("POST", "/api/billing/sessions/cs-1/close")).toHaveLength(1));
@@ -297,7 +300,9 @@ describe("BillingSession", () => {
 
     const pending = screen.getByTestId("approval-pending");
     expect(pending).toHaveAttribute("role", "status");
-    expect(pending).toHaveTextContent("apr-77");
+    // UX-AUDIT 2026-09-28 — who decides, in words; the approval's raw id is not the cashier's business.
+    expect(pending).toHaveTextContent("Waiting for a billing manager to approve this variance");
+    expect(pending.textContent).not.toContain("apr-77");
 
     /**
      * Pipeline A carried item 18: `beginClose` moves the drawer to `closing` and
@@ -339,31 +344,63 @@ describe("BillingSession", () => {
     expect(screen.queryByTestId("lockout-banner")).toBeNull();
   });
 
-  it("opening a second drawer while the first is still `closing` renders the server's refusal inline — the lockout is real and the screen does not pretend otherwise", async () => {
+  /**
+   * UX-AUDIT 2026-09-28 — THE CLOSING PANEL TELLS ONE STORY. Real Chromium showed "you cannot take
+   * money until a billing manager approves" directly above an active "Confirm close" and a full
+   * "Open a drawer" form. The server refuses both until the approval: `confirmClose` answers
+   * `approval_not_granted`, and a second drawer hits `cashier_sessions_live_ux`
+   * (`session_already_open`). The screen offers the open form not at all while `closing`, and the
+   * finish step only as the step AFTER approval.
+   */
+  it("UX-AUDIT 2026-09-28: while the drawer awaits approval there is no open-a-drawer form, and the finish step says it comes after the approval", async () => {
+    mockRoutes({ "GET /api/billing/sessions/current": { status: 200, body: { session: CLOSING } } });
+    renderWithProviders(<BillingSession />);
+
+    await screen.findByTestId("lockout-banner");
+    expect(screen.queryByTestId("open-submit")).toBeNull();
+    expect(screen.queryByLabelText("Opening float")).toBeNull();
+    expect(screen.getByTestId("confirm-close-hint")).toHaveTextContent("After a billing manager approves the variance");
+    expect(screen.getByTestId("confirm-close")).toHaveTextContent("Finish closing");
+  });
+
+  it("UX-AUDIT 2026-09-28: finishing before the approval is refused in words, not with the server's session id", async () => {
     mockRoutes({
       "GET /api/billing/sessions/current": { status: 200, body: { session: CLOSING } },
-      "POST /api/billing/sessions": {
+      "POST /api/billing/sessions/cs-1/confirm-close": {
         status: 409,
-        body: {
-          statusCode: 409,
-          message: "session cs-1 is already closing",
-          code: "session_state_conflict",
-        },
+        body: { statusCode: 409, message: "variance approval for session cs-1 is not granted", code: "approval_not_granted" },
       },
     });
     renderWithProviders(<BillingSession />);
     const user = userEvent.setup();
 
-    await screen.findByTestId("lockout-banner");
-    await user.type(screen.getByLabelText("Opening float"), "500");
-    await user.click(screen.getByTestId("open-submit"));
-
-    await waitFor(() => expect(callsTo("POST", "/api/billing/sessions")).toHaveLength(1));
-    const refusal = await screen.findByTestId("open-error");
-    expect(refusal).toHaveAttribute("role", "alert");
-    expect(refusal).toHaveTextContent("session cs-1 is already closing");
-    // the closing drawer is still on screen: the refusal is information, not a state change
+    await user.click(await screen.findByTestId("confirm-close"));
+    const refusal = await screen.findByTestId("close-error");
+    expect(refusal).toHaveTextContent("Not approved yet");
+    expect(refusal.textContent).not.toContain("cs-1");
     expect(screen.getByTestId("session-status")).toHaveTextContent("AWAITING APPROVAL");
+  });
+
+  /**
+   * UX-AUDIT 2026-09-28 — A `closed` ROW RENDERED AS "CLOSED · Opened · Float" and nothing else: no
+   * counted, no expected, no variance, no closed time, and no way to open the next drawer. Every one
+   * of those figures is on the row the server returned.
+   */
+  it("UX-AUDIT 2026-09-28: a closed drawer shows its close summary — opened, closed, float, counted, expected, signed variance — and offers the next drawer", async () => {
+    mockRoutes({ "GET /api/billing/sessions/current": { status: 200, body: { session: CONFIRMED } } });
+    renderWithProviders(<BillingSession />);
+
+    await screen.findByTestId("day-summary");
+    expect(screen.getByTestId("summary-status")).toHaveTextContent("CLOSED");
+    expect(screen.getByTestId("summary-opened-at")).toHaveTextContent("09:42");
+    expect(screen.getByTestId("summary-closed-at")).toHaveTextContent("18:10");
+    expect(screen.getByTestId("summary-float")).toHaveTextContent("₹1,000.00");
+    expect(screen.getByTestId("summary-counted")).toHaveTextContent("₹7,100.00");
+    expect(screen.getByTestId("summary-expected")).toHaveTextContent("₹8,820.00");
+    expect(screen.getByTestId("summary-variance")).toHaveTextContent("-₹1,720.00");
+    expect(screen.queryByTestId("session-status")).toBeNull();
+    expect(screen.queryByTestId("confirm-close")).toBeNull();
+    expect(screen.getByTestId("open-submit")).toBeInTheDocument();
   });
 
   /**
@@ -440,7 +477,7 @@ describe("BillingSession", () => {
    * visible box here. The two assertions below separate the two halves: `toHaveValue("")` fails if
    * the `key` goes, and the POST count fails if `land`'s reset goes.
    */
-  it("REGRESSION: confirming a drawer out of `closing` clears the open form too — the form stays MOUNTED across that transition, so the visible box and the value behind it must still agree", async () => {
+  it("REGRESSION: confirming a drawer out of `closing` leaves an empty open form behind — the visible box and the value behind it must still agree", async () => {
     let current: SessionRow | null = CLOSING;
     mockRoutes({
       "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
@@ -453,9 +490,9 @@ describe("BillingSession", () => {
     renderWithProviders(<BillingSession />);
     const user = userEvent.setup();
 
-    // the open form is already on screen while the drawer awaits its approval — type into it
-    await user.type(await screen.findByLabelText("Opening float"), "1000");
-    await user.click(screen.getByTestId("confirm-close"));
+    // UX-AUDIT 2026-09-28: the open form is no longer on screen while the drawer awaits approval,
+    // so it mounts on the confirm; the float must still be empty and unposted.
+    await user.click(await screen.findByTestId("confirm-close"));
     await screen.findByTestId("day-summary");
 
     expect(screen.getByLabelText("Opening float")).toHaveValue("");
@@ -536,4 +573,55 @@ describe("FD-11: withdrawing a mistyped closing count", () => {
     expect(screen.getByTestId("lockout-banner")).toBeInTheDocument();
   });
 });
+});
+
+/**
+ * UX-AUDIT 2026-09-28 — A READER WHO MAY SEE THE APPROVAL IS TOLD WHERE IT STANDS. The seeded
+ * cashier holds no `approvals.requests.read`, so the tests above run without it; a billing manager
+ * counting a drawer herself does, and for her the finish step appears only once it can succeed.
+ */
+describe("UX-AUDIT 2026-09-28: the approval's state, for a reader who may read it", () => {
+  const REQUESTED_AT = "2026-08-20T12:31:00.000Z"; // 18:01 IST
+  afterEach(() => { setToken(null); localStorage.clear(); vi.unstubAllGlobals(); });
+
+  function renderAs(status: "pending" | "granted" | "rejected"): void {
+    setToken("t-1");
+    mockRoutes({
+      "GET /api/auth/me": {
+        status: 200,
+        body: {
+          actor: { type: "user", id: "u-1" },
+          permissions: { hospital: ["billing.session.own", "approvals.requests.read"], scoped: { department: {}, floor: {} } },
+        },
+      },
+      "GET /api/billing/sessions/current": { status: 200, body: { session: CLOSING } },
+      "GET /api/approvals/apr-77": {
+        status: 200,
+        body: { approval: { id: "apr-77", typeKey: "billing_variance", status, requestedAt: REQUESTED_AT } },
+      },
+    });
+    renderWithProviders(<BillingSession />);
+  }
+
+  it("pending: waiting since the time it was asked, and no finish step yet", async () => {
+    renderAs("pending");
+    await waitFor(() => expect(screen.getByTestId("approval-pending")).toHaveTextContent("Waiting since 18:01"));
+    expect(screen.queryByTestId("confirm-close")).toBeNull();
+    expect(screen.getByTestId("lockout-banner")).toBeInTheDocument();
+  });
+
+  it("granted: the finish step is offered and the lockout is not repeated", async () => {
+    renderAs("granted");
+    await waitFor(() => expect(screen.getByTestId("approval-pending")).toHaveTextContent("approved this variance"));
+    expect(screen.getByTestId("confirm-close")).toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-close-hint")).toBeNull();
+    expect(screen.queryByTestId("lockout-banner")).toBeNull();
+  });
+
+  it("rejected: no finish step — the way out is the re-count", async () => {
+    renderAs("rejected");
+    await waitFor(() => expect(screen.getByTestId("approval-pending")).toHaveTextContent("did not approve"));
+    expect(screen.queryByTestId("confirm-close")).toBeNull();
+    expect(screen.getByTestId("recount-open")).toBeInTheDocument();
+  });
 });

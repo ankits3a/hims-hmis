@@ -6,6 +6,7 @@ import {
   draftReport, fetchReport, fetchStudy, proposeDraft, publishReport, radiologyErrorText, signReport,
 } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
+import { RadiologyStation } from "./radiology-station";
 
 /**
  * PLAN 18a T9 — **THE REPORT: written, signed under a fresh second factor, published.**
@@ -132,10 +133,13 @@ export function RadiologyReport(): React.ReactElement {
   const signableId = draftId ?? s?.reports.find(humanUnsigned)?.id ?? null;
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">
-        {s === null ? t("radiology.study.unknown") : `${t("radiology.report.title")} — ${s.accessionNo}`}
-      </h1>
+    <RadiologyStation
+      station="worklist"
+      title={s === null ? t("radiology.study.unknown") : `${t("radiology.report.title")} — ${s.accessionNo}`}
+      place={t("radiology.station.reportPlace")}
+      stats={[]}
+    >
+    <div className="space-y-4">
 
       {error !== null ? <p role="alert" className="text-red-600">{error}</p> : null}
       {note !== null ? <p role="status" className="text-green-700">{note}</p> : null}
@@ -199,5 +203,6 @@ export function RadiologyReport(): React.ReactElement {
         )
         : null}
     </div>
+    </RadiologyStation>
   );
 }
