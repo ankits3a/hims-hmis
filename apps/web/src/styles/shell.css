@@ -82,7 +82,12 @@
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px;
   padding: 0 22px 9px;
 }
-.shell .grp { display: flex; align-items: baseline; gap: 9px; }
+/*
+ * GAP-CLOSURE B2 — a group WRAPS. The stores group carries fourteen links, and without a wrap it ran
+ * 249 px past a 390 px phone (document.scrollWidth 639, measured under /pharmacy/office), so every
+ * screen in the shell scrolled sideways for anybody who holds them.
+ */
+.shell .grp { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 9px; min-width: 0; }
 .shell .grp .tag {
   font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9px; font-weight: 600;
   letter-spacing: .14em; text-transform: uppercase; color: var(--faint); flex-shrink: 0;
