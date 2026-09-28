@@ -1090,15 +1090,21 @@ export async function grantFeeBypass(
 export async function counterState(db: Db, encounterId: string): Promise<CounterState | null> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) return null;
+  /*
+    DESK-FIXES D (2026-09-28) — the queue is asked by the RESOLVED row id, never the caller's string.
+    `getEncounter` accepts either spelling (row id or visit number, the one on the slip), and the
+    cashier types the visit number; asking `opd_queue_entries` with that string matched nothing, so
+    /billing said "no token yet" beside a visit holding MED-1.
+  */
   const entries = await db.select({ tokenNo: opdQueueEntries.tokenNo, seq: opdQueueEntries.seq })
-    .from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(desc(opdQueueEntries.seq)).limit(1);
+    .from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounter.id)).orderBy(desc(opdQueueEntries.seq)).limit(1);
   const feeStatus = (await encounterFeeStatuses(db, [encounter])).get(encounter.id) ?? null;
   const dept = encounter.departmentId === null ? [] : await db
     .select({ code: opdDepartments.code })
     .from(opdDepartments)
     .where(eq(opdDepartments.id, encounter.departmentId));
   return {
-    encounterId, status: encounter.status, serviceDate: encounter.serviceDate, feeStatus,
+    encounterId: encounter.id, status: encounter.status, serviceDate: encounter.serviceDate, feeStatus,
     everJoined: entries.length > 0, tokenNo: entries[0]?.tokenNo ?? null,
     departmentCode: dept[0]?.code ?? null,
   };
@@ -1132,6 +1138,12 @@ export type TimelineItem = {
   encounterId: string; visitNo: string; serviceDate: string; openedAt: Date; status: string; visitType: string;
   doctorId: string | null; doctorName: string | null; departmentId: string | null; departmentName: string | null;
   diagnosis: string | null; icd10Code: string | null; prescriptionLineCount: number; dangerFlagged: boolean;
+  /**
+   * DESK-FIXES B (2026-09-28) — the visit an internal referral opened this one FROM, or null. Only
+   * `referInternally` sets it (see the column), so a non-null here is the fact "a doctor referred
+   * them here", which the desk labels REFERRAL rather than offering a fresh seating.
+   */
+  referredFromEncounterId: string | null;
 };
 
 /**
@@ -1177,5 +1189,6 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
     departmentId: r.encounter.departmentId, departmentName: r.departmentName,
     diagnosis: r.encounter.diagnosis, icd10Code: r.encounter.icd10Code,
     prescriptionLineCount: lineCounts.get(r.encounter.id) ?? 0, dangerFlagged: r.encounter.dangerFlagged,
+    referredFromEncounterId: r.encounter.referredFromEncounterId,
   }));
 }

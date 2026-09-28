@@ -1212,6 +1212,7 @@
       "selectedPatient": "चुना गया मरीज़",
       "encounter": "विज़िट आईडी",
       "freeVisit": "फ्री फॉलो-अप — इस रीविज़िट का शुल्क नहीं",
+      "freeReferral": "फ्री रेफ़रल — {{until}} तक शुल्क नहीं",
       "dues": "बकाया",
       "noDues": "कोई बकाया नहीं",
       "pickPatientFirst": "बिल बनाने से पहले मरीज़ चुनें",
@@ -1306,7 +1307,8 @@
     "visitType": {
       "new": "नया",
       "revisit": "रीविज़िट",
-      "renewal": "नवीनीकरण"
+      "renewal": "नवीनीकरण",
+      "referral": "रेफ़रल"
     },
     "discountCategory": {
       "charity": "दान",

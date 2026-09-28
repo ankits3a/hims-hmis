@@ -214,7 +214,7 @@ describe("ABDM e2e — NOT configured", () => {
 
   it("POST /patients refuses a client-sent verified with 400 abha_verified_only_by_abdm", async () => {
     const res = await request(app.getHttpServer()).post("/patients").set("Authorization", `Bearer ${clerkToken}`)
-      .send({ name: "Asha Devi", sex: "female", phone: "9876543210", abhaNumber: "12-3456-7890-1234", abhaVerificationStatus: "verified" });
+      .send({ name: "Asha Devi", sex: "female", phone: "9876543210", ageYears: 34, abhaNumber: "12-3456-7890-1234", abhaVerificationStatus: "verified" });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("abha_verified_only_by_abdm");
     expect(res.body.message).toMatch(/^abha_verified_only_by_abdm:/);
@@ -222,7 +222,7 @@ describe("ABDM e2e — NOT configured", () => {
 
   it("PATCH /patients/:id refuses a move to verified with the same 400", async () => {
     const reg = await request(app.getHttpServer()).post("/patients").set("Authorization", `Bearer ${clerkToken}`)
-      .send({ name: "Asha Devi", sex: "female", phone: "9876543210", abhaNumber: "12-3456-7890-1234", abhaVerificationStatus: "self_declared" })
+      .send({ name: "Asha Devi", sex: "female", phone: "9876543210", ageYears: 34, abhaNumber: "12-3456-7890-1234", abhaVerificationStatus: "self_declared" })
       .expect(201);
     const res = await request(app.getHttpServer()).patch(`/patients/${reg.body.patient.id as string}`)
       .set("Authorization", `Bearer ${clerkToken}`).send({ abhaVerificationStatus: "verified" });
