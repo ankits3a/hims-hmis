@@ -1062,24 +1062,32 @@ const radiologyReceptionRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/reception",
   component: RadiologyReception,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const radiologyWorklistRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/worklist",
   component: RadiologyWorklist,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const radiologyStudyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/studies/$studyId",
   component: RadiologyStudy,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const radiologyReportRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/studies/$studyId/report",
   component: RadiologyReport,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const pcpndtFormFRoute = createRoute({
@@ -1097,6 +1105,8 @@ const radiationSafetyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/radiation-safety",
   component: RadiationSafety,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const labBenchRoute = createRoute({
