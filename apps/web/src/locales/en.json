@@ -10,7 +10,8 @@
     "theme": "Theme",
     "themeDark": "Dark",
     "themeLight": "Light",
-    "search": "Search — the cursor starts here"
+    "search": "Search — the cursor starts here",
+    "menu": "Menu"
   },
   "nav": {
     "formularyAdmin": "Formulary",
@@ -96,7 +97,6 @@
     "search": "/ — Search",
     "new": "F4 New patient",
     "confirm": "Ctrl+⏎ Confirm",
-    "release": "Esc Release the patient",
     "book": "F7 Appointments"
   },
   "login": {
@@ -255,7 +255,12 @@
     "unmergeNote": "Why must this be split?",
     "actFirst": "Act first (patient-safety) — review after",
     "unmergeExecute": "Execute unmerge",
-    "differs": "differs"
+    "differs": "differs",
+    "hitAge": "age {{age}}",
+    "hitDob": "DOB {{dob}}",
+    "change": "Change",
+    "alreadyPicked": "already {{side}}",
+    "sameRecord": "Record A and Record B are the same patient record. Pick two different records to merge."
   },
   "inbox": {
     "title": "Approvals",

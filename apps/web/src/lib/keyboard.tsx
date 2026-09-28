@@ -181,30 +181,40 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
  * FD-7 T7 moves it again, because FD-3's row is now teaching two chords the browser eats.
  *
  * It advertises exactly what the map binds and nothing else: `/` search, `F4` new patient, `F7` the
- * book, `Ctrl+⏎` confirm, `Esc` release. `Ctrl+K` and `Ctrl+N` are gone from both. `F2` stays off it
+ * book, `Ctrl+⏎` confirm. `Ctrl+K` and `Ctrl+N` are gone from both. `F2` stays off it
  * while it is reserved and unbound — advertising a key that does nothing is worse than not
  * advertising it, and that rule is why `F8`/`F9` are not here either.
  */
-export function ShortcutLegend(): React.ReactElement {
+/*
+ * SHELL-UX — `can`, WHEN GIVEN, DROPS A KEY WHOSE DESTINATION THIS PERSON CANNOT OPEN, AND `Esc` IS GONE.
+ *
+ * Audit 2026-09-28, rendered: the footer read "F4 New patient · F7 Appointments · Esc Release the
+ * patient" on a cashier's /billing/session and on /counter/reconcile. F4 lands on the registration
+ * desk and F7 on the appointment book, so a person without `patients.register` or
+ * `opd.appointments.read` was taught a key that opens a refusal. And `Esc` releases nobody: no window
+ * listener in the shell binds it (the strip's Release is a button), so it was a keycap that lies on
+ * every shell screen. Omitted `can` keeps the old unfiltered legend for mounts with no auth context.
+ */
+export function ShortcutLegend({ can }: { can?: (permission: string) => boolean } = {}): React.ReactElement {
   const { t } = useTranslation();
+  const reach = (permission: string): boolean => can === undefined || can(permission);
   const screenKeys = useSyncExternalStore(subscribeScreenKeys, readScreenKeys, readScreenKeys);
   // PARITY P3 — a screen that registers its own keys (`useScreenKeys`) gets them here instead of
   // the front desk's: F4 / F7 / Ctrl+⏎ / "release the patient" mean nothing on the pharmacy office.
   if (screenKeys !== null) {
     return (
-      <footer className="no-print flex gap-4 border-t px-4 py-1 text-xs text-neutral-500" data-testid="shortcut-legend-screen">
+      <footer className="no-print flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-1 text-xs text-neutral-500" data-testid="shortcut-legend-screen">
         <span>{t("shortcuts.search")}</span>
         {screenKeys.map((k) => <span key={k}>{k}</span>)}
       </footer>
     );
   }
   return (
-    <footer className="no-print flex gap-4 border-t px-4 py-1 text-xs text-neutral-500">
+    <footer className="no-print flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-1 text-xs text-neutral-500">
       <span>{t("shortcuts.search")}</span>
-      <span>{t("shortcuts.new")}</span>
-      <span>{t("shortcuts.book")}</span>
+      {reach("patients.register") ? <span>{t("shortcuts.new")}</span> : null}
+      {reach("opd.appointments.read") ? <span>{t("shortcuts.book")}</span> : null}
       <span>{t("shortcuts.confirm")}</span>
-      <span>{t("shortcuts.release")}</span>
     </footer>
   );
 }
