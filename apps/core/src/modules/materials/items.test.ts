@@ -343,6 +343,16 @@ describe("the item master (Plan 14 T3)", () => {
     expect(await eventsNamed(db, "item.updated")).toHaveLength(1);
   });
 
+  it("GAP A2: manufacturer, lead time and the LASA / high-alert flags are saved; an unset flag reads false; the DB refuses a lead time outside 1–365", async () => {
+    const itemId = await paracetamol();
+    expect(await getItem(db, itemId)).toMatchObject({ manufacturer: null, leadTimeDays: null, lasa: false, highAlert: false });
+    await withTx(db, (tx) => updateItem(tx, HEAD, itemId, { manufacturer: "GSK", leadTimeDays: 7, lasa: true, highAlert: true }));
+    expect(await getItem(db, itemId)).toMatchObject({ manufacturer: "GSK", leadTimeDays: 7, lasa: true, highAlert: true });
+    await expect(withTx(db, (tx) => updateItem(tx, HEAD, itemId, { leadTimeDays: 0 }))).rejects.toThrow();
+    await expect(withTx(db, (tx) => updateItem(tx, HEAD, itemId, { leadTimeDays: 366 }))).rejects.toThrow();
+    expect((await getItem(db, itemId))?.leadTimeDays).toBe(7);
+  });
+
   it("a duplicate item code is refused case-insensitively, with a code", async () => {
     await paracetamol();
     const medicineId = await medicine("Calpol 500");

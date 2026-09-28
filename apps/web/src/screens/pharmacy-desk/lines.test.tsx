@@ -261,4 +261,19 @@ describe("the line list at the window (PD-4)", () => {
     await userEvent.type(await screen.findByRole("textbox", { name: "Scan a pack — it finds its line" }), "(01)08901234567890(10)MOX-7{enter}");
     await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0, scan: "(01)08901234567890(10)MOX-7" }] }]));
   });
+
+  it("GAP A2 — the item master's safety flags show on the line: high alert red, LASA gold, and nothing on an unflagged line", async () => {
+    const flagged = (i: number, drug: string, f: { lasa?: boolean; highAlert?: boolean }): WireDispenseLine =>
+      lineOf(i, { drug, item: { id: `it${String(i)}`, code: `C${String(i)}`, name: drug, baseUom: "tablet", uoms: [], ...f } });
+    const lines = [flagged(0, "Insulin Glargine", { highAlert: true }), flagged(1, "Losar 50", { lasa: true }), lineOf(2, { drug: "Cetzine 10" })];
+    mockRoutes(base(() => dispense("claimed", lines)));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    expect(await screen.findByTestId("desk-line-0-high-alert")).toHaveTextContent("High alert");
+    expect(screen.getByTestId("desk-line-0-high-alert")).toHaveClass("rd");
+    expect(screen.queryByTestId("desk-line-0-lasa")).toBeNull();
+    expect(screen.getByTestId("desk-line-1-lasa")).toHaveTextContent("LASA");
+    expect(screen.getByTestId("desk-line-1-lasa")).toHaveAttribute("title", expect.stringMatching(/read the strip against the prescription twice/));
+    expect(screen.queryByTestId("desk-line-2-lasa")).toBeNull();
+    expect(screen.queryByTestId("desk-line-2-high-alert")).toBeNull();
+  });
 });

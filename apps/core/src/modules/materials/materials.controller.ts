@@ -14,6 +14,7 @@ import {
   addBarcode, addItemUom, getItem, listItems, registerItem, resolveBarcode, setPriceRegulation,
   updateItem,
 } from "./items";
+import { medicinesByIds } from "../formulary";
 import {
   activateVendor, addVendorDocument, applyBankChange, blacklistVendor, getBankChange, getVendor,
   listBankChanges, listVendorDocuments, listVendors, registerVendor, reinstateVendor,
@@ -173,6 +174,8 @@ const itemCreateBody = z.object({
   serialTracked: z.boolean().optional(), storageClass: z.string().max(32).optional(),
   shelfLifeDays: z.number().int().positive().nullish(),
   abcClass: z.string().max(4).nullish(), vedClass: z.string().max(4).nullish(),
+  manufacturer: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)), leadTimeDays: z.number().int().min(1).max(365).nullish(),
+  lasa: z.boolean().optional(), highAlert: z.boolean().optional(),
   uoms: z.array(uomInput).max(20).optional(), barcodes: z.array(barcodeInput).max(20).optional(),
 });
 const itemPatchBody = z.object({
@@ -182,6 +185,8 @@ const itemPatchBody = z.object({
   storageClass: z.string().max(32).optional(), shelfLifeDays: z.number().int().positive().nullish(),
   abcClass: z.string().max(4).nullish(), vedClass: z.string().max(4).nullish(),
   active: z.boolean().optional(),
+  manufacturer: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)), leadTimeDays: z.number().int().min(1).max(365).nullish(),
+  lasa: z.boolean().optional(), highAlert: z.boolean().optional(),
 });
 const regulationBody = z.object({
   mrpDefaultPaise: paise.nullish(), mrpUom: z.string().max(32).nullish(),
@@ -347,7 +352,13 @@ export class MaterialsController {
   async item(@Param("id") itemId: string): Promise<{ item: unknown }> {
     const item = await getItem(this.db, itemId);
     if (item === undefined) toHttp(new MaterialsError("unknown_item", `item ${itemId} not found`));
-    return { item };
+    /*
+     * GAP CLOSURE A2 — a drug's schedule lives on its formulary medicine (the catalogue owns the law's
+     * class), so the item editor reads it here beside the item and changes it through the formulary's
+     * own `PATCH medicines/:id`, under `formulary.manage`.
+     */
+    const med = item!.formularyMedicineId === null ? undefined : (await medicinesByIds(this.db, [item!.formularyMedicineId])).get(item!.formularyMedicineId);
+    return { item: { ...item, medicineName: med?.brandName ?? null, scheduleFlag: med?.scheduleFlag ?? null } };
   }
 
   @RequirePermission("materials.items.manage", "hospital")

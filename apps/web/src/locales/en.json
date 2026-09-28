@@ -1844,7 +1844,32 @@
     "retired": "Retired",
     "retire": "Retire",
     "reactivate": "Reactivate",
-    "mergedInto": "Merged into {{code}}"
+    "mergedInto": "Merged into {{code}}",
+    "edit": {
+      "button": "Edit",
+      "open": "Edit {{code}}",
+      "title": "{{code}} · {{name}}",
+      "close": "Close",
+      "hsn": "HSN code",
+      "storage": "Storage",
+      "storage_ambient": "Room temperature",
+      "storage_cold_2_8": "Fridge 2–8 °C",
+      "storage_frozen": "Frozen",
+      "storage_narcotic": "Narcotic cabinet",
+      "storage_flammable": "Flammable store",
+      "manufacturer": "Manufacturer / marketer",
+      "leadTime": "Supplier lead time (days)",
+      "schedule": "Schedule of {{medicine}}",
+      "scheduleUnset": "— not set —",
+      "scheduleReadOnly": "The schedule belongs to the formulary medicine; only someone who manages the formulary can change it.",
+      "lasa": "Look-alike / sound-alike (LASA)",
+      "highAlert": "High-alert medicine",
+      "flagsHint": "The counter shows these on the dispense line so the pharmacist reads the strip twice. Off means nobody has said so — not that it is safe.",
+      "save": "Save",
+      "saved": "{{code}} saved.",
+      "lasaTag": "LASA",
+      "highAlertTag": "High alert"
+    }
   },
   "materialsVendors": {
     "title": "Vendor master",
@@ -4582,6 +4607,12 @@
         "expired": "Bill message not sent: it expired before it could go.",
         "failed": "Bill message could not be delivered."
       }
+    },
+    "safety": {
+      "highAlert": "High alert",
+      "highAlertTitle": "High-alert medicine (NABH): check the drug, dose and patient twice before handing over.",
+      "lasa": "LASA",
+      "lasaTitle": "Look-alike / sound-alike: read the strip against the prescription twice."
     }
   },
   "pharmacyAuthorise": {

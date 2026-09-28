@@ -244,7 +244,8 @@ export type DispenseLineView = {
   controlled: boolean;
   orderedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string } | null;
   dispensedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null } | null;
-  item: { id: string; code: string; name: string; baseUom: string; uoms: UomRow[] } | null;
+  /** GAP CLOSURE A2 — `lasa` and `highAlert` are the item master's NABH safety flags, shown on the line. */
+  item: { id: string; code: string; name: string; baseUom: string; uoms: UomRow[]; lasa: boolean; highAlert: boolean } | null;
   saleable: boolean;
   /** PD-D18 — where this item sits in the counter's store ("R-12"), or null when nobody has said. */
   location: string | null;
@@ -493,7 +494,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       ndpsClass: l.ndpsClass, controlled: isControlled(l),
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
       dispensedMedicine: dm === undefined ? null : { id: dm.id, brandName: dm.brandName, strengthLabel: dm.strengthLabel, form: dm.form, scheduleFlag: dm.scheduleFlag },
-      item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms },
+      item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms, lasa: item.lasa, highAlert: item.highAlert },
       saleable, location: l.itemId === null ? null : (locations.get(l.itemId) ?? null), available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
       quote: item === undefined ? null : (quotes.get(item.id) ?? null),

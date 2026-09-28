@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { createItem, fetchItems, materialsErrorText, patchItem } from "../lib/materials-api";
 import { Button } from "@/components/ui/button";
+import { ItemEditPanel } from "./materials-item-edit";
 import type { WireItem } from "../lib/materials-api";
 
 /**
@@ -43,6 +44,8 @@ export function MaterialsItems(): React.ReactElement {
   const [packMultiplier, setPackMultiplier] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  /* GAP CLOSURE A2 — the item whose master fields are open for editing. */
+  const [editId, setEditId] = useState<string | null>(null);
 
   const items = useQuery({
     queryKey: ["materials", "items", search],
@@ -161,6 +164,8 @@ export function MaterialsItems(): React.ReactElement {
         <Button onClick={() => void submit()}>{t("materialsItems.create")}</Button>
       </section>
 
+      {editId !== null && <ItemEditPanel key={editId} itemId={editId} onClose={() => setEditId(null)} />}
+
       <section className="space-y-3">
         <label className="flex flex-col gap-1 text-sm sm:max-w-sm">
           {t("materialsItems.search")}
@@ -187,7 +192,11 @@ export function MaterialsItems(): React.ReactElement {
               {items.data.map((it) => (
                 <tr key={it.id} className="border-t">
                   <td>{it.code}</td>
-                  <td>{it.name}</td>
+                  <td>
+                    {it.name}
+                    {it.highAlert === true && <span className="ml-2 rounded bg-red-50 px-1 text-xs text-red-700">{t("materialsItems.edit.highAlertTag")}</span>}
+                    {it.lasa === true && <span className="ml-2 rounded bg-amber-50 px-1 text-xs text-amber-800">{t("materialsItems.edit.lasaTag")}</span>}
+                  </td>
                   <td>{it.class}</td>
                   <td>{it.baseUom}</td>
                   <td data-testid={`item-status-${it.code}`}>
@@ -196,12 +205,19 @@ export function MaterialsItems(): React.ReactElement {
                       : it.active ? t("materialsItems.active") : t("materialsItems.retired")}
                   </td>
                   <td>
-                    {/* PHARMACY P6 — a merged item is history: it is never switched back on (the server refuses it too). */}
-                    {(it.mergedIntoItemId ?? null) === null && (
-                      <Button variant="secondary" onClick={() => void toggleActive(it)}>
-                        {it.active ? t("materialsItems.retire") : t("materialsItems.reactivate")}
-                      </Button>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {(it.mergedIntoItemId ?? null) === null && (
+                        <Button variant="secondary" aria-label={t("materialsItems.edit.open", { code: it.code })} onClick={() => setEditId(it.id)}>
+                          {t("materialsItems.edit.button")}
+                        </Button>
+                      )}
+                      {/* PHARMACY P6 — a merged item is history: it is never switched back on (the server refuses it too). */}
+                      {(it.mergedIntoItemId ?? null) === null && (
+                        <Button variant="secondary" onClick={() => void toggleActive(it)}>
+                          {it.active ? t("materialsItems.retire") : t("materialsItems.reactivate")}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

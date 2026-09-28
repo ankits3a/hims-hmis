@@ -192,6 +192,18 @@ export const items = pgTable(
     shelfLifeDays: integer("shelf_life_days"), // null = no shelf life; DD8 rule 5 falls back
     abcClass: text("abc_class"), // consumption-value class — 14b's replenishment reads it
     vedClass: text("ved_class"), // vital/essential/desirable — 14b's, same
+    /**
+     * GAP CLOSURE A2 (2026-09-28) — the item master's missing fields, from the owner's Healthray audit.
+     * `manufacturer` is the marketer printed on the pack (free text; the formulary's CDS source spells it
+     * several ways). `lead_time_days` is how long a PO to the usual supplier takes to arrive, read by
+     * replenishment. `lasa` (look-alike / sound-alike) and `high_alert` are the NABH MOM safety flags: the
+     * counter shows them on the line, so a pharmacist reads the label twice. Both default false: an unset
+     * flag is "nobody has said so", never "safe".
+     */
+    manufacturer: text("manufacturer"),
+    leadTimeDays: integer("lead_time_days"),
+    lasa: boolean("lasa").notNull().default(false),
+    highAlert: boolean("high_alert").notNull().default(false),
     active: boolean("active").notNull().default(true),
     /**
      * PHARMACY P6 — ITEM MERGE. Set once, when this item (a duplicate row of the same thing) was merged
@@ -217,6 +229,7 @@ export const items = pgTable(
      */
     check("items_merged_ck", sql`(${t.mergedIntoItemId} is null) = (${t.mergedAt} is null) and (${t.mergedIntoItemId} is null or (${t.mergedIntoItemId} <> ${t.id} and not ${t.active}))`),
     check("items_class_ck", sql`${t.class} in ('drug', 'consumable', 'consumable_dated', 'reagent', 'implant', 'stationery', 'linen', 'gas', 'asset', 'service')`),
+    check("items_lead_time_ck", sql`${t.leadTimeDays} is null or ${t.leadTimeDays} between 1 and 365`),
     check("items_storage_class_ck", sql`${t.storageClass} in ('ambient', 'cold_2_8', 'frozen', 'narcotic', 'flammable')`),
     /**
      * DD3, AND IT IS ONE OF THE FIVE CHECKS `materials.test.ts` READS OUT OF `pg_constraint` BY

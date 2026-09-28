@@ -5,7 +5,7 @@ import { testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import { events, formularyMedicines, formularySalts, pharmacyDispenses } from "../../kernel/db/schema";
 import { addMedicine, addSalt } from "../formulary";
-import { registerItem } from "../materials";
+import { registerItem, updateItem } from "../materials";
 import { amountsIn, matchOpenLines, moietyKey, parseDrugText } from "./auto-match";
 import { claimDispense, findAtCounter } from "./claim";
 import { getDispense, listQueue } from "./queue";
@@ -184,6 +184,12 @@ describe("a generic prescription opens already matched to the stocked brand (202
     expect(v.lines[0]).toMatchObject({ matchedBy: "salt", item: { code: "MOX500" }, orderedMedicine: { id: generic!.id }, dispensedMedicine: { id: shelf.mox } });
     expect(v.lines[1]).toMatchObject({ matchedBy: null, item: null, dispensedMedicine: { id: shelf.brandCalpol650 }, substitutionType: "none" });
     expect(v.lines[2]).toMatchObject({ matchedBy: null, item: null });
+  });
+
+  it("GAP A2: the item master's LASA / high-alert flags ride on the line the counter is giving", async () => {
+    await withTx(db, (tx) => updateItem(tx, fx.incharge.actor, shelf.item.dolo, { lasa: true }));
+    const v = await claimDispense(db, fx.pharmacist.actor, { dispenseId: await queued([line({ drug: "Paracetamol 650mg tablet" })]), door: "rx_qr" }, MON2);
+    expect(v.lines[0]!.item).toMatchObject({ code: "DOLO650", lasa: true, highAlert: false });
   });
 
   it("several brands of one composition: the one with stock, then the batch that expires first, then the lowest MRP", async () => {
