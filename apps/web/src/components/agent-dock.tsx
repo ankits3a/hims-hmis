@@ -271,8 +271,8 @@ export function AgentDock(
             placeholder={placeholder}
             style={{
               /* A phone is narrower than 300 px of question box plus the bar around it: /my-day at 390 px
-                 overflowed by 132 px (prod walk, 2026-09-27). The box shrinks; 300 px stays the desktop width. */
-              width: "clamp(120px, 30vw, 300px)", height: 28, borderRadius: 6, border: "1px solid #24413655",
+                 overflowed by 132 px (prod walk, 2026-09-27); 120 px still left 32 px, measured on the live page — 80 px leaves 0. 300 px stays the desktop width. */
+              width: "clamp(80px, 20vw, 300px)", height: 28, borderRadius: 6, border: "1px solid #24413655",
               background: "#0c1f1a", color: "var(--agent-fg)", padding: "0 10px", fontSize: 11.5,
             }}
           />

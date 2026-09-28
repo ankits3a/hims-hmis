@@ -218,6 +218,8 @@ export async function updateMedicine(
   patch: {
     brandName?: string; form?: string; routeClass?: RouteClass;
     strengthLabel?: string | null; scheduleFlag?: string | null; active?: boolean;
+    /** STAGE D5 — the WHO AWaRe class and "restricted: needs the antimicrobial steward", set by a pharmacist under `formulary.manage`. */
+    awareCategory?: "Access" | "Watch" | "Reserve" | null; antimicrobialRestricted?: boolean;
     salts?: { saltId: string; strength?: string | null }[];
     /** DD8, same acknowledgement `addMedicine` requires — see the gate below (C6). */
     acknowledgeIntraFdc?: boolean;
