@@ -8214,7 +8214,7 @@
       "pcpndt": "PCPNDT — a Form F is completed at the scan.",
       "ionising": "Ionising — women aged 10–55 are screened for pregnancy before the scan."
     },
-    "duplicate": "Already ordered {{when}} ({{orderNo}}). Give a reason to order it again.",
+    "duplicate": "Already ordered on {{when}} ({{orderNo}}). Give a reason to order it again.",
     "duplicateRefused": "Imaging says this scan was ordered in the last 24 hours ({{orderNos}}). Give a reason to order it again.",
     "duplicateReason": "Reason to repeat",
     "reasonRequired": "Type the reason to repeat this scan.",

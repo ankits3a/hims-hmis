@@ -66,6 +66,14 @@ export function istToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(now);
 }
 
+/** `DD Mon HH:MM` in IST, by the same fixed +05:30 arithmetic `fmtIst` uses — a scan eight days ago
+ *  must not read as "10:30". */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function fmtIstDayTime(iso: string): string {
+  const d = new Date(Date.parse(iso) + 330 * 60_000);
+  return `${String(d.getUTCDate())} ${MONTHS[d.getUTCMonth()] ?? ""} ${fmtIst(iso)}`;
+}
+
 /* ── the study card ─────────────────────────────────────────────────────────────────────────── */
 
 export type StudyCardProps = {
@@ -220,7 +228,7 @@ export function StudyCard(p: StudyCardProps): React.ReactElement {
           <p>
             {refusedDup !== null
               ? t("imagingOrder.duplicateRefused", { orderNos: refusedDup.orderNos.join(", ") })
-              : t("imagingOrder.duplicate", { orderNo: recent[0]!.orderNo, when: fmtIst(recent[0]!.placedAt) })}
+              : t("imagingOrder.duplicate", { orderNo: recent[0]!.orderNo, when: fmtIstDayTime(recent[0]!.placedAt) })}
           </p>
           <label className="flex flex-col gap-1" htmlFor={fieldId("why")}>
             <span className="font-medium">{t("imagingOrder.duplicateReason")}</span>
@@ -232,7 +240,8 @@ export function StudyCard(p: StudyCardProps): React.ReactElement {
       {error !== null && <p role="alert" className="text-red-700 text-xs">{error}</p>}
 
       <button
-        type="button" className="rounded bg-primary text-primary-foreground px-3 py-1 text-sm disabled:opacity-60"
+        type="button" className="pri rounded px-3 py-1 text-sm disabled:opacity-60"
+        style={{ background: "var(--green, #0e6e50)", color: "#fff", border: 0, alignSelf: "flex-start" }}
         disabled={send.isPending} onClick={submit}
       >
         {send.isPending ? t("imagingOrder.sending") : p.sendLabel}
@@ -252,7 +261,7 @@ export function studyStateText(
   if (s === null) return t("imagingOrder.state.sent");
   switch (s.status) {
     case "scheduled":
-      return s.scheduledAt === null ? t("imagingOrder.state.toBook") : t("imagingOrder.state.booked", { when: fmtIst(s.scheduledAt) });
+      return s.scheduledAt === null ? t("imagingOrder.state.toBook") : t("imagingOrder.state.booked", { when: fmtIstDayTime(s.scheduledAt) });
     case "checked_in": case "ready": return t("imagingOrder.state.arrived");
     case "in_acquisition": return t("imagingOrder.state.scanning");
     case "acquired": return t("imagingOrder.state.acquired");
