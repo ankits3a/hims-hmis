@@ -52,25 +52,47 @@ function ErrorLine({ message }: { message: string | null }): React.ReactElement 
 
 // ——— the slot grid: shared by the booking panel and the reschedule dialog ———
 
-function SlotGrid({ slots, onPick }: { slots: WireSlot[]; onPick: (slot: WireSlot) => void }): React.ReactElement {
+/*
+  ═══ UX-AUDIT 2026-09-28 — THREE STATES THAT RENDERED AS ONE ═══
+
+  A real-Chromium walk found every slot drawn as bare text: a booked 09:50 had the same colour,
+  no fill and no border as a free 09:40. The grid was painted with Tailwind utilities (`border`,
+  `bg-neutral-100`, `opacity-50`), and this screen lives inside `.pp`, whose reset in
+  `desk-one.css` — `.pp button { background: none; border: none; padding: 0 }` — out-ranks all of
+  them twice over: (0,1,1) beats (0,1,0), and unlayered CSS beats `@layer utilities` whatever the
+  specificity. jsdom loads no stylesheet, so every test stayed green over a screen that could not
+  tell a clerk which times were taken.
+
+  The paint now comes from `.pp .slot` primitives in that same sheet, so the reset and the paint
+  are one file and one scope. FREE is a bordered button; TAKEN is dashed, washed and SAYS "Booked"
+  (shape and words, not a colour step a dim monitor loses); PAST is muted and struck through but
+  still clickable, as it always was here — the server is the one that refuses a past time.
+
+  `locked` is the booking panel's "no patient yet": every slot is disabled and the panel says why.
+*/
+function SlotGrid(
+  { slots, onPick, locked = false }: { slots: WireSlot[]; onPick: (slot: WireSlot) => void; locked?: boolean },
+): React.ReactElement {
+  const { t } = useTranslation();
   return (
-    <div className="grid grid-cols-6 gap-2">
-      {slots.map((slot) => (
-        <button
-          key={slot.start}
-          type="button"
-          data-testid={`slot-${slot.start}`}
-          disabled={slot.booked}
-          onClick={() => onPick(slot)}
-          className={cn(
-            "rounded border px-2 py-2 text-sm",
-            slot.past && "opacity-50",
-            slot.booked && "cursor-not-allowed bg-neutral-100 text-neutral-400",
-          )}
-        >
-          {fmtIst(slot.start)}
-        </button>
-      ))}
+    <div className="slots">
+      {slots.map((slot) => {
+        const state = slot.booked ? "taken" : slot.past ? "past" : "free";
+        return (
+          <button
+            key={slot.start}
+            type="button"
+            data-testid={`slot-${slot.start}`}
+            disabled={slot.booked || locked}
+            title={slot.booked ? t("opdAppt.slotBooked") : slot.past ? t("slotBoard.past") : t("slotBoard.free")}
+            onClick={() => onPick(slot)}
+            className={cn("slot mo", state)}
+          >
+            {fmtIst(slot.start)}
+            {slot.booked && <span className="note">{t("opdAppt.slotBooked")}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -266,9 +288,18 @@ function DayTab({
   const doctor = doctors.find((d) => d.id === doctorId) ?? null;
   const roomCodeOf = (roomId: string | null): string | null => rooms.find((r) => r.id === roomId)?.code ?? null;
 
+  /*
+    UX-AUDIT 2026-09-28 — A CLICK ASKS; CONFIRM BOOKS. A booking is a promise made to a patient
+    about a time, and the old grid made it on a single click with no chance to see who, with whom
+    and when. The click now only holds the slot in `pending`; the POST rides the dialog's Confirm.
+  */
+  const [pending, setPending] = useState<WireSlot | null>(null);
+  const [busy, setBusy] = useState(false);
+
   const book = async (slot: WireSlot): Promise<void> => {
     if (patient === null || doctorId === "") return;
     setBookError(null);
+    setBusy(true);
     try {
       await api("POST", "/opd/appointments", { patientId: patient.id, doctorId, slotStart: slot.start });
       /*
@@ -276,11 +307,15 @@ function DayTab({
         moment one is refused. The refusal below is logged for the same reason — it is a fact.
       */
       onNote(`booked ${patient.name} at ${fmtIst(slot.start)}`, "ok");
+      setPending(null);
       await queryClient.invalidateQueries({ queryKey: ["opd", "appointments", doctorId, date] });
       await queryClient.invalidateQueries({ queryKey: ["opd", "slots", doctorId, date] });
     } catch (e) {
+      // The refusal stays in the dialog, where the Confirm was (FD-22's rule).
       setBookError(opdErrorMessage(e));
       onNote(`booking REFUSED — ${opdErrorMessage(e)}`, "err");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -293,69 +328,125 @@ function DayTab({
     );
   }
 
+  /*
+    UX-AUDIT 2026-09-28 — WHO FIRST, THEN WHEN. The patient search used to sit BELOW the slot grid,
+    so a clerk met the times first, clicked one, and nothing happened and nothing said why. The
+    artboard (`Appointment.dc.html`) opens with a "Booking for" card; this panel does the same, and
+    the grid below it stays locked, with the reason in words, until that card holds a patient.
+
+    UX-AUDIT 2026-09-28 — A REAL <table>. The day list was four flex-grow divs per row, so column
+    widths followed each row's content: a checked-in row, whose actions cell is empty, put its
+    time under the Status header. A table's columns are the same width in every row by definition.
+  */
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      <div className="space-y-2">
+      {/* `min-w-0`: a grid item's automatic minimum is its min-content, and at 390 that pushed this
+          column to 414 px — the page scrolled sideways under a clerk's thumb (UX-AUDIT 2026-09-28). */}
+      <div className="min-w-0 space-y-3">
+        <div className="box" data-testid="booking-for" style={{ padding: "12px 14px" }}>
+          <span className="tag">{t("opdAppt.bookingFor")}</span>
+          {patient === null ? (
+            <div style={{ marginTop: 8 }}><PatientPicker onPick={setPatient} /></div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
+              <div style={{ flexGrow: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{patient.name ?? "—"}</div>
+                <div className="mo" style={{ fontSize: 12, color: "var(--dim)" }}>{patient.uhid}</div>
+              </div>
+              <button type="button" className="sec" onClick={() => { setPatient(null); }}>{t("opdAppt.changePatient")}</button>
+            </div>
+          )}
+        </div>
         <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.slots")}</h2>
         {doctorId === "" && <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.pickDoctorHint")}</p>}
         {doctorId !== "" && slots.data === undefined && <p>{t("app.loading")}</p>}
-        {doctorId !== "" && slots.data !== undefined && <SlotGrid slots={slots.data.slots} onPick={(slot) => void book(slot)} />}
-        <ErrorLine message={bookError} />
-        <h2 className="pt-2 text-sm font-semibold">{t("opdAppt.pickPatient")}</h2>
-        <PatientPicker onPick={setPatient} />
-        {patient !== null && (
-          <p className="text-sm">{t("opdAppt.selectedPatient")}: {patient.name ?? "—"} ({patient.uhid})</p>
+        {doctorId !== "" && slots.data !== undefined && patient === null && (
+          <p data-testid="slots-locked-hint" style={{ fontSize: 12, color: "var(--gold)" }}>{t("opdAppt.choosePatientFirst")}</p>
+        )}
+        {doctorId !== "" && slots.data !== undefined && (
+          <SlotGrid
+            slots={slots.data.slots}
+            locked={patient === null}
+            onPick={(slot) => { setBookError(null); setPending(slot); }}
+          />
         )}
       </div>
-      <div className="space-y-2">
+      <div className="min-w-0 space-y-2">
         <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.bookings")}</h2>
         {doctorId !== "" && appointments.data !== undefined && appointments.data.items.length === 0 && (
           <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.none")}</p>
         )}
         {doctorId !== "" && appointments.data !== undefined && appointments.data.items.length > 0 && (
-          <div role="table" className="box" style={{ overflow: "hidden" }}>
-            <div role="rowgroup">
-              <div role="row" style={{ display: "flex", gap: 10, padding: "9px 13px", borderBottom: "1px solid var(--line2)" }}>
-                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.patient")}</span>
-                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opdAppt.time")}</span>
-                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.status")}</span>
-                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.actions")}</span>
-              </div>
-            </div>
-            <div role="rowgroup">
-              {appointments.data.items.map((apt) => (
-                <div role="row" className="drow" key={apt.id}>
-                  <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>
-                    <span className="block">{patientLabel(apt.patient)}</span>
-                    <span className="block font-mono text-xs text-neutral-600">{apt.patient?.uhid ?? "—"}</span>
-                  </span>
-                  <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>{fmtIst(apt.slotStart)}</span>
-                  <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}><StatusBadge status={apt.status} /></span>
-                  <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>
-                    <div className="flex flex-wrap gap-2">
-                      {(apt.status === "booked" || apt.status === "needs_rebooking") && (
-                        <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
-                      )}
-                      {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
-                      {apt.status === "booked" && (
-                        <CheckInCell
-                          appointment={apt}
-                          doctorName={doctor?.displayName ?? ""}
-                          departmentCode={department?.code ?? ""}
-                          departmentName={department?.name ?? ""}
-                          roomCodeOf={roomCodeOf}
-                          queryClient={queryClient}
-                          onSlip={setSlip}
-                        />
-                      )}
-                    </div>
-                  </span>
-                </div>
-              ))}
-            </div>
+          <div className="box" style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th className="tag">{t("opd.labels.patient")}</th>
+                  <th className="tag">{t("opdAppt.time")}</th>
+                  <th className="tag">{t("opd.labels.status")}</th>
+                  <th className="tag">{t("opd.labels.actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {appointments.data.items.map((apt) => (
+                  <tr key={apt.id}>
+                    <td>
+                      <span className="block">{patientLabel(apt.patient)}</span>
+                      <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
+                    </td>
+                    <td className="mo">{fmtIst(apt.slotStart)}</td>
+                    <td><StatusBadge status={apt.status} /></td>
+                    <td>
+                      <div className="flex flex-wrap gap-2">
+                        {(apt.status === "booked" || apt.status === "needs_rebooking") && (
+                          <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
+                        )}
+                        {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
+                        {apt.status === "booked" && (
+                          <CheckInCell
+                            appointment={apt}
+                            doctorName={doctor?.displayName ?? ""}
+                            departmentCode={department?.code ?? ""}
+                            departmentName={department?.name ?? ""}
+                            roomCodeOf={roomCodeOf}
+                            queryClient={queryClient}
+                            onSlip={setSlip}
+                          />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
+
+      <Dialog open={pending !== null} onOpenChange={(open) => { if (!open && !busy) setPending(null); }}>
+        <DialogContent className="pp">
+          <DialogHeader><DialogTitle>{t("opdAppt.confirmTitle")}</DialogTitle></DialogHeader>
+          {pending !== null && patient !== null && (
+            <dl className="confirm-list">
+              <dt className="tag">{t("opd.labels.patient")}</dt>
+              <dd><span className="block">{patient.name ?? "—"}</span><span className="block mo" style={{ fontSize: 12, color: "var(--dim)" }}>{patient.uhid}</span></dd>
+              <dt className="tag">{t("opd.labels.doctor")}</dt>
+              <dd>{doctor?.displayName ?? "—"}</dd>
+              <dt className="tag">{t("opd.labels.date")}</dt>
+              <dd className="mo">{date}</dd>
+              <dt className="tag">{t("opdAppt.time")}</dt>
+              <dd className="mo">{fmtIst(pending.start)}</dd>
+            </dl>
+          )}
+          <ErrorLine message={bookError} />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" className="sec" disabled={busy} onClick={() => { setPending(null); }}>{t("opdAppt.cancel")}</button>
+            <button type="button" className="pri" disabled={busy} onClick={() => { if (pending !== null) void book(pending); }}>
+              {t("opdAppt.confirmBooking")}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -383,28 +474,31 @@ function NeedsRebookingTab(
         <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.none")}</p>
       )}
       {items.data !== undefined && items.data.items.length > 0 && (
-        <div role="table" className="box" style={{ overflow: "hidden" }}>
-          <div role="rowgroup">
-              <div role="row" style={{ display: "flex", gap: 10, padding: "9px 13px", borderBottom: "1px solid var(--line2)" }}>
-                <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.patient")}</span>
-              <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.doctor")}</span>
-              <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opdAppt.time")}</span>
-              <span role="columnheader" className="tag" style={{ flexGrow: 1 }}>{t("opd.labels.actions")}</span>
-              </div>
-            </div>
-          <div>
-            {items.data.items.map((apt) => (
-              <div role="row" className="drow" key={apt.id}>
-                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>
-                  <span className="block">{patientLabel(apt.patient)}</span>
-                  <span className="block font-mono text-xs text-neutral-600">{apt.patient?.uhid ?? "—"}</span>
-                </span>
-                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>{doctorName(apt.doctorId)}</span>
-                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}>{fmtIst(apt.slotStart)}</span>
-                <span role="cell" style={{ flexGrow: 1, fontSize: 12 }}><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></span>
-              </div>
-            ))}
-          </div>
+        // UX-AUDIT 2026-09-28 — a real <table>, for the same reason as the day list's.
+        <div className="box" style={{ overflowX: "auto" }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th className="tag">{t("opd.labels.patient")}</th>
+                <th className="tag">{t("opd.labels.doctor")}</th>
+                <th className="tag">{t("opdAppt.time")}</th>
+                <th className="tag">{t("opd.labels.actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.data.items.map((apt) => (
+                <tr key={apt.id}>
+                  <td>
+                    <span className="block">{patientLabel(apt.patient)}</span>
+                    <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
+                  </td>
+                  <td>{doctorName(apt.doctorId)}</td>
+                  <td className="mo">{fmtIst(apt.slotStart)}</td>
+                  <td><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

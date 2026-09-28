@@ -167,6 +167,41 @@
 .d1 .pi.sel { background: var(--wash); }
 .d1 .drow, .pp .drow { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-top: 1px solid var(--line2); }
 .d1 .drow:hover, .pp .drow:hover { background: var(--wash); }
+
+/*
+  ═══ UX-AUDIT 2026-09-28 — SLOTS AND TABLES THAT THE `.pp` RESET CANNOT ERASE ═══
+
+  `/opd/appointments` painted its slot grid with Tailwind utilities, and `.pp button` above —
+  `background: none; border: none; padding: 0`, specificity (0,1,1), unlayered — beats every
+  utility in `@layer utilities` regardless. Free, booked and past rendered as identical bare text.
+  These are two-class selectors under `.pp`, so they out-rank the reset in its own terms.
+
+  FREE is a card-coloured bordered button; TAKEN is dashed and washed (a difference in SHAPE, the
+  slot board's own rule — a colour step alone is lost on a dim counter monitor); PAST is muted and
+  struck through. A slot disabled for any other reason (no patient chosen yet) is faded.
+
+  `.tbl` is the day list's real <table>: its columns are the same width in every row, which four
+  flex-grow divs per row were not — a checked-in row's time sat under the Status header.
+*/
+.pp .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+.pp .slot {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 38px;
+  padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card);
+  color: var(--ink); font-size: 12.5px; font-weight: 500; text-align: center; line-height: 1.2;
+}
+.pp .slot.free:hover:not(:disabled) { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.pp .slot.free:disabled { opacity: .45; }
+.pp .slot.taken { border-style: dashed; background: var(--wash); color: var(--faint); }
+.pp .slot.past { background: transparent; color: var(--faint); text-decoration: line-through; }
+.pp .slot.past:disabled { opacity: .45; }
+.pp .slot .note { font-size: 8.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.pp[data-lang="hi"] .slot .note { letter-spacing: 0; text-transform: none; font-size: 10px; }
+.pp .tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pp .tbl th { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+.pp .tbl td { padding: 9px 12px; border-top: 1px solid var(--line2); vertical-align: middle; }
+.pp .tbl tbody tr:hover { background: var(--wash); }
+.pp .confirm-list { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; align-items: baseline; margin: 4px 0 8px; font-size: 13.5px; }
+
 .d1 .lock { width: 11px; height: 11px; flex-shrink: 0; }
 .d1 .sw { width: 38px; height: 38px; border-radius: 6px; border: 1px solid var(--line); flex-shrink: 0; }
 
