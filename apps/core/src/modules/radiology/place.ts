@@ -1,9 +1,11 @@
 import { eq } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
 import { withIdempotency } from "../billing";
 import { getEncounter } from "../opd";
 import { daycareCaseDefinition } from "../ot";
 import { daycareEncounters } from "../../kernel/db/schema/ot";
 import { orders } from "../../kernel/db/schema/orders";
+import { counterparties } from "../../kernel/db/schema/partners";
 import { patients } from "../../kernel/db/schema/patients";
 import { placeOrder } from "../../kernel/orders/place";
 import { findRecentItems } from "../../kernel/orders/read";
@@ -77,9 +79,17 @@ type PlaceImagingOrderBase = {
 
 export type PlaceImagingOrderInput = PlaceImagingOrderBase &
   (
-    | { authority?: "clinician"; externalReferrerId?: null }
-    | { authority: "external_prescription"; externalReferrerId: string }
+    | { authority?: "clinician"; externalReferrerId?: null; referrer?: null }
+    /**
+     * 18-S RS2 (18a-iv T3) — the outside slip names its referrer. Either an existing counterparty
+     * id, or the NAME and REGISTRATION NUMBER off the slip, which `resolveExternalReferrer` turns
+     * into (or finds) the `external_rmp` counterparty the order's biconditional CHECK needs.
+     */
+    | { authority: "external_prescription"; externalReferrerId: string; referrer?: null }
+    | { authority: "external_prescription"; externalReferrerId?: null; referrer: ExternalReferrerInput }
   );
+
+export type ExternalReferrerInput = { name: string; registrationNo: string };
 
 export type PlaceImagingOrderResult = {
   orderId: string;
@@ -182,6 +192,57 @@ async function assertEncounterOpen(tx: Tx, encounterNo: string, now: Date): Prom
       { encounterNo, status: encounter.status, ageDays },
     );
   }
+}
+
+/**
+ * ═══ 18-S RS2 — THE OUTSIDE REFERRER, FOUND OR MADE FROM THE SLIP ═══
+ *
+ * `orders_external_referrer_ck` is a biconditional with no foreign key, so an
+ * `external_prescription` order needs SOME counterparty id. The lab answers an unnamed referrer with
+ * a sentinel; imaging does not, because the referrer's registration is part of the radiation
+ * justification an AERB inspector reads (D4's reasoning, one field over) — so the desk types the
+ * name and the council registration number off the slip, and both are required.
+ *
+ * The counterparty's CODE is the registration number, normalised (`RMP-` + upper-case letters and
+ * digits), so the same doctor's second slip finds the first row instead of minting a twin. The
+ * class is `external_rmp`, which `accrual.ts` refuses to pay (02 D9) — an outside referrer earns
+ * nothing through this door. A code that already belongs to a different class is refused rather
+ * than reused, because re-pointing a partner's row at an outside doctor would move money.
+ */
+export const EXTERNAL_RMP_CODE_PREFIX = "RMP-";
+
+export async function resolveExternalReferrer(tx: Tx, actor: Actor, referrer: ExternalReferrerInput): Promise<string> {
+  const name = referrer.name.trim();
+  const regNo = referrer.registrationNo.trim();
+  const normalised = regNo.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (name.length === 0 || normalised.length === 0) missingReferrer();
+  const code = `${EXTERNAL_RMP_CODE_PREFIX}${normalised}`;
+  const find = async () => (await (tx as unknown as Db)
+    .select({ id: counterparties.id, payeeClass: counterparties.payeeClass })
+    .from(counterparties).where(eq(counterparties.code, code)))[0];
+  let row = await find();
+  if (!row) {
+    await (tx as unknown as Db).insert(counterparties).values({
+      id: newId(), code, name, payeeClass: "external_rmp", status: "active",
+      contact: { registrationNo: regNo }, createdBy: actor.id,
+    }).onConflictDoNothing({ target: counterparties.code });
+    row = await find();
+  }
+  if (!row || row.payeeClass !== "external_rmp") {
+    throw new RadiologyError(
+      "referrer_required",
+      `registration ${regNo} is already on file as a ${row?.payeeClass ?? "different"} counterparty, not an outside doctor — check the slip`,
+      { registrationNo: regNo },
+    );
+  }
+  return row.id;
+}
+
+function missingReferrer(): never {
+  throw new RadiologyError(
+    "referrer_required",
+    "an outside prescription names its doctor — type the referrer's name and registration number off the slip",
+  );
 }
 
 export async function placeImagingOrder(
@@ -299,7 +360,14 @@ export async function placeImagingOrder(
               `service ${item.serviceId} was already ordered for this patient within ` +
                 `${DUPLICATE_WINDOW_HOURS} hours (${recent.map((r) => r.orderNo).join(", ")}) — ` +
                 "pass duplicateOfItemId and duplicateReason to order it again",
-              { serviceId: item.serviceId, recentOrderNos: recent.map((r) => r.orderNo) },
+              /**
+               * RS2 — `recentItemIds` rides with the order numbers: the seat that shows this refusal
+               * sends the override PAIR, and a pair needs the item id the order number cannot give.
+               */
+              {
+                serviceId: item.serviceId, recentOrderNos: recent.map((r) => r.orderNo),
+                recentItemIds: recent.map((r) => r.itemId),
+              },
             );
           }
         }
@@ -336,7 +404,8 @@ export async function placeImagingOrder(
             ? await placeOrder(tx, actor, decls, {
                 ...common,
                 authority: "external_prescription",
-                externalReferrerId: input.externalReferrerId,
+                externalReferrerId: input.externalReferrerId
+                  ?? (input.referrer ? await resolveExternalReferrer(tx, actor, input.referrer) : missingReferrer()),
               })
             : await placeOrder(tx, actor, decls, common);
 

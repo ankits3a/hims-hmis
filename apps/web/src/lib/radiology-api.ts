@@ -70,6 +70,57 @@ export type WireBillDecision = {
   id: string; studyId: string; kind: string; detail: unknown; raisedAt: string;
 };
 
+/* ── 18-S RS2 — the ordering door (`GET /radiology/advised`, `POST /radiology/orders`) ── */
+
+export type WireImagingOrderable = {
+  studyTypeCode: string; studyTypeName: string; modality: string; lateralityApplicable: boolean;
+  contrast: "none" | "optional" | "required"; ionising: boolean; pcpndtApplicable: boolean;
+};
+export type WireAdvisedImagingLine = {
+  serviceId: string; code: string; name: string; pricePaise: number;
+  /** Null when the active book does not name the service (D6) — shown greyed with `reason`. */
+  orderable: WireImagingOrderable | null; reason: string | null;
+  alreadyOrderedItemId: string | null; alreadyOrderedOrderNo: string | null;
+};
+export type WireImagingBookEntry = WireImagingOrderable & { serviceId: string; pricePaise: number | null };
+export type WireImagingRecentItem = { itemId: string; orderNo: string; encounterNo: string; placedAt: string };
+export type WireImagingVisitOrder = {
+  orderId: string; orderNo: string; priority: string; status: string; authority: string;
+  indication: string | null; placedAt: string;
+  items: {
+    itemId: string; serviceId: string; serviceName: string; status: string;
+    study: { studyId: string; accessionNo: string; status: string; scheduledAt: string | null } | null;
+  }[];
+};
+export type WireImagingDoor = {
+  visit: {
+    encounterId: string; encounterNo: string; serviceDate: string; status: string;
+    doctorName: string | null; doctorUserId: string | null; departmentName: string | null;
+    patient: { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null; restricted: boolean };
+  };
+  bookActive: boolean;
+  lines: WireAdvisedImagingLine[];
+  book: WireImagingBookEntry[];
+  recent: Record<string, WireImagingRecentItem[]>;
+  orders: WireImagingVisitOrder[];
+};
+
+/** The controller's `orderBody`, transcribed (F57's lesson: an untyped body is an invisible 400). */
+export type PlaceImagingOrderBody = {
+  patientId: string; encounterNo: string; serviceDate: string; orderingClinicianId: string;
+  priority?: "routine" | "urgent" | "stat";
+  indication: string;
+  items: { serviceId: string; duplicateOfItemId?: string | null; duplicateReason?: string | null }[];
+  authority?: "clinician" | "external_prescription";
+  referrer?: { name: string; registrationNo: string } | null;
+};
+
+export const fetchImagingDoor = (encounterNo: string) =>
+  api<WireImagingDoor>("GET", `/radiology/advised?encounterNo=${encodeURIComponent(encounterNo)}`);
+
+export const placeImagingOrder = (body: PlaceImagingOrderBody, idempotencyKey: string) =>
+  api<{ orderId: string; orderNo: string; itemIds: string[] }>("POST", "/radiology/orders", body, idempotencyKey);
+
 /* ── reads ── */
 
 export const fetchWorklist = (view: "floor" | "unread" | "all" = "floor") =>
