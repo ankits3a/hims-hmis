@@ -30,6 +30,7 @@ export function RadiologyReception(): React.ReactElement {
   const [scheduledAt, setScheduledAt] = useState("");
   const [bedside, setBedside] = useState("");
   const bedsideId = useId();
+  const [bedStuck, setBedStuck] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opened, setOpened] = useState<{ studyId: string; gates: string[] } | null>(null);
 
@@ -55,12 +56,23 @@ export function RadiologyReception(): React.ReactElement {
      * machine sends none, so a study already carrying a place is refused `device_not_portable` by
      * the server rather than silently moved.
      */
-    mutationFn: (studyId: string) => scheduleStudy(studyId, {
+    mutationFn: ({ studyId, clearBed }: { studyId: string; clearBed?: boolean }) => scheduleStudy(studyId, {
       deviceResourceId, scheduledAt,
-      ...(chosen?.portable === true && bedside.trim() !== "" ? { bedsideLocation: bedside.trim() } : {}),
+      ...(clearBed === true
+        ? { bedsideLocation: null }
+        : chosen?.portable === true && bedside.trim() !== "" ? { bedsideLocation: bedside.trim() } : {}),
     }),
-    onSuccess: () => { setError(null); void refresh(); },
-    onError: (e) => { setError(radiologyErrorText(e)); },
+    onSuccess: () => { setError(null); setBedStuck(null); void refresh(); },
+    onError: (e, vars) => {
+      setError(radiologyErrorText(e));
+      /**
+       * The study carries a ward and bed and this machine cannot go there. The recovery the server
+       * names is "clear the bedside location and bring the patient to the department" — so the desk
+       * gets that act, explicitly, rather than a silent clear on every department booking.
+       */
+      const code = (e as { body?: { code?: string } } | undefined)?.body?.code;
+      setBedStuck(code === "device_not_portable" ? vars.studyId : null);
+    },
   });
   const walk = useMutation({
     mutationFn: (studyId: string) => walkIn(studyId),
@@ -90,7 +102,7 @@ export function RadiologyReception(): React.ReactElement {
           </div>
           <div className="text-xs text-muted-foreground">{r.studyTypeCode} · {r.status}</div>
           <div className="mt-2 flex flex-wrap gap-1">
-            <Button size="sm" onClick={() => { book.mutate(r.studyId); }}>{t("radiology.reception.book")}</Button>
+            <Button size="sm" onClick={() => { book.mutate({ studyId: r.studyId }); }}>{t("radiology.reception.book")}</Button>
             <Button size="sm" variant="outline" onClick={() => { walk.mutate(r.studyId); }}>
               {t("radiology.reception.walkIn")}
             </Button>
@@ -156,6 +168,13 @@ export function RadiologyReception(): React.ReactElement {
 
       {devicesQ.isError ? <p className="text-red-600" data-testid="devices-error">{radiologyErrorText(devicesQ.error)}</p> : null}
       {error !== null ? <p role="alert" className="text-red-600">{error}</p> : null}
+      {bedStuck !== null
+        ? (
+          <Button variant="outline" onClick={() => { book.mutate({ studyId: bedStuck, clearBed: true }); }}>
+            {t("radiology.reception.clearBed")}
+          </Button>
+        )
+        : null}
 
       {/**
         * The gate set, shown the moment it opens. The desk can say "we still need your creatinine"
