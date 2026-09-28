@@ -305,6 +305,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — a doctor who sees a reaction reports it to the ADR register (PvPI form); the
       // allergy it writes blocks the drug on the next prescription. DEFAULT — owner may change.
       "pharmacy.adr.record",
+      // PHARMACY STAGE D2 — a doctor who catches a medication error or near miss logs it (blame-free: the
+      // log shows the role, the name only to the reviewer). DEFAULT — owner may change.
+      "pharmacy.incidents.record",
     ],
   },
   /**
@@ -455,7 +458,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // own; `orders.place/read/cancel` because the claim PLACES the `medication` order (D1, the
       // `lab_reception` shape); and the four billing strings `lab_reception` holds for the same
       // reason — a department counter that bills at the window issues the invoice itself (S3).
-      // NOT `billing.credit.extend`: credit holds for IPD/TPA are 16d's.
+      // `billing.credit.extend` came later (gap A3b, below), as the right to ASK the owner — never to extend.
       "pharmacy.dispense.place",
       "pharmacy.dispense.read",
       "pharmacy.dispense.scheduled",
@@ -485,6 +488,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",
       "billing.refund.request",
+      // GAP A3b (owner ruling 2026-09-28: "nobody can issue credit except owner", whole hospital) — this
+      // is the right to ASK the owner (`POST /billing/credit-requests`) and to bill against the owner's
+      // GRANTED approval for that exact amount. It extends no credit on its own: `issueInvoice` refuses
+      // every credit remainder without the owner's grant.
+      "billing.credit.extend",
       // PHARMACY P19 — the walk-in counter: sell, and register the customer who has no UHID yet.
       // `sellRetail` asserts `patients.register` itself, and only on the branch that registers.
       "pharmacy.retail.sell",
@@ -510,6 +518,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — the pharmacist reports a suspected adverse drug reaction (the PvPI form); the
       // report writes the patient's allergy in the same transaction. DEFAULT — owner may change.
       "pharmacy.adr.record",
+      // PHARMACY STAGE D2 — the pharmacist logs a medication error or near miss from the desk line's ⋯ menu.
+      // DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      // PHARMACY STAGE D3 — the pharmacist reads the fridge at 09:00 and 17:00 IST (current, min, max); an
+      // out-of-range reading holds the store's cold batches. DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },
   {
@@ -916,6 +930,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — the MS chairs pharmacovigilance: assesses causality, sends to PvPI, closes.
       // DEFAULT — owner may change.
       "pharmacy.adr.manage",
+      // PHARMACY STAGE D2 — the MS reviews medication errors and near misses (root cause, action taken) and
+      // closes them; the only other reader told the reporter's name. DEFAULT — owner may change.
+      "pharmacy.incidents.review",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1149,6 +1166,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P6 — the head of stores witnesses a movement at the controlled-drug cabinet (a receipt, a
       // destruction, a discrepancy booked) but holds no key to it. DEFAULT — owner may change.
       "pharmacy.ndps.witness",
+      // PHARMACY STAGE D3 — the head of stores keeps the fridges' master (which store, what range) and closes
+      // an excursion: release each held batch with its reason, or write it off. DEFAULT — owner may change.
+      "pharmacy.coldchain.manage",
     ],
   },
   {
@@ -1168,6 +1188,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.stock.receive",
       // 14c — the storekeeper counts other stores (the pharmacy's, a ward's), never the one they keep.
       "materials.counts.perform",
+      // PHARMACY STAGE D3 — the storekeeper reads the main store's fridge on the same schedule as the counter's.
+      // DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1584,6 +1607,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       "patients.read",
       "formulary.read",
+      // PHARMACY STAGE D2 — the aide who picks is the one who sees the look-alike box: a near miss is theirs
+      // to log. Blame-free; the reviewer alone is told who. DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      // PHARMACY STAGE D3 — the aide reads the fridge when the pharmacist is at the window. DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },  /**
    * PHARMACY P17 — THE PHARMACIST IN CHARGE, held IN ADDITION to `pharmacy`. The pharmacist named on
@@ -1625,6 +1653,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PvPI, closed. DEFAULT — owner may change.
       "pharmacy.adr.record",
       "pharmacy.adr.manage",
+      // PHARMACY STAGE D2 — the in-charge logs medication errors and near misses and reviews them: root
+      // cause, action taken, closed. DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      "pharmacy.incidents.review",
+      // PHARMACY STAGE D3 — the in-charge adds and edits the fridges and closes an excursion: every held batch
+      // released with its stability reason or written off. DEFAULT — owner may change.
+      "pharmacy.coldchain.manage",
     ],
   },
 ];

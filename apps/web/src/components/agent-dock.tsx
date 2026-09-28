@@ -237,7 +237,13 @@ export function AgentDock(
           {latest === undefined ? idle : `${latest.at} ${latest.text}`}
         </span>
         <form
-          style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 1, minWidth: 0 }}
+          /*
+            UX-AUDIT 2026-09-28 — `flexShrink: 0`, not `1; minWidth: 0`. A shrinkable form was squeezed
+            to 40 px at 390 while its 120 px box (the clamp's floor) spilled out over the LOG button and
+            pushed the page to 431 px. The box's clamp already sizes this form; the ticker, which
+            ellipsises, is what gives way on a phone.
+          */
+          style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}
           /*
             ═══ FD-25 — ASKING OPENS THE PANEL, BECAUSE THE ANSWER LIVES IN IT ═══
 

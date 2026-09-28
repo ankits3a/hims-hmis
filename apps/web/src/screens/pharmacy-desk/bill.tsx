@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchPatientRail } from "../../lib/pharmacy-api";
 import { billQtyText, quoteAmountPaise } from "../../lib/pharmacy-bill";
+import { OwnerCreditAsk } from "../owner-credit-ask";
 import type { Tender, WireDispense, WirePricedDraft } from "../../lib/pharmacy-api";
 
 /**
@@ -83,7 +84,7 @@ function typingIn(target: EventTarget | null): boolean {
 }
 
 export function BillRail({
-  dispense, preview, previewError, drawerOpen, busy, error, now, onTake, onDraft, onOpenDrawer,
+  dispense, preview, previewError, drawerOpen, busy, error, now, onTake, onCredit, onDraft, onOpenDrawer,
 }: {
   dispense: WireDispense;
   preview: WirePricedDraft | null;
@@ -95,6 +96,8 @@ export function BillRail({
   /** The desk's clock (it ticks every 15 s) — E13 asks it whether the hold has ended. */
   now: Date;
   onTake: (tenders: Tender[], changePaise: number) => void;
+  /** GAP A3b — bill the whole amount on the owner's granted credit approval. */
+  onCredit: (credit: { reason: string; approvalId: string }) => void;
   onDraft: () => void;
   onOpenDrawer: () => void;
 }): React.ReactElement {
@@ -110,8 +113,17 @@ export function BillRail({
   const plan = payable === null ? null : tendersFor(mode, payable, cash, upi, ref);
   const canTake = collected && drawerOpen === true && plan !== null && !busy;
 
+  /* GAP A3b — credit, only on the owner's yes (owner ruling 2026-09-28). Closed unless opened. */
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [creditReason, setCreditReason] = useState("");
+  const [creditApproval, setCreditApproval] = useState<string | null>(null);
+  const onCreditGranted = useCallback((id: string | null) => { setCreditApproval(id); }, []);
+
   /* A different ticket starts with an empty tender — the last patient's cash is not this one's. */
-  useEffect(() => { setCash(""); setUpi(""); setRef(""); setMode("upi"); }, [dispense.id]);
+  useEffect(() => {
+    setCash(""); setUpi(""); setRef(""); setMode("upi");
+    setCreditOpen(false); setCreditReason(""); setCreditApproval(null);
+  }, [dispense.id]);
 
   /* PD-D6 — `1-4` choose the tender, `Ctrl+⏎` takes it; guarded exactly as the buttons are. */
   useEffect(() => {
@@ -273,6 +285,35 @@ export function BillRail({
               </button>
             </>
           )}
+          {/* GAP A3b — owner ruling 2026-09-28: nobody but the owner gives credit. The drawer is not needed: no money moves. */}
+          {payable !== null && payable > 0 ? (
+            <div data-testid="desk-credit" style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--line2)" }}>
+              {!creditOpen ? (
+                <button type="button" className="sec" data-testid="desk-credit-open" style={{ width: "100%", height: 32 }} onClick={() => setCreditOpen(true)}>
+                  {t("pharmacyDesk.bill.creditOpen")}
+                </button>
+              ) : (
+                <>
+                  <label style={{ display: "block" }}>
+                    <span className="tag">{t("pharmacyDesk.bill.creditReason")}</span>
+                    <input className="in" data-testid="desk-credit-reason" value={creditReason} onChange={(e) => setCreditReason(e.target.value)} style={{ height: 36, marginTop: 4 }} />
+                  </label>
+                  <OwnerCreditAsk
+                    draftId={dispense.id} patientId={dispense.patient.id} amountPaise={payable} reason={creditReason}
+                    amountText={rupees(payable)} onGranted={onCreditGranted}
+                  />
+                  {creditApproval !== null ? (
+                    <button
+                      type="button" className="pri" data-testid="desk-credit-bill" style={{ width: "100%", marginTop: 10, height: 42 }} disabled={busy}
+                      onClick={() => onCredit({ reason: creditReason.trim(), approvalId: creditApproval })}
+                    >
+                      {t("pharmacyDesk.bill.creditBill", { amount: rupees(payable) })}
+                    </button>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
           {error !== null ? <p role="alert" style={{ margin: "8px 0 0 0", fontSize: 11.5, color: "var(--red)", lineHeight: "16px" }}>{error}</p> : null}
           <button className="sec" style={{ width: "100%", marginTop: 8 }} onClick={onDraft}>{t("pharmacyDesk.bill.draft")}</button>
           {until !== null && ended ? <p role="status" style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--gold)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.holdEnded", { time: until })}</p> : null}

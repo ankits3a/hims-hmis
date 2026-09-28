@@ -68,4 +68,8 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   retailReturn: "POST /pharmacy/retail/sales/:id/returns",
   /** STAGE D1 — an ADR report writes allergies: a retried click must not report (and write) twice. */
   adr: "POST /pharmacy/adr",
+  /** STAGE D2 — a retried click must not log one near miss twice (the indicator counts rows). */
+  incident: "POST /pharmacy/incidents",
+  /** STAGE D3 — a retried click must not log one fridge reading twice (and cannot open a second excursion). */
+  coldReading: "POST /pharmacy/cold-chain/readings",
 } as const;
