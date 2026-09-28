@@ -4004,7 +4004,12 @@
     "adr_closed": "This reaction report is closed",
     "invalid_incident": "The incident report contradicts itself or is incomplete — check the category against near miss / error, and the line",
     "unknown_incident": "No such medication incident",
-    "incident_closed": "This medication incident is closed"
+    "incident_closed": "This medication incident is closed",
+    "cold_chain_excursion_open": "This batch is on hold after a fridge temperature excursion — call the pharmacy in-charge",
+    "invalid_cold_chain": "The fridge reading or decision does not add up — check min, current and max, and decide every held batch",
+    "unknown_cold_unit": "No such fridge",
+    "unknown_excursion": "No such temperature excursion",
+    "excursion_closed": "This temperature excursion is already closed"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -6193,7 +6198,11 @@
         "suspect": "Suspected medicine",
         "incidentNo": "Incident",
         "category": "NCC MERP category",
-        "stage": "Stage"
+        "stage": "Stage",
+        "excursionNo": "Excursion",
+        "fridge": "Fridge",
+        "heldBatches": "Batches on hold",
+        "slot": "Reading due"
       },
       "copilot": {
         "tag": "Office copilot · drafted, not done",
@@ -6615,6 +6624,24 @@
           "why": "Every medication error and near miss is reviewed for its root cause and the action taken (NABH MOM). A near miss is the cheapest lesson the pharmacy gets.",
           "pri": "Open the incident log",
           "who": "Pharmacist in charge or the medical superintendent"
+        },
+        "cold_excursion_open": {
+          "title": "{{no}} — fridge {{label}} went out of range; {{batches}} cold batches on hold",
+          "sub": "{{store}} · the held stock does not leave until it is decided",
+          "act": "Decide",
+          "head": "Decide the held cold stock",
+          "why": "A reading outside the fridge's range (2–8 °C unless set otherwise) holds every cold batch that was in that store. Release each against the product's stability data, or write it off (D&C Rules: store as the label directs).",
+          "pri": "Open the fridge log",
+          "who": "Pharmacist in charge or the materials head"
+        },
+        "cold_reading_missed": {
+          "title": "{{label}} — the {{slot}} reading was missed",
+          "sub": "{{store}} · read the fridge now and note why it was late",
+          "act": "Read now",
+          "head": "Read the fridge",
+          "why": "Fridges are read at 09:00 and 17:00 (NABH MOM: the cold chain is monitored and documented). A gap in the log is a gap in the proof that the stock was kept cold.",
+          "pri": "Open the fridge log",
+          "who": "Pharmacist, aide or storekeeper"
         }
       }
     },
@@ -7920,6 +7947,70 @@
         "change": "Change",
         "save": "Record incident",
         "saveHint": "Your role is shown on the log, not your name."
+      }
+    },
+    "coldChain": {
+      "title": "Fridge temperature log",
+      "lead": "Read at 09:00 and 17:00 IST. A reading outside the range holds the store's cold stock until the in-charge decides it.",
+      "addUnit": "Add a fridge",
+      "editUnit": "Edit",
+      "empty": "No fridge is registered yet.",
+      "range": "{{low}}–{{high}} °C",
+      "inactive": "Inactive",
+      "excursionOpen_one": "{{no}} open · {{count}} batch on hold",
+      "excursionOpen_other": "{{no}} open · {{count}} batches on hold",
+      "slot": {
+        "done": "read",
+        "due": "due now",
+        "missed": "missed",
+        "upcoming": "later",
+        "not_due": "not due"
+      },
+      "slotLabel": "{{slot}} · {{state}}",
+      "last": "Last read {{when}} · {{c}} °C (min {{min}}, max {{max}})",
+      "never": "Not read yet",
+      "record": "Record reading",
+      "save": "Save reading",
+      "recorded": "Reading saved.",
+      "recordedOpened_one": "Out of range — {{no}} opened; {{count}} batch is on hold. Call the pharmacy in-charge.",
+      "recordedOpened_other": "Out of range — {{no}} opened; {{count}} batches are on hold. Call the pharmacy in-charge.",
+      "notOrdered": "Min, current and max must read low to high — check which is which on the thermometer.",
+      "willHold": "This reading is outside the fridge's range. Saving it holds every cold batch in this store until the pharmacy in-charge decides it.",
+      "history": "Readings · {{label}} · last 7 days",
+      "historyEmpty": "No readings in the last 7 days.",
+      "outOfRange": "out of range",
+      "saveUnit": "Save fridge",
+      "f": {
+        "current": "Now (°C)",
+        "min": "Min since reset (°C)",
+        "max": "Max since reset (°C)",
+        "note": "Note (optional)",
+        "takenAt": "Taken",
+        "by": "By",
+        "store": "Store",
+        "label": "Fridge name (as on the door)",
+        "low": "Lowest allowed (°C)",
+        "high": "Highest allowed (°C)",
+        "active": "In use"
+      },
+      "decision": {
+        "release": "Released",
+        "write_off": "Written off"
+      },
+      "ex": {
+        "title": "Temperature excursions",
+        "none": "No excursion is open.",
+        "open": "Open",
+        "closedPill": "Closed",
+        "opened": "Opened {{when}} · read {{c}} °C (min {{min}}, max {{max}}) against {{low}}–{{high}} °C",
+        "noBatches": "No cold stock was on hand in the store — close it with a note.",
+        "release": "Release",
+        "writeOff": "Write off",
+        "reason": "Why it is still good — the product's stability data",
+        "note": "Closing note (optional)",
+        "close": "Close excursion",
+        "callInCharge": "The held stock does not leave until the pharmacy in-charge decides it.",
+        "closed": "Closed {{when}} by {{by}}"
       }
     }
   },

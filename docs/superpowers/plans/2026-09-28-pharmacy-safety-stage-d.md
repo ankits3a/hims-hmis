@@ -195,6 +195,38 @@ Closing an excursion needs `pharmacy.coldchain.manage`. The closer records a dec
 - a missed reading (amber);
 - an open excursion (red, tier 0).
 
+**As built (2026-09-28, migration 0143):**
+- Six tables. `pharmacy_cold_units` (the fridge master); append-only by trigger: `pharmacy_cold_readings`,
+  `pharmacy_cold_excursion_batches` (the frozen held list), `pharmacy_cold_excursion_closes`,
+  `pharmacy_cold_excursion_decisions`. `pharmacy_cold_excursions` refuses DELETE and every change but
+  `closed_at`, once, from null (the shared rules' status-column exception); `pharmacy_cold_excursions_open_ux` is
+  the partial unique index (one open excursion per fridge).
+- Routes under `/pharmacy/cold-chain`: units (list; add and edit under `manage`), stores (the manage sheet's
+  picker), a unit's readings, readings (record, idempotent), excursions (list), excursions/:id/close (`manage`).
+- The gate `assertNoColdChainHold` sits beside the controlled gates in `handOverDispense` and in the walk-in
+  sale (`recordSale`, channel `walk_in`); code `cold_chain_excursion_open`, naming the fridge and the in-charge.
+- The office's STOCK side reads `coldChainToday` under `record` OR `manage`: `cold_excursion_open` (red, tier 0)
+  and `cold_reading_missed` (amber, tier 4).
+- The screen is `screens/pharmacy-office/cold-chain.tsx` (`ColdChainView`), unrouted until B3 (#352) merges.
+- DECIDED: the fridge is a mutable master row, edited in place under `manage`, every save a
+  `coldchain.unit_saved` event with the before and the after. Not versioned: the range a reading was judged
+  against is copied onto its excursion, so nothing decided under the old range is rewritten by the new one.
+  The trigger refuses DELETE (set it inactive) and any change of store or creator.
+- DECIDED: the held list is the batches, not every cold item in the store: every `cold_2_8` batch with stock
+  on hand in the fridge's store when the excursion opened. Stock received after it opened is not held.
+- DECIDED: a batch decided `write_off` STAYS held at that store after the close. The write-off is the materials
+  destruction write-off (reason `damage`, the MS approves it) raised in the close's transaction; a
+  heat-damaged vial does not go back on sale because the approval is pending or was refused. The write-off
+  quantity is what is free on the shelf (on hand less reserved and frozen) unless the closer names one.
+- DECIDED: a slot is met by a reading taken from 30 minutes before it to 60 minutes after it. A fridge added
+  after a slot's 60 minutes did not miss it. The needs row counts TODAY's (IST) slots; the history shows the rest.
+- DECIDED: a reading may be entered up to 24 hours after it was taken (the paper chart during an outage),
+  never from the future. Readings are read to one decimal place; 4.55 is refused, not rounded.
+- DECIDED: a paper dispense (P20, entered after an outage) is recorded, not refused, by the hold — the medicine
+  already left, as with the clinical checks there. The walk-in sale is refused.
+- Deferred: the office menu entry (Stock), after #352. A transfer out of the fridge's store is not gated (a
+  held batch could be moved to another store); a receipt into a store with an open excursion is not held.
+
 ## D4 — crash-cart and emergency-tray checks
 
 **Basis:** NABH MOM: emergency medications are available, standardised, checked and replenished promptly after use.

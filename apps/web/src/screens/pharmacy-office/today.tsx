@@ -102,6 +102,8 @@ export function routeOf(row: WireNeedRow, which: "pri" | "sec"): Go | null {
     case "adr_pvpi_overdue": case "adr_pvpi_serious": case "adr_pvpi": return pri ? { to: "view", view: "law" } : null;
     // Stage D2 — a medication incident not yet reviewed: the log is a page of Law.
     case "incident_review_overdue": case "incident_review": return pri ? { to: "view", view: "law" } : null;
+    // Stage D3 — the fridge log is a page of Stock: an open excursion to decide, a reading missed today.
+    case "cold_excursion_open": case "cold_reading_missed": return pri ? { to: "view", view: "stock" } : null;
     default:
       if (row.kind.startsWith("retail_licence_")) return pri ? { to: "route", path: "/pharmacy/retail-licence" } : null;
       if (row.kind.startsWith("cabinet_")) return pri ? { to: "view", view: "law", page: "controlled" } : null;

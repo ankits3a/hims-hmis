@@ -96,6 +96,14 @@ export function istMonthStartUtc(now: Date, monthsBack: number): Date {
 }
 
 /**
+ * STAGE D3 — the instant an IST wall-clock `HH:MM` falls on an IST calendar day (`YYYY-MM-DD`): the fridge
+ * log's 09:00 and 17:00 slots and its day boundary. Beside `istDateOf` so the census has one pharmacy site.
+ */
+export function istInstantOf(day: string, hhmm: string): Date {
+  return new Date(Date.parse(`${day}T${hhmm}:00.000Z`) - IST_UTC_OFFSET_MINUTES * 60_000);
+}
+
+/**
  * PHARMACY P4 — THE REORDER LIST'S THREE NUMBERS (doc 16 §9, Replenishment, drafting tier).
  *
  * An OPD counter is a sub-store: the standard Indian hospital practice is a short cover at the

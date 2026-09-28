@@ -225,7 +225,7 @@ describe("the medication incident log (pharmacy stage D2)", () => {
 
 describe("buildNeeds — the medication incident side of LAW (pharmacy stage D2)", () => {
   const NOW = new Date("2026-09-28T06:00:00.000Z");
-  const none: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null };
+  const none: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null, cold: null };
   const at = (hoursAgo: number): string => new Date(NOW.getTime() - hoursAgo * 3_600_000).toISOString();
 
   it("red at category E or above once 24 h unreviewed; amber below E, and at E inside the 24 h", () => {
