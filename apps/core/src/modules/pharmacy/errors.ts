@@ -9,6 +9,10 @@ export const PHARMACY_ERROR_CODES = [
   "invalid_adr",
   "unknown_adr",
   "adr_closed",
+  /** STAGE D2 — the medication incident log: a report that contradicts itself, one not on file, a later act on a closed one. */
+  "invalid_incident",
+  "unknown_incident",
+  "incident_closed",
   // ── sale items and the price rule (T2) ──
   "unknown_item",
   "not_a_drug",
@@ -247,6 +251,9 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invalid_adr: 400,
   unknown_adr: 404,
   adr_closed: 409,
+  invalid_incident: 400,
+  unknown_incident: 404,
+  incident_closed: 409,
   interaction_block: 409,
   qty_required: 400,
   store_missing: 409,

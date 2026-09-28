@@ -10,7 +10,8 @@
     "theme": "Theme",
     "themeDark": "Dark",
     "themeLight": "Light",
-    "search": "Search — the cursor starts here"
+    "search": "Search — the cursor starts here",
+    "menu": "Menu"
   },
   "nav": {
     "formularyAdmin": "Formulary",
@@ -96,7 +97,6 @@
     "search": "/ — Search",
     "new": "F4 New patient",
     "confirm": "Ctrl+⏎ Confirm",
-    "release": "Esc Release the patient",
     "book": "F7 Appointments"
   },
   "login": {
@@ -255,7 +255,12 @@
     "unmergeNote": "Why must this be split?",
     "actFirst": "Act first (patient-safety) — review after",
     "unmergeExecute": "Execute unmerge",
-    "differs": "differs"
+    "differs": "differs",
+    "hitAge": "age {{age}}",
+    "hitDob": "DOB {{dob}}",
+    "change": "Change",
+    "alreadyPicked": "already {{side}}",
+    "sameRecord": "Record A and Record B are the same patient record. Pick two different records to merge."
   },
   "inbox": {
     "title": "Approvals",
@@ -633,6 +638,12 @@
     "newDate": "New date",
     "needsRebooking": "Needs rebooking",
     "backToList": "Back to list",
+    "bookingFor": "Booking for",
+    "changePatient": "Change",
+    "choosePatientFirst": "Choose the patient first — the times unlock once the desk knows who the booking is for.",
+    "slotBooked": "Booked",
+    "confirmTitle": "Confirm this booking",
+    "confirmBooking": "Confirm booking",
     "status": {
       "booked": "Booked",
       "checked_in": "Checked in",
@@ -1383,8 +1394,13 @@
     "short": "Short",
     "over": "Over",
     "cancel": "Cancel",
-    "confirmClose": "Confirm close",
-    "approvalPending": "Variance approval {{approvalId}} is pending — a billing manager other than you must decide it.",
+    "confirmClose": "Finish closing",
+    "confirmCloseHint": "After a billing manager approves the variance, press Finish closing to close this drawer. Until then it will not close.",
+    "notApprovedYet": "Not approved yet. A billing manager has to approve this variance before the drawer can close.",
+    "approvalPending": "Waiting for a billing manager to approve this variance. It has to be someone other than you.",
+    "approvalPendingSince": "Waiting since {{time}} for a billing manager to approve this variance. It has to be someone other than you.",
+    "approvalGranted": "A billing manager approved this variance. Finish closing to close the drawer.",
+    "approvalRejected": "A billing manager did not approve this variance. Withdraw the count and count the drawer again.",
     "lockout": "Your drawer is awaiting a variance approval. You cannot take money at the counter until a billing manager approves this variance, because every receipt and cash voucher payment needs an OPEN session.",
     "status": {
       "open": "OPEN",
@@ -3985,7 +4001,10 @@
     "opening_stock_refused": "Some rows were refused, so nothing was captured. Check the sheet, fix those rows and try again.",
     "invalid_adr": "The reaction report is incomplete or inconsistent — check the dates and the medicines",
     "unknown_adr": "No such reaction report",
-    "adr_closed": "This reaction report is closed"
+    "adr_closed": "This reaction report is closed",
+    "invalid_incident": "The incident report contradicts itself or is incomplete — check the category against near miss / error, and the line",
+    "unknown_incident": "No such medication incident",
+    "incident_closed": "This medication incident is closed"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -4486,7 +4505,8 @@
     "menu": {
       "batch": "Batch & shelf",
       "qty": "Change the quantity",
-      "decline": "Decline this line"
+      "decline": "Decline this line",
+      "nearMiss": "Record a near miss"
     },
     "partialOwed": "giving {{n}} of {{of}} — say why under ⋯ before the tick counts",
     "partialSaid": "giving {{n}} of {{of}} — {{reason}}",
@@ -4630,6 +4650,14 @@
       "highAlertTitle": "High-alert medicine (NABH): check the drug, dose and patient twice before handing over.",
       "lasa": "LASA",
       "lasaTitle": "Look-alike / sound-alike: read the strip against the prescription twice."
+    },
+    "nearMiss": {
+      "title": "Near miss — {{drug}}",
+      "lead": "{{drug}}, line {{line}}. The patient and the item are taken from this line.",
+      "category": "NCC MERP category",
+      "blameFree": "Blame-free: the log shows your role. Only the in-charge and the MS see who reported.",
+      "save": "Record near miss",
+      "done": "{{no}} recorded. Thank you — a near miss logged is one not repeated."
     }
   },
   "pharmacyAuthorise": {
@@ -6166,7 +6194,10 @@
         "adrNo": "Report",
         "seriousness": "Seriousness",
         "onset": "Reaction started",
-        "suspect": "Suspected medicine"
+        "suspect": "Suspected medicine",
+        "incidentNo": "Incident",
+        "category": "NCC MERP category",
+        "stage": "Stage"
       },
       "copilot": {
         "tag": "Office copilot · drafted, not done",
@@ -6569,6 +6600,24 @@
           "head": "Send the ADR report to PvPI",
           "why": "Every suspected adverse drug reaction is reported to PvPI (NABH MOM). A non-serious one has no 15-day clock but still goes.",
           "pri": "Open the ADR register",
+          "who": "Pharmacist in charge or the medical superintendent"
+        },
+        "incident_review_overdue": {
+          "title": "{{no}} — harmful medication error not reviewed in 24 h",
+          "sub": "NCC MERP {{category}} · not yet reviewed",
+          "act": "Review",
+          "head": "Review the medication incident",
+          "why": "An error at NCC MERP E or above reached the patient and may have harmed them. It is reviewed — root cause and action taken — within 24 hours.",
+          "pri": "Open the incident log",
+          "who": "Pharmacist in charge or the medical superintendent"
+        },
+        "incident_review": {
+          "title": "{{no}} — medication incident to review",
+          "sub": "NCC MERP {{category}} · not yet reviewed",
+          "act": "Review",
+          "head": "Review the medication incident",
+          "why": "Every medication error and near miss is reviewed for its root cause and the action taken (NABH MOM). A near miss is the cheapest lesson the pharmacy gets.",
+          "pri": "Open the incident log",
           "who": "Pharmacist in charge or the medical superintendent"
         }
       }
@@ -7770,6 +7819,111 @@
         "history": "Relevant history (pregnancy, liver or kidney disease, alcohol …)",
         "save": "Record reaction",
         "saveHint": "Recording writes the allergy. Sending to PvPI is a separate step."
+      }
+    },
+    "incidents": {
+      "title": "Medication errors and near misses",
+      "lead_one": "Newest first. {{count}} is not yet reviewed.",
+      "lead_other": "Newest first. {{count}} are not yet reviewed.",
+      "record": "Record an incident",
+      "export": "Export CSV",
+      "empty": "No medication error or near miss has been recorded.",
+      "recorded": "{{no}} recorded.",
+      "blameFree": "Blame-free: the log shows the reporter's role. Only the pharmacist in charge and the medical superintendent see who reported; the export never names anyone.",
+      "patientHidden": "Sealed record",
+      "reporterNamed": "{{name}} ({{role}})",
+      "category": "category {{c}}",
+      "line": "line {{n}}",
+      "state": {
+        "closed": "Closed",
+        "reviewed": "Reviewed",
+        "late": "Not reviewed · {{hours}} h",
+        "toReview": "To review"
+      },
+      "kind": {
+        "near_miss": "Near miss",
+        "error": "Error"
+      },
+      "kindHint": {
+        "near_miss": "Near miss — caught before it reached the patient (A–B)",
+        "error": "Error — it reached the patient (C–I)"
+      },
+      "merp": {
+        "A": "A — circumstances that could cause an error",
+        "B": "B — error occurred, did not reach the patient",
+        "C": "C — reached the patient, no harm",
+        "D": "D — reached the patient, needed monitoring",
+        "E": "E — temporary harm, needed intervention",
+        "F": "F — temporary harm, hospitalisation",
+        "G": "G — permanent harm",
+        "H": "H — intervention to sustain life",
+        "I": "I — contributed to death"
+      },
+      "stage": {
+        "prescribing": "Prescribing",
+        "transcribing": "Transcribing",
+        "dispensing": "Dispensing",
+        "administration": "Administration",
+        "monitoring": "Monitoring"
+      },
+      "type": {
+        "wrong_drug": "Wrong drug",
+        "wrong_strength": "Wrong strength",
+        "wrong_dose": "Wrong dose",
+        "wrong_quantity": "Wrong quantity",
+        "wrong_patient": "Wrong patient",
+        "wrong_route": "Wrong route",
+        "expired": "Expired drug",
+        "lasa_mixup": "LASA mix-up",
+        "omission": "Omission",
+        "other": "Other"
+      },
+      "factor": {
+        "lasa": "Look-alike / sound-alike name",
+        "look_alike_packaging": "Look-alike packaging",
+        "illegible_rx": "Illegible prescription",
+        "workload": "Workload",
+        "interruption": "Interruption",
+        "other": "Other"
+      },
+      "indicator": {
+        "title": "Errors per 1,000 dispensed lines",
+        "hint": "By month. Dispensed lines are counter hand-overs plus walk-in sale lines.",
+        "cell": "{{errors}} errors · {{near}} near misses · {{lines}} lines"
+      },
+      "f": {
+        "category": "NCC MERP category",
+        "stage": "Stage",
+        "type": "What went wrong",
+        "factors": "Contributing factors",
+        "item": "Item",
+        "dispense": "Dispense",
+        "patient": "Patient",
+        "reporter": "Reported by",
+        "recorded": "Recorded"
+      },
+      "ev": {
+        "reviewed": "Reviewed — cause: {{cause}}; action: {{action}}",
+        "closed": "Closed",
+        "closedNote": "Closed: {{note}}"
+      },
+      "act": {
+        "cause": "Root cause",
+        "action": "Action taken",
+        "review": "Record review",
+        "revise": "Revise review",
+        "closeNote": "Closing note (optional)",
+        "close": "Close incident"
+      },
+      "form": {
+        "kind": "Did it reach the patient?",
+        "what": "What happened",
+        "patient": "Patient (optional)",
+        "patientFind": "UHID, name or phone",
+        "find": "Find",
+        "change": "Change",
+        "save": "Record incident",
+        "saveHint": "Your role is shown on the log, not your name."
       }
     }
   },

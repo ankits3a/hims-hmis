@@ -135,6 +135,33 @@ Reports and exports show the role, never the name.
 
 **Desk entry:** "Record a near miss" in the desk line's ⋯ menu (`pharmacy-desk/lines.tsx`), pre-filled with the line.
 
+**As built (2026-09-28, migration 0142):**
+- Two append-only tables, `pharmacy_medication_incidents` and `pharmacy_medication_incident_events`; one trigger
+  function refuses UPDATE and DELETE on both. Every closed set is a CHECK, and
+  `pharmacy_medication_incidents_kind_category_ck` holds `(kind = 'near_miss') = (category in ('A', 'B'))`.
+- Routes under `/pharmacy/incidents`: list, get, the indicator (`/indicator?months=`), record
+  (`pharmacy.incidents.record`, idempotent), events (`pharmacy.incidents.review`).
+- The office's LAW side reads `incidentsAwaitingReview` under `pharmacy.incidents.review`.
+- The screen is `screens/pharmacy-office/incidents.tsx` (`IncidentRegisterView`), unrouted until B3 (#352) merges.
+- DECIDED: the denominator is every line that left the pharmacy in the IST month: `pharmacy_dispense_lines` on a
+  dispense `handed_over` that month (by `handed_over_at`), not declined, with `ledger_entry_id` set, plus
+  `pharmacy_retail_sale_lines` by the sale's `sold_at`. A verified line never handed over was not dispensed.
+- DECIDED: the reporter's role is snapshotted at record time (`reporter_role`): the reporter's role that grants
+  `pharmacy.incidents.record`, a permanent assignment before a temporary grant, the first by key. The service
+  refuses a person with no such role, as the route does.
+- DECIDED: blame-free is decided on the server per reader. Names (the reporter's, and the reviewer's on each event)
+  are read from `users` only for a holder of `review`; everyone else gets `name: null` and the role. The web CSV
+  export carries the role only, and no patient, whoever presses it.
+- DECIDED: a review may be revised (the latest counts); an incident is closed once, only after a review; a closed
+  incident takes no further act.
+- DECIDED: the LAW row is red (tier 0) at category E or above once 24 h unreviewed; every other unreviewed incident
+  is amber at tier 3, beside the other decisions waiting on the in-charge.
+- DECIDED: the desk's "Record a near miss" sits in the ⋯ menu, which is drawn only on a line still being worked.
+  It offers A or B, and it sends the dispense and the line's index, never a typed patient or item. The server
+  takes both from the line and refuses a patient that contradicts it.
+- The indicator is on the D2 screen's strip, not yet on the office Reports page.
+- Deferred: the office menu entry (Law), after #352.
+
 ## D3 — fridge temperature log and excursion hold
 
 **Basis:**

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
@@ -78,6 +80,20 @@ async function pickDeptAndDoctor(user: ReturnType<typeof userEvent.setup>): Prom
   await user.selectOptions(doctorSelect, "doc-1");
 }
 
+async function pickPatient(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.type(screen.getByLabelText("Search"), "98765");
+  await user.click(await screen.findByRole("button", { name: /Asha Devi/ }));
+  await waitFor(() => expect(screen.getByTestId("booking-for")).toHaveTextContent("HMS0000001234"));
+}
+
+const DAY_STUBS = {
+  "GET /api/opd/departments": { items: DEPARTMENTS },
+  "GET /api/opd/doctors": { items: [DOCTOR_1] },
+  "GET /api/opd/rooms": { items: ROOMS },
+  "GET /api/opd/slots": { slots: SLOTS },
+  "GET /api/patients/search": { items: [SEARCH_HIT] },
+};
+
 describe("OpdAppointments", () => {
   beforeEach(() => {
     setToken(null);
@@ -97,6 +113,7 @@ describe("OpdAppointments", () => {
       "GET /api/opd/rooms": { items: ROOMS },
       "GET /api/opd/slots": { slots: SLOTS },
       "GET /api/opd/appointments": { items: [] },
+      "GET /api/patients/search": { items: [SEARCH_HIT] },
     });
     renderWithProviders(<OpdAppointments />);
     const user = userEvent.setup();
@@ -106,14 +123,21 @@ describe("OpdAppointments", () => {
     await waitFor(() => expect(callsTo("GET", "/api/opd/slots")).toHaveLength(1));
     expect(callsTo("GET", "/api/opd/slots")[0]!.url).toBe("/api/opd/slots?doctorId=doc-1&date=2026-08-18");
 
+    /*
+      UX-AUDIT 2026-09-28 — "enabled" now needs a patient in hand (the slots are locked until the
+      desk knows who the booking is for), and "dimmed" is the `.pp .slot.past` state rather than
+      a Tailwind `opacity-50` that `.pp button`'s reset was quietly beating.
+    */
+    await pickPatient(user);
+
     const onTheHour = screen.getByTestId("slot-2026-08-18T03:30:00.000Z");
     expect(onTheHour).toHaveTextContent("09:00"); // 03:30Z → 09:00 IST
     expect(onTheHour).not.toBeDisabled();
-    expect(onTheHour).not.toHaveClass("opacity-50");
+    expect(onTheHour).not.toHaveClass("past");
 
     const pastSlot = screen.getByTestId("slot-2026-08-18T03:40:00.000Z");
     expect(pastSlot).toHaveTextContent("09:10");
-    expect(pastSlot).toHaveClass("opacity-50"); // past — dimmed, not blocked
+    expect(pastSlot).toHaveClass("past"); // past — muted, not blocked
     expect(pastSlot).not.toBeDisabled();
 
     const bookedSlot = screen.getByTestId("slot-2026-08-18T03:50:00.000Z");
@@ -126,7 +150,7 @@ describe("OpdAppointments", () => {
     expect(screen.getAllByTestId(/^slot-2026-08-18T/)).toHaveLength(6);
   });
 
-  it("picking a patient then clicking a slot posts { patientId, doctorId, slotStart } and refreshes the day list", async () => {
+  it("picking a patient, clicking a slot and confirming posts { patientId, doctorId, slotStart } and refreshes the day list", async () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/doctors": { items: [DOCTOR_1] },
@@ -142,14 +166,14 @@ describe("OpdAppointments", () => {
     await pickDeptAndDoctor(user);
     await screen.findByTestId("slot-2026-08-18T03:30:00.000Z");
 
-    await user.type(screen.getByLabelText("Search"), "98765");
-    await user.click(await screen.findByRole("button", { name: /Asha Devi/ }));
-    expect(await screen.findByText(/Selected patient: Asha Devi/)).toBeInTheDocument();
+    await pickPatient(user);
 
     await waitFor(() => expect(callsTo("GET", "/api/opd/appointments").length).toBeGreaterThanOrEqual(1));
     const before = callsTo("GET", "/api/opd/appointments").length;
 
+    // UX-AUDIT 2026-09-28 — the click opens a confirmation; the POST rides the Confirm, not the click.
     await user.click(screen.getByTestId("slot-2026-08-18T03:30:00.000Z"));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirm booking" }));
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(1));
     expect(bodyOf("POST", "/api/opd/appointments")).toEqual({
@@ -298,5 +322,116 @@ describe("OpdAppointments", () => {
     expect(document.querySelector(".pp")).not.toBeNull();
     expect(screen.getByTestId("agent-dock")).toBeInTheDocument();
     expect(screen.getByTestId("agent-ticker")).toHaveTextContent(/I read the filters/);
+  });
+  /**
+   * ═══ UX-AUDIT 2026-09-28 — THE BOOKING FLOW, AS A REAL-CHROMIUM WALK FOUND IT ═══
+   *
+   * Four defects, none of which any test above could see, because every one of them was about
+   * what the screen LOOKED LIKE or the ORDER a clerk meets it in:
+   *
+   *   1. Free, booked and past slots rendered identically as bare text. The grid painted them with
+   *      Tailwind utilities (`border`, `bg-neutral-100`, `opacity-50`) and `desk-one.css`'s
+   *      `.pp button { background: none; border: none; padding: 0 }` reset out-ranks every one of
+   *      them — (0,1,1) against (0,1,0), and unlayered against `@layer utilities` besides. The paint
+   *      now comes from `.pp .slot` primitives, and a booked slot SAYS "Booked" in words.
+   *   2. The patient search sat BELOW the grid, a slot clicked with nobody chosen did nothing and
+   *      said nothing, and a slot clicked with somebody chosen booked on the spot. The patient is
+   *      chosen first, the slots are locked with a hint until then, and a click asks before it posts.
+   *   3. The bookings list was flex-grow divs, so a checked-in row (no actions) put its time under
+   *      the Status header. It is a real <table> now.
+   */
+  it("a booked slot says Booked in words, and every class on a slot is a `.pp` rule the reset cannot beat", async () => {
+    stubFetch({ ...DAY_STUBS, "GET /api/opd/appointments": { items: [] } });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickDeptAndDoctor(user);
+
+    const booked = await screen.findByTestId("slot-2026-08-18T03:50:00.000Z");
+    expect(booked).toBeDisabled();
+    expect(booked).toHaveClass("slot", "taken");
+    expect(booked).toHaveTextContent(/Booked/);
+    expect(screen.getByTestId("slot-2026-08-18T03:40:00.000Z")).toHaveClass("slot", "past");
+    expect(screen.getByTestId("slot-2026-08-18T03:30:00.000Z")).toHaveClass("slot", "free");
+
+    const css = readFileSync(join(process.cwd(), "src/screens/desk-one/desk-one.css"), "utf8");
+    for (const el of screen.getAllByTestId(/^slot-2026-08-18T/)) {
+      for (const cls of Array.from(el.classList)) {
+        // Each class a slot wears is a `.pp`-scoped rule in the paper-pine sheet — not a utility.
+        expect(css, `slot class "${cls}" has no .pp rule`).toMatch(new RegExp(`\\.pp \\.(slot\\.)?${cls}[\\s,:{.]`));
+      }
+    }
+  });
+
+  it("the patient is chosen ABOVE the grid, and the slots are locked with a visible hint until then", async () => {
+    stubFetch({ ...DAY_STUBS, "GET /api/opd/appointments": { items: [] } });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickDeptAndDoctor(user);
+
+    const free = await screen.findByTestId("slot-2026-08-18T04:00:00.000Z");
+    const search = screen.getByLabelText("Search");
+    // The search comes BEFORE the grid in reading order.
+    expect(search.compareDocumentPosition(free) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(free).toBeDisabled();
+    expect(screen.getByTestId("slots-locked-hint")).toHaveTextContent(/Choose the patient first/);
+
+    await pickPatient(user);
+    expect(free).not.toBeDisabled();
+    expect(screen.queryByTestId("slots-locked-hint")).toBeNull();
+  });
+
+  it("clicking a slot opens a confirmation naming patient, doctor, date and time — Cancel posts nothing", async () => {
+    stubFetch({
+      ...DAY_STUBS,
+      "GET /api/opd/appointments": { items: [] },
+      "POST /api/opd/appointments": { appointment: apt({ id: "ap-9" }) },
+    });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickDeptAndDoctor(user);
+    await screen.findByTestId("slot-2026-08-18T04:00:00.000Z");
+    await pickPatient(user);
+
+    await user.click(screen.getByTestId("slot-2026-08-18T04:00:00.000Z"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Asha Devi")).toBeInTheDocument();
+    expect(within(dialog).getByText("HMS0000001234")).toBeInTheDocument();
+    expect(within(dialog).getByText("Dr Meera Rao")).toBeInTheDocument();
+    expect(within(dialog).getByText(TODAY)).toBeInTheDocument();
+    expect(within(dialog).getByText("09:30")).toBeInTheDocument();
+    expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(0);
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(0);
+  });
+
+  it("the bookings list is a real table: a checked-in row's time sits under Time, not under Status", async () => {
+    stubFetch({
+      ...DAY_STUBS,
+      "GET /api/opd/appointments": {
+        items: [
+          apt({ id: "ap-0", status: "checked_in" }),
+          apt({ id: "ap-1", slotStart: "2026-08-18T03:50:00.000Z" }),
+        ],
+      },
+    });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickDeptAndDoctor(user);
+    await screen.findByText("Checked in");
+
+    const table = screen.getByRole("table");
+    expect(table.tagName).toBe("TABLE");
+    const headers = within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    const timeCol = headers.indexOf("Time");
+    expect(timeCol).toBeGreaterThanOrEqual(0);
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      const cells = within(row).getAllByRole("cell");
+      expect(cells).toHaveLength(headers.length);
+      expect(cells[timeCol]).toHaveTextContent(/^\d\d:\d\d$/);
+    }
   });
 });

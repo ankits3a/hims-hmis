@@ -19,7 +19,7 @@ export type WireNeedFact = { k: string; raw?: true; v: string | number; as: "tex
 export type WireNeedRef = {
   kind:
     | "po" | "purchasePlan" | "grnDesk" | "bill" | "run" | "payRun" | "return" | "writeoff" | "recall" | "returnPlan"
-    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr";
+    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr" | "incident";
   id: string | null;
 };
 
@@ -53,4 +53,6 @@ export const NEEDS_GRANTS = [
   "pharmacy.ndps.custody", "pharmacy.licences.manage", "pharmacy.register.read", "pharmacy.pharmacists.manage",
   // Stage D1 — the ADR register's LAW rows (a report not yet sent to PvPI).
   "pharmacy.adr.manage",
+  // Stage D2 — the medication incident log's LAW rows (an incident not yet reviewed).
+  "pharmacy.incidents.review",
 ] as const;
