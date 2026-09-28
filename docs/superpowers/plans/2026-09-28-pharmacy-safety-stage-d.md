@@ -207,8 +207,11 @@ of type `pharmacy_restricted_antimicrobial`. The approval is bound to that dispe
 - The decision is made in `/approvals`.
 - There is no act-first (OPD can wait).
 
-**Approver:** a new role, `antimicrobial_steward`. Admin grants it to the ID physician, the clinical microbiologist
-or the pathologist the hospital names.
+**Approver — DECIDED 2026-09-28 (owner: "I leave upon you to choose the right and logical role"):** a new role,
+`antimicrobial_steward`, per ICMR AMSP. Admin grants it in this order of preference: the infectious-disease
+physician; else the clinical microbiologist; else a senior physician the medical superintendent names as AMSP lead.
+The role is held in addition to the person's clinical role. A steward may not approve their own prescription
+(the approver must not be the prescriber).
 - The type is registered by `scripts/seed-pharmacy` (or its equivalent), or it throws `unknown_type` in prod.
 - It is added to the approvals-inbox test's `SERVER_TYPES`.
 
