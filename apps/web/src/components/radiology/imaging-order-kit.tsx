@@ -295,6 +295,11 @@ export type ImagingDoorBodyProps = {
   outside?: boolean;
   /** Hide the advised lines (the desk's walk-in section reuses the search alone). */
   searchOnly?: boolean;
+  /**
+   * Hide the search. The desk's visit leg shows the doctor's advised lines ONLY: a study the doctor
+   * did not advise is placed at the desk as an outside slip, never under the visit doctor's name.
+   */
+  advisedOnly?: boolean;
 };
 
 export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
@@ -355,7 +360,7 @@ export function ImagingDoorBody(p: ImagingDoorBodyProps): React.ReactElement {
           )
       )}
 
-      {p.view.bookActive && (
+      {p.view.bookActive && p.advisedOnly !== true && (
         <div className="space-y-2">
           <label className="flex flex-col gap-1 text-xs" htmlFor={`imaging-search${p.outside === true ? "-out" : ""}`}>
             <span className="font-medium">{t("imagingOrder.add")}</span>
