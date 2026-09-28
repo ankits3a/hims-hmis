@@ -10,6 +10,7 @@ import {
 import { appendEvent } from "../../kernel/events/append";
 import { itemsByIds } from "../materials";
 import { getPatientSummaries } from "../patients";
+import { istMonthKey, istMonthStartUtc } from "./config";
 import { PharmacyError } from "./errors";
 import { incidentEventRecorded, incidentRecorded } from "./events";
 import type { Actor } from "@hmis/contracts";
@@ -50,7 +51,6 @@ export const INCIDENT_REVIEW_PERMISSION = "pharmacy.incidents.review";
 export const INCIDENT_REVIEW_HOURS = 24;
 const LIST_LIMIT = 200;
 const MAX_MONTHS = 24;
-const IST_MS = 5.5 * 3_600_000;
 
 export const incidentNumber = (seq: number): string => `MI-${String(seq).padStart(6, "0")}`;
 export const kindOfCategory = (c: string): MedIncidentKind => ((NEAR_MISS_CATEGORIES as readonly string[]).includes(c) ? "near_miss" : "error");
@@ -318,18 +318,11 @@ export type IncidentIndicatorMonth = {
   errorsPer1000: number | null;
 };
 
-/** The IST month key of an instant, and the UTC instant at which the IST month `k` months before `now`'s began. */
-const monthKey = (d: Date): string => new Date(d.getTime() + IST_MS).toISOString().slice(0, 7);
-function monthStartBefore(now: Date, k: number): Date {
-  const ist = new Date(now.getTime() + IST_MS);
-  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() - k, 1) - IST_MS);
-}
-
 /** The NABH indicator: errors per 1,000 dispensed lines per month, and near misses per month. Oldest month first. */
 export async function incidentIndicator(db: Db, actor: Actor, opts: { months?: number } = {}, now: Date = new Date()): Promise<{ months: IncidentIndicatorMonth[] }> {
   await assertIncidentReader(db, actor);
   const n = Math.min(Math.max(Math.trunc(opts.months ?? 6), 1), MAX_MONTHS);
-  const from = monthStartBefore(now, n - 1);
+  const from = istMonthStartUtc(now, n - 1);
   const istMonth = (col: unknown) => sql<string>`to_char(${col} at time zone 'Asia/Kolkata', 'YYYY-MM')`;
 
   const incidentMonth = istMonth(pharmacyMedicationIncidents.createdAt);
@@ -354,7 +347,7 @@ export async function incidentIndicator(db: Db, actor: Actor, opts: { months?: n
 
   const months: IncidentIndicatorMonth[] = [];
   for (let k = n - 1; k >= 0; k -= 1) {
-    const month = monthKey(monthStartBefore(now, k));
+    const month = istMonthKey(istMonthStartUtc(now, k));
     const i = incidents.find((x) => x.month === month);
     const counterLines = counter.find((x) => x.month === month)?.n ?? 0;
     const walkInLines = walkIn.find((x) => x.month === month)?.n ?? 0;
