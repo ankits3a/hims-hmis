@@ -3,8 +3,8 @@ import { mkUser } from "./helpers/opd";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { getApprovalType } from "../src/kernel/approvals/types";
 import { withTx } from "../src/kernel/db/client";
-import { imagingDefinitions, resources } from "../src/kernel/db/schema";
-import { eq } from "drizzle-orm";
+import { aerbLicences, imagingDefinitions, resourceStatusHistory, resources } from "../src/kernel/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE } from "../src/modules/radiology";
 import { registrarFromEnv, seedRadiology } from "../scripts/seed-radiology";
@@ -48,17 +48,30 @@ describe("seed:radiology — the department can be stood up on a fresh deploymen
     const result = await seedRadiology(db, admin);
 
     expect(result.services).toBe(20);
-    expect(result.devicesCreated).toBe(5);
+    expect(result.devicesCreated).toBe(7);
     expect(result.version).toBe(1);
 
     const type = await withTx(db, (tx) => getApprovalType(tx, IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE));
     expect(type).toBeTruthy();
 
-    /** The five machines the scheduler books onto, each carrying the modality it matches by. */
+    /** The seven machines the scheduler books onto, each carrying the modality it matches by. */
     const devices = await db.select({ code: resources.code, attributes: resources.attributes })
       .from(resources);
-    expect(devices.map((d) => d.code).sort()).toEqual(["CT-1", "MMG-1", "MRI-1", "USG-1", "XR-1"]);
+    expect(devices.map((d) => d.code).sort())
+      .toEqual(["CT-1", "MMG-1", "MRI-1", "PX-1", "USG-1", "USG-P1", "XR-1"]);
     expect(devices.find((d) => d.code === "CT-1")?.attributes).toMatchObject({ modality: "ct" });
+
+    /**
+     * 18-S RS2b — the two machines that go to a bed. `attributes.portable` is the ONLY thing
+     * `resolveBedside` reads; before this seed nothing wrote it, so the bedside study was unreachable
+     * (18a-iii F2). A department machine must NOT carry it — the rule is one-directional, and a CT
+     * marked portable would accept a ward and bed.
+     */
+    expect(devices.find((d) => d.code === "PX-1")?.attributes).toEqual({ modality: "xray", portable: true });
+    expect(devices.find((d) => d.code === "USG-P1")?.attributes).toEqual({ modality: "usg", portable: true });
+    for (const code of ["XR-1", "USG-1", "CT-1", "MRI-1", "MMG-1"]) {
+      expect(devices.find((d) => d.code === code)?.attributes).not.toHaveProperty("portable");
+    }
 
     /**
      * The seeded activation stays distinguishable from a governed one for ever — the owner's
@@ -79,7 +92,7 @@ describe("seed:radiology — the department can be stood up on a fresh deploymen
     expect(again.services).toBe(20);
 
     const devices = await db.select({ code: resources.code }).from(resources);
-    expect(devices).toHaveLength(5);
+    expect(devices).toHaveLength(7);
 
     /**
      * ═══ THE ASSERTION WHOSE ABSENCE LET THE DEFECT LIVE ═══
@@ -133,6 +146,41 @@ describe("seed:radiology — the department can be stood up on a fresh deploymen
     expect(active[0]).toMatchObject({ id: governedId, version: 2, approvalId: "01APPROVALGOVERNED00000001" });
     /** And no draft v3 left lying about either — the redundant version its own docstring warns of. */
     expect(after).toHaveLength(2);
+  });
+
+  /**
+   * 18-S RS2b — the UPGRADE path, which is how production meets the portables: a deployment that
+   * already has the five department machines and a GOVERNED book re-runs the seed. The two portables
+   * arrive; the book, the five machines and nothing else move. No AERB licence is written — a seeded
+   * licence would be the hospital claiming paper it does not hold — so PX-1 stays a licence gap until
+   * the RSO files one.
+   */
+  it("adds the two portables to a running department without touching its governed book", async () => {
+    await seedRadiology(db, admin);
+    /** The pre-RS2b department: the two portables were never there. History first (its FK). */
+    const portables = await db.select({ id: resources.id }).from(resources)
+      .where(inArray(resources.code, ["PX-1", "USG-P1"]));
+    await db.delete(resourceStatusHistory)
+      .where(inArray(resourceStatusHistory.resourceId, portables.map((p) => p.id)));
+    await db.delete(resources).where(inArray(resources.code, ["PX-1", "USG-P1"]));
+    const seeded = await db.select().from(imagingDefinitions);
+    await db.update(imagingDefinitions).set({ status: "superseded" })
+      .where(eq(imagingDefinitions.id, seeded[0]!.id));
+    const governedId = newId();
+    await db.insert(imagingDefinitions).values({
+      id: governedId, kind: "study_types", version: 2,
+      body: seeded[0]!.body as object, status: "active",
+      draftedBy: admin.id, publishedBy: admin.id, publishedAt: new Date(),
+      approvalId: "01APPROVALGOVERNED00000002",
+    });
+
+    const result = await seedRadiology(db, admin);
+
+    expect(result.devicesCreated).toBe(2);
+    expect(result.definitionLeftAlone).toBe(true);
+    const active = (await db.select().from(imagingDefinitions)).filter((d) => d.status === "active");
+    expect(active).toEqual([expect.objectContaining({ id: governedId, approvalId: "01APPROVALGOVERNED00000002" })]);
+    expect(await db.select().from(aerbLicences)).toHaveLength(0);
   });
 
   /**
