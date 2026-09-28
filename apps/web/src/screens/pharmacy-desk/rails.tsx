@@ -41,11 +41,13 @@ export function Dossier({
       PERSON's (their hand-overs; the money they took, by tender); the drawer is their own, by the
       close's own formula; the last two stay the counter's, because the line is everybody's.
     */
-    const modes = shift === null ? "" : (["cash", "upi", "card"] as const)
-      .filter((m) => shift.byMode[m] > 0).map((m) => `${t(`pharmacyDesk.bill.mode.${m}`, { defaultValue: m })} ${rupees(shift.byMode[m])}`).join(" · ");
+    const byMode = shift?.byMode;
+    const modes = byMode === undefined ? "" : (["cash", "upi", "card"] as const)
+      .filter((m) => byMode[m] > 0).map((m) => `${t(`pharmacyDesk.bill.mode.${m}`, { defaultValue: m })} ${rupees(byMode[m])}`).join(" · ");
     const day: { label: string; value: string; sub?: string; testId?: string }[] = shift !== null ? [
       { label: t("pharmacyDesk.day.handedOverMine"), value: String(shift.handedOver), testId: "desk-shift-handed" },
-      { label: t("pharmacyDesk.day.moneyMine"), value: rupees(shift.takenPaise), ...(modes === "" ? {} : { sub: modes }), testId: "desk-shift-money" },
+      /* OWNER RULING 2026-09-28 — BLIND COUNT: the money she took is not sent while her drawer is uncounted, so the row is not drawn. */
+      ...(shift.takenPaise === undefined ? [] : [{ label: t("pharmacyDesk.day.moneyMine"), value: rupees(shift.takenPaise), ...(modes === "" ? {} : { sub: modes }), testId: "desk-shift-money" }]),
       ...(shift.returns + shift.refunds > 0 ? [{ label: t("pharmacyDesk.day.returnsRefunds"), value: `${String(shift.returns)} · ${String(shift.refunds)}`, testId: "desk-shift-returns" }] : []),
       /* OWNER RULING 2026-09-28 — BLIND COUNT: before her count the server leaves the expected figure off; the float is what she may see. */
       ...(shift.drawer === null ? [] : shift.drawer.expectedCashPaise === undefined

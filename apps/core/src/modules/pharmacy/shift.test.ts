@@ -67,12 +67,21 @@ describe("the pharmacist's shift (pharmacy P1)", () => {
     expect(s.drawer).not.toHaveProperty("expectedCashPaise");
   });
 
+  it("blind count, collected today: while her drawer is uncounted the money she took is ABSENT (total and by tender); the counts stay", async () => {
+    await openSessionFor(db, { id: fx.pharmacist.id }, 50_000);
+    const s = await myShift(db, fx.pharmacist.actor, new Date());   // today by the real clock: the drawer's own day
+    expect(s).not.toHaveProperty("takenPaise");
+    expect(s).not.toHaveProperty("byMode");
+    expect(s).toMatchObject({ receipts: 0, drawer: { status: "open", openingFloatPaise: 50_000 } });
+  });
+
   it("blind count: once her count is submitted, the drawer's holder reads the expected cash again", async () => {
     await openSessionFor(db, { id: fx.pharmacist.id }, 50_000);
     const cash = await sold("cash");
     // after her count (short → closing) the figure is hers again
     expect(await submitCountFor(db, fx.pharmacist, { "10000": 1 })).toEqual({ status: "closing" });
     expect((await myShift(db, fx.pharmacist.actor, MON3)).drawer).toMatchObject({ status: "closing", expectedCashPaise: 50_000 + cash });
+    expect(await myShift(db, fx.pharmacist.actor, new Date())).toMatchObject({ takenPaise: 0, byMode: { cash: 0, upi: 0, card: 0 } });
   });
 
   it("blind count: a pharmacist who ALSO supervises drawers sees her open drawer's expected cash", async () => {
@@ -82,6 +91,7 @@ describe("the pharmacist's shift (pharmacy P1)", () => {
     await openSessionFor(db, { id: fx.pharmacist.id }, 50_000);
     const cash = await sold("cash");
     expect((await myShift(db, fx.pharmacist.actor, MON3)).drawer).toMatchObject({ status: "open", expectedCashPaise: 50_000 + cash });
+    expect(await myShift(db, fx.pharmacist.actor, new Date())).toMatchObject({ takenPaise: 0, byMode: { cash: 0, upi: 0, card: 0 } });
   });
 
   it("is somebody else's nothing: another login at the same counter sees its own zeros and no drawer", async () => {

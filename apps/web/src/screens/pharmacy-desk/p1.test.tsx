@@ -213,4 +213,16 @@ describe("sales today on the idle rail (parity P1)", () => {
     expect(screen.queryByTestId("desk-shift-drawer")).toBeNull();
     expect(screen.queryByText("drawer should hold")).toBeNull();
   });
+
+  it("BLIND COUNT, collected today: the server sends no money-taken while her drawer is uncounted, so the rail draws no money row — the counts stay", async () => {
+    const { takenPaise: _t, byMode: _b, ...counts } = SHIFT;
+    void _t; void _b;
+    mockRoutes(base(() => dispense("claimed"), {
+      "GET /api/pharmacy/summary/mine": { status: 200, body: { ...counts, drawer: { status: "open", openingFloatPaise: 50_000 } } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByTestId("desk-shift-handed")).toHaveTextContent("you handed over7");
+    expect(screen.queryByTestId("desk-shift-money")).toBeNull();
+    expect(screen.queryByText("money you took")).toBeNull();
+  });
 });

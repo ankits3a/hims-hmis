@@ -2,7 +2,7 @@ import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { cashierSessions, invoices, receiptTenders, receipts } from "../../kernel/db/schema";
 import { billingRange } from "./range";
 import { enteredInErrorDocIds } from "./daily-close";
-import { liveExpectedCashPaise, mayReadExpectedCash } from "./sessions";
+import { collectionsBlind, liveExpectedCashPaise, mayReadExpectedCash } from "./sessions";
 import { formatPaise } from "../../kernel/report/money";
 import type { TenderTotals } from "./daily-close";
 import type { DeskCard, DeskProvider, DeskProviderCtx, DeskStat, ReportSection } from "../../kernel/desk/types";
@@ -116,25 +116,37 @@ async function drawerStats(ctx: DeskProviderCtx): Promise<DeskStat[]> {
 async function collectionsCard(ctx: DeskProviderCtx): Promise<DeskCard> {
   const d = await cashierDay(ctx.db, ctx.actor.id, ctx.date);
   const drawer = await drawerStats(ctx);
+  /*
+   * OWNER RULING 2026-09-28 — BLIND COUNT. Float + collected IS the expected cash, so while her
+   * drawer is uncounted the money figures are left OFF the card (absent, not blanked); the receipt
+   * count stays. A `billing.session.read` reader still gets them (`collectionsBlind`).
+   */
+  const blind = await collectionsBlind(ctx.db, ctx.actor, ctx.reader, ctx.date);
   return {
     key: "billing.myCollections",
     band: "today",
     titleKey: "desk.billing.myCollections",
     stats: [
-      { key: "desk.billing.collected", value: formatPaise(d.totalPaise), href: "/billing/session" },
+      ...(blind ? [] : [{ key: "desk.billing.collected", value: formatPaise(d.totalPaise), href: "/billing/session" }]),
       { key: "desk.billing.receipts", value: String(d.receipts), href: "/my-day" },
       /*
        * CASH IS ON ITS OWN, and that is not a layout choice. It is the only tender a person can be
        * short of at the end of a shift: UPI and card reconcile against a statement, cash reconciles
        * against a drawer somebody has to count. The figure a cashier needs at 20:00 is this one.
        */
-      { key: "desk.billing.cash", value: formatPaise(d.byMode.cash), href: "/billing/session" },
+      ...(blind ? [] : [{ key: "desk.billing.cash", value: formatPaise(d.byMode.cash), href: "/billing/session" }]),
       ...drawer,
     ],
   };
 }
 
-async function collectionsSection(ctx: DeskProviderCtx): Promise<ReportSection> {
+async function collectionsSection(ctx: DeskProviderCtx): Promise<ReportSection | null> {
+  /*
+   * OWNER RULING 2026-09-28 — BLIND COUNT. Every row of this section is a collected amount, so
+   * while her drawer is uncounted there is no section at all — on /me/report, its CSV, the printed
+   * day and the copilot's day-report answer alike, since all four read this.
+   */
+  if (await collectionsBlind(ctx.db, ctx.actor, ctx.reader, ctx.date)) return null;
   const d = await cashierDay(ctx.db, ctx.actor.id, ctx.date);
   /*
    * ONE ROW PER TENDER MODE plus a total, rather than a row per receipt. A cashier's shift report
@@ -155,7 +167,10 @@ export const billingDeskProvider: DeskProvider = {
   key: "billing.desk",
   permission: "billing.session.own",
   load: async (ctx) => [await collectionsCard(ctx)],
-  report: async (ctx) => [await collectionsSection(ctx)],
+  report: async (ctx) => {
+    const section = await collectionsSection(ctx);
+    return section === null ? [] : [section];
+  },
   /**
    * PLAN 07c T8 — the counters a brief can add up over six months. MONEY IS PAISE, integers, for
    * the reason the contract in `desk/types.ts` gives: a float sum of half a year of collections is
@@ -163,8 +178,18 @@ export const billingDeskProvider: DeskProvider = {
    */
   /* T5 — the same money at a fourth grain: a range, split by tender, service head and payer. */
   range: billingRange,
-  facts: async (ctx) => {
+  facts: async (ctx): Promise<Record<string, number>> => {
     const d = await cashierDay(ctx.db, ctx.actor.id, ctx.date);
+    /*
+     * OWNER RULING 2026-09-28 — BLIND COUNT. Facts feed the brief's live "today" (`brief.collected`),
+     * so an uncounted drawer's money keys are ABSENT — `honestly()` then makes no clause — and the
+     * counts stay. Invoiced paise goes too: at a pay-first counter it IS the collected figure. A
+     * night's rollup of a day whose drawer is still open stores the same gap; the lookback re-rolls
+     * it once the count is in (`rollup.ts`, LOOKBACK_DAYS).
+     */
+    if (await collectionsBlind(ctx.db, ctx.actor, ctx.reader, ctx.date)) {
+      return { "billing.receipts": d.receipts, "billing.invoicesIssued": d.invoicesIssued };
+    }
     return {
       "billing.receipts": d.receipts,
       "billing.collectedPaise": d.totalPaise,

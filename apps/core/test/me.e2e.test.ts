@@ -368,6 +368,18 @@ describe("me (desk / report / export) e2e — 07c", () => {
     expect(stats.find((s) => s.key === "desk.billing.noDrawer")).toBeUndefined();
   });
 
+  it("BLIND COUNT, collected today: a cashier's /me/desk and /me/report for today carry no collected money while her drawer is open; the receipt count stays", async () => {
+    await ensureRole(db, "cashier_t");
+    await grantPermissionToRole(db, registry, "cashier_t", "billing.session.own");
+    const asha = await mkUser(db, "asha", ["cashier_t"]);
+    await openSessionFor(db, asha, 225000);
+    const desk = await get("/me/desk", asha.token).expect(200);
+    const stats = (desk.body.cards as { key: string; stats?: { key: string }[] }[]).find((c) => c.key === "billing.myCollections")!.stats!;
+    expect(stats.map((s) => s.key)).toEqual(["desk.billing.receipts", "desk.billing.float"]);
+    const report = await get("/me/report", asha.token).expect(200);
+    expect((report.body.sections as { key: string }[]).map((x) => x.key)).not.toContain("billing.myCollections");
+  });
+
   it("BLIND COUNT: a supervisor holding billing.session.read still reads her open drawer's expected cash on /me/desk", async () => {
     await ensureRole(db, "supervisor_t");
     await grantPermissionToRole(db, registry, "supervisor_t", "billing.session.own");
@@ -378,5 +390,8 @@ describe("me (desk / report / export) e2e — 07c", () => {
     const cards = res.body.cards as { key: string; stats?: { key: string; value: string }[] }[];
     const stats = cards.find((c) => c.key === "billing.myCollections")!.stats!;
     expect(stats.find((s) => s.key === "desk.billing.expectedCash")!.value).toBe(stats.find((s) => s.key === "desk.billing.float")!.value);   // nothing taken yet: the float
+    const today = await get("/me/desk", meera.token).expect(200);
+    const todayStats = (today.body.cards as { key: string; stats?: { key: string }[] }[]).find((c) => c.key === "billing.myCollections")!.stats!;
+    expect(todayStats.map((x) => x.key)).toContain("desk.billing.collected");   // collected today, still hers to see
   });
 });

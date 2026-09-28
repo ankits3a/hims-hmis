@@ -9,6 +9,7 @@ import { getApproval } from "../../kernel/approvals/worklist";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { assertPaise } from "../tariff";
 import { BillingError } from "./errors";
+import { istDay } from "./time";
 import { expectedCash, sumDenominations } from "./cash-math";
 import { cashierSessionClosed, cashierSessionOpened, cashierSessionRecounted, varianceFlagged } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -191,6 +192,31 @@ export async function mayReadExpectedCash(db: Db, viewer: Actor, session: Pick<C
   if (session.status !== "open") return true;
   if (viewer.type !== "user") return false;
   return hasPermission(db, viewer.id, DRAWER_SUPERVISOR_PERMISSION, "hospital");
+}
+
+/**
+ * ═══ OWNER RULING 2026-09-28 — BLIND COUNT, SECOND HALF: "COLLECTED TODAY" ═══
+ *
+ * *"The cashier's 'collected today', and a pharmacist's at their own counter, must also be hidden
+ * until their count is submitted, because float plus collected reveals the expected cash. The
+ * receipt count may still show."* Hiding `expectedCash` alone left the sum on the same card.
+ *
+ * `true` means: `subject` holds an `open` (uncounted) drawer whose cash includes `day`'s takings
+ * (it was opened on or before `day`, IST), and `viewer` is not a drawer supervisor
+ * (`billing.session.read`). Callers then leave every money figure of that person's collections
+ * OUT of the response — the amounts, by tender and in total — and keep the counts.
+ *
+ * A day BEFORE the open drawer's opening day was counted in an earlier session, so it shows. Once the
+ * count is submitted (`closing`) there is no `open` drawer and everything shows, as before.
+ */
+export async function collectionsBlind(db: Db, subject: Actor, viewer: Actor, day: string): Promise<boolean> {
+  const open = await db
+    .select({ openedAt: cashierSessions.openedAt })
+    .from(cashierSessions)
+    .where(and(eq(cashierSessions.cashierUserId, subject.id), eq(cashierSessions.status, "open")));
+  const session = open[0];
+  if (session === undefined || istDay(session.openedAt) > day) return false;
+  return !(await mayReadExpectedCash(db, viewer, { status: "open" }));
 }
 
 /**

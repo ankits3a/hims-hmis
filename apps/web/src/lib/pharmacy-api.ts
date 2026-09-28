@@ -625,7 +625,8 @@ export async function resolveShortBook(id: string, resolution: "ordered" | "rece
 }
 
 export type WireMyShift = {
-  day: string; handedOver: number; takenPaise: number; byMode: { cash: number; upi: number; card: number };
+  /** `takenPaise` / `byMode` are absent while the drawer is uncounted (blind count, owner ruling 2026-09-28). */
+  day: string; handedOver: number; takenPaise?: number; byMode?: { cash: number; upi: number; card: number };
   receipts: number; returns: number; refunds: number;
   /** `expectedCashPaise` is absent before the count unless the reader supervises drawers (blind count, owner ruling 2026-09-28). */
   drawer: { status: string; openingFloatPaise: number; expectedCashPaise?: number } | null;

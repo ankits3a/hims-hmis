@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { events, pharmacyDispenses } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
-import { cashierDay, listSessions, liveExpectedCashPaise, mayReadExpectedCash } from "../billing";
+import { cashierDay, collectionsBlind, listSessions, liveExpectedCashPaise, mayReadExpectedCash } from "../billing";
 import { istDateOf } from "./config";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -29,8 +29,9 @@ import type { Db } from "../../kernel/db/client";
 export type MyShift = {
   day: string;
   handedOver: number;
-  takenPaise: number;
-  byMode: { cash: number; upi: number; card: number };
+  /** Both ABSENT while my drawer is uncounted, unless I supervise drawers (blind count, below). */
+  takenPaise?: number;
+  byMode?: { cash: number; upi: number; card: number };
   receipts: number;
   returns: number;
   refunds: number;
@@ -64,8 +65,14 @@ export async function myShift(db: Db, actor: Actor, now: Date): Promise<MyShift>
     status: session.status, openingFloatPaise: session.openingFloatPaise,
     ...(await mayReadExpectedCash(db, actor, session) ? { expectedCashPaise: await liveExpectedCashPaise(db, session) } : {}),
   };
+  /*
+   * OWNER RULING 2026-09-28 — BLIND COUNT, "COLLECTED TODAY". Float + money taken is what her drawer
+   * should hold, so while it is uncounted the money she took (total and by tender) is left off; the
+   * receipt count and hand-overs stay. Billing's `collectionsBlind` is the one rule.
+   */
+  const blind = await collectionsBlind(db, actor, actor, day);
   return {
-    day, handedOver: done?.n ?? 0, takenPaise: money.totalPaise, byMode: { ...money.byMode }, receipts: money.receipts,
+    day, handedOver: done?.n ?? 0, ...(blind ? {} : { takenPaise: money.totalPaise, byMode: { ...money.byMode } }), receipts: money.receipts,
     returns, refunds, drawer,
   };
 }
