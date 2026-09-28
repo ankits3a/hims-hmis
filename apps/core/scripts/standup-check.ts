@@ -978,6 +978,16 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       check: pharmacyDltTemplateIdsRecorded,
       fix: "§18: register both messages on the DLT portal (the office's Messages side shows their exact text), then the pharmacist in charge records each content-template id at /pharmacy/office?view=messages",
     },
+    {
+      /**
+       * PHARMACY STAGE D5 — RED until an ACTIVE user holds `antimicrobial_steward` at hospital scope. Until then every
+       * restricted antimicrobial line (WHO AWaRe Reserve, the carbapenems, and whatever the hospital adds) is refused
+       * at verify and hand-over with `antimicrobial_steward_not_appointed`. Role-keyed, like every `*_held` row: the
+       * approval type routes to the role, not to a permission.
+       */
+      gate: "G4", code: "antimicrobial_steward_appointed", check: heldAtHospitalScope("antimicrobial_steward"),
+      fix: "§1.11: assign `antimicrobial_steward` at /admin/users — the infectious-disease physician; else the clinical microbiologist; else the AMSP lead the medical superintendent names. Without one, no restricted antimicrobial leaves the counter",
+    },
   ],
 
   /**

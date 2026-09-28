@@ -32,8 +32,13 @@ export {
   COMPLETED_VISIT_GRACE_DAYS, DUPLICATE_WINDOW_HOURS, addImagingViews, placeImagingOrder,
 } from "./place";
 export type {
-  PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
+  ExternalReferrerInput, PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
 } from "./place";
+/** 18-S RS2 — the ordering door's read (the consult and the imaging desk). */
+export { ADVISORY_DUPLICATE_DAYS, imagingDoorFor } from "./advised";
+export type {
+  AdvisedImagingLine, ImagingBookEntry, ImagingDoorView, ImagingOrderable, ImagingRecentItem, ImagingVisitOrder,
+} from "./advised";
 export {
   IMAGING_DEFINITION_KINDS, VIEWER_URL_PLACEHOLDERS, activateSeededDefinition, activeDefinition, activeDefinitionRow, draftDefinition,
   parseDefinitionBody, publishDefinition, requestDefinitionPublish,

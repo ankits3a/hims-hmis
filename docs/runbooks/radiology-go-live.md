@@ -206,6 +206,25 @@ worker before anything else.
 Place a real order and take it to the end. Every step below was performed on 2026-09-06 and each
 number is what the route actually returns.
 
+0. **Order it through a screen, not `curl` (18-S RS2).** Two doors, both on `radiology.orders.place`:
+   - **Consult** — `/opd/consult`, Investigations tab, *Order imaging*. Advise a study (or search the
+     book in the panel), type the clinical question, choose the side for a knee or a limb doppler, and
+     press *Send to imaging*. The panel then reads *At the imaging desk to book*. Nothing is billed.
+   - **Imaging desk** — `/radiology/reception`, *Order from a visit*: type the `V…` number. The
+     doctor's advised imaging lines come back; a line the book does not name is **greyed with its
+     reason** (it is not hidden), and a line already ordered says *Ordered · R…*. Type the question and
+     press *Place order*. For a walk-in slip, use *Outside prescription*: search the book, type the
+     referring doctor's name and registration number exactly as the slip shows (both required — the
+     order is refused without them), and place. The visit's own doctor is the answerable clinician.
+   - A lab test advised in the same consult never appears at the imaging door. If an imaging line you
+     expect is missing, the service is neither in the study-type book nor an `investigation` in the
+     tariff (or the lab catalogue claims it).
+   - **Why there is no census row for this step.** 18a-iv T4 asked for a `standup-check` row that fails
+     when an active book exists and no screen can order from it. "No screen" is a property of the
+     CODE, and it is now closed in code and pinned by `imaging-order-panel.test.tsx` and
+     `imaging-desk-door.test.tsx`. The only data a census could read here — "some active user holds
+     `radiology.orders.place`" — is green on any hospital with one doctor, so it would certify nothing
+     (a row green on its own emptiness). Walking this step once is the check.
 1. `POST /radiology/orders` → `201`, an `R…` order number and an `X…` accession appears at reception.
 2. Schedule it onto a machine → `201`.
 3. Check in → `201`, and the open gates come back named.

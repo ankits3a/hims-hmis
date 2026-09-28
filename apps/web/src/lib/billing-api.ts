@@ -9,8 +9,9 @@ import { api, ApiError } from "./api";
  * TWO THINGS THE SERVER DELIBERATELY DOES NOT SEND, recorded here so no screen goes looking:
  *  · `GET /billing/receipts` returns `panCaptured: boolean`, never the Rule 114B `panNumber`
  *    (commit 30a272d). Render it as a compliance chip; there is no route that returns the number.
- *  · `GET /billing/receipts` and `GET /billing/refunds` carry `patientId` but NO patient name —
- *    unlike every other reader on this surface, which routes names through `getPatientSummaries`.
+ *  · `GET /billing/receipts` carries `patientId` but NO patient name — unlike every other reader
+ *    on this surface, which routes names through `getPatientSummaries`. (`GET /billing/refunds`
+ *    carried none either until UX-AUDIT 2026-09-28; it now batches the alias-safe summary.)
  *
  * NEITHER LIST ROUTE PAGINATES and `listDues` filters in memory. Known Phase-1 scale seams; do not
  * build paging the API cannot serve.
