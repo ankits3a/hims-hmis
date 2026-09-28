@@ -1002,6 +1002,13 @@
       "when": 1790590034928,
       "tag": "0142_pharmacy_medication_incidents",
       "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1790591467336,
+      "tag": "0143_pharmacy_cold_chain",
+      "breakpoints": true
     }
   ]
 }

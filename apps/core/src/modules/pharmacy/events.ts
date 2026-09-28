@@ -271,6 +271,23 @@ export const incidentEventRecorded = defineEvent("incident.event_recorded", MODU
   incidentId: id, eventId: id, kind: z.enum(["reviewed", "closed"]),
 }));
 
+/** STAGE D3 — a fridge was added or edited (label, range, active): the before and the after, the unit's audit trail. */
+const coldUnitState = z.object({ label: z.string().min(1), lowC: z.string().min(1), highC: z.string().min(1), active: z.boolean() });
+export const coldUnitSaved = defineEvent("coldchain.unit_saved", MODULE, z.object({
+  unitId: id, storeResourceId: id, before: coldUnitState.nullable(), after: coldUnitState,
+}));
+
+/** STAGE D3 — a fridge was read; `excursionId` is the excursion that reading opened, if it opened one. */
+export const coldReadingRecorded = defineEvent("coldchain.reading_recorded", MODULE, z.object({
+  unitId: id, readingId: id, currentC: z.string().min(1), minC: z.string().min(1), maxC: z.string().min(1),
+  outOfRange: z.boolean(), excursionId: id.nullable(),
+}));
+
+/** STAGE D3 — an excursion was closed: every held batch released (with its reason) or written off. */
+export const coldExcursionClosed = defineEvent("coldchain.excursion_closed", MODULE, z.object({
+  excursionId: id, unitId: id, released: z.number().int().nonnegative(), writtenOff: z.number().int().nonnegative(), writeOffId: id.nullable(),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -281,4 +298,5 @@ export const PHARMACY_EVENTS = [
   shortBookNoted, shortBookResolved,
   controlledLicenceRecorded, endPrescriberRecorded, endPrescriberEnded, controlledChecked, controlledActWitnessed,
   adrReported, adrEventRecorded, incidentRecorded, incidentEventRecorded,
+  coldUnitSaved, coldReadingRecorded, coldExcursionClosed,
 ] as const;

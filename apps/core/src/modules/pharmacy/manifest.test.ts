@@ -48,6 +48,8 @@ describe("the pharmacy manifest claims the medication order kind (16c T1)", () =
       "pharmacy.adr.record", "pharmacy.adr.manage",
       // Stage D2 — the medication error and near-miss log: record; review and close.
       "pharmacy.incidents.record", "pharmacy.incidents.review",
+      // Stage D3 — the fridge log: record a reading; add fridges and close an excursion.
+      "pharmacy.coldchain.record", "pharmacy.coldchain.manage",
     ]);
     expect(pharmacyManifest.menu.map((e) => e.path)).toEqual(["/pharmacy/desk", "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder", "/pharmacy/office", "/pharmacy/office/reports", "/pharmacy/registers/h1", "/pharmacy/leakage", "/pharmacy/retail", "/pharmacy/retail-licence", "/pharmacy/downtime"]);
     expect(pharmacyManifest.subscriptions).toEqual([

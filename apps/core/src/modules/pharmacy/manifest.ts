@@ -139,6 +139,16 @@ export const pharmacyManifest: ModuleManifest = {
      * reporter's name. The pharmacist in charge and the medical superintendent.
      */
     "pharmacy.incidents.review",
+    /**
+     * STAGE D3 — read a fridge's thermometer into the cold-chain log (current, min, max). An out-of-range reading
+     * opens an excursion that holds the store's cold batches. The pharmacist, the aide and the storekeeper.
+     */
+    "pharmacy.coldchain.record",
+    /**
+     * STAGE D3 — add and edit fridges, and close an excursion: release each held batch with its reason, or write
+     * it off. The pharmacist in charge and the materials head.
+     */
+    "pharmacy.coldchain.manage",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [

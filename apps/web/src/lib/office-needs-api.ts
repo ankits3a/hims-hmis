@@ -19,7 +19,7 @@ export type WireNeedFact = { k: string; raw?: true; v: string | number; as: "tex
 export type WireNeedRef = {
   kind:
     | "po" | "purchasePlan" | "grnDesk" | "bill" | "run" | "payRun" | "return" | "writeoff" | "recall" | "returnPlan"
-    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr" | "incident";
+    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr" | "incident" | "coldUnit" | "coldExcursion";
   id: string | null;
 };
 
@@ -55,4 +55,6 @@ export const NEEDS_GRANTS = [
   "pharmacy.adr.manage",
   // Stage D2 — the medication incident log's LAW rows (an incident not yet reviewed).
   "pharmacy.incidents.review",
+  // Stage D3 — the fridge log's STOCK rows (an open excursion; a reading missed today).
+  "pharmacy.coldchain.record", "pharmacy.coldchain.manage",
 ] as const;

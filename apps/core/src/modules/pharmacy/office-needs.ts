@@ -3,6 +3,7 @@ import { hasPermission } from "../../kernel/auth/permissions";
 import { grnLines, vendors } from "../../kernel/db/schema";
 import { MaterialsError, listGrns } from "../materials";
 import { ADR_MANAGE_PERMISSION, ADR_SERIOUS_REPORT_DAYS, adrAwaitingPvpi, isSerious } from "./adr";
+import { COLDCHAIN_MANAGE_PERMISSION, COLDCHAIN_RECORD_PERMISSION, coldChainToday } from "./cold-chain";
 import { istDateOf } from "./config";
 import { INCIDENT_REVIEW_HOURS, INCIDENT_REVIEW_PERMISSION, incidentsAwaitingReview, isHarmCategory } from "./incidents";
 import { CUSTODY_PERMISSION, LICENCES_PERMISSION } from "./controlled";
@@ -12,6 +13,7 @@ import { officePay, officeReturns, officeToday } from "./office";
 import { listPharmacists } from "./pharmacists";
 import { retailLicenceState } from "./retail";
 import type { AdrAwaitingPvpi } from "./adr";
+import type { ColdChainToday } from "./cold-chain";
 import type { IncidentAwaitingReview } from "./incidents";
 import type { ControlledToday } from "./controlled-office";
 import type { OfficePay, OfficeReturns, OfficeToday } from "./office";
@@ -33,7 +35,8 @@ import type { Db } from "../../kernel/db/client";
  *   RETURN `officeReturns`   — credit notes awaited on dispatched returns, write-offs awaiting approval or
  *                              ready to post, open recalls
  *   STOCK  `officeReturns`'s expiry list; materials' GRNs at `gate_qc` (the opening-stock sheet's included,
- *                              challan `OPENING/…`)
+ *                              challan `OPENING/…`); `coldChainToday` (stage D3 — a fridge excursion still open,
+ *                              red; a fridge whose 09:00 or 17:00 IST reading was missed today, amber)
  *   LAW    `retailLicenceState` (Form 20/21 missing, lapsed or inside 30 days) and `controlledToday` (the
  *                              cabinet's licences, check and acts); `adrAwaitingPvpi` (stage D1 — an ADR not yet
  *                              sent to PvPI, red once a serious one is past PvPI's 15 days);
@@ -56,13 +59,13 @@ import type { Db } from "../../kernel/db/client";
  *
  * ═══ THE RANKING ═══
  *
- * `tier` then `key` then `id`. Law lapsed or missing, a serious ADR past PvPI's 15 days, and a harmful (E–I)
- * medication incident unreviewed past 24 hours (0); law lapsing —
+ * `tier` then `key` then `id`. Law lapsed or missing, a serious ADR past PvPI's 15 days, a harmful (E–I)
+ * medication incident unreviewed past 24 hours, and a fridge excursion still open (0); law lapsing —
  * the retail licence, a cabinet licence, a pharmacist's registration, a serious ADR inside its 15 days (1,
  * fewest days first); money deadlines — overdue payables and MSME
  * bills due this week (2); what waits on this person's decision — a PO, a payment run, a recall, any other
  * unreviewed medication incident (3); held
- * bills, overdue orders, the cabinet's day (4); credit notes and write-offs to post, other bills due, an ADR
+ * bills, overdue orders, the cabinet's day, a fridge reading missed today (4); credit notes and write-offs to post, other bills due, an ADR
  * that is not serious still to send (5);
  * expiry and write-offs with the MS (6); pharmacists on a trial number (7); GRNs waiting for QC (8);
  * drafts, orders to receive and the short book (9).
@@ -87,7 +90,7 @@ export type NeedFact = { k: string; raw?: true; v: string | number; as: "text" |
 export type NeedRef = {
   kind:
     | "po" | "purchasePlan" | "grnDesk" | "bill" | "run" | "payRun" | "return" | "writeoff" | "recall" | "returnPlan"
-    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr" | "incident";
+    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr" | "incident" | "coldUnit" | "coldExcursion";
   id: string | null;
 };
 
@@ -135,6 +138,8 @@ export type NeedInputs = {
   adr: AdrAwaitingPvpi[] | null;
   /** Stage D2 — medication incidents neither reviewed nor closed; read under `pharmacy.incidents.review`. */
   incidents: IncidentAwaitingReview[] | null;
+  /** Stage D3 — open fridge excursions and today's missed readings; read under `pharmacy.coldchain.record` or `.manage`. */
+  cold: ColdChainToday | null;
 };
 
 const DAY = 86_400_000;
@@ -402,13 +407,29 @@ export function buildNeeds(input: NeedInputs, now: Date): OfficeNeeds {
     }
   }
 
+  // ── STOCK: the fridges (stage D3) — an open excursion red at tier 0, a reading missed today amber ──
+  const cold = input.cold;
+  if (cold !== null) {
+    for (const e of cold.open) {
+      const waited = minutesSince(e.openedAt, now);
+      push({ id: `stock:cold:${e.id}`, source: "STOCK", kind: "cold_excursion_open", params: { no: e.no, label: e.label, store: e.storeCode, batches: e.batches },
+        clock: { code: "waited", n: waited, tone: "rd" }, ref: { kind: "coldExcursion", id: e.id }, tier: 0, key: -waited,
+        facts: [{ k: "excursionNo", v: e.no, as: "text" }, { k: "fridge", v: e.label, as: "text" }, { k: "store", v: e.storeCode, as: "text" }, { k: "heldBatches", v: e.batches, as: "count" }] });
+    }
+    for (const m of cold.missed) {
+      push({ id: `stock:cold-missed:${m.unitId}:${m.slot}`, source: "STOCK", kind: "cold_reading_missed", params: { label: m.label, store: m.storeCode, slot: m.slot },
+        clock: { code: "today", tone: "gd" }, ref: { kind: "coldUnit", id: m.unitId }, tier: 4, key: 2,
+        facts: [{ k: "fridge", v: m.label, as: "text" }, { k: "store", v: m.storeCode, as: "text" }, { k: "slot", v: m.slot, as: "text" }] });
+    }
+  }
+
   out.sort((a, b) => a.tier - b.tier || a.key - b.key || a.id.localeCompare(b.id));
   const sides = NEED_SOURCES.filter((s) => {
     switch (s) {
       case "BUY": return input.buy !== null;
       case "PAY": return input.pay !== null;
       case "RETURN": return input.returns !== null;
-      case "STOCK": return input.returns !== null || input.grns !== null;
+      case "STOCK": return input.returns !== null || input.grns !== null || input.cold !== null;
       case "LAW": return input.retail !== null || input.cabinet !== null || input.adr !== null || input.incidents !== null;
       case "PEOPLE": return input.pharmacists !== null;
     }
@@ -459,10 +480,10 @@ async function grnsAtQc(db: Db): Promise<GrnAtQc[]> {
 
 /** `GET /pharmacy/office/needs` — every side this person may read, federated and ranked. */
 export async function officeNeeds(db: Db, actor: Actor, now: Date = new Date()): Promise<OfficeNeeds> {
-  const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null };
+  const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null, cold: null };
   if (actor.type !== "user") return buildNeeds(empty, now);
   const id = actor.id;
-  const [buy, pay, returns, grns, retail, cabinet, pharmacists, adr, incidents] = await Promise.all([
+  const [buy, pay, returns, grns, retail, cabinet, pharmacists, adr, incidents, cold] = await Promise.all([
     side(db, id, ["materials.po.raise"], () => officeToday(db, actor, now)),
     side(db, id, ["materials.bills.manage"], () => officePay(db, actor, now)),
     side(db, id, ["materials.returns.manage"], () => officeReturns(db, actor, now)),
@@ -472,6 +493,7 @@ export async function officeNeeds(db: Db, actor: Actor, now: Date = new Date()):
     side(db, id, ["pharmacy.pharmacists.manage"], () => listPharmacists(db, now)),
     side(db, id, [ADR_MANAGE_PERMISSION], () => adrAwaitingPvpi(db, actor)),
     side(db, id, [INCIDENT_REVIEW_PERMISSION], () => incidentsAwaitingReview(db, actor)),
+    side(db, id, [COLDCHAIN_RECORD_PERMISSION, COLDCHAIN_MANAGE_PERMISSION], () => coldChainToday(db, actor, now)),
   ]);
-  return buildNeeds({ buy, pay, returns, grns, retail, cabinet, pharmacists, adr, incidents }, now);
+  return buildNeeds({ buy, pay, returns, grns, retail, cabinet, pharmacists, adr, incidents, cold }, now);
 }
