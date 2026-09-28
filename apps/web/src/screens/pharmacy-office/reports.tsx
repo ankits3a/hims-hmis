@@ -200,7 +200,7 @@ function RangeBar({ range, onChange, store = true }: { range: RangeInput; onChan
   const stores = useQuery({ queryKey: ["pharmacy", "reports", "stores"], queryFn: fetchReportStores, enabled: store });
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="range-bar">
-      <div className="flex gap-1" role="group" aria-label={t("pharmacyOffice.reports.range")}>
+      <div className="flex flex-wrap gap-1" role="group" aria-label={t("pharmacyOffice.reports.range")}>
         {REPORT_PRESETS.map((p) => (
           <Button key={p} type="button" size="sm" variant={range.preset === p ? "default" : "outline"} data-testid={`preset-${p}`} onClick={() => onChange({ ...range, preset: p })}>
             {t(`pharmacyOffice.reports.preset.${p}`)}
@@ -902,7 +902,7 @@ function TopSellingReport({ sheet, presetRef }: Bind): React.ReactElement {
     { key: "abc", label: L("abc"), value: (r) => r.abc },
   ];
   const rows = d === undefined ? [] : by === "value" ? d.byValue : d.byUnits;
-  const totals: Totals | null = d === undefined ? null : { rank: null, item: t("pharmacyOffice.reports.allItems", { count: d.totals.items }), qty: d.totals.qtyBase, value: d.totals.valuePaise };
+  const totals: Totals | null = d === undefined ? null : { rank: "", item: t("pharmacyOffice.reports.allItems", { count: d.totals.items }), qty: d.totals.qtyBase, value: d.totals.valuePaise };
   if (d !== undefined) {
     sheet.current = {
       title: `${t("pharmacyOffice.reports.name.topSelling")} · ${t(`pharmacyOffice.reports.topBy.${by}`)}`, subtitle: rangeText(d.from, d.to),
