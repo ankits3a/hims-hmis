@@ -5,12 +5,14 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { listStores } from "../materials";
 import { documentActivity, recentActivity } from "./activity";
 import { gstr2bReconcile } from "./gstr2b";
+import { gstr3bReport } from "./gstr3b";
 import { officeNonMoving, officePurchaseRegister, officeStockValuation } from "./office-reports";
 import { parsed, toHttp } from "./pharmacy-http";
 import { REPORTS_MARGIN, REPORTS_READ, requireReportPermission } from "./report-range";
 import { hsnReport, marginReport, salesRegister } from "./sales-register";
 import type { ActivityFeedRow, ActivityTimeline } from "./activity";
 import type { Gstr2bRecon } from "./gstr2b";
+import type { Gstr3b } from "./gstr3b";
 import type { HsnReport, MarginReport, ReportInput, SalesRegister } from "./sales-register";
 import type { NonMovingReport, PurchaseRegister, StockValuation } from "../materials";
 import type { Actor } from "@hmis/contracts";
@@ -85,6 +87,13 @@ export class PharmacyReportsController {
   @Get("non-moving")
   async nonMoving(@CurrentActor() actor: Actor, @Query("days") days?: string, @Query("store") store?: string): Promise<NonMovingReport> {
     try { return await officeNonMoving(this.db, actor, { days: days ?? null, storeCode: store ?? null }, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** GAP A4 — the period's GSTR-3B figures from the books: outward tax, ITC, and rule 88A's set-off. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("gstr3b")
+  async gstr3b(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<Gstr3b> {
+    try { return await gstr3bReport(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
   }
 
   /** The accountant's GSTR-2B file, read and matched; never stored. */

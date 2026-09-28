@@ -207,4 +207,30 @@ describe("the office's reports (parity P5)", () => {
     expect(changes).toHaveTextContent("26.00");
     expect(changes).toHaveTextContent("291.20");
   });
+
+  it("GAP A4 — GSTR-3B is report 8 for the owner: the return's rows in order, the cash to pay, and 0 opens the tenth report", async () => {
+    const heads = (taxable: number, cgst: number, sgst: number) => ({ taxablePaise: taxable, igstPaise: 0, cgstPaise: cgst, sgstPaise: sgst });
+    const setOff = (l: number, own: number, cash: number) => ({ liabilityPaise: l, byIgstPaise: 0, byOwnPaise: own, cashPaise: cash, carryForwardPaise: 0 });
+    const g3b = {
+      from: "2026-09-01", to: "2026-09-28", preset: "month",
+      outward: { taxable: heads(100_000, 2_500, 2_500), nilExempt: { taxablePaise: 500_000 }, byRate: [{ rateBps: 500, taxablePaise: 100_000, cgstPaise: 2_500, sgstPaise: 2_500 }] },
+      itc: { available: heads(40_000, 1_000, 1_000), reversed: heads(0, 0, 0), net: { igstPaise: 0, cgstPaise: 1_000, sgstPaise: 1_000 }, bills: 2, debitNotes: 0 },
+      creditNotesUnsplitPaise: 0,
+      payable: { igst: setOff(0, 0, 0), cgst: setOff(2_500, 1_000, 1_500), sgst: setOff(2_500, 1_000, 1_500), cashPaise: 3_000 },
+    };
+    mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/gstr3b": g3b }, [...OWNER, "pharmacy.tally.export"]);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    const list = await screen.findByTestId("reports-view");
+    expect(within(within(list).getByTestId("report-gstr3b")).getByText("8")).toBeTruthy();
+    list.focus();
+    await userEvent.keyboard("8");
+    const table = await screen.findByTestId("gstr3b-table");
+    const rows = within(table).getAllByRole("row").map((r) => r.textContent ?? "");
+    expect(rows.findIndex((r) => r.includes("3.1(a)"))).toBeLessThan(rows.findIndex((r) => r.includes("4(A)(5)")));
+    expect(rows.some((r) => r.includes("2 supplier bills booked"))).toBe(true);
+    expect(screen.getByTestId("gstr3b-cash")).toHaveTextContent("30.00");
+    await userEvent.keyboard("{Escape}");
+    const back = await screen.findByTestId("reports-view");
+    expect(within(within(back).getByTestId("report-tally")).getByText("0")).toBeTruthy();
+  });
 });

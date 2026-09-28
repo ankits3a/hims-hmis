@@ -51,7 +51,7 @@ spot-checks by hand. This phase answers them.
 | A1 | **Opening-stock sheet from a screen** | The pharmacist's CSV is uploaded on `/materials/grn` and checked row by row. It is captured as GRNs, which land in the existing QC worklist. The pharmacist QCs and posts them there, so the two-person DD8 gate is unchanged. `scripts/import-opening-stock.ts`'s planner moves into `src` (the scripts folder is not type-checked). The script keeps working as a thin caller. |
 | A1b | **Add stock found on the shelf** | **DONE BY WHAT EXISTS (DECIDED 2026-09-28, no code).** A known batch found on the shelf is a blind count's `found` variance, booked through `materials_stock_adjustment` (the MS approves), from `/materials/counts`. A batch never on the books goes in on the opening-stock sheet (A1), with the supplier blank → OPENING STOCK. Healthray's free "+ Add stock" is a silent add, and we do not copy it. |
 | A2 | **Item-master editor** | HSN, schedule, manufacturer, storage class and lead time, plus new LASA and high-alert flags. Migration `0140_item_master_fields`. The desk shows a chip on the line (red high alert, gold LASA). **DECIDED:** no second-person gate at OPD handover. NABH's independent double-check binds administration on the ward, and at the counter the chip plus the existing scan-to-pick is the check. Revisit with IPD. The schedule is the formulary medicine's and is changed through `PATCH /formulary/medicines/:id` under `formulary.manage`. Everyone else sees it read-only. |
-| A3 | **Credit sale, owner-only** | A desk "credit" tender raises an approval to the owner, and the dispense holds until it is granted. The amount lands in billing dues. It reuses `invoices.creditExtended`. |
+| A3 | **Credit is the owner's, hospital-wide** | See "A3 — design" below. The owner's scope ruling of 2026-09-28 widened this from pharmacy to the whole hospital. |
 | A4 | **GSTR-3B summary** | Built from the existing GSTR-1 and GSTR-2B figures. No migration. |
 | A5 | **Supplier side** | A manual or damaged return to the supplier from a screen, with editable draft lines. A stock-movement ledger screen over `GET /materials/stock/movements`. |
 | A6 | **Labels and indent** | Rack and strip barcode labels through `kernel/printing`. An indent (a sub-store or OT asks the central store for stock), issued as a transfer. |
@@ -103,3 +103,39 @@ next because every later screen lives inside the office.
   near-expiry or refused with its reason. **Capture** is enabled only when nothing is refused. The result names
   the GRNs now waiting for QC. A template download link points at `docs/runbooks/pharmacy-opening-stock-template.csv`'s
   columns.
+
+## A3 — design (owner rulings 2026-09-28: "nobody can issue credit except owner", scope = whole hospital)
+
+**What counts as credit (DECIDED, from the option the owner chose):** credit is letting a service, a medicine or a
+report go out without being paid for. A bill raised unpaid while the thing it pays for is still HELD is not credit.
+The lab's reflex and add-on bills are the case in point: the report stays locked until the money is in (DD23's
+interlock). Releasing that report unpaid IS credit.
+
+**Measured on `main` @ ae828c3d:**
+
+| Path | Today | After |
+|---|---|---|
+| OPD counter: a credit-extended invoice lets the consult start (`billing/gate.ts` `feeCovered`) | the cashier (`billing.credit.extend`) up to `creditCapPaise`, with no approval; `billing_credit_extension` (approver **billing_manager**) above it | every remainder needs a GRANTED `billing_credit_extension`, whose approver is **owner** |
+| Lab desk: order with part payment, `credit: {reason}` (`lab-desk.tsx:79`, `lab/desk.ts:442`) | lab reception holds `billing.credit.extend` | the same owner approval, or collect in full |
+| Lab reflex / add-on at the bench (`lab/verify.ts:680`) | a credit invoice, issued automatically | an unpaid invoice HELD by the interlock, with no credit flag and no approval: collected before the report goes |
+| Lab report released unpaid (`lab_release_unpaid`) | approver **billing_manager** | approver **owner** |
+| Pharmacy: medicines handed over unpaid | impossible (money before the drug) | a desk "credit" tender raises the owner's approval, and the dispense holds until it is granted |
+
+**Build order (one lane, `credit-owner`; billing is imported everywhere, so behaviour changes only, no signature
+change):**
+1. `billing_credit_extension` and `lab_release_unpaid`: approver `owner`. The cap no longer exempts anything. Any
+   remainder needs the granted approval; `creditCapPaise` stays in config, but credit stops reading it.
+2. An internal-only `holdUntilPaid: {reason}` on `issueInvoice`, for the lab's reflex and add-on bills. It is not on
+   the HTTP route. It persists the invoice unsettled with `credit_extended = false`, so no fee gate treats it as paid.
+3. Lab desk: on `credit_approval_required`, the screen offers "Ask the owner" (it files the approval). The order
+   goes through once it is granted.
+4. Pharmacy desk: a "Credit — owner approves" tender, the same approval, with the dispense held at `picked`.
+5. Test fixtures that used `credit: {reason}` as a shortcut for "an unpaid invoice" (about 30 files) move to a helper
+   that files and grants the approval, or to `holdUntilPaid`.
+6. `seed-roles`: `billing.credit.extend` stays with the roles that USE a granted approval. Granting it no longer
+   lets anyone extend credit alone. README prose is updated.
+
+**Until A3 ships, production still lets a cashier extend credit up to the cap.** The fastest safe stop that breaks
+nothing is the owner setting `creditCapPaise` to 0 in `/billing/config`. Then every credit asks for approval,
+though still from the billing manager until step 1 lands. The lab reflex path, which passes no approval, would
+then refuse. So this stop is NOT applied until step 2 is in.
