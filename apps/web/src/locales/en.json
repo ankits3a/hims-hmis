@@ -1218,7 +1218,7 @@
   "picker": {
     "searchPlaceholder": "Phone number, UHID, or name…",
     "searchLabel": "Search",
-    "scanPlaceholder": "Scan or paste QR payload…",
+    "scanPlaceholder": "Scan the patient's card (QR)…",
     "scanLabel": "Scan QR",
     "badScan": "Could not read that QR code"
   },
@@ -1542,7 +1542,11 @@
       "cascade": "Every allocation this receipt made will be reversed and the bills it settled go back to outstanding. Receipt {{receiptId}} cannot be un-voided.",
       "confirm": "Void the receipt",
       "done_one": "The receipt is voided and {{count}} allocation was reversed.",
-      "done_other": "The receipt is voided and {{count}} allocations were reversed."
+      "done_other": "The receipt is voided and {{count}} allocations were reversed.",
+      "patient": "Patient whose receipt it is",
+      "receiptFilter": "Type the printed receipt number to narrow the list",
+      "noReceipts": "This patient has no receipt to void",
+      "loadingReceipts": "Loading this patient’s receipts…"
     },
     "recon": {
       "title": "Upload a settlement statement",
@@ -1561,7 +1565,8 @@
       "worklist": "Mismatched tenders",
       "noMismatches": "No tender is mismatched",
       "expected": "Expected",
-      "settled": "Settled"
+      "settled": "Settled",
+      "mismatchNote": "The statement settled {{settled}} against {{expected}} expected; the tolerance is {{tolerance}}."
     },
     "dayBook": {
       "day": "Day",
@@ -1595,8 +1600,10 @@
       "none": "Every visit on {{day}} that owed a consultation fee has a bill against it.",
       "visit": "Visit",
       "type": "Visit type",
-      "date": "Date"
-    }
+      "date": "Date",
+      "typeUnknown": "Not recorded"
+    },
+    "change": "Change"
   },
   "alerts": {
     "title": "Alerts",
@@ -3063,6 +3070,17 @@
     }
   },
   "radiology": {
+    "station": {
+      "department": "Imaging",
+      "stats": "Today at this station",
+      "onList": "On the list",
+      "stat": "STAT waiting",
+      "deskPlace": "Imaging front desk",
+      "worklistPlace": "Rooms and reading",
+      "studyPlace": "Study · gates, acquisition and images",
+      "reportPlace": "Report · draft, sign and publish",
+      "safetyPlace": "Radiation safety officer's registers"
+    },
     "worklist": {
       "title": "Imaging worklist",
       "viewLabel": "View",
@@ -5581,7 +5599,7 @@
     "mode_cash": "Cash",
     "mode_upi": "UPI",
     "mode_card": "Card",
-    "tendered": "Amount (₹)",
+    "tendered": "Cash received (₹)",
     "reference": "Reference",
     "sell": "Take payment and sell",
     "change_due": "Change to give: {{amount}}",
@@ -5608,7 +5626,54 @@
     "returnClass_genuine": "The customer no longer needs it",
     "returnClass_mistake": "The counter sold the wrong item",
     "returnSubmit": "Accept return",
-    "returned": "Return accepted. Credit note {{no}} raised; the refund waits for approval at billing."
+    "returned": "Return accepted. Credit note {{no}} raised; the refund waits for approval at billing.",
+    "wordmark": "WALK-IN COUNTER",
+    "where": "Retail pharmacy",
+    "todayCount_one": "Today · {{count}} sale",
+    "todayCount_other": "Today · {{count}} sales",
+    "todayTag_one": "Today · {{count}} walk-in sale",
+    "todayTag_other": "Today · {{count}} walk-in sales",
+    "nobodyInHand": "Nobody in hand",
+    "inHand": "Customer in hand",
+    "findHint": "Find the customer by mobile, UHID or name, or scan their hospital card. Every bill names a registered person.",
+    "toRegisterNote": "new customer — registered when the sale is made",
+    "stepsLabel": "Steps of the sale",
+    "step": {
+      "medicines": "Medicines",
+      "prescription": "Prescription",
+      "bill": "Bill",
+      "notNeeded": "not needed"
+    },
+    "stepOf": "Step {{n}} · {{label}}",
+    "why": {
+      "shut": "The counter is closed: no current retail licence.",
+      "empty": "Add a medicine: type its name or scan the pack.",
+      "qty": "Type a quantity for every line.",
+      "customer": "Find or register the customer, on the left.",
+      "blocked": "A recorded allergy or a severe interaction: do not sell; refer them to their prescriber.",
+      "rx": "Fill the outside prescription: a Schedule H or H1 line needs it.",
+      "cash": "Type the cash received: at least {{amount}}.",
+      "ref": "Type the UPI or card reference.",
+      "price": "Every line has a quantity. Price the cart: batch, expiry, rate and GST come back from the shelf.",
+      "ready": "Priced and complete. Take the money, then sell.",
+      "sold": "Sold. Print the bill, then the next customer."
+    },
+    "searchPlaceholder": "Type a medicine name or item code, or scan the pack",
+    "rate": "MRP / unit",
+    "gst": "GST (inside)",
+    "amount": "Amount",
+    "gross": "MRP total",
+    "discount": "Discount",
+    "gstInside": "GST inside the MRP",
+    "payable": "Payable",
+    "mrpNote": "The printed MRP includes GST, so the GST shown sits inside the price — it is never added on top.",
+    "dateFormat": "dd/mm/yyyy",
+    "dateInvalid": "Not a real date — type it as dd/mm/yyyy.",
+    "dateFuture": "A prescription cannot be dated after today.",
+    "exact": "Exact {{amount}}",
+    "charge": "Charge {{amount}}",
+    "cashInvalid": "Type rupees with at most two decimals, like 250 or 212.40.",
+    "close": "Close"
   },
   "pharmacyRetailLicence": {
     "title": "Retail drug licence",
