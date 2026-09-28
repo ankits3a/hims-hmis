@@ -200,6 +200,11 @@ export const PHARMACY_ERROR_CODES = [
   "messages_stopped",
   /** The pharmacy's reminder phone, a DLT id or a WhatsApp template name is not in the shape the provider issues. */
   "invalid_message_setting",
+  // ── GAP CLOSURE A1 (2026-09-28): the opening-stock sheet from a screen (`opening-stock.ts`) ──
+  /** Not the template: a required column missing, an unknown column, no rows, or too many rows. */
+  "opening_stock_unreadable",
+  /** A row was refused (not on the shelf, expired, a bad MRP…): the sheet is received whole or not at all. */
+  "opening_stock_refused",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -322,6 +327,8 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   item_merged: 409,
   messages_stopped: 409,
   invalid_message_setting: 400,
+  opening_stock_unreadable: 400,
+  opening_stock_refused: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

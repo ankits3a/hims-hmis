@@ -384,3 +384,29 @@ export async function fetchAdjustments(countId: string): Promise<WireAdjustment[
 export async function postAdjustment(approvalId: string): Promise<{ posted: number; refused: number }> {
   return api("POST", `/materials/adjustments/${encodeURIComponent(approvalId)}/post`, {});
 }
+
+// ── Gap closure A1 — the opening-stock sheet (`/pharmacy/opening-stock`, gated on `materials.grn.capture`) ──
+export type WireOpeningGrnState = "new" | "captured" | "posted" | "awaiting_approval" | "approved" | "rejected";
+export type WireOpeningCheck = {
+  fileHash: string;
+  rows: {
+    line: number; brand: string; itemCode: string | null; itemName: string | null; batch: string; expiryDate: string;
+    packs: number; packSize: number; uom: string | null; newUom: boolean; near: boolean; mrpPaise: number;
+    costPerBasePaise: number; rack: string; reasons: string[];
+  }[];
+  grns: { challanNo: string; near: boolean; lines: number; state: WireOpeningGrnState; grnNo: string | null }[];
+  refusals: number; units: number; newUoms: number; needsVendor: boolean; zeroCost: number; racks: number;
+  authority: { permission: string; held: boolean; why: "new_pack_sizes" | "opening_vendor" | "racks" }[];
+};
+export type WireOpeningCapture = {
+  captured: { grnId: string; grnNo: string; challanNo: string; near: boolean; lines: number }[];
+  alreadyOnBooks: number; uomsAdded: number; vendorCreated: boolean; racksSet: number; racksLeft: number;
+};
+
+/** Judge every row of the sheet. Writes nothing. */
+export const checkOpeningStock = (content: string): Promise<WireOpeningCheck> =>
+  api<WireOpeningCheck>("POST", "/pharmacy/opening-stock/check", { content });
+
+/** Judge it again on the server and capture it as GRNs for the pharmacist's QC. */
+export const captureOpeningStock = (content: string): Promise<WireOpeningCapture> =>
+  api<WireOpeningCapture>("POST", "/pharmacy/opening-stock/capture", { content });

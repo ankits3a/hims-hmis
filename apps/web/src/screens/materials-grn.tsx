@@ -7,6 +7,7 @@ import {
 } from "../lib/materials-api";
 import { fetchPurchaseOrders, fetchReceivable } from "../lib/purchase-api";
 import { Button } from "@/components/ui/button";
+import { OpeningStockSheet } from "./materials-grn-opening";
 import type { CaptureLineInput, WireGrn } from "../lib/materials-api";
 
 /**
@@ -275,6 +276,9 @@ export function MaterialsGrn(): React.ReactElement {
             </Button>
             <Button onClick={capture}>{t("materialsGrn.capture")}</Button>
           </section>
+
+          {/* GAP CLOSURE A1 — the pharmacist's opening-stock sheet lands here as GRNs awaiting QC. */}
+          <OpeningStockSheet onOpenGrn={setOpenGrnId} />
 
           {grn !== undefined && (
             <section className="space-y-3 rounded border p-4">
