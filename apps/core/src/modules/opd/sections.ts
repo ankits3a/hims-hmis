@@ -1,15 +1,22 @@
-import { and, asc, eq, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
-import { opdDepartments, opdSectionRecords } from "../../kernel/db/schema";
+import { opdDepartments, opdSectionRecords, opdVitals, patients } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { assertLeaseFor, requireTreatingDoctor } from "./consultation";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { visibleEncounterFor } from "./read-gate";
+import {
+  ageYmd, growthIndicators, immunisationBody, immunisationStatus, mergeImmunisation, pickWeight,
+} from "./paeds";
+import { IAP_2023_SOURCE } from "./paeds-data/iap-2023-schedule";
+import { istDate } from "./time";
+import type { AgeYmd, DoseView, GivenDose, ImmunisationRecord, IndicatorResult, Measure, VitalsWeightRow } from "./paeds";
+import type { Sex } from "./paeds-data/lms";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * ═══ THE CONSULT ENGINE, FIRST SLICE: SECTIONS AS DATA, CHOSEN BY THE DEPARTMENT (01-CONSULT-ENGINE.md §3, §6.1) ═══
@@ -50,6 +57,19 @@ const lensEye = z.object({
   add: power(0, 4),
 }).refine((e) => e.cyl === null || e.cyl === 0 || e.axis !== null, { message: "a cylinder needs its axis", path: ["axis"] });
 
+/** Who gave the history — a child's history comes from a parent (§6.2). */
+export const INFORMANT_RELATIONS = ["mother", "father", "both_parents", "grandparent", "guardian", "self", "other"] as const;
+export const DELIVERY_MODES = ["normal_vaginal", "assisted_vaginal", "lscs_elective", "lscs_emergency"] as const;
+/** The four developmental domains a paediatric OPD records, each achieved for age or delayed. */
+export const MILESTONE_DOMAINS = ["grossMotor", "fineMotor", "language", "social"] as const;
+export const FEEDING_MODES = [
+  "exclusive_breast", "breast_and_formula", "formula", "complementary_with_breast", "complementary_no_breast", "family_diet",
+] as const;
+const milestone = z.object({
+  status: z.enum(["achieved", "delayed"]).nullable().default(null),
+  note: z.string().trim().max(160).default(""),
+}).default({ status: null, note: "" });
+
 export const SECTION_DEFS = {
   "eye.vision": {
     version: 1, kind: "eye-grid",
@@ -76,6 +96,52 @@ export const SECTION_DEFS = {
       note: z.string().trim().max(200).default(""),
     }),
   },
+  // ——— PAEDIATRICS (§6.2; board `Departments`: "Child screen: age in Y-M-D, growth, vaccines") ———
+  "paeds.informant": {
+    version: 1, kind: "form",
+    body: z.object({
+      relation: z.enum(INFORMANT_RELATIONS).nullable().default(null),
+      name: z.string().trim().max(80).default(""),
+      note: z.string().trim().max(200).default(""),
+    }),
+  },
+  "paeds.growth": {
+    version: 1, kind: "growth",
+    body: z.object({
+      lengthCm: z.number().min(30).max(220).nullable().default(null),
+      /** WHO charts lying LENGTH under 2 years and standing HEIGHT from 2; the 0.7 cm between them is applied on read. */
+      measure: z.enum(["length", "height"]).nullable().default(null),
+      headCircCm: z.number().min(20).max(70).nullable().default(null),
+      note: z.string().trim().max(200).default(""),
+    }).refine((b) => b.lengthCm === null || b.measure !== null, { message: "say whether the child was measured lying (length) or standing (height)", path: ["measure"] }),
+  },
+  "paeds.immunisation": { version: 1, kind: "immunisation", body: immunisationBody },
+  "paeds.birth": {
+    version: 1, kind: "form",
+    body: z.object({
+      gestationWeeks: z.number().int().min(22).max(44).nullable().default(null),
+      birthWeightKg: z.number().min(0.3).max(6.5).nullable().default(null),
+      delivery: z.enum(DELIVERY_MODES).nullable().default(null),
+      nicu: z.enum(["no", "yes"]).nullable().default(null),
+      nicuDays: z.number().int().min(0).max(365).nullable().default(null),
+      note: z.string().trim().max(300).default(""),
+    }),
+  },
+  "paeds.milestones": {
+    version: 1, kind: "form",
+    body: z.object({
+      ...(Object.fromEntries(MILESTONE_DOMAINS.map((d) => [d, milestone])) as Record<(typeof MILESTONE_DOMAINS)[number], typeof milestone>),
+      note: z.string().trim().max(300).default(""),
+    }),
+  },
+  "paeds.feeding": {
+    version: 1, kind: "form",
+    body: z.object({
+      mode: z.enum(FEEDING_MODES).nullable().default(null),
+      complementaryFromMonths: z.number().int().min(0).max(24).nullable().default(null),
+      note: z.string().trim().max(300).default(""),
+    }),
+  },
 } as const;
 export type SectionKey = keyof typeof SECTION_DEFS;
 export const SECTION_KEYS = Object.keys(SECTION_DEFS) as SectionKey[];
@@ -83,6 +149,7 @@ export const SECTION_KEYS = Object.keys(SECTION_DEFS) as SectionKey[];
 /** The department default, by department CODE (the stable one printed on slips). A code with no entry is the base screen. */
 export const PROFILES: Record<string, { key: string; sections: SectionKey[] }> = {
   OPH: { key: "ophthalmology", sections: ["eye.vision", "eye.iop", "eye.slit_lamp", "eye.glasses_rx"] },
+  PED: { key: "paediatrics", sections: ["paeds.informant", "paeds.growth", "paeds.immunisation", "paeds.birth", "paeds.milestones", "paeds.feeding"] },
 };
 
 export type SectionRecordView = {
@@ -93,6 +160,24 @@ export type VisitSections = {
   profile: string | null;
   sections: { key: SectionKey; version: number; kind: string }[];
   records: Partial<Record<SectionKey, SectionRecordView>>;
+  /** Present on a paediatric visit only: what the Child tab computes from the child's record. */
+  paeds?: PaedsView;
+};
+
+export type PaedsView = {
+  dob: string | null;
+  dobEstimated: boolean;
+  /** The WHO standards chart boys and girls; any other recorded sex is charted by neither. */
+  sex: Sex | null;
+  age: AgeYmd | null;
+  /** 18 years or older: no growth chart applies (D2). */
+  adult: boolean;
+  /** The weight on record — today's vitals, else the last measured one, flagged not today. */
+  weight: { kg: number; recordedAt: string; today: boolean; daysAgo: number } | null;
+  lengthSource: "section" | "vitals" | null;
+  growth: IndicatorResult[];
+  /** Null without a date of birth: a timetable counts from it. */
+  immunisation: { source: string; today: string; doses: DoseView[] } | null;
 };
 
 export async function profileForDepartment(db: Db, departmentId: string | null): Promise<(typeof PROFILES)[string] | null> {
@@ -151,10 +236,83 @@ export async function visitSections(db: Db, actor: Actor, encounterId: string, n
     actor, patientId: visible.encounter.patientId, surface: "opd.sections", encounterId,
     sealed: visible.sealed, reason: visible.breakGlass?.reason ?? null, now,
   });
-  return {
+  const records = await liveRecords(db, encounterId);
+  const out: VisitSections = {
     profile: profile?.key ?? null,
     sections: (profile?.sections ?? []).map((key) => ({ key, version: SECTION_DEFS[key].version, kind: SECTION_DEFS[key].kind })),
-    records: await liveRecords(db, encounterId),
+    records,
+  };
+  if (profile?.key === "paediatrics") out.paeds = await paedsView(db, visible.encounter.patientId, encounterId, records, now);
+  return out;
+}
+
+/** The CURRENT `paeds.immunisation` row of each of the patient's visits (one per visit), with the day it was written. */
+async function immunisationRows(db: Db | Tx, patientId: string): Promise<{ encounterId: string; at: Date; body: ImmunisationRecord }[]> {
+  const rows = await db.select({ encounterId: opdSectionRecords.encounterId, at: opdSectionRecords.at, body: opdSectionRecords.body })
+    .from(opdSectionRecords)
+    .where(and(
+      eq(opdSectionRecords.patientId, patientId), eq(opdSectionRecords.sectionKey, "paeds.immunisation"),
+      sql`not exists (select 1 from opd_section_records s where s.supersedes_id = ${opdSectionRecords.id})`,
+    ));
+  return rows.map((r) => ({ encounterId: r.encounterId, at: r.at, body: immunisationBody.parse(r.body) as ImmunisationRecord }));
+}
+
+/** Every dose on record for the child: given on a visit here (today's or an earlier one's), or earlier by the card. */
+function givenDoses(rows: Awaited<ReturnType<typeof immunisationRows>>, encounterId: string | null): GivenDose[] {
+  const out: GivenDose[] = [];
+  for (const r of rows) {
+    const on = istDate(r.at);
+    for (const g of r.body.givenToday) if (g.errorReason === null) out.push({ dose: g.dose, on, where: r.encounterId === encounterId ? "today" : "here" });
+    for (const e of r.body.earlier) out.push({ dose: e.dose, on: e.on, where: "earlier" });
+  }
+  return out;
+}
+
+/**
+ * THE CHILD TAB'S READ (§6.2). The patient's date of birth and sex, the vitals the desk recorded
+ * (today's weight; the last measured one, flagged, when today has none), the Child tab's own
+ * length and head circumference, and every visit's immunisation record.
+ */
+async function paedsView(
+  db: Db, patientId: string, encounterId: string, records: Partial<Record<SectionKey, SectionRecordView>>, now: Date,
+): Promise<PaedsView> {
+  const [pt] = await db.select({ dob: patients.dob, dobEstimated: patients.dobEstimated, gender: patients.administrativeGender })
+    .from(patients).where(eq(patients.id, patientId));
+  const dob = pt?.dob ?? null;
+  const sex: Sex | null = pt?.gender === "male" ? "boy" : pt?.gender === "female" ? "girl" : null;
+  const age = dob === null ? null : ageYmd(dob, now);
+  const vitals: VitalsWeightRow[] = (await db.select({
+    encounterId: opdVitals.encounterId, weightKg: opdVitals.weightKg, heightCm: opdVitals.heightCm,
+    carriedForward: opdVitals.carriedForward, recordedAt: opdVitals.recordedAt,
+  }).from(opdVitals)
+    .where(and(eq(opdVitals.patientId, patientId), eq(opdVitals.status, "active"), isNotNull(opdVitals.weightKg)))
+    .orderBy(desc(opdVitals.recordedAt)).limit(20))
+    .map((v) => ({ ...v, carriedForward: Array.isArray(v.carriedForward) ? (v.carriedForward as string[]) : [] }));
+  const picked = pickWeight(vitals, encounterId, now);
+  const growthBody = records["paeds.growth"]?.body as { lengthCm: number | null; measure: Measure | null; headCircCm: number | null } | undefined;
+  const sectionLength = growthBody?.lengthCm ?? null;
+  const lengthCm = sectionLength ?? picked.heightTodayCm;
+  const ageDays = age?.totalDays ?? 0;
+  const weightAgeDays = picked.weight === null || dob === null ? 0 : ageYmd(dob, new Date(picked.weight.recordedAt)).totalDays;
+  const growth = age === null ? [] : growthIndicators({
+    sex, ageDays, dobEstimated: pt?.dobEstimated ?? false,
+    weight: picked.weight === null ? null : { kg: picked.weight.kg, ageDays: weightAgeDays, today: picked.weight.today },
+    lengthCm,
+    // A desk height carries no method: under 2 years it is taken as the length the WHO charts, from 2 the height.
+    measure: sectionLength !== null ? (growthBody?.measure ?? null) : null,
+    headCircCm: growthBody?.headCircCm ?? null,
+  });
+  const today = istDate(now);
+  return {
+    dob: dob === null ? null : dob.toISOString().slice(0, 10), dobEstimated: pt?.dobEstimated ?? false, sex, age,
+    adult: age !== null && age.years >= 18,
+    weight: picked.weight,
+    lengthSource: sectionLength !== null ? "section" : picked.heightTodayCm !== null ? "vitals" : null,
+    growth,
+    immunisation: dob === null ? null : {
+      source: IAP_2023_SOURCE, today,
+      doses: immunisationStatus(dob.toISOString().slice(0, 10), today, givenDoses(await immunisationRows(db, patientId), encounterId)),
+    },
   };
 }
 
@@ -182,17 +340,24 @@ export async function saveVisitSection(
   if (!parsed.success) {
     throw new OpdError("invalid_section_body", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
   }
+  let body = parsed.data as Record<string, unknown>;
   return withTx(db, async (tx) => {
-    const [current] = await tx.select({ id: opdSectionRecords.id }).from(opdSectionRecords)
+    const [current] = await tx.select({ id: opdSectionRecords.id, body: opdSectionRecords.body }).from(opdSectionRecords)
       .where(and(
         eq(opdSectionRecords.encounterId, encounterId), eq(opdSectionRecords.sectionKey, key),
         sql`not exists (select 1 from opd_section_records s where s.supersedes_id = ${opdSectionRecords.id})`,
       ));
+    if (key === "paeds.immunisation") {
+      // "Given today" is append-only (paeds.ts `mergeImmunisation`), and a dose on the child's other visits is not given twice.
+      const others = (await immunisationRows(tx, enc.patientId)).filter((r) => r.encounterId !== encounterId);
+      const elsewhere = new Set(givenDoses(others, null).map((g) => g.dose));
+      body = mergeImmunisation(current === undefined ? null : (immunisationBody.parse(current.body) as ImmunisationRecord), input.body as never, elsewhere, newId);
+    }
     const id = newId();
     try {
       await tx.insert(opdSectionRecords).values({
         id, encounterId, patientId: enc.patientId, sectionKey: key, sectionVersion: def.version,
-        body: parsed.data as Record<string, unknown>, source: "typed", authorId: actor.id, at: now,
+        body, source: "typed", authorId: actor.id, at: now,
         supersedesId: current?.id ?? null,
       });
     } catch (e) {
@@ -200,6 +365,6 @@ export async function saveVisitSection(
       if (String((e as { code?: unknown }).code ?? "") === "23505") throw new OpdError("encounter_state_conflict", "this section was saved concurrently; reload it");
       throw e;
     }
-    return { sectionKey: key, sectionVersion: def.version, body: parsed.data, authorId: actor.id, at: now.toISOString(), recordId: id };
+    return { sectionKey: key, sectionVersion: def.version, body, authorId: actor.id, at: now.toISOString(), recordId: id };
   });
 }
