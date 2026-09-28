@@ -5,6 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { fetchWorklist, radiologyErrorText } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
 import type { WireWorklistRow } from "../lib/radiology-api";
+import { RadiologyStation } from "./radiology-station";
 
 /**
  * PLAN 18a T9 — **THE IMAGING WORKLIST: the technologist's day and the radiologist's unread list.**
@@ -36,8 +37,13 @@ export function RadiologyWorklist(): React.ReactElement {
   });
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">{t("radiology.worklist.title")}</h1>
+    <RadiologyStation
+      station="worklist"
+      title={t("radiology.worklist.title")}
+      place={t("radiology.station.worklistPlace")}
+      stats={[{ label: t("radiology.station.onList"), value: rows.length }, { label: t("radiology.station.stat"), value: rows.filter((r) => r.priority === "stat").length, tone: "danger" }]}
+    >
+    <div className="space-y-4">
 
       <div className="flex gap-2" role="group" aria-label={t("radiology.worklist.viewLabel")}>
         {VIEWS.map((v) => (
@@ -110,5 +116,6 @@ export function RadiologyWorklist(): React.ReactElement {
           </table>
         )}
     </div>
+    </RadiologyStation>
   );
 }

@@ -3038,6 +3038,17 @@
     }
   },
   "radiology": {
+    "station": {
+      "department": "Imaging",
+      "stats": "Today at this station",
+      "onList": "On the list",
+      "stat": "STAT waiting",
+      "deskPlace": "Imaging front desk",
+      "worklistPlace": "Rooms and reading",
+      "studyPlace": "Study · gates, acquisition and images",
+      "reportPlace": "Report · draft, sign and publish",
+      "safetyPlace": "Radiation safety officer's registers"
+    },
     "worklist": {
       "title": "Imaging worklist",
       "viewLabel": "View",
