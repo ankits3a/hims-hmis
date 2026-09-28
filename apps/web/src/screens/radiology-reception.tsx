@@ -6,6 +6,7 @@ import {
 } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingDeskDoor } from "../components/radiology/imaging-desk-door";
 
 /**
  * PLAN 18a T9 — **IMAGING RECEPTION: the desk that books the scan and checks the patient in.**
@@ -91,6 +92,8 @@ export function RadiologyReception(): React.ReactElement {
       list={queue}
     >
     <div className="space-y-4">
+      {/* PLAN 18-S RS2 — the ordering door sits at the top of the centre (18a-iv D1); its own file. */}
+      <ImagingDeskDoor />
 
       <div className="flex flex-wrap gap-2 items-end">
         <label className="flex flex-col text-sm">

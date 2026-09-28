@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
 import { UnpaidMark } from "../components/unpaid-mark";
+import { ImagingOrderPanel } from "../components/radiology/imaging-order-panel";
 import { EyeSections, fetchVisitSections } from "./opd-eye-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
@@ -3781,6 +3782,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               */}
               {active !== null && tab === "inv" && (
                 <LabResultsPanel visitNo={visit.data?.encounter.visitNo ?? null} />
+              )}
+              {/* PLAN 18-S RS2 — the imaging order door; all of it lives in its own file. */}
+              {active !== null && tab === "inv" && (
+                <ImagingOrderPanel encounterNo={visit.data?.encounter.visitNo ?? null} clinicianUserId={me.data?.userId ?? null} advisedKey={advisedTests.map((a) => a.serviceId).join(",")} />
               )}
               {tab === "inv" && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["inv"]} testId="history-foot-inv" />}
 

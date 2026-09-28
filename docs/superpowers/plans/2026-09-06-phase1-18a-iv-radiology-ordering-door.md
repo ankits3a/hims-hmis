@@ -125,3 +125,60 @@ practice, taken under the owner's standing rule.
 ---
 
 ## 8. CLOSE — filled at execution
+
+**Executed 2026-09-28 as Plan 18-S phase RS2, lane `radiology-rs2`, one PR.** 18-S RS2 absorbs
+T1–T4. D1, D3, D4, D5 and D6 hold as written. **D2 is superseded** by 18-S RS2: the doctor's explicit
+*Send to imaging* is an ORDER that lands at the desk as *to book*, and nothing is billed until the
+desk books it. Lines only advised on the prescription are still suggestions the desk confirms.
+
+**RS2 as built:**
+
+- **T1 (core).** `GET /radiology/advised?encounterNo=` (`radiology/advised.ts`), on
+  `radiology.orders.place`. DECIDED: one route for both seats, because the doctor holds neither
+  `radiology.schedule` nor `radiology.definitions.read`. Spike 1: the lab's reader was **copied, not
+  lifted**. The two readers differ in which lines appear. A line appears here when the active book
+  names it, or when it is an `investigation` the lab catalogue does not claim (D6, greyed with a
+  reason). Lab lines and consultations never appear.
+  - The read also returns the visit's standing imaging orders with each study's state, the book with
+    tariff prices, and a 30-day look-back that never names a restricted item.
+  - It is PHI-logged as `opd.visit`.
+  - The 24-hour `duplicate_recent` refusal now carries `recentItemIds`, so the seat can send the
+    override pair.
+  - The walk-in's referrer is typed as a name plus a registration number. `place.ts` finds or makes
+    an `external_rmp` counterparty with code `RMP-<registration>`. DECIDED: both fields are required
+    and there is no unattributed sentinel, because the referrer is part of the radiation
+    justification. New refusal code: `referrer_required` (422).
+  - No new permission. No route or permission pin moved.
+- **T2 (web, consult).** `components/radiology/imaging-order-panel.tsx`, mounted by one insertion in
+  `opd-consult.tsx`'s Lab & radiology tab. The panel:
+  - requires a typed indication;
+  - asks the side for a lateralised type (DECIDED: the side is written into the indication, because
+    the envelope has no side column and `laterality_confirm` confirms it at the console);
+  - shows the price and the priority;
+  - asks a reason for a 30-day or 24-hour duplicate;
+  - shows the placed order's state afterwards.
+- **T3 (web, desk).** `components/radiology/imaging-desk-door.tsx`, in the RS1 station's centre. It has
+  two legs:
+  - Find by visit number, then the advised lines.
+  - An outside slip, searched from the book and placed under `external_prescription` with the
+    referrer.
+
+  DECIDED: the visit leg offers no free search. A study the doctor did not advise is never put under
+  the doctor's name; it goes through the slip leg. The visit's doctor is the answerable clinician on
+  both legs, because the kernel requires one.
+- **T4.** No census row. "No screen" is a code property, now closed and pinned by the vitest suites.
+  The only data row possible ("an active user holds `radiology.orders.place`") is green on any
+  hospital with a doctor. `radiology-go-live.md` §9 step 0 records the ordering walk instead.
+- **Deferred: the ward door and the portable-order writer (18-S RS2's `doc:ward`).** There is no IPD
+  or ER module in `apps/core/src/modules`, and the owner ruled on 28 Sep that IPD and ER each get their
+  own brainstorm. Both go to the IPD plan. The 18a-iii T3 `bedside_location` writer gap stays open
+  until then.
+- **Tests.**
+  - `advised.test.ts`: 10 tests. Fail-first against mutants and against main's `place.ts`: 5 red.
+    The lab-exclusion mutant turns the NEGATIVE test red, the cancelled-counts mutant turns D3 red,
+    the dropped PHI line turns the PHI test red, and main's `place.ts` makes the referrer and
+    duplicate-id tests red.
+  - `radiology.e2e` RS2: 1 test. On main it is red (404 in place of 401).
+  - `imaging-order-panel.test.tsx`: 7 tests, 5 red under mutants.
+  - `imaging-desk-door.test.tsx`: 6 tests, 3 red under mutants.
+  - `radiology-reception.test.tsx` gained 1 test, red without the mount.

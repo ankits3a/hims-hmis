@@ -8297,5 +8297,79 @@
     "pending": "Waiting for the owner to decide {{amount}} on credit…",
     "granted": "The owner approved {{amount}} on credit — issue the bill.",
     "rejected": "The owner said no: {{note}} Collect the money, or change the bill."
+  },
+  "imagingOrder": {
+    "title": "Order imaging",
+    "consultNote": "Send to imaging places an order at the imaging desk, which books the slot and takes the bill. Nothing is billed here.",
+    "noAdvised": "No imaging advised on this visit yet.",
+    "noBook": "No study-type book is published — imaging cannot take orders yet.",
+    "notOrderable": "cannot be ordered here",
+    "alreadyOrdered": "Ordered · {{orderNo}}",
+    "add": "Add an imaging study",
+    "addPlaceholder": "Search the imaging book — e.g. CT head, X-ray knee",
+    "noMatch": "No study in the imaging book matches.",
+    "noPrice": "not priced",
+    "remove": "Remove",
+    "indication": "Clinical question (indication)",
+    "indicationHint": "Why this scan? Required — never filled in for you.",
+    "indicationRequired": "Type the clinical question for this scan.",
+    "side": "Side",
+    "sides": {
+      "right": "Right",
+      "left": "Left",
+      "both": "Both"
+    },
+    "sideRequired": "Choose the side for this study.",
+    "priority": "Priority",
+    "priorities": {
+      "routine": "Routine",
+      "urgent": "Urgent",
+      "stat": "STAT"
+    },
+    "flag": {
+      "contrast": "Contrast — consent and creatinine are checked before the scan.",
+      "pcpndt": "PCPNDT — a Form F is completed at the scan.",
+      "ionising": "Ionising — women aged 10–55 are screened for pregnancy before the scan."
+    },
+    "duplicate": "Already ordered on {{when}} ({{orderNo}}). Give a reason to order it again.",
+    "duplicateRefused": "Imaging says this scan was ordered in the last 24 hours ({{orderNos}}). Give a reason to order it again.",
+    "duplicateReason": "Reason to repeat",
+    "reasonRequired": "Type the reason to repeat this scan.",
+    "send": "Send to imaging",
+    "placeOrder": "Place order",
+    "sending": "Sending…",
+    "placed": "Sent. {{orderNo}} is at the imaging desk to book.",
+    "noDoctor": "This visit has no doctor on it — the front desk must name one before imaging can be ordered.",
+    "forbidden": "You do not hold the right to order imaging.",
+    "ordersHeading": "Imaging orders on this visit",
+    "state": {
+      "sent": "Sent — reaching the imaging desk",
+      "toBook": "At the imaging desk to book",
+      "booked": "Booked for {{when}}",
+      "arrived": "Arrived at imaging",
+      "scanning": "Being scanned",
+      "acquired": "Scanned — awaiting the report",
+      "reported": "Reported — awaiting release",
+      "published": "Report ready",
+      "cancelled": "Cancelled",
+      "noShow": "Did not come",
+      "rescheduled": "Moved to another slot"
+    },
+    "desk": {
+      "heading": "Order from a visit",
+      "find": "Visit number",
+      "findPlaceholder": "V2609280001",
+      "findButton": "Find",
+      "visitLine": "{{visitNo}} · {{doctor}} · {{department}}",
+      "noVisit": "Type the visit number from the slip or the token.",
+      "advised": "Advised by the doctor"
+    },
+    "outside": {
+      "heading": "Outside prescription (walk-in slip)",
+      "note": "A study written on a slip by a doctor outside this hospital. Type the referrer exactly as the slip shows.",
+      "referrerName": "Referring doctor",
+      "referrerReg": "Registration no.",
+      "referrerRequired": "Type the referring doctor's name and registration number."
+    }
   }
 }
