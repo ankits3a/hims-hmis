@@ -418,3 +418,56 @@ it("FD-11: Desk One stamps the script on its root so the Devanagari type rules c
   await waitFor(() => expect(screen.getByTestId("desk-one")).toHaveAttribute("data-lang", "hi"));
   await act(async () => { await i18next.changeLanguage("en"); });
 });
+
+/**
+ * SHELL-UX (audit 2026-09-28) — BELOW 1100 px THE PLACES FOLD INTO A "Menu" BUTTON.
+ *
+ * jsdom applies no media query, so this pins the half the CSS cannot: the button owns the panel
+ * (`aria-controls`), says whether it is open (`aria-expanded`), and opening it is what adds the
+ * `open` class the narrow-screen rule shows. Following a link closes it — a panel left open over
+ * the screen a person just asked for is the next thing they would have to dismiss.
+ */
+it("SHELL-UX: the Menu button opens the places and a navigation closes them", async () => {
+  renderShell(["patients.merge", "billing.invoice.read"]);
+  await act(async () => { await router.navigate({ to: "/merge" }); }); // the router is a singleton: a prior test left it on Desk One
+  const menu = await screen.findByRole("button", { name: "Menu" });
+  const nav = screen.getByRole("navigation");
+  expect(menu).toHaveAttribute("aria-controls", nav.id);
+  expect(menu).toHaveAttribute("aria-expanded", "false");
+  expect(nav).not.toHaveClass("open");
+
+  act(() => { menu.click(); });
+  expect(menu).toHaveAttribute("aria-expanded", "true");
+  expect(nav).toHaveClass("open");
+
+  act(() => { screen.getByRole("link", { name: "Dues" }).click(); });
+  await waitFor(() => { expect(nav).not.toHaveClass("open"); });
+  expect(menu).toHaveAttribute("aria-expanded", "false");
+});
+
+/**
+ * SHELL-UX (audit 2026-09-28) — THE FOOTER TEACHES ONLY KEYS THAT GO SOMEWHERE THIS PERSON MAY GO.
+ *
+ * A cashier's /billing/session read "F4 New patient · F7 Appointments · Esc Release the patient":
+ * F4 opens the registration desk and F7 the appointment book, neither of which a cashier holds, and
+ * no shell listener binds Esc to a release at all.
+ */
+it("SHELL-UX: the key legend drops F4/F7 for a person who cannot open them, and never advertises Esc", async () => {
+  renderShell(["billing.invoice.read"]);
+  await act(async () => { await router.navigate({ to: "/merge" }); }); // the router is a singleton: a prior test left it on Desk One
+  await screen.findByRole("link", { name: "Dues" });
+  const legend = screen.getByRole("contentinfo");
+  expect(legend).toHaveTextContent("/ — Search");
+  expect(legend).not.toHaveTextContent("F4");
+  expect(legend).not.toHaveTextContent("F7");
+  expect(legend).not.toHaveTextContent("Esc");
+});
+
+it("SHELL-UX: the registration clerk who holds the book still sees F4 and F7", async () => {
+  renderShell(["patients.register", "opd.appointments.read"]);
+  await act(async () => { await router.navigate({ to: "/merge" }); }); // the router is a singleton: a prior test left it on Desk One
+  await screen.findByRole("link", { name: "Appointments" });
+  const legend = screen.getByRole("contentinfo");
+  expect(legend).toHaveTextContent("F4 New patient");
+  expect(legend).toHaveTextContent("F7 Appointments");
+});

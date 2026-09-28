@@ -5,7 +5,8 @@ import { MoneyInput } from "../components/money-input";
 import { SubmitButton } from "../components/submit-button";
 import { fmtIst, fmtPaise } from "../lib/format";
 import { api } from "../lib/api";
-import { billingErrorMessage } from "../lib/billing-api";
+import { billingErrorCode, billingErrorMessage } from "../lib/billing-api";
+import { useAuth } from "../lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -92,9 +93,19 @@ type WireCashierSession = {
   closedAt: string | null;
 };
 
+/**
+ * The slice of the kernel's `approvals` row this screen reads (`GET /approvals/:id`), and only for a
+ * reader who holds `approvals.requests.read` — which the seeded `cashier` role does NOT.
+ */
+type WireVarianceApproval = {
+  status: "pending" | "granted" | "rejected";
+  requestedAt: string;
+};
+
 export function BillingSession(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const { can } = useAuth();
 
   const [floatPaise, setFloatPaise] = useState<number | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -114,8 +125,34 @@ export function BillingSession(): React.ReactElement {
     refetchInterval: POLL_MS,
   });
 
-  const live = current.data?.session ?? null;
+  const served = current.data?.session ?? null;
+  /*
+    UX-AUDIT 2026-09-28 — A `closed` ROW IS A FINISHED DRAWER, NOT A LIVE ONE. The wire type admits
+    `closed` on `sessions/current` even though the route filters it out today, and a row that
+    arrived that way rendered as the live header — "CLOSED · Opened · Float" — with no figures and
+    no way to open the next drawer. It is routed to the day summary, which has both.
+  */
+  const live = served !== null && served.status !== "closed" ? served : null;
+  const finished = closed ?? (served !== null && served.status === "closed" ? served : null);
   const counted = countedCashPaise(counts);
+
+  /*
+    UX-AUDIT 2026-09-28 — WHETHER "FINISH CLOSING" IS A REAL STEP YET. `confirmClose` refuses
+    `approval_not_granted` until the `billing_variance` approval is GRANTED, and the drawer row
+    carries only the approval's id. The approval itself is readable only with
+    `approvals.requests.read`, which the seeded cashier does not hold — so the status is fetched
+    for a reader who may read it (a billing manager counting a drawer herself) and, for everyone
+    else, the step is offered as what it is: the move to make AFTER the approval, refused by the
+    server before it, and the refusal rendered in words.
+  */
+  const approvalId = live?.status === "closing" ? live.varianceApprovalId : null;
+  const approval = useQuery({
+    queryKey: ["billing-session", "approval", approvalId],
+    queryFn: () => api<{ approval: WireVarianceApproval }>("GET", `/approvals/${encodeURIComponent(approvalId ?? "")}`),
+    enabled: approvalId !== null && can("approvals.requests.read"),
+    refetchInterval: POLL_MS,
+  });
+  const approvalStatus = approval.data?.approval.status ?? null;
 
   const refresh = async (): Promise<void> => {
     await qc.invalidateQueries({ queryKey: ["billing-session"] });
@@ -125,7 +162,7 @@ export function BillingSession(): React.ReactElement {
    * A drawer the response says is `closed` is kept locally; anything else lives on the server.
    *
    * THE FLOAT RESET IS LOAD-BEARING, NOT TIDINESS. `openForm` is rendered only while
-   * `live === null || live.status === "closing"`, so `MoneyInput` UNMOUNTS for the life of an open
+   * `live === null` (UX-AUDIT 2026-09-28 took `closing` out of that condition), so `MoneyInput` UNMOUNTS for the life of an open
    * drawer and remounts with an EMPTY box once the drawer closes — while `floatPaise` would
    * otherwise survive here. The next Open would then post a float the cashier never typed, and
    * that float anchors `expectedCashPaise`: her real drawer then closes on a MANUFACTURED
@@ -216,7 +253,8 @@ export function BillingSession(): React.ReactElement {
       const row = await api<WireCashierSession>("POST", `/billing/sessions/${encodeURIComponent(live.id)}/confirm-close`);
       await land(row);
     } catch (e) {
-      setCloseError(billingErrorMessage(e));
+      // The server's words for this refusal name the session id; the cashier needs the reason.
+      setCloseError(billingErrorCode(e) === "approval_not_granted" ? t("billingSession.notApprovedYet") : billingErrorMessage(e));
     }
   };
 
@@ -243,15 +281,15 @@ export function BillingSession(): React.ReactElement {
     <div className="space-y-2 rounded border p-2">
       <h2 className="text-sm font-semibold">{t("billingSession.open.title")}</h2>
       {/*
-        `key` clears the VISIBLE box on the one path where this form does not unmount: a drawer
-        confirmed out of `closing` keeps `openForm` mounted throughout, because both branches of
-        `live === null || live.status === "closing"` render it. `MoneyInput` seeds its text once in
-        a `useState` initializer and documents that parents needing a reset must remount with a
-        `key` — so without this the box would still show the finished drawer's float while
-        `land`'s reset had already cleared the value behind it. Pairs with that reset.
+        `key` clears the VISIBLE box whenever a drawer finishes while this form is mounted. It was
+        written for a drawer confirmed out of `closing` with the form on screen throughout; since
+        UX-AUDIT 2026-09-28 the form is hidden during `closing`, but a finished row can still arrive
+        while it is mounted (a `closed` row served by the poll), and `MoneyInput` seeds its text
+        once in a `useState` initializer and documents that parents needing a reset must remount
+        with a `key`. Pairs with `land`'s reset: the float posted is the float she can see.
       */}
       <MoneyInput
-        key={closed?.id ?? "new"}
+        key={finished?.id ?? "new"}
         id="open-float"
         label={t("billingSession.open.float")}
         onChange={setFloatPaise}
@@ -402,48 +440,90 @@ export function BillingSession(): React.ReactElement {
               </div>
             </div>
           )}
-          {live.varianceApprovalId !== null && (
-            <p role="status" data-testid="approval-pending" className="text-sm text-amber-800">
-              {t("billingSession.approvalPending", { approvalId: live.varianceApprovalId })}
+          {/*
+            UX-AUDIT 2026-09-28 — ONE STORY, NOT THREE. The panel used to say "you cannot take money
+            until a billing manager approves", then name the approval by its raw id ("apr-77"), then
+            offer "Confirm close" as if it were available now — with a full "Open a drawer" form
+            underneath. The server's truth, from `sessions.ts`: confirm-close is refused until the
+            approval is GRANTED, and a second drawer is refused `session_already_open` by
+            `cashier_sessions_live_ux` for as long as this one is `closing`. So the wording says who
+            decides (the `billing_variance` type's `approverRole`, billing_manager) and — when the
+            approval is readable — since when; the finish step is shown only when it can succeed, or,
+            when its status is unknowable to this reader, labelled as the step AFTER approval; and
+            the open form is gone until the drawer is closed.
+          */}
+          {approvalStatus === "rejected" ? (
+            <p role="status" data-testid="approval-pending" className="text-sm text-red-700">
+              {t("billingSession.approvalRejected")}
+            </p>
+          ) : approvalStatus === "granted" ? (
+            <p role="status" data-testid="approval-pending" className="text-sm text-green-700">
+              {t("billingSession.approvalGranted")}
+            </p>
+          ) : (
+            live.varianceApprovalId !== null && (
+              <p role="status" data-testid="approval-pending" className="text-sm text-amber-800">
+                {approval.data !== undefined
+                  ? t("billingSession.approvalPendingSince", { time: fmtIst(approval.data.approval.requestedAt) })
+                  : t("billingSession.approvalPending")}
+              </p>
+            )
+          )}
+          {approvalStatus !== "granted" && (
+            <p role="status" data-testid="lockout-banner" className="text-sm font-semibold text-amber-800">
+              {t("billingSession.lockout")}
             </p>
           )}
-          <p role="status" data-testid="lockout-banner" className="text-sm font-semibold text-amber-800">
-            {t("billingSession.lockout")}
-          </p>
           {closeError !== null && (
             <p role="alert" data-testid="close-error" className="text-sm text-red-600">{closeError}</p>
           )}
-          <SubmitButton data-testid="confirm-close" onClick={() => confirmClose()}>
-            {t("billingSession.confirmClose")}
-          </SubmitButton>
+          {(approvalStatus === null || approvalStatus === "granted") && (
+            <div className="space-y-1">
+              {approvalStatus === null && (
+                <p data-testid="confirm-close-hint" className="text-sm text-neutral-600">
+                  {t("billingSession.confirmCloseHint")}
+                </p>
+              )}
+              <SubmitButton data-testid="confirm-close" onClick={() => confirmClose()}>
+                {t("billingSession.confirmClose")}
+              </SubmitButton>
+            </div>
+          )}
         </div>
       )}
 
       {/* ——— the finished drawer: the day summary, from the response that closed it ——— */}
-      {closed !== null && (
+      {finished !== null && (
         <div data-testid="day-summary" className="space-y-1 rounded border p-2">
-          <h2 className="text-sm font-semibold">{t("billingSession.summary.title")}</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-sm font-semibold">{t("billingSession.summary.title")}</h2>
+            <Badge data-testid="summary-status" variant="outline">{t("billingSession.status.closed")}</Badge>
+          </div>
+          <p className="text-sm">
+            {t("billingSession.openedAt")}:{" "}
+            <span data-testid="summary-opened-at" className="tabular-nums">{fmtIst(finished.openedAt)}</span>
+          </p>
           <p className="text-sm">
             {t("billingSession.float")}:{" "}
-            <span data-testid="summary-float" className="tabular-nums">{fmtPaise(closed.openingFloatPaise)}</span>
+            <span data-testid="summary-float" className="tabular-nums">{fmtPaise(finished.openingFloatPaise)}</span>
           </p>
           <p className="text-sm">
             {t("billingSession.close.counted")}:{" "}
-            <span data-testid="summary-counted" className="tabular-nums">{fmtPaise(closed.countedCashPaise ?? 0)}</span>
+            <span data-testid="summary-counted" className="tabular-nums">{fmtPaise(finished.countedCashPaise ?? 0)}</span>
           </p>
           <p className="text-sm">
             {t("billingSession.expected")}:{" "}
-            <span data-testid="summary-expected" className="tabular-nums">{fmtPaise(closed.expectedCashPaise ?? 0)}</span>
+            <span data-testid="summary-expected" className="tabular-nums">{fmtPaise(finished.expectedCashPaise ?? 0)}</span>
           </p>
-          {varianceBlock(closed.variancePaise ?? 0, "summary-variance")}
+          {varianceBlock(finished.variancePaise ?? 0, "summary-variance")}
           <p className="text-sm">
             {t("billingSession.closedAt")}:{" "}
             <span data-testid="summary-closed-at" className="tabular-nums">
-              {closed.closedAt === null ? "—" : fmtIst(closed.closedAt)}
+              {finished.closedAt === null ? "—" : fmtIst(finished.closedAt)}
             </span>
           </p>
-          {closed.closeNote !== null && (
-            <p data-testid="summary-note" className="text-sm text-neutral-600">{closed.closeNote}</p>
+          {finished.closeNote !== null && (
+            <p data-testid="summary-note" className="text-sm text-neutral-600">{finished.closeNote}</p>
           )}
         </div>
       )}
@@ -452,12 +532,15 @@ export function BillingSession(): React.ReactElement {
         <p data-testid="no-session" className="text-sm text-neutral-500">{t("billingSession.noSession")}</p>
       )}
       {/*
-        The open form stays available while a drawer is `closing` ON PURPOSE. The cashier's honest
-        next move — start a fresh drawer and keep working — is exactly what the lockout forbids, and
-        a hidden control would leave her guessing why the counter stopped taking money. She may ask;
-        the server refuses; the refusal is rendered where she asked.
+        UX-AUDIT 2026-09-28 — THE OPEN FORM IS OFFERED ONLY WHEN IT CAN SUCCEED. It used to stay on
+        screen while a drawer was `closing`, on the theory that she may ask and the server refuses.
+        In the browser that read as a contradiction — "you cannot take money" above an "Open a
+        drawer" form — and the refusal was certain: `cashier_sessions_live_ux` holds one LIVE
+        (`open` or `closing`) drawer per cashier, so the insert is refused `session_already_open`
+        every time. The lockout banner already tells her why the counter stopped; the form returns
+        the moment the drawer is closed, or with no drawer at all.
       */}
-      {(live === null || live.status === "closing") && openForm}
+      {live === null && openForm}
     </div>
   );
 }

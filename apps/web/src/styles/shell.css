@@ -102,8 +102,45 @@
 
 .shell .none { font-size: 12px; color: var(--faint); }
 
+/*
+ * SHELL-UX — THE MENU. Below 1100 px (the owner's counter-screen rule, 2026-09-25) the row of places
+ * folds into one button; opened, the groups stack as a panel under the identity row, full width and
+ * in normal flow, so it pushes the screen down rather than covering the patient strip.
+ */
+.shell .menu-btn {
+  display: none; align-items: center; height: 28px; padding: 0 11px; border-radius: 5px;
+  font-size: 12px; font-weight: 600; border: 1px solid var(--line); color: var(--ink);
+}
+.shell .menu-btn:hover, .shell .menu-btn[aria-expanded="true"] { border-color: var(--green-line); color: var(--green); }
+
+@media (max-width: 1099px) {
+  .shell .menu-btn { display: inline-flex; }
+  .shell .nav { display: none; }
+  .shell .nav.open {
+    display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+    padding: 10px 22px 12px; border-top: 1px solid var(--line); background: var(--wash);
+  }
+  .shell .nav.open .grp { gap: 6px 14px; }
+  .shell .nav.open .grp .tag { width: 100%; }
+  .shell .nav.open a { font-size: 13.5px; padding: 4px 0; }
+}
+
 @media (max-width: 900px) {
   .shell .top { padding: 8px 14px; gap: 10px; flex-wrap: wrap; }
   .shell .nav { padding: 0 14px 8px; gap: 4px 12px; }
   .shell .clock { display: none; }
+}
+
+/*
+ * SHELL-UX — A PHONE'S IDENTITY ROW. At 390 px the search label wrapped to two lines and "Log out"
+ * broke in half. Every control stays on one line; the search keeps its F8 keycap and truncates its
+ * sentence, because the keycap is what a returning person reads and the box still opens the palette.
+ */
+.shell .util, .shell .find, .shell .menu-btn { white-space: nowrap; }
+@media (max-width: 600px) {
+  .shell .right { gap: 4px; }
+  .shell .find { min-width: 0; flex: 1 1 auto; }
+  .shell .find > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .shell .util { padding: 0 6px; }
+  .shell .right { flex: 1 1 100%; min-width: 0; }
 }
