@@ -4,7 +4,9 @@ import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { MON, seedPharmacyBase } from "../../../test/helpers/pharmacy";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
-import { pharmacyPharmacistRegistrations } from "../../kernel/db/schema";
+import { formularySalts, pharmacyPharmacistRegistrations } from "../../kernel/db/schema";
+import { eq } from "drizzle-orm";
+import { recordAdr } from "./adr";
 import { createStore } from "../materials";
 import { RETAIL_PHARMACY_STORE_CODE } from "./config";
 import { NEED_SOURCES, buildNeeds, officeNeeds } from "./office-needs";
@@ -97,7 +99,14 @@ const GRNS = [
   { id: "g3", grnNo: "GRN2609270009", challanNo: "CH-5561", vendorName: "Anand Medical Agencies", lines: 7, createdAt: "2026-09-27T09:00:00.000Z" },
 ];
 
-const ALL: NeedInputs = { buy: BUY, pay: PAY, returns: RETURNS, grns: GRNS, retail: RETAIL, cabinet: CABINET, pharmacists: PHARMACISTS };
+const ALL: NeedInputs = { buy: BUY, pay: PAY, returns: RETURNS, grns: GRNS, retail: RETAIL, cabinet: CABINET, pharmacists: PHARMACISTS, adr: null };
+
+/** Stage D1 — three reports not yet sent to PvPI: serious and 20 days old, serious and 3 days old, not serious and 30 days old. */
+const ADR: NonNullable<NeedInputs["adr"]> = [
+  { id: "adr-late", no: "ADR-000001", seriousness: "hospitalisation", onsetDate: "2026-09-06", createdAt: "2026-09-08T05:00:00.000Z", suspects: ["Augmentin 625"] },
+  { id: "adr-new", no: "ADR-000002", seriousness: "life_threatening", onsetDate: "2026-09-24", createdAt: "2026-09-25T05:00:00.000Z", suspects: ["Ceftriaxone 1 g", "Diclofenac 75"] },
+  { id: "adr-mild", no: "ADR-000003", seriousness: "not_serious", onsetDate: "2026-08-28", createdAt: "2026-08-29T05:00:00.000Z", suspects: ["Metformin 500"] },
+];
 
 describe("buildNeeds — the office's one ranked list (gap-closure B2)", () => {
   it("has at least one row from every source, each with a clock, a ref and its facts", () => {
@@ -151,6 +160,25 @@ describe("buildNeeds — the office's one ranked list (gap-closure B2)", () => {
   });
 });
 
+describe("buildNeeds — the ADR side of LAW (pharmacy stage D1)", () => {
+  it("a serious ADR past PvPI's 15 days is red and first; inside them it counts down; a non-serious one waits with the rest", () => {
+    const out = buildNeeds({ ...ALL, adr: ADR }, NOW);
+    const byId = Object.fromEntries(out.rows.map((r) => [r.id, r]));
+    expect(byId["law:adr:adr-late"]).toMatchObject({ source: "LAW", kind: "adr_pvpi_overdue", clock: { code: "days_late", n: 5, tone: "rd" }, ref: { kind: "adr", id: "adr-late" }, tier: 0 });
+    expect(byId["law:adr:adr-new"]).toMatchObject({ kind: "adr_pvpi_serious", clock: { code: "days_left", n: 12, tone: "gd" }, tier: 1, params: { no: "ADR-000002", drugs: "Ceftriaxone 1 g · Diclofenac 75" } });
+    expect(byId["law:adr:adr-mild"]).toMatchObject({ kind: "adr_pvpi", clock: { code: "days_ago", n: 30, tone: "no" }, tier: 5 });
+    expect(out.rows[0]!.id).toBe("law:adr:adr-late");
+    // Codes and drug names only: no patient on the office list.
+    expect(JSON.stringify(byId["law:adr:adr-late"])).not.toMatch(/patient|uhid/i);
+  });
+
+  it("the ADR side alone is enough to list LAW", () => {
+    const out = buildNeeds({ buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: [] }, NOW);
+    expect(out.sides).toEqual(["LAW"]);
+    expect(out.rows).toEqual([]);
+  });
+});
+
 describe("officeNeeds — each side only under its own grant (gap-closure B2)", () => {
   let db: Db;
   let teardown: () => Promise<void>;
@@ -180,6 +208,22 @@ describe("officeNeeds — each side only under its own grant (gap-closure B2)", 
     expect(out.rows.find((r) => r.source === "PEOPLE")).toMatchObject({ kind: "pharmacist_trial", params: { no: "TRIAL-KJ-0001" } });
     expect(out.rows.some((r) => r.id === "law:retail")).toBe(false);
     expect(out.rows.some((r) => ["BUY", "PAY", "RETURN", "STOCK"].includes(r.source))).toBe(false);
+  });
+
+  it("pharmacy.adr.manage brings the ADR side: a report not sent to PvPI is a LAW row; the pharmacist without it sees none (stage D1)", async () => {
+    await grantPermissionToRole(db, fx.registry, "pharmacy", "pharmacy.adr.record");
+    const saltRow = (await db.select({ id: formularySalts.id }).from(formularySalts).where(eq(formularySalts.name, "Paracetamol")))[0]!;
+    const { reportId } = await recordAdr(db, fx.pharmacist.actor, {
+      patientId: fx.patient.id, reaction: "Rash", onsetDate: "2026-09-26", seriousness: "hospitalisation", outcome: "recovering",
+      dechallenge: "yes", rechallenge: "na", suspects: [{ saltId: saltRow.id }],
+    }, NOW);
+    await ensureRole(db, "adr_manager");
+    await grantPermissionToRole(db, fx.registry, "adr_manager", "pharmacy.adr.manage");
+    const ms = await mkUser(db, "the.ms", ["adr_manager"]);
+    const out = await officeNeeds(db, ms.actor, NOW);
+    expect(out.sides).toEqual(["LAW"]);
+    expect(out.rows.map((r) => [r.id, r.kind])).toEqual([[`law:adr:${reportId}`, "adr_pvpi_serious"]]);
+    expect((await officeNeeds(db, fx.pharmacist.actor, NOW)).rows.some((r) => r.id.startsWith("law:adr:"))).toBe(false);
   });
 
   it("the grant that manages the retail licence brings its row, ranked first while no licence is on file", async () => {

@@ -19,6 +19,15 @@ export const BILLING_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: nu
     typeKey: "billing_credit_extension", title: "Billing — credit extension above cap",
     approverRole: "billing_manager", urgencyClass: "urgent", actFirstAllowed: false, closureSlaMinutes: 240,
   },
+  /**
+   * OWNER RULING 2026-09-28 (gap closure A3) — "nobody can issue credit except owner", whole hospital.
+   * Every credit remainder now binds to THIS type; `billing_credit_extension` above stays registered so
+   * past approvals still resolve, and nothing new asks for it (`invoices.ts` CREDIT_APPROVAL_TYPE).
+   */
+  {
+    typeKey: "billing_credit_owner", title: "Credit — only the owner approves (goes out unpaid)",
+    approverRole: "owner", urgencyClass: "urgent", actFirstAllowed: false, closureSlaMinutes: 240,
+  },
   {
     typeKey: "billing_discount", title: "Billing — manual discount above cap",
     approverRole: "billing_manager", urgencyClass: "routine", actFirstAllowed: false, closureSlaMinutes: 1440,

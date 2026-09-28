@@ -677,7 +677,8 @@ async function placeReflexOrders(
           patientId: ctx.rawPatientId,
           encounterId: ctx.encounterId,
           lines: [{ lineId: newId(), serviceId: match.addsServiceId, qty: 1 }],
-          credit: { reason: `reflex rule ${match.ruleId} (${match.because})` },
+          // GAP A3 — the reflex bill waits for the money while the report is held (DD23); it is not credit.
+          holdUntilPaid: { reason: `reflex rule ${match.ruleId} (${match.because})` },
         },
         now,
       );

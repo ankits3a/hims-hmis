@@ -66,4 +66,6 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   paperDispense: "POST /pharmacy/downtime/dispenses",
   /** P19b — a walk-in return credits and refunds: a retried click must not return a pack twice. */
   retailReturn: "POST /pharmacy/retail/sales/:id/returns",
+  /** STAGE D1 — an ADR report writes allergies: a retried click must not report (and write) twice. */
+  adr: "POST /pharmacy/adr",
 } as const;

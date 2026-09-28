@@ -157,7 +157,9 @@ describe("coupon redemption and O-4's release", () => {
     await grantCreditExtend(db);
     const lines = [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 1 }];
     const issued = await issueInvoice(db, cashier.actor, {
-      draftId: newId(), patientId, lines, credit: { reason: "settles at the dues counter" },
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the clearance lane needs only DUES, so
+      // the bill is held unpaid (holdUntilPaid), not credit.
+      draftId: newId(), patientId, lines, holdUntilPaid: { reason: "settles at the dues counter" },
     }, NOW);
     expect(issued.totals.netPayablePaise).toBe(45_000); // the coupon still applied
     const redeemed = (await couponRedemptionsOf(db, issued.invoiceId))[0]!;

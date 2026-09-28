@@ -210,11 +210,48 @@ it("17b: the pathologist is offered verify-and-report", async () => {
   expect(screen.queryByRole("link", { name: "Bench" })).not.toBeInTheDocument();
 });
 
-it("16a: the formulary desk appears for the permission that guards it, and for no other", async () => {
+it("16a → B3: the formulary desk's permission opens the pharmacy office, where the formulary is a page", async () => {
+  // GAP-CLOSURE B3 — the formulary is a page of the office's Items side now, not a nav row of its own.
+  // The grant that guarded the row is what shows the office link to its holder.
   renderShell(["formulary.manage"]);
-  await waitFor(() => expect(screen.getByRole("link", { name: "Formulary" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Pharmacy office" })).toBeInTheDocument());
+  expect(screen.queryByRole("link", { name: "Formulary" })).not.toBeInTheDocument();
   // `formulary.read` is a PRESCRIBER's permission (the consult autocomplete) and opens no desk.
   expect(screen.queryByRole("link", { name: "Desk One" })).not.toBeInTheDocument();
+});
+
+/**
+ * GAP-CLOSURE B3 — THE STORES GROUP IS TWO LINKS. The office used to be offered on `materials.po.raise`
+ * alone, so a pharmacist whose only reach is the law (the H1 register) had no door to the screen its
+ * pages now live on. Any grant that shows a side or an entry of the office shows its link.
+ */
+it("B3: a pharmacist holding only the H1 register's grant is offered the office, and no folded row", async () => {
+  renderShell(["pharmacy.register.read"]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Pharmacy office" })).toBeInTheDocument());
+  expect(screen.queryByRole("link", { name: "H1 register" })).not.toBeInTheDocument();
+});
+
+it("B3: an owner-shaped grant sees the stores group as the office alone — no folded leaf", async () => {
+  renderShell([
+    "materials.po.raise", "materials.items.manage", "materials.vendors.manage", "materials.stock.read", "materials.counts.perform",
+    "pharmacy.sale_items.manage", "pharmacy.pharmacists.manage", "pharmacy.dispense.read", "pharmacy.reports.read",
+    "pharmacy.register.read", "pharmacy.retail.manage", "pharmacy.downtime.enter", "formulary.manage",
+  ]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Pharmacy office" })).toBeInTheDocument());
+  const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+  for (const gone of ["/formulary/admin", "/materials/items", "/materials/vendors", "/materials/grn", "/materials/counts", "/materials/transfers",
+    "/pharmacy/items", "/pharmacy/pharmacists", "/pharmacy/reorder", "/pharmacy/office/reports", "/pharmacy/registers/h1", "/pharmacy/retail-licence", "/pharmacy/downtime"]) {
+    expect(hrefs, gone).not.toContain(gone);
+  }
+  expect(hrefs.filter((h) => h === "/pharmacy/office")).toHaveLength(1);
+  expect(hrefs).toContain("/pharmacy/desk");
+});
+
+it("B3: a grant that reaches no side of the office is not offered it", async () => {
+  // The other half: `anyOf` must not make the office everybody's.
+  renderShell(["patients.merge"]);
+  await waitFor(() => expect(screen.getByText("Merge review")).toBeInTheDocument());
+  expect(screen.queryByRole("link", { name: "Pharmacy office" })).not.toBeInTheDocument();
 });
 
 it("a person whose role holds nothing is TOLD SO rather than shown a blank bar", async () => {

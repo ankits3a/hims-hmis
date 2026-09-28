@@ -89,6 +89,8 @@ describe("billing lifecycle e2e", () => {
   let roomId: string;
   let cashierA: { id: string; token: string };
   let manager: { id: string; token: string };
+  /** GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the only role that grants credit. */
+  let owner: { id: string; token: string };
   let cashierB: { id: string; token: string };
   let dra: { doctorId: string; userId: string; token: string };
 
@@ -122,6 +124,8 @@ describe("billing lifecycle e2e", () => {
     // workflow gates `registered -> waiting` on that role (the billing.e2e precedent).
     cashierA = await mkUser(db, "lifecycle_cashier", ["cashier", "vitals_desk"]);
     manager = await mkBillingManager(db, "lifecycle_manager");
+    for (const p of BILLING_MANAGER_PERMISSIONS) await grantPermissionToRole(db, registry, "owner", p);
+    owner = await mkUser(db, "lifecycle_owner", ["owner"]);
     // cashierB holds BOTH "cashier" (billing.session.own, billing.receipt.record — the session
     // story's own counter work) AND "billing_manager" (approvals.requests.decide) — deliberately,
     // so the SAME actor who FILES the variance approval (beginClose files it as the acting
@@ -190,6 +194,19 @@ describe("billing lifecycle e2e", () => {
       await db.select({ name: events.name }).from(events)
         .where(eq(events.correlationId, correlationId)).orderBy(asc(events.seq))
     ).map((r) => r.name);
+
+  /**
+   * GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the counter asks over its own route for
+   * the exact amount that would go out unpaid, and the OWNER grants it over the approvals route.
+   */
+  const ownerCredit = async (draftId: string, patientId: string, amountPaise: number, reason: string): Promise<string> => {
+    const asked = await http().post("/billing/credit-requests").set(...auth(cashierA.token))
+      .send({ draftId, patientId, amountPaise, reason }).expect(201);
+    const approvalId = asked.body.approvalId as string;
+    await http().post(`/approvals/${approvalId}/approve`).set(...auth(owner.token))
+      .send({ note: "owner grants the credit" }).expect(201);
+    return approvalId;
+  };
 
   const eventsByPatient = async (patientId: string): Promise<string[]> =>
     (
@@ -263,10 +280,12 @@ describe("billing lifecycle e2e", () => {
     // Generic (pharmacy, taxable 1200bps) service, gross 50000, no discount: taxHead(50000,1200)
     // = divHalfUp(60_000_000, 20_000) = floor((120_000_000+20_000)/40_000) = floor(3000.5) = 3000
     // per head. net = 50000 + 3000 + 3000 = 56000, already a whole rupee ⇒ rounding 0.
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the credit carries the owner's grant.
+    const duesApproval = await ownerCredit(`d-${p2}-dues`, p2, 56_000, "the patient settles at the dues counter");
     const issued = await http().post("/billing/invoices").set(...auth(cashierA.token)).send({
       draftId: `d-${p2}-dues`, patientId: p2,
       lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
-      credit: { reason: "the patient settles at the dues counter" },
+      credit: { reason: "the patient settles at the dues counter", approvalId: duesApproval },
     }).expect(201);
     const invoiceId = issued.body.invoiceId as string;
     expect(issued.body.creditExtended).toBe(true);
@@ -342,10 +361,13 @@ describe("billing lifecycle e2e", () => {
     expect(balanceBefore.body.advancePaise).toBe(80_000);
     expect(balanceBefore.body.outstandingPaise).toBe(0);
 
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — `settleFromReceipts` is not on the HTTP
+    // body, so the later bill goes out on the owner's credit grant and is then cleared from the advance.
+    const laterApproval = await ownerCredit(`d-${p3}-later`, p3, 50_000, "settled from the patient's own advance");
     const later = await http().post("/billing/invoices").set(...auth(cashierA.token)).send({
       draftId: `d-${p3}-later`, patientId: p3,
       lines: [{ lineId: "l1", serviceId: base.consultNewServiceId, qty: 1 }],
-      credit: { reason: "settled from the patient's own advance" },
+      credit: { reason: "settled from the patient's own advance", approvalId: laterApproval },
     }).expect(201);
     const laterInvoiceId = later.body.invoiceId as string;
     expect(later.body.settlement).toEqual({ state: "unpaid", outstandingPaise: 50_000 });
@@ -363,7 +385,10 @@ describe("billing lifecycle e2e", () => {
     // patients module's own emission from `registerPatient` above, first by construction).
     expect(await eventsByPatient(p3)).toEqual([
       "patient.registered",
-      "receipt.recorded", "advance.received", "invoice.issued", "invoice.credit_extended", "payment.received",
+      "receipt.recorded", "advance.received",
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the owner's credit grant is part of the trail.
+      "approval.requested", "approval.granted",
+      "invoice.issued", "invoice.credit_extended", "payment.received",
     ]);
   });
 

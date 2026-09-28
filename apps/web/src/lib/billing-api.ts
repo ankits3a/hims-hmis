@@ -457,3 +457,14 @@ export type WireChargeOrphan = {
   visitType: string;
   serviceDate: string;
 };
+
+// ── GAP A3 (owner ruling 2026-09-28: credit is the owner's, hospital-wide) ──
+export type WireCreditRequest = { approvalId: string; status: string; amountPaise: number | null; draftId: string; decisionNote: string | null };
+
+/** Ask the OWNER to let `amountPaise` of this draft go out unpaid. Returns the approval to wait on. */
+export const requestOwnerCredit = (body: { draftId: string; patientId: string; amountPaise: number; reason: string }): Promise<{ approvalId: string }> =>
+  api<{ approvalId: string }>("POST", "/billing/credit-requests", body);
+
+/** Where the owner's decision stands: `pending`, `granted` or `rejected`. */
+export const fetchCreditRequest = (approvalId: string): Promise<WireCreditRequest> =>
+  api<WireCreditRequest>("GET", `/billing/credit-requests/${encodeURIComponent(approvalId)}`);

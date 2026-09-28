@@ -2,6 +2,7 @@ import { count, inArray, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { grnLines, vendors } from "../../kernel/db/schema";
 import { MaterialsError, listGrns } from "../materials";
+import { ADR_MANAGE_PERMISSION, ADR_SERIOUS_REPORT_DAYS, adrAwaitingPvpi, isSerious } from "./adr";
 import { istDateOf } from "./config";
 import { CUSTODY_PERMISSION, LICENCES_PERMISSION } from "./controlled";
 import { controlledToday } from "./controlled-office";
@@ -9,6 +10,7 @@ import { PharmacyError } from "./errors";
 import { officePay, officeReturns, officeToday } from "./office";
 import { listPharmacists } from "./pharmacists";
 import { retailLicenceState } from "./retail";
+import type { AdrAwaitingPvpi } from "./adr";
 import type { ControlledToday } from "./controlled-office";
 import type { OfficePay, OfficeReturns, OfficeToday } from "./office";
 import type { PharmacistView } from "./pharmacists";
@@ -31,7 +33,8 @@ import type { Db } from "../../kernel/db/client";
  *   STOCK  `officeReturns`'s expiry list; materials' GRNs at `gate_qc` (the opening-stock sheet's included,
  *                              challan `OPENING/…`)
  *   LAW    `retailLicenceState` (Form 20/21 missing, lapsed or inside 30 days) and `controlledToday` (the
- *                              cabinet's licences, check and acts)
+ *                              cabinet's licences, check and acts); `adrAwaitingPvpi` (stage D1 — an ADR not yet
+ *                              sent to PvPI, red once a serious one is past PvPI's 15 days)
  *   PEOPLE `listPharmacists` — a TRIAL-* registration, one inside 30 days, or one that has lapsed
  *
  * ═══ A SIDE THE PERSON MAY NOT READ IS ABSENT, NOT A REFUSAL ═══
@@ -49,10 +52,12 @@ import type { Db } from "../../kernel/db/client";
  *
  * ═══ THE RANKING ═══
  *
- * `tier` then `key` then `id`. Law lapsed or missing (0); law lapsing — the retail licence, a cabinet
- * licence, a pharmacist's registration (1, fewest days first); money deadlines — overdue payables and MSME
+ * `tier` then `key` then `id`. Law lapsed or missing, and a serious ADR past PvPI's 15 days (0); law lapsing —
+ * the retail licence, a cabinet licence, a pharmacist's registration, a serious ADR inside its 15 days (1,
+ * fewest days first); money deadlines — overdue payables and MSME
  * bills due this week (2); what waits on this person's decision — a PO, a payment run, a recall (3); held
- * bills, overdue orders, the cabinet's day (4); credit notes and write-offs to post, other bills due (5);
+ * bills, overdue orders, the cabinet's day (4); credit notes and write-offs to post, other bills due, an ADR
+ * that is not serious still to send (5);
  * expiry and write-offs with the MS (6); pharmacists on a trial number (7); GRNs waiting for QC (8);
  * drafts, orders to receive and the short book (9).
  */
@@ -76,7 +81,7 @@ export type NeedFact = { k: string; raw?: true; v: string | number; as: "text" |
 export type NeedRef = {
   kind:
     | "po" | "purchasePlan" | "grnDesk" | "bill" | "run" | "payRun" | "return" | "writeoff" | "recall" | "returnPlan"
-    | "grn" | "retailLicence" | "cabinet" | "pharmacist";
+    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr";
   id: string | null;
 };
 
@@ -120,6 +125,8 @@ export type NeedInputs = {
   retail: RetailLicenceState | null;
   cabinet: ControlledToday | null;
   pharmacists: PharmacistView[] | null;
+  /** Stage D1 — ADR reports neither sent to PvPI nor closed; read under `pharmacy.adr.manage`. */
+  adr: AdrAwaitingPvpi[] | null;
 };
 
 const DAY = 86_400_000;
@@ -181,6 +188,27 @@ export function buildNeeds(input: NeedInputs, now: Date): OfficeNeeds {
       push({ id: `law:cabinet:${n.key}`, source: "LAW", kind: `cabinet_${n.key}`, params: n.params,
         clock: n.key === "checkNotDone" ? { code: "today", tone: "gd" } : { code: "open", tone: n.key === "discrepancies" ? "rd" : "no" },
         ref: { kind: "cabinet", id: null }, tier: 4, key: n.key === "discrepancies" ? 0 : 1 });
+    }
+  }
+
+  // ── LAW: adverse drug reactions not yet sent to PvPI (stage D1) — red once a serious one is past 15 days ──
+  for (const a of input.adr ?? []) {
+    const ago = daysSince(a.createdAt, now);
+    const serious = isSerious(a.seriousness);
+    const late = serious && ago > ADR_SERIOUS_REPORT_DAYS;
+    const params = { no: a.no, seriousness: a.seriousness, drugs: a.suspects.slice(0, 3).join(" · "), days: ago };
+    const facts: NeedFact[] = [
+      { k: "adrNo", v: a.no, as: "text" }, { k: "seriousness", v: a.seriousness, as: "text" }, { k: "onset", v: a.onsetDate, as: "date" },
+      ...a.suspects.slice(0, FACT_BILLS).map((d) => ({ k: "suspect", v: d, as: "text" as const })),
+    ];
+    const ref: NeedRef = { kind: "adr", id: a.id };
+    if (late) {
+      push({ id: `law:adr:${a.id}`, source: "LAW", kind: "adr_pvpi_overdue", params, clock: { code: "days_late", n: ago - ADR_SERIOUS_REPORT_DAYS, tone: "rd" }, ref, facts, tier: 0, key: -ago });
+    } else if (serious) {
+      const left = ADR_SERIOUS_REPORT_DAYS - ago;
+      push({ id: `law:adr:${a.id}`, source: "LAW", kind: "adr_pvpi_serious", params, clock: { code: "days_left", n: left, tone: "gd" }, ref, facts, tier: 1, key: left });
+    } else {
+      push({ id: `law:adr:${a.id}`, source: "LAW", kind: "adr_pvpi", params, clock: { code: "days_ago", n: ago, tone: "no" }, ref, facts, tier: 5, key: -ago });
     }
   }
 
@@ -358,7 +386,7 @@ export function buildNeeds(input: NeedInputs, now: Date): OfficeNeeds {
       case "PAY": return input.pay !== null;
       case "RETURN": return input.returns !== null;
       case "STOCK": return input.returns !== null || input.grns !== null;
-      case "LAW": return input.retail !== null || input.cabinet !== null;
+      case "LAW": return input.retail !== null || input.cabinet !== null || input.adr !== null;
       case "PEOPLE": return input.pharmacists !== null;
     }
     return false;
@@ -408,10 +436,10 @@ async function grnsAtQc(db: Db): Promise<GrnAtQc[]> {
 
 /** `GET /pharmacy/office/needs` — every side this person may read, federated and ranked. */
 export async function officeNeeds(db: Db, actor: Actor, now: Date = new Date()): Promise<OfficeNeeds> {
-  const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null };
+  const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null };
   if (actor.type !== "user") return buildNeeds(empty, now);
   const id = actor.id;
-  const [buy, pay, returns, grns, retail, cabinet, pharmacists] = await Promise.all([
+  const [buy, pay, returns, grns, retail, cabinet, pharmacists, adr] = await Promise.all([
     side(db, id, ["materials.po.raise"], () => officeToday(db, actor, now)),
     side(db, id, ["materials.bills.manage"], () => officePay(db, actor, now)),
     side(db, id, ["materials.returns.manage"], () => officeReturns(db, actor, now)),
@@ -419,6 +447,7 @@ export async function officeNeeds(db: Db, actor: Actor, now: Date = new Date()):
     side(db, id, ["pharmacy.retail.manage"], () => retailLicenceState(db, now)),
     side(db, id, [CUSTODY_PERMISSION, LICENCES_PERMISSION, "pharmacy.register.read"], () => controlledToday(db, actor, now)),
     side(db, id, ["pharmacy.pharmacists.manage"], () => listPharmacists(db, now)),
+    side(db, id, [ADR_MANAGE_PERMISSION], () => adrAwaitingPvpi(db, actor)),
   ]);
-  return buildNeeds({ buy, pay, returns, grns, retail, cabinet, pharmacists }, now);
+  return buildNeeds({ buy, pay, returns, grns, retail, cabinet, pharmacists, adr }, now);
 }

@@ -35,7 +35,9 @@ describe("seed:lab — the definitions and the approval type a deploy must estab
 
     expect(first.definitions.activated.sort()).toEqual([...LAB_DEF_KEYS].sort());
     expect(first.definitions.alreadyActive).toEqual([]);
-    expect(first.approvalTypes).toEqual({ registered: [RELEASE_UNPAID_APPROVAL_TYPE], alreadyRegistered: [] });
+    // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — the retired billing-manager type stays registered
+    // beside the owner's, so a deploy establishes both.
+    expect(first.approvalTypes).toEqual({ registered: ["lab_release_unpaid", RELEASE_UNPAID_APPROVAL_TYPE], alreadyRegistered: [] });
 
     for (const key of LAB_DEF_KEYS) {
       const active = await withTx(db, (tx) => getActiveDefinition(tx, key));
@@ -51,7 +53,7 @@ describe("seed:lab — the definitions and the approval type a deploy must estab
 
     expect(second.definitions.activated).toEqual([]);
     expect(second.definitions.alreadyActive.sort()).toEqual([...LAB_DEF_KEYS].sort());
-    expect(second.approvalTypes).toEqual({ registered: [], alreadyRegistered: [RELEASE_UNPAID_APPROVAL_TYPE] });
+    expect(second.approvalTypes).toEqual({ registered: [], alreadyRegistered: ["lab_release_unpaid", RELEASE_UNPAID_APPROVAL_TYPE] });
 
     // THE MUTANT THIS ROW EXISTS FOR: an exit code of 0 says nothing here. Count the versions.
     for (const key of LAB_DEF_KEYS) expect(await listDefinitions(db, key)).toHaveLength(1);

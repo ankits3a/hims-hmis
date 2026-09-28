@@ -73,9 +73,10 @@ describe("check:config-present (Plan 11g / DD2)", () => {
     expect(codes).toContain("billing_config_missing");
     expect(codes).toContain("gst_settings_missing");
     expect(codes).toContain("gst_config_empty");
-    // Five billing types + tariff_revision + lab_release_unpaid (11i T1), every one unregistered
-    // on an empty database.
-    expect(codes.filter((c) => c === "approval_type_unregistered")).toHaveLength(7);
+    // Six billing types + tariff_revision + the two lab release types (11i T1; GAP A3, owner ruling
+    // 2026-09-28: credit is the owner's, added `billing_credit_owner` and `lab_release_unpaid_owner`),
+    // every one unregistered on an empty database.
+    expect(codes.filter((c) => c === "approval_type_unregistered")).toHaveLength(9);
     // 11i T1 — the row that would have caught production: the lab is deployed and BOTH of its
     // definitions are inactive, so every order throws `no_active_definition`.
     expect(codes.filter((c) => c === "lab_definition_inactive")).toHaveLength(LAB_DEF_KEYS.length);

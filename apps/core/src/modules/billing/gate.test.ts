@@ -121,17 +121,31 @@ describe("the pay-before-consult gate: billing's verdict (D8)", () => {
     });
   });
 
+  // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — credit now exists only with the
+  // OWNER's grant; an unpaid bill merely HELD (holdUntilPaid, not credit) must not pass the gate.
   it("a CREDIT-EXTENDED unpaid invoice passes — dues are a legitimate state, not an unbilled visit", async () => {
     await grantCreditExtend(db);
     const patientId = await mkTestPatient("Dues Patient");
     const encounter = await encounterOf({ patientId, visitType: "new" });
 
     const invoice = await issueDuesInvoice(db, cashier, {
-      patientId, serviceId: base.consultNewServiceId, encounterId: encounter.id,
+      patientId, serviceId: base.consultNewServiceId, encounterId: encounter.id, ownerCredit: { owner: base.owner },
     });
     expect(invoice.creditExtended).toBe(true);
     expect(invoice.settlement).toEqual({ state: "unpaid", outstandingPaise: 50_000 });
     expect(await feeGate(db, encounter)).toEqual({ ok: true });
+  });
+
+  it("an unpaid HELD invoice (holdUntilPaid, not credit) does NOT pass — only owner credit or money covers the visit", async () => {
+    const patientId = await mkTestPatient("Held Patient");
+    const encounter = await encounterOf({ patientId, visitType: "new" });
+
+    const invoice = await issueDuesInvoice(db, cashier, {
+      patientId, serviceId: base.consultNewServiceId, encounterId: encounter.id,
+    });
+    expect(invoice.creditExtended).toBe(false);
+    expect(invoice.settlement).toEqual({ state: "unpaid", outstandingPaise: 50_000 });
+    expect(await feeGate(db, encounter)).toMatchObject({ ok: false, code: "fee_unsettled" });
   });
 
   it("a REVISIT passes with NO invoice at all — the check is the free branch, never bare invoice existence", async () => {

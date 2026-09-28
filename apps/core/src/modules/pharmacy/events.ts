@@ -245,6 +245,19 @@ export const controlledActWitnessed = defineEvent("controlled.act_witnessed", MO
   refId: id, storeResourceId: id, holderId: id, witnessId: id, officers: z.number().int().nonnegative(),
 }));
 
+/**
+ * STAGE D1 — an adverse drug reaction was reported, and each suspected medicine was written to the patient's
+ * allergy book in the same transaction. Ids and codes only: the reaction's words stay in the register.
+ */
+export const adrReported = defineEvent("adr.reported", MODULE, z.object({
+  reportId: id, patientId: id, seriousness: z.string().min(1), suspects: z.number().int().positive(), allergyIds: z.array(id).min(1),
+}));
+
+/** STAGE D1 — a later act on a report: WHO-UMC causality, sent to PvPI, closed. */
+export const adrEventRecorded = defineEvent("adr.event_recorded", MODULE, z.object({
+  reportId: id, eventId: id, kind: z.enum(["causality_assessed", "sent_to_pvpi", "closed"]),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -254,4 +267,5 @@ export const PHARMACY_EVENTS = [
   retailSold, retailLicenceRecorded, retailLineReturned,
   shortBookNoted, shortBookResolved,
   controlledLicenceRecorded, endPrescriberRecorded, endPrescriberEnded, controlledChecked, controlledActWitnessed,
+  adrReported, adrEventRecorded,
 ] as const;

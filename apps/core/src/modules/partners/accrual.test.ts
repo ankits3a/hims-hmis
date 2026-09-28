@@ -188,7 +188,8 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
         { lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 },
         { lineId: newId(), serviceId: base.genericServiceId, qty: 1 },
       ],
-      credit: { reason: "settles at the dues counter" },
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — a fixture that only needs dues: a held bill, not credit.
+      holdUntilPaid: { reason: "settles at the dues counter" },
     }, NOW);
     expect(issued.totals.netPayablePaise).toBe(156_000);
     const found = await getInvoice(db, issued.invoiceId);
@@ -372,7 +373,8 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     const issued = await issueInvoice(db, cashier.actor, {
       draftId: newId(), patientId,
       lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
-      credit: { reason: "settles at the dues counter" },
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — a fixture that only needs dues: a held bill, not credit.
+      holdUntilPaid: { reason: "settles at the dues counter" },
     }, NOW);
     const receipt = await recordReceipt(db, cashier.actor, { patientId, tenders: [{ mode: "cash", amountPaise: 100_000 }] }, NOW);
     const applied = await allocateReceipt(db, cashier.actor, { receiptId: receipt.receiptId, invoiceId: issued.invoiceId, amountPaise: 100_000 }, NOW);
@@ -508,7 +510,8 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     const issued = await issueInvoice(db, cashier.actor, {
       draftId: newId(), patientId,
       lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
-      credit: { reason: "settles at the dues counter" },
+      // GAP A3 (owner ruling 2026-09-28: credit is the owner's) — a fixture that only needs dues: a held bill, not credit.
+      holdUntilPaid: { reason: "settles at the dues counter" },
     }, NOW); // issued 2026-08-19, i.e. UNDER v1
 
     const state = { seen: 0 };

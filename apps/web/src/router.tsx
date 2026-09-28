@@ -47,12 +47,6 @@ import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
 import { InstrumentReconcile } from "./screens/instrument-reconcile";
-import { FormularyAdmin } from "./screens/formulary-admin";
-import { MaterialsItems } from "./screens/materials-items";
-import { MaterialsVendors } from "./screens/materials-vendors";
-import { MaterialsGrn } from "./screens/materials-grn";
-import { MaterialsCounts } from "./screens/materials-counts";
-import { MaterialsTransfers } from "./screens/materials-transfers";
 import { PartnerReceivables } from "./screens/partner-receivables";
 import { PartnerPnl } from "./screens/partner-pnl";
 import { OtList } from "./screens/ot-list";
@@ -62,15 +56,10 @@ import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
 import { PharmacyAuthorise } from "./screens/pharmacy-authorise";
 import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
-import { PharmacyItems } from "./screens/pharmacy-items";
-import { PharmacyPharmacists } from "./screens/pharmacy-pharmacists";
-import { PharmacyReorder } from "./screens/pharmacy-reorder";
 import { PharmacyOffice, PharmacyOfficeReports } from "./screens/pharmacy-office/pharmacy-office";
-import { PharmacyH1Register } from "./screens/pharmacy-h1-register";
+import { OFFICE_GRANTS, OFFICE_REDIRECTS } from "./screens/pharmacy-office/pages";
 import { PharmacyLeakage } from "./screens/pharmacy-leakage";
 import { PharmacyRetail } from "./screens/pharmacy-retail";
-import { PharmacyRetailLicence } from "./screens/pharmacy-retail-licence";
-import { PharmacyDowntime } from "./screens/pharmacy-downtime";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -104,7 +93,14 @@ import { LabReports } from "./screens/lab-reports";
 type NavGroup = "desk" | "patients" | "opd" | "billing" | "stores" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
 const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "billing", "stores", "admin"];
-const NAV: readonly { to: string; label: string; permission: string; group: NavGroup }[] = [
+/**
+ * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
+ * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
+ * several — the pharmacy office, whose menu entries each keep their old row's permission.
+ */
+type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[] };
+const navVisible = (e: NavEntry, can: (p: string) => boolean): boolean => can(e.permission) || (e.anyOf ?? []).some((p) => can(p));
+const NAV: readonly NavEntry[] = [
   // PLAN 07b T3 — the counter, first in the row for the reason `otManifest`-style menus give: it is
   // the screen a one-person desk lives on. Path and permission match `opdManifest.menu` exactly,
   // which `nav-parity.test.ts` enforces rather than trusts.
@@ -216,38 +212,18 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // invisible to everybody until the owner grants it — the runbook (README.md) names it beside the
   // other flag-flip permissions.
   { to: "/partners/pnl", label: "nav.partnerPnl", permission: "partners.pnl.read", group: "billing" },
-  // PLAN 16a T7 — the formulary desk. The path and the permission match `formularyManifest.menu`'s
-  // own entry exactly, which is where the authoritative pairing lives. `formulary.manage` is
-  // GRANTED (DD10) — to `pharmacy`, a role that exists with no holders — so this link appears the
-  // day a pharmacist account does, and for nobody before then.
-  { to: "/formulary/admin", label: "nav.formularyAdmin", permission: "formulary.manage", group: "stores" },
-  // PLAN 14 T9 / DD16 — the three materials screens. Each path and permission matches
-  // `materialsManifest.menu`'s own entry exactly, which is where the authoritative pairing lives.
-  // Two of the three are GRANTED (DD11) to `materials_head` and `storekeeper` — roles that exist
-  // with NO HOLDERS — so those links appear the day a storekeeper account does, and for nobody
-  // before then. That is the `formulary.manage` precedent one phase later.
-  { to: "/materials/items", label: "nav.materialsItems", permission: "materials.items.manage", group: "stores" },
-  { to: "/materials/vendors", label: "nav.materialsVendors", permission: "materials.vendors.manage", group: "stores" },
-  /**
-   * ═══ SECOND-PASS FINDING F1 — THIS LINE IS THE OTHER HALF OF CLOSE REVIEW M6 ═══
+  /*
+   * ═══ GAP-CLOSURE B3 (2026-09-28) — THE FOURTEEN "STORES" ROWS ARE TWO ═══
    *
-   * M6 moved the GRN read routes and `materialsManifest.menu`'s entry from `materials.grn.capture`
-   * to `materials.stock.read`, so `pharmacy` — DD11's QC signatory, which holds `grn.qc` and
-   * `stock.read` and NOT `grn.capture` — can open the GRN it is ruled to sign. **This table was
-   * not moved with them**, and it is the one the shell actually renders: `NAV.filter(can)` below.
-   * So the server said yes and the pharmacist still had no link, which is the exact symptom the
-   * remediation's own commit message claimed to have removed.
-   *
-   * The comment four lines up — *"matches `materialsManifest.menu`'s own entry exactly"* — was
-   * true when it was written and false after M6, and **nothing could tell**: no test compared this
-   * table to any manifest. That is §2.122 in the remediation for §2.122. The guard now exists at
-   * `apps/core/test/nav-parity.test.ts`, so the next divergence fails a suite instead of a role.
+   * The owner-approved Menu artboard folds the stores leaves into the pharmacy office's header menu:
+   * formulary, item master, vendors, goods receipt, counts, transfers, sale items, pharmacists, the
+   * reorder list, the H1 register, the retail licence, paper dispenses and the office's own Reports
+   * door are PAGES of `/pharmacy/office` now (`screens/pharmacy-office/pages.ts`), each shown to the
+   * holder of the permission its row here used to require. Their old paths redirect there (below).
+   * What stays in the nav is the desk and the office. The history of each removed row — including
+   * second-pass F1, which moved the GRN row to `materials.stock.read` — lives on in `pages.ts`'s
+   * grants, which carry the same permissions.
    */
-  { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read", group: "stores" },
-  // PLAN 14c, first slice — blind counts; the counter's grant opens it, the head's shows the review.
-  { to: "/materials/counts", label: "nav.materialsCounts", permission: "materials.counts.perform", group: "stores" },
-  // 2026-09-17 — stock transfers: the stores send, the receiving store confirms. Read opens it.
-  { to: "/materials/transfers", label: "nav.materialsTransfers", permission: "materials.stock.read", group: "stores" },
   /**
    * PLAN 15 T8 — the mini-OT. Each path and permission matches `otManifest.menu`'s own entry
    * exactly, which is where the authoritative pairing lives and which `nav-parity.test.ts` now
@@ -280,22 +256,15 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "opd" },
-  { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
-  // PHARMACY P2 — the register of pharmacists, beside the pharmacy's other master data.
-  { to: "/pharmacy/pharmacists", label: "nav.pharmacyPharmacists", permission: "pharmacy.pharmacists.manage", group: "stores" },
-  // PHARMACY P4 — the reorder list: what the counter will run out of, and where it can come from.
-  { to: "/pharmacy/reorder", label: "nav.pharmacyReorder", permission: "pharmacy.dispense.read", group: "stores" },
-  // PARITY P2 — the back office: needs-you-today, purchase orders the agent drafts, approval and send.
-  { to: "/pharmacy/office", label: "nav.pharmacyOffice", permission: "materials.po.raise", group: "stores" },
-  // PARITY P5 — the office's Reports side, its own door for the owner and the billing office, who buy nothing.
-  { to: "/pharmacy/office/reports", label: "nav.pharmacyReports", permission: "pharmacy.reports.read", group: "stores" },
-  // PHARMACY P9 — the Schedule H1 register, the pharmacist's statutory read.
-  { to: "/pharmacy/registers/h1", label: "nav.pharmacyH1", permission: "pharmacy.register.read", group: "stores" },
-  // PHARMACY P19 — the walk-in retail counter, and the licence that opens it.
+  /*
+   * PARITY P2 → GAP-CLOSURE B3 — the back office, and since B3 the one door to every stores screen.
+   * `permission` is still `pharmacyManifest.menu`'s pairing; `anyOf` is every grant that shows the
+   * person a side or an entry of the office (`OFFICE_GRANTS`), so a pharmacist whose only reach is the
+   * H1 register, or the owner and billing office who hold only reports, still find it.
+   */
+  { to: "/pharmacy/office", label: "nav.pharmacyOffice", permission: "materials.po.raise", group: "stores", anyOf: OFFICE_GRANTS },
+  // PHARMACY P19 — the walk-in retail counter. Its licence is a page of the office's Law side (B3).
   { to: "/pharmacy/retail", label: "nav.pharmacyRetail", permission: "pharmacy.retail.sell", group: "opd" },
-  { to: "/pharmacy/retail-licence", label: "nav.pharmacyRetailLicence", permission: "pharmacy.retail.manage", group: "stores" },
-  // PHARMACY P20 — entering what left on paper while the screens were dark.
-  { to: "/pharmacy/downtime", label: "nav.pharmacyDowntime", permission: "pharmacy.downtime.enter", group: "stores" },
 ];
 
 /**
@@ -450,7 +419,7 @@ function ShellChrome(): React.ReactElement {
         onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { e.stopPropagation(); setMenuOpen(false); } }}
       >
         {NAV_GROUPS.map((group) => {
-          const entries = NAV.filter((e) => e.group === group && can(e.permission));
+          const entries = NAV.filter((e) => e.group === group && navVisible(e, can));
           if (entries.length === 0) return null;
           return (
             <span key={group} className="grp">
@@ -467,7 +436,7 @@ function ShellChrome(): React.ReactElement {
             </span>
           );
         })}
-        {NAV.every((entry) => !can(entry.permission)) ? (
+        {NAV.every((entry) => !navVisible(entry, can)) ? (
           /*
            * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR. A person whose role holds
            * none of these was shown sixteen links and refused by every one. Showing nothing at
@@ -860,28 +829,43 @@ const opdAdminRoute = createRoute({
   component: OpdAdmin,
 });
 
+/**
+ * ═══ GAP-CLOSURE B3 — TWELVE FORWARDING ADDRESSES INTO THE OFFICE ═══
+ *
+ * The stores screens folded into `/pharmacy/office` as pages of its header menu. Each old path is
+ * kept, as `/pharmacy/counter` was in parity P1: no component, no nav row — a bookmark or a link from
+ * another screen lands on the same screen inside the office (`OFFICE_REDIRECTS` names the page). None
+ * of the twelve screens read a query string, so there is none to carry: the office's own `view` and
+ * `page` are the whole of the address.
+ */
+function toOffice(path: string): never {
+  const at = OFFICE_REDIRECTS[path];
+  if (at === undefined) throw new Error(`no office page for ${path}`);
+  throw redirect({ to: "/pharmacy/office", search: { view: at.view, page: at.page } });
+}
+
 const formularyAdminRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/formulary/admin",
-  component: FormularyAdmin,
+  beforeLoad: () => toOffice("/formulary/admin"),
 });
 
 const materialsItemsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/materials/items",
-  component: MaterialsItems,
+  beforeLoad: () => toOffice("/materials/items"),
 });
 
 const materialsVendorsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/materials/vendors",
-  component: MaterialsVendors,
+  beforeLoad: () => toOffice("/materials/vendors"),
 });
 
 const materialsGrnRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/materials/grn",
-  component: MaterialsGrn,
+  beforeLoad: () => toOffice("/materials/grn"),
 });
 
 const otListRoute = createRoute({
@@ -963,27 +947,34 @@ const pharmacyAuthoriseRoute = createRoute({
 const pharmacyItemsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/items",
-  component: PharmacyItems,
+  beforeLoad: () => toOffice("/pharmacy/items"),
 });
 
-/** PHARMACY P2 — the register of pharmacists. Path matches `pharmacyManifest.menu`. */
+/** PHARMACY P2 — the register of pharmacists; a page of the office's Law side since B3. */
 const pharmacyPharmacistsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/pharmacists",
-  component: PharmacyPharmacists,
+  beforeLoad: () => toOffice("/pharmacy/pharmacists"),
 });
 
-/** PHARMACY P4 — the reorder list. Path matches `pharmacyManifest.menu`. */
+/** PHARMACY P4 — the reorder list; a page of the office's Buy side since B3. */
 const pharmacyReorderRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/reorder",
-  component: PharmacyReorder,
+  beforeLoad: () => toOffice("/pharmacy/reorder"),
 });
 
-/** PARITY P2 — the pharmacy's back office. Path matches `pharmacyManifest.menu`. */
+/**
+ * PARITY P2 — the pharmacy's back office. Path matches `pharmacyManifest.menu`. B3: `?view=<side>` and
+ * `&page=<entry>` are where the person is in it, so a reload and back/forward land there.
+ */
 const pharmacyOfficeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/office",
+  validateSearch: (search: Record<string, unknown>): { view?: string; page?: string } => ({
+    ...(typeof search.view === "string" ? { view: search.view } : {}),
+    ...(typeof search.page === "string" ? { page: search.page } : {}),
+  }),
   component: PharmacyOffice,
 });
 
@@ -994,18 +985,18 @@ const pharmacyOfficeReportsRoute = createRoute({
   component: PharmacyOfficeReports,
 });
 
-/** PLAN 14c, first slice — stock counts. Path matches `materialsManifest.menu`. */
+/** PLAN 14c, first slice — stock counts; a page of the office's Stock side since B3. */
 const materialsCountsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/materials/counts",
-  component: MaterialsCounts,
+  beforeLoad: () => toOffice("/materials/counts"),
 });
 
-/** 2026-09-17 — stock transfers. Path matches `materialsManifest.menu`. */
+/** 2026-09-17 — stock transfers; a page of the office's Stock side since B3. */
 const materialsTransfersRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/materials/transfers",
-  component: MaterialsTransfers,
+  beforeLoad: () => toOffice("/materials/transfers"),
 });
 
 /** PHARMACY P12 — the leakage triangle. Path matches `pharmacyManifest.menu`. */
@@ -1015,11 +1006,11 @@ const pharmacyLeakageRoute = createRoute({
   component: PharmacyLeakage,
 });
 
-/** PHARMACY P9 — the Schedule H1 register. Path matches `pharmacyManifest.menu`. */
+/** PHARMACY P9 — the Schedule H1 register; a page of the office's Law side since B3. */
 const pharmacyH1RegisterRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/registers/h1",
-  component: PharmacyH1Register,
+  beforeLoad: () => toOffice("/pharmacy/registers/h1"),
 });
 
 /** PHARMACY P19 — the walk-in retail counter and its licence. Paths match `pharmacyManifest.menu`. */
@@ -1032,14 +1023,14 @@ const pharmacyRetailRoute = createRoute({
 const pharmacyRetailLicenceRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/retail-licence",
-  component: PharmacyRetailLicence,
+  beforeLoad: () => toOffice("/pharmacy/retail-licence"),
 });
 
-/** PHARMACY P20 — paper dispenses. Path matches `pharmacyManifest.menu`. */
+/** PHARMACY P20 — paper dispenses; a page of the office's Stock side since B3. */
 const pharmacyDowntimeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/pharmacy/downtime",
-  component: PharmacyDowntime,
+  beforeLoad: () => toOffice("/pharmacy/downtime"),
 });
 
 const labDeskRoute = createRoute({
