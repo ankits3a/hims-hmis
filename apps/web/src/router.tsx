@@ -1133,6 +1133,11 @@ const opdDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/desk",
   component: OpdDesk,
+  /*
+    UX-AUDIT 2026-09-28 — the OPD QUEUE desk now draws the station shell (header, lane, list), like
+    the lab's stations; opening a visit is Desk One's. See docs/superpowers/decisions/2026-09-28-opd-desk.md.
+  */
+  staticData: { fullViewport: true },
 });
 
 const opdConsultRoute = createRoute({

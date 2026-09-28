@@ -70,7 +70,7 @@ const TONE: Record<NonNullable<StationStat["tone"]>, string | undefined> = {
 export function StationShell({
   brand, stations, current, title, place, stats, statsLabel,
   lane, list, listSummary, clocks, clocksSummary, clocksAlert = false,
-  copilot, inHand = false, views, children,
+  copilot, inHand = false, views, seat = "lab", listRequest, children,
 }: {
   /** The department, in the header and over the lane — "Central lab". */
   brand: string;
@@ -98,6 +98,18 @@ export function StationShell({
   inHand?: boolean;
   /** The station's own views (header nav); they fold into the Menu below 1100px. */
   views?: React.ReactNode;
+  /**
+   * UX-AUDIT 2026-09-28 — the `data-seat` the frame wears. The lab's stations wrote it as a constant;
+   * the OPD queue desk is the second department in this frame, and a desk that says `lab` in its own
+   * DOM is a wrong answer to anyone reading it. `styles.css` maps the palette for either value.
+   */
+  seat?: "lab" | "opd-desk";
+  /**
+   * UX-AUDIT 2026-09-28 — a screen's own act can open or close the drawer below 1280px: the OPD desk
+   * opens it when a doctor is chosen (their line IS the answer) and closes it when a token is taken
+   * (the lane is). A new `seq` is a new request; the header's List button still works as before.
+   */
+  listRequest?: { open: boolean; seq: number };
   children: React.ReactNode;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
@@ -115,6 +127,9 @@ export function StationShell({
   const folded = inHand && copilot !== undefined && !listChoice;
 
   useEffect(() => { setListChoice(false); }, [inHand]);
+  useEffect(() => {
+    if (listRequest !== undefined && listRequest.seq > 0) setListOpen(listRequest.open);
+  }, [listRequest]);
 
   useEffect(() => {
     if (!listOpen && !menuOpen) return;
@@ -148,7 +163,7 @@ export function StationShell({
   return (
     <div
       className={`st${listOpen ? " list-open" : ""}`}
-      data-seat="lab"
+      data-seat={seat}
       data-station={current}
       data-lang={i18n.language.startsWith("hi") ? "hi" : "en"}
       data-testid="station-shell"
