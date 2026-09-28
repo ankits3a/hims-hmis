@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, boolean, check, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex,
+  bigint, bigserial, boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { users } from "./auth";
+import { roles, users } from "./auth";
 import { invoiceLines, invoices } from "./billing";
 import { formularyMedicines, formularySalts } from "./formulary";
-import { items, stockBatches, stockLedger, stockReservations } from "./materials";
+import { items, stockBatches, stockLedger, stockReservations, stockWriteOffs } from "./materials";
 import { opdDoctors, opdEncounters, opdPrescriptions } from "./opd";
 import { orderItems, orders } from "./orders";
 import { patientAllergies, patients } from "./patients";
@@ -801,5 +801,261 @@ export const pharmacyAdrEvents = pgTable(
       sql.raw(`(kind = 'causality_assessed') = (causality is not null) and (causality is null or causality in (${inList(ADR_CAUSALITY)}))`)),
     check("pharmacy_adr_events_sent_ck",
       sql.raw(`(kind = 'sent_to_pvpi') = (sent_on is not null and channel is not null) and (channel is null or channel in (${inList(ADR_CHANNELS)})) and (kind = 'sent_to_pvpi' or pvpi_ref is null)`)),
+  ],
+);
+
+/**
+ * ═══ PHARMACY STAGE D2 — THE MEDICATION ERROR AND NEAR-MISS LOG (NABH MOM, NCC MERP index A–I) ═══
+ *
+ * Two tables, both APPEND-ONLY by trigger (the migration hand-carries it, the D1 shape):
+ *
+ *   `pharmacy_medication_incidents`       — one incident as it was reported: near miss or error, the stage it
+ *                                           happened at, what went wrong, the NCC MERP category, what
+ *                                           contributed, what happened in the reporter's words. Optionally
+ *                                           the patient, the dispense line and the item it concerned.
+ *   `pharmacy_medication_incident_events` — every later act: `reviewed` (root cause, action taken) and
+ *                                           `closed`. A state change is a new row, never an edit.
+ *
+ * ═══ BLAME-FREE ═══
+ *
+ * `reported_by` is the reporter's user id — the audit trail keeps it. `reporter_role` is the role through
+ * which that person held `pharmacy.incidents.record` WHEN they reported, snapshotted so a later change of
+ * post does not rewrite who-reported-as-what. Only a holder of `pharmacy.incidents.review` is ever told the
+ * name; everyone else, and every export and report, sees the role (`modules/pharmacy/incidents.ts`).
+ *
+ * ═══ KIND AGREES WITH CATEGORY — a CHECK, not a convention ═══
+ *
+ * NCC MERP: A (circumstances capable of causing error) and B (an error that did not reach the patient) are
+ * near misses; C–I reached the patient and are errors. The NABH indicator counts errors per 1,000 dispensed
+ * lines, so a row whose kind contradicts its category would silently move the hospital's number.
+ */
+export const MED_INCIDENT_KINDS = ["near_miss", "error"] as const;
+export type MedIncidentKind = (typeof MED_INCIDENT_KINDS)[number];
+export const MED_INCIDENT_STAGES = ["prescribing", "transcribing", "dispensing", "administration", "monitoring"] as const;
+export type MedIncidentStage = (typeof MED_INCIDENT_STAGES)[number];
+export const MED_INCIDENT_TYPES = [
+  "wrong_drug", "wrong_strength", "wrong_dose", "wrong_quantity", "wrong_patient", "wrong_route", "expired", "lasa_mixup", "omission", "other",
+] as const;
+export type MedIncidentType = (typeof MED_INCIDENT_TYPES)[number];
+/** The NCC MERP Index for Categorizing Medication Errors. */
+export const NCC_MERP_CATEGORIES = ["A", "B", "C", "D", "E", "F", "G", "H", "I"] as const;
+export type NccMerpCategory = (typeof NCC_MERP_CATEGORIES)[number];
+/** A and B never reached the patient. */
+export const NEAR_MISS_CATEGORIES = ["A", "B"] as const;
+export const MED_INCIDENT_FACTORS = ["lasa", "look_alike_packaging", "illegible_rx", "workload", "interruption", "other"] as const;
+export type MedIncidentFactor = (typeof MED_INCIDENT_FACTORS)[number];
+export const MED_INCIDENT_EVENT_KINDS = ["reviewed", "closed"] as const;
+export type MedIncidentEventKind = (typeof MED_INCIDENT_EVENT_KINDS)[number];
+
+export const pharmacyMedicationIncidents = pgTable(
+  "pharmacy_medication_incidents",
+  {
+    id: text("id").primaryKey(),
+    /** The log's own serial — `MI-000042` on screen. An append-only table never re-uses one. */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
+    kind: text("kind").notNull(),
+    stage: text("stage").notNull(),
+    type: text("type").notNull(),
+    category: text("category").notNull(),
+    patientId: text("patient_id").references(() => patients.id),
+    dispenseLineId: text("dispense_line_id").references(() => pharmacyDispenseLines.id),
+    itemId: text("item_id").references(() => items.id),
+    /** Contributing factors, a multi-select; each a member of `MED_INCIDENT_FACTORS`. */
+    factors: text("factors").array().notNull().default(sql`'{}'::text[]`),
+    whatHappened: text("what_happened").notNull(),
+    /** The audit trail's reporter. Shown by name only to `pharmacy.incidents.review`. */
+    reportedBy: text("reported_by").notNull().references(() => users.id),
+    /** The role the reporter recorded under, snapshotted — what everyone else, and every export, is shown. */
+    reporterRole: text("reporter_role").notNull().references(() => roles.key),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_medication_incidents_seq_ux").on(t.seq),
+    index("pharmacy_medication_incidents_created_idx").on(t.createdAt),
+    index("pharmacy_medication_incidents_patient_idx").on(t.patientId),
+    check("pharmacy_medication_incidents_kind_ck", sql.raw(`kind in (${inList(MED_INCIDENT_KINDS)})`)),
+    check("pharmacy_medication_incidents_stage_ck", sql.raw(`stage in (${inList(MED_INCIDENT_STAGES)})`)),
+    check("pharmacy_medication_incidents_type_ck", sql.raw(`type in (${inList(MED_INCIDENT_TYPES)})`)),
+    check("pharmacy_medication_incidents_category_ck", sql.raw(`category in (${inList(NCC_MERP_CATEGORIES)})`)),
+    /** NCC MERP: A–B never reached the patient (near miss); C–I did (error). The indicator counts on this. */
+    check("pharmacy_medication_incidents_kind_category_ck",
+      sql.raw(`(kind = 'near_miss') = (category in (${inList(NEAR_MISS_CATEGORIES)}))`)),
+    check("pharmacy_medication_incidents_factors_ck", sql.raw(`factors <@ array[${inList(MED_INCIDENT_FACTORS)}]::text[]`)),
+    check("pharmacy_medication_incidents_what_ck", sql`btrim(${t.whatHappened}) <> ''`),
+  ],
+);
+
+export const pharmacyMedicationIncidentEvents = pgTable(
+  "pharmacy_medication_incident_events",
+  {
+    id: text("id").primaryKey(),
+    incidentId: text("incident_id").notNull().references(() => pharmacyMedicationIncidents.id),
+    kind: text("kind").notNull(),
+    /** `reviewed` — why it happened, and what was changed so it does not happen again. */
+    rootCause: text("root_cause"),
+    actionTaken: text("action_taken"),
+    note: text("note"),
+    recordedBy: text("recorded_by").notNull().references(() => users.id),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pharmacy_medication_incident_events_incident_idx").on(t.incidentId, t.recordedAt),
+    /** An incident closes once; a review may be revised (the latest counts). */
+    uniqueIndex("pharmacy_medication_incident_events_closed_ux").on(t.incidentId).where(sql`kind = 'closed'`),
+    check("pharmacy_medication_incident_events_kind_ck", sql.raw(`kind in (${inList(MED_INCIDENT_EVENT_KINDS)})`)),
+    check("pharmacy_medication_incident_events_review_ck",
+      sql.raw(`(kind = 'reviewed') = (root_cause is not null and btrim(root_cause) <> '' and action_taken is not null and btrim(action_taken) <> '')
+        and (kind = 'reviewed' or (root_cause is null and action_taken is null))`)),
+  ],
+);
+
+/**
+ * ═══ PHARMACY STAGE D3 — THE FRIDGE TEMPERATURE LOG AND THE EXCURSION HOLD (D&C Rules 1945, NABH MOM) ═══
+ *
+ * Six tables:
+ *
+ *   `pharmacy_cold_units`             — a fridge in a store: a label, the range it must hold (2.0–8.0 °C by
+ *                                       default), active or not. A MASTER row, edited in place by the service
+ *                                       under `pharmacy.coldchain.manage`, every edit an audit event with the
+ *                                       before and after (`coldchain.unit_saved`); the trigger refuses a DELETE
+ *                                       and any change of the store or of who created it.
+ *   `pharmacy_cold_readings`          — APPEND-ONLY by trigger: the thermometer's current, and its min and max
+ *                                       since the last reset, one decimal place, who read it and when.
+ *   `pharmacy_cold_excursions`        — opened by the service in the reading's own transaction when any of
+ *                                       current/min/max is outside the unit's range. At most ONE open per unit
+ *                                       (a partial unique index on `closed_at is null`). `closed_at` is the
+ *                                       one column that may change, once, from null — the status-column
+ *                                       exception of the stage's shared rules; the close itself is a row below.
+ *   `pharmacy_cold_excursion_batches` — APPEND-ONLY: the batches the excursion put on hold, FROZEN when it
+ *                                       opened — every batch of a `cold_2_8` item with stock on hand in the
+ *                                       unit's store at that instant.
+ *   `pharmacy_cold_excursion_closes`  — APPEND-ONLY: who closed it and when, one per excursion; and
+ *   `pharmacy_cold_excursion_decisions` — APPEND-ONLY: one decision per held batch, `release` with the reason
+ *                                       (the product's stability data) or `write_off` with the materials
+ *                                       write-off it raised.
+ */
+export const COLD_EXCURSION_DECISIONS = ["release", "write_off"] as const;
+export type ColdExcursionDecision = (typeof COLD_EXCURSION_DECISIONS)[number];
+/** The storage class a fridge excursion puts on hold. */
+export const COLD_STORAGE_CLASS = "cold_2_8";
+/** A thermometer reading outside this is a typing slip, not a temperature. */
+const COLD_READING_BOUNDS = "between -50 and 60";
+
+export const pharmacyColdUnits = pgTable(
+  "pharmacy_cold_units",
+  {
+    id: text("id").primaryKey(),
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    label: text("label").notNull(),
+    lowC: numeric("low_c", { precision: 4, scale: 1 }).notNull().default("2.0"),
+    highC: numeric("high_c", { precision: 4, scale: 1 }).notNull().default("8.0"),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull().references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_cold_units_store_label_ux").using("btree", t.storeResourceId, sql`lower(${t.label})`),
+    check("pharmacy_cold_units_label_ck", sql`btrim(${t.label}) <> ''`),
+    check("pharmacy_cold_units_range_ck", sql.raw(`low_c < high_c and low_c ${COLD_READING_BOUNDS} and high_c ${COLD_READING_BOUNDS}`)),
+  ],
+);
+
+export const pharmacyColdReadings = pgTable(
+  "pharmacy_cold_readings",
+  {
+    id: text("id").primaryKey(),
+    unitId: text("unit_id").notNull().references(() => pharmacyColdUnits.id),
+    currentC: numeric("current_c", { precision: 4, scale: 1 }).notNull(),
+    /** The min/max thermometer's minimum and maximum since it was last reset. */
+    minC: numeric("min_c", { precision: 4, scale: 1 }).notNull(),
+    maxC: numeric("max_c", { precision: 4, scale: 1 }).notNull(),
+    takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
+    takenBy: text("taken_by").notNull().references(() => users.id),
+    note: text("note"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pharmacy_cold_readings_unit_taken_idx").on(t.unitId, t.takenAt),
+    check("pharmacy_cold_readings_order_ck", sql.raw(`min_c <= current_c and current_c <= max_c`)),
+    check("pharmacy_cold_readings_bounds_ck", sql.raw(`min_c ${COLD_READING_BOUNDS} and max_c ${COLD_READING_BOUNDS}`)),
+  ],
+);
+
+export const pharmacyColdExcursions = pgTable(
+  "pharmacy_cold_excursions",
+  {
+    id: text("id").primaryKey(),
+    /** The register's serial — `CE-000042` on screen. */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
+    unitId: text("unit_id").notNull().references(() => pharmacyColdUnits.id),
+    /** Copied from the unit: the store whose batches are held. */
+    storeResourceId: text("store_resource_id").notNull().references(() => resources.id),
+    /** The reading that was out of range. */
+    readingId: text("reading_id").notNull().references(() => pharmacyColdReadings.id),
+    /** The range the reading was judged against, as it stood then. */
+    lowC: numeric("low_c", { precision: 4, scale: 1 }).notNull(),
+    highC: numeric("high_c", { precision: 4, scale: 1 }).notNull(),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
+    /** Set once, by the close, in the close's transaction; the only column the trigger lets change. */
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_cold_excursions_seq_ux").on(t.seq),
+    uniqueIndex("pharmacy_cold_excursions_reading_ux").on(t.readingId),
+    /** At most one open excursion per unit. */
+    uniqueIndex("pharmacy_cold_excursions_open_ux").on(t.unitId).where(sql`closed_at is null`),
+    index("pharmacy_cold_excursions_store_idx").on(t.storeResourceId),
+  ],
+);
+
+export const pharmacyColdExcursionBatches = pgTable(
+  "pharmacy_cold_excursion_batches",
+  {
+    excursionId: text("excursion_id").notNull().references(() => pharmacyColdExcursions.id),
+    batchId: text("batch_id").notNull().references(() => stockBatches.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    /** On hand in the store when the excursion opened. */
+    qtyOnHand: integer("qty_on_hand").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.excursionId, t.batchId], name: "pharmacy_cold_excursion_batches_pk" }),
+    index("pharmacy_cold_excursion_batches_batch_idx").on(t.batchId),
+    check("pharmacy_cold_excursion_batches_qty_ck", sql`${t.qtyOnHand} > 0`),
+  ],
+);
+
+export const pharmacyColdExcursionCloses = pgTable(
+  "pharmacy_cold_excursion_closes",
+  {
+    excursionId: text("excursion_id").primaryKey().references(() => pharmacyColdExcursions.id),
+    note: text("note"),
+    closedBy: text("closed_by").notNull().references(() => users.id),
+    closedAt: timestamp("closed_at", { withTimezone: true }).notNull(),
+  },
+);
+
+export const pharmacyColdExcursionDecisions = pgTable(
+  "pharmacy_cold_excursion_decisions",
+  {
+    id: text("id").primaryKey(),
+    excursionId: text("excursion_id").notNull(),
+    batchId: text("batch_id").notNull(),
+    decision: text("decision").notNull(),
+    /** `release` — why the batch is still good: the product's stability data. */
+    reason: text("reason"),
+    /** `write_off` — the destruction write-off it raised (materials, approval by the MS). */
+    writeOffId: text("write_off_id").references(() => stockWriteOffs.id),
+    decidedBy: text("decided_by").notNull().references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.excursionId, t.batchId], foreignColumns: [pharmacyColdExcursionBatches.excursionId, pharmacyColdExcursionBatches.batchId], name: "pharmacy_cold_excursion_decisions_batch_fk" }),
+    uniqueIndex("pharmacy_cold_excursion_decisions_batch_ux").on(t.excursionId, t.batchId),
+    index("pharmacy_cold_excursion_decisions_held_idx").on(t.batchId).where(sql`decision = 'write_off'`),
+    check("pharmacy_cold_excursion_decisions_decision_ck", sql.raw(`decision in (${inList(COLD_EXCURSION_DECISIONS)})`)),
+    check("pharmacy_cold_excursion_decisions_shape_ck",
+      sql.raw(`(decision = 'release') = (reason is not null and btrim(reason) <> '') and (decision = 'write_off') = (write_off_id is not null)`)),
   ],
 );

@@ -1,6 +1,6 @@
 {
-  "id": "2a45d7cd-89d5-4150-9c67-35c2c58ebb29",
-  "prevId": "e3ba0096-9d0d-44b2-b61b-b136858ee595",
+  "id": "4f3b43d5-02ee-4fbd-9dc5-88cf5b190c46",
+  "prevId": "2a45d7cd-89d5-4150-9c67-35c2c58ebb29",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -32239,6 +32239,769 @@
         "pharmacy_authorisations_same_actor_ck": {
           "name": "pharmacy_authorisations_same_actor_ck",
           "value": "\"pharmacy_authorisations\".\"decided_by\" is null or \"pharmacy_authorisations\".\"decided_by\" <> \"pharmacy_authorisations\".\"requested_by\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_cold_excursion_batches": {
+      "name": "pharmacy_cold_excursion_batches",
+      "schema": "",
+      "columns": {
+        "excursion_id": {
+          "name": "excursion_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty_on_hand": {
+          "name": "qty_on_hand",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "pharmacy_cold_excursion_batches_batch_idx": {
+          "name": "pharmacy_cold_excursion_batches_batch_idx",
+          "columns": [
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_cold_excursion_batches_excursion_id_pharmacy_cold_excursions_id_fk": {
+          "name": "pharmacy_cold_excursion_batches_excursion_id_pharmacy_cold_excursions_id_fk",
+          "tableFrom": "pharmacy_cold_excursion_batches",
+          "tableTo": "pharmacy_cold_excursions",
+          "columnsFrom": [
+            "excursion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_excursion_batches_batch_id_stock_batches_id_fk": {
+          "name": "pharmacy_cold_excursion_batches_batch_id_stock_batches_id_fk",
+          "tableFrom": "pharmacy_cold_excursion_batches",
+          "tableTo": "stock_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_excursion_batches_item_id_items_id_fk": {
+          "name": "pharmacy_cold_excursion_batches_item_id_items_id_fk",
+          "tableFrom": "pharmacy_cold_excursion_batches",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "pharmacy_cold_excursion_batches_pk": {
+          "name": "pharmacy_cold_excursion_batches_pk",
+          "columns": [
+            "excursion_id",
+            "batch_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_cold_excursion_batches_qty_ck": {
+          "name": "pharmacy_cold_excursion_batches_qty_ck",
+          "value": "\"pharmacy_cold_excursion_batches\".\"qty_on_hand\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_cold_excursion_closes": {
+      "name": "pharmacy_cold_excursion_closes",
+      "schema": "",
+      "columns": {
+        "excursion_id": {
+          "name": "excursion_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pharmacy_cold_excursion_closes_excursion_id_pharmacy_cold_excursions_id_fk": {
+          "name": "pharmacy_cold_excursion_closes_excursion_id_pharmacy_cold_excursions_id_fk",
+          "tableFrom": "pharmacy_cold_excursion_closes",
+          "tableTo": "pharmacy_cold_excursions",
+          "columnsFrom": [
+            "excursion_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_excursion_closes_closed_by_users_id_fk": {
+          "name": "pharmacy_cold_excursion_closes_closed_by_users_id_fk",
+          "tableFrom": "pharmacy_cold_excursion_closes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "closed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_cold_excursion_decisions": {
+      "name": "pharmacy_cold_excursion_decisions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "excursion_id": {
+          "name": "excursion_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decision": {
+          "name": "decision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "write_off_id": {
+          "name": "write_off_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "pharmacy_cold_excursion_decisions_batch_ux": {
+          "name": "pharmacy_cold_excursion_decisions_batch_ux",
+          "columns": [
+            {
+              "expression": "excursion_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pharmacy_cold_excursion_decisions_held_idx": {
+          "name": "pharmacy_cold_excursion_decisions_held_idx",
+          "columns": [
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "decision = 'write_off'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_cold_excursion_decisions_write_off_id_stock_write_offs_id_fk": {
+          "name": "pharmacy_cold_excursion_decisions_write_off_id_stock_write_offs_id_fk",
+          "tableFrom": "pharmacy_cold_excursion_decisions",
+          "tableTo": "stock_write_offs",
+          "columnsFrom": [
+            "write_off_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_excursion_decisions_decided_by_users_id_fk": {
+          "name": "pharmacy_cold_excursion_decisions_decided_by_users_id_fk",
+          "tableFrom": "pharmacy_cold_excursion_decisions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_excursion_decisions_batch_fk": {
+          "name": "pharmacy_cold_excursion_decisions_batch_fk",
+          "tableFrom": "pharmacy_cold_excursion_decisions",
+          "tableTo": "pharmacy_cold_excursion_batches",
+          "columnsFrom": [
+            "excursion_id",
+            "batch_id"
+          ],
+          "columnsTo": [
+            "excursion_id",
+            "batch_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_cold_excursion_decisions_decision_ck": {
+          "name": "pharmacy_cold_excursion_decisions_decision_ck",
+          "value": "decision in ('release', 'write_off')"
+        },
+        "pharmacy_cold_excursion_decisions_shape_ck": {
+          "name": "pharmacy_cold_excursion_decisions_shape_ck",
+          "value": "(decision = 'release') = (reason is not null and btrim(reason) <> '') and (decision = 'write_off') = (write_off_id is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_cold_excursions": {
+      "name": "pharmacy_cold_excursions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "bigserial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "store_resource_id": {
+          "name": "store_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reading_id": {
+          "name": "reading_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "low_c": {
+          "name": "low_c",
+          "type": "numeric(4, 1)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "high_c": {
+          "name": "high_c",
+          "type": "numeric(4, 1)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "pharmacy_cold_excursions_seq_ux": {
+          "name": "pharmacy_cold_excursions_seq_ux",
+          "columns": [
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pharmacy_cold_excursions_reading_ux": {
+          "name": "pharmacy_cold_excursions_reading_ux",
+          "columns": [
+            {
+              "expression": "reading_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pharmacy_cold_excursions_open_ux": {
+          "name": "pharmacy_cold_excursions_open_ux",
+          "columns": [
+            {
+              "expression": "unit_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "closed_at is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pharmacy_cold_excursions_store_idx": {
+          "name": "pharmacy_cold_excursions_store_idx",
+          "columns": [
+            {
+              "expression": "store_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_cold_excursions_unit_id_pharmacy_cold_units_id_fk": {
+          "name": "pharmacy_cold_excursions_unit_id_pharmacy_cold_units_id_fk",
+          "tableFrom": "pharmacy_cold_excursions",
+          "tableTo": "pharmacy_cold_units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_excursions_store_resource_id_resources_id_fk": {
+          "name": "pharmacy_cold_excursions_store_resource_id_resources_id_fk",
+          "tableFrom": "pharmacy_cold_excursions",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "store_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_excursions_reading_id_pharmacy_cold_readings_id_fk": {
+          "name": "pharmacy_cold_excursions_reading_id_pharmacy_cold_readings_id_fk",
+          "tableFrom": "pharmacy_cold_excursions",
+          "tableTo": "pharmacy_cold_readings",
+          "columnsFrom": [
+            "reading_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_cold_readings": {
+      "name": "pharmacy_cold_readings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "current_c": {
+          "name": "current_c",
+          "type": "numeric(4, 1)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "min_c": {
+          "name": "min_c",
+          "type": "numeric(4, 1)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_c": {
+          "name": "max_c",
+          "type": "numeric(4, 1)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "taken_at": {
+          "name": "taken_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "taken_by": {
+          "name": "taken_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "pharmacy_cold_readings_unit_taken_idx": {
+          "name": "pharmacy_cold_readings_unit_taken_idx",
+          "columns": [
+            {
+              "expression": "unit_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "taken_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_cold_readings_unit_id_pharmacy_cold_units_id_fk": {
+          "name": "pharmacy_cold_readings_unit_id_pharmacy_cold_units_id_fk",
+          "tableFrom": "pharmacy_cold_readings",
+          "tableTo": "pharmacy_cold_units",
+          "columnsFrom": [
+            "unit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_readings_taken_by_users_id_fk": {
+          "name": "pharmacy_cold_readings_taken_by_users_id_fk",
+          "tableFrom": "pharmacy_cold_readings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "taken_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_cold_readings_order_ck": {
+          "name": "pharmacy_cold_readings_order_ck",
+          "value": "min_c <= current_c and current_c <= max_c"
+        },
+        "pharmacy_cold_readings_bounds_ck": {
+          "name": "pharmacy_cold_readings_bounds_ck",
+          "value": "min_c between -50 and 60 and max_c between -50 and 60"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_cold_units": {
+      "name": "pharmacy_cold_units",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "store_resource_id": {
+          "name": "store_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "low_c": {
+          "name": "low_c",
+          "type": "numeric(4, 1)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'2.0'"
+        },
+        "high_c": {
+          "name": "high_c",
+          "type": "numeric(4, 1)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'8.0'"
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "pharmacy_cold_units_store_label_ux": {
+          "name": "pharmacy_cold_units_store_label_ux",
+          "columns": [
+            {
+              "expression": "store_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"label\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_cold_units_store_resource_id_resources_id_fk": {
+          "name": "pharmacy_cold_units_store_resource_id_resources_id_fk",
+          "tableFrom": "pharmacy_cold_units",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "store_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_units_created_by_users_id_fk": {
+          "name": "pharmacy_cold_units_created_by_users_id_fk",
+          "tableFrom": "pharmacy_cold_units",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_cold_units_updated_by_users_id_fk": {
+          "name": "pharmacy_cold_units_updated_by_users_id_fk",
+          "tableFrom": "pharmacy_cold_units",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_cold_units_label_ck": {
+          "name": "pharmacy_cold_units_label_ck",
+          "value": "btrim(\"pharmacy_cold_units\".\"label\") <> ''"
+        },
+        "pharmacy_cold_units_range_ck": {
+          "name": "pharmacy_cold_units_range_ck",
+          "value": "low_c < high_c and low_c between -50 and 60 and high_c between -50 and 60"
         }
       },
       "isRLSEnabled": false
