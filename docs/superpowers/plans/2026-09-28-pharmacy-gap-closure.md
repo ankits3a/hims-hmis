@@ -139,3 +139,27 @@ change):**
 nothing is the owner setting `creditCapPaise` to 0 in `/billing/config`. Then every credit asks for approval,
 though still from the billing manager until step 1 lands. The lab reflex path, which passes no approval, would
 then refuse. So this stop is NOT applied until step 2 is in.
+
+## Stage D — pharmacy safety (added 2026-09-28 from hmis-10's Healthray re-review; built in lane `pharmacy-safety` by hmis-10)
+
+**Owner ruling, 2026-09-28, verbatim:** "IPD, Emergency, Insurance/TPA, Blood Bank, Dailysis, Immunisation, Ambulance,
+mortuary each will have individual brainstorm session. For now, let's only focus on Pharmacy department."
+
+The owner ruled on none of the D items individually. Each item below is the standard Indian-corporate-hospital
+answer, DECIDED.
+
+**How the absences were measured:** `grep -rniE` over `apps/core/src`, `apps/web/src` and `packages/contracts` on
+`main` @ 63fd0e67, excluding tests and locales, with several spellings per item. The hit lists are in the table.
+
+| # | What | Measured absence | Basis | Plugs into |
+|---|---|---|---|---|
+| D1 | ADR / pharmacovigilance: a suspected-ADR report, which also writes the patient's allergy in the same transaction | only the radiology contrast reactions exist (`radiology/reactions.ts`, `imaging_contrast_reactions`); reuse that shape | PvPI (IPC Ghaziabad, MoHFW), Suspected ADR Reporting Form; NABH MOM | office **Law** menu; a "needs you" row until submitted to the AMC |
+| D2 | Medication-error and near-miss log | no hits (two unrelated "near miss" uses in abdm and lab) | NABH MOM; NCC MERP index A–I; the error rate is a quality indicator | office **Law** menu; the desk's ⋯ gets "record a near miss" |
+| D3 | Fridge cold-chain temperature log | "fridge" exists only as a free-text shelf label (`shelf-locations.ts:18`) | Drugs & Cosmetics Rules 1945, storage as labelled; NABH MOM storage | office **Stock** menu; a missed reading or an excursion is a "needs you" row |
+| D4 | Crash-cart / emergency-tray check and restock (OPD, radiology and OT trays; ER trays go to the ER brainstorm) | zero hits | NABH MOM (emergency medicines standardised, checked, replenished) | office **Stock** menu; a check that is due is a "needs you" row |
+| D5 | Reserve-tier antibiotic gate (WHO AWaRe Reserve) | `cds/guardrails.ts:156-165` is advisory amber only | ICMR AMSP 2018: Reserve agents need prior authorisation by the ID physician or microbiologist | a `kernel/approvals` type; the approver is the role holding a new antimicrobial-authorise permission; the dispense holds until granted; the ask goes into the pharmacy desk's authorisation sheet |
+| D6 | Ward returns | zero hits | — | **waits for the IPD brainstorm** (ruling above) |
+
+- **Standard numbers:** confirm the NABH 5th edition MOM numbers from the text before quoting them in any screen or print.
+- **Migrations:** each D PR takes the next free number at rebase, and pharmacy-safety tells this lane before each rebase.
+- **"Needs you" rows:** D rows join `GET /pharmacy/office/needs` (`pharmacy/office-needs.ts`, B2 #349) as new sources, after #349 merges.
