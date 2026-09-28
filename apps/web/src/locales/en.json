@@ -6004,6 +6004,31 @@
     "printFailed": "Not sent to the printer — {{reason}}"
   },
   "pharmacyOffice": {
+    "menu": {
+      "was": "was {{path}}",
+      "page": {
+        "orders": "Purchase orders",
+        "reorder": "Shelf — reorder & short book",
+        "vendors": "Suppliers",
+        "bills": "Supplier bills & payment runs",
+        "returns": "Returns, expiry & write-offs",
+        "grn": "Goods receipt (GRN)",
+        "opening": "Opening stock sheet",
+        "counts": "Counts",
+        "transfers": "Transfers & indents",
+        "downtime": "Paper dispenses after downtime",
+        "master": "Item master",
+        "sells": "What the counter sells · GST slab",
+        "formulary": "Formulary",
+        "duplicates": "Duplicates & merge",
+        "h1": "H1 register",
+        "controlled": "Narcotics & Schedule X",
+        "retail": "Retail licence (Form 20/21)",
+        "pharmacists": "Pharmacists & registrations",
+        "messages": "Patient messages & consent",
+        "reports": "Reports"
+      }
+    },
     "today": {
       "wordmark": "PHARMACY OFFICE",
       "phoneWordmark": "OFFICE · {{view}}",
