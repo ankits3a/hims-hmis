@@ -1517,7 +1517,11 @@
       "cascade": "Every allocation this receipt made will be reversed and the bills it settled go back to outstanding. Receipt {{receiptId}} cannot be un-voided.",
       "confirm": "Void the receipt",
       "done_one": "The receipt is voided and {{count}} allocation was reversed.",
-      "done_other": "The receipt is voided and {{count}} allocations were reversed."
+      "done_other": "The receipt is voided and {{count}} allocations were reversed.",
+      "patient": "Patient whose receipt it is",
+      "receiptFilter": "Type the printed receipt number to narrow the list",
+      "noReceipts": "This patient has no receipt to void",
+      "loadingReceipts": "Loading this patient’s receipts…"
     },
     "recon": {
       "title": "Upload a settlement statement",
@@ -1536,7 +1540,8 @@
       "worklist": "Mismatched tenders",
       "noMismatches": "No tender is mismatched",
       "expected": "Expected",
-      "settled": "Settled"
+      "settled": "Settled",
+      "mismatchNote": "The statement settled {{settled}} against {{expected}} expected; the tolerance is {{tolerance}}."
     },
     "dayBook": {
       "day": "Day",
@@ -1570,8 +1575,10 @@
       "none": "Every visit on {{day}} that owed a consultation fee has a bill against it.",
       "visit": "Visit",
       "type": "Visit type",
-      "date": "Date"
-    }
+      "date": "Date",
+      "typeUnknown": "Not recorded"
+    },
+    "change": "Change"
   },
   "alerts": {
     "title": "Alerts",
@@ -3038,6 +3045,17 @@
     }
   },
   "radiology": {
+    "station": {
+      "department": "Imaging",
+      "stats": "Today at this station",
+      "onList": "On the list",
+      "stat": "STAT waiting",
+      "deskPlace": "Imaging front desk",
+      "worklistPlace": "Rooms and reading",
+      "studyPlace": "Study · gates, acquisition and images",
+      "reportPlace": "Report · draft, sign and publish",
+      "safetyPlace": "Radiation safety officer's registers"
+    },
     "worklist": {
       "title": "Imaging worklist",
       "viewLabel": "View",
@@ -4271,7 +4289,8 @@
       "handedOver": "handed over to {{who}}",
       "draftClaimOnly": "saved as a draft — your claim stays",
       "draftHeld": "saved as a draft — the strips are held until {{time}}",
-      "slipConfirmed": "confirmed the slip against the paper"
+      "slipConfirmed": "confirmed the slip against the paper",
+      "billedOnCredit": "billed on the owner's credit"
     },
     "status": {
       "claimed": "claimed",
@@ -4352,7 +4371,10 @@
       "upiRef": "UPI reference (UTR)",
       "upiRefHint": "12 digits on their phone's receipt",
       "cardRef": "card approval code",
-      "cardRefHint": "on the terminal's slip"
+      "cardRefHint": "on the terminal's slip",
+      "creditOpen": "On credit — only the owner approves",
+      "creditReason": "Why on credit (the owner reads this)",
+      "creditBill": "Bill {{amount}} on the owner's credit"
     },
     "handover": {
       "title": "hand it over",

@@ -28,6 +28,11 @@ export type BillInput = {
   form60?: boolean;
   changeGivenPaise?: number;
   tags?: string[];
+  /**
+   * GAP A3b — what goes out unpaid, on the OWNER's granted `billing_credit_owner` approval (filed by the
+   * desk through `POST /billing/credit-requests` against THIS dispense's id, the draft id below).
+   */
+  credit?: { reason: string; approvalId: string };
 };
 
 type PricedLinePlan = { lineId: string; lineIdx: number; itemId: string } & PricedBatchLine;
@@ -251,12 +256,15 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     encounterId: encounter.id,
     lines: plan.flatMap(invoiceInputsOf),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
-    receipt: {
-      tenders: input.tenders,
-      ...(input.panNumber === undefined ? {} : { panNumber: input.panNumber }),
-      ...(input.form60 === undefined ? {} : { form60: input.form60 }),
-      ...(input.changeGivenPaise === undefined ? {} : { changeGivenPaise: input.changeGivenPaise }),
-    },
+    ...(input.tenders.length === 0 ? {} : {
+      receipt: {
+        tenders: input.tenders,
+        ...(input.panNumber === undefined ? {} : { panNumber: input.panNumber }),
+        ...(input.form60 === undefined ? {} : { form60: input.form60 }),
+        ...(input.changeGivenPaise === undefined ? {} : { changeGivenPaise: input.changeGivenPaise }),
+      },
+    }),
+    ...(input.credit === undefined ? {} : { credit: { reason: input.credit.reason, approvalId: input.credit.approvalId } }),
   };
 
   await withTx(db, async (tx) => {

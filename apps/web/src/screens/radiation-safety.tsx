@@ -12,6 +12,7 @@ import type {
   WireAppointment, WireBadge, WireBadgeGap, WireCalendarRow, WireDeviceChoice, WireDoseRow,
   WireLicence, WireLicenceGap, WireQaRecord, WireUserChoice,
 } from "../lib/aerb-api";
+import { RadiologyStation } from "./radiology-station";
 
 /**
  * PLAN 18c T1 / D11 — **THE RADIATION-SAFETY REGISTER: one screen, the tabs an inspector asks for.**
@@ -1023,8 +1024,13 @@ export function RadiationSafety(): React.ReactElement {
   });
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">{t("aerb.title")}</h1>
+    <RadiologyStation
+      station="safety"
+      title={t("aerb.title")}
+      place={t("radiology.station.safetyPlace")}
+      stats={[]}
+    >
+    <div className="space-y-4">
 
       <div className="flex gap-2 flex-wrap" role="tablist" aria-label={t("aerb.tabsLabel")}>
         {TABS.map((k) => (
@@ -1850,5 +1856,6 @@ export function RadiationSafety(): React.ReactElement {
 
       {!BUILT.includes(tab) ? <p>{t("aerb.notYet")}</p> : null}
     </div>
+    </RadiologyStation>
   );
 }
