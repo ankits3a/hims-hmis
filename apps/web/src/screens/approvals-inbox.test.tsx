@@ -79,6 +79,16 @@ beforeEach(() => { navigate.mockReset(); });
 afterEach(() => { setToken(null); localStorage.clear(); vi.unstubAllGlobals(); });
 
 describe("the waiting list says what is asked, in plain words", () => {
+  // UX-AUDIT 2026-09-28 · BOARD (merge review) — a merge card opens the two records on /merge.
+  it("BOARD: a patient-merge card links to Merge review for that request; other cards do not", async () => {
+    const MERGE = { ...REFUND, id: "ap-9", typeKey: "patient_merge", subjectType: "patient_merge_request", subjectId: "mr-9", amountPaise: null, cumulativePatientPaise: null };
+    mount({ "GET /api/approvals": list([MERGE, DISCOUNT]) });
+    const link = await screen.findByTestId("open-merge-review");
+    expect(link).toHaveAttribute("href", "/merge?request=mr-9");
+    expect(link).toHaveTextContent("Compare the two records on Merge review");
+    expect(screen.getAllByTestId("open-merge-review")).toHaveLength(1);
+  });
+
   it("amount in rupees, the patient, who asked, how long ago — and no machine key or id", async () => {
     mount({ "GET /api/approvals": list([REFUND]) });
 

@@ -246,6 +246,19 @@ function ApprovalCard({
               {t("inbox.openRun")}
             </button>
           )}
+          {/*
+            UX-AUDIT 2026-09-28 · BOARD (merge review) — a merge is decided on sight of the two records.
+            The MS opens it on /merge, where the comparison is frozen as captured at request time and
+            Approve / Refuse sit beside it. This card keeps working for anyone who decides from here.
+          */}
+          {item.typeKey === "patient_merge" && item.subjectId !== undefined ? (
+            <a
+              href={`/merge?request=${encodeURIComponent(item.subjectId)}`} data-testid="open-merge-review"
+              style={{ alignSelf: "flex-start", color: "var(--green)", fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3 }}
+            >
+              {t("inbox.openMerge")}
+            </a>
+          ) : null}
         </div>
 
         {actions === null ? null : (
