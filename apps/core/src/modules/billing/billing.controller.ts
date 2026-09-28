@@ -98,7 +98,7 @@ import {
 } from "./receipts";
 import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
-import { beginClose, confirmClose, listSessions, openSession, recountSession } from "./sessions";
+import { beginClose, confirmClose, isDrawerSupervisor, listSessions, openSession, recountSession } from "./sessions";
 import { istDay } from "./time";
 import type { FeeQuote } from "./charge-rules";
 import type { BillingConfig } from "./config";
@@ -860,8 +860,18 @@ export class BillingController {
    */
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("receipts")
-  async receiptList(@Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
+  async receiptList(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
     const q = parsed(receiptsQuery, query);
+    /*
+     * OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen"). The UNFILTERED list is every receipt
+     * with its amount, receiver and drawer: a cashier could add up her own open session and read
+     * what her drawer should hold before she counts it. So without a `patientId` it is a drawer
+     * supervisor's list (`billing.session.read`); a cashier's lookup and reprint flows — every web
+     * caller of this route — always name the patient, and those still answer.
+     */
+    if (q.patientId === undefined && !(await isDrawerSupervisor(this.db, actor))) {
+      throw httpError(403, "the unfiltered receipt list is a drawer supervisor's (billing.session.read); name a patient", "receipt_filter_required");
+    }
     const where = q.patientId === undefined ? undefined : eq(receipts.patientId, q.patientId);
     return {
       items: await this.db

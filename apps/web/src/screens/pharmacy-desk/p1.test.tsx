@@ -225,4 +225,19 @@ describe("sales today on the idle rail (parity P1)", () => {
     expect(screen.queryByTestId("desk-shift-money")).toBeNull();
     expect(screen.queryByText("money you took")).toBeNull();
   });
+
+  it("BLIND COUNT: the counter's day without a billed total (her drawer uncounted) draws the counts and no money row", async () => {
+    mockRoutes(base(() => dispense("claimed"), {
+      "GET /api/pharmacy/summary/mine": { status: 404, body: {} },
+      "GET /api/pharmacy/summary": { status: 200, body: {
+        day: "2026-09-19", handedOver: 9, medianMinutes: { queueToHandover: null, claimToHandover: null },
+        open: { queued: 0, claimed: 0, verified: 0, picked: 0, billed: 0 }, declinedLines: 2, declinedTop: [],
+        substitutions: 0, cancelled: 0, refundedAfterBilling: 0, returns: 0, partlyCheckedLines: 0, scheduledHandovers: 0,
+      } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByText("handed over")).toBeInTheDocument();   // the counter's counts are drawn
+    expect(screen.getByText("lines declined")).toBeInTheDocument();
+    expect(screen.queryByText("money taken")).toBeNull();
+  });
 });

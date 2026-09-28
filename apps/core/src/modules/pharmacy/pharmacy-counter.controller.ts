@@ -31,8 +31,8 @@ import { acceptReturn } from "./returns";
 import { h1Register } from "./registers";
 import { LEAKAGE_STORE_CODES, pharmacyLeakage } from "./leakage";
 import type { LeakageReport } from "./leakage";
-import { counterSummary } from "./summary";
-import type { CounterSummary } from "./summary";
+import { counterSummaryFor } from "./summary";
+import type { CounterSummaryView } from "./summary";
 import type { H1Register } from "./registers";
 import type { ReturnResult } from "./returns";
 import type { ReorderAdvice } from "./replenishment";
@@ -513,9 +513,10 @@ export class PharmacyCounterController {
   /** P7 — the counter's day. `day` is an IST date; today when absent. Read-only. */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("summary")
-  async summary(@Query("day") day?: string): Promise<CounterSummary> {
+  async summary(@CurrentActor() actor: Actor, @Query("day") day?: string): Promise<CounterSummaryView> {
     try {
-      return await counterSummary(this.db, day ?? istDateOf(new Date()));
+      /* OWNER RULING 2026-09-28 — BLIND COUNT: `counterSummaryFor` leaves the billed total off for an uncounted drawer's holder. */
+      return await counterSummaryFor(this.db, actor, day ?? istDateOf(new Date()));
     } catch (e) {
       return toHttp(e);
     }

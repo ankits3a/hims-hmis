@@ -57,7 +57,8 @@ export function Dossier({
       { label: t("pharmacyDesk.day.inLine"), value: String(queued) },
     ] : summary === null ? [] : [
       { label: t("pharmacyDesk.day.handedOver"), value: String(summary.handedOver) },
-      { label: t("pharmacyDesk.day.money"), value: rupees(summary.billedPaise) },
+      /* OWNER RULING 2026-09-28 — BLIND COUNT: absent while this reader's drawer is uncounted. */
+      ...(summary.billedPaise === undefined ? [] : [{ label: t("pharmacyDesk.day.money"), value: rupees(summary.billedPaise) }]),
       { label: t("pharmacyDesk.day.declined"), value: String(summary.declinedLines) },
       { label: t("pharmacyDesk.day.inLine"), value: String(queued) },
     ];

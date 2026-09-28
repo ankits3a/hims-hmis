@@ -188,10 +188,15 @@ export async function liveExpectedCashPaise(exec: Db | Tx, session: Pick<Cashier
  */
 export const DRAWER_SUPERVISOR_PERMISSION = "billing.session.read";
 
-export async function mayReadExpectedCash(db: Db, viewer: Actor, session: Pick<CashierSessionRow, "status">): Promise<boolean> {
-  if (session.status !== "open") return true;
+/** Does `viewer` supervise drawers (`billing.session.read`)? The one question every blind-count gate asks. */
+export async function isDrawerSupervisor(db: Db, viewer: Actor): Promise<boolean> {
   if (viewer.type !== "user") return false;
   return hasPermission(db, viewer.id, DRAWER_SUPERVISOR_PERMISSION, "hospital");
+}
+
+export async function mayReadExpectedCash(db: Db, viewer: Actor, session: Pick<CashierSessionRow, "status">): Promise<boolean> {
+  if (session.status !== "open") return true;
+  return isDrawerSupervisor(db, viewer);
 }
 
 /**
@@ -216,7 +221,7 @@ export async function collectionsBlind(db: Db, subject: Actor, viewer: Actor, da
     .where(and(eq(cashierSessions.cashierUserId, subject.id), eq(cashierSessions.status, "open")));
   const session = open[0];
   if (session === undefined || istDay(session.openedAt) > day) return false;
-  return !(await mayReadExpectedCash(db, viewer, { status: "open" }));
+  return !(await isDrawerSupervisor(db, viewer));
 }
 
 /**

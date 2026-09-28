@@ -28,6 +28,18 @@ describe("CounterDayStrip (P7)", () => {
     expect(strip).toHaveTextContent("H1 7");
   });
 
+  /* OWNER RULING 2026-09-28 — BLIND COUNT: the server leaves the billed total off while the reader's own drawer is uncounted. */
+  it("blind count: with no billed total in the response the strip says the counts and no money at all", async () => {
+    const { billedPaise: _b, ...counts } = DAY;
+    void _b;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(counts), { status: 200, headers: { "Content-Type": "application/json" } })));
+    renderWithProviders(<CounterDayStrip />);
+    const strip = await screen.findByTestId("counter-day-strip");
+    expect(strip).toHaveTextContent("handed over 42");
+    expect(strip).not.toHaveTextContent("billed");
+    expect(strip).not.toHaveTextContent("₹");
+  });
+
   it("shows nothing when the summary cannot be read", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
     const { container } = renderWithProviders(<CounterDayStrip />);

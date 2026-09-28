@@ -412,7 +412,8 @@ export async function fetchH1Register(from: string, to: string): Promise<WireH1R
 export type WireCounterSummary = {
   day: string; handedOver: number;
   medianMinutes: { queueToHandover: number | null; claimToHandover: number | null };
-  billedPaise: number;
+  /** Absent for a pharmacist whose own drawer is uncounted (blind count, owner ruling 2026-09-28). */
+  billedPaise?: number;
   open: { queued: number; claimed: number; verified: number; picked: number; billed: number };
   declinedLines: number; declinedTop: { reason: string; lines: number }[];
   substitutions: number; cancelled: number; refundedAfterBilling: number; returns: number;

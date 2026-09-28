@@ -725,6 +725,36 @@ describe("billing e2e", () => {
   });
 
   /**
+   * OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen"). The unfiltered list carries every
+   * receipt's amount, receiver and drawer, so a cashier could sum her own open session into what her
+   * drawer should hold. Without `billing.session.read` she gets receipts only for a named patient —
+   * which is how every cashier screen calls this route — and a supervisor keeps the whole list.
+   */
+  it("BLIND COUNT: the unfiltered receipt list is refused to a cashier without billing.session.read; her patient lookup answers; the supervisor's list stands", async () => {
+    await createRole(db, "plain_cashier_t", "plain_cashier_t");
+    for (const p of ["billing.invoice.read", "billing.receipt.record", "billing.session.own", "patients.read"]) {
+      await grantPermissionToRole(db, registry, "plain_cashier_t", p);
+    }
+    const plain = await mkUser(db, "plain_cashier", ["plain_cashier_t"]);
+    const patientId = await registerPatient("Suman Lata", "9876543230");
+    await openSession(plain.token);
+    await http().post("/billing/receipts").set(...auth(plain.token)).send({
+      patientId, tenders: [{ mode: "cash", amountPaise: 50_000 }], note: "advance",
+    }).expect(201);
+
+    const refused = await http().get("/billing/receipts").set(...auth(plain.token)).expect(403);
+    expect(refused.body.code).toBe("receipt_filter_required");
+    expect(JSON.stringify(refused.body)).not.toContain("50000");
+
+    const mine = await http().get("/billing/receipts").query({ patientId }).set(...auth(plain.token)).expect(200);
+    expect(mine.body.items).toHaveLength(1);
+
+    // `cashier` in this suite holds billing.session.read (COUNTER_PERMISSIONS): the supervisor's view
+    const all = await http().get("/billing/receipts").set(...auth(cashier.token)).expect(200);
+    expect(all.body.items).toHaveLength(1);
+  });
+
+  /**
    * The refund worklist's own disclosure: `payeeIdRef` is the identity-DOCUMENT reference captured
    * when the money leaves. `payeeName` and `payeeIdType` STAY — a worklist must show who is being
    * paid and against what kind of document; the reference is verified against the physical document

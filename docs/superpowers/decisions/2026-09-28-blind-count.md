@@ -34,14 +34,16 @@ person holds an `open` drawer opened on or before the day asked about, and the v
 | `GET /pharmacy/summary/mine` | `takenPaise` and `byMode` absent; the rail draws no money row |
 | Desk One (`desk-one.tsx`) | the header pill no longer shows "+₹ cash taken" beside the float; the dock's drawer answer no longer says what has come in (both were a client-side tally of her own bills) |
 
-Side effects, accepted: a nightly rollup of a day whose drawer is still open stores that day without
-the money facts; the 3-day lookback re-rolls it once the count is in. A supervisor's staff brief of a
-cashier (`/staff/:id/brief`) computes the live today with the subject as reader, so its today
-"collected" clause is also absent until her count — the drill (`/staff/:id/drill`) and the stored days
-are unaffected.
+| `GET /billing/receipts` with no `patientId` | refused (403 `receipt_filter_required`) to anyone without `billing.session.read`, drawer open or not; with a `patientId` it answers as before — every web caller (`billing-dues.tsx`, `billing-office.tsx`) names the patient |
+| `GET /pharmacy/summary` | `billedPaise` absent for a pharmacist whose own drawer is uncounted (`counterSummaryFor`); counts stay; the strip and the rail draw no money |
 
-Not changed (raw rows, not a figure — flagged): `GET /billing/receipts` with no `patientId` lists every
-receipt (total, change, session id) to any `billing.invoice.read` holder, a cashier included; a
-determined cashier could sum her own session's rows. `GET /pharmacy/summary` gives the whole
-counter's billed total, which equals one pharmacist's on a one-person counter. Closing either
-changes a shared list/counter screen and is left for a separate ruling.
+`/staff/:id/brief` computes the live today with the VIEWER as reader (`factsForWindow`'s optional
+trailing `reader`, kernel/desk/rollup.ts — additive; every other caller unchanged), so a drawer
+supervisor still reads a cashier's collected today; the cashier's own `/me/brief` stays blind.
+
+Side effect, accepted: a nightly rollup of a day whose drawer is still open stores that day without
+the money facts; the 3-day lookback re-rolls it once the count is in.
+
+Not changed, for the record: `GET /billing/invoices` lists invoice amounts to `billing.invoice.read`
+holders; at a pay-first counter the invoiced total approximates collections. Not in this ruling's
+scope as given; flagged.
