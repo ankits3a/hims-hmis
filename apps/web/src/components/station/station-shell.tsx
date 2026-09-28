@@ -68,10 +68,15 @@ const TONE: Record<NonNullable<StationStat["tone"]>, string | undefined> = {
 };
 
 export function StationShell({
-  brand, stations, current, title, place, stats, statsLabel,
+  seat = "lab", brand, stations, current, title, place, stats, statsLabel,
   lane, list, listSummary, clocks, clocksSummary, clocksAlert = false,
   copilot, inHand = false, views, children,
 }: {
+  /**
+   * The department's seat scope (`styles.css` scopes the paper / pine tokens to it). Defaults to the
+   * lab's, which every lab station relies on; imaging passes `"radiology"` (18-S RS1).
+   */
+  seat?: "lab" | "radiology";
   /** The department, in the header and over the lane — "Central lab". */
   brand: string;
   /** Every station of the department; the switch shows the ones `can()` allows, and `current`. */
@@ -148,7 +153,7 @@ export function StationShell({
   return (
     <div
       className={`st${listOpen ? " list-open" : ""}`}
-      data-seat="lab"
+      data-seat={seat}
       data-station={current}
       data-lang={i18n.language.startsWith("hi") ? "hi" : "en"}
       data-testid="station-shell"
