@@ -352,6 +352,7 @@ describe("the words behind the screen", () => {
     "materials_near_expiry_acceptance", "materials_vendor_bank_change", "materials_po_approval", "materials_po_approval_owner", "materials_payment_run_approval",
     "imaging_definition_publish",
     "ot_definition_publish", "ot_deposit_exception", "tariff_revision", "membership_grace_honor",
+    "pharmacy_restricted_antimicrobial", // pharmacy stage D5 — the antimicrobial steward's
   ];
 
   it("knows every type the server registers", () => {

@@ -12,6 +12,7 @@ import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsBy
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
 import { REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { assertStewardApprovals } from "./antimicrobial";
 import { assertNoColdChainHold } from "./cold-chain";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { prepareControlledHandover } from "./controlled-dispense";
@@ -131,6 +132,12 @@ export async function handOverDispense(
   const doctor = await getDoctor(db, rx.doctorId);
   const medicines = await medicinesByIds(db, lines.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
+  // STAGE D5 — a restricted antimicrobial leaves only with the steward's grant bound to this dispense, asked again at
+  // the last gate (a product restricted after verify is caught here), and never a grant the prescriber gave themselves.
+  await assertStewardApprovals(db, { id: d.id, patientId: d.patientId }, doctor?.userId ?? null, lines.map((l) => {
+    const medicine = l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId);
+    return { lineIdx: l.lineIdx, drug: medicine?.brandName ?? (l.rxLine as RxLine).drug, medicine };
+  }));
   /**
    * PHARMACY P6 — a controlled line (Schedule X, or an NDPS class) leaves the cabinet only when the
    * prescription carries what the law asks, the pharmacy keeps its copy, who took it is written down,

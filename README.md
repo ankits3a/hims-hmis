@@ -1347,6 +1347,10 @@ Both are defaults the owner may change.
 and `storekeeper`. `pharmacy.coldchain.manage` (adding and editing fridges, closing an excursion by releasing
 or writing off each held batch) goes to `pharmacy_incharge` and `materials_head`.
 Both are defaults the owner may change.
+**Pharmacy stage D5 adds the role `antimicrobial_steward`, held with a clinical role.** It holds
+`pharmacy.antimicrobial.approve` (reading a restricted-antimicrobial request's prescription line and prescriber)
+and the approvals pair `approvals.requests.read` and `approvals.requests.decide`, because it is the approver of
+`pharmacy_restricted_antimicrobial`. A steward may not approve their own prescription.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|

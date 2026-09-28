@@ -611,6 +611,20 @@ async function recordSale(
     // STAGE D3 — a walk-in sale does not take a batch a fridge excursion holds. A paper dispense is a record
     // of medicine already handed over during an outage, so it is recorded, not refused (the P20 rule).
     if (ctx.channel === "walk_in") await assertNoColdChainHold(db, store.id, plan.map((p) => ({ lineIdx: p.lineIdx, batchId: p.batchId })));
+    /*
+      STAGE D5 — a restricted antimicrobial is REFUSED at the walk-in counter, not gated: the steward's approval is
+      bound to this hospital's prescription on a dispense (the AMSP review of an indication our doctor wrote), and an
+      outside paper prescription has neither — the same reasoning as Schedule X and NDPS above, which leave only at
+      the OPD counter. A paper dispense (P20) is a record of medicine already handed over in an outage: recorded.
+    */
+    const restricted = ctx.channel === "walk_in" ? plan.find((p) => p.medicine.antimicrobialRestricted) : undefined;
+    if (restricted !== undefined) {
+      throw new PharmacyError(
+        "restricted_antimicrobial_walk_in",
+        `line ${String(restricted.lineIdx + 1)}: ${restricted.medicine.brandName} is a restricted antimicrobial — it is never sold at the walk-in counter on an outside prescription; it leaves only at the OPD counter against this hospital's prescription, once the antimicrobial steward has approved it`,
+        { lineIdx: restricted.lineIdx },
+      );
+    }
     const scheduled = plan.some((p) => isScheduled(p.scheduleFlag));
     const rx = rxInput === undefined ? null : cleanPrescription(rxInput, ctx.at);
     let pharmacistRegNo: string | null = null;

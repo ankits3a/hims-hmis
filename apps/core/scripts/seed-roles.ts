@@ -1657,6 +1657,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.coldchain.manage",
     ],
   },
+  /**
+   * PHARMACY STAGE D5 — THE ANTIMICROBIAL STEWARD, held IN ADDITION to a clinical role, as `pharmacy_incharge` is held
+   * with `pharmacy`. DECIDED 2026-09-28 (owner: "I leave upon you to choose the right and logical role"), per ICMR
+   * AMSP 2018: admin grants it to the infectious-disease physician; else the clinical microbiologist; else a senior
+   * physician the medical superintendent names as AMSP lead. It is the `approverRole` of
+   * `pharmacy_restricted_antimicrobial`, so it holds the generic approvals pair (a role named as approver that cannot
+   * open the queue is the silence `materials_head` once had), and its own grant to read the request's prescription
+   * line. It may not approve its own prescription: the counter's gate refuses a grant the prescriber gave.
+   */
+  {
+    roleKey: "antimicrobial_steward",
+    permissions: [
+      "approvals.requests.read",
+      "approvals.requests.decide",
+      "pharmacy.antimicrobial.approve",
+    ],
+  },
 ];
 
 /**
@@ -1901,6 +1918,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PLAN 16c T1 — the aide's title names the one thing the role cannot do.
   pharmacy_assistant: "Pharmacy Assistant (claims, picks and labels; completes NO Schedule H/H1 dispense)",
   pharmacy_incharge: "Pharmacist in Charge (held with pharmacy; the unredacted H1 register for the inspector)",
+  // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
+  antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */
