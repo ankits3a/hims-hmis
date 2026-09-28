@@ -1337,6 +1337,16 @@ template ids, the WhatsApp template names and the pharmacy's phone on the office
 `pharmacy.adr.record` (reporting a suspected adverse drug reaction on the PvPI form) goes to `pharmacy`,
 `pharmacy_incharge` and `doctor`. `pharmacy.adr.manage` (WHO-UMC causality, sent to PvPI, closed) goes to
 `pharmacy_incharge` and `medical_superintendent`. Both are defaults the owner may change.
+**Pharmacy stage D2 logs medication errors and near misses, blame-free.**
+`pharmacy.incidents.record` (logging a medication error or near miss, NCC MERP A–I) goes to `pharmacy`,
+`pharmacy_assistant`, `pharmacy_incharge` and `doctor`. `pharmacy.incidents.review` (root cause, action taken,
+closed; the only grant told the reporter's name) goes to `pharmacy_incharge` and `medical_superintendent`.
+Both are defaults the owner may change.
+**Pharmacy stage D3 logs the fridges twice a day, and an excursion holds the cold stock.**
+`pharmacy.coldchain.record` (reading a fridge: current, min and max) goes to `pharmacy`, `pharmacy_assistant`
+and `storekeeper`. `pharmacy.coldchain.manage` (adding and editing fridges, closing an excursion by releasing
+or writing off each held batch) goes to `pharmacy_incharge` and `materials_head`.
+Both are defaults the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1359,6 +1369,10 @@ template ids, the WhatsApp template names and the pharmacy's phone on the office
 | `pharmacy.messages.manage` | | | ✓ |
 | `pharmacy.adr.record` | ✓ | | ✓ |
 | `pharmacy.adr.manage` | | | ✓ |
+| `pharmacy.incidents.record` | ✓ | ✓ | ✓ |
+| `pharmacy.incidents.review` | | | ✓ |
+| `pharmacy.coldchain.record` | ✓ | ✓ | |
+| `pharmacy.coldchain.manage` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |
@@ -1370,9 +1384,10 @@ with the prescriber as the responsible clinician (the `lab_reception` shape), an
 requires the kernel permission AND the kind's own. `pharmacy` also carries the four cashier strings
 its window needs — `billing.invoice.issue`, `billing.invoice.read`, `billing.receipt.record`,
 `billing.session.own` — the `lab_reception` precedent, for the same reason: a counter that could
-pick but not bill would be a split with nothing to compensate for it. It does NOT gain
-`billing.credit.extend`: an OPD dispense is paid before the drug leaves, and the credit holds for
-IPD and TPA are 16d's. `pharmacy_assistant` gains `orders.read`, `patients.read` (the allergy
+pick but not bill would be a split with nothing to compensate for it. It gains
+`billing.credit.extend` only as the right to ASK: the owner ruled on 2026-09-28 that nobody but the owner
+issues credit, so an OPD dispense is paid before the drug leaves unless the owner grants that exact amount on
+credit (gap A3b). `pharmacy_assistant` gains `orders.read`, `patients.read` (the allergy
 register at the window, Group B's reason) and `formulary.read`, and no billing string at all — the
 aide picks, the pharmacist bills; the shelf it picks from is read for it by the counter's own routes. Both roles carry grants and, on this
 deployment, **no holders** until a registered pharmacist is assigned.
