@@ -10,7 +10,8 @@
     "theme": "Theme",
     "themeDark": "Dark",
     "themeLight": "Light",
-    "search": "Search — the cursor starts here"
+    "search": "Search — the cursor starts here",
+    "menu": "Menu"
   },
   "nav": {
     "formularyAdmin": "Formulary",
@@ -96,7 +97,6 @@
     "search": "/ — Search",
     "new": "F4 New patient",
     "confirm": "Ctrl+⏎ Confirm",
-    "release": "Esc Release the patient",
     "book": "F7 Appointments"
   },
   "login": {
@@ -255,7 +255,12 @@
     "unmergeNote": "Why must this be split?",
     "actFirst": "Act first (patient-safety) — review after",
     "unmergeExecute": "Execute unmerge",
-    "differs": "differs"
+    "differs": "differs",
+    "hitAge": "age {{age}}",
+    "hitDob": "DOB {{dob}}",
+    "change": "Change",
+    "alreadyPicked": "already {{side}}",
+    "sameRecord": "Record A and Record B are the same patient record. Pick two different records to merge."
   },
   "inbox": {
     "title": "Approvals",
@@ -633,6 +638,12 @@
     "newDate": "New date",
     "needsRebooking": "Needs rebooking",
     "backToList": "Back to list",
+    "bookingFor": "Booking for",
+    "changePatient": "Change",
+    "choosePatientFirst": "Choose the patient first — the times unlock once the desk knows who the booking is for.",
+    "slotBooked": "Booked",
+    "confirmTitle": "Confirm this booking",
+    "confirmBooking": "Confirm booking",
     "status": {
       "booked": "Booked",
       "checked_in": "Checked in",
@@ -1383,8 +1394,13 @@
     "short": "Short",
     "over": "Over",
     "cancel": "Cancel",
-    "confirmClose": "Confirm close",
-    "approvalPending": "Variance approval {{approvalId}} is pending — a billing manager other than you must decide it.",
+    "confirmClose": "Finish closing",
+    "confirmCloseHint": "After a billing manager approves the variance, press Finish closing to close this drawer. Until then it will not close.",
+    "notApprovedYet": "Not approved yet. A billing manager has to approve this variance before the drawer can close.",
+    "approvalPending": "Waiting for a billing manager to approve this variance. It has to be someone other than you.",
+    "approvalPendingSince": "Waiting since {{time}} for a billing manager to approve this variance. It has to be someone other than you.",
+    "approvalGranted": "A billing manager approved this variance. Finish closing to close the drawer.",
+    "approvalRejected": "A billing manager did not approve this variance. Withdraw the count and count the drawer again.",
     "lockout": "Your drawer is awaiting a variance approval. You cannot take money at the counter until a billing manager approves this variance, because every receipt and cash voucher payment needs an OPEN session.",
     "status": {
       "open": "OPEN",
