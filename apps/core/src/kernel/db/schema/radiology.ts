@@ -102,8 +102,12 @@ export const IMAGING_GATE_KIND_VALUES = [
  * DD13 — the three governed definition kinds, and 18b T3's fourth: where the images are viewed.
  * 18c T3 added the DRL book; 18-S RS6 adds `imaging_protocols`, the protocol book the room console
  * reads (technique, contrast per kg, breath-hold script) — authored by the HOD, never seeded.
+ * 18-S RS8a adds the reading room's two books: `report_templates` (the structured templates with
+ * their coded categories) and `report_signatories` (who may sign an imaging report, with the
+ * qualification and council number the print carries — ruling 4). Both are authored by the HOD and
+ * approved by the medical superintendent; neither is seeded active.
  */
-export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels", "imaging_protocols"] as const;
+export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels", "imaging_protocols", "report_templates", "report_signatories"] as const;
 
 /** DD15 — the report version chain's five states. `prelim` is O-11's UNVERIFIED draft. */
 export const IMAGING_REPORT_STATUSES = ["prelim", "draft", "signed", "amended", "superseded"] as const;
@@ -436,6 +440,22 @@ export const imagingReports = pgTable(
      * this column exists here rather than being invented by 18b on a table it does not own.
      */
     provenance: jsonb("provenance"),
+    /**
+     * 18-S RS8a / ruling 4 — WHO SIGNED, AS A PERSON, AS THEY WERE ON THE DAY: name, qualification,
+     * designation, council registration number, Doctor ID, and the signature marker (the second
+     * factor's instant, the authenticator it came from, and a SHA-256 of the signed content).
+     * Written on the INSERT of a signed version and never after — the append-only trigger already
+     * covers every column but `status` and `published_at`, so a later rename or a new council
+     * number cannot rewrite a report already handed to a patient. NULL on drafts and prelims, and on
+     * every version signed before RS8a (no backfill: those were signed without it).
+     */
+    signer: jsonb("signer"),
+    /**
+     * 18-S RS8a — the deterministic pre-sign checks as they ran at THIS signature: which checks,
+     * every warning they raised and that the signer acknowledged each one. A refusal never reaches
+     * a row. NULL on drafts, prelims and on versions signed before RS8a.
+     */
+    signChecks: jsonb("sign_checks"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

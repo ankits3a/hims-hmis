@@ -1030,6 +1030,13 @@
       "when": 1790660872925,
       "tag": "0146_radiology_room_console",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1790668046476,
+      "tag": "0147_radiology_reading_room",
+      "breakpoints": true
     }
   ]
 }
