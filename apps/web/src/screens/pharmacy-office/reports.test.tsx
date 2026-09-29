@@ -370,7 +370,11 @@ describe("the office's reports — stage C", () => {
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-catalogue"));
     const row = await screen.findByTestId("catalogue-table-row-i-cr");
-    for (const text of ["CROC", "30049099", "12%", "OTC", "Cold 2–8 °C", "GSK", "Yes", "1 tablet · strip = 10", "PHARM-OPD 20/50/200 · WARD-3 5/10/40", "PHARM-OPD R-12"]) expect(row).toHaveTextContent(text);
+    for (const text of ["CROC", "30049099", "12%", "OTC", "Cold 2–8 °C", "GSK", "Yes"]) expect(row).toHaveTextContent(text);
+    // Packs, levels and racks are one entry to a line, each unbroken — joined with " · " they wrapped
+    // mid-entry at 1440 ("PHARM-OPD R-" / "12-B"). The export still carries the joined text.
+    expect(Array.from(row.querySelectorAll("td > div.whitespace-nowrap"), (d) => d.textContent))
+      .toEqual(["1 tablet", "strip = 10", "PHARM-OPD 20/50/200", "WARD-3 5/10/40", "PHARM-OPD R-12"]);
     await userEvent.selectOptions(screen.getByTestId("catalogue-store"), "PHARM-OPD");
     await waitFor(() => expect(calls.some((c) => c.path === "/pharmacy/office/reports/catalogue?store=PHARM-OPD")).toBe(true));
     await waitFor(() => expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(expect.arrayContaining(["Min", "Reorder", "Max", "Rack"])));
