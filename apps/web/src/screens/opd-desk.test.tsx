@@ -67,23 +67,11 @@ function doctor(id: string, displayName: string): Record<string, unknown> {
  * would be a shape the server cannot send.
  */
 const SUMMARY = [
-  { doctor: doctor("doc-1", "Dr Meera Rao"), sessionId: "sess-1", status: "in", waitingCount: 4, waitingVitalsCount: 1, nowServing: 3, scheduledToday: true, roomCode: "12", onLeaveToday: false },
-  { doctor: doctor("doc-2", "Dr Anil Verma"), sessionId: "sess-2", status: "out", waitingCount: 2, waitingVitalsCount: 0, nowServing: 7, scheduledToday: true, roomCode: "14", onLeaveToday: false },
-  { doctor: doctor("doc-3", "Dr Kavita Nair"), sessionId: "sess-3", status: "not_started", waitingCount: 0, waitingVitalsCount: 0, nowServing: null, scheduledToday: true, roomCode: "14", onLeaveToday: false },
-  { doctor: doctor("doc-4", "Dr Sameer Bose"), sessionId: null, status: "none", waitingCount: 0, waitingVitalsCount: 0, nowServing: null, scheduledToday: false, roomCode: null, onLeaveToday: false },
+  { doctor: doctor("doc-1", "Dr Meera Rao"), sessionId: "sess-1", status: "in", waitingCount: 4, waitingVitalsCount: 1, nowServing: 3, scheduledToday: true, roomCode: "12", onLeaveToday: false, avgConsultMinutes: 6 },
+  { doctor: doctor("doc-2", "Dr Anil Verma"), sessionId: "sess-2", status: "out", waitingCount: 2, waitingVitalsCount: 0, nowServing: 7, scheduledToday: true, roomCode: "14", onLeaveToday: false, avgConsultMinutes: 6 },
+  { doctor: doctor("doc-3", "Dr Kavita Nair"), sessionId: "sess-3", status: "not_started", waitingCount: 0, waitingVitalsCount: 0, nowServing: null, scheduledToday: true, roomCode: "14", onLeaveToday: false, avgConsultMinutes: 6 },
+  { doctor: doctor("doc-4", "Dr Sameer Bose"), sessionId: null, status: "none", waitingCount: 0, waitingVitalsCount: 0, nowServing: null, scheduledToday: false, roomCode: null, onLeaveToday: false, avgConsultMinutes: 6 },
 ];
-
-const SEARCH_HIT = {
-  id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", phone: "9876500000", sex: "female",
-  dob: null, isConfidential: false, hasPhoto: false,
-};
-const QR = { payload: "1.p-1.HMS0000001234.3.6f2a9c", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null };
-
-/** POST /opd/visits answers OpenVisitResult; the desk reads tokenNo / roomId / visitType off it. */
-const OPEN_RESULT = { tokenNo: 11, sessionId: "sess-1", roomId: "room-1", visitType: "revisit", doctorScheduledToday: true,
-  // The open-visit response has always carried the encounter; the slip started READING it when
-  // the visit number landed on it, which is why this key appears here and not before.
-  encounter: { id: "enc-1", visitNo: "V2608180011" } };
 
 function entry(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -127,31 +115,15 @@ function bodiesOf(method: string, path: string): Record<string, unknown>[] {
   return callsTo(method, path).map((c) => JSON.parse(c.body === "" ? "{}" : c.body) as Record<string, unknown>);
 }
 
+async function act_(): Promise<void> {
+  await act(async () => { await Promise.resolve(); });
+}
+
 async function pickDepartment(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   const select = await screen.findByLabelText("Department");
   await waitFor(() => expect(within(select).getByText("General medicine")).toBeInTheDocument());
   await user.selectOptions(select, "dep-1");
 }
-
-async function pickPatient(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.type(screen.getByLabelText("Search"), "98765");
-  await user.click(await screen.findByRole("button", { name: /Asha Devi/ }));
-  expect(await screen.findByText(/Selected patient: Asha Devi/)).toBeInTheDocument();
-}
-
-/**
- * PLAN 07b T2 — `useNavigate` is the one TanStack Router hook this screen calls (the token slip's
- * handoff to `/billing?encounterId=…`). Everything else in the module stays REAL, for the reason
- * `billing-counter.test.tsx` records: `PatientPicker` pulls in router hooks of its own, and a
- * factory that dropped them would fail at access time rather than tell us anything. (FD-7 T3 cut the
- * screen-for-a-component import that used to make this worse.) A `<Link>` was tried first and cannot work here — it needs a `RouterProvider`
- * this suite deliberately does not mount.
- */
-const navigate = vi.hoisted(() => vi.fn());
-vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
-  useNavigate: () => navigate,
-}));
 
 describe("OpdDesk", () => {
   beforeEach(() => {
@@ -241,163 +213,113 @@ describe("OpdDesk", () => {
     expect(screen.getAllByText("Not scheduled today")).toHaveLength(1);
   });
 
-  it("Open visit posts { patientId, departmentId, doctorId, intendedPayer } — referral source only when chosen — and renders the slip with the returned token, room and visit type", async () => {
-    stubFetch({
-      "GET /api/opd/departments": { items: DEPARTMENTS },
-      "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/patients/search": { items: [SEARCH_HIT] },
-      "GET /api/opd/appointments": { items: [] },
-      "GET /api/opd/patients/p-1/timeline": { items: [] },
-      "POST /api/opd/visits": OPEN_RESULT,
-      "GET /api/patients/p-1/qr": QR,
-    });
-    const { container } = renderWithProviders(<OpdDesk />);
-    const user = userEvent.setup();
-
-    await pickDepartment(user);
-    await pickPatient(user);
-    await screen.findByTestId("board-row-doc-1");
-
-    await user.click(screen.getByTestId("open-visit-doc-1"));
-
-    await waitFor(() => expect(callsTo("POST", "/api/opd/visits")).toHaveLength(1));
-    // The default lane: payer defaults to self and NO referral key travels at all.
-    expect(bodiesOf("POST", "/api/opd/visits")[0]).toEqual({
-      patientId: "p-1", departmentId: "dep-1", doctorId: "doc-1", intendedPayer: "self",
-    });
-
-    await waitFor(() => expect(callsTo("GET", "/api/patients/p-1/qr")).toHaveLength(1));
-    const slip = container.querySelector("[data-testid='token-card']") as HTMLElement;
-    expect(slip).not.toBeNull();
-    expect(within(slip).getByTestId("token-no")).toHaveTextContent("MED-11"); // FD-20 grammar
-    // The wiring, not the rendering (token-slip.test.tsx owns that): the number the API returned
-    // on the encounter is the number that reaches the paper.
-    expect(within(slip).getByTestId("visit-no")).toHaveTextContent("V2608180011");
-    expect(within(slip).getByText("Room: 12")).toBeInTheDocument(); // roomId room-1 → code 12
-    expect(within(slip).getByText("MED · General medicine")).toBeInTheDocument();
-    expect(within(slip).getByText("Dr Meera Rao")).toBeInTheDocument();
-    // The badge reflects the RESPONSE's visitType, and the owner's free-follow-up line rides revisit.
-    expect(screen.getByTestId("visit-type-badge")).toHaveTextContent("Revisit");
-    expect(screen.getByText(/Free follow-up/)).toBeInTheDocument();
-    // Exactly one token card is ever mounted (it replaces the desk view). FD-24 T6 removed the
-    // `.print-doc` isolation with the browser print path; the card is a screen confirmation now.
-    expect(container.querySelectorAll("[data-testid='token-card']")).toHaveLength(1);
-    expect(container.querySelectorAll(".print-doc")).toHaveLength(0);
-
-    await user.click(screen.getByRole("button", { name: "Next patient" }));
-    await pickPatient(user);
-    await user.selectOptions(screen.getByLabelText("Referral source"), "camp");
-    await user.type(screen.getByLabelText("Referrer name"), "Ward camp");
-    await user.click(screen.getByTestId("open-visit-doc-1"));
-
-    await waitFor(() => expect(callsTo("POST", "/api/opd/visits")).toHaveLength(2));
-    expect(bodiesOf("POST", "/api/opd/visits")[1]).toEqual({
-      patientId: "p-1", departmentId: "dep-1", doctorId: "doc-1", intendedPayer: "self",
-      referralSource: "camp", referrerName: "Ward camp",
-    });
-  });
-
   /**
-   * PLAN 07b T2 — THE RAIL THAT WAS BUILT AND NEVER SENT.
+   * ═══ UX-AUDIT 2026-09-28 — THE QUEUE DESK, NOT A SECOND REGISTRATION DESK ═══
    *
-   * `router.tsx` documented `/billing?encounterId=…` as the OPD desk's handoff to the counter,
-   * `billing-counter.tsx` read the param and its suite covered the deep link — and NOTHING in the
-   * app ever constructed it, so every cashier re-found the patient and typed the visit id by hand.
-   * These two assertions are what stop that regressing, and they are a pair on purpose: the link
-   * must appear for a chargeable visit and must NOT appear for a free follow-up.
+   * The Chromium audit found this route drawing a patient search, a payer/referral form and an
+   * "Open visit" on every doctor row beside a doctor dropdown — Desk One's job, done a second way.
+   * The decision (docs/superpowers/decisions/2026-09-28-opd-desk.md) moved that door to Desk One.
+   * These pin the absence AND the one door that replaces it, so the pair cannot pass on an empty
+   * screen.
    */
-  it("a chargeable visit's slip hands off to the counter carrying the encounter id", async () => {
+  it("UX-AUDIT 2026-09-28: opens no visits here — no search, no payer/referral, no per-row Open visit; the door is Desk One", async () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
       "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/patients/search": { items: [SEARCH_HIT] },
-      "GET /api/opd/appointments": { items: [] },
-      "GET /api/opd/patients/p-1/timeline": { items: [] },
-      "POST /api/opd/visits": { ...OPEN_RESULT, visitType: "new" },
-      "GET /api/patients/p-1/qr": QR,
+    });
+    renderWithProviders(<OpdDesk />);
+    await pickDepartment(userEvent.setup());
+    await screen.findByTestId("board-row-doc-1");
+
+    expect(screen.queryByLabelText("Search")).toBeNull();
+    expect(screen.queryByLabelText("Payer")).toBeNull();
+    expect(screen.queryByLabelText("Referral source")).toBeNull();
+    expect(screen.queryByTestId("open-visit-doc-1")).toBeNull();
+    // ONE way to choose a doctor: the board row. No doctor dropdown competes with it.
+    expect(screen.queryByLabelText("Doctor")).toBeNull();
+    expect(screen.getByTestId("open-visit-desk-one")).toHaveAttribute("href", "/counter");
+  });
+
+  it("UX-AUDIT 2026-09-28: a token taken from the list is drawn ONCE, in the lane; Esc puts it down", async () => {
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/opd/queues": QUEUE_VIEW,
     });
     renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
     await pickDepartment(user);
-    await pickPatient(user);
-    await screen.findByTestId("board-row-doc-1");
-    await user.click(screen.getByTestId("open-visit-doc-1"));
+    await user.click(await screen.findByTestId("board-pick-doc-1"));
+    const row = await screen.findByTestId("queue-row-qe-1");
+    expect(screen.queryByTestId("in-hand")).toBeNull();
 
-    await user.click(await screen.findByTestId("take-payment"));
-    expect(navigate).toHaveBeenCalledWith({ to: "/billing", search: { encounterId: "enc-1" } });
+    await user.click(row);
+    const lane = screen.getByTestId("in-hand");
+    expect(within(lane).getByText("Asha Devi")).toBeInTheDocument();
+    expect(within(lane).getByText(/HMS0000001234/)).toBeInTheDocument();
+    expect(row).toHaveAttribute("aria-pressed", "true");
+    // The list row and the lane — and nowhere else: no "Selected patient" card, no strip.
+    expect(screen.getAllByText("Asha Devi")).toHaveLength(2);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("in-hand")).toBeNull();
+    expect(row).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("a free follow-up's slip offers NO payment step — it names the vitals desk instead", async () => {
+  it("UX-AUDIT 2026-09-28: the line is one list with a source chip on every row and no filter tabs; Transfer is the pinned next act for a doctor on leave with people waiting", async () => {
+    const away = { ...SUMMARY[0]!, onLeaveToday: true, scheduledToday: false };
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
-      "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/patients/search": { items: [SEARCH_HIT] },
-      "GET /api/opd/appointments": { items: [] },
-      "GET /api/opd/patients/p-1/timeline": { items: [] },
-      "POST /api/opd/visits": OPEN_RESULT, // visitType: "revisit"
-      "GET /api/patients/p-1/qr": QR,
+      "GET /api/opd/queues/summary": { items: [away, ...SUMMARY.slice(1)] },
+      "GET /api/opd/queues": QUEUE_VIEW,
     });
     renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
     await pickDepartment(user);
-    await pickPatient(user);
-    await screen.findByTestId("board-row-doc-1");
-    await user.click(screen.getByTestId("open-visit-doc-1"));
+    await user.click(await screen.findByTestId("board-pick-doc-1"));
+    await screen.findByTestId("queue-row-qe-1");
 
-    await screen.findByTestId("slip-next-step");
-    expect(screen.queryByTestId("take-payment")).toBeNull();
+    expect(within(screen.getByTestId("queue-row-qe-1")).getByText("Walk-in")).toBeInTheDocument();
+    expect(within(screen.getByTestId("queue-row-qe-2")).getByText("Returned with results")).toBeInTheDocument();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByRole("columnheader", { name: "Actions" })).toBeNull();
+
+    const bar = screen.getByTestId("action-bar");
+    expect(within(bar).getByText(/On leave today — 4 still waiting/)).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: "Transfer queue" })).toHaveClass("od-pri");
   });
 
-  it("today's arrivals for the picked patient show the booked appointment with Check in → the slip, beside the last-visit hint", async () => {
-    const appointment = {
-      id: "ap-1", patientId: "p-1", doctorId: "doc-1", departmentId: "dep-1", serviceDate: TODAY,
-      slotStart: "2026-08-18T04:30:00.000Z", slotEnd: "2026-08-18T04:40:00.000Z", status: "booked", source: "desk",
-      note: null, encounterId: null, rescheduledToId: null, rescheduledFromId: null, cancelReason: null, leaveId: null,
-      bookedBy: "u-1", bookedAt: NOW_ISO, updatedBy: "u-1", updatedAt: NOW_ISO,
-      patient: { requestedId: "p-1", id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, sex: "female", dob: null },
-    };
+  it("moving ONE token in hand posts only that entry, still behind consent", async () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },
       "GET /api/opd/rooms": { items: ROOMS },
       "GET /api/opd/queues/summary": { items: SUMMARY },
-      "GET /api/patients/search": { items: [SEARCH_HIT] },
-      "GET /api/opd/appointments": { items: [appointment] },
-      "GET /api/opd/patients/p-1/timeline": {
-        items: [{
-          encounterId: "enc-0", serviceDate: "2026-08-04", openedAt: "2026-08-04T04:00:00.000Z", status: "completed",
-          visitType: "new", doctorId: "doc-1", doctorName: "Dr Meera Rao", departmentId: "dep-1",
-          departmentName: "General medicine", diagnosis: "Fever", icd10Code: null, prescriptionLineCount: 2, dangerFlagged: false,
-        }],
-      },
-      "POST /api/opd/appointments/ap-1/check-in": { ...OPEN_RESULT, tokenNo: 9, roomId: "room-2", visitType: "new", encounter: { id: "enc-9", visitNo: "V2608180009" } },
-      "GET /api/patients/p-1/qr": QR,
+      "GET /api/opd/queues": QUEUE_VIEW,
+      "POST /api/opd/queues/transfer": { transferred: 1, toSessionId: "sess-2" },
     });
-    const { container } = renderWithProviders(<OpdDesk />);
+    renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
-
     await pickDepartment(user);
-    await pickPatient(user);
+    await user.click(await screen.findByTestId("board-pick-doc-1"));
+    await user.click(await screen.findByTestId("queue-row-qe-1"));
+    await user.click(screen.getByTestId("move-qe-1"));
 
-    await waitFor(() => expect(callsTo("GET", "/api/opd/appointments")).toHaveLength(1));
-    expect(callsTo("GET", "/api/opd/appointments")[0]!.url).toBe(`/api/opd/appointments?patientId=p-1&serviceDate=${TODAY}`);
-    expect(await screen.findByText("Last seen 2026-08-04 · General medicine")).toBeInTheDocument();
+    const form = screen.getByTestId("od-act");
+    await user.selectOptions(within(form).getByLabelText("To doctor"), "doc-2");
+    await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    await act_();
+    expect(callsTo("POST", "/api/opd/queues/transfer")).toHaveLength(0);
 
-    const arrivals = await screen.findByTestId("arrivals");
-    expect(within(arrivals).getByText("10:00")).toBeInTheDocument(); // 04:30Z → 10:00 IST
-    expect(within(arrivals).getByText("Booked")).toBeInTheDocument();
-
-    await user.click(within(arrivals).getByTestId("checkin-ap-1"));
-
-    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/check-in")).toHaveLength(1));
-    const slip = container.querySelector("[data-testid='token-card']") as HTMLElement;
-    expect(slip).not.toBeNull();
-    expect(within(slip).getByTestId("token-no")).toHaveTextContent("MED-9");
-    expect(within(slip).getByTestId("visit-no")).toHaveTextContent("V2608180009");
-    expect(within(slip).getByText("Room: 14")).toBeInTheDocument(); // roomId room-2 → code 14
-    expect(screen.getByTestId("visit-type-badge")).toHaveTextContent("New");
+    await user.click(within(form).getByLabelText(/consented to the transfer/));
+    await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/queues/transfer")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/opd/queues/transfer")[0]).toEqual({
+      fromDoctorId: "doc-1", toDoctorId: "doc-2", serviceDate: TODAY, entryIds: ["qe-1"], consented: true, reason: "",
+    });
+    expect(await within(form).findByText("1 moved")).toBeInTheDocument();
   });
 
   it("the queue overview refetches on a queue.called frame — timers frozen so the 15 s poll provably cannot be the cause", async () => {
@@ -486,22 +408,24 @@ describe("OpdDesk", () => {
     await user.click(await screen.findByTestId("board-pick-doc-1"));
     await screen.findByTestId("queue-row-qe-1");
 
+    // UX-AUDIT 2026-09-28 — the token is taken into the lane, the act is chosen in step 3 and
+    // confirmed from the pinned bar; the table's clipped Actions column and its dialog are gone.
+    await user.click(screen.getByTestId("queue-row-qe-1"));
     await user.click(screen.getByTestId("abandon-qe-1"));
-    const dialog = await screen.findByRole("dialog");
-    // The dialog really is open and really is showing the reason control — the absence of a request
-    // below is therefore about the empty reason, not about a dialog that never rendered.
+    const dialog = screen.getByTestId("od-act");
+    // The form really is open and really is showing the reason control — the absence of a request
+    // below is therefore about the empty reason, not about a form that never rendered.
     expect(within(dialog).getByLabelText("Reason")).toHaveValue("");
 
-    await user.click(within(dialog).getByRole("button", { name: "Confirm abandon" }));
+    await user.click(screen.getByRole("button", { name: "Confirm abandon" }));
     await act(async () => {
       await Promise.resolve();
     });
     expect(callsTo("POST", "/api/opd/visits/enc-1/abandon")).toHaveLength(0);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(within(dialog).getByRole("alert")).toHaveTextContent("A reason is required");
 
     await user.type(within(dialog).getByLabelText("Reason"), "Patient left");
-    await user.click(within(dialog).getByRole("button", { name: "Confirm abandon" }));
+    await user.click(screen.getByRole("button", { name: "Confirm abandon" }));
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/abandon")).toHaveLength(1));
     expect(bodiesOf("POST", "/api/opd/visits/enc-1/abandon")[0]).toEqual({ reason: "Patient left" });
@@ -538,21 +462,20 @@ describe("OpdDesk", () => {
     await screen.findByTestId("queue-row-qe-1");
 
     await user.click(screen.getByRole("button", { name: "Transfer queue" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = screen.getByTestId("od-act");
     await user.selectOptions(within(dialog).getByLabelText("To doctor"), "doc-2");
     await user.type(within(dialog).getByLabelText("Reason"), "Doctor called to ward");
 
     // Everything except consent is supplied — so a request now could only mean the consent rule is gone.
-    await user.click(within(dialog).getByRole("button", { name: "Confirm transfer" }));
+    await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
     await act(async () => {
       await Promise.resolve();
     });
     expect(callsTo("POST", "/api/opd/queues/transfer")).toHaveLength(0);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(within(dialog).getByRole("alert")).toHaveTextContent("Consent is required");
 
     await user.click(within(dialog).getByLabelText(/consented to the transfer/));
-    await user.click(within(dialog).getByRole("button", { name: "Confirm transfer" }));
+    await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/queues/transfer")).toHaveLength(1));
     expect(bodiesOf("POST", "/api/opd/queues/transfer")[0]).toEqual({

@@ -70,13 +70,14 @@ const TONE: Record<NonNullable<StationStat["tone"]>, string | undefined> = {
 export function StationShell({
   seat = "lab", brand, stations, current, title, place, stats, statsLabel,
   lane, list, listSummary, clocks, clocksSummary, clocksAlert = false,
-  copilot, inHand = false, views, closeListOn, children,
+  copilot, inHand = false, views, listRequest, closeListOn, children,
 }: {
   /**
    * The department's seat scope (`styles.css` scopes the paper / pine tokens to it). Defaults to the
-   * lab's, which every lab station relies on; imaging passes `"radiology"` (18-S RS1).
+   * lab's, which every lab station relies on; imaging passes `"radiology"` (18-S RS1); the OPD queue
+   * desk passes `"opd-desk"` (UX-AUDIT 2026-09-28) so its own DOM does not say `lab`.
    */
-  seat?: "lab" | "radiology";
+  seat?: "lab" | "radiology" | "opd-desk";
   /** The department, in the header and over the lane — "Central lab". */
   brand: string;
   /** Every station of the department; the switch shows the ones `can()` allows, and `current`. */
@@ -109,6 +110,12 @@ export function StationShell({
    * left under a scrim. Absent: the drawer closes only on its own toggle, Esc or the scrim.
    */
   closeListOn?: string | null;
+  /**
+   * UX-AUDIT 2026-09-28 — a screen's own act can open or close the drawer below 1280px: the OPD desk
+   * opens it when a doctor is chosen (their line IS the answer) and closes it when a token is taken
+   * (the lane is). A new `seq` is a new request; the header's List button still works as before.
+   */
+  listRequest?: { open: boolean; seq: number };
   children: React.ReactNode;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
@@ -126,6 +133,9 @@ export function StationShell({
   const folded = inHand && copilot !== undefined && !listChoice;
 
   useEffect(() => { setListChoice(false); }, [inHand]);
+  useEffect(() => {
+    if (listRequest !== undefined && listRequest.seq > 0) setListOpen(listRequest.open);
+  }, [listRequest]);
   /** 18-S RS11 — the header Menu folds too: a view picked from it (a tab) must not stay covered. */
   useEffect(() => { if (closeListOn !== undefined) { setListOpen(false); setMenuOpen(false); } }, [closeListOn]);
 
