@@ -44,7 +44,16 @@ function mins(n: number | null): string {
   if (n === null) return "—";
   if (n < 60) return `${String(n)} min`;
   const h = Math.floor(n / 60);
-  return h < 48 ? `${String(h)} h ${String(n % 60)} m` : `${String(Math.floor(h / 24))} d`;
+  if (h >= 48) return `${String(Math.floor(h / 24))} d`;
+  return n % 60 === 0 ? `${String(h)} h` : `${String(h)} h ${String(n % 60)} m`;
+}
+
+/** An approval's subject in the reader's words: the gate by name, then the accession — never a schema code. */
+function useSubject(): (a: WireApproval) => string {
+  const { t } = useTranslation();
+  return (a) => (a.gateKind !== null
+    ? [t(`radiology.gate.${a.gateKind}`, { defaultValue: a.gateKind }), a.accessionNo, a.studyTypeCode].filter(Boolean).join(" · ")
+    : t(`radiology.hod.approvalType.${a.typeKey}`, { defaultValue: a.typeKey }));
 }
 
 function useFloor() {
@@ -235,7 +244,7 @@ function FloorBody({ f }: { f: WireFloor }): React.ReactElement {
   return (
     <>
       <p className="m-0 rounded border bg-card p-2 text-sm" data-testid="hod-brief"><b>{t("radiology.hod.brief.title")}</b> {brief.join(" ")}</p>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-6">
         <Tile label={t("radiology.hod.tile.acted")} value={f.turnaround.northStar.orderToActed.n}
           sub={t("radiology.hod.tile.actedSub", { median: mins(f.turnaround.northStar.orderToActed.medianMin), unread: f.turnaround.northStar.signedUnreadOver24h })} />
         <Tile label={t("radiology.hod.tile.red")} value={f.criticals.openRed} tone={f.criticals.openRed > 0 ? "bad" : "ok"}
@@ -253,7 +262,7 @@ function FloorBody({ f }: { f: WireFloor }): React.ReactElement {
       </div>
 
       <Card title={t("radiology.hod.pipeline")} testId="hod-pipeline">
-        <ol className="m-0 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-4 xl:grid-cols-8">
+        <ol className="m-0 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-4 2xl:grid-cols-8">
           {FLOOR_STAGES.map((s) => {
             const p = stage(s);
             return (
@@ -270,8 +279,7 @@ function FloorBody({ f }: { f: WireFloor }): React.ReactElement {
         </ol>
       </Card>
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        <Card title={t("radiology.hod.rooms")} testId="hod-rooms">
+      <Card title={t("radiology.hod.rooms")} testId="hod-rooms">
           <Table label={t("radiology.hod.rooms")} head={[t("radiology.hod.col.room"), t("radiology.hod.col.state"), t("radiology.hod.col.queue"), t("radiology.hod.col.onTable"), t("radiology.hod.col.nextFree"), t("radiology.hod.col.tech")]}>
             {f.rooms.map((r) => (
               <tr key={r.deviceId} className={`border-b ${r.status === "down" || r.status === "qa_blocked" ? "bg-red-50" : r.licensedNow === false ? "bg-amber-50" : ""}`}
@@ -281,12 +289,13 @@ function FloorBody({ f }: { f: WireFloor }): React.ReactElement {
                 <td className="mo p-1 text-right">{r.queue}</td>
                 <td className="mo p-1">{r.onTable ?? "—"}</td>
                 <td className="mo p-1">{r.nextFreeAt === null ? t("radiology.hod.outOfService") : fmtIst(r.nextFreeAt)}</td>
-                <td className="p-1 text-xs text-muted-foreground">{t("radiology.hod.rosterSaysNot")}</td>
+                <td className="p-1 text-xs text-muted-foreground">—</td>
               </tr>
             ))}
           </Table>
-        </Card>
-        <div className="grid content-start gap-3">
+          <p className="m-0 mt-2 text-xs text-muted-foreground" data-testid="hod-tech-note">{t("radiology.hod.rosterSaysNot")}</p>
+      </Card>
+      <div className="grid gap-3 xl:grid-cols-2">
           <Card title={t("radiology.hod.readers")} testId="hod-readers">
             <p className="m-0 text-sm">{t("radiology.hod.readersLine", { toRead: f.readers.toRead, stat: f.readers.stat, drafted: f.readers.drafted, unclaimed: f.readers.unclaimed })}</p>
             <ul className="m-0 mt-1 list-none p-0 text-sm">
@@ -302,15 +311,14 @@ function FloorBody({ f }: { f: WireFloor }): React.ReactElement {
                     <td className="p-1">{t(`radiology.setup.modality.${r.modality}`, { defaultValue: r.modality })}</td>
                     <td className="p-1">{r.source}</td>
                     <td className="mo p-1 text-right">{r.n}</td>
-                    <td className="mo p-1">{mins(r.medianMin)}</td>
-                    <td className="mo p-1">{mins(r.p90Min)}</td>
-                    <td className="mo p-1">{mins(r.targetMin)}{r.withinTarget === null ? "" : r.withinTarget ? " ✓" : " ✗"}</td>
+                    <td className="mo whitespace-nowrap p-1">{mins(r.medianMin)}</td>
+                    <td className="mo whitespace-nowrap p-1">{mins(r.p90Min)}</td>
+                    <td className="mo whitespace-nowrap p-1">{mins(r.targetMin)}{r.withinTarget === null ? "" : r.withinTarget ? " ✓" : " ✗"}</td>
                   </tr>
                 ))}
               </Table>
             )}
           </Card>
-        </div>
       </div>
 
       {(f.licenceGaps.length > 0 || f.qaOverdue.length > 0) && (
@@ -421,7 +429,9 @@ function EscalationsView({ item }: { item: string | null }): React.ReactElement 
     <section className="space-y-3" data-testid="hod-escalation">
       <div className="rounded border bg-card p-3 text-sm">
         <h2 className="m-0 text-base font-semibold">{t(`radiology.hod.cause.${inHand.cause}`)}</h2>
-        <p className="m-0 mt-1">{inHand.detail}</p>
+        <p className="m-0 mt-1">{inHand.gateKinds !== null
+          ? t("radiology.hod.gatesOpen", { gates: inHand.gateKinds.map((k) => t(`radiology.gate.${k}`, { defaultValue: k })).join(", ") })
+          : inHand.detail}</p>
         <p className="m-0 mt-1 text-xs text-muted-foreground">{t("radiology.hod.closesAt", { seat: t(`radiology.hod.seat.${inHand.cause}`) })}</p>
       </div>
       <div className="rounded border bg-card p-3 text-sm space-y-2" data-testid="hod-acts">
@@ -489,6 +499,7 @@ function ApprovalsView(): React.ReactElement {
   const rows = useMemo(() => q.data?.rows ?? [], [q.data]);
   const [sel, setSel] = useState<string | null>(null);
   const inHand: WireApproval | null = rows.find((r) => r.approvalId === sel) ?? null;
+  const subjectOf = useSubject();
   const [reason, setReason] = useState("");
   const [error, setError] = useState<{ code: string | null; message: string } | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -527,7 +538,7 @@ function ApprovalsView(): React.ReactElement {
             <button type="button" onClick={() => { setSel(r.approvalId); setError(null); setDone(null); }}
               className={`w-full rounded border p-2 text-left text-sm ${r.approvalId === sel ? "outline outline-2 outline-black" : ""} ${r.urgencyClass === "urgent" ? "border-amber-300 bg-amber-50" : "bg-card"}`}>
               <b className="block">{t(`radiology.hod.approvalType.${r.typeKey}`, { defaultValue: r.typeKey })}</b>
-              <span className="block truncate text-xs text-muted-foreground">{r.subject} · {mins(r.ageMin)}</span>
+              <span className="block truncate text-xs text-muted-foreground">{subjectOf(r)} · {mins(r.ageMin)}</span>
             </button>
           </li>
         ))}
@@ -547,7 +558,7 @@ function ApprovalsView(): React.ReactElement {
       lane={inHand === null ? undefined : (
         <div className="mt-4 space-y-1 border-t pt-3 text-sm">
           <b className="block">{t(`radiology.hod.approvalType.${inHand.typeKey}`, { defaultValue: inHand.typeKey })}</b>
-          <span className="block text-xs">{inHand.subject}</span>
+          <span className="block text-xs">{subjectOf(inHand)}</span>
           <span className="block text-xs">{t("radiology.hod.askedBy", { who: inHand.requesterName ?? "—", at: fmtIst(inHand.requestedAt) })}</span>
         </div>
       )}
@@ -557,7 +568,7 @@ function ApprovalsView(): React.ReactElement {
         {done !== null && <p role="status" className="rounded border border-green-300 bg-green-50 p-2 text-sm">{done}</p>}
         {inHand !== null && (
           <section className="space-y-2 rounded border bg-card p-3 text-sm" data-testid="hod-approval">
-            <h2 className="m-0 text-base font-semibold">{inHand.subject}</h2>
+            <h2 className="m-0 text-base font-semibold">{subjectOf(inHand)}</h2>
             <p className="m-0">{t("radiology.hod.theyWrote")} <q>{inHand.note ?? "—"}</q></p>
             {mayDecide ? (
               <>
@@ -587,7 +598,7 @@ function ApprovalsView(): React.ReactElement {
                   <td className="p-1">{t(`radiology.hod.bill.${b.kind}`, { defaultValue: b.kind })}</td>
                   <td className="mo p-1">{b.accessionNo}</td>
                   <td className="mo p-1 text-right">{b.listPricePaise === null ? "—" : fmtRupees(b.listPricePaise)}</td>
-                  <td className="mo p-1">{mins(b.ageMin)}</td>
+                  <td className="mo whitespace-nowrap p-1">{mins(b.ageMin)}</td>
                 </tr>
               ))}
             </Table>
@@ -706,7 +717,7 @@ function EquipmentView(): React.ReactElement {
             <Card title={t("radiology.hod.qaDue")}>
               {d.qa.length === 0 ? <p className="m-0 text-sm text-muted-foreground">{t("radiology.hod.qaNone")}</p> : (
                 <ul className="m-0 list-none space-y-1 p-0 text-sm">
-                  {d.qa.map((x) => <li key={`${x.deviceCode}-${x.qaType}`} className={x.state === "overdue" || x.state === "failed" ? "text-red-800" : ""}>{t("radiology.hod.qaLine", { code: x.deviceCode, type: x.qaType, due: x.dueOn })}</li>)}
+                  {d.qa.map((x) => <li key={`${x.deviceCode}-${x.qaType}`} className={x.state === "overdue" || x.state === "failed" ? "text-red-800" : ""}>{t(x.state === "due" ? "radiology.hod.qaDueLine" : "radiology.hod.qaLine", { code: x.deviceCode, type: x.qaType, due: x.dueOn })}</li>)}
                 </ul>
               )}
               <p className="m-0 mt-2 text-xs">{t("radiology.hod.rsoCounts", { red: d.radiationSafety.red, amber: d.radiationSafety.amber })} <SeatLink to="/radiology/radiation-safety">{t("radiology.hod.openSafety")}</SeatLink></p>
@@ -852,9 +863,9 @@ function AuditView(): React.ReactElement {
                 {d.rows.map((r, i) => (
                   <tr key={`${r.at}-${String(i)}`} className={`border-b align-top ${r.breakGlass ? "bg-red-50" : r.context === "none" ? "bg-amber-50" : ""}`} data-alog={r.at}>
                     <td className="mo p-1 whitespace-nowrap">{fmtIst(r.at)}</td>
-                    <td className="p-1">{r.whoName}<span className="block text-xs text-muted-foreground">{r.roles.join(", ") || "—"}</span></td>
+                    <td className="p-1">{r.whoName}<span className="block text-xs text-muted-foreground">{r.roles.map((k) => t(`radiology.hod.role.${k}`, { defaultValue: k.replaceAll("_", " ") })).join(", ") || "—"}</span></td>
                     <td className="p-1">{r.patientName}<span className="mo block text-xs text-muted-foreground">{r.patientUhid}</span></td>
-                    <td className="p-1">{r.kind === "images" ? t("radiology.hod.images") : r.what}{r.accessionNo ? <span className="mo block text-xs">{r.accessionNo}</span> : null}</td>
+                    <td className="p-1">{r.kind === "images" ? t("radiology.hod.images") : t(`radiology.hod.surface.${r.what.replace(".", "_")}`, { defaultValue: r.what })}{r.accessionNo ? <span className="mo block text-xs">{r.accessionNo}</span> : null}</td>
                     <td className="p-1 text-xs">
                       {r.breakGlass && <b className="block text-red-700">{t("radiology.hod.breakGlassWord")}</b>}
                       {r.context !== null ? t(`radiology.hod.context.${r.context}`, { defaultValue: r.context }) : "—"}

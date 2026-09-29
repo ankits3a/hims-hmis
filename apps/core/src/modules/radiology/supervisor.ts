@@ -348,6 +348,8 @@ export type SupervisorApproval = {
   subject: string;
   studyId: string | null;
   gateKind: string | null;
+  accessionNo: string | null;
+  studyTypeCode: string | null;
 };
 
 /** Pending approvals of radiology's own types, oldest first — gate overrides the HOD decides, books the MS decides. */
@@ -374,6 +376,8 @@ export async function supervisorApprovals(db: Db, now: Date = new Date()): Promi
         : `${String(r.subject_type)}`,
       studyId: r.study_id === null ? null : String(r.study_id),
       gateKind: r.gate_kind === null ? null : String(r.gate_kind),
+      accessionNo: r.accession_no === null ? null : String(r.accession_no),
+      studyTypeCode: r.study_type_code === null ? null : String(r.study_type_code),
     })),
     billDecisions: await openBillDecisionRows(db, now),
   };

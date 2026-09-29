@@ -175,6 +175,8 @@ export type EscalationCauseRow = {
   deviceCode: string | null;
   /** A plain-words line for the HOD: which gate, which machine, which decision. No patient. */
   detail: string;
+  /** Held studies: the gate kinds still open (the screen names them in the reader's words). */
+  gateKinds: string[] | null;
   /** The seat that closes it, with the thing in hand where the seat takes one. */
   seat: string;
 };
@@ -200,7 +202,7 @@ export async function escalationCauses(db: Db, now: Date = new Date()): Promise<
       cause: "stat_unread", subjectType: "imaging_study", subjectId: String(r.id), patientId: String(r.patient_id),
       since: asDate(r.acquired_at), studyId: String(r.id), accessionNo: String(r.accession_no),
       studyTypeCode: String(r.study_type_code), deviceCode: null,
-      detail: "images in, no preliminary or signed report", seat: `/radiology/read?study=${String(r.id)}`,
+      gateKinds: null, detail: "images in, no preliminary or signed report", seat: `/radiology/read?study=${String(r.id)}`,
     });
   }
 
@@ -220,7 +222,7 @@ export async function escalationCauses(db: Db, now: Date = new Date()): Promise<
       cause: "held_study", subjectType: "imaging_study", subjectId: String(r.id), patientId: String(r.patient_id),
       since: asDate(r.checked_in_at), studyId: String(r.id), accessionNo: String(r.accession_no),
       studyTypeCode: String(r.study_type_code), deviceCode: null,
-      detail: `open: ${String(r.kinds)}`, seat: `/radiology/prep?study=${String(r.id)}`,
+      gateKinds: String(r.kinds).split(", "), detail: `open: ${String(r.kinds)}`, seat: `/radiology/prep?study=${String(r.id)}`,
     });
   }
 
@@ -245,6 +247,7 @@ export async function escalationCauses(db: Db, now: Date = new Date()): Promise<
       cause: "red_critical", subjectType: "imaging_critical_finding", subjectId: String(r.id),
       patientId: String(r.patient_id), since: asDate(r.created_at), studyId: String(r.study_id),
       accessionNo: String(r.accession_no), studyTypeCode: String(r.study_type_code), deviceCode: null,
+      gateKinds: null,
       detail: redMin === undefined ? "red call not read back" : `red call not read back within ${String(redMin)} min`,
       seat: ESCALATION_SPECS.red_critical.seat,
     });
@@ -272,7 +275,7 @@ export async function escalationCauses(db: Db, now: Date = new Date()): Promise<
       const b = bookedOn.get(d.id);
       out.push({
         cause: "machine_down", subjectType: "resource", subjectId: d.id, patientId: null,
-        since: sinceOf.get(d.id) ?? now, studyId: null, accessionNo: null, studyTypeCode: null, deviceCode: d.code,
+        since: sinceOf.get(d.id) ?? now, studyId: null, accessionNo: null, studyTypeCode: null, deviceCode: d.code, gateKinds: null,
         detail: `${d.code} · ${d.name} is ${d.status === "down" ? "down" : "blocked by a failed or overdue QA"}`
           + (b ? `; ${String(b.n)} booked to move` : "; nobody booked on it"),
         seat: ESCALATION_SPECS.machine_down.seat,
@@ -282,7 +285,7 @@ export async function escalationCauses(db: Db, now: Date = new Date()): Promise<
     if (d.licensedNow === false && b) {
       out.push({
         cause: "licence_gap", subjectType: "resource", subjectId: d.id, patientId: null,
-        since: b.at, studyId: null, accessionNo: null, studyTypeCode: null, deviceCode: d.code,
+        since: b.at, studyId: null, accessionNo: null, studyTypeCode: null, deviceCode: d.code, gateKinds: null,
         detail: `${d.code} · ${d.name} has no AERB licence covering today and ${String(b.n)} booked`,
         seat: ESCALATION_SPECS.licence_gap.seat,
       });
@@ -299,7 +302,7 @@ export async function escalationCauses(db: Db, now: Date = new Date()): Promise<
       cause: "bill_decision_stale", subjectType: "imaging_bill_decision", subjectId: String(r.id),
       patientId: String(r.patient_id), since: asDate(r.raised_at), studyId: String(r.study_id),
       accessionNo: String(r.accession_no), studyTypeCode: String(r.study_type_code), deviceCode: null,
-      detail: String(r.kind).replaceAll("_", " "), seat: ESCALATION_SPECS.bill_decision_stale.seat,
+      gateKinds: null, detail: String(r.kind).replaceAll("_", " "), seat: ESCALATION_SPECS.bill_decision_stale.seat,
     });
   }
 
@@ -315,6 +318,7 @@ export async function escalationCauses(db: Db, now: Date = new Date()): Promise<
       cause: "abnormal_unopened", subjectType: "imaging_report", subjectId: String(r.id),
       patientId: String(r.patient_id), since: asDate(r.published_at), studyId: String(r.study_id),
       accessionNo: String(r.accession_no), studyTypeCode: String(r.study_type_code), deviceCode: null,
+      gateKinds: null,
       detail: `${String(r.critical_category)} report released, not opened by the treating doctor`,
       seat: ESCALATION_SPECS.abnormal_unopened.seat,
     });

@@ -63,7 +63,7 @@ const FLOOR = {
 };
 const ESC_STAT = {
   cause: "stat_unread", subjectType: "imaging_study", subjectId: "S9", since: new Date(Date.now() - 22 * 60_000).toISOString(),
-  studyId: "S9", accessionNo: "I2609290003", studyTypeCode: "CT-HEAD", deviceCode: null, detail: "images in, no preliminary or signed report",
+  studyId: "S9", accessionNo: "I2609290003", studyTypeCode: "CT-HEAD", deviceCode: null, gateKinds: null, detail: "images in, no preliminary or signed report",
   seat: "/radiology/read?study=S9", title: "STAT study unread past 15 minutes", ageMin: 22, instanceId: "W1",
   raisedAt: new Date().toISOString(), myAlert: { alertId: "AL1", ackKind: null, ownedUntil: null, handedToUserId: null },
 };
@@ -78,9 +78,9 @@ const ROSTER = {
 const APPROVALS = {
   rows: [
     { approvalId: "AP1", typeKey: "imaging_gate_override", approverRole: "radiologist", urgencyClass: "urgent", requesterName: "Rekha Soren",
-      requestedAt: new Date().toISOString(), ageMin: 12, note: "creatinine 1.9, patient in pain", subject: "renal_function · I2609290012 · CT-HEAD", studyId: "S1", gateKind: "renal_function" },
+      requestedAt: new Date().toISOString(), ageMin: 12, note: "creatinine 1.9, patient in pain", subject: "renal_function · I2609290012 · CT-HEAD", studyId: "S1", gateKind: "renal_function", accessionNo: "I2609290012", studyTypeCode: "CT-HEAD" },
     { approvalId: "AP2", typeKey: "imaging_definition_publish", approverRole: "medical_superintendent", urgencyClass: "routine", requesterName: "Dr. Sahay",
-      requestedAt: new Date().toISOString(), ageMin: 90, note: "new templates", subject: "imaging_definition", studyId: null, gateKind: null },
+      requestedAt: new Date().toISOString(), ageMin: 90, note: "new templates", subject: "imaging_definition", studyId: null, gateKind: null, accessionNo: null, studyTypeCode: null },
   ],
   billDecisions: [{ billDecisionId: "B1", kind: "acquired_unbilled", studyId: "S3", accessionNo: "I2609280035", studyTypeCode: "XR-CHEST", raisedAt: new Date().toISOString(), ageMin: 1600, listPricePaise: 45000 }],
 };
@@ -100,7 +100,7 @@ it("the floor: pipeline with each stage's longest wait, rooms, turnaround agains
   expect(within(checked).getByText("1 held")).toBeInTheDocument();
   const rooms = screen.getByTestId("hod-rooms");
   expect(within(rooms).getByText("CT-1").closest("tr")).toHaveAttribute("data-down", "CT-1");
-  expect(within(rooms).getAllByText("the roster does not say").length).toBe(2);
+  expect(within(rooms).getByTestId("hod-tech-note")).toHaveTextContent("cannot say who is in which room");
   expect(within(screen.getByTestId("hod-tat")).getByText(/30 min ✗/)).toBeInTheDocument();
   expect(screen.getByTestId("hod-brief")).toHaveTextContent("XR-1 cannot expose");
   expect(within(screen.getByTestId("hod-five")).getByText("Dashboard UX")).toBeInTheDocument();
@@ -148,6 +148,8 @@ it("a gate override is granted here with a reason (the existing decide route); a
   await user.click(within(list).getByText("Book to publish"));
   expect(await screen.findByRole("link", { name: "Open the approvals inbox" })).toHaveAttribute("href", "/approvals?focus=AP2");
   await user.click(within(list).getByText("Gate override (prep bay asks)"));
+  // The gate is named in words, never its code.
+  expect(await within(screen.getByTestId("hod-approval")).findByText("Renal function · I2609290012 · CT-HEAD")).toBeInTheDocument();
   const dock = await screen.findByTestId("dock-act");
   expect(dock).toBeDisabled();
   await user.type(screen.getByLabelText("Your reason (kept with your name)"), "plain study first, hydration given");

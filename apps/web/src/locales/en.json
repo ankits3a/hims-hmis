@@ -3899,6 +3899,15 @@
       "checksLead": "What the prep bay will check, and what to tell the patient now. The desk records none of it.",
       "loading": "Loading…",
       "gatesOpen": "Checks opened at arrival",
+      "surface": {
+        "imaging_worklist": "a worklist or queue",
+        "imaging_study": "the study record",
+        "imaging_report": "the report",
+        "imaging_patient_reports": "the report history",
+        "pcpndt_form_f": "Form F",
+        "aerb_dose_register": "the dose register",
+        "aerb_incident_register": "the incident register"
+      },
       "gatesWillOpen": "Checks the prep bay will open",
       "pregnancyAsk": "Ask: “Is there any chance you are pregnant? When was your last period?” The prep bay records the answer.",
       "tellPatient": "Tell the patient",
@@ -4182,7 +4191,8 @@
       "noLicence": "no AERB licence",
       "licensed": "licensed",
       "outOfService": "out of service",
-      "rosterSaysNot": "the roster does not say",
+      "rosterSaysNot": "Technologist per room: the roster has no technologist position and no room on a duty, so it cannot say who is in which room.",
+      "gatesOpen": "Still open: {{gates}}.",
       "readers": "Readers' load",
       "readersLine": "{{toRead}} to read · {{stat}} STAT · {{drafted}} in draft · {{unclaimed}} nobody has opened",
       "reading_one": "{{name}} is reading {{count}} study",
@@ -4195,6 +4205,7 @@
       "gapLine_one": "{{code}} · {{name}} has no AERB licence covering today — {{count}} patient booked on it.",
       "gapLine_other": "{{code}} · {{name}} has no AERB licence covering today — {{count}} patients booked on it.",
       "qaLine": "{{code}} · {{type}} QA was due {{due}}.",
+      "qaDueLine": "{{code}} · {{type}} QA is due {{due}}.",
       "openSafety": "Open Radiation safety",
       "five": {
         "title": "Tested against the owner's five priorities",

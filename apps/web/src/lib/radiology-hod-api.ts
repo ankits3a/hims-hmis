@@ -50,6 +50,7 @@ export type WireEscalation = {
   studyTypeCode: string | null;
   deviceCode: string | null;
   detail: string;
+  gateKinds: string[] | null;
   seat: string;
   title: string;
   ageMin: number;
@@ -61,6 +62,7 @@ export type WireEscalation = {
 export type WireApproval = {
   approvalId: string; typeKey: string; approverRole: string; urgencyClass: string; requesterName: string | null;
   requestedAt: string; ageMin: number; note: string | null; subject: string; studyId: string | null; gateKind: string | null;
+  accessionNo: string | null; studyTypeCode: string | null;
 };
 export type WireBillDecision = {
   billDecisionId: string; kind: string; studyId: string; accessionNo: string; studyTypeCode: string;

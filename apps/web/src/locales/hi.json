@@ -3899,6 +3899,15 @@
       "checksLead": "प्रेप बे क्या जाँचेगा, और मरीज़ को अभी क्या बताना है। डेस्क इनमें से कुछ दर्ज नहीं करता।",
       "loading": "लोड हो रहा है…",
       "gatesOpen": "आने पर खुली जाँचें",
+      "surface": {
+        "imaging_worklist": "वर्कलिस्ट या कतार",
+        "imaging_study": "स्टडी रिकॉर्ड",
+        "imaging_report": "रिपोर्ट",
+        "imaging_patient_reports": "रिपोर्ट इतिहास",
+        "pcpndt_form_f": "फ़ॉर्म F",
+        "aerb_dose_register": "डोज़ रजिस्टर",
+        "aerb_incident_register": "घटना रजिस्टर"
+      },
       "gatesWillOpen": "प्रेप बे में खुलने वाली जाँचें",
       "pregnancyAsk": "पूछें: “क्या आपके गर्भवती होने की कोई संभावना है? आपकी पिछली माहवारी कब हुई थी?” उत्तर प्रेप बे दर्ज करता है।",
       "tellPatient": "मरीज़ को बताएँ",
@@ -4182,7 +4191,8 @@
       "noLicence": "AERB लाइसेंस नहीं",
       "licensed": "लाइसेंसशुदा",
       "outOfService": "सेवा से बाहर",
-      "rosterSaysNot": "रोस्टर नहीं बताता",
+      "rosterSaysNot": "कमरे-वार टेक्नोलॉजिस्ट: रोस्टर में टेक्नोलॉजिस्ट का पद और ड्यूटी पर कमरा नहीं है, इसलिए वह नहीं बता सकता कि कौन किस कमरे में है।",
+      "gatesOpen": "अभी खुले: {{gates}}।",
       "readers": "रीडरों पर भार",
       "readersLine": "{{toRead}} पढ़ने को · {{stat}} STAT · {{drafted}} ड्राफ़्ट में · {{unclaimed}} किसी ने नहीं खोले",
       "reading_one": "{{name}} {{count}} स्टडी पढ़ रहे हैं",
@@ -4195,6 +4205,7 @@
       "gapLine_one": "{{code}} · {{name}} पर आज का AERB लाइसेंस नहीं — {{count}} मरीज़ बुक है।",
       "gapLine_other": "{{code}} · {{name}} पर आज का AERB लाइसेंस नहीं — {{count}} मरीज़ बुक हैं।",
       "qaLine": "{{code}} · {{type}} QA {{due}} को देय था।",
+      "qaDueLine": "{{code}} · {{type}} QA {{due}} को देय है।",
       "openSafety": "रेडिएशन सेफ़्टी खोलें",
       "five": {
         "title": "मालिक की पाँच प्राथमिकताओं पर परखा गया",
