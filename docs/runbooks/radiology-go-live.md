@@ -287,3 +287,47 @@ human does.
 
 **Drill C — the outside film.** Register a study done elsewhere. It records the centre, the date and
 how the images arrived, it is never billed as a performed study, and no dose is logged against it.
+
+## 11. The imaging front desk — counter, diary, hall display (18-S RS3)
+
+**Who.** `radiology_receptionist` now also holds `radiology.checkin` and `radiology.display.read`
+(`seed:roles`). The hall TV logs in as the kiosk `display` account, which holds `opd.display.read`
+and `radiology.display.read` and nothing else. Re-run `seed:roles` after deploy; it only adds.
+
+**Before the first patient.**
+1. The receptionist opens their **cash drawer** (`/billing/session`). With no open drawer the
+   counter offers no tender at all — that is billing's rule for every receipt, cash or not.
+2. UPI needs the UTR and card needs the approval code, typed at the Bill step.
+3. Film (`RAD-FILM`, ₹250 a sheet) and CD (`RAD-CD`, ₹300) appear as add-ons only once the tariff
+   carries services with exactly those codes (ruling 1; RS4 owns adding them). Until then the Bill
+   step shows a note.
+4. Open `/radiology/display` on the hall TV under the `display` account and leave it; it polls every
+   15 s and has no controls.
+
+**The counter (`/radiology/reception`).** Open a patient from the right-hand list, or find a visit
+and press *Work this visit at the counter*. Opening a patient **on the day of the slot checks their
+booked studies in** — there is no check-in button. Then:
+- **Studies** — the visit's studies at the desk (to book, booked, checked in).
+- **Checks** — the safety checks the prep bay will open and what to tell the patient (English and
+  Hindi). The desk records nothing here; a check is cleared only in the prep bay or the room.
+- **Bill** — self-pay is collected here: one invoice through billing, then the line is linked to
+  the study (that link is what lets the room start the scan). STAT: nothing collected, the bill
+  follows. TPA / PM-JAY / corporate: billed to the payer; for a cashless MRI or CT confirm the
+  pre-authorisation with the TPA desk (the system has no pre-auth record yet), else a deposit at the
+  billing counter. **No discount at the counter** (HOD up to 10%); **no credit** (owner only). If the
+  service was already billed on the visit, the desk links that line instead of billing twice.
+- **Slot & slip** — pick a machine of the study's kind and a time (IST), or *Now · walk in* (books
+  the first free machine and checks the patient in). A machine without an AERB licence cannot be
+  picked. The slip shows the accession (the patient's token on the hall board) and the prep; the
+  appointment message is **queued, not sent** (the WhatsApp provider is not connected).
+
+**The diary (`/radiology/diary`).** Every machine × the chosen day. Click a booking to move it,
+mark a no-show or cancel it — **each needs a reason** (the server refuses without one, and records
+it on `imaging.booking_changed`). A down or unlicensed machine with bookings gets a red banner
+listing the patients to move. Cancelled before the room: the refund goes through the billing
+office's refund request; the desk does not refund.
+
+**Verify once.** Book a study, see the block on the diary, open the patient on the day (checked
+in, the token appears under NEXT on the hall TV as `X… Firstname I.`), move it with a reason
+(`imaging.booking_changed` row; the old `imaging_appointment_booked` outbox row goes `expired`, a
+new one `queued`).

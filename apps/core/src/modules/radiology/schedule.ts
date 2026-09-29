@@ -4,13 +4,19 @@ import { resources } from "../../kernel/db/schema/resources";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { recordPhiAccess } from "../../kernel/phi/audit";
+import { patients } from "../../kernel/db/schema/patients";
+import { displayName } from "../patients";
+import { clearanceOf } from "./read";
 import { DEVICE_MODALITY_ATTRIBUTE, DEVICE_PORTABLE_ATTRIBUTE, SCHEDULABLE_DEVICE_STATUSES } from "./kinds";
 import { RadiologyError } from "./errors";
-import { imagingStudyScheduled } from "./events";
+import { imagingBookingChanged, imagingStudyScheduled } from "./events";
 import { appendEvent } from "../../kernel/events/append";
 import { requireStudyType } from "./study-types";
 import { raiseBillDecision } from "./money";
 import { releaseResource } from "../../kernel/resources/registry";
+import { enqueueNotification, expireByRef } from "../../kernel/notify/enqueue";
+import { prepFor } from "./prep";
+import type { StudyType } from "./definitions";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -243,6 +249,42 @@ async function assertSlotFree(
   }
 }
 
+/**
+ * ═══ 18-S RS3 T4 — THE APPOINTMENT MESSAGE, RECORDED IN THE BOOKING'S OWN TRANSACTION ═══
+ *
+ * A booking and a move each queue `imaging_appointment_booked` through the house enqueue, so the
+ * message exists exactly when the booking does (a rolled-back booking leaves no orphan). Any
+ * earlier queued message for the study is expired first, by ref — a patient told 09:00 and then
+ * 11:00 must receive only the second. A no-show and a cancel expire it and queue nothing.
+ *
+ * **Recorded, never claimed sent.** The row sits in the outbox as `queued`; the WhatsApp provider
+ * is not on main, and nothing on the desk says "sent".
+ *
+ * A PCPNDT study's message carries no prep: "a full bladder" beside an accession says what the
+ * scan is (the template's own header). The desk tells that patient in person and on the slip.
+ */
+export const APPOINTMENT_MESSAGE_REF = "imaging_study";
+
+async function queueAppointmentMessage(
+  tx: Tx,
+  study: typeof imagingStudies.$inferSelect,
+  studyType: StudyType,
+  scheduledAt: Date,
+): Promise<void> {
+  const now = new Date();
+  await expireByRef(tx, APPOINTMENT_MESSAGE_REF, study.id, now);
+  const slotStart = scheduledAt.toISOString();
+  await enqueueNotification(tx, {
+    templateKey: "imaging_appointment_booked",
+    params: { accessionNo: study.accessionNo, slotStart, prep: study.formFRequired ? [] : prepFor(studyType) },
+    dedupeKey: `imaging_appointment_booked:${study.id}:${slotStart}:${String(now.getTime())}`,
+    occurredAt: now,
+    patientId: study.patientId,
+    refType: APPOINTMENT_MESSAGE_REF,
+    refId: study.id,
+  });
+}
+
 /** The statuses that HOLD a slot — the same three the partial unique excludes, stated once. */
 const LIVE_SLOT_STATUSES = ["scheduled", "checked_in", "ready", "in_acquisition"] as const;
 
@@ -355,12 +397,54 @@ export async function scheduleStudy(
     },
   }));
 
+  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt);
+
   return {
     studyId: study.id,
     deviceResourceId: input.deviceResourceId,
     scheduledAt: input.scheduledAt,
     accessionNo: study.accessionNo,
   };
+}
+
+/**
+ * ═══ 18-S RS3 — EVERY DESK ACT ON A BOOKING CARRIES A REASON ═══
+ *
+ * 18a asked for a reason only once the patient was on the machine. The desk's diary (RS3) moves,
+ * no-shows and cancels bookings all day, and an unexplained change to a booking cannot be audited:
+ * "why was this CT cancelled, and who said so" must have an answer. So every one of the three acts
+ * refuses `reason_required` without one, and records it on `imaging.booking_changed` in the same
+ * transaction as the change itself.
+ */
+function requireReason(reason: string | null | undefined, sentence: string, studyId: string): string {
+  const trimmed = reason?.trim() ?? "";
+  if (trimmed === "") throw new RadiologyError("reason_required", sentence, { studyId });
+  return trimmed;
+}
+
+async function recordBookingChange(
+  tx: Tx,
+  actor: Actor,
+  study: typeof imagingStudies.$inferSelect,
+  act: "rescheduled" | "no_show" | "cancelled",
+  reason: string,
+  to?: { deviceResourceId: string; scheduledAt: Date },
+): Promise<void> {
+  await appendEvent(tx, imagingBookingChanged.make({
+    actor,
+    patientId: study.patientId,
+    encounterId: study.encounterNo,
+    payload: {
+      studyId: study.id,
+      act,
+      reason,
+      fromDeviceResourceId: study.deviceResourceId,
+      fromScheduledAt: study.scheduledAt?.toISOString() ?? null,
+      ...(to === undefined ? {} : {
+        toDeviceResourceId: to.deviceResourceId, toScheduledAt: to.scheduledAt.toISOString(),
+      }),
+    },
+  }));
 }
 
 /**
@@ -374,7 +458,8 @@ export async function scheduleStudy(
 export async function rescheduleStudy(
   tx: Tx,
   actor: Actor,
-  input: ScheduleInput,
+  /** 18-S RS3 — `reason` is required; it is optional in the type only so the refusal is the server's. */
+  input: ScheduleInput & { reason?: string | null },
 ): Promise<ScheduleResult> {
   const study = await loadStudy(tx, input.studyId);
   if (!["scheduled", "checked_in"].includes(study.status)) {
@@ -384,6 +469,9 @@ export async function rescheduleStudy(
       { studyId: input.studyId, status: study.status },
     );
   }
+  const reason = requireReason(
+    input.reason, `moving ${study.accessionNo} needs a reason — say why the booking moves`, study.id,
+  );
   const studyType = await requireStudyType(tx, study.studyTypeCode);
   const device = await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
   await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
@@ -430,6 +518,9 @@ export async function rescheduleStudy(
    * slot is the previous event for the same study, which is what an event log is for. That answers
    * the question without widening a frozen payload, which a successor would have to live with.
    */
+  await recordBookingChange(tx, actor, study, "rescheduled", reason, {
+    deviceResourceId: input.deviceResourceId, scheduledAt: input.scheduledAt,
+  });
   await appendEvent(tx, imagingStudyScheduled.make({
     actor,
     patientId: study.patientId,
@@ -443,6 +534,8 @@ export async function rescheduleStudy(
       studyTypeCode: study.studyTypeCode,
     },
   }));
+
+  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt);
 
   return {
     studyId: study.id,
@@ -461,6 +554,8 @@ export async function markNoShow(
   tx: Tx,
   actor: Actor,
   studyId: string,
+  /** 18-S RS3 — required. */
+  reason?: string | null,
 ): Promise<{ studyId: string; status: string }> {
   const study = await loadStudy(tx, studyId);
   if (!["scheduled", "checked_in"].includes(study.status)) {
@@ -470,16 +565,21 @@ export async function markNoShow(
       { studyId, status: study.status },
     );
   }
-  await transition(tx, study.workflowInstanceId, "no_show", actor);
+  const why = requireReason(
+    reason, `marking ${study.accessionNo} a no-show needs a reason — say what happened`, studyId,
+  );
+  await transition(tx, study.workflowInstanceId, "no_show", actor, { note: why });
   await tx.update(imagingStudies).set({ status: "no_show" }).where(eq(imagingStudies.id, studyId));
+  await recordBookingChange(tx, actor, study, "no_show", why);
+  await expireByRef(tx, APPOINTMENT_MESSAGE_REF, study.id, new Date());
   return { studyId, status: "no_show" };
 }
 
 /**
  * ═══ A4 — CANCEL, AND THE THREE BANDS ARE NOT INTERCHANGEABLE ═══
  *
- * · `scheduled | checked_in | ready` → cancel, no reason required. Nothing has been done to the
- *   patient and nothing has been spent.
+ * · `scheduled | checked_in | ready` → cancel. Nothing has been done to the patient and nothing
+ *   has been spent. (18-S RS3: a reason is now required here too — see `requireReason`.)
  * · `in_acquisition` → cancel WITH a reason, and **if the patient was on the machine (`acquisition_started_at`), a
  *   `performed_then_cancelled` bill decision** (B6). Images exist; somebody must decide whether the
  *   patient pays, and that decision belongs to the counter rather than to whoever clicked cancel.
@@ -511,24 +611,29 @@ export async function cancelStudy(
   }
 
   const fromAcquisition = study.status === "in_acquisition";
-  if (fromAcquisition && (input.reason === undefined || input.reason === null || input.reason.trim() === "")) {
-    throw new RadiologyError(
-      "reason_required",
-      "cancelling a study that is already on the machine needs a reason",
-      { studyId: input.studyId },
-    );
-  }
+  /**
+   * 18-S RS3 — every band needs a reason now, not only the patient-on-the-machine band (A4 as
+   * shipped said "scheduled | checked_in | ready → no reason required"). The sentence for the
+   * machine band is kept: it is the one a technologist reads.
+   */
+  const reason = requireReason(
+    input.reason,
+    fromAcquisition
+      ? "cancelling a study that is already on the machine needs a reason"
+      : `cancelling ${study.accessionNo} needs a reason — an unexplained cancellation cannot be audited`,
+    input.studyId,
+  );
 
   /**
    * The ORDER ITEM is cancelled through the kernel, which is what makes the order envelope's own
    * money rules run — a module that flipped its own status column and left the item `placed` would
    * leave a charge nobody cancels.
    */
-  await advanceOrderItem(tx, actor, decls, study.orderItemId, "cancelled", {
-    reason: input.reason ?? null,
-  });
-  await transition(tx, study.workflowInstanceId, "cancelled", actor);
+  await advanceOrderItem(tx, actor, decls, study.orderItemId, "cancelled", { reason });
+  await transition(tx, study.workflowInstanceId, "cancelled", actor, { note: reason });
   await tx.update(imagingStudies).set({ status: "cancelled" }).where(eq(imagingStudies.id, input.studyId));
+  await recordBookingChange(tx, actor, study, "cancelled", reason);
+  await expireByRef(tx, APPOINTMENT_MESSAGE_REF, study.id, new Date());
 
   /**
    * ═══ F53 (CLOSE REVIEW) — THE OPERAND WAS `acquired_at`, AND NOTHING COULD EVER SATISFY IT ═══
@@ -557,7 +662,7 @@ export async function cancelStudy(
       studyId: study.id,
       kind: "performed_then_cancelled",
       detail: {
-        reason: input.reason ?? null,
+        reason,
         acquisitionStartedAt: study.acquisitionStartedAt.toISOString(),
         /** Who cancelled — the table carries no `raised_by`, and the queue needs to know. */
         cancelledBy: actor.id,
@@ -676,18 +781,34 @@ export async function autoSlotWalkIn(
  * and F42 already established the shape: one row per DISTINCT patient, never one per read, because
  * a partial access log is worse than none.
  */
+/**
+ * 18-S RS3 — WIDENED for the desk's diary grid: a block needs its LENGTH (the snapshotted
+ * `duration_min`), what it is, its priority and whose it is. The name goes through `displayName`,
+ * the worklist's own rule, and the PHI row below was already written per patient.
+ */
+export type DiaryEntry = {
+  studyId: string; accessionNo: string; scheduledAt: Date | null; status: string;
+  durationMin: number; studyTypeCode: string; priority: string; patientName: string;
+  bedsideLocation: string | null;
+};
+
 export async function deviceDiary(
   exec: Db,
   actor: Actor,
   deviceResourceId: string,
-): Promise<{ studyId: string; accessionNo: string; scheduledAt: Date | null; status: string }[]> {
+): Promise<DiaryEntry[]> {
+  const clearance = await clearanceOf(exec, actor);
   const rows = await exec
     .select({
       studyId: imagingStudies.id, accessionNo: imagingStudies.accessionNo,
       scheduledAt: imagingStudies.scheduledAt, status: imagingStudies.status,
       patientId: imagingStudies.patientId,
+      durationMin: imagingStudies.durationMin, studyTypeCode: imagingStudies.studyTypeCode,
+      priority: imagingStudies.priority, bedsideLocation: imagingStudies.bedsideLocation,
+      name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
     })
     .from(imagingStudies)
+    .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
     .where(and(
       eq(imagingStudies.deviceResourceId, deviceResourceId),
       inArray(imagingStudies.status, ["scheduled", "checked_in", "ready", "in_acquisition"]),
@@ -698,9 +819,10 @@ export async function deviceDiary(
   for (const patientId of new Set(rows.map((r) => r.patientId))) {
     await recordPhiAccess(exec, { actor, patientId, surface: "imaging.worklist", reason });
   }
-  return rows.map((row) => {
-    const { patientId: _omitted, ...rest } = row;
-    void _omitted;
-    return rest;
-  });
+  return rows.map((row) => ({
+    studyId: row.studyId, accessionNo: row.accessionNo, scheduledAt: row.scheduledAt, status: row.status,
+    durationMin: row.durationMin, studyTypeCode: row.studyTypeCode, priority: row.priority,
+    bedsideLocation: row.bedsideLocation,
+    patientName: displayName({ name: row.name, alias: row.alias, isConfidential: row.isConfidential }, clearance.canSeeConfidential),
+  }));
 }

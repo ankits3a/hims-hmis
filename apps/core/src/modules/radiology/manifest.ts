@@ -77,6 +77,9 @@ export const radiologyManifest: ModuleManifest = {
     { label: "Imaging worklist", path: "/radiology/worklist", permission: "radiology.worklist.read" },
     // 18-S RS2b — the technologist's portable round (the beds the trolley goes to).
     { label: "Portable round", path: "/radiology/portable", permission: "radiology.acquire" },
+    // 18-S RS3 — the desk's diary (machines × time) and the waiting-hall display.
+    { label: "Imaging diary", path: "/radiology/diary", permission: "radiology.schedule" },
+    { label: "Imaging hall display", path: "/radiology/display", permission: "radiology.display.read" },
   ],
   permissions: [
     "radiology.orders.place",
@@ -98,6 +101,9 @@ export const radiologyManifest: ModuleManifest = {
     // PACS host pulls `GET /radiology/mwl`, and `radiographer` holds it so a console can be
     // checked by a human. It reads names, so it is a PHI surface (`imaging.worklist`).
     "radiology.mwl.read",
+    // 18-S RS3 — the waiting-hall board (tokens + first name and initial). The OPD pattern: the
+    // kiosk `display` role holds it, and so does the desk that turns the TV on.
+    "radiology.display.read",
   ],
   subscriptions: [{ event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER }],
   resourceKinds: RADIOLOGY_RESOURCE_KINDS,

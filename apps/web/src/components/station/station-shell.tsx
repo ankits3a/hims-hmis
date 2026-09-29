@@ -70,7 +70,7 @@ const TONE: Record<NonNullable<StationStat["tone"]>, string | undefined> = {
 export function StationShell({
   seat = "lab", brand, stations, current, title, place, stats, statsLabel,
   lane, list, listSummary, clocks, clocksSummary, clocksAlert = false,
-  copilot, inHand = false, views, children,
+  copilot, inHand = false, views, closeListOn, children,
 }: {
   /**
    * The department's seat scope (`styles.css` scopes the paper / pine tokens to it). Defaults to the
@@ -103,6 +103,12 @@ export function StationShell({
   inHand?: boolean;
   /** The station's own views (header nav); they fold into the Menu below 1100px. */
   views?: React.ReactNode;
+  /**
+   * 18-S RS3 — below 1280px the list is a drawer over the work. When this value changes (the station
+   * took a different patient in hand FROM the drawer), the drawer closes, so the work it opened is not
+   * left under a scrim. Absent: the drawer closes only on its own toggle, Esc or the scrim.
+   */
+  closeListOn?: string | null;
   children: React.ReactNode;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
@@ -120,6 +126,7 @@ export function StationShell({
   const folded = inHand && copilot !== undefined && !listChoice;
 
   useEffect(() => { setListChoice(false); }, [inHand]);
+  useEffect(() => { if (closeListOn !== undefined) setListOpen(false); }, [closeListOn]);
 
   useEffect(() => {
     if (!listOpen && !menuOpen) return;

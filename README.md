@@ -1230,7 +1230,7 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.orders.place` | | | ✓ | | | |
 | `radiology.worklist.read` | ✓ | ✓ | ✓ | | | |
 | `radiology.schedule` | | | ✓ | | | |
-| `radiology.checkin` | | ✓ | | | | |
+| `radiology.checkin` | | ✓ | ✓ | | | |
 | `radiology.gates.satisfy` | | ✓ | | | | |
 | `radiology.gates.override` | ✓ | | | | | |
 | `radiology.acquire` | ✓ | ✓ | | | | |
@@ -1243,6 +1243,7 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.bill_decisions.manage` | | | ✓ | | | |
 | `radiology.criticals.ack` | ✓ | | | | | |
 | `radiology.mwl.read` | | ✓ | | | ✓ | |
+| `radiology.display.read` | | | ✓ | | | |
 | `pcpndt.registrations.manage` | | | | ✓ | | |
 | `pcpndt.registrations.read` | ✓ | | | ✓ | | |
 | `pcpndt.form_f.write` | ✓ | | | | | |
@@ -1277,6 +1278,15 @@ a desk that could schedule but not bill would be a split with nothing to compens
 NOT gain `patients.update` or `billing.credit.extend`: imaging bills at the counter before the scan,
 so no imaging path issues an invoice that leaves a remainder. All four new roles are created by
 `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper` precedent.
+
+**Plan 18-S RS3 (the imaging front desk) adds one permission and three grants.** `radiology_receptionist`
+gains `radiology.checkin`: the owner-approved board makes opening the patient at the desk on the day of
+the slot the check-in (presence is derived, no button records it), and the `imaging_study` definition
+already named `radiology_receptionist` on `scheduled → checked_in`. Check-in OPENS the gate set and
+satisfies nothing, so the desk still cannot record that a patient is not pregnant. The new
+`radiology.display.read` guards the imaging waiting-hall board (`GET /radiology/display`), the OPD
+board's pattern: **`display` gains `radiology.display.read`** — the same kiosk TV account shows either
+hall's board — and the receptionist holds it to turn the TV on.
 
 **The OPD dispense counter (Plan 16c T1) declares four permissions and one new role, and the SHAPE
 is the Pharmacy Act.** `pharmacy.dispense.scheduled` — the hand-over of a dispense carrying a

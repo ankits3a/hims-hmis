@@ -190,6 +190,23 @@ export const imagingBedsideRequested = defineEvent("imaging.bedside_requested", 
   items: z.array(z.object({ orderItemId: id, bedsideLocation: z.string().min(1).max(BEDSIDE_LOCATION_MAX_LENGTH) })).min(1),
 }));
 
+/**
+ * 18-S RS3 — a booking was moved, marked a no-show or cancelled at the desk, and WHY.
+ *
+ * `imaging.study_scheduled` stays the MWL's feed and its payload stays frozen; this is the audit
+ * answer to "who changed this booking, from what, to what, and for what reason". `reason` is the
+ * desk's own words and never a finding; `to*` is present only on a move.
+ */
+export const imagingBookingChanged = defineEvent("imaging.booking_changed", MODULE, z.object({
+  studyId: id,
+  act: z.enum(["rescheduled", "no_show", "cancelled"]),
+  reason: z.string().min(1).max(400),
+  fromDeviceResourceId: id.nullable(),
+  fromScheduledAt: z.string().min(1).nullable(),
+  toDeviceResourceId: id.optional(),
+  toScheduledAt: z.string().min(1).optional(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -206,4 +223,5 @@ export const RADIOLOGY_EVENTS = [
   imagingCriticalOverdue,
   imagingReportUnread,
   imagingBedsideRequested,
+  imagingBookingChanged,
 ] as const;

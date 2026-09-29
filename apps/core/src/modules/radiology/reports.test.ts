@@ -338,7 +338,8 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     expect(out.notified).toBe(false);
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
     expect(row!.status).toBe("published");
-    expect(await db.select().from(notifications)).toEqual([]);
+    /** 18-S RS3 T4 — the booking's own appointment message is not the report notice; count only the latter. */
+    expect(await db.select().from(notifications).where(eq(notifications.templateKey, "imaging_report_ready"))).toEqual([]);
   });
 
   /** …and the exception that proves the rule: a RED critical is told regardless of settlement. */
@@ -349,7 +350,7 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     const out = await withTx(db, (tx) => publishReport(tx, fx.radiologist, fx.decls, { studyId: study.studyId, now: NOW }));
 
     expect(out.notified).toBe(true);
-    expect(await db.select().from(notifications)).toHaveLength(1);
+    expect(await db.select().from(notifications).where(eq(notifications.templateKey, "imaging_report_ready"))).toHaveLength(1);
   });
 
   /**
