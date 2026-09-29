@@ -22,13 +22,20 @@ export {
   imagingStudyDefinition, imagingGateDefinition,
 } from "./workflow-def";
 export {
-  IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, IMAGING_GATE_OVERRIDE_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES,
+  IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, IMAGING_GATE_OVERRIDE_APPROVAL_TYPE, IMAGING_RELEASE_UNPAID_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES,
   registerRadiologyApprovalTypes,
 } from "./approval-types";
 export {
   RADIOLOGY_ORDER_PLACED_CONSUMER, handleOrderPlaced, orderPlacedConsumer,
 } from "./consumers";
 export type { CreatedStudy, OrderPlacedPayload } from "./consumers";
+/** 18-S RS9b T2 — the "report ready" message for a bill paid after release. */
+export {
+  RADIOLOGY_READY_ON_PAYMENT_CONSUMER, READY_ON_PAYMENT_EVENTS, handleSettlementEvent, readyOnPaymentConsumer,
+} from "./ready-on-payment";
+/** 18-S RS9b T1 — the patient's copy held for dues; the owner's unpaid release. */
+export { assertPatientCopyReleasable, patientCopyHold, requestUnpaidRelease } from "./held";
+export type { HoldRelease, PatientCopyHold } from "./held";
 export {
   COMPLETED_VISIT_GRACE_DAYS, DUPLICATE_WINDOW_HOURS, addImagingViews, placeImagingOrder,
 } from "./place";

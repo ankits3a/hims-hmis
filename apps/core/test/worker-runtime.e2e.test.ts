@@ -521,6 +521,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // 18-S RS10 T3 — the inbox grant applies the gate override. `approval_granted` < `order_placed`.
         ["radiology.approval_granted", ["approval.granted"]],
         ["radiology.order_placed", ["order.placed"]],
+        // 18-S RS9b T2 — the "report ready" message for a bill paid after release. Sorts after `order_placed`.
+        ["radiology.report_ready_on_payment", ["credit_note.issued", "payment.received"]],
       ]);
 
       // AND HALF THE EDIT WOULD NOT BOOT — on THIS registry, not a synthetic one. Installing a

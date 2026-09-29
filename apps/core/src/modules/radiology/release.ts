@@ -14,7 +14,9 @@ import { services } from "../../kernel/db/schema/tariff";
 import { notifications } from "../../kernel/db/schema/notifications";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
-import { imagingMediaRequested, imagingReportHandedOver } from "./events";
+import { imagingMediaRequested, imagingReportHandedOver, imagingReportReleasedUnpaid } from "./events";
+import { assertPatientCopyReleasable, patientCopyHold } from "./held";
+import type { HoldRelease } from "./held";
 import { requireReleased, stampFirstRead, treatingDoctorsOf } from "./closed-loop";
 import { CD_SERVICE_CODE, FILM_SERVICE_CODE } from "./counter";
 import { activeStudyTypes } from "./study-types";
@@ -32,6 +34,8 @@ import type { Db, Tx } from "../../kernel/db/client";
  *     opened, so the fact the desk can see is that nobody collected it — call the patient);
  *   · `media_to_print` / `media_to_hand` — a film or CD asked for and not yet printed / handed;
  *   · `amended_after_handover` — the patient holds a version that has since been amended;
+ *   · `held_for_dues` — 18-S RS9b: the patient's copy is held while the self-pay bill has dues
+ *     (`held.ts`); the row carries the amount and the owner's release state;
  *   · `notice_not_sent` — no "report ready" message was recorded (the bill was not settled at
  *     release: `publishReport` sends it only when settled or RED);
  *   · `not_collected` — released and not yet handed over.
@@ -48,7 +52,7 @@ export const RELEASE_LIMIT = 300;
 export const ABNORMAL_UNCOLLECTED_HOURS = 24;
 
 export type ReleaseNeed =
-  | "abnormal_uncollected" | "amended_after_handover" | "media_to_print" | "media_to_hand" | "notice_not_sent" | "not_collected";
+  | "abnormal_uncollected" | "amended_after_handover" | "held_for_dues" | "media_to_print" | "media_to_hand" | "notice_not_sent" | "not_collected";
 
 export type ReleaseHandover = {
   handoverId: string; reportId: string; version: number; collectorKind: string; collectorName: string | null;
@@ -74,6 +78,11 @@ export type ReleaseRow = {
   publishedAt: string;
   criticalCategory: string | null;
   bedsideLocation: string | null;
+  /**
+   * 18-S RS9b — the PATIENT's copy held for dues (self-pay, bill not settled), with the owner's
+   * release state; null when nothing holds it. The doctor's copy is never held.
+   */
+  hold: { outstandingPaise: number; invoiceNo: string; release: HoldRelease } | null;
   /** The treating doctor's side of the loop, for the "doctor's copy" column. */
   doctor: "unread" | "read" | "acted" | "none";
   /** The patient notice's recorded state, or null when none was recorded. Never "sent" unless the pump says so. */
@@ -86,7 +95,7 @@ export type ReleaseRow = {
 };
 
 const NEED_RANK: Record<ReleaseNeed, number> = {
-  abnormal_uncollected: 0, amended_after_handover: 1, media_to_print: 2, media_to_hand: 3, notice_not_sent: 4, not_collected: 5,
+  abnormal_uncollected: 0, amended_after_handover: 1, held_for_dues: 2, media_to_print: 3, media_to_hand: 4, notice_not_sent: 5, not_collected: 6,
 };
 
 async function modalityLookup(db: Db | Tx): Promise<(code: string) => string> {
@@ -154,6 +163,19 @@ export async function releaseRegister(db: Db, actor: Actor, now: Date = new Date
     });
   }
 
+  /**
+   * 18-S RS9b — the hold, asked only of rows the desk still has something to hand over for (the
+   * current version not yet handed, or printed film/CD waiting): a finished row holds nothing.
+   */
+  const holdOf = new Map<string, ReleaseRow["hold"]>();
+  for (const r of rows) {
+    const handedCurrent = handRows.some((h) => h.reportId === r.report.id);
+    const mediaWaiting = mediaRows.some((m) => m.studyId === r.study.id && m.handoverId === null);
+    if (handedCurrent && !mediaWaiting) continue;
+    const hold = await patientCopyHold(db, r.study);
+    if (hold.held) holdOf.set(r.study.id, { outstandingPaise: hold.outstandingPaise, invoiceNo: hold.invoiceNo, release: hold.release });
+  }
+
   const out = rows.map((r): ReleaseRow => {
     const modality = modalityOf(r.study.studyTypeCode);
     const hands = handRows.filter((h) => h.studyId === r.study.id).sort((a, b) => a.handedAt.getTime() - b.handedAt.getTime());
@@ -169,6 +191,8 @@ export async function releaseRegister(db: Db, actor: Actor, now: Date = new Date
     if (!handedCurrent && r.report.criticalCategory !== null
         && now.getTime() - publishedAt.getTime() > ABNORMAL_UNCOLLECTED_HOURS * 3_600_000) needs.push("abnormal_uncollected");
     if (!handedCurrent && hands.length > 0) needs.push("amended_after_handover");
+    const hold = holdOf.get(r.study.id) ?? null;
+    if (hold !== null) needs.push("held_for_dues");
     if (media.some((m) => m.printedAt === null)) needs.push("media_to_print");
     if (media.some((m) => m.printedAt !== null && m.handoverId === null)) needs.push("media_to_hand");
     if (notice === null && !handedCurrent) needs.push("notice_not_sent");
@@ -179,7 +203,7 @@ export async function releaseRegister(db: Db, actor: Actor, now: Date = new Date
       patientId: r.study.patientId,
       patientName: displayName({ name: r.name, alias: r.alias, isConfidential: r.isConfidential }, canSeeConfidential),
       uhid: r.uhid, publishedAt: publishedAt.toISOString(), criticalCategory: r.report.criticalCategory,
-      bedsideLocation: r.study.bedsideLocation, doctor, notice,
+      bedsideLocation: r.study.bedsideLocation, hold, doctor, notice,
       filmIncluded: modality === "xray",
       handovers: hands.map((h) => ({
         handoverId: h.id, reportId: h.reportId, version: versionOf.get(h.reportId) ?? 0,
@@ -337,6 +361,13 @@ export async function handOverReport(
     }
   }
 
+  /**
+   * 18-S RS9b T1 — the PATIENT's copy (this report, and the film/CD riding with it) is held while
+   * the study's self-pay bill has dues, unless the owner released it unpaid. Checked after the
+   * collector's details so the desk fixes its own input first, and before anything is written.
+   */
+  const release = await assertPatientCopyReleasable(tx, study);
+
   const mediaIds = [...new Set(input.mediaRequestIds ?? [])];
   let filmSheets = 0;
   let cd = false;
@@ -359,6 +390,7 @@ export async function handOverReport(
     collectorName: kind === "patient" ? null : name, collectorRelation: kind === "relative" ? relation : null,
     collectorIdType: kind === "relative" ? idType : null, collectorIdLast4: kind === "relative" ? idLast4 : null,
     filmSheets, cd, note: trimOrNull(input.note), handedBy: actor.id, handedAt: now,
+    releaseApprovalId: release.releaseApprovalId,
   });
   if (mediaIds.length > 0) {
     const bound = await tx.update(imagingMediaRequests).set({ handoverId })
@@ -376,6 +408,15 @@ export async function handOverReport(
     actor, patientId: study.patientId, encounterId: study.encounterNo,
     payload: { handoverId, reportId: report.id, studyId: study.id, collectorKind: kind, filmSheets, cd },
   }));
+  if (release.releaseApprovalId !== null) {
+    await appendEvent(tx, imagingReportReleasedUnpaid.make({
+      actor, patientId: study.patientId, encounterId: study.encounterNo, correlationId: release.releaseApprovalId,
+      payload: {
+        handoverId, reportId: report.id, studyId: study.id, approvalId: release.releaseApprovalId,
+        outstandingPaise: release.outstandingPaise,
+      },
+    }));
+  }
   return { handoverId, filmSheets, cd };
 }
 

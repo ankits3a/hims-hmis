@@ -630,6 +630,62 @@ one `imaging_report_handovers` row, one `imaging.report_handed_over` event (coll
 the media row carries the hand-over id. `GET /radiology/north-star` shows the study with an
 order → acted time.
 
+### 15a. Release — the patient's copy held for dues, the owner's unpaid release, the late "ready" message (18-S RS9b)
+
+**Migration `0153_radiology_release_unpaid`** (additive): `imaging_report_handovers.release_approval_id`
+(nullable text) and a unique partial index on it. **One new approval type,
+`imaging_release_unpaid_owner`** (approver **owner**, urgent, 60 minutes, no act-first) — it is
+registered by `pnpm seed:radiology` (`registerRadiologyApprovalTypes`, idempotent — types already
+registered are left alone), so re-run that seed once after deploy. No permission or role change. **One new worker consumer,
+`radiology.report_ready_on_payment`** (on `payment.received` and `credit_note.issued`): restart the
+worker after deploy; its cursor is seeded at the current event, so it does not replay old payments.
+
+**The rule (DECIDED under the owner's delegation, the lab's rule 12 as the owner superseded it on 28 Sep).**
+- **The doctor's copy is never held for money** — the consult's results list, the full report, the
+  read-back and the reading room are untouched.
+- **The patient's copy is held while the study's bill has dues:** the hand-over at the window, and any
+  film or CD collected with it. Held means **self-pay, a billed line, the invoice not settled**. Not
+  held: ER/STAT (the bill follows), day-care and ward bedside studies (the running bill), TPA /
+  corporate / PMJAY (the payer is billed), and a study with no line at all (the counter's
+  *acquired, unbilled* bill decision owns that one).
+- **Released unpaid only by the owner.** Releasing a report before the money is credit, and the
+  owner's credit ruling of 28 Sep reserves every credit to him. The billing manager cannot release it.
+  **The dues stay on the account** — nothing is written off.
+
+**At the desk (`/radiology/reports`).** A held row reads **"Held for dues ₹N"**; opening it shows the
+bill number, *Collect at billing* (→ `/billing/dues`) and "the doctor's copy is not held". *Hand over*
+waits. When the patient pays at billing, reload — the hold is gone. If the patient cannot pay today:
+*Ask the owner to release unpaid*, write why (4+ characters) → `POST /radiology/reports/:id/release-unpaid`
+files the approval (the amount and the reason travel with it; asking twice returns the same request).
+The owner decides in **Approvals** (`/approvals`, "Hand over an unpaid imaging report"). The row then
+reads *Asked the owner at HH:MM* (waiting — the hand-over refuses `release_not_authorised`),
+*The owner did not release it unpaid: …* (collect at billing), or *The owner released this report
+unpaid — hand it over*. The hand-over **spends** the grant (`release_approval_id`, unique) and appends
+`imaging.report_released_unpaid` (hand-over, report, approval, the amount still due). A second
+hand-over of the same study (an amended version, say) needs a second decision.
+
+**The "report ready" message when the bill is paid later.** Publishing still queues
+`imaging_report_ready` only when the bill is settled (or the report is RED). When the patient pays
+after release, the worker's `radiology.report_ready_on_payment` re-reads the invoice; once it is
+**settled** it queues the message for the current released version of each imaging study on that
+bill. The dedupe key is per report version (`imaging_report_ready:<reportId>`), so it is queued
+**exactly once** whichever path runs first; a part-payment queues nothing; a STOP or a deceased
+patient is suppressed at send, as on the publish path. Rows are queued, never claimed sent, until
+the WhatsApp/SMS provider is live.
+
+**A relative's ID (type + last four) recorded at hand-over is part of the medical record** and is
+kept for the record's retention period — no separate deletion schedule (DECIDED; masked last-four
+is the lawful minimum, and the hand-over row is the hospital's evidence of who took the report).
+
+**Verify once.** Bill a routine self-pay study on the counter without taking the money; publish its
+report. At the desk the row reads *Held for dues ₹N*; *Hand over* refuses `report_held_for_dues`
+naming the amount; the doctor still opens the report from the consult. Ask the owner; as the owner,
+grant it in Approvals; hand over → `imaging_report_handovers.release_approval_id` is the approval,
+one `imaging.report_released_unpaid` event, the invoice is still unpaid. On a second such study,
+take the full payment at billing after publishing → within one worker cycle, one
+`notifications` row with `dedupe_key = 'imaging_report_ready:<reportId>'`; take nothing else and
+nothing more is queued.
+
 ## 16. The Supervisor & HOD station (18-S RS10)
 
 **No migration, no new permission, no seed-roles change.** The station is `/radiology/hod` (menu
