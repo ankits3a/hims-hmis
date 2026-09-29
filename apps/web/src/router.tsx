@@ -65,6 +65,8 @@ import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
 import { RadiologyReport } from "./screens/radiology-report";
 import { RadiologyPortable } from "./screens/radiology-portable";
+import { RadiologyRoom, ROOM_VIEWS } from "./screens/radiology-room";
+import type { RoomViewKey } from "./screens/radiology-room";
 import { RadiologyDiary } from "./screens/radiology-diary";
 import { RadiologyDisplay } from "./screens/radiology-display";
 import { RadiologySetup, SETUP_VIEWS } from "./screens/radiology-setup";
@@ -193,6 +195,8 @@ const NAV: readonly NavEntry[] = [
   // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
   { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "opd" },
   { to: "/radiology/worklist", label: "nav.radiologyWorklist", permission: "radiology.worklist.read", group: "opd" },
+  // 18-S RS6 — the modality rooms (console, dose log, rejects, downtime); `radiologyManifest.menu` carries the same pair.
+  { to: "/radiology/room", label: "nav.radiologyRoom", permission: "radiology.acquire", group: "opd" },
   // 18-S RS2b — the portable round; `radiologyManifest.menu` carries the same pair.
   { to: "/radiology/portable", label: "nav.radiologyPortable", permission: "radiology.acquire", group: "opd" },
   // 18-S RS3 — the desk's diary and the waiting-hall display; `radiologyManifest.menu` carries the same pairs.
@@ -1097,6 +1101,25 @@ const radiologyPortableRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
+/**
+ * PLAN 18-S RS6 — the modality rooms: one route, four header views (`?view=`), the machine and the
+ * patient on the table in the search (`?machine=CT-1&study=…`), so a reload keeps both.
+ */
+const radiologyRoomRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/room",
+  validateSearch: (search: Record<string, unknown>): { view?: RoomViewKey; machine?: string; study?: string } => ({
+    view: (ROOM_VIEWS as readonly unknown[]).includes(search.view) ? (search.view as RoomViewKey) : undefined,
+    machine: typeof search.machine === "string" && search.machine !== "" ? search.machine : undefined,
+    study: typeof search.study === "string" && search.study !== "" ? search.study : undefined,
+  }),
+  component: function RadiologyRoomScreen() {
+    const search = radiologyRoomRoute.useSearch();
+    return <RadiologyRoom search={search} />;
+  },
+  staticData: { fullViewport: true },
+});
+
 /** PLAN 18-S RS3 — the desk's diary: machines × time, with move / no-show / cancel (each with a reason). */
 const radiologyDiaryRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -1482,7 +1505,7 @@ export const router = createRouter({
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
       // count and joins this task's Files list, the S11 rule applied for the seventh time.
-      radiologyReceptionRoute, radiologyWorklistRoute, radiologyPortableRoute, radiologyDiaryRoute, radiologyDisplayRoute, radiologySetupRoute, radiologyPrepRoute, radiologyStudyRoute, radiologyReportRoute,
+      radiologyReceptionRoute, radiologyWorklistRoute, radiologyRoomRoute, radiologyPortableRoute, radiologyDiaryRoute, radiologyDisplayRoute, radiologySetupRoute, radiologyStudyRoute, radiologyReportRoute, radiologyPrepRoute,
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.

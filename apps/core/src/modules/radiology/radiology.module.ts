@@ -16,6 +16,7 @@ import { RadiologyImagesController } from "./radiology-images.controller";
 import { RadiologyFloorController } from "./radiology-floor.controller";
 import { RadiologySetupController } from "./radiology-setup.controller";
 import { RadiologyPrepController } from "./radiology-prep.controller";
+import { RadiologyRoomController } from "./radiology-room.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -56,6 +57,8 @@ import { RadiologyPrepController } from "./radiology-prep.controller";
     RadiologySetupController,
     // 18-S RS5 — the prep & safety bay and the radiologist's override queue.
     RadiologyPrepController,
+    // 18-S RS6 — the modality rooms: the console read, the in-room repeat, the reject analysis.
+    RadiologyRoomController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {

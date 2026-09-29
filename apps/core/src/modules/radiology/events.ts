@@ -207,6 +207,22 @@ export const imagingBookingChanged = defineEvent("imaging.booking_changed", MODU
   toScheduledAt: z.string().min(1).optional(),
 }));
 
+/**
+ * 18-S RS6 — an exposure was REPEATED at the console, and why. The reject analysis the Rooms station
+ * reads (repeat rate per machine and technologist, reasons) is this event's projection; the money
+ * half is the `repeat_no_charge` bill decision raised beside it. The reason is a CODE from a closed
+ * list — never free text, never a finding.
+ */
+export const REPEAT_REASON_CODES = ["positioning", "motion", "exposure", "artefact", "equipment"] as const;
+export type RepeatReasonCode = (typeof REPEAT_REASON_CODES)[number];
+
+export const imagingExposureRepeated = defineEvent("imaging.exposure_repeated", MODULE, z.object({
+  studyId: id,
+  deviceResourceId: id,
+  studyTypeCode: z.string().min(1),
+  reason: z.enum(REPEAT_REASON_CODES),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -224,4 +240,5 @@ export const RADIOLOGY_EVENTS = [
   imagingReportUnread,
   imagingBedsideRequested,
   imagingBookingChanged,
+  imagingExposureRepeated,
 ] as const;

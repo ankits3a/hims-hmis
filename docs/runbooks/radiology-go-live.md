@@ -110,7 +110,7 @@ production path: production's activation names real people and that is the point
 |---|---|---|
 | `radiology_receptionist` | `radiology.schedule`, `radiology.orders.place`, `radiology.bill_decisions.manage` | reception — books slots, walk-ins, check-in |
 | `radiographer` | `radiology.checkin`, `radiology.acquire`, `radiology.gates.satisfy`, `radiology.contrast.record`, `radiology.mwl.read` | the console |
-| `radiology_nurse` (18-S RS5) | `radiology.worklist.read`, `radiology.gates.satisfy`, `radiology.contrast.record` | the prep & safety bay — see §12 |
+| `radiology_nurse` (18-S RS5) | `radiology.worklist.read`, `radiology.gates.satisfy`, `radiology.contrast.record` | the prep & safety bay — see §13 |
 | `radiologist` | `radiology.reports.{read,write,sign,amend}`, `radiology.gates.override`, `radiology.criticals.ack`, `radiology.definitions.manage` | reporting |
 | `doctor` | `radiology.orders.place`, `radiology.reports.read` | the ward and the OPD |
 | `modality_bridge` | `radiology.mwl.read` | the machine, not a human — see the PACS runbook |
@@ -359,9 +359,87 @@ in, the token appears under NEXT on the hall TV as `X… Firstname I.`), move it
 (`imaging.booking_changed` row; the old `imaging_appointment_booked` outbox row goes `expired`, a
 new one `queued`).
 
+## 12. The modality rooms — console, portable, dose log, rejects, downtime (18-S RS6)
+
+**Who.** `radiographer` (and `radiologist`) — `radiology.acquire`. Nothing new in `seed:roles`.
+Opening a booked patient checks them in, so the radiographer's existing `radiology.checkin` is used.
+
+**Before the first patient: the protocol book.** The HOD writes the `imaging_protocols` book under
+Setup → Books (`/radiology/setup?view=books`); the medical superintendent approves it in the
+approvals inbox, then it is published — the same route as every other book. **Nothing is seeded**:
+until the HOD publishes, the console says *"No protocol book is published yet"* and the technologist
+works from the radiologist's instruction. One protocol per study-type code (`study_type_code`), or a
+department default per modality (`modality`); the study type's own wins. Each protocol carries:
+- `name`, `technique` (the radiologist's words), optional `preset` (the machine's stored protocol);
+- `kv` / `mas` ranges; CT `ct: {slice_mm, pitch}`; MRI `sequences`;
+- `contrast: {phase, ml_per_kg, max_ml, delay_s, agent?, rate_ml_s?}` — the console suggests
+  `ml_per_kg × weight`, capped at `max_ml` (a suggestion; the volume given is typed);
+- `breath_hold: {en, hi}` — both or neither, read aloud from the console;
+- `paediatric: {bands: [{from_kg, to_kg, kv?, mas?, ml_per_kg?, note?}]}` — a child is dosed by
+  weight band; a weight outside every band is a question for the radiologist.
+
+Example body: `{"protocols":[{"study_type_code":"CT-ABDO-CONTRAST","name":"CECT abdomen, portal
+venous","technique":"Supine, arms up …","kv":{"min":100,"max":120},"ct":{"slice_mm":5,"pitch":0.98},
+"contrast":{"phase":"portal_venous","ml_per_kg":1.5,"max_ml":100,"delay_s":70},"breath_hold":{"en":
+"Breathe in… hold","hi":"साँस अंदर… रोकिए"}}]}`.
+
+**The console (`/radiology/room`).** Pick the machine at the top; the right list is that machine's
+day (STAT first, then on the table → ready → arrived → booked), with *Clocks running* for a STAT
+waiting over 10 minutes and a ready patient over 20. **Opening a patient means they are on the
+table** — a booked study is checked in by that act; there is no presence button. Then:
+1. **Identify** — the patient says name and age in their own words (tick), then the second
+   identifier: scan the wristband, or the UHID said / on the slip, or the date of birth. The server
+   compares it with the patient master; a mismatch leaves the gate open — stop. For a study with a
+   side, the patient points; there is no override for the side. Any other open gate belongs to the
+   **prep bay** (`/radiology/prep`): the console shows it, links there, and will not go on.
+2. **Protocol** — the card, the contrast volume for the weight (the charted weight is filled in;
+   type the weight on the table), and the breath-hold words in English or Hindi.
+3. **Acquire** — *Start*. A refusal is shown in the server's words with the seat that fixes it:
+   no AERB licence → Radiation safety → Licences; machine down or busy → Downtime; not paid → the
+   imaging front desk; a prep gate → the prep bay. Once on the table: type the dose from the console
+   (CT: CTDIvol and DLP; X-ray: DAP, and fluoroscopy seconds when screened; mammography: DAP). **A
+   number above the hospital DRL asks for a reason and never blocks** — the reason is kept on the
+   dose register beside the verdict. Contrast: given (agent, volume) or *not given*; a study booked
+   **with** contrast and scanned plain sends the contrast reversal to the bill-decisions queue with
+   the reason typed here (ruling 3). **Repeat** records a retaken exposure with its reason code —
+   positioning, patient motion, exposure too low/high, artefact, equipment fault — and raises one
+   *repeat · no charge* bill decision per study (ruling 8: a technical repeat is free). **Abort**
+   (with a reason) sends the study back to *ready*; nothing is billed for the abort.
+4. **Send** — PACS (the Study UID is pre-filled from the worklist) or *no DICOM images*. The study
+   leaves the list and appears on the reading worklist.
+
+The study page (`/radiology/studies/:id`) is still there — the lane links to it, and it links back
+to the console.
+
+**Portable round (`/radiology/portable`).** Opening a bed opens the same console in bedside mode.
+Before *Start* the technologist ticks the bedside radiation checks — everyone else 2 m away; lead
+apron and thyroid shield on anyone who must stay; no pregnant staff, visitor or patient in the bay.
+They are attested as text on the start (the study's history shows who, when, and the checks).
+
+**Dose log.** The day's dose register for the machine, with the DRL verdict and the reason for
+every above-DRL study; a missing reason is shown in red for the RSO's review.
+
+**Rejects & repeats.** Last seven days: repeats per study acquired, per machine and technologist,
+against a target under 3 %; reasons; the repeat log (accession, never the name). The *repeat · no
+charge* and *contrast not given* decisions are listed; **resolving one is the desk's or the billing
+manager's act** (`radiology.bill_decisions.manage`), never the technologist's.
+
+**Downtime.** Every machine's status. *Report a breakdown* is the radiologist in charge's act
+(`radiology.devices.manage`, Setup's status write with a reason); it answers with the booked
+patients to move — move them in the imaging diary. A technologist sees who to tell instead.
+**When HMIS itself is down:** each room keeps pre-numbered manual accession sheets (name, UHID,
+study, side, dose, technologist, time); scan on paper, hand the sheet to the desk, and back-enter
+each study when HMIS returns — the entry takes the paper time and is marked late (`acquiredAt`,
+E11). No other downtime mechanism exists yet.
+
+**Verify once.** Publish a one-protocol book; open a ready CT on the console — the card and the
+volume show; identify; start; type a DLP above the DRL with a reason; record one repeat; send.
+Expect: one `radiation_dose_register` row with `over_drl = true` and `drl_reason` set; one
+`imaging.exposure_repeated` event; one open `repeat_no_charge` decision; the study on the reading
+worklist; the repeat on *Rejects & repeats*.
 ---
 
-## 12. The prep & safety bay — gates, eGFR, contrast and the override request (18-S RS5)
+## 13. The prep & safety bay — gates, eGFR, contrast and the override request (18-S RS5)
 
 **Who.** `seed:roles` adds the role **`radiology_nurse`** (the bay's nurse) and one permission,
 `radiology.contrast.record` (radiologist, radiographer, radiology nurse). Assign the bay's nurse

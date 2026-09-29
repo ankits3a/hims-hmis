@@ -147,6 +147,19 @@ export function RadiologyStudy(): React.ReactElement {
       stats={[]}
     >
     <div className="space-y-4">
+      {/* 18-S RS6 — the room console works this study step by step; this page stays the full record. */}
+      {s !== null && s.acquiredAt === null
+        ? (
+          <p className="text-sm">
+            <a
+              href={`/radiology/room?study=${encodeURIComponent(studyId)}`} className="font-medium underline" data-testid="to-room-console"
+              onClick={(e) => { e.preventDefault(); void navigate({ to: "/radiology/room", search: { study: studyId } }); }}
+            >
+              {t("radiology.study.toRoom")}
+            </a>
+          </p>
+        )
+        : null}
       {s !== null
         ? (
           <p className="text-sm">
