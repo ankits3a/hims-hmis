@@ -82,6 +82,29 @@ export async function seedActiveStudyTypes(
 }
 
 /**
+ * 18-S RS8a — an ACTIVE `report_signatories` book, inserted directly for the reason
+ * `seedActiveStudyTypes` gives. Ruling 4 makes the list a precondition of every signature (the
+ * print must carry the signer's qualification and council number), so the fixture's radiologist is
+ * on it; a suite proving the refusal removes the row or passes its own list.
+ */
+export const FIXTURE_QUALIFICATION = "MBBS, MD (Radiodiagnosis)";
+export const FIXTURE_COUNCIL_REG = "Jharkhand State Medical Council · 2014/1187";
+
+export async function seedActiveSignatories(
+  db: Db,
+  signatories: { user_id: string; qualification: string; designation?: string; council_reg_no?: string }[],
+  at: Date = new Date(),
+): Promise<{ definitionId: string }> {
+  const definitionId = newId();
+  await db.insert(imagingDefinitions).values({
+    id: definitionId, kind: "report_signatories", version: 1, status: "active",
+    draftedBy: "fixture", publishedBy: "fixture", publishedAt: at,
+    body: { signatories },
+  });
+  return { definitionId };
+}
+
+/**
  * ═══ THE SHARED RADIOLOGY FIXTURE (18a T4) ═══
  *
  * Three suites need the same precondition — a published study-type book, an active `imaging_study`
@@ -173,6 +196,10 @@ export async function setupRadiologyFixture(
   const { actor: doctor } = await mkUser(db, "dr.mehra", ["doctor"]);
   const { actor: radiographer } = await mkUser(db, "rt.singh", ["radiographer"]);
   const { actor: radiologist } = await mkUser(db, "dr.rao", ["radiologist"]);
+  await seedActiveSignatories(db, [{
+    user_id: radiologist.id, qualification: FIXTURE_QUALIFICATION,
+    designation: "Consultant Radiologist", council_reg_no: FIXTURE_COUNCIL_REG,
+  }], opts.now);
   const { actor: owner } = await mkUser(db, "owner.one", ["owner"]);
   const { actor: ms } = await mkUser(db, "ms.iyer", ["medical_superintendent"]);
   const { actor: drafter } = await mkUser(db, "rad.drafter", ["owner"]);
