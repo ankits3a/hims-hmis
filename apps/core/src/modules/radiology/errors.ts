@@ -189,6 +189,23 @@ export const RADIOLOGY_ERROR_CODES = [
    */
   "foetal_sex_disclosure",
   "invalid_biometry",
+  /**
+   * ── 18-S RS9 — release and the closed loop ──
+   *
+   * `not_treating_doctor`: acted-upon and the doctor's read-back are the TREATING doctor's (the
+   * ordering clinician or the visit's doctor); anybody else is refused by name, and the recovery is
+   * to ask that doctor. `acted_note_required`: the one line of what the report changed.
+   * `report_superseded`: the version in hand was amended — act on the current one.
+   * `report_not_published`: nothing is acted on, handed over or printed before release.
+   * `collector_details_required`: a hand-over that does not name its collector as the type needs.
+   * `unknown_media_request`: a stale film/CD row.
+   */
+  "not_treating_doctor",
+  "acted_note_required",
+  "report_superseded",
+  "report_not_published",
+  "collector_details_required",
+  "unknown_media_request",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -275,6 +292,13 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   unknown_override_request: 404,
   foetal_sex_disclosure: 422,
   invalid_biometry: 422,
+
+  not_treating_doctor: 403,
+  acted_note_required: 422,
+  report_superseded: 409,
+  report_not_published: 422,
+  collector_details_required: 422,
+  unknown_media_request: 404,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

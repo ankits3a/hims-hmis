@@ -976,6 +976,98 @@ migration:
 - **Journeys:** J1 last hops, J4 release, J9 doctor hop.
 - Migration: delivery columns.
 
+**RS9 spike** (read on main `583db9ff`, 29 Sep, before any code):
+- **(a) `imaging_report_delivery`** is one row per REPORT VERSION (`report_ux`), holding `first_read_at/by`
+  and `unread_chased_at` only (18a-iii T5: the report row is append-only by trigger 0047, so its delivery
+  is a separate, mutable object). Two writers: `reportView` (`read.ts`) stamps first read for **any**
+  holder of `radiology.reports.read` who is not the signer — the radiographer holds it, so a technologist
+  opening the report silences the 24 h Unread Watchman exactly as the treating doctor would; and the
+  Watchman (`chasers.ts`) upserts `unread_chased_at`. Nothing records acted-upon.
+- **(b) Where the treating doctor reads imaging today.** The consult's "Since then" brief
+  (`lib/brief-history.ts` → `GET /radiology/reports/patient/:id`, `patient-reports.ts`) — impression,
+  critical category and signed time only, and it writes **no** first read. The full report
+  (`GET /radiology/reports/:id`, the one first-read writer) has one web caller, the department's own
+  `radiology-report.tsx`. So in practice first read is written by the department, not the doctor. The
+  critical acknowledge route (`POST /radiology/criticals/:id/acknowledge`) needs `radiology.criticals.ack`,
+  which only `radiologist` holds — the doctor cannot call it; `acknowledgeCritical` already records the
+  clinician who read back separately from the actor (F76). RS2's consult panel places orders only.
+- **(c) The lab's hand-over.** `lab_report_deliveries` rows (channel `print | whatsapp | in_person |
+  doctor_screen`, a free-text `collector_identity` required for a physical hand-over, an `approval_id` for
+  an unpaid release). 17-F F8's collector type / relation columns and the patient OTP are **not built**
+  ("blocked by the owner: read receipts and patient OTP need a real provider"). There is no OTP service
+  for patients anywhere on main (ABHA's OTP is ABDM's, for ABHA only). Imaging reuses the SHAPE (a
+  register of physical hand-overs, collector named) with typed collector columns, and defers the OTP.
+- **(d) Notify.** `imaging_report_ready` already exists (18a T2) and `publishReport` already enqueues it in
+  the publish transaction (`notifyIfDue`): token-only (order number, no study, no link — there is no
+  patient-facing link on main, the lab's twin has none either), EN + HI, 72 h expiry, `transactional`,
+  enqueued only when the invoice is settled or the report is RED critical, and a failed enqueue never
+  fails the publish. Consent: `transactional` needs no opt-in; a patient's STOP suppresses every patient
+  message at the pump (`opted_out`, P6), deceased suppresses. Other patient kinds on main:
+  `patient_lab_report_ready`, `imaging_appointment_booked` (RS3), OPD appointment/refill families. The
+  WhatsApp adapter is not on main: rows are RECORDED, never claimed sent.
+
+**RS9 as built** (this PR; lane `radiology-rs9`; one migration, `0149_radiology_closed_loop` (renumbered from 0147 at merge; RS11 took 0147, RS8a 0148)):
+- **T1 · acted upon (core).** `imaging_report_delivery` + `acted_at/by/outcome/note` (all-or-none
+  CHECK, outcome from the board's five, note ≥ 4 characters). `POST /radiology/reports/:id/acted`
+  (`radiology.reports.read` + the treating-doctor check in `closed-loop.ts`): the **treating doctor** is
+  the order's `ordering_clinician_id` or the visit's doctor (`opd_encounters.doctor_id → opd_doctors.user_id`);
+  anyone else `not_treating_doctor`, naming who can act. An act stamps the first read if empty and
+  appends `imaging.report_acted_upon` (outcome code only). **`reportView` now stamps the first read only
+  for the treating doctor** (spike a — a technologist's read silenced the Watchman).
+- **T2 · the north star.** `GET /radiology/north-star?from&to` (`north-star.ts`, **`radiology.reports.sign`** —
+  the grant only the reporting radiologist holds; the HOD is a radiologist, the desk/technologist/referrer
+  are not). Per modality (from the active study-type book) × source: ordered, median + p90 (nearest rank,
+  whole minutes) order → first signature, signed → first read and order → acted on the current version,
+  signed-unread > 24 h, published-not-acted > 72 h, plus totals. `northStar` is exported for RS10's floor.
+- **T3 · the doctor's results (web).** `components/radiology/imaging-results-inbox.tsx`, mounted by one
+  line in `opd-consult.tsx` under "Nobody is in the chair". `GET /radiology/results`: current released
+  versions the doctor treats, open criticals first, then unread, read-not-acted, acted (14 days).
+  Open report (`GET /radiology/reports/:id` — the read that lands), Open images (existing logged
+  `images/open`), Mark acted upon. **Read-back:** `POST /radiology/reports/:id/read-back` calls the
+  same `acknowledgeCritical` (RS8b is not built; this is the first doctor-side caller).
+- **T4 · Report hand-over (web + core).** `/radiology/reports` (station `reports`, `radiology.schedule`):
+  `GET /radiology/release` (30 days, needs derived: abnormal uncollected 24 h, amended after hand-over,
+  media to print / to hand, notice not recorded, not collected), `POST /radiology/studies/:id/media`,
+  `POST /radiology/media/:id/printed`, `POST /radiology/reports/:id/handover` (collector typed; CHECKs repeat
+  the rules). Tables `imaging_report_handovers`, `imaging_media_requests`. Events
+  `imaging.report_handed_over` (collector type only) and `imaging.media_requested`.
+- **T5 · patient message.** Already on main (18a T2, spike d): `imaging_report_ready` queued in the
+  publish transaction, EN + HI, order number only, settled-or-RED, STOP suppresses at the pump. RS9 adds a
+  pin (release.test T5) and shows the recorded state on the register; no secure link exists to add.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *Treating doctor* = ordering clinician or the visit's doctor; a covering colleague is not (the OPD's
+    D5 rule — coverage is a transfer of the visit).
+  - *Only the treating doctor's read lands*; for a study with no in-house doctor (outside prescription /
+    self) the **hand-over** is the first read, so the Watchman does not chase a report nobody here awaits.
+  - *An amendment re-opens the loop* (acts and reads are per report version); acting on a superseded
+    version is `report_superseded`, naming the current version.
+  - *The doctor's read-back* goes through a treating-doctor route calling the same `acknowledgeCritical`;
+    `radiology.criticals.ack` stays the radiologist's (no grant widened).
+  - *No patient OTP service exists*: a relative is recorded by name, relation and ID type + last four
+    characters (masked Aadhaar is lawful); the OTP is deferred and the screen says so.
+  - *Film/CD*: the X-ray's first sheet is `included`; the rest name `RAD-FILM` / `RAD-CD` and are charged
+    at the billing counter — the desk composes no money and links no invoice.
+  - *The hand-over is the desk's* (`radiology.schedule`) — no new permission.
+  - *Source*: OUT (outside prescription / self) → IPD (day-care or bedside) → ER (STAT) → OPD, until IPD
+    and ER modules exist.
+  - *PHI*: the inbox logs `imaging.report` and the register `imaging.worklist` per patient (existing
+    surfaces; the kernel union was not widened).
+- **Pins.** Migration 0147; radiology events 16 → 19; caddyfile routes 78 → 79 (`/radiology/reports`, after RS7's `/radiology/usg`);
+  nav + `radiologyManifest.menu` + station row `reports`; six error codes (`not_treating_doctor`,
+  `acted_note_required`, `report_superseded`, `report_not_published`, `collector_details_required`,
+  `unknown_media_request`). No permission, seed-roles, notify template or kernel change.
+- **Moved later.** Patient secure link + OTP + plain-words summary (provider + DPIA); the 30-minute SMS
+  fallback and "abnormal unopened 24 h → call task" as an obligation/alert (RS10); follow-ups to book in
+  the doctor's inbox (RS8's `imaging_followups`); the signer block on the doctor's report view (RS8a's
+  print); messaging the radiologist from the report; the outside-CD desk view (RS3 left it here — still
+  open, RS10/RS12); billing film/CD from the hand-over desk itself; the HOD north-star screen (RS10); the
+  ward inbox (IPD).
+- **Money/law questions the rulings do not settle.** (1) Is a report **held at the window until paid**
+  (the board draws "held for money · released unpaid only by the billing manager")? Nothing holds it —
+  18a A6 made money gate only the message; RS9 built no hold. (2) A report released unpaid gets no
+  "ready" message, and nothing sends it when the bill is paid later. (3) Retention of the relative's ID
+  last-four under DPDP (kept with the hand-over row, indefinitely today).
+
 ### RS10 · Supervisor & HOD
 - **Core:**
   - `GET radiology/supervisor/floor`: pipeline by stage with the oldest wait, rooms, readers' load, turnaround median
