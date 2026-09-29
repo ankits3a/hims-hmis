@@ -413,6 +413,23 @@ describe("patients e2e", () => {
       .expect(409); // unknown approval type patient_merge — registration is go-live data, T10 exercises the full path
   });
 
+  /*
+    UX-AUDIT 2026-09-28 · BOARD (merge review) — the two new reads are reached, not swallowed by
+    `@Get(":id")` (which would read `merge-requests` / `merge-visits` as a patient id and 404).
+  */
+  it("BOARD: the merge-requests list and merge-visits reads answer on their own routes", async () => {
+    const list = await request(app.getHttpServer())
+      .get("/patients/merge-requests").set(...auth(clerkToken)).expect(200);
+    expect(list.body).toEqual({ items: [] });
+    const a = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken)).send({ name: "Visit Count", sex: "male" }).expect(201);
+    const visits = await request(app.getHttpServer())
+      .get(`/patients/merge-visits?ids=${String(a.body.patient.id)}`).set(...auth(clerkToken)).expect(200);
+    expect(visits.body).toEqual({ items: [{ patientId: a.body.patient.id, visits: 0, lastVisitOn: null }] });
+    await request(app.getHttpServer()).get("/patients/merge-visits").set(...auth(clerkToken)).expect(400);
+    await request(app.getHttpServer()).get("/patients/merge-requests").set(...auth(randoToken)).expect(403);
+  });
+
   /**
    * PLAN 22c-A T7 — THE AMENDMENT SURFACE, END TO END: register → amend → resolve as of the
    * moment the first document would have been issued. This is the phase's whole promise in one

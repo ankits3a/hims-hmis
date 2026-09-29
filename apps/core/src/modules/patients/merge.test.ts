@@ -1,15 +1,18 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
-  approvals, events, patientAllergies, patientGuardians, patientPhotos, patients, registrationConfig,
+  approvals, events, opdEncounters, patientAllergies, patientGuardians, patientMergeRequests, patientPhotos, patients,
+  registrationConfig,
 } from "../../kernel/db/schema";
+import { useBreakGlass } from "../../kernel/auth/break-glass";
+import type { AppConfig } from "../../kernel/config";
 import { withTx } from "../../kernel/db/client";
 import { createUser } from "../../kernel/auth/identity";
 import { assignRole, createRole } from "../../kernel/auth/permissions";
 import { seedSodPairs } from "../../kernel/auth/sod";
 import { approvalFlowDefinition } from "../../kernel/approvals/flow";
 import { registerApprovalType } from "../../kernel/approvals/types";
-import { approveRequest } from "../../kernel/approvals/decisions";
+import { approveRequest, rejectRequest } from "../../kernel/approvals/decisions";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { createDraft, activateDefinition } from "../../kernel/workflow/definitions";
 import { registerPatient } from "./registration";
@@ -19,7 +22,7 @@ import { linkGuardian } from "./guardians";
 import { storePatientPhoto } from "./photos";
 import {
   MERGE_APPROVAL_TYPE, UNMERGE_APPROVAL_TYPE, createMergeRequest, executeMerge,
-  executeUnmerge, getMergeRequest, requestUnmerge,
+  executeUnmerge, getMergeRequest, listMergeRequests, requestUnmerge, visitSummaries,
 } from "./merge";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -241,5 +244,97 @@ describe("merge & unmerge (§11.5 — approval-gated, splittable)", () => {
     await expect(executeUnmerge(db, clerk, mergeRequestId)).rejects.toMatchObject({ code: "approval_not_granted" });
     await approveRequest(db, mrdHead, { approvalId: un.approvalId, note: "confirmed distinct" });
     await executeUnmerge(db, clerk, mergeRequestId);
+  });
+  /*
+    UX-AUDIT 2026-09-28 · BOARD (merge review) — "needs server" item 2, a real defect: a REFUSED merge
+    left its request `requested`, and the one-live-request-per-loser index then refused every later
+    request for that record. Run against origin/main's merge.ts first and failed there.
+  */
+  it("BOARD: a refused merge closes its request, and the same record can be asked again", async () => {
+    const { winnerId, loserId, mergeRequestId, approvalId } = await requestedMerge();
+    await rejectRequest(db, mrdHead, { approvalId, note: "different mothers — check the birth register" });
+
+    const view = await getMergeRequest(db, mergeRequestId);
+    expect(view!.request.status).toBe("refused");
+    expect(view!.approvalStatus).toBe("rejected");
+    expect(view!.decisionNote).toBe("different mothers — check the birth register");
+    // The refused request can never be run.
+    await expect(executeMerge(db, clerk, mergeRequestId)).rejects.toMatchObject({ code: "merge_refused" });
+
+    // The record is asked again — the defect was that this threw merge_already_requested for ever.
+    const again = await withTx(db, (tx) => createMergeRequest(tx, clerk, { winnerId, loserId, note: "second look, same mobile" }));
+    const rows = await db.select().from(patientMergeRequests).where(eq(patientMergeRequests.loserId, loserId));
+    expect(rows.map((r) => r.status).sort()).toEqual(["refused", "requested"]);
+    expect(rows.find((r) => r.status === "requested")!.id).toBe(again.mergeRequestId);
+    // The approval's own audit stays: exactly one approval.rejected event, with the MS's note.
+    const rejectedEvents = await db.select().from(events).where(eq(events.name, "approval.rejected"));
+    expect(rejectedEvents).toHaveLength(1);
+  });
+
+  it("BOARD: a merge still waiting is NOT closed by the settle — only a refusal closes one", async () => {
+    const { winnerId, loserId, mergeRequestId } = await requestedMerge();
+    expect((await getMergeRequest(db, mergeRequestId))!.request.status).toBe("requested");
+    await expect(
+      withTx(db, (tx) => createMergeRequest(tx, clerk, { winnerId, loserId, note: "again" })),
+    ).rejects.toMatchObject({ code: "merge_already_requested" });
+  });
+
+  /*
+    UX-AUDIT 2026-09-28 · BOARD — owner ruling on Q2: merging a SEALED (confidential) record needs the
+    Medical Superintendent to record a break-glass first. The approver here is `mrdHead` (this suite's
+    stand-in for the MS); a grant by anybody else does not count.
+  */
+  it("BOARD: a sealed record merges only after the approver records a break-glass on it", async () => {
+    const { winnerId, loserId, mergeRequestId, approvalId } = await requestedMerge();
+    await db.update(patients).set({ isConfidential: true, alias: "Patient 7" }).where(eq(patients.id, loserId));
+    await approveRequest(db, mrdHead, { approvalId, note: "same person" });
+    const cfg = { breakGlassTtlMinutes: 30 } as AppConfig;
+
+    await expect(executeMerge(db, clerk, mergeRequestId)).rejects.toMatchObject({ code: "sealed_needs_break_glass" });
+    // Teeth: the REQUESTER breaking the glass is not the approver breaking it.
+    await useBreakGlass(db, cfg, clerk, { patientId: loserId, reason: "merge review" });
+    await expect(executeMerge(db, clerk, mergeRequestId)).rejects.toMatchObject({ code: "sealed_needs_break_glass" });
+    expect((await db.select().from(patients).where(eq(patients.id, loserId)))[0]!.status).toBe("active");
+
+    await useBreakGlass(db, cfg, mrdHead, { patientId: loserId, reason: "merge of a sealed record, request checked" });
+    const done = await executeMerge(db, clerk, mergeRequestId);
+    expect(done.winnerId).toBe(winnerId);
+  });
+
+  it("BOARD: the requests list — granted first, then waiting, then refused; a sealed name is its alias", async () => {
+    const a = await requestedMerge(); // will be granted
+    const b = await requestedMerge(); // waits
+    const c = await requestedMerge(); // refused
+    await approveRequest(db, mrdHead, { approvalId: a.approvalId, note: "ok" });
+    await rejectRequest(db, mrdHead, { approvalId: c.approvalId, note: "different people" });
+    await db.update(patients).set({ isConfidential: true, alias: "Patient 7" }).where(eq(patients.id, b.loserId));
+
+    const items = await listMergeRequests(db, clerk);
+    expect(items.map((i) => i.id)).toEqual([a.mergeRequestId, b.mergeRequestId, c.mergeRequestId]);
+    expect(items.map((i) => i.stage)).toEqual(["granted", "waiting", "refused"]);
+    expect(items[2]!.status).toBe("refused");
+    expect(items[2]!.decisionNote).toBe("different people");
+    expect(items[2]!.decidedByName).toBe("M");
+    expect(items[1]!.dueAt!.getTime() - items[1]!.requestedAt.getTime()).toBe(240 * 60_000);
+    expect(items[0]!.dueAt).toBeNull();
+    expect(items[1]!.loser).toMatchObject({ name: "Patient 7", sealed: true });
+    expect(items[1]!.winner.name).toBe("Asha Devi");
+    expect(items[0]!.requestedByName).toBe("C");
+  });
+
+  it("BOARD: visit summaries count each record's visits (abandoned excluded) and name the last one", async () => {
+    const { winnerId, loserId } = await twoPatients();
+    const visit = (patientId: string, serviceDate: string, status = "completed") => ({
+      id: `${patientId}-${serviceDate}-${status}`, visitNo: `V-${serviceDate}-${status}`, patientId, status,
+      workflowInstanceId: "wi-test", serviceDate, visitType: "new", openedBy: "t", updatedBy: "t",
+    });
+    await db.insert(opdEncounters).values([
+      visit(winnerId, "2026-08-02"), visit(winnerId, "2026-01-14"), visit(winnerId, "2026-09-01", "abandoned"),
+    ]);
+    const out = await visitSummaries(db, [winnerId, loserId]);
+    expect(out).toEqual([
+      { patientId: winnerId, visits: 2, lastVisitOn: "2026-08-02" },
+      { patientId: loserId, visits: 0, lastVisitOn: null },
+    ]);
   });
 });
