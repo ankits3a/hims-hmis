@@ -25,6 +25,7 @@ import { PayView } from "./pay";
 import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
+import { StockEntryView } from "./stock-entry";
 import { TodayDesk, money0 } from "./today";
 import { TrayChecksView } from "./trays";
 import { fetchControlledToday } from "../../lib/controlled-api";
@@ -122,7 +123,9 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "vendors": return <MaterialsVendors />;
     case "bills": return <PayView key={`pay-${String(seed.n)}`} {...(seed.pay === undefined ? {} : { initialOpen: seed.pay })} />;
     case "returns": return <ReturnsView key={`ret-${String(seed.n)}`} {...(seed.returns === undefined ? {} : { initialOpen: seed.returns })} />;
-    case "grn": case "opening": return <MaterialsGrn />;
+    case "grn": return <MaterialsGrn />;
+    // 2026-09-29 — the shelf entered on screen, row by row (the CSV upload folded inside it).
+    case "opening": return <StockEntryView />;
     case "counts": return <MaterialsCounts />;
     case "transfers": return <MaterialsTransfers />;
     // A5 — the ledger's document opens where the office keeps it: a return's or write-off's sheet, else its page.
@@ -213,14 +216,6 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView | "co
     setSeed((s) => ({ n: s.n + 1, ...(g.view === "pay" && g.open !== undefined ? { pay: g.open as PayOpen } : {}), ...(g.view === "returns" && g.open !== undefined ? { returns: g.open as ReturnsOpen } : {}) }));
     open(g.view, g.page);
   };
-
-  // The opening-stock sheet lives on the goods-receipt screen; its menu entry brings it into view.
-  const pageKey = page?.key ?? null;
-  useEffect(() => {
-    if (pageKey !== "opening") return;
-    const id = setTimeout(() => document.getElementById("opening-stock-title")?.scrollIntoView({ block: "start" }), 0);
-    return () => clearTimeout(id);
-  }, [pageKey]);
 
   // A dropdown closes on a click anywhere outside it.
   useEffect(() => {

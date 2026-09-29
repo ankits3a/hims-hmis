@@ -47,7 +47,7 @@ const FOLDED: [string, string, string][] = [
   ["buy", "reorder", "pharmacyReorder.title"],
   ["buy", "vendors", "materialsVendors.title"],
   ["stock", "grn", "materialsGrn.title"],
-  ["stock", "opening", "materialsGrn.title"],
+  ["stock", "opening", "stockEntry.title"],
   ["stock", "counts", "materialsCounts.title"],
   ["stock", "transfers", "materialsTransfers.title"],
   ["stock", "downtime", "pharmacyDowntime.title"],
