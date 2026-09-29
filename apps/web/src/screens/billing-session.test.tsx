@@ -301,7 +301,9 @@ describe("BillingSession", () => {
     const pending = screen.getByTestId("approval-pending");
     expect(pending).toHaveAttribute("role", "status");
     // UX-AUDIT 2026-09-28 — who decides, in words; the approval's raw id is not the cashier's business.
-    expect(pending).toHaveTextContent("Waiting for a billing manager to approve this variance");
+    // UX-AUDIT 2026-09-28 (board pass): the lockout headline names the billing manager; this line
+    // adds only what it does not — that someone other than her decides.
+    expect(pending).toHaveTextContent("Someone other than you has to decide it");
     expect(pending.textContent).not.toContain("apr-77");
 
     /**
@@ -359,7 +361,7 @@ describe("BillingSession", () => {
     await screen.findByTestId("lockout-banner");
     expect(screen.queryByTestId("open-submit")).toBeNull();
     expect(screen.queryByLabelText("Opening float")).toBeNull();
-    expect(screen.getByTestId("confirm-close-hint")).toHaveTextContent("After a billing manager approves the variance");
+    expect(screen.getByTestId("confirm-close-hint")).toHaveTextContent("After it is approved, press Finish closing");
     expect(screen.getByTestId("confirm-close")).toHaveTextContent("Finish closing");
   });
 
@@ -623,5 +625,86 @@ describe("UX-AUDIT 2026-09-28: the approval's state, for a reader who may read i
     await waitFor(() => expect(screen.getByTestId("approval-pending")).toHaveTextContent("did not approve"));
     expect(screen.queryByTestId("confirm-close")).toBeNull();
     expect(screen.getByTestId("recount-open")).toBeInTheDocument();
+  });
+});
+
+/**
+ * UX-AUDIT 2026-09-28 — THE BOARD PASS (BillingEdge + BillingCounter). "Open on this drawer" and
+ * "If you closed the drawer now" read `GET /billing/sessions/current/open-items`, which carries no
+ * cash figure; the count is typed down a column; the awaiting-approval card says its warning once.
+ */
+describe("UX-AUDIT 2026-09-28: the drawer board", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const OPEN_ITEMS = {
+    receipts: 12,
+    nonCashUnconfirmed: { count: 2, paise: 60_000 },
+    nonCashMismatched: { count: 0, paise: 0 },
+    refundsQueued: { count: 3, paise: 90_000 },
+    refundsPaidHere: 1,
+    partPaid: {
+      count: 1, paise: 5_000,
+      items: [{ invoiceId: "inv-1", invoiceNo: "INV/26-27/000041", patientId: "p-1", outstandingPaise: 5_000, patientName: "Kamla Devi", uhid: "CRK1" }],
+    },
+  };
+
+  function renderOpen(): void {
+    mockRoutes({
+      "GET /api/billing/sessions/current": { status: 200, body: { session: OPEN } },
+      "GET /api/billing/sessions/current/open-items": { status: 200, body: { items: OPEN_ITEMS } },
+    });
+    renderWithProviders(<BillingSession />);
+  }
+
+  it("lists what is open on the drawer — unconfirmed UPI, queued refunds, part-paid bills by name — and the strip counts the receipts", async () => {
+    renderOpen();
+    expect(await screen.findByTestId("open-unconfirmed")).toHaveTextContent("₹600.00");
+    expect(screen.getByTestId("open-unconfirmed")).toHaveTextContent("2 UPI/card payments not yet confirmed");
+    expect(screen.getByTestId("open-refunds")).toHaveTextContent("₹900.00");
+    expect(screen.getByTestId("open-part-paid")).toHaveTextContent("Kamla Devi");
+    expect(screen.getByTestId("open-part-paid")).toHaveTextContent("INV/26-27/000041");
+    expect(screen.queryByTestId("open-mismatched")).toBeNull();
+    expect(screen.getByTestId("session-receipts")).toHaveTextContent("12 receipts taken");
+  });
+
+  it("BLIND COUNT: 'If you closed the drawer now' keeps its rows but prints no figure where the drawer's total would be", async () => {
+    renderOpen();
+    const panel = await screen.findByTestId("if-closed-now");
+    await waitFor(() => expect(panel).toHaveTextContent("Receipts taken12"));
+    expect(panel).toHaveTextContent("₹1,000.00"); // her own float, typed at open
+    expect(screen.getByTestId("should-hold")).toHaveTextContent("shown after your count");
+    expect(screen.getByTestId("should-hold").textContent).not.toMatch(/₹|\d/);
+    expect(screen.queryByText(/Expected/)).toBeNull();
+  });
+
+  it("the count is typed down a column: Enter moves to the next note, the last note to the close note, and never submits", async () => {
+    const user = userEvent.setup();
+    renderOpen();
+    await user.click(await screen.findByTestId("start-count"));
+    const first = screen.getByLabelText("₹2000");
+    first.focus();
+    await user.keyboard("3{Enter}");
+    expect(screen.getByLabelText("₹500")).toHaveFocus();
+    screen.getByLabelText("₹1").focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByLabelText("Close note")).toHaveFocus();
+    expect(callsTo("POST", "/api/billing/sessions/cs-1/close")).toHaveLength(0);
+    // the running total and the submit share one footer, the one that stays in view
+    const foot = screen.getByTestId("counted-total").closest(".cs-count-foot");
+    expect(foot).not.toBeNull();
+    expect(foot!.contains(screen.getByTestId("close-submit"))).toBe(true);
+    expect(screen.getByTestId("counted-total")).toHaveTextContent("₹6,000.00");
+  });
+
+  it("awaiting approval says its warning ONCE: one 'cannot take money', one 'approve(s) this variance'", async () => {
+    mockRoutes({
+      "GET /api/billing/sessions/current": { status: 200, body: { session: CLOSING } },
+      "GET /api/billing/sessions/current/open-items": { status: 200, body: { items: OPEN_ITEMS } },
+    });
+    renderWithProviders(<BillingSession />);
+    await screen.findByTestId("lockout-banner");
+    const text = document.body.textContent ?? "";
+    expect(text.match(/cannot take money/g) ?? []).toHaveLength(1);
+    expect(text.match(/approves? this variance/g) ?? []).toHaveLength(1);
   });
 });
