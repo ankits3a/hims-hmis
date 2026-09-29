@@ -2,15 +2,16 @@ import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
-import { aerbSettings, aerbTldBadges, aerbTldReads } from "../../kernel/db/schema/aerb";
+import { aerbPregnancyDeclarations, aerbSettings, aerbTldBadges, aerbTldReads } from "../../kernel/db/schema/aerb";
 import { users } from "../../kernel/db/schema/auth";
 import { AerbError } from "./errors";
 import { requireManage } from "./access";
 import { doseLimitWarning } from "./events";
 import {
   ANNUAL_LIMIT_MSV, DEFAULT_INVESTIGATION_LEVEL_MSV_PER_MONTH, FIVE_YEAR_AVERAGE_LIMIT_MSV,
-  FIVE_YEAR_TOTAL_LIMIT_MSV, investigationLevelFor,
+  FIVE_YEAR_TOTAL_LIMIT_MSV, PREGNANT_WORKER_FOETAL_LIMIT_MSV, investigationLevelFor,
 } from "./limits";
+import { foetalShare } from "./pregnancy";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -192,6 +193,11 @@ export interface RecordReadOutcome {
   /** TRUE when the reading met or exceeded the pro-rated investigation level. */
   investigation: boolean;
   investigationLevelMsv: number;
+  /**
+   * 18-S RS11 T4 — TRUE when the wearer has a pregnancy declaration covering this period and her
+   * reads since it (this one included) reach the 1 mSv foetal limit.
+   */
+  overFoetalLimit: boolean;
 }
 
 /**
@@ -300,7 +306,20 @@ export async function recordBadgeRead(
     }));
   }
 
-  return { readId, investigation, investigationLevelMsv: level };
+  const declarations = await tx.select().from(aerbPregnancyDeclarations)
+    .where(eq(aerbPregnancyDeclarations.userId, badge.userId));
+  const decl = declarations.find((d) => d.declaredOn <= input.periodEnd && (d.endedOn === null || d.endedOn >= input.periodStart));
+  let overFoetalLimit = false;
+  if (decl !== undefined) {
+    const theirs = await tx.select({ periodStart: aerbTldReads.periodStart, periodEnd: aerbTldReads.periodEnd, hp10: aerbTldReads.hp10Msv })
+      .from(aerbTldReads)
+      .innerJoin(aerbTldBadges, eq(aerbTldBadges.id, aerbTldReads.badgeId))
+      .where(eq(aerbTldBadges.userId, badge.userId));
+    const since = theirs.reduce((a, r) => a + foetalShare({ ...r, hp10: Number(r.hp10) }, decl), 0);
+    overFoetalLimit = since >= PREGNANT_WORKER_FOETAL_LIMIT_MSV;
+  }
+
+  return { readId, investigation, investigationLevelMsv: level, overFoetalLimit };
 }
 
 export interface BadgeRegisterRow {

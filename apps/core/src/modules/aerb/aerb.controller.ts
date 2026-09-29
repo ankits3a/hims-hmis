@@ -3,12 +3,23 @@ import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
-import { AERB_LICENCE_TYPES, AERB_PERSON_ROLES, QA_RESULTS } from "../../kernel/db/schema/aerb";
+import {
+  AERB_INCIDENT_AFFECTED, AERB_INCIDENT_KINDS, AERB_LICENCE_TYPES, AERB_PERSON_ROLES, QA_RESULTS,
+} from "../../kernel/db/schema/aerb";
+import {
+  closeIncident, incidentRegister, investigateIncident, recordIncident, recordIncidentNotification,
+  updateIncidentActions,
+} from "./incidents";
+import { declarePregnancy, endPregnancyDeclaration, pregnancyDeclarations } from "./pregnancy";
+import { importTldReads } from "./tld-import";
+
+import { attentionList } from "./attention";
+import { RADIATION_SAFETY_SOURCES, PREGNANT_WORKER_FOETAL_LIMIT_MSV, QA_DEFAULT_INTERVAL_YEARS } from "./limits";
 import { appointPerson, changeLicenceStatus, endAppointment, fileLicence } from "./licences";
 import { aerbPickers, appointments, licenceRegister, unlicensedDevices } from "./read";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { mayManage } from "./access";
-import { qaRegister, recordQa } from "./qa";
+import { qaDueList, qaRegister, recordQa } from "./qa";
 import { doseRegisterRows, patientCumulativeDose } from "./dose";
 import {
   STATUTORY_LIMITS, badgeGaps, badgeReads, badgeRegister, closeBadge, investigationLevelPerMonth,
@@ -97,6 +108,53 @@ const badgeReadBody = z.object({
   labRef: z.string().max(64).nullish(),
   remarks: z.string().max(500).nullish(),
 });
+
+/* ── 18-S RS11 ── */
+const tldImportBody = z.object({
+  /** The service's CSV as text. 1 MB is ~10,000 lines; one import takes at most 2,000. */
+  csv: z.string().min(1).max(1_000_000),
+  reportedOn: z.string().min(1).max(20),
+  labRef: z.string().max(64).nullish(),
+  dryRun: z.boolean(),
+});
+
+const actionSchema = z.object({
+  action: z.string().min(1).max(300),
+  owner: z.string().min(1).max(120),
+  doneOn: isoDateSchema.nullable(),
+});
+
+const incidentBody = z.object({
+  kind: z.enum(AERB_INCIDENT_KINDS),
+  occurredAt: z.string().min(1).max(40),
+  deviceResourceId: idSchema.nullish(),
+  affectedType: z.enum(AERB_INCIDENT_AFFECTED),
+  patientUhid: z.string().max(40).nullish(),
+  workerUserId: idSchema.nullish(),
+  affectedName: z.string().max(120).nullish(),
+  estimatedDoseMsv: z.number().nonnegative().nullish(),
+  doseNote: z.string().max(300).nullish(),
+  description: z.string().min(1).max(2000),
+  immediateAction: z.string().min(1).max(1000),
+  significantlyAboveIntended: z.boolean(),
+});
+
+const investigateBody = z.object({
+  rootCause: z.string().min(1).max(2000),
+  correctiveActions: z.array(actionSchema).min(1).max(20),
+});
+
+const actionsBody = z.object({ correctiveActions: z.array(actionSchema).max(20) });
+const notifyBody = z.object({ notifiedOn: isoDateSchema, notificationRef: z.string().min(1).max(80) });
+const closeIncidentBody = z.object({ closureNote: z.string().max(1000).nullish() });
+
+const declareBody = z.object({
+  userId: idSchema,
+  declaredOn: isoDateSchema,
+  expectedOn: isoDateSchema,
+  remarks: z.string().max(500).nullish(),
+});
+const endDeclarationBody = z.object({ onDate: isoDateSchema, reason: z.string().min(1).max(300) });
 
 @Controller("aerb")
 export class AerbController {
@@ -405,6 +463,126 @@ export class AerbController {
     try {
       await withTx(this.db, (tx) => endAppointment(tx, actor, personId));
       return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  /* ═══ 18-S RS11 — TLD import, incidents, pregnancy declarations, QA due, the RSO's list ═══ */
+
+  @Post("badges/import")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async importTld(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(tldImportBody, body);
+    try {
+      return await withTx(this.db, (tx) => importTldReads(tx, actor, { ...input, labRef: input.labRef ?? null }));
+    } catch (e) { toHttp(e); }
+  }
+
+  @Get("incidents")
+  @RequirePermission("aerb.incidents.read", "hospital")
+  async incidents(@CurrentActor() actor: Actor): Promise<unknown> {
+    try {
+      return await incidentRegister(this.db, actor);
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("incidents")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async recordIncidentRoute(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(incidentBody, body);
+    try {
+      return await withTx(this.db, (tx) => recordIncident(tx, actor, input));
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("incidents/:id/investigate")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async investigate(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+    const incidentId = parsed(idSchema, id);
+    const input = parsed(investigateBody, body);
+    try {
+      await withTx(this.db, (tx) => investigateIncident(tx, actor, incidentId, input));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("incidents/:id/actions")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async incidentActions(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+    const incidentId = parsed(idSchema, id);
+    const input = parsed(actionsBody, body);
+    try {
+      await withTx(this.db, (tx) => updateIncidentActions(tx, actor, incidentId, input.correctiveActions));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("incidents/:id/notify")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async incidentNotify(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+    const incidentId = parsed(idSchema, id);
+    const input = parsed(notifyBody, body);
+    try {
+      await withTx(this.db, (tx) => recordIncidentNotification(tx, actor, incidentId, input));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("incidents/:id/close")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async incidentClose(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+    const incidentId = parsed(idSchema, id);
+    const input = parsed(closeIncidentBody, body);
+    try {
+      await withTx(this.db, (tx) => closeIncident(tx, actor, incidentId, input));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Get("pregnancy")
+  @RequirePermission("aerb.registers.read", "hospital")
+  async pregnancy(@CurrentActor() actor: Actor): Promise<unknown> {
+    try {
+      return {
+        rows: await pregnancyDeclarations(this.db),
+        foetalLimitMsv: PREGNANT_WORKER_FOETAL_LIMIT_MSV,
+        canManage: await mayManage(this.db, actor),
+      };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("pregnancy")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async declare(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(declareBody, body);
+    try {
+      return await withTx(this.db, (tx) => declarePregnancy(tx, actor, { ...input, remarks: input.remarks ?? null }));
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("pregnancy/:id/end")
+  @RequirePermission("aerb.registers.manage", "hospital")
+  async endDeclaration(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+    const declarationId = parsed(idSchema, id);
+    const input = parsed(endDeclarationBody, body);
+    try {
+      await withTx(this.db, (tx) => endPregnancyDeclaration(tx, actor, declarationId, input));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Get("qa/due")
+  @RequirePermission("aerb.registers.read", "hospital")
+  async qaDue(): Promise<unknown> {
+    try {
+      return { rows: await qaDueList(this.db), defaultIntervalYears: QA_DEFAULT_INTERVAL_YEARS };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Get("attention")
+  @RequirePermission("aerb.registers.read", "hospital")
+  async attention(@CurrentActor() actor: Actor): Promise<unknown> {
+    try {
+      return { rows: await attentionList(this.db, actor), sources: RADIATION_SAFETY_SOURCES };
     } catch (e) { toHttp(e); }
   }
 }
