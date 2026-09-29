@@ -1450,6 +1450,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * right to DRAFT; the MS decides whether it goes live.
        */
       "radiology.definitions.manage",
+      /**
+       * 18-S RS4 — the machine register: register an imaging machine, set its AE title, and take it
+       * out of service with a reason. The same holder as the books above, for the same reason: the
+       * department's head answers for what its machines are and whether they may be booked. A QA
+       * block is still lifted only by the RSO's passing QA record (`aerb/qa.ts`), not by this grant.
+       */
+      "radiology.devices.manage",
       "pcpndt.form_f.read",
       "pcpndt.form_f.write",
       "pcpndt.registrations.read",

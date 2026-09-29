@@ -80,6 +80,8 @@ export const radiologyManifest: ModuleManifest = {
     // 18-S RS3 — the desk's diary (machines × time) and the waiting-hall display.
     { label: "Imaging diary", path: "/radiology/diary", permission: "radiology.schedule" },
     { label: "Imaging hall display", path: "/radiology/display", permission: "radiology.display.read" },
+    // 18-S RS4 — the Setup station: machines, books and prices.
+    { label: "Imaging setup", path: "/radiology/setup", permission: "radiology.devices.manage" },
   ],
   permissions: [
     "radiology.orders.place",
@@ -104,6 +106,9 @@ export const radiologyManifest: ModuleManifest = {
     // 18-S RS3 — the waiting-hall board (tokens + first name and initial). The OPD pattern: the
     // kiosk `display` role holds it, and so does the desk that turns the TV on.
     "radiology.display.read",
+    // 18-S RS4 — the machine register (register, edit, status with a reason) and the Setup
+    // station's reads. The radiologist, who already drafts the department's books, holds it.
+    "radiology.devices.manage",
   ],
   subscriptions: [{ event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER }],
   resourceKinds: RADIOLOGY_RESOURCE_KINDS,

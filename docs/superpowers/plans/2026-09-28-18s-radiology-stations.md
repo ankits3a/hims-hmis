@@ -348,6 +348,71 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J10.
 - Migration: device attributes, if not in the resource's JSON.
 
+#### RS4 spike (measured on main `4d05ffdc`, 29 Sep)
+- **(a) No kernel route is needed.** `kernel/resources/index.ts` exports the registry's write surface
+  (`createResource`, `updateResource`, `moveResource`, `changeResourceStatus`), and DD14 deliberately
+  ships no kernel write route: OPD rooms, lab instruments and stores already delegate into it from
+  their own module routes. Radiology is the fourth caller. `kernel/**` is untouched. There is no
+  `resources.manage` in `seed-roles` (DD14 says why) — so RS4 mints a MODULE permission,
+  `radiology.devices.manage`.
+- **(b) Status lives on `resources.status`**, vocabulary declared by radiology's `device` kind. Writers
+  before RS4: `assignResource`/`releaseResource` at acquisition (`in_use` ↔ `available`), and
+  `aerb/qa.ts` (`qa_blocked` on a failed QA, back to `available` on a newer passing QA — *"the ONLY exit
+  from qa_blocked"*). Nothing wrote `down`, `maintenance` or `retired`.
+- **(c) GST categories are DATA**: `gst_config.category` is free text, `services.category` keys it, and
+  `seed:tariff` writes rows skip-if-present. `investigation` is one seed row — **no migration.**
+- **(d) The governed publish**: `POST /radiology/definitions/draft` (`radiology.definitions.manage`,
+  the radiologist) drafts AND files an `imaging_definition_publish` approval in one transaction; the
+  medical superintendent decides it in the kernel approvals inbox (`/approvals?focus=<id>`), which
+  refuses requester = approver; `POST /radiology/definitions/publish` re-checks the approval's status
+  and subject. **Two distinct humans are enforced (drafter ≠ MS); the publisher may be the drafter** —
+  the plan's "activator is not the drafter" is not a rule of this route. Reported, not changed (it would
+  be a governance change beyond RS4). A web editor reuses both routes as-is.
+- **(e) Booking-time licence refusal: a one-call add** — `aerb`'s `assertDeviceLicensed` (already
+  called by `startAcquisition`) after `assertDeviceBookable` in `scheduleStudy` and `rescheduleStudy`,
+  on the study type's `ionising` and the slot's IST day. `device_unavailable` for a down /
+  maintenance / qa_blocked / retired machine already existed (18a T4 A2).
+
+#### RS4 as built (this PR)
+- **Machines (T1).** `modules/radiology/machines.ts` + `radiology-setup.controller.ts`:
+  `GET|POST /radiology/setup/devices`, `PATCH /radiology/setup/devices/:id`,
+  `POST /radiology/setup/devices/:id/status` — all `radiology.devices.manage` (granted to `radiologist`).
+  AE title `^[A-Z0-9_]{1,16}$`, unique among imaging devices under a transaction advisory lock
+  (`invalid_ae_title`, `duplicate_ae_title` naming the other machine). Status needs a reason
+  (`reason_required`); `in_use` is not settable; out-of-service answers with the booked studies
+  (scheduled / checked_in / ready). Audit = the registry's `resource.*` events + `resource_status_history`
+  (reason on both). Five new codes: `invalid_ae_title`, `duplicate_ae_title`, `unknown_device`,
+  `invalid_device`, `device_status_locked`.
+- **Booking refusals (T2).** `scheduleStudy`/`rescheduleStudy` refuse `device_not_licensed` (aerb's
+  sentence: machine code + name, the RSO remedy, no ULID); the walk-in passes an unlicensed machine over
+  and, when every candidate was unlicensed, answers with that refusal.
+- **Prices and GST (T3).** `seed:tariff` writes `investigation` (exempt, 0 %, SAC 9993) when absent;
+  `seed:radiology` ensures `RAD-FILM`, `RAD-CD`, `RAD-2ND-XR-US`, `RAD-2ND-CT-MR` (category
+  `investigation`, unpriced). The existing `RAD-` services were already `investigation` — nothing moved.
+  Census row `radiology_investigation_gst` (G2).
+- **Web (T4).** `/radiology/setup?view=machines|books|prices`, the `setup` station, header views.
+  Books reuses the definitions routes and links the approvals inbox; Prices is read-only.
+- **Migration: none.** Device attributes are the resource's jsonb.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *Who manages machines:* the radiologist (HOD), the holder of the books — a new
+    `radiology.devices.manage`, not a reuse of `definitions.manage`, so the audit names the act.
+  - *A QA block is lifted only by QA*, and *retired is final*: Setup refuses to walk a machine out of
+    either (fail-safe; `aerb/qa.ts` stays the one exit from `qa_blocked`). Into `qa_blocked` is allowed.
+  - *Modality never changes* on a registered machine: its studies, doses and licences were recorded
+    against it.
+  - *Ruled prices are not activated by a seed.* A price is chargeable only through a tariff revision the
+    owner approves; the four ruled prices are carried in `RADIOLOGY_RULED_SERVICES`, shown on Prices
+    beside the price in force, and entered per `radiology-go-live.md` §6a.
+  - *X-ray's one included film* is a desk rule (first film unbilled); no bill logic enforces it yet —
+    it belongs to the phase that builds the film counter (RS9 release / hand-over).
+  - *AE title stricter at the writer than the export* (A–Z 0–9 _), see `radiology-pacs-go-live.md` §2.
+- **Moved out of RS4:** `imaging_protocols` → **RS6** (its first reader is the room console's Protocol
+  step), `report_templates` with the coded categories → **RS8** (its reader is the reading room). Each
+  needs a widened `imaging_definitions_kind_ck` — a kernel schema edit plus a migration — and a kind
+  with no reader would be a book nobody reads; they ship with their consumer.
+- **No census row for AE titles**: a hospital may run a CR or a portable with no worklist, so "every
+  ionising machine has an AE title" would be a permanent red. Setup's *No AE title* count shows it.
+
 ### RS5 · Prep & safety bay
 - **Web:**
   - `prep:bay`: every prep gate, with evidence, waive, and override-by-approval (kernel approvals);
@@ -359,6 +424,8 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 
 ### RS6 · Modality rooms
 - **Web:**
+  - **From RS4:** the `imaging_protocols` definition kind (schema, CHECK widening — one migration — and
+    a seeded empty draft) arrives here with its first reader, the Protocol step.
   - `room:console`: per machine, MWL-backed. Identify (room gates) → Protocol (protocol book, weight-based contrast,
     breath-hold script in Hindi and English) → Acquire (start/abort, dose entry) → Send (acquired).
   - `room:portable`, `room:dose`, `room:rejects` (bill decisions resolved through their route, first web caller),
@@ -381,7 +448,8 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 ### RS8 · Reading room (HEAVY)
 - **Core:**
   - **Coded report fields:** BI-RADS, TI-RADS, LI-RADS, PI-RADS, O-RADS, Fleischner and ASPECTS, carried by
-    `report_templates` (RS4). Calculators are deterministic.
+    `report_templates` (moved here from RS4 — the kind, its schema and its CHECK widening ship with the
+    reading room that reads them). Calculators are deterministic.
   - **Pre-sign checks, deterministic:** side against the order and the dictation; sex-specific organs; critical
     terms with negation handling; measurement against the prior. The checks run before any model.
   - **Co-sign:**

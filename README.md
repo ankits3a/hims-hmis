@@ -1240,6 +1240,7 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.reports.read` | ✓ | ✓ | | | | |
 | `radiology.definitions.read` | ✓ | ✓ | ✓ | | | |
 | `radiology.definitions.manage` | ✓ | | | | | |
+| `radiology.devices.manage` | ✓ | | | | | |
 | `radiology.bill_decisions.manage` | | | ✓ | | | |
 | `radiology.criticals.ack` | ✓ | | | | | |
 | `radiology.mwl.read` | | ✓ | | | ✓ | |
@@ -1287,6 +1288,14 @@ satisfies nothing, so the desk still cannot record that a patient is not pregnan
 `radiology.display.read` guards the imaging waiting-hall board (`GET /radiology/display`), the OPD
 board's pattern: **`display` gains `radiology.display.read`** — the same kiosk TV account shows either
 hall's board — and the receptionist holds it to turn the TV on.
+
+**Plan 18-S RS4 (the Setup station) adds one permission and one grant.** `radiology.devices.manage`
+guards the machine register — registering an imaging machine, setting its DICOM AE title, and taking it
+out of service with a reason (`/radiology/setup/*`) — and the Setup station's books and prices reads.
+**`radiologist` gains it**, the same holder as `radiology.definitions.manage`: the department's head
+answers for what its machines are and whether they may be booked. It is NOT a QA power: a machine
+`qa_blocked` by a failed QA is released only by the radiation safety officer's passing QA record, and
+the register refuses to walk a machine out of `qa_blocked` (or out of `retired`) whoever asks.
 
 **The OPD dispense counter (Plan 16c T1) declares four permissions and one new role, and the SHAPE
 is the Pharmacy Act.** `pharmacy.dispense.scheduled` — the hand-over of a dispense carrying a
