@@ -96,7 +96,7 @@ describe("patients e2e", () => {
     const reg = await request(app.getHttpServer())
       .post("/patients")
       .set(...auth(clerkToken))
-      .send({ name: "Asha Devi", sex: "female", phone: "9876543210", language: "hi" })
+      .send({ name: "Asha Devi", sex: "female", phone: "9876543210", language: "hi", ageYears: 34 })
       .expect(201);
     const patientId = reg.body.patient.id as string;
     expect(reg.body.patient.uhid).toMatch(/^HMS\d{8}$/);
@@ -128,13 +128,13 @@ describe("patients e2e", () => {
   it("FD-8: a second registration matching an existing patient is REFUSED with the candidates, and can be acknowledged", async () => {
     const first = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
-      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002" })
+      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002", ageYears: 45 })
       .expect(201);
 
     // Same person again: 409, and the body carries what the clerk needs to TELL THEM APART.
     const clash = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
-      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002" })
+      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002", ageYears: 45 })
       .expect(409);
     expect(clash.body.code).toBe("duplicate_suspected");
     const candidates = clash.body.detail.candidates as { id: string; phone: string; matchedOn: string[] }[];
@@ -147,7 +147,7 @@ describe("patients e2e", () => {
     // THE WAY THROUGH (DD8). A real second Ramesh Kale on a shared family phone must be registrable.
     const acknowledged = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
-      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002", acknowledgedDuplicates: true })
+      .send({ name: "Ramesh Kale", sex: "male", phone: "9876540002", ageYears: 45, acknowledgedDuplicates: true })
       .expect(201);
     expect(acknowledged.body.patient.id).not.toBe(first.body.patient.id);
   });
@@ -155,7 +155,7 @@ describe("patients e2e", () => {
   it("FD-8: a first-of-their-name registration is not refused", async () => {
     await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
-      .send({ name: "Nobody Alike", sex: "female", phone: "9812345678" })
+      .send({ name: "Nobody Alike", sex: "female", phone: "9812345678", ageYears: 29 })
       .expect(201);
   });
 
@@ -196,10 +196,50 @@ describe("patients e2e", () => {
       .expect(201);
   });
 
+  /*
+    DESK-FIXES E (2026-09-28 walk) — a registration with no age and no date of birth was accepted
+    and the slip printed "Age: —". DECIDED (standard Indian hospital practice): age OR date of birth
+    is mandatory at registration; an estimated age (`ageYears`) is allowed.
+  */
+  it("DESK-FIXES E: neither age nor date of birth is a 400 that names the rule, and nothing is registered", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken))
+      .send({ name: "Ageless Person", sex: "male", phone: "9812300077" })
+      .expect(400);
+    expect(res.body.code).toBe("age_or_dob_required");
+    const found = await request(app.getHttpServer())
+      .get("/patients/search").query({ q: "9812300077" }).set(...auth(clerkToken)).expect(200);
+    expect(found.body.items).toHaveLength(0);
+    // Either one satisfies it — an estimated age is ordinary at an Indian counter.
+    await request(app.getHttpServer()).post("/patients").set(...auth(clerkToken))
+      .send({ name: "Mohan Lal Verma", sex: "male", phone: "7012300078", ageYears: 60 }).expect(201);
+    await request(app.getHttpServer()).post("/patients").set(...auth(clerkToken))
+      .send({ name: "Kamla Bai Joshi", sex: "female", phone: "8123400079", dob: "1990-01-02" }).expect(201);
+  });
+
+  /*
+    DESK-FIXES F (2026-09-28 walk) — every patient without a photo logged a red 404 in the console
+    (18 on one walk). "No photo" is an ordinary answer, so it is 204 No Content. A patient the reader
+    cannot see (unknown, or sealed without the grant) is STILL 404, so the route confirms nothing.
+  */
+  it("DESK-FIXES F: no photo on file is 204, not an error; an unknown patient is still 404", async () => {
+    const reg = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken))
+      .send({ name: "Faceless F", sex: "other", ageYears: 40 }).expect(201);
+    const none = await request(app.getHttpServer())
+      .get(`/patients/${reg.body.patient.id as string}/photo`).set(...auth(clerkToken));
+    expect(none.status).toBe(204);
+    expect(none.text).toBe("");
+    await request(app.getHttpServer())
+      .get("/patients/01NOSUCH00000000000000000/photo").set(...auth(clerkToken)).expect(404);
+    await request(app.getHttpServer())
+      .get(`/patients/${reg.body.patient.id as string}/photo`).set(...auth(randoToken)).expect(403);
+  });
+
   it("photo round-trips as base64 JSON — a ~300 kB body proves the parser bump", async () => {
     const reg = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
-      .send({ name: "Photo P", sex: "other" }).expect(201);
+      .send({ name: "Photo P", sex: "other", ageYears: 30 }).expect(201);
     const id = reg.body.patient.id as string;
     const bytes = Buffer.alloc(300_000, 7);
     await request(app.getHttpServer())
@@ -335,7 +375,7 @@ describe("patients e2e", () => {
   it("QR: card payload prints, verify resolves, tampering answers ok:false over HTTP 200 (route order proven)", async () => {
     const reg = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
-      .send({ name: "Card C", sex: "male", phone: "9000000001" }).expect(201);
+      .send({ name: "Card C", sex: "male", phone: "9000000001", ageYears: 50 }).expect(201);
     const id = reg.body.patient.id as string;
 
     const card = await request(app.getHttpServer())
@@ -364,9 +404,9 @@ describe("patients e2e", () => {
 
   it("merge routes 409 with a clear ApprovalError until the types are registered (the runbook step)", async () => {
     const a = await request(app.getHttpServer())
-      .post("/patients").set(...auth(clerkToken)).send({ name: "A", sex: "male" }).expect(201);
+      .post("/patients").set(...auth(clerkToken)).send({ name: "A", sex: "male", ageYears: 40 }).expect(201);
     const b = await request(app.getHttpServer())
-      .post("/patients").set(...auth(clerkToken)).send({ name: "B", sex: "male" }).expect(201);
+      .post("/patients").set(...auth(clerkToken)).send({ name: "B", sex: "male", ageYears: 40 }).expect(201);
     await request(app.getHttpServer())
       .post("/patients/merge-requests").set(...auth(clerkToken))
       .send({ winnerId: a.body.patient.id, loserId: b.body.patient.id, note: "dup" })
@@ -383,7 +423,7 @@ describe("patients e2e", () => {
     async function registerAsha(): Promise<string> {
       const reg = await request(app.getHttpServer())
         .post("/patients").set(...auth(clerkToken))
-        .send({ name: "Asha Devi", sex: "female", phone: "9811111111", language: "hi" })
+        .send({ name: "Asha Devi", sex: "female", phone: "9811111111", language: "hi", ageYears: 34 })
         .expect(201);
       return reg.body.patient.id as string;
     }
@@ -537,7 +577,7 @@ describe("patients e2e", () => {
       await assignRole(db, { userId: plainId, roleKey: "register_only", scopeType: "hospital" });
       const res = await request(app.getHttpServer())
         .post("/patients").set(...auth(plainToken))
-        .send({ name: "VIP", sex: "male", isConfidential: true, alias: "P-9001", language: "hi" })
+        .send({ name: "VIP", sex: "male", isConfidential: true, alias: "P-9001", language: "hi", ageYears: 55 })
         .expect(201);
       expect(res.body.patient.isConfidential).toBe(true);
 

@@ -1238,6 +1238,7 @@
       "selectedPatient": "Selected patient",
       "encounter": "Encounter",
       "freeVisit": "Free follow-up — this revisit is not charged",
+      "freeReferral": "Free referral — no fee until {{until}}",
       "dues": "Outstanding dues",
       "noDues": "Nothing outstanding",
       "pickPatientFirst": "Pick a patient before issuing a bill",
@@ -1332,7 +1333,8 @@
     "visitType": {
       "new": "New",
       "revisit": "Revisit",
-      "renewal": "Renewal"
+      "renewal": "Renewal",
+      "referral": "Referral"
     },
     "discountCategory": {
       "charity": "Charity",

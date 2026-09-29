@@ -1530,6 +1530,41 @@ describe("BillingCounter", () => {
     expect(screen.getByTestId("visit-no")).toHaveTextContent("V2609060003");
   });
 
+  /*
+    DESK-FIXES D (walk 12d) — a patient PICKED by search, with a mobile on file, read "no number on
+    file": the picker's hit carried the phone and `pick()` dropped it on the floor.
+  */
+  it("DESK-FIXES D: a patient picked by search shows the mobile the search row carries", async () => {
+    mockRoutes(BASE_ROUTES);
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+    await pickPatient(user);
+    expect(screen.getByTestId("paying-phone")).toHaveTextContent("9876500000");
+  });
+
+  /*
+    DESK-FIXES B (walk 53) — the visit a doctor's referral opened read "Revisit" and "Free follow-up
+    — this revisit is not charged". The quote's own `freeReason` says it is a REFERRAL, and until when.
+  */
+  it("DESK-FIXES B: a referral visit is labelled Referral, with the referral's free-until date", async () => {
+    searchState.current = { encounterId: "enc-2" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "GET /api/billing/visits/enc-2/fee-quote": {
+        status: 200,
+        body: {
+          ...QUOTE_REVISIT,
+          freeReason: { kind: "referral_window", doctorName: "Dr Arjun Sharma", seenOn: "2026-09-28", windowEndsOn: "2026-10-05" },
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+    expect(await screen.findByTestId("fee-branch")).toHaveTextContent("Referral");
+    expect(screen.getByTestId("fee-branch")).not.toHaveTextContent("Revisit");
+    expect(screen.getByTestId("fee-free")).toHaveTextContent(/referral/i);
+    expect(screen.getByTestId("fee-free")).toHaveTextContent("2026-10-05");
+  });
+
   /**
    * ═══ FD-28 — THE ROAD THE WRITE NEVER TOOK ═══
    *
