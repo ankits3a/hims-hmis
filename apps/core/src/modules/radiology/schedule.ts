@@ -16,6 +16,8 @@ import { raiseBillDecision } from "./money";
 import { releaseResource } from "../../kernel/resources/registry";
 import { enqueueNotification, expireByRef } from "../../kernel/notify/enqueue";
 import { prepFor } from "./prep";
+import { activeLicenceFor, assertDeviceLicensed } from "../aerb";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import type { StudyType } from "./definitions";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -84,6 +86,25 @@ type DeviceRow = { id: string; status: string; code: string; name: string; attri
  */
 function machineLabel(device: { code: string; name: string }): string {
   return `${device.code} (${device.name})`;
+}
+
+/**
+ * ═══ 18-S RS4 T2 — THE AERB LICENCE IS REFUSED AT THE COUNTER, NOT FIRST AT THE CONSOLE ═══
+ *
+ * `startAcquisition` has refused an ionising examination on an unlicensed machine since 18c. That
+ * was the only place, so the counter booked, billed and prepped a patient for a CT the law did not
+ * let anyone switch on, and the refusal met the technologist with the patient on the table. The SAME
+ * check now runs at booking and re-booking — `aerb`'s own `assertDeviceLicensed` (one rule, one
+ * sentence: it names the machine by code and name and sends the reader to the RSO), against the IST
+ * day of the SLOT, because a licence expiring on the 30th does not cover a scan booked for the 2nd.
+ * `ionising` is the study type's, as at acquisition; ultrasound and MRI never reach it. The
+ * console's check stays — a licence can lapse between the booking and the day.
+ */
+async function assertLicensedForBooking(
+  tx: Tx, studyType: StudyType, deviceResourceId: string, scheduledAt: Date,
+): Promise<void> {
+  if (!studyType.ionising) return;
+  await assertDeviceLicensed(tx, deviceResourceId, istDayString(scheduledAt));
 }
 
 /**
@@ -345,6 +366,7 @@ export async function scheduleStudy(
   }
   const studyType = await requireStudyType(tx, study.studyTypeCode);
   const device = await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
+  await assertLicensedForBooking(tx, studyType, input.deviceResourceId, input.scheduledAt);
   await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
   const bedsideLocation = resolveBedside(device, study.bedsideLocation, input);
 
@@ -474,6 +496,7 @@ export async function rescheduleStudy(
   );
   const studyType = await requireStudyType(tx, study.studyTypeCode);
   const device = await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
+  await assertLicensedForBooking(tx, studyType, input.deviceResourceId, input.scheduledAt);
   await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
   /**
    * 18a-iii T3 — **the same call, and this is the hole it closes.** A guard placed only on
@@ -748,7 +771,13 @@ export async function autoSlotWalkIn(
    * is no room free right now".
    */
   const busy: string[] = [];
+  /** 18-S RS4 T2 — an unlicensed ionising machine is passed over, never booked and then refused. */
+  const unlicensed: string[] = [];
   for (const device of candidates) {
+    if (studyType.ionising && (await activeLicenceFor(tx, device.id, istDayString(now))) === null) {
+      unlicensed.push(device.id);
+      continue;
+    }
     try {
       await assertSlotFree(tx, device.id, now, studyType.duration_min, input.studyId);
     } catch (e) {
@@ -761,13 +790,16 @@ export async function autoSlotWalkIn(
       scheduledAt: now,
     });
   }
+  /** Every candidate was passed over for its licence: the licence refusal IS the answer, in aerb's words. */
+  if (busy.length === 0 && unlicensed[0] !== undefined) await assertDeviceLicensed(tx, unlicensed[0], istDayString(now));
   throw new RadiologyError(
     "device_unavailable",
     candidates.length === 0
       ? `no available ${studyType.modality} machine to walk this patient onto`
       : `every available ${studyType.modality} machine is mid-examination right now `
-        + `(${String(candidates.length)} checked)`,
-    { modality: studyType.modality, checked: candidates.length, busy },
+        + `(${String(candidates.length)} checked`
+        + (unlicensed.length === 0 ? ")" : `, ${String(unlicensed.length)} without an AERB licence — the radiation safety officer files it under Radiation safety → Licences)`),
+    { modality: studyType.modality, checked: candidates.length, busy, unlicensed },
   );
 }
 
