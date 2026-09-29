@@ -181,6 +181,8 @@ describe("MaterialsVendors", () => {
     const user = userEvent.setup();
     expect(screen.getByText(/cannot be received from until its GST certificate and PAN/)).toBeInTheDocument();
 
+    // B5 — registering is a sheet over the list, opened by the page's one "new" act.
+    await user.click(await screen.findByRole("button", { name: "Register a vendor" }));
     await user.type(await screen.findByLabelText(/^Code$/), "NEWCO");
     await user.type(screen.getByLabelText(/^Legal name$/), "New Company Pvt Ltd");
     await user.click(screen.getByRole("button", { name: "Register" }));

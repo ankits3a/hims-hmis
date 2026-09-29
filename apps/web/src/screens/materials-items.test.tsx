@@ -83,6 +83,8 @@ describe("MaterialsItems", () => {
     renderWithProviders(<MaterialsItems />);
     const user = userEvent.setup();
 
+    // B5 — registering is a sheet over the list, opened by the page's one "new" act.
+    await user.click(await screen.findByRole("button", { name: "Register an item" }));
     await user.type(await screen.findByLabelText(/^Code$/), "NOMED");
     await user.type(screen.getByLabelText(/^Name$/), "a drug with no medicine");
     await user.selectOptions(screen.getByLabelText(/^Class$/), "drug");
@@ -110,6 +112,7 @@ describe("MaterialsItems", () => {
     mockRoutes({ "GET /api/materials/items": { status: 200, body: { items: [] } } });
     renderWithProviders(<MaterialsItems />);
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Register an item" }));
     expect(screen.queryByLabelText(/^Formulary medicine$/)).not.toBeInTheDocument();
     await user.selectOptions(await screen.findByLabelText(/^Class$/), "drug");
     expect(screen.getByLabelText(/^Formulary medicine$/)).toBeInTheDocument();
@@ -129,6 +132,7 @@ describe("MaterialsItems", () => {
     renderWithProviders(<MaterialsItems />);
     const user = userEvent.setup();
 
+    await user.click(await screen.findByRole("button", { name: "Register an item" }));
     await user.type(await screen.findByLabelText(/^Code$/), "GLV-M");
     await user.type(screen.getByLabelText(/^Name$/), "Nitrile glove M");
     await user.type(screen.getByLabelText(/^Base unit$/), "each");
@@ -145,6 +149,22 @@ describe("MaterialsItems", () => {
     // A `consumable` is not batch-tracked; a drug is. The class decides, per DD3/DD8 rule 3.
     expect(sent.batchTracked).toBe(false);
     expect(await screen.findByRole("status")).toHaveTextContent("GLV-M registered");
+    // The sheet closes on a registration; the list is what is left.
+    expect(screen.queryByTestId("item-new-sheet")).toBeNull();
+  });
+
+  /** B5 — no form above the list: the page opens on the list, and N opens the register sheet. */
+  it("opens on the one list with no form above it; N opens the register sheet", async () => {
+    mockRoutes({ "GET /api/materials/items": { status: 200, body: { items: ITEMS } } });
+    renderWithProviders(<MaterialsItems />);
+    const user = userEvent.setup();
+    expect(await screen.findByText("CROC500")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Code$/)).not.toBeInTheDocument();
+    await user.keyboard("n");
+    expect(await screen.findByTestId("item-new-sheet")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Code$/)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("item-new-sheet")).toBeNull();
   });
 
   /**
