@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slip Desk Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f4f7f4;--card:#ffffff;--ink:#132420;--line:#dfe7e1;--line2:#ecf1ed;--dim:#5c6f66;--faint:#8ea69a;--wash:#eef3ef;
+--green:#0e6b4e;--green-soft:rgba(14,107,78,.08);--green-line:rgba(14,107,78,.35);--gold:#dd8f1c;--gold-ink:#9a6208;--gold-soft:rgba(221,143,28,.10);--gold-line:rgba(221,143,28,.45);
+--red:#b23a30;--red-soft:rgba(178,58,48,.08);--red-line:rgba(178,58,48,.4);--mint:#35c48f;
+--sans:"IBM Plex Sans","IBM Plex Sans Devanagari",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:#e8eee9;color:var(--ink);font-family:var(--sans)}
+.doc{max-width:1480px;margin:0 auto;padding:16px}
+.mo{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.hi{font-family:"IBM Plex Sans Devanagari",var(--sans)}
+.tag{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;border-radius:3px;border:1px solid var(--line);background:var(--card);font:600 9px var(--mono);color:var(--dim)}
+.pri .kb{background:transparent;color:#cfe8dc;border-color:#3f8a70}
+.pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green);white-space:nowrap}
+.sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 14px;border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500;white-space:nowrap}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+.pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+.pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold-ink)}
+.pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+.src{display:inline-flex;align-items:center;justify-content:center;width:62px;height:20px;border-radius:3px;font:700 9px var(--mono);letter-spacing:.08em;border:1px solid var(--line);color:var(--dim);background:var(--wash);flex-shrink:0}
+.ns{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:3px;border:1px dashed #7a4fb0;color:#6a3fa0;background:#f6f0fc;font:600 9px var(--mono);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;vertical-align:middle}
+/* board chrome */
+.strip{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:12px 16px;background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:16px}
+.strip b{font-size:14px}
+.cap{margin:22px 0 8px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.cap h2{margin:0;font-size:15px}
+.cap span{font-size:12px;color:var(--dim)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px;box-shadow:0 6px 24px rgba(19,36,32,.12)}
+/* screen */
+.scr{background:var(--paper);display:flex;flex-direction:column;font-size:13px}
+.hdr{height:46px;flex-shrink:0;display:flex;align-items:center;gap:4px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;padding-right:14px;margin-right:6px;border-right:1px solid var(--line)}
+.brand span{font:700 12px var(--mono);letter-spacing:.12em}
+.nav{display:inline-flex;align-items:center;height:46px;padding:0 11px;font-size:12.5px;font-weight:500;color:var(--dim);border-bottom:2px solid transparent}
+.nav.on{color:var(--ink);font-weight:600;border-bottom-color:var(--green)}
+.cols{flex-grow:1;display:flex;min-height:0}
+.lane{width:296px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.lp{padding:18px}
+.fact{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.fact>span:first-child{color:var(--dim)}
+.main{flex-grow:1;min-width:0;padding:20px 24px 16px;display:flex;flex-direction:column;gap:14px}
+.right{width:352px;flex-shrink:0;border-left:1px solid var(--line);padding:18px 16px;display:flex;flex-direction:column;gap:14px}
+.h1{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.h1 h1{margin:0;font-size:20px;font-weight:600}
+.h1 p{margin:0;font-size:12.5px;color:var(--dim)}
+.stepper{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stp{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--card);border:1px solid var(--line);min-width:0}
+.stp .nb{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font:600 11.5px var(--mono);color:var(--dim);flex-shrink:0}
+.stp b{display:block;font-size:12.5px}
+.stp small{display:block;font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stp.done .nb{background:var(--green);border-color:var(--green);color:#fff}
+.stp.cur{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.stp.cur .nb{border-color:var(--ink);color:var(--ink)}
+.dock{margin-top:auto;display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:10px;background:var(--card);border:1px solid var(--line);box-shadow:0 6px 18px rgba(19,36,32,.10);flex-wrap:wrap}
+.dock .who{flex-grow:1;min-width:0}
+.dock .who b{display:block;font-size:14px}
+.dock .who small{display:block;font-size:11.5px;color:var(--dim)}
+.row{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 12px;border-top:1px solid var(--line2)}
+.row:first-child{border-top:0}
+.row.sel{background:var(--green-soft);box-shadow:inset 3px 0 0 var(--green)}
+.row .t{flex-grow:1;min-width:0}
+.row .t b{display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .t small{display:block;font-size:11px;color:var(--dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scan{display:flex;align-items:center;gap:10px;height:48px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.scan.focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+.scan .v{flex-grow:1;font:600 16px var(--mono);letter-spacing:.04em}
+.scan .ph{flex-grow:1;font-size:14px;color:var(--faint)}
+.opt{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--card)}
+.opt .rd{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);flex-shrink:0;margin-top:1px}
+.opt.on{border-color:var(--green-line);background:var(--green-soft)}
+.opt.on .rd{border:5px solid var(--green)}
+.opt b{display:block;font-size:12.5px}
+.opt small{display:block;font-size:11px;color:var(--dim)}
+.in{height:38px;border:1px solid var(--line);border-radius:6px;background:var(--card);padding:0 10px;display:flex;align-items:center;font-size:12.5px;color:var(--faint)}
+.note{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:7px;font-size:12px;line-height:17px}
+.note.ok{background:var(--green-soft);border:1px solid var(--green-line)}
+.note.gd{background:var(--gold-soft);border:1px solid var(--gold-line)}
+.note.rd{background:var(--red-soft);border:1px solid var(--red-line);color:#7d2820}
+/* paper slip drawing */
+.slip{width:270px;height:372px;background:#fffdf7;border:1px solid #e3ddcc;border-radius:3px;box-shadow:0 8px 22px rgba(19,36,32,.18);padding:14px 16px;position:relative;transform:rotate(-1.2deg);font-size:8.5px;color:#3a3a3a;flex-shrink:0}
+.slip .hh{border-bottom:1.5px solid #333;padding-bottom:5px;display:flex;justify-content:space-between;font-weight:700;font-size:9.5px}
+.slip .ln{height:6px;border-radius:3px;background:#d6d2c6;margin:7px 0}
+.slip .hw{font-family:"Segoe Script","Bradley Hand",cursive;font-style:italic;color:#1c3d8f;font-size:11px;margin:6px 0}
+.slip .ft{position:absolute;left:16px;right:16px;bottom:12px;display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid #bbb;padding-top:6px}
+.cornerbox{position:absolute;width:22px;height:22px;border:3px solid var(--mint)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px}
+.panel ul{margin:8px 0 0;padding-left:18px;font-size:13px;line-height:20px}
+.panel li{margin-bottom:6px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,700px),1fr));gap:18px}
+.mini{width:700px}
+.mini .lane{width:220px}
+</style>
+</head>
+<body>
+<div class="doc">
+
+<div class="strip">
+  <b>Board · Slip desk · <span class="mo">/opd/slips</span> · draft for approval · 28-Sep-2026</b>
+  <span class="pill">permission: patients.update (unchanged)</span>
+  <span class="ns">needs server</span><span style="font-size:12px;color:var(--dim)">= drawn because it matters; the server does not return it yet</span>
+</div>
+
+<!-- ═════════ DESKTOP 1440 ═════════ -->
+<div class="cap"><h2>1 · Desktop 1440 — working state: photo taken, about to file</h2><span>Scan → check the person → photograph → file. The dock always offers the one next act.</span></div>
+<div class="scroll">
+<div class="scr" style="width:1440px;height:900px">
+  <header class="hdr">
+    <div class="brand"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg><span>OPD</span></div>
+    <nav style="display:flex"><a class="nav">Desk</a><a class="nav">Appointments</a><a class="nav">Vitals</a><a class="nav on">Slip desk</a><a class="nav">Scribe</a><a class="nav">Display</a><a class="nav">Report</a></nav>
+    <div style="flex-grow:1"></div>
+    <span class="pill gd">9 slips not yet photographed</span>
+    <span class="mo" style="margin:0 14px;font-size:11px;color:var(--dim)">MON 28-SEP-2026 · 11:42</span>
+    <span style="font-size:12.5px;font-weight:600">Rekha Sharma</span><span style="font-size:11px;color:var(--dim);margin-left:6px">outside Room 4</span>
+  </header>
+  <div class="cols">
+    <aside class="lane">
+      <div class="lp" style="flex-grow:1">
+        <div class="tag">In hand · matched by the slip's QR</div>
+        <h2 style="margin:10px 0 2px;font-size:20px;line-height:26px">Sunita Verma</h2>
+        <div style="font-size:12.5px;color:var(--dim)">Female · 46 y</div>
+        <div class="note ok" style="margin:12px 0 14px"><span style="color:var(--green);font-weight:700">✓</span><span>Check this is the person whose slip you are holding. Ask the name if unsure.</span></div>
+        <div class="fact"><span>UHID</span><span class="mo">HMS0000001234</span></div>
+        <div class="fact"><span>Visit</span><span class="mo">V2609280147</span></div>
+        <div class="fact"><span>Date</span><span class="mo">28-Sep-2026</span></div>
+        <div class="fact"><span>Doctor ID</span><span><span class="mo">D-0412</span> <span class="ns">needs server</span></span></div>
+        <div class="fact"><span>Department</span><span>General Medicine <span class="ns">needs server</span></span></div>
+        <div class="tag" style="margin:18px 0 6px">Already on file for this visit</div>
+        <div style="font-size:12.5px;color:var(--dim)">Nothing yet — this will be the first page.</div>
+      </div>
+      <div class="lp" style="border-top:1px solid var(--line);display:flex;flex-direction:column;gap:7px;font-size:12px">
+        <div style="display:flex;gap:8px;align-items:center"><span class="kb">⏎</span>do the act in the dock</div>
+        <div style="display:flex;gap:8px;align-items:center"><span class="kb">R</span>retake the photo</div>
+        <div style="display:flex;gap:8px;align-items:center"><span class="kb">Esc</span>wrong person — clear the desk</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="h1"><h1>Slip desk <span class="hi" style="font-size:14px;font-weight:400;color:var(--dim)">· पर्ची डेस्क</span></h1><p>Scan the QR in the slip's footer, check the name that comes back, then photograph the paper.</p></div>
+      <div class="stepper">
+        <div class="stp done"><span class="nb">✓</span><span style="min-width:0"><b>Scan the slip</b><small class="mo">V2609280147</small></span></div>
+        <div class="stp done"><span class="nb">✓</span><span style="min-width:0"><b>Check the person</b><small>Sunita Verma</small></span></div>
+        <div class="stp done"><span class="nb">✓</span><span style="min-width:0"><b>Photograph</b><small>1600 × 2263 · 418 KB</small></span></div>
+        <div class="stp cur"><span class="nb">4</span><span style="min-width:0"><b>File it</b><small>say what it is</small></span></div>
+      </div>
+
+      <div class="box" style="padding:20px;display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap">
+        <div style="position:relative;padding:10px">
+          <div class="slip">
+            <div class="hh"><span>AROGYA HOSPITAL · OPD</span><span>28-Sep-2026</span></div>
+            <div style="margin-top:5px;display:flex;justify-content:space-between"><span>Sunita Verma · F 46</span><span class="mo">HMS0000001234</span></div>
+            <div style="margin:2px 0 6px">General Medicine · Doctor ID D-0412</div>
+            <div style="font-weight:700;font-size:13px">℞</div>
+            <div class="hw">1. Tab Telmisartan 40 mg — 1-0-0 × 30 d</div>
+            <div class="hw">2. Tab Metformin 500 mg — 1-0-1 × 30 d</div>
+            <div class="hw">3. HbA1c, Lipid profile before next visit</div>
+            <div class="ln" style="width:70%"></div><div class="ln" style="width:55%"></div>
+            <div class="hw" style="margin-top:14px">Review after 4 weeks</div>
+            <div class="ft">
+              <span class="mo" style="font-size:8px">Encounter ID<br><b style="font-size:10px">V2609280147</b></span>
+              <svg width="46" height="46" viewBox="0 0 7 7" shape-rendering="crispEdges" aria-label="QR"><rect width="7" height="7" fill="#fff"/><path d="M0 0h3v3H0zM4 0h3v3H4zM0 4h3v3H0zM1 1h1v1H1zM5 1h1v1H5zM1 5h1v1H1z" fill="#222" fill-rule="evenodd"/><path d="M4 4h1v1H4zM5 5h1v1H5zM6 4h1v1H6zM4 6h1v1H4zM6 6h1v1H6zM3 3h1v1H3z" fill="#222"/></svg>
+            </div>
+          </div>
+          <span class="cornerbox" style="left:0;top:0;border-right:0;border-bottom:0"></span><span class="cornerbox" style="right:0;top:0;border-left:0;border-bottom:0"></span>
+          <span class="cornerbox" style="left:0;bottom:0;border-right:0;border-top:0"></span><span class="cornerbox" style="right:0;bottom:0;border-left:0;border-top:0"></span>
+        </div>
+
+        <div style="flex:1;min-width:320px;display:flex;flex-direction:column;gap:14px">
+          <div>
+            <div class="tag" style="margin-bottom:4px">Is the photo readable?</div>
+            <div style="font-size:12.5px;line-height:18px">Whole page in frame, flat, no glare on the writing. If any line is cut or blurred, retake — the doctor reads this, not the paper.</div>
+          </div>
+          <div class="note ok"><span style="color:var(--green);font-weight:700">✓</span><span>The QR in the photo reads <b class="mo">V2609280147</b> — the same visit you scanned. <span class="ns">needs server</span></span></div>
+          <div>
+            <div class="tag" style="margin-bottom:6px">What is this?</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div class="opt on"><span class="rd"></span><span><b>Prescription from this visit</b><small>the slip the doctor wrote today</small></span></div>
+              <div class="opt"><span class="rd"></span><span><b>Outside prescription</b><small>another doctor's or hospital's slip</small></span></div>
+              <div class="opt"><span class="rd"></span><span><b>Outside report</b><small>a lab or scan report the patient brought</small></span></div>
+            </div>
+          </div>
+          <div>
+            <div class="tag" style="margin-bottom:6px">Note for the doctor <span style="text-transform:none;letter-spacing:0;font-family:var(--sans);font-weight:400">(optional)</span></div>
+            <div class="in">Anything the doctor should know</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dock">
+        <div class="who"><b>File against Sunita Verma · <span class="mo">V2609280147</span></b><small>Prescription from this visit · page 1 · the doctor sees it in the patient's history</small></div>
+        <span class="sec">Retake <span class="kb">R</span></span>
+        <span class="pri">File it <span class="kb">⏎</span></span>
+      </div>
+    </main>
+
+    <aside class="right">
+      <section class="box" style="overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)"><span class="tag" style="flex-grow:1">Today's slips · 41</span><span class="ns">needs server</span></div>
+        <div class="row"><span class="src">ROOM 4</span><span class="t"><b>Mohammed Irfan</b><small class="mo">HMS0000004410</small></span><span class="pill gd">18 min</span></div>
+        <div class="row"><span class="src">ROOM 2</span><span class="t"><b>Kavya Nair</b><small class="mo">HMS0000002275</small></span><span class="pill gd">14 min</span></div>
+        <div class="row sel"><span class="src">ROOM 4</span><span class="t"><b>Sunita Verma</b><small class="mo">HMS0000001234</small></span><span class="pill on">in hand</span></div>
+        <div class="row"><span class="src">RETAKE</span><span class="t"><b>Harpreet Kaur</b><small>doctor asked for a clearer photo · 11:20</small></span><span class="pill rd">retake</span></div>
+        <div class="row"><span class="src">ROOM 4</span><span class="t"><b>Ramesh Yadav</b><small class="mo">HMS0000006032</small></span><span class="pill gd">6 min</span></div>
+        <div class="row"><span class="src">ROOM 1</span><span class="t"><b>Anjali Deshmukh</b><small class="mo">HMS0000000877</small></span><span class="pill">2 min</span></div>
+        <div class="row"><span class="src">ROOM 2</span><span class="t"><b>Suresh Pillai</b><small>filed 11:36 · prescription · 1 page</small></span><span class="pill on">filed</span></div>
+        <div class="row"><span class="src">ROOM 4</span><span class="t"><b>Priya Gupta</b><small>filed 11:31 · prescription + outside report</small></span><span class="pill on">filed</span></div>
+        <div class="row"><span class="src">ROOM 1</span><span class="t"><b>Vikram Singh</b><small>filed 11:24 · prescription · 1 page</small></span><span class="pill on">filed</span></div>
+        <div style="padding:9px 14px;border-top:1px solid var(--line2);font-size:11.5px;color:var(--dim)">Waiting first (oldest consult first), then retakes, then filed. 32 filed today.</div>
+      </section>
+      <section class="box" style="display:flex;align-items:center;gap:8px;padding:12px 14px">
+        <span class="tag" style="flex-grow:1">Clocks running · 3</span>
+        <span style="font-size:11.5px;color:var(--gold-ink);font-weight:600">oldest slip: 18 min</span>
+        <span style="color:var(--dim)">▾</span>
+      </section>
+    </aside>
+  </div>
+</div>
+</div>
+
+<!-- ═════════ OTHER STATES ═════════ -->
+<div class="cap"><h2>2 · Other states</h2><span>Drawn at 700 px to save room; the real screen keeps all three columns at 1280+.</span></div>
+<div class="grid2">
+
+  <div>
+    <div class="tag" style="margin:0 0 6px">A · Nobody in hand — waiting for a scan</div>
+    <div class="scroll"><div class="scr mini" style="height:430px">
+      <div class="cols">
+        <aside class="lane"><div class="lp">
+          <div class="tag">Nobody in hand</div>
+          <p style="margin:8px 0 16px;font-size:12.5px;line-height:18px;color:var(--dim)">Take the slip as the patient leaves the room and scan its footer.</p>
+          <div class="tag" style="margin-bottom:4px">Your day</div>
+          <div class="fact"><span>Filed</span><span class="mo">32</span></div>
+          <div class="fact"><span>Waiting</span><span class="mo" style="color:var(--gold-ink)">9</span></div>
+          <div class="fact"><span>Retakes asked</span><span class="mo">1</span></div>
+          <div class="fact"><span>Median scan → file</span><span class="mo">48 s</span></div>
+        </div></aside>
+        <main class="main" style="padding:20px">
+          <div class="stepper" style="grid-template-columns:repeat(4,1fr)">
+            <div class="stp cur" style="padding:8px"><span class="nb">1</span><b style="font-size:11.5px">Scan</b></div>
+            <div class="stp" style="padding:8px"><span class="nb">2</span><b style="font-size:11.5px">Check</b></div>
+            <div class="stp" style="padding:8px"><span class="nb">3</span><b style="font-size:11.5px">Photo</b></div>
+            <div class="stp" style="padding:8px"><span class="nb">4</span><b style="font-size:11.5px">File</b></div>
+          </div>
+          <div>
+            <div class="tag" style="margin-bottom:8px">Visit number</div>
+            <div class="scan focus"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M1 5V1h4M13 1h4v4M17 13v4h-4M5 17H1v-4M4 9h10" stroke="#0e6b4e" stroke-width="1.6" fill="none"/></svg><span class="ph">Scan the QR, or type the visit number</span><span class="kb">⏎</span></div>
+            <p style="margin:8px 0 0;font-size:11.5px;color:var(--dim)">The scanner types into this box. A broken scanner? Type the number printed under the QR.</p>
+          </div>
+          <div class="dock"><div class="who"><b>Scan a slip to begin</b><small>or pick a waiting row on the right</small></div><span class="pri" style="opacity:.45">Find <span class="kb">⏎</span></span></div>
+        </main>
+      </div>
+    </div></div>
+  </div>
+
+  <div>
+    <div class="tag" style="margin:0 0 6px">B · Refusal — the number matches no visit</div>
+    <div class="scroll"><div class="scr mini" style="height:430px">
+      <div class="cols">
+        <aside class="lane"><div class="lp">
+          <div class="tag">Nobody in hand</div>
+          <p style="margin:8px 0 0;font-size:12.5px;line-height:18px;color:var(--dim)">Nothing is guessed. The camera stays closed until a visit is matched.</p>
+        </div></aside>
+        <main class="main" style="padding:20px">
+          <div>
+            <div class="tag" style="margin-bottom:8px">Visit number</div>
+            <div class="scan" style="border-color:var(--red-line)"><span class="v">V2609280417</span><span class="kb">⏎</span></div>
+          </div>
+          <div class="note rd" role="alert"><b style="color:var(--red)">✕</b><span><b>No visit numbered V2609280417.</b> Check the number on the slip, or type it. Two digits swapped is the usual cause.</span></div>
+          <div class="box" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+            <div class="tag">QR torn or unreadable?</div>
+            <div style="font-size:12.5px;line-height:18px">Find today's visit by name or UHID, then check the person as usual. <span class="ns">needs server</span></div>
+            <div class="in" style="height:34px">Name, UHID or mobile</div>
+          </div>
+          <div class="dock"><div class="who"><b>Fix the number and press Enter</b><small>the slip stays in your hand</small></div><span class="pri">Find again <span class="kb">⏎</span></span></div>
+        </main>
+      </div>
+    </div></div>
+  </div>
+
+  <div>
+    <div class="tag" style="margin:0 0 6px">C · Photograph — camera open (styled fallback in place of the bare file picker)</div>
+    <div class="scroll"><div class="scr mini" style="height:430px">
+      <div class="cols">
+        <aside class="lane"><div class="lp">
+          <div class="tag">In hand</div>
+          <h2 style="margin:8px 0 2px;font-size:17px">Mohammed Irfan</h2>
+          <div style="font-size:12px;color:var(--dim)">Male · 61 y</div>
+          <div class="fact" style="margin-top:10px"><span>UHID</span><span class="mo">HMS0000004410</span></div>
+          <div class="fact"><span>Visit</span><span class="mo">V2609280139</span></div>
+          <div class="note gd" style="margin-top:12px"><span style="color:var(--gold-ink);font-weight:700">!</span><span>A prescription from this visit was filed at 11:05. This adds page 2.</span></div>
+        </div></aside>
+        <main class="main" style="padding:20px">
+          <div style="height:250px;border-radius:8px;background:#26332f;position:relative;display:flex;align-items:center;justify-content:center">
+            <div style="width:150px;height:205px;background:#e9e4d6;border-radius:2px;transform:rotate(3deg);opacity:.9"></div>
+            <span class="cornerbox" style="left:22%;top:8%;border-right:0;border-bottom:0"></span><span class="cornerbox" style="right:22%;top:8%;border-left:0;border-bottom:0"></span>
+            <span class="cornerbox" style="left:22%;bottom:8%;border-right:0;border-top:0"></span><span class="cornerbox" style="right:22%;bottom:8%;border-left:0;border-top:0"></span>
+            <span style="position:absolute;bottom:8px;left:10px;font-size:11px;color:#d9efe4">Fit the whole slip inside the corners</span>
+          </div>
+          <div class="dock">
+            <span class="sec">⬆ Choose a photo</span><span class="sec">Cancel</span>
+            <span style="flex-grow:1"></span>
+            <span class="pri">Capture <span class="kb">⏎</span></span>
+          </div>
+        </main>
+      </div>
+    </div></div>
+  </div>
+
+  <div>
+    <div class="tag" style="margin:0 0 6px">D · Confirmation — filed, desk ready for the next slip</div>
+    <div class="scroll"><div class="scr mini" style="height:430px">
+      <div class="cols">
+        <aside class="lane"><div class="lp">
+          <div class="tag">Nobody in hand</div>
+          <div class="tag" style="margin:16px 0 4px">Your day</div>
+          <div class="fact"><span>Filed</span><span class="mo">33</span></div>
+          <div class="fact"><span>Waiting</span><span class="mo" style="color:var(--gold-ink)">8</span></div>
+        </div></aside>
+        <main class="main" style="padding:20px">
+          <div class="note ok" style="font-size:13px;padding:12px 14px"><b style="color:var(--green)">✓</b><span><b>Filed against Sunita Verma</b> · <span class="mo">HMS0000001234 · V2609280147</span><br><span style="color:var(--dim)">Prescription from this visit · 11:43 · Doctor ID D-0412 sees it in her history</span></span></div>
+          <div>
+            <div class="tag" style="margin-bottom:8px">Next slip</div>
+            <div class="scan focus"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M1 5V1h4M13 1h4v4M17 13v4h-4M5 17H1v-4M4 9h10" stroke="#0e6b4e" stroke-width="1.6" fill="none"/></svg><span class="ph">Scan the QR, or type the visit number</span></div>
+          </div>
+          <div class="dock"><div class="who"><b>Another page for Sunita?</b><small>adds to the same visit without scanning again</small></div><span class="sec">Add a page <span class="kb">P</span></span></div>
+        </main>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ═════════ PHONE 390 ═════════ -->
+<div class="cap"><h2>3 · Phone 390 — the desk on a hospital phone</h2><span>Menu button replaces the nav; the list is a drawer; the dock sits above the thumb.</span></div>
+<div class="scroll" style="width:max-content;max-width:100%">
+<div class="scr" style="width:390px;height:780px">
+  <header class="hdr" style="padding:0 12px">
+    <span class="sec" style="height:32px;padding:0 10px">☰ Menu</span>
+    <span style="margin-left:10px;font-weight:600">Slip desk</span>
+    <span style="flex-grow:1"></span>
+    <span class="pill gd">9 waiting ▸</span>
+  </header>
+  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;flex-grow:1">
+    <div class="box" style="padding:12px 14px">
+      <div class="tag">In hand</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px"><b style="font-size:17px">Sunita Verma</b><span style="font-size:12px;color:var(--dim)">F · 46 y</span></div>
+      <div class="mo" style="font-size:11.5px;color:var(--dim);margin-top:3px">HMS0000001234 · V2609280147 · 28-Sep-2026</div>
+      <div style="font-size:11.5px;color:var(--green);margin-top:6px">✓ Check this is the person holding the slip</div>
+    </div>
+    <div class="stepper" style="gap:5px">
+      <div class="stp done" style="padding:6px;justify-content:center"><span class="nb" style="width:20px;height:20px">✓</span></div>
+      <div class="stp done" style="padding:6px;justify-content:center"><span class="nb" style="width:20px;height:20px">✓</span></div>
+      <div class="stp cur" style="padding:6px;justify-content:center"><span class="nb" style="width:20px;height:20px">3</span><b style="font-size:11px">Photo</b></div>
+      <div class="stp" style="padding:6px;justify-content:center"><span class="nb" style="width:20px;height:20px">4</span></div>
+    </div>
+    <div style="flex-grow:1;min-height:300px;max-height:330px;border-radius:8px;background:#26332f;position:relative;display:flex;align-items:center;justify-content:center">
+      <div style="width:190px;height:262px;background:#e9e4d6;border-radius:2px;transform:rotate(-2deg);opacity:.9"></div>
+      <span class="cornerbox" style="left:12%;top:6%;border-right:0;border-bottom:0"></span><span class="cornerbox" style="right:12%;top:6%;border-left:0;border-bottom:0"></span>
+      <span class="cornerbox" style="left:12%;bottom:6%;border-right:0;border-top:0"></span><span class="cornerbox" style="right:12%;bottom:6%;border-left:0;border-top:0"></span>
+    </div>
+    <div class="dock" style="margin-top:0;gap:8px">
+      <span class="sec" style="flex:1">⬆ Choose photo</span>
+      <span class="pri" style="flex:1.4">Capture</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═════════ WHAT CHANGES ═════════ -->
+<div class="cap"><h2>4 · What changes and why</h2></div>
+<div class="panel"><ul>
+  <li><b>No page padding (content flush at x=0)</b> → the house three-column station: 296 px lane, centre with 24 px padding, 352 px list. Nothing touches the window edge.</li>
+  <li><b>Focus ring overlapping the intro line</b> → the scan box is 48 px tall with its own label above and 8–14 px gaps; the ring is a 3 px outer glow with room around it.</li>
+  <li><b>Single column, ~80% of 1440 empty</b> → the matched patient lives in the left lane (the read-back never scrolls away), the photo and its choices in the centre, today's slips on the right.</li>
+  <li><b>Unstyled "Choose File / No file chosen"</b> → a house secondary button "Choose a photo" beside Capture; the native input is hidden behind it (on a phone it still opens the rear camera).</li>
+  <li><b>Steps appear and disappear</b> → one numbered flow (Scan · Check · Photograph · File) with a pinned dock whose Enter does the single next act; R retakes, Esc clears a wrong match.</li>
+  <li><b>No sense of the day</b> → one unfiltered list, waiting slips first by age, then retakes, then filed; "Clocks running" collapsed below. No filter tabs.</li>
+  <li><b>Kind hidden in a dropdown</b> → three radio cards with a one-line meaning each; the default stays "Prescription from this visit".</li>
+  <li><b>Silent second filing</b> → the lane shows what is already on file for this visit and says "this adds page 2" (derivable today from the patient's documents list).</li>
+</ul></div>
+
+<div class="cap"><h2>5 · Questions for the owner</h2></div>
+<div class="panel"><ul>
+  <li><b>Is a missing slip a clock?</b> The list and "Clocks running" treat a finished consultation with no photographed slip as waiting. Should it escalate (e.g. to the OPD supervisor after 30 minutes, or MRD at day end), or only show?</li>
+  <li><b>Lost or torn slip:</b> may the desk file against a visit found by name/UHID when the QR cannot be read, or must the doctor's room reprint the slip first?</li>
+</ul></div>
+
+</div>
+</body>
+</html>
