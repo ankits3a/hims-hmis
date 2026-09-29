@@ -50,3 +50,6 @@
 @media (max-width: 768px) { .d1 .pof-legacy .ofp-kb { display: none; } }
 .d1 .pof-legacy .ofp-rows > li.ofp-stack { display: block; }
 .d1 .pof-legacy .ofp-label.ofp-red { color: var(--red); }
+
+/* The formulary's mapping worklist is a shared component with its own border; inside the office it is a white card like the rest. */
+.d1 .pof-legacy [data-testid="mapping-worklist"] { background: var(--card); border-color: var(--line); border-radius: 8px; }
