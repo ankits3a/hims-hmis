@@ -1,0 +1,163 @@
+{
+  "templates": [
+    {
+      "key": "ct_brain_stroke",
+      "name": "CT brain · acute stroke (ASPECTS)",
+      "modalities": ["ct"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Non-contrast CT brain, 5 mm axial sections with thin reconstructions, brain and bone windows." },
+        { "key": "comparison", "label": "Comparison", "normal": "None available." },
+        { "key": "findings", "label": "Findings", "normal": "No intracranial haemorrhage. No hyperdense vessel sign. Grey-white differentiation is preserved. No mass effect or midline shift. Ventricles and sulci are appropriate for age. Calvarium intact." },
+        { "key": "impression", "label": "Impression", "normal": "No acute intracranial abnormality on non-contrast CT. ASPECTS 10." },
+        { "key": "recommendation", "label": "Recommendation", "normal": "Clinical correlation; MRI with diffusion-weighted imaging if symptoms persist." }
+      ],
+      "macros": [
+        { "key": "cta_lvo", "label": "Suggest CT angiography", "section": "recommendation", "text": "CT angiography of the head and neck for large-vessel occlusion." }
+      ],
+      "coded": [{ "system": "aspects", "required": false }]
+    },
+    {
+      "key": "ct_trauma",
+      "name": "CT trauma series",
+      "modalities": ["ct"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Non-contrast CT head and cervical spine; contrast CT chest, abdomen and pelvis in the portal venous phase." },
+        { "key": "findings", "label": "Findings", "normal": "Head: no intracranial injury. Cervical spine: no fracture or malalignment. Chest: no pneumothorax, haemothorax or contusion. Abdomen and pelvis: solid organs intact; no free fluid or free air. Bones: no fracture." },
+        { "key": "impression", "label": "Impression", "normal": "No acute traumatic injury." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ]
+    },
+    {
+      "key": "xray_chest",
+      "name": "X-ray chest",
+      "modalities": ["xray"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Single frontal radiograph." },
+        { "key": "findings", "label": "Findings", "normal": "Lungs are clear. No pleural effusion or pneumothorax. Cardiac size is normal. Mediastinum and hila are normal. Bones and soft tissues are unremarkable." },
+        { "key": "impression", "label": "Impression", "normal": "Normal chest radiograph." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ]
+    },
+    {
+      "key": "usg_abdomen",
+      "name": "USG whole abdomen",
+      "modalities": ["usg"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Real-time B-mode ultrasound with a 3.5–5 MHz curvilinear probe." },
+        { "key": "findings", "label": "Findings", "normal": "Liver normal in size and echotexture; no focal lesion. Gallbladder distended, wall normal, no calculus. CBD 4 mm. Pancreas, spleen and both kidneys normal. Urinary bladder normal. No free fluid." },
+        { "key": "impression", "label": "Impression", "normal": "Normal abdominal ultrasound." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ]
+    },
+    {
+      "key": "mri_ls_spine",
+      "name": "MRI lumbosacral spine",
+      "modalities": ["mri"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Sagittal T1, T2 and STIR; axial T2 at L3–S1." },
+        { "key": "findings", "label": "Findings", "normal": "Normal lumbar lordosis. Vertebral heights and marrow signal preserved. Discs normal in height and hydration. No disc herniation, canal or foraminal stenosis. Conus ends at L1." },
+        { "key": "impression", "label": "Impression", "normal": "Normal MRI lumbosacral spine." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ]
+    },
+    {
+      "key": "mammo_birads",
+      "name": "Mammography (BI-RADS)",
+      "modalities": ["mammography"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Bilateral craniocaudal and mediolateral oblique views." },
+        { "key": "comparison", "label": "Comparison", "normal": "None available." },
+        { "key": "findings", "label": "Findings", "normal": "Breast composition B (scattered fibroglandular density). No mass, architectural distortion or suspicious calcification. Skin and nipples normal. Axillae unremarkable." },
+        { "key": "impression", "label": "Impression", "normal": "BI-RADS 1 — negative." },
+        { "key": "recommendation", "label": "Recommendation", "normal": "Routine screening in 12 months." }
+      ],
+      "coded": [{ "system": "birads", "required": true }]
+    },
+    {
+      "key": "usg_breast_birads",
+      "name": "USG breast (BI-RADS)",
+      "modalities": ["usg"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "High-frequency linear probe, both breasts and axillae." },
+        { "key": "findings", "label": "Findings", "normal": "Normal fibroglandular tissue. No focal solid or cystic lesion. No axillary lymphadenopathy." },
+        { "key": "impression", "label": "Impression", "normal": "BI-RADS 1 — negative." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ],
+      "coded": [{ "system": "birads", "required": true }]
+    },
+    {
+      "key": "usg_thyroid_tirads",
+      "name": "USG thyroid (ACR TI-RADS)",
+      "modalities": ["usg"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "High-frequency linear probe (7–12 MHz), grey-scale and colour Doppler." },
+        { "key": "findings", "label": "Findings", "normal": "Both lobes and the isthmus are normal in size and echotexture. No nodule. No cervical lymphadenopathy." },
+        { "key": "impression", "label": "Impression", "normal": "Normal thyroid ultrasound." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ],
+      "coded": [{ "system": "tirads", "required": false }]
+    },
+    {
+      "key": "ct_chest_nodule",
+      "name": "CT chest · nodule (Fleischner 2017)",
+      "modalities": ["ct"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "CT chest, 1 mm axial reconstructions, lung and mediastinal windows." },
+        { "key": "comparison", "label": "Comparison", "normal": "None available." },
+        { "key": "findings", "label": "Findings", "normal": "No pulmonary nodule or mass. Airways patent. No mediastinal or hilar lymphadenopathy. No pleural effusion." },
+        { "key": "impression", "label": "Impression", "normal": "No pulmonary nodule." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ],
+      "coded": [{ "system": "fleischner", "required": false }]
+    },
+    {
+      "key": "ldct_lung_screening",
+      "name": "Low-dose CT · lung cancer screening (Lung-RADS)",
+      "modalities": ["ct"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Low-dose non-contrast CT chest, 1 mm reconstructions." },
+        { "key": "comparison", "label": "Comparison", "normal": "None available." },
+        { "key": "findings", "label": "Findings", "normal": "No pulmonary nodule. No other significant finding." },
+        { "key": "impression", "label": "Impression", "normal": "Lung-RADS 1 — negative." },
+        { "key": "recommendation", "label": "Recommendation", "normal": "Continue annual screening with low-dose CT in 12 months." }
+      ],
+      "coded": [{ "system": "lungrads", "required": true }]
+    },
+    {
+      "key": "mri_liver_lirads",
+      "name": "MRI liver · at-risk patient (LI-RADS)",
+      "modalities": ["mri", "ct"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Multiphase contrast-enhanced study: arterial, portal venous and delayed phases." },
+        { "key": "findings", "label": "Findings", "normal": "Liver of normal size with smooth contour. No arterially enhancing observation, washout or capsule. Portal and hepatic veins patent." },
+        { "key": "impression", "label": "Impression", "normal": "No LI-RADS observation." },
+        { "key": "recommendation", "label": "Recommendation", "normal": "Return to surveillance ultrasound in 6 months." }
+      ],
+      "coded": [{ "system": "lirads", "required": false }]
+    },
+    {
+      "key": "mri_prostate_pirads",
+      "name": "MRI prostate (PI-RADS v2.1)",
+      "modalities": ["mri"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Multiparametric MRI: T2-weighted, diffusion-weighted with ADC map, and dynamic contrast enhancement." },
+        { "key": "findings", "label": "Findings", "normal": "Prostate normal in size. No focal lesion in the peripheral or transition zone. Seminal vesicles and neurovascular bundles normal. No pelvic lymphadenopathy." },
+        { "key": "impression", "label": "Impression", "normal": "PI-RADS 1 — clinically significant cancer highly unlikely." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ],
+      "coded": [{ "system": "pirads", "required": true }]
+    },
+    {
+      "key": "usg_pelvis_orads",
+      "name": "USG pelvis · adnexal lesion (O-RADS US)",
+      "modalities": ["usg"],
+      "sections": [
+        { "key": "technique", "label": "Technique", "normal": "Transabdominal and transvaginal ultrasound." },
+        { "key": "findings", "label": "Findings", "normal": "Uterus normal in size and echotexture; endometrium normal in thickness. Both ovaries normal. No adnexal mass. No free fluid." },
+        { "key": "impression", "label": "Impression", "normal": "Normal pelvic ultrasound. O-RADS 1." },
+        { "key": "recommendation", "label": "Recommendation" }
+      ],
+      "coded": [{ "system": "orads", "required": false }]
+    }
+  ]
+}

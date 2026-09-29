@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -324,4 +324,76 @@ it("18c T3: a first-ever ionising examination shows no line", async () => {
   renderWithProviders(<RadiologyStudy />);
   await screen.findByText(/X2608310001/);
   expect(screen.queryByTestId("dose-cumulative")).not.toBeInTheDocument();
+});
+
+/**
+ * 18-S RS12 — the archive's word on the study: an OHIF link (StudyInstanceUIDs=) opens in a new tab
+ * exactly as the server built it, and the console says what the archive holds.
+ */
+it("18-S RS12: the console shows what the archive holds and opens the OHIF URL the server built", async () => {
+  const opened = vi.fn();
+  vi.stubGlobal("open", opened);
+  const ohif = "https://pacs.hospital.in/ohif/viewer?StudyInstanceUIDs=1.2.840.1";
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", acquiredAt: "2026-08-31T09:30:00.000Z", imageSource: "pacs", studyInstanceUid: "1.2.840.1", archive: { arrivedAt: "2026-08-31T09:32:00.000Z", seriesCount: 3, instanceCount: 212 } } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+    "POST /api/radiology/studies/S1/images/open": { status: 201, body: { url: ohif, viewId: "v3", studyInstanceUid: "1.2.840.1", viewer: "ohif" } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  expect(await screen.findByTestId("archive-state")).toHaveTextContent("In the archive: 3 series, 212 images, since 15:02");
+  await userEvent.click(screen.getByRole("button", { name: /open images/i }));
+  expect(opened).toHaveBeenCalledWith(ohif, "_blank", "noopener,noreferrer");
+});
+
+it("18-S RS12: a pacs study the archive has not reported says so", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", acquiredAt: "2026-08-31T09:30:00.000Z", imageSource: "pacs", studyInstanceUid: "2.25.42", archive: null } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  expect(await screen.findByTestId("archive-state")).toHaveTextContent("Not in the archive yet");
+});
+
+/**
+ * 18-S RS5 T3 — the console's gate evidence is a FORM per kind, not a JSON textarea. The identity
+ * form sends the exact `identity_two_factor` shape; the value is the server's to compare.
+ */
+it("RS5: there is no JSON evidence box — Satisfy opens the gate's own form, which sends the typed evidence", async () => {
+  const PREP_VIEW = {
+    study: {
+      studyId: "S1", accessionNo: "X2608310001", status: "checked_in", priority: "routine", studyTypeCode: "USG-OBS-ANOMALY",
+      studyTypeName: "Obstetric anomaly scan", modality: "usg", ionising: false, contrastOption: "none", laterality: "na",
+      lateralityApplicable: false, encounterNo: "V2608310001", scheduledAt: null, deviceCode: "US-2", formFRequired: true,
+    },
+    patient: { id: "P1", name: "Asha Devi", uhid: "HMS-00000001-5", sex: "female", dob: "1996-01-01", ageYears: 30 },
+    allergies: [], weight: null,
+    kidney: { creatinine: null, egfr: null, validDays: 30, ceilingUmolL: 176.8, hydrationInstruction: "x", metforminNote: "y" },
+    lmpDate: null,
+    gates: [{ id: "g0", kind: "identity_two_factor", state: "open", waivable: false, room: true, neverWaive: true, neverOverride: false, evidence: null, satisfiedAt: null, override: null, asked: null }],
+    guardians: [], staff: [], contrast: { administrations: [], reactions: [] },
+  };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const key = `${init?.method ?? "GET"} ${raw.split("?")[0]!}`;
+    calls.push(key);
+    if (typeof init?.body === "string") (bodies[key] ??= []).push(JSON.parse(init.body));
+    const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { "Content-Type": "application/json" } });
+    if (key === "GET /api/auth/me") return json({ actor: { type: "user", id: "u-rt" }, permissions: { hospital: ["radiology.gates.satisfy"], scoped: { department: {}, floor: {} } } });
+    if (key === "GET /api/radiology/studies/S1") return json({ study: STUDY });
+    if (key === "GET /api/radiology/studies/S1/readiness") {
+      return json({ state: "checked_in", ready: false, gates: [{ id: "g0", kind: "identity_two_factor", state: "open", waivable: false }], open: ["identity_two_factor"] });
+    }
+    if (key === "GET /api/radiology/prep/studies/S1") return json({ view: PREP_VIEW });
+    if (key === "POST /api/radiology/studies/S1/gates/identity_two_factor/satisfy") return json({ state: "satisfied" });
+    return new Response("{}", { status: 404 });
+  }));
+  renderWithProviders(<RadiologyStudy />);
+  const row = await screen.findByTestId("gate-identity_two_factor");
+  expect(document.querySelector("textarea")).toBeNull();
+  await userEvent.click(within(row).getByRole("button", { name: "Satisfy" }));
+  const value = await within(row).findByTestId("identity-value");
+  await userEvent.type(value, "HMS-00000001-5");
+  await userEvent.click(within(row).getByTestId("gate-submit"));
+  await vi.waitFor(() => expect(bodies["POST /api/radiology/studies/S1/gates/identity_two_factor/satisfy"])
+    .toEqual([{ secondIdentifier: "uhid", value: "HMS-00000001-5" }]));
 });

@@ -46,6 +46,8 @@ export const APPROVAL_KINDS = {
   ot_deposit_exception: ["amount", "patient"],
   tariff_revision: [],
   membership_grace_honor: ["patient"],
+  /* STAGE D5 — a Reserve/restricted antimicrobial the steward approves; the drug, indication and days are in the request note. */
+  pharmacy_restricted_antimicrobial: ["patient"],
 } as const satisfies Record<string, readonly Need[]>;
 
 export type KnownKind = keyof typeof APPROVAL_KINDS;

@@ -68,10 +68,16 @@ const TONE: Record<NonNullable<StationStat["tone"]>, string | undefined> = {
 };
 
 export function StationShell({
-  brand, stations, current, title, place, stats, statsLabel,
+  seat = "lab", brand, stations, current, title, place, stats, statsLabel,
   lane, list, listSummary, clocks, clocksSummary, clocksAlert = false,
-  copilot, inHand = false, views, seat = "lab", listRequest, children,
+  copilot, inHand = false, views, listRequest, closeListOn, children,
 }: {
+  /**
+   * The department's seat scope (`styles.css` scopes the paper / pine tokens to it). Defaults to the
+   * lab's, which every lab station relies on; imaging passes `"radiology"` (18-S RS1); the OPD queue
+   * desk passes `"opd-desk"` (UX-AUDIT 2026-09-28) so its own DOM does not say `lab`.
+   */
+  seat?: "lab" | "radiology" | "opd-desk";
   /** The department, in the header and over the lane — "Central lab". */
   brand: string;
   /** Every station of the department; the switch shows the ones `can()` allows, and `current`. */
@@ -99,11 +105,11 @@ export function StationShell({
   /** The station's own views (header nav); they fold into the Menu below 1100px. */
   views?: React.ReactNode;
   /**
-   * UX-AUDIT 2026-09-28 — the `data-seat` the frame wears. The lab's stations wrote it as a constant;
-   * the OPD queue desk is the second department in this frame, and a desk that says `lab` in its own
-   * DOM is a wrong answer to anyone reading it. `styles.css` maps the palette for either value.
+   * 18-S RS3 — below 1280px the list is a drawer over the work. When this value changes (the station
+   * took a different patient in hand FROM the drawer), the drawer closes, so the work it opened is not
+   * left under a scrim. Absent: the drawer closes only on its own toggle, Esc or the scrim.
    */
-  seat?: "lab" | "opd-desk";
+  closeListOn?: string | null;
   /**
    * UX-AUDIT 2026-09-28 — a screen's own act can open or close the drawer below 1280px: the OPD desk
    * opens it when a doctor is chosen (their line IS the answer) and closes it when a token is taken
@@ -130,6 +136,8 @@ export function StationShell({
   useEffect(() => {
     if (listRequest !== undefined && listRequest.seq > 0) setListOpen(listRequest.open);
   }, [listRequest]);
+  /** 18-S RS11 — the header Menu folds too: a view picked from it (a tab) must not stay covered. */
+  useEffect(() => { if (closeListOn !== undefined) { setListOpen(false); setMenuOpen(false); } }, [closeListOn]);
 
   useEffect(() => {
     if (!listOpen && !menuOpen) return;

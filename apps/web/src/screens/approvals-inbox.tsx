@@ -6,6 +6,7 @@ import type { TFunction } from "i18next";
 import { CircleCheck, Inbox as InboxIcon, CircleX } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { fetchStewardRequest } from "../lib/pharmacy-api";
 import { fmtRupees } from "../lib/format";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -145,6 +146,30 @@ function UrgencyPill({ urgency }: { urgency: ApprovalItem["urgencyClass"] }): Re
   );
 }
 
+/**
+ * STAGE D5 — the prescription line a restricted-antimicrobial request is about, and whose prescription it is, read
+ * under the steward's own grant. A steward who wrote it is told so: their grant would not let the medicine leave.
+ */
+function StewardLine({ approvalId }: { approvalId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const { actor } = useAuth();
+  const q = useQuery({ queryKey: ["pharmacy", "steward-request", approvalId], queryFn: () => fetchStewardRequest(approvalId), retry: false, staleTime: 60_000 });
+  if (q.data === undefined) return null;
+  const own = actor !== null && q.data.prescriberUserId === actor.id;
+  return (
+    <div data-testid={`steward-line-${approvalId}`} style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 3 }}>
+      {q.data.lines.map((l) => (
+        <span key={l.lineIdx} className="mo">
+          {t("inbox.steward.line", { brand: l.brandName, dose: l.dose, frequency: l.frequency })}
+          {l.durationDays === null ? "" : ` · ${t("inbox.steward.days", { n: l.durationDays })}`}
+        </span>
+      ))}
+      {q.data.prescriberName === null ? null : <span style={{ color: "var(--dim)" }}>{t("inbox.steward.prescriber", { name: q.data.prescriberName })}</span>}
+      {own ? <p role="note" style={{ margin: 0, fontWeight: 600, color: "var(--red)" }}>{t("inbox.steward.ownPrescription")}</p> : null}
+    </div>
+  );
+}
+
 function ApprovalCard({
   item, onDecide, canDecide, isOwn, focused = false,
 }: {
@@ -237,6 +262,7 @@ function ApprovalCard({
             )}
           </div>
 
+          {item.typeKey === "pharmacy_restricted_antimicrobial" && can("pharmacy.antimicrobial.approve") ? <StewardLine approvalId={item.id} /> : null}
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{kindExplain(item, t)}</p>
           {runId === null ? null : (
             <button

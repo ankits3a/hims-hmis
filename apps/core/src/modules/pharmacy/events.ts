@@ -258,6 +258,59 @@ export const adrEventRecorded = defineEvent("adr.event_recorded", MODULE, z.obje
   reportId: id, eventId: id, kind: z.enum(["causality_assessed", "sent_to_pvpi", "closed"]),
 }));
 
+/**
+ * STAGE D2 — a medication error or near miss was recorded. Codes only: the narrative stays in the log, and the
+ * reporter is the envelope's actor (the audit trail), never a payload field a consumer could display.
+ */
+export const incidentRecorded = defineEvent("incident.recorded", MODULE, z.object({
+  incidentId: id, kind: z.enum(["near_miss", "error"]), category: z.string().min(1), stage: z.string().min(1), type: z.string().min(1),
+}));
+
+/** STAGE D2 — a later act on a medication incident: reviewed (root cause, action taken) or closed. */
+export const incidentEventRecorded = defineEvent("incident.event_recorded", MODULE, z.object({
+  incidentId: id, eventId: id, kind: z.enum(["reviewed", "closed"]),
+}));
+
+/** STAGE D3 — a fridge was added or edited (label, range, active): the before and the after, the unit's audit trail. */
+const coldUnitState = z.object({ label: z.string().min(1), lowC: z.string().min(1), highC: z.string().min(1), active: z.boolean() });
+export const coldUnitSaved = defineEvent("coldchain.unit_saved", MODULE, z.object({
+  unitId: id, storeResourceId: id, before: coldUnitState.nullable(), after: coldUnitState,
+}));
+
+/** STAGE D3 — a fridge was read; `excursionId` is the excursion that reading opened, if it opened one. */
+export const coldReadingRecorded = defineEvent("coldchain.reading_recorded", MODULE, z.object({
+  unitId: id, readingId: id, currentC: z.string().min(1), minC: z.string().min(1), maxC: z.string().min(1),
+  outOfRange: z.boolean(), excursionId: id.nullable(),
+}));
+
+/** STAGE D3 — an excursion was closed: every held batch released (with its reason) or written off. */
+export const coldExcursionClosed = defineEvent("coldchain.excursion_closed", MODULE, z.object({
+  excursionId: id, unitId: id, released: z.number().int().nonnegative(), writtenOff: z.number().int().nonnegative(), writeOffId: id.nullable(),
+}));
+
+/** STAGE D4 — an emergency tray was set up or its keepers changed: the before (null when new) and the after. */
+const trayState = z.object({ name: z.string().min(1), location: z.string().min(1), custodianRoles: z.array(z.string().min(1)) });
+export const traySaved = defineEvent("trays.tray_saved", MODULE, z.object({
+  trayId: id, code: z.string().min(1), before: trayState.nullable(), after: trayState,
+}));
+
+/** STAGE D4 — a tray's template line was added or edited (par, expiry margin, active): the before and the after. */
+const trayLineState = z.object({ parQty: z.number().int().positive(), minExpiryDays: z.number().int().nonnegative().nullable(), active: z.boolean() });
+export const trayTemplateSaved = defineEvent("trays.template_saved", MODULE, z.object({
+  templateId: id, trayId: id, itemId: id, before: trayLineState.nullable(), after: trayLineState,
+}));
+
+/** STAGE D4 — a tray was checked; the result is the server's, `consumed` the units an after-use check took off the ledger. */
+export const trayChecked = defineEvent("trays.checked", MODULE, z.object({
+  checkId: id, trayId: id, kind: z.enum(["daily_seal", "monthly_full", "after_use"]), result: z.enum(["ok", "deficient"]),
+  findings: z.array(z.string().min(1)), consumed: z.number().int().nonnegative(), patientId: id.nullable(),
+}));
+
+/** STAGE D4 — a deficient check was restocked from PHARM-OPD: the transfer that carries exactly the deficit. */
+export const trayRestocked = defineEvent("trays.restocked", MODULE, z.object({
+  checkId: id, trayId: id, transferId: id, units: z.number().int().positive(),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -267,5 +320,7 @@ export const PHARMACY_EVENTS = [
   retailSold, retailLicenceRecorded, retailLineReturned,
   shortBookNoted, shortBookResolved,
   controlledLicenceRecorded, endPrescriberRecorded, endPrescriberEnded, controlledChecked, controlledActWitnessed,
-  adrReported, adrEventRecorded,
+  adrReported, adrEventRecorded, incidentRecorded, incidentEventRecorded,
+  coldUnitSaved, coldReadingRecorded, coldExcursionClosed,
+  traySaved, trayTemplateSaved, trayChecked, trayRestocked,
 ] as const;

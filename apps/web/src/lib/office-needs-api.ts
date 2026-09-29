@@ -19,7 +19,7 @@ export type WireNeedFact = { k: string; raw?: true; v: string | number; as: "tex
 export type WireNeedRef = {
   kind:
     | "po" | "purchasePlan" | "grnDesk" | "bill" | "run" | "payRun" | "return" | "writeoff" | "recall" | "returnPlan"
-    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr";
+    | "grn" | "retailLicence" | "cabinet" | "pharmacist" | "adr" | "incident" | "coldUnit" | "coldExcursion" | "steward" | "tray";
   id: string | null;
 };
 
@@ -53,4 +53,12 @@ export const NEEDS_GRANTS = [
   "pharmacy.ndps.custody", "pharmacy.licences.manage", "pharmacy.register.read", "pharmacy.pharmacists.manage",
   // Stage D1 — the ADR register's LAW rows (a report not yet sent to PvPI).
   "pharmacy.adr.manage",
+  // Stage D2 — the medication incident log's LAW rows (an incident not yet reviewed).
+  "pharmacy.incidents.review",
+  // Stage D3 — the fridge log's STOCK rows (an open excursion; a reading missed today).
+  "pharmacy.coldchain.record", "pharmacy.coldchain.manage",
+  // Stage D4 — the emergency trays' STOCK rows (a deficient tray, a check missed, tray stock expiring).
+  "pharmacy.trays.check", "pharmacy.trays.manage",
+  // Stage D5 — the antimicrobial steward's LAW rows (nobody appointed; an approval waiting past 4 h) are read
+  // under `pharmacy.licences.manage`, already listed above.
 ] as const;

@@ -334,3 +334,11 @@ export const searchMedicines = async (q: string, limit = 10): Promise<WireMedici
 export async function setMedicineSchedule(medicineId: string, scheduleFlag: "H" | "H1" | "X" | "OTC" | null): Promise<void> {
   await api<{ ok: true }>("PATCH", `/formulary/medicines/${medicineId}`, { scheduleFlag });
 }
+
+/** STAGE D5 — one product's antimicrobial stewardship fields (`formulary.manage`). */
+export type WireStewardship = { id: string; brandName: string; awareCategory: "Access" | "Watch" | "Reserve" | null; antimicrobialRestricted: boolean };
+export const fetchStewardship = (medicineId: string): Promise<WireStewardship> =>
+  api<WireStewardship>("GET", `/formulary/medicines/${medicineId}/stewardship`);
+export async function setStewardship(medicineId: string, patch: { awareCategory: WireStewardship["awareCategory"]; antimicrobialRestricted: boolean }): Promise<void> {
+  await api<{ ok: true }>("PATCH", `/formulary/medicines/${medicineId}`, patch);
+}

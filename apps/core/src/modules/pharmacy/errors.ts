@@ -9,6 +9,37 @@ export const PHARMACY_ERROR_CODES = [
   "invalid_adr",
   "unknown_adr",
   "adr_closed",
+  /** STAGE D2 — the medication incident log: a report that contradicts itself, one not on file, a later act on a closed one. */
+  "invalid_incident",
+  "unknown_incident",
+  "incident_closed",
+  /**
+   * STAGE D3 — the fridge log: a batch held by an open cold-chain excursion (or written off after one) may not
+   * leave; a reading, fridge or close that does not make sense; a fridge or excursion not on file; a closed one.
+   */
+  "cold_chain_excursion_open",
+  "invalid_cold_chain",
+  "unknown_cold_unit",
+  "unknown_excursion",
+  "excursion_closed",
+  /**
+   * STAGE D5 — a restricted antimicrobial (every WHO AWaRe Reserve product, every carbapenem, and whatever the hospital
+   * adds) leaves only with the antimicrobial steward's GRANTED approval bound to that dispense; nobody holds the steward
+   * role yet; the only grant was given by the prescriber; a restricted antimicrobial asked for at the walk-in counter.
+   */
+  "antimicrobial_steward_approval_required",
+  "antimicrobial_steward_not_appointed",
+  "antimicrobial_self_approval",
+  "restricted_antimicrobial_walk_in",
+  /**
+   * STAGE D4 — the emergency trays: a tray, template line, check or restock that does not make sense (a full check
+   * that leaves a template item uncounted, a daily check without the seal seen, a restock of a check with nothing
+   * short); a tray or check not on file; a check already restocked.
+   */
+  "invalid_tray",
+  "unknown_tray",
+  "unknown_tray_check",
+  "tray_already_restocked",
   // ── sale items and the price rule (T2) ──
   "unknown_item",
   "not_a_drug",
@@ -247,6 +278,22 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invalid_adr: 400,
   unknown_adr: 404,
   adr_closed: 409,
+  invalid_incident: 400,
+  unknown_incident: 404,
+  incident_closed: 409,
+  cold_chain_excursion_open: 409,
+  invalid_cold_chain: 400,
+  unknown_cold_unit: 404,
+  unknown_excursion: 404,
+  excursion_closed: 409,
+  antimicrobial_steward_approval_required: 409,
+  antimicrobial_steward_not_appointed: 409,
+  antimicrobial_self_approval: 409,
+  restricted_antimicrobial_walk_in: 409,
+  invalid_tray: 400,
+  unknown_tray: 404,
+  unknown_tray_check: 404,
+  tray_already_restocked: 409,
   interaction_block: 409,
   qty_required: 400,
   store_missing: 409,

@@ -98,8 +98,16 @@ export const IMAGING_GATE_KIND_VALUES = [
   "mlc_check",
 ] as const;
 
-/** DD13 — the three governed definition kinds, and 18b T3's fourth: where the images are viewed. */
-export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels"] as const;
+/**
+ * DD13 — the three governed definition kinds, and 18b T3's fourth: where the images are viewed.
+ * 18c T3 added the DRL book; 18-S RS6 adds `imaging_protocols`, the protocol book the room console
+ * reads (technique, contrast per kg, breath-hold script) — authored by the HOD, never seeded.
+ * 18-S RS8a adds the reading room's two books: `report_templates` (the structured templates with
+ * their coded categories) and `report_signatories` (who may sign an imaging report, with the
+ * qualification and council number the print carries — ruling 4). Both are authored by the HOD and
+ * approved by the medical superintendent; neither is seeded active.
+ */
+export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels", "imaging_protocols", "report_templates", "report_signatories"] as const;
 
 /** DD15 — the report version chain's five states. `prelim` is O-11's UNVERIFIED draft. */
 export const IMAGING_REPORT_STATUSES = ["prelim", "draft", "signed", "amended", "superseded"] as const;
@@ -214,7 +222,25 @@ export const imagingStudies = pgTable(
     doseDlp: numeric("dose_dlp", { precision: 10, scale: 3 }),
     doseDap: numeric("dose_dap", { precision: 10, scale: 3 }),
     fluoroSeconds: integer("fluoro_seconds"),
+    /**
+     * 18-S RS12 — Average Glandular Dose (mGy), the quantity a mammography unit reports and the one
+     * AERB asks for on a mammogram. Before RS12 a unit that showed only AGD could not be recorded.
+     */
+    doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
     doseManual: boolean("dose_manual").notNull().default(false),
+    /**
+     * ═══ 18-S RS12 — THE IMAGES ARRIVED IN THE ARCHIVE ═══
+     *
+     * Written only by `pacs.ts` from an Orthanc arrival notice that matched this study by accession
+     * (then by UID) AND by the patient's UHID — never by a name. NULL means no archive has told us
+     * it holds this study, which is not the same as "no images": a CR with no DICOM link is
+     * `no_pacs_images` and still has a film. The counts are the archive's, refreshed on every
+     * notice for the same UID (a late series grows them); they are facts about the PACS, not a
+     * workflow state, so nothing here moves the study.
+     */
+    imagesArrivedAt: timestamp("images_arrived_at", { withTimezone: true }),
+    imageSeriesCount: integer("image_series_count"),
+    imageInstanceCount: integer("image_instance_count"),
     contrastGiven: boolean("contrast_given").notNull().default(false),
     contrastAgent: text("contrast_agent"),
     contrastVolumeMl: numeric("contrast_volume_ml", { precision: 8, scale: 2 }),
@@ -286,7 +312,8 @@ export const imagingStudies = pgTable(
       "imaging_studies_dose_ck",
       sql`${t.acquiredAt} is null or ${t.ionising} = false
           or ${t.doseCtdivol} is not null or ${t.doseDlp} is not null
-          or ${t.doseDap} is not null or ${t.fluoroSeconds} is not null`,
+          or ${t.doseDap} is not null or ${t.fluoroSeconds} is not null
+          or ${t.doseAgd} is not null`,
     ),
     /** D6 — the pointer and the reason are one fact in two columns (`order_items_duplicate_ck`'s shape). */
     check(
@@ -432,6 +459,22 @@ export const imagingReports = pgTable(
      * this column exists here rather than being invented by 18b on a table it does not own.
      */
     provenance: jsonb("provenance"),
+    /**
+     * 18-S RS8a / ruling 4 — WHO SIGNED, AS A PERSON, AS THEY WERE ON THE DAY: name, qualification,
+     * designation, council registration number, Doctor ID, and the signature marker (the second
+     * factor's instant, the authenticator it came from, and a SHA-256 of the signed content).
+     * Written on the INSERT of a signed version and never after — the append-only trigger already
+     * covers every column but `status` and `published_at`, so a later rename or a new council
+     * number cannot rewrite a report already handed to a patient. NULL on drafts and prelims, and on
+     * every version signed before RS8a (no backfill: those were signed without it).
+     */
+    signer: jsonb("signer"),
+    /**
+     * 18-S RS8a — the deterministic pre-sign checks as they ran at THIS signature: which checks,
+     * every warning they raised and that the signer acknowledged each one. A refusal never reaches
+     * a row. NULL on drafts, prelims and on versions signed before RS8a.
+     */
+    signChecks: jsonb("sign_checks"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -603,6 +646,133 @@ export const imagingImageViews = pgTable(
     index("imaging_image_views_study_idx").on(t.studyId, t.viewedAt),
     index("imaging_image_views_viewer_idx").on(t.viewerId, t.viewedAt),
     check("imaging_image_views_via_ck", inList(t.via, IMAGE_VIEW_CHANNELS)),
+  ],
+);
+
+/**
+ * ═══ PLAN 18-S RS12 — THE ARCHIVE'S INBOX: studies the PACS holds that no order could claim ═══
+ *
+ * An Orthanc arrival notice is matched to a study by ACCESSION, then by Study Instance UID, and in
+ * both cases only when the DICOM PatientID is that study's patient's UHID (`pacs.ts`). Everything
+ * else lands here, one row per DICOM study (UNIQUE on the UID — a re-sent notice updates the row,
+ * never adds one), and waits for a human: the technologist who knows who was on the table, or the
+ * radiologist. **Nothing here is ever attached by a patient NAME** — two Sunita Devis in one day is
+ * the ordinary case, and a wrong-patient image is the error this whole queue exists to stop.
+ *
+ * `awaiting_acquisition` is the reason the machine usually resolves itself: the images reached the
+ * archive before the room pressed Send, and `recordAcquired` attaches them on the SAME accession
+ * and UHID check (never a looser one) when it runs; a re-sent notice that now matches on that rule
+ * attaches likewise. Every other resolution — and every rejection — is a human's.
+ *
+ * The DICOM patient name and ID are kept because a reconciler cannot decide without them; they are
+ * the modality's strings, not a patient record, and the inbox read logs a PHI line per candidate.
+ */
+export const UNMATCHED_STUDY_REASONS = [
+  "no_match", "patient_mismatch", "uid_mismatch", "awaiting_acquisition", "study_closed", "outside_study", "no_identifiers",
+] as const;
+export type UnmatchedStudyReason = (typeof UNMATCHED_STUDY_REASONS)[number];
+export const UNMATCHED_STUDY_STATUSES = ["open", "attached", "rejected"] as const;
+
+export const imagingUnmatchedStudies = pgTable(
+  "imaging_unmatched_studies",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyInstanceUid: text("study_instance_uid").notNull().unique(),
+    accessionNumber: text("accession_number"),
+    dicomPatientId: text("dicom_patient_id"),
+    dicomPatientName: text("dicom_patient_name"),
+    modality: text("modality"),
+    /** DICOM StudyDate as the modality stamped it (its clock, not ours). */
+    studyDate: date("study_date"),
+    seriesCount: integer("series_count").notNull().default(0),
+    instanceCount: integer("instance_count").notNull().default(0),
+    /** The archive's own id for the study (Orthanc's), so the reconciler can open it there. */
+    archiveRef: text("archive_ref"),
+    reason: text("reason").notNull(),
+    /** The study the accession named, when one did — shown beside the row, never attached by itself. */
+    candidateStudyId: text("candidate_study_id").references(() => imagingStudies.id),
+    status: text("status").notNull().default("open"),
+    resolvedStudyId: text("resolved_study_id").references(() => imagingStudies.id),
+    /** NULL only for the machine's own `awaiting_acquisition` attach at Send. */
+    resolvedBy: text("resolved_by"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolutionReason: text("resolution_reason"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("imaging_unmatched_studies_status_idx").on(t.status, t.receivedAt),
+    index("imaging_unmatched_studies_accession_idx").on(t.accessionNumber),
+    check("imaging_unmatched_studies_reason_ck", inList(t.reason, UNMATCHED_STUDY_REASONS)),
+    check("imaging_unmatched_studies_status_ck", inList(t.status, UNMATCHED_STUDY_STATUSES)),
+    /** Open means unresolved, and a resolution carries its instant — one fact in two columns. */
+    check("imaging_unmatched_studies_resolved_ck", sql`(${t.status} = 'open') = (${t.resolvedAt} is null)`),
+    check("imaging_unmatched_studies_attached_ck", sql`${t.status} <> 'attached' or ${t.resolvedStudyId} is not null`),
+    /**
+     * A human's resolution names the human and the reason. The machine resolves only by ATTACHING,
+     * and only on the same accession + UHID rule a fresh notice is matched by (`resolvedBy` NULL);
+     * it never rejects.
+     */
+    check(
+      "imaging_unmatched_studies_human_ck",
+      sql`${t.status} = 'open' or (${t.resolvedBy} is not null and ${t.resolutionReason} is not null)
+          or (${t.status} = 'attached' and ${t.resolvedBy} is null)`,
+    ),
+  ],
+);
+
+/**
+ * ═══ PLAN 18-S RS12 — EVERY RADIATION DOSE SR THE ARCHIVE FORWARDED, AND WHAT BECAME OF IT ═══
+ *
+ * One row per SR instance (UNIQUE on its SOP Instance UID — the idempotency key: Orthanc's change
+ * feed is at-least-once). The register is written only through aerb's `recordDose`, from
+ * `recordAcquired`, so the DRL comparison runs exactly once per examination; this table is the
+ * receipt, and the place a disagreement with a number the technologist typed is KEPT rather than
+ * resolved by overwriting either:
+ *
+ *   · `pending`        — the study is not acquired yet; Send will use these numbers if none is typed.
+ *   · `recorded`       — Send used them; the register row says `dose_origin = 'dose_sr'`.
+ *   · `confirmed`      — a typed number was already on the register and the SR agrees with it.
+ *   · `conflict`       — it does not; both values are in `conflict`, the register is untouched.
+ *   · `unmatched`      — no study carries this UID or accession yet (re-tried on reconciliation).
+ *   · `not_applicable` — the study is not ionising, or was an outside study.
+ */
+export const DOSE_SR_OUTCOMES = ["pending", "recorded", "confirmed", "conflict", "unmatched", "not_applicable"] as const;
+export type DoseSrOutcome = (typeof DOSE_SR_OUTCOMES)[number];
+export const DOSE_SR_TEMPLATES = ["ct_10011", "projection_10001", "unknown"] as const;
+
+export const imagingDoseSrReceipts = pgTable(
+  "imaging_dose_sr_receipts",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    sopInstanceUid: text("sop_instance_uid").notNull().unique(),
+    studyInstanceUid: text("study_instance_uid").notNull(),
+    accessionNumber: text("accession_number"),
+    studyId: text("study_id").references(() => imagingStudies.id),
+    template: text("template").notNull(),
+    doseCtdivol: numeric("dose_ctdivol", { precision: 10, scale: 3 }),
+    doseDlp: numeric("dose_dlp", { precision: 10, scale: 3 }),
+    doseDap: numeric("dose_dap", { precision: 10, scale: 3 }),
+    fluoroSeconds: integer("fluoro_seconds"),
+    doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
+    outcome: text("outcome").notNull(),
+    /** For `conflict`: `{quantity: {typed, sr}}` per disagreeing quantity. */
+    conflict: jsonb("conflict"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("imaging_dose_sr_receipts_uid_idx").on(t.studyInstanceUid),
+    index("imaging_dose_sr_receipts_study_idx").on(t.studyId),
+    index("imaging_dose_sr_receipts_outcome_idx").on(t.outcome, t.receivedAt),
+    check("imaging_dose_sr_receipts_outcome_ck", inList(t.outcome, DOSE_SR_OUTCOMES)),
+    check("imaging_dose_sr_receipts_template_ck", inList(t.template, DOSE_SR_TEMPLATES)),
+    check(
+      "imaging_dose_sr_receipts_dose_ck",
+      sql`${t.doseCtdivol} is not null or ${t.doseDlp} is not null or ${t.doseDap} is not null
+          or ${t.fluoroSeconds} is not null or ${t.doseAgd} is not null`,
+    ),
+    check("imaging_dose_sr_receipts_conflict_ck", sql`(${t.outcome} = 'conflict') = (${t.conflict} is not null)`),
   ],
 );
 
@@ -857,6 +1027,20 @@ export const imagingOutsideStudies = pgTable(
 );
 
 /**
+ * 18-S RS9 T1 — what the report changed. The board's five choices (doctor's door, "Mark acted on").
+ */
+export const IMAGING_ACTED_OUTCOMES = [
+  "changed_treatment", "referred", "followup_booked", "discussed_with_patient", "no_change",
+] as const;
+
+/** 18-S RS9 T4 — who took the report away from the imaging window. */
+export const IMAGING_COLLECTOR_KINDS = ["patient", "relative", "ward_staff", "courier"] as const;
+/** The ID a relative shows. Only the LAST FOUR characters are kept (a masked Aadhaar is lawful). */
+export const IMAGING_COLLECTOR_ID_TYPES = ["aadhaar", "voter_id", "driving_licence", "pan", "passport", "other"] as const;
+/** Ruling 1 — the physical media printed on request. The digital report and link are free. */
+export const IMAGING_MEDIA_KINDS = ["film", "cd"] as const;
+
+/**
  * ═══ PLAN 18a-iii T5 / D7 — `imaging_report_delivery`: WHAT HAPPENED TO A REPORT AFTER IT WAS SIGNED ═══
  *
  * **This table exists because the database refused the first design, and the database was right.**
@@ -900,6 +1084,16 @@ export const imagingReportDelivery = pgTable(
     firstReadAt: timestamp("first_read_at", { withTimezone: true }),
     firstReadBy: text("first_read_by"),
     unreadChasedAt: timestamp("unread_chased_at", { withTimezone: true }),
+    /**
+     * 18-S RS9 T1 (Gap 6) — **THE NORTH-STAR CLOCK STOPS HERE.** The treating doctor records what
+     * the report changed (`outcome` from a closed list, plus one line). Per report VERSION, like the
+     * read: an amendment is a new version with its own delivery row, so acting on v1 does not count
+     * for v2 and the loop re-opens (DECIDED — the doctor acted on a document that has since changed).
+     */
+    actedAt: timestamp("acted_at", { withTimezone: true }),
+    actedBy: text("acted_by"),
+    actedOutcome: text("acted_outcome"),
+    actedNote: text("acted_note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -912,5 +1106,102 @@ export const imagingReportDelivery = pgTable(
       "imaging_report_delivery_first_read_ck",
       sql`(${t.firstReadBy} is null) = (${t.firstReadAt} is null)`,
     ),
+    /** An act is a person, an instant, an outcome and a line — all four or none. */
+    check(
+      "imaging_report_delivery_acted_ck",
+      sql`(${t.actedAt} is null) = (${t.actedBy} is null) and (${t.actedAt} is null) = (${t.actedOutcome} is null) and (${t.actedAt} is null) = (${t.actedNote} is null)`,
+    ),
+    check(
+      "imaging_report_delivery_acted_outcome_ck",
+      sql`${t.actedOutcome} is null or ${inList(t.actedOutcome, IMAGING_ACTED_OUTCOMES)}`,
+    ),
+    check(
+      "imaging_report_delivery_acted_note_ck",
+      sql`${t.actedNote} is null or char_length(btrim(${t.actedNote})) >= 4`,
+    ),
+  ],
+);
+
+/**
+ * ═══ 18-S RS9 T4 — THE RELEASE REGISTER'S HAND-OVERS ═══
+ *
+ * The lab's `lab_report_deliveries` SHAPE (a physical hand-over names its collector), with the
+ * collector TYPED rather than one free-text line, because the rule differs by type: a relative
+ * needs a name, a relation and the ID they showed; ward staff and a courier need a name. There is
+ * no patient OTP service on main (spike c) — DECIDED: the relative's ID type + last four is the
+ * record until one exists, and the OTP is deferred and said so.
+ *
+ * Keyed to the REPORT version handed over (the paper carries that version) and the study.
+ */
+export const imagingReportHandovers = pgTable(
+  "imaging_report_handovers",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    reportId: text("report_id").notNull().references(() => imagingReports.id),
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    collectorKind: text("collector_kind").notNull(),
+    collectorName: text("collector_name"),
+    collectorRelation: text("collector_relation"),
+    collectorIdType: text("collector_id_type"),
+    collectorIdLast4: text("collector_id_last4"),
+    /** Film sheets and a CD handed over WITH the report, when printed (see `imaging_media_requests`). */
+    filmSheets: integer("film_sheets").notNull().default(0),
+    cd: boolean("cd").notNull().default(false),
+    note: text("note"),
+    handedBy: text("handed_by").notNull(),
+    handedAt: timestamp("handed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("imaging_report_handovers_study_idx").on(t.studyId, t.handedAt),
+    index("imaging_report_handovers_report_idx").on(t.reportId),
+    check("imaging_report_handovers_kind_ck", inList(t.collectorKind, IMAGING_COLLECTOR_KINDS)),
+    check(
+      "imaging_report_handovers_id_type_ck",
+      sql`${t.collectorIdType} is null or ${inList(t.collectorIdType, IMAGING_COLLECTOR_ID_TYPES)}`,
+    ),
+    /** Anyone but the patient is NAMED. */
+    check(
+      "imaging_report_handovers_named_ck",
+      sql`${t.collectorKind} = 'patient' or char_length(btrim(coalesce(${t.collectorName}, ''))) >= 2`,
+    ),
+    /** A relative carries a relation and the ID they showed (type + last four). */
+    check(
+      "imaging_report_handovers_relative_ck",
+      sql`${t.collectorKind} <> 'relative' or (char_length(btrim(coalesce(${t.collectorRelation}, ''))) >= 2 and ${t.collectorIdType} is not null and ${t.collectorIdLast4} ~ '^[A-Za-z0-9]{4}$')`,
+    ),
+    check("imaging_report_handovers_film_ck", sql`${t.filmSheets} >= 0 and ${t.filmSheets} <= 20`),
+  ],
+);
+
+/**
+ * ═══ 18-S RS9 T4 — FILM AND CD, PRINTED ON REQUEST (RULING 1) ═══
+ *
+ * A request is recorded at the window, printed, then handed over. `included` is the X-ray's one film
+ * (ruling 1: an X-ray includes one film) — no charge. Anything else names the tariff service
+ * (`RAD-FILM` / `RAD-CD`, RS4) the counter bills; this row composes no money (DD12) and links no
+ * invoice — the charge is taken through billing's own path (DECIDED, RS9 as built).
+ */
+export const imagingMediaRequests = pgTable(
+  "imaging_media_requests",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    kind: text("kind").notNull(),
+    /** Film sheets (1+) for a film; 1 for a CD. */
+    quantity: integer("quantity").notNull().default(1),
+    included: boolean("included").notNull().default(false),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    printedBy: text("printed_by"),
+    printedAt: timestamp("printed_at", { withTimezone: true }),
+    handoverId: text("handover_id").references(() => imagingReportHandovers.id),
+  },
+  (t) => [
+    index("imaging_media_requests_study_idx").on(t.studyId),
+    check("imaging_media_requests_kind_ck", inList(t.kind, IMAGING_MEDIA_KINDS)),
+    check("imaging_media_requests_qty_ck", sql`${t.quantity} between 1 and 20 and (${t.kind} = 'film' or ${t.quantity} = 1)`),
+    check("imaging_media_requests_printed_ck", sql`(${t.printedBy} is null) = (${t.printedAt} is null)`),
+    /** Handed over only once printed. */
+    check("imaging_media_requests_handed_ck", sql`${t.handoverId} is null or ${t.printedAt} is not null`),
   ],
 );

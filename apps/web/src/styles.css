@@ -306,6 +306,7 @@
  */
 /* UX-AUDIT 2026-09-28 — the OPD queue desk wears the same station frame, so it takes the same block. */
 [data-seat="lab"],
+[data-seat="radiology"],
 [data-seat="opd-desk"] {
   --background: #f4f7f4;          /* paper */
   --card: #ffffff;

@@ -129,6 +129,40 @@ export const pharmacyManifest: ModuleManifest = {
      * medical superintendent.
      */
     "pharmacy.adr.manage",
+    /**
+     * STAGE D2 — record a medication error or near miss (NCC MERP A–I). The pharmacist, the aide, the
+     * in-charge and a doctor: the log is blame-free, so whoever sees it records it.
+     */
+    "pharmacy.incidents.record",
+    /**
+     * STAGE D2 — review an incident (root cause, action taken) and close it; the only grant that is told the
+     * reporter's name. The pharmacist in charge and the medical superintendent.
+     */
+    "pharmacy.incidents.review",
+    /**
+     * STAGE D3 — read a fridge's thermometer into the cold-chain log (current, min, max). An out-of-range reading
+     * opens an excursion that holds the store's cold batches. The pharmacist, the aide and the storekeeper.
+     */
+    "pharmacy.coldchain.record",
+    /**
+     * STAGE D3 — add and edit fridges, and close an excursion: release each held batch with its reason, or write
+     * it off. The pharmacist in charge and the materials head.
+     */
+    "pharmacy.coldchain.manage",
+    /**
+     * STAGE D5 — the antimicrobial steward's grant: read a restricted-antimicrobial request's prescription line and
+     * prescriber beside the /approvals card. The decision itself is the approvals kernel's, routed to the
+     * `antimicrobial_steward` role. Held by that role alone.
+     */
+    "pharmacy.antimicrobial.approve",
+    /**
+     * STAGE D4 — check an emergency tray (daily seal, monthly full, after use), restock a deficient one from PHARM-OPD
+     * (the pharmacy's own keepers) and receive a restock (the tray's keepers). The pharmacy's three roles and the
+     * nurses and technicians who keep the OT, recovery, radiology and day-care trays.
+     */
+    "pharmacy.trays.check",
+    /** STAGE D4 — set up an emergency tray, name its keepers and keep its list (item, par, expiry margin). The in-charge. */
+    "pharmacy.trays.manage",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [
