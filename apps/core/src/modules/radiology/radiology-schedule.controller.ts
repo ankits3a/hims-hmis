@@ -29,7 +29,7 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * `cancel` and `no-show` are idempotent by their own state machines — a second cancel of a
  * cancelled study is `bad_transition`, which is the honest answer rather than a silent success.
  */
-const scheduleBody = z.object({
+const scheduleFields = {
   deviceResourceId: idSchema,
   /** An ISO instant. The caller resolves the clock; a route that took a date and a time would be
    *  a second place that knows about IST. */
@@ -40,7 +40,14 @@ const scheduleBody = z.object({
    * department. Only a portable device accepts one — `resolveBedside` refuses the rest.
    */
   bedsideLocation: z.string().min(1).max(BEDSIDE_LOCATION_MAX_LENGTH).nullish(),
-});
+};
+const scheduleBody = z.object(scheduleFields);
+/**
+ * 18-S RS3 — a move carries the desk's reason. `nullish` at the wire so the refusal is the domain's
+ * `reason_required` (one sentence, one code) rather than a zod 400 the screen would special-case.
+ */
+const rescheduleBody = z.object({ ...scheduleFields, reason: z.string().max(400).nullish() });
+const noShowBody = z.object({ reason: z.string().max(400).nullish() });
 
 /**
  * 18a-iii T4 / D5 — a film from another centre. On `radiology.schedule`, not `radiology.acquire`:
@@ -57,8 +64,9 @@ const outsideBody = z.object({
   notes: z.string().min(1).max(2_000).nullish(),
 });
 
+/** 18-S RS3 — required by the domain in every band; `nullish` here so the refusal is `reason_required`. */
 const cancelBody = z.object({
-  reason: z.string().min(1).max(400).nullish(),
+  reason: z.string().max(400).nullish(),
 });
 
 @Controller("radiology/studies")
@@ -93,11 +101,11 @@ export class RadiologyScheduleController {
     @Param("studyId") studyId: string,
     @Body() body: unknown,
   ): Promise<unknown> {
-    const input = parsed(scheduleBody, body);
+    const input = parsed(rescheduleBody, body);
     try {
       return await withTx(this.db, (tx) => rescheduleStudy(tx, actor, {
         studyId, deviceResourceId: input.deviceResourceId, scheduledAt: new Date(input.scheduledAt),
-        bedsideLocation: input.bedsideLocation,
+        bedsideLocation: input.bedsideLocation, reason: input.reason ?? null,
       }));
     } catch (e) { toHttp(e); }
   }
@@ -144,9 +152,11 @@ export class RadiologyScheduleController {
   async noShow(
     @CurrentActor() actor: Actor,
     @Param("studyId") studyId: string,
+    @Body() body: unknown,
   ): Promise<unknown> {
+    const input = parsed(noShowBody, body ?? {});
     try {
-      return await withTx(this.db, (tx) => markNoShow(tx, actor, studyId));
+      return await withTx(this.db, (tx) => markNoShow(tx, actor, studyId, input.reason ?? null));
     } catch (e) { toHttp(e); }
   }
 

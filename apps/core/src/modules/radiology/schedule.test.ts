@@ -2,7 +2,7 @@ import { newId } from "@hmis/contracts";
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { placeAndCreateStudy, setupRadiologyFixture, startStudyOnMachine } from "../../../test/helpers/radiology";
-import { imagingBillDecisions, imagingStudies, orderItems, resources } from "../../kernel/db/schema";
+import { events, imagingBillDecisions, imagingStudies, orderItems, resources } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { RadiologyError } from "./errors";
 import { autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy } from "./schedule";
@@ -239,7 +239,7 @@ describe("imaging scheduling (18a T4)", () => {
     await schedule(study.studyId, "usg");
     const moved = new Date("2026-08-31T11:00:00.000Z");
     const result = await withTx(db, (tx) => rescheduleStudy(tx, fx.radiographer, {
-      studyId: study.studyId, deviceResourceId: fx.devices.usg!, scheduledAt: moved,
+      studyId: study.studyId, deviceResourceId: fx.devices.usg!, scheduledAt: moved, reason: "Patient asked to change",
     }));
     expect(result.accessionNo).toBe(study.accessionNo);
 
@@ -252,7 +252,7 @@ describe("imaging scheduling (18a T4)", () => {
   it("a no-show frees the machine's diary, which is the point of recording it", async () => {
     const study = await newStudy("USG-ABDO");
     await schedule(study.studyId, "usg");
-    await withTx(db, (tx) => markNoShow(tx, fx.radiographer, study.studyId));
+    await withTx(db, (tx) => markNoShow(tx, fx.radiographer, study.studyId, "Patient did not come"));
 
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
     expect(row!.status).toBe("no_show");
@@ -268,10 +268,13 @@ describe("imaging scheduling (18a T4)", () => {
 
   /* ═══════════════════════════ A4 — CANCEL, THE THREE BANDS ═══════════════════════════ */
 
-  it("A4: cancelling from `scheduled` needs no reason and raises no bill decision", async () => {
+  /** 18-S RS3 — this used to read "needs no reason"; a reason is now required in every band. */
+  it("A4: cancelling from `scheduled` raises no bill decision and cancels the order item", async () => {
     const study = await newStudy("USG-ABDO");
     await schedule(study.studyId, "usg");
-    const result = await withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, { studyId: study.studyId }));
+    const result = await withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, {
+      studyId: study.studyId, reason: "Patient asked to change",
+    }));
 
     expect(result.billDecisionId).toBeNull();
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
@@ -375,5 +378,74 @@ describe("imaging scheduling (18a T4)", () => {
       expect(item!.status).not.toBe("cancelled");
     }
     expect(await db.select().from(imagingBillDecisions)).toHaveLength(0);
+  });
+  /* ═══════════════ 18-S RS3 — EVERY DESK ACT ON A BOOKING CARRIES A REASON ═══════════════ */
+
+  /**
+   * The desk's diary moves, no-shows and cancels bookings, and an unexplained change to a booking is
+   * unauditable: "why was Mrs Pillai's CT cancelled" must have an answer that is not a shrug. 18a
+   * required a reason only once the patient was on the machine (A4's middle band); RS3 requires it
+   * for every band and for the no-show and the move too, and records it on `imaging.booking_changed`.
+   */
+  const changes = async () => (await db.select().from(events)).filter((e) => e.name === "imaging.booking_changed");
+
+  it("RS3: a no-show with no reason is refused `reason_required`, and the booking keeps its slot", async () => {
+    const study = await newStudy("USG-ABDO");
+    await schedule(study.studyId, "usg");
+    for (const reason of [undefined, "", "   "]) {
+      await expect(withTx(db, (tx) => markNoShow(tx, fx.radiographer, study.studyId, reason)))
+        .rejects.toMatchObject({ code: "reason_required" });
+    }
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    expect(row!.status).toBe("scheduled");
+  });
+
+  it("RS3: a cancel from `scheduled` with no reason is refused `reason_required`, and nothing moved", async () => {
+    const study = await newStudy("USG-ABDO");
+    await schedule(study.studyId, "usg");
+    await expect(withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, { studyId: study.studyId })))
+      .rejects.toMatchObject({ code: "reason_required" });
+    await expect(withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, { studyId: study.studyId, reason: " " })))
+      .rejects.toMatchObject({ code: "reason_required" });
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    expect(row!.status).toBe("scheduled");
+    const [item] = await db.select().from(orderItems).where(eq(orderItems.id, study.itemId));
+    expect(item!.status).not.toBe("cancelled");
+  });
+
+  it("RS3: a reschedule with no reason is refused `reason_required`, and the slot does not move", async () => {
+    const study = await newStudy("USG-ABDO");
+    await schedule(study.studyId, "usg");
+    await expect(withTx(db, (tx) => rescheduleStudy(tx, fx.radiographer, {
+      studyId: study.studyId, deviceResourceId: fx.devices.usg!, scheduledAt: new Date("2026-08-31T11:00:00.000Z"),
+    }))).rejects.toMatchObject({ code: "reason_required" });
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    expect(row!.scheduledAt?.toISOString()).toBe(SLOT.toISOString());
+  });
+
+  it("RS3: move, no-show and cancel each record WHAT happened and WHY on `imaging.booking_changed`", async () => {
+    const moved = await newStudy("USG-ABDO");
+    await schedule(moved.studyId, "usg");
+    const to = new Date("2026-08-31T11:00:00.000Z");
+    await withTx(db, (tx) => rescheduleStudy(tx, fx.radiographer, {
+      studyId: moved.studyId, deviceResourceId: fx.devices.usg!, scheduledAt: to, reason: "Patient asked to change",
+    }));
+    const absent = await newStudy("USG-ABDO");
+    await schedule(absent.studyId, "usg");
+    await withTx(db, (tx) => markNoShow(tx, fx.radiographer, absent.studyId, "Patient did not come"));
+    const dropped = await newStudy("USG-ABDO");
+    await schedule(dropped.studyId, "usg", new Date("2026-08-31T13:00:00.000Z"));
+    await withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, { studyId: dropped.studyId, reason: "Doctor changed the study" }));
+
+    const payloads = (await changes()).map((e) => e.payload as Record<string, unknown>);
+    expect(payloads).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        studyId: moved.studyId, act: "rescheduled", reason: "Patient asked to change",
+        fromScheduledAt: SLOT.toISOString(), toScheduledAt: to.toISOString(), toDeviceResourceId: fx.devices.usg,
+      }),
+      expect.objectContaining({ studyId: absent.studyId, act: "no_show", reason: "Patient did not come" }),
+      expect.objectContaining({ studyId: dropped.studyId, act: "cancelled", reason: "Doctor changed the study" }),
+    ]));
+    expect(payloads).toHaveLength(3);
   });
 });
