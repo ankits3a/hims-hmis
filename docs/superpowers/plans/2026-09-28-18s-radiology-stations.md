@@ -1187,6 +1187,82 @@ migration:
   "ready" message, and nothing sends it when the bill is paid later. (3) Retention of the relative's ID
   last-four under DPDP (kept with the hand-over row, indefinitely today).
 
+### RS9b · The patient's copy and the bill (RS9's three money questions)
+
+**RS9b spike** (read on main `8cd13d28`, 29 Sep, before any code):
+- **(a) Where the patient's copy leaves.** One writer: `handOverReport` (`release.ts`) — the report
+  at the window and the printed film/CD riding with it (`mediaRequestIds`). Requesting and printing
+  film are internal acts. The doctor's paths (`reportView`, `GET /radiology/results`, the consult
+  brief, the read-back, the reading room's print view) are separate functions and none calls the
+  desk's code. The patient message is queued only by `notifyIfDue` inside `publishReport` /
+  `amendReport` (settled-or-RED); there is no patient link.
+- **(b) The lab's held copy.** `interlock.ts` + `printReport`'s `approvalId`: a GRANTED approval,
+  of the release type, about THIS order, spent once (a delivery row carrying it). 17-F ruling 12
+  ("released unpaid ONLY by the billing manager") was **superseded 28 Sep** by the owner's credit
+  ruling (#347): the type is now `lab_release_unpaid_owner`, approver **owner**. The dues row is
+  untouched.
+- **(c) Who is "unpaid dues at the desk".** `money.ts` `authorisationOf`: `invoice` / `daycare` /
+  `payer_branch` / `stat`. Only self-pay with an invoice line can owe the desk; day-care and bedside
+  compose into a running bill; payer branches are billed to the payer; STAT runs first and the bill
+  follows (ruling 8).
+- **(d) The settlement event.** Billing emits `payment.received { receiptId, invoiceId, patientId,
+  amountPaise }` on every allocation (receipt at the counter, tender on issue, held-receipt
+  settlement) and `credit_note.issued { invoiceId, … }`. Partners already consumes both by name. The
+  ledger answer is `invoiceSettlement` (exported). No billing signature needs to change.
+
+**RS9b as built** (this PR; lane `radiology-rs9b`; one migration, `0153_radiology_release_unpaid`):
+- **T1 · the hold (core).** `held.ts`: `patientCopyHold` (IPD/day-care/bedside → STAT → no line →
+  payer → ledger), `assertPatientCopyReleasable` (called by `handOverReport` after the collector
+  checks, before any write), `requestUnpaidRelease`. Refusals in plain words with the amount and the
+  bill: `report_held_for_dues` (402), `release_not_authorised` (403 — asked and pending, or refused,
+  naming the owner's note), `release_not_needed` (409). `POST /radiology/reports/:id/release-unpaid`
+  (`radiology.schedule`, reason ≥ 4 characters) files `imaging_release_unpaid_owner` (approver owner,
+  urgent, 60 min, no act-first; subject = the study; the amount and reason in the request). The
+  hand-over that follows spends the grant: `imaging_report_handovers.release_approval_id` (unique
+  partial index) and `imaging.report_released_unpaid` (hand-over, report, study, approval, paise still
+  due). The register row gains `hold` (amount, bill, the owner's release state) and the need
+  `held_for_dues`. The doctor's read paths are untouched.
+- **T2 · ready on later payment (core).** `reports.ts` `enqueueReportReady` — the one writer of
+  `imaging_report_ready`, now shared by the publish path and `ready-on-payment.ts`'s consumer
+  `radiology.report_ready_on_payment` on `payment.received` + `credit_note.issued`. It re-reads the
+  invoice and queues only when **settled**, for the current released version of each imaging study
+  on that bill; the per-version dedupe key makes it exactly once whichever path runs first. Consent
+  as the publish path (the pump suppresses STOP/deceased). A failed enqueue is swallowed (A7) so the
+  cursor never stalls.
+- **T3 · the desk (web).** `/radiology/reports`: held rows read "Held for dues ₹N"; the in-hand
+  panel names the bill, links *Collect at billing* (`/billing/dues`), says the doctor's copy is not
+  held; the docked *Hand over* waits with "send the patient to billing, or ask the owner". *Ask the
+  owner to release unpaid* (reason) → pending ("Asked the owner at HH:MM") → granted (dock opens, "₹N
+  stays owed") or refused (the owner's note). The approvals inbox has words for the new type (EN + HI).
+- **T4 · docs.** Runbook §15a (release); this section.
+- **DECIDED** (open to owner objection):
+  - **The owner, not the billing manager, releases a held imaging copy unpaid.** The phase brief
+    said `billing_manager` "mirroring the lab's ruling 12"; that ruling was superseded on 28 Sep by
+    the owner's own credit ruling (whole hospital: "nobody can issue credit except owner"), and the
+    lab now asks the owner. Money rulings are the owner's; an orchestrator default cannot widen them.
+    The billing manager's `approveRequest` on this type is refused by the kernel (tested).
+  - **STAT is never held**, even with an unpaid line (ruling 8: the bill follows); **bedside is IPD**
+    (running bill) until the IPD module exists.
+  - **A study with no invoice line is not held** — the amount is unknown and the counter's
+    `acquired_unbilled` decision owns it.
+  - **Printing film/CD is not held**; collecting it is (it rides the hand-over).
+  - **A grant is spent by one hand-over**; an amended version handed over again needs a new decision
+    (the lab's M8 rule).
+  - **The late message covers `credit_note.issued` too** — a correction can be what settles a bill.
+  - **Retention of a relative's ID last four (money/law question 3):** part of the medical record,
+    kept for the record's retention period, no separate deletion (runbook §15a).
+- **Pins.** Migration `0151` (renumbered from 0150 at rebase; RS12 took 0150); radiology events 21 → 22 (RS12 took 19 → 21); approval types 23 → 24
+  (`test/seed-roles.test.ts`); worker consumers + `radiology.report_ready_on_payment`
+  (`seed-cursors.test.ts`, `worker-runtime.e2e.test.ts`, `worker.module.ts` — additive); web
+  `APPROVAL_KINDS` + inbox words; three error codes. No permission, role, route (web) or nav change.
+- **Moved later.** The owner's approval from a phone notification (the inbox is the seat today);
+  holding the ABDM share of a report (ABDM releases signed reports to the patient's own PHR — the lab
+  does not hold its ABDM share either; an owner question if it should); a "held 3 days → billing"
+  sweep (the lab's 17-F idea — RS10's escalations); the patient secure link (still unbuilt).
+- **Money/law questions the rulings do not settle.** (1) Should a report linked to the national
+  health record (ABDM) be held for dues like the printed copy? (2) Should a RED critical report's
+  patient message, queued unpaid today, be the only unpaid exception? Both are left as built.
+
 ### RS10 · Supervisor & HOD
 - **Core:**
   - `GET radiology/supervisor/floor`: pipeline by stage with the oldest wait, rooms, readers' load, turnaround median
