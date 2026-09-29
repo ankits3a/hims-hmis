@@ -1,3 +1,4 @@
+import { RadiologyPcpndtController } from "./radiology-pcpndt.controller";
 import { Module } from "@nestjs/common";
 import { eq } from "drizzle-orm";
 import { imagingStudies } from "../../kernel/db/schema/radiology";
@@ -59,6 +60,8 @@ import { RadiologyRoomController } from "./radiology-room.controller";
     RadiologyPrepController,
     // 18-S RS6 — the modality rooms: the console read, the in-room repeat, the reject analysis.
     RadiologyRoomController,
+    // 18-S RS7 — the Form F register by serial and the monthly return.
+    RadiologyPcpndtController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {

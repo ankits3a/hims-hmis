@@ -695,6 +695,127 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J4.
 - Migration: none expected.
 
+#### RS7 spike (read on main `5a3713b9`, 29 Sep, before any code)
+- **(a) Form F — stored vs statutory** (PCPNDT Rules r.9(4), Form F as amended 2014). Columns:
+  serial/year/machine/person/study/patient, `indication_code`, `gestation_weeks`, `applicability`,
+  `result_summary`, signer and verifier; three jsonb blocks (`sections`, `declaration`, `referral`)
+  that 18a left free-form (the only UI wrote `sections: {F: …}`). Statutory items: **Section A** —
+  centre and registration no. (from the registration), name/age/address/phone (the patient record,
+  read at print), **living sons and daughters (5)**, **husband's/father's name (6)**, **referring
+  doctor + registration no. or self-referral (8)**, **LMP / weeks (9)**; **Section B** (ultrasound) —
+  the performing doctor (person), indication i–xxiii (11), procedure (12), **date of the woman's
+  declaration (13)**, date of the procedure (the study's acquisition), result (15, the signed report),
+  to whom conveyed (16), MTP indication (17); **Section C** is invasive (genetic clinic, not this
+  department); **Section D** — her declaration and the doctor's. Missing as STRUCTURE: 5, 6, 8's
+  referrer, 9's LMP, 13 — **all storable under named keys in `sections` jsonb**, so no statutory
+  column is missing and **no migration**. Finding: `result_summary` is accepted by the API and refused
+  by `pcpndt_form_f_immutable` at completion (F63's trigger) — the result is the signed report's.
+- **(b) Registrations.** `POST /pcpndt/registrations`, `…/:id/machines`, `…/:id/persons`,
+  `POST /pcpndt/machines|persons/:id/deactivate` — `pcpndt.registrations.manage` (in-charge);
+  `GET /pcpndt/registrations` — `pcpndt.registrations.read` (radiologist, in-charge), **zero web
+  callers** before RS7. Form F: `POST /pcpndt/form-f`, `…/:id/record` — `form_f.write` (radiologist);
+  `…/:id/verify` — `form_f.verify` (in-charge; no role holds write+verify, `same_actor`);
+  `GET /pcpndt/studies/:id/form-f` — `form_f.read` (radiologist, radiographer, in-charge; PHI row).
+- **(c) One sitting.** Yes: `signReport` needs `radiology.reports.sign` and a second factor on the
+  SESSION no older than the window (15 min) — the web calls `POST /auth/totp/verify` then signs. No
+  SoD between who scanned and who signs (SoD exists only on the Form F: writer ≠ verifier). **Gap
+  found:** the signature had no PCPNDT membership check — a radiologist registered on no certificate
+  could sign an obstetric report of a scan performed on a registered machine. Closed (below).
+  Also: the radiologist does not hold `radiology.gates.satisfy`, so a sonologist alone could open a
+  Form F but not move the study to `ready` — the `form_f` gate takes no caller evidence (it reads
+  the register), so RS7 gives that one kind its own door behind `form_f.write` (below).
+- **(d) Where the sex could leak.** The report body/impression/amend reason/critical notes are read
+  by the F66 lexical lockout — but its DEMOGRAPHIC tier (`male`, `female`, `boy` …) is **liftable by
+  the medical superintendent**, so *"single live male foetus"* was one approval from a signed report.
+  Other free text: the Form F `result_summary` (unguarded), gate waive/override reasons (coded tier
+  only). DECIDED standard: a deterministic phrase check (below), refusing with a named code, never
+  editing text.
+
+#### RS7 as built (this PR; one lane, no migration)
+- **T1 — the foetal-sex guard** (`pcpndt/foetal-sex.ts`, the Act's module; radiology imports it).
+  Rules: a sex word beside a foetal noun with only fixed filler words between ("male foetus", "the
+  foetus appears to be female", "fetal gender: male"; strictly foetal nouns on EVERY report — N9's
+  pregnant trauma CT; baby/twin/genitalia only on obstetric reports); a sex stated as a value
+  ("sex: M", "लिंग: पुरुष"); words with no innocent reading on an obstetric scan (boy, girl, लड़का,
+  लड़की, ladka/ladki, bare male, the foetal genital anatomy and the turtle/hamburger signs). Case,
+  Latin diacritics (NFKD, œ→oe) and the Devanagari nukta folded; Unicode word boundaries; a comma or
+  full stop breaks a phrase ("28 y, female, single live intrauterine foetus" passes). Refusal
+  `foetal_sex_disclosure` (422) on prelim, sign, amend, publish (re-reads the SIGNED text), free-text
+  notes, and the Form F `result_summary`; checked BEFORE the lexical lockout; `lockoutOverride` never
+  reaches it. Nothing is ever edited.
+- **The Act at the signature** (`reports.ts` `assertSignerRegistered`): a `form_f_required` study is
+  signed (and amended) only by a person registered on its machine's registration on the IST day —
+  `person_not_registered` / `machine_not_registered`, the acquisition's own checks.
+- **T2 — biometry** (`@hmis/contracts` `obstetric.ts`, pure; web copy `lib/obstetric.ts` with a
+  parity test, because the web imports only types from contracts): Robinson CRL, Hadlock 1984
+  BPD/HC/AC/FL, Hadlock 1985 EFW (4-parameter; 3 without BPD), composite GA (CRL when present, else
+  the mean of the Hadlock ages), EDD by LMP (Naegele) and by scan, AFI bands, FHR 110–160 flag,
+  1–4 foetuses. Stored in `imaging_reports.body.obstetric_biometry` (jsonb — no table); the server
+  validates (`invalid_biometry`: out of range, unknown key — there is no sex field — or not an
+  obstetric study) and **recomputes `derived` on every save**, discarding any caller's.
+  **The declaration** (`body.pcpndt_declaration`, English + Hindi) is written by the server into
+  every signed obstetric version and stripped from anything a caller sends.
+- **T3 — `/radiology/usg`, Scan room** (station key `usg`, nav `pcpndt.form_f.write`, `anyOf`
+  registrations.read / form_f.read for the books): right = checked-in → signed ultrasound studies on
+  ultrasound machines, each with its Form F serial and state from the register; lane = the patient on
+  the couch (machine, room, serial, LMP, weeks); centre = Form F (indication from the Act's list →
+  open → her declaration, sons/daughters, husband's name, LMP, referral → sign) → Start scan →
+  measurements with live GA/EFW/EDD → rule-built draft + the fixed declaration → save → sign (TOTP
+  verify, then sign) → publish; non-obstetric: organ chips → report → sign. One next act in the dock
+  (Enter). Refusals in plain words naming the machine and the person, with the seat that fixes them.
+  **`POST /radiology/pcpndt/studies/:id/form-f-gate`** (`form_f.write`) closes ONLY the `form_f`
+  gate from the register row and evaluates readiness (`usg-room.ts`).
+- **T4 — the books.** `GET /radiology/pcpndt/register?month=` (`form_f.read`): the IST month's
+  serials by serial — state (open / signed / verified / cancelled = open form on a cancelled or
+  no-show study, serial kept), missing statutory fields (`pcpndt/form-f-fields.ts`), signer names,
+  and the per-machine-per-year gap check; **no patient field**. `GET /radiology/pcpndt/monthly-return?month=`
+  (`registrations.read`): per ultrasound machine — scans, PCPNDT scans, Form F opened/signed/verified/
+  open/cancelled, scans without a signed form; discrepancies (scan without signed form, signed not
+  verified, opened not scanned, signed with fields missing, serial gap); due the 5th with days left;
+  CSV. Web: Form F, Registration (first caller of `GET /pcpndt/registrations`, now labelled with
+  machine codes and people's names — additive fields; renewal clock at 90 days) and Monthly return
+  (this/last month, copy the CSV — submission is the nodal officer's act on the state portal).
+- **T5 —** `docs/runbooks/pcpndt-go-live.md` §9 (the sonologist's day, the register, the return);
+  §6/§7 prose swept for the new renewal clock and the prepared return.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *The register lists serials, not women* — the board's register shows patient names; this one does
+    not (the module's written rule, `pcpndt/manifest.ts`). The name is one click away, PHI-logged.
+  - *Verification does not hold the scan or the report* — the in-charge's counter-signature is a
+    register act; the return lists "signed, not verified" as a discrepancy to close.
+  - *`female` alone on an obstetric report* is not a foetal-sex disclosure (the new guard passes it)
+    but F66's demographic tier still asks for a rephrase or the MS there — unchanged; the room's
+    drafts never write the mother's sex (it is on the header).
+  - *Negation is not an escape* — "the foetus is not male" is refused.
+  - *Images*: the room records the acquisition as `no_pacs_images` until RS12's PACS.
+  - *The list starts at check-in* — the desk checks in (the radiologist has no `radiology.checkin`);
+    opening a patient in the room is "on the couch".
+  - *The monthly view opens on last month up to the 5th*, this month after.
+  - *Composite GA* = CRL when measured, else the arithmetic mean of the Hadlock ages (the consoles' AUA).
+- **Counts.** Core: `pcpndt/foetal-sex.test.ts` 40 (true positives + false-positive guards),
+  `radiology/obstetric-report.test.ts` 11 (**10 failed against the unwired code**, 1 non-regression
+  guard passed), `radiology/pcpndt-books.test.ts` 6, `pcpndt/registrations.test.ts` +1 (failed
+  against the old reader), `pcpndt/form-f.test.ts` +1 (failed against the old `recordFormF`),
+  `reports.test.ts` A3 now expects the stronger `foetal_sex_disclosure`. Contracts
+  `obstetric.test.ts` 7 (Robinson/Hadlock published-table checks). Web: `radiology-usg.test.tsx` 9
+  (2 failed with `verifySecondFactor` / `closeFormFGate` removed — mutation proof),
+  `lib/obstetric.test.ts` 2 (parity). After the rebase on RS6 (`583db9ff`): core touched suites
+  (`modules/pcpndt`, `modules/radiology`, `radiology.e2e`, caddyfile/nav parity, roles-catalog,
+  seed-roles) **50 suites / 627 tests green**; web 12 files / 117 tests; contracts 30; `vite build`
+  green. Pins: caddyfile routes 77 → 78 (`/radiology/usg`, after RS6's `/radiology/room`); no new
+  permission, event, template or migration.
+- **Moved later / owed.** Ages of living children (Form F item 5 asks sons and daughters WITH ages;
+  counts only here); Form F items 16–17 (to whom the result was conveyed, MTP indication); the
+  foetal-sex phrase check on gate waive/override reasons (coded tier only today) → RS8's pre-sign
+  checks; the printed report's signer block and the declaration on paper → RS8/RS9 print (the signed
+  body carries `pcpndt_declaration` for it); Form G and the inspection bundle; the Rule 13 intimation
+  letter; registration WRITES on screen (the in-charge still uses the API/runbook §2–§4).
+- **Law questions the rulings do not settle.** (1) The server lets a scan START on an OPEN Form F
+  (the gate) and refuses only the ACQUIRED mark without a recorded one; the room records before it
+  starts. Whether the Act's "before the procedure" should be enforced at start is an owner/legal call
+  (changing it re-orders 18a's A2 design). (2) `recordFormF` does not refuse a form missing statutory
+  fields; the register and the return flag them. (3) Two-year statutory retention vs the hospital's
+  five years online (ruling 6) — nothing is deleted either way.
+
 ### RS8 · Reading room (HEAVY)
 - **Core:**
   - **Coded report fields:** BI-RADS, TI-RADS, LI-RADS, PI-RADS, O-RADS, Fleischner and ASPECTS, carried by

@@ -72,6 +72,8 @@ import { RadiologyDisplay } from "./screens/radiology-display";
 import { RadiologySetup, SETUP_VIEWS } from "./screens/radiology-setup";
 import type { SetupView } from "./screens/radiology-setup";
 import { RadiologyPrep } from "./screens/radiology-prep";
+import { RadiologyUsg, USG_VIEWS } from "./screens/radiology-usg";
+import type { UsgView } from "./screens/radiology-usg";
 import { PcpndtFormF } from "./screens/pcpndt-form-f";
 import { RadiationSafety } from "./screens/radiation-safety";
 import { LabCollection } from "./screens/lab-collection";
@@ -205,6 +207,11 @@ const NAV: readonly NavEntry[] = [
   { to: "/radiology/setup", label: "nav.radiologySetup", permission: "radiology.devices.manage", group: "opd" },
   // 18-S RS5 — the prep & safety bay; `radiologyManifest.menu` carries the same pair.
   { to: "/radiology/prep", label: "nav.radiologyPrep", permission: "radiology.gates.satisfy", group: "opd" },
+  // 18-S RS7 — the sonologist's room; `anyOf` shows it to the in-charge and technologist for its books.
+  {
+    to: "/radiology/usg", label: "nav.radiologyUsg", permission: "pcpndt.form_f.write", group: "opd",
+    anyOf: ["pcpndt.registrations.read", "pcpndt.form_f.read"],
+  },
   // PLAN 18c T1 — the one entry `aerbManifest.menu` declares. It sits under the imaging group
   // because that is where the RSO works, not because radiology owns the register (D1).
   { to: "/radiology/radiation-safety", label: "nav.radiationSafety", permission: "aerb.registers.read", group: "opd" },
@@ -1169,6 +1176,24 @@ const radiologyPrepRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
+/**
+ * PLAN 18-S RS7 — the Ultrasound & PCPNDT station: one route, four header views (`?view=`), each
+ * behind its own grant on the server (room: Form F write; Form F register: Form F read; registration
+ * and monthly return: registrations read).
+ */
+const radiologyUsgRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/usg",
+  validateSearch: (search: Record<string, unknown>): { view?: UsgView } => ({
+    view: (USG_VIEWS as readonly unknown[]).includes(search.view) ? (search.view as UsgView) : undefined,
+  }),
+  component: function RadiologyUsgScreen() {
+    const { view } = radiologyUsgRoute.useSearch();
+    return <RadiologyUsg view={view ?? "room"} />;
+  },
+  staticData: { fullViewport: true },
+});
+
 const radiologyStudyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/studies/$studyId",
@@ -1505,7 +1530,7 @@ export const router = createRouter({
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
       // count and joins this task's Files list, the S11 rule applied for the seventh time.
-      radiologyReceptionRoute, radiologyWorklistRoute, radiologyRoomRoute, radiologyPortableRoute, radiologyDiaryRoute, radiologyDisplayRoute, radiologySetupRoute, radiologyStudyRoute, radiologyReportRoute, radiologyPrepRoute,
+      radiologyReceptionRoute, radiologyWorklistRoute, radiologyRoomRoute, radiologyPortableRoute, radiologyDiaryRoute, radiologyDisplayRoute, radiologySetupRoute, radiologyUsgRoute, radiologyStudyRoute, radiologyReportRoute, radiologyPrepRoute,
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.

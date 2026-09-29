@@ -86,6 +86,8 @@ export const radiologyManifest: ModuleManifest = {
     { label: "Imaging setup", path: "/radiology/setup", permission: "radiology.devices.manage" },
     // 18-S RS5 — the prep & safety bay (the gates the order opened, contrast and reaction).
     { label: "Prep & safety bay", path: "/radiology/prep", permission: "radiology.gates.satisfy" },
+    // 18-S RS7 — the sonologist's room, the Form F register, the §19 registration, the monthly return.
+    { label: "Ultrasound & PCPNDT", path: "/radiology/usg", permission: "pcpndt.form_f.write" },
   ],
   permissions: [
     "radiology.orders.place",

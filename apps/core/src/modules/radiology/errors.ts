@@ -163,6 +163,14 @@ export const RADIOLOGY_ERROR_CODES = [
    */
   "override_already_requested",
   "unknown_override_request",
+  /**
+   * PLAN 18-S RS7 — the obstetric report. `foetal_sex_disclosure` is a SENTENCE that states the sex
+   * of a foetus (`pcpndt/foetal-sex.ts`): refused on prelim, sign, amend and publish, and no lane — not the
+   * medical superintendent's F66 override — lifts it. `invalid_biometry` is a measurement block the
+   * published formulas cannot be applied to (out of range, an unknown key, or not an obstetric study).
+   */
+  "foetal_sex_disclosure",
+  "invalid_biometry",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -240,6 +248,8 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   report_not_signed: 422,
   override_already_requested: 409,
   unknown_override_request: 404,
+  foetal_sex_disclosure: 422,
+  invalid_biometry: 422,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

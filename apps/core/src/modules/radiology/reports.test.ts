@@ -180,7 +180,12 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
       body: { findings: "Single live fetus." }, impression: "It's a boy, congratulations.",
     });
     const e = await sign(study.studyId, reportId).catch((x: unknown) => x);
-    expect((e as { code: string }).code).toBe("lexical_lockout");
+    /**
+     * 18-S RS7 T1 — on an OBSTETRIC report "boy" is now the foetal-sex guard's refusal, which is
+     * STRONGER than the word list's: no medical-superintendent lane lifts it. Still refused, still
+     * naming the hit; only the code is the Act's harm rather than the lexicon's word.
+     */
+    expect((e as { code: string }).code).toBe("foetal_sex_disclosure");
     expect(String(e)).toMatch(/"boy"/);
     expect(await latestSigned(db, study.studyId)).toBeUndefined();
   });

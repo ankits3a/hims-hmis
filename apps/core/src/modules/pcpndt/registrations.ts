@@ -5,6 +5,8 @@ import {
   pcpndtRegisteredMachines, pcpndtRegisteredPersons, pcpndtRegistrations,
 } from "../../kernel/db/schema/pcpndt";
 import { PcpndtError } from "./errors";
+import { resources } from "../../kernel/db/schema/resources";
+import { users } from "../../kernel/db/schema/auth";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -280,8 +282,13 @@ export async function activeRegistrationFor(
 /** One registration and everything registered under it — withdrawn rows included (see `readRegister`). */
 export type RegisterBookEntry = {
   registration: RegistrationRow;
-  machines: RegisteredMachineRow[];
-  persons: RegisteredPersonRow[];
+  /**
+   * 18-S RS7 — each row also carries the machine's CODE and name and the person's full name, so
+   * the Registration view names rooms and people rather than ids (#138). Additive: every column the
+   * book always had is still there.
+   */
+  machines: (RegisteredMachineRow & { deviceCode: string | null; deviceName: string | null })[];
+  persons: (RegisteredPersonRow & { fullName: string | null })[];
 };
 export async function activeRegistrations(
   exec: Db | Tx, onDate: string,
@@ -331,12 +338,20 @@ export async function readRegister(exec: Db | Tx): Promise<RegisterBookEntry[]> 
   for (const registration of registrations) {
     out.push({
       registration,
-      machines: await (exec as Db).select().from(pcpndtRegisteredMachines)
+      machines: (await (exec as Db)
+        .select({ m: pcpndtRegisteredMachines, deviceCode: resources.code, deviceName: resources.name })
+        .from(pcpndtRegisteredMachines)
+        .leftJoin(resources, eq(resources.id, pcpndtRegisteredMachines.deviceResourceId))
         .where(eq(pcpndtRegisteredMachines.registrationId, registration.id))
-        .orderBy(pcpndtRegisteredMachines.serial),
-      persons: await (exec as Db).select().from(pcpndtRegisteredPersons)
+        .orderBy(pcpndtRegisteredMachines.serial))
+        .map((r) => ({ ...r.m, deviceCode: r.deviceCode, deviceName: r.deviceName })),
+      persons: (await (exec as Db)
+        .select({ p: pcpndtRegisteredPersons, fullName: users.fullName })
+        .from(pcpndtRegisteredPersons)
+        .leftJoin(users, eq(users.id, pcpndtRegisteredPersons.userId))
         .where(eq(pcpndtRegisteredPersons.registrationId, registration.id))
-        .orderBy(pcpndtRegisteredPersons.id),
+        .orderBy(pcpndtRegisteredPersons.id))
+        .map((r) => ({ ...r.p, fullName: r.fullName })),
     });
   }
   return out;
