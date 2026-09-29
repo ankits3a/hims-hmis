@@ -1,0 +1,1 @@
+ALTER TABLE "opd_encounters" ADD COLUMN "rx_draft" jsonb;

@@ -9,7 +9,7 @@ import { FormularyError, formularyHttpStatus } from "./errors";
 import {
   addInteraction, addMedicine, addSalt, updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
-import { catalogueCensus, pageInteractions, pageMedicines, pageSalts } from "./reads";
+import { catalogueCensus, medicinesByIds, pageInteractions, pageMedicines, pageSalts } from "./reads";
 import type { CatalogueCensus } from "./reads";
 import { CursorError } from "../../kernel/db/page";
 import { searchMedicines } from "./search";
@@ -118,6 +118,8 @@ const medicinePatchBody = z.object({
   active: z.boolean().optional(), salts: composition.min(1).optional(),
   // C6 — the same acknowledgement the create path takes. DD8's gate has two doors.
   acknowledgeIntraFdc: z.boolean().optional(),
+  // STAGE D5 — the WHO AWaRe class and the steward's restriction, edited at /formulary/admin.
+  awareCategory: z.enum(["Access", "Watch", "Reserve"]).nullish(), antimicrobialRestricted: z.boolean().optional(),
 });
 const interactionCreateBody = z.object({
   saltAId: z.string().min(1), saltBId: z.string().min(1), severity,
@@ -288,6 +290,20 @@ export class FormularyController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * STAGE D5 — one product's antimicrobial stewardship fields, for the /formulary/admin editor: the typeahead's hit
+   * carries neither, and the catalogue page is the wrong instrument for one row.
+   */
+  @RequirePermission("formulary.manage", "hospital")
+  @Get("medicines/:id/stewardship")
+  async stewardship(@Param("id") id: string): Promise<{ id: string; brandName: string; awareCategory: string | null; antimicrobialRestricted: boolean }> {
+    try {
+      const m = (await medicinesByIds(this.db, [id])).get(id);
+      if (m === undefined) throw new FormularyError("unknown_medicine", `medicine ${id} not found`);
+      return { id: m.id, brandName: m.brandName, awareCategory: m.awareCategory, antimicrobialRestricted: m.antimicrobialRestricted };
+    } catch (e) { toHttp(e); }
   }
 
   @RequirePermission("formulary.manage", "hospital")

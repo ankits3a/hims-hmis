@@ -303,6 +303,7 @@ describe("FD-14: the photo", () => {
 
     await user.type(screen.getByTestId("reg-name"), "Asha Devi");
     await user.click(screen.getByTestId("reg-sex-female"));
+    await user.type(screen.getByTestId("reg-age"), "34"); // DESK-FIXES E — age or DOB is mandatory
     await user.click(screen.getByTestId("reg-submit"));
 
     await waitFor(() => expect(registered.length, "POST /patients never fired").toBe(1));

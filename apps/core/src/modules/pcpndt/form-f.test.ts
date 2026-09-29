@@ -55,6 +55,25 @@ describe("Form F: membership, the completion, the freeze and the gate (18a T6)",
   const record = (formFId: string, over: Record<string, unknown> = {}) =>
     withTx(db, (tx) => recordFormF(tx, fx.sonologist, { formFId, ...RECORD, ...over }));
 
+  /* ═══════════════════════ 18-S RS7 — THE FORM'S OWN RESULT LINE ═══════════════════════ */
+
+  /**
+   * Form F Section B item 15 — "result of the non-invasive procedure" — is free text stored in the
+   * statutory register (`result_summary`). The foetal-sex guard reads it: the register is the one
+   * document an inspector reads line by line, and a result that states the sex is the offence itself.
+   */
+  it("RS7: a Form F result that states the sex of the foetus is refused, and the form stays open", async () => {
+    const { formFId } = await open();
+    await expect(record(formFId, { resultSummary: "Single live male foetus, 20 weeks." }))
+      .rejects.toMatchObject({ code: "foetal_sex_disclosure" });
+    /**
+     * The form is still OPEN — the refusal came before any write. (A clean `resultSummary` is not
+     * shown landing here: `pcpndt_form_f_immutable` refuses that column at completion today, which
+     * the RS7 spike records as a finding — the Form F result is read from the signed report.)
+     */
+    await expect(record(formFId)).resolves.toMatchObject({ formFId });
+  });
+
   /* ═══════════════════════ A2 — MEMBERSHIP, NEVER EXISTENCE ═══════════════════════ */
 
   it("A2: a machine on no active registration is refused `machine_not_registered`", async () => {

@@ -14,7 +14,10 @@ import { useCopilot } from "../../lib/use-copilot";
 import { usePaletteOptional } from "../../components/command-palette";
 import { Button } from "@/components/ui/button";
 import { istClock, istDateLabel } from "../desk-one/model";
+import { AdrRegisterView } from "./adr";
+import { ColdChainView } from "./cold-chain";
 import { ControlledView } from "./controlled";
+import { IncidentRegisterView } from "./incidents";
 import { ItemsView } from "./items";
 import { StockLedgerPage } from "./ledger";
 import { MessagesView } from "./messages";
@@ -23,6 +26,7 @@ import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
 import { TodayDesk, money0 } from "./today";
+import { TrayChecksView } from "./trays";
 import { fetchControlledToday } from "../../lib/controlled-api";
 import { FormularyAdmin } from "../formulary-admin";
 import { MaterialsCounts } from "../materials-counts";
@@ -127,6 +131,8 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
         : { to: "view", view: "stock", page: l.kind === "grn" ? "grn" : l.kind === "transfer" ? "transfers" : "counts" },
     )} />;
     case "downtime": return <PharmacyDowntime />;
+    case "cold": return <ColdChainView />;
+    case "trays": return <TrayChecksView />;
     case "master": return <MaterialsItems />;
     case "sells": return <PharmacyItems />;
     case "formulary": return <FormularyAdmin />;
@@ -136,6 +142,8 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "retail": return <PharmacyRetailLicence />;
     case "pharmacists": return <PharmacyPharmacists />;
     case "messages": return <MessagesView />;
+    case "adr": return <AdrRegisterView />;
+    case "incidents": return <IncidentRegisterView />;
     case "reports": return <ReportsView />;
     default: return null;
   }

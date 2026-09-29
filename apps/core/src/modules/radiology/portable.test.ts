@@ -126,7 +126,8 @@ describe("the portable study (18a-iii T3)", () => {
     }));
   const rebook = (studyId: string, deviceResourceId: string, over: Record<string, unknown> = {}) =>
     withTx(db, (tx) => rescheduleStudy(tx, fx.radiographer, {
-      studyId, deviceResourceId, scheduledAt: new Date(SLOT.getTime() + (seq + 10) * 3_600_000), ...over,
+      studyId, deviceResourceId, scheduledAt: new Date(SLOT.getTime() + (seq + 10) * 3_600_000),
+      reason: "Patient asked to change", ...over,
     }));
   /** The evidence each gate a covered ward USG opens will accept. */
   const EVIDENCE: Record<string, unknown> = {

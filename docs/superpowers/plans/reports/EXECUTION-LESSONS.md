@@ -2660,3 +2660,22 @@ reported "ready to deploy" without looking.
   anything, the owner must decide (commit it, or set it aside by path) BEFORE you report "deployable".
 - Brief every audit agent with an explicit word cap, and with the claim it must TEST, not survey ("be adversarial:
   'we are not missing anything' is what you are testing").
+
+### 2.169 A NEW REGISTERED KEY OWES EVERY TEST THAT ENUMERATES THE REGISTRY — grep the enumerations, not the module
+
+**Specimen (gap A3, PR #347, 2026-09-28).** The ruling "credit is the owner's" added two approval types:
+`billing_credit_owner` and `lab_release_unpaid_owner`. The fixture agent ran 194 suites and 1,992 tests locally,
+all green. It ran the billing and lab module suites plus the seed-roles, check-config and standup censuses.
+
+CI then went red twice, 20+ minutes a round:
+1. `apps/web/src/screens/lab-reports.test.tsx` pinned the typeKey string `lab_release_unpaid`.
+2. `apps/core/test/seed-lab.test.ts` pinned `registered: [RELEASE_UNPAID_APPROVAL_TYPE]`.
+
+Neither lives in the module that changed. Each ENUMERATES what the module registers, from outside it. Same shape as
+§ new-column-owes-schema-census: the census is not where you edited.
+
+**The mechanical form.** Before the PR, for every key added to a registry (approval type, permission, route, event):
+
+    grep -rln "<old_key>\|<CONSTANT_NAME>\|register<Module>ApprovalTypes\|<MODULE>_APPROVAL_TYPES" apps/*/src apps/*/test --include=*.test.ts --include=*.test.tsx
+
+Then run every hit, under the lock. For #347 this returns the two files that failed in CI.

@@ -8,6 +8,7 @@ import {
 import { resources } from "../../kernel/db/schema/resources";
 import { PcpndtError } from "./errors";
 import { formFRecorded } from "./events";
+import { findFoetalSexDisclosures } from "./foetal-sex";
 import { activeRegistrationFor } from "./registrations";
 import type { FormFApplicability } from "../../kernel/db/schema/pcpndt";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -413,6 +414,21 @@ export async function recordFormF(
    * about now, not about when the form was started.
    */
   await assertPersonRegisteredForMachine(tx, actor.id, form.machineId);
+
+  /**
+   * 18-S RS7 — Section B's "result of the procedure" is free text in the statutory register itself.
+   * A result that states the sex of the foetus is the offence written into the book an inspector
+   * reads line by line, so the foetal-sex guard reads it (obstetric: this IS a pregnancy record).
+   */
+  const hits = findFoetalSexDisclosures(input.resultSummary ?? "", { obstetric: true });
+  if (hits.length > 0) {
+    throw new PcpndtError(
+      "foetal_sex_disclosure",
+      `this Form F result states the sex of the foetus (${hits.map((h) => `"${h.matched}"`).join(", ")}) — `
+      + "the Act forbids recording or communicating it in any manner, and nobody can approve it",
+      { matched: hits.map((h) => h.matched) },
+    );
+  }
 
   await tx.update(pcpndtFormF).set({
     status: "recorded",

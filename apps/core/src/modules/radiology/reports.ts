@@ -12,7 +12,7 @@ import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { invoiceLines } from "../../kernel/db/schema/billing";
 import { users } from "../../kernel/db/schema/auth";
 import { invoiceSettlement } from "../billing";
-import { findLockoutHits } from "../pcpndt";
+import { assertMachineRegistered, assertPersonRegistered, findLockoutHits } from "../pcpndt";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import type { LockoutTier } from "../pcpndt";
 import { RadiologyError } from "./errors";
@@ -26,6 +26,15 @@ import { hasPermission } from "../../kernel/auth/permissions";
 import { PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn } from "./applicability";
 import { patients } from "../../kernel/db/schema/patients";
 import { templateKeyFor } from "./templates";
+import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
+import { PRE_SIGN_CHECKS, runPreSignChecks } from "./checks";
+import { signerSnapshot } from "./signer";
+import type { PreSignContext, PreSignFinding } from "./checks";
+import type { SignerBlock } from "./signer";
+import {
+  assertNoFoetalSexDisclosure, isObstetricReport, normaliseReportBody, reportText, scanDayOf, withDeclaration,
+} from "./obstetric-report";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import type { ImagingCriticalCategory } from "../../kernel/db/schema/radiology";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -121,6 +130,9 @@ async function insertVersion(
     actorId: string; signedAt: Date; secondFactorAt: Date;
     amendmentReason?: string | null; supersedesId?: string | null;
     lockoutOverride?: { approvedBy: string; reason: string } | null;
+    /** 18-S RS8a — the signer block (ruling 4) and the pre-sign checks as they ran. */
+    block?: SignerBlock | null;
+    checks?: SignChecksRecord | null;
   },
   criticalCategory?: ImagingCriticalCategory | null,
   /** 18b T4 / §6.8 — set ONLY by `proposeDraft`. Never copied forward: the signed document is a human's. */
@@ -147,6 +159,8 @@ async function insertVersion(
       supersedesId: signer?.supersedesId ?? null,
       lockoutOverride: signer?.lockoutOverride ?? null,
       provenance: provenance ?? null,
+      signer: signer?.block ?? null,
+      signChecks: signer?.checks ?? null,
     });
   } catch (e) {
     /**
@@ -180,7 +194,10 @@ export async function draftReport(
 ): Promise<{ reportId: string; version: number }> {
   const study = await loadStudy(tx, input.studyId);
   assertReportable(study.status, input.studyId);
-  return await insertVersion(tx, study, "draft", input);
+  /** 18-S RS7 T2 — biometry recomputed by the server, the declaration key the server's alone. */
+  const obstetric = await isObstetricReport(tx, study, input.templateKey);
+  const body = normaliseReportBody(input.body, obstetric, scanDayOf(study, new Date()));
+  return await insertVersion(tx, study, "draft", { ...input, body });
 }
 
 /**
@@ -277,9 +294,13 @@ export async function savePrelim(
    * radiologist's own scratch text, and refusing a draft would move the refusal to a place where
    * the author cannot yet see the whole report they are being refused.
    */
+  /** 18-S RS7 T1 — a prelim that states the sex of a foetus is refused before any word list runs. */
+  const obstetric = await isObstetricReport(tx, study, input.templateKey);
+  const body = normaliseReportBody(input.body, obstetric, scanDayOf(study, new Date()));
+  assertNoFoetalSexDisclosure(reportText([body, input.impression ?? ""]), obstetric, "prelim");
   const tier = await lockoutTierFor(tx, study, new Date());
   const hits = findLockoutHits(
-    `${JSON.stringify(input.body)} ${input.impression ?? ""}`, tier,
+    `${JSON.stringify(body)} ${input.impression ?? ""}`, tier,
   );
   if (hits.length > 0) {
     throw new RadiologyError(
@@ -289,7 +310,7 @@ export async function savePrelim(
       { terms: hits.map((h) => h.term), tier },
     );
   }
-  return await insertVersion(tx, study, "prelim", input);
+  return await insertVersion(tx, study, "prelim", { ...input, body });
 }
 
 function assertReportable(status: string, studyId: string): void {
@@ -323,6 +344,8 @@ export async function signReport(
     lockoutOverride?: { approvedBy: string; reason: string } | null;
     /** F69 — who the radiologist told, if they told anybody at signing time. */
     communicatedTo?: string | null;
+    /** 18-S RS8a — the warning codes the signer has seen and acknowledges (`checks.ts`). */
+    acknowledgedWarnings?: readonly string[];
     now?: Date;
   },
 ): Promise<{ reportId: string; version: number }> {
@@ -373,16 +396,30 @@ export async function signReport(
 
   const category = (input.criticalCategory ?? source.criticalCategory) as ImagingCriticalCategory | null;
   await assertSignable(tx, study, source, category, input.lockoutOverride ?? null, now);
+  await assertSignerRegistered(tx, actor, study, now);
+  const obstetric = await isObstetricReport(tx, study, source.templateKey);
+
+  const content = {
+    templateKey: source.templateKey,
+    /** 18-S RS7 T2 — the obstetric report's fixed PCPNDT declaration, in the server's words. */
+    body: withDeclaration(source.body as Record<string, unknown>, obstetric),
+    impression: source.impression, laterality: source.laterality,
+  };
+  /** 18-S RS8a — the deterministic checks, then the signer block: both before the insert. */
+  const checks = enforcePreSign(
+    await preSignFindings(tx, study, content, category), input.acknowledgedWarnings ?? [], actor.id, now,
+  );
+  const block = await signerSnapshot(tx, { userId: actor.id, now, secondFactorAt: factorAt, content });
 
   let created: { reportId: string; version: number };
   try {
     created = await insertVersion(
       tx, study, "signed",
+      content,
       {
-        templateKey: source.templateKey, body: source.body as Record<string, unknown>,
-        impression: source.impression, laterality: source.laterality,
+        actorId: actor.id, signedAt: now, secondFactorAt: factorAt, lockoutOverride: input.lockoutOverride ?? null,
+        block, checks,
       },
-      { actorId: actor.id, signedAt: now, secondFactorAt: factorAt, lockoutOverride: input.lockoutOverride ?? null },
       category,
     );
   } catch (e) {
@@ -414,6 +451,30 @@ export async function signReport(
     });
   }
   return created;
+}
+
+/**
+ * ═══ 18-S RS7 — THE ACT'S MEMBERSHIP RULE, AT THE SIGNATURE ═══
+ *
+ * `startAcquisition` already refuses a PCPNDT scan performed by a person who is not on the machine's
+ * registration. The SIGNATURE had no such check, so a radiologist registered nowhere could sign the
+ * obstetric report of a scan somebody else performed on a registered machine — the report being the
+ * statutory record of what was found. Only a person registered on THAT machine's registration, on the
+ * signing day (IST), signs a `form_f_required` study. Studies outside the Act are untouched.
+ */
+async function assertSignerRegistered(
+  tx: Tx, actor: Actor, study: typeof imagingStudies.$inferSelect, now: Date,
+): Promise<void> {
+  if (!study.formFRequired) return;
+  if (study.deviceResourceId === null) {
+    throw new RadiologyError(
+      "machine_not_registered",
+      `study ${study.accessionNo} names no machine, so nobody can be checked against its PCPNDT registration`,
+      { studyId: study.id },
+    );
+  }
+  const { registrationId } = await assertMachineRegistered(tx, study.deviceResourceId, istDayString(now));
+  await assertPersonRegistered(tx, actor.id, registrationId);
 }
 
 /** B10 — `imaging_reports_one_signed_ux`. A second signature is the DATABASE's refusal, not ours. */
@@ -501,6 +562,7 @@ async function assertFreeTextSignable(
 ): Promise<void> {
   if (text.trim() === "") return;
   const study = await loadStudy(tx, studyId);
+  assertNoFoetalSexDisclosure(text, await isObstetricReport(tx, study), "note");
   const hits = findLockoutHits(text, await lockoutTierFor(tx, study, now));
   if (hits.length > 0) {
     throw new RadiologyError(
@@ -518,6 +580,8 @@ async function assertSignable(
   study: typeof imagingStudies.$inferSelect,
   content: {
     body: unknown; impression?: string | null; laterality?: string | null;
+    /** 18-S RS7 — the template the version uses (an obstetric template is an obstetric report). */
+    templateKey?: string | null;
     /** F79 — every other free-text field that rides this act into a permanent, servable row. */
     reason?: string | null;
   },
@@ -544,6 +608,17 @@ async function assertSignable(
    * *"correcting — the foetus is male, family informed"* was accepted and served. The two callers
    * that own those fields now pass them here.
    */
+  /**
+   * ═══ 18-S RS7 T1 — THE FOETAL-SEX GUARD RUNS FIRST, AND `lockoutOverride` NEVER REACHES IT ═══
+   *
+   * A sentence that states the sex of a foetus is `foetal_sex_disclosure`, which the medical
+   * superintendent's F66 lane below cannot lift. Checked before the word list so the refusal names
+   * the Act's harm rather than a word (see `pcpndt/foetal-sex.ts`).
+   */
+  const obstetric = await isObstetricReport(tx, study, content.templateKey ?? null);
+  assertNoFoetalSexDisclosure(
+    reportText([content.body, content.impression ?? "", content.reason ?? ""]), obstetric, "report",
+  );
   const tier = await lockoutTierFor(tx, study, now);
   const text = [
     JSON.stringify(content.body),
@@ -617,6 +692,108 @@ async function assertSignable(
   }
 }
 
+/* ═══════════════════════ 18-S RS8a — the pre-sign checks, gathered and enforced ═══════════════════════ */
+
+/** What `sign_checks` records on a signed version. */
+export type SignChecksRecord = {
+  ran: string[];
+  warnings: { code: string; words: string }[];
+  acknowledgedBy: string;
+  acknowledgedAt: string;
+};
+
+/**
+ * The facts `checks.ts` reads, gathered once: the study type's name, the study's side, the
+ * patient's registered sex, the governed template the report names (null for a built-in skeleton)
+ * and the body split into its text sections and its `coded` block.
+ */
+async function preSignContextOf(
+  tx: Tx,
+  study: typeof imagingStudies.$inferSelect,
+  content: { templateKey: string; body: unknown; impression: string | null },
+  criticalCategory: string | null,
+): Promise<PreSignContext> {
+  const type = await requireStudyType(tx, study.studyTypeCode);
+  const [patient] = await (tx as unknown as Db).select({ sex: patients.sex })
+    .from(patients).where(eq(patients.id, study.patientId));
+  const body = (typeof content.body === "object" && content.body !== null ? content.body : {}) as Record<string, unknown>;
+  const sections: Record<string, string> = {};
+  for (const [k, v] of Object.entries(body)) if (typeof v === "string") sections[k] = v;
+  const coded = typeof body.coded === "object" && body.coded !== null ? body.coded as Record<string, unknown> : {};
+  const bookRow = await activeDefinitionRow(tx, "report_templates");
+  const template = bookRow === undefined
+    ? null
+    : parseDefinitionBody("report_templates", bookRow.body).templates.find((t) => t.key === content.templateKey) ?? null;
+  return {
+    studyTypeCode: type.code, studyTypeName: type.name, studyLaterality: study.laterality,
+    patientSex: patient?.sex ?? "unknown", sections,
+    impression: content.impression ?? (typeof body.impression === "string" ? body.impression : ""),
+    coded, template, criticalCategory,
+  };
+}
+
+async function preSignFindings(
+  tx: Tx,
+  study: typeof imagingStudies.$inferSelect,
+  content: { templateKey: string; body: unknown; impression: string | null },
+  criticalCategory: string | null,
+): Promise<PreSignFinding[]> {
+  return runPreSignChecks(await preSignContextOf(tx, study, content, criticalCategory));
+}
+
+/**
+ * A refusal stops the signature with ITS OWN code (the first, with every refusal in the detail so
+ * the screen can list them). Warnings pass only when every one is acknowledged, and the record of
+ * which were raised and acknowledged is what the signed row stores.
+ */
+function enforcePreSign(
+  findings: readonly PreSignFinding[], acknowledged: readonly string[], actorId: string, now: Date,
+): SignChecksRecord {
+  const refusals = findings.filter((f) => f.level === "refuse");
+  if (refusals.length > 0) {
+    const first = refusals[0]!;
+    throw new RadiologyError(
+      first.code as "impression_required",
+      refusals.map((r) => r.words).join(" "),
+      { refusals: refusals.map((r) => ({ code: r.code, words: r.words })), ...first.detail },
+    );
+  }
+  const warnings = findings.filter((f) => f.level === "warn");
+  const unacknowledged = warnings.filter((w) => !acknowledged.includes(w.code));
+  if (unacknowledged.length > 0) {
+    throw new RadiologyError(
+      "checks_unacknowledged",
+      `before signing, acknowledge: ${unacknowledged.map((w) => w.words).join(" ")}`,
+      { warnings: unacknowledged.map((w) => ({ code: w.code, words: w.words })) },
+    );
+  }
+  return {
+    ran: PRE_SIGN_CHECKS.map((c) => c.code),
+    warnings: warnings.map((w) => ({ code: w.code, words: w.words })),
+    acknowledgedBy: actorId,
+    acknowledgedAt: now.toISOString(),
+  };
+}
+
+/**
+ * The screen's DRY RUN: the same checks on the text in front of the radiologist, before any save.
+ * Nothing is written and no PHI row is logged beyond the study read the screen already made — the
+ * text is the caller's own.
+ */
+export async function dryRunPreSign(
+  tx: Tx,
+  actor: Actor,
+  input: { studyId: string; templateKey?: string; body: Record<string, unknown>; impression?: string | null; criticalCategory?: string | null },
+): Promise<{ findings: PreSignFinding[]; signable: boolean }> {
+  if (actor.type !== "user") throw new RadiologyError("forbidden", `a ${actor.type} actor does not write reports`);
+  const study = await loadStudy(tx, input.studyId);
+  const templateKey = input.templateKey ?? await defaultTemplateKey(tx, study.studyTypeCode);
+  const findings = await preSignFindings(
+    tx, study, { templateKey, body: input.body, impression: input.impression ?? null }, input.criticalCategory ?? null,
+  );
+  return { findings, signable: !findings.some((f) => f.level === "refuse") };
+}
+
 /**
  * ═══ A2 — THE AMENDMENT: v(n+1) SIGNED, v(n) SUPERSEDED, ONE TRANSACTION ═══
  *
@@ -632,6 +809,8 @@ export async function amendReport(
     criticalCategory?: ImagingCriticalCategory | null;
     /** F66 — the medical superintendent who approved a demographic-tier hit, and why. */
     lockoutOverride?: { approvedBy: string; reason: string } | null;
+    /** 18-S RS8a — the warning codes the signer acknowledges; the checks run on the amendment too. */
+    acknowledgedWarnings?: readonly string[];
     now?: Date;
   } & ReportContent,
 ): Promise<{ reportId: string; version: number; supersededId: string }> {
@@ -668,7 +847,27 @@ export async function amendReport(
    * critical report sent no message at all. Inheriting is the same rule the sign path already had.
    */
   const category = (input.criticalCategory ?? previous.criticalCategory) as ImagingCriticalCategory | null;
-  await assertSignable(tx, study, input, category, input.lockoutOverride ?? null, now);
+  /** 18-S RS7 — the amended body normalised exactly as a draft's is, and the declaration re-written. */
+  const amendTemplate = input.templateKey ?? previous.templateKey;
+  const amendObstetric = await isObstetricReport(tx, study, amendTemplate);
+  const amendBody = normaliseReportBody(input.body, amendObstetric, scanDayOf(study, now));
+  await assertSignable(tx, study, { ...input, templateKey: amendTemplate, body: amendBody }, category, input.lockoutOverride ?? null, now);
+  await assertSignerRegistered(tx, actor, study, now);
+
+  /**
+   * 18-S RS8a — an amendment IS a signature, so it meets the same checks and carries the same
+   * block. Checking only the first signature would make "amend" the way round every check.
+   */
+  const amendContent = {
+    templateKey: amendTemplate,
+    /** 18-S RS7 — the amended body normalised as a draft's is, with the declaration re-written. */
+    body: withDeclaration(amendBody, amendObstetric),
+    impression: input.impression ?? null, laterality: input.laterality ?? null,
+  };
+  const amendChecks = enforcePreSign(
+    await preSignFindings(tx, study, amendContent, category), input.acknowledgedWarnings ?? [], actor.id, now,
+  );
+  const amendBlock = await signerSnapshot(tx, { userId: actor.id, now, secondFactorAt: amendFactorAt, content: amendContent });
 
   /**
    * THE FLIP COMES FIRST, and it has to: `imaging_reports_one_signed_ux` is a partial unique on
@@ -680,11 +879,12 @@ export async function amendReport(
     .where(eq(imagingReports.id, previous.id));
 
   const created = await insertVersion(
-    tx, study, "signed", input,
+    tx, study, "signed", amendContent,
     {
       actorId: actor.id, signedAt: now, secondFactorAt: amendFactorAt,
       amendmentReason: input.reason.trim(), supersedesId: previous.id,
       lockoutOverride: input.lockoutOverride ?? null,
+      block: amendBlock, checks: amendChecks,
     },
     category,
   );
@@ -792,6 +992,15 @@ export async function publishReport(
   if (signed.publishedAt !== null) {
     throw new RadiologyError("already_signed", `report ${signed.id} is already published`, { reportId: signed.id });
   }
+  /**
+   * 18-S RS7 T1 — the SIGNED text is read again before it leaves the department. A version signed
+   * before the guard existed (or by any path that bypassed it) is not published: publication is the
+   * communication §5(2) is about.
+   */
+  assertNoFoetalSexDisclosure(
+    reportText([signed.body, signed.impression ?? "", signed.amendmentReason ?? ""]),
+    await isObstetricReport(tx, study, signed.templateKey), "report",
+  );
 
   /**
    * ═══ F71 (CLOSE REVIEW) — THE STAMP IS A COMPARE-AND-SET, NOT A BLIND UPDATE BY ID ═══

@@ -4,7 +4,7 @@ import { acquireStudy, setupRadiologyFixture } from "../../../test/helpers/radio
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import {
-  events, imagingCriticalFindings, imagingDefinitions, imagingReportDelivery, imagingReports,
+  events, imagingCriticalFindings, imagingDefinitions, imagingReportDelivery, imagingReports, orders,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { acknowledgeCritical, draftReport, flagCritical, publishReport, signReport } from "./reports";
@@ -73,6 +73,11 @@ describe("the chasers (18a-iii T5)", () => {
       idemKey: `c${String(seq)}`, now: new Date(NOW.getTime() + seq * 25 * 3_600_000),
       slot: new Date(SLOT.getTime() + seq * 3_600_000),
     });
+    /**
+     * 18-S RS9 T1 — only the TREATING doctor's read lands, so the fixture doctor is made this
+     * study's ordering clinician (the helper places on behalf of a consultant who is not a user).
+     */
+    await db.update(orders).set({ orderingClinicianId: fx.doctor.id }).where(eq(orders.id, study.orderId));
     const draft = await withTx(db, (tx) => draftReport(tx, fx.radiologist, {
       studyId: study.studyId, body: { findings: "Normal.", technique: "Transabdominal." },
       impression: "No abnormality.",

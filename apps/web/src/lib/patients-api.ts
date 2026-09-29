@@ -297,7 +297,12 @@ export function getPatientDocument(documentId: string): Promise<{ mimeType: stri
   return api("GET", `/patients/documents/${documentId}`);
 }
 
-export function getPatientPhoto(patientId: string): Promise<{ mimeType: string; imageBase64: string }> {
+/**
+ * DESK-FIXES F — `null` is "this patient has no photo" (the route answers 204, an ordinary answer
+ * rather than a 404 the console paints red per patient). A 404 still means the patient is unknown
+ * or not visible to this reader, and rejects as before.
+ */
+export function getPatientPhoto(patientId: string): Promise<{ mimeType: string; imageBase64: string } | null> {
   return api("GET", `/patients/${encodeURIComponent(patientId)}/photo`);
 }
 

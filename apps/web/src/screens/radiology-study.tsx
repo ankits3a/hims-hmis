@@ -3,11 +3,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
-  fetchReadiness, fetchStudy, openImages, overrideGate, radiologyErrorText, recordAcquired, satisfyGate,
-  startAcquisition, waiveGate,
+  decideOverrideRequest, fetchOverrideRequests, fetchPrepStudy, fetchReadiness, fetchStudy, openImages, overrideGate,
+  radiologyErrorText, recordAcquired, satisfyGate, startAcquisition, waiveGate,
 } from "../lib/radiology-api";
+import { useAuth } from "../lib/auth";
+import { GateEvidenceForm } from "../components/radiology/prep-gate-forms";
 import { DOSE_UNITS, fetchCumulativeDose } from "../lib/aerb-api";
+import { fmtIst } from "../lib/format";
 import { Button } from "@/components/ui/button";
+import { RadiologyStation } from "./radiology-station";
 
 /**
  * PLAN 18a T9 — **THE STUDY CONSOLE: the ten gates, the override lane, and the acquisition.**
@@ -28,8 +32,11 @@ export function RadiologyStudy(): React.ReactElement {
   const navigate = useNavigate();
   const { studyId } = useParams({ from: "/authed/radiology/studies/$studyId" });
   const [error, setError] = useState<string | null>(null);
-  const [evidence, setEvidence] = useState("{}");
+  /** 18-S RS5 — the gate whose evidence FORM is open (the JSON textarea is gone). */
+  const [formFor, setFormFor] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  const [decisionReason, setDecisionReason] = useState("");
+  const { can, actor } = useAuth();
   /**
    * 18b T2 / D8 — the console chooses the image source, and for `pacs` carries the Study Instance
    * UID. The field is PRE-FILLED with the value the server minted (the one the worklist export
@@ -52,9 +59,29 @@ export function RadiologyStudy(): React.ReactElement {
     enabled: study.data?.study?.ionising === true,
     retry: false,
   });
+  /**
+   * 18-S RS5 — the evidence forms read the prep bay's view of the patient (allergies, the lab's
+   * creatinine, guardians, staff). Only a gate-satisfier asks for it; a reader without the grant
+   * gets no forms, and the server would refuse their satisfy anyway.
+   */
+  const prep = useQuery({
+    queryKey: ["radiology", "prep", "study", studyId],
+    queryFn: () => fetchPrepStudy(studyId),
+    enabled: can("radiology.gates.satisfy"),
+    retry: false,
+  });
+  /** 18-S RS5 T2 — the bay's "please override" requests on this study, for the radiologist. */
+  const requests = useQuery({
+    queryKey: ["radiology", "override-requests", studyId],
+    queryFn: () => fetchOverrideRequests(studyId),
+    enabled: can("radiology.gates.override"),
+    retry: false,
+  });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["radiology", "study", studyId] });
     void qc.invalidateQueries({ queryKey: ["radiology", "gates", studyId] });
+    void qc.invalidateQueries({ queryKey: ["radiology", "prep"] });
+    void qc.invalidateQueries({ queryKey: ["radiology", "override-requests", studyId] });
   };
   /**
    * Each mutation is declared with its own `useMutation` call rather than through a shared factory.
@@ -66,12 +93,13 @@ export function RadiologyStudy(): React.ReactElement {
   const onSuccess = () => { setError(null); refresh(); };
 
   const satisfy = useMutation({
-    mutationFn: (kind: string) => {
-      let parsed: unknown = {};
-      try { parsed = JSON.parse(evidence); } catch { throw new Error(t("radiology.study.badEvidence")); }
-      return satisfyGate(studyId, kind, parsed);
-    },
-    onSuccess, onError,
+    mutationFn: ({ kind, evidence }: { kind: string; evidence: Record<string, unknown> }) => satisfyGate(studyId, kind, evidence),
+    onSuccess: () => { setFormFor(null); onSuccess(); }, onError,
+  });
+  const decide = useMutation({
+    mutationFn: ({ approvalId, verdict }: { approvalId: string; verdict: "grant" | "refuse" }) =>
+      decideOverrideRequest(approvalId, verdict, decisionReason),
+    onSuccess: () => { setDecisionReason(""); onSuccess(); }, onError,
   });
   const waive = useMutation({
     mutationFn: (kind: string) => waiveGate(studyId, kind, reason), onSuccess, onError,
@@ -113,10 +141,26 @@ export function RadiologyStudy(): React.ReactElement {
   });
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">
-        {s === null ? t("radiology.study.unknown") : `${s.accessionNo} — ${s.patientName}`}
-      </h1>
+    <RadiologyStation
+      station="worklist"
+      title={s === null ? t("radiology.study.unknown") : `${s.accessionNo} — ${s.patientName}`}
+      place={t("radiology.station.studyPlace")}
+      stats={[]}
+    >
+    <div className="space-y-4">
+      {/* 18-S RS6 — the room console works this study step by step; this page stays the full record. */}
+      {s !== null && s.acquiredAt === null
+        ? (
+          <p className="text-sm">
+            <a
+              href={`/radiology/room?study=${encodeURIComponent(studyId)}`} className="font-medium underline" data-testid="to-room-console"
+              onClick={(e) => { e.preventDefault(); void navigate({ to: "/radiology/room", search: { study: studyId } }); }}
+            >
+              {t("radiology.study.toRoom")}
+            </a>
+          </p>
+        )
+        : null}
       {s !== null
         ? (
           <p className="text-sm">
@@ -203,39 +247,73 @@ export function RadiologyStudy(): React.ReactElement {
           : <p>{t("radiology.study.openGates", { count: r?.open.length ?? 0 })}</p>}
 
         <label className="flex flex-col text-sm">
-          {t("radiology.study.evidence")}
-          <textarea className="border px-2 py-1 font-mono" rows={3} value={evidence}
-            onChange={(e) => { setEvidence(e.target.value); }} />
-        </label>
-        <label className="flex flex-col text-sm">
           {t("radiology.study.reason")}
           <input className="border px-2 py-1" value={reason} onChange={(e) => { setReason(e.target.value); }} />
         </label>
 
         <ul>
-          {(r?.gates ?? []).map((g) => (
-            <li key={g.id} data-testid={`gate-${g.kind}`} className="flex items-center gap-2 py-1">
-              <span className="w-56">{t(`radiology.gate.${g.kind}`, { defaultValue: g.kind })}</span>
-              <span className="w-24">{g.state}</span>
-              {g.state === "open"
-                ? (
-                  <>
-                    <Button onClick={() => { satisfy.mutate(g.kind); }}>{t("radiology.study.satisfy")}</Button>
-                    {/** The button exists because the SERVER said the row is waivable. */}
-                    {g.waivable
-                      ? <Button variant="outline" onClick={() => { waive.mutate(g.kind); }}>
-                          {t("radiology.study.waive")}
+          {(r?.gates ?? []).map((g) => {
+            const pgate = prep.data?.view.gates.find((x) => x.kind === g.kind);
+            const ask = (requests.data?.requests ?? []).find((q) => q.kind === g.kind);
+            return (
+              <li key={g.id} data-testid={`gate-${g.kind}`} className="py-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-56">{t(`radiology.gate.${g.kind}`, { defaultValue: g.kind })}</span>
+                  <span className="w-24">{g.state}</span>
+                  {g.state === "open"
+                    ? (
+                      <>
+                        {g.kind === "form_f"
+                          /** The register is the evidence: the button asks the server to read it. */
+                          ? <Button onClick={() => { satisfy.mutate({ kind: g.kind, evidence: {} }); }}>{t("radiology.bay.formF.check")}</Button>
+                          : <Button onClick={() => { setFormFor(formFor === g.kind ? null : g.kind); }}>{t("radiology.study.satisfy")}</Button>}
+                        {/** The button exists because the SERVER said the row is waivable. */}
+                        {g.waivable
+                          ? <Button variant="outline" onClick={() => { waive.mutate(g.kind); }}>
+                              {t("radiology.study.waive")}
+                            </Button>
+                          : null}
+                        <Button variant="outline" onClick={() => { override.mutate(g.kind); }}>
+                          {t("radiology.study.override")}
                         </Button>
-                      : null}
-                    <Button variant="outline" onClick={() => { override.mutate(g.kind); }}>
-                      {t("radiology.study.override")}
-                    </Button>
-                  </>
-                )
-                : null}
-            </li>
-          ))}
+                      </>
+                    )
+                    : null}
+                </div>
+                {g.state === "open" && formFor === g.kind && g.kind !== "form_f" && (
+                  <div className="mt-2 rounded border p-2" data-testid={`gate-form-${g.kind}`}>
+                    {prep.data !== undefined && pgate !== undefined
+                      ? <GateEvidenceForm gate={pgate} ctx={prep.data.view} busy={satisfy.isPending} actorId={actor?.id ?? null}
+                          onSubmit={(evidence) => { satisfy.mutate({ kind: g.kind, evidence }); }} />
+                      : <p className="m-0 text-sm text-muted-foreground">{t("radiology.study.noForm")}</p>}
+                  </div>
+                )}
+                {g.state === "open" && ask !== undefined && (
+                  <div className="mt-2 space-y-1 rounded border border-sky-300 bg-sky-50 p-2 text-sm" data-testid={`override-request-${g.kind}`}>
+                    <p className="m-0">{t("radiology.study.askedBy", { who: ask.requesterName ?? "—", note: ask.note ?? "" })}</p>
+                    <label className="flex flex-col text-xs">
+                      {t("radiology.study.decisionReason")}
+                      <input className="border px-2 py-1 text-sm" value={decisionReason} onChange={(e) => { setDecisionReason(e.target.value); }} />
+                    </label>
+                    <div className="flex gap-2">
+                      <Button disabled={decisionReason.trim() === ""} onClick={() => { decide.mutate({ approvalId: ask.approvalId, verdict: "grant" }); }}>
+                        {t("radiology.study.grantOverride")}
+                      </Button>
+                      <Button variant="outline" disabled={decisionReason.trim() === ""} onClick={() => { decide.mutate({ approvalId: ask.approvalId, verdict: "refuse" }); }}>
+                        {t("radiology.study.refuseOverride")}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
+        {/** 18-S RS5 T5 — the contrast record and the reaction live in the prep bay's patient view. */}
+        <button type="button" className="mt-2 text-sm underline" data-testid="open-contrast"
+          onClick={() => { void navigate({ to: "/radiology/prep", search: { study: studyId } } as never); }}>
+          {t("radiology.study.openContrast")}
+        </button>
       </section>
 
       <section className="space-y-2">
@@ -246,8 +324,16 @@ export function RadiologyStudy(): React.ReactElement {
             /** Close review C5 — keyed on ACQUISITION, so a no-DICOM study shows its state, not the radio. */
             <div className="space-y-1 text-sm" data-testid="study-uid-recorded">
               {s.studyInstanceUid !== null
-                ? <p>{t("radiology.study.studyUidRecorded")}: <code>{s.studyInstanceUid}</code></p>
+                ? <p>{t("radiology.study.studyUidRecorded")}: <code className="break-all">{s.studyInstanceUid}</code></p>
                 : <p>{t("radiology.study.sourceNoImages")}</p>}
+              {/** 18-S RS12 — the archive's own word, when it has spoken: the counts are Orthanc's, not ours. */}
+              {s.studyInstanceUid !== null && (
+                <p className="text-xs text-muted-foreground" data-testid="archive-state">
+                  {s.archive == null
+                    ? t("radiology.study.archiveNone")
+                    : t("radiology.study.archiveHeld", { series: s.archive.seriesCount, images: s.archive.instanceCount, at: fmtIst(s.archive.arrivedAt) })}
+                </p>
+              )}
               {s.studyInstanceUid !== null
                 ? (
                   <p className="flex items-center gap-2">
@@ -296,5 +382,6 @@ export function RadiologyStudy(): React.ReactElement {
         </div>
       </section>
     </div>
+    </RadiologyStation>
   );
 }

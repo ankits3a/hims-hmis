@@ -132,7 +132,7 @@ describe("patients lifecycle e2e (registration → merge → unmerge → sweep)"
     // Leg 1: register the duplicate pair.
     const regA = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
-      .send({ name: "Asha Devi", sex: "female", phone: "9876543210", language: "hi" })
+      .send({ name: "Asha Devi", sex: "female", phone: "9876543210", language: "hi", ageYears: 34 })
       .expect(201);
     const winnerId = regA.body.patient.id as string;
     expect(regA.body.patient.uhid).toMatch(/^HMS\d{8}$/);
@@ -149,7 +149,7 @@ describe("patients lifecycle e2e (registration → merge → unmerge → sweep)"
         is. A clerk facing that warning and creating the record anyway is step one of this story, so
         the flag is not a workaround: it is the act the rest of the test then cleans up.
       */
-      .send({ name: "Asha Debi", sex: "female", phone: "9876543210", language: "hi", acknowledgedDuplicates: true })
+      .send({ name: "Asha Debi", sex: "female", phone: "9876543210", language: "hi", ageYears: 34, acknowledgedDuplicates: true })
       .expect(201);
     const loserId = regB.body.patient.id as string;
     expect(regB.body.patient.uhid).toMatch(/^HMS\d{8}$/);

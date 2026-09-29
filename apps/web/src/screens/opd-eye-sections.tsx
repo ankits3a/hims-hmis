@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { ApiError, api } from "../lib/api";
+import type { WirePaeds } from "./opd-paeds-sections";
 
 /**
  * ═══ THE OPHTHALMOLOGY SECTIONS (board `Ophthal`, approved 2026-09-23; 01-CONSULT-ENGINE.md §6.1) ═══
@@ -15,11 +17,15 @@ import { ApiError, api } from "../lib/api";
  * and a "Copy OD → OS" fills the left eye from the right for the common symmetrical finding.
  */
 
-export type SectionKey = "eye.vision" | "eye.iop" | "eye.slit_lamp" | "eye.glasses_rx";
+export type SectionKey =
+  | "eye.vision" | "eye.iop" | "eye.slit_lamp" | "eye.glasses_rx"
+  | "paeds.informant" | "paeds.growth" | "paeds.immunisation" | "paeds.birth" | "paeds.milestones" | "paeds.feeding";
 export type WireVisitSections = {
   profile: string | null;
   sections: { key: SectionKey; version: number; kind: string }[];
   records: Partial<Record<SectionKey, { body: unknown; at: string; authorId: string; sectionVersion: number; recordId: string }>>;
+  /** A paediatric visit only — see opd-paeds-sections.tsx. */
+  paeds?: WirePaeds;
 };
 type Pair = { od: string; os: string };
 type Lens = { sph: number | null; cyl: number | null; axis: number | null; add: number | null };
@@ -50,7 +56,53 @@ function num(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function useSection<T>(encounterId: string, key: SectionKey, data: WireVisitSections | undefined, empty: () => T, leaseBody: () => Record<string, string>) {
+/**
+ * CONSULT WALK 2026-09-28 (defect G) — the eye sections as ONE summary line for "what will be saved"
+ * and the work strip, which listed every base section and none of these. Only what was recorded is
+ * named; a section left empty says nothing. `items` is the count the Summary shows.
+ */
+export function eyeSummary(t: TFunction, data: WireVisitSections | undefined): { text: string; items: number } {
+  if (data === undefined || data.profile === null) return { text: "", items: 0 };
+  const parts: string[] = [];
+  const pair = (label: string, p: Partial<Pair> | undefined): void => {
+    const od = (p?.od ?? "").trim();
+    const os = (p?.os ?? "").trim();
+    if (od !== "" || os !== "") parts.push(`${label} OD ${od === "" ? "—" : od} / OS ${os === "" ? "—" : os}`);
+  };
+  const vision = data.records["eye.vision"]?.body as Partial<Record<string, Pair>> | undefined;
+  for (const r of VISION_ROWS) pair(t(`opdEye.vision.${r}`), vision?.[r]);
+  const iop = data.records["eye.iop"]?.body as { method?: string | null; od?: number | null; os?: number | null } | undefined;
+  if (iop !== undefined && ((iop.od ?? null) !== null || (iop.os ?? null) !== null)) {
+    parts.push(`${t("opdEye.summaryIop")}${iop.method == null ? "" : ` (${iop.method})`} OD ${iop.od == null ? "—" : String(iop.od)} / OS ${iop.os == null ? "—" : String(iop.os)}`);
+  }
+  const slit = data.records["eye.slit_lamp"]?.body as Partial<Record<string, Pair>> | undefined;
+  for (const r of SLIT_LAMP_ROWS) pair(t(`opdEye.slit.${r}`), slit?.[r]);
+  const glasses = data.records["eye.glasses_rx"]?.body as Partial<Record<"od" | "os", Lens>> | undefined;
+  const lens = (l: Lens | undefined): string => {
+    if (l === undefined) return "";
+    const bits = [
+      l.sph === null ? "" : `${t("opdEye.lens.sph")} ${fmtPower(l.sph)}`,
+      l.cyl === null ? "" : `${t("opdEye.lens.cyl")} ${fmtPower(l.cyl)}`,
+      l.axis === null ? "" : `${t("opdEye.lens.axis")} ${String(l.axis)}`,
+      l.add === null ? "" : `${t("opdEye.lens.add")} ${fmtPower(l.add)}`,
+    ].filter((b) => b !== "");
+    return bits.join(" ");
+  };
+  const g = { od: lens(glasses?.od), os: lens(glasses?.os) };
+  if (g.od !== "" || g.os !== "") parts.push(`${t("opdEye.summaryGlasses")} OD ${g.od === "" ? "—" : g.od} / OS ${g.os === "" ? "—" : g.os}`);
+  return { text: parts.join(" · "), items: parts.length };
+}
+
+/**
+ * One section's value on screen, and its save. Shared by the eye and the Child sections.
+ * `opts.adopt` puts the SERVER's body on screen after a save — for a section whose save the server
+ * completes (the immunisation record, whose entries get their ids there). `opts.onSaved` runs after
+ * the cache holds the new row (the Child tab re-reads its computed growth and timetable).
+ */
+export function useSection<T>(
+  encounterId: string, key: SectionKey, data: WireVisitSections | undefined, empty: () => T, leaseBody: () => Record<string, string>,
+  opts: { adopt?: boolean; onSaved?: () => void } = {},
+) {
   const qc = useQueryClient();
   const [value, setValue] = useState<T>(empty);
   const loaded = useRef<string | null>(null);
@@ -71,12 +123,14 @@ function useSection<T>(encounterId: string, key: SectionKey, data: WireVisitSect
     */
     onSuccess: (r, sent) => {
       loaded.current = `${encounterId}:${r.record.recordId}`;
+      if (opts.adopt === true && r.record.body !== undefined) setValue({ ...empty(), ...(r.record.body as object) } as T);
       qc.setQueryData<WireVisitSections>(["opd", "sections", encounterId], (old) => old === undefined ? old : {
         ...old, records: { ...old.records, [key]: {
           body: r.record.body ?? sent, at: r.record.at, recordId: r.record.recordId,
           authorId: r.record.authorId ?? "", sectionVersion: r.record.sectionVersion ?? 1,
         } },
       });
+      opts.onSaved?.();
     },
   });
   const lastSent = useRef<string>("");
@@ -92,7 +146,7 @@ function useSection<T>(encounterId: string, key: SectionKey, data: WireVisitSect
   return { value, setValue, flush, save, savedAt: rec?.at ?? null, dirty };
 }
 
-function Status({ save, savedAt, testId }: { save: { isPending: boolean; isError: boolean; error: unknown }; savedAt: string | null; testId: string }): React.ReactElement {
+export function Status({ save, savedAt, testId }: { save: { isPending: boolean; isError: boolean; error: unknown }; savedAt: string | null; testId: string }): React.ReactElement {
   const { t } = useTranslation();
   const text = save.isPending ? t("opdEye.saving")
     : save.isError ? t("opdEye.saveFailed", { reason: save.error instanceof Error ? save.error.message : "" })

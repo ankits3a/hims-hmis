@@ -12,7 +12,11 @@ import { PatientPhoto } from "./patient-photo";
  * T13's walk-in open as well as this task's booking flow.
  */
 // PLAN 22c-A T4/DD4 — the picker is a display surface; every field here is display.
-export type PatientPickerHit = { id: string; uhid: string; name: string | null; administrativeGender: string; dob: string | null };
+export type PatientPickerHit = {
+  id: string; uhid: string; name: string | null; administrativeGender: string; dob: string | null;
+  /** DESK-FIXES D — the search row's mobile, carried rather than dropped; absent on a QR pick. */
+  phone?: string | null;
+};
 
 type SearchHit = {
   id: string; uhid: string; name: string; phone: string | null; administrativeGender: string;
@@ -123,7 +127,7 @@ export function PatientPicker(
           <button
             key={hit.id}
             type="button"
-            onClick={() => { pick({ id: hit.id, uhid: hit.uhid, name: hit.name, administrativeGender: hit.administrativeGender, dob: hit.dob }); }}
+            onClick={() => { pick({ id: hit.id, uhid: hit.uhid, name: hit.name, administrativeGender: hit.administrativeGender, dob: hit.dob, phone: hit.phone }); }}
             className="flex w-full items-center gap-2 rounded border p-1 text-left hover:bg-neutral-50"
           >
             {hit.hasPhoto ? (

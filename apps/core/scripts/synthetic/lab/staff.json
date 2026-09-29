@@ -16,6 +16,15 @@
     "why": "the second key of the two-key definition ceremony (dev-lab-standup SUPERINTENDENT)"
   },
   {
+    "username": "meena.front",
+    "fullName": "Meena Kapoor",
+    "roles": [
+      "front_office",
+      "cashier"
+    ],
+    "why": "the front desk: ruling 6 sends every lab walk-in here to be registered, and the family-on-one-mobile override lives here"
+  },
+  {
     "username": "anita.admin",
     "fullName": "Anita Menon",
     "roles": [

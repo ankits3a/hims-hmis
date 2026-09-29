@@ -6,7 +6,7 @@ import {
 import { PCPNDT_PERMISSIONS } from "../../../test/helpers/pcpndt";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import {
-  doseRegister, events, imagingBillDecisions, imagingDefinitions, imagingStudies, orderItems,
+  aerbLicences, doseRegister, events, imagingBillDecisions, imagingDefinitions, imagingStudies, orderItems,
   pcpndtFormF, resources,
 } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
@@ -607,10 +607,16 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
    * record of an offence, not a block on one. So the study's status and the device's occupancy are
    * both read afterwards, the A1 pattern this suite is built on.
    */
+  /**
+   * 18-S RS4 T2 moved the FIRST licence refusal to the booking, so a CT with no licence can no longer
+   * be booked at all. This case now proves what the console's check is still for: **a licence that
+   * lapses between the booking and the day.** The study is booked while the CT is licensed, and the
+   * licence is then ended before the technologist starts.
+   */
   it("18c T1: an ionising study cannot START on a machine with no AERB licence, and the CT stays free", async () => {
     fx.unregister();
     await truncateAll(db);
-    fx = await setupRadiologyFixture(db, { serviceDate: DAY, now: NOW, unlicensedModalities: ["ct"] });
+    fx = await setupRadiologyFixture(db, { serviceDate: DAY, now: NOW });
     const registry = new ModuleRegistry();
     registry.install({
       key: "pcpndt", title: "PCPNDT", menu: [], permissions: [...PCPNDT_PERMISSIONS], subscriptions: [],
@@ -621,6 +627,8 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     }
 
     const study = await readyStudy("CT-HEAD", "ct");
+    /** The licence lapses after the booking: it ended the day before the scan. */
+    await db.update(aerbLicences).set({ validTo: "2026-08-30" }).where(eq(aerbLicences.deviceResourceId, fx.devices.ct!));
     /**
      * `stat` clears DD12a's money gate, which runs BEFORE both statutory gates — so a routine
      * self-pay study is refused `payment_required` and the licence is never reached. That ordering

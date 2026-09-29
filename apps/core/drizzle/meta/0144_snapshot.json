@@ -1,5 +1,5 @@
 {
-  "id": "66e855fc-3d64-47d7-ac9d-2b79d277f1c4",
+  "id": "b28853fe-1171-45d3-980d-79dca5ae9606",
   "prevId": "4f3b43d5-02ee-4fbd-9dc5-88cf5b190c46",
   "version": "7",
   "dialect": "postgresql",
@@ -14491,6 +14491,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "aware_category": {
+          "name": "aware_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "antimicrobial_restricted": {
+          "name": "antimicrobial_restricted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -14599,6 +14612,10 @@
         "formulary_medicines_schedule_flag_ck": {
           "name": "formulary_medicines_schedule_flag_ck",
           "value": "\"formulary_medicines\".\"schedule_flag\" is null or \"formulary_medicines\".\"schedule_flag\" in ('H', 'H1', 'X', 'OTC')"
+        },
+        "formulary_medicines_aware_category_ck": {
+          "name": "formulary_medicines_aware_category_ck",
+          "value": "\"formulary_medicines\".\"aware_category\" is null or \"formulary_medicines\".\"aware_category\" in ('Access', 'Watch', 'Reserve')"
         }
       },
       "isRLSEnabled": false
@@ -21470,12 +21487,6 @@
         },
         "ledger_entry_id": {
           "name": "ledger_entry_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
           "type": "text",
           "primaryKey": false,
           "notNull": false

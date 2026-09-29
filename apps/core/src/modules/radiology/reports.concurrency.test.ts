@@ -132,8 +132,8 @@ describe("two radiologists amending one report (18a T8 A2)", () => {
       idemKey: `s${String(seq)}`, now: new Date(NOW.getTime() + seq * 25 * 3_600_000),
       slot: new Date(SLOT.getTime() + seq * 3_600_000),
     });
-    const a = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: study.studyId, body: { f: "a" } }));
-    const b = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: study.studyId, body: { f: "b" } }));
+    const a = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: study.studyId, body: { f: "a" }, impression: "Normal study." }));
+    const b = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: study.studyId, body: { f: "b" }, impression: "Normal study." }));
 
     const settled = await Promise.allSettled([
       withTx(db, (tx) => signReport(tx, fx.radiologist, { studyId: study.studyId, reportId: a.reportId, secondFactorAt: FRESH, now: NOW })),
