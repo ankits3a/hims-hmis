@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fmtIst } from "../lib/format";
+import { fmtIst, fmtRupees } from "../lib/format";
 import { radiologyErrorCode, radiologyErrorText } from "../lib/radiology-api";
 import {
-  COLLECTOR_ID_TYPES, COLLECTOR_KINDS, fetchReleaseRegister, handOverReport, markMediaPrinted, requestImagingMedia,
+  COLLECTOR_ID_TYPES, COLLECTOR_KINDS, askUnpaidRelease, fetchReleaseRegister, handOverReport, markMediaPrinted, requestImagingMedia,
 } from "../lib/radiology-release-api";
 import type { CollectorKind, WireReleaseRow } from "../lib/radiology-release-api";
 import { RadiologyStation } from "./radiology-station";
-import { Refusal, useNow } from "../components/radiology/imaging-counter";
+import { Refusal, SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
 
 /**
@@ -27,6 +27,12 @@ import { istDay } from "../components/radiology/desk-time";
  * says the OTP is not built. Film and CD per ruling 1: an X-ray includes one film; anything else is
  * charged at the billing counter under the tariff's `RAD-FILM` / `RAD-CD` — this screen composes no
  * money.
+ *
+ * 18-S RS9b T3 — **the patient's copy held for dues.** A self-pay report whose bill has dues shows
+ * "Held for dues ₹N" with the way out ("Collect at billing"); the dock's act waits. If the patient
+ * cannot pay today the desk ASKS the owner with a reason — only the owner releases a report unpaid
+ * (credit ruling 28 Sep), in the approvals inbox — and once granted the dock hands it over. The
+ * doctor's copy is never held, and the screen says so.
  */
 
 type Draft = {
@@ -52,6 +58,7 @@ export function RadiologyReports(): React.ReactElement {
   const [filmQty, setFilmQty] = useState(1);
   const [error, setError] = useState<{ code: string | null; message: string } | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [askReason, setAskReason] = useState("");
 
   const q = useQuery({ queryKey: ["radiology", "release"], queryFn: fetchReleaseRegister });
   const rows = useMemo(() => q.data?.rows ?? [], [q.data]);
@@ -60,7 +67,7 @@ export function RadiologyReports(): React.ReactElement {
   const fail = (e: unknown): void => { setError({ code: radiologyErrorCode(e), message: radiologyErrorText(e) }); };
   const take = (r: WireReleaseRow | null): void => {
     setSel(r?.reportId ?? null); setDraft({ ...EMPTY, kind: r?.bedsideLocation != null ? "ward_staff" : "patient" });
-    setError(null); setFilmQty(1);
+    setError(null); setFilmQty(1); setAskReason("");
   };
 
   const media = useMutation({
@@ -90,7 +97,15 @@ export function RadiologyReports(): React.ReactElement {
     onError: fail,
   });
 
-  const ready = inHand !== null && draftReady(draft) && !hand.isPending;
+  const ask = useMutation({
+    mutationFn: (row: WireReleaseRow) => askUnpaidRelease(row.reportId, askReason.trim()),
+    onSuccess: (_r, row) => { setDone(t("radiology.release.askedDone", { acc: row.accessionNo })); setError(null); setAskReason(""); refresh(); },
+    onError: fail,
+  });
+
+  /** Held and not (yet) released by the owner: the hand-over waits. */
+  const blocked = (r: WireReleaseRow | null): boolean => r?.hold != null && r.hold.release.state !== "granted";
+  const ready = inHand !== null && draftReady(draft) && !hand.isPending && !blocked(inHand);
   const dockRun = useRef<(() => void) | null>(null);
   dockRun.current = ready && inHand !== null ? () => hand.mutate(inHand) : null;
   useEffect(() => {
@@ -106,7 +121,11 @@ export function RadiologyReports(): React.ReactElement {
 
   const waiting = rows.filter((r) => r.needs.length > 0);
   const abnormal = rows.filter((r) => r.needs.includes("abnormal_uncollected"));
-  const needText = (r: WireReleaseRow): string => (r.needs.length === 0 ? "" : t(`radiology.release.need.${r.needs[0]}`));
+  const needText = (r: WireReleaseRow): string => {
+    if (r.needs.length === 0) return "";
+    if (r.needs[0] === "held_for_dues" && r.hold != null) return t("radiology.release.held", { amount: fmtRupees(r.hold.outstandingPaise) });
+    return t(`radiology.release.need.${r.needs[0]}`);
+  };
   const hoursSince = (iso: string): number => Math.max(0, Math.floor((now - new Date(iso).getTime()) / 3_600_000));
   const last = (r: WireReleaseRow) => r.handovers[r.handovers.length - 1];
 
@@ -150,6 +169,9 @@ export function RadiologyReports(): React.ReactElement {
       {inHand.bedsideLocation !== null && <span className="block text-xs">{inHand.bedsideLocation}</span>}
       <span className="block text-xs">{t(`radiology.release.doctor.${inHand.doctor}`)}</span>
       <span className="block text-xs">{inHand.notice === null ? t("radiology.release.noticeNone") : t("radiology.release.noticeState", { state: inHand.notice })}</span>
+      {inHand.hold != null && (
+        <b className="block text-xs text-amber-900" data-testid="lane-held">{t("radiology.release.held", { amount: fmtRupees(inHand.hold.outstandingPaise) })}</b>
+      )}
     </div>
   );
 
@@ -186,8 +208,40 @@ export function RadiologyReports(): React.ReactElement {
     </section>
   );
 
+  const hold = inHand?.hold ?? null;
+  const release = hold?.release ?? null;
+  const heldPanel = inHand === null || hold == null ? null : (
+    <div className="rounded border border-amber-300 bg-amber-50 p-3 space-y-2 text-amber-950" data-testid="held" data-release={release?.state}>
+      <h2 className="m-0 text-base font-semibold">{t("radiology.release.held", { amount: fmtRupees(hold.outstandingPaise) })}</h2>
+      <p className="m-0 text-sm">{t("radiology.release.heldBill", { bill: hold.invoiceNo })}</p>
+      {release?.state !== "granted" && <p className="m-0 text-sm"><SeatLink to="/billing/dues">{t("radiology.release.collectAtBilling")}</SeatLink></p>}
+      {release?.state === "pending" && <p className="m-0 text-sm" role="status">{t("radiology.release.askPending", { at: fmtIst(release.askedAt) })}</p>}
+      {release?.state === "granted" && <p className="m-0 text-sm font-semibold text-green-900" role="status">{t("radiology.release.askGranted", { amount: fmtRupees(hold.outstandingPaise) })}</p>}
+      {release?.state === "refused" && <p className="m-0 text-sm">{t("radiology.release.askRefused", { note: release.note ?? "—" })}</p>}
+      {(release?.state === "none" || release?.state === "refused") && (
+        <details className="text-sm" data-testid="ask-owner">
+          <summary className="cursor-pointer underline">{t("radiology.release.askOwner")}</summary>
+          <p className="m-0 mt-1 text-xs">{t("radiology.release.askRule")}</p>
+          <div className="mt-1 flex flex-wrap items-end gap-2">
+            <label className="flex min-w-0 flex-1 basis-56 flex-col text-xs">
+              {t("radiology.release.askReason")}
+              <input className="border bg-white px-2 py-1 text-sm" maxLength={500} value={askReason} onChange={(e) => setAskReason(e.target.value)} />
+            </label>
+            <button
+              type="button" className="rounded border border-amber-700 bg-white px-3 py-1 text-sm disabled:opacity-50"
+              disabled={askReason.trim().length < 4 || ask.isPending} onClick={() => ask.mutate(inHand)}
+            >
+              {t("radiology.release.askSend")}
+            </button>
+          </div>
+        </details>
+      )}
+    </div>
+  );
+
   const handover = inHand === null ? null : (
     <section className="space-y-3" data-testid="handover">
+      {heldPanel}
       <div className="rounded border bg-card p-3 space-y-2">
         <h2 className="tag m-0">{t("radiology.release.collector")}</h2>
         <div role="radiogroup" aria-label={t("radiology.release.collector")} className="flex flex-wrap gap-2">
@@ -279,7 +333,7 @@ export function RadiologyReports(): React.ReactElement {
       </label>
       {error !== null && <Refusal code={error.code} message={error.message} />}
       <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center gap-3 rounded border bg-card p-3 shadow-sm" data-testid="release-dock">
-        <span className="min-w-0 basis-full text-xs text-muted-foreground sm:flex-1 sm:basis-auto">{ready ? t("radiology.release.dockHint") : t("radiology.release.dockWait")}</span>
+        <span className="min-w-0 basis-full text-xs text-muted-foreground sm:flex-1 sm:basis-auto">{blocked(inHand) && hold != null ? t("radiology.release.dockHeld", { amount: fmtRupees(hold.outstandingPaise) }) : ready ? t("radiology.release.dockHint") : t("radiology.release.dockWait")}</span>
         <button type="button" className="px-2 text-sm underline" onClick={() => take(null)}>{t("radiology.release.back")}</button>
         <button
           type="button" data-testid="dock-act" className="rounded bg-green-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"

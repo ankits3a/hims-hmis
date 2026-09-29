@@ -351,6 +351,7 @@ describe("the words behind the screen", () => {
     "lab_release_unpaid", "patient_merge", "patient_unmerge", "materials_stock_adjustment",
     "materials_near_expiry_acceptance", "materials_vendor_bank_change", "materials_po_approval", "materials_po_approval_owner", "materials_payment_run_approval",
     "imaging_definition_publish",
+    "imaging_release_unpaid_owner", // 18-S RS9b — a held imaging report released unpaid (the owner's)
     "ot_definition_publish", "ot_deposit_exception", "tariff_revision", "membership_grace_honor",
     "pharmacy_restricted_antimicrobial", // pharmacy stage D5 — the antimicrobial steward's
   ];

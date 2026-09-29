@@ -466,6 +466,11 @@
         "label": "Restricted antimicrobial",
         "ask": "Approve a restricted antimicrobial for {{patient}}",
         "explain": "The pharmacy may hand this Reserve or restricted antibiotic over for this prescription. You may not approve a prescription you wrote yourself."
+      },
+      "imaging_release_unpaid_owner": {
+        "label": "Hand over an unpaid imaging report",
+        "ask": "Release {{patient}}'s imaging report with {{amount}} still unpaid",
+        "explain": "The patient's copy leaves before the money — that is credit, and only you approve it. The amount stays owed; the doctor already has the report."
       }
     },
     "openRun": "Open the run",
@@ -3813,7 +3818,8 @@
         "media_to_print": "Film or CD to print",
         "media_to_hand": "Film or CD printed, not handed over",
         "notice_not_sent": "No patient notice recorded",
-        "not_collected": "Not collected yet"
+        "not_collected": "Not collected yet",
+        "held_for_dues": "Held for dues — collect at billing"
       },
       "collector": "Who is collecting",
       "kind": {
@@ -3874,14 +3880,27 @@
       "back": "Back to the register",
       "handOver": "Hand over",
       "handedDone": "Handed over and logged: {{name}} · {{acc}}.",
-      "rules": "Reports go to the patient, or to someone the patient names. The printed report carries the signing radiologist's name, qualification and council number; referring doctors print as a Doctor ID only."
+      "rules": "Reports go to the patient, or to someone the patient names. The printed report carries the signing radiologist's name, qualification and council number; referring doctors print as a Doctor ID only.",
+      "held": "Held for dues {{amount}}",
+      "heldBill": "Bill {{bill}} · the patient's copy is handed over once it is paid. The doctor's copy is not held.",
+      "collectAtBilling": "Collect at billing",
+      "askOwner": "Ask the owner to release unpaid",
+      "askReason": "Why the patient cannot pay today",
+      "askSend": "Ask the owner",
+      "askRule": "Only the owner releases a report unpaid. The amount stays owed.",
+      "askPending": "Asked the owner at {{at}} — waiting for the answer.",
+      "askGranted": "The owner released this report unpaid — hand it over. {{amount}} stays owed.",
+      "askRefused": "The owner did not release it unpaid: {{note}}",
+      "askedDone": "Asked the owner to release {{acc}} unpaid.",
+      "dockHeld": "Held for dues {{amount}} — send the patient to billing, or ask the owner."
     },
     "counter": {
       "fix": {
         "licence": "Radiation safety files the licence — open licences",
         "down": "The machine is out of service — open the diary to move its bookings",
         "diary": "Open the diary to find a free time",
-        "bill": "Go to the Bill step"
+        "bill": "Go to the Bill step",
+        "dues": "Collect the dues at billing"
       },
       "state": {
         "toBook": "to book",
