@@ -726,6 +726,36 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J1 last hops, J4 release, J9 doctor hop.
 - Migration: delivery columns.
 
+**RS9 spike** (read on main `583db9ff`, 29 Sep, before any code):
+- **(a) `imaging_report_delivery`** is one row per REPORT VERSION (`report_ux`), holding `first_read_at/by`
+  and `unread_chased_at` only (18a-iii T5: the report row is append-only by trigger 0047, so its delivery
+  is a separate, mutable object). Two writers: `reportView` (`read.ts`) stamps first read for **any**
+  holder of `radiology.reports.read` who is not the signer — the radiographer holds it, so a technologist
+  opening the report silences the 24 h Unread Watchman exactly as the treating doctor would; and the
+  Watchman (`chasers.ts`) upserts `unread_chased_at`. Nothing records acted-upon.
+- **(b) Where the treating doctor reads imaging today.** The consult's "Since then" brief
+  (`lib/brief-history.ts` → `GET /radiology/reports/patient/:id`, `patient-reports.ts`) — impression,
+  critical category and signed time only, and it writes **no** first read. The full report
+  (`GET /radiology/reports/:id`, the one first-read writer) has one web caller, the department's own
+  `radiology-report.tsx`. So in practice first read is written by the department, not the doctor. The
+  critical acknowledge route (`POST /radiology/criticals/:id/acknowledge`) needs `radiology.criticals.ack`,
+  which only `radiologist` holds — the doctor cannot call it; `acknowledgeCritical` already records the
+  clinician who read back separately from the actor (F76). RS2's consult panel places orders only.
+- **(c) The lab's hand-over.** `lab_report_deliveries` rows (channel `print | whatsapp | in_person |
+  doctor_screen`, a free-text `collector_identity` required for a physical hand-over, an `approval_id` for
+  an unpaid release). 17-F F8's collector type / relation columns and the patient OTP are **not built**
+  ("blocked by the owner: read receipts and patient OTP need a real provider"). There is no OTP service
+  for patients anywhere on main (ABHA's OTP is ABDM's, for ABHA only). Imaging reuses the SHAPE (a
+  register of physical hand-overs, collector named) with typed collector columns, and defers the OTP.
+- **(d) Notify.** `imaging_report_ready` already exists (18a T2) and `publishReport` already enqueues it in
+  the publish transaction (`notifyIfDue`): token-only (order number, no study, no link — there is no
+  patient-facing link on main, the lab's twin has none either), EN + HI, 72 h expiry, `transactional`,
+  enqueued only when the invoice is settled or the report is RED critical, and a failed enqueue never
+  fails the publish. Consent: `transactional` needs no opt-in; a patient's STOP suppresses every patient
+  message at the pump (`opted_out`, P6), deceased suppresses. Other patient kinds on main:
+  `patient_lab_report_ready`, `imaging_appointment_booked` (RS3), OPD appointment/refill families. The
+  WhatsApp adapter is not on main: rows are RECORDED, never claimed sent.
+
 ### RS10 · Supervisor & HOD
 - **Core:**
   - `GET radiology/supervisor/floor`: pipeline by stage with the oldest wait, rooms, readers' load, turnaround median
