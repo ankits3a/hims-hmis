@@ -25,7 +25,7 @@ import type { EncounterRow } from "./encounters";
  * DECIDED 2026-09-25 (planner) — THE SCOPE OF THIS SLICE:
  *   · A SECTION is a consult tab (`opd-consult.tsx` TabStrip). `summary` is not one: it is always
  *     first and always shown. `eye` exists only where the department's engine profile names eye
- *     sections (sections.ts `PROFILES`).
+ *     sections (sections.ts `PROFILES`); `paeds` (the Child tab) likewise where it names paediatric ones.
  *   · Five sections are LOCKED — mandatory and shown for everyone, the admin included: complaints,
  *     vitals, examination, diagnosis, Rx (the board's own mandatory rows). The admin may make any
  *     other section mandatory too.
@@ -39,13 +39,13 @@ import type { EncounterRow } from "./encounters";
  */
 
 /** Every configurable section, in today's consult order — the base layout when no admin has saved one. */
-export const LAYOUT_SECTIONS = ["vitals", "eye", "complaints", "exam", "dx", "inv", "rx", "treat", "advice", "notes"] as const;
+export const LAYOUT_SECTIONS = ["vitals", "eye", "paeds", "complaints", "exam", "dx", "inv", "rx", "treat", "advice", "notes"] as const;
 export type LayoutSection = (typeof LAYOUT_SECTIONS)[number];
 /** Mandatory and shown for everyone. Nobody — not the admin — can hide or relax these. */
 export const LOCKED_SECTIONS: readonly LayoutSection[] = ["complaints", "vitals", "exam", "dx", "rx"];
 /** English names for the audit summary. The screen renders the structured changes in its own language. */
 export const SECTION_NAMES: Record<LayoutSection, string> = {
-  vitals: "Vitals", eye: "Eye", complaints: "Complaints", exam: "Examination", dx: "Diagnosis",
+  vitals: "Vitals", eye: "Eye", paeds: "Child", complaints: "Complaints", exam: "Examination", dx: "Diagnosis",
   inv: "Investigations", rx: "Rx", treat: "Treatment", advice: "Advice", notes: "Notes",
 };
 
@@ -57,9 +57,12 @@ export type ResolvedSection = { key: LayoutSection; mandatory: boolean };
 const isLocked = (k: LayoutSection): boolean => LOCKED_SECTIONS.includes(k);
 const named = (k: string): string => SECTION_NAMES[k as LayoutSection] ?? k;
 
-/** The sections a department's consult can have: every one, less `eye` where its profile has none. */
-export function catalogFor(hasEye: boolean): LayoutSection[] {
-  return LAYOUT_SECTIONS.filter((k) => k !== "eye" || hasEye);
+/**
+ * The sections a department's consult can have: every one, less `eye` where its profile has no eye
+ * sections and less `paeds` (the Child tab, §6.2) where it has no paediatric ones.
+ */
+export function catalogFor(hasEye: boolean, hasPaeds = false): LayoutSection[] {
+  return LAYOUT_SECTIONS.filter((k) => (k !== "eye" || hasEye) && (k !== "paeds" || hasPaeds));
 }
 
 /** No admin has saved: today's order, everything shown, the locked five mandatory. */
@@ -232,8 +235,8 @@ async function departmentOf(db: Db | Tx, departmentId: string): Promise<{ id: st
   const [d] = await db.select({ id: opdDepartments.id, name: opdDepartments.name, code: opdDepartments.code })
     .from(opdDepartments).where(eq(opdDepartments.id, departmentId));
   if (d === undefined) throw new OpdError("unknown_department", `unknown department ${departmentId}`);
-  const hasEye = (PROFILES[d.code]?.sections ?? []).some((k) => k.startsWith("eye."));
-  return { id: d.id, name: d.name, catalog: catalogFor(hasEye) };
+  const keys = PROFILES[d.code]?.sections ?? [];
+  return { id: d.id, name: d.name, catalog: catalogFor(keys.some((k) => k.startsWith("eye.")), keys.some((k) => k.startsWith("paeds."))) };
 }
 
 const scopeIs = (departmentId: string, doctorId: string | null) => and(

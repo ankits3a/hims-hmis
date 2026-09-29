@@ -75,6 +75,8 @@ export const radiologyManifest: ModuleManifest = {
   menu: [
     { label: "Imaging reception", path: "/radiology/reception", permission: "radiology.schedule" },
     { label: "Imaging worklist", path: "/radiology/worklist", permission: "radiology.worklist.read" },
+    // 18-S RS2b — the technologist's portable round (the beds the trolley goes to).
+    { label: "Portable round", path: "/radiology/portable", permission: "radiology.acquire" },
   ],
   permissions: [
     "radiology.orders.place",

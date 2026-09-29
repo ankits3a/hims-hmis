@@ -205,6 +205,24 @@ export const formularyMedicines = pgTable(
     sourceRef: text("source_ref"),
     /** Provenance back-link, not a foreign key — see the header. */
     stagingId: text("staging_id"),
+    /**
+     * ═══ PHARMACY STAGE D5 — THE WHO AWaRe CLASS OF THIS PRODUCT (null = not an antibiotic, or not classified) ═══
+     *
+     * `Access` / `Watch` / `Reserve`, the WHO AWaRe classification of antibiotics (2023, WHO/MHP/HPS/EML/2023.04).
+     * On the PRODUCT, not the moiety: AWaRe classifies combinations as their own entries (ceftazidime alone is
+     * Watch, ceftazidime-avibactam is Reserve) and some by route (fosfomycin IV is Reserve, oral is Watch), and a
+     * moiety row carries neither. `seed:pharmacy` fills it from the cited list in
+     * `modules/formulary/aware.ts` by the product's moiety set and form, ONLY where it is still null — a value a
+     * pharmacist set under `formulary.manage` is never overwritten.
+     */
+    awareCategory: text("aware_category"),
+    /**
+     * STAGE D5 — "restricted: needs the antimicrobial steward's approval". A line carrying such a product does not
+     * pass verify or hand-over without a GRANTED `pharmacy_restricted_antimicrobial` approval bound to that
+     * dispense and moiety set (ICMR AMSP 2018: Reserve and restricted agents need prior authorisation). The seed
+     * starts every Reserve product and every carbapenem restricted; it only ever RAISES this flag, never lowers it.
+     */
+    antimicrobialRestricted: boolean("antimicrobial_restricted").notNull().default(false),
     active: boolean("active").notNull().default(true),
     ...auditColumns,
   },
@@ -225,6 +243,10 @@ export const formularyMedicines = pgTable(
     check(
       "formulary_medicines_schedule_flag_ck",
       sql`${t.scheduleFlag} is null or ${t.scheduleFlag} in ('H', 'H1', 'X', 'OTC')`,
+    ),
+    check(
+      "formulary_medicines_aware_category_ck",
+      sql`${t.awareCategory} is null or ${t.awareCategory} in ('Access', 'Watch', 'Reserve')`,
     ),
   ],
 );

@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  checkInStudy, fetchWorklist, radiologyErrorText, scheduleStudy, walkIn,
+  checkInStudy, fetchImagingDevices, fetchWorklist, radiologyErrorText, scheduleStudy, walkIn,
 } from "../lib/radiology-api";
+import type { WireImagingDevice } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
 import { RadiologyStation } from "./radiology-station";
+import { ImagingDeskDoor } from "../components/radiology/imaging-desk-door";
 
 /**
  * PLAN 18a T9 — **IMAGING RECEPTION: the desk that books the scan and checks the patient in.**
@@ -26,16 +28,51 @@ export function RadiologyReception(): React.ReactElement {
   const qc = useQueryClient();
   const [deviceResourceId, setDeviceResourceId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [bedside, setBedside] = useState("");
+  const bedsideId = useId();
+  const [bedStuck, setBedStuck] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opened, setOpened] = useState<{ studyId: string; gates: string[] } | null>(null);
 
   const q = useQuery({ queryKey: ["radiology", "worklist", "floor"], queryFn: () => fetchWorklist("floor") });
+  /**
+   * 18-S RS2b — the machines, as the counter knows them. Replaces the free-text device id: nobody at
+   * a desk can know a ULID. `portable` and `licensedNow` are the server's facts, only rendered here.
+   */
+  const devicesQ = useQuery({ queryKey: ["radiology", "devices"], queryFn: fetchImagingDevices });
+  const devices: WireImagingDevice[] = devicesQ.data?.devices ?? [];
+  const chosen = devices.find((d) => d.id === deviceResourceId);
+  const deviceLabel = (d: WireImagingDevice): string => [
+    d.code, d.name, d.room,
+    d.portable ? t("radiology.reception.portable") : null,
+    d.ionising && d.licensedNow === false ? t("radiology.reception.notLicensed") : null,
+    d.status === "available" || d.status === "in_use" ? null : d.status,
+  ].filter((part): part is string => part !== null && part !== "").join(" · ");
   const refresh = () => qc.invalidateQueries({ queryKey: ["radiology", "worklist"] });
 
   const book = useMutation({
-    mutationFn: (studyId: string) => scheduleStudy(studyId, { deviceResourceId, scheduledAt }),
-    onSuccess: () => { setError(null); void refresh(); },
-    onError: (e) => { setError(radiologyErrorText(e)); },
+    /**
+     * 18-S RS2b — a portable machine sends the ward and bed as `bedsideLocation`; a department
+     * machine sends none, so a study already carrying a place is refused `device_not_portable` by
+     * the server rather than silently moved.
+     */
+    mutationFn: ({ studyId, clearBed }: { studyId: string; clearBed?: boolean }) => scheduleStudy(studyId, {
+      deviceResourceId, scheduledAt,
+      ...(clearBed === true
+        ? { bedsideLocation: null }
+        : chosen?.portable === true && bedside.trim() !== "" ? { bedsideLocation: bedside.trim() } : {}),
+    }),
+    onSuccess: () => { setError(null); setBedStuck(null); void refresh(); },
+    onError: (e, vars) => {
+      setError(radiologyErrorText(e));
+      /**
+       * The study carries a ward and bed and this machine cannot go there. The recovery the server
+       * names is "clear the bedside location and bring the patient to the department" — so the desk
+       * gets that act, explicitly, rather than a silent clear on every department booking.
+       */
+      const code = (e as { body?: { code?: string } } | undefined)?.body?.code;
+      setBedStuck(code === "device_not_portable" ? vars.studyId : null);
+    },
   });
   const walk = useMutation({
     mutationFn: (studyId: string) => walkIn(studyId),
@@ -65,7 +102,7 @@ export function RadiologyReception(): React.ReactElement {
           </div>
           <div className="text-xs text-muted-foreground">{r.studyTypeCode} · {r.status}</div>
           <div className="mt-2 flex flex-wrap gap-1">
-            <Button size="sm" onClick={() => { book.mutate(r.studyId); }}>{t("radiology.reception.book")}</Button>
+            <Button size="sm" onClick={() => { book.mutate({ studyId: r.studyId }); }}>{t("radiology.reception.book")}</Button>
             <Button size="sm" variant="outline" onClick={() => { walk.mutate(r.studyId); }}>
               {t("radiology.reception.walkIn")}
             </Button>
@@ -91,14 +128,19 @@ export function RadiologyReception(): React.ReactElement {
       list={queue}
     >
     <div className="space-y-4">
+      {/* PLAN 18-S RS2 — the ordering door sits at the top of the centre (18a-iv D1); its own file. */}
+      <ImagingDeskDoor />
 
       <div className="flex flex-wrap gap-2 items-end">
-        <label className="flex flex-col text-sm">
+        <label className="flex min-w-0 flex-col text-sm">
           {t("radiology.reception.device")}
-          <input
-            className="border px-2 py-1" value={deviceResourceId}
+          <select
+            className="max-w-full border px-2 py-1" value={deviceResourceId}
             onChange={(e) => { setDeviceResourceId(e.target.value); }}
-          />
+          >
+            <option value="">{t("radiology.reception.devicePick")}</option>
+            {devices.map((d) => <option key={d.id} value={d.id}>{deviceLabel(d)}</option>)}
+          </select>
         </label>
         <label className="flex flex-col text-sm">
           {t("radiology.reception.slot")}
@@ -109,7 +151,30 @@ export function RadiologyReception(): React.ReactElement {
         </label>
       </div>
 
+      {chosen?.portable === true
+        ? (
+          <div className="flex max-w-md flex-col text-sm">
+            <label htmlFor={bedsideId}>{t("radiology.reception.bedside")}</label>
+            <input
+              id={bedsideId} aria-describedby={`${bedsideId}-hint`}
+              className="border px-2 py-1" value={bedside} maxLength={120}
+              placeholder={t("radiology.reception.bedsidePlaceholder")}
+              onChange={(e) => { setBedside(e.target.value); }}
+            />
+            <span id={`${bedsideId}-hint`} className="text-xs text-muted-foreground">{t("radiology.reception.bedsideHint")}</span>
+          </div>
+        )
+        : null}
+
+      {devicesQ.isError ? <p className="text-red-600" data-testid="devices-error">{radiologyErrorText(devicesQ.error)}</p> : null}
       {error !== null ? <p role="alert" className="text-red-600">{error}</p> : null}
+      {bedStuck !== null
+        ? (
+          <Button variant="outline" onClick={() => { book.mutate({ studyId: bedStuck, clearBed: true }); }}>
+            {t("radiology.reception.clearBed")}
+          </Button>
+        )
+        : null}
 
       {/**
         * The gate set, shown the moment it opens. The desk can say "we still need your creatinine"

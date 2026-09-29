@@ -5,7 +5,7 @@ import { createResource } from "../src/kernel/resources/registry";
 import { createService } from "../src/modules/tariff";
 import { resources, services } from "../src/kernel/db/schema";
 import {
-  IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, STUDY_TYPE_SEEDS, activateSeededDefinition,
+  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, STUDY_TYPE_SEEDS, activateSeededDefinition,
   activeDefinitionRow, draftDefinition, registerRadiologyApprovalTypes,
 } from "../src/modules/radiology";
 import type { Actor } from "@hmis/contracts";
@@ -17,8 +17,8 @@ import type { StudyType } from "../src/modules/radiology";
  *
  * ═══ WHAT IT DOES, AND THE ONE THING IT DELIBERATELY DOES NOT ═══
  *
- * It creates the tariff services the twenty study types bind to, the five `device` resources the
- * scheduler books onto, and — **only when no book is active yet** — it drafts and activates the
+ * It creates the tariff services the twenty study types bind to, the seven `device` resources the
+ * scheduler books onto (five department machines and, since 18-S RS2b, two portables), and — **only when no book is active yet** — it drafts and activates the
  * `study_types` definition. On every later run it leaves the active book untouched and says so; see
  * the block above that check for why a re-run must never supersede one.
  *
@@ -76,12 +76,39 @@ import type { StudyType } from "../src/modules/radiology";
  * than duplicating. `seed:roles`' own posture.
  */
 
-const MODALITY_MACHINES: { modality: (typeof IMAGING_MODALITIES)[number]; code: string; name: string }[] = [
+type MachineSpec = {
+  modality: (typeof IMAGING_MODALITIES)[number];
+  code: string;
+  name: string;
+  /** 18-S RS2b — the machine goes to the bed. Written as `attributes.portable = true` and nothing else. */
+  portable?: true;
+};
+
+const MODALITY_MACHINES: MachineSpec[] = [
   { modality: "xray", code: "XR-1", name: "X-ray room 1" },
   { modality: "usg", code: "USG-1", name: "Ultrasound room 1" },
   { modality: "ct", code: "CT-1", name: "CT scanner" },
   { modality: "mri", code: "MRI-1", name: "MRI scanner" },
   { modality: "mammography", code: "MMG-1", name: "Mammography unit" },
+  /**
+   * ═══ 18-S RS2b — THE TWO MACHINES THAT GO TO THE BED ═══
+   *
+   * 18a-iii T3 built the bedside study (`imaging_studies.bedside_location`, `resolveBedside`) and
+   * nothing in the product wrote `attributes.portable`, so every bedside booking was refused
+   * `device_not_portable` — the commissioning walk's F2: *"the bedside study is unreachable TWICE:
+   * no caller, and nothing writes attributes.portable"*. These two rows are the writer.
+   *
+   * **No AERB licence is seeded for PX-1, on purpose.** A portable X-ray emits ionising radiation
+   * and may not be operated without its own licence; a seeded placeholder would be the hospital
+   * claiming paper it does not hold. So PX-1 sits in `GET /aerb/licences/gaps` (and the standup
+   * check's `radiology_devices_licensed` row stays red) until the RSO files the real certificate —
+   * `radiology-go-live.md` says so. USG-P1 needs no AERB licence; it needs its PCPNDT machine entry.
+   *
+   * Find-or-create by code like every machine above: a re-run never rewrites an existing row's
+   * attributes, so a hospital that re-configured PX-1 by hand keeps what it set.
+   */
+  { modality: "xray", code: "PX-1", name: "Portable X-ray", portable: true },
+  { modality: "usg", code: "USG-P1", name: "Portable ultrasound", portable: true },
 ];
 
 /** The actor a seed runs as. Named so an audit row says which script wrote the row. */
@@ -126,7 +153,7 @@ async function ensureService(db: Db, code: string, name: string): Promise<string
 
 async function ensureDevice(
   db: Db,
-  spec: { modality: string; code: string; name: string },
+  spec: MachineSpec,
 ): Promise<{ resourceId: string; created: boolean }> {
   const existing = await db.select({ id: resources.id })
     .from(resources)
@@ -136,7 +163,8 @@ async function ensureDevice(
     kind: "device",
     code: spec.code,
     name: spec.name,
-    attributes: { modality: spec.modality },
+    attributes: spec.portable
+      ? { modality: spec.modality, [DEVICE_PORTABLE_ATTRIBUTE]: true } : { modality: spec.modality },
   }));
   return { resourceId, created: true };
 }
