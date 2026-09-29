@@ -6,6 +6,7 @@ import { fetchItems, materialsErrorText } from "../../lib/materials-api";
 import { csvRupees, downloadCsv, toCsv } from "../../lib/payables-api";
 import { printInFrame } from "../../lib/print-api";
 import { rupees } from "../../lib/purchase-api";
+import { money, printReport } from "../../lib/reports-api";
 import {
   EXPIRY_PRESETS, RECALL_SOURCES, approveReturn, cancelCredit, cancelReturn, closeRecall, closeReturn, dispatchReturn, draftReturns,
   fetchDebitNote, fetchExpiryReport, fetchManifest, fetchOfficeReturns, fetchRecall, fetchRecallBatches, fetchReturn, fetchReturnPlan,
@@ -230,7 +231,8 @@ async function print(fetchDoc: () => Promise<Parameters<typeof printInFrame>[0]>
 /**
  * THE EXPIRY REPORT (Healthray s13/s14): a preset or a custom range, Item-wise or Supplier-wise; qty
  * in packs and base units, MRP, cost value, the supplier (OPENING / TRIAL stock shown as such), the
- * last day it may go back, and the return or write-off raised for it. CSV of the tab on screen.
+ * last day it may go back, and the return or write-off raised for it. CSV of the tab on screen, and
+ * Print (gap C): the same tab as A4, for the store's file or the vendor's rep.
  */
 function ExpirySheet({ initial, onClose, onReturn }: { initial: ExpiryPreset; onClose: () => void; onReturn: (id: string) => void }): React.ReactElement {
   const { t } = useTranslation();
@@ -258,6 +260,26 @@ function ExpirySheet({ initial, onClose, onReturn }: { initial: ExpiryPreset; on
         r.suppliers.map((s) => [kind(s), s.rows, s.qtyBase, csvRupees(s.costValuePaise), csvRupees(s.returnableValuePaise)]),
       ));
     }
+  };
+  const [printFailed, setPrintFailed] = useState(false);
+  const printNow = (): void => {
+    if (r === undefined) return;
+    const title = `${t("pharmacyOffice.returns.expiry.title")} · ${t(tab === "items" ? "pharmacyOffice.returns.expiry.itemWise" : "pharmacyOffice.returns.expiry.supplierWise")}`;
+    const range = r.from === null || r.to === null ? r.asOf : r.from === r.to ? r.from : `${r.from} – ${r.to}`;
+    const subtitle = `${t(`pharmacyOffice.returns.expiry.preset.${r.preset}`)} · ${range}`;
+    const ok = tab === "items"
+      ? printReport(title, subtitle,
+        ["Item", "Batch", "Expiry", "Days", "Store", "Qty", "MRP", "Cost value", "Supplier", "Returnable until", "Raised"],
+        r.rows.map((x) => [`${x.itemName} (${x.itemCode})`, x.batchNo, x.expiryDate, String(x.daysToExpiry), x.storeCode, qtyText(x.qtyBase, x.baseUom, x.pack),
+          x.mrpPaise === null ? "—" : `${money(x.mrpPaise)}/${x.mrpUom ?? ""}`, money(x.costValuePaise), kind(x), x.returnableUntil ?? "—", flag(x)]),
+        ["Total", "", "", "", "", "", "", money(r.costValuePaise), "", "", ""],
+        [false, false, false, true, false, true, true, true, false, false, false])
+      : printReport(title, subtitle,
+        ["Supplier", "Batches", "Qty (base)", "Cost value", "Returnable value"],
+        r.suppliers.map((s) => [kind(s), String(s.rows), String(s.qtyBase), money(s.costValuePaise), money(s.returnableValuePaise)]),
+        ["Total", String(r.rows.length), "", money(r.costValuePaise), money(r.suppliers.reduce((n, s) => n + s.returnableValuePaise, 0))],
+        [false, true, true, true, true]);
+    setPrintFailed(!ok);
   };
   const rowsTable = (rows: readonly WireExpiryRow[]): React.ReactElement => (
     <table className="w-full text-sm">
@@ -311,7 +333,9 @@ function ExpirySheet({ initial, onClose, onReturn }: { initial: ExpiryPreset; on
           <Button type="button" data-testid="expiry-tab-suppliers" variant={tab === "suppliers" ? "default" : "outline"} onClick={() => setTab("suppliers")}>{t("pharmacyOffice.returns.expiry.supplierWise")}</Button>
           <span className="flex-1 text-xs text-muted-foreground">{r === undefined ? "" : t("pharmacyOffice.returns.expiry.summary", { count: r.rows.length, amount: rupees(r.costValuePaise) })}</span>
           <Button type="button" variant="outline" onClick={exportCsv} disabled={r === undefined}>{t("pharmacyOffice.pay.csv")}</Button>
+          <Button type="button" variant="outline" data-testid="expiry-print" onClick={printNow} disabled={r === undefined || r.rows.length === 0}>{t("pharmacyOffice.reports.print")}</Button>
         </div>
+        {printFailed && <p role="alert" className="text-sm text-red-600">{t("pharmacyOffice.reports.printFailed")}</p>}
         {q.error !== null && <p role="alert" className="text-sm text-red-600">{materialsErrorText(q.error, t)}</p>}
         {r !== undefined && r.rows.length === 0 && <p className="text-muted-foreground">{t("pharmacyOffice.returns.expiry.none")}</p>}
         {r !== undefined && r.rows.length > 0 && (
