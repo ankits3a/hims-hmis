@@ -79,7 +79,17 @@ export async function startAcquisition(
   tx: Tx,
   actor: Actor,
   decls: readonly OrderKindDecl[],
-  input: { studyId: string; now?: Date },
+  input: {
+    studyId: string;
+    now?: Date;
+    /**
+     * 18-S RS6 — the bedside radiation checklist the technologist attests before a portable exposure
+     * (2 m clear, apron on whoever stays, no pregnant staff or patient in the bay), kept as the note
+     * on the `in_acquisition` transition — the study's own history, beside who started it and when.
+     * Recorded, not required: the gate model (and its refusals) is `gates.ts`'s, not this field's.
+     */
+    bedsideSafety?: string | null;
+  },
 ): Promise<StartAcquisitionResult> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
@@ -209,7 +219,8 @@ export async function startAcquisition(
     await advanceOrderItem(tx, actor, decls, study.orderItemId, "in_progress", {});
   }
 
-  await transition(tx, study.workflowInstanceId, "in_acquisition", actor);
+  const bedsideSafety = (input.bedsideSafety ?? "").trim();
+  await transition(tx, study.workflowInstanceId, "in_acquisition", actor, bedsideSafety === "" ? {} : { note: bedsideSafety });
   await tx.update(imagingStudies)
     .set({ status: "in_acquisition", acquisitionStartedAt: now, authorisedBy })
     .where(eq(imagingStudies.id, study.id));

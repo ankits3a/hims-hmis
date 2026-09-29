@@ -38,12 +38,15 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * routes, unchanged.
  */
 /**
- * F52 — DELIBERATELY EMPTY. The scan's IST calendar day used to arrive here and decide whether the
+ * F52 — NO DATE. The scan's IST calendar day used to arrive here and decide whether the
  * machine's PCPNDT registration was live. It is the server's now. The schema stays so the route
  * keeps refusing a body that is not an object, and so a client still sending `onDate` is not
- * silently believed.
+ * silently believed (`.strict()` still refuses it). RS6 adds the one field a start may carry.
  */
-const startBody = z.object({}).strict();
+const startBody = z.object({
+  /** 18-S RS6 — the bedside radiation checklist, as attested text; see `startAcquisition`. */
+  bedsideSafety: z.string().min(1).max(400).optional(),
+}).strict();
 
 const acquiredBody = z.object({
   imageSource: z.enum(["pacs", "no_pacs_images", "outside"]),
@@ -125,9 +128,11 @@ export class RadiologyAcquisitionController {
      * whose registration had lapsed, and the shipped console was sending the browser's UTC day,
      * which is yesterday for five and a half hours every night.
      */
-    parsed(startBody, body);
+    const input = parsed(startBody, body);
     try {
-      return await withTx(this.db, (tx) => startAcquisition(tx, actor, this.decls(), { studyId }));
+      return await withTx(this.db, (tx) => startAcquisition(tx, actor, this.decls(), {
+        studyId, bedsideSafety: input.bedsideSafety ?? null,
+      }));
     } catch (e) { toHttp(e); }
   }
 

@@ -9,6 +9,7 @@ import { withTx } from "../../kernel/db/client";
 import { approveRequest } from "../../kernel/approvals/decisions";
 import {
   doseRegister, events, imagingBillDecisions, imagingDefinitions, imagingStudies, opdEncounters, opdVitals,
+  workflowTransitions,
 } from "../../kernel/db/schema";
 import { addAllergy } from "../patients";
 import {
@@ -177,6 +178,27 @@ describe("modality rooms (18-S RS6)", () => {
 
     const room = await roomView(db, fx.radiographer, study.studyId, NOW);
     expect(room.repeats.map((r) => r.reason).sort()).toEqual(["motion", "positioning"]);
+  });
+
+  it("bedside: the radiation checklist the technologist attests is the note on the start transition", async () => {
+    const study = await placeAndCreateStudy(db, fx, "XR-CHEST", "b1", NOW);
+    await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, { studyId: study.studyId, deviceResourceId: fx.devices.xray!, scheduledAt: SLOT }));
+    const checked = await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: study.studyId, now: NOW }));
+    for (const kind of checked.gates) {
+      const gate = await requireStudyGate(db, study.studyId, kind);
+      const evidence: Record<string, unknown> = {
+        identity_two_factor: { secondIdentifier: "wristband", value: "HMS-00000001-5" },
+        pregnancy_screen: { declared: true, lmpDate: new Date(NOW.getTime() - 10 * 86_400_000).toISOString() },
+      };
+      await withTx(db, (tx) => satisfyGate(tx, fx.radiographer, gate.id, evidence[kind] ?? {}, NOW));
+    }
+    await withTx(db, (tx) => evaluateReadiness(tx, study.studyId));
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    const text = "Bedside radiation safety: 2 m clear; apron on staff who stay; no pregnant staff or patient in the bay";
+    await withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, { studyId: study.studyId, now: NOW, bedsideSafety: text }));
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    const notes = await db.select().from(workflowTransitions).where(eq(workflowTransitions.instanceId, row!.workflowInstanceId));
+    expect(notes.find((n) => n.toState === "in_acquisition")?.note).toBe(text);
   });
 
   /* ═════════════════════ the two reasons the console carries ═════════════════════ */

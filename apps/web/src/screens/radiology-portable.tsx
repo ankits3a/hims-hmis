@@ -1,10 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "@tanstack/react-router";
-import { fetchPortableRound, radiologyErrorText } from "../lib/radiology-api";
+import { checkInStudy, fetchPortableRound, radiologyErrorText } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
 import type { WireBedsideStudy } from "../lib/radiology-api";
+import { RoomConsole } from "../components/radiology/room-console";
 import { RadiologyStation } from "./radiology-station";
+import { PatientLane } from "./radiology-room";
 
 /**
  * PLAN 18-S RS2b — **THE PORTABLE ROUND: the beds the trolley goes to.**
@@ -14,9 +16,13 @@ import { RadiologyStation } from "./radiology-station";
  * first "·" or "," of the place ("Ward 3 · bed 12" → "Ward 3") — so the technologist walks one ward
  * at a time. The grouping is presentation; which rows exist and in what order is the server's.
  *
- * Each row opens the existing study console, where the gates, the acquisition and the dose are.
- * Nothing on this screen performs an act: there is no "arrived at bed" button (the owner's layout
- * rule — no button that only records presence).
+ * **18-S RS6 T3 — the round now works the bed where it stands.** A row opens the room console
+ * (`RoomConsole`, `mode="bedside"`) in the centre: Identify (wristband and name; the side), the
+ * bedside radiation checklist — 2 m clear, apron on whoever must stay, no pregnant staff or patient
+ * in the bay — attested as text on the start, then the protocol, the exposure, the dose and Send.
+ * Opening the bed IS arriving at it: a booked study is checked in by that act, and there is no
+ * "arrived at bed" button (the owner's layout rule — no button that only records presence). The
+ * study page stays one link away in the lane.
  *
  * The centre carries a plain note that ordering from the ward arrives with the IPD plan: today a
  * bedside study reaches this list because the imaging desk booked it with a ward and bed.
@@ -42,14 +48,27 @@ function slotText(iso: string | null): string {
 
 export function RadiologyPortable(): React.ReactElement {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+  const qc = useQueryClient();
   const q = useQuery({ queryKey: ["radiology", "portable", "round"], queryFn: fetchPortableRound });
   const rows = q.data?.rows ?? [];
   const groups = groupByWard(rows);
-  const open = (studyId: string) => {
-    void navigate({ to: "/radiology/studies/$studyId", params: { studyId } });
+  const [hand, setHand] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
+  /** Opening the bed is arriving at it: a booked study is checked in by that act, nothing more. */
+  const open = async (studyId: string): Promise<void> => {
+    setHand(studyId);
+    setSent(null);
+    setOpenError(null);
+    const r = rows.find((x) => x.studyId === studyId);
+    if (r?.status === "scheduled") {
+      try { await checkInStudy(studyId); } catch (e) { setOpenError(radiologyErrorText(e)); }
+      void qc.invalidateQueries({ queryKey: ["radiology", "gates", studyId] });
+      void qc.invalidateQueries({ queryKey: ["radiology", "room", studyId] });
+      void qc.invalidateQueries({ queryKey: ["radiology", "portable", "round"] });
+    }
   };
-  const next = rows[0];
+  const next = rows.find((r) => r.studyId !== hand);
 
   const list = (
     <div className="space-y-3" data-testid="portable-round">
@@ -63,8 +82,9 @@ export function RadiologyPortable(): React.ReactElement {
               <li key={r.studyId}>
                 <button
                   type="button" data-testid={`round-${r.studyId}`}
-                  className="w-full rounded border bg-card p-2 text-left text-sm hover:bg-muted"
-                  onClick={() => { open(r.studyId); }}
+                  aria-current={r.studyId === hand ? "true" : undefined}
+                  className={`w-full rounded border bg-card p-2 text-left text-sm hover:bg-muted ${r.studyId === hand ? "border-green-700" : ""}`}
+                  onClick={() => { void open(r.studyId); }}
                 >
                   <span className="flex justify-between gap-2">
                     <b className="truncate">{r.patientName}</b>
@@ -95,11 +115,28 @@ export function RadiologyPortable(): React.ReactElement {
         { label: t("radiology.station.stat"), value: rows.filter((r) => r.priority === "stat").length, tone: "danger" },
       ]}
       list={list}
+      lane={hand === null ? undefined : <PatientLane studyId={hand} onClear={() => setHand(null)} />}
+      inHand={hand !== null}
+      closeListOn={hand}
     >
       <div className="space-y-4">
         {q.isError ? <p role="alert" className="text-red-600">{radiologyErrorText(q.error)}</p> : null}
         {q.isPending ? <p>{t("common.loading")}</p> : null}
-        {next !== undefined
+        {openError !== null ? <p role="alert" className="text-red-600">{openError}</p> : null}
+        {sent !== null ? <p role="status" className="rounded border border-green-300 bg-green-50 p-2 text-sm" data-testid="bedside-sent">{t("radiology.room.sent", { acc: sent })}</p> : null}
+        {hand !== null
+          ? (
+            <RoomConsole
+              key={hand} studyId={hand} mode="bedside"
+              onDone={(acc) => {
+                setSent(acc);
+                setHand(null);
+                void qc.invalidateQueries({ queryKey: ["radiology", "portable", "round"] });
+              }}
+            />
+          )
+          : null}
+        {hand === null && next !== undefined
           ? (
             <div className="rounded border bg-card p-3" data-testid="portable-next">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">{t("radiology.portable.next")}</p>
@@ -107,7 +144,7 @@ export function RadiologyPortable(): React.ReactElement {
               <p className="text-sm">
                 {next.patientName} · {next.studyTypeCode} · {next.accessionNo} · {slotText(next.scheduledAt)}
               </p>
-              <Button className="mt-2" onClick={() => { open(next.studyId); }}>{t("radiology.portable.open")}</Button>
+              <Button className="mt-2" onClick={() => { void open(next.studyId); }}>{t("radiology.portable.open")}</Button>
             </div>
           )
           : null}
