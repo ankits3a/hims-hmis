@@ -148,9 +148,13 @@ export function RadiologyPortable(): React.ReactElement {
             </div>
           )
           : null}
-        <p className="rounded border border-dashed p-3 text-sm text-muted-foreground" data-testid="portable-ipd-note">
-          {t("radiology.portable.ipdNote")}
-        </p>
+        {hand === null
+          ? (
+            <p className="rounded border border-dashed p-3 text-sm text-muted-foreground" data-testid="portable-ipd-note">
+              {t("radiology.portable.ipdNote")}
+            </p>
+          )
+          : null}
       </div>
     </RadiologyStation>
   );

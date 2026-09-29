@@ -211,7 +211,9 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   let dock: { label: string; hint: string; run: (() => void) | null; danger?: boolean };
   if (v === undefined) dock = { label: t("common.loading"), hint: "", run: null };
   else if (step === "identify") {
-    dock = prepOpen.length > 0
+    dock = !bayClear
+      ? { label: t("radiology.room.dock.toProtocol"), hint: t("radiology.room.bedside.clearFirst"), run: null }
+      : prepOpen.length > 0
       ? { label: t("radiology.room.dock.toProtocol"), hint: t("radiology.room.dock.prepHold"), run: null }
       : !identified
       ? { label: t("radiology.room.dock.toProtocol"), hint: t("radiology.room.dock.identifyFirst"), run: null }
@@ -386,7 +388,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
                     </p>
                     <label className="flex flex-wrap items-center gap-2 pb-2 text-sm">
                       {t("radiology.room.protocol.weight")}
-                      <input className={`${field} mo w-24`} inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} data-testid="weight" />
+                      <input className="mo w-24 rounded border bg-background px-2 py-1 text-sm" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} data-testid="weight" />
                       <span data-testid="contrast-suggestion">
                         {suggestion === null ? t("radiology.room.protocol.needWeight") : t("radiology.room.protocol.suggest", { ml: suggestion })}
                       </span>
@@ -482,7 +484,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
                   )}
                   <Card testid="repeat-abort" title={t("radiology.room.repeat.title")}>
                     <div className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                      <select className={`${field} w-auto`} value={repeatReason} onChange={(e) => setRepeatReason(e.target.value as RepeatReason)} aria-label={t("radiology.room.repeat.reason")} data-testid="repeat-reason">
+                      <select className="rounded border bg-background px-2 py-1 text-sm" value={repeatReason} onChange={(e) => setRepeatReason(e.target.value as RepeatReason)} aria-label={t("radiology.room.repeat.reason")} data-testid="repeat-reason">
                         {REPEAT_REASONS.map((r) => <option key={r} value={r}>{t(`radiology.room.repeat.reasons.${r}`)}</option>)}
                       </select>
                       <button type="button" className="rounded border px-3 py-1" disabled={repeat.isPending} onClick={() => repeat.mutate()} data-testid="repeat">

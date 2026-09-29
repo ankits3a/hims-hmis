@@ -220,7 +220,7 @@ function ConsoleView({ views, picker, machine, studyId, devicesError }: {
       place={machine === null ? t("radiology.room.noMachine") : `${machine.code} · ${machine.name}${machine.room === null ? "" : ` · ${machine.room}`}`}
       stats={[
         { label: t("radiology.station.onList"), value: rows.length },
-        { label: t("radiology.station.stat"), value: rows.filter((r) => r.priority === "stat").length, tone: "danger" },
+        { label: t("radiology.station.stat"), value: rows.filter((r) => r.priority === "stat" && r.status !== "in_acquisition").length, tone: "danger" },
         { label: t("radiology.room.readyStat"), value: rows.filter((r) => r.status === "ready").length, tone: "live" },
       ]}
       lane={studyId === null ? undefined : <PatientLane studyId={studyId} onClear={clear} />}
@@ -343,7 +343,7 @@ function DoseView({ views, picker, machine }: { views: React.ReactNode; picker: 
       <div className="space-y-3" data-testid="dose-log">
         {picker}
         <label className="flex items-center gap-2 text-sm">{t("radiology.room.dose.day")}
-          <input type="date" className={`${field} w-auto`} value={day} onChange={(e) => setDay(e.target.value)} data-testid="dose-day" />
+          <input type="date" className="rounded border bg-background px-2 py-1 text-sm" value={day} onChange={(e) => setDay(e.target.value)} data-testid="dose-day" />
         </label>
         {q.isError && <p role="alert" className="text-sm text-red-700">{radiologyErrorText(q.error)}</p>}
         {!q.isPending && rows.length === 0 && <p className="text-sm text-muted-foreground">{t("radiology.room.dose.empty")}</p>}
