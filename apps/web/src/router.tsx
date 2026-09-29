@@ -72,6 +72,7 @@ import { RadiologyDiary } from "./screens/radiology-diary";
 import { RadiologyDisplay } from "./screens/radiology-display";
 import { RadiologySetup, SETUP_VIEWS } from "./screens/radiology-setup";
 import type { SetupView } from "./screens/radiology-setup";
+import { RadiologyPrep } from "./screens/radiology-prep";
 import { RadiologyUsg, USG_VIEWS } from "./screens/radiology-usg";
 import type { UsgView } from "./screens/radiology-usg";
 import { PcpndtFormF } from "./screens/pcpndt-form-f";
@@ -207,6 +208,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/radiology/diary", label: "nav.radiologyDiary", permission: "radiology.schedule", group: "opd" },
   { to: "/radiology/display", label: "nav.radiologyDisplay", permission: "radiology.display.read", group: "opd" },
   { to: "/radiology/setup", label: "nav.radiologySetup", permission: "radiology.devices.manage", group: "opd" },
+  // 18-S RS5 — the prep & safety bay; `radiologyManifest.menu` carries the same pair.
+  { to: "/radiology/prep", label: "nav.radiologyPrep", permission: "radiology.gates.satisfy", group: "opd" },
   // 18-S RS7 — the sonologist's room; `anyOf` shows it to the in-charge and technologist for its books.
   {
     to: "/radiology/usg", label: "nav.radiologyUsg", permission: "pcpndt.form_f.write", group: "opd",
@@ -1182,6 +1185,19 @@ const radiologySetupRoute = createRoute({
 });
 
 /**
+ * PLAN 18-S RS5 — the prep & safety bay. `?study=<id>` takes a study in hand (the study console's
+ * contrast link uses it for a patient already on the table, who is no longer in the bay's list).
+ */
+const radiologyPrepRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/prep",
+  component: RadiologyPrep,
+  validateSearch: (search: Record<string, unknown>): { study?: string } =>
+    typeof search.study === "string" && search.study !== "" ? { study: search.study } : {},
+  staticData: { fullViewport: true },
+});
+
+/**
  * PLAN 18-S RS7 — the Ultrasound & PCPNDT station: one route, four header views (`?view=`), each
  * behind its own grant on the server (room: Form F write; Form F register: Form F read; registration
  * and monthly return: registrations read).
@@ -1535,7 +1551,7 @@ export const router = createRouter({
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
       // count and joins this task's Files list, the S11 rule applied for the seventh time.
-      radiologyReceptionRoute, radiologyWorklistRoute, radiologyRoomRoute, radiologyReadingRoute, radiologyPortableRoute, radiologyDiaryRoute, radiologyDisplayRoute, radiologySetupRoute, radiologyUsgRoute, radiologyStudyRoute, radiologyReportRoute,
+      radiologyReceptionRoute, radiologyWorklistRoute, radiologyRoomRoute, radiologyReadingRoute, radiologyPortableRoute, radiologyDiaryRoute, radiologyDisplayRoute, radiologySetupRoute, radiologyUsgRoute, radiologyStudyRoute, radiologyReportRoute, radiologyPrepRoute,
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
