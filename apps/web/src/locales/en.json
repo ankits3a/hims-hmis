@@ -3759,7 +3759,8 @@
           "pregnancy_policy": "Pregnancy policy",
           "critical_categories": "Critical categories",
           "pacs_settings": "PACS settings",
-          "dose_reference_levels": "Dose reference levels"
+          "dose_reference_levels": "Dose reference levels",
+          "imaging_protocols": "Imaging protocols"
         }
       },
       "prices": {

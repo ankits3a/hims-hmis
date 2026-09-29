@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { setSetupDeviceStatus } from "./radiology-setup-api";
 import type { WireImagingDevice, WireWorklistRow } from "./radiology-api";
 
 /**
@@ -98,13 +99,10 @@ export const fetchDoseLog = (from: string, to: string) =>
   api<{ rows: WireDoseRow[] }>("GET", `/aerb/doses?from=${from}&to=${to}`);
 
 /**
- * "Report breakdown" — Setup's status write (18-S RS4, `radiology.devices.manage`), with its reason;
- * the answer names the booked studies the desk must move.
+ * "Report breakdown" is Setup's status write (18-S RS4, `radiology.devices.manage`), reused as-is:
+ * the reason is required and the answer names the booked studies the desk must move.
  */
-export const reportBreakdown = (deviceResourceId: string, reason: string) =>
-  api<{ from: string; to: string; studiesToMove: { studyId: string; accessionNo: string; studyTypeCode: string; status: string; scheduledAt: string | null }[] }>(
-    "POST", `/radiology/setup/devices/${encodeURIComponent(deviceResourceId)}/status`, { status: "down", reason },
-  );
+export const reportBreakdown = (deviceResourceId: string, reason: string) => setSetupDeviceStatus(deviceResourceId, "down", reason);
 
 export const resolveBillDecision = (id: string, resolution: string) =>
   api("POST", `/radiology/bill-decisions/${encodeURIComponent(id)}/resolve`, { resolution });

@@ -3759,7 +3759,8 @@
           "pregnancy_policy": "गर्भावस्था नीति",
           "critical_categories": "क्रिटिकल श्रेणियाँ",
           "pacs_settings": "PACS सेटिंग",
-          "dose_reference_levels": "डोज़ संदर्भ स्तर"
+          "dose_reference_levels": "डोज़ संदर्भ स्तर",
+          "imaging_protocols": "इमेजिंग प्रोटोकॉल"
         }
       },
       "prices": {
