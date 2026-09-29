@@ -5,7 +5,8 @@ import { createResource } from "../src/kernel/resources/registry";
 import { createService } from "../src/modules/tariff";
 import { resources, services } from "../src/kernel/db/schema";
 import {
-  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, STUDY_TYPE_SEEDS, activateSeededDefinition,
+  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_RULED_SERVICES, STUDY_TYPE_SEEDS,
+  activateSeededDefinition,
   activeDefinitionRow, draftDefinition, registerRadiologyApprovalTypes,
 } from "../src/modules/radiology";
 import type { Actor } from "@hmis/contracts";
@@ -171,6 +172,8 @@ async function ensureDevice(
 
 export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   services: number;
+  /** 18-S RS4 — ruling 1's film, CD and outside-read services, ensured (never priced here). */
+  ruledServices: number;
   devicesCreated: number;
   definitionId: string;
   version: number;
@@ -184,6 +187,22 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   const serviceIdByCode = new Map<string, string>();
   for (const seed of STUDY_TYPE_SEEDS) {
     serviceIdByCode.set(seed.service_code, await ensureService(db, seed.service_code, seed.name));
+  }
+
+  /**
+   * ═══ 18-S RS4 T3 — RULING 1's FOUR SERVICES: THE ROWS, NOT THE PRICES ═══
+   *
+   * Film per sheet, CD, and the two outside second-opinion reads. Same category as every study
+   * (`investigation`, ruling 2 — composite supply with the study). The ruled PRICES
+   * (`RADIOLOGY_RULED_SERVICES`) are NOT written: a price becomes chargeable only through a tariff
+   * revision the owner approves, and this script activating one would collapse that governance.
+   * The Setup station's Prices view shows ruled-vs-tariff, and `radiology-go-live.md` §5b is the
+   * step that enters them.
+   */
+  let ruledServices = 0;
+  for (const ruled of RADIOLOGY_RULED_SERVICES) {
+    await ensureService(db, ruled.code, ruled.name);
+    ruledServices += 1;
   }
 
   let devicesCreated = 0;
@@ -229,6 +248,7 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   if (active) {
     return {
       services: serviceIdByCode.size,
+      ruledServices,
       devicesCreated,
       definitionId: active.id,
       version: active.version,
@@ -242,6 +262,7 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
 
   return {
     services: serviceIdByCode.size,
+    ruledServices,
     devicesCreated,
     definitionId: drafted.definitionId,
     version: drafted.version,
@@ -253,7 +274,8 @@ async function main(): Promise<void> {
   const db = createDb(requireEnv("DATABASE_URL")).db;
   const result = await seedRadiology(db, registrarFromEnv());
   console.log(
-    `seed:radiology — ${String(result.services)} services ensured, `
+    `seed:radiology — ${String(result.services)} study services and ${String(result.ruledServices)} ruled `
+    + "(film, CD, outside reads — unpriced until the tariff revision) ensured, "
     + `${String(result.devicesCreated)} device(s) created, `
     + `study_types v${String(result.version)} ACTIVE as ${result.definitionId}.`,
   );

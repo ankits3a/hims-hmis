@@ -132,6 +132,21 @@ export const RADIOLOGY_ERROR_CODES = [
    * are at the wrong counter, and the message has to say which one.
    */
   "outside_study_only",
+  /**
+   * ── 18-S RS4 — the machine register (Setup) ──
+   *
+   * Five codes, because a person at the Setup station acts on each differently: a bad AE title is a
+   * typo to fix against the modality's own console, a duplicate is a clash with another machine that
+   * must be named, an unknown device is a stale screen, an invalid device is a form that asked for
+   * something the register cannot hold (a room that is not a room, a modality change on a machine
+   * with a history), and a locked status is a door that belongs to somebody else — a QA block is
+   * lifted only by a passing QA record in the AERB register, and a retired machine stays retired.
+   */
+  "invalid_ae_title",
+  "duplicate_ae_title",
+  "unknown_device",
+  "invalid_device",
+  "device_status_locked",
   // ── reports (T8) ──
   "second_factor_required",
   "laterality_mismatch",
@@ -202,6 +217,11 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   device_not_portable: 422,
   invalid_bedside_location: 422,
   outside_study_only: 422,
+  invalid_ae_title: 422,
+  duplicate_ae_title: 409,
+  unknown_device: 404,
+  invalid_device: 422,
+  device_status_locked: 409,
 
   second_factor_required: 403,
   laterality_mismatch: 422,

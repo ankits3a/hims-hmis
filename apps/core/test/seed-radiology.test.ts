@@ -3,7 +3,7 @@ import { mkUser } from "./helpers/opd";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { getApprovalType } from "../src/kernel/approvals/types";
 import { withTx } from "../src/kernel/db/client";
-import { aerbLicences, imagingDefinitions, resourceStatusHistory, resources } from "../src/kernel/db/schema";
+import { aerbLicences, imagingDefinitions, resourceStatusHistory, resources, services, tariffItems } from "../src/kernel/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE } from "../src/modules/radiology";
@@ -82,6 +82,22 @@ describe("seed:radiology — the department can be stood up on a fresh deploymen
     const active = await db.select().from(imagingDefinitions);
     expect(active).toHaveLength(1);
     expect(active[0]).toMatchObject({ kind: "study_types", status: "active", approvalId: null });
+  });
+
+  /**
+   * 18-S RS4 T3 — ruling 1's four services (film, CD, the two outside reads). The ROWS are seeded in
+   * category `investigation` (ruling 2); the PRICE is not, because a price becomes chargeable only
+   * through a tariff revision the owner approves — so no `tariff_items` row may name them.
+   */
+  it("ensures the four ruled services in the investigation category, unpriced, once", async () => {
+    const codes = ["RAD-2ND-CT-MR", "RAD-2ND-XR-US", "RAD-CD", "RAD-FILM"];
+    const first = await seedRadiology(db, admin);
+    expect(first.ruledServices).toBe(4);
+    await seedRadiology(db, admin);
+    const rows = await db.select().from(services).where(inArray(services.code, codes));
+    expect(rows.map((r) => [r.code, r.category]).sort()).toEqual(codes.map((c) => [c, "investigation"]));
+    expect(await db.select().from(tariffItems).where(inArray(tariffItems.serviceId, rows.map((r) => r.id))))
+      .toHaveLength(0);
   });
 
   it("is idempotent — a re-run after a partial failure completes and creates no second machine", async () => {

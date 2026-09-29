@@ -44,7 +44,7 @@ const actor: Actor = { type: "system", id: "seed" };
 const activator: Actor = { type: "user", id: "seed-tariff" };
 
 /**
- * CONFIG_A — the five GST category rows. Every rate/threshold is a DEV PLACEHOLDER — CA sign-off
+ * CONFIG_A — the GST category rows (five, the three medicine slabs, and 18-S RS4's `investigation`). Every rate/threshold is a DEV PLACEHOLDER — CA sign-off
  * required (§19). Exempt categories still carry their would-be `rateBps` deliberately (D4/§3.14
  * defence: "exempt flag honoured" reads differently from "rate happens to be zero").
  */
@@ -62,6 +62,23 @@ const GST_CATEGORIES = [
     sacCode: "999312", // DEV PLACEHOLDER — CA sign-off required (§19)
     exempt: true, // DEV PLACEHOLDER — CA sign-off required (§19)
     rateBps: 1800, // DEV PLACEHOLDER — CA sign-off required (§19): would-be rate, category is exempt
+    specialRule: null,
+    thresholdPaise: null,
+  },
+  /**
+   * 18-S RS4 — ruling 2 (owner delegation, 28 Sep): imaging and laboratory investigations performed
+   * by the hospital are exempt healthcare — SAC 9993, Notification 12/2017-CT(R) entry 74 — and film
+   * or a CD supplied with the study is part of that composite supply. `rateBps: 0` because the
+   * ruling is 0% (not a would-be rate held behind the exempt flag, as the two above carry). Every
+   * `RAD-` and `LAB-` service is this category; until this row existed pricing any of them refused
+   * (radiology stand-up precondition 6). A CA confirms the 6-digit SAC at the first filing (§19).
+   * Written only when absent, like every row here — a CA's later correction is never overwritten.
+   */
+  {
+    category: "investigation",
+    sacCode: "9993", // RULED 28 Sep (18-S ruling 2) — the 6-digit SAC is the CA's at first filing (§19)
+    exempt: true,
+    rateBps: 0,
     specialRule: null,
     thresholdPaise: null,
   },
