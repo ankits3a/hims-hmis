@@ -72,7 +72,8 @@ lp -d CRK-Thermal-1 /usr/share/cups/data/testprint   # prove the queue before wi
     "front_desk_thermal": "CRK-Thermal-1",
     "front_desk_a4":      "CRK-Laser-1",
     "vitals_thermal":     "CRK-Thermal-2",
-    "pharmacy_thermal":   "CRK-Thermal-Pharmacy"
+    "pharmacy_thermal":   "CRK-Thermal-Pharmacy",
+    "pharmacy_label":     "CRK-Label-Pharmacy"
   },
   "chromium":    "chromium",
   "pollSeconds": 3
@@ -98,6 +99,12 @@ lp -d CRK-Thermal-1 /usr/share/cups/data/testprint   # prove the queue before wi
 > has claimed a job in the last 24 hours (any destination) or a `pharmacy_thermal` job in the last
 > 7 days, the desk prints the same documents from the browser instead, so no stale bills pile up for
 > a relay that is not there.
+
+> **`pharmacy_label` (gap A6, 2026-09-29)** — rack and strip stickers from the office's "Rack & strip
+> labels", on the pharmacy's barcode label printer (TSC / Zebra / TVS class, a **50 × 25 mm** roll —
+> not the 80 mm bill roll). Each sticker is its own 50 × 25 mm PDF page; set the printer's media to
+> that size with its gap sensor on. The same served-or-browser rule applies: with no relay seen, the
+> office prints the stickers from the browser.
 
 The **agent key** is created by an administrator on the server (`createAgent`). Only its SHA-256 is
 stored there, so the key is shown once — keep the config file `chmod 600`. A compromised relay is

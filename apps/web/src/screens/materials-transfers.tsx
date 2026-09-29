@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
+import { NewButton, OfficeHead, fieldCls, useNewKey } from "./pharmacy-office/office-page";
+import { Sheet } from "./pharmacy-office/sheet";
 import {
   fetchAvailableAt, fetchItems, fetchStores, fetchTransferWorklist, issueTransfer, materialsErrorText, receiveTransfer,
 } from "../lib/materials-api";
@@ -41,9 +43,8 @@ export function MaterialsTransfers(): React.ReactElement {
   const refresh = async (): Promise<void> => { await qc.invalidateQueries({ queryKey: ["materials", "transfers"] }); };
 
   return (
-    <div className="space-y-5 p-4">
-      <h1 className="text-xl font-semibold">{t("materialsTransfers.title")}</h1>
-      <p className="max-w-3xl text-sm text-muted-foreground">{t("materialsTransfers.intro")}</p>
+    <div className="space-y-4" data-testid="materials-transfers">
+      <OfficeHead title={t("materialsTransfers.title")} lead={t("materialsTransfers.intro")} />
       {error !== null && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {sent !== null && <p className="text-sm text-green-800" data-testid="transfer-sent">{sent}</p>}
       {received !== null && <p className="text-sm text-green-800" data-testid="transfer-received">{received}</p>}
@@ -58,7 +59,7 @@ export function MaterialsTransfers(): React.ReactElement {
 
       <label className="block text-sm">
         {t("materialsTransfers.store")}
-        <select aria-label={t("materialsTransfers.store")} className="ml-2 rounded border px-2 py-1" value={store} onChange={(e) => setStore(e.target.value)}>
+        <select aria-label={t("materialsTransfers.store")} className={`${fieldCls} mt-1 block max-w-sm`} value={store} onChange={(e) => setStore(e.target.value)}>
           <option value="">{t("materialsTransfers.allStores")}</option>
           {(stores.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
         </select>
@@ -80,9 +81,9 @@ export function MaterialsTransfers(): React.ReactElement {
       <section className="space-y-1">
         <h2 className="font-semibold">{t("materialsTransfers.recent")}</h2>
         {board.data !== undefined && board.data.recent.length === 0 && <p className="text-sm text-muted-foreground">{t("materialsTransfers.noneRecent")}</p>}
-        <ul className="space-y-2 text-sm">
+        <ul className="ofp-box ofp-rows">
           {(board.data?.recent ?? []).map((tr) => (
-            <li key={tr.id} data-testid={`recent-${tr.ref}`} className={tr.status === "discrepancy" ? "rounded bg-amber-50 p-2" : "p-2"}>
+            <li key={tr.id} data-testid={`recent-${tr.ref}`} className={`ofp-stack ${tr.status === "discrepancy" ? "bg-amber-50" : ""}`}>
               <p>
                 <span className="font-mono">{tr.ref}</span> · {tr.from.name} → {tr.to.name} ·{" "}
                 <span className="font-medium">{t(`materialsTransfers.s_${tr.status}`)}</span>
@@ -121,24 +122,29 @@ function SendStock({ stores, onError, onSent }: {
   const [lines, setLines] = useState<SendLine[]>([]);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  /* Gap-closure B5 — sending is a sheet over the lists (N), never a form above them. */
+  const [open, setOpen] = useState(false);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  useNewKey(() => { setSheetError(null); setOpen(true); });
+  const fail = (text: string): void => { setSheetError(text); onError(text); };
 
   const availability = async (source: string, list: SendLine[]): Promise<SendLine[]> => {
     if (source === "") return list.map((l) => ({ ...l, available: null }));
     return Promise.all(list.map(async (l) => ({ ...l, available: await fetchAvailableAt(source, l.item.id) })));
   };
   const find = async (): Promise<void> => {
-    try { setFound(await fetchItems({ search: q.trim() })); } catch (e) { onError(materialsErrorText(e, t)); }
+    try { setFound(await fetchItems({ search: q.trim() })); } catch (e) { fail(materialsErrorText(e, t)); }
   };
   const add = async (item: WireItem): Promise<void> => {
     setFound(null); setQ("");
     try {
       const [line] = await availability(from, [{ item, qty: "", available: null }]);
       setLines((all) => [...all, line!]);
-    } catch (e) { onError(materialsErrorText(e, t)); }
+    } catch (e) { fail(materialsErrorText(e, t)); }
   };
   const pickSource = async (source: string): Promise<void> => {
     setFrom(source);
-    try { setLines(await availability(source, lines)); } catch (e) { onError(materialsErrorText(e, t)); }
+    try { setLines(await availability(source, lines)); } catch (e) { fail(materialsErrorText(e, t)); }
   };
   const valid = from !== "" && to !== "" && from !== to && lines.length > 0 && lines.every((l) => whole(l.qty));
   const issue = async (): Promise<void> => {
@@ -151,27 +157,35 @@ function SendStock({ stores, onError, onSent }: {
         lines: lines.map((l) => ({ itemId: l.item.id, qtyBase: Number(l.qty) })),
       });
       const toName = stores.find((s) => s.id === to)?.name ?? to;
-      setLines([]); setNote("");
+      setLines([]); setNote(""); setOpen(false);
       await onSent(t("materialsTransfers.sent", { ref: `TR-${r.transferId.slice(-6)}`, to: toName }));
     } catch (e) {
-      onError(materialsErrorText(e, t));
+      fail(materialsErrorText(e, t));
     } finally {
       setBusy(false);
     }
   };
 
+  if (!open) {
+    return (
+      <div className="ofp-acts">
+        <NewButton label={t("materialsTransfers.send")} onClick={() => { setSheetError(null); setOpen(true); }} testId="transfer-send-open" />
+      </div>
+    );
+  }
   return (
-    <section className="space-y-2 rounded border p-3" data-testid="transfer-send">
-      <h2 className="font-semibold">{t("materialsTransfers.send")}</h2>
+    <Sheet title={t("materialsTransfers.send")} testId="transfer-send" onClose={() => setOpen(false)}>
+    <section className="space-y-3">
+      {sheetError !== null && <p role="alert" className="text-sm text-red-700">{sheetError}</p>}
       <div className="flex flex-wrap items-center gap-4">
         <label className="text-sm">{t("materialsTransfers.from")}
-          <select aria-label={t("materialsTransfers.from")} className="ml-2 rounded border px-2 py-1" value={from} onChange={(e) => { void pickSource(e.target.value); }}>
+          <select aria-label={t("materialsTransfers.from")} className={`${fieldCls} mt-1 block max-w-sm`} value={from} onChange={(e) => { void pickSource(e.target.value); }}>
             <option value="">{t("materialsTransfers.choose")}</option>
             {stores.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
           </select>
         </label>
         <label className="text-sm">{t("materialsTransfers.to")}
-          <select aria-label={t("materialsTransfers.to")} className="ml-2 rounded border px-2 py-1" value={to} onChange={(e) => setTo(e.target.value)}>
+          <select aria-label={t("materialsTransfers.to")} className={`${fieldCls} mt-1 block max-w-sm`} value={to} onChange={(e) => setTo(e.target.value)}>
             <option value="">{t("materialsTransfers.choose")}</option>
             {stores.filter((s) => s.id !== from).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
           </select>
@@ -220,6 +234,7 @@ function SendStock({ stores, onError, onSent }: {
       </label>
       <Button type="button" disabled={!valid || busy} onClick={() => { void issue(); }}>{t("materialsTransfers.issue")}</Button>
     </section>
+    </Sheet>
   );
 }
 
@@ -251,7 +266,7 @@ function Awaiting({ transfer, canReceive, onError, onReceived }: {
     }
   };
   return (
-    <div className="space-y-1 rounded border p-2 text-sm" data-testid={`awaiting-${transfer.ref}`}>
+    <div className="ofp-card space-y-2 text-sm" data-testid={`awaiting-${transfer.ref}`}>
       <p>
         <span className="font-mono">{transfer.ref}</span> · {transfer.from.name} → {transfer.to.name} ·{" "}
         {t("materialsTransfers.sentBy", { name: transfer.issuedBy.name, time: fmtIst(transfer.issuedAt) })}

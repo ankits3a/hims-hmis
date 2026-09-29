@@ -403,7 +403,13 @@ export async function postGrn(
     );
   }
 
-  const lines = await tx.select().from(grnLines).where(eq(grnLines.grnId, grnId)).orderBy(asc(grnLines.id));
+  /*
+   * PAID LINES FIRST (2026-09-29, the stock-entry grid's free packs). A batch row is created by the first
+   * line of its batch that is posted, and it keeps THAT line's cost as its purchase price (A14, m5 below).
+   * A free-goods line of the same batch costs 0, so when it happened to sort first (ulid order is random
+   * inside one millisecond) the whole pile — paid packs included — was valued at nothing.
+   */
+  const lines = await tx.select().from(grnLines).where(eq(grnLines.grnId, grnId)).orderBy(asc(grnLines.freeGoods), asc(grnLines.id));
   const acceptedLines = lines.filter((l) => l.qtyAcceptedBase > 0);
   const rejectedLines = lines.filter((l) => l.qtyAcceptedBase === 0);
   // PHARMACY P6 — nor posted onto one merged since the capture (a merge waits for open receipts; this is the race).

@@ -270,9 +270,10 @@ describe("pharmacy-ready scripts", () => {
       `Calpol 500,K1,01/2020,40.00,10,1,,,`,
     ]);
     const refused = await planOpeningStock(db, parseCsv(bad), bad, now);
-    expect(refused.refusals).toBe(3);
+    expect(refused.refusals).toBe(2);
     expect(refused.rows[0]!.reasons.join()).toMatch(/did you mean: .*Crocin 500/);
-    expect(refused.rows[1]!.reasons.join()).toMatch(/not whole paise per unit/);
+    // The loose-MRP ruling (owner, 2026-09-22): ₹35.50 on a strip of 15 is received, not refused.
+    expect(refused.rows[1]!.reasons).toEqual([]);
     expect(refused.rows[2]!.reasons.join()).toMatch(/expired/);
 
     const good = sheet([`Crocin 500,C1,08/${String(y)},40.00,10,3,R-9,,28.00`, `Brufen 400,B1,08/${String(y)},45.00,15,2,,,`]);

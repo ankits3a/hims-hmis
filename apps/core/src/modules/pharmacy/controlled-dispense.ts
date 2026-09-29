@@ -1,5 +1,6 @@
 import { withTx } from "../../kernel/db/client";
 import { invoiceHeadsByIds } from "../billing";
+import { medicinesByIds } from "../formulary";
 import { captureDocument, getPatient, listDocuments } from "../patients";
 import { controlledLicenceStates, controlOf, isEndPrescriber, LICENCE_NAMES, requireCustodian, requirePerson, verifyWitness } from "./controlled";
 import { getDispenseRow } from "./queue";
@@ -82,8 +83,11 @@ export async function controlledChecklist(
   }
   const address = input.patientAddress?.trim() ?? "";
   checks.push({ key: "patient_address", ok: address !== "", atHandover: false, detail: address === "" ? "no address on the patient's record" : address });
+  // The prescribed medicine's strength turns a dose written as a mass ("10 mg") into tablets; without it the
+  // prescribed quantity is unknown and the check fails closed, never the milligrams read as a count.
+  const prescribedMeds = await medicinesByIds(db, lines.map((l) => l.rxLine.medicineId ?? null).filter((m): m is string => m !== null));
   const lineFacts = lines.map((l, i) => {
-    const prescribed = prefillQtyBase(l.rxLine);
+    const prescribed = prefillQtyBase(l.rxLine, prescribedMeds.get(l.rxLine.medicineId ?? "")?.strengthLabel);
     const ok = prescribed !== null && l.qtyBase !== null && l.qtyBase <= prescribed;
     checks.push({
       key: "quantity", ok, atHandover: false,
