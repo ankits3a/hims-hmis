@@ -802,7 +802,7 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
     and ER modules exist.
   - *PHI*: the inbox logs `imaging.report` and the register `imaging.worklist` per patient (existing
     surfaces; the kernel union was not widened).
-- **Pins.** Migration 0147; radiology events 16 → 19; caddyfile routes 77 → 78 (`/radiology/reports`);
+- **Pins.** Migration 0147; radiology events 16 → 19; caddyfile routes 78 → 79 (`/radiology/reports`, after RS7's `/radiology/usg`);
   nav + `radiologyManifest.menu` + station row `reports`; six error codes (`not_treating_doctor`,
   `acted_note_required`, `report_superseded`, `report_not_published`, `collector_details_required`,
   `unknown_media_request`). No permission, seed-roles, notify template or kernel change.
