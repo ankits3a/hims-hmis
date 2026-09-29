@@ -18,7 +18,7 @@ import type { StationLink, StationStat } from "../components/station/station-she
  * the department turns green.
  */
 
-export type RadiologyStationKey = "desk" | "diary" | "display" | "worklist" | "portable" | "safety";
+export type RadiologyStationKey = "desk" | "diary" | "display" | "worklist" | "portable" | "safety" | "setup";
 
 /** The browsable stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
 export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: RadiologyStationKey; labelKey: string })[] = [
@@ -30,11 +30,15 @@ export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: R
   /** 18-S RS2b — the technologist's round of the beds the trolley goes to. */
   { key: "portable", to: "/radiology/portable", labelKey: "nav.radiologyPortable", permission: "radiology.acquire" },
   { key: "safety", to: "/radiology/radiation-safety", labelKey: "nav.radiationSafety", permission: "aerb.registers.read" },
+  /** 18-S RS4 — machines, books and prices. Its three views sit in the header (`views`). */
+  { key: "setup", to: "/radiology/setup", labelKey: "nav.radiologySetup", permission: "radiology.devices.manage" },
 ];
 
 export function RadiologyStation({
-  station, title, place, stats, lane, list, listSummary, inHand, closeListOn, clocks, clocksSummary, clocksAlert, children,
+  station, title, place, stats, lane, list, listSummary, inHand, closeListOn, clocks, clocksSummary, clocksAlert, views, children,
 }: {
+  /** 18-S RS4 — a station's own views in the header (Setup: machines · books · prices). */
+  views?: React.ReactNode;
   station: RadiologyStationKey;
   title: string;
   place: string;
@@ -68,6 +72,7 @@ export function RadiologyStation({
       listSummary={listSummary}
       inHand={inHand}
       closeListOn={closeListOn}
+      views={views}
       clocks={clocks}
       clocksSummary={clocksSummary}
       clocksAlert={clocksAlert}
