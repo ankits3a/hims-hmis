@@ -102,8 +102,10 @@ export async function shelfChecks(
     const check: ShelfCheck = { lines: lines.length, onShelf: 0, short: [], notStocked: [], unplaceable: 0, scheduleX: false };
     for (const l of lines) {
       const matched = matchesOf.get(l) ?? [];
+      // The prescribed medicine's strength turns a dose written as a mass ("500 mg") into tablets.
+      const strength = medicines.get(medicineOf(l) ?? "")?.strengthLabel;
       if (matched.length > 0) {
-        const want = prefillQtyBase(l) ?? 1;
+        const want = prefillQtyBase(l, strength) ?? 1;
         if (matched.some((itemId) => (available.get(itemId) ?? 0) >= want)) check.onShelf += 1;
         else check.short.push(l.drug);
         continue;
@@ -113,7 +115,7 @@ export async function shelfChecks(
       if (refusedByLaw(medicineId)) { check.scheduleX = true; continue; }
       const entry = shelf.get(medicineId);
       if (entry === undefined) { check.notStocked.push(l.drug); continue; }
-      const want = prefillQtyBase(l) ?? 1;
+      const want = prefillQtyBase(l, strength) ?? 1;
       const onHand = controlledIds.includes(medicineId) ? inCabinet : available;
       if ((onHand.get(entry.item.id) ?? 0) < want) check.short.push(l.drug);
       else check.onShelf += 1;

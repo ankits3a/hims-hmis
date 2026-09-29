@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations"
           } > 300
         for: 2m
         labels:
@@ -120,6 +120,9 @@ groups:
           # well-run department. Leg 1 cannot see either, because a job that never ran has no
           # series to be stale.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepCriticalChaser"})
+          # 18-S RS10 T2: the HOD's escalations. A sweep that never ran raises nothing — which looks
+          # exactly like a department with nothing late.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepImagingEscalations"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepUnreadWatchman"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepRosterWindows"})
           # R9: the monthly draft. It runs daily and no-ops on 29 days in 30, but it still

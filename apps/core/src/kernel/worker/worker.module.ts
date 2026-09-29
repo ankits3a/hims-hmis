@@ -29,7 +29,8 @@ import {
 import { LAB_INTERFACE_CONSUMER, labInterfaceConsumer, labManifest } from "../../modules/lab";
 import { pcpndtManifest } from "../../modules/pcpndt";
 import {
-  RADIOLOGY_ORDER_PLACED_CONSUMER, orderPlacedConsumer, radiologyManifest,
+  RADIOLOGY_APPROVAL_GRANTED_CONSUMER, RADIOLOGY_ORDER_PLACED_CONSUMER, approvalGrantedConsumer, orderPlacedConsumer,
+  radiologyManifest,
   RADIOLOGY_READY_ON_PAYMENT_CONSUMER, readyOnPaymentConsumer,
 } from "../../modules/radiology";
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
@@ -288,6 +289,10 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // orders too and returns on `kind !== "imaging"` before touching anything. That is why a second
     // ordering module can be added without this line changing.
     [RADIOLOGY_ORDER_PLACED_CONSUMER]: orderPlacedConsumer(db),
+    // 18-S RS10 T3 — the other half of `radiologyManifest`'s `approval.granted` declaration: a
+    // gate-override grant from the kernel inbox runs the existing override (idempotent; a refusal is
+    // final and swallowed). One without the other is a boot error.
+    [RADIOLOGY_APPROVAL_GRANTED_CONSUMER]: approvalGrantedConsumer(db),
     // 18-S RS9b T2 — the other half of `radiologyManifest`'s `payment.received` /
     // `credit_note.issued` -> `radiology.report_ready_on_payment`: the "report ready" message for a
     // bill paid after release, once per report version. One without the other is a boot error.

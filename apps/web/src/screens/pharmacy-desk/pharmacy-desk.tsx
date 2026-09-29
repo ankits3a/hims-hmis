@@ -326,7 +326,11 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       say(t("pharmacyDesk.log.handedOver", { who: d.patient.alias ?? d.patient.name ?? d.patient.uhid }));
     } catch (e) {
       answered("handover", inHandId, e);
-      const text = pharmacyErrorText(e, t);
+      /* The walk of 2026-09-30: the server answers one code for a wrong token AND for wrong phone digits,
+         so the sentence follows the method the pharmacist chose, never the one they did not. */
+      const text = pharmacyErrorCode(e) === "identity_mismatch" && identity?.via === "token"
+        ? t("pharmacyDesk.handover.tokenMismatch")
+        : pharmacyErrorText(e, t);
       setHandOverError(text);
       say(text, "err");
     } finally {

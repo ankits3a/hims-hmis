@@ -685,3 +685,61 @@ one `imaging.report_released_unpaid` event, the invoice is still unpaid. On a se
 take the full payment at billing after publishing → within one worker cycle, one
 `notifications` row with `dedupe_key = 'imaging_report_ready:<reportId>'`; take nothing else and
 nothing more is queued.
+
+## 16. The Supervisor & HOD station (18-S RS10)
+
+**No migration, no new permission, no seed-roles change.** The station is `/radiology/hod` (menu
+*Supervisor & HOD*), reached by `radiology.definitions.manage` — the department head's books grant,
+held by `radiologist` only (a resident does not hold it). Eight header views: Floor · Escalated ·
+Approvals · Quality · Equipment · Roster · Money · Access log.
+
+**Step 1 — switch the escalations on (once per deployment).** Re-run the radiology seed:
+
+```
+pnpm seed:radiology      # idempotent: what exists is left alone (§2)
+```
+
+It now also activates eight class-C workflow definitions, `imaging_esc_stat_unread`,
+`_held_study`, `_red_critical`, `_machine_down`, `_licence_gap`, `_bill_decision_stale`,
+`_abnormal_unopened`, `_unmatched_pacs` (class C needs no governance approval — the approval-flow precedent). Until they
+are active the station still LISTS each cause but tells nobody, and says so in a gold banner
+("Escalations are not switched on for …"). Check: `select def_key from workflow_definitions where
+def_key like 'imaging_esc_%' and status = 'active'` → eight rows.
+
+**Step 2 — the worker job.** `sweepImagingEscalations` runs every minute in the worker (job 24;
+Prometheus leg 1a + an `absent()` term). Each cycle: a cause with no open obligation → start one; an
+obligation whose cause cleared → `resolved`, timers cancelled. Nothing else writes these instances.
+
+| Cause | Raised when | First told (rung 0, 1 %) | Budget → medical superintendent | Closed by |
+|---|---|---|---|---|
+| STAT unread | STAT, images in > 15 min, no prelim or signed report | radiologists | 15 min | a prelim or signature |
+| Held at a gate | checked in > 30 min with a gate open | radiologists | 30 min | the gates closed / study moves on |
+| Red critical | red, not read back, past the `critical_categories` red window (no book: once the chaser marked it) | radiologists | 15 min | the read-back |
+| Machine out of service | `down` or `qa_blocked` | radiologists | 60 min | back to `available` |
+| Licence gap | no AERB licence covering today AND a study booked on the machine | RSO (50 %: radiologists) | 60 min | licence filed / bookings moved |
+| Bill decision stale | open > 24 h | billing manager | 4 h → radiologists | resolved at the desk |
+| Abnormal unopened | a critical-category report released > 24 h, first read not stamped | radiologists | 60 min | the treating doctor opens it (or the hand-over, for an outside study) |
+| Unmatched images | an archive study (RS12 inbox) open > 24 h | technologists | 4 h → radiologists | attached or rejected in *Unmatched images* |
+
+Who "radiologists" are is the roster's answer: a `roster_escalation_targets` row for
+`workflow.timer_rung` narrows it to whoever is on; without one it is every holder of the role. Nobody
+holding a rung → the duty managers → the owners (the spine's own fallback).
+
+**Acting on one (the HOD).** Escalated view → the item in hand → *Seen*, *Take it on* (15 min – 4 h),
+or *Hand over to* a named person. These are the kernel alert acts: seen / take-it-on stop the
+reminder clock, never the ladder; hand-over stops nothing. The docked act (Enter) opens the seat
+that fixes the cause. The escalation closes itself at the next sweep after the seat's act.
+
+**Approvals.** Pending `imaging_gate_override` requests are granted or refused here with a reason
+(the same route as the study console). **A grant made in the hospital's `/approvals` inbox now
+applies the override by itself** (the worker's `radiology.approval_granted` consumer): no second
+press at radiology. A never-override kind (Form F, the side) stays refused; a reason containing a
+PCPNDT term is not applied — the gate stays open and the bay sees it. `imaging_definition_publish`
+is the medical superintendent's (link to the inbox). Bill decisions are listed read-only — the desk
+and billing manager resolve them.
+
+**Verify once.** (1) Mark a machine `down` in Setup → within a minute the HOD's Escalated view shows
+it, and every radiologist's bell has an *Escalation: imaging_esc_machine_down · open · rung 0*
+alert; put the machine back → the row goes at the next minute. (2) File an override request from the
+prep bay, grant it from `/approvals` → the gate is overridden without opening radiology.
+(3) Open any study's images → the Access log shows who, their role, the patient and the accession.

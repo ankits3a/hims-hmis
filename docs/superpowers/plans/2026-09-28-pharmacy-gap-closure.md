@@ -176,6 +176,41 @@ DECIDED (standard Indian-corporate-hospital answer):
   as a sheet. The issue sheet starts each line at the asked quantity and shows the shelf. Answered indents are listed
   with their transfer or their reason. There are no filter tabs.
 
+## A6a — rack and strip labels (as built 2026-09-29, lane `pharmacy-a6-labels`)
+
+DECIDED (standard Indian-corporate-hospital answer; the owner may overturn):
+
+- **One sticker size, 50 × 25 mm**, on the pharmacy's own barcode label printer (TSC / Zebra / TVS class). It is a
+  new logical print destination, `pharmacy_label`, next to the 72 mm `pharmacy_thermal` bill roll. Each sticker is
+  one 50 × 25 mm page. A relay operator maps the destination to the printer's queue
+  (`tools/print-relay/README.md`).
+- **Two documents**:
+  - `pharmacy_rack_label`, for the shelf edge: the rack location large, the item name, and the code with the store.
+  - `pharmacy_strip_label`, for a loose strip cut from its box: the item name (up to three lines so the strength
+    survives), the batch, **EXP MM/YYYY** in bold, and the MRP per pack from the books.
+  - Both carry an 18 mm QR.
+- **The QR is an in-house payload**, not GS1, because there is no GTIN to encode:
+  - a rack label says `HMIS1|<itemCode>`;
+  - a strip label says `HMIS1|<itemCode>|<batchNo>|<packUom>`.
+  - The desk's pick scan (`scan.ts`) reads it as that item and batch. The expiry comes from the books, so there is
+    no printed-expiry cross-check.
+- **Refused before anything prints** (`invalid_label`):
+  - a rack label for an item with no rack in that store;
+  - a strip label without a batch of that item;
+  - a strip label for a batch with no MRP on the books (a loose strip is sold at its MRP);
+  - a pack the item does not have;
+  - more than 500 stickers in one print.
+- **Permission**: `pharmacy.sale_items.manage`, the same one that sets the rack (`PUT /pharmacy/items/:id/location`).
+  No new permission.
+- **Screen**: Office → Items → "Rack & strip labels" (the Menu artboard's "new (A6)" entry).
+  - One list per store: item, rack, rack-label copies, and each held batch with its strip-label copies.
+  - Two print buttons, and no tabs.
+  - With no relay serving the label printer, the stickers print from the browser.
+- **No migration**: `print_jobs.document` is plain text.
+
+A6b (indent: a sub-store or OT asks the central store; issued as a transfer) is still to come. It is a separate PR
+and carries the migration.
+
 ## Stage D — pharmacy safety (added 2026-09-28 from hmis-10's Healthray re-review; built in lane `pharmacy-safety` by hmis-10)
 
 **Owner ruling, 2026-09-28, verbatim:** "IPD, Emergency, Insurance/TPA, Blood Bank, Dailysis, Immunisation, Ambulance,

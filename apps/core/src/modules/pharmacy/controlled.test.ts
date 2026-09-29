@@ -158,7 +158,8 @@ describe("narcotic, psychotropic and Schedule X lines at the desk (pharmacy P6)"
     // The agent's card: what the law asks, before the witness is called.
     expect(picked.controlled?.blocking).toEqual([]);
     expect(picked.controlled?.checks.filter((c) => c.atHandover).map((c) => c.key)).toEqual(["retained_prescription", "endorsement", "collected_by", "witness"]);
-    const [cabinetBalance] = await db.select().from(stockBalances).where(and(eq(stockBalances.resourceId, cabinet)));
+    // The cabinet holds two items, so read the alprax row by name: an unordered first row was the morphine's half the time.
+    const [cabinetBalance] = await db.select().from(stockBalances).where(and(eq(stockBalances.resourceId, cabinet), eq(stockBalances.itemId, alpraxItem)));
     expect(cabinetBalance?.qtyReserved).toBeGreaterThan(0); // the reservation is at the cabinet, not the counter
 
     const doc = await retained(id);
