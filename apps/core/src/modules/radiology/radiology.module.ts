@@ -19,6 +19,7 @@ import { RadiologySetupController } from "./radiology-setup.controller";
 import { RadiologyRoomController } from "./radiology-room.controller";
 import { RadiologyPacsController } from "./radiology-pacs.controller";
 import { RadiologyReadingController } from "./radiology-reading.controller";
+import { RadiologyReleaseController } from "./radiology-release.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -65,6 +66,8 @@ import { RadiologyReadingController } from "./radiology-reading.controller";
     RadiologyPcpndtController,
     // 18-S RS12 — the archive's doors in (arrivals, dose reports) and the PACS inbox.
     RadiologyPacsController,
+    // 18-S RS9 — release and the closed loop: the doctor's inbox and acted-upon, the north star, the hand-over desk.
+    RadiologyReleaseController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {

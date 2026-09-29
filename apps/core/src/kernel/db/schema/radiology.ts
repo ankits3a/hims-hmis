@@ -1027,6 +1027,20 @@ export const imagingOutsideStudies = pgTable(
 );
 
 /**
+ * 18-S RS9 T1 — what the report changed. The board's five choices (doctor's door, "Mark acted on").
+ */
+export const IMAGING_ACTED_OUTCOMES = [
+  "changed_treatment", "referred", "followup_booked", "discussed_with_patient", "no_change",
+] as const;
+
+/** 18-S RS9 T4 — who took the report away from the imaging window. */
+export const IMAGING_COLLECTOR_KINDS = ["patient", "relative", "ward_staff", "courier"] as const;
+/** The ID a relative shows. Only the LAST FOUR characters are kept (a masked Aadhaar is lawful). */
+export const IMAGING_COLLECTOR_ID_TYPES = ["aadhaar", "voter_id", "driving_licence", "pan", "passport", "other"] as const;
+/** Ruling 1 — the physical media printed on request. The digital report and link are free. */
+export const IMAGING_MEDIA_KINDS = ["film", "cd"] as const;
+
+/**
  * ═══ PLAN 18a-iii T5 / D7 — `imaging_report_delivery`: WHAT HAPPENED TO A REPORT AFTER IT WAS SIGNED ═══
  *
  * **This table exists because the database refused the first design, and the database was right.**
@@ -1070,6 +1084,16 @@ export const imagingReportDelivery = pgTable(
     firstReadAt: timestamp("first_read_at", { withTimezone: true }),
     firstReadBy: text("first_read_by"),
     unreadChasedAt: timestamp("unread_chased_at", { withTimezone: true }),
+    /**
+     * 18-S RS9 T1 (Gap 6) — **THE NORTH-STAR CLOCK STOPS HERE.** The treating doctor records what
+     * the report changed (`outcome` from a closed list, plus one line). Per report VERSION, like the
+     * read: an amendment is a new version with its own delivery row, so acting on v1 does not count
+     * for v2 and the loop re-opens (DECIDED — the doctor acted on a document that has since changed).
+     */
+    actedAt: timestamp("acted_at", { withTimezone: true }),
+    actedBy: text("acted_by"),
+    actedOutcome: text("acted_outcome"),
+    actedNote: text("acted_note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -1082,5 +1106,102 @@ export const imagingReportDelivery = pgTable(
       "imaging_report_delivery_first_read_ck",
       sql`(${t.firstReadBy} is null) = (${t.firstReadAt} is null)`,
     ),
+    /** An act is a person, an instant, an outcome and a line — all four or none. */
+    check(
+      "imaging_report_delivery_acted_ck",
+      sql`(${t.actedAt} is null) = (${t.actedBy} is null) and (${t.actedAt} is null) = (${t.actedOutcome} is null) and (${t.actedAt} is null) = (${t.actedNote} is null)`,
+    ),
+    check(
+      "imaging_report_delivery_acted_outcome_ck",
+      sql`${t.actedOutcome} is null or ${inList(t.actedOutcome, IMAGING_ACTED_OUTCOMES)}`,
+    ),
+    check(
+      "imaging_report_delivery_acted_note_ck",
+      sql`${t.actedNote} is null or char_length(btrim(${t.actedNote})) >= 4`,
+    ),
+  ],
+);
+
+/**
+ * ═══ 18-S RS9 T4 — THE RELEASE REGISTER'S HAND-OVERS ═══
+ *
+ * The lab's `lab_report_deliveries` SHAPE (a physical hand-over names its collector), with the
+ * collector TYPED rather than one free-text line, because the rule differs by type: a relative
+ * needs a name, a relation and the ID they showed; ward staff and a courier need a name. There is
+ * no patient OTP service on main (spike c) — DECIDED: the relative's ID type + last four is the
+ * record until one exists, and the OTP is deferred and said so.
+ *
+ * Keyed to the REPORT version handed over (the paper carries that version) and the study.
+ */
+export const imagingReportHandovers = pgTable(
+  "imaging_report_handovers",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    reportId: text("report_id").notNull().references(() => imagingReports.id),
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    collectorKind: text("collector_kind").notNull(),
+    collectorName: text("collector_name"),
+    collectorRelation: text("collector_relation"),
+    collectorIdType: text("collector_id_type"),
+    collectorIdLast4: text("collector_id_last4"),
+    /** Film sheets and a CD handed over WITH the report, when printed (see `imaging_media_requests`). */
+    filmSheets: integer("film_sheets").notNull().default(0),
+    cd: boolean("cd").notNull().default(false),
+    note: text("note"),
+    handedBy: text("handed_by").notNull(),
+    handedAt: timestamp("handed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("imaging_report_handovers_study_idx").on(t.studyId, t.handedAt),
+    index("imaging_report_handovers_report_idx").on(t.reportId),
+    check("imaging_report_handovers_kind_ck", inList(t.collectorKind, IMAGING_COLLECTOR_KINDS)),
+    check(
+      "imaging_report_handovers_id_type_ck",
+      sql`${t.collectorIdType} is null or ${inList(t.collectorIdType, IMAGING_COLLECTOR_ID_TYPES)}`,
+    ),
+    /** Anyone but the patient is NAMED. */
+    check(
+      "imaging_report_handovers_named_ck",
+      sql`${t.collectorKind} = 'patient' or char_length(btrim(coalesce(${t.collectorName}, ''))) >= 2`,
+    ),
+    /** A relative carries a relation and the ID they showed (type + last four). */
+    check(
+      "imaging_report_handovers_relative_ck",
+      sql`${t.collectorKind} <> 'relative' or (char_length(btrim(coalesce(${t.collectorRelation}, ''))) >= 2 and ${t.collectorIdType} is not null and ${t.collectorIdLast4} ~ '^[A-Za-z0-9]{4}$')`,
+    ),
+    check("imaging_report_handovers_film_ck", sql`${t.filmSheets} >= 0 and ${t.filmSheets} <= 20`),
+  ],
+);
+
+/**
+ * ═══ 18-S RS9 T4 — FILM AND CD, PRINTED ON REQUEST (RULING 1) ═══
+ *
+ * A request is recorded at the window, printed, then handed over. `included` is the X-ray's one film
+ * (ruling 1: an X-ray includes one film) — no charge. Anything else names the tariff service
+ * (`RAD-FILM` / `RAD-CD`, RS4) the counter bills; this row composes no money (DD12) and links no
+ * invoice — the charge is taken through billing's own path (DECIDED, RS9 as built).
+ */
+export const imagingMediaRequests = pgTable(
+  "imaging_media_requests",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    kind: text("kind").notNull(),
+    /** Film sheets (1+) for a film; 1 for a CD. */
+    quantity: integer("quantity").notNull().default(1),
+    included: boolean("included").notNull().default(false),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    printedBy: text("printed_by"),
+    printedAt: timestamp("printed_at", { withTimezone: true }),
+    handoverId: text("handover_id").references(() => imagingReportHandovers.id),
+  },
+  (t) => [
+    index("imaging_media_requests_study_idx").on(t.studyId),
+    check("imaging_media_requests_kind_ck", inList(t.kind, IMAGING_MEDIA_KINDS)),
+    check("imaging_media_requests_qty_ck", sql`${t.quantity} between 1 and 20 and (${t.kind} = 'film' or ${t.quantity} = 1)`),
+    check("imaging_media_requests_printed_ck", sql`(${t.printedBy} is null) = (${t.printedAt} is null)`),
+    /** Handed over only once printed. */
+    check("imaging_media_requests_handed_ck", sql`${t.handoverId} is null or ${t.printedAt} is not null`),
   ],
 );

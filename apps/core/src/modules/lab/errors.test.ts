@@ -98,6 +98,7 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   unknown_result: "results.ts",
   unknown_patient: "patient-results.ts",
   critical_already_closed: "criticals.ts",
+  readback_mismatch: "criticals.ts",
 
   report_print_blocked: "reports.ts",
   collector_identity_required: "reports.ts",
@@ -217,6 +218,8 @@ describe("the lab error union (Plan 17 T2)", () => {
       "identity_recheck_required",
       /** The range book's door: two bands over one age is a rule the screen must name. */
       "range_overlap",
+      /** §13 walk 2026-09-28 — a read-back that does not say the value is a clinical stop. */
+      "readback_mismatch",
       "relabel_witness_required", "release_approval_invalid",
       "report_not_publishable", "report_print_blocked",
       /** 17-E T7 — the clinical hard stop this task exists to make unskippable, and the blank

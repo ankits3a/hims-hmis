@@ -84,6 +84,8 @@ export const radiologyManifest: ModuleManifest = {
     // 18-S RS3 — the desk's diary (machines × time) and the waiting-hall display.
     { label: "Imaging diary", path: "/radiology/diary", permission: "radiology.schedule" },
     { label: "Imaging hall display", path: "/radiology/display", permission: "radiology.display.read" },
+    // 18-S RS9 — report hand-over: the release register, film and CD, the named collector.
+    { label: "Report hand-over", path: "/radiology/reports", permission: "radiology.schedule" },
     // 18-S RS4 — the Setup station: machines, books and prices.
     { label: "Imaging setup", path: "/radiology/setup", permission: "radiology.devices.manage" },
     // 18-S RS7 — the sonologist's room, the Form F register, the §19 registration, the monthly return.

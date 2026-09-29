@@ -69,6 +69,7 @@ import { RadiologyPortable } from "./screens/radiology-portable";
 import { RadiologyRoom, ROOM_VIEWS } from "./screens/radiology-room";
 import type { RoomViewKey } from "./screens/radiology-room";
 import { RadiologyDiary } from "./screens/radiology-diary";
+import { RadiologyReports } from "./screens/radiology-reports";
 import { RadiologyDisplay } from "./screens/radiology-display";
 import { RadiologySetup, SETUP_VIEWS } from "./screens/radiology-setup";
 import type { SetupView } from "./screens/radiology-setup";
@@ -206,6 +207,8 @@ const NAV: readonly NavEntry[] = [
   // 18-S RS3 — the desk's diary and the waiting-hall display; `radiologyManifest.menu` carries the same pairs.
   { to: "/radiology/diary", label: "nav.radiologyDiary", permission: "radiology.schedule", group: "opd" },
   { to: "/radiology/display", label: "nav.radiologyDisplay", permission: "radiology.display.read", group: "opd" },
+  // 18-S RS9 — the report hand-over desk (release register, film/CD, collector); `radiologyManifest.menu` carries the same pair.
+  { to: "/radiology/reports", label: "nav.radiologyReports", permission: "radiology.schedule", group: "opd" },
   { to: "/radiology/setup", label: "nav.radiologySetup", permission: "radiology.devices.manage", group: "opd" },
   // 18-S RS7 — the sonologist's room; `anyOf` shows it to the in-charge and technologist for its books.
   {
@@ -1146,6 +1149,14 @@ const radiologyRoomRoute = createRoute({
 });
 
 /** PLAN 18-S RS3 — the desk's diary: machines × time, with move / no-show / cancel (each with a reason). */
+/** PLAN 18-S RS9 — report hand-over: the release register, film and CD on request, the named collector. */
+const radiologyReportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/reports",
+  component: RadiologyReports,
+  staticData: { fullViewport: true },
+});
+
 const radiologyDiaryRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/diary",
@@ -1535,7 +1546,7 @@ export const router = createRouter({
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
       // count and joins this task's Files list, the S11 rule applied for the seventh time.
-      radiologyReceptionRoute, radiologyWorklistRoute, radiologyRoomRoute, radiologyReadingRoute, radiologyPortableRoute, radiologyDiaryRoute, radiologyDisplayRoute, radiologySetupRoute, radiologyUsgRoute, radiologyStudyRoute, radiologyReportRoute,
+      radiologyReceptionRoute, radiologyWorklistRoute, radiologyRoomRoute, radiologyReadingRoute, radiologyPortableRoute, radiologyDiaryRoute, radiologyReportsRoute, radiologyDisplayRoute, radiologySetupRoute, radiologyUsgRoute, radiologyStudyRoute, radiologyReportRoute,
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
