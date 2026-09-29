@@ -12,7 +12,7 @@ import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { invoiceLines } from "../../kernel/db/schema/billing";
 import { users } from "../../kernel/db/schema/auth";
 import { invoiceSettlement } from "../billing";
-import { findLockoutHits } from "../pcpndt";
+import { assertMachineRegistered, assertPersonRegistered, findLockoutHits } from "../pcpndt";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import type { LockoutTier } from "../pcpndt";
 import { RadiologyError } from "./errors";
@@ -26,6 +26,10 @@ import { hasPermission } from "../../kernel/auth/permissions";
 import { PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn } from "./applicability";
 import { patients } from "../../kernel/db/schema/patients";
 import { templateKeyFor } from "./templates";
+import {
+  assertNoFoetalSexDisclosure, isObstetricReport, normaliseReportBody, reportText, scanDayOf, withDeclaration,
+} from "./obstetric-report";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import type { ImagingCriticalCategory } from "../../kernel/db/schema/radiology";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -180,7 +184,10 @@ export async function draftReport(
 ): Promise<{ reportId: string; version: number }> {
   const study = await loadStudy(tx, input.studyId);
   assertReportable(study.status, input.studyId);
-  return await insertVersion(tx, study, "draft", input);
+  /** 18-S RS7 T2 — biometry recomputed by the server, the declaration key the server's alone. */
+  const obstetric = await isObstetricReport(tx, study, input.templateKey);
+  const body = normaliseReportBody(input.body, obstetric, scanDayOf(study, new Date()));
+  return await insertVersion(tx, study, "draft", { ...input, body });
 }
 
 /**
@@ -277,9 +284,13 @@ export async function savePrelim(
    * radiologist's own scratch text, and refusing a draft would move the refusal to a place where
    * the author cannot yet see the whole report they are being refused.
    */
+  /** 18-S RS7 T1 — a prelim that states the sex of a foetus is refused before any word list runs. */
+  const obstetric = await isObstetricReport(tx, study, input.templateKey);
+  const body = normaliseReportBody(input.body, obstetric, scanDayOf(study, new Date()));
+  assertNoFoetalSexDisclosure(reportText([body, input.impression ?? ""]), obstetric, "prelim");
   const tier = await lockoutTierFor(tx, study, new Date());
   const hits = findLockoutHits(
-    `${JSON.stringify(input.body)} ${input.impression ?? ""}`, tier,
+    `${JSON.stringify(body)} ${input.impression ?? ""}`, tier,
   );
   if (hits.length > 0) {
     throw new RadiologyError(
@@ -289,7 +300,7 @@ export async function savePrelim(
       { terms: hits.map((h) => h.term), tier },
     );
   }
-  return await insertVersion(tx, study, "prelim", input);
+  return await insertVersion(tx, study, "prelim", { ...input, body });
 }
 
 function assertReportable(status: string, studyId: string): void {
@@ -373,13 +384,17 @@ export async function signReport(
 
   const category = (input.criticalCategory ?? source.criticalCategory) as ImagingCriticalCategory | null;
   await assertSignable(tx, study, source, category, input.lockoutOverride ?? null, now);
+  await assertSignerRegistered(tx, actor, study, now);
+  const obstetric = await isObstetricReport(tx, study, source.templateKey);
 
   let created: { reportId: string; version: number };
   try {
     created = await insertVersion(
       tx, study, "signed",
       {
-        templateKey: source.templateKey, body: source.body as Record<string, unknown>,
+        templateKey: source.templateKey,
+        /** 18-S RS7 T2 — the obstetric report's fixed PCPNDT declaration, in the server's words. */
+        body: withDeclaration(source.body as Record<string, unknown>, obstetric),
         impression: source.impression, laterality: source.laterality,
       },
       { actorId: actor.id, signedAt: now, secondFactorAt: factorAt, lockoutOverride: input.lockoutOverride ?? null },
@@ -414,6 +429,30 @@ export async function signReport(
     });
   }
   return created;
+}
+
+/**
+ * ═══ 18-S RS7 — THE ACT'S MEMBERSHIP RULE, AT THE SIGNATURE ═══
+ *
+ * `startAcquisition` already refuses a PCPNDT scan performed by a person who is not on the machine's
+ * registration. The SIGNATURE had no such check, so a radiologist registered nowhere could sign the
+ * obstetric report of a scan somebody else performed on a registered machine — the report being the
+ * statutory record of what was found. Only a person registered on THAT machine's registration, on the
+ * signing day (IST), signs a `form_f_required` study. Studies outside the Act are untouched.
+ */
+async function assertSignerRegistered(
+  tx: Tx, actor: Actor, study: typeof imagingStudies.$inferSelect, now: Date,
+): Promise<void> {
+  if (!study.formFRequired) return;
+  if (study.deviceResourceId === null) {
+    throw new RadiologyError(
+      "machine_not_registered",
+      `study ${study.accessionNo} names no machine, so nobody can be checked against its PCPNDT registration`,
+      { studyId: study.id },
+    );
+  }
+  const { registrationId } = await assertMachineRegistered(tx, study.deviceResourceId, istDayString(now));
+  await assertPersonRegistered(tx, actor.id, registrationId);
 }
 
 /** B10 — `imaging_reports_one_signed_ux`. A second signature is the DATABASE's refusal, not ours. */
@@ -501,6 +540,7 @@ async function assertFreeTextSignable(
 ): Promise<void> {
   if (text.trim() === "") return;
   const study = await loadStudy(tx, studyId);
+  assertNoFoetalSexDisclosure(text, await isObstetricReport(tx, study), "note");
   const hits = findLockoutHits(text, await lockoutTierFor(tx, study, now));
   if (hits.length > 0) {
     throw new RadiologyError(
@@ -518,6 +558,8 @@ async function assertSignable(
   study: typeof imagingStudies.$inferSelect,
   content: {
     body: unknown; impression?: string | null; laterality?: string | null;
+    /** 18-S RS7 — the template the version uses (an obstetric template is an obstetric report). */
+    templateKey?: string | null;
     /** F79 — every other free-text field that rides this act into a permanent, servable row. */
     reason?: string | null;
   },
@@ -544,6 +586,17 @@ async function assertSignable(
    * *"correcting — the foetus is male, family informed"* was accepted and served. The two callers
    * that own those fields now pass them here.
    */
+  /**
+   * ═══ 18-S RS7 T1 — THE FOETAL-SEX GUARD RUNS FIRST, AND `lockoutOverride` NEVER REACHES IT ═══
+   *
+   * A sentence that states the sex of a foetus is `foetal_sex_disclosure`, which the medical
+   * superintendent's F66 lane below cannot lift. Checked before the word list so the refusal names
+   * the Act's harm rather than a word (see `pcpndt/foetal-sex.ts`).
+   */
+  const obstetric = await isObstetricReport(tx, study, content.templateKey ?? null);
+  assertNoFoetalSexDisclosure(
+    reportText([content.body, content.impression ?? "", content.reason ?? ""]), obstetric, "report",
+  );
   const tier = await lockoutTierFor(tx, study, now);
   const text = [
     JSON.stringify(content.body),
@@ -668,7 +721,12 @@ export async function amendReport(
    * critical report sent no message at all. Inheriting is the same rule the sign path already had.
    */
   const category = (input.criticalCategory ?? previous.criticalCategory) as ImagingCriticalCategory | null;
-  await assertSignable(tx, study, input, category, input.lockoutOverride ?? null, now);
+  /** 18-S RS7 — the amended body normalised exactly as a draft's is, and the declaration re-written. */
+  const amendTemplate = input.templateKey ?? previous.templateKey;
+  const amendObstetric = await isObstetricReport(tx, study, amendTemplate);
+  const amendBody = normaliseReportBody(input.body, amendObstetric, scanDayOf(study, now));
+  await assertSignable(tx, study, { ...input, templateKey: amendTemplate, body: amendBody }, category, input.lockoutOverride ?? null, now);
+  await assertSignerRegistered(tx, actor, study, now);
 
   /**
    * THE FLIP COMES FIRST, and it has to: `imaging_reports_one_signed_ux` is a partial unique on
@@ -680,7 +738,7 @@ export async function amendReport(
     .where(eq(imagingReports.id, previous.id));
 
   const created = await insertVersion(
-    tx, study, "signed", input,
+    tx, study, "signed", { ...input, templateKey: amendTemplate, body: withDeclaration(amendBody, amendObstetric) },
     {
       actorId: actor.id, signedAt: now, secondFactorAt: amendFactorAt,
       amendmentReason: input.reason.trim(), supersedesId: previous.id,
@@ -792,6 +850,15 @@ export async function publishReport(
   if (signed.publishedAt !== null) {
     throw new RadiologyError("already_signed", `report ${signed.id} is already published`, { reportId: signed.id });
   }
+  /**
+   * 18-S RS7 T1 — the SIGNED text is read again before it leaves the department. A version signed
+   * before the guard existed (or by any path that bypassed it) is not published: publication is the
+   * communication §5(2) is about.
+   */
+  assertNoFoetalSexDisclosure(
+    reportText([signed.body, signed.impression ?? "", signed.amendmentReason ?? ""]),
+    await isObstetricReport(tx, study, signed.templateKey), "report",
+  );
 
   /**
    * ═══ F71 (CLOSE REVIEW) — THE STAMP IS A COMPARE-AND-SET, NOT A BLIND UPDATE BY ID ═══
