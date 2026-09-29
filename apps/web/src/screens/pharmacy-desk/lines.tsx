@@ -32,7 +32,7 @@ import type { PickLine, VerifyLine, WireAlternativeBlock, WireDispense, WireDisp
 export type CollectResult = { ok: true } | { ok: false; lineErrors: Record<number, string>; message: string | null };
 
 export function LineList({
-  dispense, editable, busy, onCollect, onDecline, onFocusDrug,
+  dispense, editable, busy, onCollect, onDecline, onFocusDrug, onLiveQty,
 }: {
   dispense: WireDispense;
   /** Claimed or verified, and this desk's to work. Everything else is drawn, not worked. */
@@ -42,6 +42,12 @@ export function LineList({
   onDecline: (lineIdx: number, reason: string) => Promise<boolean>;
   /** PARITY P1 — the drug of the line the pharmacist is on, so the desk's `N` opens prefilled with it. */
   onFocusDrug?: (drug: ShortDrug | null) => void;
+  /**
+   * WALK FINDING 2026-09-29 — the quantity each line is being GIVEN as typed, before any tick, so the
+   * bill rail can follow an edit at once (a prefilled 9750 edited to 10 kept billing 9750 until ticked).
+   * `null` for a line whose box holds no usable quantity.
+   */
+  onLiveQty?: (dispenseId: string, qty: Readonly<Record<number, number | null>>) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [ticks, setTicks] = useState<Record<number, Tick>>({});
@@ -122,6 +128,10 @@ export function LineList({
     setTicks(Object.fromEntries(dispense.lines.map((l) => [l.lineIdx, freshTick(l)])));
     setErrors({}); setTicketError(null); setDeclining(null);
   }, [dispense.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    onLiveQty?.(dispense.id, Object.fromEntries(Object.entries(ticks).map(([idx, tk]) => [Number(idx), qtyOf(tk)])));
+  }, [ticks, onLiveQty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const collect = async (next: Record<number, Tick>): Promise<void> => {
     setTicketError(null);

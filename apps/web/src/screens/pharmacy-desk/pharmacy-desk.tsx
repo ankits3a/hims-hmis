@@ -79,6 +79,9 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [justHandedOver, setJustHandedOver] = useState<string | null>(null);
   /* PARITY P1 — the line the pharmacist is on, so `N` opens the short book prefilled with its drug. */
   const [focusedDrug, setFocusedDrug] = useState<ShortDrug | null>(null);
+  /* WALK FINDING 2026-09-29 — the quantities as typed on the ticket in hand, so the bill follows an edit before the tick. */
+  const [liveQty, setLiveQty] = useState<{ dispenseId: string; qty: Readonly<Record<number, number | null>> } | null>(null);
+  const onLiveQty = useCallback((dispenseId: string, qty: Readonly<Record<number, number | null>>): void => { setLiveQty({ dispenseId, qty }); }, []);
   useEffect(() => { setFocusedDrug(null); }, [inHandId]);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -488,6 +491,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onClear={clearDesk}
               autoPrint={inHand !== null && justHandedOver === inHand.id}
               onFocusDrug={setFocusedDrug}
+              onLiveQty={onLiveQty}
             />
           </main>
 
@@ -496,6 +500,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
             <BillRail
               dispense={inHand}
               preview={preview.data ?? null}
+              liveQty={liveQty !== null && liveQty.dispenseId === inHand.id ? liveQty.qty : null}
               previewError={preview.error === null ? null : pharmacyErrorText(preview.error, t)}
               drawerOpen={drawer.isPending ? null : drawer.data?.session?.status === "open"}
               busy={busy}

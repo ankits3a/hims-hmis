@@ -21,7 +21,7 @@ import type { ControlledHandover, PickLine, VerifyLine, WireDispense, WirePatien
  */
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug,
+  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty,
 }: {
   inHand: WireDispense | null;
   loading: boolean;
@@ -49,6 +49,8 @@ export function TicketPanel({
   autoPrint?: boolean;
   /** PARITY P1 — the line the pharmacist is on, for the desk's `N`. */
   onFocusDrug?: (drug: ShortDrug | null) => void;
+  /** The quantities being given as typed, for the bill rail (`LineList`). */
+  onLiveQty?: (dispenseId: string, qty: Readonly<Record<number, number | null>>) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const alerts = (
@@ -172,6 +174,7 @@ export function TicketPanel({
         onCollect={onCollect}
         onDecline={onDecline}
         onFocusDrug={onFocusDrug}
+        onLiveQty={onLiveQty}
       />
       {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       {error !== null || note !== null ? alerts : null}
