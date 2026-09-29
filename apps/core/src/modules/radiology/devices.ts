@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { resources } from "../../kernel/db/schema/resources";
 import { AERB_UNLICENSABLE_MODALITIES, unlicensedDevices } from "../aerb";
 import { DEVICE_MODALITY_ATTRIBUTE, DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES } from "./kinds";
+import { DEVICE_AE_TITLE_ATTRIBUTE } from "./mwl";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -42,6 +43,10 @@ export type ImagingDeviceRow = {
   modality: string;
   /** The parent resource (a room) when the machine hangs off one; null for the seeded machines. */
   room: string | null;
+  /** 18-S RS4 — the parent resource's id, so the Setup form can show which room is chosen. */
+  roomId: string | null;
+  /** 18-S RS4 — the DICOM AE title the modality pulls its worklist as; null = not a DICOM device yet. */
+  aeTitle: string | null;
   /** `attributes.portable === true` — the machine can be taken to a bed. */
   portable: boolean;
   status: string;
@@ -52,7 +57,13 @@ export type ImagingDeviceRow = {
 
 const parent = alias(resources, "parent_resource");
 
-export async function imagingDevices(db: Db, onDate: string): Promise<ImagingDeviceRow[]> {
+/**
+ * `opts.includeRetired` — 18-S RS4: the Setup station lists the whole register, retired machines
+ * included (greyed), so a code that is taken is visibly taken. The counter's list never shows them.
+ */
+export async function imagingDevices(
+  db: Db, onDate: string, opts: { includeRetired?: boolean } = {},
+): Promise<ImagingDeviceRow[]> {
   const rows = await db.select({
     id: resources.id,
     code: resources.code,
@@ -60,10 +71,13 @@ export async function imagingDevices(db: Db, onDate: string): Promise<ImagingDev
     status: resources.status,
     attributes: resources.attributes,
     parentName: parent.name,
+    parentId: resources.parentId,
   })
     .from(resources)
     .leftJoin(parent, eq(parent.id, resources.parentId))
-    .where(and(eq(resources.kind, "device"), sql`${resources.status} <> 'retired'`))
+    .where(opts.includeRetired === true
+      ? eq(resources.kind, "device")
+      : and(eq(resources.kind, "device"), sql`${resources.status} <> 'retired'`))
     .orderBy(asc(resources.code));
 
   const unlicensed = new Set((await unlicensedDevices(db, onDate)).map((d) => d.deviceResourceId));
@@ -79,6 +93,9 @@ export async function imagingDevices(db: Db, onDate: string): Promise<ImagingDev
       name: r.name,
       modality,
       room: r.parentName,
+      roomId: r.parentId,
+      aeTitle: typeof r.attributes[DEVICE_AE_TITLE_ATTRIBUTE] === "string"
+        ? r.attributes[DEVICE_AE_TITLE_ATTRIBUTE] as string : null,
       portable: r.attributes[DEVICE_PORTABLE_ATTRIBUTE] === true,
       status: r.status,
       ionising,

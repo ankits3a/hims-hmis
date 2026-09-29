@@ -103,12 +103,34 @@ export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
 export type { ReportContent, ReportRow } from "./reports";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
+// 18-S RS8a — the reading room: the pre-sign pipeline (a later guard joins PRE_SIGN_CHECKS), the
+// signer block (ruling 4), the governed templates/signatories books and the reading reads.
+export { CRITICAL_TERMS, PRE_SIGN_CHECKS, criticalTermsIn, runPreSignChecks } from "./checks";
+export type { PreSignCheck, PreSignContext, PreSignFinding, PreSignLevel } from "./checks";
+export { dryRunPreSign } from "./reports";
+export type { SignChecksRecord } from "./reports";
+export { signedContentDigest, signerSnapshot } from "./signer";
+export type { SignerBlock } from "./signer";
+export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
+export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
+export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
+export type { ReadingContext, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
 export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
 // 18-S RS2b — the machine list, the portable round, and `bedsideStudiesFor`: THE IPD SEAM. The ward
 // screen the IPD plan builds imports it from here; it has no route of its own until then.
 export { imagingDevices } from "./devices";
 export type { ImagingDeviceRow } from "./devices";
 export { bedsideStudiesFor, portableRound } from "./bedside";
+// 18-S RS4 — the machine register's write door and the Setup station's reads.
+export {
+  BOOKED_STUDY_STATUSES, DEVICE_AE_TITLE_RE, RADIOLOGY_DEVICES_MANAGE, SETTABLE_DEVICE_STATUSES,
+  bookedStudiesOn, createImagingDevice, editImagingDevice, isIonisingModality, setImagingDeviceStatus,
+} from "./machines";
+export type { BookedStudyRow, CreateImagingDeviceInput, EditImagingDevicePatch, SettableDeviceStatus } from "./machines";
+export {
+  INVESTIGATION_GST_CATEGORY, RADIOLOGY_RULED_SERVICES, setupBooks, setupPrices, setupRooms,
+} from "./setup";
+export type { BookRow, BookVersionRow, SetupPriceRow, SetupRoomRow } from "./setup";
 export type { BedsideStudyRow } from "./bedside";
 export { DICOM_UID_MAX_LENGTH, STUDY_UID_ROOT, isValidDicomUid, mintStudyInstanceUid } from "./uid";
 export {

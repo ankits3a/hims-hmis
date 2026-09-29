@@ -52,3 +52,35 @@ export function investigationLevelFor(
   const days = (end - start) / 86_400_000 + 1;
   return (perMonthMsv * days) / DAYS_PER_MONTH;
 }
+
+/**
+ * 18-S RS11 — **THE REST OF RULING 5, AS DATA WITH ITS SOURCES** (owner ruling 5, DECIDED 28 Sep).
+ *
+ * Each number carries where it comes from, so a screen can print the source beside the number and
+ * nobody has to trust a comment.
+ */
+
+/**
+ * mSv to the embryo/foetus for the remainder of a declared pregnancy — ICRP 103 §186 and the AERB
+ * Safety Code for medical diagnostic X-ray equipment (AERB/RF-MED/SC-3 Rev.2, 2016). Compared with
+ * the sum of her Hp(10) reads worn after the declaration (pro-rated by days for a period that
+ * straddles it) — the badge dose is the conservative stand-in for the foetal dose.
+ */
+export const PREGNANT_WORKER_FOETAL_LIMIT_MSV = 1;
+
+/**
+ * Years between QA tests by an AERB-recognised QA agency when the record names no next-due date:
+ * acceptance, then every 2 years, and after any major repair (owner ruling 5; AERB/RF-MED/SC-3
+ * Rev.2 §8 periodic QA).
+ */
+export const QA_DEFAULT_INTERVAL_YEARS = 2;
+
+/** The sources a screen prints beside the numbers. */
+export const RADIATION_SAFETY_SOURCES = {
+  annualLimit: "AERB Radiation Protection Rules 2004 / ICRP 103: 30 mSv in any single year",
+  fiveYearAverage: "AERB / ICRP 103: 20 mSv a year averaged over 5 consecutive years",
+  investigationLevel: "Owner ruling 5 (28 Sep 2026): 1 mSv per month of wear, 3 mSv per quarterly badge",
+  foetalLimit: "ICRP 103 / AERB: 1 mSv to the foetus for the rest of a declared pregnancy",
+  qaInterval: "Owner ruling 5: AERB-recognised QA agency at acceptance, every 2 years, after major repair",
+  tldService: "Owner ruling 5: BARC-accredited personnel-monitoring service, badges worn quarterly",
+} as const;

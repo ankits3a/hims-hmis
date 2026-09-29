@@ -131,30 +131,34 @@ the authenticator's next code.
 ## 5. The machines
 
 Each `device` resource carries a `modality` attribute, and `scheduleStudy` matches a study type
-against it. **The AE title a modality worklist needs cannot be set at all** — nothing in the
-workspace writes `attributes.aeTitle`, so `GET /radiology/mwl` is permanently empty; the PACS
-runbook's §2 carries the measurement. This sentence used to say "set the AE title too", seven lines
-above the paragraph below declaring there is no door for a machine.
+against it. **The device registry row is also what an AERB licence points at**: a machine that does
+not exist as a resource cannot be licensed, and therefore cannot be used for an ionising examination.
+The machines must exist before you enter the certificates.
 
-**The device registry row is what an AERB licence points at.** A machine that does not exist as a
-resource cannot be licensed, and therefore cannot be used for an ionising examination. The machines
-must exist before you enter the certificates.
+**18-S RS4 built the door: Radiology → Setup → Machines** (`/radiology/setup`, grant
+`radiology.devices.manage`, held by the `radiologist`). Until RS4 there was none — `seed:radiology`
+was the only writer of an imaging device and nothing could set an AE title, so `GET /radiology/mwl`
+was permanently empty.
 
-**THERE IS NO RESOURCES SCREEN, and this section said otherwise until it was measured.** The kernel
-exposes `/resources/board`, `/resources/tree` and `/resources/:id/history` — all GET — and no create
-or update route at all. `createResource` is reached only through `materials/stores.ts`,
-`opd/masters.ts`, `lab/instruments.ts` and two seed scripts. **The laboratory has a door for its
-instruments; radiology has none for its machines.**
-
-So `seed:radiology` is the only writer of an imaging device, and the honest instruction is:
-
-> A hospital with two CTs, a second DR unit or a C-arm adds it to `MODALITY_MACHINES` in
-> `apps/core/scripts/seed-radiology.ts` and re-runs `pnpm seed:radiology`. Every step is
-> find-or-create, so a re-run adds the new machine and touches nothing else.
-
-**That is a deployment act, not a hospital one**, and it is a gap rather than a design: a hospital
-cannot commission a machine on a Sunday without an engineer. It is recorded here so nobody looks for
-a screen, and it is the same shape as §0 — a capability whose door was never built.
+1. `seed:radiology` still seeds the standard seven (§5a). Register every other machine at Setup:
+   code, the name on the door, modality, room, and whether it goes to the bedside.
+2. **Set each DICOM machine's AE title** exactly as it is configured on the modality's console —
+   capitals, digits and underscore, up to 16 (`CT_1`). The register refuses anything else
+   (`invalid_ae_title`) and refuses a title another machine already uses (`duplicate_ae_title`,
+   naming that machine). **A machine's studies appear in the modality worklist only once its AE title
+   is set** (`radiology-pacs-go-live.md` §2). A machine with no worklist (a CR cassette unit) is left
+   without one; it is booked and acquired by hand as before.
+3. **Taking a machine out of service** — `down`, `maintenance`, `qa_blocked`, `retired` — needs a
+   reason, which is kept on the machine's history and its `resource.status_changed` event. The answer
+   lists every study still booked on it (scheduled / checked in / ready): the desk moves them from the
+   diary (§11). New bookings on it are refused `device_unavailable` from that moment.
+4. **Two statuses the register will not walk a machine out of** (`device_status_locked`): a
+   `qa_blocked` machine is released only by the RSO's passing QA record (Radiation safety → QA), and a
+   `retired` machine stays retired (register a returning machine under a new code). A machine's
+   modality never changes: retire it and register the new one.
+5. **An ionising machine with no active AERB licence is now refused at BOOKING** (`device_not_licensed`,
+   naming the machine and the RSO), not first at the console with the patient on the table (18-S RS4
+   T2). The console's check stays: a licence can lapse between booking and the day.
 
 ### 5a. The two portables (18-S RS2b)
 
@@ -189,8 +193,30 @@ plan"*. The routes and the grants are real and the ceremony works; the screen is
 
 **The `investigation` GST category must exist**, or pricing refuses `gst_config_missing`. Every
 imaging service is that category — and so is every laboratory service, so **this is one ruling for
-both departments**, not two. The SAC code and whether it is exempt are a CA-and-owner decision. Do
-not ship a placeholder into production.
+both departments**, not two. **18-S RS4: `seed:tariff` (which `deploy.sh` runs) now writes it when
+absent** — exempt, 0 %, SAC `9993`, per plan 18-S ruling 2 (Notification 12/2017-CT(R) entry 74; film
+and CD given with the study are part of the same composite supply). A CA confirms the 6-digit SAC at
+the first filing; a corrected row is never overwritten by a later deploy. `standup:check` row
+`radiology_investigation_gst` (G2) is green when the row exists.
+
+### 6a. Film, CD and outside reads (ruling 1, 18-S RS4)
+
+`seed:radiology` also ensures four services in the `investigation` category, **unpriced**:
+
+| Code | Service | Ruled price |
+|---|---|---|
+| `RAD-FILM` | Imaging film, per sheet | ₹250 |
+| `RAD-CD` | Imaging CD | ₹300 |
+| `RAD-2ND-XR-US` | Outside second-opinion read — X-ray or ultrasound | ₹600 |
+| `RAD-2ND-CT-MR` | Outside second-opinion read — CT or MRI | ₹1,500 |
+
+**Enter these four prices in the next tariff revision** (draft, set the item, submit, owner approves,
+activate) — the seed does not activate a tariff version, because a price becomes chargeable only
+through that approval. Setup → Prices shows each `RAD-` service with its GST category, the price in
+force and, for these four, the ruled price, so the gap is visible until it is closed. **An X-ray
+includes one film**: `RAD-FILM` is for further sheets and for CT, MRI and USG film on request; the
+desk applies that rule — nothing on the bill enforces it yet. The digital report and the image link
+are always free.
 
 Until a version is active, `startAcquisition` on a routine self-pay study refuses **`402
 payment_required`** — *"take the money, or record it as stat if this is an emergency"* (DD12a). That
@@ -287,3 +313,197 @@ human does.
 
 **Drill C — the outside film.** Register a study done elsewhere. It records the centre, the date and
 how the images arrived, it is never billed as a performed study, and no dose is logged against it.
+
+## 11. The imaging front desk — counter, diary, hall display (18-S RS3)
+
+**Who.** `radiology_receptionist` now also holds `radiology.checkin` and `radiology.display.read`
+(`seed:roles`). The hall TV logs in as the kiosk `display` account, which holds `opd.display.read`
+and `radiology.display.read` and nothing else. Re-run `seed:roles` after deploy; it only adds.
+
+**Before the first patient.**
+1. The receptionist opens their **cash drawer** (`/billing/session`). With no open drawer the
+   counter offers no tender at all — that is billing's rule for every receipt, cash or not.
+2. UPI needs the UTR and card needs the approval code, typed at the Bill step.
+3. Film (`RAD-FILM`, ₹250 a sheet) and CD (`RAD-CD`, ₹300) appear as add-ons only once the tariff
+   carries services with exactly those codes (ruling 1; RS4 owns adding them). Until then the Bill
+   step shows a note.
+4. Open `/radiology/display` on the hall TV under the `display` account and leave it; it polls every
+   15 s and has no controls.
+
+**The counter (`/radiology/reception`).** Open a patient from the right-hand list, or find a visit
+and press *Work this visit at the counter*. Opening a patient **on the day of the slot checks their
+booked studies in** — there is no check-in button. Then:
+- **Studies** — the visit's studies at the desk (to book, booked, checked in).
+- **Checks** — the safety checks the prep bay will open and what to tell the patient (English and
+  Hindi). The desk records nothing here; a check is cleared only in the prep bay or the room.
+- **Bill** — self-pay is collected here: one invoice through billing, then the line is linked to
+  the study (that link is what lets the room start the scan). STAT: nothing collected, the bill
+  follows. TPA / PM-JAY / corporate: billed to the payer; for a cashless MRI or CT confirm the
+  pre-authorisation with the TPA desk (the system has no pre-auth record yet), else a deposit at the
+  billing counter. **No discount at the counter** (HOD up to 10%); **no credit** (owner only). If the
+  service was already billed on the visit, the desk links that line instead of billing twice.
+- **Slot & slip** — pick a machine of the study's kind and a time (IST), or *Now · walk in* (books
+  the first free machine and checks the patient in). A machine without an AERB licence cannot be
+  picked. The slip shows the accession (the patient's token on the hall board) and the prep; the
+  appointment message is **queued, not sent** (the WhatsApp provider is not connected).
+
+**The diary (`/radiology/diary`).** Every machine × the chosen day. Click a booking to move it,
+mark a no-show or cancel it — **each needs a reason** (the server refuses without one, and records
+it on `imaging.booking_changed`). A down or unlicensed machine with bookings gets a red banner
+listing the patients to move. Cancelled before the room: the refund goes through the billing
+office's refund request; the desk does not refund.
+
+**Verify once.** Book a study, see the block on the diary, open the patient on the day (checked
+in, the token appears under NEXT on the hall TV as `X… Firstname I.`), move it with a reason
+(`imaging.booking_changed` row; the old `imaging_appointment_booked` outbox row goes `expired`, a
+new one `queued`).
+
+## 12. The modality rooms — console, portable, dose log, rejects, downtime (18-S RS6)
+
+**Who.** `radiographer` (and `radiologist`) — `radiology.acquire`. Nothing new in `seed:roles`.
+Opening a booked patient checks them in, so the radiographer's existing `radiology.checkin` is used.
+
+**Before the first patient: the protocol book.** The HOD writes the `imaging_protocols` book under
+Setup → Books (`/radiology/setup?view=books`); the medical superintendent approves it in the
+approvals inbox, then it is published — the same route as every other book. **Nothing is seeded**:
+until the HOD publishes, the console says *"No protocol book is published yet"* and the technologist
+works from the radiologist's instruction. One protocol per study-type code (`study_type_code`), or a
+department default per modality (`modality`); the study type's own wins. Each protocol carries:
+- `name`, `technique` (the radiologist's words), optional `preset` (the machine's stored protocol);
+- `kv` / `mas` ranges; CT `ct: {slice_mm, pitch}`; MRI `sequences`;
+- `contrast: {phase, ml_per_kg, max_ml, delay_s, agent?, rate_ml_s?}` — the console suggests
+  `ml_per_kg × weight`, capped at `max_ml` (a suggestion; the volume given is typed);
+- `breath_hold: {en, hi}` — both or neither, read aloud from the console;
+- `paediatric: {bands: [{from_kg, to_kg, kv?, mas?, ml_per_kg?, note?}]}` — a child is dosed by
+  weight band; a weight outside every band is a question for the radiologist.
+
+Example body: `{"protocols":[{"study_type_code":"CT-ABDO-CONTRAST","name":"CECT abdomen, portal
+venous","technique":"Supine, arms up …","kv":{"min":100,"max":120},"ct":{"slice_mm":5,"pitch":0.98},
+"contrast":{"phase":"portal_venous","ml_per_kg":1.5,"max_ml":100,"delay_s":70},"breath_hold":{"en":
+"Breathe in… hold","hi":"साँस अंदर… रोकिए"}}]}`.
+
+**The console (`/radiology/room`).** Pick the machine at the top; the right list is that machine's
+day (STAT first, then on the table → ready → arrived → booked), with *Clocks running* for a STAT
+waiting over 10 minutes and a ready patient over 20. **Opening a patient means they are on the
+table** — a booked study is checked in by that act; there is no presence button. Then:
+1. **Identify** — the patient says name and age in their own words (tick), then the second
+   identifier: scan the wristband, or the UHID said / on the slip, or the date of birth. The server
+   compares it with the patient master; a mismatch leaves the gate open — stop. For a study with a
+   side, the patient points; there is no override for the side. Any other open gate belongs to the
+   **prep bay** (`/radiology/prep`): the console shows it, links there, and will not go on.
+2. **Protocol** — the card, the contrast volume for the weight (the charted weight is filled in;
+   type the weight on the table), and the breath-hold words in English or Hindi.
+3. **Acquire** — *Start*. A refusal is shown in the server's words with the seat that fixes it:
+   no AERB licence → Radiation safety → Licences; machine down or busy → Downtime; not paid → the
+   imaging front desk; a prep gate → the prep bay. Once on the table: type the dose from the console
+   (CT: CTDIvol and DLP; X-ray: DAP, and fluoroscopy seconds when screened; mammography: DAP). **A
+   number above the hospital DRL asks for a reason and never blocks** — the reason is kept on the
+   dose register beside the verdict. Contrast: given (agent, volume) or *not given*; a study booked
+   **with** contrast and scanned plain sends the contrast reversal to the bill-decisions queue with
+   the reason typed here (ruling 3). **Repeat** records a retaken exposure with its reason code —
+   positioning, patient motion, exposure too low/high, artefact, equipment fault — and raises one
+   *repeat · no charge* bill decision per study (ruling 8: a technical repeat is free). **Abort**
+   (with a reason) sends the study back to *ready*; nothing is billed for the abort.
+4. **Send** — PACS (the Study UID is pre-filled from the worklist) or *no DICOM images*. The study
+   leaves the list and appears on the reading worklist.
+
+The study page (`/radiology/studies/:id`) is still there — the lane links to it, and it links back
+to the console.
+
+**Portable round (`/radiology/portable`).** Opening a bed opens the same console in bedside mode.
+Before *Start* the technologist ticks the bedside radiation checks — everyone else 2 m away; lead
+apron and thyroid shield on anyone who must stay; no pregnant staff, visitor or patient in the bay.
+They are attested as text on the start (the study's history shows who, when, and the checks).
+
+**Dose log.** The day's dose register for the machine, with the DRL verdict and the reason for
+every above-DRL study; a missing reason is shown in red for the RSO's review.
+
+**Rejects & repeats.** Last seven days: repeats per study acquired, per machine and technologist,
+against a target under 3 %; reasons; the repeat log (accession, never the name). The *repeat · no
+charge* and *contrast not given* decisions are listed; **resolving one is the desk's or the billing
+manager's act** (`radiology.bill_decisions.manage`), never the technologist's.
+
+**Downtime.** Every machine's status. *Report a breakdown* is the radiologist in charge's act
+(`radiology.devices.manage`, Setup's status write with a reason); it answers with the booked
+patients to move — move them in the imaging diary. A technologist sees who to tell instead.
+**When HMIS itself is down:** each room keeps pre-numbered manual accession sheets (name, UHID,
+study, side, dose, technologist, time); scan on paper, hand the sheet to the desk, and back-enter
+each study when HMIS returns — the entry takes the paper time and is marked late (`acquiredAt`,
+E11). No other downtime mechanism exists yet.
+
+**Verify once.** Publish a one-protocol book; open a ready CT on the console — the card and the
+volume show; identify; start; type a DLP above the DRL with a reason; record one repeat; send.
+Expect: one `radiation_dose_register` row with `over_drl = true` and `drl_reason` set; one
+`imaging.exposure_repeated` event; one open `repeat_no_charge` decision; the study on the reading
+worklist; the repeat on *Rejects & repeats*.
+## 13. The reading room — templates, signatories, checks, the signer on print (18-S RS8a)
+
+**Who.** The reading room (`/radiology/read`) is for holders of `radiology.reports.write` (the
+`radiologist`). Signing still needs `radiology.reports.sign` and a fresh second factor. No new
+permission; nothing to re-seed.
+
+**Before the first signature — two books, both drafted by the HOD, approved by the medical
+superintendent** (Radiology → Setup → Books; the same draft → approval → publish every book uses):
+1. **Report signatories (`report_signatories`) — REQUIRED.** Ruling 4: the printed report carries
+   the signer's name, qualification, council registration number and electronic signature. Until
+   this list is published **every signature is refused `signer_credentials_missing`**, naming what is
+   missing (census row `radiology_report_signatories`, G3). One entry per radiologist or sonologist:
+   ```json
+   { "signatories": [
+     { "user_id": "<the radiologist's user id>", "qualification": "MBBS, MD (Radiodiagnosis)",
+       "designation": "Consultant Radiologist", "council_reg_no": "Jharkhand State Medical Council · 2014/1187" }
+   ] }
+   ```
+   `council_reg_no` may be left out when the person's number is already on record — the roster's
+   `nmr` / `smr` credential, else their OPD doctor record (`opd_doctors.registration_no`) is read. A
+   person on neither is refused, naming the council number.
+2. **Report templates (`report_templates`) — optional, recommended.** Structured templates: sections
+   with a "normal study" text, named phrases (macros), and coded categories (BI-RADS, ACR TI-RADS,
+   LI-RADS, PI-RADS, O-RADS US, Lung-RADS, Fleischner 2017, ASPECTS), each `required` or not. A
+   reference set covering all eight systems is in `docs/runbooks/radiology-report-templates.reference.json`
+   — **clinical content, the HOD's to read and change** before pasting it into the Books editor;
+   nothing is published by a seed. Without this book a study gets the built-in section skeleton.
+   A template names `modalities` and optionally `study_type_codes` (a type-named template is offered
+   first).
+
+**The checks before a signature** (the same rules run as the screen's live card, at Sign and at
+Amend — no model):
+
+| Code | Level | What it catches | Fix |
+|---|---|---|---|
+| `impression_required` | refuse | empty impression | write it |
+| `side_conflict` | refuse | a left study whose report names only "right" (or the reverse) | correct the side in the text |
+| `side_mentions_both` | warn | the report names both sides | re-read each word; tick |
+| `sex_organ_mismatch` | refuse | uterus / ovary / endometrium on a male registration, prostate / testis / scrotum on a female | correct the text, or the patient's registration at the front desk |
+| `coded_category_required` | refuse | a template's required category (e.g. BI-RADS) missing, or not a category of its system | choose one |
+| `coded_calculation_differs` | warn | the category disagrees with the recorded calculator inputs (TI-RADS points, ASPECTS regions) | tick if you grade it differently on purpose |
+| `critical_term` | warn | pneumothorax, intracranial / subdural / extradural haemorrhage, aortic dissection, pulmonary embolism, free air, ectopic pregnancy, torsion, cord compression, acute infarct … — **not negated** ("no pneumothorax" is not a hit) — with no critical category chosen | flag red / orange / yellow, or tick that it is not critical for this patient |
+
+A warning is signed only when ticked, and the tick is stored on the signed version
+(`imaging_reports.sign_checks`: which checks ran, each warning, who acknowledged, when). The PCPNDT
+lexical lockout and the order-side check (`laterality_mismatch`) still run first, unchanged.
+
+**The signature.** The dock's act is **Sign and publish**: it saves the text as a draft, signs it
+(the authenticator code is asked in the dock only when the session's second factor is stale — the
+code verifies the SESSION, it never travels with the report), then publishes. The signed version
+stores the signer block (`imaging_reports.signer`): name, qualification, designation, council
+number and where it was read from, Doctor ID, the second factor's instant, the authenticator's key
+id, and a SHA-256 of the signed content. **It is an electronic authentication record, not a Digital
+Signature Certificate**; the print says "electronically signed".
+
+**The print** (Reading room → a signed study → Print preview; `GET /radiology/reports/:id/print`):
+the letterhead, patient, the referring doctor as **Doctor ID + department only**, the sections,
+the impression, the coded line ("BI-RADS 4A — …"), and the signer block. A draft or prelim never
+prints. A report signed before RS8a prints "signer details were not recorded at signing".
+
+**The worklist.** One list, sorted (priority · time left · modality), never filtered. Clocks: STAT
+30 min, urgent (the ER's and wards' priority) 60 min, a bedside study (IPD) 6 h, otherwise OPD
+24 h — from when the images are in. "Dr X is reading" is derived from the image-view log (someone
+else opened the images in the last hour); there is no claim button.
+
+**Verify once.** Publish the signatories book naming one radiologist. As that radiologist open a
+study at `/radiology/read`, type "Large right pneumothorax." with an empty impression: the card
+shows `impression_required` (red) and `critical_term` (amber), the dock is dead. Write an impression,
+tick the warning, Sign and publish. Open Print preview: the name, qualification and council number
+are on it, the referrer is a Doctor ID. `select signer, sign_checks from imaging_reports where
+status = 'signed' order by created_at desc limit 1` shows both blocks.

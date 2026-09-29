@@ -4,6 +4,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { imagingDevices } from "./devices";
 import { portableRound } from "./bedside";
+import { hallBoard } from "./display";
 import { toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -30,6 +31,19 @@ export class RadiologyFloorController {
   async devices(): Promise<unknown> {
     try {
       return { devices: await imagingDevices(this.db, istDayString(new Date())) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 18-S RS3 — the waiting-hall board, behind `radiology.display.read`: the OPD board's pattern
+   * exactly (`opd.display.read`, held by the kiosk `display` role and the desk). Tokens and first
+   * name + initial only; see `display.ts`.
+   */
+  @Get("display")
+  @RequirePermission("radiology.display.read", "hospital")
+  async display(): Promise<unknown> {
+    try {
+      return await hallBoard(this.db, new Date());
     } catch (e) { toHttp(e); }
   }
 
