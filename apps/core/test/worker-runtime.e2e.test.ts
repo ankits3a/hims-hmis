@@ -191,6 +191,8 @@ const THE_EIGHTEEN = [
   "runRefillReminders",
   /** 18-S RS11 T3 — `every(3_600_000)`: an overdue QA puts an available machine into `qa_blocked`. */
   "sweepOverdueQa",
+  /** 18-S RS10 T2 — `every(60_000)`: the HOD's escalations raised on, and resolved off, the obligation spine. */
+  "sweepImagingEscalations",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -516,6 +518,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // `patient_messages` < `rx_issued`.
         ["pharmacy.patient_messages", ["dispense.handed_over", "retail.sold"]],
         ["pharmacy.rx_issued", ["prescription.issued"]],
+        // 18-S RS10 T3 — the inbox grant applies the gate override. `approval_granted` < `order_placed`.
+        ["radiology.approval_granted", ["approval.granted"]],
         ["radiology.order_placed", ["order.placed"]],
       ]);
 

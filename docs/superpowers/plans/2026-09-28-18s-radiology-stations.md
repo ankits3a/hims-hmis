@@ -1086,6 +1086,60 @@ migration:
 - **Journeys:** J2 escalation, J5, J8, J10 floor, J11.
 - Claims: the alerts/notify manifests.
 
+#### RS10 spike (read on main `8cd13d28`, 29 Sep, before any code)
+- **(a) What the spine gives.** An *obligation* is a `kernel/workflow` instance whose state carries an
+  `sla`: `startInstance` lays the resolve timer, a percent `ladder` (every rung at state entry, each
+  `{atPercent, toRole}`) and an optional `respondMinutes` clock (`timers.ts scheduleSlaTimer`).
+  `runDueTimers` (worker, every tick) fires them: a ladder rung → `escalation.triggered` with the
+  rung's people (`resolveRung` → the roster's `escalationRecipients(…"workflow.timer_rung"…)`, else
+  every holder of the role; nobody → the duty managers; nobody again → `fallbackExhausted`, and the
+  alerts consumer sends it to the owners), the respond clock → `respond.overdue` (the same people are
+  asked again). `kernel/alerts` turns both into per-user rows (`refType workflow_instance`) with the
+  three acts `POST /alerts/:id/ack {kind: seen | owned (+ownedUntil) | handed_over (+toUserId)}`; the
+  obligations consumer cancels ONLY the respond clock on seen/owned (handed-over keeps it running; the
+  ladder always keeps running — saying "mine" is not the work). A transition to a terminal state
+  cancels every open timer (`transition` → `cancelOpenTimers`). **So radiology feeds it with no kernel
+  edit**: one class-C workflow definition per cause (the `approvalFlowDefinition` shape — `open` with
+  the sla, `resolved` terminal, `system` only), started by a radiology sweep when a cause appears and
+  moved to `resolved` by the same sweep when the cause clears. `escalation.triggered` is already a
+  generic branch of the alerts consumer, so the alert title is `Escalation: imaging_esc_<cause> ·
+  open · rung n` — structural, no patient (GC6). The SMS leg is the notify gateway's: an alert to a
+  person with a phone goes as app + SMS per Plan 10's matrix; the only radiology-specific fallback is
+  the ladder's last rung (the medical superintendent). The existing `imaging.critical_overdue` /
+  `imaging.report_unread` alerts stay as they are (duty managers); RS10 adds the HOD's obligations
+  beside them, not instead.
+- **(b) The kernel inbox grant.** `approveRequest` appends `approval.granted {approvalId, typeKey,
+  decidedBy, note, …}` in the deciding transaction; **no module subscribes to it** (materials and
+  pharmacy re-check on execute). RS5's `decideGateOverride` applies an inbox grant only when somebody
+  presses *grant* again at radiology's own route. A radiology consumer on `approval.granted` (worker,
+  `radiologyManifest.subscriptions` + `workerConsumers` + the consumer censuses) can call the same
+  apply half — re-read the approval (granted, this type, subject = an `imaging_gate`), skip a gate
+  already terminal (idempotent under at-least-once), skip the never-override kinds, run the EXISTING
+  `overrideGate` as the approver (a user holding `radiologist`, which the approval's approver role
+  guarantees) with the decision note as the reason, then `evaluateReadiness`. A domain refusal
+  (lexical term in the note, the gate moved) is swallowed — a consumer that throws is redelivered
+  forever — and the gate stays open for a human.
+- **(c) The roster.** `onDutyNow(tx, departmentId, at)` answers the positions a PUBLISHED period
+  declares for a department (`source: published`) or `static`; `whoIsOn(position)` answers a
+  position (flag `ROSTER_RESOLVER_ENABLED`, off unless set; off or unpublished → every holder of the
+  position's eligible RBAC role). Radiology's department is `RAD` (Radiodiagnosis); the only imaging
+  position is `radiologist_on_call` (eligible role `radiologist`). **There is no technologist, nurse
+  or receptionist position and no room on an assignment**, so "technologist on shift per room"
+  cannot be answered by the roster; the HOD's Roster view shows the RAD positions with their source
+  and, for the four radiology roles with no position, who HOLDS the role (labelled "not rostered").
+- **(d) Audit reads.** `imaging_image_views` (study, viewer, via `viewer_link | report | …`, host,
+  instant) is written by `openImages`; `phi_access_log` (actor, patient, surface, context
+  `treating | serving | none`, sealed, reason, instant) carries the imaging surfaces
+  `imaging.worklist | imaging.study | imaging.report | imaging.patient_reports`, `pcpndt.form_f`,
+  `aerb.dose_register`, `aerb.incident_register`. Break-glass is `break_glass_grants` (user, patient
+  or null, reason, window, reviewed). Role = `role_assignments` + live temp grants. An access-log read
+  joins these; no table is added.
+
+**RS10 decisions before code.** The HOD's grant is `radiology.definitions.manage` (held by
+`radiologist` alone; the resident of RS8b holds `.definitions.read` only) — the department head's
+"books" grant, so **no new permission**. **No migration** — the floor is a read, escalations are
+workflow instances, the consumer writes nothing new.
+
 ### RS11 · Radiation safety, completed
 - **Core:**
   - TLD CSV import from the service provider's file (ruling 5);

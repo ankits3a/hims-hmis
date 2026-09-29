@@ -10,7 +10,7 @@ import { OBLIGATIONS_CONSUMER } from "../obligations/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
-import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "../../modules/radiology";
+import { RADIOLOGY_APPROVAL_GRANTED_CONSUMER, RADIOLOGY_ORDER_PLACED_CONSUMER } from "../../modules/radiology";
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
@@ -96,6 +96,9 @@ describe("seedCursors", () => {
         // second consumer census, recorded as finding F14 rather than fixed silently, exactly as
         // Plan 15 recorded T2-f.
         RADIOLOGY_ORDER_PLACED_CONSUMER,
+        // 18-S RS10 T3 — seeded at `max(seq)` so the first cycle does not replay every historic grant
+        // (each would be a no-op — the gate is terminal — but a no-op is not a reason to walk them).
+        RADIOLOGY_APPROVAL_GRANTED_CONSUMER,
         PHARMACY_RX_ISSUED_CONSUMER, // PLAN 16c T3
         /**
          * PHARMACY P6 (patient messages) — and this is the consumer whose unseeded cursor would do the

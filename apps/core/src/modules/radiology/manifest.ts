@@ -1,6 +1,8 @@
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "./consumers";
 import { orderPlaced } from "../../kernel/orders/events";
+import { approvalGranted } from "../../kernel/approvals/events";
+import { RADIOLOGY_APPROVAL_GRANTED_CONSUMER } from "./approval-consumer";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -92,6 +94,8 @@ export const radiologyManifest: ModuleManifest = {
     { label: "Prep & safety bay", path: "/radiology/prep", permission: "radiology.gates.satisfy" },
     // 18-S RS7 — the sonologist's room, the Form F register, the §19 registration, the monthly return.
     { label: "Ultrasound & PCPNDT", path: "/radiology/usg", permission: "pcpndt.form_f.write" },
+    // 18-S RS10 — the Supervisor & HOD station (the department head's books grant).
+    { label: "Supervisor & HOD", path: "/radiology/hod", permission: "radiology.definitions.manage" },
   ],
   permissions: [
     "radiology.orders.place",
@@ -130,7 +134,12 @@ export const radiologyManifest: ModuleManifest = {
     // able to start or finish an acquisition. Held by everyone who held `acquire` for these routes.
     "radiology.contrast.record",
   ],
-  subscriptions: [{ event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER }],
+  subscriptions: [
+    { event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER },
+    // 18-S RS10 T3 — a gate-override grant given in the kernel `/approvals` inbox applies itself
+    // (`approval-consumer.ts`). Declared with its handler in `workerConsumers` in ONE commit.
+    { event: approvalGranted.name, consumer: RADIOLOGY_APPROVAL_GRANTED_CONSUMER },
+  ],
   resourceKinds: RADIOLOGY_RESOURCE_KINDS,
   orderKinds: [
     {
