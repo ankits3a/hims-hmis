@@ -144,7 +144,7 @@ then refuse. So this stop is NOT applied until step 2 is in.
 
 ## A6b — indents (as built)
 
-Lane `pharmacy-a6-indent`. Migration **0152** (`store_indents`, `store_indent_lines`, plus hand-carried guard
+Lane `pharmacy-a6-indent`. Migration **0155** (generated as 0152; renumbered at merge after A5 0152, radiology 0153 and the desk split 0154) (`store_indents`, `store_indent_lines`, plus hand-carried guard
 triggers). No new permission: `seed-roles` pins do not move.
 
 DECIDED (standard Indian-corporate-hospital answer):
