@@ -271,6 +271,69 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J1 hops 1–2, J9 last hop, J10 banner.
 - Migration: none expected.
 
+**RS3 spike** (read on main `3276ff7a`, 29 Sep, before any code):
+- **(a) Money.** `authorisationOf` accepts four facts: a linked `invoice_line_id` (`invoice`), a
+  `D…` encounter (`daycare`), a non-self `intendedPayer` (`payer_branch`), or `priority = stat`.
+  The only writer of the invoice fact is `POST /radiology/studies/:id/invoice-line`
+  (`linkInvoiceLine`: same patient, same service, one line per study) — **zero web callers**.
+  Radiology composes no invoice. The existing path the desk reuses is billing's own:
+  `POST /billing/invoices/preview` → `POST /billing/invoices` (tender inside; the acting user's
+  open drawer; `refText` for UPI/card) → `GET /billing/invoices/:id` for the minted line id →
+  link. `radiology_receptionist` already holds `billing.invoice.issue/.read`, `billing.receipt.record`,
+  `billing.session.own`, `radiology.bill_decisions.manage`. Billing refuses a second charge for
+  the same service on the visit (`duplicate_invoice_refused`, with the existing invoice id) — the
+  desk's recovery is to link that line. No billing signature changed.
+- **(b) Desk acts.** Reschedule took device + instant (+ bedside) and refused `bad_transition`
+  (not scheduled/checked-in), `device_unavailable`, `modality_mismatch`, `slot_taken`,
+  `device_not_portable` — **no reason**. No-show took nothing (scheduled/checked-in only) — **no
+  reason**. Cancel required a reason only from `in_acquisition` (`reason_required`), refused
+  `already_acquired` after images; from the machine it raises `performed_then_cancelled`. The
+  device diary listed live studies per machine with no length, type or name.
+- **(c) Slot conflict.** Yes: `assertSlotFree` locks the device row and refuses an overlapping
+  interval (`slot_taken`, F55), with the exact-instant partial unique as the last line. No licence
+  check at booking — `device_not_licensed` is refused at acquisition only.
+- **(d) Hall display.** The OPD board reads `boardSnapshot` behind `opd.display.read` (held by the
+  kiosk `display` role); tokens, rooms, doctors, no patient field; voice rides `queue.called`
+  realtime frames. It reads OPD queue sessions, so imaging needs its own read. Imaging has no token
+  of its own and no call act.
+
+**RS3 as built** (this PR; one lane, no migration):
+- **Core.** `GET /radiology/studies/:id/counter` (`counter.ts`, `radiology.schedule`): gates
+  check-in will open (`deriveGateSet`, nothing opened), prep (`prep.ts`, one derivation for desk,
+  slip and message), payer + `authorisationOf`, film/CD add-ons only when the tariff has
+  `RAD-FILM`/`RAD-CD`. `GET /radiology/display` (`display.ts`, new `radiology.display.read`).
+  Device diary widened (length, type, priority, name); worklist gains `createdAt`, `checkedInAt`.
+  Reschedule / no-show / cancel **require a reason in every band** and append
+  `imaging.booking_changed` (act, reason, from, to). Booking and moving queue
+  `imaging_appointment_booked` through `kernel/notify` (expired by ref on move / no-show / cancel).
+- **Web.** The counter's four steps with a dock (Enter) in `/radiology/reception`; `/radiology/diary`
+  and `/radiology/display` as stations; `StationShell.closeListOn`.
+- **DECIDED.**
+  - The desk holds `radiology.checkin` — the approved board makes opening at the desk the arrival,
+    and the workflow edge already named the role; check-in opens gates, satisfies none.
+  - The hall token is the **accession** on the slip; first name + initial; confidential or
+    restricted = token only; the board writes no PHI row (the OPD board writes none; a polling TV
+    would write one per patient per poll).
+  - Voice calling is **not built** on the hall board: imaging has no call act (RS6's console bell).
+  - Prep derives from type flags and, for ultrasound fasting vs full bladder, the seeded code family,
+    until RS4's `imaging_protocols` makes prep data. A PCPNDT study's message carries **no prep**.
+  - An unlicensed ionising machine is not offered for booking at the desk (from `/radiology/devices`'
+    `licensedNow`); the server still refuses only at acquisition — a booking-time refusal belongs
+    with RS4's status writer.
+  - The desk's time box is IST (18a's desk sent the typed time as UTC — a 5 h 30 min error, fixed).
+  - Film/CD without tariff services: a note, never a desk-typed price.
+- **Counts.** Core: 4 fail-first RS3 schedule tests, counter 13, display 6, notify template + queue
+  4; radiology module + notify + e2e + pins green. Web: reception 16 (15 failed against the old
+  screen), diary 6, display 3; 23 files / 187 tests across the touched web suites. Pins:
+  seed-roles (permissions 203, pairs 424, held 189), caddyfile routes 75, radiology events 15,
+  notify catalog +1.
+- **Still not built, and who owns it.** Pre-authorisation record and deposit flow (Plan 46 / IPD);
+  IPD running bill (IPD plan); HOD discount request as an approval (RS10); booking-time licence
+  refusal and machine status writes (RS4); film/CD tariff services (RS4); voice call and "call on the
+  display" bell (RS6); outside-CD desk view and the reports release register (RS9); protected ER holds
+  and sedation blocks in the diary; the copilot panel at the counter; the WhatsApp sender (provider
+  lane).
+
 ### RS4 · Machines, books and prices (Setup)
 - **Core — coordinate: `kernel/resources` is shared.**
   - A write route for imaging devices: create, edit, AE title, status, and `portable`.
