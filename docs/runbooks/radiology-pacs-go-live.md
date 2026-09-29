@@ -37,7 +37,7 @@ the reason and the person are recorded.
 
 | # | precondition | how to check |
 |---|---|---|
-| 1.1 | Migrations through `0148_radiology_pacs_inbox` (RS12) are applied — 18b's `0053`/`0054` and RS12's `0148` | `select count(*) from drizzle.__drizzle_migrations` ≥ the journal's entry count |
+| 1.1 | Migrations through `0150_radiology_pacs_inbox` (RS12) are applied — 18b's `0053`/`0054` and RS12's `0150` | `select count(*) from drizzle.__drizzle_migrations` ≥ the journal's entry count |
 | 1.2 | 18a's human items: a published `pregnancy_policy`, a real §19 PCPNDT registration, the radiology role keys assigned | `radiology-go-live.md` |
 | 1.3 | Every machine that will send images is registered at **Radiology → Setup → Machines** with its AE title (RS4) | Setup → Machines: no machine that sends DICOM reads "No AE title" |
 | 1.4 | The owner has authorised the archive server, its disks and the install (ruling 6) | a written go-ahead |

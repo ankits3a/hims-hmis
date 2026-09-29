@@ -1238,7 +1238,7 @@ migration:
   wired here; the door it will call (`openImages`) is the same one the study console uses, and it now
   returns `viewer`. Recorded, not blocked.
 
-#### RS12 (code) as built (this PR; lane `radiology-rs12`, rebased on RS11 `9dec14c1`; one migration, `0148_radiology_pacs_inbox`)
+#### RS12 (code) as built (this PR; lane `radiology-rs12`, rebased on RS11 `9dec14c1`; one migration, `0150_radiology_pacs_inbox` — renumbered from 0148 at merge; RS8a took 0148, RS9 0149)
 - **T1 · arrivals (core).** `pacs.ts` + `radiology-pacs.controller.ts`:
   `POST /radiology/pacs/arrivals` (`radiology.pacs.interface`, 200, idempotent) takes Orthanc's
   `GET /studies/{id}` + `/statistics` as-is; `parseOrthancStudy` (pure) → `{UID, accession, PatientID,
