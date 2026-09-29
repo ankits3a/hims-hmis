@@ -84,6 +84,7 @@
     "radiologySetup": "Imaging setup",
     "radiologyDiary": "Imaging diary",
     "radiologyDisplay": "Imaging hall display",
+    "radiologyReading": "Reading room",
     "radiologyUsg": "Ultrasound & PCPNDT",
     "radiologyReports": "Report hand-over"
   },
@@ -3806,7 +3807,8 @@
       "startFromTemplate": "Start from template",
       "technique": "Technique",
       "proposed": "Draft proposed by {{drafter}} — technique filled, findings and impression are yours.",
-      "machineDrafted": "machine-drafted"
+      "machineDrafted": "machine-drafted",
+      "openReadingRoom": "Open in the reading room"
     },
     "gate": {
       "identity_two_factor": "Identity (two factor)",
@@ -4116,6 +4118,204 @@
       "empty": "No bedside studies on the round.",
       "ipdNote": "Ordering a portable study from the ward arrives with the IPD plan. Until then a study reaches this round when the imaging desk books it on a portable machine with a ward and bed."
     },
+    "read": {
+      "title": "Reading room",
+      "place": "Reading room · report and sign",
+      "nobody": "No study in hand. Open one from the list — opening the images claims it.",
+      "listTitle": "To read",
+      "listSummary": "{{count}} to read · next {{next}}",
+      "empty": "Nothing waiting to be read.",
+      "summary": "{{toRead}} to read · {{over}} over target",
+      "targets": "Targets: STAT 30 min · urgent (ER) 60 min · bedside (IPD) 6 h · OPD 24 h — from when the images are in.",
+      "urgent": "Urgent",
+      "stat": {
+        "toRead": "To read",
+        "over": "Over target"
+      },
+      "sort": {
+        "label": "Sort",
+        "priority": "Priority",
+        "due": "Time left",
+        "modality": "Modality"
+      },
+      "tat": {
+        "stat": "STAT 30 min",
+        "er": "Urgent (ER) 60 min",
+        "ipd": "Bedside (IPD) 6 h",
+        "opd": "OPD 24 h"
+      },
+      "state": {
+        "none": "Not started",
+        "draft": "Draft",
+        "prelim": "Prelim",
+        "signed": "Signed"
+      },
+      "clock": {
+        "onTable": "images not in yet",
+        "m": "{{m}} min",
+        "hm": "{{h}} h {{m}} min",
+        "left": "{{span}} left",
+        "over": "{{span}} over"
+      },
+      "clockLine": "{{name}} · {{study}} — {{target}}, {{clock}}",
+      "clocksQuiet": "Nothing is over or near its target.",
+      "clocksSummary": "{{count}} over target",
+      "clocksNone": "All inside target",
+      "readingBy": "{{name}} is reading",
+      "lockLine": "{{name}} opened these images in the last hour and may be reading this study. You can still read it; they will see your draft.",
+      "inHand": "In hand",
+      "question": "Clinical question",
+      "noQuestion": "No clinical question was written on the order.",
+      "referrer": "Referred by {{doctor}} · {{dept}}",
+      "thisStudy": "This study",
+      "side": "Side: {{side}}",
+      "sideWord": {
+        "left": "left",
+        "right": "right",
+        "bilateral": "both sides"
+      },
+      "priors": "Priors · {{count}}",
+      "noPriors": "No earlier signed report for this patient here.",
+      "dose": "CT dose · 12 months",
+      "flag": {
+        "confidential": "Confidential",
+        "restricted": "Restricted (PCPNDT)",
+        "pcpndt": "Form F",
+        "contrast_given": "Contrast given",
+        "bedside": "At the bedside",
+        "outside": "Outside images"
+      },
+      "openImages": "Open images",
+      "classic": "Classic report screen",
+      "templates": "Templates",
+      "builtIn": "built-in",
+      "insertNormal": "Insert “normal study” for {{name}}",
+      "dictation": "Dictation",
+      "dictationHint": "Type or paste what you said. Say “Findings:”, “Impression:”, “Recommendation:” to place it.",
+      "structure": "Place into the sections",
+      "structured": "Placed into the empty sections. Read every line — nothing is signed until you sign it.",
+      "section": {
+        "indication": "Indication",
+        "technique": "Technique",
+        "comparison": "Comparison",
+        "findings": "Findings",
+        "biometry": "Biometry",
+        "sequences": "Sequences",
+        "impression": "Impression",
+        "recommendation": "Recommendation"
+      },
+      "macro": "Insert a phrase",
+      "required": "required before signing",
+      "useCategory": "Use {{value}}",
+      "chosen": "Chosen: {{value}}",
+      "aspectsHint": "tap each region with early ischaemic change",
+      "tirads": {
+        "composition": "Composition",
+        "echogenicity": "Echogenicity",
+        "shape": "Shape",
+        "margin": "Margin",
+        "foci": "Echogenic foci (all that apply)",
+        "size": "Size (cm)",
+        "result": "{{points}} points = {{level}}",
+        "advice": {
+          "fna": "FNA advised at this size",
+          "follow_up": "follow-up ultrasound advised at this size",
+          "no_further": "no FNA or follow-up at this size"
+        },
+        "opt": {
+          "cystic": "Cystic",
+          "spongiform": "Spongiform",
+          "mixed": "Mixed cystic and solid",
+          "solid": "Solid",
+          "anechoic": "Anechoic",
+          "hyper_iso": "Hyper- or isoechoic",
+          "hypo": "Hypoechoic",
+          "very_hypo": "Very hypoechoic",
+          "wider_than_tall": "Wider-than-tall",
+          "taller_than_wide": "Taller-than-wide",
+          "smooth": "Smooth",
+          "ill_defined": "Ill-defined",
+          "lobulated_irregular": "Lobulated or irregular",
+          "extrathyroidal": "Extrathyroidal extension",
+          "none": "None",
+          "macro": "Macrocalcifications",
+          "rim": "Peripheral (rim)",
+          "punctate": "Punctate echogenic foci"
+        }
+      },
+      "fleischner": {
+        "scope": "Incidental nodules in adults 35 and over — not for lung-cancer screening (Lung-RADS), immunocompromised patients or known cancer.",
+        "type": "Type",
+        "count": "Number",
+        "size": "Average size (mm)",
+        "risk": "Risk",
+        "solid": "Solid",
+        "ground_glass": "Ground-glass",
+        "part_solid": "Part-solid",
+        "single": "Single",
+        "multiple": "Multiple",
+        "low": "Low risk",
+        "high": "High risk",
+        "use": "Record this",
+        "toRecommendation": "Add to the recommendation"
+      },
+      "critical": "Critical result",
+      "notCritical": "Not critical",
+      "cat": {
+        "red": "RED · 15 min, read-back",
+        "orange": "ORANGE · 120 min",
+        "yellow": "YELLOW · next working day"
+      },
+      "checks": "Checks before you sign",
+      "rulesNotModel": "rules, not a model",
+      "checksClear": "Side, sex, category, impression and critical terms all check out.",
+      "ackLabel": "I have read this",
+      "saveDraft": "Save draft",
+      "saved": "Draft saved.",
+      "dock": {
+        "sign": "Sign and publish",
+        "signHint": "Your second factor is asked at signing if the session's is not fresh. Publishing releases the report to the doctor and the patient.",
+        "signCriticalHint": "A {{category}} critical call is raised when you sign.",
+        "fix": "Fix the red checks to sign",
+        "ack": "Acknowledge the warnings to sign",
+        "ackHint_one": "{{count}} warning to read and tick",
+        "ackHint_other": "{{count}} warnings to read and tick",
+        "signWithCode": "Verify and sign",
+        "totpHint": "Enter the 6-digit code from your authenticator — the signature is made under a fresh second factor.",
+        "publish": "Publish",
+        "publishHint": "Signed, not yet released. Publishing sends it to the doctor, the report counter and the patient.",
+        "next": "Next study",
+        "doneHint": "Signed and published. A change now needs an amendment."
+      },
+      "totpLabel": "Authenticator code",
+      "signedPublished": "Signed and published.",
+      "signedPublishedNotified": "Signed and published — the patient's message is queued.",
+      "signedLine": "Signed — not yet published.",
+      "releasedLine": "Signed and published.",
+      "printPreview": "Print preview",
+      "hidePrint": "Hide print preview",
+      "printNow": "Print",
+      "fixSignatories": "Radiology → Setup → Books (Report signatories)",
+      "fixPatient": "Open the patient's record",
+      "print": {
+        "department": "Department of Radiology",
+        "title": "Imaging report",
+        "version": "Version",
+        "amended": "amended",
+        "superseded": "SUPERSEDED — a later version replaces this one",
+        "patient": "Patient",
+        "uhid": "UHID",
+        "ageSex": "Age · sex",
+        "study": "Study",
+        "referredBy": "Referred by",
+        "acquired": "Acquired",
+        "critical": "Critical result: {{category}}",
+        "reportedBy": "Reported by",
+        "signerNotRecorded": "Signer details were not recorded at signing (a report signed before 29 Sep 2026).",
+        "councilReg": "Council registration",
+        "esigned": "Electronically signed {{at}} IST with a second factor"
+      }
+    },
     "setup": {
       "title": "Setup",
       "views": {
@@ -4211,7 +4411,9 @@
           "critical_categories": "Critical categories",
           "pacs_settings": "PACS settings",
           "dose_reference_levels": "Dose reference levels",
-          "imaging_protocols": "Imaging protocols"
+          "imaging_protocols": "Imaging protocols",
+          "report_templates": "Report templates",
+          "report_signatories": "Report signatories"
         }
       },
       "prices": {

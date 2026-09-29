@@ -103,6 +103,18 @@ export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
 export type { ReportContent, ReportRow } from "./reports";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
+// 18-S RS8a — the reading room: the pre-sign pipeline (a later guard joins PRE_SIGN_CHECKS), the
+// signer block (ruling 4), the governed templates/signatories books and the reading reads.
+export { CRITICAL_TERMS, PRE_SIGN_CHECKS, criticalTermsIn, runPreSignChecks } from "./checks";
+export type { PreSignCheck, PreSignContext, PreSignFinding, PreSignLevel } from "./checks";
+export { dryRunPreSign } from "./reports";
+export type { SignChecksRecord } from "./reports";
+export { signedContentDigest, signerSnapshot } from "./signer";
+export type { SignerBlock } from "./signer";
+export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
+export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
+export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
+export type { ReadingContext, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
 export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
 // 18-S RS2b — the machine list, the portable round, and `bedsideStudiesFor`: THE IPD SEAM. The ward
 // screen the IPD plan builds imports it from here; it has no route of its own until then.

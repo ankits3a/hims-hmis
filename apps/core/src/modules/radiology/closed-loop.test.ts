@@ -136,7 +136,9 @@ describe("the closed loop (18-S RS9 T1/T3)", () => {
       idemKey: `un${String(seq)}`, now: new Date(NOW.getTime() + 90 * 3_600_000), slot: new Date(SLOT.getTime() + 20 * 3_600_000),
     });
     await db.update(orders).set({ orderingClinicianId: fx.doctor.id }).where(eq(orders.id, unreleased.orderId));
-    const d = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: unreleased.studyId, body: { findings: "Normal." } }));
+    // MERGE RS9+RS8a: RS8a's pre-sign check refuses an empty impression (`impression_required`),
+    // so a report this test signs now carries one — the new truth, not a weakened guard.
+    const d = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: unreleased.studyId, body: { findings: "Normal." }, impression: "Normal study." }));
     const signed = await withTx(db, (tx) => signReport(tx, fx.radiologist, {
       studyId: unreleased.studyId, reportId: d.reportId, secondFactorAt: FRESH, now: NOW,
     }));

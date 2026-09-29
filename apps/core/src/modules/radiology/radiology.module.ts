@@ -17,6 +17,7 @@ import { RadiologyImagesController } from "./radiology-images.controller";
 import { RadiologyFloorController } from "./radiology-floor.controller";
 import { RadiologySetupController } from "./radiology-setup.controller";
 import { RadiologyRoomController } from "./radiology-room.controller";
+import { RadiologyReadingController } from "./radiology-reading.controller";
 import { RadiologyReleaseController } from "./radiology-release.controller";
 
 /**
@@ -58,6 +59,8 @@ import { RadiologyReleaseController } from "./radiology-release.controller";
     RadiologySetupController,
     // 18-S RS6 — the modality rooms: the console read, the in-room repeat, the reject analysis.
     RadiologyRoomController,
+    // 18-S RS8a — the reading room: its worklist, the study in hand, the print.
+    RadiologyReadingController,
     // 18-S RS7 — the Form F register by serial and the monthly return.
     RadiologyPcpndtController,
     // 18-S RS9 — release and the closed loop: the doctor's inbox and acted-upon, the north star, the hand-over desk.

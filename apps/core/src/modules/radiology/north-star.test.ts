@@ -49,7 +49,9 @@ describe("the north-star read model (18-S RS9 T2)", () => {
   };
   const signAndPublish = async (s: { studyId: string; placedAt: Date }, afterMin: number) => {
     const at = new Date(s.placedAt.getTime() + afterMin * MIN);
-    const d = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: s.studyId, body: { findings: "Normal." } }));
+    // MERGE RS9+RS8a: RS8a's pre-sign check refuses an empty impression (`impression_required`),
+    // so a report this test signs now carries one — the new truth, not a weakened guard.
+    const d = await withTx(db, (tx) => draftReport(tx, fx.radiologist, { studyId: s.studyId, body: { findings: "Normal." }, impression: "Normal study." }));
     const signed = await withTx(db, (tx) => signReport(tx, fx.radiologist, {
       studyId: s.studyId, reportId: d.reportId, secondFactorAt: new Date(at.getTime() - MIN), now: at,
     }));

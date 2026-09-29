@@ -1,6 +1,6 @@
 {
-  "id": "e765859e-3381-45e4-84da-7efaa51ed479",
-  "prevId": "fc166340-19f7-4522-982e-736afa0fb00c",
+  "id": "9d7afbae-8897-4697-99af-a374c783da26",
+  "prevId": "e765859e-3381-45e4-84da-7efaa51ed479",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -29687,6 +29687,141 @@
       },
       "isRLSEnabled": false
     },
+    "public.imaging_media_requests": {
+      "name": "imaging_media_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "study_id": {
+          "name": "study_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "included": {
+          "name": "included",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "printed_by": {
+          "name": "printed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "printed_at": {
+          "name": "printed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handover_id": {
+          "name": "handover_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "imaging_media_requests_study_idx": {
+          "name": "imaging_media_requests_study_idx",
+          "columns": [
+            {
+              "expression": "study_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "imaging_media_requests_study_id_imaging_studies_id_fk": {
+          "name": "imaging_media_requests_study_id_imaging_studies_id_fk",
+          "tableFrom": "imaging_media_requests",
+          "tableTo": "imaging_studies",
+          "columnsFrom": [
+            "study_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "imaging_media_requests_handover_id_imaging_report_handovers_id_fk": {
+          "name": "imaging_media_requests_handover_id_imaging_report_handovers_id_fk",
+          "tableFrom": "imaging_media_requests",
+          "tableTo": "imaging_report_handovers",
+          "columnsFrom": [
+            "handover_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "imaging_media_requests_kind_ck": {
+          "name": "imaging_media_requests_kind_ck",
+          "value": "\"imaging_media_requests\".\"kind\" in ('film', 'cd')"
+        },
+        "imaging_media_requests_qty_ck": {
+          "name": "imaging_media_requests_qty_ck",
+          "value": "\"imaging_media_requests\".\"quantity\" between 1 and 20 and (\"imaging_media_requests\".\"kind\" = 'film' or \"imaging_media_requests\".\"quantity\" = 1)"
+        },
+        "imaging_media_requests_printed_ck": {
+          "name": "imaging_media_requests_printed_ck",
+          "value": "(\"imaging_media_requests\".\"printed_by\" is null) = (\"imaging_media_requests\".\"printed_at\" is null)"
+        },
+        "imaging_media_requests_handed_ck": {
+          "name": "imaging_media_requests_handed_ck",
+          "value": "\"imaging_media_requests\".\"handover_id\" is null or \"imaging_media_requests\".\"printed_at\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.imaging_outside_studies": {
       "name": "imaging_outside_studies",
       "schema": "",
@@ -29851,6 +29986,30 @@
           "primaryKey": false,
           "notNull": false
         },
+        "acted_at": {
+          "name": "acted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "acted_by": {
+          "name": "acted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "acted_outcome": {
+          "name": "acted_outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "acted_note": {
+          "name": "acted_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -29919,6 +30078,196 @@
         "imaging_report_delivery_first_read_ck": {
           "name": "imaging_report_delivery_first_read_ck",
           "value": "(\"imaging_report_delivery\".\"first_read_by\" is null) = (\"imaging_report_delivery\".\"first_read_at\" is null)"
+        },
+        "imaging_report_delivery_acted_ck": {
+          "name": "imaging_report_delivery_acted_ck",
+          "value": "(\"imaging_report_delivery\".\"acted_at\" is null) = (\"imaging_report_delivery\".\"acted_by\" is null) and (\"imaging_report_delivery\".\"acted_at\" is null) = (\"imaging_report_delivery\".\"acted_outcome\" is null) and (\"imaging_report_delivery\".\"acted_at\" is null) = (\"imaging_report_delivery\".\"acted_note\" is null)"
+        },
+        "imaging_report_delivery_acted_outcome_ck": {
+          "name": "imaging_report_delivery_acted_outcome_ck",
+          "value": "\"imaging_report_delivery\".\"acted_outcome\" is null or \"imaging_report_delivery\".\"acted_outcome\" in ('changed_treatment', 'referred', 'followup_booked', 'discussed_with_patient', 'no_change')"
+        },
+        "imaging_report_delivery_acted_note_ck": {
+          "name": "imaging_report_delivery_acted_note_ck",
+          "value": "\"imaging_report_delivery\".\"acted_note\" is null or char_length(btrim(\"imaging_report_delivery\".\"acted_note\")) >= 4"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.imaging_report_handovers": {
+      "name": "imaging_report_handovers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "report_id": {
+          "name": "report_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "study_id": {
+          "name": "study_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collector_kind": {
+          "name": "collector_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collector_name": {
+          "name": "collector_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collector_relation": {
+          "name": "collector_relation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collector_id_type": {
+          "name": "collector_id_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collector_id_last4": {
+          "name": "collector_id_last4",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "film_sheets": {
+          "name": "film_sheets",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cd": {
+          "name": "cd",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handed_by": {
+          "name": "handed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "handed_at": {
+          "name": "handed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "imaging_report_handovers_study_idx": {
+          "name": "imaging_report_handovers_study_idx",
+          "columns": [
+            {
+              "expression": "study_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "handed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_report_handovers_report_idx": {
+          "name": "imaging_report_handovers_report_idx",
+          "columns": [
+            {
+              "expression": "report_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "imaging_report_handovers_report_id_imaging_reports_id_fk": {
+          "name": "imaging_report_handovers_report_id_imaging_reports_id_fk",
+          "tableFrom": "imaging_report_handovers",
+          "tableTo": "imaging_reports",
+          "columnsFrom": [
+            "report_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "imaging_report_handovers_study_id_imaging_studies_id_fk": {
+          "name": "imaging_report_handovers_study_id_imaging_studies_id_fk",
+          "tableFrom": "imaging_report_handovers",
+          "tableTo": "imaging_studies",
+          "columnsFrom": [
+            "study_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "imaging_report_handovers_kind_ck": {
+          "name": "imaging_report_handovers_kind_ck",
+          "value": "\"imaging_report_handovers\".\"collector_kind\" in ('patient', 'relative', 'ward_staff', 'courier')"
+        },
+        "imaging_report_handovers_id_type_ck": {
+          "name": "imaging_report_handovers_id_type_ck",
+          "value": "\"imaging_report_handovers\".\"collector_id_type\" is null or \"imaging_report_handovers\".\"collector_id_type\" in ('aadhaar', 'voter_id', 'driving_licence', 'pan', 'passport', 'other')"
+        },
+        "imaging_report_handovers_named_ck": {
+          "name": "imaging_report_handovers_named_ck",
+          "value": "\"imaging_report_handovers\".\"collector_kind\" = 'patient' or char_length(btrim(coalesce(\"imaging_report_handovers\".\"collector_name\", ''))) >= 2"
+        },
+        "imaging_report_handovers_relative_ck": {
+          "name": "imaging_report_handovers_relative_ck",
+          "value": "\"imaging_report_handovers\".\"collector_kind\" <> 'relative' or (char_length(btrim(coalesce(\"imaging_report_handovers\".\"collector_relation\", ''))) >= 2 and \"imaging_report_handovers\".\"collector_id_type\" is not null and \"imaging_report_handovers\".\"collector_id_last4\" ~ '^[A-Za-z0-9]{4}$')"
+        },
+        "imaging_report_handovers_film_ck": {
+          "name": "imaging_report_handovers_film_ck",
+          "value": "\"imaging_report_handovers\".\"film_sheets\" >= 0 and \"imaging_report_handovers\".\"film_sheets\" <= 20"
         }
       },
       "isRLSEnabled": false
