@@ -241,6 +241,14 @@
       "agents": 3,
       "subagentTokens": 879000,
       "note": "2026-09-28, deployed 2194011e. Agents: A3 test fixtures 192.4k (1,992 tests green), B2 office build 384.8k, B3 fold 302.0k. Each builder was briefed with the approved board file and CLAUDE.md, not the ledger, and verified in Chromium at 6 widths. Main-session cost unmeasured (LIGHT) — only the owner's /cost sees it. Waste: two red CI rounds on #347 (lab-reports.test.tsx and seed-lab.test.ts enumerate registered approval types outside the changed module) — ledger 2.169, method 9.6b. Bought: owner-only credit hospital-wide, GSTR-3B, the approved office in production."
+    },
+    {
+      "phase": "pharmacy-gap-closure-A3b-A5-C",
+      "lane": "LIGHT (in-session + 2 Agent subagents)",
+      "tasks": 3,
+      "agents": 2,
+      "subagentTokens": 667900,
+      "note": "2026-09-29, deploy of main 3f2161d7 (A3b #359, C #370, plus peers' D2/D3/D5 and #387). Agents: A5 build 335.3k, C build 332.6k. Main-session cost unmeasured (LIGHT). Waste: merge-queue churn under strict protection — #359 and #370 re-updated 2 and 4 times, 2 runner hangs, about 2.5 h of CI waiting (ledger 2.171). Near-miss: D5's seed would have restricted 1,857 antimicrobials on the next deploy (ledger 2.170), caught by reading deploy.sh, fixed by #387."
     }
   ]
 }

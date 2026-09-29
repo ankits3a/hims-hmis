@@ -2679,3 +2679,40 @@ Neither lives in the module that changed. Each ENUMERATES what the module regist
     grep -rln "<old_key>\|<CONSTANT_NAME>\|register<Module>ApprovalTypes\|<MODULE>_APPROVAL_TYPES" apps/*/src apps/*/test --include=*.test.ts --include=*.test.tsx
 
 Then run every hit, under the lock. For #347 this returns the two files that failed in CI.
+
+### 2.170 A SEED IS A DEPLOY STEP — before a seed gains a data-changing act, grep `deploy.sh` for it
+
+**Specimen (stage D5, #365, 2026-09-28/29).** D5 added `classifyAwareMedicines` to `scripts/seed-pharmacy.ts`, which
+raises the restricted-antimicrobial flag on 1,857 products. The lane's plan said "run it after the owner names a
+steward". But `docker/prod/deploy.sh:836` runs `seed-pharmacy.js` unconditionally on EVERY deploy. So the next deploy
+from `main`, anyone's, would have blocked meropenem and colistin in production.
+
+A peer found it by reading `deploy.sh` before its own deploy, not by any test. The fix (#387) moved the act into a
+manual `aware:classify`, which refuses to run while nobody holds `antimicrobial_steward`.
+
+**The mechanical form.** Any PR that adds a WRITE to a `scripts/seed-*.ts` runs:
+
+    grep -n "seed-<name>" docker/prod/deploy.sh
+
+A hit means the write runs in production on the next deploy, whoever runs it. So the write must be one of two things:
+- idempotent configuration that is safe with no human decision;
+- or a separate script that deploy.sh does not call, which refuses until its precondition holds.
+
+### 2.171 UNDER STRICT BRANCH PROTECTION, MANY LANES ARE A QUEUE — announce it, and let the watcher re-update BEHIND
+
+**Specimen (2026-09-28/29).** Main requires a PR to be up to date. Five lanes across three sessions merged pharmacy
+PRs through one day. Every merge made every other open PR stale, and CI (about 25 min, with twin runs) started over.
+
+#370 alone was re-updated four times. Two lab PRs from outside the queue merged in between.
+
+What worked:
+- an agreed queue, announced across sessions and on the PRs as comments (cloud sessions can't read cross-session
+  messages);
+- auto-merge OFF until your turn;
+- a watcher that runs `gh pr update-branch` whenever `mergeStateStatus == BEHIND`.
+
+**The mechanical form:**
+
+    until merged: if mergeStateStatus == BEHIND → gh pr update-branch <n>; if any check failed → stop; sleep 60
+
+A job hung on the runner (1 h timeout) twice. `gh run rerun` is refused by the token, so push an empty commit.
