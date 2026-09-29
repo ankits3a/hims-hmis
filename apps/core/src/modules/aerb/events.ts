@@ -57,5 +57,17 @@ export const doseLimitWarning = defineEvent("radiation.dose_limit_warning", MODU
   investigationLevelMsv: z.number().positive(),
 }));
 
+/**
+ * 18-S RS11 — a radiation incident was recorded. The audit of WHO recorded WHAT, and the source
+ * RS10's HOD escalations can subscribe to. **No patient and no worker in the payload**: the register
+ * row holds who was exposed, behind its own permission and PHI surface.
+ */
+export const aerbIncidentRecorded = defineEvent("aerb.incident_recorded", MODULE, z.object({
+  incidentId: id,
+  incidentNo: z.string().min(1),
+  kind: z.string().min(1),
+  notifyRequired: z.boolean(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
-export const AERB_EVENTS = [aerbLicenceFiled, aerbLicenceStatusChanged, doseLimitWarning] as const;
+export const AERB_EVENTS = [aerbLicenceFiled, aerbLicenceStatusChanged, doseLimitWarning, aerbIncidentRecorded] as const;
