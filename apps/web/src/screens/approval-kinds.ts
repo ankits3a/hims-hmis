@@ -42,6 +42,8 @@ export const APPROVAL_KINDS = {
   /* PARITY P3 — a supplier payment run the owner authorises; the vendors and bills are in the request note. */
   materials_payment_run_approval: ["amount"],
   imaging_definition_publish: [],
+  /* 18-S RS9b — a held imaging report released unpaid (the owner's; the dues are the amount). */
+  imaging_release_unpaid_owner: ["amount", "patient"],
   ot_definition_publish: [],
   ot_deposit_exception: ["amount", "patient"],
   tariff_revision: [],
