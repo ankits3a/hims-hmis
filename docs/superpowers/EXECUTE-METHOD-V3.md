@@ -740,6 +740,15 @@ what you registered.
   - watch with `update-branch` on BEHIND.
   - Never merge out of turn: each out-of-turn merge costs every queued PR a full CI cycle.
 
+
+### 9.6d TRAIN THE NO-MIGRATION PRs; THE WATCHER IS THE BACKGROUND COMMAND — added 2026-09-30 (ledger §2.172, §2.173)
+
+- **Train.** With strict branch protection, three or more ready PRs with no migration merge into one train branch.
+  The union of their touched suites runs on that tree, and the train ships as one PR (one CI cycle). The sources
+  close as "landed via #N". A PR with a migration never rides a train.
+- **Watch.** A merge watcher is the `run_in_background` command itself. It writes to a log and is read with `tail`
+  after it exits. Never pipe it into `head` and never background it with `&` inside a foreground call. After a push,
+  start it with `sleep 90`.
 ### 9.7 BRIEF THE CLOSE REVIEWER AT THE OPERANDS, NOT THE BRANCHES — added 2026-08-28 (Plan 15 close, ledger §2.128)
 
 Three phases running, the close reviewer has returned more than the phase's own instruments found,

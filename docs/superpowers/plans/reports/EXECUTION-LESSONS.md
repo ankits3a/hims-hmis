@@ -2716,3 +2716,34 @@ What worked:
     until merged: if mergeStateStatus == BEHIND → gh pr update-branch <n>; if any check failed → stop; sleep 60
 
 A job hung on the runner (1 h timeout) twice. `gh run rerun` is refused by the token, so push an empty commit.
+
+### 2.172 SIX NO-MIGRATION PRs UNDER STRICT PROTECTION ARE ONE PR — train them, don't queue them
+
+The night before the owner's pharmacy go-live (2026-09-29/30), six reviewed pharmacy PRs were ready at once: #406, #407,
+#412, #413, #414 and #416. None of them carried a migration. Strict branch protection re-runs CI after every merge,
+and one core CI cycle takes about 35 minutes, so merging them one at a time would have needed six cycles (~3.5 h) in
+a night that did not have that time. Instead they were merged into one lane, `pharmacy-train`:
+- the two real conflicts were resolved once (`materials-grn.tsx`: #414 already carried #413's change; locales: kept
+  both sides, by text);
+- the full web suite (211 files / 1937 tests) and the touched core suites (133 / 1260) were run on that exact tree;
+- it shipped as #417 in ONE CI cycle;
+- the source PRs were closed as "landed via #417".
+
+Migrations do NOT train: one per PR stays the rule, because a serial is claimed at merge time.
+
+**The mechanical form:** before arming anything, list the ready PRs and their migrations:
+`for n in <prs>; do gh pr view $n --json files -q '.files[].path' | grep -c drizzle/0; done`. If three or more are
+ready and have 0 migrations, merge them into one train branch, run the union of their touched suites, and open one PR.
+
+### 2.173 A WATCHER PIPED INTO `head` DIES WITH ITS PIPE — and the stall costs what the CI cost
+
+The first watcher on #369 was run as `wait-for-#408 …; watch.sh 369 | head -3`. `head` exited after three lines,
+the pipe closed, and the watcher died after two minutes with exit 0. It looked like a clean finish. Later a watcher
+was started with `&` inside a foreground call; it lived, but its exit notified nobody. The train #417 merged at about
+21:05 UTC, and nobody noticed until a peer asked at 22:35: **90 minutes of an 8-hour night, on the critical path.**
+
+**The mechanical form:**
+- The watcher IS the `run_in_background` command.
+- Its output goes to a log file, and only `tail` of the log after it exits.
+- Never `| head` and never `&` on a loop you need to hear from.
+- Start it with a `sleep 90` after a push, so it does not read the previous run's failed check.
