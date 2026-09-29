@@ -9,6 +9,7 @@ import { addBarcode, availableQty, createStore } from "../materials";
 import { claimDispense, findAtCounter } from "./claim";
 import { parseGs1 } from "./gs1";
 import { pickDispense } from "./pick";
+import { labelPayload } from "./labels";
 import { checkPickScan } from "./scan";
 import { verifyDispense } from "./verify";
 import type { Actor } from "@hmis/contracts";
@@ -89,6 +90,18 @@ describe("scanning the pack at the pick (pharmacy P13)", () => {
       [{ lineIdx: 0, batchId: a.lines[0]!.batchId, qtyBase: 10, fefoOverride: false, scanned: true }],
       [{ lineIdx: 0, batchId: b.lines[0]!.batchId, qtyBase: 10, fefoOverride: true, scanned: true }],
     ]);
+  });
+
+  it("GAP A6 — reads the hospital's own strip label as that item and batch, and a rack label as the item alone", async () => {
+    const strip = await verified();
+    const code = labelPayload("CROC500", { batchNo: "CR-2", packUom: "strip" });
+    expect(await checkPickScan(db, strip, 0, code)).toEqual({ itemCode: "CROC500", batchNo: "CR-2", expiryDate: "2027-12-31" });
+    const b = await pickDispense(db, fx.pharmacist.actor, fx.decls, strip, { lines: [{ lineIdx: 0, scan: code }] }, MON2);
+    expect(b.lines[0]).toMatchObject({ fefoOverride: true });
+    const rack = await verified();
+    expect(await checkPickScan(db, rack, 0, labelPayload("CROC500", null))).toEqual({ itemCode: "CROC500", batchNo: null, expiryDate: null });
+    await expect(checkPickScan(db, rack, 0, labelPayload("NOPE-1", null))).rejects.toMatchObject({ code: "scan_unknown" });
+    await expect(checkPickScan(db, rack, 0, labelPayload("CROC500", { batchNo: "ZZ-9", packUom: "strip" }))).rejects.toMatchObject({ code: "scan_batch_unknown" });
   });
 
   it("records a pick with no scan as unscanned", async () => {

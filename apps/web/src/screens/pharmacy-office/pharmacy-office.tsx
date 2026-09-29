@@ -26,6 +26,7 @@ import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
 import { TodayDesk, money0 } from "./today";
 import { TrayChecksView } from "./trays";
+import { LabelsView } from "./labels";
 import { fetchControlledToday } from "../../lib/controlled-api";
 import { FormularyAdmin } from "../formulary-admin";
 import { MaterialsCounts } from "../materials-counts";
@@ -131,6 +132,7 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "sells": return <PharmacyItems />;
     case "formulary": return <FormularyAdmin />;
     case "duplicates": return <ItemsView />;
+    case "labels": return <LabelsView />;
     case "h1": return <PharmacyH1Register />;
     case "controlled": return <ControlledView />;
     case "retail": return <PharmacyRetailLicence />;

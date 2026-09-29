@@ -37,6 +37,7 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "items", key: "sells", perms: ["pharmacy.sale_items.manage"], was: "/pharmacy/items" },
   { side: "items", key: "formulary", perms: ["formulary.manage"], was: "/formulary/admin" },
   { side: "items", key: "duplicates", perms: ["materials.items.merge"], was: null },
+  { side: "items", key: "labels", perms: ["pharmacy.sale_items.manage"], was: null },
   { side: "law", key: "h1", perms: ["pharmacy.register.read"], was: "/pharmacy/registers/h1" },
   { side: "law", key: "controlled", perms: ["pharmacy.ndps.custody", "pharmacy.licences.manage", "pharmacy.register.read"], was: null },
   { side: "law", key: "retail", perms: ["pharmacy.retail.manage"], was: "/pharmacy/retail-licence" },
