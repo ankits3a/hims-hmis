@@ -170,3 +170,6 @@ export { isTreatingDoctor, treatingDoctorsOf } from "./closed-loop";
 export type { InboxRow, TreatingDoctors } from "./closed-loop";
 export { NORTH_STAR_SOURCES, northStar } from "./north-star";
 export type { NorthStar, NorthStarRow, NorthStarSource } from "./north-star";
+// ── 18-S RS12b — the IR suite: the list and the Ka,r triggers RS10's spine will consume ──
+export { IR_KAR_SKIN_FOLLOWUP_MGY, IR_KAR_SRDL_MGY, IR_THRESHOLDS, irCaseList, skinDoseLevels } from "./ir";
+export type { IrCaseView, IrListRow } from "./ir";

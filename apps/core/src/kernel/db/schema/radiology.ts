@@ -227,6 +227,14 @@ export const imagingStudies = pgTable(
      * AERB asks for on a mammogram. Before RS12 a unit that showed only AGD could not be recorded.
      */
     doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
+    /**
+     * 18-S RS12b — reference-point air kerma Ka,r (mGy), the interventional unit's cumulative
+     * skin-dose proxy (IEC 60601-2-43; DICOM 113725 Dose (RP) Total). Kept beside DAP and fluoro
+     * time, never INSTEAD of them: it is not one of the quantities `imaging_studies_dose_ck` counts,
+     * because no unit reports Ka,r without DAP and fluoro time, and the 3 Gy / 5 Gy skin-dose
+     * triggers (`ir.ts`) read it after Send.
+     */
+    doseKar: numeric("dose_ka_r", { precision: 10, scale: 3 }),
     doseManual: boolean("dose_manual").notNull().default(false),
     /**
      * ═══ 18-S RS12 — THE IMAGES ARRIVED IN THE ARCHIVE ═══
@@ -755,6 +763,8 @@ export const imagingDoseSrReceipts = pgTable(
     doseDap: numeric("dose_dap", { precision: 10, scale: 3 }),
     fluoroSeconds: integer("fluoro_seconds"),
     doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
+    /** 18-S RS12b — 113725 Dose (RP) Total, mGy (Ka,r). Never counted by the dose CHECK below. */
+    doseKar: numeric("dose_ka_r", { precision: 10, scale: 3 }),
     outcome: text("outcome").notNull(),
     /** For `conflict`: `{quantity: {typed, sr}}` per disagreeing quantity. */
     conflict: jsonb("conflict"),
@@ -1203,5 +1213,128 @@ export const imagingMediaRequests = pgTable(
     check("imaging_media_requests_printed_ck", sql`(${t.printedBy} is null) = (${t.printedAt} is null)`),
     /** Handed over only once printed. */
     check("imaging_media_requests_handed_ck", sql`${t.handoverId} is null or ${t.printedAt} is not null`),
+  ],
+);
+
+/**
+ * ═══ 18-S RS12b — THE INTERVENTIONAL RADIOLOGY SUITE ═══
+ *
+ * An IR procedure (PCN, PTBD, CT-guided biopsy, angiography) is an `imaging_studies` row whose study
+ * type says `interventional: true` — DECIDED, no parallel procedure table, for the reason 18a-iii
+ * gave the portable study: one accession, one set of gates, one dose-register row, one report. What
+ * an IR case adds is carried in three tables keyed by the study:
+ *
+ *   · `imaging_ir_checklists` — the WHO surgical safety checklist, adapted (sign in → time out →
+ *     sign out). The OT's `ot_checklist_runs` shape (`items [{key, answer, note?}]`, `participants`,
+ *     who/when), one row per phase, written once: a phase is a moment the team stopped, not a form
+ *     that is edited afterwards.
+ *   · `imaging_ir_sedation_vitals` — the sedation chart (BP, HR, SpO₂, RASS, the drug given), a row
+ *     per reading; the five-minute clock is derived from the last row.
+ *   · `imaging_ir_cases` — one row per IR study for the facts that are not a checklist: the
+ *     radiologist's coagulation override (who, when, why — the audit), the skin-dose follow-up
+ *     (3 Gy), the procedure note and the recovery hand-off.
+ */
+export const IR_CHECKLIST_PHASES = ["sign_in", "time_out", "sign_out"] as const;
+export type IrChecklistPhase = (typeof IR_CHECKLIST_PHASES)[number];
+
+export const imagingIrChecklists = pgTable(
+  "imaging_ir_checklists",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    phase: text("phase").notNull(),
+    /** `[{key, answer, note?}]` — the OT's shape; the answers `ir.ts` validated. */
+    items: jsonb("items").notNull(),
+    /** User ids and/or names of the people who stopped for it (time out: ≥ 2 distinct). */
+    participants: jsonb("participants").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("imaging_ir_checklists_phase_ux").on(t.studyId, t.phase),
+    check("imaging_ir_checklists_phase_ck", inList(t.phase, IR_CHECKLIST_PHASES)),
+  ],
+);
+
+export const imagingIrSedationVitals = pgTable(
+  "imaging_ir_sedation_vitals",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    bpSystolic: integer("bp_systolic").notNull(),
+    bpDiastolic: integer("bp_diastolic").notNull(),
+    heartRate: integer("heart_rate").notNull(),
+    spo2: integer("spo2").notNull(),
+    /** Richmond Agitation–Sedation Scale, −5 (unrousable) … +4 (combative). */
+    rass: integer("rass").notNull(),
+    /** The sedative / analgesic given at this reading, as charted ("Midazolam 1 mg IV"). */
+    drug: text("drug"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("imaging_ir_sedation_vitals_study_idx").on(t.studyId, t.recordedAt),
+    check(
+      "imaging_ir_sedation_vitals_range_ck",
+      sql`${t.bpSystolic} between 40 and 300 and ${t.bpDiastolic} between 20 and 200
+          and ${t.bpDiastolic} < ${t.bpSystolic} and ${t.heartRate} between 20 and 250
+          and ${t.spo2} between 50 and 100 and ${t.rass} between -5 and 4`,
+    ),
+  ],
+);
+
+export const imagingIrCases = pgTable(
+  "imaging_ir_cases",
+  {
+    studyId: text("study_id").primaryKey().references(() => imagingStudies.id),
+    /** The radiologist's override of an out-of-range or missing INR / platelet count, with the verdict it overrode. */
+    coagOverrideVerdict: text("coag_override_verdict"),
+    coagOverrideReason: text("coag_override_reason"),
+    coagOverrideBy: text("coag_override_by"),
+    coagOverrideAt: timestamp("coag_override_at", { withTimezone: true }),
+    /** Ka,r ≥ 3 Gy: the patient was told and a skin check booked 2–4 weeks out. */
+    skinFollowUpOn: date("skin_follow_up_on"),
+    skinFollowUpNote: text("skin_follow_up_note"),
+    skinFollowUpBy: text("skin_follow_up_by"),
+    skinFollowUpAt: timestamp("skin_follow_up_at", { withTimezone: true }),
+    /** The procedure note. */
+    noteProcedure: text("note_procedure"),
+    noteApproach: text("note_approach"),
+    noteDevices: text("note_devices"),
+    noteSpecimens: text("note_specimens"),
+    noteComplications: text("note_complications"),
+    noteBloodLossMl: integer("note_blood_loss_ml"),
+    noteBy: text("note_by"),
+    noteAt: timestamp("note_at", { withTimezone: true }),
+    /** The recovery hand-off: `{vitals, bedRestHours, drainCare, instructionsEn, instructionsHi, receivedBy}`. */
+    handoff: jsonb("handoff"),
+    handoffBy: text("handoff_by"),
+    handoffAt: timestamp("handoff_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** An override is a verdict, a reason, a person and an instant — all four or none. */
+    check(
+      "imaging_ir_cases_coag_override_ck",
+      sql`(${t.coagOverrideVerdict} is null and ${t.coagOverrideReason} is null and ${t.coagOverrideBy} is null and ${t.coagOverrideAt} is null)
+          or (${t.coagOverrideVerdict} is not null and char_length(btrim(${t.coagOverrideReason})) >= 5
+              and ${t.coagOverrideBy} is not null and ${t.coagOverrideAt} is not null)`,
+    ),
+    check(
+      "imaging_ir_cases_skin_ck",
+      sql`(${t.skinFollowUpOn} is null) = (${t.skinFollowUpBy} is null) and (${t.skinFollowUpBy} is null) = (${t.skinFollowUpAt} is null)`,
+    ),
+    check(
+      "imaging_ir_cases_note_ck",
+      sql`(${t.noteProcedure} is null and ${t.noteBy} is null and ${t.noteAt} is null)
+          or (char_length(btrim(${t.noteProcedure})) >= 3 and ${t.noteBy} is not null and ${t.noteAt} is not null)`,
+    ),
+    check("imaging_ir_cases_blood_loss_ck", sql`${t.noteBloodLossMl} is null or ${t.noteBloodLossMl} between 0 and 10000`),
+    /** Handed over only with a note written. */
+    check(
+      "imaging_ir_cases_handoff_ck",
+      sql`(${t.handoff} is null and ${t.handoffBy} is null and ${t.handoffAt} is null)
+          or (${t.handoff} is not null and ${t.handoffBy} is not null and ${t.handoffAt} is not null and ${t.noteAt} is not null)`,
+    ),
   ],
 );

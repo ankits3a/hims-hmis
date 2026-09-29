@@ -47,18 +47,18 @@ describe("seed:radiology — the department can be stood up on a fresh deploymen
   it("seeds the book, the machines and the approval type from empty", async () => {
     const result = await seedRadiology(db, admin);
 
-    expect(result.services).toBe(20);
-    expect(result.devicesCreated).toBe(7);
+    expect(result.services).toBe(24); // 18-S RS12b: +4 IR procedures
+    expect(result.devicesCreated).toBe(8); // 18-S RS12b: +IR-1
     expect(result.version).toBe(1);
 
     const type = await withTx(db, (tx) => getApprovalType(tx, IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE));
     expect(type).toBeTruthy();
 
-    /** The seven machines the scheduler books onto, each carrying the modality it matches by. */
+    /** The eight machines (RS12b: +IR-1) the scheduler books onto, each carrying the modality it matches by. */
     const devices = await db.select({ code: resources.code, attributes: resources.attributes })
       .from(resources);
     expect(devices.map((d) => d.code).sort())
-      .toEqual(["CT-1", "MMG-1", "MRI-1", "PX-1", "USG-1", "USG-P1", "XR-1"]);
+      .toEqual(["CT-1", "IR-1", "MMG-1", "MRI-1", "PX-1", "USG-1", "USG-P1", "XR-1"]);
     expect(devices.find((d) => d.code === "CT-1")?.attributes).toMatchObject({ modality: "ct" });
 
     /**
@@ -105,10 +105,10 @@ describe("seed:radiology — the department can be stood up on a fresh deploymen
     const again = await seedRadiology(db, admin);
 
     expect(again.devicesCreated).toBe(0);
-    expect(again.services).toBe(20);
+    expect(again.services).toBe(24);
 
     const devices = await db.select({ code: resources.code }).from(resources);
-    expect(devices).toHaveLength(7);
+    expect(devices).toHaveLength(8);
 
     /**
      * ═══ THE ASSERTION WHOSE ABSENCE LET THE DEFECT LIVE ═══

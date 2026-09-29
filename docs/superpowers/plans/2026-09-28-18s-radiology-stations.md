@@ -1336,6 +1336,30 @@ migration:
   obligation for a skin-dose trigger (RS8's follow-ups table). Money: device/consumable billing is the
   OT's materials path — no new rule (none ruled).
 
+#### RS12b spike (read on main `063a998e`, 29 Sep, before any code)
+- **(a) What marks a study as IR.** Nothing today: the modality vocabulary is `xray | usg | ct | mri |
+  mammography` and no study type or device carries an IR flag; no IR study type is seeded and no
+  `IR-1` device exists (`seed-radiology.ts` seeds 7 machines, none IR). The procedure (PCN, PTBD,
+  CT-guided biopsy, DSA) is a property of the **study type**, not the room: a CT-guided biopsy runs on
+  the CT, a PCN on the C-arm. So the flag goes on the governed `study_types` body.
+- **(b) The dose path.** `recordAcquired` takes CTDIvol, DLP, DAP, fluoro seconds, AGD and writes
+  `imaging_studies` + `radiation_dose_register` (`recordDose`) in one transaction; the dose SR
+  parser reads 113722 DAP and 113730 fluoro time but **not 113725 Dose (RP) Total** (Ka,r). No Ka,r
+  column anywhere. Nothing reads a dose after Send, so a threshold alert has no home yet.
+- **(c) The OT's shapes.** `ot/index.ts` exports `consentSchema` (procedure code, template version,
+  language, interpreter, witness, thumb impression, signer/guardian, laterality, `signedAt`),
+  `NPO_SOLIDS_HOURS` (6) / `NPO_CLEAR_FLUIDS_HOURS` (2), `ADULT_AGE_YEARS`; the WHO run is
+  `ot_checklist_runs` (`items [{key, answer, note?}]`, `participants`, `recorded_by`) and the
+  time-out needs ≥ 2 DISTINCT participants (A13). `completeChecklist` itself is bound to an OT case,
+  so it cannot be called for a study — the shapes are reused, the decision (A13) is restated with
+  its source.
+- **(d) Coagulation from the lab.** `lab/index.ts` exports only `latestVerifiedCreatinine`. The golden
+  catalogue carries `INR` (unitless) and `PLT` (`10^3/uL`); nothing reads either for another module.
+- **(e) The spine.** RS10 (#404, the obligation-spine escalations) is not merged; radiology feeds no
+  obligation today.
+- **(f) Where it lives on screen.** The Rooms station's header views (`console · dose · rejects ·
+  downtime · unmatched`); `?view=ir` is a sixth, so no new route, nav row or caddyfile entry.
+
 #### RS12 — NEXT (not built): night teleradiology (ruling 7)
 - **Identity:** a `teleradiology_reporter` role for the contracted provider's NMC-registered
   radiologists — a named user each (NMC number on the person), hospital scope, holding

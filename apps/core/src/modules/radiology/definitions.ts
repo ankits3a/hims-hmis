@@ -62,6 +62,18 @@ export const studyTypeSchema = z.object({
   chaperone_required: z.boolean(),
   laterality_applicable: z.boolean(),
   gates: z.array(z.enum(IMAGING_GATE_KIND_VALUES)).default([]),
+  /**
+   * 18-S RS12b — an image-guided PROCEDURE (PCN, PTBD, CT-guided biopsy, angiography), worked in the
+   * IR suite: WHO sign in → time out → sign out, the sedation chart, Ka,r with the skin-dose alerts
+   * (`ir.ts`). Optional so every book published before RS12b still parses; absent means false.
+   */
+  interventional: z.boolean().optional(),
+  /**
+   * 18-S RS12b — the SIR 2019 bleeding-risk class of the procedure. `high` (PCN, PTBD, solid-organ
+   * biopsy) makes the sign-in ask the lab for INR ≤ 1.5 and platelets ≥ 50,000/µL within 7 days;
+   * `low` (or absent) asks nothing. Only meaningful on an interventional type.
+   */
+  bleeding_risk: z.enum(["low", "high"]).optional(),
 });
 
 export const studyTypesBodySchema = z.object({

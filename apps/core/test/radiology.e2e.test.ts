@@ -633,6 +633,25 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect([round.status, round.body]).toEqual([200, { rows: [] }]);
   }, 60_000);
 
+  /**
+   * 18-S RS12b — the IR suite's routes are wired and guarded: the list and the acts on
+   * `radiology.acquire` (the radiographer's; the counter has none), the coagulation override on the
+   * radiologist's `radiology.gates.override` — a radiographer is refused it at the guard.
+   */
+  it("RS12b: the IR suite's routes answer behind their permissions; the coagulation override is the radiologist's", async () => {
+    expect((await request(server()).get("/radiology/ir/cases")).status).toBe(401);
+    expect((await get("/radiology/ir/cases", counter.token)).status).toBe(403);
+    const list = await get("/radiology/ir/cases", radiographer.token);
+    expect([list.status, list.body]).toEqual([200, { rows: [] }]);
+    const ghost = "01NOSUCHSTUDY0000000000000";
+    const why = { reason: "Obstructed infected kidney — drainage outweighs the risk" };
+    expect((await post(`/radiology/studies/${ghost}/ir/coagulation-override`, radiographer.token, why)).status).toBe(403);
+    const byRadiologist = await post(`/radiology/studies/${ghost}/ir/coagulation-override`, radiologist.token, why);
+    expect([byRadiologist.status, byRadiologist.body.code]).toEqual([404, "unknown_study"]);
+    expect((await post(`/radiology/studies/${ghost}/ir/sign-in`, radiographer.token, { participants: [] })).status).toBe(400);
+    expect((await get(`/radiology/studies/${ghost}/ir`, radiographer.token)).status).toBe(404);
+  }, 60_000);
+
   it("the `imaging` order kind resolves off the REAL manifest, not off a fixture decl", async () => {
     const registry = new ModuleRegistry();
     for (const m of ALL_MANIFESTS) registry.install(m);
