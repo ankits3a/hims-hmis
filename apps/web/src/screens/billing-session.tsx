@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { MoneyInput } from "../components/money-input";
@@ -7,8 +7,8 @@ import { fmtIst, fmtPaise } from "../lib/format";
 import { api } from "../lib/api";
 import { billingErrorCode, billingErrorMessage } from "../lib/billing-api";
 import { useAuth } from "../lib/auth";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import "../styles/paper-pine.css";
+import "./billing-session.css";
 
 /**
  * THE CASHIER SESSION SCREEN (Plan 08 T15 / D9) — the drawer: open it with a float, count it down
@@ -102,6 +102,24 @@ type WireVarianceApproval = {
   requestedAt: string;
 };
 
+/**
+ * UX-AUDIT 2026-09-28 — `GET /billing/sessions/current/open-items`: what is still open on the
+ * caller's own live drawer. It carries NO CASH FIGURE by construction (`drawer-open-items.ts`) —
+ * the close is a blind count — so nothing here can leak the expected total before she has counted.
+ */
+type WireOpenItems = {
+  receipts: number;
+  nonCashUnconfirmed: { count: number; paise: number };
+  nonCashMismatched: { count: number; paise: number };
+  refundsQueued: { count: number; paise: number };
+  refundsPaidHere: number;
+  partPaid: {
+    count: number;
+    paise: number;
+    items: { invoiceId: string; invoiceNo: string; outstandingPaise: number; patientName: string | null; uhid: string | null }[];
+  };
+};
+
 export function BillingSession(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -153,6 +171,29 @@ export function BillingSession(): React.ReactElement {
     refetchInterval: POLL_MS,
   });
   const approvalStatus = approval.data?.approval.status ?? null;
+
+  const openItems = useQuery({
+    queryKey: ["billing-session", "open-items"],
+    queryFn: () => api<{ items: WireOpenItems | null }>("GET", "/billing/sessions/current/open-items"),
+    enabled: live !== null,
+    refetchInterval: POLL_MS,
+  });
+  const items = live !== null ? (openItems.data?.items ?? null) : null;
+
+  /*
+    UX-AUDIT 2026-09-28 — THE COUNT IS TYPED DOWN A COLUMN. Enter moves to the next note (as Tab
+    does), and from the last note to the close note, so a cashier counting from a stack of notes
+    never reaches for the mouse. Enter never SUBMITS from the grid: the close is one deliberate press.
+  */
+  const denomRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const noteRef = useRef<HTMLInputElement | null>(null);
+  const onDenomKey = (index: number) => (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const next = denomRefs.current[index + 1];
+    if (next) next.focus();
+    else noteRef.current?.focus();
+  };
 
   const refresh = async (): Promise<void> => {
     await qc.invalidateQueries({ queryKey: ["billing-session"] });
@@ -260,287 +301,420 @@ export function BillingSession(): React.ReactElement {
 
   // ——— render ———————————————————————————————————————————————————————————————————————————————
 
-  const varianceBlock = (variancePaise: number, idPrefix: string): React.ReactElement => (
-    <p className="text-sm">
-      {t("billingSession.variance")}:{" "}
-      <span
-        data-testid={idPrefix}
-        className={`font-semibold tabular-nums ${variancePaise === 0 ? "" : "text-red-600"}`}
-      >
-        {fmtPaise(variancePaise)}
+  const varianceFig = (variancePaise: number, idPrefix: string): React.ReactElement => (
+    <div className="cs-fig">
+      <span className="lbl">{t("billingSession.variance")}</span>
+      <span className={`v num ${variancePaise === 0 ? "" : "bad"}`}>
+        <span data-testid={idPrefix}>{fmtPaise(variancePaise)}</span>
+        {variancePaise !== 0 && (
+          <span data-testid="variance-direction" className="dir">
+            {variancePaise < 0 ? t("billingSession.short") : t("billingSession.over")}
+          </span>
+        )}
       </span>
-      {variancePaise !== 0 && (
-        <span data-testid="variance-direction" className="ml-2 text-neutral-600">
-          {variancePaise < 0 ? t("billingSession.short") : t("billingSession.over")}
-        </span>
-      )}
-    </p>
+    </div>
+  );
+
+  const fig = (label: string, testId: string, paise: number): React.ReactElement => (
+    <div className="cs-fig">
+      <span className="lbl">{label}</span>
+      <span data-testid={testId} className="v num">{fmtPaise(paise)}</span>
+    </div>
   );
 
   const openForm = (
-    <div className="space-y-2 rounded border p-2">
-      <h2 className="text-sm font-semibold">{t("billingSession.open.title")}</h2>
-      {/*
-        `key` clears the VISIBLE box whenever a drawer finishes while this form is mounted. It was
-        written for a drawer confirmed out of `closing` with the form on screen throughout; since
-        UX-AUDIT 2026-09-28 the form is hidden during `closing`, but a finished row can still arrive
-        while it is mounted (a `closed` row served by the poll), and `MoneyInput` seeds its text
-        once in a `useState` initializer and documents that parents needing a reset must remount
-        with a `key`. Pairs with `land`'s reset: the float posted is the float she can see.
-      */}
-      <MoneyInput
-        key={finished?.id ?? "new"}
-        id="open-float"
-        label={t("billingSession.open.float")}
-        onChange={setFloatPaise}
-      />
+    <div className="cs-card cs-open">
+      <h2 className="cs-card-h">{t("billingSession.open.title")}</h2>
+      <p className="cs-sub">{t("billingSession.open.explain")}</p>
+      <div style={{ marginTop: 10 }}>
+        {/*
+          `key` clears the VISIBLE box whenever a drawer finishes while this form is mounted. It was
+          written for a drawer confirmed out of `closing` with the form on screen throughout; since
+          UX-AUDIT 2026-09-28 the form is hidden during `closing`, but a finished row can still arrive
+          while it is mounted (a `closed` row served by the poll), and `MoneyInput` seeds its text
+          once in a `useState` initializer and documents that parents needing a reset must remount
+          with a `key`. Pairs with `land`'s reset: the float posted is the float she can see.
+        */}
+        <MoneyInput
+          key={finished?.id ?? "new"}
+          id="open-float"
+          label={t("billingSession.open.float")}
+          onChange={setFloatPaise}
+        />
+      </div>
       {openError !== null && (
-        <p role="alert" data-testid="open-error" className="text-sm text-red-600">{openError}</p>
+        <p role="alert" data-testid="open-error" className="cs-err" style={{ marginTop: 8 }}>{openError}</p>
       )}
-      <SubmitButton data-testid="open-submit" onClick={() => openDrawer()}>
-        {t("billingSession.open.submit")}
-      </SubmitButton>
+      <div className="cs-actions">
+        <SubmitButton plain className="cs-btn pri" data-testid="open-submit" onClick={() => openDrawer()}>
+          {t("billingSession.open.submit")}
+        </SubmitButton>
+      </div>
+    </div>
+  );
+
+  /*
+    UX-AUDIT 2026-09-28 — "OPEN ON THIS DRAWER" (BillingEdge, right panel). Each row is a dot, a
+    title, an amount and one line of what to do — the board's grammar. Rows appear only when there
+    is something open; an empty drawer says so in words rather than showing four zeros. The
+    board's "Ayushman Bharat — nothing to collect" row has no data source on this drawer yet and is
+    not invented here.
+  */
+  const openList = items !== null && (
+    <aside className="cs-side" data-testid="open-items" aria-labelledby="cs-open-h">
+      <div className="cs-side-h">
+        <span id="cs-open-h" className="cs-card-h" style={{ display: "block" }}>{t("billingSession.openItems.title")}</span>
+        <span className="cs-sub">{t("billingSession.openItems.sub")}</span>
+      </div>
+      <div className="cs-side-b">
+        {items.nonCashMismatched.count > 0 && (
+          <div className="cs-ex red" data-testid="open-mismatched">
+            <div className="cs-ex-top">
+              <span className="cs-ex-dot" />
+              <span className="t">{t("billingSession.openItems.mismatched", { count: items.nonCashMismatched.count })}</span>
+              <span className="a num">{fmtPaise(items.nonCashMismatched.paise)}</span>
+            </div>
+            <div className="cs-ex-body">{t("billingSession.openItems.mismatchedBody")}</div>
+          </div>
+        )}
+        {items.nonCashUnconfirmed.count > 0 && (
+          <div className="cs-ex" data-testid="open-unconfirmed">
+            <div className="cs-ex-top">
+              <span className="cs-ex-dot" />
+              <span className="t">{t("billingSession.openItems.unconfirmed", { count: items.nonCashUnconfirmed.count })}</span>
+              <span className="a num">{fmtPaise(items.nonCashUnconfirmed.paise)}</span>
+            </div>
+            <div className="cs-ex-body">{t("billingSession.openItems.unconfirmedBody")}</div>
+          </div>
+        )}
+        {items.refundsQueued.count > 0 && (
+          <div className="cs-ex" data-testid="open-refunds">
+            <div className="cs-ex-top">
+              <span className="cs-ex-dot" />
+              <span className="t">{t("billingSession.openItems.refunds", { count: items.refundsQueued.count })}</span>
+              <span className="a num">{fmtPaise(items.refundsQueued.paise)}</span>
+            </div>
+            <div className="cs-ex-body">{t("billingSession.openItems.refundsBody")}</div>
+          </div>
+        )}
+        {items.partPaid.count > 0 && (
+          <div className="cs-ex" data-testid="open-part-paid">
+            <div className="cs-ex-top">
+              <span className="cs-ex-dot" />
+              <span className="t">{t("billingSession.openItems.partPaid", { count: items.partPaid.count })}</span>
+              <span className="a num">{fmtPaise(items.partPaid.paise)}</span>
+            </div>
+            <div className="cs-ex-body">{t("billingSession.openItems.partPaidBody")}</div>
+            <ul className="cs-ex-list">
+              {items.partPaid.items.map((i) => (
+                <li key={i.invoiceId}>
+                  <span>
+                    {i.patientName ?? t("billingSession.openItems.restricted")}
+                    <span className="num cs-sub"> · {i.invoiceNo}</span>
+                  </span>
+                  <span className="num">{fmtPaise(i.outstandingPaise)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {items.nonCashMismatched.count + items.nonCashUnconfirmed.count + items.refundsQueued.count + items.partPaid.count === 0 && (
+          <p data-testid="open-clear" className="cs-clear">{t("billingSession.openItems.clear")}</p>
+        )}
+      </div>
+    </aside>
+  );
+
+  /*
+    UX-AUDIT 2026-09-28 — "IF YOU CLOSED THE DRAWER NOW", AND THE ONE PLACE THIS SCREEN LEAVES ITS
+    BOARD. BillingEdge prints "Cash receipted ₹24,150 … Drawer should hold ₹24,650" in this card,
+    directly above its own note that "the expected total stays hidden until you have typed yours".
+    The two cannot both hold, and the blind count is the money control (pinned in this suite), so the
+    card keeps its rows and withholds every cash figure the expected could be derived from: the
+    float (hers, typed at open), the receipt and voucher COUNTS, the refunds still held (not in the
+    expected until paid) — and "shown after your count" where the board prints the answer.
+    DECIDED in docs/superpowers/decisions/2026-09-28-billing-session.md.
+  */
+  const ifClosedNow = live !== null && live.status === "open" && !closeLane && (
+    <div className="cs-card" data-testid="if-closed-now">
+      <span className="lbl">{t("billingSession.ifClosed.title")}</span>
+      <div className="cs-rows">
+        <div className="cs-row"><span>{t("billingSession.ifClosed.float")}</span><span className="num">{fmtPaise(live.openingFloatPaise)}</span></div>
+        <div className="cs-row"><span>{t("billingSession.ifClosed.receipts")}</span><span className="num">{items === null ? "—" : String(items.receipts)}</span></div>
+        <div className="cs-row"><span>{t("billingSession.ifClosed.refundsPaid")}</span><span className="num">{items === null ? "—" : String(items.refundsPaidHere)}</span></div>
+        <div className="cs-row">
+          <span>{t("billingSession.ifClosed.refundsHeld")}</span>
+          <span className="num">{items === null ? "—" : fmtPaise(items.refundsQueued.paise)}</span>
+        </div>
+        <div className="cs-row tot">
+          <span>{t("billingSession.ifClosed.shouldHold")}</span>
+          <span data-testid="should-hold" className="hidden-fig">{t("billingSession.ifClosed.afterCount")}</span>
+        </div>
+      </div>
+      <div className="cs-note">
+        <div className="h">{t("billingSession.ifClosed.blindTitle")}</div>
+        <div className="b">{t("billingSession.ifClosed.blindBody")}</div>
+      </div>
+      <button type="button" data-testid="start-count" className="cs-btn wide" onClick={() => setCloseLane(true)}>
+        {t("billingSession.ifClosed.start")}
+      </button>
+    </div>
+  );
+
+  /* ——— the count-down: ten rows, paise keys, one running total, the submit pinned in view ——— */
+  const countCard = live !== null && live.status === "open" && closeLane && (
+    <div className="cs-card cs-count" data-testid="count-card">
+      <div className="cs-count-h">
+        <h2 className="cs-card-h">{t("billingSession.close.title")}</h2>
+        <p className="cs-sub">{t("billingSession.close.warning")}</p>
+      </div>
+      <table className="cs-denoms">
+        <thead>
+          <tr>
+            <th>{t("billingSession.close.note_col")}</th>
+            <th aria-hidden="true" />
+            <th>{t("billingSession.close.count_col")}</th>
+            <th className="r">{t("billingSession.close.amount_col")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {DENOMINATION_RUPEES.map((rupees, index) => {
+            const amount = denominationPaise(rupees) * noteCount(counts[rupees]);
+            return (
+              <tr key={rupees} data-testid={`denom-row-${String(rupees)}`} data-denom={String(denominationPaise(rupees))}>
+                <td className="num">
+                  <label htmlFor={`denom-${String(rupees)}`}>{t("billingSession.close.denom", { rupees })}</label>
+                </td>
+                <td className="x" aria-hidden="true">×</td>
+                <td>
+                  <input
+                    id={`denom-${String(rupees)}`}
+                    ref={(el) => { denomRefs.current[index] = el; }}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    autoFocus={index === 0}
+                    value={counts[rupees] ?? ""}
+                    onKeyDown={onDenomKey(index)}
+                    onChange={(e) => setCounts((prev) => ({ ...prev, [rupees]: e.target.value.replace(/[^0-9]/g, "") }))}
+                  />
+                </td>
+                <td className={`r num amt ${amount > 0 ? "on" : ""}`}>{fmtPaise(amount)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="cs-count-foot">
+        <div className="cs-total">
+          <span className="lbl">{t("billingSession.close.counted")}</span>
+          <span data-testid="counted-total" className="v num">{fmtPaise(counted)}</span>
+        </div>
+        {closeError !== null && (
+          <p role="alert" data-testid="close-error" className="cs-err">{closeError}</p>
+        )}
+        <div className="cs-foot-row">
+          <label className="cs-field-l" htmlFor="close-note">{t("billingSession.close.note")}</label>
+          <input id="close-note" ref={noteRef} className="cs-field" value={note} onChange={(e) => setNote(e.target.value)} />
+          <SubmitButton plain className="cs-btn pri" data-testid="close-submit" onClick={() => beginClose()}>
+            {t("billingSession.close.submit")}
+          </SubmitButton>
+          <button type="button" className="cs-btn" onClick={() => setCloseLane(false)}>{t("billingSession.cancel")}</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* ——— awaiting the variance approval: the figures, then ONE warning, then the way out ——— */
+  const closingCard = live !== null && live.status === "closing" && (
+    <div className="cs-card" data-testid="closing-card">
+      <h2 className="cs-card-h">{t("billingSession.closingTitle")}</h2>
+      <div className="cs-figs">
+        {fig(t("billingSession.close.counted"), "closing-counted", live.countedCashPaise ?? 0)}
+        {fig(t("billingSession.expected"), "closing-expected", live.expectedCashPaise ?? 0)}
+        {varianceFig(live.variancePaise ?? 0, "variance-figure")}
+      </div>
+      <div className="cs-actions" style={{ marginTop: 8 }}>
+        {/*
+          BESIDE THE COUNT, which is where the owner asked for it and where it belongs: the figure
+          somebody is staring at when they realise it is wrong is the figure they should be able
+          to act on.
+        */}
+        {!recounting && (
+          <button
+            type="button"
+            data-testid="recount-open"
+            className="cs-link"
+            onClick={() => { setRecounting(true); setCloseError(null); }}
+          >
+            {t("billingSession.recount.open")}
+          </button>
+        )}
+      </div>
+      {recounting && (
+        <div data-testid="recount-form" className="cs-recount">
+          <p className="cs-sub" style={{ margin: 0 }}>{t("billingSession.recount.explain")}</p>
+          <label className="cs-sub" htmlFor="recount-reason">{t("billingSession.recount.reason")}</label>
+          <input
+            id="recount-reason"
+            data-testid="recount-reason"
+            className="cs-field"
+            value={reason}
+            onChange={(e) => { setReason(e.target.value); }}
+          />
+          <div className="cs-foot-row">
+            <SubmitButton plain className="cs-btn pri" data-testid="recount-submit" onClick={() => recount()}>
+              {t("billingSession.recount.submit")}
+            </SubmitButton>
+            <button
+              type="button"
+              data-testid="recount-cancel"
+              className="cs-link"
+              onClick={() => { setRecounting(false); setReason(""); setCloseError(null); }}
+            >
+              {t("billingSession.recount.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/*
+        UX-AUDIT 2026-09-28 — ONE STORY, NOT THREE. The panel used to say "you cannot take money
+        until a billing manager approves", then name the approval by its raw id ("apr-77"), then
+        offer "Confirm close" as if it were available now — with a full "Open a drawer" form
+        underneath. The server's truth, from `sessions.ts`: confirm-close is refused until the
+        approval is GRANTED, and a second drawer is refused `session_already_open` by
+        `cashier_sessions_live_ux` for as long as this one is `closing`. And, second pass: the
+        pending line and the lockout said the same sentence twice ("waiting for a billing manager
+        to approve this variance" / "until a billing manager approves this variance"). Now the
+        lockout is the one headline, and the approval line under it carries only what the headline
+        does not — who may decide, and since when.
+      */}
+      {approvalStatus === "granted" ? (
+        <div className="cs-note green">
+          <p role="status" data-testid="approval-pending" className="h" style={{ margin: 0 }}>{t("billingSession.approvalGranted")}</p>
+        </div>
+      ) : (
+        <div className={`cs-note ${approvalStatus === "rejected" ? "red" : ""}`}>
+          <p role="status" data-testid="lockout-banner" className="h" style={{ margin: 0 }}>{t("billingSession.lockout")}</p>
+          {approvalStatus === "rejected" ? (
+            <p role="status" data-testid="approval-pending" className="b" style={{ margin: 0 }}>{t("billingSession.approvalRejected")}</p>
+          ) : live.varianceApprovalId !== null && (
+            <p role="status" data-testid="approval-pending" className="b" style={{ margin: 0 }}>
+              {approval.data !== undefined
+                ? t("billingSession.approvalPendingSince", { time: fmtIst(approval.data.approval.requestedAt) })
+                : t("billingSession.approvalPending")}
+            </p>
+          )}
+        </div>
+      )}
+
+      {closeError !== null && (
+        <p role="alert" data-testid="close-error" className="cs-err" style={{ marginTop: 10 }}>{closeError}</p>
+      )}
+
+      <div className="cs-actions">
+        {(approvalStatus === null || approvalStatus === "granted") && (
+          <SubmitButton plain className="cs-btn pri" data-testid="confirm-close" onClick={() => confirmClose()}>
+            {t("billingSession.confirmClose")}
+          </SubmitButton>
+        )}
+      </div>
+      {approvalStatus === null && (
+        <p data-testid="confirm-close-hint" className="cs-meta">{t("billingSession.confirmCloseHint")}</p>
+      )}
+    </div>
+  );
+
+  /* ——— the finished drawer: the day summary, from the response that closed it ——— */
+  const summaryCard = finished !== null && (
+    <div data-testid="day-summary" className="cs-card">
+      <div className="cs-foot-row">
+        <h2 className="cs-card-h" style={{ margin: 0 }}>{t("billingSession.summary.title")}</h2>
+        <span data-testid="summary-status" className="cs-tag dim">{t("billingSession.status.closed")}</span>
+      </div>
+      <p className="cs-sub" style={{ margin: "4px 0 0" }}>
+        {t("billingSession.openedAt")} <span data-testid="summary-opened-at" className="num">{fmtIst(finished.openedAt)}</span>
+        {" · "}
+        {t("billingSession.closedAt")}{" "}
+        <span data-testid="summary-closed-at" className="num">{finished.closedAt === null ? "—" : fmtIst(finished.closedAt)}</span>
+      </p>
+      <div className="cs-figs">
+        {fig(t("billingSession.float"), "summary-float", finished.openingFloatPaise)}
+        {fig(t("billingSession.close.counted"), "summary-counted", finished.countedCashPaise ?? 0)}
+        {fig(t("billingSession.expected"), "summary-expected", finished.expectedCashPaise ?? 0)}
+      </div>
+      <div className="cs-figs" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
+        {varianceFig(finished.variancePaise ?? 0, "summary-variance")}
+      </div>
+      {finished.closeNote !== null && (
+        <p data-testid="summary-note" className="cs-meta">{finished.closeNote}</p>
+      )}
     </div>
   );
 
   return (
-    <div className="space-y-4 p-6">
-      <h1 className="text-xl font-semibold">{t("billingSession.title")}</h1>
+    <div className="cs">
+      <div className="cs-wrap">
+        <h1 className="cs-title">{t("billingSession.title")}</h1>
 
-      {live !== null && (
-        <div className="space-y-2 rounded border p-2">
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <Badge data-testid="session-status" variant={live.status === "open" ? "default" : "outline"}>
-              {t(`billingSession.status.${live.status}`)}
-            </Badge>
-            <span>
-              {t("billingSession.openedAt")}:{" "}
-              <span data-testid="session-opened-at" className="tabular-nums">{fmtIst(live.openedAt)}</span>
-            </span>
-            <span>
-              {t("billingSession.float")}:{" "}
-              <span data-testid="session-float" className="tabular-nums">{fmtPaise(live.openingFloatPaise)}</span>
-            </span>
-          </div>
-
-          {live.status === "open" && !closeLane && (
-            <Button data-testid="close-open" onClick={() => setCloseLane(true)}>
-              {t("billingSession.close.open")}
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* ——— the count-down: ten rows, paise keys, one running total ——— */}
-      {live !== null && live.status === "open" && closeLane && (
-        <div className="space-y-2 rounded border p-2">
-          <h2 className="text-sm font-semibold">{t("billingSession.close.title")}</h2>
-          <p className="text-sm text-amber-700">{t("billingSession.close.warning")}</p>
-          <table className="text-sm">
-            <tbody>
-              {DENOMINATION_RUPEES.map((rupees) => (
-                <tr key={rupees} data-testid={`denom-row-${String(rupees)}`} data-denom={String(denominationPaise(rupees))}>
-                  <td className="pr-3">
-                    <label htmlFor={`denom-${String(rupees)}`}>
-                      {t("billingSession.close.denom", { rupees })}
-                    </label>
-                  </td>
-                  <td>
-                    <input
-                      id={`denom-${String(rupees)}`}
-                      type="number"
-                      min="0"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={counts[rupees] ?? ""}
-                      onChange={(e) => setCounts((prev) => ({ ...prev, [rupees]: e.target.value }))}
-                      className="w-24 rounded border px-2 py-1 text-right tabular-nums"
-                    />
-                  </td>
-                  <td className="pl-3 tabular-nums text-neutral-600">
-                    {fmtPaise(denominationPaise(rupees) * noteCount(counts[rupees]))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="text-sm">
-            {t("billingSession.close.counted")}:{" "}
-            <span data-testid="counted-total" className="font-semibold tabular-nums">{fmtPaise(counted)}</span>
-          </p>
-          <label className="block text-sm font-medium" htmlFor="close-note">{t("billingSession.close.note")}</label>
-          <input
-            id="close-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="w-full rounded border px-2 py-1"
-          />
-          {closeError !== null && (
-            <p role="alert" data-testid="close-error" className="text-sm text-red-600">{closeError}</p>
-          )}
-          <div className="flex gap-2">
-            <SubmitButton data-testid="close-submit" onClick={() => beginClose()}>
-              {t("billingSession.close.submit")}
-            </SubmitButton>
-            <Button variant="outline" onClick={() => setCloseLane(false)}>{t("billingSession.cancel")}</Button>
-          </div>
-        </div>
-      )}
-
-      {/* ——— awaiting the variance approval: the numbers, the approval, and the lockout ——— */}
-      {live !== null && live.status === "closing" && (
-        <div className="space-y-2 rounded border border-amber-400 p-2">
-          <p className="text-sm">
-            {t("billingSession.close.counted")}:{" "}
-            <span data-testid="closing-counted" className="tabular-nums">{fmtPaise(live.countedCashPaise ?? 0)}</span>
-          </p>
-          <p className="text-sm">
-            {t("billingSession.expected")}:{" "}
-            <span data-testid="closing-expected" className="tabular-nums">{fmtPaise(live.expectedCashPaise ?? 0)}</span>
-          </p>
-          {varianceBlock(live.variancePaise ?? 0, "variance-figure")}
-
-          {/*
-            BESIDE THE COUNT, which is where the owner asked for it and where it belongs: the figure
-            somebody is staring at when they realise it is wrong is the figure they should be able
-            to act on. It sits ABOVE the lockout banner, so the way out is read before the wall.
-          */}
-          {!recounting ? (
-            <button
-              type="button"
-              data-testid="recount-open"
-              className="text-sm underline"
-              onClick={() => { setRecounting(true); setCloseError(null); }}
-            >
-              {t("billingSession.recount.open")}
-            </button>
-          ) : (
-            <div data-testid="recount-form" className="space-y-2 rounded border border-neutral-300 p-2">
-              <p className="text-sm text-neutral-700">{t("billingSession.recount.explain")}</p>
-              <label className="block text-sm" htmlFor="recount-reason">{t("billingSession.recount.reason")}</label>
-              <input
-                id="recount-reason"
-                data-testid="recount-reason"
-                className="w-full rounded border px-2 py-1 text-sm"
-                value={reason}
-                onChange={(e) => { setReason(e.target.value); }}
-              />
-              <div className="flex gap-2">
-                <SubmitButton data-testid="recount-submit" onClick={() => recount()}>
-                  {t("billingSession.recount.submit")}
-                </SubmitButton>
-                <button
-                  type="button"
-                  data-testid="recount-cancel"
-                  className="text-sm underline"
-                  onClick={() => { setRecounting(false); setReason(""); setCloseError(null); }}
-                >
-                  {t("billingSession.recount.cancel")}
-                </button>
-              </div>
-            </div>
-          )}
-          {/*
-            UX-AUDIT 2026-09-28 — ONE STORY, NOT THREE. The panel used to say "you cannot take money
-            until a billing manager approves", then name the approval by its raw id ("apr-77"), then
-            offer "Confirm close" as if it were available now — with a full "Open a drawer" form
-            underneath. The server's truth, from `sessions.ts`: confirm-close is refused until the
-            approval is GRANTED, and a second drawer is refused `session_already_open` by
-            `cashier_sessions_live_ux` for as long as this one is `closing`. So the wording says who
-            decides (the `billing_variance` type's `approverRole`, billing_manager) and — when the
-            approval is readable — since when; the finish step is shown only when it can succeed, or,
-            when its status is unknowable to this reader, labelled as the step AFTER approval; and
-            the open form is gone until the drawer is closed.
-          */}
-          {approvalStatus === "rejected" ? (
-            <p role="status" data-testid="approval-pending" className="text-sm text-red-700">
-              {t("billingSession.approvalRejected")}
-            </p>
-          ) : approvalStatus === "granted" ? (
-            <p role="status" data-testid="approval-pending" className="text-sm text-green-700">
-              {t("billingSession.approvalGranted")}
-            </p>
-          ) : (
-            live.varianceApprovalId !== null && (
-              <p role="status" data-testid="approval-pending" className="text-sm text-amber-800">
-                {approval.data !== undefined
-                  ? t("billingSession.approvalPendingSince", { time: fmtIst(approval.data.approval.requestedAt) })
-                  : t("billingSession.approvalPending")}
-              </p>
-            )
-          )}
-          {approvalStatus !== "granted" && (
-            <p role="status" data-testid="lockout-banner" className="text-sm font-semibold text-amber-800">
-              {t("billingSession.lockout")}
-            </p>
-          )}
-          {closeError !== null && (
-            <p role="alert" data-testid="close-error" className="text-sm text-red-600">{closeError}</p>
-          )}
-          {(approvalStatus === null || approvalStatus === "granted") && (
-            <div className="space-y-1">
-              {approvalStatus === null && (
-                <p data-testid="confirm-close-hint" className="text-sm text-neutral-600">
-                  {t("billingSession.confirmCloseHint")}
-                </p>
+        {/*
+          UX-AUDIT 2026-09-28 — THE DRAWER STRIP (BillingCounter). The board's strip reads "collected
+          so far ₹18,450 across 47 receipts"; the RECEIPT COUNT is kept and the rupee figure is not,
+          because on a cash-heavy counter the collected total is the expected cash less the float —
+          the blind count's answer, one subtraction away.
+        */}
+        {live !== null && (
+          <div className={`cs-strip ${live.status}`} data-testid="drawer-strip">
+            <span className="cs-dot" aria-hidden="true" />
+            <span data-testid="session-status" className="cs-tag">{t(`billingSession.status.${live.status}`)}</span>
+            <span className="cs-strip-text">
+              <strong>{t(live.status === "open" ? "billingSession.strip.open" : "billingSession.strip.closing")}</strong>{" "}
+              {t("billingSession.strip.since")}{" "}
+              <span data-testid="session-opened-at" className="num">{fmtIst(live.openedAt)}</span>
+              {" · "}{t("billingSession.strip.float")}{" "}
+              <span data-testid="session-float" className="num">{fmtPaise(live.openingFloatPaise)}</span>
+              {items !== null && (
+                <>
+                  {" · "}
+                  <span data-testid="session-receipts">{t("billingSession.strip.receipts", { count: items.receipts })}</span>
+                </>
               )}
-              <SubmitButton data-testid="confirm-close" onClick={() => confirmClose()}>
-                {t("billingSession.confirmClose")}
-              </SubmitButton>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ——— the finished drawer: the day summary, from the response that closed it ——— */}
-      {finished !== null && (
-        <div data-testid="day-summary" className="space-y-1 rounded border p-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-sm font-semibold">{t("billingSession.summary.title")}</h2>
-            <Badge data-testid="summary-status" variant="outline">{t("billingSession.status.closed")}</Badge>
-          </div>
-          <p className="text-sm">
-            {t("billingSession.openedAt")}:{" "}
-            <span data-testid="summary-opened-at" className="tabular-nums">{fmtIst(finished.openedAt)}</span>
-          </p>
-          <p className="text-sm">
-            {t("billingSession.float")}:{" "}
-            <span data-testid="summary-float" className="tabular-nums">{fmtPaise(finished.openingFloatPaise)}</span>
-          </p>
-          <p className="text-sm">
-            {t("billingSession.close.counted")}:{" "}
-            <span data-testid="summary-counted" className="tabular-nums">{fmtPaise(finished.countedCashPaise ?? 0)}</span>
-          </p>
-          <p className="text-sm">
-            {t("billingSession.expected")}:{" "}
-            <span data-testid="summary-expected" className="tabular-nums">{fmtPaise(finished.expectedCashPaise ?? 0)}</span>
-          </p>
-          {varianceBlock(finished.variancePaise ?? 0, "summary-variance")}
-          <p className="text-sm">
-            {t("billingSession.closedAt")}:{" "}
-            <span data-testid="summary-closed-at" className="tabular-nums">
-              {finished.closedAt === null ? "—" : fmtIst(finished.closedAt)}
             </span>
-          </p>
-          {finished.closeNote !== null && (
-            <p data-testid="summary-note" className="text-sm text-neutral-600">{finished.closeNote}</p>
-          )}
-        </div>
-      )}
+            {live.status === "open" && !closeLane && (
+              <button type="button" data-testid="close-open" className="cs-btn grn" onClick={() => setCloseLane(true)}>
+                {t("billingSession.close.open")}
+              </button>
+            )}
+          </div>
+        )}
 
-      {live === null && (
-        <p data-testid="no-session" className="text-sm text-neutral-500">{t("billingSession.noSession")}</p>
-      )}
-      {/*
-        UX-AUDIT 2026-09-28 — THE OPEN FORM IS OFFERED ONLY WHEN IT CAN SUCCEED. It used to stay on
-        screen while a drawer was `closing`, on the theory that she may ask and the server refuses.
-        In the browser that read as a contradiction — "you cannot take money" above an "Open a
-        drawer" form — and the refusal was certain: `cashier_sessions_live_ux` holds one LIVE
-        (`open` or `closing`) drawer per cashier, so the insert is refused `session_already_open`
-        every time. The lockout banner already tells her why the counter stopped; the form returns
-        the moment the drawer is closed, or with no drawer at all.
-      */}
-      {live === null && openForm}
+        <div className={`cs-grid ${live !== null && items !== null ? "two" : ""}`}>
+          <div>
+            {ifClosedNow}
+            {countCard}
+            {closingCard}
+            {summaryCard}
+            {live === null && (
+              <p data-testid="no-session" className="cs-sub" style={{ margin: finished !== null ? "12px 0" : "0 0 12px" }}>
+                {t("billingSession.noSession")}
+              </p>
+            )}
+            {/*
+              UX-AUDIT 2026-09-28 — THE OPEN FORM IS OFFERED ONLY WHEN IT CAN SUCCEED. It used to stay on
+              screen while a drawer was `closing`, on the theory that she may ask and the server refuses.
+              In the browser that read as a contradiction — "you cannot take money" above an "Open a
+              drawer" form — and the refusal was certain: `cashier_sessions_live_ux` holds one LIVE
+              (`open` or `closing`) drawer per cashier, so the insert is refused `session_already_open`
+              every time. The lockout banner already tells her why the counter stopped; the form returns
+              the moment the drawer is closed, or with no drawer at all.
+            */}
+            {live === null && openForm}
+          </div>
+          {openList}
+        </div>
+      </div>
     </div>
   );
 }

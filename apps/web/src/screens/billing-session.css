@@ -1,0 +1,177 @@
+/*
+ * UX-AUDIT 2026-09-28 — THE CASHIER SESSION, PORTED FROM ITS TWO BOARDS.
+ *
+ * `docs/design/2026-08-29-opd-counter-flow/BillingCounter.dc.html` gives the drawer strip (the
+ * green-washed bar: dot, "Drawer open since …", float, receipts, the close button at the right) and
+ * `docs/design/2026-08-29-opd-counter-flow-v2/BillingEdge.dc.html` gives the right panel ("Open on
+ * this drawer": dot + title + amount + one line per item) and the "If you closed the drawer now"
+ * card with its marigold "Count it before you see the figure" note. Sizes are the boards' own
+ * (13 px titles, 12 px body, 11 px uppercase labels, 12–14 px radii); colours are paper-pine's.
+ *
+ * SCOPED CLASSES ONLY, under `.cs`, which wears the palette and NOT `.pp`: `desk-one.css`'s
+ * unlayered `.pp button` reset would strip `SubmitButton` (the double-post latch) and `MoneyInput`.
+ */
+.cs {
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+  padding: 18px 24px 32px;
+  font-size: 14px;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+.cs *, .cs *::before, .cs *::after { box-sizing: border-box; }
+.cs .num { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.cs .lbl { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); }
+
+.cs-wrap { max-width: 1240px; margin: 0 auto; }
+.cs-title { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+
+/* ── the drawer strip (BillingCounter) ── */
+.cs-strip {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  padding: 9px 16px; border-radius: 12px; margin-bottom: 16px;
+  background: var(--green-soft); border: 1px solid var(--green-line);
+}
+.cs-strip.closing { background: var(--gold-soft); border-color: var(--gold-line); }
+.cs-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--green); flex-shrink: 0; }
+.cs-strip.closing .cs-dot { background: var(--gold); }
+.cs-strip-text { font-size: 13px; min-width: 0; flex: 1 1 320px; }
+.cs-strip-text strong { font-weight: 600; }
+.cs-tag {
+  display: inline-flex; align-items: center; height: 19px; padding: 0 8px; border-radius: 9999px;
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; background: var(--card);
+  border: 1px solid var(--green-line); color: var(--green);
+}
+.cs-strip.closing .cs-tag, .cs-tag.gold { border-color: var(--gold-line); color: #9a5f0c; }
+.cs-tag.dim { border-color: var(--line); color: var(--dim); }
+
+/* ── buttons: the boards' two weights ── */
+.cs .cs-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); font: inherit; font-size: 12px; font-weight: 500;
+  cursor: pointer; white-space: nowrap; box-shadow: none;
+}
+.cs .cs-btn:hover { background: var(--wash); }
+.cs .cs-btn.grn { border-color: var(--green-line); }
+.cs .cs-btn.wide { width: 100%; height: 38px; font-size: 13px; margin-top: 11px; }
+.cs .cs-btn.pri {
+  height: 40px; padding: 0 18px; border: none; background: var(--ink); color: #fafafa;
+  font-size: 14px; font-weight: 600;
+}
+.cs .cs-btn.pri:hover { background: #1f3832; }
+.cs .cs-btn:disabled { opacity: .55; cursor: not-allowed; }
+.cs .cs-btn:focus-visible, .cs input:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.cs .cs-link {
+  background: none; border: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--green);
+  text-decoration: underline; cursor: pointer;
+}
+
+/* ── the two columns: the drawer's work, and what is still open on it ── */
+.cs-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+/* No drawer live: the summary and the open form are one narrow column, not a 1240 px stretch. */
+.cs-grid:not(.two) { max-width: 640px; }
+@media (min-width: 1024px) {
+  .cs-grid.two { grid-template-columns: minmax(0, 540px) minmax(0, 1fr); }
+}
+.cs-card {
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, .05); padding: 14px 16px;
+}
+.cs-card + .cs-card { margin-top: 12px; }
+.cs-card-h { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+.cs-sub { font-size: 12px; color: var(--dim); }
+
+/* ── "Open on this drawer" (BillingEdge, right panel) ── */
+.cs-side { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.cs-side-h { padding: 15px 18px 12px; border-bottom: 1px solid var(--line); }
+.cs-side-b { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; background: var(--paper); }
+.cs-ex { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 12px 14px; }
+.cs-ex.red { border-color: var(--red-line); background: var(--red-soft); }
+.cs-ex-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-width: 0; }
+.cs-ex-top .t { font-size: 13px; font-weight: 600; min-width: 0; }
+.cs-ex-top .a { margin-left: auto; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+.cs-ex.red .a { color: var(--red); }
+.cs-ex-dot { width: 7px; height: 7px; border-radius: 9999px; flex-shrink: 0; background: var(--gold); }
+.cs-ex.red .cs-ex-dot { background: var(--red); }
+.cs-ex-dot.green { background: var(--green); }
+.cs-ex-body { font-size: 12px; color: var(--dim); line-height: 17px; }
+.cs-ex-list { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
+.cs-ex-list li { display: flex; gap: 8px; justify-content: space-between; padding: 3px 0; border-top: 1px solid var(--line2); }
+.cs-ex-list li span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.cs-clear { font-size: 12.5px; color: var(--dim); }
+
+/* ── "If you closed the drawer now" ── */
+.cs-rows { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; margin-top: 11px; }
+.cs-row { display: flex; justify-content: space-between; gap: 12px; }
+.cs-row > span:first-child { color: var(--dim); }
+.cs-row.tot { padding-top: 8px; border-top: 1px solid var(--line); font-weight: 600; }
+.cs-row.tot > span:first-child { color: var(--ink); }
+.cs-row .hidden-fig { color: var(--dim); font-weight: 500; font-style: italic; }
+.cs-note {
+  margin-top: 12px; padding: 11px 12px; border-radius: 10px;
+  background: var(--gold-soft); border: 1px solid var(--gold-line);
+}
+.cs-note .h { font-size: 12px; font-weight: 600; color: #9a5f0c; margin-bottom: 3px; }
+.cs-note .b { font-size: 11.5px; line-height: 16px; color: var(--ink); }
+.cs-note.red { background: var(--red-soft); border-color: var(--red-line); }
+.cs-note.red .h { color: var(--red); }
+.cs-note.green { background: var(--green-soft); border-color: var(--green-line); }
+.cs-note.green .h { color: var(--green); }
+
+/* ── the blind count: note × count = amount, a running total, the submit always in view ── */
+.cs-count { padding: 0; overflow: visible; }
+.cs-count-h { padding: 14px 16px 10px; }
+.cs-denoms { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cs-denoms th {
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--dim);
+  text-align: left; padding: 6px 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  background: var(--wash);
+}
+.cs-denoms th.r, .cs-denoms td.r { text-align: right; }
+.cs-denoms td { padding: 4px 16px; border-bottom: 1px solid var(--line2); vertical-align: middle; }
+.cs-denoms td.x { color: var(--faint); width: 18px; padding: 0; text-align: center; }
+.cs-denoms label { font-weight: 600; }
+.cs-denoms td.amt { color: var(--dim); }
+.cs-denoms td.amt.on { color: var(--ink); }
+.cs .cs-denoms input {
+  width: 76px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); text-align: right; font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 14px; color: var(--ink);
+}
+.cs .cs-denoms input:focus { border-color: var(--green); }
+.cs-count-foot {
+  position: sticky; bottom: 0; z-index: 1; background: var(--card);
+  border-top: 1px solid var(--line); border-radius: 0 0 14px 14px;
+  padding: 12px 16px; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 -4px 12px -8px rgba(19, 36, 32, .25);
+}
+.cs-total { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cs-total .v { font-size: 22px; font-weight: 700; }
+.cs-foot-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cs .cs-field {
+  flex: 1 1 200px; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--card); font: inherit; font-size: 13px; color: var(--ink);
+}
+.cs-foot-row .cs-field-l { font-size: 12px; color: var(--dim); flex-shrink: 0; }
+.cs-err { font-size: 12.5px; color: var(--red); margin: 0; }
+
+/* ── the awaiting-approval card: figures, then one warning ── */
+.cs-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.cs-fig { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.cs-fig .v { font-size: 15px; font-weight: 600; display: block; overflow-wrap: anywhere; }
+.cs-fig .v.bad { color: var(--red); }
+.cs-fig .dir { font-size: 11px; color: var(--dim); margin-left: 4px; font-family: "IBM Plex Sans", sans-serif; }
+.cs-meta { font-size: 12px; color: var(--dim); margin-top: 4px; }
+.cs-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.cs-recount { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+
+/* ── the open form and the no-drawer line ── */
+.cs-open .cs-actions { margin-top: 10px; }
+
+@media (max-width: 640px) {
+  .cs { padding: 12px 16px 24px; }
+  .cs-figs { grid-template-columns: minmax(0, 1fr); }
+  .cs-denoms th, .cs-denoms td { padding-left: 12px; padding-right: 12px; }
+  .cs .cs-btn.pri { width: 100%; }
+}
