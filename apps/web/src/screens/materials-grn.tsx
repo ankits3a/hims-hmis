@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItems, fetchStores,
+  captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItem, fetchItems, fetchStores,
   fetchVendors, materialsErrorText, postGrn, requestNearExpiry, runGrnQc,
 } from "../lib/materials-api";
 import { fetchPurchaseOrders, fetchReceivable } from "../lib/purchase-api";
 import { Button } from "@/components/ui/button";
 import { OpeningStockSheet } from "./materials-grn-opening";
+import { NewButton, OfficeHead, fieldCls, useNewKey } from "./pharmacy-office/office-page";
+import { Sheet } from "./pharmacy-office/sheet";
 import type { CaptureLineInput, WireGrn } from "../lib/materials-api";
 
 /**
@@ -31,22 +33,25 @@ import type { CaptureLineInput, WireGrn } from "../lib/materials-api";
  * the ledger — which mirrors `grn.ts` exactly, and is what lets a storekeeper capture a delivery at
  * the gate and leave the verdict to the pharmacist without anything being committed in between.
  *
- * ═══ THE SECOND TAB IS THE TWO WORKLISTS (DD16) ═══
+ * ═══ THE TWO WORKLISTS SIT UNDER THE DELIVERIES (DD16, gap-closure B5) ═══
  *
  * `expiring` and `discrepancy` transfers are read routes with tables, not screens of their own —
- * the owner's ruling, and the reason there is no Lane-2 generator to make them cheaply.
+ * the owner's ruling, and the reason there is no Lane-2 generator to make them cheaply. They were a
+ * second tab; the office board has no tabs ("one list, no filter tabs"), so they are groups of the
+ * same page, under the deliveries. Receiving a delivery is a sheet (N), and so is an opened GRN.
  */
-type Tab = "gate" | "worklists";
 
 type DraftLine = {
   itemId: string; uom: string; qtyInUom: string;
   batchNo: string; expiryDate: string;
   mrpRupees: string; mrpUom: string; costRupees: string; freeGoods: boolean;
+  /** B5 — what the supplier's bill says one pack costs. A helper only: it fills `costRupees`, and is never sent. */
+  packRupees: string;
 };
 
 const emptyLine = (): DraftLine => ({
   itemId: "", uom: "", qtyInUom: "", batchNo: "", expiryDate: "",
-  mrpRupees: "", mrpUom: "", costRupees: "", freeGoods: false,
+  mrpRupees: "", mrpUom: "", costRupees: "", freeGoods: false, packRupees: "",
 });
 
 /** Rupees typed by a human → integer paise (DD7). The ONE place this screen converts money. */
@@ -58,11 +63,19 @@ function toPaise(rupees: string): number | null {
   return Math.round(n * 100);
 }
 
+/** A GRN's state as the board's pill: waiting on a person is gold, posted is pine, refused is red. */
+function grnPill(status: string): string {
+  if (status === "posted") return "pill on";
+  if (status === "rejected") return "pill rd";
+  return "pill gd";
+}
+
 export function MaterialsGrn(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
 
-  const [tab, setTab] = useState<Tab>("gate");
+  /* B5 — the capture form is a sheet over the list. */
+  const [receiving, setReceiving] = useState(false);
   const [vendorId, setVendorId] = useState("");
   const [source, setSource] = useState("challan");
   const [storeId, setStoreId] = useState("");
@@ -102,10 +115,10 @@ export function MaterialsGrn(): React.ReactElement {
     enabled: openGrnId !== null,
   });
   const expiring = useQuery({
-    queryKey: ["materials", "expiring"], queryFn: fetchExpiring, enabled: tab === "worklists",
+    queryKey: ["materials", "expiring"], queryFn: fetchExpiring,
   });
   const discrepancies = useQuery({
-    queryKey: ["materials", "discrepancies"], queryFn: fetchDiscrepancies, enabled: tab === "worklists",
+    queryKey: ["materials", "discrepancies"], queryFn: fetchDiscrepancies,
   });
 
   const run = async (fn: () => Promise<void>, message: string): Promise<void> => {
@@ -143,6 +156,7 @@ export function MaterialsGrn(): React.ReactElement {
       lines: payload,
     });
     setPurchaseOrderId("");
+    setReceiving(false);
     setOpenGrnId(grnId);
     setLines([emptyLine()]);
     setChallanNo("");
@@ -151,31 +165,119 @@ export function MaterialsGrn(): React.ReactElement {
 
   const grn: WireGrn | undefined = openGrn.data;
   const hasNearExpiry = grn?.lines.some((l) => l.nearExpiry) === true;
+  /** Captured and not yet through QC: every line's verdict is still to come, whatever its fields say. */
+  const awaitingQc = grn?.status === "gate_qc" || grn?.status === "draft";
+  const itemLabel = (itemId: string): string => {
+    const it = (items.data ?? []).find((i) => i.id === itemId);
+    return it === undefined ? itemId : `${it.code} · ${it.name}`;
+  };
 
-  return (
-    <div className="space-y-6 p-4">
-      <h1 className="text-xl font-semibold">{t("materialsGrn.title")}</h1>
+  /*
+   * The walk of 2026-09-30 / B5 — a line's Unit and "MRP per" are PICKED from the item's own units
+   * (its base unit and its packs), never typed: a typed "Strip" or "stp" is a unit the item does not
+   * have. The item's detail carries its packs; one read per item chosen on the sheet.
+   */
+  const chosenIds = [...new Set(lines.map((l) => l.itemId).filter((id) => id !== ""))];
+  const details = useQueries({
+    queries: chosenIds.map((id) => ({ queryKey: ["materials", "item", id], queryFn: () => fetchItem(id) })),
+  });
+  const baseOf = (itemId: string): string | null => (items.data ?? []).find((x) => x.id === itemId)?.baseUom ?? null;
+  const unitsOf = (itemId: string, keep: string[]): { uom: string; mult: number | null }[] => {
+    const base = baseOf(itemId);
+    const packs = details[chosenIds.indexOf(itemId)]?.data?.uoms ?? [];
+    const out: { uom: string; mult: number | null }[] = base === null ? [] : [{ uom: base, mult: 1 }];
+    for (const u of packs) if (!out.some((o) => o.uom === u.uom)) out.push({ uom: u.uom, mult: u.toBaseMultiplier });
+    // A unit already on the line (an order's pack) stays choosable even before the item's packs arrive.
+    for (const k of keep) if (k !== "" && !out.some((o) => o.uom === k)) out.push({ uom: k, mult: null });
+    return out;
+  };
+  const unitLabel = (u: { uom: string; mult: number | null }, base: string | null): string =>
+    (u.mult !== null && u.mult > 1 && base !== null ? `${u.uom} (${String(u.mult)} ${base})` : u.uom);
+  /** A pack price typed on the bill → the cost of ONE base unit, to the paisa (DD7: the server still gets per base unit). */
+  const fromPack = (pack: string, mult: number): string => {
+    const n = Number(pack);
+    return pack.trim() === "" || !Number.isFinite(n) ? "" : (n / mult).toFixed(2);
+  };
 
-      <div className="flex gap-2">
-        <Button variant={tab === "gate" ? "default" : "secondary"} onClick={() => setTab("gate")}>
-          {t("materialsGrn.tabGate")}
-        </Button>
-        <Button variant={tab === "worklists" ? "default" : "secondary"} onClick={() => setTab("worklists")}>
-          {t("materialsGrn.tabWorklists")}
-        </Button>
-      </div>
-
+  /* B5 — ONE list of deliveries: what still needs a hand (QC, post) first, then the settled ones. */
+  const settled = (st: string): boolean => st === "posted" || st === "rejected";
+  const deliveries = [...(grns.data ?? [])].sort((a, b) => Number(settled(a.status)) - Number(settled(b.status)));
+  const openCapture = (): void => { setError(null); setDone(null); setReceiving(true); };
+  useNewKey(openCapture);
+  const sheetOpen = receiving || (grn !== undefined && openGrnId !== null);
+  const feedback = (
+    <>
       {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {done !== null && <p role="status" className="text-sm text-green-700">{done}</p>}
+    </>
+  );
 
-      {tab === "gate" && (
-        <>
-          <section className="space-y-3 rounded border p-4">
-            <h2 className="font-medium">{t("materialsGrn.newGrn")}</h2>
+  return (
+    <div className="space-y-4" data-testid="materials-grn">
+      <OfficeHead title={t("materialsGrn.title")} lead={t("materialsGrn.lead")}>
+        <NewButton label={t("materialsGrn.newGrn")} onClick={openCapture} testId="grn-new" />
+      </OfficeHead>
+
+      {!sheetOpen && feedback}
+
+      <div className="ofp-box">
+        <section data-testid="grn-deliveries">
+          <h2 className="ofp-group ofp-label">{t("materialsGrn.recent")} · {grns.data?.length ?? "…"}</h2>
+          {grns.data !== undefined && deliveries.length === 0 && <p className="ofp-empty">{t("materialsGrn.noGrns")}</p>}
+          {deliveries.length > 0 && (
+            <ul className="ofp-rows">
+              {deliveries.map((g) => (
+                <li key={g.id} className={settled(g.status) ? "text-muted-foreground" : ""}>
+                  <button type="button" className="ofp-code underline" onClick={() => { setError(null); setDone(null); setOpenGrnId(g.id); }}>
+                    {g.grnNo}
+                  </button>
+                  <span className={grnPill(g.status)}>{t(`materialsGrn.status_${g.status}`, { defaultValue: g.status })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section data-testid="grn-expiring">
+          <h2 className="ofp-group ofp-label">{t("materialsGrn.expiringTitle")} · {expiring.data?.length ?? "…"}</h2>
+          {expiring.data !== undefined && expiring.data.length === 0 && <p className="ofp-empty">{t("materialsGrn.nothingExpiring")}</p>}
+          {(expiring.data ?? []).length > 0 && (
+            <ul className="ofp-rows">
+              {[...(expiring.data ?? [])].sort((a, b) => a.daysRemaining - b.daysRemaining).map((b) => (
+                <li key={b.batchId}>
+                  <span className="ofp-code">{b.batchNo}</span>
+                  <span className={b.daysRemaining <= 30 ? "pill rd" : "pill gd"}>{t("materialsGrn.daysRemaining", { days: b.daysRemaining })}</span>
+                  <span>{t("materialsGrn.onHand", { qty: b.qtyOnHandTotal })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section data-testid="grn-discrepancies">
+          <h2 className="ofp-group ofp-label">{t("materialsGrn.discrepancyTitle")} · {discrepancies.data?.length ?? "…"}</h2>
+          {discrepancies.data !== undefined && discrepancies.data.length === 0 && <p className="ofp-empty">{t("materialsGrn.noDiscrepancies")}</p>}
+          {(discrepancies.data ?? []).length > 0 && (
+            <ul className="ofp-rows">
+              {(discrepancies.data ?? []).map((tr) => (
+                <li key={tr.id} className="text-red-700">
+                  {tr.id} · {t("materialsGrn.shortLines", { count: tr.lines.filter((l) => l.discrepancyReason !== null).length })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {/* GAP CLOSURE A1 — the pharmacist's opening-stock sheet lands here as GRNs awaiting QC. */}
+      <OpeningStockSheet onOpenGrn={setOpenGrnId} />
+
+      {receiving && (
+        <Sheet title={t("materialsGrn.newGrn")} testId="grn-capture-sheet" onClose={() => setReceiving(false)}>
+          <div className="space-y-3" data-testid="grn-capture">
+            {feedback}
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="flex flex-col gap-1 text-sm">
                 {t("materialsGrn.vendor")}
-                <select className="rounded border px-2 py-1" value={vendorId} onChange={(e) => { setVendorId(e.target.value); setPurchaseOrderId(""); }}>
+                <select className={fieldCls} value={vendorId} onChange={(e) => { setVendorId(e.target.value); setPurchaseOrderId(""); }}>
                   <option value="">—</option>
                   {(vendors.data ?? []).map((v) => <option key={v.id} value={v.id}>{v.code}</option>)}
                 </select>
@@ -183,7 +285,7 @@ export function MaterialsGrn(): React.ReactElement {
               <label className="flex flex-col gap-1 text-sm">
                 {t("materialsGrn.po.label")}
                 <select
-                  className="rounded border px-2 py-1" value={purchaseOrderId} disabled={vendorId === ""}
+                  className={fieldCls} value={purchaseOrderId} disabled={vendorId === ""}
                   onChange={(e) => pickOrder(e.target.value)}
                 >
                   <option value="">{t("materialsGrn.po.none")}</option>
@@ -192,76 +294,106 @@ export function MaterialsGrn(): React.ReactElement {
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 {t("materialsGrn.source")}
-                <select className="rounded border px-2 py-1" value={source} onChange={(e) => setSource(e.target.value)}>
+                <select className={fieldCls} value={source} onChange={(e) => setSource(e.target.value)}>
                   {["challan", "consignment_challan", "donation"]
                     .map((s) => <option key={s} value={s}>{t(`materialsGrn.source_${s}`)}</option>)}
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 {t("materialsGrn.store")}
-                <select className="rounded border px-2 py-1" value={storeId} onChange={(e) => setStoreId(e.target.value)}>
+                <select className={fieldCls} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
                   <option value="">—</option>
                   {(stores.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.code}</option>)}
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 {t("materialsGrn.challanNo")}
-                <input className="rounded border px-2 py-1" value={challanNo} onChange={(e) => setChallanNo(e.target.value)} />
+                <input className={fieldCls} value={challanNo} onChange={(e) => setChallanNo(e.target.value)} />
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 {t("materialsGrn.challanDate")}
-                <input className="rounded border px-2 py-1" value={challanDate} onChange={(e) => setChallanDate(e.target.value)} />
+                <input type="date" className={fieldCls} value={challanDate} onChange={(e) => setChallanDate(e.target.value)} />
               </label>
             </div>
 
             <h3 className="text-sm font-medium">{t("materialsGrn.lines")}</h3>
-            {lines.map((l, i) => (
-              <div key={i} className="grid gap-2 border-t pt-2 sm:grid-cols-4">
+            {lines.map((l, i) => {
+              const base = baseOf(l.itemId);
+              const units = unitsOf(l.itemId, [l.uom, l.mrpUom]);
+              const pack = units.find((u) => u.uom === l.uom);
+              const mult = pack?.mult != null && pack.mult > 1 ? pack.mult : null;
+              const costNum = Number(l.costRupees);
+              return (
+              <div key={i} className="grid gap-2 border-t pt-2 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.item")}
                   <select
-                    className="rounded border px-2 py-1" value={l.itemId}
-                    onChange={(e) => setLine(i, { itemId: e.target.value })}
+                    className={fieldCls} value={l.itemId}
+                    onChange={(e) => setLine(i, { itemId: e.target.value, uom: "", mrpUom: "", packRupees: "" })}
                   >
                     <option value="">—</option>
-                    {(items.data ?? []).map((it) => <option key={it.id} value={it.id}>{it.code}</option>)}
+                    {(items.data ?? []).map((it) => <option key={it.id} value={it.id}>{`${it.code} · ${it.name}`}</option>)}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.uom")}
-                  <input className="rounded border px-2 py-1" value={l.uom} onChange={(e) => setLine(i, { uom: e.target.value })} />
+                  <select className={fieldCls} value={l.uom} disabled={l.itemId === ""} onChange={(e) => setLine(i, { uom: e.target.value, packRupees: "" })}>
+                    <option value="">—</option>
+                    {units.map((u) => <option key={u.uom} value={u.uom}>{unitLabel(u, base)}</option>)}
+                  </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.qty")}
                   <input
-                    className="rounded border px-2 py-1" inputMode="numeric" value={l.qtyInUom}
+                    className={fieldCls} inputMode="numeric" value={l.qtyInUom}
                     onChange={(e) => setLine(i, { qtyInUom: e.target.value })}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.batchNo")}
-                  <input className="rounded border px-2 py-1" value={l.batchNo} onChange={(e) => setLine(i, { batchNo: e.target.value })} />
+                  <input className={fieldCls} value={l.batchNo} onChange={(e) => setLine(i, { batchNo: e.target.value })} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.expiry")}
-                  <input className="rounded border px-2 py-1" value={l.expiryDate} onChange={(e) => setLine(i, { expiryDate: e.target.value })} />
+                  <input type="date" className={fieldCls} value={l.expiryDate} onChange={(e) => setLine(i, { expiryDate: e.target.value })} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.mrp")}
-                  <input className="rounded border px-2 py-1" inputMode="decimal" value={l.mrpRupees} onChange={(e) => setLine(i, { mrpRupees: e.target.value })} />
+                  <input className={fieldCls} inputMode="decimal" value={l.mrpRupees} onChange={(e) => setLine(i, { mrpRupees: e.target.value })} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.mrpUom")}
-                  <input className="rounded border px-2 py-1" value={l.mrpUom} onChange={(e) => setLine(i, { mrpUom: e.target.value })} />
+                  <select className={fieldCls} value={l.mrpUom} disabled={l.itemId === ""} onChange={(e) => setLine(i, { mrpUom: e.target.value })}>
+                    <option value="">—</option>
+                    {units.map((u) => <option key={u.uom} value={u.uom}>{unitLabel(u, base)}</option>)}
+                  </select>
                 </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  {t("materialsGrn.cost")}
-                  <input
-                    className="rounded border px-2 py-1" inputMode="decimal" value={l.costRupees}
-                    disabled={l.freeGoods}
-                    onChange={(e) => setLine(i, { costRupees: e.target.value })}
-                  />
-                </label>
+                {/* B5 — where people type the strip's price. The field says in words that it is ONE base unit, the
+                    pack price (when the unit is a pack) fills it, and the line under it shows what a pack then costs. */}
+                <div className="flex flex-col gap-1 text-xs">
+                  {mult !== null && !l.freeGoods && (
+                    <label className="flex flex-col gap-1">
+                      {t("materialsGrn.packPrice", { pack: l.uom })}
+                      <input
+                        className={fieldCls} inputMode="decimal" value={l.packRupees}
+                        onChange={(e) => setLine(i, { packRupees: e.target.value, costRupees: fromPack(e.target.value, mult) })}
+                      />
+                    </label>
+                  )}
+                  <label className="flex flex-col gap-1">
+                    {t("materialsGrn.costPer", { unit: base ?? t("materialsGrn.baseUnit") })}
+                    <input
+                      className={fieldCls} inputMode="decimal" value={l.costRupees}
+                      disabled={l.freeGoods}
+                      onChange={(e) => setLine(i, { costRupees: e.target.value, packRupees: "" })}
+                    />
+                  </label>
+                  {mult !== null && !l.freeGoods && l.costRupees.trim() !== "" && Number.isFinite(costNum) && (
+                    <span className="text-muted-foreground" data-testid={`grn-line-${String(i)}-per-pack`}>
+                      {t("materialsGrn.perPack", { cost: (costNum * mult).toFixed(2), pack: l.uom, mult, unit: base ?? "" })}
+                    </span>
+                  )}
+                </div>
                 <label className="flex items-center gap-2 text-xs">
                   <input
                     type="checkbox" checked={l.freeGoods}
@@ -270,39 +402,52 @@ export function MaterialsGrn(): React.ReactElement {
                   {t("materialsGrn.freeGoods")}
                 </label>
               </div>
-            ))}
-            <Button variant="secondary" onClick={() => setLines((p) => [...p, emptyLine()])}>
-              {t("materialsGrn.addLine")}
-            </Button>
-            <Button onClick={capture}>{t("materialsGrn.capture")}</Button>
-          </section>
+              );
+            })}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setLines((p) => [...p, emptyLine()])}>
+                {t("materialsGrn.addLine")}
+              </Button>
+              <Button onClick={capture}>{t("materialsGrn.capture")}</Button>
+            </div>
+          </div>
+        </Sheet>
+      )}
 
-          {/* GAP CLOSURE A1 — the pharmacist's opening-stock sheet lands here as GRNs awaiting QC. */}
-          <OpeningStockSheet onOpenGrn={setOpenGrnId} />
-
-          {grn !== undefined && (
-            <section className="space-y-3 rounded border p-4">
-              <h2 className="font-medium">
-                {grn.grnNo} · {t(`materialsGrn.status_${grn.status}`)}
-              </h2>
-              <table className="w-full text-sm">
+      {grn !== undefined && openGrnId !== null && !receiving && (
+        <Sheet title={grn.grnNo} testId="grn-sheet" onClose={() => { setOpenGrnId(null); }}>
+            <div className="space-y-3" data-testid="grn-open">
+              {feedback}
+              <p><span className={grnPill(grn.status)}>{t(`materialsGrn.status_${grn.status}`, { defaultValue: grn.status })}</span></p>
+              <div className="ofp-box ofp-scroll">
+              <table className="ofp-table min-w-[48rem]">
                 <thead>
-                  <tr className="text-left">
+                  <tr>
                     <th>{t("materialsGrn.item")}</th>
                     <th>{t("materialsGrn.qtyBase")}</th>
                     <th>{t("materialsGrn.batchNo")}</th>
+                    <th>{t("materialsGrn.expiry")}</th>
+                    <th>{t("materialsGrn.mrp")}</th>
+                    <th>{t("materialsGrn.cost")}</th>
                     <th>{t("materialsGrn.verdict")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {grn.lines.map((l) => (
-                    <tr key={l.id} className="border-t">
-                      <td>{l.itemId}</td>
+                    <tr key={l.id}>
+                      {/* The walk of 2026-09-30: the person running QC holds the strip against THIS row, so it
+                          names the drug and carries what QC checks — never an id, never a verdict before QC. */}
+                      <td>{itemLabel(l.itemId)}</td>
                       <td>{l.qtyBase}</td>
                       <td>{l.batchNo ?? "—"}</td>
+                      <td className="whitespace-nowrap">{l.expiryDate ?? "—"}</td>
+                      <td className="whitespace-nowrap">{l.mrpPaise === null ? "—" : `₹${(l.mrpPaise / 100).toFixed(2)}${l.mrpUom === null ? "" : ` / ${l.mrpUom}`}`}</td>
+                      <td className="whitespace-nowrap">{`₹${(l.unitCostPaise / 100).toFixed(2)}`}</td>
                       <td>
                         {/* THE RULE, AS A SENTENCE. Never the raw code — see the header. */}
-                        {l.rejectReason !== null
+                        {awaitingQc
+                          ? <span className="text-neutral-600">{t("materialsGrn.status_gate_qc")}</span>
+                          : l.rejectReason !== null
                           ? <span className="text-red-600">{t(`materialsGrn.rule_${l.rejectReason}`)}</span>
                           : l.nearExpiry
                             ? <span className="text-amber-700">{t("materialsGrn.rule_near_expiry")}</span>
@@ -312,14 +457,15 @@ export function MaterialsGrn(): React.ReactElement {
                   ))}
                 </tbody>
               </table>
-              <div className="flex gap-2">
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <Button onClick={() => void run(
                   async () => { await runGrnQc(grn.id); }, t("materialsGrn.qcDone"),
                 )}>
                   {t("materialsGrn.runQc")}
                 </Button>
                 {hasNearExpiry && (
-                  <Button variant="secondary" onClick={() => void run(
+                  <Button variant="outline" onClick={() => void run(
                     async () => { await requestNearExpiry(grn.id); }, t("materialsGrn.approvalRequested"),
                   )}>
                     {t("materialsGrn.requestNearExpiry")}
@@ -331,52 +477,8 @@ export function MaterialsGrn(): React.ReactElement {
                   {t("materialsGrn.post")}
                 </Button>
               </div>
-            </section>
-          )}
-
-          <section>
-            <h2 className="font-medium">{t("materialsGrn.recent")}</h2>
-            {(grns.data ?? []).length === 0 && <p className="text-sm">{t("materialsGrn.noGrns")}</p>}
-            <ul className="text-sm">
-              {(grns.data ?? []).map((g) => (
-                <li key={g.id}>
-                  <button className="underline" onClick={() => setOpenGrnId(g.id)}>
-                    {g.grnNo}
-                  </button>
-                  {" · "}{t(`materialsGrn.status_${g.status}`)}
-                </li>
-              ))}
-            </ul>
-          </section>
-        </>
-      )}
-
-      {tab === "worklists" && (
-        <>
-          <section>
-            <h2 className="font-medium">{t("materialsGrn.expiringTitle")}</h2>
-            {(expiring.data ?? []).length === 0 && <p className="text-sm">{t("materialsGrn.nothingExpiring")}</p>}
-            <ul className="text-sm">
-              {(expiring.data ?? []).map((b) => (
-                <li key={b.batchId}>
-                  {b.batchNo} · {t("materialsGrn.daysRemaining", { days: b.daysRemaining })}
-                  {" · "}{t("materialsGrn.onHand", { qty: b.qtyOnHandTotal })}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section>
-            <h2 className="font-medium">{t("materialsGrn.discrepancyTitle")}</h2>
-            {(discrepancies.data ?? []).length === 0 && <p className="text-sm">{t("materialsGrn.noDiscrepancies")}</p>}
-            <ul className="text-sm">
-              {(discrepancies.data ?? []).map((tr) => (
-                <li key={tr.id} className="text-red-600">
-                  {tr.id} · {t("materialsGrn.shortLines", { count: tr.lines.filter((l) => l.discrepancyReason !== null).length })}
-                </li>
-              ))}
-            </ul>
-          </section>
-        </>
+            </div>
+        </Sheet>
       )}
     </div>
   );

@@ -65,6 +65,8 @@ describe("MaterialsTransfers", () => {
       "POST /api/materials/transfers": { transferId: "01TRANSFER0000000000NEW001", lines: [{ transferLineId: "l9", batchId: "b1", qtyIssued: 100 }] },
     });
     renderWithProviders(<MaterialsTransfers />);
+    // B5 — sending is a sheet over the lists, opened by the page's one "new" act.
+    await userEvent.click(await screen.findByRole("button", { name: "Send stock" }));
     const send = await screen.findByTestId("transfer-send");
     await userEvent.selectOptions(within(send).getByRole("combobox", { name: "From" }), "s-main");
     await userEvent.selectOptions(within(send).getByRole("combobox", { name: "To" }), "s-retail");
