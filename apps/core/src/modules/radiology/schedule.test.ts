@@ -2,7 +2,7 @@ import { newId } from "@hmis/contracts";
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { placeAndCreateStudy, setupRadiologyFixture, startStudyOnMachine } from "../../../test/helpers/radiology";
-import { events, imagingBillDecisions, imagingStudies, orderItems, resources } from "../../kernel/db/schema";
+import { events, imagingBillDecisions, imagingStudies, notifications, orderItems, resources } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { RadiologyError } from "./errors";
 import { autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy } from "./schedule";
@@ -447,5 +447,40 @@ describe("imaging scheduling (18a T4)", () => {
       expect.objectContaining({ studyId: dropped.studyId, act: "cancelled", reason: "Doctor changed the study" }),
     ]));
     expect(payloads).toHaveLength(3);
+  });
+  /* ═══════════════ 18-S RS3 T4 — THE APPOINTMENT MESSAGE, RECORDED AND NEVER CLAIMED SENT ═══════════════ */
+
+  it("RS3 T4: a booking queues the appointment message for the patient; a move expires it and queues the new slot; a cancel expires it", async () => {
+    const study = await newStudy("USG-ABDO");
+    await schedule(study.studyId, "usg");
+    const rows = async () => (await db.select().from(notifications))
+      .filter((n) => n.refId === study.studyId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    let queued = await rows();
+    expect(queued.map((n) => [n.templateKey, n.status, n.patientId, n.refType])).toEqual([
+      ["imaging_appointment_booked", "queued", fx.patientId, "imaging_study"],
+    ]);
+    expect(queued[0]!.params).toEqual({ accessionNo: study.accessionNo, slotStart: SLOT.toISOString(), prep: ["fasting_6h"] });
+
+    const to = new Date("2026-08-31T11:00:00.000Z");
+    await withTx(db, (tx) => rescheduleStudy(tx, fx.radiographer, {
+      studyId: study.studyId, deviceResourceId: fx.devices.usg!, scheduledAt: to, reason: "Patient asked to change",
+    }));
+    queued = await rows();
+    expect(queued.map((n) => [n.status, (n.params as { slotStart: string }).slotStart])).toEqual([
+      ["expired", SLOT.toISOString()], ["queued", to.toISOString()],
+    ]);
+
+    await withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, { studyId: study.studyId, reason: "Doctor changed the study" }));
+    expect((await rows()).map((n) => n.status)).toEqual(["expired", "expired"]);
+  });
+
+  it("RS3 T4: a PCPNDT study's message carries no prep — the prep would say what the scan is", async () => {
+    const study = await newStudy("USG-ABDO");
+    await db.update(imagingStudies).set({ formFRequired: true }).where(eq(imagingStudies.id, study.studyId));
+    await schedule(study.studyId, "usg");
+    const [row] = (await db.select().from(notifications)).filter((n) => n.refId === study.studyId);
+    expect((row!.params as { prep: string[] }).prep).toEqual([]);
   });
 });

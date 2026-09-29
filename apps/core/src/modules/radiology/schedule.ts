@@ -14,6 +14,9 @@ import { appendEvent } from "../../kernel/events/append";
 import { requireStudyType } from "./study-types";
 import { raiseBillDecision } from "./money";
 import { releaseResource } from "../../kernel/resources/registry";
+import { enqueueNotification, expireByRef } from "../../kernel/notify/enqueue";
+import { prepFor } from "./prep";
+import type { StudyType } from "./definitions";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -246,6 +249,42 @@ async function assertSlotFree(
   }
 }
 
+/**
+ * ═══ 18-S RS3 T4 — THE APPOINTMENT MESSAGE, RECORDED IN THE BOOKING'S OWN TRANSACTION ═══
+ *
+ * A booking and a move each queue `imaging_appointment_booked` through the house enqueue, so the
+ * message exists exactly when the booking does (a rolled-back booking leaves no orphan). Any
+ * earlier queued message for the study is expired first, by ref — a patient told 09:00 and then
+ * 11:00 must receive only the second. A no-show and a cancel expire it and queue nothing.
+ *
+ * **Recorded, never claimed sent.** The row sits in the outbox as `queued`; the WhatsApp provider
+ * is not on main, and nothing on the desk says "sent".
+ *
+ * A PCPNDT study's message carries no prep: "a full bladder" beside an accession says what the
+ * scan is (the template's own header). The desk tells that patient in person and on the slip.
+ */
+export const APPOINTMENT_MESSAGE_REF = "imaging_study";
+
+async function queueAppointmentMessage(
+  tx: Tx,
+  study: typeof imagingStudies.$inferSelect,
+  studyType: StudyType,
+  scheduledAt: Date,
+): Promise<void> {
+  const now = new Date();
+  await expireByRef(tx, APPOINTMENT_MESSAGE_REF, study.id, now);
+  const slotStart = scheduledAt.toISOString();
+  await enqueueNotification(tx, {
+    templateKey: "imaging_appointment_booked",
+    params: { accessionNo: study.accessionNo, slotStart, prep: study.formFRequired ? [] : prepFor(studyType) },
+    dedupeKey: `imaging_appointment_booked:${study.id}:${slotStart}:${String(now.getTime())}`,
+    occurredAt: now,
+    patientId: study.patientId,
+    refType: APPOINTMENT_MESSAGE_REF,
+    refId: study.id,
+  });
+}
+
 /** The statuses that HOLD a slot — the same three the partial unique excludes, stated once. */
 const LIVE_SLOT_STATUSES = ["scheduled", "checked_in", "ready", "in_acquisition"] as const;
 
@@ -357,6 +396,8 @@ export async function scheduleStudy(
       studyTypeCode: study.studyTypeCode,
     },
   }));
+
+  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt);
 
   return {
     studyId: study.id,
@@ -494,6 +535,8 @@ export async function rescheduleStudy(
     },
   }));
 
+  await queueAppointmentMessage(tx, study, studyType, input.scheduledAt);
+
   return {
     studyId: study.id,
     deviceResourceId: input.deviceResourceId,
@@ -528,6 +571,7 @@ export async function markNoShow(
   await transition(tx, study.workflowInstanceId, "no_show", actor, { note: why });
   await tx.update(imagingStudies).set({ status: "no_show" }).where(eq(imagingStudies.id, studyId));
   await recordBookingChange(tx, actor, study, "no_show", why);
+  await expireByRef(tx, APPOINTMENT_MESSAGE_REF, study.id, new Date());
   return { studyId, status: "no_show" };
 }
 
@@ -589,6 +633,7 @@ export async function cancelStudy(
   await transition(tx, study.workflowInstanceId, "cancelled", actor, { note: reason });
   await tx.update(imagingStudies).set({ status: "cancelled" }).where(eq(imagingStudies.id, input.studyId));
   await recordBookingChange(tx, actor, study, "cancelled", reason);
+  await expireByRef(tx, APPOINTMENT_MESSAGE_REF, study.id, new Date());
 
   /**
    * ═══ F53 (CLOSE REVIEW) — THE OPERAND WAS `acquired_at`, AND NOTHING COULD EVER SATISFY IT ═══
