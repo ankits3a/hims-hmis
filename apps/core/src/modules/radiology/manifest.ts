@@ -1,5 +1,6 @@
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "./consumers";
+import { RADIOLOGY_READY_ON_PAYMENT_CONSUMER, READY_ON_PAYMENT_EVENTS } from "./ready-on-payment";
 import { orderPlaced } from "../../kernel/orders/events";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
@@ -130,7 +131,15 @@ export const radiologyManifest: ModuleManifest = {
     // able to start or finish an acquisition. Held by everyone who held `acquire` for these routes.
     "radiology.contrast.record",
   ],
-  subscriptions: [{ event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER }],
+  subscriptions: [
+    { event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER },
+    /**
+     * 18-S RS9b T2 — the "report ready" message for a bill paid AFTER release. Handler, worker
+     * install and both consumer censuses land in the same commit (a declaration with no handler is a
+     * boot error).
+     */
+    ...READY_ON_PAYMENT_EVENTS.map((event) => ({ event, consumer: RADIOLOGY_READY_ON_PAYMENT_CONSUMER })),
+  ],
   resourceKinds: RADIOLOGY_RESOURCE_KINDS,
   orderKinds: [
     {

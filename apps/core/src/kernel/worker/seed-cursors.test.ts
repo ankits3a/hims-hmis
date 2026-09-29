@@ -10,7 +10,7 @@ import { OBLIGATIONS_CONSUMER } from "../obligations/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
-import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "../../modules/radiology";
+import { RADIOLOGY_ORDER_PLACED_CONSUMER, RADIOLOGY_READY_ON_PAYMENT_CONSUMER } from "../../modules/radiology";
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
@@ -68,7 +68,7 @@ describe("seedCursors", () => {
    * wired a phase early: without a seeded cursor the consumer's first cycle after Plan 15 ships
    * would start from zero and re-walk every event the hospital has ever emitted.
    */
-  it("enumerates workerConsumers(db)'s keys — the kernel THREE, partners, materials, the OT's two, radiology's, pharmacy's, the lab's and ABDM's, and no others", async () => {
+  it("enumerates workerConsumers(db)'s keys — the kernel THREE, partners, materials, the OT's two, radiology's two, pharmacy's, the lab's and ABDM's, and no others", async () => {
     const seeded = await seedCursors(db);
     // PLAN 15 T2 / A5 — the fifth. It joins for the reason D10 gives every entry here: a consumer
     // whose cursor is not seeded starts from zero and re-reads the WHOLE subscribed backlog on its
@@ -141,6 +141,13 @@ describe("seedCursors", () => {
          * reached by the patient's own discovery, which lists every completed visit.
          */
         ABDM_CARE_CONTEXT_CONSUMER,
+        /**
+         * 18-S RS9b T2 — radiology's second consumer. Its unseeded cursor would walk every `payment.received` and
+         * `credit_note.issued` since Plan 08 and queue a "report ready" message for every settled
+         * imaging bill whose report never had one — weeks-old reports, each message expiring
+         * unsent 72 h after a payment long past. Seeded at `max(seq)`, it begins with the next bill.
+         */
+        RADIOLOGY_READY_ON_PAYMENT_CONSUMER,
       ].sort());
   });
 

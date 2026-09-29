@@ -30,6 +30,7 @@ import { LAB_INTERFACE_CONSUMER, labInterfaceConsumer, labManifest } from "../..
 import { pcpndtManifest } from "../../modules/pcpndt";
 import {
   RADIOLOGY_ORDER_PLACED_CONSUMER, orderPlacedConsumer, radiologyManifest,
+  RADIOLOGY_READY_ON_PAYMENT_CONSUMER, readyOnPaymentConsumer,
 } from "../../modules/radiology";
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
@@ -287,6 +288,10 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // orders too and returns on `kind !== "imaging"` before touching anything. That is why a second
     // ordering module can be added without this line changing.
     [RADIOLOGY_ORDER_PLACED_CONSUMER]: orderPlacedConsumer(db),
+    // 18-S RS9b T2 — the other half of `radiologyManifest`'s `payment.received` /
+    // `credit_note.issued` -> `radiology.report_ready_on_payment`: the "report ready" message for a
+    // bill paid after release, once per report version. One without the other is a boot error.
+    [RADIOLOGY_READY_ON_PAYMENT_CONSUMER]: readyOnPaymentConsumer(db),
     [PHARMACY_RX_ISSUED_CONSUMER]: rxIssuedConsumer(db),
     // PHARMACY P6 (patient messages) — the bill's message, once per invoice. `pharmacyManifest` declares
     // `dispense.handed_over` and `retail.sold` -> `pharmacy.patient_messages` in the commit that adds this

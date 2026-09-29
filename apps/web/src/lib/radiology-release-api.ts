@@ -43,7 +43,14 @@ export type CollectorKind = (typeof COLLECTOR_KINDS)[number];
 export const COLLECTOR_ID_TYPES = ["aadhaar", "voter_id", "driving_licence", "pan", "passport", "other"] as const;
 
 export type ReleaseNeed =
-  | "abnormal_uncollected" | "amended_after_handover" | "media_to_print" | "media_to_hand" | "notice_not_sent" | "not_collected";
+  | "abnormal_uncollected" | "amended_after_handover" | "held_for_dues" | "media_to_print" | "media_to_hand" | "notice_not_sent" | "not_collected";
+
+/** 18-S RS9b — the owner's answer to "release this held copy unpaid" (`held.ts` HoldRelease). */
+export type WireHoldRelease =
+  | { state: "none" }
+  | { state: "pending"; approvalId: string; askedAt: string }
+  | { state: "granted"; approvalId: string; decidedAt: string | null }
+  | { state: "refused"; approvalId: string; decidedAt: string | null; note: string | null };
 
 export type WireReleaseRow = {
   studyId: string;
@@ -58,6 +65,8 @@ export type WireReleaseRow = {
   publishedAt: string;
   criticalCategory: string | null;
   bedsideLocation: string | null;
+  /** 18-S RS9b — the PATIENT's copy held for dues (self-pay, bill unsettled); null when nothing holds it. */
+  hold: { outstandingPaise: number; invoiceNo: string; release: WireHoldRelease } | null;
   doctor: "unread" | "read" | "acted" | "none";
   notice: string | null;
   filmIncluded: boolean;
@@ -89,3 +98,8 @@ export const markMediaPrinted = (requestId: string) =>
   api<{ requestId: string; printedAt: string }>("POST", `/radiology/media/${requestId}/printed`);
 export const handOverReport = (reportId: string, body: HandoverBody) =>
   api<{ handoverId: string; filmSheets: number; cd: boolean }>("POST", `/radiology/reports/${reportId}/handover`, body);
+/** 18-S RS9b — the desk ASKS the owner to release a held copy unpaid; the owner decides in the approvals inbox. */
+export const askUnpaidRelease = (reportId: string, reason: string) =>
+  api<{ approvalId: string; status: "pending" | "granted"; outstandingPaise: number }>(
+    "POST", `/radiology/reports/${reportId}/release-unpaid`, { reason },
+  );
