@@ -38,12 +38,21 @@ function bodiesOf(key: string): unknown[] {
     .map(([, init]) => JSON.parse(String(init?.body ?? "{}")) as unknown);
 }
 
-const inAnHour = new Date(Date.now() + 60 * 60_000).toISOString();
+/**
+ * A slot LATER TODAY, in IST — the desk's "day of the slot" is the IST calendar day (`istDay`).
+ * "An hour from now" was a time bomb of its own: between 23:00 and 00:00 IST (17:30–18:30 UTC) it
+ * lands on TOMORROW, the row is no longer today's, opening it does not check in, and the check-in
+ * test failed on every CI run in that hour (#401, 2026-09-29 17:29 UTC). So: up to an hour ahead,
+ * never past the last minute of today's IST day.
+ */
+const IST_OFFSET_MS = 330 * 60_000;
+const msLeftTodayIst = 86_400_000 - ((Date.now() + IST_OFFSET_MS) % 86_400_000);
+const laterToday = new Date(Date.now() + Math.max(0, Math.min(60 * 60_000, msLeftTodayIst - 60_000))).toISOString();
 const tomorrow = new Date(Date.now() + 36 * 60 * 60_000).toISOString();
 
 const ROW = {
   studyId: "S1", accessionNo: "X2609290001", status: "scheduled", priority: "routine",
-  studyTypeCode: "CT-HEAD", scheduledAt: inAnHour, deviceResourceId: "D-CT",
+  studyTypeCode: "CT-HEAD", scheduledAt: laterToday, deviceResourceId: "D-CT",
   encounterNo: "V2609290001", patientId: "P1", patientName: "Asha Devi",
   formFRequired: false, restricted: false, createdAt: new Date().toISOString(), checkedInAt: null,
 };
@@ -53,7 +62,7 @@ const VIEW = {
   studyId: "S1", accessionNo: "X2609290001", status: "scheduled", priority: "routine",
   studyTypeCode: "CT-HEAD", studyTypeName: "CT head, plain", modality: "ct", durationMin: 15,
   serviceId: "SVC-CT", encounterNo: "V2609290001", patientId: "P1", patientName: "Asha Devi", uhid: "HMS-00000001-5",
-  restricted: false, scheduledAt: inAnHour, deviceResourceId: "D-CT", bedsideLocation: null, invoiceLineId: null,
+  restricted: false, scheduledAt: laterToday, deviceResourceId: "D-CT", bedsideLocation: null, invoiceLineId: null,
   intendedPayer: "self", authorisation: null,
   checks: { gates: ["identity_two_factor", "pregnancy_screen"], pregnancyReason: "opened", policySource: "default", prep: [] },
   addOns: [],
@@ -380,11 +389,11 @@ it("an unlicensed ionising machine cannot be booked from the desk, and says who 
 });
 
 it("the slip shows the token, where and when, the prep in both languages, and never claims the message was sent", async () => {
-  const booked = { ...UNBOOKED, scheduledAt: inAnHour, deviceResourceId: "D-US" };
+  const booked = { ...UNBOOKED, scheduledAt: laterToday, deviceResourceId: "D-US" };
   mockRoutes({
     "GET /api/auth/me": me(["radiology.schedule"]),
     "GET /api/radiology/worklist": { status: 200, body: { rows: [booked] } },
-    "GET /api/radiology/studies/S2/counter": { status: 200, body: { study: { ...VIEW2, scheduledAt: inAnHour, deviceResourceId: "D-US", authorisation: "invoice" } } },
+    "GET /api/radiology/studies/S2/counter": { status: 200, body: { study: { ...VIEW2, scheduledAt: laterToday, deviceResourceId: "D-US", authorisation: "invoice" } } },
     "GET /api/radiology/devices": { status: 200, body: DEVICES },
   });
   renderWithProviders(<RadiologyReception />);
