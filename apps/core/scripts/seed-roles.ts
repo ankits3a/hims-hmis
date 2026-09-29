@@ -403,7 +403,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "resources.read",
     ],
   },
-  { roleKey: "display", permissions: ["opd.display.read"] },
+  /**
+   * The kiosk TV account. 18-S RS3 adds the imaging hall board beside the OPD token board: the same
+   * account drives the TV in either waiting hall, and both boards show tokens (imaging: token plus
+   * first name and initial) and nothing else.
+   */
+  { roleKey: "display", permissions: ["opd.display.read", "radiology.display.read"] },
   {
     roleKey: "pharmacy",
     permissions: [
@@ -1445,12 +1450,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * right to DRAFT; the MS decides whether it goes live.
        */
       "radiology.definitions.manage",
+      /**
+       * 18-S RS4 — the machine register: register an imaging machine, set its AE title, and take it
+       * out of service with a reason. The same holder as the books above, for the same reason: the
+       * department's head answers for what its machines are and whether they may be booked. A QA
+       * block is still lifted only by the RSO's passing QA record (`aerb/qa.ts`), not by this grant.
+       */
+      "radiology.devices.manage",
       "pcpndt.form_f.read",
       "pcpndt.form_f.write",
       "pcpndt.registrations.read",
       "orders.read",
       /** PLAN 18c T1 / D2 — the cumulative-dose nudge at protocolling (O4). Reads doses, not the file. */
       "aerb.doses.read",
+      // 18-S RS11 — the radiologist-in-charge (HOD) reads the radiation incident register.
+      "aerb.incidents.read",
     ],
   },
   {
@@ -1499,11 +1513,18 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * `imaging_gate` definition's `open → satisfied` transition (F8). Withholding it here alone
        * would have been a separation that did not hold.
        *
-       * **NOT `radiology.checkin` either**: check-in is where the gate set OPENS from the patient's
-       * sex, age and the study type's flags, and it is the radiographer's act at the console.
+       * **`radiology.checkin` — 18-S RS3, DECIDED.** 18a withheld it ("check-in is the
+       * radiographer's act at the console"), while the `imaging_study` definition already named
+       * `radiology_receptionist` on `scheduled → checked_in`. The owner-approved board (SPINE H3,
+       * plan rule "presence is derived") makes opening the patient at the desk on the day of the
+       * slot the check-in, so the desk's route matched its workflow edge. Check-in OPENS the gate
+       * set; it satisfies nothing, so the first separation above is untouched.
        */
       "radiology.orders.place",
       "radiology.schedule",
+      "radiology.checkin",
+      /** 18-S RS3 — the desk turns on the waiting-hall TV and can see what it shows. */
+      "radiology.display.read",
       "radiology.worklist.read",
       "radiology.bill_decisions.manage",
       "radiology.definitions.read",
@@ -1558,6 +1579,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "aerb.registers.manage",
       "aerb.registers.read",
       "aerb.doses.read",
+      // 18-S RS11 — the incident register, read (writing it is `aerb.registers.manage`).
+      "aerb.incidents.read",
     ],
   },
   {
@@ -1660,6 +1683,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D3 — the in-charge adds and edits the fridges and closes an excursion: every held batch
       // released with its stability reason or written off. DEFAULT — owner may change.
       "pharmacy.coldchain.manage",
+    ],
+  },
+  /**
+   * PHARMACY STAGE D5 — THE ANTIMICROBIAL STEWARD, held IN ADDITION to a clinical role, as `pharmacy_incharge` is held
+   * with `pharmacy`. DECIDED 2026-09-28 (owner: "I leave upon you to choose the right and logical role"), per ICMR
+   * AMSP 2018: admin grants it to the infectious-disease physician; else the clinical microbiologist; else a senior
+   * physician the medical superintendent names as AMSP lead. It is the `approverRole` of
+   * `pharmacy_restricted_antimicrobial`, so it holds the generic approvals pair (a role named as approver that cannot
+   * open the queue is the silence `materials_head` once had), and its own grant to read the request's prescription
+   * line. It may not approve its own prescription: the counter's gate refuses a grant the prescriber gave.
+   */
+  {
+    roleKey: "antimicrobial_steward",
+    permissions: [
+      "approvals.requests.read",
+      "approvals.requests.decide",
+      "pharmacy.antimicrobial.approve",
     ],
   },
 ];
@@ -1906,6 +1946,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PLAN 16c T1 — the aide's title names the one thing the role cannot do.
   pharmacy_assistant: "Pharmacy Assistant (claims, picks and labels; completes NO Schedule H/H1 dispense)",
   pharmacy_incharge: "Pharmacist in Charge (held with pharmacy; the unredacted H1 register for the inspector)",
+  // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
+  antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

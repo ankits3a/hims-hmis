@@ -33,3 +33,7 @@ export type { LockoutHit, LockoutTier } from "./lockout";
 export { formFForStudy, formFForStudyTx } from "./read";
 export type { FormFView } from "./read";
 export * from "./events";
+export { FORM_F_FIELDS, formFMissingFields } from "./form-f-fields";
+export type { FormFField } from "./form-f-fields";
+export { findFoetalSexDisclosures, foldForGuard } from "./foetal-sex";
+export type { FoetalSexHit, FoetalSexRule } from "./foetal-sex";

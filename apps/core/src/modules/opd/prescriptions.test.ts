@@ -4,7 +4,7 @@ import { withTx } from "../../kernel/db/client";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "../../../test/helpers/opd";
 import { hmacSign } from "../../kernel/crypto";
-import { events, patientAllergies, phiAccessLog } from "../../kernel/db/schema";
+import { events, opdDoctors, patientAllergies, phiAccessLog } from "../../kernel/db/schema";
 import { completeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { openVisit } from "./encounters";
 import { toFhirBundle } from "./fhir";
@@ -295,7 +295,16 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
 
     expect(print.letterhead).toEqual({ name: "CRK MEDICAL COLLEGE & HOSPITAL", addressLines: ["CHAURASIA CHOWK, HAJIPUR, BIHAR 844101"] });
     expect(print.patient).toEqual({ uhid: patient.uhid, name: "Asha Devi", alias: null, restricted: false, ageYears: 30, administrativeGender: "female" });
-    expect(print.doctor).toEqual({ displayName: "Dr dra", registrationNo: "BMC/12345", departmentName: "General Medicine" });
+    /*
+      OWNER RULINGS 2026-09-06 ("Only Dr. ID is required") and 2026-09-28 ("Prescription print: Doctor
+      ID only"): the print payload carries the Doctor ID and NOT the name or the council number — the
+      surface carries only what prints, so no renderer can put them back on the paper by accident.
+    */
+    const [{ code }] = await db.select({ code: opdDoctors.code }).from(opdDoctors).where(eq(opdDoctors.id, dra.doctorId)) as [{ code: string }];
+    expect(code).toMatch(/^DR-/);
+    expect(print.doctor).toEqual({ code, departmentName: "General Medicine" });
+    expect(JSON.stringify(print)).not.toContain("BMC/12345");
+    expect(JSON.stringify(print)).not.toContain("Dr dra");
     // The visit number reaches the printed e-Rx: it is the cross-reference a lab requisition or a
     // pharmacy slip quotes back, so its absence from this payload would be silent until it wasn't.
     expect(enc.visitNo).toMatch(/^V260817\d{4}$/);

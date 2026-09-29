@@ -189,6 +189,8 @@ const THE_EIGHTEEN = [
   "runMonthlyProposals",
   /** PHARMACY P6 (patient messages) — `dailyIst("10:00")`: the opt-in refill reminders, queued once per dispense. */
   "runRefillReminders",
+  /** 18-S RS11 T3 — `every(3_600_000)`: an overdue QA puts an available machine into `qa_blocked`. */
+  "sweepOverdueQa",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
