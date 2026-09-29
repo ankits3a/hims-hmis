@@ -1,6 +1,6 @@
 {
-  "id": "9d7afbae-8897-4697-99af-a374c783da26",
-  "prevId": "e765859e-3381-45e4-84da-7efaa51ed479",
+  "id": "341de25d-ff53-47a8-b151-cf0c3411113d",
+  "prevId": "9d7afbae-8897-4697-99af-a374c783da26",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -36471,6 +36471,525 @@
         "pharmacy_tally_exports_checksum_ck": {
           "name": "pharmacy_tally_exports_checksum_ck",
           "value": "\"pharmacy_tally_exports\".\"checksum\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_tray_check_lines": {
+      "name": "pharmacy_tray_check_lines",
+      "schema": "",
+      "columns": {
+        "check_id": {
+          "name": "check_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "par_qty": {
+          "name": "par_qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty_present": {
+          "name": "qty_present",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "earliest_expiry": {
+          "name": "earliest_expiry",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qty_expiring": {
+          "name": "qty_expiring",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "qty_used": {
+          "name": "qty_used",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "qty_restock": {
+          "name": "qty_restock",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pharmacy_tray_check_lines_check_id_pharmacy_tray_checks_id_fk": {
+          "name": "pharmacy_tray_check_lines_check_id_pharmacy_tray_checks_id_fk",
+          "tableFrom": "pharmacy_tray_check_lines",
+          "tableTo": "pharmacy_tray_checks",
+          "columnsFrom": [
+            "check_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_check_lines_item_id_items_id_fk": {
+          "name": "pharmacy_tray_check_lines_item_id_items_id_fk",
+          "tableFrom": "pharmacy_tray_check_lines",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_check_lines_batch_id_stock_batches_id_fk": {
+          "name": "pharmacy_tray_check_lines_batch_id_stock_batches_id_fk",
+          "tableFrom": "pharmacy_tray_check_lines",
+          "tableTo": "stock_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "pharmacy_tray_check_lines_pk": {
+          "name": "pharmacy_tray_check_lines_pk",
+          "columns": [
+            "check_id",
+            "item_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_tray_check_lines_qty_ck": {
+          "name": "pharmacy_tray_check_lines_qty_ck",
+          "value": "par_qty > 0 and qty_present >= 0 and qty_expiring >= 0 and qty_expiring <= qty_present and qty_used >= 0 and qty_restock >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_tray_checks": {
+      "name": "pharmacy_tray_checks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "bigserial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tray_resource_id": {
+          "name": "tray_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seal_seen": {
+          "name": "seal_seen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seal_new": {
+          "name": "seal_new",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "findings": {
+          "name": "findings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checked_by": {
+          "name": "checked_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checked_at": {
+          "name": "checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "restock_transfer_id": {
+          "name": "restock_transfer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "restocked_by": {
+          "name": "restocked_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "restocked_at": {
+          "name": "restocked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "pharmacy_tray_checks_seq_ux": {
+          "name": "pharmacy_tray_checks_seq_ux",
+          "columns": [
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pharmacy_tray_checks_tray_at_idx": {
+          "name": "pharmacy_tray_checks_tray_at_idx",
+          "columns": [
+            {
+              "expression": "tray_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_tray_checks_tray_resource_id_resources_id_fk": {
+          "name": "pharmacy_tray_checks_tray_resource_id_resources_id_fk",
+          "tableFrom": "pharmacy_tray_checks",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "tray_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_checks_patient_id_patients_id_fk": {
+          "name": "pharmacy_tray_checks_patient_id_patients_id_fk",
+          "tableFrom": "pharmacy_tray_checks",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_checks_checked_by_users_id_fk": {
+          "name": "pharmacy_tray_checks_checked_by_users_id_fk",
+          "tableFrom": "pharmacy_tray_checks",
+          "tableTo": "users",
+          "columnsFrom": [
+            "checked_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_checks_restock_transfer_id_transfers_id_fk": {
+          "name": "pharmacy_tray_checks_restock_transfer_id_transfers_id_fk",
+          "tableFrom": "pharmacy_tray_checks",
+          "tableTo": "transfers",
+          "columnsFrom": [
+            "restock_transfer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_checks_restocked_by_users_id_fk": {
+          "name": "pharmacy_tray_checks_restocked_by_users_id_fk",
+          "tableFrom": "pharmacy_tray_checks",
+          "tableTo": "users",
+          "columnsFrom": [
+            "restocked_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_tray_checks_kind_ck": {
+          "name": "pharmacy_tray_checks_kind_ck",
+          "value": "kind in ('daily_seal', 'monthly_full', 'after_use')"
+        },
+        "pharmacy_tray_checks_result_ck": {
+          "name": "pharmacy_tray_checks_result_ck",
+          "value": "result in ('ok', 'deficient')"
+        },
+        "pharmacy_tray_checks_after_use_ck": {
+          "name": "pharmacy_tray_checks_after_use_ck",
+          "value": "kind = 'after_use' or (patient_id is null and event is null)"
+        },
+        "pharmacy_tray_checks_restock_ck": {
+          "name": "pharmacy_tray_checks_restock_ck",
+          "value": "(restock_transfer_id is null) = (restocked_by is null) and (restock_transfer_id is null) = (restocked_at is null) and (restock_transfer_id is null or result = 'deficient')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_tray_templates": {
+      "name": "pharmacy_tray_templates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tray_resource_id": {
+          "name": "tray_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "par_qty": {
+          "name": "par_qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "min_expiry_days": {
+          "name": "min_expiry_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "pharmacy_tray_templates_tray_item_ux": {
+          "name": "pharmacy_tray_templates_tray_item_ux",
+          "columns": [
+            {
+              "expression": "tray_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_tray_templates_tray_resource_id_resources_id_fk": {
+          "name": "pharmacy_tray_templates_tray_resource_id_resources_id_fk",
+          "tableFrom": "pharmacy_tray_templates",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "tray_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_templates_item_id_items_id_fk": {
+          "name": "pharmacy_tray_templates_item_id_items_id_fk",
+          "tableFrom": "pharmacy_tray_templates",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_templates_created_by_users_id_fk": {
+          "name": "pharmacy_tray_templates_created_by_users_id_fk",
+          "tableFrom": "pharmacy_tray_templates",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_tray_templates_updated_by_users_id_fk": {
+          "name": "pharmacy_tray_templates_updated_by_users_id_fk",
+          "tableFrom": "pharmacy_tray_templates",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_tray_templates_par_ck": {
+          "name": "pharmacy_tray_templates_par_ck",
+          "value": "\"pharmacy_tray_templates\".\"par_qty\" > 0 and \"pharmacy_tray_templates\".\"par_qty\" <= 10000"
+        },
+        "pharmacy_tray_templates_margin_ck": {
+          "name": "pharmacy_tray_templates_margin_ck",
+          "value": "\"pharmacy_tray_templates\".\"min_expiry_days\" is null or (\"pharmacy_tray_templates\".\"min_expiry_days\" between 0 and 365)"
         }
       },
       "isRLSEnabled": false

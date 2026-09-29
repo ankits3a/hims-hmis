@@ -264,7 +264,7 @@ brainstorms, where most use happens.
 - a tray deficient and not restocked;
 - a tray item expiring in 30 days or less.
 
-**As built (2026-09-28, migration 0149 — regenerated from 0145 at the 2026-09-29 merge of main):**
+**As built (2026-09-28, migration 0150 — generated as 0145, regenerated at the 2026-09-29 merges of main (0149, then 0150 after radiology took 0149)):**
 - Three tables. `pharmacy_tray_templates` (the list: tray, item, par, optional expiry margin in days, active) is a
   master row edited in place under `manage`, every save a `trays.template_saved` event with the before and the after;
   the trigger refuses DELETE and any change of tray, item or creator (D3's fridge shape). `pharmacy_tray_checks`
