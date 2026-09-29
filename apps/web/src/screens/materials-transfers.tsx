@@ -8,6 +8,7 @@ import {
 } from "../lib/materials-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IndentsSection } from "./materials-indents";
 import type { WireItem, WireTransferView } from "../lib/materials-api";
 
 /**
@@ -22,6 +23,8 @@ import type { WireItem, WireTransferView } from "../lib/materials-api";
  *     list. The server refuses the issuer, and anyone who does not keep a store that names its
  *     keepers; the refusal is shown as a sentence.
  *   - **Recent transfers**, with names, never ids.
+ * Pharmacy gap A6b put **Indents** above all three (`materials-indents.tsx`): a sub-store's request, which the
+ * supplying store issues as one of these transfers or rejects.
  */
 type SendLine = { item: WireItem; qty: string; available: number | null };
 
@@ -47,6 +50,8 @@ export function MaterialsTransfers(): React.ReactElement {
       {error !== null && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {sent !== null && <p className="text-sm text-green-800" data-testid="transfer-sent">{sent}</p>}
       {received !== null && <p className="text-sm text-green-800" data-testid="transfer-received">{received}</p>}
+
+      <IndentsSection stores={stores.data ?? []} storeId={store} onChanged={refresh} />
 
       {can("materials.stock.issue") && (
         <SendStock

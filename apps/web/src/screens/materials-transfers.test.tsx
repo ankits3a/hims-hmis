@@ -56,6 +56,7 @@ describe("MaterialsTransfers", () => {
     mockRoutes({
       "GET /api/auth/me": me(["materials.stock.read", "materials.stock.issue", "materials.items.read"]),
       "GET /api/materials/stores": { stores: STORES },
+      "GET /api/materials/indents": { indents: [] },
       "GET /api/materials/transfers/worklist": { awaiting: [], recent: [] },
       "GET /api/materials/items": { items: [CROCIN] },
       "GET /api/materials/stock/balances": { balances: [
@@ -92,6 +93,7 @@ describe("MaterialsTransfers", () => {
     mockRoutes({
       "GET /api/auth/me": me(["materials.stock.read", "materials.stock.receive"]),
       "GET /api/materials/stores": { stores: STORES },
+      "GET /api/materials/indents": { indents: [] },
       "GET /api/materials/transfers/worklist": { awaiting: [INBOUND], recent: [INBOUND, SHORT] },
       "POST /api/materials/transfers/01TRANSFER0000000000ABC123/receive": () => {
         tries += 1;
@@ -128,6 +130,7 @@ describe("MaterialsTransfers", () => {
     mockRoutes({
       "GET /api/auth/me": me(["materials.stock.read"]),
       "GET /api/materials/stores": { stores: STORES },
+      "GET /api/materials/indents": { indents: [] },
       "GET /api/materials/transfers/worklist": { awaiting: [], recent: [] },
     });
     renderWithProviders(<MaterialsTransfers />);
