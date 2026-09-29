@@ -422,7 +422,7 @@ describe("patients e2e", () => {
       .get("/patients/merge-requests").set(...auth(clerkToken)).expect(200);
     expect(list.body).toEqual({ items: [] });
     const a = await request(app.getHttpServer())
-      .post("/patients").set(...auth(clerkToken)).send({ name: "Visit Count", sex: "male" }).expect(201);
+      .post("/patients").set(...auth(clerkToken)).send({ name: "Visit Count", sex: "male", ageYears: 40 }).expect(201);
     const visits = await request(app.getHttpServer())
       .get(`/patients/merge-visits?ids=${String(a.body.patient.id)}`).set(...auth(clerkToken)).expect(200);
     expect(visits.body).toEqual({ items: [{ patientId: a.body.patient.id, visits: 0, lastVisitOn: null }] });
