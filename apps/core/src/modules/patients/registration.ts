@@ -427,6 +427,7 @@ export type PatientPatch = Partial<{
   legacyUhid: string | null;
   promotionalOptIn: boolean; // D9: revocable on the patient record — this PATCH is the revocation path
   deceasedAt: string | null; // D10 (D-33): ISO datetime; the hard stop the notifications gateway reads at send time
+  deathCertificateNo: string | null; // OWNER RULING 2026-09-29: required with a date of death (MCCD Form 4 / 4A in this hospital)
   /* ═══ FD-12 — the counter's new demographics are amendable, or taking them would be a one-way write ═══ */
   title: string | null;
   fatherHusbandName: string | null;
@@ -452,7 +453,7 @@ const PATCHABLE = [
   "name", "phone", "altPhone", "dob", "dobEstimated", "sex", "administrativeGender", "addressLine", "district",
   "stateName", "pincode", "language", "bloodGroup", "isConfidential", "alias",
   "sensitiveContext", "abhaAddress", "abhaNumber", "abhaVerificationStatus",
-  "abhaLinkToken", "legacyUhid", "promotionalOptIn", "deceasedAt",
+  "abhaLinkToken", "legacyUhid", "promotionalOptIn", "deceasedAt", "deathCertificateNo",
   "title", "fatherHusbandName", "maritalStatus", "nationality", "nationalIdType",
   "nationalIdMasked", "religion", "occupation", "monthlyIncomePaise",
   "referredBySource", "referredByName", "referredByPhone", "referredBySpeciality",
@@ -544,6 +545,8 @@ export async function updatePatient(
     // deceasedAt arrives as a validated ISO string (patients.controller.ts's z.string().datetime());
     // the column is a real Date, so it is converted here — once — before diffing and before the set.
     if (field === "deceasedAt" && typeof next === "string") next = new Date(next);
+    // OWNER RULING 2026-09-29 — a certificate number is trimmed, and a blank one is no number.
+    if (field === "deathCertificateNo" && typeof next === "string") next = next.trim() === "" ? null : next.trim();
     /*
       FD-12 — the last-4 rule binds on the EDIT path too. Enforcing it only at registration would
       leave the amend surface as the open door to the same column, and a full Aadhaar is no less a
@@ -647,6 +650,8 @@ export async function updatePatient(
   const gated: ReadonlyArray<readonly [field: string, permission: string, code: PatientErrorCode]> = [
     ["isConfidential", "patients.confidential.write", "confidential_write_denied"],
     ["deceasedAt", "patients.deceased.write", "deceased_write_denied"],
+    // OWNER RULING 2026-09-29 — the certificate number is part of the death record: same wall.
+    ["deathCertificateNo", "patients.deceased.write", "deceased_write_denied"],
   ];
   for (const [field, permission, code] of gated) {
     if (!changes.some((c) => c.field === field)) continue;
@@ -656,6 +661,33 @@ export async function updatePatient(
         `${field} needs ${permission} — \`patients.update\` no longer reaches it (22c-A DD7)`,
       );
     }
+  }
+
+  /**
+   * OWNER RULING 2026-09-29 (law) — "RECORD A DEATH" DOES NOT SAVE WITHOUT THE DEATH CERTIFICATE
+   * NUMBER. For a death in this hospital that is the MCCD certificate (Form 4 / 4A) number. Checked
+   * here, below the permission wall (a clerk is told they may not, before being told what is missing),
+   * and in the domain function so every caller — the PATCH route and any later death cascade — is
+   * held to it. A new or corrected date must carry the number IN THE SAME AMENDMENT; a record that
+   * stays deceased cannot lose its number; clearing a mistaken mark clears the number with it.
+   */
+  const deceasedChanged = changes.some((c) => c.field === "deceasedAt");
+  const resultingDeceased = "deceasedAt" in set ? (set.deceasedAt as Date | null) : current.deceasedAt;
+  const certInPatch = (patch as Record<string, unknown>).deathCertificateNo;
+  const certSent = typeof certInPatch === "string" && certInPatch.trim() !== "";
+  const resultingCert = "deathCertificateNo" in set ? (set.deathCertificateNo as string | null) : current.deathCertificateNo;
+  // A record marked deceased before this ruling carries no number; it stays editable (a phone fix
+  // is not a death record), so only a change to the date or to the number itself is held here.
+  const certChanged = changes.some((c) => c.field === "deathCertificateNo");
+  if (resultingDeceased !== null && ((deceasedChanged && !certSent) || (certChanged && resultingCert === null))) {
+    throw new PatientError(
+      "death_certificate_required",
+      "death_certificate_required: a death is recorded only with its death certificate number — for a death in this hospital, the MCCD certificate (Form 4 / 4A) number",
+    );
+  }
+  if (resultingDeceased === null && deceasedChanged && current.deathCertificateNo !== null && !("deathCertificateNo" in set)) {
+    changes.push({ field: "deathCertificateNo", from: current.deathCertificateNo, to: null });
+    set.deathCertificateNo = null;
   }
 
   /**

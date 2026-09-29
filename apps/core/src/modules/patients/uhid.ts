@@ -39,6 +39,8 @@ export type PatientErrorCode =
   | "evidence_required"
   | "confidential_write_denied"
   | "deceased_write_denied"
+  /* OWNER RULING 2026-09-29 (law) — a date of death saves only with its death certificate number. */
+  | "death_certificate_required"
   /**
    * FD-8 — registration now ENDS AT THE UHID, so `POST /patients` is a counter act and must carry
    * the near-match warning the walk-in has always had. A WARNING a human may override, never a gate.

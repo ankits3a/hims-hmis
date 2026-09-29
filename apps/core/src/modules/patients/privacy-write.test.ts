@@ -113,7 +113,9 @@ describe("A16 — the same wall around deceasedAt", () => {
   it("ALLOWS the holder of patients.deceased.write", async () => {
     const mrd = await actorHolding(["patients.register", "patients.update", "patients.deceased.write"]);
     const id = await makePatient(mrd);
-    await withTx(db, (tx) => updatePatient(tx, mrd, id, { deceasedAt: "2026-08-29T10:00:00.000Z" }));
+    // OWNER RULING 2026-09-29 — a death is recorded WITH its certificate number (the A-DC block
+    // below pins that); this case is about who may write the field, so it carries one.
+    await withTx(db, (tx) => updatePatient(tx, mrd, id, { deceasedAt: "2026-08-29T10:00:00.000Z", deathCertificateNo: "MCCD/2026/0412" }));
     expect((await db.select().from(patients).where(eq(patients.id, id)))[0]!.deceasedAt).not.toBeNull();
   });
 
@@ -123,6 +125,68 @@ describe("A16 — the same wall around deceasedAt", () => {
     await expect(
       withTx(db, (tx) => updatePatient(tx, half, id, { deceasedAt: "2026-08-29T10:00:00.000Z" })),
     ).rejects.toMatchObject({ code: "deceased_write_denied" });
+  });
+});
+
+/**
+ * OWNER RULING 2026-09-29 (law) — "Record a death" must NOT save without the death certificate
+ * number: for a death in this hospital, the MCCD certificate (Form 4 / 4A) number. The domain
+ * function refuses it, so every caller (the PATCH route, and any later death cascade) is held to it.
+ */
+describe("A-DC — a death is recorded only with its certificate number", () => {
+  const died = "2026-09-28T10:00:00.000Z";
+  async function mrdAndPatient(): Promise<{ mrd: Actor; id: string }> {
+    const mrd = await actorHolding(["patients.register", "patients.update", "patients.deceased.write"]);
+    return { mrd, id: await makePatient(mrd) };
+  }
+  const row = async (id: string) => (await db.select().from(patients).where(eq(patients.id, id)))[0]!;
+
+  it("REFUSES a date of death with no certificate number, in a plain sentence, and writes nothing", async () => {
+    const { mrd, id } = await mrdAndPatient();
+    await expect(withTx(db, (tx) => updatePatient(tx, mrd, id, { deceasedAt: died })))
+      .rejects.toMatchObject({ code: "death_certificate_required", message: expect.stringMatching(/death certificate number/) });
+    expect((await row(id)).deceasedAt).toBeNull();
+  });
+
+  it("REFUSES a blank certificate number — spaces are not a number", async () => {
+    const { mrd, id } = await mrdAndPatient();
+    await expect(withTx(db, (tx) => updatePatient(tx, mrd, id, { deceasedAt: died, deathCertificateNo: "   " })))
+      .rejects.toMatchObject({ code: "death_certificate_required" });
+    expect((await row(id)).deceasedAt).toBeNull();
+  });
+
+  it("SAVES the date and the number together, and diffs both into patient.updated", async () => {
+    const { mrd, id } = await mrdAndPatient();
+    const res = await withTx(db, (tx) => updatePatient(tx, mrd, id, { deceasedAt: died, deathCertificateNo: " MCCD/2026/0412 " }));
+    expect(res.changed.sort()).toEqual(["deathCertificateNo", "deceasedAt"]);
+    const after = await row(id);
+    expect(after.deceasedAt?.toISOString()).toBe(died);
+    expect(after.deathCertificateNo).toBe("MCCD/2026/0412");
+  });
+
+  it("REFUSES taking the number off a record that stays deceased", async () => {
+    const { mrd, id } = await mrdAndPatient();
+    await withTx(db, (tx) => updatePatient(tx, mrd, id, { deceasedAt: died, deathCertificateNo: "MCCD/2026/0412" }));
+    await expect(withTx(db, (tx) => updatePatient(tx, mrd, id, { deathCertificateNo: null })))
+      .rejects.toMatchObject({ code: "death_certificate_required" });
+    expect((await row(id)).deathCertificateNo).toBe("MCCD/2026/0412");
+  });
+
+  it("clearing a mistaken death mark clears its number with it", async () => {
+    const { mrd, id } = await mrdAndPatient();
+    await withTx(db, (tx) => updatePatient(tx, mrd, id, { deceasedAt: died, deathCertificateNo: "MCCD/2026/0412" }));
+    const res = await withTx(db, (tx) => updatePatient(tx, mrd, id, { deceasedAt: null }));
+    expect(res.changed.sort()).toEqual(["deathCertificateNo", "deceasedAt"]);
+    const after = await row(id);
+    expect(after.deceasedAt).toBeNull();
+    expect(after.deathCertificateNo).toBeNull();
+  });
+
+  it("the number is behind the same wall as the date — a clerk cannot write it", async () => {
+    const clerk = await actorHolding(["patients.register", "patients.update"]);
+    const id = await makePatient(clerk);
+    await expect(withTx(db, (tx) => updatePatient(tx, clerk, id, { deathCertificateNo: "MCCD/2026/0412" })))
+      .rejects.toMatchObject({ code: "deceased_write_denied" });
   });
 });
 
