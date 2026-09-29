@@ -149,8 +149,7 @@ POST /aerb/qa             (aerb.registers.manage)
 - **A `fail` on a machine that is mid-examination is REFUSED** (`already_occupied`) and the record
   rolls back with it. Stopping a tube with a patient on the table is a decision a person makes at
   the console. Wait for the study to finish, then record.
-- **An overdue test does NOT block** (D4). It appears on the calendar and on the inspector's file.
-  The RSO blocks; the calendar tells them to.
+- **An overdue test DOES block — since 18-S RS11** (D4 reversed; owner ruling 5). See §4a.
 
 `values` is free-form on purpose — the measured quantities differ per protocol, and a column per
 quantity would be a migration every time the agency changed its form. **The screen does not collect
@@ -159,6 +158,28 @@ typed at the desk is a 500 waiting for a missing brace. The route still accepts 
 can carry the numbers later. What the screen records is that the test happened, its verdict, who
 performed it and when the next is due — and, for a `fail`, it warns you by name that the machine is
 about to stop before it sends anything.
+
+### 4a. The QA cadence and the overdue block (18-S RS11 T3)
+
+- **Cadence (ruling 5):** an AERB-recognised QA agency tests every ionising machine **at
+  acceptance, every 2 years, and after any major repair**. The RSO runs the monthly / quarterly
+  checks with the kit. Record each on the QA tab with its **next due** date; a record with no next
+  due date is due **2 years** after it was performed.
+- **Due list:** Radiation safety → Quality assurance shows every machine × test that is due within
+  30 days, overdue or failed, and names the machines that are `qa_blocked` (`GET /aerb/qa/due`).
+- **The block:** the worker's `sweepOverdueQa` job runs **hourly**. A machine whose QA is past due
+  and whose status is `available` goes to `qa_blocked` (reason `QA overdue: <test> (due <date>)`,
+  actor `aerb-qa-overdue-sweep`, in `resource_status_history`). The diary and the console refuse
+  a `qa_blocked` machine (`device_unavailable`). A machine with a patient on the table, `down` or in
+  `maintenance` is not touched — it is caught the next hour it is `available`.
+- **Lifting it:** record a **passing QA** (`POST /aerb/qa`, `result: pass`, performed on or after
+  the date it was due). If another test on the same machine is still overdue, the machine stays
+  blocked and the answer lists `stillOverdue` — record that test too. Setup cannot lift a QA block
+  (RS4).
+- **At go-live:** before the first deploy that carries RS11, check `GET /aerb/qa/due` — every
+  machine listed `overdue` will be blocked within the hour. Enter the current certificates first.
+  A machine with **no QA record at all** is not blocked by the sweep (the licence gate already
+  refuses an unlicensed machine; the licence is issued on the acceptance QA) — DECIDED.
 
 ---
 
@@ -213,6 +234,67 @@ POST /aerb/settings/investigation-level  { "perMonthMsv": 1.0 }
   a person whose occupational exposure is unknown, which is the one thing this programme exists to
   make impossible.
 
+### 6a. Importing the quarterly TLD report (18-S RS11 T1)
+
+The BARC-accredited personnel-monitoring service sends one report a quarter. Radiation safety →
+**TLD import**:
+
+1. Export the service's report as **CSV**, one header row and one row per badge per period.
+   Columns (header wording is matched tolerantly — case, spacing, units in brackets ignored):
+   **badge no.** · wearer name · **period from** · **period to** · **Hp(10) mSv** · Hp(0.07) mSv ·
+   remarks. Bold = required. Dates day-first (`01/04/2026`, `01-04-2026`, `01-Apr-2026`) or ISO.
+   `BDL`, `ND`, `NIL`, `-`, `<0.05` are entered as **0.000 mSv** with the service's words kept in the
+   remarks.
+2. Choose the file (or paste it), the **report date** and the **report number**, then **Check the
+   file** — a dry run that writes nothing.
+3. Read the preview. A red line is refused, with the reason: a badge not in the badge book, a
+   period the badge was not worn for, a period already on file (a re-sent report is a correction,
+   not a second dose), a line repeated in the file, a date or dose that does not parse. **One red
+   line refuses the whole file** — fix the file or the badge book (issue the badge) and check again.
+   Flags that do not refuse: over the investigation level (1 mSv a month of wear, ~3 mSv a
+   quarter), a year on course for more than 20 mSv, a year over 30 mSv, a declared-pregnant worker
+   at the 1 mSv foetal limit, a wearer name that differs from the badge book.
+4. **Enter all N readings.** Every line goes through the same writer as a typed reading, in one
+   transaction: the investigation verdict is stored with the row and each over-level line emits
+   `radiation.dose_limit_warning`.
+
+API: `POST /aerb/badges/import {csv, reportedOn, labRef, dryRun}` (`aerb.registers.manage`); a
+refused confirm is `422 tld_import_rejected` with every row and its errors in `detail.rows`.
+
+### 6b. A pregnant radiation worker (18-S RS11 T4)
+
+Radiation safety → **Pregnant workers**. When a worker declares a pregnancy (voluntary,
+confidential), record her, the declaration date and her expected date. While it is active:
+
+- she stands on the RSO's **Needs you** list: *declared pregnant worker — reassign or restrict her
+  ionising work*. **The system does not change her roster** (DECIDED, least invasive): the RSO and
+  the HOD reassign her (off fluoroscopy, cath lab, portable rounds);
+- her badge reads worn after the declaration (pro-rated for a period that straddles it) are
+  compared with the **1 mSv foetal limit** for the rest of the pregnancy — on the declaration, on
+  every TLD import line and on a typed reading.
+
+End the declaration with a reason when it ends; after the expected date passes it shows as
+*date passed — end it*.
+
+### 6c. The radiation incident register (18-S RS11 T2)
+
+Radiation safety → **Incidents**. Record any unintended or accidental exposure: wrong patient,
+wrong study or part, a pregnant patient exposed unknowingly, a repeat beyond the threshold,
+equipment malfunction, a worker over a dose limit, other.
+
+- **Record** — when, the machine, who was exposed (patient by UHID, a worker, or a named other
+  person), the estimated dose, what happened (facts only) and what was done at once, and whether
+  the exposure was **significantly above what was intended**. It gets a number (`INC-26-001`).
+- **AERB notification (DECIDED rule):** required for **any exposure significantly above intended**
+  and for **any worker over a dose limit**. The clock is **24 hours from recording**; an overdue one
+  is red on the register and on Needs you. Record the date and the AERB reference when it is sent.
+- **Investigate** — the root cause and at least one corrective action, each with an owner. Mark each
+  done with its date as it is done.
+- **Close** — refused while any corrective action is open (`incident_actions_open`) or while a
+  notifiable incident has no notification on file (`notification_required`).
+- Who: the RSO writes (`aerb.registers.manage`); the RSO and the radiologist (HOD) read
+  (`aerb.incidents.read`). The radiologist reaches the station and sees the Incidents view only.
+
 ---
 
 ## 7. The calendar and the inspector's file (T5)
@@ -230,10 +312,10 @@ type, appointment expiry, and badges nobody is reading — sorted by how late ea
 
 ## 8. What this does NOT turn on
 
-Roster gates for a pregnant radiographer (Plan 20) · any alerting or escalation ladder · a room
+Roster gates for a pregnant radiographer (Plan 20; RS11 prompts the RSO instead, §6b) · any alerting or escalation ladder · a room
 shielding-survey workflow · brachytherapy source custody and RT fractions (Plan 64) · cath-lab dose
 emission (Plan 63 — it will call the same `recordDose`) · eLORA submission or filing · TLD vendor
-file import (readings are typed) · dose SR from the modality (18b-ii) · staff radiation-training
+file import (18-S RS11 added it, §6a) · dose SR from the modality (18b-ii) · staff radiation-training
 records and signage evidence (Plan 28) · patient dose from outside studies.
 
 ---

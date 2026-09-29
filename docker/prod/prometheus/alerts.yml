@@ -49,7 +49,7 @@ groups:
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa"
           } > 93600
         for: 5m
         labels:
@@ -126,6 +126,7 @@ groups:
           # HEARTBEATS daily — so an absent series means the worker is not running it at all,
           # which is the failure that would silently stop every unit getting next month's rota.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runMonthlyProposals"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepOverdueQa"})
           # PHARMACY P6 (patient messages): the refill reminders. A job that never ran is silent —
           # patients who opted in simply stop hearing, and nobody can tell that from a quiet week.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runRefillReminders"})

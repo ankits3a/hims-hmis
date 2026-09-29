@@ -133,6 +133,8 @@ export type WireEncounter = {
   examination?: WireExamFinding[] | null; treatment?: string[] | null;
   doctorNote?: string | null; internalComment?: string | null;
   diagnosisKind?: "provisional" | "final" | null; rxStockChoices?: unknown;
+  /** The prescription rows written and not yet issued (consult walk 2026-09-28). Optional: an older server sends none. */
+  rxDraft?: WireRxDraftLine[] | null;
   followUpDays: number | null; followUpExtended: boolean; dangerFlagged: boolean;
   consultStartedAt: string | null; consultCompletedAt: string | null;
   abandonedAt: string | null; abandonReason: string | null;
@@ -379,6 +381,12 @@ export type WireRxLine = {
   eye?: Eye | null; taper?: TaperStep[] | null;
 };
 
+/** An editor row as typed — blanks allowed; `durationDays` is the box's text. Not a prescription line. */
+export type WireRxDraftLine = {
+  drug: string; dose: string; route: string; frequency: string; durationDays: string | number | null;
+  instructions: string; noSubstitution: boolean; medicineId?: string | null; eye?: Eye | null; taper?: TaperStep[] | null;
+};
+
 export type WirePrescription = {
   id: string; encounterId: string; patientId: string; doctorId: string; version: number;
   lines: WireRxLine[]; document: unknown; allergyOverrides: unknown[];
@@ -388,7 +396,8 @@ export type WirePrescription = {
 export type WireRxPrint = {
   letterhead: { name: string; addressLines: string[] };
   patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; administrativeGender: string };
-  doctor: { displayName: string; registrationNo: string | null; departmentName: string | null };
+  /** The Doctor ID only — the print names no doctor and no council number (owner 2026-09-06, 2026-09-28). */
+  doctor: { code: string | null; departmentName: string | null };
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;

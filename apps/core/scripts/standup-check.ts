@@ -27,7 +27,10 @@ import {
 import {
   PAYMENT_RUN_APPROVAL_TYPE, PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE, availableQty, findStoreByCode, listItems,
 } from "../src/modules/materials";
-import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
+import {
+  IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeDefinitionRow as activeImagingDefinitionRow, activeStudyTypes,
+  parseDefinitionBody as parseImagingDefinitionBody,
+} from "../src/modules/radiology";
 import {
   HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
   ROSTER_RESOLVER_FLAG, departmentsWithoutPublishedCycle, livePeriodCount, publishedCycleCount,
@@ -1198,11 +1201,21 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "run: pnpm --filter @hmis/core seed:radiology — NOTE deploy.sh does not run it (11i finding)",
     },
     {
+      /**
+       * 18-S RS4 — stand-up precondition 6, as a row. Every `RAD-` (and `LAB-`) service is category
+       * `investigation`, and with no `gst_config` row for it pricing any imaging line refuses. G2
+       * because `seed:tariff` — which `deploy.sh` runs — writes it (ruling 2: exempt, 0%, SAC 9993).
+       */
+      gate: "G2", code: "radiology_investigation_gst",
+      check: async (db) => (await listGstCategories(db)).some((c) => c.category === "investigation"),
+      fix: "run: pnpm --filter @hmis/core seed:tariff — it writes the `investigation` category (exempt, SAC 9993) when absent",
+    },
+    {
       gate: "G3", code: "radiology_device_present",
       check: async (db) => (await listResourcesOfKind(db, "device")).length > 0,
-      // CORRECTED 2026-09-06: this named an act with no door. There is no resources screen and no
-      // create route; `seed:radiology` is the only writer of an imaging device.
-      fix: "radiology-go-live.md §5: add the machine to MODALITY_MACHINES and re-run seed:radiology — there is no resources screen",
+      // CORRECTED 2026-09-06: this named an act with no door. 18-S RS4 built the door: the Setup
+      // station registers a machine (POST /radiology/setup/devices); `seed:radiology` still seeds five.
+      fix: "radiology-go-live.md §5: register each machine at Radiology → Setup → Machines (code, room, AE title), or run seed:radiology for the standard five",
     },
     {
       gate: "G3", code: "radiology_devices_licensed",
@@ -1218,6 +1231,20 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return devices.length > 0 && (await unlicensedDevices(db, istToday())).length === 0;
       },
       fix: "18c §2: file each ionising machine's AERB licence at /radiology/radiation-safety until GET /aerb/licences/gaps is empty",
+    },
+    {
+      /**
+       * 18-S RS8a / ruling 4 — a report is signed only by someone on the published list of
+       * authorised signatories (the print carries their qualification and council number). G3: a
+       * governed book, drafted by the HOD and approved by the MS — no deploy writes it. Until it is
+       * green, `signReport` refuses every signature with `signer_credentials_missing`.
+       */
+      gate: "G3", code: "radiology_report_signatories",
+      check: async (db) => {
+        const row = await activeImagingDefinitionRow(db, "report_signatories");
+        return row !== undefined && parseImagingDefinitionBody("report_signatories", row.body).signatories.length > 0;
+      },
+      fix: "radiology-go-live.md §13: the head of radiology drafts the list of authorised signatories (qualification, council number) at Radiology → Setup → Books; the medical superintendent approves it",
     },
     {
       gate: "G4", code: "radiology_rso_appointed",

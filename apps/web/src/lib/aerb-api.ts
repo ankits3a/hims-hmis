@@ -396,3 +396,174 @@ export function aerbErrorText(e: unknown): string {
   if (body?.message !== undefined) return body.code === undefined ? body.message : `${body.message} (${body.code})`;
   return e instanceof Error ? e.message : String(e);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+/*  18-S RS11 — TLD import, incidents, pregnancy declarations, QA due, the RSO's list           */
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+export type WireTldImportRow = {
+  line: number;
+  badgeNo: string;
+  wearer: string | null;
+  userId: string | null;
+  userName: string | null;
+  badgeId: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  hp10Msv: number | null;
+  hp007Msv: number | null;
+  remarks: string | null;
+  errors: string[];
+  warnings: string[];
+  overInvestigationLevel: boolean;
+  investigationLevelMsv: number | null;
+  yearTotalMsv: number | null;
+  projectedAnnualMsv: number | null;
+  overAnnualProjection: boolean;
+  overAnnualLimit: boolean;
+  overFoetalLimit: boolean;
+};
+
+export type WireTldImportReport = {
+  dryRun: boolean;
+  columns: Record<string, string>;
+  rows: WireTldImportRow[];
+  errorCount: number;
+  imported: number;
+  flagged: { investigation: number; annualProjection: number; annualLimit: number; foetal: number };
+};
+
+/** All-or-nothing: a dry run previews; a confirm with any bad line is refused (422, rows in detail). */
+export function importTld(body: { csv: string; reportedOn: string; labRef: string | null; dryRun: boolean }): Promise<WireTldImportReport> {
+  return api<WireTldImportReport>("POST", "/aerb/badges/import", body);
+}
+
+export const INCIDENT_KINDS = [
+  "wrong_patient", "wrong_study", "pregnant_patient", "repeat_over_threshold",
+  "equipment_malfunction", "worker_over_limit", "other",
+] as const;
+export type IncidentKind = (typeof INCIDENT_KINDS)[number];
+export type IncidentAction = { action: string; owner: string; doneOn: string | null };
+
+export type WireIncident = {
+  id: string;
+  incidentNo: string;
+  kind: IncidentKind;
+  occurredAt: string;
+  deviceCode: string | null;
+  deviceName: string | null;
+  affectedType: "patient" | "worker" | "other";
+  affectedLabel: string;
+  uhid: string | null;
+  restricted: boolean;
+  estimatedDoseMsv: string | null;
+  doseNote: string | null;
+  description: string;
+  immediateAction: string;
+  rootCause: string | null;
+  correctiveActions: IncidentAction[];
+  significantlyAboveIntended: boolean;
+  notifyRequired: boolean;
+  notifiedOn: string | null;
+  notificationRef: string | null;
+  notifyDueAt: string | null;
+  notifyOverdue: boolean;
+  state: "open" | "investigated" | "closed";
+  createdAt: string;
+  closedAt: string | null;
+  closureNote: string | null;
+};
+
+export function fetchIncidents(): Promise<{ rows: WireIncident[]; canManage: boolean }> {
+  return api<{ rows: WireIncident[]; canManage: boolean }>("GET", "/aerb/incidents");
+}
+
+export type RecordIncidentBody = {
+  kind: IncidentKind;
+  occurredAt: string;
+  deviceResourceId: string | null;
+  affectedType: "patient" | "worker" | "other";
+  patientUhid: string | null;
+  workerUserId: string | null;
+  affectedName: string | null;
+  estimatedDoseMsv: number | null;
+  doseNote: string | null;
+  description: string;
+  immediateAction: string;
+  significantlyAboveIntended: boolean;
+};
+
+export function recordIncident(body: RecordIncidentBody): Promise<{ incidentId: string; incidentNo: string; notifyRequired: boolean }> {
+  return api<{ incidentId: string; incidentNo: string; notifyRequired: boolean }>("POST", "/aerb/incidents", body);
+}
+export function investigateIncident(id: string, body: { rootCause: string; correctiveActions: IncidentAction[] }): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", `/aerb/incidents/${encodeURIComponent(id)}/investigate`, body);
+}
+export function updateIncidentActions(id: string, correctiveActions: IncidentAction[]): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", `/aerb/incidents/${encodeURIComponent(id)}/actions`, { correctiveActions });
+}
+export function notifyIncident(id: string, body: { notifiedOn: string; notificationRef: string }): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", `/aerb/incidents/${encodeURIComponent(id)}/notify`, body);
+}
+export function closeIncident(id: string, closureNote: string | null): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", `/aerb/incidents/${encodeURIComponent(id)}/close`, { closureNote });
+}
+
+export type WirePregnancyDeclaration = {
+  id: string;
+  userId: string;
+  userName: string;
+  declaredOn: string;
+  expectedOn: string;
+  endedOn: string | null;
+  endReason: string | null;
+  remarks: string | null;
+  active: boolean;
+  lapsed: boolean;
+  foetalDoseMsv: string;
+  foetalLimitMsv: number;
+  overFoetalLimit: boolean;
+  readsCounted: number;
+};
+
+export function fetchPregnancy(): Promise<{ rows: WirePregnancyDeclaration[]; foetalLimitMsv: number; canManage: boolean }> {
+  return api<{ rows: WirePregnancyDeclaration[]; foetalLimitMsv: number; canManage: boolean }>("GET", "/aerb/pregnancy");
+}
+export function declarePregnancy(body: { userId: string; declaredOn: string; expectedOn: string; remarks: string | null }): Promise<{ declarationId: string }> {
+  return api<{ declarationId: string }>("POST", "/aerb/pregnancy", body);
+}
+export function endPregnancy(id: string, body: { onDate: string; reason: string }): Promise<{ ok: true }> {
+  return api<{ ok: true }>("POST", `/aerb/pregnancy/${encodeURIComponent(id)}/end`, body);
+}
+
+export type WireQaDue = {
+  deviceResourceId: string;
+  deviceCode: string;
+  deviceName: string;
+  deviceStatus: string;
+  qaType: string;
+  lastRecordId: string;
+  lastPerformedOn: string;
+  lastResult: string;
+  dueOn: string;
+  defaultInterval: boolean;
+  state: "ok" | "due" | "overdue" | "failed";
+  daysOverdue: number;
+};
+
+export function fetchQaDue(): Promise<{ rows: WireQaDue[]; defaultIntervalYears: number }> {
+  return api<{ rows: WireQaDue[]; defaultIntervalYears: number }>("GET", "/aerb/qa/due");
+}
+
+export type WireAttention = {
+  key: string;
+  severity: "red" | "amber";
+  view: "qa" | "incidents" | "badges" | "pregnancy";
+  subject: string;
+  detail: string;
+  ref: string;
+};
+
+export function fetchAttention(): Promise<{ rows: WireAttention[]; sources: Record<string, string> }> {
+  return api<{ rows: WireAttention[]; sources: Record<string, string> }>("GET", "/aerb/attention");
+}

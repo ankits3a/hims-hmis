@@ -22,7 +22,8 @@ export {
   imagingStudyDefinition, imagingGateDefinition,
 } from "./workflow-def";
 export {
-  IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES, registerRadiologyApprovalTypes,
+  IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, IMAGING_GATE_OVERRIDE_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES,
+  registerRadiologyApprovalTypes,
 } from "./approval-types";
 export {
   RADIOLOGY_ORDER_PLACED_CONSUMER, handleOrderPlaced, orderPlacedConsumer,
@@ -68,6 +69,16 @@ export {
   studyGates, studyState, waiveGate,
 } from "./gates";
 export type { GateRow, StudyGate, StudyRow } from "./gates";
+// ── 18-S RS5 — eGFR in the kidney gate, the prep bay's reads, the override request ──
+export {
+  CREATININE_UMOL_PER_MG_DL, EGFR_HOLD_BELOW, EGFR_HYDRATE_BELOW, EGFR_METFORMIN_BELOW,
+  IV_HYDRATION_INSTRUCTION, METFORMIN_NOTE, assessEgfr, ckdEpi2021, renalBand,
+} from "./egfr";
+export type { EgfrAssessment, RenalBand } from "./egfr";
+export { ROOM_GATE_KINDS, isRoomGate, prepBayList, prepStudyView } from "./prep-bay";
+export type { PrepBayRow, PrepGate, PrepStudyView } from "./prep-bay";
+export { decideGateOverride, gateOverrideRequests, requestGateOverride } from "./override-requests";
+export type { GateOverrideDecision, GateOverrideRequest } from "./override-requests";
 export {
   LATE_ENTRY_MINUTES, abortAcquisition, recordAcquired, resolveStudyInstanceUid, startAcquisition,
 } from "./acquisition";
@@ -103,12 +114,34 @@ export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
 export type { ReportContent, ReportRow } from "./reports";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
+// 18-S RS8a — the reading room: the pre-sign pipeline (a later guard joins PRE_SIGN_CHECKS), the
+// signer block (ruling 4), the governed templates/signatories books and the reading reads.
+export { CRITICAL_TERMS, PRE_SIGN_CHECKS, criticalTermsIn, runPreSignChecks } from "./checks";
+export type { PreSignCheck, PreSignContext, PreSignFinding, PreSignLevel } from "./checks";
+export { dryRunPreSign } from "./reports";
+export type { SignChecksRecord } from "./reports";
+export { signedContentDigest, signerSnapshot } from "./signer";
+export type { SignerBlock } from "./signer";
+export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
+export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
+export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
+export type { ReadingContext, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
 export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
 // 18-S RS2b — the machine list, the portable round, and `bedsideStudiesFor`: THE IPD SEAM. The ward
 // screen the IPD plan builds imports it from here; it has no route of its own until then.
 export { imagingDevices } from "./devices";
 export type { ImagingDeviceRow } from "./devices";
 export { bedsideStudiesFor, portableRound } from "./bedside";
+// 18-S RS4 — the machine register's write door and the Setup station's reads.
+export {
+  BOOKED_STUDY_STATUSES, DEVICE_AE_TITLE_RE, RADIOLOGY_DEVICES_MANAGE, SETTABLE_DEVICE_STATUSES,
+  bookedStudiesOn, createImagingDevice, editImagingDevice, isIonisingModality, setImagingDeviceStatus,
+} from "./machines";
+export type { BookedStudyRow, CreateImagingDeviceInput, EditImagingDevicePatch, SettableDeviceStatus } from "./machines";
+export {
+  INVESTIGATION_GST_CATEGORY, RADIOLOGY_RULED_SERVICES, setupBooks, setupPrices, setupRooms,
+} from "./setup";
+export type { BookRow, BookVersionRow, SetupPriceRow, SetupRoomRow } from "./setup";
 export type { BedsideStudyRow } from "./bedside";
 export { DICOM_UID_MAX_LENGTH, STUDY_UID_ROOT, isValidDicomUid, mintStudyInstanceUid } from "./uid";
 export {

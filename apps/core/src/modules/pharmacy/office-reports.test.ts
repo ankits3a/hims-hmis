@@ -218,6 +218,13 @@ describe("the office's purchase, stock and activity reports (parity P5)", () => 
     expect(edit.find((c) => c.field === `lines.${taxed}.ratePaise`)?.label).toBe("Item CROC · Rate");
     // The match (₹1 a strip over the GRN's cost is 4%, past the tolerance) moved the status, derived from consecutive states.
     expect(t.entries[2]!.changes.map((c) => [c.field, c.before, c.after])).toEqual(expect.arrayContaining([["status", "draft", "held_for_match"]]));
+    // STAGE C — each entry carries the document as it then stood: the version before the edit is the
+    // drafted state with the edit's own "before" laid over it; the version after is the edit's state.
+    const lineRate = `lines.${taxed}.ratePaise`;
+    expect(t.entries[0]!.state).toMatchObject({ status: "draft", totalPaise: 28_000 });
+    expect(t.entries[1]!.state).toMatchObject({ status: "draft", totalPaise: 29_120, taxablePaise: 26_000, [lineRate]: 2_600 });
+    expect(t.entries[2]!.state).toMatchObject({ status: "held_for_match", totalPaise: 29_120, [lineRate]: 2_600 });
+    expect(t.labels[lineRate]).toBe("Item CROC · Rate");
 
     const feed = await recentActivity(db, owner.actor, { preset: "today" }, at(200));
     expect(feed.rows.map((r) => [r.name, r.docNo])).toEqual([

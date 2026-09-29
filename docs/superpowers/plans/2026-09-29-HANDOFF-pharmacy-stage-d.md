@@ -46,7 +46,7 @@ record. Read that doc and this one, and nothing bigger.
 
 Its PR is open with auto-merge OFF, because it must wait its turn in the queue below. Four commits sit on main
 fec21507:
-- **D4, crash-cart and emergency-tray checks** (migration **0145**):
+- **D4, crash-cart and emergency-tray checks** (migration **0149**; generated as 0145, regenerated as 0149 at the 2026-09-29 merge of main because main took 0145–0148):
   - The daily seal check, monthly full check and after-use check.
   - The server decides whether a tray is deficient.
   - Restock issues exactly the deficit from `PHARM-OPD`.

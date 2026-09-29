@@ -264,7 +264,7 @@ brainstorms, where most use happens.
 - a tray deficient and not restocked;
 - a tray item expiring in 30 days or less.
 
-**As built (2026-09-28, migration 0145):**
+**As built (2026-09-28, migration 0149 — regenerated from 0145 at the 2026-09-29 merge of main):**
 - Three tables. `pharmacy_tray_templates` (the list: tray, item, par, optional expiry margin in days, active) is a
   master row edited in place under `manage`, every save a `trays.template_saved` event with the before and the after;
   the trigger refuses DELETE and any change of tray, item or creator (D3's fridge shape). `pharmacy_tray_checks`
@@ -354,7 +354,7 @@ and the refusal says who to appoint.
   requester, requested-at, decider and note, and a decided row is never edited. Bound to the MOIETY SET, so a generic
   substitution needs no second approval.
 - The cited list is `modules/formulary/aware.ts` (WHO/MHP/HPS/EML/2023.04): 23 Access, 32 Watch (the 4 carbapenems among
-  them), 28 Reserve entries by moiety set and route; `seed:pharmacy` writes it onto every systemic product whose
+  them), 28 Reserve entries by moiety set and route; `aware:classify` (`scripts/classify-aware.ts`, run by hand AFTER a steward is appointed — never `seed:pharmacy`, which deploy.sh runs on every deploy; corrected 2026-09-29 after hmis-b7 caught it before a deploy) writes it onto every systemic product whose
   class is still null, and only ever raises `antimicrobial_restricted`. The Indian market's irrational FDCs stay null.
 - DECIDED: the type is `urgent`, 240 min SLA (the other urgent types'), no act-first; approver `antimicrobial_steward`.
 - DECIDED — self-approval: the kernel's `requester_approver` pair refuses the requester (the pharmacist), not the

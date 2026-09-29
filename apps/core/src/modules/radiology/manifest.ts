@@ -75,8 +75,21 @@ export const radiologyManifest: ModuleManifest = {
   menu: [
     { label: "Imaging reception", path: "/radiology/reception", permission: "radiology.schedule" },
     { label: "Imaging worklist", path: "/radiology/worklist", permission: "radiology.worklist.read" },
+    // 18-S RS6 — the modality rooms: the technologist's console, dose log, rejects and downtime.
+    { label: "Modality rooms", path: "/radiology/room", permission: "radiology.acquire" },
+    // 18-S RS8a — the reading room: the radiologist's urgency-sorted list and the report workspace.
+    { label: "Reading room", path: "/radiology/read", permission: "radiology.reports.write" },
     // 18-S RS2b — the technologist's portable round (the beds the trolley goes to).
     { label: "Portable round", path: "/radiology/portable", permission: "radiology.acquire" },
+    // 18-S RS3 — the desk's diary (machines × time) and the waiting-hall display.
+    { label: "Imaging diary", path: "/radiology/diary", permission: "radiology.schedule" },
+    { label: "Imaging hall display", path: "/radiology/display", permission: "radiology.display.read" },
+    // 18-S RS4 — the Setup station: machines, books and prices.
+    { label: "Imaging setup", path: "/radiology/setup", permission: "radiology.devices.manage" },
+    // 18-S RS5 — the prep & safety bay (the gates the order opened, contrast and reaction).
+    { label: "Prep & safety bay", path: "/radiology/prep", permission: "radiology.gates.satisfy" },
+    // 18-S RS7 — the sonologist's room, the Form F register, the §19 registration, the monthly return.
+    { label: "Ultrasound & PCPNDT", path: "/radiology/usg", permission: "pcpndt.form_f.write" },
   ],
   permissions: [
     "radiology.orders.place",
@@ -98,6 +111,16 @@ export const radiologyManifest: ModuleManifest = {
     // PACS host pulls `GET /radiology/mwl`, and `radiographer` holds it so a console can be
     // checked by a human. It reads names, so it is a PHI surface (`imaging.worklist`).
     "radiology.mwl.read",
+    // 18-S RS3 — the waiting-hall board (tokens + first name and initial). The OPD pattern: the
+    // kiosk `display` role holds it, and so does the desk that turns the TV on.
+    "radiology.display.read",
+    // 18-S RS4 — the machine register (register, edit, status with a reason) and the Setup
+    // station's reads. The radiologist, who already drafts the department's books, holds it.
+    "radiology.devices.manage",
+    // 18-S RS5 — the contrast injection and a contrast reaction. Split off `radiology.acquire` so the
+    // radiology NURSE (who injects and watches for the reaction) can record both without being
+    // able to start or finish an acquisition. Held by everyone who held `acquire` for these routes.
+    "radiology.contrast.record",
   ],
   subscriptions: [{ event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER }],
   resourceKinds: RADIOLOGY_RESOURCE_KINDS,

@@ -38,12 +38,15 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * routes, unchanged.
  */
 /**
- * F52 — DELIBERATELY EMPTY. The scan's IST calendar day used to arrive here and decide whether the
+ * F52 — NO DATE. The scan's IST calendar day used to arrive here and decide whether the
  * machine's PCPNDT registration was live. It is the server's now. The schema stays so the route
  * keeps refusing a body that is not an object, and so a client still sending `onDate` is not
- * silently believed.
+ * silently believed (`.strict()` still refuses it). RS6 adds the one field a start may carry.
  */
-const startBody = z.object({}).strict();
+const startBody = z.object({
+  /** 18-S RS6 — the bedside radiation checklist, as attested text; see `startAcquisition`. */
+  bedsideSafety: z.string().min(1).max(400).optional(),
+}).strict();
 
 const acquiredBody = z.object({
   imageSource: z.enum(["pacs", "no_pacs_images", "outside"]),
@@ -59,6 +62,10 @@ const acquiredBody = z.object({
   contrastVolumeMl: z.number().positive().max(999_999).nullish(),
   repeatOfStudyId: idSchema.nullish(),
   repeatReason: z.string().min(1).max(400).nullish(),
+  /** 18-S RS6 — why the dose came in above the DRL; kept only beside an over-DRL verdict. */
+  drlReason: z.string().min(1).max(400).nullish(),
+  /** 18-S RS6 — why a with-contrast examination was scanned plain; rides the bill decision. */
+  contrastNotGivenReason: z.string().min(1).max(400).nullish(),
   /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is derived, never sent. */
   acquiredAt: z.string().datetime().optional(),
 });
@@ -121,9 +128,11 @@ export class RadiologyAcquisitionController {
      * whose registration had lapsed, and the shipped console was sending the browser's UTC day,
      * which is yesterday for five and a half hours every night.
      */
-    parsed(startBody, body);
+    const input = parsed(startBody, body);
     try {
-      return await withTx(this.db, (tx) => startAcquisition(tx, actor, this.decls(), { studyId }));
+      return await withTx(this.db, (tx) => startAcquisition(tx, actor, this.decls(), {
+        studyId, bedsideSafety: input.bedsideSafety ?? null,
+      }));
     } catch (e) { toHttp(e); }
   }
 
@@ -150,6 +159,8 @@ export class RadiologyAcquisitionController {
         contrastVolumeMl: input.contrastVolumeMl ?? null,
         repeatOfStudyId: input.repeatOfStudyId ?? null,
         repeatReason: input.repeatReason ?? null,
+        drlReason: input.drlReason ?? null,
+        contrastNotGivenReason: input.contrastNotGivenReason ?? null,
         acquiredAt: input.acquiredAt === undefined ? undefined : new Date(input.acquiredAt),
       }));
     } catch (e) { toHttp(e); }
@@ -181,7 +192,9 @@ export class RadiologyAcquisitionController {
    * not, which is the separation that actually matters here.
    */
   @Post(":studyId/contrast")
-  @RequirePermission("radiology.acquire", "hospital")
+  // 18-S RS5 — `radiology.contrast.record` (held by radiographer, radiologist and radiology_nurse),
+  // split off `radiology.acquire` so the nurse who injects can record it without driving the machine.
+  @RequirePermission("radiology.contrast.record", "hospital")
   async contrast(
     @CurrentActor() actor: Actor,
     @Param("studyId") studyId: string,
@@ -219,7 +232,8 @@ export class RadiologyAcquisitionController {
    * deliberately not the actor who typed the row.
    */
   @Post("contrast-reactions")
-  @RequirePermission("radiology.acquire", "hospital")
+  // 18-S RS5 — the nurse watching the patient after the injection records the reaction too.
+  @RequirePermission("radiology.contrast.record", "hospital")
   async reaction(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const input = parsed(reactionBody, body);
     try {

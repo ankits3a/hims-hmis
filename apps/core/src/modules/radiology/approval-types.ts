@@ -7,7 +7,7 @@ import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
- * PLAN 18a T2 / DD13 — THE ONE APPROVAL TYPE THIS MODULE GATES ON.
+ * PLAN 18a T2 / DD13 — THE APPROVAL TYPES THIS MODULE GATES ON (two since 18-S RS5).
  *
  * ═══ AN APPROVAL TYPE REACHES A DEPLOYMENT ONLY THROUGH A SEED SCRIPT ═══
  *
@@ -46,7 +46,32 @@ export const RADIOLOGY_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
     actFirstAllowed: false,
     closureSlaMinutes: 1440,
   },
+  /**
+   * ═══ 18-S RS5 T2 — THE PREP BAY'S "PLEASE OVERRIDE", ROUTED TO THE RADIOLOGIST ═══
+   *
+   * The prep nurse cannot override a gate (the override lane is the radiologist's alone, DD7), so
+   * the bay FILES a request and the radiologist's decision runs the existing `overrideGate` with
+   * the decision note as the reason (`override-requests.ts`).
+   *
+   *   · **Approver `radiologist`** — the one role on the `open → overridden` edge. The HOD is a
+   *     radiologist and answers the same queue.
+   *   · **`urgent`, 30 minutes** — a patient is waiting in the bay; the closure SLA climbs the
+   *     kernel's ladder if nobody answers.
+   *   · **`actFirstAllowed: false`** — act-first would be the nurse overriding, which is the thing
+   *     this request exists not to be.
+   */
+  {
+    typeKey: "imaging_gate_override",
+    title: "Imaging safety gate override (asked by the prep bay)",
+    approverRole: "radiologist",
+    urgencyClass: "urgent",
+    actFirstAllowed: false,
+    closureSlaMinutes: 30,
+  },
 ];
+
+/** 18-S RS5 T2 — the type key the prep bay files under. */
+export const IMAGING_GATE_OVERRIDE_APPROVAL_TYPE = "imaging_gate_override";
 
 /** The type key, for callers that must not retype a string the engine matches exactly. */
 export const IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE = "imaging_definition_publish";

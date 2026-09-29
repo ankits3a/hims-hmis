@@ -4,6 +4,7 @@ import { setupRadiologyFixture } from "../../../test/helpers/radiology";
 import { events, imagingStudies } from "../../kernel/db/schema";
 import { createResource } from "../../kernel/resources/registry";
 import { withTx } from "../../kernel/db/client";
+import { fileLicence } from "../aerb";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { placeImagingOrder } from "./place";
 import { handleOrderPlaced } from "./consumers";
@@ -41,6 +42,11 @@ describe("bedside at order time (18-S RS2b P4)", () => {
       tx, fx.radiographer, RADIOLOGY_RESOURCE_KINDS,
       { kind: "device", code: "PX-1", name: "Portable X-ray", attributes: { modality: "xray", portable: true } },
     )));
+    /** 18-S RS4 T2 — an ionising machine is booked only while licensed; the trolley has its own. */
+    await withTx(db, (tx) => fileLicence(tx, fx.rso, {
+      deviceResourceId: portableXray, licenceType: "registration", licenceNo: "AERB/PX/FIXTURE/1",
+      validFrom: "2020-01-01", validTo: "2099-12-31", rsoUserId: fx.rso.id,
+    }));
   });
   afterEach(() => { fx.unregister(); });
 

@@ -22,7 +22,13 @@ import { ImagingDoorBody, VisitOrders, orderRefusalText } from "./imaging-order-
  *
  * The desk books and bills afterwards, from the queue; nothing here bills.
  */
-export function ImagingDeskDoor(): React.ReactElement {
+export function ImagingDeskDoor({ onOpen }: {
+  /**
+   * 18-S RS3 — take the found visit to the counter (Studies → Checks → Bill → Slot). Opening it is
+   * the patient arriving at the desk, so it is also what checks in a study booked for today.
+   */
+  onOpen?: (visit: { encounterNo: string; patientId: string }) => void;
+} = {}): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [typed, setTyped] = useState("");
@@ -77,6 +83,15 @@ export function ImagingDeskDoor(): React.ReactElement {
             </div>
           </div>
           {v.doctorUserId === null && <p role="alert" className="text-xs text-red-700">{t("imagingOrder.noDoctor")}</p>}
+          {onOpen !== undefined && door.data.orders.some((o) => o.items.some((i) => i.study !== null)) && (
+            <button
+              type="button" className="rounded border border-green-700 px-3 py-1 text-sm font-semibold"
+              data-testid="imaging-desk-open"
+              onClick={() => onOpen({ encounterNo: v.encounterNo, patientId: v.patient.id })}
+            >
+              {t("radiology.counter.openVisit")}
+            </button>
+          )}
 
           <div className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("imagingOrder.desk.advised")}</h3>

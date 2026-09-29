@@ -18,7 +18,7 @@ import { radiologyManifest } from "./manifest";
  */
 describe("the radiology event catalogue (18a T2)", () => {
   it("declares fourteen events, every one in the radiology module's namespace", () => {
-    expect(RADIOLOGY_EVENTS).toHaveLength(14); // 18-S RS2b: +imaging.bedside_requested; 18b T3: +imaging.image_viewed; 18a-iii T1: +imaging.contrast_administered; T2: +imaging.contrast_reaction; T4: +imaging.outside_study_registered; T5: +critical_overdue, +report_unread
+    expect(RADIOLOGY_EVENTS).toHaveLength(16); // 18-S RS6: +imaging.exposure_repeated; 18-S RS3: +imaging.booking_changed; 18-S RS2b: +imaging.bedside_requested; 18b T3: +imaging.image_viewed; 18a-iii T1: +imaging.contrast_administered; T2: +imaging.contrast_reaction; T4: +imaging.outside_study_registered; T5: +critical_overdue, +report_unread
     for (const event of RADIOLOGY_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "radiology"]);
       expect(event.version).toBe(1);
@@ -47,11 +47,13 @@ describe("the radiology event catalogue (18a T2)", () => {
     expect(RADIOLOGY_EVENTS.map((e) => e.name).sort()).toEqual([
       "imaging.bedside_requested",
       "imaging.bill_decision_raised",
+      "imaging.booking_changed",
       "imaging.contrast_administered",
       "imaging.contrast_reaction",
       "imaging.critical_acknowledged",
       "imaging.critical_flagged",
       "imaging.critical_overdue",
+      "imaging.exposure_repeated",
       "imaging.gate_evaluated",
       "imaging.image_viewed",
       "imaging.outside_study_registered",
