@@ -14,14 +14,19 @@ import { useCopilot } from "../../lib/use-copilot";
 import { usePaletteOptional } from "../../components/command-palette";
 import { Button } from "@/components/ui/button";
 import { istClock, istDateLabel } from "../desk-one/model";
+import { AdrRegisterView } from "./adr";
+import { ColdChainView } from "./cold-chain";
 import { ControlledView } from "./controlled";
+import { IncidentRegisterView } from "./incidents";
 import { ItemsView } from "./items";
+import { StockLedgerPage } from "./ledger";
 import { MessagesView } from "./messages";
 import { PayView } from "./pay";
 import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
 import { TodayDesk, money0 } from "./today";
+import { TrayChecksView } from "./trays";
 import { fetchControlledToday } from "../../lib/controlled-api";
 import { FormularyAdmin } from "../formulary-admin";
 import { MaterialsCounts } from "../materials-counts";
@@ -110,7 +115,7 @@ export function PharmacyOfficeReports(): React.ReactElement {
 }
 
 /** B3 — the page of a side, rendered inside the frame: the office's own sides and the folded screens as they are. */
-function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: ReturnsOpen }, buy: React.ReactElement): React.ReactElement | null {
+function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: ReturnsOpen }, buy: React.ReactElement, go: (g: Go) => void): React.ReactElement | null {
   switch (key) {
     case "orders": return buy;
     case "reorder": return <PharmacyReorder />;
@@ -120,7 +125,14 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "grn": case "opening": return <MaterialsGrn />;
     case "counts": return <MaterialsCounts />;
     case "transfers": return <MaterialsTransfers />;
+    // A5 — the ledger's document opens where the office keeps it: a return's or write-off's sheet, else its page.
+    case "ledger": return <StockLedgerPage onOpen={(l) => go(
+      l.kind === "return" || l.kind === "writeoff" ? { to: "view", view: "returns", page: "returns", open: { kind: l.kind, id: l.id } }
+        : { to: "view", view: "stock", page: l.kind === "grn" ? "grn" : l.kind === "transfer" ? "transfers" : "counts" },
+    )} />;
     case "downtime": return <PharmacyDowntime />;
+    case "cold": return <ColdChainView />;
+    case "trays": return <TrayChecksView />;
     case "master": return <MaterialsItems />;
     case "sells": return <PharmacyItems />;
     case "formulary": return <FormularyAdmin />;
@@ -130,6 +142,8 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "retail": return <PharmacyRetailLicence />;
     case "pharmacists": return <PharmacyPharmacists />;
     case "messages": return <MessagesView />;
+    case "adr": return <AdrRegisterView />;
+    case "incidents": return <IncidentRegisterView />;
     case "reports": return <ReportsView />;
     default: return null;
   }
@@ -266,7 +280,7 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView | "co
     <div className="pof-legacy space-y-5">
       {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
       {canControlled && shown !== "law" && shown !== "today" && <ControlledStrip onOpen={() => open("law", "controlled")} />}
-      {page !== null && pageBody(page.key, seed, buy)}
+      {page !== null && pageBody(page.key, seed, buy, go)}
     </div>
   );
   const pageTitle = (p: OfficePage): string => t(`pharmacyOffice.menu.page.${p.key}`);

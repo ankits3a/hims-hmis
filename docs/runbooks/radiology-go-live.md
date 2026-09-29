@@ -632,7 +632,7 @@ order → acted time.
 
 ### 15a. Release — the patient's copy held for dues, the owner's unpaid release, the late "ready" message (18-S RS9b)
 
-**Migration `0151_radiology_release_unpaid`** (additive): `imaging_report_handovers.release_approval_id`
+**Migration `0153_radiology_release_unpaid`** (additive): `imaging_report_handovers.release_approval_id`
 (nullable text) and a unique partial index on it. **One new approval type,
 `imaging_release_unpaid_owner`** (approver **owner**, urgent, 60 minutes, no act-first) — it is
 registered by `pnpm seed:radiology` (`registerRadiologyApprovalTypes`, idempotent — types already

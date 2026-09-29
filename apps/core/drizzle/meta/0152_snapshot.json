@@ -1,6 +1,6 @@
 {
-  "id": "b89d4419-6b32-419f-b61f-914f47d93382",
-  "prevId": "eae08b84-3e11-4865-91b8-62b709dce843",
+  "id": "975b80dc-469e-4b05-a71d-58e0db3fa508",
+  "prevId": "b89d4419-6b32-419f-b61f-914f47d93382",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -21493,6 +21493,12 @@
         },
         "ledger_entry_id": {
           "name": "ledger_entry_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
           "type": "text",
           "primaryKey": false,
           "notNull": false

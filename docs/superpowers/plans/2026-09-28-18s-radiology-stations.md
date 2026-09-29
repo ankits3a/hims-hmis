@@ -1091,7 +1091,7 @@ migration:
   settlement) and `credit_note.issued { invoiceId, … }`. Partners already consumes both by name. The
   ledger answer is `invoiceSettlement` (exported). No billing signature needs to change.
 
-**RS9b as built** (this PR; lane `radiology-rs9b`; one migration, `0151_radiology_release_unpaid`):
+**RS9b as built** (this PR; lane `radiology-rs9b`; one migration, `0153_radiology_release_unpaid`):
 - **T1 · the hold (core).** `held.ts`: `patientCopyHold` (IPD/day-care/bedside → STAT → no line →
   payer → ledger), `assertPatientCopyReleasable` (called by `handOverReport` after the collector
   checks, before any write), `requestUnpaidRelease`. Refusals in plain words with the amount and the
