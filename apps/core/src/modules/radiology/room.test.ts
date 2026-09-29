@@ -169,7 +169,10 @@ describe("modality rooms (18-S RS6)", () => {
     await withTx(db, (tx) => recordAcquired(tx, fx.radiographer, fx.decls, {
       studyId: study.studyId, imageSource: "no_pacs_images", doseDap: 0.12, now: NOW,
     }));
-    const today = new Date().toISOString().slice(0, 10);
+    /* `roomRejects` reads IST calendar days (`istRange`) and the repeat events carry the real clock, so
+     * "today" must be TODAY IN IST. The UTC date was a time bomb: from 18:30 to 24:00 UTC (00:00-05:30
+     * IST) the events fell on the next IST day, outside `to`, and repeats read 0 (#401 CI, 18:32 UTC). */
+    const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
     const view = await roomRejects(db, { from: "2020-01-01", to: today });
     expect(view.rows).toEqual([expect.objectContaining({ deviceCode: "DEV-XRAY", acquired: 1, repeats: 2 })]);
     expect(view.reasons).toEqual([{ reason: "positioning", count: 1 }, { reason: "motion", count: 1 }]);
