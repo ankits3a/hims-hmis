@@ -1,6 +1,6 @@
 {
-  "id": "fc166340-19f7-4522-982e-736afa0fb00c",
-  "prevId": "d3f19fcd-00fb-447e-8488-1e572c52932a",
+  "id": "e765859e-3381-45e4-84da-7efaa51ed479",
+  "prevId": "fc166340-19f7-4522-982e-736afa0fb00c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -29558,7 +29558,7 @@
       "checkConstraints": {
         "imaging_definitions_kind_ck": {
           "name": "imaging_definitions_kind_ck",
-          "value": "\"imaging_definitions\".\"kind\" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels', 'imaging_protocols')"
+          "value": "\"imaging_definitions\".\"kind\" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels', 'imaging_protocols', 'report_templates', 'report_signatories')"
         },
         "imaging_definitions_status_ck": {
           "name": "imaging_definitions_status_ck",
@@ -30026,6 +30026,18 @@
         },
         "provenance": {
           "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signer": {
+          "name": "signer",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sign_checks": {
+          "name": "sign_checks",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

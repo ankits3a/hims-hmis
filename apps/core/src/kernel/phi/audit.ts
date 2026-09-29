@@ -183,6 +183,12 @@ export type PhiSurface =
    */
   | "aerb.dose_register"
   /**
+   * 18-S RS11 — the radiation incident register names the patient who was exposed. Reading it is a
+   * list of patients and what went wrong for them, a disclosure of its own: one row per patient
+   * disclosed, the `aerb.dose_register` rule. An APPEND to the union and nothing else.
+   */
+  | "aerb.incident_register"
+  /**
    * FD-23 CLOSE REVIEW — **THE COLLECTION WORKLIST, AND IT IS AN APPEND AND NOTHING ELSE.**
    *
    * `GET /billing/worklist` answers "of today's visits, which still owe money?" and returns a

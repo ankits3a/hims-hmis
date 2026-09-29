@@ -126,7 +126,8 @@ export function StationShell({
   const folded = inHand && copilot !== undefined && !listChoice;
 
   useEffect(() => { setListChoice(false); }, [inHand]);
-  useEffect(() => { if (closeListOn !== undefined) setListOpen(false); }, [closeListOn]);
+  /** 18-S RS11 — the header Menu folds too: a view picked from it (a tab) must not stay covered. */
+  useEffect(() => { if (closeListOn !== undefined) { setListOpen(false); setMenuOpen(false); } }, [closeListOn]);
 
   useEffect(() => {
     if (!listOpen && !menuOpen) return;

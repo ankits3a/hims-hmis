@@ -533,3 +533,129 @@ export const aerbSettings = pgTable(
     check("aerb_settings_level_ck", sql`${t.investigationLevelMsvPerMonth} > 0`),
   ],
 );
+
+/**
+ * ═══ 7. 18-S RS11 — THE RADIATION INCIDENT REGISTER ═══
+ *
+ * Unintended or accidental exposure of a patient or a worker: what happened, what was done at once,
+ * why it happened, what changes, and whether AERB was told. Additive to the AERB registers for D1's
+ * reason: the C-arm in the cath lab owes the same register as the CT.
+ *
+ * The AERB notification is a FACT with a date and a reference, both or neither — a register that
+ * could say "notified" without saying when and under which number proves nothing to an inspector.
+ * Corrective actions are a list on the row (each with an owner and a done date); an incident with an
+ * action still open cannot close (`incident_actions_open`).
+ */
+export const AERB_INCIDENT_KINDS = [
+  "wrong_patient",
+  "wrong_study",
+  "pregnant_patient",
+  "repeat_over_threshold",
+  "equipment_malfunction",
+  "worker_over_limit",
+  "other",
+] as const;
+export type AerbIncidentKind = (typeof AERB_INCIDENT_KINDS)[number];
+
+export const AERB_INCIDENT_STATES = ["open", "investigated", "closed"] as const;
+export type AerbIncidentState = (typeof AERB_INCIDENT_STATES)[number];
+
+export const AERB_INCIDENT_AFFECTED = ["patient", "worker", "other"] as const;
+export type AerbIncidentAffected = (typeof AERB_INCIDENT_AFFECTED)[number];
+
+/** One corrective action. `doneOn` null = still open. */
+export interface AerbIncidentAction {
+  action: string;
+  owner: string;
+  doneOn: string | null;
+}
+
+export const aerbIncidents = pgTable(
+  "aerb_incidents",
+  {
+    id: text("id").primaryKey(),
+    /** `INC-26-001` — per calendar year, minted under an advisory lock. What people say aloud. */
+    incidentNo: text("incident_no").notNull(),
+    kind: text("kind").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    /** The machine, when there was one. */
+    deviceResourceId: text("device_resource_id").references(() => resources.id),
+    affectedType: text("affected_type").notNull(),
+    patientId: text("patient_id").references(() => patients.id),
+    workerUserId: text("worker_user_id").references(() => users.id),
+    /** Free text for the person when neither id applies (a relative holding a child, a visitor). */
+    affectedName: text("affected_name"),
+    estimatedDoseMsv: numeric("estimated_dose_msv", { precision: 10, scale: 3 }),
+    doseNote: text("dose_note"),
+    description: text("description").notNull(),
+    immediateAction: text("immediate_action").notNull(),
+    rootCause: text("root_cause"),
+    correctiveActions: jsonb("corrective_actions").$type<AerbIncidentAction[]>().notNull().default(sql`'[]'::jsonb`),
+    /** The RSO's judgement that the exposure was significantly above what was intended. */
+    significantlyAboveIntended: boolean("significantly_above_intended").notNull().default(false),
+    /** Computed at record time by the DECIDED rule (`aerb/incidents.ts`) and stored with the row. */
+    notifyRequired: boolean("notify_required").notNull(),
+    notifiedOn: date("notified_on", { mode: "string" }),
+    notificationRef: text("notification_ref"),
+    state: text("state").notNull().default("open"),
+    investigatedAt: timestamp("investigated_at", { withTimezone: true }),
+    investigatedBy: text("investigated_by"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedBy: text("closed_by"),
+    closureNote: text("closure_note"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("aerb_incidents_no_ux").on(t.incidentNo),
+    index("aerb_incidents_state_idx").on(t.state, t.occurredAt),
+    check("aerb_incidents_kind_ck", inList(t.kind, AERB_INCIDENT_KINDS)),
+    check("aerb_incidents_state_ck", inList(t.state, AERB_INCIDENT_STATES)),
+    check("aerb_incidents_affected_ck", inList(t.affectedType, AERB_INCIDENT_AFFECTED)),
+    check(
+      "aerb_incidents_who_ck",
+      sql`(${t.affectedType} <> 'patient' or ${t.patientId} is not null)
+          and (${t.affectedType} <> 'worker' or ${t.workerUserId} is not null)
+          and (${t.affectedType} <> 'other' or ${t.affectedName} is not null)`,
+    ),
+    check("aerb_incidents_dose_ck", sql`${t.estimatedDoseMsv} is null or ${t.estimatedDoseMsv} >= 0`),
+    check(
+      "aerb_incidents_notified_ck",
+      sql`(${t.notifiedOn} is null) = (${t.notificationRef} is null)`,
+    ),
+    check("aerb_incidents_closed_ck", sql`(${t.state} = 'closed') = (${t.closedAt} is not null)`),
+  ],
+);
+
+/**
+ * ═══ 8. 18-S RS11 — A RADIATION WORKER'S PREGNANCY DECLARATION ═══
+ *
+ * Voluntary and confidential: the RSO records it (`aerb.registers.manage`) and only a holder of
+ * `aerb.registers.read` sees it. While it is active her badge reads are compared with the 1 mSv
+ * foetal limit for the rest of the pregnancy (`limits.ts`), and the RSO's list tells them to
+ * reassign or restrict her ionising work. One active declaration per worker.
+ */
+export const aerbPregnancyDeclarations = pgTable(
+  "aerb_pregnancy_declarations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    declaredOn: date("declared_on", { mode: "string" }).notNull(),
+    /** The expected date of delivery she gave. The declaration lapses after it unless ended sooner. */
+    expectedOn: date("expected_on", { mode: "string" }).notNull(),
+    endedOn: date("ended_on", { mode: "string" }),
+    endReason: text("end_reason"),
+    remarks: text("remarks"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("aerb_pregnancy_declarations_active_ux").on(t.userId).where(sql`${t.endedOn} is null`),
+    check("aerb_pregnancy_declarations_expected_ck", sql`${t.expectedOn} >= ${t.declaredOn}`),
+    check(
+      "aerb_pregnancy_declarations_ended_ck",
+      sql`${t.endedOn} is null or ${t.endedOn} >= ${t.declaredOn}`,
+    ),
+  ],
+);
