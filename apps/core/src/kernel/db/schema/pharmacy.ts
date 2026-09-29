@@ -173,6 +173,13 @@ export const pharmacyDispenseLines = pgTable(
      * Schedule X is a CONTROLLED line: it is picked from the cabinet and handed over under two keys.
      */
     ndpsClass: text("ndps_class"),
+    /**
+     * DESK FIXES 2026-09-30 — the pick split this line across batches FEFO: this row carries one of
+     * the later batches of the prescription line `split_from_line_idx` names (same rx line, same
+     * medicine), so the label, the bill and the H1 register each get one row per batch. Null on
+     * every line the doctor's prescription laid, and on every line picked from one batch.
+     */
+    splitFromLineIdx: integer("split_from_line_idx"),
     status: text("status").notNull().default("open"),
     declinedReason: text("declined_reason"),
     declinedBy: text("declined_by"),

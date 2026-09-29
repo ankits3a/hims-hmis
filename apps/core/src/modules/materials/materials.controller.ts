@@ -35,7 +35,7 @@ import type { ExpiryReport, ReturnPlan, ReturnSummary, ReturnView, ReturnableBat
 import { getWriteOff, listWriteOffs, postWriteOff, raiseWriteOff } from "./write-offs";
 import type { WriteOffSummary, WriteOffView } from "./write-offs";
 import {
-  captureGrn, getGrn, listGrns, postGrn, requestNearExpiryAcceptance, runGateQc,
+  captureGrn, getGrn, listGrns, nearExpiryAcceptanceView, postGrn, requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
 import { getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist } from "./transfers";
 import type { TransferView } from "./transfers";
@@ -997,6 +997,20 @@ export class MaterialsController {
     const grn = await getGrn(this.db, grnId);
     if (grn === undefined) toHttp(new MaterialsError("unknown_document", `GRN ${grnId} not found`));
     return { grn };
+  }
+
+  /**
+   * WALK FINDING 2026-09-29 — what a near-expiry approval is about, for the approvals card: the GRN,
+   * its supplier and its short-dated lines with days left. A read under the same grant as `grn()`.
+   */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("grns/:id/near-expiry")
+  async grnNearExpiry(@Param("id") grnId: string): Promise<unknown> {
+    try {
+      return await nearExpiryAcceptanceView(this.db, grnId, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
   }
 
   @RequirePermission("materials.grn.capture", "hospital")

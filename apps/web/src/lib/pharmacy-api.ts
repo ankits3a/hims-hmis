@@ -69,6 +69,8 @@ export type WireRxLine = {
 };
 export type WireMedicine = { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag?: string | null };
 export type WireDispenseLine = {
+  /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it). Absent from an older server. */
+  splitFromLineIdx?: number | null;
   lineIdx: number; rxLine: WireRxLine; status: string; declinedReason: string | null; substitutionType: string;
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
@@ -209,7 +211,8 @@ export async function fetchPatientRail(id: string): Promise<WirePatientRail> {
 /** The board's three boxes on the done screen (`closing.ts`), read once when the ticket has closed. */
 export type WireClosing = {
   ticket: { dispenseNo: string | null; claimedByName: string | null; claimedAt: string | null; handedOverAt: string | null; lines: number; substituted: number; declined: number };
-  money: { invoiceNo: string; netPayablePaise: number; cgstPaise: number; sgstPaise: number; receiptNo: string | null; changeGivenPaise: number; tenders: { mode: string; amountPaise: number; refText: string | null }[] } | null;
+  /** `roundingPaise` — the invoice's own rounding (what was taken minus the raw total). Absent from an older server. */
+  money: { invoiceNo: string; netPayablePaise: number; roundingPaise?: number; cgstPaise: number; sgstPaise: number; receiptNo: string | null; changeGivenPaise: number; tenders: { mode: string; amountPaise: number; refText: string | null }[] } | null;
   registers: { h1Rows: number; batches: number };
 };
 export async function fetchClosing(id: string): Promise<WireClosing> {

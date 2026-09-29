@@ -741,6 +741,43 @@ export async function getGrn(db: Db | Tx, grnId: string): Promise<GrnWithLines |
   return { ...row, lines };
 }
 
+/**
+ * WALK FINDING 2026-09-29 — WHAT A NEAR-EXPIRY APPROVER IS SAYING YES TO.
+ *
+ * The approvals card read only "Accept a delivery of items that expire soon — Asked by …". The
+ * materials head was being asked to put short-dated stock on a shelf without being told which GRN,
+ * which supplier, which drug, which batch or how short. This is the read the card shows: the GRN
+ * and its supplier and ONLY its near-expiry lines, each with the batch, the expiry, the days left
+ * on `now`'s IST day, and the quantity in base units. A read — it decides nothing and gates nothing;
+ * `postGrn` still reads the approval's STATUS (A17).
+ */
+export type NearExpiryAcceptanceView = {
+  grnId: string; grnNo: string; vendorName: string; challanNo: string; invoiceNo: string | null;
+  lines: { itemCode: string; itemName: string; batchNo: string | null; expiryDate: string | null; daysLeft: number | null; qtyBase: number; baseUom: string }[];
+};
+
+export async function nearExpiryAcceptanceView(db: Db | Tx, grnId: string, now: Date): Promise<NearExpiryAcceptanceView> {
+  const grn = await requireGrn(db, grnId);
+  const [vendor] = await db.select({ legalName: vendors.legalName }).from(vendors).where(eq(vendors.id, grn.vendorId));
+  const lines = await db.select().from(grnLines)
+    .where(and(eq(grnLines.grnId, grnId), eq(grnLines.nearExpiry, true))).orderBy(asc(grnLines.expiryDate), asc(grnLines.id));
+  const named = await itemsByIds(db, [...new Set(lines.map((l) => l.itemId))]);
+  const today = Date.parse(`${istDay(now)}T00:00:00Z`);
+  return {
+    grnId, grnNo: grn.grnNo, vendorName: vendor?.legalName ?? grn.vendorId, challanNo: grn.challanNo, invoiceNo: grn.invoiceNo,
+    lines: lines.map((l) => {
+      const item = named.get(l.itemId);
+      return {
+        itemCode: item?.code ?? l.itemId, itemName: item?.name ?? l.itemId, batchNo: l.batchNo, expiryDate: l.expiryDate,
+        daysLeft: l.expiryDate === null ? null : Math.round((Date.parse(`${l.expiryDate}T00:00:00Z`) - today) / DAY_MS),
+        // What will go on the shelf if the answer is yes: the gate's accepted quantity once QC has run.
+        qtyBase: l.qtyAcceptedBase > 0 ? l.qtyAcceptedBase : l.qtyBase,
+        baseUom: item?.baseUom ?? "",
+      };
+    }),
+  };
+}
+
 export async function listGrns(
   db: Db | Tx,
   filter: { vendorId?: string; storeResourceId?: string; status?: string } = {},

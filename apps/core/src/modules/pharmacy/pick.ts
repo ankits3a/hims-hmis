@@ -4,6 +4,7 @@ import { pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema
 import { withTx } from "../../kernel/db/client";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
+import { newId } from "@hmis/contracts";
 import { availableQty, balances, fefoPick, getBatch, reserveStock } from "../materials";
 import { PICK_RESERVATION_MINUTES, istDateOf } from "./config";
 import { controlOf, requireControlledStore } from "./controlled";
@@ -32,14 +33,24 @@ export type PickLineInput = {
 export type PickInput = { lines?: PickLineInput[] };
 
 /**
- * PLAN 16c T4 / D2 — THE PICK IS A RESERVATION THE LEDGER HOLDS. ONE BATCH PER LINE.
+ * PLAN 16c T4 / D2 — THE PICK IS A RESERVATION THE LEDGER HOLDS. ONE BATCH PER DISPENSE LINE.
  *
- * For every open line: FEFO offers the earliest-expiring batch at the counter's store
- * (`fefoPick`), and the line takes ONE batch — a strip is one batch, and a line that spans two
- * batches is two labels and two register rows for one prescription line, which this phase does
- * not do. When the first FEFO batch cannot cover the quantity the pharmacist chooses: a PARTIAL
- * dispense (a smaller `qtyBase` with a `pickNote`) or a later batch that can (`batchId`, an
- * override that is recorded, never silent). Neither choice is made for them.
+ * For every open line: FEFO offers the earliest-expiring batches at the counter's store
+ * (`fefoPick`: held here, not recalled, not expired, net of reservations and cold-chain/recall
+ * freezes). A dispense line holds ONE batch — a strip is one batch, and a batch is one label and
+ * one register row.
+ *
+ * ═══ DESK FIXES 2026-09-30 — THE SPLIT (DECIDED: standard Indian hospital practice) ═══
+ *
+ * When the first batch cannot cover the quantity and the later ones can, the pick SPLITS the line
+ * FEFO: the prescription's line keeps the first batch, and each further batch becomes a NEW dispense
+ * line (the same rx line, medicine, schedule and substitution, `split_from_line_idx` = the line it
+ * came from, no order item of its own). So the ledger, the bill, the label and the H1 register get
+ * one row per batch through the code that already writes one row per line, and every per-batch guard
+ * is the one the single-batch pick had. Before, the pharmacist had to give a partial with a reason
+ * although the next batch held the rest. Only more than ALL the batches hold is `short_stock`: a
+ * PARTIAL (a smaller `qtyBase` with a `pickNote`, kept on the prescription's line). A NAMED batch
+ * (`batchId`, or a GS1 scan's batch) is still ONE batch — an override is a choice of that strip.
  *
  * ═══ A1 (T4) — THE LAST TEN TABLETS ═══
  *
@@ -69,8 +80,10 @@ export async function pickDispense(
    */
   const cabinet = lines.some((l) => l.status === "open" && controlOf(l.scheduleFlag, l.ndpsClass).controlled) ? await requireControlledStore(db) : undefined;
 
-  type Plan = { lineId: string; lineIdx: number; itemId: string; batchId: string; qtyBase: number; fefoOverride: boolean; pickNote: string | null; scanned: boolean; store: string };
+  /** `splitFrom` — a further batch of the prescription line at that index: a NEW dispense line, inserted at the reservation. */
+  type Plan = { lineId: string; lineIdx: number; itemId: string; batchId: string; qtyBase: number; fefoOverride: boolean; pickNote: string | null; scanned: boolean; store: string; splitFrom: number | null };
   const plan: Plan[] = [];
+  let nextIdx = Math.max(-1, ...lines.map((l) => l.lineIdx)) + 1;
   for (const line of lines) {
     if (line.status !== "open") continue;
     const store = cabinet !== undefined && controlOf(line.scheduleFlag, line.ndpsClass).controlled ? cabinet.id : d.storeResourceId;
@@ -112,33 +125,48 @@ export async function pickDispense(
         throw new PharmacyError("fefo_override_unavailable", `line ${String(line.lineIdx + 1)}: batch ${named} cannot cover ${String(qty)} at this store`, { lineIdx: line.lineIdx, available });
       }
       const offered = await fefoPick(db, store, line.itemId, qty, now);
-      plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned, store });
+      plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned, store, splitFrom: null });
       continue;
     }
     const offered = await fefoPick(db, store, line.itemId, qty, now);
-    const first = offered[0];
-    if (first === undefined || first.qty < qty) {
+    const covered = offered.reduce((n, o) => n + o.qty, 0);
+    if (offered.length === 0 || covered < qty) {
       // The number in a REFUSAL has to mean the same thing as the number on the screen, or the
-      // sentence reads as a contradiction: "the earliest batch holds 0 of 20 (50 across batches)"
-      // when all fifty are expired. `availableQty` is the one definition the pick itself obeys.
+      // sentence reads as a contradiction: "the shelf holds 0 of 20 (50 across batches)" when all
+      // fifty are expired. `availableQty` is the one definition the pick itself obeys.
       const available = await availableQty(db, store, line.itemId, now);
       throw new PharmacyError(
         "short_stock",
-        `line ${String(line.lineIdx + 1)}: the earliest batch holds ${String(first?.qty ?? 0)} of ${String(qty)} (${String(available)} across batches) — dispense a partial quantity with a reason, or choose a batch that covers it`,
+        `line ${String(line.lineIdx + 1)}: the shelf holds ${String(covered)} of ${String(qty)} across its batches — dispense a partial quantity with a reason`,
         { lineIdx: line.lineIdx, offered, available },
       );
     }
-    plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: first.batchId, qtyBase: qty, fefoOverride: false, pickNote: partial ? note : null, scanned, store });
+    for (const [k, part] of offered.entries()) {
+      plan.push(k === 0
+        ? { lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: partial ? note : null, scanned, store, splitFrom: null }
+        : { lineId: newId(), lineIdx: nextIdx++, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: null, scanned: false, store, splitFrom: line.lineIdx });
+    }
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to pick");
 
   await withTx(db, async (tx) => {
     const expiresAt = new Date(now.getTime() + PICK_RESERVATION_MINUTES * 60_000);
     for (const p of plan) {
+      if (p.splitFrom !== null) {
+        /* The same prescription line, from a later batch: everything the verify settled is copied; the order item stays with the original. */
+        const from = lines.find((l) => l.lineIdx === p.splitFrom)!;
+        await tx.insert(pharmacyDispenseLines).values({
+          id: p.lineId, dispenseId: d.id, lineIdx: p.lineIdx, rxLine: from.rxLine,
+          orderedMedicineId: from.orderedMedicineId, dispensedMedicineId: from.dispensedMedicineId,
+          substitutionType: from.substitutionType, consentBy: from.consentBy, consentAt: from.consentAt,
+          itemId: from.itemId, scheduleFlag: from.scheduleFlag, ndpsClass: from.ndpsClass, splitFromLineIdx: p.splitFrom,
+        });
+      }
       const { reservationId } = await reserveStock(tx, actor, { resourceId: p.store, batchId: p.batchId, qty: p.qtyBase, refType: "pharmacy_dispense", refId: p.lineId, expiresAt });
       await tx.update(pharmacyDispenseLines)
         .set({ batchId: p.batchId, reservationId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride, pickNote: p.pickNote })
         .where(eq(pharmacyDispenseLines.id, p.lineId));
+      if (p.splitFrom !== null) continue;
       const line = lines.find((l) => l.id === p.lineId)!;
       if (line.orderItemId !== null) await advanceOrderItem(tx, actor, decls, line.orderItemId, "in_progress", { at: now });
     }
@@ -150,7 +178,7 @@ export async function pickDispense(
     if (d.workflowInstanceId !== null) await transition(tx, d.workflowInstanceId, "picked", actor);
     await appendEvent(tx, dispensePicked.make({
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
-      payload: { dispenseId: d.id, patientId: d.patientId, lines: plan.map((p) => ({ lineIdx: p.lineIdx, batchId: p.batchId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride, scanned: p.scanned })) },
+      payload: { dispenseId: d.id, patientId: d.patientId, lines: plan.map((p) => ({ lineIdx: p.lineIdx, batchId: p.batchId, qtyBase: p.qtyBase, fefoOverride: p.fefoOverride, scanned: p.scanned, splitFrom: p.splitFrom })) },
     }));
   });
   return getDispense(db, actor, d.id, now);

@@ -1,0 +1,1 @@
+ALTER TABLE "pharmacy_dispense_lines" ADD COLUMN "split_from_line_idx" integer;
