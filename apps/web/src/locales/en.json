@@ -6067,6 +6067,7 @@
     "noSubstitution": "no substitution",
     "givenShort": "given short — {{reason}}",
     "givenFrom": "given from {{batch}} · exp {{expiry}}",
+    "givenAlsoFrom": "+ {{batch}} · exp {{expiry}} × {{n}}",
     "fromBatch": "batch {{batch}} · exp {{expiry}} · {{n}} here",
     "scanned": "scanned",
     "blocked": {
@@ -6077,7 +6078,9 @@
       "schedule_x": "Schedule X is not dispensed at this counter."
     },
     "advice": {
-      "firstShort": "The earliest batch {{batch}} holds {{n}} and this line wants {{qty}} — one batch per line.",
+      "firstShort": "The batch you chose, {{batch}}, holds {{n}} and this line wants {{qty}} — a chosen batch is one batch.",
+      "shortAll": "All batches together: the shelf holds {{n}} and this line wants {{qty}}.",
+      "split": "Earliest expiry first, from {{n}} batches: {{parts}}",
       "take": "take {{batch}}",
       "give": "give {{n}}",
       "diesInCourse": "Batch {{batch}} expires {{expiry}}, before the {{days}}-day course ends."

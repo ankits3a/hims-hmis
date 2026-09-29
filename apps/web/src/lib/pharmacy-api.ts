@@ -69,6 +69,8 @@ export type WireRxLine = {
 };
 export type WireMedicine = { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag?: string | null };
 export type WireDispenseLine = {
+  /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it). Absent from an older server. */
+  splitFromLineIdx?: number | null;
   lineIdx: number; rxLine: WireRxLine; status: string; declinedReason: string | null; substitutionType: string;
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;

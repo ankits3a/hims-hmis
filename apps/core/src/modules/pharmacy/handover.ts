@@ -149,6 +149,7 @@ export async function handOverDispense(
     lines: lines.map((l) => ({
       lineIdx: l.lineIdx, drug: medicineName(l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId), (l.rxLine as RxLine).drug),
       scheduleFlag: l.scheduleFlag, ndpsClass: l.ndpsClass, qtyBase: l.qtyBase, rxLine: l.rxLine as RxLine, status: l.status,
+      splitFromLineIdx: l.splitFromLineIdx,
     })),
     prescriber: doctor === null ? null : { id: doctor.id, displayName: doctor.displayName, registrationNo: doctor.registrationNo ?? null },
     patientId: d.patientId, patientName: patient.name, patientAddress: patient.addressLine ?? null,

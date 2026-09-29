@@ -225,7 +225,10 @@ export function LineList({
     edit(to.lineIdx, { scan: code, batchId: to.batchId }, true);
   };
 
-  const settledCount = dispense.lines.filter((l) => isSettled(l, ticks[l.lineIdx])).length;
+  /* DESK FIXES 2026-09-30 — a split's further batches are drawn inside the prescription line they came from. */
+  const rows = dispense.lines.filter((l) => l.splitFromLineIdx == null);
+  const partsOf = (idx: number): WireDispenseLine[] => dispense.lines.filter((l) => l.splitFromLineIdx === idx);
+  const settledCount = rows.filter((l) => isSettled(l, ticks[l.lineIdx])).length;
   /* The co-pilot speaks about the first line the shelf cannot fill as written (the board's `agchip`). */
   const helpLine = firstLineNeedingHelp(dispense.lines);
 
@@ -233,10 +236,10 @@ export function LineList({
     <div data-testid="desk-lines">
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 15 }}>
         <div style={{ flexGrow: 1, height: 6, borderRadius: 3, background: "var(--line2)", overflow: "hidden" }}>
-          <span style={{ display: "block", width: `${String(dispense.lines.length === 0 ? 0 : (settledCount * 100) / dispense.lines.length)}%`, height: "100%", background: "var(--green)" }} />
+          <span style={{ display: "block", width: `${String(rows.length === 0 ? 0 : (settledCount * 100) / rows.length)}%`, height: "100%", background: "var(--green)" }} />
         </div>
         <span className="mo" style={{ fontSize: 12, color: "var(--dim)" }} data-testid="desk-settled">
-          {t("pharmacyDesk.settled", { n: settledCount, of: dispense.lines.length })}
+          {t("pharmacyDesk.settled", { n: settledCount, of: rows.length })}
         </span>
       </div>
       {/* ONE scan box for the ticket: a pack scanned here finds its own line (`routeScan`) and ticks it. */}
@@ -268,10 +271,11 @@ export function LineList({
         <span style={{ width: 30, flexShrink: 0 }} />
       </div>
       <div style={{ border: "1px solid var(--line)", borderTop: "none", borderRadius: "0 0 7px 7px", background: "var(--card)" }}>
-        {dispense.lines.map((l) => (
+        {rows.map((l) => (
           <LineRow
             key={l.lineIdx}
             line={l}
+            parts={partsOf(l.lineIdx)}
             tick={ticks[l.lineIdx]}
             editable={editable && l.status === "open" && l.pickedBatch == null}
             busy={busy}
@@ -404,9 +408,11 @@ type StewardAsk = { indication: string; cultureSent: boolean; plannedDays: numbe
 type Note = { text: string; tone: "red" | "gold" | "green" | "dim"; testId?: string; alert?: boolean };
 
 function LineRow({
-  line, tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, steward, onAskSteward, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve, onOpenBatch, onFocusLine, onNearMiss, onReaction,
+  line, parts = [], tick, editable, busy, today, error, precheck, onPlace, prescriberName, onAsk, steward, onAskSteward, declining, onEdit, onToggleDecline, onDecline, onSubstitute, onResolve, onOpenBatch, onFocusLine, onNearMiss, onReaction,
 }: {
   line: WireDispenseLine;
+  /** DESK FIXES 2026-09-30 — the further batches the pick split this line into (their own dispense lines, `splitFromLineIdx`). */
+  parts?: readonly WireDispenseLine[];
   tick: Tick | undefined;
   editable: boolean;
   busy: boolean;
@@ -492,7 +498,8 @@ function LineRow({
     : [];
 
   /* The line's own money at today's shelf price: quantity × the SERVER's quote, and the rate beside it. */
-  const qtyNow = qty ?? line.qtyBase;
+  /* A split line is given as ONE prescription line: its batches' quantities together. */
+  const qtyNow = parts.length > 0 && line.qtyBase !== null ? parts.reduce((n, p) => n + (p.qtyBase ?? 0), line.qtyBase) : (qty ?? line.qtyBase);
   const money = line.quote == null || qtyNow === null || declined
     ? null
     : { amount: rupees(quoteAmountPaise(line.quote, qtyNow)), rate: t("pharmacyDesk.eachRate", { amount: rupees(line.quote.unitPaise) }) };
@@ -526,6 +533,7 @@ function LineRow({
     if (line.pickedBatch != null && line.pickNote !== null) return { text: t("pharmacyDesk.givenShort", { reason: line.pickNote }), tone: "gold" };
     if (editable && blocked !== null) return { text: t(`pharmacyDesk.blocked.${blocked}`), tone: "gold" };
     if (advice?.kind === "first_short") return { text: t("pharmacyDesk.advice.firstShort", { batch: advice.batch.batchNo, n: advice.batch.available, qty: qty ?? 0 }), tone: "gold", testId: "advice" };
+    if (advice?.kind === "short_all") return { text: t("pharmacyDesk.advice.shortAll", { n: advice.available, qty: qty ?? 0 }), tone: "gold", testId: "advice" };
     if (advice?.kind === "dies_in_course") return { text: t("pharmacyDesk.advice.diesInCourse", { batch: advice.batch.batchNo, expiry: advice.batch.expiryDate ?? "", days: rx.durationDays ?? 0 }), tone: "gold", testId: "advice" };
     if (editable && partial) {
       return (tick?.reason ?? "").trim() === ""
@@ -533,6 +541,10 @@ function LineRow({
         : { text: t("pharmacyDesk.partialSaid", { n: qty ?? 0, of: line.qtyBase ?? 0, reason: tick?.reason.trim() ?? "" }), tone: "dim" };
     }
     if (editable && (sub ?? res) !== null) return { text: t("pharmacyDesk.sub.onShelf", { n: (sub ?? res)!.available }), tone: "dim" };
+    /* DESK FIXES 2026-09-30 — the pick splits it across batches; said, so the two strips are no surprise. */
+    if (advice?.kind === "split") {
+      return { text: t("pharmacyDesk.advice.split", { n: advice.parts.length, parts: advice.parts.map((p) => `${p.batch.batchNo} × ${String(p.qty)}`).join(" · ") }), tone: "dim", testId: "advice" };
+    }
     /* C7 — a price held down by law says so, or the pack and the bill disagree at the window. */
     if (money !== null && line.quote?.winner === "ceiling") {
       return { text: t("pharmacyDesk.ceiling", { mrp: rupees((line.quote.mrpUnitPaise ?? line.quote.unitPaise) * (line.quote.pack?.multiplier ?? 1)), pack: line.quote.pack?.uom ?? "" }), tone: "gold", testId: "ceiling" };
@@ -663,7 +675,7 @@ function LineRow({
 
           {/* The board's FEFO batch & shelf chip: the batch that goes out, and where it sits. */}
           {chipShown ? (
-            <span style={{ display: "block" }}><BatchChip line={line} tick={tick} onOpen={onOpenBatch} /></span>
+            <span style={{ display: "block" }}><BatchChip line={line} parts={parts} tick={tick} onOpen={onOpenBatch} /></span>
           ) : line.location != null && given !== null ? (
             <span className="pill" data-testid={`${id}-where`} style={{ marginTop: 5 }}>{line.location}</span>
           ) : null}
@@ -731,6 +743,14 @@ function LineRow({
               {qtyLabels(qty, packOf(line.item), line.item?.baseUom ?? "").main}{line.qtyBase === null ? "" : ` · ${t("pharmacyDesk.ofPrescribed", { of: line.qtyBase })}`}
             </span>
           </div>
+          {advice?.kind === "short_all" ? (
+            <p style={{ margin: "10px 0 0 0", fontSize: 12, lineHeight: "17px" }}>
+              {t("pharmacyDesk.advice.shortAll", { n: advice.available, qty: qty ?? 0 })}{" "}
+              <button type="button" className="sec" style={{ height: 26 }} onClick={() => onEdit({ qty: String(advice.available) }, false)}>
+                {t("pharmacyDesk.advice.give", { n: advice.available })}
+              </button>
+            </p>
+          ) : null}
           {advice?.kind === "first_short" ? (
             <p style={{ margin: "10px 0 0 0", fontSize: 12, lineHeight: "17px" }}>
               {t("pharmacyDesk.advice.firstShort", { batch: advice.batch.batchNo, n: advice.batch.available, qty: qty ?? 0 })}{" "}

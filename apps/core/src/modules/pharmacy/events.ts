@@ -100,6 +100,8 @@ export const dispensePicked = defineEvent("dispense.picked", MODULE, z.object({
     lineIdx: z.number().int().nonnegative(), batchId: id, qtyBase: z.number().int().positive(), fefoOverride: z.boolean(),
     /** P13 — the pack was scanned and matched the line's item. Absent on older events. */
     scanned: z.boolean().default(false),
+    /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it). Absent on older events. */
+    splitFrom: z.number().int().nonnegative().nullable().default(null),
   })).min(1),
 }));
 

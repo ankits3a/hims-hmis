@@ -68,7 +68,8 @@ export async function closingFor(db: Db, actor: Actor, dispenseId: string): Prom
   return {
     ticket: {
       dispenseNo: d.dispenseNo, claimedByName: names.get(d.claimedBy ?? "") ?? null, claimedAt: d.claimedAt,
-      handedOverAt: d.handedOverAt, lines: lines.length,
+      // A split's further batches are the same prescription line (the `batches` count below has them).
+      handedOverAt: d.handedOverAt, lines: lines.filter((l) => l.splitFromLineIdx === null).length,
       substituted: lines.filter((l) => l.substitutionType === "generic").length,
       declined: lines.filter((l) => l.status === "declined").length,
     },
