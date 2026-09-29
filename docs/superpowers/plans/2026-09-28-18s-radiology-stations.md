@@ -754,6 +754,109 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J6.
 - Migration: incidents.
 
+#### RS11 spike (read on main `583db9ff`, 29 Sep, before any code)
+- **(a) TLD reads today.** One route, `POST /aerb/badges/reads` (`aerb.registers.manage`), typed a
+  line at a time on the Badges tab: badge, period start/end, Hp(10) and Hp(0.07) mSv, report date,
+  lab ref, remarks. `recordBadgeRead` refuses a negative dose, an inverted period, a period ending
+  before the badge was issued, and a second read for the same badge × period
+  (`read_already_recorded`). The **investigation flag** is Hp(10) ≥ the monthly level (settings row,
+  default 1 mSv) pro-rated by days worn (`investigationLevelFor`, ÷ 30.44 days); the verdict and the
+  level are STORED on the row and an over-level read emits `radiation.dose_limit_warning` (nobody
+  consumes it). Limits (30 / 20-avg / 100 mSv) are constants; `badgeRegister` sums per WORKER and
+  flags the worst calendar year. **No import, no projection, no foetal comparison.**
+- **(b) QA → `qa_blocked`.** Confirmed: `aerb/qa.ts recordQa` writes `qa_blocked` through
+  `changeResourceStatus` in the same transaction as a `fail`, and a newer `pass` is the only exit
+  (RS4 kept Setup out of it). **Gap: an overdue QA blocks nothing** — 18c's D4 said so on purpose;
+  the calendar shows `overdue` and nothing acts. No job exists in `aerb` (manifest: "no job").
+- **(c) Incidents.** None. The only neighbour is radiology's contrast-reaction register
+  (`reactions.ts`). No table, route or screen records an unintended exposure or an AERB notification.
+- **(d) Pregnant worker.** None. No declaration table; the board's People view marks the pregnancy
+  roster gate "NOT BUILT"; 18c's runbook §8 lists "roster gates for a pregnant radiographer" as not
+  turned on.
+
+#### RS11 as built (this PR; lane `radiology-rs11`, rebased on `c3ba8525`; one migration, `0147`)
+- **T1 · TLD import (core).** `aerb/tld-import.ts`, `POST /aerb/badges/import {csv, reportedOn,
+  labRef, dryRun}` (`aerb.registers.manage`). Layout: badge no. · wearer name · period from · period
+  to · Hp(10) mSv · Hp(0.07) mSv · remarks, headers matched tolerantly (synonyms, then shapes like
+  "Name of the Radiation Worker"); dates day-first or ISO; BDL / ND / NIL / "-" / "<x" → 0.000 with
+  the words kept in remarks. Per-row errors: unknown badge, badge not worn that period, period
+  already on file, period repeated in the file, unparseable date/dose, period ending after the
+  report date. **All-or-nothing**: a dry run previews; a confirm with any bad row is `422
+  tld_import_rejected` with every row in `detail.rows`; a clean confirm writes every row through
+  `recordBadgeRead` in one transaction (stored investigation verdict, `radiation.dose_limit_warning`).
+  Flags per row: investigation level (1 mSv / month pro-rated), year on course for > 20 mSv
+  (projection = the calendar-year Hp(10) ÷ days worn × days in year), year over 30 mSv, the foetal
+  limit for a declared-pregnant wearer, a wearer name that differs from the badge book (warning).
+- **T2 · Incident register (core).** `aerb_incidents` (migration 0147), `aerb/incidents.ts`,
+  `GET /aerb/incidents` (`aerb.incidents.read`, NEW — RSO + radiologist), `POST /aerb/incidents`,
+  `…/:id/investigate`, `…/:id/actions`, `…/:id/notify`, `…/:id/close` (`aerb.registers.manage`).
+  Kinds: wrong patient, wrong study, pregnant patient, repeat over threshold, equipment malfunction,
+  worker over limit, other. `INC-yy-nnn` under an advisory lock. open → investigated (root cause +
+  ≥ 1 action) → closed; close refuses `incident_actions_open` / `notification_required`. PHI surface
+  `aerb.incident_register` (one row per patient disclosed; confidential patients by alias). Event
+  `aerb.incident_recorded` (no patient, no worker in the payload).
+- **T3 · QA overdue → `qa_blocked` (core).** `qaDueList` (due = the record's `nextDueOn`, else
+  performed + 2 years; counted from the latest non-failed record per machine × test);
+  `sweepOverdueQa` in the worker, **hourly** (`kernel/worker/jobs.ts`, job 23), writes `qa_blocked`
+  through `changeResourceStatus` as system actor `aerb-qa-overdue-sweep`, only on an `available`
+  machine. `recordQa`'s pass no longer releases while another test on the machine is overdue
+  (`stillOverdue`). `GET /aerb/qa/due`.
+- **T4 · Pregnant worker (core).** `aerb_pregnancy_declarations` (same migration), `aerb/pregnancy.ts`,
+  `GET|POST /aerb/pregnancy`, `POST /aerb/pregnancy/:id/end` (read `aerb.registers.read`, write
+  `aerb.registers.manage`). Foetal dose = her Hp(10) reads after the declaration, pro-rated by days;
+  compared with 1 mSv on the declaration list, on every import row and on a typed read
+  (`recordBadgeRead` → `overFoetalLimit`). `activeDeclarations` exported for RS10.
+- **The RSO's one list.** `GET /aerb/attention` (`attentionList`): QA failed / overdue / due, open
+  incidents (red when the AERB clock ran out), workers over a statutory limit, investigation-level
+  reads of the last 90 days, active pregnancy declarations. Exported for RS10's escalations.
+- **T5 · Web.** Radiation safety's tabs are the station's header views (`views`), + TLD import,
+  Incidents, Pregnant workers; QA gains the due list with the blocked machines; the right column is
+  "Needs you" (a row opens its view); header stats. `components/radiology/radiation-safety-views.tsx`.
+  Nav row gains `anyOf: ["aerb.incidents.read"]`; a holder of incidents-read without registers-read
+  sees the Incidents view only. `StationShell`: `closeListOn` now also folds the header Menu (a tab
+  picked from the Menu on a phone was left covering the screen — found on the walk).
+- **Constants with sources** (`aerb/limits.ts`): `PREGNANT_WORKER_FOETAL_LIMIT_MSV = 1`,
+  `QA_DEFAULT_INTERVAL_YEARS = 2`, `RADIATION_SAFETY_SOURCES` (30 / 20-avg / investigation level /
+  foetal / QA cadence / TLD service), served on `/aerb/attention`.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *An overdue QA blocks* (reverses 18c D4, per the brief and ruling 5): a machine operated past its
+    periodic QA is outside its licence conditions; the calendar shows it 30 days ahead.
+  - *The block is a worker sweep, not a booking-time check* (the house pattern — `sweepBatchExpiry`,
+    the radiology chasers): a booking-time write would roll back with the booking's own refusal.
+    Hourly, so a machine busy at one tick is caught at the next. Only `available` machines; `down` /
+    `maintenance` / in use are someone else's status.
+  - *A machine with no QA record at all is not blocked by the sweep*: the licence gate already refuses
+    an unlicensed machine, and the licence is issued on the acceptance QA.
+  - *AERB notification*: required for any exposure significantly above intended (the RSO's recorded
+    judgement) or any worker over a limit; clock 24 h from recording; shown red, never a block.
+  - *Incident read = RSO + radiologist* (`aerb.incidents.read`, new); write stays the RSO's.
+  - *Pregnancy: a prompt, not a roster gate* (least invasive): the RSO list says "reassign or
+    restrict"; the roster is untouched; the declaration is visible only on the RSO's register (the
+    radiologist does not hold `aerb.registers.read`), and the room console names no one.
+  - *Foetal dose = post-declaration Hp(10), pro-rated* (no abdomen badge modelled).
+  - *Projection* compares against 20 mSv (the five-year-average annual limit); the actual year
+    against 30.
+  - *A worker over a limit does not open an incident automatically* (18c D9, record-only): the list
+    tells the RSO to record one.
+- **Pins.** Permissions 204 → 205 (declared), held 190 → 191, model pairs 425 → 427, model
+  permissions 184 → 185, `aerb` 3 → 4, radiologist 16 → 17, radiation_safety_officer 3 → 4 (README
+  table + prose); scheduler jobs 22 → 23 (`jobs.test`, `scheduler.test` census + spy,
+  `worker-runtime.e2e`, `alerts-parity`, `docker/prod/prometheus/alerts.yml` daily leg + absent term);
+  AERB events 3 → 4; AERB error codes 10 → 16; PHI surface +1 (`aerb.incident_register`). No new web
+  route (caddyfile routes unchanged), no new nav row.
+- **Counts.** See the PR body (fail-first per CRITICAL task: the four new core suites cannot load
+  against main, and eight mutants were run — seven killed, one equivalent).
+- **Moved later.** HOD escalations reading `attentionList` / `activeDeclarations` /
+  `aerb.incident_recorded` → RS10; a roster gate for a declared-pregnant worker → the roster module
+  (Plan 20) if the owner wants a hard stop; a correction route for a re-sent TLD line (still
+  refused as "already on file"); an XLSX import (CSV only); per-test QA intervals as a governed book
+  (today the RSO types `nextDueOn` per record); the board's investigation workflow for an
+  over-level read (finding, worker's explanation) → a later RSO phase.
+- **Money/law questions the rulings do not settle.** (1) The AERB reporting window — 24 h is DECIDED
+  as prompt reporting; the owner / RSO should confirm against the current AERB directive for
+  diagnostic X-ray unusual occurrences. (2) Whether an overdue QA should block at all (the brief says
+  yes; 18c said no) — the owner may revert to calendar-only.
+
 ### RS12 · Real PACS, IR and teleradiology (infrastructure)
 - 18b-ii per ruling 6:
   - Orthanc behind the hospital network;
