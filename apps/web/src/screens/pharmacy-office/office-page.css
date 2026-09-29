@@ -6,7 +6,7 @@
  * frame's `.pof-legacy`, so no other seat changes.
  */
 /* The board's primary act is pine, not the shadcn default ink: the office's buttons wear it. */
-.d1 .pof-legacy { --primary: #0e6b4e; --primary-foreground: #f2faf6; --ring: rgba(14, 107, 78, .45); }
+.d1 .pof-legacy { --primary: #0e6b4e; --primary-foreground: #f2faf6; --ring: rgba(14, 107, 78, .45); --destructive: #b23a30; }
 
 .d1 .pof-legacy .ofp-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
 .d1 .pof-legacy .ofp-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

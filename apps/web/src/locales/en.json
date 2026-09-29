@@ -1991,6 +1991,7 @@
   },
   "materialsVendors": {
     "title": "Vendor master",
+    "searchHint": "Search by code or name",
     "newVendor": "Register a vendor",
     "draftHint": "A new vendor is a draft. It cannot be received from until its GST certificate and PAN are on file and it is activated.",
     "code": "Code",
