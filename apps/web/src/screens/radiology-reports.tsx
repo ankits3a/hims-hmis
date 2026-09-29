@@ -243,7 +243,7 @@ export function RadiologyReports(): React.ReactElement {
             {inHand.media.map((m) => (
               <li key={m.requestId} className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="min-w-0 flex-1">
-                  {m.kind === "film" ? t("radiology.release.filmN", { n: m.quantity }) : t("radiology.release.cd")}
+                  {m.kind === "film" ? t("radiology.release.filmN", { count: m.quantity }) : t("radiology.release.cd")}
                   {" · "}
                   {m.included ? t("radiology.release.included") : m.serviceCode !== null ? t("radiology.release.billAs", { code: m.serviceCode }) : t("radiology.release.notInTariff")}
                 </span>
@@ -306,7 +306,7 @@ export function RadiologyReports(): React.ReactElement {
       inHand={inHand !== null}
       closeListOn={sel}
       clocks={clocks ?? undefined}
-      clocksSummary={t("radiology.release.clocks", { n: abnormal.length })}
+      clocksSummary={t("radiology.release.clocks", { count: abnormal.length })}
       clocksAlert={abnormal.length > 0}
     >
       <div className="space-y-3">
