@@ -436,3 +436,74 @@ volume show; identify; start; type a DLP above the DRL with a reason; record one
 Expect: one `radiation_dose_register` row with `over_drl = true` and `drl_reason` set; one
 `imaging.exposure_repeated` event; one open `repeat_no_charge` decision; the study on the reading
 worklist; the repeat on *Rejects & repeats*.
+## 13. The reading room — templates, signatories, checks, the signer on print (18-S RS8a)
+
+**Who.** The reading room (`/radiology/read`) is for holders of `radiology.reports.write` (the
+`radiologist`). Signing still needs `radiology.reports.sign` and a fresh second factor. No new
+permission; nothing to re-seed.
+
+**Before the first signature — two books, both drafted by the HOD, approved by the medical
+superintendent** (Radiology → Setup → Books; the same draft → approval → publish every book uses):
+1. **Report signatories (`report_signatories`) — REQUIRED.** Ruling 4: the printed report carries
+   the signer's name, qualification, council registration number and electronic signature. Until
+   this list is published **every signature is refused `signer_credentials_missing`**, naming what is
+   missing (census row `radiology_report_signatories`, G3). One entry per radiologist or sonologist:
+   ```json
+   { "signatories": [
+     { "user_id": "<the radiologist's user id>", "qualification": "MBBS, MD (Radiodiagnosis)",
+       "designation": "Consultant Radiologist", "council_reg_no": "Jharkhand State Medical Council · 2014/1187" }
+   ] }
+   ```
+   `council_reg_no` may be left out when the person's number is already on record — the roster's
+   `nmr` / `smr` credential, else their OPD doctor record (`opd_doctors.registration_no`) is read. A
+   person on neither is refused, naming the council number.
+2. **Report templates (`report_templates`) — optional, recommended.** Structured templates: sections
+   with a "normal study" text, named phrases (macros), and coded categories (BI-RADS, ACR TI-RADS,
+   LI-RADS, PI-RADS, O-RADS US, Lung-RADS, Fleischner 2017, ASPECTS), each `required` or not. A
+   reference set covering all eight systems is in `docs/runbooks/radiology-report-templates.reference.json`
+   — **clinical content, the HOD's to read and change** before pasting it into the Books editor;
+   nothing is published by a seed. Without this book a study gets the built-in section skeleton.
+   A template names `modalities` and optionally `study_type_codes` (a type-named template is offered
+   first).
+
+**The checks before a signature** (the same rules run as the screen's live card, at Sign and at
+Amend — no model):
+
+| Code | Level | What it catches | Fix |
+|---|---|---|---|
+| `impression_required` | refuse | empty impression | write it |
+| `side_conflict` | refuse | a left study whose report names only "right" (or the reverse) | correct the side in the text |
+| `side_mentions_both` | warn | the report names both sides | re-read each word; tick |
+| `sex_organ_mismatch` | refuse | uterus / ovary / endometrium on a male registration, prostate / testis / scrotum on a female | correct the text, or the patient's registration at the front desk |
+| `coded_category_required` | refuse | a template's required category (e.g. BI-RADS) missing, or not a category of its system | choose one |
+| `coded_calculation_differs` | warn | the category disagrees with the recorded calculator inputs (TI-RADS points, ASPECTS regions) | tick if you grade it differently on purpose |
+| `critical_term` | warn | pneumothorax, intracranial / subdural / extradural haemorrhage, aortic dissection, pulmonary embolism, free air, ectopic pregnancy, torsion, cord compression, acute infarct … — **not negated** ("no pneumothorax" is not a hit) — with no critical category chosen | flag red / orange / yellow, or tick that it is not critical for this patient |
+
+A warning is signed only when ticked, and the tick is stored on the signed version
+(`imaging_reports.sign_checks`: which checks ran, each warning, who acknowledged, when). The PCPNDT
+lexical lockout and the order-side check (`laterality_mismatch`) still run first, unchanged.
+
+**The signature.** The dock's act is **Sign and publish**: it saves the text as a draft, signs it
+(the authenticator code is asked in the dock only when the session's second factor is stale — the
+code verifies the SESSION, it never travels with the report), then publishes. The signed version
+stores the signer block (`imaging_reports.signer`): name, qualification, designation, council
+number and where it was read from, Doctor ID, the second factor's instant, the authenticator's key
+id, and a SHA-256 of the signed content. **It is an electronic authentication record, not a Digital
+Signature Certificate**; the print says "electronically signed".
+
+**The print** (Reading room → a signed study → Print preview; `GET /radiology/reports/:id/print`):
+the letterhead, patient, the referring doctor as **Doctor ID + department only**, the sections,
+the impression, the coded line ("BI-RADS 4A — …"), and the signer block. A draft or prelim never
+prints. A report signed before RS8a prints "signer details were not recorded at signing".
+
+**The worklist.** One list, sorted (priority · time left · modality), never filtered. Clocks: STAT
+30 min, urgent (the ER's and wards' priority) 60 min, a bedside study (IPD) 6 h, otherwise OPD
+24 h — from when the images are in. "Dr X is reading" is derived from the image-view log (someone
+else opened the images in the last hour); there is no claim button.
+
+**Verify once.** Publish the signatories book naming one radiologist. As that radiologist open a
+study at `/radiology/read`, type "Large right pneumothorax." with an empty impression: the card
+shows `impression_required` (red) and `critical_term` (amber), the dock is dead. Write an impression,
+tick the warning, Sign and publish. Open Print preview: the name, qualification and council number
+are on it, the referrer is a Doctor ID. `select signer, sign_checks from imaging_reports where
+status = 'signed' order by created_at desc limit 1` shows both blocks.

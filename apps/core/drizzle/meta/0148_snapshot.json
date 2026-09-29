@@ -1,5 +1,5 @@
 {
-  "id": "9659dfd9-535f-4a8c-914b-707de9a52a99",
+  "id": "e765859e-3381-45e4-84da-7efaa51ed479",
   "prevId": "fc166340-19f7-4522-982e-736afa0fb00c",
   "version": "7",
   "dialect": "postgresql",
@@ -29558,7 +29558,7 @@
       "checkConstraints": {
         "imaging_definitions_kind_ck": {
           "name": "imaging_definitions_kind_ck",
-          "value": "\"imaging_definitions\".\"kind\" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels', 'imaging_protocols')"
+          "value": "\"imaging_definitions\".\"kind\" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels', 'imaging_protocols', 'report_templates', 'report_signatories')"
         },
         "imaging_definitions_status_ck": {
           "name": "imaging_definitions_status_ck",
@@ -29571,201 +29571,6 @@
         "imaging_definitions_published_ck": {
           "name": "imaging_definitions_published_ck",
           "value": "\"imaging_definitions\".\"status\" = 'draft' or (\"imaging_definitions\".\"published_by\" is not null and \"imaging_definitions\".\"published_at\" is not null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.imaging_dose_sr_receipts": {
-      "name": "imaging_dose_sr_receipts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "sop_instance_uid": {
-          "name": "sop_instance_uid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "study_instance_uid": {
-          "name": "study_instance_uid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "accession_number": {
-          "name": "accession_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "study_id": {
-          "name": "study_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "template": {
-          "name": "template",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dose_ctdivol": {
-          "name": "dose_ctdivol",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dose_dlp": {
-          "name": "dose_dlp",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dose_dap": {
-          "name": "dose_dap",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "fluoro_seconds": {
-          "name": "fluoro_seconds",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dose_agd": {
-          "name": "dose_agd",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "conflict": {
-          "name": "conflict",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "imaging_dose_sr_receipts_uid_idx": {
-          "name": "imaging_dose_sr_receipts_uid_idx",
-          "columns": [
-            {
-              "expression": "study_instance_uid",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "imaging_dose_sr_receipts_study_idx": {
-          "name": "imaging_dose_sr_receipts_study_idx",
-          "columns": [
-            {
-              "expression": "study_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "imaging_dose_sr_receipts_outcome_idx": {
-          "name": "imaging_dose_sr_receipts_outcome_idx",
-          "columns": [
-            {
-              "expression": "outcome",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "received_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "imaging_dose_sr_receipts_study_id_imaging_studies_id_fk": {
-          "name": "imaging_dose_sr_receipts_study_id_imaging_studies_id_fk",
-          "tableFrom": "imaging_dose_sr_receipts",
-          "tableTo": "imaging_studies",
-          "columnsFrom": [
-            "study_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "imaging_dose_sr_receipts_sop_instance_uid_unique": {
-          "name": "imaging_dose_sr_receipts_sop_instance_uid_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "sop_instance_uid"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "imaging_dose_sr_receipts_outcome_ck": {
-          "name": "imaging_dose_sr_receipts_outcome_ck",
-          "value": "\"imaging_dose_sr_receipts\".\"outcome\" in ('pending', 'recorded', 'confirmed', 'conflict', 'unmatched', 'not_applicable')"
-        },
-        "imaging_dose_sr_receipts_template_ck": {
-          "name": "imaging_dose_sr_receipts_template_ck",
-          "value": "\"imaging_dose_sr_receipts\".\"template\" in ('ct_10011', 'projection_10001', 'unknown')"
-        },
-        "imaging_dose_sr_receipts_dose_ck": {
-          "name": "imaging_dose_sr_receipts_dose_ck",
-          "value": "\"imaging_dose_sr_receipts\".\"dose_ctdivol\" is not null or \"imaging_dose_sr_receipts\".\"dose_dlp\" is not null or \"imaging_dose_sr_receipts\".\"dose_dap\" is not null\n          or \"imaging_dose_sr_receipts\".\"fluoro_seconds\" is not null or \"imaging_dose_sr_receipts\".\"dose_agd\" is not null"
-        },
-        "imaging_dose_sr_receipts_conflict_ck": {
-          "name": "imaging_dose_sr_receipts_conflict_ck",
-          "value": "(\"imaging_dose_sr_receipts\".\"outcome\" = 'conflict') = (\"imaging_dose_sr_receipts\".\"conflict\" is not null)"
         }
       },
       "isRLSEnabled": false
@@ -30225,6 +30030,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "signer": {
+          "name": "signer",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sign_checks": {
+          "name": "sign_checks",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "published_at": {
           "name": "published_at",
           "type": "timestamp with time zone",
@@ -30645,36 +30462,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "dose_agd": {
-          "name": "dose_agd",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "dose_manual": {
           "name": "dose_manual",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "images_arrived_at": {
-          "name": "images_arrived_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "image_series_count": {
-          "name": "image_series_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "image_instance_count": {
-          "name": "image_instance_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "contrast_given": {
           "name": "contrast_given",
@@ -30964,7 +30757,7 @@
         },
         "imaging_studies_dose_ck": {
           "name": "imaging_studies_dose_ck",
-          "value": "\"imaging_studies\".\"acquired_at\" is null or \"imaging_studies\".\"ionising\" = false\n          or \"imaging_studies\".\"dose_ctdivol\" is not null or \"imaging_studies\".\"dose_dlp\" is not null\n          or \"imaging_studies\".\"dose_dap\" is not null or \"imaging_studies\".\"fluoro_seconds\" is not null\n          or \"imaging_studies\".\"dose_agd\" is not null"
+          "value": "\"imaging_studies\".\"acquired_at\" is null or \"imaging_studies\".\"ionising\" = false\n          or \"imaging_studies\".\"dose_ctdivol\" is not null or \"imaging_studies\".\"dose_dlp\" is not null\n          or \"imaging_studies\".\"dose_dap\" is not null or \"imaging_studies\".\"fluoro_seconds\" is not null"
         },
         "imaging_studies_repeat_ck": {
           "name": "imaging_studies_repeat_ck",
@@ -30977,231 +30770,6 @@
         "imaging_studies_image_source_required_ck": {
           "name": "imaging_studies_image_source_required_ck",
           "value": "\"imaging_studies\".\"acquired_at\" is null or \"imaging_studies\".\"image_source\" is not null"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.imaging_unmatched_studies": {
-      "name": "imaging_unmatched_studies",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "study_instance_uid": {
-          "name": "study_instance_uid",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "accession_number": {
-          "name": "accession_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dicom_patient_id": {
-          "name": "dicom_patient_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dicom_patient_name": {
-          "name": "dicom_patient_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "modality": {
-          "name": "modality",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "study_date": {
-          "name": "study_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "series_count": {
-          "name": "series_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "instance_count": {
-          "name": "instance_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "archive_ref": {
-          "name": "archive_ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "candidate_study_id": {
-          "name": "candidate_study_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'open'"
-        },
-        "resolved_study_id": {
-          "name": "resolved_study_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_by": {
-          "name": "resolved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolution_reason": {
-          "name": "resolution_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "last_seen_at": {
-          "name": "last_seen_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "imaging_unmatched_studies_status_idx": {
-          "name": "imaging_unmatched_studies_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "received_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "imaging_unmatched_studies_accession_idx": {
-          "name": "imaging_unmatched_studies_accession_idx",
-          "columns": [
-            {
-              "expression": "accession_number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "imaging_unmatched_studies_candidate_study_id_imaging_studies_id_fk": {
-          "name": "imaging_unmatched_studies_candidate_study_id_imaging_studies_id_fk",
-          "tableFrom": "imaging_unmatched_studies",
-          "tableTo": "imaging_studies",
-          "columnsFrom": [
-            "candidate_study_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "imaging_unmatched_studies_resolved_study_id_imaging_studies_id_fk": {
-          "name": "imaging_unmatched_studies_resolved_study_id_imaging_studies_id_fk",
-          "tableFrom": "imaging_unmatched_studies",
-          "tableTo": "imaging_studies",
-          "columnsFrom": [
-            "resolved_study_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "imaging_unmatched_studies_study_instance_uid_unique": {
-          "name": "imaging_unmatched_studies_study_instance_uid_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "study_instance_uid"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "imaging_unmatched_studies_reason_ck": {
-          "name": "imaging_unmatched_studies_reason_ck",
-          "value": "\"imaging_unmatched_studies\".\"reason\" in ('no_match', 'patient_mismatch', 'uid_mismatch', 'awaiting_acquisition', 'study_closed', 'outside_study', 'no_identifiers')"
-        },
-        "imaging_unmatched_studies_status_ck": {
-          "name": "imaging_unmatched_studies_status_ck",
-          "value": "\"imaging_unmatched_studies\".\"status\" in ('open', 'attached', 'rejected')"
-        },
-        "imaging_unmatched_studies_resolved_ck": {
-          "name": "imaging_unmatched_studies_resolved_ck",
-          "value": "(\"imaging_unmatched_studies\".\"status\" = 'open') = (\"imaging_unmatched_studies\".\"resolved_at\" is null)"
-        },
-        "imaging_unmatched_studies_attached_ck": {
-          "name": "imaging_unmatched_studies_attached_ck",
-          "value": "\"imaging_unmatched_studies\".\"status\" <> 'attached' or \"imaging_unmatched_studies\".\"resolved_study_id\" is not null"
-        },
-        "imaging_unmatched_studies_human_ck": {
-          "name": "imaging_unmatched_studies_human_ck",
-          "value": "\"imaging_unmatched_studies\".\"status\" = 'open' or (\"imaging_unmatched_studies\".\"resolved_by\" is not null and \"imaging_unmatched_studies\".\"resolution_reason\" is not null)\n          or (\"imaging_unmatched_studies\".\"status\" = 'attached' and \"imaging_unmatched_studies\".\"resolved_by\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -37750,25 +37318,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "dose_agd": {
-          "name": "dose_agd",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "dose_manual": {
           "name": "dose_manual",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "dose_origin": {
-          "name": "dose_origin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'manual'"
         },
         "drl_quantity": {
           "name": "drl_quantity",
@@ -37911,11 +37466,7 @@
         },
         "radiation_dose_register_dose_ck": {
           "name": "radiation_dose_register_dose_ck",
-          "value": "\"radiation_dose_register\".\"dose_ctdivol\" is not null or \"radiation_dose_register\".\"dose_dlp\" is not null\n          or \"radiation_dose_register\".\"dose_dap\" is not null or \"radiation_dose_register\".\"fluoro_seconds\" is not null\n          or \"radiation_dose_register\".\"dose_agd\" is not null"
-        },
-        "radiation_dose_register_origin_ck": {
-          "name": "radiation_dose_register_origin_ck",
-          "value": "\"radiation_dose_register\".\"dose_origin\" in ('manual', 'dose_sr')"
+          "value": "\"radiation_dose_register\".\"dose_ctdivol\" is not null or \"radiation_dose_register\".\"dose_dlp\" is not null\n          or \"radiation_dose_register\".\"dose_dap\" is not null or \"radiation_dose_register\".\"fluoro_seconds\" is not null"
         },
         "radiation_dose_register_drl_ck": {
           "name": "radiation_dose_register_drl_ck",

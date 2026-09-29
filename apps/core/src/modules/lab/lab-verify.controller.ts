@@ -28,9 +28,9 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  *   · `lab.reports.print`  hands it over.         · `lab.reports.amend`   corrects a signed one.
  *
  * `lab_reception` holds `print` and none of the other three: a counter clerk hands reports to
- * patients all day and could never have signed one. `lab.reports.release_unpaid` is held by
- * `billing_manager` and by nobody in the laboratory — a permission this module declares and no lab
- * role holds is the honest shape for a control another office exercises (DD6).
+ * patients all day and could never have signed one. `lab.reports.release_unpaid` performs an
+ * approved release, and the counter holds it (2026-09-28): the DECISION is the owner's approval,
+ * checked by `assertReleaseApproval`; the act is a print, which needs `lab.reports.print` too.
  *
  * ═══ THE DOCTOR'S READ IS ON THIS CONTROLLER AND CARRIES **NO** INTERLOCK ═══
  *
@@ -257,8 +257,9 @@ export class LabVerifyController {
   }
 
   /**
-   * DD6 — `billing_manager`'s decision to carry a receivable. It moves NO money: the dues row is
-   * untouched, because it was already the receivable (T7 A4).
+   * DD6 — the hand-over of a HELD report on a granted `lab_release_unpaid_owner` approval (the owner's
+   * decision to carry a receivable, 2026-09-28). It moves NO money: the dues row is untouched,
+   * because it was already the receivable (T7 A4).
    */
   @Post("reports/:reportId/release")
   @RequirePermission("lab.reports.release_unpaid", "hospital")

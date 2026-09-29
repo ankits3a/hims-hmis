@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { newId } from "@hmis/contracts";
+import { CODED_SYSTEMS, newId } from "@hmis/contracts";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { imagingDefinitions } from "../../kernel/db/schema/radiology";
@@ -295,6 +295,115 @@ export function protocolFor(
   return dflt === undefined ? null : { protocol: dflt, matchedOn: "modality" };
 }
 
+/**
+ * PLAN 18-S RS8a — **THE REPORT TEMPLATES BOOK: structured templates with coded categories.**
+ *
+ * `templates.ts` (18a T8) kept the seven section skeletons as a constant and argued, rightly, that a
+ * SECTION LIST decides nothing clinical. A template that REQUIRES a category does: "a mammogram is
+ * not signed without a BI-RADS" is a department rule, and this file's header is where department
+ * rules live — drafted by the radiologist, approved by the medical superintendent, published as a
+ * version. So the structured templates are a governed book, and the seven constants stay as the
+ * fallback a study gets when the book is not published or has no template for it (a missing page
+ * must not stop a report).
+ *
+ * A template carries:
+ *   · `modalities` / `study_type_codes` — which studies it is offered for (`study_type_codes`
+ *     first, then the modality, the DRL book's rule);
+ *   · `sections` — each with the words its "normal study" macro inserts;
+ *   · `macros` — further named phrases for a section;
+ *   · `coded` — the categories the report carries, and whether one is REQUIRED before signing
+ *     (`coded_category_required`, the pre-sign check).
+ *
+ * **Nothing is seeded active** (DECIDED, RS8a): the words a normal study inserts are clinical
+ * content and they are the HOD's. A reference set ships as a draft to paste
+ * (`docs/runbooks/radiology-report-templates.reference.json`, RS8a).
+ */
+export const REPORT_SECTION_KEYS = ["indication", "technique", "comparison", "findings", "biometry", "impression", "recommendation"] as const;
+
+const templateKey = z.string().regex(/^[a-z0-9_]{1,40}$/, "a template key is 1–40 of a–z, 0–9 and _");
+
+export const reportTemplateSchema = z.object({
+  key: templateKey,
+  name: z.string().min(1).max(120),
+  modalities: z.array(z.enum(IMAGING_MODALITIES)).min(1),
+  study_type_codes: z.array(z.string().min(1).max(40)).max(200).default([]),
+  sections: z.array(z.object({
+    key: z.enum(REPORT_SECTION_KEYS),
+    label: z.string().min(1).max(60),
+    /** The "normal study" macro for this section. */
+    normal: z.string().max(4000).optional(),
+  })).min(1).max(REPORT_SECTION_KEYS.length)
+    .refine((s) => new Set(s.map((x) => x.key)).size === s.length, { message: "a section is listed twice" })
+    .refine((s) => s.some((x) => x.key === "impression"), {
+      message: "every template has an impression — a report is not signed without one",
+    }),
+  macros: z.array(z.object({
+    key: templateKey,
+    label: z.string().min(1).max(80),
+    section: z.enum(REPORT_SECTION_KEYS),
+    text: z.string().min(1).max(4000),
+  })).max(100).default([]),
+  coded: z.array(z.object({ system: z.enum(CODED_SYSTEMS), required: z.boolean() })).max(4).default([])
+    .refine((c) => new Set(c.map((x) => x.system)).size === c.length, { message: "a coded system is listed twice" }),
+});
+
+export const reportTemplatesBodySchema = z.object({
+  templates: z.array(reportTemplateSchema).min(1).max(200),
+}).refine(
+  (b) => new Set(b.templates.map((t) => t.key)).size === b.templates.length,
+  { message: "two templates share a key — a report would name a template with two meanings" },
+);
+
+export type ReportTemplatesBody = z.infer<typeof reportTemplatesBodySchema>;
+export type GovernedReportTemplate = z.infer<typeof reportTemplateSchema>;
+
+/**
+ * The templates offered for one study: those naming its study-type code first, then those naming
+ * its modality. Pure, so the reading room's read and the pre-sign check agree on one rule.
+ */
+export function templatesFor(
+  body: ReportTemplatesBody, studyTypeCode: string, modality: string,
+): GovernedReportTemplate[] {
+  const own = body.templates.filter((t) => t.study_type_codes.includes(studyTypeCode));
+  const byModality = body.templates.filter((t) => !own.includes(t)
+    && t.study_type_codes.length === 0 && (t.modalities as readonly string[]).includes(modality));
+  return [...own, ...byModality];
+}
+
+/**
+ * PLAN 18-S RS8a / owner ruling 4 — **WHO MAY SIGN AN IMAGING REPORT, AND WHAT THE PRINT SAYS ABOUT THEM.**
+ *
+ * Ruling 4: the printed report carries the signing radiologist's or sonologist's NAME,
+ * QUALIFICATION, COUNCIL REGISTRATION NUMBER and digital signature. The spike found a name
+ * (`users.full_name`) and, sometimes, a council number (`opd_doctors.registration_no`, the roster's
+ * `nmr`/`smr` credential) — and **no qualification anywhere general**. The roster's credential
+ * register has no route and no screen, so adding a key there would be a reader without a writer.
+ *
+ * DECIDED (RS8a): the department's **list of authorised signatories** is a governed book. It is what
+ * NABH asks an imaging department to hold (who may sign a diagnostic report), it is the HOD's to
+ * draft and the medical superintendent's to approve, and it has a writer today — Setup → Books. The
+ * council number here is optional: where it is blank, the roster's `nmr`/`smr` credential and then
+ * `opd_doctors.registration_no` are read (`signer.ts`). A signer who is not on the list, or whose
+ * council number is found nowhere, is refused `signer_credentials_missing` — a signature whose print
+ * cannot carry what ruling 4 requires is not made.
+ */
+export const reportSignatoriesBodySchema = z.object({
+  signatories: z.array(z.object({
+    user_id: z.string().min(1).max(64),
+    /** As printed: "MBBS, MD (Radiodiagnosis)". */
+    qualification: z.string().min(2).max(160),
+    /** As printed: "Consultant Radiologist". */
+    designation: z.string().min(1).max(120).optional(),
+    /** As printed: "Jharkhand State Medical Council · 2014/1187". */
+    council_reg_no: z.string().min(3).max(120).optional(),
+  })).min(1).max(200),
+}).refine(
+  (b) => new Set(b.signatories.map((s) => s.user_id)).size === b.signatories.length,
+  { message: "a person is listed twice — the print would have two qualifications for one signer" },
+);
+
+export type ReportSignatoriesBody = z.infer<typeof reportSignatoriesBodySchema>;
+
 const SCHEMA_BY_KIND = {
   study_types: studyTypesBodySchema,
   pregnancy_policy: pregnancyPolicyBodySchema,
@@ -302,6 +411,8 @@ const SCHEMA_BY_KIND = {
   pacs_settings: pacsSettingsBodySchema,
   dose_reference_levels: doseReferenceLevelsBodySchema,
   imaging_protocols: imagingProtocolsBodySchema,
+  report_templates: reportTemplatesBodySchema,
+  report_signatories: reportSignatoriesBodySchema,
 } as const;
 
 export type StudyTypesBody = z.infer<typeof studyTypesBodySchema>;
