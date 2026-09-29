@@ -173,6 +173,15 @@ export const RADIOLOGY_ERROR_CODES = [
   "checks_unacknowledged",
   "signer_credentials_missing",
   /**
+   * ── 18-S RS5 T2 — the prep bay asks the radiologist to override ──
+   *
+   * `override_already_requested`: a second "please override" for a gate that already has one
+   * waiting — the answer is to wait for (or chase) the radiologist, not to file a duplicate.
+   * `unknown_override_request`: the decision names a request that is not an imaging gate override.
+   */
+  "override_already_requested",
+  "unknown_override_request",
+  /**
    * PLAN 18-S RS7 — the obstetric report. `foetal_sex_disclosure` is a SENTENCE that states the sex
    * of a foetus (`pcpndt/foetal-sex.ts`): refused on prelim, sign, amend and publish, and no lane — not the
    * medical superintendent's F66 override — lifts it. `invalid_biometry` is a measurement block the
@@ -279,6 +288,8 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   coded_category_required: 422,
   checks_unacknowledged: 422,
   signer_credentials_missing: 403,
+  override_already_requested: 409,
+  unknown_override_request: 404,
   foetal_sex_disclosure: 422,
   invalid_biometry: 422,
 

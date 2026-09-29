@@ -1230,35 +1230,36 @@ self-verify a statutory declaration is a single point of failure with a criminal
 it is a different decision — DD7 makes the radiologist the second clinical opinion on a gate the
 floor raised, and the override demands a reason and is evented.
 
-| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge | radiation_safety_officer |
-|---|---|---|---|---|---|---|
-| `radiology.orders.place` | | | ✓ | | | |
-| `radiology.worklist.read` | ✓ | ✓ | ✓ | | | |
-| `radiology.schedule` | | | ✓ | | | |
-| `radiology.checkin` | | ✓ | ✓ | | | |
-| `radiology.gates.satisfy` | | ✓ | | | | |
-| `radiology.gates.override` | ✓ | | | | | |
-| `radiology.acquire` | ✓ | ✓ | | | | |
-| `radiology.reports.write` | ✓ | | | | | |
-| `radiology.reports.sign` | ✓ | | | | | |
-| `radiology.reports.amend` | ✓ | | | | | |
-| `radiology.reports.read` | ✓ | ✓ | | | | |
-| `radiology.definitions.read` | ✓ | ✓ | ✓ | | | |
-| `radiology.definitions.manage` | ✓ | | | | | |
-| `radiology.devices.manage` | ✓ | | | | | |
-| `radiology.bill_decisions.manage` | | | ✓ | | | |
-| `radiology.criticals.ack` | ✓ | | | | | |
-| `radiology.mwl.read` | | ✓ | | | ✓ | |
-| `radiology.display.read` | | | ✓ | | | |
-| `pcpndt.registrations.manage` | | | | ✓ | | |
-| `pcpndt.registrations.read` | ✓ | | | ✓ | | |
-| `pcpndt.form_f.write` | ✓ | | | | | |
-| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | | |
-| `pcpndt.form_f.verify` | | | | ✓ | | |
-| `aerb.registers.manage` | | | | | | ✓ |
-| `aerb.registers.read` | | | | | | ✓ |
-| `aerb.doses.read` | ✓ | ✓ | | | | ✓ |
-| `aerb.incidents.read` | ✓ | | | | | ✓ |
+| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge | radiation_safety_officer | radiology_nurse |
+|---|---|---|---|---|---|---|---|
+| `radiology.orders.place` | | | ✓ | | | | |
+| `radiology.worklist.read` | ✓ | ✓ | ✓ | | | | ✓ |
+| `radiology.schedule` | | | ✓ | | | | |
+| `radiology.checkin` | | ✓ | ✓ | | | | |
+| `radiology.gates.satisfy` | | ✓ | | | | | ✓ |
+| `radiology.gates.override` | ✓ | | | | | | |
+| `radiology.acquire` | ✓ | ✓ | | | | | |
+| `radiology.reports.write` | ✓ | | | | | | |
+| `radiology.reports.sign` | ✓ | | | | | | |
+| `radiology.reports.amend` | ✓ | | | | | | |
+| `radiology.reports.read` | ✓ | ✓ | | | | | |
+| `radiology.definitions.read` | ✓ | ✓ | ✓ | | | | |
+| `radiology.definitions.manage` | ✓ | | | | | | |
+| `radiology.devices.manage` | ✓ | | | | | | |
+| `radiology.bill_decisions.manage` | | | ✓ | | | | |
+| `radiology.criticals.ack` | ✓ | | | | | | |
+| `radiology.mwl.read` | | ✓ | | | ✓ | | |
+| `radiology.display.read` | | | ✓ | | | | |
+| `radiology.contrast.record` | ✓ | ✓ | | | | | ✓ |
+| `pcpndt.registrations.manage` | | | | ✓ | | | |
+| `pcpndt.registrations.read` | ✓ | | | ✓ | | | |
+| `pcpndt.form_f.write` | ✓ | | | | | | |
+| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | | | |
+| `pcpndt.form_f.verify` | | | | ✓ | | | |
+| `aerb.registers.manage` | | | | | | ✓ | |
+| `aerb.registers.read` | | | | | | ✓ | |
+| `aerb.doses.read` | ✓ | ✓ | | | | ✓ | |
+| `aerb.incidents.read` | ✓ | | | | | ✓ | |
 
 **Plan 18c T1 adds the sixth column and the last three rows.** The AERB registers are their own
 module (`aerb`) for the reason `pcpndt` is: the cath lab and radiation oncology owe an equipment
@@ -1305,6 +1306,19 @@ out of service with a reason (`/radiology/setup/*`) — and the Setup station's 
 answers for what its machines are and whether they may be booked. It is NOT a QA power: a machine
 `qa_blocked` by a failed QA is released only by the radiation safety officer's passing QA record, and
 the register refuses to walk a machine out of `qa_blocked` (or out of `retired`) whoever asks.
+
+**Plan 18-S RS5 (the prep & safety bay) adds one permission, one role and seven grants.** The new
+**`radiology_nurse`** column is the bay's nurse (DECIDED — the top-Indian-hospital standard seats a
+radiology nurse at prep): she holds `radiology.worklist.read`, `radiology.gates.satisfy` and the new
+**`radiology.contrast.record`**, and the `imaging_gate` definition names her on `open → satisfied` so
+the engine agrees with the guard. She holds **no `radiology.gates.override`**: the override stays the
+radiologist's, and the bay ASKS for one through the approvals spine (`imaging_gate_override`, approver
+`radiologist`). `radiology.contrast.record` guards the contrast injection and the contrast reaction,
+split off `radiology.acquire` so the nurse who injects can record it without starting or finishing an
+acquisition; `radiologist` and `radiographer` hold it too, so nobody who could record contrast before
+lost it. Because the radiologist now answers an approval type, **`radiologist` gains
+`approvals.requests.read` and `approvals.requests.decide`** — the approvals spine's rule that every
+approver role can open and answer its own queue.
 
 **The OPD dispense counter (Plan 16c T1) declares four permissions and one new role, and the SHAPE
 is the Pharmacy Act.** `pharmacy.dispense.scheduled` — the hand-over of a dispense carrying a

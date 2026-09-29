@@ -109,7 +109,8 @@ production path: production's activation names real people and that is the point
 | role | holds | seat |
 |---|---|---|
 | `radiology_receptionist` | `radiology.schedule`, `radiology.orders.place`, `radiology.bill_decisions.manage` | reception — books slots, walk-ins, check-in |
-| `radiographer` | `radiology.checkin`, `radiology.acquire`, `radiology.gates.satisfy`, `radiology.mwl.read` | the console |
+| `radiographer` | `radiology.checkin`, `radiology.acquire`, `radiology.gates.satisfy`, `radiology.contrast.record`, `radiology.mwl.read` | the console |
+| `radiology_nurse` (18-S RS5) | `radiology.worklist.read`, `radiology.gates.satisfy`, `radiology.contrast.record` | the prep & safety bay — see §13 |
 | `radiologist` | `radiology.reports.{read,write,sign,amend}`, `radiology.gates.override`, `radiology.criticals.ack`, `radiology.definitions.manage` | reporting |
 | `doctor` | `radiology.orders.place`, `radiology.reports.read` | the ward and the OPD |
 | `modality_bridge` | `radiology.mwl.read` | the machine, not a human — see the PACS runbook |
@@ -508,7 +509,72 @@ tick the warning, Sign and publish. Open Print preview: the name, qualification 
 are on it, the referrer is a Doctor ID. `select signer, sign_checks from imaging_reports where
 status = 'signed' order by created_at desc limit 1` shows both blocks.
 
-## 14. Release, hand-over and the closed loop (18-S RS9)
+---
+
+## 14. The prep & safety bay — gates, eGFR, contrast and the override request (18-S RS5)
+
+**Who.** `seed:roles` adds the role **`radiology_nurse`** (the bay's nurse) and one permission,
+`radiology.contrast.record` (radiologist, radiographer, radiology nurse). Assign the bay's nurse
+**`radiology_nurse` at hospital scope**; she satisfies prep gates, records contrast and reactions,
+and **cannot override or waive** — she asks the radiologist. The radiologist now also holds
+`approvals.requests.read` / `.decide`. Re-run `seed:roles` after deploy; it only adds.
+
+**The workflow definition must be re-activated.** The `imaging_gate` definition now names
+`radiology_nurse` on `open → satisfied`. A deployment that activated the earlier version keeps
+refusing the nurse (`role_denied`) until the new version is drafted, approved by the owner and the
+MS, and activated by a third person — the §3 ceremony, once. Gates opened before re-activation stay
+pinned to the old version; a check-in after it gets the new one.
+
+**The approval type.** `seed:radiology` registers `imaging_gate_override` (approver `radiologist`,
+urgent, 30 minutes) next to `imaging_definition_publish`. Re-run it after deploy; an existing type is
+left alone. **Confirm:** `select type_key from approval_types where type_key = 'imaging_gate_override'`.
+
+**The kidney rule (plan Gap 3, DECIDED clinical standard).** The kidney gate computes an **eGFR
+(CKD-EPI 2021)** from the creatinine, the patient's age and sex (from the patient master, never
+typed):
+- **eGFR under 30** — the gate cannot be satisfied; the radiologist overrides with a reason, or not.
+- **30–44** — satisfiable only when the nurse confirms the **IV hydration** instruction is on the
+  plan (0.9% saline 1 mL/kg/h, 6 h before and 6 h after); the instruction is stored in the evidence.
+- **under 45** — the metformin note (hold 48 h, restart after renal function is rechecked) is stored.
+- **No eGFR** (no date of birth, sex not female/male, under 18) — the old ceiling decides:
+  creatinine above 176.8 µmol/L (2.0 mg/dL) is the radiologist's override.
+The bay reads the lab's **latest signed serum creatinine (analyte `CREA`)** and sends it by pointer;
+an outside paper report is typed and flagged `external`. The window is unchanged (30 days OPD,
+7 days admitted or CKD).
+
+**The bay (`/radiology/prep`).** The right list is every checked-in study with an open prep gate,
+STAT first. Identity and side are closed by the technologist at the console and show "closed at the
+console". Each other gate is a form (no JSON anywhere): the second identifier compared with the
+record; the pregnancy declaration, LMP or a bay urine test; the bilingual contrast consent with a
+witness; the creatinine; the premedication and the radiologist who decided a prior reaction; the MRI
+screening form; the Form F register check; the chaperone; the MLC number. When the last gate closes
+the study becomes **ready** by itself and leaves the list.
+
+**Ask the radiologist.** Any open gate except Form F and side offers *Ask the radiologist to
+override* with a note. It becomes an approval in the radiologist's queue — the worklist's *Clocks
+running* lists it, and the study console shows it with **Grant and override** / **Refuse** and a
+required reason. A grant runs the ordinary override (same event, same record). A grant given in the
+kernel's `/approvals` inbox does **not** override by itself: open the study console and grant there
+to apply it.
+
+**MRI screening.** A *yes* to pacemaker/ICD, cochlear implant, aneurysm clip, neurostimulator/pump,
+metal fragments or metal in the eye cannot satisfy the gate; the form records the MR-conditional
+card's device/model/serial (there is no photo upload yet) and hands the finding to *Ask the
+radiologist*.
+
+**Contrast and reaction.** Recorded in the bay's patient view once the study is on the table
+(`in_acquisition` onwards; the study console links there). An expired vial is refused. Rate,
+injector and the extravasation check are written into the site line (no columns yet). A reaction
+adds "`<agent>` (contrast media)" to the patient's allergy list, and the **next** contrast study's
+prior-reaction gate stops on it.
+
+**Verify once.** Check in a contrast CT for an 80-year-old woman with a signed creatinine of
+1.8 mg/dL: the bay shows eGFR 28 "held for the radiologist"; *Ask the radiologist*; the radiologist
+grants with a reason on the study console; the gate reads *overridden*, the approval *granted*.
+
+---
+
+## 15. Release, hand-over and the closed loop (18-S RS9)
 
 **Migration `0147_radiology_closed_loop`** (additive): `imaging_report_delivery` gains `acted_at`,
 `acted_by`, `acted_outcome`, `acted_note`; two new tables, `imaging_report_handovers` and

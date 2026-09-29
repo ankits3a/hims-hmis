@@ -7,6 +7,7 @@ import { checkIn } from "./checkin";
 import {
   evaluateReadiness, overrideGate, readiness, requireStudyGate, satisfyGate, waiveGate,
 } from "./gates";
+import { requestGateOverride } from "./override-requests";
 import { parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -125,6 +126,26 @@ export class RadiologyStudyController {
         const after = await evaluateReadiness(tx, studyId);
         return { ...result, study: after };
       });
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 18-S RS5 T2 — "Ask the radiologist to override": the bay (which may satisfy but not override)
+   * files a kernel approval routed to the radiologist. `form_f` and `laterality_confirm` refuse the
+   * REQUEST itself; the radiologist's decision runs the override below's own service
+   * (`POST /radiology/gate-override-requests/:approvalId/decide`).
+   */
+  @Post(":studyId/gates/:kind/override-request")
+  @RequirePermission("radiology.gates.satisfy", "hospital")
+  async requestOverride(
+    @CurrentActor() actor: Actor,
+    @Param("studyId") studyId: string,
+    @Param("kind") kind: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(reasonBody, body);
+    try {
+      return await withTx(this.db, (tx) => requestGateOverride(tx, actor, { studyId, kind, note: input.reason }));
     } catch (e) { toHttp(e); }
   }
 
