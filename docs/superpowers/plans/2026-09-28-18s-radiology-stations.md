@@ -510,7 +510,7 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
   - **`radiology_nurse`** is a new role (the standard Indian-hospital prep-bay nurse): worklist.read,
     gates.satisfy, contrast.record; on the `imaging_gate` satisfy edge; **no override, no waiver, no
     check-in**. The `imaging_gate` definition changed, so a deployment re-runs the §3 activation
-    ceremony once (runbook §13).
+    ceremony once (runbook §14; §13 at build, renumbered when RS8a took §13).
   - **`radiology.contrast.record`** is split off `radiology.acquire` for the two contrast POSTs, so
     the nurse who injects does not also get to start/finish acquisitions; everyone who could record
     contrast before still can.
@@ -838,6 +838,126 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J1–J3 and J7 reading hops, J2 critical, J9 recommendation.
 - Migrations: co-sign state, follow-ups, peer reviews — **three PRs**, one migration each.
 - Claims: `seed-roles` + pins.
+
+**The split (29 Sep).** RS8 is the HEAVY phase, so it ships as three PRs, each with at most one
+migration:
+- **RS8a — the reading room, part 1:** the `report_templates` governed book with coded categories and
+  their calculators; the deterministic pre-sign checks (one pipeline, a dry-run read for the screen);
+  the signer block snapshotted at sign and printed (ruling 4); the reading workspace
+  (`/radiology/read`: worklist with TAT clocks, report view).
+- **RS8b — part 2:** co-sign for residents (`radiology_resident`, `awaiting_cosign`,
+  `cosign_required`, seed-roles pins); the critical-call ladder UI (`read:critical`, first web callers
+  of flag/acknowledge); the prelim and amend UI (`read:amend`).
+- **RS8c — part 3:** the follow-ups tracker (`imaging_followups` + the due sweep), peer review
+  (`imaging_peer_reviews`), night and outside reads (`read:tele`).
+
+#### RS8a spike (read on main `5a3713b9`, 29 Sep, before any code)
+- **(a) The report body.** `imaging_reports.body` is `jsonb`, written as `Record<string, unknown>`
+  (the controller's zod is `z.record(z.string(), z.unknown())`); the impression has its own column.
+  Every reader of the body takes STRING entries only — `abdm-release.ts` `sectionsOf` filters to
+  non-empty strings, the report screen reads `findings` and spreads the rest. So a non-string key is
+  invisible to every existing reader: **coded categories live in the body under one reserved key,
+  `coded`** (`{ birads: "4A", tirads: {...}, … }`), no table and no column. The row is append-only by
+  trigger (`to_jsonb(NEW) - status - published_at`), so anything added to the row is protected with no
+  trigger change.
+- **(b) The signer at sign.** `insertVersion` stores `signer_id`, `signed_at`, `second_factor_at` —
+  an id and two instants; **no name, no qualification, no council number**. Where they live today:
+  the name is `users.full_name`; a council number is `opd_doctors.registration_no` (what the lab
+  report prints, 17-F) and the roster's `staff_credentials` (`nmr` / `smr`, R4 — **no route, no
+  screen**: a reader without a writer); a **qualification exists nowhere general** —
+  only `pcpndt_registered_persons.qualification` (sonologists) and `aerb_persons.qualification`
+  (RSO). The TOTP secret has no key id (`user_totp` is keyed by user; `enabled_at` names the
+  enrolment).
+- **(c) Printing.** The imaging report is **not printed anywhere** today — no component, no
+  `kernel/printing` renderer. The lab's A4 (`lab-report-print.tsx`, `.print-doc`, from a signed
+  snapshot) is the precedent.
+- **(d) TAT fields.** The worklist row carries `priority` (stat / urgent / routine), `createdAt`,
+  `checkedInAt`, `scheduledAt`; the study also has `acquiredAt` and `bedsideLocation`. There is no
+  source column (OPD / IPD / ER): no IPD or ER module exists. There is no claim: a draft row has no
+  author column, but `imaging_image_views` records who opened the images and when.
+
+#### RS8a as built (this PR; migration `0148_radiology_reading_room` — renumbered from 0147 at merge, RS11 took 0147)
+- **T1 — the books.** Two new governed kinds, the RS6 pattern (kind CHECK widened in the one
+  migration, schema in `definitions.ts`, listed in Setup → Books automatically):
+  `report_templates` (key, modalities, optional `study_type_codes`, sections each with a "normal
+  study" text, macros, coded categories each `required` or not; every template has an impression) and
+  `report_signatories` (see T3). The coded systems and their calculators are pure functions in
+  `@hmis/contracts` `imaging-coded.ts`: BI-RADS 0–6 (4A/4B/4C), ACR TI-RADS TR1–TR5 with the points
+  calculator and FNA / follow-up size rules, LI-RADS LR-1…5/M/TIV, PI-RADS 1–5, O-RADS US 0–5,
+  Lung-RADS, Fleischner 2017 (type × count × size × risk → interval; ≥ 3 cm is a mass), ASPECTS
+  (10 regions). The web keeps a copy (`apps/web/src/lib/imaging-coded.ts`, the `eye-line.ts`
+  precedent) held equal over the calculators' whole input space. Coded values live in the report
+  body under `coded` (spike a) — every existing reader ignores non-string keys.
+  **Nothing seeded active**; the reference set (13 templates, all eight systems) is
+  `docs/runbooks/radiology-report-templates.reference.json`, a paste for the HOD, and a test holds it
+  valid against the schema.
+- **T2 — the checks.** `checks.ts`: ONE list, `PRE_SIGN_CHECKS`, of pure checks over a context
+  `reports.ts` gathers once; run at **sign and at amend**, and as a dry run
+  (`POST /radiology/studies/:id/reports/checks`, `radiology.reports.write`, writes nothing).
+  Refusals, each its own code: `impression_required`, `side_conflict` (a left study whose text names
+  only "right"), `sex_organ_mismatch` (whole-word organ lists; `other`/`unknown` not checked),
+  `coded_category_required` (missing or not a member). Warnings, acknowledged by code
+  (`acknowledgedWarnings` on sign/amend) or refused `checks_unacknowledged`: `side_mentions_both`,
+  `coded_calculation_differs`, `critical_term` (a word list with NegEx-style negation inside the
+  clause — "no evidence of pneumothorax, haemorrhage or free air" is not a hit, "no effusion; large
+  pneumothorax" is). The signed row stores `sign_checks` (checks run, warnings, who acknowledged,
+  when). The PCPNDT lockout and the order-side check (A4) stay in `assertSignable` and run first.
+  **RS7's `foetal_sex_disclosure` joins the list** as another entry (keeping its code), adding any
+  fact it needs to `PreSignContext`; the list is exported from `index.ts`.
+- **T3 — the signer block.** `signer.ts` snapshots at every signature (sign and amend) onto the new
+  `imaging_reports.signer`: name (`users.full_name`), qualification and designation (the signatories
+  book), council registration (the book's entry, else the roster's live `nmr`/`smr` credential, else
+  `opd_doctors.registration_no`, with the source recorded), Doctor ID (`opd_doctors.code`), and the
+  signature marker: `totp_second_factor`, the factor's instant, a key id (`totp:` + a digest of the
+  user and the enrolment instant; the secret is never read), SHA-256 of the signed content. Refused
+  `signer_credentials_missing` (403) naming what is missing and the seat that fixes it. Census row
+  `radiology_report_signatories` (G3).
+- **T4 — the reading room** `/radiology/read` (station `read`, nav + manifest menu,
+  `radiology.reports.write`): `GET /radiology/reading/worklist` and `GET /radiology/reading/studies/:id`.
+  The list: one list, a sort control (priority · time left · modality), no filter tabs, TAT clocks,
+  the derived "is reading" line; "Clocks running" collapsed. The report view: lane = question, flags,
+  referrer (Doctor ID + department), priors, 12-month CT DLP; centre = Open images (the existing
+  logged route), template picker (T), normal-study macro, macros, dictation placed by spoken headings,
+  coded widgets with live calculators, critical category, the live checks with warning ticks; dock =
+  **Sign and publish** (S / Enter) → **Publish** → **Next study**; ↑/↓ move through the list, Esc back.
+  The classic `/radiology/studies/$id/report` stays, and each links to the other.
+- **T5 — the print.** `GET /radiology/reports/:id/print` (`radiology.reports.read`; a draft or prelim
+  answers null) and `imaging-report-print.tsx` (A4, `.print-doc`): letterhead, patient, the referrer
+  as Doctor ID + department, sections in the Indian order (technique · findings · impression ·
+  category · recommendation), the coded line, the signer block. No obstetric declaration yet — RS7
+  owns it and has not merged.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *Where qualification and council number live:* a governed **list of authorised signatories**
+    (`report_signatories`) — NABH's own artefact for a diagnostic department, the HOD's to draft and
+    the MS's to approve, with a writer today (Setup → Books). The roster credential register has no
+    route or screen and no qualification key; adding one would be a reader without a writer.
+  - *Refuse rather than print a gap:* a signer not on the list, or with no council number anywhere,
+    is refused. **Consequence at deploy: nobody can sign an imaging report until the list is
+    published** (runbook §13; census G3).
+  - *The signature marker is an electronic authentication record, not a DSC* — the print says
+    "electronically signed".
+  - *TAT classes from what the study carries:* STAT → 30 min; urgent → ER, 60 min; bedside → IPD,
+    6 h; else OPD 24 h; clock from images-in. There is no source column until IPD/ER exist.
+  - *The claim is derived* from the image-view log (someone else, last hour); no claim table.
+  - *Sign and publish is one act* (the norm in Indian RIS: a signed report is released); a failed
+    publish leaves the dock on Publish.
+  - *Sex-organ and side conflicts refuse* (the board draws them red); naming both sides and a
+    calculator disagreement only warn.
+  - *Amend runs the same checks and snapshots the signer* — an amendment is a signature.
+- **Counts.** Core: 21 reading-room tests (12 failed against main's `reports.ts`, the 2 T1 schema
+  tests failed against main's `definitions.ts`), checks 13 (the negation false-positive guard fails
+  with negation disabled), calculators 16; touched core suites 85 / 1,129 green after the rebase on
+  RS6. Web: reading room 8 (2 fail with the dock gates removed; all fail without the screen), web
+  calculator equality 5; touched web suites 19 / 165. Pins: SPA routes 77 → 78, radiology menu +1
+  (nav-parity), definition kinds 6 → 8 (setup test), radiology error codes +6, census +1 row.
+- **Moved later.** Co-sign, the critical ladder UI, prelim / amend UI → **RS8b**. Follow-ups
+  (`imaging_followups`, the Fleischner / TI-RADS recommendation becomes a follow-up row), peer
+  review, night and outside reads → **RS8c**. Measurement against the prior (plan RS8 list) — the
+  priors are in the lane; an automatic comparison needs structured measurements → RS8c. The embedded
+  viewer, key images and hanging protocols → **RS12**. The obstetric declaration on print → RS7.
+- **For the owner (law):** is a TOTP-authenticated signature with a content hash sufficient for a
+  printed imaging report, or must the radiologist's signature be a Digital Signature Certificate
+  under the IT Act, 2000 (§3/§3A)? Built as the former; the print does not claim a DSC.
 
 ### RS9 · Release and the closed loop
 - **Core:**

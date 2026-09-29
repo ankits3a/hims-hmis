@@ -155,6 +155,24 @@ export const RADIOLOGY_ERROR_CODES = [
   "prelim_not_publishable",
   "report_not_signed",
   /**
+   * ── 18-S RS8a — the reading room's pre-sign checks and the signer block ──
+   *
+   * Each check that REFUSES has its own code, because each is fixed differently: an empty
+   * impression is written, a side conflict is corrected against the study's side, a sex-specific
+   * organ is corrected in the text (or the patient's registration, if that is what is wrong), a
+   * missing category is chosen from the template's system. `checks_unacknowledged` is the WARNINGS'
+   * refusal: a critical term was found and the signer neither flagged it nor said they saw it.
+   * `signer_credentials_missing` is about WHO is signing (403, the file's own rule): ruling 4 prints
+   * the signer's qualification and council number, and a signature that cannot print them is not
+   * made.
+   */
+  "impression_required",
+  "side_conflict",
+  "sex_organ_mismatch",
+  "coded_category_required",
+  "checks_unacknowledged",
+  "signer_credentials_missing",
+  /**
    * ── 18-S RS5 T2 — the prep bay asks the radiologist to override ──
    *
    * `override_already_requested`: a second "please override" for a gate that already has one
@@ -246,6 +264,13 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   already_signed: 409,
   prelim_not_publishable: 422,
   report_not_signed: 422,
+
+  impression_required: 422,
+  side_conflict: 422,
+  sex_organ_mismatch: 422,
+  coded_category_required: 422,
+  checks_unacknowledged: 422,
+  signer_credentials_missing: 403,
   override_already_requested: 409,
   unknown_override_request: 404,
   foetal_sex_disclosure: 422,

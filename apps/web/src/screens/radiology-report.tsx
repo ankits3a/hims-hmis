@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useParams } from "@tanstack/react-router";
+import { useParams, useRouter } from "@tanstack/react-router";
 import {
   draftReport, fetchReport, fetchStudy, proposeDraft, publishReport, radiologyErrorText, signReport,
 } from "../lib/radiology-api";
@@ -29,6 +29,7 @@ export function RadiologyReport(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { studyId } = useParams({ from: "/authed/radiology/studies/$studyId/report" });
+  const router = useRouter({ warn: false });
   const [findings, setFindings] = useState("");
   const [impression, setImpression] = useState("");
   const [critical, setCritical] = useState<"" | "red" | "orange" | "yellow">("");
@@ -141,6 +142,19 @@ export function RadiologyReport(): React.ReactElement {
     >
     <div className="space-y-4">
 
+      {/** 18-S RS8a — the reading room is the workspace now; this screen stays reachable, and each links to the other. */}
+      <p className="text-sm" data-testid="to-reading-room">
+        <a
+          href={`/radiology/read?study=${studyId}`} className="underline underline-offset-2"
+          onClick={(e) => {
+            if (router === undefined) return;
+            e.preventDefault();
+            void router.navigate({ to: "/radiology/read", search: { study: studyId } });
+          }}
+        >
+          {t("radiology.report.openReadingRoom")}
+        </a>
+      </p>
       {error !== null ? <p role="alert" className="text-red-600">{error}</p> : null}
       {note !== null ? <p role="status" className="text-green-700">{note}</p> : null}
 
