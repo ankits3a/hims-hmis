@@ -254,8 +254,13 @@ describe("the reading room (18-S RS8a)", () => {
     const a = await acquired();
     const b = await acquired();
     await db.update(imagingStudies).set({ priority: "routine" }).where(eq(imagingStudies.id, b.studyId));
+    const colleague = await mkUser(db, "dr.sahay", ["radiologist"]);
     await db.insert(imagingImageViews).values({
-      id: newId(), studyId: b.studyId, viewerId: fx.radiologist.id, via: "external_pacs", urlHost: "pacs.local", viewedAt: new Date(),
+      id: newId(), studyId: b.studyId, viewerId: colleague.id, via: "external_pacs", urlHost: "pacs.local", viewedAt: new Date(),
+    });
+    /** The reader's OWN view is not a lock on themselves. */
+    await db.insert(imagingImageViews).values({
+      id: newId(), studyId: a.studyId, viewerId: fx.radiologist.id, via: "external_pacs", urlHost: "pacs.local", viewedAt: new Date(),
     });
     await draft(a.studyId);
     const rows = await readingWorklist(db, fx.radiologist);
@@ -264,7 +269,7 @@ describe("the reading room (18-S RS8a)", () => {
     ]);
     const [ra, rb] = rows;
     expect(ra!.dueAt!.getTime() - ra!.acquiredAt!.getTime()).toBe(30 * 60_000);
-    expect(rb!.readingBy).toMatchObject({ userId: fx.radiologist.id, name: "dr.rao" });
+    expect(rb!.readingBy).toMatchObject({ userId: colleague.id, name: "dr.sahay" });
     expect(ra!.readingBy).toBeNull();
   });
 

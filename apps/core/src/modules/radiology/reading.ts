@@ -43,7 +43,8 @@ import type { Actor } from "@hmis/contracts";
  * ═══ THE LOCK IS DERIVED, NOT CLICKED (the owner's "presence is derived") ═══
  *
  * Opening the images IS the claim: the latest image view on an unsigned study, within the last hour,
- * by somebody who writes reports, is shown as "Dr X is reading". No claim button, no table: the view
+ * by somebody ELSE who writes reports, is shown as "Dr X is reading" (a reader's own views are not
+ * a lock on themselves). No claim button, no table: the view
  * log (`imaging_image_views`, 18b T3) already records exactly this. It is a label, not a lock — a
  * second radiologist may still read, and sees who was there first.
  */
@@ -142,7 +143,8 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
   const readers = new Map<string, boolean>();
   const readingBy = new Map<string, ReadingRow["readingBy"]>();
   for (const v of views) {
-    if (readingBy.has(v.studyId)) continue;
+    /** The reader's own views are not a lock on themselves. */
+    if (readingBy.has(v.studyId) || v.viewerId === actor.id) continue;
     if (!readers.has(v.viewerId)) readers.set(v.viewerId, await hasPermission(db, v.viewerId, READING_WRITE, "hospital"));
     if (readers.get(v.viewerId) === true) readingBy.set(v.studyId, { userId: v.viewerId, name: v.name, since: v.viewedAt });
   }
@@ -325,6 +327,7 @@ export async function readingContext(db: Db, actor: Actor, studyId: string, now:
     .orderBy(desc(imagingImageViews.viewedAt)).limit(5);
   let readingBy: ReadingRow["readingBy"] = null;
   for (const v of views) {
+    if (v.viewerId === actor.id) continue;
     if (await hasPermission(db, v.viewerId, READING_WRITE, "hospital")) { readingBy = { userId: v.viewerId, name: v.name, since: v.viewedAt }; break; }
   }
 

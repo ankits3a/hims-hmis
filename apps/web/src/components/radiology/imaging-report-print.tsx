@@ -68,7 +68,8 @@ export function ImagingReportPrint({ report }: { report: WireReportPrint }): Rea
         <p><span className="text-neutral-700">{t("radiology.read.print.acquired")}: </span><b>{report.acquiredAt === null ? "—" : fmtIstDateTime(report.acquiredAt)}</b></p>
       </section>
 
-      {report.sections.map((sec) => (
+      {/* The Indian report's order: technique · findings · IMPRESSION · category · recommendation. */}
+      {report.sections.filter((sec) => sec.key !== "recommendation").map((sec) => (
         <section key={sec.key} className="text-sm">
           <h3 className="text-xs font-bold uppercase tracking-wide">{t(`radiology.read.section.${sec.key}`, { defaultValue: sec.label })}</h3>
           <p className="whitespace-pre-wrap">{sec.text}</p>
@@ -83,6 +84,12 @@ export function ImagingReportPrint({ report }: { report: WireReportPrint }): Rea
           {report.codedLines.map((line) => <p key={line} className="font-bold">{line}</p>)}
         </section>
       )}
+      {report.sections.filter((sec) => sec.key === "recommendation").map((sec) => (
+        <section key={sec.key} className="text-sm">
+          <h3 className="text-xs font-bold uppercase tracking-wide">{t("radiology.read.section.recommendation")}</h3>
+          <p className="whitespace-pre-wrap">{sec.text}</p>
+        </section>
+      ))}
       {report.criticalCategory !== null && (
         <p className="text-xs font-bold">{t("radiology.read.print.critical", { category: report.criticalCategory.toUpperCase() })}</p>
       )}

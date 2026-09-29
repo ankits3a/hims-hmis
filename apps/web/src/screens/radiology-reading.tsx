@@ -61,6 +61,8 @@ type Editor = {
 };
 
 const PRIORITY_RANK: Record<string, number> = { stat: 0, urgent: 1 };
+/** The modality as a department says it — the same in English and Hindi. */
+const MODALITY_WORD: Record<string, string> = { xray: "X-ray", usg: "USG", ct: "CT", mri: "MRI", mammography: "Mammography" };
 
 function sortRows(rows: readonly WireReadingRow[], by: SortKey): WireReadingRow[] {
   const due = (r: WireReadingRow) => (r.dueAt === null ? Infinity : new Date(r.dueAt).getTime());
@@ -320,7 +322,7 @@ function WorklistCentre({ rows, now, sort, onSort, onOpen, loading, error, summa
                 </span>
                 <span className="min-w-0 text-xs">
                   {r.priority === "stat" ? <b className="text-red-700">STAT · </b> : r.priority === "urgent" ? <b className="text-amber-800">{t("radiology.read.urgent")} · </b> : null}
-                  <span className="uppercase">{r.modality}</span> · {r.studyTypeName}
+                  {MODALITY_WORD[r.modality] ?? r.modality} · {r.studyTypeName}
                   <span className="block text-muted-foreground">
                     {r.readingBy !== null ? `● ${t("radiology.read.readingBy", { name: r.readingBy.name })}` : r.acquiredAt === null ? t("radiology.read.clock.onTable") : t(`radiology.read.state.${r.reportState}`)}
                   </span>
@@ -557,7 +559,9 @@ function ReportWorkspace({ ctx, now, pickerRef, signRef, dockRef, onNext, onChan
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="mo text-xs">{ctx.accessionNo}</span>
         {ctx.priority === "stat" && <b className="text-red-700">STAT</b>}
-        <span className="text-muted-foreground">{t(`radiology.read.tat.${ctx.tatClass}`)} · {clockText(t, ctx.dueAt, now).text}</span>
+        <span className="text-muted-foreground">
+          {signedId !== null ? t(published ? "radiology.read.releasedLine" : "radiology.read.signedLine") : `${t(`radiology.read.tat.${ctx.tatClass}`)} · ${clockText(t, ctx.dueAt, now).text}`}
+        </span>
         <span className="flex-1" />
         <button
           type="button" className="rounded border px-3 py-1 text-sm disabled:opacity-50" data-testid="open-images"
