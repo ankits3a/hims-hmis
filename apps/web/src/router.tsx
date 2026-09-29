@@ -64,6 +64,7 @@ import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
 import { RadiologyReport } from "./screens/radiology-report";
+import { RadiologyPortable } from "./screens/radiology-portable";
 import { PcpndtFormF } from "./screens/pcpndt-form-f";
 import { RadiationSafety } from "./screens/radiation-safety";
 import { LabCollection } from "./screens/lab-collection";
@@ -183,10 +184,12 @@ const NAV: readonly NavEntry[] = [
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
-  // PLAN 18a T9 — the two entries `radiologyManifest.menu` declares, path and permission matching
+  // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
   // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
   { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "opd" },
   { to: "/radiology/worklist", label: "nav.radiologyWorklist", permission: "radiology.worklist.read", group: "opd" },
+  // 18-S RS2b — the portable round; `radiologyManifest.menu` carries the same pair.
+  { to: "/radiology/portable", label: "nav.radiologyPortable", permission: "radiology.acquire", group: "opd" },
   // PLAN 18c T1 — the one entry `aerbManifest.menu` declares. It sits under the imaging group
   // because that is where the RSO works, not because radiology owns the register (D1).
   { to: "/radiology/radiation-safety", label: "nav.radiationSafety", permission: "aerb.registers.read", group: "opd" },
@@ -1050,9 +1053,10 @@ const labCollectionRoute = createRoute({
 });
 
 /**
- * PLAN 18a T9 — the imaging department's five routes. TWO carry a NAV entry, matching
- * `radiologyManifest.menu` exactly (`nav-parity.test.ts` enforces that rather than trusting it);
- * the other three are reached FROM a study and never browsed.
+ * PLAN 18a T9 — the imaging department's routes. THREE carry a NAV entry, matching
+ * `radiologyManifest.menu` exactly (`nav-parity.test.ts` enforces that rather than trusting it) —
+ * reception, the worklist and (18-S RS2b) the portable round; the study and report routes are
+ * reached FROM a study and never browsed.
  *
  * **`/pcpndt/form-f/$studyId` is deliberately unlisted.** `pcpndtManifest` declares no menu at all,
  * because a list of Form F rows is a list of pregnant women by name and the one thing the statutory
@@ -1062,24 +1066,40 @@ const radiologyReceptionRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/reception",
   component: RadiologyReception,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const radiologyWorklistRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/worklist",
   component: RadiologyWorklist,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
+});
+
+/** PLAN 18-S RS2b — the portable round: bedside studies on the trolley, grouped by ward. */
+const radiologyPortableRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/portable",
+  component: RadiologyPortable,
+  staticData: { fullViewport: true },
 });
 
 const radiologyStudyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/studies/$studyId",
   component: RadiologyStudy,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const radiologyReportRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/studies/$studyId/report",
   component: RadiologyReport,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const pcpndtFormFRoute = createRoute({
@@ -1097,6 +1117,8 @@ const radiationSafetyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/radiation-safety",
   component: RadiationSafety,
+  /** PLAN 18-S RS1 — the station shell draws its own header, lane and list. */
+  staticData: { fullViewport: true },
 });
 
 const labBenchRoute = createRoute({
@@ -1400,7 +1422,7 @@ export const router = createRouter({
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
       // count and joins this task's Files list, the S11 rule applied for the seventh time.
-      radiologyReceptionRoute, radiologyWorklistRoute, radiologyStudyRoute, radiologyReportRoute,
+      radiologyReceptionRoute, radiologyWorklistRoute, radiologyPortableRoute, radiologyStudyRoute, radiologyReportRoute,
       pcpndtFormFRoute, radiationSafetyRoute,
       // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
       // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.

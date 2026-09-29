@@ -248,14 +248,14 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     adopted.current = true;
     const held = carrier.inHand;
     if (held === null) return;
-    void api<{ patient: { id: string; uhid: string; name: string | null; alias: string | null; administrativeGender: string; dob: string | null } }>(
+    void api<{ patient: { id: string; uhid: string; name: string | null; alias: string | null; administrativeGender: string; dob: string | null; phone?: string | null } }>(
       "GET", `/patients/${encodeURIComponent(held.patientId)}`,
     ).then(
       (detail) => {
         const p = detail.patient;
         setPatient((prev) => (prev !== null ? prev : {
           id: p.id, uhid: p.uhid, name: p.name ?? p.alias ?? p.uhid,
-          administrativeGender: p.administrativeGender, dob: p.dob,
+          administrativeGender: p.administrativeGender, dob: p.dob, phone: p.phone ?? null,
         }));
         if (held.encounterId !== null) setEncounterId((prev) => (prev === "" ? held.encounterId! : prev));
       },
@@ -444,7 +444,14 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
   const shown: {
     id: string; uhid: string; name: string | null;
     administrativeGender?: string | null; dob?: string | null; phone?: string | null;
-  } | null = patient ?? quote?.patient ?? null;
+  } | null = patient === null
+    ? quote?.patient ?? null
+    /*
+      DESK-FIXES D (walk 12d) — "no number on file" for a patient with a mobile. A picked patient is a
+      search row, and the picker used to drop the row's phone; it carries it now, and when the quote
+      names the SAME person its phone fills a gap the pick left (a QR pick carries none).
+    */
+    : { ...patient, phone: patient.phone ?? (quote?.patient?.id === patient.id ? quote.patient.phone : undefined) };
 
   /*
     ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -492,7 +499,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
     if (shownId === null) return;
     let live = true;
     void getPatientPhoto(shownId).then(
-      (p) => { if (live) setPhoto(`data:${p.mimeType};base64,${p.imageBase64}`); },
+      (p) => { if (live && p !== null) setPhoto(`data:${p.mimeType};base64,${p.imageBase64}`); },
       () => { /* no photo on file is the common case, not an error worth showing a cashier */ },
     );
     return () => { live = false; };
@@ -1115,9 +1122,22 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                     <div style={{ marginTop: 12, padding: "11px 12px", background: "var(--wash)", borderRadius: 6 }}>
                       <span className="tag">{t("billingSeat.rail.thisVisit")}</span>
                       <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 7, flexWrap: "wrap" }}>
-                        <span className="pill" data-testid="fee-branch">{t(`billing.visitType.${quote.visitType}`)}</span>
+                        {/*
+                          DESK-FIXES B (walk 53) — a visit a doctor's referral opened is stored as
+                          `revisit` (that is how the fee rule frees it) and read "Revisit" here. The
+                          quote's `freeReason` says WHY it is free, so the label says referral.
+                        */}
+                        <span className="pill" data-testid="fee-branch">
+                          {quote.freeReason?.kind === "referral_window"
+                            ? t("billing.visitType.referral")
+                            : t(`billing.visitType.${quote.visitType}`)}
+                        </span>
                         {quote.free ? (
-                          <span data-testid="fee-free" className="pill on">{t("billing.counter.freeVisit")}</span>
+                          <span data-testid="fee-free" className="pill on">
+                            {quote.freeReason?.kind === "referral_window"
+                              ? t("billing.counter.freeReferral", { until: quote.freeReason.windowEndsOn })
+                              : t("billing.counter.freeVisit")}
+                          </span>
                         ) : (
                           <span data-testid="fee-amount" className="mo" style={{ fontSize: 13, fontWeight: 600 }}>
                             {fmtPaise(quote.draft?.totals.netPayablePaise ?? 0)}

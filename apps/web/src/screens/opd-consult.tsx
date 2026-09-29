@@ -7,7 +7,9 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
 import { UnpaidMark } from "../components/unpaid-mark";
+import { ImagingOrderPanel } from "../components/radiology/imaging-order-panel";
 import { EyeSections, fetchVisitSections } from "./opd-eye-sections";
+import { PaedsSections, childAgeText } from "./opd-paeds-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
@@ -279,7 +281,7 @@ function v2BodyOf(v: V2State, on: boolean): Record<string, unknown> {
   };
 }
 /** The designed tabs (Consult.dc.html). Complaints, Diagnosis and Advice are the v1 note form, split. */
-type TabId = "summary" | "vitals" | "eye" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
+type TabId = "summary" | "vitals" | "eye" | "paeds" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
 
 /**
  * ═══ THE DIAGNOSIS GOES UP AS A LIST, AND THE CODES RIDE WITH THEIR OWN WORDS ═══
@@ -736,6 +738,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const correctedAllergies = (allergies.data?.items ?? []).filter((a) => a.status === "entered_in_error");
   const dob = patient.data?.patient.dob ?? null;
   const ageYears = dob !== null ? ageYearsAt(dob, new Date()) : null;
+  /* §6.2 — a child's age reads in years, months and days ("1 y 3 m 13 d"); an adult's stays in years. */
+  const childAge = dob !== null ? childAgeText(dob, new Date()) : null;
   const timelineItems = timeline.data?.items ?? [];
 
   // The note mirrors the encounter the server already holds; the visit query is its source of truth.
@@ -2518,7 +2522,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       <div className="cx-name">
                         <span data-testid="panel-patient-name">{patient.data?.patient.name ?? patient.data?.patient.alias ?? patientLabel(active.summary)}</span>
                         <small>
-                          {" · "}<span data-testid="panel-patient-age">{t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.administrativeGender ?? "—"}</span>
+                          {" · "}<span data-testid="panel-patient-age">{childAge ?? t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.administrativeGender ?? "—"}</span>
                           {activeToken !== null && <> · {t("opdConsultV2.token", { n: activeToken })}</>}
                           {" · "}<span data-testid="panel-uhid" className="mo" style={{ fontSize: 12 }}>{patient.data?.patient.uhid ?? active.summary?.uhid ?? "—"}</span>
                         </small>
@@ -2818,6 +2822,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       ["vitals", t("opdConsultV2.tabs.vitals")],
                       // Consult engine (D19): the department's own sections, only where its profile names them.
                       ...(engine.data?.profile === "ophthalmology" ? [["eye", t("opdEye.tab")] as const] : []),
+                      ...(engine.data?.profile === "paediatrics" ? [["paeds", t("opdPaeds.tab")] as const] : []),
                       ["complaints", t("opdConsultV2.tabs.complaints")],
                       ["exam", t("opdConsultV2.tabs.exam")],
                       ["dx", t("opdConsultV2.tabs.dx")],
@@ -2856,6 +2861,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 {tab === "eye" && active !== null && (
                   <div role="tabpanel" id="tabpanel-eye" aria-labelledby="tab-eye">
                     <EyeSections key={active.encounterId} encounterId={active.encounterId} leaseBody={leaseBody} readOnly={readOnly} />
+                  </div>
+                )}
+                {tab === "paeds" && active !== null && (
+                  <div role="tabpanel" id="tabpanel-paeds" aria-labelledby="tab-paeds">
+                    <PaedsSections key={active.encounterId} encounterId={active.encounterId} leaseBody={leaseBody} readOnly={readOnly} />
                   </div>
                 )}
                 {tab === "exam" && (
@@ -3781,6 +3791,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               */}
               {active !== null && tab === "inv" && (
                 <LabResultsPanel visitNo={visit.data?.encounter.visitNo ?? null} />
+              )}
+              {/* PLAN 18-S RS2 — the imaging order door; all of it lives in its own file. */}
+              {active !== null && tab === "inv" && (
+                <ImagingOrderPanel encounterNo={visit.data?.encounter.visitNo ?? null} clinicianUserId={me.data?.userId ?? null} advisedKey={advisedTests.map((a) => a.serviceId).join(",")} />
               )}
               {tab === "inv" && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["inv"]} testId="history-foot-inv" />}
 

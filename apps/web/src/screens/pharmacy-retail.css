@@ -1,0 +1,162 @@
+/*
+ * UX-AUDIT 2026-09-28 — the walk-in counter in the Pharmacy Desk's frame (`Desk.dc.html`).
+ * Decision: docs/superpowers/decisions/2026-09-28-pharmacy-retail.md.
+ *
+ * Every rule is scoped `.d1 .rt-*`: `desk-one.css` resets `.d1 button` unlayered, which beats any
+ * Tailwind utility, so this screen's geometry lives here and not in class strings. The palette is
+ * `paper-pine.css`; the primitives (`.pri`, `.sec`, `.in`, `.pill`, `.tag`, `.box`, `.ovl`) are
+ * desk-one's. LEFT lane 296 px, RIGHT list 352 px, as the board; below 1280 the list is a drawer;
+ * below 768 the lane stacks over the flow and the action bar is fixed to the screen's foot.
+ */
+.d1 .rt-frame { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.d1 .rt-top { gap: 12px; }
+.d1 .rt-brand { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.d1 .rt-diamond { width: 10px; height: 10px; border-radius: 2px; background: var(--green); transform: rotate(45deg); }
+.d1 .rt-word { font-size: 12.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+.d1 .rt-where { font-size: 12.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.d1 .rt-where strong { color: var(--ink); font-weight: 600; }
+.d1 .rt-clock { font-size: 11.5px; color: var(--faint); letter-spacing: .04em; white-space: nowrap; }
+.d1 .rt-top .pill { height: 22px; }
+.d1 .rt-listbtn { display: none; height: 26px; border-color: var(--ink); color: var(--ink); cursor: pointer; }
+
+.d1 .rt-body { display: flex; flex-grow: 1; min-height: 0; position: relative; }
+
+/* LEFT — the customer in hand */
+.d1 .rt-lane { width: 296px; flex-shrink: 0; border-right: 1px solid var(--line); background: var(--card); overflow-y: auto; padding: 20px 18px; display: flex; flex-direction: column; gap: 12px; }
+.d1 .rt-pick input { height: 40px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); padding: 0 12px; font-size: 14px; }
+.d1 .rt-pick input:focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); outline: none; }
+.d1 .rt-pick button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); margin-top: 6px; }
+.d1 .rt-pick button:hover { border-color: var(--green-line); background: var(--wash); }
+.d1 .rt-who { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--green-line); background: var(--green-soft); }
+.d1 .rt-name { font-size: 17px; line-height: 23px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* CENTRE — the numbered flow and its pinned bar */
+.d1 .rt-centre { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; }
+.d1 .rt-scroll { flex-grow: 1; min-height: 0; overflow-y: auto; padding: 22px 28px 28px; display: flex; flex-direction: column; gap: 14px; }
+.d1 .rt-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.d1 .rt-h1 { font-size: 20px; line-height: 26px; font-weight: 600; margin: 0; }
+.d1 .rt-h2 { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+.d1 .rt-steps { display: flex; gap: 6px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
+.d1 .rt-step { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); font-size: 12.5px; color: var(--dim); }
+.d1 .rt-step.now { background: var(--ink); border-color: var(--ink); color: #f2faf6; font-weight: 600; }
+.d1 .rt-step.done { border-color: var(--green-line); color: var(--green); }
+.d1 .rt-step.skip { opacity: .6; }
+.d1 .rt-dot { display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 99px; background: var(--wash); color: var(--ink); font-size: 10.5px; font-weight: 700; flex-shrink: 0; }
+.d1 .rt-step.now .rt-dot { background: #f2faf6; color: var(--ink); }
+.d1 .rt-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+
+.d1 .rt-combo { position: relative; }
+.d1 .rt-options { position: absolute; left: 0; right: 0; top: 44px; z-index: 30; max-height: 320px; overflow-y: auto; list-style: none; margin: 0; padding: 5px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 14px 40px rgba(19, 36, 32, .18); }
+.d1 .rt-option { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 5px; font-size: 13px; cursor: pointer; flex-wrap: wrap; }
+.d1 .rt-option.sel { background: var(--green-soft); }
+.d1 .rt-option[aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
+
+.d1 .rt-tablewrap { overflow-x: auto; max-width: 100%; }
+.d1 .rt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.d1 .rt-table th { text-align: left; padding: 0 12px 7px 0; border-bottom: 1px solid var(--line); white-space: nowrap; font-weight: 600; }
+.d1 .rt-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line2); vertical-align: middle; }
+.d1 .rt-num { text-align: right; white-space: nowrap; }
+.d1 th.rt-num { text-align: right; }
+.d1 .rt-nowrap { white-space: nowrap; }
+.d1 .rt-qty { width: 64px; height: 34px; padding: 0 8px; }
+.d1 .rt-totals { display: grid; grid-template-columns: 1fr auto; gap: 4px 18px; margin: 4px 0 0 auto; min-width: min(300px, 100%); font-size: 13px; }
+.d1 .rt-totals dt { color: var(--dim); }
+.d1 .rt-totals dd { margin: 0; text-align: right; }
+.d1 .rt-totals .rt-pay { font-size: 17px; font-weight: 700; color: var(--ink); padding-top: 6px; border-top: 1px solid var(--line); }
+
+.d1 .rt-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; align-self: flex-start; }
+.d1 .rt-segb { height: 34px; padding: 0 16px; font-size: 13px; font-weight: 500; border-left: 1px solid var(--line); }
+.d1 .rt-segb:first-child { border-left: none; }
+.d1 .rt-segb.on { background: var(--green); color: #f2faf6; font-weight: 600; }
+.d1 .rt-money { width: 160px; }
+
+.d1 .rt-bar { flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 12px 28px; background: var(--card); border-top: 1px solid var(--line); }
+.d1 .rt-barwhy { font-size: 13px; line-height: 18px; margin: 2px 0 0; }
+.d1 .rt-bar .pri { height: 44px; padding: 0 22px; font-size: 14px; flex-shrink: 0; }
+
+/* RIGHT — the day's walk-in sales */
+.d1 .rt-list { width: 352px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; min-height: 0; }
+.d1 .rt-listhead { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 8px; }
+.d1 .rt-closelist { display: none; }
+.d1 .rt-listact { padding: 0 18px 12px; border-bottom: 1px solid var(--line); }
+.d1 .rt-listact .sec { width: 100%; }
+.d1 .rt-sales { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex-grow: 1; }
+.d1 .rt-sale { padding: 11px 18px; border-bottom: 1px solid var(--line2); display: flex; flex-direction: column; gap: 3px; }
+.d1 .rt-saletop, .d1 .rt-salebot { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.d1 .rt-saletop .rt-ellipsis { flex-grow: 1; }
+.d1 .rt-salebot { font-size: 11.5px; }
+.d1 .rt-scrim { display: none; }
+
+/* the return sheet */
+.d1 .rt-ovl { padding: 6vh 16px 16px; }
+.d1 .rt-sheet { width: 720px; max-width: 100%; max-height: 86vh; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 24px 70px rgba(19, 36, 32, .35); }
+.d1 .rt-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.d1 .rt-sheet-head .rt-h2 { margin: 0; }
+
+/* shared bits */
+.d1 .rt-grow { flex-grow: 1; min-width: 0; }
+.d1 .rt-stack { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.d1 .rt-stack-tight { display: flex; flex-direction: column; gap: 5px; }
+.d1 .rt-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.d1 .rt-row > .in { flex: 1 1 180px; width: auto; }
+.d1 .rt-end { align-items: flex-end; }
+.d1 .rt-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.d1 .rt-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.d1 .rt-span2 { grid-column: span 2; }
+.d1 .rt-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.d1 .rt-note { font-size: 12.5px; line-height: 18px; color: var(--dim); margin: 0; }
+.d1 .rt-muted { color: var(--dim); }
+.d1 .rt-strong { font-weight: 600; }
+.d1 .rt-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.d1 .rt-pad { padding: 14px 18px; }
+.d1 .rt-link { color: var(--green); font-size: 12.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; align-self: flex-start; white-space: nowrap; }
+.d1 .rt-err { color: var(--red); font-size: 12.5px; margin: 0; }
+.d1 .rt-ok { color: var(--green); font-size: 13px; margin: 0; }
+.d1 .rt-okbig { color: var(--green); font-size: 16px; font-weight: 600; margin: 0; }
+.d1 .rt-bad { margin: 0; padding: 10px 13px; border-radius: 7px; border: 1px solid var(--red-line); background: var(--red-soft); color: var(--red); font-size: 13px; }
+.d1 .rt-warn { margin: 0; padding: 10px 13px; border-radius: 7px; border: 1px solid var(--gold-line); background: var(--gold-soft); color: #7a4f0c; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+
+/* Below 1280: the list is a drawer from the right, opened from the header. */
+@media (max-width: 1279px) {
+  .d1 .rt-listbtn { display: inline-flex; }
+  .d1 .rt-closelist { display: inline; }
+  .d1 .rt-list { position: fixed; top: 0; right: 0; bottom: 0; z-index: 70; width: min(352px, 100vw); transform: translateX(100%); visibility: hidden;
+    box-shadow: -18px 0 50px rgba(19, 36, 32, .22); transition: transform .18s ease, visibility .18s; }
+  .d1 .rt-list.open { transform: none; visibility: visible; }
+  .d1 .rt-scrim { display: block; position: fixed; inset: 0; z-index: 65; background: rgba(19, 36, 32, .35); }
+}
+@media (max-width: 1100px) {
+  .d1 .rt-lane { width: 260px; }
+  .d1 .rt-scroll { padding: 18px 18px 24px; }
+  .d1 .rt-bar { padding: 12px 18px; }
+}
+/* In a narrow centre the priced cart is one card per drug — every figure stays on screen, none behind a sideways scroll.
+   A container query, because the centre's width depends on which lanes are open, not on the window's alone. */
+.d1 .rt-medcard { container-type: inline-size; }
+@container (max-width: 640px) {
+  .d1 .rt-cart thead { display: none; }
+  .d1 .rt-cart, .d1 .rt-cart tbody { display: block; }
+  .d1 .rt-cart tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--line2); }
+  .d1 .rt-cart td { border: none; padding: 0; min-width: 0; }
+  .d1 .rt-cart td:first-child { grid-column: 1 / -1; }
+  .d1 .rt-cart td[data-label]::before { content: attr(data-label); display: block; font: 600 9.5px/15px "IBM Plex Mono", ui-monospace, monospace;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+  .d1 .rt-cart .rt-num { text-align: left; }
+  .d1 .rt-cart td:last-child { align-self: end; }
+}
+/* Below 768: one column — the customer, then the flow — and the bar fixed to the foot of the screen. */
+@media (max-width: 767px) {
+  .d1 .rt-top { flex-wrap: wrap; height: auto; min-height: 46px; padding: 8px 16px; row-gap: 6px; }
+  .d1 .rt-clock { display: none; }
+  .d1 .rt-body { flex-direction: column; overflow-y: auto; padding-bottom: 150px; }
+  .d1 .rt-lane { width: auto; border-right: none; border-bottom: 1px solid var(--line); overflow: visible; padding: 16px; }
+  .d1 .rt-centre { flex-grow: 0; }
+  .d1 .rt-scroll { overflow: visible; padding: 16px; }
+  .d1 .rt-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; flex-wrap: wrap; gap: 8px; padding: 10px 16px; box-shadow: 0 -8px 24px rgba(19, 36, 32, .10); }
+  .d1 .rt-bar .rt-grow { flex-basis: 100%; }
+  .d1 .rt-bar .pri { width: 100%; padding: 0 14px; }
+  .d1 .rt-grid2 { grid-template-columns: minmax(0, 1fr); }
+  .d1 .rt-span2 { grid-column: auto; }
+  .d1 .rt-money { width: 100%; }
+}

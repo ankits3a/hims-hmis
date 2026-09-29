@@ -222,7 +222,10 @@ it("nobody on file: the four-field register opens in place and the new patient i
   await userEvent.click(screen.getByRole("button", { name: "Register a new patient" }));
   const form = screen.getByRole("form", { name: "Register a new patient" });
   await userEvent.type(within(form).getByLabelText("Name"), "Bimal Kumar Sahu");
+  /* DESK-FIXES E — `POST /patients` refuses `age_or_dob_required`; the form does not offer the refusal. */
+  expect(within(form).getByRole("button", { name: "Register" })).toBeDisabled();
   await userEvent.type(within(form).getByLabelText("Age (years)"), "61");
+  expect(within(form).getByRole("button", { name: "Register" })).toBeEnabled();
   await userEvent.selectOptions(within(form).getByLabelText("Sex"), "male");
   await userEvent.click(within(form).getByRole("button", { name: "Register" }));
   await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent("U23019999"));

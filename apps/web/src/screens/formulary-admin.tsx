@@ -7,6 +7,7 @@ import {
 } from "../lib/formulary-api";
 import { Button } from "@/components/ui/button";
 import { MappingWorklist } from "../components/mapping-worklist";
+import { FormularyStewardship } from "./formulary-stewardship";
 import type { AdmitInput, WireSalt, WireStagingRow } from "../lib/formulary-api";
 
 /** Two letters before the first request: one letter over 3,283 moieties is not a search, it is a
@@ -591,6 +592,9 @@ export function FormularyAdmin(): React.ReactElement {
           </ul>
         </div>
       )}
+
+      {/* STAGE D5 — a product's WHO AWaRe class and whether it needs the antimicrobial steward's approval. */}
+      <FormularyStewardship />
 
       {/*
         ——— WHAT IS ALREADY STOCKED: COLLAPSED, PAGED, AND FREE UNTIL SOMEBODY OPENS IT ———

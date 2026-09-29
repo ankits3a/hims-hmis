@@ -16,6 +16,8 @@ export type PatientErrorCode =
   | "reason_required"
   | "alias_required"
   | "dob_or_age"
+  /* DESK-FIXES E (2026-09-28) — `POST /patients` with neither an age nor a date of birth. */
+  | "age_or_dob_required"
   | "minor_needs_guardian"
   | "photo_too_large"
   | "unsupported_photo_type"

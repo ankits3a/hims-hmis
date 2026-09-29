@@ -55,6 +55,9 @@ export type { PickInput, PickLineInput } from "./pick";
 export { billDispense, previewDispenseBill } from "./bill";
 export type { BillInput } from "./bill";
 export { handOverDispense } from "./handover";
+/** STAGE D5 — the restricted-antimicrobial approval type (registered by `seed:pharmacy`) and the steward's gate. */
+export { ANTIMICROBIAL_STEWARD_ROLE, PHARMACY_APPROVAL_TYPES, RESTRICTED_ANTIMICROBIAL_APPROVAL_TYPE, registerPharmacyApprovalTypes } from "./approval-types";
+export { activeStewards, askSteward, stewardToday } from "./antimicrobial";
 export type { HandoverInput } from "./handover";
 export { labelFor } from "./label";
 export type { LabelData, LabelLine } from "./label";

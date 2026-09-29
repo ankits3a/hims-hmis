@@ -100,7 +100,7 @@ const GRNS = [
   { id: "g3", grnNo: "GRN2609270009", challanNo: "CH-5561", vendorName: "Anand Medical Agencies", lines: 7, createdAt: "2026-09-27T09:00:00.000Z" },
 ];
 
-const ALL: NeedInputs = { buy: BUY, pay: PAY, returns: RETURNS, grns: GRNS, retail: RETAIL, cabinet: CABINET, pharmacists: PHARMACISTS, adr: null, incidents: null, cold: null };
+const ALL: NeedInputs = { buy: BUY, pay: PAY, returns: RETURNS, grns: GRNS, retail: RETAIL, cabinet: CABINET, pharmacists: PHARMACISTS, adr: null, incidents: null, cold: null, steward: null };
 
 /** Stage D1 — three reports not yet sent to PvPI: serious and 20 days old, serious and 3 days old, not serious and 30 days old. */
 const ADR: NonNullable<NeedInputs["adr"]> = [
@@ -174,7 +174,7 @@ describe("buildNeeds — the ADR side of LAW (pharmacy stage D1)", () => {
   });
 
   it("the ADR side alone is enough to list LAW", () => {
-    const out = buildNeeds({ buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: [], incidents: null, cold: null }, NOW);
+    const out = buildNeeds({ buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: [], incidents: null, cold: null, steward: null }, NOW);
     expect(out.sides).toEqual(["LAW"]);
     expect(out.rows).toEqual([]);
   });

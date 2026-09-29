@@ -149,6 +149,12 @@ export const pharmacyManifest: ModuleManifest = {
      * it off. The pharmacist in charge and the materials head.
      */
     "pharmacy.coldchain.manage",
+    /**
+     * STAGE D5 — the antimicrobial steward's grant: read a restricted-antimicrobial request's prescription line and
+     * prescriber beside the /approvals card. The decision itself is the approvals kernel's, routed to the
+     * `antimicrobial_steward` role. Held by that role alone.
+     */
+    "pharmacy.antimicrobial.approve",
   ],
   /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
   subscriptions: [

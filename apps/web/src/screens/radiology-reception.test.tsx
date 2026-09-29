@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -89,4 +89,128 @@ it("shows a slot clash with the server's own message", async () => {
   renderWithProviders(<RadiologyReception />);
   await userEvent.click(await screen.findByRole("button", { name: "Book" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(/already has a live booking.*slot_taken/);
+});
+
+/**
+ * PLAN 18-S RS2 — the ordering door is the seat's CENTRE (18a-iv D1: at the top of reception, not a
+ * new screen), and the right-hand list stays the queue alone ("nothing duplicates the right list").
+ */
+it("mounts the ordering door in the centre, never in the right-hand queue", async () => {
+  mockRoutes({ "GET /api/radiology/worklist": { status: 200, body: { rows: [ROW] } } });
+  renderWithProviders(<RadiologyReception />);
+  const door = await screen.findByTestId("imaging-desk-door");
+  expect(screen.getByTestId("station-right")).not.toContainElement(door);
+  expect(screen.getByLabelText("Visit number")).toBeInTheDocument();
+});
+
+/**
+ * PLAN 18-S RS2b P5 — THE BEDSIDE BOOKING WRITER. The desk picks a MACHINE from `GET /radiology/
+ * devices` (code · name · room, "portable" and "not licensed" marked by the server's own facts)
+ * instead of typing a ULID, and a portable machine opens an "At the bedside" field whose value is
+ * sent as `bedsideLocation`. The refusal is the server's, in its own words.
+ */
+const DEVICES = {
+  devices: [
+    { id: "D-CT", code: "CT-1", name: "CT scanner", modality: "ct", room: "Room 4", portable: false, status: "available", ionising: true, licensedNow: true },
+    { id: "D-PX", code: "PX-1", name: "Portable X-ray", modality: "xray", room: null, portable: true, status: "available", ionising: true, licensedNow: false },
+    { id: "D-UP", code: "USG-P1", name: "Portable ultrasound", modality: "usg", room: null, portable: true, status: "available", ionising: false, licensedNow: null },
+  ],
+};
+
+function bodiesOf(key: string): unknown[] {
+  const fetchMock = globalThis.fetch as unknown as { mock: { calls: [RequestInfo | URL, RequestInit | undefined][] } };
+  return fetchMock.mock.calls
+    .filter(([input, init]) => `${init?.method ?? "GET"} ${String(input).split("?")[0]!}` === key)
+    .map(([, init]) => JSON.parse(String(init?.body ?? "{}")) as unknown);
+}
+
+it("RS2b: the machine is picked from the device list, marked portable and not licensed — no id box", async () => {
+  mockRoutes({
+    "GET /api/radiology/worklist": { status: 200, body: { rows: [ROW] } },
+    "GET /api/radiology/devices": { status: 200, body: DEVICES },
+  });
+  renderWithProviders(<RadiologyReception />);
+  const select = await screen.findByRole("combobox", { name: "Machine" });
+  await waitFor(() => { expect(within(select).getAllByRole("option")).toHaveLength(4); });
+  expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+    "Choose a machine",
+    "CT-1 · CT scanner · Room 4",
+    "PX-1 · Portable X-ray · portable · not licensed",
+    "USG-P1 · Portable ultrasound · portable",
+  ]);
+  expect(screen.queryByRole("textbox", { name: "Machine" })).not.toBeInTheDocument();
+});
+
+it("RS2b: a portable machine opens the bedside field and books with bedsideLocation", async () => {
+  mockRoutes({
+    "GET /api/radiology/worklist": { status: 200, body: { rows: [ROW] } },
+    "GET /api/radiology/devices": { status: 200, body: DEVICES },
+    "POST /api/radiology/studies/S1/schedule": { status: 201, body: {} },
+  });
+  renderWithProviders(<RadiologyReception />);
+  const select = await screen.findByRole("combobox", { name: "Machine" });
+  await within(select).findByRole("option", { name: /PX-1/ });
+  expect(screen.queryByLabelText("At the bedside")).not.toBeInTheDocument();
+  await userEvent.selectOptions(select, "D-PX");
+  await userEvent.type(screen.getByLabelText("At the bedside"), "Ward 3 · bed 12");
+  await userEvent.click(screen.getByRole("button", { name: "Book" }));
+  await waitFor(() => { expect(bodiesOf("POST /api/radiology/studies/S1/schedule")).toHaveLength(1); });
+  expect(bodiesOf("POST /api/radiology/studies/S1/schedule")[0]).toMatchObject({
+    deviceResourceId: "D-PX", bedsideLocation: "Ward 3 · bed 12",
+  });
+});
+
+it("RS2b: a department machine shows no bedside field and sends no bedsideLocation", async () => {
+  mockRoutes({
+    "GET /api/radiology/worklist": { status: 200, body: { rows: [ROW] } },
+    "GET /api/radiology/devices": { status: 200, body: DEVICES },
+    "POST /api/radiology/studies/S1/schedule": { status: 201, body: {} },
+  });
+  renderWithProviders(<RadiologyReception />);
+  const select = await screen.findByRole("combobox", { name: "Machine" });
+  await within(select).findByRole("option", { name: /CT-1/ });
+  await userEvent.selectOptions(select, "D-CT");
+  expect(screen.queryByLabelText("At the bedside")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Book" }));
+  await waitFor(() => { expect(bodiesOf("POST /api/radiology/studies/S1/schedule")).toHaveLength(1); });
+  expect(bodiesOf("POST /api/radiology/studies/S1/schedule")[0]).not.toHaveProperty("bedsideLocation");
+});
+
+it("RS2b: device_not_portable is shown in the server's plain words", async () => {
+  mockRoutes({
+    "GET /api/radiology/worklist": { status: 200, body: { rows: [ROW] } },
+    "GET /api/radiology/devices": { status: 200, body: DEVICES },
+    "POST /api/radiology/studies/S1/schedule": {
+      status: 422,
+      body: { statusCode: 422, code: "device_not_portable", message: "CT-1 (CT scanner) is not a portable unit and cannot be taken to a bedside" },
+    },
+  });
+  renderWithProviders(<RadiologyReception />);
+  const select = await screen.findByRole("combobox", { name: "Machine" });
+  await within(select).findByRole("option", { name: /CT-1/ });
+  await userEvent.selectOptions(select, "D-CT");
+  await userEvent.click(screen.getByRole("button", { name: "Book" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/not a portable unit.*device_not_portable/);
+});
+
+it("RS2b: after device_not_portable the desk may bring the patient to the department — an explicit clear", async () => {
+  mockRoutes({
+    "GET /api/radiology/worklist": { status: 200, body: { rows: [ROW] } },
+    "GET /api/radiology/devices": { status: 200, body: DEVICES },
+    "POST /api/radiology/studies/S1/schedule": {
+      status: 422,
+      body: { statusCode: 422, code: "device_not_portable", message: "CT-1 (CT scanner) is not a portable unit" },
+    },
+  });
+  renderWithProviders(<RadiologyReception />);
+  expect(screen.queryByRole("button", { name: "Bring to the department instead" })).not.toBeInTheDocument();
+  const select = await screen.findByRole("combobox", { name: "Machine" });
+  await within(select).findByRole("option", { name: /CT-1/ });
+  await userEvent.selectOptions(select, "D-CT");
+  await userEvent.click(screen.getByRole("button", { name: "Book" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Bring to the department instead" }));
+  await waitFor(() => { expect(bodiesOf("POST /api/radiology/studies/S1/schedule")).toHaveLength(2); });
+  expect(bodiesOf("POST /api/radiology/studies/S1/schedule")[1]).toEqual({
+    deviceResourceId: "D-CT", scheduledAt: "", bedsideLocation: null,
+  });
 });

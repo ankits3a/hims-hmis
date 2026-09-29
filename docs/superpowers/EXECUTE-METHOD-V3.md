@@ -722,6 +722,14 @@ session.
 - Before offering a deploy, check the integration checkout for dirty files outside `docs/` (§2.168). `deploy.sh`
   refuses them, and "ready to deploy" is a claim about that tree.
 
+### 9.6b A REGISTRY CHANGE'S TEST SELECTION IS A GREP, NOT A FOLDER — added 2026-09-28 (gap A3, ledger §2.169)
+
+"Touched suites only" (the owner's ship-fast rule) is correct only if "touched" includes every test that ENUMERATES
+what you registered.
+- When a change adds or renames an approval type, permission, route or event, the brief for the change's test run
+  must include the output of §2.169's grep, and the run must cover every hit.
+- On 2026-09-28 skipping it cost two red CI rounds (about 45 minutes) on a PR whose own 194 suites were green.
+
 ### 9.7 BRIEF THE CLOSE REVIEWER AT THE OPERANDS, NOT THE BRANCHES — added 2026-08-28 (Plan 15 close, ledger §2.128)
 
 Three phases running, the close reviewer has returned more than the phase's own instruments found,

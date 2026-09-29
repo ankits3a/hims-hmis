@@ -45,6 +45,7 @@ import * as formulary from "./index";
 /** Sorted by `Array.prototype.sort`'s default UTF-16 order, so SCREAMING and Pascal names lead. */
 const SURFACE = [
   "ALLERGY_CLASSES", // P22 — the allergy class vocabulary the prescribing check reads
+  "AWARE_LIST", // PHARMACY STAGE D5 — the cited WHO AWaRe 2023 list, by moiety set and route
   "FORMULARY_EVENTS",
   "FormularyError",
   "MAX_IDS",
@@ -66,6 +67,7 @@ const SURFACE = [
   "allergyClassKeys", // P22 — pure: the classes an allergy record names
   "attestSubstance",
   "catalogueCensus",
+  "classifyAwareMedicines", // PHARMACY STAGE D5 — the list written onto products whose class is null (seed:pharmacy)
   "classifyNdpsSalts", // PHARMACY P6 — the cited list written onto the catalogue (a script's door)
   "countSalts",
   "equivalentMedicines",
@@ -90,6 +92,7 @@ const SURFACE = [
   "rejectStaging",
   "resolveDrugTexts",
   "resolveMedicines",
+  "restrictedAntimicrobialExists", // PHARMACY STAGE D5 — the office's "no steward appointed" row asks it
   "ruleSubstanceUnmappable",
   "saltIdsByNames",
   "saltsByIds",
