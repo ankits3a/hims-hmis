@@ -3,7 +3,7 @@
 The imaging department: the order, the schedule, the safety gates, the acquisition and the report.
 
 **Two companion runbooks cover the rest of the series and neither replaces this one.**
-`radiology-pacs-go-live.md` is 18b (worklist export, UIDs, the viewer door).
+`radiology-pacs-go-live.md` is 18b and 18-S RS12 (worklist export, UIDs, the viewer door, and the Orthanc + OHIF install, arrivals, dose reports and the Unmatched-images inbox).
 `radiation-safety-go-live.md` is 18c (the AERB registers) and **its §0 is a hard stop on the whole
 department** — read it before you deploy, not after.
 

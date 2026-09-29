@@ -151,6 +151,12 @@ export {
 export type { MwlExport, MwlRow } from "./mwl";
 export { IMAGES_READ, openImages, renderViewerUrl, studyImageViews } from "./views";
 export type { ImageViewRow } from "./views";
+// 18-S RS12 — the archive's doors in and the PACS inbox.
+export {
+  PACS_INTERFACE, PACS_RECONCILE, attachUnmatched, doseDisagreement, ingestArrival, ingestDoseSr, matchVerdict,
+  openUnmatchedCount, pacsArchiveConfigured, pacsInbox, parseDoseSr, parseOrthancStudy, rejectUnmatched,
+} from "./pacs";
+export type { ArrivalNotice, ArrivalOutcome, DoseConflictRow, DoseSrNotice, InboxRow as PacsInboxRow } from "./pacs"; // RS9 exports its own InboxRow (the doctor's results); the archive's is re-exported by this name
 export type { ReportView, StudyView, WorklistRow, WorklistView } from "./read";
 export type {
   PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,

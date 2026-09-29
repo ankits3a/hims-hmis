@@ -1250,6 +1250,8 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.criticals.ack` | ✓ | | | | | | |
 | `radiology.mwl.read` | | ✓ | | | ✓ | | |
 | `radiology.display.read` | | | ✓ | | | | |
+| `radiology.pacs.interface` | | | | | ✓ | | |
+| `radiology.pacs.reconcile` | ✓ | ✓ | | | | | |
 | `radiology.contrast.record` | ✓ | ✓ | | | | | ✓ |
 | `pcpndt.registrations.manage` | | | | ✓ | | | |
 | `pcpndt.registrations.read` | ✓ | | | ✓ | | | |
@@ -1319,6 +1321,16 @@ acquisition; `radiologist` and `radiographer` hold it too, so nobody who could r
 lost it. Because the radiologist now answers an approval type, **`radiologist` gains
 `approvals.requests.read` and `approvals.requests.decide`** — the approvals spine's rule that every
 approver role can open and answer its own queue.
+
+**Plan 18-S RS12 (the PACS seams) adds two permissions and three grants.** `radiology.pacs.interface`
+is a MACHINE permission: the bridge on the Orthanc host posts the archive's study-arrived notices and
+Radiation Dose SRs to `/radiology/pacs/*`, and **`modality_bridge` gains it** beside
+`radiology.mwl.read` — still no clinical string, because an arrival writes image counts and a dose
+report writes a receipt, and the dose register is written only when the technologist presses Send.
+`radiology.pacs.reconcile` is the PACS inbox — attaching an archive study that no accession and UHID
+could claim to the study it belongs to, or rejecting it, always with a reason — and **`radiologist`
+and `radiographer` each gain it**: the technologist knows who was on the table, and nothing is ever
+attached by a patient's name.
 
 **The OPD dispense counter (Plan 16c T1) declares four permissions and one new role, and the SHAPE
 is the Pharmacy Act.** `pharmacy.dispense.scheduled` — the hand-over of a dispense carrying a

@@ -38,6 +38,8 @@ export type WireStudyView = WireWorklistRow & {
   views: { id: string; viewerId: string; viewerName: string; via: string; viewedAt: string }[];
   /** Close review B4 — the console shows "Open images" because the server says this reader may. */
   canOpenImages: boolean;
+  /** 18-S RS12 — the archive's word on this study: when its images arrived and how many (null until then). */
+  archive?: { arrivedAt: string; seriesCount: number; instanceCount: number } | null;
   /** 18b T4 — `machineDrafted` is true only on a version the drafter proposed (§6.8). */
   reports: { id: string; version: number; status: string; publishedAt: string | null; machineDrafted: boolean }[];
 };
@@ -267,7 +269,7 @@ export const recordAcquired = (studyId: string, body: Record<string, unknown>) =
 
 /** 18b T3 — a POST: the view row, the event and the PHI line exist before the URL comes back. */
 export const openImages = (studyId: string) =>
-  api<{ url: string; viewId: string; studyInstanceUid: string }>("POST", `/radiology/studies/${studyId}/images/open`);
+  api<{ url: string; viewId: string; studyInstanceUid: string; viewer?: "ohif" | "other" }>("POST", `/radiology/studies/${studyId}/images/open`);
 
 /** 18b T4 — the drafter proposes from the study's recorded facts; no body travels. */
 export const proposeDraft = (studyId: string) =>
