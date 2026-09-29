@@ -183,4 +183,40 @@ describe("MaterialsItems", () => {
     }]);
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/formulary/medicines/"))).toBe(false);
   });
+
+  /**
+   * STOCK ENTRY (2026-09-29) — the edit panel is opened from a stock-entry row to fix a drug's GST or add a pack.
+   * The slab goes through the sale-item route that moves the bill's GST category with it (never a bare item PATCH),
+   * and a pack is a NEW unit posted to the item's uoms.
+   */
+  it("sets a drug's GST slab through the sale-item route and adds a pack size as a new unit", async () => {
+    mockRoutes({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u1" }, permissions: { hospital: ["materials.items.manage", "pharmacy.sale_items.manage"], scoped: { department: {}, floor: {} } } } },
+      "GET /api/materials/items": { status: 200, body: { items: ITEMS } },
+      "GET /api/materials/items/it-1": {
+        status: 200,
+        body: { item: { ...ITEMS[0], uoms: [{ id: "u-1", itemId: "it-1", uom: "tablet", toBaseMultiplier: 1 }, { id: "u-2", itemId: "it-1", uom: "strip", toBaseMultiplier: 10 }], barcodes: [], manufacturer: null, leadTimeDays: null, lasa: false, highAlert: false, medicineName: "Crocin 500", scheduleFlag: "OTC" } },
+      },
+      "PATCH /api/materials/items/it-1": { status: 200, body: { ok: true } },
+      "PUT /api/pharmacy/sale-items/it-1/gst-slab": { status: 200, body: { categoryChanged: true } },
+      "POST /api/materials/items/it-1/uoms": { status: 200, body: { itemUomId: "u-3" } },
+    });
+    renderWithProviders(<MaterialsItems />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit CROC500" }));
+    const gst = await screen.findByTestId("item-edit-gst");
+    await waitFor(() => { expect(gst).toHaveValue("1200"); });
+    expect(screen.getByTestId("item-edit-packs")).toHaveTextContent("tablet · strip × 10 tablet");
+    await user.selectOptions(gst, "500");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("CROC500 saved.")).toBeInTheDocument();
+    expect(bodiesOf("PUT", "/pharmacy/sale-items/it-1/gst-slab")).toEqual([{ rateBps: 500 }]);
+    expect(bodiesOf("PATCH", "/materials/items/it-1")[0]).not.toHaveProperty("gstRateBps");
+
+    await user.type(screen.getByLabelText("New pack name"), "strip15");
+    await user.type(screen.getByLabelText("tablet in the pack"), "15");
+    await user.click(screen.getByRole("button", { name: "Add pack size" }));
+    expect(await screen.findByText("Pack strip15 of 15 added.")).toBeInTheDocument();
+    expect(bodiesOf("POST", "/materials/items/it-1/uoms")).toEqual([{ uom: "strip15", toBaseMultiplier: 15, isPurchaseUom: true, isIssueUom: true }]);
+  });
 });
