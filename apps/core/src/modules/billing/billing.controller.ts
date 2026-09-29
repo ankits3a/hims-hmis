@@ -99,6 +99,8 @@ import {
 import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
 import { beginClose, confirmClose, listSessions, openSession, recountSession } from "./sessions";
+import { drawerOpenItems } from "./drawer-open-items";
+import type { DrawerOpenItems, PartPaidItem } from "./drawer-open-items";
 import { istDay } from "./time";
 import type { FeeQuote } from "./charge-rules";
 import type { BillingConfig } from "./config";
@@ -1077,6 +1079,41 @@ export class BillingController {
   async sessionCurrent(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
     const own = await listSessions(this.db, { cashierUserId: actor.id });
     return { session: own.find((s) => s.status === "open" || s.status === "closing") ?? null };
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 — "OPEN ON THIS DRAWER": the acting cashier's own live drawer's open items
+   * (unconfirmed UPI/card, queued cash refunds, part-paid bills). On `billing.session.own` because
+   * it reads only the caller's own drawer, found here and never taken from the URL. Carries NO cash
+   * figure — the close is a blind count (`drawer-open-items.ts`). `null` when no drawer is live.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Get("sessions/current/open-items")
+  async sessionOpenItems(@CurrentActor() actor: Actor): Promise<{
+    items: (Omit<DrawerOpenItems, "partPaid"> & {
+      partPaid: { count: number; paise: number; items: (PartPaidItem & { patientName: string | null; uhid: string | null })[] };
+    }) | null;
+  }> {
+    const own = await listSessions(this.db, { cashierUserId: actor.id });
+    const live = own.find((s) => s.status === "open" || s.status === "closing");
+    if (live === undefined) return { items: null };
+    const found = await drawerOpenItems(this.db, live.id);
+    // The patient's NAME through the one summary helper every billing print uses — so a
+    // confidential patient shows by alias here exactly as everywhere else.
+    const people = await getPatientSummaries(this.db, actor, found.partPaid.items.map((i) => i.patientId));
+    const byId = new Map(people.map((p) => [p.requestedId, p] as const));
+    return {
+      items: {
+        ...found,
+        partPaid: {
+          ...found.partPaid,
+          items: found.partPaid.items.map((i) => {
+            const p = byId.get(i.patientId);
+            return { ...i, patientName: p === undefined ? null : p.restricted ? p.alias : p.name, uhid: p?.uhid ?? null };
+          }),
+        },
+      },
+    };
   }
 
   /**
