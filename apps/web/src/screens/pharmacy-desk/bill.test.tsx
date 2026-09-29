@@ -214,6 +214,24 @@ describe("the bill rail and the hand-over (PD-6)", () => {
     expect(await screen.findByTestId("desk-done")).toHaveTextContent("Mohammed Salim has their medicine.");
   });
 
+  /**
+   * THE WALK OF 2026-09-30. "token number" was chosen and a wrong token typed; the server said "that is
+   * not today's token for this visit" and the desk told the pharmacist "Those four digits do not end
+   * the phone number on the record" — a sentence about the method NOT chosen.
+   */
+  it("a wrong TOKEN at the hand-over is refused in words about the token, not the phone", async () => {
+    const current = dispense("d1", "billed");
+    mockRoutes(base(() => current, "open", {
+      "POST /api/pharmacy/dispenses/d1/handover": { status: 409, body: { code: "identity_mismatch", message: "that is not today's token for this visit" } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const hand = await screen.findByTestId("desk-handover");
+    await userEvent.type(within(hand).getByRole("textbox"), "1");
+    await userEvent.click(within(hand).getByRole("button", { name: /Handed over/ }));
+    expect(await within(hand).findByText(/not today’s token for this visit/)).toBeInTheDocument();
+    expect(within(hand).queryByText(/four digits/)).toBeNull();
+  });
+
   it("E21, measured — with no drawer open NO money can be taken, UPI included, and the keys do nothing either", async () => {
     mockRoutes(base(() => dispense("d1", "picked"), null));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
