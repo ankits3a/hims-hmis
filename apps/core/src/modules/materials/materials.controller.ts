@@ -22,13 +22,16 @@ import {
 } from "./vendors";
 import { createStore, listStores } from "./stores";
 import { balances, movementsFor } from "./ledger";
+import { ledgerItems, stockLedgerView } from "./stock-ledger-view";
+import type { StockLedgerView } from "./stock-ledger-view";
 import { closeRecall, getRecall, listRecalls, raiseRecall, recallableBatches } from "./recalls";
 import type { RecallSummary, RecallView } from "./recalls";
 import {
   approveSupplierReturn, cancelSupplierReturn, cancelVendorCredit, closeSupplierReturn, createSupplierReturn, dispatchSupplierReturn,
-  expiryReport, getSupplierReturn, listSupplierReturns, planSupplierReturns, recordVendorCredit, updateSupplierReturn,
+  expiryReport, getSupplierReturn, listSupplierReturns, planSupplierReturns, recordVendorCredit, returnableStock, returnableVendors,
+  updateSupplierReturn,
 } from "./supplier-returns";
-import type { ExpiryReport, ReturnPlan, ReturnSummary, ReturnView } from "./supplier-returns";
+import type { ExpiryReport, ReturnPlan, ReturnSummary, ReturnView, ReturnableBatch, ReturnableVendor } from "./supplier-returns";
 import { getWriteOff, listWriteOffs, postWriteOff, raiseWriteOff } from "./write-offs";
 import type { WriteOffSummary, WriteOffView } from "./write-offs";
 import {
@@ -304,6 +307,8 @@ const returnLineBody = z.object({
   batchId: id, storeResourceId: id, qtyBase: z.number().int().positive().max(10_000_000),
   reason: z.enum(["expired", "near_expiry", "damaged", "recalled"]),
   ratePaise: paise.nonnegative().nullish(), gstRateBps: z.number().int().min(0).max(10_000).nullish(),
+  // GAP-CLOSURE A5 — the person's words for the line (what was damaged, what was wrong with the supply).
+  note: z.string().max(500).nullish(),
 });
 const returnBody = z.object({
   vendorId: id, interState: z.boolean().optional(), note: z.string().max(500).nullish(), lines: z.array(returnLineBody).min(1).max(300),
@@ -613,6 +618,30 @@ export class MaterialsController {
     };
   }
 
+  /** GAP-CLOSURE A5 — the stock ledger as a statement: opening, each movement with its running balance, closing. */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("stock/ledger")
+  async stockLedger(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<StockLedgerView> {
+    const q = parsed(z.object({
+      itemId: id, resourceId: id.optional(), batchId: id.optional(), from: dateStr.optional(), to: dateStr.optional(),
+    }), query);
+    try {
+      return await stockLedgerView(this.db, actor, {
+        itemId: q.itemId, storeResourceId: q.resourceId ?? null, batchId: q.batchId ?? null, from: q.from ?? null, to: q.to ?? null,
+      });
+    } catch (e) { toHttp(e); }
+  }
+
+  /** GAP-CLOSURE A5 — the statement's item picker, under the statement's own grant. */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("stock/ledger/items")
+  async stockLedgerItems(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: { id: string; code: string; name: string; baseUom: string }[] }> {
+    const q = parsed(z.object({ q: z.string().max(100) }), query);
+    try {
+      return { items: await ledgerItems(this.db, actor, q.q) };
+    } catch (e) { toHttp(e); }
+  }
+
   // ═══ 14c, FIRST SLICE — BLIND COUNTS. Every act checks its own grant and its own counter too. ═══
 
   @RequirePermission("materials.counts.manage", "hospital")
@@ -780,6 +809,25 @@ export class MaterialsController {
   async returnPlan(): Promise<ReturnPlan> {
     try {
       return await planSupplierReturns(this.db, new Date());
+    } catch (e) { toHttp(e); }
+  }
+
+  /** GAP-CLOSURE A5 — the suppliers a manual return can go to (real suppliers of owned stock still held). */
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Get("supplier-returns/vendors")
+  async returnVendors(@CurrentActor() actor: Actor): Promise<{ vendors: ReturnableVendor[] }> {
+    try {
+      return { vendors: await returnableVendors(this.db, actor) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** GAP-CLOSURE A5 — the stock a manual return to this supplier may carry, and what is free of each. */
+  @RequirePermission("materials.returns.manage", "hospital")
+  @Get("supplier-returns/returnable")
+  async returnable(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ batches: ReturnableBatch[] }> {
+    const q = parsed(z.object({ vendorId: id, q: z.string().max(100).optional(), exceptReturnId: id.optional() }), query);
+    try {
+      return { batches: await returnableStock(this.db, actor, { vendorId: q.vendorId, search: q.q ?? null, exceptReturnId: q.exceptReturnId ?? null }) };
     } catch (e) { toHttp(e); }
   }
 
