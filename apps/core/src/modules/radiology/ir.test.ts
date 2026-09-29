@@ -242,6 +242,8 @@ describe("the IR suite (18-S RS12b)", () => {
     expect(mid.sedation.vitals).toHaveLength(1);
     await withTx(db, (tx) => irSignOut(tx, nurse, s.studyId, signOutBody, NOW));
     await send(s.studyId, { doseDap: 40, fluoroSeconds: 600, doseKar: 900 });
+    /** After Send, until the hand-off, the recovery observations run every 15 minutes. */
+    expect((await irCaseView(db, fx.radiographer, s.studyId, NOW)).sedation.nextDueAt).toEqual(new Date(t1.getTime() + 15 * 60_000));
     const handoff = {
       vitals: { bpSystolic: 116, bpDiastolic: 72, heartRate: 88, spo2: 98 }, bedRestHours: 4,
       drainCare: "Drain to bag; strict input-output", instructionsEn: "Lie flat for 4 hours. Tell the nurse about bleeding or pain.",

@@ -4250,6 +4250,209 @@
       "dockHint": "Type the accession and why, then attach.",
       "dockReady": "Attach these images to {{accession}}."
     },
+    "ir": {
+      "title": "IR suite",
+      "place": "Image-guided procedures · WHO checklist · sedation · skin dose",
+      "listTitle": "IR list",
+      "listEmpty": "No procedure is booked, on the table or waiting for recovery.",
+      "statTable": "On the table",
+      "statRecovery": "To recovery",
+      "clockVitals": "{{name}} — a sedation reading is due",
+      "clockStat": "{{name}} — STAT {{procedure}} waiting",
+      "idleEmpty": "Nothing in the suite. Procedures appear here when the desk books an IR study type.",
+      "idleNext": "Next: {{name}} — {{procedure}}. Open them from the list.",
+      "howItWorks": "Sign in before sedation, Time out before the needle, Sign out before the patient leaves the table. The machine does not start or send without them.",
+      "lane": {
+        "onTable": "In the suite",
+        "machine": "Machine"
+      },
+      "next": {
+        "check_in": "Booked — opening checks in",
+        "sign_in": "Sign in due",
+        "time_out": "Time out due",
+        "start": "Ready to start",
+        "sign_out": "On the table",
+        "send": "Signed out — send",
+        "note": "Write the procedure note",
+        "handoff": "Hand to recovery",
+        "done": "Handed over",
+        "closed": "Closed"
+      },
+      "risk": {
+        "high": "high bleeding risk",
+        "low": "low bleeding risk"
+      },
+      "steps": "Procedure steps",
+      "step": {
+        "signIn": "Sign in",
+        "timeOut": "Time out",
+        "procedure": "Procedure",
+        "signOut": "Sign out",
+        "recovery": "Recovery"
+      },
+      "sent": "{{acc}} sent. Write the note, then hand the patient to recovery.",
+      "recordedBy": "{{name}} · {{at}}",
+      "participants": "Who is present (one per line)",
+      "participantsHint": "Dr Rao (operator)\nSr Tirkey (sedation nurse)",
+      "coag": {
+        "title": "Coagulation (high-bleeding-risk procedure)",
+        "ok": "Within the rule",
+        "overridden": "Overridden by {{name}} · {{at}}",
+        "none": "none signed on file",
+        "drawn": "drawn {{at}}",
+        "inrRule": "needs ≤ {{max}}",
+        "platelets": "Platelets",
+        "pltRule": "needs ≥ {{min}}, within {{days}} days",
+        "reason": "Reason",
+        "verdict": {
+          "missing": "no signed INR and platelet count on file",
+          "stale": "drawn more than {{days}} days ago",
+          "inr_high": "INR above {{max}}",
+          "platelets_low": "platelets below {{min}}/µL"
+        },
+        "overrideLabel": "Operator's reason (kept with the procedure record)",
+        "override": "Override and sign",
+        "askRadiologist": "Correct and recheck (vitamin K / FFP / platelets), or ask the operating radiologist to override with a reason."
+      },
+      "signIn": {
+        "title": "Sign in — before sedation",
+        "identity": "Patient states name and date of birth; wristband read",
+        "consent": "Procedure consent (procedure-specific, bilingual, witnessed)",
+        "consentVersion": "Consent form version",
+        "consentLang": "Explained in",
+        "signer": "Signed by",
+        "signerPatient": "Patient",
+        "signerGuardian": "Guardian",
+        "witness": "Witness (name)",
+        "site": "Site / side marked by the operator",
+        "allergies": "Allergy and contrast history read aloud",
+        "anticoag": "Anticoagulants / antiplatelets",
+        "anticoag_none": "None",
+        "anticoag_held": "Held as advised",
+        "anticoag_continued": "Continued (operator's decision)",
+        "anticoagNote": "Operator's note",
+        "sedation": "Sedation plan",
+        "sedationBy": "Sedation given and watched by",
+        "lastSolids": "Last solid food ({{h}} h rule)",
+        "lastClear": "Last clear fluid ({{h}} h rule)",
+        "iv": "IV access, crash cart and reversal agents (naloxone, flumazenil) checked"
+      },
+      "sedation": {
+        "local": "Local anaesthesia only",
+        "moderate": "Moderate (conscious) sedation",
+        "deep": "Deep sedation / anaesthesia"
+      },
+      "timeOut": {
+        "title": "Time out — before the needle",
+        "peopleHint": "Everyone in the room, at least two people",
+        "team": "Team introduced by name and role",
+        "confirmed": "Patient, procedure and side confirmed aloud by all",
+        "images": "Relevant images displayed",
+        "antibiotics": "Antibiotic prophylaxis",
+        "abxGiven": "Given within 60 min",
+        "abxNone": "Not indicated",
+        "risks": "Anticipated critical events said aloud"
+      },
+      "procedure": {
+        "title": "Procedure — dose and sedation"
+      },
+      "dose": {
+        "fluoro": "Fluoro time",
+        "karUnit": "Gy · skin-dose proxy",
+        "fluoroInput": "Fluoro time (min:s)",
+        "dapInput": "DAP (Gy·cm²)",
+        "karInput": "Ka,r (mGy)",
+        "fromMachine": "Filled from the machine's dose report — check against the unit's display.",
+        "skinAlert": "Reference air kerma has reached {{gy}} Gy. Tell the operator now; note the skin site; the patient is told and a skin check is booked at 2–4 weeks.",
+        "srdlAlert": "{{gy}} Gy — the substantial radiation dose level. The radiation safety officer reviews this case."
+      },
+      "vitals": {
+        "title": "Sedation chart",
+        "overdue": "Reading overdue by {{min}} min",
+        "dueIn": "Next reading in {{min}} min",
+        "time": "Time",
+        "drug": "Drug given",
+        "drugHint": "e.g. Midazolam 1 mg IV",
+        "none": "No reading yet.",
+        "sys": "BP systolic",
+        "dia": "BP diastolic",
+        "sysShort": "Sys",
+        "diaShort": "Dia",
+        "record": "Record reading"
+      },
+      "skin": {
+        "explain": "Ka,r is at or above 3 Gy. Tell the patient, note the skin site and book the skin check {{min}}–{{max}} weeks out.",
+        "on": "Skin check on",
+        "note": "Skin site / note",
+        "noteHint": "e.g. right flank, posterior",
+        "done": "Skin check booked for {{on}} · {{name}}"
+      },
+      "signOut": {
+        "title": "Sign out — before the patient leaves the table",
+        "done": "Procedure performed confirmed",
+        "counts": "Needle, guidewire and sponge count correct",
+        "specimens": "Specimens",
+        "specimensNone": "None taken",
+        "specimensLabelled": "Labelled with the patient in the room",
+        "devices": "Devices / catheters left in",
+        "devicesHint": "e.g. 8 Fr locking pigtail, left lower pole — or none",
+        "dose": "Fluoro time, DAP and Ka,r recorded",
+        "plan": "Recovery plan and bed-rest hours given"
+      },
+      "send": {
+        "source": "Images",
+        "pacs": "Sent to PACS",
+        "noPacs": "No PACS images (fluoro only)"
+      },
+      "note": {
+        "title": "Procedure note",
+        "procedure": "Procedure performed and findings",
+        "approach": "Approach / access",
+        "devices": "Devices / catheters",
+        "specimens": "Specimens sent",
+        "ebl": "Estimated blood loss (mL)",
+        "complications": "Complications",
+        "complicationsHint": "None, or what happened and what was done",
+        "editable": "The note stays editable until the patient is handed to recovery."
+      },
+      "handoff": {
+        "title": "Recovery hand-off",
+        "bedRest": "Bed rest (hours)",
+        "drain": "Drain / catheter care",
+        "en": "Instructions (English)",
+        "hi": "Instructions (Hindi)",
+        "receivedBy": "Received by",
+        "receivedByHint": "Nurse's name and ward",
+        "draftNote": "Drafted by rule from the procedure; edit before handing over.",
+        "done": "Handed to {{to}} by {{name}} · {{at}}"
+      },
+      "drainDraft": "Drain to bag; record output hourly for 6 hours; flush only on the operator's advice.",
+      "dock": {
+        "checkIn": "Checking in…",
+        "checkInHint": "Opening a booked patient checks them in.",
+        "signIn": "Record Sign in",
+        "signInHint": "Every line confirmed aloud before sedation.",
+        "timeOut": "Record Time out",
+        "timeOutHint": "The whole team stops — at least two people.",
+        "start": "Start the procedure",
+        "startHint": "Sign in and Time out are done.",
+        "vitals": "Record sedation reading",
+        "vitalsHint": "A reading is due — BP, HR, SpO₂ and RASS.",
+        "signOut": "Record Sign out",
+        "signOutHint": "Before the patient leaves the table.",
+        "skin": "Book the skin check",
+        "skinHint": "Ka,r ≥ 3 Gy — the patient is told before Send.",
+        "send": "Send",
+        "sendHint": "The dose goes to the register; the study goes to reading.",
+        "note": "Save the procedure note",
+        "noteHint": "What was done, the devices, specimens and complications.",
+        "handoff": "Hand to recovery",
+        "handoffHint": "Vitals, drain care and the instructions in English and Hindi.",
+        "done": "Next case",
+        "doneHint": "Handed over. The ward nurse has the plan.",
+        "closed": "This procedure is closed."
+      }
+    },
     "room": {
       "title": "Modality rooms",
       "noMachine": "No machine set up",
@@ -4258,6 +4461,7 @@
       "toPortable": "Portable round →",
       "views": {
         "console": "Room console",
+        "ir": "IR suite",
         "dose": "Dose log",
         "rejects": "Rejects & repeats",
         "downtime": "Downtime",
@@ -4322,7 +4526,8 @@
         "desk": "Open the imaging front desk",
         "prep": "Open the prep bay",
         "pcpndt": "Open the PCPNDT registration",
-        "formF": "Open the study's Form F"
+        "formF": "Open the study's Form F",
+        "irSuite": "Open the IR suite"
       },
       "prepOpen": "The prep bay still owes: {{gates}}. The patient goes back to prep before anything starts here.",
       "identify": {

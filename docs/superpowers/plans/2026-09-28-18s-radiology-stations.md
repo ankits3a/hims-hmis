@@ -1322,7 +1322,7 @@ migration:
   older than a shift (RS10's alerts spine); Orthanc-side authorization per study (the plugin that asks
   HMIS who may view) — until then the proxy's LAN-only auth is the gate.
 
-#### RS12 — NEXT (not built): the IR suite
+#### RS12 — NEXT: the IR suite (built in RS12b — see "RS12b as built" below)
 - **Screen** `room:ir` (a Rooms view): WHO sign-in (identity, site/side, consent, allergy, anticoagulant
   status + INR/platelets, contrast/renal gate from RS5, sedation plan, the operator and the
   anaesthetist), **time-out** (the procedure, side, the image on the monitor, antibiotics), running
@@ -1359,6 +1359,90 @@ migration:
   obligation today.
 - **(f) Where it lives on screen.** The Rooms station's header views (`console · dose · rejects ·
   downtime · unmatched`); `?view=ir` is a sixth, so no new route, nav row or caddyfile entry.
+
+#### RS12b as built (this PR; lane `radiology-ir`, on main `9e387f23`; one migration, `0152_radiology_ir_suite` — to be renumbered at rebase after #403 / #401 / #369)
+- **T1 · the IR case (core).** An IR case is the `imaging_studies` row whose study type says
+  `interventional: true` (DECIDED — no parallel table, 18a-iii's portable reasoning). `study_types`
+  gains optional `interventional` and `bleeding_risk` (`low | high`, SIR 2019) — every earlier book
+  still parses. Migration 0152: `imaging_ir_checklists` (one row per WHO phase `sign_in | time_out |
+  sign_out`, the OT's `items [{key, answer, note?}]` + `participants` shape, UNIQUE per study ×
+  phase), `imaging_ir_sedation_vitals` (BP, HR, SpO₂, RASS, drug; range CHECK),
+  `imaging_ir_cases` (coagulation override verdict/reason/by/at, skin follow-up, procedure note,
+  recovery hand-off; all-or-none CHECKs; a hand-off needs a note). `ir.ts` +
+  `radiology-ir.controller.ts`: `GET /radiology/ir/cases`, `GET /radiology/studies/:id/ir`,
+  `POST …/ir/sign-in | time-out | sign-out | coagulation-override | vitals | skin-follow-up | note |
+  handoff`. **Refusals:** `startAcquisition` refuses an IR study without Sign in AND Time out
+  (`ir_checklist_incomplete`, detail `missing`); `recordAcquired` refuses one without Sign out;
+  Sign in refuses a high-bleeding-risk procedure with no signed INR / PLT in 7 days, INR > 1.5 or
+  PLT < 50,000/µL (`coagulation_out_of_range`, detail verdicts + numbers) unless the radiologist
+  recorded an override (`radiology.gates.override`; reason ≥ 5 chars; once; event
+  `imaging.ir_coagulation_overridden`; `coagulation_in_range` when there is nothing to override).
+  Sign in also checks the identity/side room gates are closed, the consent (OT `consentSchema`:
+  this procedure, a witness, the side, a minor's guardian with consent authority), site marked,
+  allergies read, anticoagulant note when continued, IV + resus, and fasting 6 h / 2 h (OT's
+  `NPO_*` hours) for moderate/deep sedation except STAT. Time out needs ≥ 2 distinct people (OT A13).
+  The lab index gains `latestVerifiedInr` / `latestVerifiedPlatelets` (`coagulation.ts`: verified,
+  not superseded, not restricted, merge chain; platelets normalised to /µL from `10^3/uL`,
+  `10^9/L`, `lakh/cumm`, `/uL`; any other unit skipped).
+- **T2 · IR dose (core).** Ka,r (mGy) is recorded through the existing path: `recordAcquired`
+  `doseKar` → `imaging_studies.dose_ka_r` + `radiation_dose_register.dose_ka_r` (`recordDose`), and
+  from the dose SR (113725 Dose (RP) Total, Gy → mGy, `imaging_dose_sr_receipts.dose_ka_r`; compared
+  like the other quantities). Ka,r is NOT one of the quantities the dose CHECKs count (no unit
+  reports it without DAP/fluoro). At Send: Ka,r ≥ 3 Gy without a documented skin follow-up (patient
+  told, skin check 14–28 days out) is refused `skin_followup_required`; then one
+  `imaging.ir_skin_dose_alert` per trigger reached — `skin_followup` (3 Gy) and
+  `substantial_radiation_dose_level` (5 Gy). **The RSO obligation is moved to RS10** (#404, the
+  obligation spine, not merged): the events are raised and exported (`IR_KAR_*`, `skinDoseLevels`)
+  for its consumer.
+- **T3 · web.** Rooms station sixth header view **IR suite** (`?view=ir`, `screens/radiology-ir.tsx`,
+  `lib/radiology-ir-api.ts`): right = the one IR list (STAT first, on the table, booked, sent-not-
+  handed-over) with Clocks (a sedation reading due, a STAT waiting); left = the patient (allergies,
+  weight, kidney, machine); centre = stepper, coagulation card with the numbers, dates and rule (the
+  refusal in words; the override form only to a holder of `radiology.gates.override`, others are
+  told to ask), Sign in / Time out / Sign out as forms, the dose tiles (fluoro min:s, DAP, Ka,r in
+  Gy, red at 3 Gy with the SRDL line at 5 Gy; filled from a waiting dose SR), the sedation chart
+  with its 5-min clock (15-min after Send), the skin-check form, the procedure note and the
+  hand-off with rule-drafted EN + HI instructions. One act docked (Enter): Sign in → Time out →
+  Start → Sign out (or *Record sedation reading* when one is due) → Book the skin check (Ka,r ≥
+  3 Gy) → Send → note → hand-off → next case. The Room console links `ir_checklist_incomplete`,
+  `coagulation_out_of_range` and `skin_followup_required` to the IR suite.
+- **T4 · docs.** `radiology-go-live.md` §16 (the IR machine as a device, the procedure book, the
+  checklist, the thresholds, verify-once).
+- **DECIDED** (standard Indian-corporate-hospital / SIR–CIRSE answer, open to owner objection):
+  - *IR is a flag on the study type*, not a modality or a machine flag — a CT-guided biopsy runs on
+    the CT; the C-arm is modality `xray`. Seeds (fresh DB only): `IR-PCN`, `IR-PTBD`,
+    `IR-CT-BIOPSY` (high risk), `IR-DSA` (low), and machine `IR-1` (no licence seeded, like PX-1).
+  - *A WHO phase is recorded once* (a moment, not a form edited later); the note is editable until
+    the hand-off; the hand-off, the override and the skin follow-up are once each.
+  - *Every IR consent names a witness*; consent = the OT's evidence shape; the bilingual form text
+    stays the hospital's paper (version recorded).
+  - *Coagulation* is read from the lab's signed rows only; a missing value is refused like an
+    out-of-range one; the override is the radiologist's with a written reason, recorded before Sign
+    in; a STAT procedure is not exempt from the coagulation rule (only from fasting).
+  - *Fasting* 6 h solids / 2 h clear for moderate/deep sedation; STAT proceeds with the times kept.
+  - *Sedation vitals* every 5 min on the table, every 15 min after Send until hand-off; charting is
+    the technologist's / radiologist's `radiology.acquire` (no nurse-held permission added).
+  - *Ka,r thresholds*: 3 Gy skin follow-up (2–4 weeks), 5 Gy SRDL (NCRP 168); a typed Ka,r is
+    mGy; the tile shows Gy.
+  - *Bed rest drafted* 6 h (high bleeding risk) / 4 h (low); instructions rule-drafted, never
+    inference, operator edits.
+- **Pins.** Radiology events 21 → 23; error codes +7 (`not_interventional`,
+  `ir_checklist_incomplete`, `ir_phase_recorded`, `coagulation_out_of_range`,
+  `coagulation_in_range`, `skin_followup_required`, `ir_handoff_recorded`); `STUDY_TYPE_SEEDS`
+  20 → 24, seeded services 20 → 24, seeded devices 7 → 8 (`definitions.test`, `seed-radiology.test`);
+  web `ROOM_VIEWS` 5 → 6. No new permission, route in `router.tsx`, nav row or caddyfile route
+  (a header view); `seed-roles` untouched.
+- **Counts** — see the PR body (core `ir.test.ts` 11 + 1 e2e; 7 core mutants killed; web
+  `radiology-ir.test.tsx` 9; 4 web mutants killed; walk in `/opt/hmis-context/rs12b-walk/`).
+- **Moved later.** The RSO/radiologist obligation for a skin-dose trigger → RS10's spine (the
+  events are its input); a skin-check appointment booked into OPD (today a date on the case) →
+  the follow-up tracker (RS8's follow-ups); a printed procedure note / consent form (no print
+  template) → a later print phase; device/consumable billing (catheters, drains) → the OT's
+  materials path when the owner rules IR consumable pricing; a nurse-held charting permission;
+  the IR suite in the HOD's quality indicators (RS10).
+- **Money/law questions the rulings do not settle.** (1) IR procedure prices and consumables
+  (catheters, drains, needles) — nothing seeded or ruled. (2) Whether the coagulation override
+  needs a second consultant (built: the operating radiologist alone, in writing).
 
 #### RS12 — NEXT (not built): night teleradiology (ruling 7)
 - **Identity:** a `teleradiology_reporter` role for the contracted provider's NMC-registered

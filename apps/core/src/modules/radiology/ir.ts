@@ -66,6 +66,8 @@ export const IR_PLATELETS_MIN_PER_UL = 50_000;
 export const IR_COAG_VALID_DAYS = 7;
 /** Moderate/deep sedation: BP, HR, SpO₂ and the sedation score at least every 5 minutes (ASA / SIR). */
 export const IR_SEDATION_VITALS_EVERY_MIN = 5;
+/** After Send and until the hand-off, the recovery observations: every 15 minutes (DECIDED — the common PACU cadence). */
+export const IR_RECOVERY_VITALS_EVERY_MIN = 15;
 /** The skin check is booked 2–4 weeks after the procedure. */
 export const IR_SKIN_FOLLOWUP_DAYS = { min: 14, max: 28 } as const;
 /** A time-out is the whole team stopping: at least two DISTINCT people (OT A13). */
@@ -74,7 +76,7 @@ export const IR_TIME_OUT_MIN_PARTICIPANTS = 2;
 export const IR_THRESHOLDS = {
   skinFollowUpMgy: IR_KAR_SKIN_FOLLOWUP_MGY, srdlMgy: IR_KAR_SRDL_MGY, inrMax: IR_INR_MAX,
   plateletsMinPerUl: IR_PLATELETS_MIN_PER_UL, coagValidDays: IR_COAG_VALID_DAYS,
-  vitalsEveryMin: IR_SEDATION_VITALS_EVERY_MIN, skinFollowUpDays: IR_SKIN_FOLLOWUP_DAYS,
+  vitalsEveryMin: IR_SEDATION_VITALS_EVERY_MIN, recoveryVitalsEveryMin: IR_RECOVERY_VITALS_EVERY_MIN, skinFollowUpDays: IR_SKIN_FOLLOWUP_DAYS,
   fastingSolidsHours: NPO_SOLIDS_HOURS, fastingClearHours: NPO_CLEAR_FLUIDS_HOURS,
 } as const;
 
@@ -296,6 +298,8 @@ async function openRoomGate(exec: Db | Tx, studyId: string, kind: string): Promi
 }
 
 const PRE_START = ["checked_in", "ready"];
+const LIVE = ["scheduled", "checked_in", "ready", "in_acquisition"];
+const AFTER = ["acquired", "reported", "published"];
 
 /**
  * **Sign in — before sedation.** Identity, consent, site, allergies, anticoagulants, fasting, IV
@@ -725,7 +729,9 @@ export async function irCaseView(db: Db, actor: Actor, studyId: string, now: Dat
         id: v.id, bpSystolic: v.bpSystolic, bpDiastolic: v.bpDiastolic, heartRate: v.heartRate, spo2: v.spo2,
         rass: v.rass, drug: v.drug, recordedByName: who(v.recordedBy), recordedAt: v.recordedAt,
       })),
-      nextDueAt: clockRuns ? new Date(lastAt.getTime() + IR_SEDATION_VITALS_EVERY_MIN * 60_000) : null,
+      nextDueAt: clockRuns
+        ? new Date(lastAt.getTime() + (AFTER.includes(study.status) ? IR_RECOVERY_VITALS_EVERY_MIN : IR_SEDATION_VITALS_EVERY_MIN) * 60_000)
+        : null,
     },
     dose: { karMgy: kar, dapGyCm2: numOrNull(study.doseDap), fluoroSeconds: study.fluoroSeconds, levels: skinDoseLevels(kar) },
     skinFollowUp: kase?.skinFollowUpAt == null ? null : {
@@ -749,8 +755,6 @@ export type IrListRow = {
   phases: IrChecklistPhase[]; handedOff: boolean; lastVitalsAt: Date | null; next: IrNextAct;
 };
 
-const LIVE = ["scheduled", "checked_in", "ready", "in_acquisition"];
-const AFTER = ["acquired", "reported", "published"];
 
 /**
  * The suite's ONE list: every IR procedure booked, arrived or on the table, and every one sent in
