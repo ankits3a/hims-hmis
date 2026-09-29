@@ -422,6 +422,136 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Core:** eGFR in the kidney gate (gap 3). An override request becomes an approval row for the radiologist or HOD.
 - **Journeys:** J1 prep hop, J5.
 
+**RS5 spike** (read on main `4d05ffdc`, 29 Sep, before any code):
+- **(a) Who can satisfy which gate.** Two planes, measured. The guard: `radiology.gates.satisfy`
+  is held by `radiographer` ALONE (`radiology_receptionist` is denied it by name — the first
+  separation). The engine: `imaging_gate` `open → satisfied` names `radiographer`, `radiologist`,
+  `doctor`, `system` (F19: the narrower guard wins). One definition covers every KIND, so a role
+  on that edge can satisfy all ten. Waive and override are `radiologist` on both planes. **There is
+  no prep-nurse role** (`ot_nurse`/`recovery_nurse` are the theatre's). **DECIDED** (standard: a
+  radiology nurse staffs the prep bay): new role `radiology_nurse` holding `radiology.worklist.read`,
+  `radiology.gates.satisfy` and a new `radiology.contrast.record`, and named on the engine's satisfy
+  edge; NOT `radiology.gates.override`, NOT `radiology.checkin`. The contrast routes guarded on
+  `radiology.acquire` (the machine) — giving the nurse `acquire` would let her start and finish an
+  acquisition, so the two contrast POSTs move to `radiology.contrast.record`, held by everyone who
+  held `acquire` (radiologist, radiographer) plus the nurse.
+- **(b) Evidence per kind** (`gates.ts`): identity `{secondIdentifier: dob|uhid|wristband, value}`
+  compared to the patient master (wristband = the UHID); pregnancy `{declared, lmpDate?,
+  hcgResultRef?, hcgResultAt?}` judged by the `pregnancy_policy` (default: a declaration alone does
+  not carry an ionising study; LMP reassuring ≤ 28 days); contrast consent = `ot`'s `consentSchema`
+  (procedureCode = study type, templateVersion, language, signer patient|guardian + guardianId with
+  consent authority, witness required for a thumb impression, laterality, conversionCovered,
+  signedAt); renal `{creatinineUmolL, sampledAt, source internal|external, ckdFlagged}`, window 30 d
+  OPD / 7 d admitted; prior reaction `{radiologistId?, reason?}` — the allergy list is read by the
+  gate, and a contrast allergy needs a named radiologist + reason; MRI `{implants[], pacemaker,
+  clips, cochlear, metalFb, claustrophobia}` — any of the four hard ones is override-only; Form F
+  takes nothing (the register is read); chaperone `{chaperoneUserId}` — an active user, not the
+  actor, not the patient; side `{patientStated}`; MLC `{status registered|ruled_out, mlcNo?}`.
+- **(c) Overrides today.** `POST …/gates/:kind/override` on `radiology.gates.override` + the
+  engine's `radiologist` edge, reason required, lexical §5(2) check, evented. `form_f` and
+  `laterality_confirm` never; `identity_two_factor` override-only (never waived). Nothing lets a
+  satisfier ASK. **The kernel approvals spine carries it:** `requestApproval(tx, …)` on the caller's
+  transaction with a subject (the gate), a note, an approver role, a closure SLA + ladder,
+  `approval.requested`, requester ≠ approver SoD; `approveRequest`/`rejectRequest` are Db-first
+  (their own transaction). Radiology already registers one type (`imaging_definition_publish`) the
+  same way, so a second type is the house pattern and no local request table is needed.
+- **(d) Creatinine and eGFR.** No reader existed: the lab keeps signed values in `lab_results`
+  (analyte `CREA`, mg/dL, in the catalogue fixture), and `patientResultsForDoctor` is the doctor's
+  (PHI-logged, clinician-gated). A small `latestVerifiedCreatinine` is added to the lab's index
+  (verified, not superseded, not restricted, whole merge chain, unit-converted, draw instant from the
+  specimen). eGFR CKD-EPI 2021 is computable server-side: `patients.dob` + `patients.sex` are on the
+  master, `ageInYearsOn` exists (`applicability.ts`), no race term. Not computable → no DOB, a sex
+  other than female/male, or under 18 (CKD-EPI is an adult equation) → the ceiling stays.
+
+**RS5 as built** (this PR; one lane, **no migration**):
+- **Core.**
+  - `egfr.ts` — CKD-EPI 2021 (no race term), rounded as a lab prints it, bands on the rounded figure.
+    The kidney gate (`gates.ts` `renal_function`) reads age and sex from the patient master on the
+    day the gate is cleared: **< 30 → `gate_open`** (the radiologist's override), **30–44 → satisfiable
+    only with `ivHydration: true`**, the instruction text stored as evidence, **< 45 → the metformin
+    note stored**; no eGFR (no DOB, sex not female/male, under 18) → the 176.8 µmol/L ceiling, as
+    before. Evidence now carries `egfr`, `egfrBand`, `egfrEquation` or `egfr: null` +
+    `egfrNotComputed`. The gate also accepts `labResultId` — the value and draw instant are then READ
+    from the lab (refused unless it is the latest signed one).
+  - `modules/lab` gains `latestVerifiedCreatinine` (index export, additive): analyte `CREA`,
+    verified, not superseded, not restricted, whole merge chain, mg/dL converted, draw instant from
+    the specimen. `modules/opd` exports `lastActiveVitals` (additive) for the weight.
+  - **The override request** (`override-requests.ts`): approval type **`imaging_gate_override`**
+    (approver `radiologist`, urgent, 30 min, no act-first) registered by `seed:radiology` beside
+    `imaging_definition_publish`. `POST /radiology/studies/:id/gates/:kind/override-request`
+    (`radiology.gates.satisfy`, note required, one pending per gate — `override_already_requested`;
+    **`form_f` and `laterality_confirm` refuse the request itself**); `GET
+    /radiology/gate-override-requests` and `POST …/:approvalId/decide` (`radiology.gates.override`):
+    grant → `approveRequest` then the EXISTING `overrideGate` with the reason (checked on execute:
+    granted, this type, this gate; the §5(2) lexical check runs before the grant commits); refuse →
+    `rejectRequest`. A grant given in the kernel `/approvals` inbox is applied by the same decide.
+  - `prep-bay.ts`: `GET /radiology/prep` (checked-in studies with an open PREP gate, STAT first) and
+    `GET /radiology/prep/studies/:id` (patient in hand), both `radiology.gates.satisfy`, PHI-logged.
+    Room gates = `identity_two_factor`, `laterality_confirm` (Gap 4, UI routing only).
+  - Evidence shapes widened (optional fields only): MRI gains `neurostimulator` and `orbitMetal`
+    (both **stop the scanner**) and records welder, prosthesis, pregnancy, tattoos, prior surgery,
+    weight, zone, the MR-conditional card, the sweep and the two typed signatures; the prior-reaction
+    gate records `premedication[]` (drug, dose, time) beside the radiologist's named decision.
+  - Two error codes: `override_already_requested` (409), `unknown_override_request` (404).
+    `radiology-http.ts` maps `ApprovalError` (409/404) and `SodViolationError` (403).
+- **Web.** `/radiology/prep` — the *Prep & safety bay* station (`radiology.gates.satisfy`): one list,
+  *Clocks running* = requests waiting on the radiologist; lane = allergies (contrast marked), the
+  lab's creatinine with eGFR and band, weight, LMP; centre = every gate as a **form** (no JSON), room
+  gates "closed at the console" with no control, *Ask the radiologist to override*, *Waive* only for a
+  holder of `radiology.gates.override`; the contrast record and reaction under the gates; dock = the
+  one next act (Enter). The study console lost its JSON textarea (per-kind forms, and the
+  radiologist's grant/refuse on a pending request); the worklist's clocks list the waiting requests
+  for the radiologist. MRI screening form (T4); contrast panel (T5: agent, batch, expiry — expired
+  refused before sending — weight-based volume suggestion, route, site, rate, injector, extravasation
+  check) and reaction (severity, onset, signs, treatment, clinician, outcome; says it writes the
+  allergy the next study's gate reads). English + Hindi (`radiology.bay.*`; `radiology.prep.*` is
+  RS3's prep instructions).
+- **DECIDED.**
+  - **`radiology_nurse`** is a new role (the standard Indian-hospital prep-bay nurse): worklist.read,
+    gates.satisfy, contrast.record; on the `imaging_gate` satisfy edge; **no override, no waiver, no
+    check-in**. The `imaging_gate` definition changed, so a deployment re-runs the §3 activation
+    ceremony once (runbook §14; §13 at build, renumbered when RS8a took §13).
+  - **`radiology.contrast.record`** is split off `radiology.acquire` for the two contrast POSTs, so
+    the nurse who injects does not also get to start/finish acquisitions; everyone who could record
+    contrast before still can.
+  - The request rides **kernel approvals**, not a radiology table: the spine carries requester,
+    subject, note, approver role, SLA ladder, `approval.requested` and the requester ≠ approver SoD.
+    The radiologist therefore holds `approvals.requests.read`/`.decide` (the spine's invariant).
+  - **A waiver stays the radiologist's act** (the server's rule since 18a): the bay shows *Waive*
+    only to an override holder; the nurse's "does not apply" goes as *Ask the radiologist*, answered
+    by an override carrying that reason.
+  - A **positive MRI screen is not sent** (the server would store nothing): the form hands a summary
+    note to *Ask the radiologist*. **No card upload** — there is no document-store route; the card's
+    device, model, serial and conditions are recorded as fields.
+  - **Rate, injector and the extravasation check** have no column; they are written into the
+    administration's site line (≤ 120 characters) until a migration adds them.
+  - The **urine pregnancy test at the bay** is recorded as the policy's `hcg_result` with a
+    `bay-urine-hcg:negative:<instant>` pointer (no lab row exists for a bedside strip).
+  - Weight-based volume **suggestion only**: iodinated 1 mL/kg to 100 mL; gadobutrol 0.1 mL/kg; a
+    0.5 M gadolinium agent 0.2 mL/kg.
+- **Counts.** Core, fail-first: eGFR gate block 4 failed on the pre-RS5 `gates.ts` (4 failed, 48
+  skipped), then green; override requests 8 of 9 failed against a no-lane stub and the pre-RS5
+  gate definition (the ninth — the nurse cannot override — is a regression pin that already held),
+  and the never-override refusal test failed with the refusal mutated out. Touched core suites after
+  rebase: **45 suites, 532 tests green** (radiology module, seed-roles, radiology e2e, seed-radiology,
+  nav-parity, caddyfile-parity, lab manifest). Web: the prep-bay file failed to resolve and the new
+  console test failed on the old console (the JSON textarea), then green; touched web suites **17
+  files, 132 tests green**. Pins: seed-roles permissions 204 → 205, pairs 425 → 432, model
+  permissions 184 → 185, held 190 → 191, roles 40 → 41, radiologist 16 → 19, radiographer 10 → 11,
+  radiology manifest 18 → 19 permissions, approval types 22 → 23 (approver roles + `radiologist`),
+  non-table pairs 200 → 202; caddyfile routes 76 → 77; README radiology table + `radiology_nurse`
+  column and `radiology.contrast.record` row.
+- **Walk.** `/opt/hmis-context/rs5-walk/` — the bay with nobody in hand, the kidney gate (eGFR 32,
+  hydration), MRI screening with an asked gate, the contrast + reaction panel on the table, and the
+  study console's form, at 1920/1440/1280/1024/768/390: 0 page errors, 0 sideways overflow.
+- **Moved later.** Premedication timers and the earliest-scan clock, cannula and fasting records and
+  the sedation pre-check (the board's "bay work"; not gates in the code) → RS6 with the room console;
+  the consents register (`prep:consents` as its own view) → RS9 with the release register;
+  auto-applying a grant from the kernel inbox (an `approval.granted` consumer) → RS10 with the HOD's
+  approvals; columns for injection rate / injector / extravasation → the next radiology migration;
+  the card photo → when a document store exists; eGFR for children (Schwartz needs height) → the
+  paediatric radiology slice.
+
 ### RS6 · Modality rooms
 - **Web:**
   - **From RS4:** the `imaging_protocols` definition kind (schema, CHECK widening — one migration — and

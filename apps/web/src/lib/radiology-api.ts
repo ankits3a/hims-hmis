@@ -338,3 +338,101 @@ export function radiologyErrorText(e: unknown): string {
   if (body?.message !== undefined) return body.code === undefined ? body.message : `${body.message} (${body.code})`;
   return e instanceof Error ? e.message : String(e);
 }
+
+/* ── 18-S RS5 — the prep & safety bay, the override request, contrast and reaction ── */
+
+/** `prep-bay.ts`'s `PrepBayRow`. */
+export type WirePrepRow = {
+  studyId: string; accessionNo: string; priority: string; studyTypeCode: string;
+  scheduledAt: string | null; checkedInAt: string | null; deviceCode: string | null;
+  patientId: string; patientName: string; restricted: boolean;
+  openPrep: string[]; openRoom: string[]; asked: string[];
+};
+
+export type WireEgfr =
+  | { computed: true; egfr: number; band: "hold" | "hydrate" | "clear"; creatinineMgDl: number; ageYears: number; sex: string; metforminHold: boolean }
+  | { computed: false; reason: "no_dob" | "sex_not_binary" | "under_18"; creatinineMgDl: number };
+
+export type WirePrepGate = {
+  id: string; kind: string; state: string; waivable: boolean;
+  room: boolean; neverWaive: boolean; neverOverride: boolean;
+  evidence: Record<string, unknown> | null; satisfiedAt: string | null; override: { actorId: string; reason: string } | null;
+  asked: { approvalId: string; note: string | null; requestedAt: string; requesterName: string | null } | null;
+};
+
+export type WireContrastAdministration = {
+  id: string; studyId: string; agent: string; volumeMl: string | number; route: string; site: string | null;
+  vialBatchNo: string | null; vialExpiry: string | null; givenBy: string; givenAt: string;
+};
+export type WireContrastReaction = {
+  id: string; administrationId: string; severity: string; onset: string; manifestation: string;
+  treatmentGiven: string | null; outcome: string | null; observedBy: string; observedAt: string; allergyId: string | null;
+};
+
+/** `prep-bay.ts`'s `PrepStudyView`. */
+export type WirePrepStudy = {
+  study: {
+    studyId: string; accessionNo: string; status: string; priority: string; studyTypeCode: string;
+    studyTypeName: string; modality: string; ionising: boolean; contrastOption: string;
+    laterality: string; lateralityApplicable: boolean; encounterNo: string;
+    scheduledAt: string | null; deviceCode: string | null; formFRequired: boolean;
+  };
+  patient: { id: string; name: string; uhid: string; sex: string; dob: string | null; ageYears: number | null };
+  allergies: { substance: string; severity: string | null; reaction: string | null; contrast: boolean }[];
+  weight: { kg: number; recordedAt: string } | null;
+  kidney: {
+    creatinine: { resultId: string; umolL: number; reported: { value: string; unit: string | null }; sampledAt: string } | null;
+    egfr: WireEgfr | null; validDays: number; ceilingUmolL: number;
+    hydrationInstruction: string; metforminNote: string;
+  };
+  lmpDate: string | null;
+  gates: WirePrepGate[];
+  guardians: { guardianId: string; name: string; relationship: string; consents: boolean }[];
+  staff: { id: string; name: string; roles: string[] }[];
+  contrast: { administrations: WireContrastAdministration[]; reactions: WireContrastReaction[] };
+};
+
+export const fetchPrepBay = () => api<{ rows: WirePrepRow[] }>("GET", "/radiology/prep");
+
+export const fetchPrepStudy = (studyId: string) =>
+  api<{ view: WirePrepStudy }>("GET", `/radiology/prep/studies/${encodeURIComponent(studyId)}`);
+
+/** "Ask the radiologist to override" — a kernel approval routed to the radiologist (T2). */
+export const requestGateOverride = (studyId: string, kind: string, reason: string) =>
+  api<{ approvalId: string; kind: string }>("POST", `/radiology/studies/${studyId}/gates/${kind}/override-request`, { reason });
+
+/** `override-requests.ts`'s `GateOverrideRequest`. */
+export type WireOverrideRequest = {
+  approvalId: string; status: string; studyId: string; accessionNo: string; studyTypeCode: string;
+  patientId: string; patientName: string; kind: string; gateState: string; note: string | null;
+  requesterId: string; requesterName: string | null; requestedAt: string;
+};
+
+export const fetchOverrideRequests = (studyId?: string) =>
+  api<{ requests: WireOverrideRequest[] }>(
+    "GET", `/radiology/gate-override-requests${studyId === undefined ? "" : `?studyId=${encodeURIComponent(studyId)}`}`,
+  );
+
+/** The radiologist's decision; `grant` runs the existing override with this reason. */
+export const decideOverrideRequest = (approvalId: string, verdict: "grant" | "refuse", reason: string) =>
+  api<{ verdict: string; override: { kind: string; state: string } | null; study: { state: string; open: string[] } | null; note: string | null }>(
+    "POST", `/radiology/gate-override-requests/${encodeURIComponent(approvalId)}/decide`, { verdict, reason },
+  );
+
+/** The controller's `contrastBody` (18a-iii T1), transcribed. */
+export type RecordContrastBody = {
+  agent: string; volumeMl: number; route: string; site?: string | null;
+  vialBatchNo?: string | null; vialExpiry?: string | null; givenBy: string; givenAt: string;
+};
+export const recordContrast = (studyId: string, body: RecordContrastBody) =>
+  api<{ administrationId: string }>("POST", `/radiology/studies/${studyId}/contrast`, body);
+
+/** The controller's `reactionBody` (18a-iii T2), transcribed. */
+export type RecordReactionBody = {
+  administrationId: string; severity: "mild" | "moderate" | "severe"; onset: "immediate" | "delayed";
+  manifestation: string; treatmentGiven?: string | null; managingClinicianId?: string | null;
+  outcome?: "recovered" | "recovering" | "admitted" | "referred" | "died" | null;
+  observedBy: string; observedAt: string;
+};
+export const recordContrastReaction = (body: RecordReactionBody) =>
+  api<{ reactionId: string; allergyId: string }>("POST", "/radiology/studies/contrast-reactions", body);

@@ -16,6 +16,7 @@ import { RadiologyMwlController } from "./radiology-mwl.controller";
 import { RadiologyImagesController } from "./radiology-images.controller";
 import { RadiologyFloorController } from "./radiology-floor.controller";
 import { RadiologySetupController } from "./radiology-setup.controller";
+import { RadiologyPrepController } from "./radiology-prep.controller";
 import { RadiologyRoomController } from "./radiology-room.controller";
 import { RadiologyPacsController } from "./radiology-pacs.controller";
 import { RadiologyReadingController } from "./radiology-reading.controller";
@@ -58,6 +59,8 @@ import { RadiologyReleaseController } from "./radiology-release.controller";
     RadiologyFloorController,
     // 18-S RS4 — the Setup station: machines, books, prices.
     RadiologySetupController,
+    // 18-S RS5 — the prep & safety bay and the radiologist's override queue.
+    RadiologyPrepController,
     // 18-S RS6 — the modality rooms: the console read, the in-room repeat, the reject analysis.
     RadiologyRoomController,
     // 18-S RS8a — the reading room: its worklist, the study in hand, the print.

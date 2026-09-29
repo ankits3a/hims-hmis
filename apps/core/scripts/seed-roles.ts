@@ -1451,6 +1451,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.reports.read",
       "radiology.criticals.ack",
       "radiology.definitions.read",
+      /** 18-S RS5 — the contrast injection and reaction (split off `radiology.acquire`). */
+      "radiology.contrast.record",
+      /**
+       * 18-S RS5 T2 — the radiologist is the approver of `imaging_gate_override`, the prep bay's
+       * "please override". The approvals spine's reachability invariant (every approver role holds
+       * read + decide) is what makes the grant necessary; the radiology route decides AND applies.
+       */
+      "approvals.requests.read",
+      "approvals.requests.decide",
       /**
        * The study-type book — gate sets, pregnancy policy, critical categories — is a CLINICAL
        * document, and NABL and the AERB both ask who signed it off. The lab's precedent is exact:
@@ -1502,6 +1511,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.checkin",
       "radiology.gates.satisfy",
       "radiology.acquire",
+      /** 18-S RS5 — the contrast injection and reaction (split off `radiology.acquire`). */
+      "radiology.contrast.record",
       "radiology.reports.read",
       "radiology.definitions.read",
       "pcpndt.form_f.read",
@@ -1556,6 +1567,31 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "billing.invoice.read",
       "billing.receipt.record",
       "billing.session.own",
+    ],
+  },
+  /**
+   * ═══ 18-S RS5 — THE RADIOLOGY NURSE: the prep & safety bay (DECIDED, top-Indian-hospital standard) ═══
+   *
+   * The approved board seats a nurse in the prep bay: she satisfies the prep gates with evidence
+   * (pregnancy, contrast consent, kidney, prior reaction, MRI screening, chaperone, MLC), cannulates,
+   * injects contrast and watches for the reaction. There was no such role — only the radiographer
+   * held `radiology.gates.satisfy` — so the bay could not be staffed by the person who staffs it.
+   *
+   *   · `radiology.gates.satisfy` — and the `imaging_gate` definition names `radiology_nurse` on
+   *     `open → satisfied` (the engine's plane; F9: both planes must agree).
+   *   · `radiology.contrast.record` — the injection and the reaction, WITHOUT `radiology.acquire`:
+   *     the nurse does not start or finish an acquisition.
+   *   · **NOT `radiology.gates.override`** — the override is the radiologist's; the nurse ASKS for
+   *     one (an `imaging_gate_override` approval routed to the radiologist).
+   *   · **NOT `radiology.checkin`** — the desk and the technologist check in; the bay works what
+   *     check-in opened.
+   */
+  {
+    roleKey: "radiology_nurse",
+    permissions: [
+      "radiology.worklist.read",
+      "radiology.gates.satisfy",
+      "radiology.contrast.record",
     ],
   },
   {
@@ -1960,6 +1996,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   radiation_safety_officer:
     "Radiological Safety Officer (AERB licences, QA records and the machine block, TLD badges; no clinical act)",
   radiology_receptionist: "Imaging Reception (orders, schedules, bills; satisfies no safety gate)",
+  // 18-S RS5 — the prep & safety bay's nurse.
+  radiology_nurse: "Radiology Nurse (prep bay: satisfies the prep gates, records contrast and reactions; overrides nothing — asks the radiologist)",
   pcpndt_incharge: "PCPNDT In-charge (registration, machines, persons; VERIFIES Form F, writes none)",
   // PLAN 18b T1 — a machine account. The title says so, because a staffing card is where an
   // administrator would otherwise assign it to a person.
