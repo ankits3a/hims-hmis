@@ -200,3 +200,30 @@ answer, DECIDED.
 - **Standard numbers:** confirm the NABH 5th edition MOM numbers from the text before quoting them in any screen or print.
 - **Migrations:** each D PR takes the next free number at rebase, and pharmacy-safety tells this lane before each rebase.
 - **"Needs you" rows:** D rows join `GET /pharmacy/office/needs` (`pharmacy/office-needs.ts`, B2 #349) as new sources, after #349 merges.
+
+## Desk fixes (2026-09-30)
+
+Lane `pharmacy-desk-fixes`, from the end-to-end walk of 2026-09-29 (the owner dispenses to real patients from 2026-09-30).
+
+- **DECIDED — a pick splits a line FEFO across batches.** Standard Indian hospital practice: when the first-to-expire
+  batch cannot cover a line, the pick takes the rest from the next batches of the same item in the counter's store
+  (for a controlled drug, the cabinet), earliest expiry first, as many as it takes. Every per-batch guard is the one the
+  single-batch pick had (`fefoPick` → `sellableBatchRows`: held here, not recalled, not expired, net of reservations and
+  cold-chain/recall freezes; `handOverDispense` re-asks expiry per line at the act). Only more than all the batches hold
+  is `short_stock` (a partial with a reason). A NAMED batch (`batchId`, or a GS1 scan's batch) is still one batch.
+- **How: one extra dispense line per extra batch, made at the pick.** The prescription's line keeps the first batch; each
+  further batch is a NEW `pharmacy_dispense_lines` row with the same rx line, medicine, schedule, NDPS class and
+  substitution/consent, its own reservation, no order item, and `split_from_line_idx` = the line it came from (migration
+  `0154_pharmacy_split_pick`, one nullable column, additive). Chosen over a child "line batches" table because every
+  downstream reader — reservation release/expiry sweep, bill (`priceLines`), hand-over (consume, H1 and controlled
+  registers), label, returns, refund, closing — already works one row per line, so each gets one row per batch with no
+  change. What had to know: `dispense.picked` carries `splitFrom`; the day summary does not count a split row as a
+  picked line; closing counts prescription lines; the desk draws a split inside its prescription line (`parts`), the
+  ticket header counts prescription lines, and the tick-time advice says `split` / `short_all` instead of "one batch per line".
+- **Bill rail follows a quantity edit before the tick; a paid ticket shows what was taken plus the rounding** (read off
+  the invoice through `/closing`, `roundingPaise` added). Rounding is not recomputed — that is an open owner money ruling.
+- **Near-expiry approval card** names the GRN, supplier, invoice/challan and each short-dated line (batch, expiry, days
+  left, quantity) via `GET /materials/grns/:id/near-expiry`; the supplier bank-change card names the supplier and the
+  masked old → new account.
+- **H1 register drug name** no longer repeats a strength the brand carries ("Azee 500 tablet"). Rows already written keep
+  their text (the register copies at write time).

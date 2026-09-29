@@ -189,6 +189,52 @@ describe("the bill rail and the hand-over (PD-6)", () => {
     expect(rail).toHaveTextContent("so far"); // not "to collect": the bill is billing's, at the pick
   });
 
+  it("WALK FINDING 2026-09-29 — the rail follows a quantity EDIT at once, not only after the tick (9750 prefilled, 10 given)", async () => {
+    const wrong = {
+      ...dispense("d1", "claimed"),
+      quotedTotalPaise: 2_184_000,
+      lines: [{ ...LINE, batchId: null, reservationId: null, pickedBatch: null, qtyBase: 9750, batches: [{ batchId: "b1", batchNo: "AZ-1", expiryDate: "2028-01-31", available: 20_000 }],
+        quote: { batchId: "b1", batchNo: "AZ-1", expiryDate: "2028-01-31", unitPaise: 224, pack: null, lastKnown: false } }],
+    } as WireDispense;
+    mockRoutes(base(() => wrong, "open", { "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 409, body: { code: "dispense_not_in_state", message: "not picked" } } }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    expect(await within(rail).findByTestId("desk-sofar")).toHaveTextContent("₹21,840.00");
+    const row = await screen.findByTestId("desk-line-0");
+    await userEvent.click(within(row).getByRole("button", { name: /What else for Azee 500/ }));
+    await userEvent.click(within(row).getByRole("button", { name: "Change the quantity" }));
+    const box = within(row).getByRole("textbox", { name: /Quantity for/ });
+    await userEvent.clear(box);
+    await userEvent.type(box, "10");
+    // nothing ticked, nothing sent — and the rail already says 10 at ₹2.24
+    expect(within(row).getByRole("checkbox")).not.toBeChecked();
+    expect(within(rail).getByTestId("desk-sofar")).toHaveTextContent("₹22.40");
+    expect(rail).toHaveTextContent("× 10");
+    expect(rail).not.toHaveTextContent("9750");
+    expect(rail).not.toHaveTextContent("₹21,840");
+  });
+
+  it("WALK FINDING 2026-09-29 — a reopened PAID ticket says what was TAKEN (₹34.00) and the rounding, never the unrounded ₹33.60", async () => {
+    const paid = { ...dispense("d1", "handed_over"), quotedTotalPaise: 3_360, handedOverAt: "2026-09-19T06:30:00.000Z",
+      lines: [{ ...LINE, quote: { batchId: "b1", batchNo: "AZ-1", expiryDate: "2028-01-31", unitPaise: 1_120, pack: null, lastKnown: false } }] } as WireDispense;
+    mockRoutes(base(() => paid, "open", {
+      "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 409, body: { code: "dispense_not_in_state", message: "handed over" } },
+      "GET /api/pharmacy/dispenses/d1/closing": { status: 200, body: {
+        ticket: { dispenseNo: "P2609190004", claimedByName: "Anita Verma", claimedAt: null, handedOverAt: "2026-09-19T06:30:00.000Z", lines: 1, substituted: 0, declined: 0 },
+        money: { invoiceNo: "INV-1", netPayablePaise: 3_400, roundingPaise: 40, cgstPaise: 80, sgstPaise: 80, receiptNo: "R-1", changeGivenPaise: 0, tenders: [{ mode: "upi", amountPaise: 3_400, refText: "U1" }] },
+        registers: { h1Rows: 1, batches: 1 },
+      } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const rail = await screen.findByTestId("desk-bill");
+    expect(await within(rail).findByTestId("desk-payable")).toHaveTextContent("₹34.00");
+    expect(rail).toHaveTextContent("rounding");
+    expect(rail).toHaveTextContent("₹0.40");
+    expect(rail).toHaveTextContent("taken");
+    expect(within(rail).queryByTestId("desk-sofar")).toBeNull();
+    expect(rail).not.toHaveTextContent("₹33.60");
+  });
+
   it("collected → priced → taken by UPI → handed over against an EMPTY identity box → done", async () => {
     let current = dispense("d1", "picked");
     mockRoutes(base(() => current, "open", {

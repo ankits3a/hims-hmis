@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchPatientRail } from "../../lib/pharmacy-api";
+import { fetchClosing, fetchPatientRail } from "../../lib/pharmacy-api";
 import { billQtyText, quoteAmountPaise } from "../../lib/pharmacy-bill";
 import { OwnerCreditAsk } from "../owner-credit-ask";
 import type { Tender, WireDispense, WirePricedDraft } from "../../lib/pharmacy-api";
@@ -83,11 +83,25 @@ function typingIn(target: EventTarget | null): boolean {
   return el !== null && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
 }
 
+/**
+ * WALK FINDING 2026-09-29 — the quantity each unbilled line is priced at: the one being typed on the
+ * ticket while it is still being worked (claimed or verified), else the server's. A prefilled 9750
+ * edited to 10 kept showing "× 9750 ₹21,840" here until the tick, because only the tick reached the
+ * server. `quoteAmountPaise` mirrors the server's `quotedAmountPaise`, so the running total is the
+ * same sum the server makes, over the quantities on the screen.
+ */
+export function railQty(status: string, line: { lineIdx: number; qtyBase: number | null }, live: Readonly<Record<number, number | null>> | null): number | null {
+  if (live === null || (status !== "claimed" && status !== "verified") || !(line.lineIdx in live)) return line.qtyBase;
+  return live[line.lineIdx] ?? null;
+}
+
 export function BillRail({
-  dispense, preview, previewError, drawerOpen, busy, error, now, onTake, onCredit, onDraft, onOpenDrawer,
+  dispense, preview, liveQty = null, previewError, drawerOpen, busy, error, now, onTake, onCredit, onDraft, onOpenDrawer,
 }: {
   dispense: WireDispense;
   preview: WirePricedDraft | null;
+  /** The quantities typed on the ticket in hand, by line (`railQty`). */
+  liveQty?: Readonly<Record<number, number | null>> | null;
   previewError: string | null;
   /** The pharmacist's OWN drawer is open. `null` while it is being read. */
   drawerOpen: boolean | null;
@@ -150,6 +164,26 @@ export function BillRail({
     retry: false,
   });
   const heldCard = (rail.data?.benefits ?? []).find((b) => b.usable) ?? null;
+  /*
+    WALK FINDING 2026-09-29 — a PAID ticket says what was TAKEN: the invoice's own payable and its
+    rounding, read back off the invoice (`closing.ts`, the same read and key as the done screen). The
+    re-priced shelf total ("so far ₹33.60" beside ₹34.00 taken) is never a paid ticket's figure. How the
+    rounding is computed is billing's and an open owner ruling; this only shows it.
+  */
+  const closing = useQuery({
+    queryKey: ["pharmacy", "closing", dispense.id],
+    queryFn: () => fetchClosing(dispense.id),
+    enabled: paid,
+    retry: false,
+  });
+  const taken = paid ? (closing.data?.money ?? null) : null;
+  const priced = dispense.lines.map((l) => {
+    const qty = railQty(status, l, liveQty);
+    /* A paid line is not re-priced at today's shelf: what it cost is on the invoice, and the total below says it. */
+    const amount = paid || l.quote == null || qty === null || l.status === "declined" ? null : quoteAmountPaise(l.quote, qty);
+    return { line: l, qty, amount };
+  });
+  const soFar = priced.reduce((n, p) => n + (p.amount ?? 0), 0);
   const until = heldUntil(dispense.pickedAt);
   const ended = dispense.status === "picked" && holdEnded(dispense.pickedAt, now);
 
@@ -166,29 +200,36 @@ export function BillRail({
       <div style={{ flexGrow: 1, overflowY: "auto", padding: "4px 15px 0 15px" }}>
         {preview === null ? (
           <>
-            {dispense.lines.map((l) => {
+            {priced.map(({ line: l, qty, amount }) => (
               /* Priced at today's shelf price for the batch the pick would take — the server's quote, never ours. */
-              const amount = l.quote == null || l.qtyBase === null || l.status === "declined" ? null : quoteAmountPaise(l.quote, l.qtyBase);
-              return (
-                <div key={l.lineIdx} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
-                  <span style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: l.status === "declined" ? "var(--dim)" : "var(--ink)" }}>
-                    {l.dispensedMedicine?.brandName ?? l.rxLine.drug}
-                    {amount === null || l.qtyBase === null ? null : <span className="mo" style={{ color: "var(--dim)" }}> × {l.qtyBase}</span>}
-                  </span>
-                  <span className="mo" style={{ fontSize: 12, color: amount === null ? "var(--dim)" : "var(--ink)" }}>
-                    {l.status === "declined" ? t("pharmacyDesk.bill.declined") : amount === null ? "—" : rupees(amount)}
-                  </span>
+              <div key={l.lineIdx} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "7px 0", borderTop: "1px solid var(--line2)" }}>
+                <span style={{ flexGrow: 1, minWidth: 0, fontSize: 12, color: l.status === "declined" ? "var(--dim)" : "var(--ink)" }}>
+                  {l.dispensedMedicine?.brandName ?? l.rxLine.drug}
+                  {qty === null || (amount === null && !paid) || l.status === "declined" ? null : <span className="mo" style={{ color: "var(--dim)" }}> × {qty}</span>}
+                </span>
+                <span className="mo" style={{ fontSize: 12, color: amount === null ? "var(--dim)" : "var(--ink)" }}>
+                  {l.status === "declined" ? t("pharmacyDesk.bill.declined") : amount === null ? (paid ? null : "—") : rupees(amount)}
+                </span>
+              </div>
+            ))}
+            {taken !== null ? (
+              <>
+                {taken.roundingPaise !== undefined && taken.roundingPaise !== 0 ? (
+                  <Row what={t("pharmacyDesk.bill.rounding")} amt={rupees(taken.roundingPaise)} tone="var(--dim)" />
+                ) : null}
+                <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 0 0 0", marginTop: 4, borderTop: "2px solid var(--ink)" }}>
+                  <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{t("pharmacyDesk.bill.took")}</span>
+                  <span className="mo" data-testid="desk-payable" style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(taken.netPayablePaise)}</span>
                 </div>
-              );
-            })}
-            {(dispense.quotedTotalPaise ?? 0) > 0 ? (
+              </>
+            ) : paid ? null : soFar > 0 ? (
               <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 0 0 0", marginTop: 4, borderTop: "2px solid var(--ink)" }}>
                 <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{t("pharmacyDesk.bill.soFar")}</span>
-                <span className="mo" data-testid="desk-sofar" style={{ fontSize: 19, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(dispense.quotedTotalPaise ?? 0)}</span>
+                <span className="mo" data-testid="desk-sofar" style={{ fontSize: 19, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(soFar)}</span>
               </div>
             ) : null}
             <p style={{ margin: "10px 0 0 0", fontSize: 11, color: "var(--dim)", lineHeight: "16px" }}>
-              {previewError ?? ((dispense.quotedTotalPaise ?? 0) > 0 ? t("pharmacyDesk.bill.soFarWhy") : t("pharmacyDesk.bill.notYet"))}
+              {paid ? (taken === null ? null : t("pharmacyDesk.bill.inside")) : previewError ?? (soFar > 0 ? t("pharmacyDesk.bill.soFarWhy") : t("pharmacyDesk.bill.notYet"))}
             </p>
           </>
         ) : (
@@ -204,12 +245,12 @@ export function BillRail({
             ) : null}
             <Row what={t("pharmacyDesk.bill.cgst")} amt={rupees(preview.totals.cgstPaise)} tone="var(--dim)" />
             <Row what={t("pharmacyDesk.bill.sgst")} amt={rupees(preview.totals.sgstPaise)} tone="var(--dim)" />
-            {preview.totals.roundingPaise !== 0 ? (
-              <Row what={t("pharmacyDesk.bill.rounding")} amt={rupees(preview.totals.roundingPaise)} tone="var(--dim)" />
+            {(taken?.roundingPaise ?? preview.totals.roundingPaise) !== 0 ? (
+              <Row what={t("pharmacyDesk.bill.rounding")} amt={rupees(taken?.roundingPaise ?? preview.totals.roundingPaise)} tone="var(--dim)" />
             ) : null}
             <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 0 0 0", marginTop: 4, borderTop: "2px solid var(--ink)" }}>
               <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{paid ? t("pharmacyDesk.bill.took") : t("pharmacyDesk.bill.toCollect")}</span>
-              <span className="mo" data-testid="desk-payable" style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(preview.totals.netPayablePaise)}</span>
+              <span className="mo" data-testid="desk-payable" style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(taken?.netPayablePaise ?? preview.totals.netPayablePaise)}</span>
             </div>
             <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.inside")}</p>
             {/* C7 — a card the patient holds that is NOT on this bill is said, never applied here (money is billing's). */}

@@ -480,6 +480,21 @@
       "days": "{{n}} days",
       "prescriber": "Prescribed by {{name}}",
       "ownPrescription": "You wrote this prescription — another steward must approve it; a grant from you will not let it leave the pharmacy."
+    },
+    "nearExpiry": {
+      "challan": "challan {{no}}",
+      "invoice": "invoice {{no}}",
+      "item": "Item",
+      "batch": "Batch",
+      "expiry": "Expires",
+      "qty": "Quantity",
+      "daysLeft_one": "{{count}} day left",
+      "daysLeft_other": "{{count}} days left",
+      "expired": "already expired"
+    },
+    "bankChange": {
+      "account": "Account {{from}} → {{to}}",
+      "none": "none on file"
     }
   },
   "opd": {
@@ -6503,6 +6518,7 @@
     "noSubstitution": "no substitution",
     "givenShort": "given short — {{reason}}",
     "givenFrom": "given from {{batch}} · exp {{expiry}}",
+    "givenAlsoFrom": "+ {{batch}} · exp {{expiry}} × {{n}}",
     "fromBatch": "batch {{batch}} · exp {{expiry}} · {{n}} here",
     "scanned": "scanned",
     "blocked": {
@@ -6513,7 +6529,9 @@
       "schedule_x": "Schedule X is not dispensed at this counter."
     },
     "advice": {
-      "firstShort": "The earliest batch {{batch}} holds {{n}} and this line wants {{qty}} — one batch per line.",
+      "firstShort": "The batch you chose, {{batch}}, holds {{n}} and this line wants {{qty}} — a chosen batch is one batch.",
+      "shortAll": "All batches together: the shelf holds {{n}} and this line wants {{qty}}.",
+      "split": "Earliest expiry first, from {{n}} batches: {{parts}}",
       "take": "take {{batch}}",
       "give": "give {{n}}",
       "diesInCourse": "Batch {{batch}} expires {{expiry}}, before the {{days}}-day course ends."
