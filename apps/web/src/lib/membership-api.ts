@@ -41,6 +41,46 @@ export type WireRecognisedCoupon = {
     | null;
 };
 
+/*
+  UX-AUDIT 2026-09-28 · BOARD — what the counter's recognition adds (`counter-view.ts`): how the card
+  stands today, who holds it, benefits left AS COUNTS, and the one next act. A money balance arrives
+  as `on_the_bill` and nothing else — owner ruling 28-Sep-2026: a card's rupee balance is never shown
+  at the counter, so this type has no field that could carry it.
+*/
+export type WireCounterStanding = "usable" | "not_yet_valid" | "expired" | "suspended" | "cancelled";
+export type WireCounterNextAct = "take_to_bill" | "bill_full_rate" | "reconcile";
+export type WireCounterAllowance =
+  | { kind: "visits"; granted: number; remaining: number }
+  | { kind: "on_the_bill" }
+  | { kind: "every_visit" };
+export type WireCounterHolder = {
+  patientId: string; uhid: string; name: string | null; alias: string | null; restricted: boolean;
+  ageYears: number | null; sex: string;
+};
+export type WireCounterMembership = WireRecognisedMembership & {
+  standing: WireCounterStanding;
+  linked: boolean;
+  holder: WireCounterHolder | null;
+  allowances: { benefitKey: string; title: string; allowance: WireCounterAllowance }[];
+  nextAct: WireCounterNextAct;
+};
+
+export type WireCardToday = {
+  code: string;
+  source: "card" | "coupon" | "none";
+  origin: string | null;
+  standing: WireCounterStanding | null;
+  linked: boolean;
+  at: string;
+  holder: { name: string | null; alias: string | null; restricted: boolean; uhid: string } | null;
+  needsYou: boolean;
+};
+
+/** The signed-in counter's own cards since IST midnight, needs-you rows first. */
+export function fetchCardsToday(): Promise<{ items: WireCardToday[] }> {
+  return api("GET", "/membership/recognition/today");
+}
+
 export type WireRecognition = {
   patientId: string | null;
   memberships: WireRecognisedMembership[];
@@ -65,6 +105,13 @@ export function fetchRecognition(input: { patientId?: string; codes?: string[] }
   if (input.patientId !== undefined && input.patientId !== "") params.set("patientId", input.patientId);
   if (input.codes !== undefined && input.codes.length > 0) params.set("codes", input.codes.join(","));
   return api("GET", `/membership/recognition?${params.toString()}`);
+}
+
+/** The same route, typed with the counter's additions — the counter screen reads these, Desk One does not. */
+export type WireCounterRecognition = Omit<WireRecognition, "memberships"> & { memberships: WireCounterMembership[] };
+
+export function fetchCounterRecognition(code: string): Promise<WireCounterRecognition> {
+  return api("GET", `/membership/recognition?${new URLSearchParams({ codes: code }).toString()}`);
 }
 
 export type WireGraceHonorBody = {
