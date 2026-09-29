@@ -22,7 +22,7 @@ import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components
 import { AbdmVerifyPanel } from "../../components/abdm-verify";
 import { ScanSharePanel } from "../../components/abdm-scan-share";
 import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
-import { EMPTY_COVERAGE, EMPTY_FORM, formNeedsGuardian, useDesk } from "./session";
+import { EMPTY_COVERAGE, EMPTY_FORM, formAgeYears, formNeedsGuardian, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
 import type { CoverageDraft, Person } from "./session";
 
@@ -345,7 +345,13 @@ function StageRegister(): React.ReactElement {
     arrived, applied to the second server rule that has the same shape.
   */
   const aliasReady = !f.isConfidential || f.alias.trim() !== "";
-  const ready = f.name.trim() !== "" && f.sex !== "" && (!needsGuardian || guardianReady) && aliasReady;
+  /*
+    DESK-FIXES E (2026-09-28) — AGE OR DATE OF BIRTH IS MANDATORY (DECIDED: standard Indian hospital
+    practice; an ESTIMATED age is enough). The walk registered a patient with neither and every slip
+    after printed "Age: —". The server refuses `age_or_dob_required`; the form will not submit into it.
+  */
+  const ageKnown = formAgeYears(f) !== null;
+  const ready = f.name.trim() !== "" && f.sex !== "" && ageKnown && (!needsGuardian || guardianReady) && aliasReady;
   useEffect(() => {
     if (needsGuardian) setOpen((p) => (p["guardian"] === true ? p : { ...p, guardian: true }));
   }, [needsGuardian]);
@@ -972,6 +978,12 @@ function StageRegister(): React.ReactElement {
         <AgentLine>{t("registrationCounter.register.guardian.blocked")}</AgentLine>
       ) : null}
 
+      {!ageKnown && f.name.trim() !== "" ? (
+        <div data-testid="reg-age-required">
+          <AgentLine>Age or date of birth is needed to register — an estimate is fine (&ldquo;about 60&rdquo;). Doses, lab ranges and the guardian rule all read it.</AgentLine>
+        </div>
+      ) : null}
+
       {f.phone.replace(/\s/g, "").length > 0 && f.phone.replace(/\s/g, "").length < 10 ? (
         <AgentLine>That mobile is {f.phone.replace(/\s/g, "").length} digits. The server wants a full one, or none at all — a half number is worse than blank.</AgentLine>
       ) : null}
@@ -1080,6 +1092,8 @@ function StageAppointment(): React.ReactElement {
         <span style={{ fontSize: 11, color: "var(--faint)" }}>a future booking never drops today's session</span>
       </div>
 
+      <OpenVisits />
+
       <div style={{ marginTop: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>
           What brings {s.person === null ? "them" : s.person.name.split(" ")[0]} in?
@@ -1137,6 +1151,18 @@ function StageAppointment(): React.ReactElement {
           <AgentLine>
             <b>{t(s.triage.redFlag.reasonKey)}</b>{" "}
             {t("opdTriage.redFlag.action")}
+          </AgentLine>
+        ) : d.openVisits.length > 0 && s.complaint.trim() === "" ? (
+          /*
+            DESK-FIXES B — with a visit already open today (a referral above all), the one-click
+            "Seen here before — assign" proposal is the wrong headline: it offered the walk's patient
+            a fresh GM seating beside the Ophthalmology referral they were holding. The board stays
+            for a genuine second problem, and the proposal returns the moment a complaint is typed.
+          */
+          <AgentLine>
+            <span data-testid="open-visit-first">
+              <b>They already have a visit open today</b> — it is above. Seat them again only for a second problem: type it and I will propose a doctor.
+            </span>
           </AgentLine>
         ) : pick === null ? (
           <AgentLine>
@@ -1295,6 +1321,95 @@ function StageAppointment(): React.ReactElement {
             </div>
           ) : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * DESK-FIXES A/B — TODAY'S OPEN VISITS COME BEFORE ANY NEW SEATING
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Walk, 2026-09-28: a patient reopened with MED-1 printed UNPAID was offered a fresh seating and
+ * "Nothing to bill yet"; a patient the GM doctor had just referred to Ophthalmology was offered
+ * "Revisit — Dr … assign" in GM. Each open visit is drawn here with its department, doctor, token
+ * and the LEDGER's money verdict (the quote's `feeStatus` / `alreadyBilled`, never the draft), and a
+ * referral says so in words — where it came from and, where the server priced it, free until when.
+ *
+ * The board below stays: owner ruling 2026-09-13, a second problem IS a second visit with its own
+ * token and receipt. What changed is that it is no longer the only thing on offer.
+ */
+function OpenVisits(): React.ReactElement | null {
+  const d = useDesk();
+  if (d.openVisits.length === 0) return null;
+  const takesMoney = d.seat === "counter" || d.seat === "billing";
+  return (
+    <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }} data-testid="open-visits">
+      {d.openVisits.map(({ visit: v, quote: q }) => {
+        const code = q?.visit?.departmentCode ?? d.departments.find((x) => x.id === v.departmentId)?.code ?? null;
+        const token = q?.visit?.tokenNo ?? null;
+        const feeStatus = q?.visit?.feeStatus ?? null;
+        const billed = q !== null && (q.alreadyBilled != null || feeStatus === "settled" || feeStatus === "credit");
+        const free = q !== null && !billed && q.free;
+        const money = q === null ? null : billed ? (feeStatus === "credit" ? "CREDIT" : "PAID") : free ? "₹0" : "UNPAID";
+        const referralFree = q?.freeReason?.kind === "referral_window" ? q.freeReason.windowEndsOn : null;
+        return (
+          <div
+            key={v.encounterId}
+            data-testid="open-visit"
+            className="box"
+            style={{
+              padding: "12px 14px",
+              borderColor: v.referral !== null ? "var(--green-line)" : money === "UNPAID" ? "var(--gold-line)" : "var(--line)",
+              background: v.referral !== null ? "var(--green-soft)" : money === "UNPAID" ? "var(--gold-soft)" : "var(--card)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+              {v.referral !== null ? (
+                <span data-testid="open-visit-referral" className="pill on" style={{ fontWeight: 700, letterSpacing: ".06em" }}>REFERRAL</span>
+              ) : (
+                <span className="tag">open visit today</span>
+              )}
+              <span style={{ fontSize: 13.5, fontWeight: 700 }}>{v.departmentName ?? "—"}</span>
+              <span style={{ fontSize: 12.5 }}>· {v.doctorName ?? "no doctor named"}</span>
+              <span className="mo" data-testid="open-visit-token" style={{ fontSize: 14, fontWeight: 700, marginLeft: "auto" }}>
+                {token === null ? (q === null && takesMoney ? "…" : "no token yet") : tokenLabel(code, token)}
+              </span>
+              {money === null ? null : (
+                <span data-testid="open-visit-money" className={money === "UNPAID" ? "stamp un" : "stamp pd"}>{money}</span>
+              )}
+            </div>
+            {v.referral === null ? null : (
+              <div style={{ fontSize: 12, marginTop: 6, lineHeight: "17px" }}>
+                Referred from <b>{v.referral.fromDepartmentName ?? "another department"}</b>
+                {v.referral.fromDoctorName === null ? "" : <> by {v.referral.fromDoctorName}</>}
+                {referralFree === null ? "." : <> — <b>free until {referralFree}</b>.</>}
+              </div>
+            )}
+            <div className="mo" style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 5 }}>
+              visit {v.visitNo} · {v.status.replace(/_/g, " ")}
+            </div>
+            {takesMoney ? (
+              <button
+                className={money === "UNPAID" ? "pri" : "sec grn"}
+                data-testid="open-visit-bill"
+                style={{ marginTop: 9, height: 34 }}
+                disabled={q === null}
+                onClick={() => d.adoptVisit(v.encounterId)}
+              >
+                {q === null ? "reading the bill…" : billed ? "open this visit — already billed" : free ? "confirm ₹0 for this visit" : "bill this visit"}
+              </button>
+            ) : (
+              <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 7 }}>
+                The billing chair takes this visit's money — it is already open, so do not seat them again for it.
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div style={{ fontSize: 11, color: "var(--faint)", lineHeight: "16px" }}>
+        Seating them again below opens a SECOND visit with its own token and fee — only for a second problem.
       </div>
     </div>
   );
@@ -2105,7 +2220,11 @@ function StageBill(): React.ReactElement {
         <div className="box" style={{ marginTop: 14, padding: "13px 16px", borderColor: "var(--green-line)", background: "var(--green-soft)", display: "flex", alignItems: "center", gap: 11 }}>
           <span className="stamp pd">SETTLED</span>
           <span style={{ fontSize: 12.5 }}>
-            {s.issued === null ? "Nothing was owed on this visit." : <>Invoice <b className="mo">{s.issued.invoiceNo}</b>{s.issued.receiptNo === null ? null : <> · receipt <b className="mo">{s.issued.receiptNo}</b></>}</>}
+            {s.issued === null
+              ? (d.quote?.alreadyBilled != null
+                ? <>Already billed on <b className="mo">{d.quote.alreadyBilled.invoiceNo}</b> — nothing more to collect for this visit's fee.</>
+                : "Nothing was owed on this visit.")
+              : <>Invoice <b className="mo">{s.issued.invoiceNo}</b>{s.issued.receiptNo === null ? null : <> · receipt <b className="mo">{s.issued.receiptNo}</b></>}</>}
           </span>
           <button className="pri" style={{ marginLeft: "auto", height: 34 }} onClick={() => d.goto("done")}>hand over →</button>
         </div>
@@ -2650,8 +2769,9 @@ function StageDone(): React.ReactElement {
           <div style={{ fontSize: 18, fontWeight: 700 }}>{p.name} is done at this desk</div>
           <div className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }}>
             {minutes === null ? "" : `${minutes} min · `}
-            {d.bill.totalPaise === 0 ? "nothing collected" : `took ${rs(d.bill.totalPaise)}${s.tender === null ? "" : ` by ${s.tender.toUpperCase()}`}`}
-            {token === null ? " · no token yet" : ` · token T-${token} PAID`}
+            {/* DESK-FIXES C — what THIS desk took, which is only ever an invoice it issued. */}
+            {s.issued === null ? "nothing collected" : `took ${rs(d.bill.totalPaise)}${s.tender === null ? "" : ` by ${s.tender.toUpperCase()}`}`}
+            {v === null ? " · no visit opened" : token === null ? " · no token yet" : ` · token ${tokenLabel(deptCode, token)} ${d.moneyTaken ? "PAID" : "UNPAID"}`}
           </div>
         </div>
       </div>
@@ -2663,7 +2783,9 @@ function StageDone(): React.ReactElement {
       */}
       {v === null ? null : token === null ? (
         <div className="box" style={{ marginTop: 18, padding: "15px 18px", borderColor: "var(--gold-line)", background: "var(--gold-soft)", fontSize: 13 }}>
-          The bill is settled but the queue join has not answered yet — no token number to read out. It appears in the left column the moment it lands.
+          {d.moneyTaken
+            ? "The bill is settled but the queue join has not answered yet — no token number to read out. It appears in the left column the moment it lands."
+            : "Seated, not billed yet — the token is released when the money is in, so there is no number to read out."}
         </div>
       ) : (
         <>
@@ -2692,10 +2814,18 @@ function StageDone(): React.ReactElement {
         <div className="box" style={{ padding: "12px 13px" }}>
           <div className="tag" style={{ marginBottom: 5 }}>money</div>
           <div style={{ fontSize: 12.5, fontWeight: 600 }}>
-            {s.issued === null ? (d.bill.free ? "₹0 — nothing owed" : "not settled") : s.issued.invoiceNo}
+            {s.issued !== null
+              ? s.issued.invoiceNo
+              : v === null
+                ? "nothing to settle"
+                : d.quote?.alreadyBilled != null
+                  ? d.quote.alreadyBilled.invoiceNo
+                  : d.bill.free ? "₹0 — nothing owed" : "not settled"}
           </div>
           <div className="mo" style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 2 }}>
-            {s.issued?.receiptNo ?? (d.bill.free ? "no invoice — there was no charge" : "")}
+            {s.issued?.receiptNo ?? (v === null
+              ? "no visit, so no bill"
+              : d.quote?.alreadyBilled != null ? "billed earlier — not collected again" : d.bill.free ? "no invoice — there was no charge" : "")}
           </div>
         </div>
         {s.future !== null ? (
@@ -2729,7 +2859,17 @@ function StageDone(): React.ReactElement {
         is TRUE now and what is left to do.
       */}
       <AgentLine>
-        {token === null
+        {/*
+          DESK-FIXES C (2026-09-28 walk) — a REGISTER-ONLY act reached this line and was told
+          "Settled, and the queue join has not come back yet" when nothing was settled and no visit
+          existed. Three truths, three sentences: no visit at all; a visit not billed yet; and only
+          then the settled-but-no-token case this line was written for.
+        */}
+        {v === null
+          ? <>Registered — {p.uhid} is on file. No visit was opened here and nothing was settled; the appointment desk seats them{p.justRegistered ? " and the bill follows the visit" : ""}.</>
+          : token === null && !d.moneyTaken
+          ? <>Seated with {v.doctorName}, not billed yet — the billing desk takes the money and the token is released then.</>
+          : token === null
           ? <>Settled, and the queue join has not come back yet. Nothing to hand over until it does — it lands in the left column.</>
           : d.lane === "F3"
             ? <>Paid first, so <b>{tokenLabel(deptCode, token)}</b> left the printer PAID and the position was taken at settlement. Hand over the slip.</>

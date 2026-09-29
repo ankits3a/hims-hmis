@@ -43,6 +43,8 @@ export const PCPNDT_ERROR_CODES = [
   "same_actor",
   "unknown_form",
   "declaration_incomplete",
+  // ── 18-S RS7 — the foetal-sex guard (`foetal-sex.ts`), on the form's own free text ──
+  "foetal_sex_disclosure",
 ] as const;
 
 export type PcpndtErrorCode = (typeof PCPNDT_ERROR_CODES)[number];
@@ -73,6 +75,7 @@ const STATUS: Record<PcpndtErrorCode, number> = {
   same_actor: 403,
   unknown_form: 404,
   declaration_incomplete: 422,
+  foetal_sex_disclosure: 422,
 };
 
 export function pcpndtHttpStatus(code: PcpndtErrorCode): number {

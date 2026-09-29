@@ -748,7 +748,8 @@ export async function verifyPrescriptionQr(db: Db, cfg: AppConfig, actor: Actor,
 export type RxPrintData = {
   letterhead: Letterhead;
   patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; administrativeGender: string };
-  doctor: { displayName: string; registrationNo: string | null; departmentName: string | null };
+  /** The Doctor ID (`opd_doctors.code`) only — never the name or the council number (owner 2026-09-06, 2026-09-28). */
+  doctor: { code: string; departmentName: string | null };
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
@@ -812,7 +813,14 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
       ageYears: summary!.dob === null ? null : ageYearsAt(summary!.dob, row.issuedAt),
       administrativeGender: summary!.administrativeGender,
     },
-    doctor: { displayName: doctor!.displayName, registrationNo: doctor!.registrationNo, departmentName: department?.name ?? null },
+    /*
+      THE PRESCRIBER IS THE DOCTOR ID — owner rulings 2026-09-06 ("As a medical Institution with
+      college, there's no need of mentioning Dr. Name and their registration number. Only Dr. ID is
+      required.") and 2026-09-28 ("Prescription print: Doctor ID only"). The name and the council
+      number are not on this payload at all, so no renderer can print them by accident. (The QR
+      VERIFY answer still names the doctor: it is the pharmacist's check, not the patient's paper.)
+    */
+    doctor: { code: doctor!.code, departmentName: department?.name ?? null },
     encounter: {
       id: encounter.id, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code,
       advice: encounter.advice, followUpDays: encounter.followUpDays, chiefComplaint: encounter.chiefComplaint,

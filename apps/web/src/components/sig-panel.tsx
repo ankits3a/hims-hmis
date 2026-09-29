@@ -244,7 +244,10 @@ export function SigPanel({
 
   /* A value the taps do not hold is an `Other` value — including one a scribe slip or the co-pilot
      wrote in, which the doctor must be able to see and edit. */
-  const freqOther = !FREQUENCY_VALUES.includes(frequency);
+  /* An EMPTY frequency is "not chosen yet" (a new line pre-selects none, walk 2026-09-28) — not an Other
+     value. Other stays open while its box is empty only because the doctor tapped it. */
+  const [freqOpen, setFreqOpen] = useState(false);
+  const freqOther = freqOpen || (frequency !== "" && !FREQUENCY_VALUES.includes(frequency));
   const [daysOpen, setDaysOpen] = useState(false);
   const daysOther = daysOpen || (durationDays !== "" && !DURATION_VALUES.includes(durationDays));
 
@@ -304,9 +307,10 @@ export function SigPanel({
         clearable={false}
         onPick={(k) => {
           if (k === "other") {
-            if (!freqOther) { focusNext.current = "freq"; onPatch({ frequency: "" }); }
+            if (!freqOther) { setFreqOpen(true); focusNext.current = "freq"; onPatch({ frequency: "" }); }
             return;
           }
+          setFreqOpen(false);
           if (k !== null) onPatch({ frequency: k });
         }}
       />}

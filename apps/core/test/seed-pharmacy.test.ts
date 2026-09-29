@@ -24,13 +24,20 @@ describe("seed:pharmacy — the counter's store and definition (16c T5)", () => 
     expect(first.created).toEqual([OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE, CONTROLLED_STORE_CODE]);
     expect(first.found).toEqual([]);
     expect(first.definitions).toEqual({ activated: [PHARMACY_DISPENSE_DEF_KEY], alreadyActive: [] });
+    // STAGE D5 — the steward's approval type is a deploy fact (else `unknown_type` at the first ask in production).
+    expect(first.approvalTypes).toEqual({ registered: ["pharmacy_restricted_antimicrobial"], already: [] });
     const [store] = await db.select().from(resources).where(eq(resources.id, first.storeId));
     expect(store).toMatchObject({ kind: "store", code: OPD_PHARMACY_STORE_CODE, attributes: { custodianRoles: ["pharmacy", "pharmacy_assistant"] } });
     expect(first.custodiansSet).toBe(true);
     expect((await withTx(db, (tx) => getActiveDefinition(tx, PHARMACY_DISPENSE_DEF_KEY)))?.status).toBe("active");
 
     const second = await ensurePharmacyCounter(db, actor);
-    expect(second).toEqual({ storeId: first.storeId, created: [], found: [OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE, CONTROLLED_STORE_CODE], custodiansSet: false, definitions: { activated: [], alreadyActive: [PHARMACY_DISPENSE_DEF_KEY] } });
+    expect(second).toEqual({
+      storeId: first.storeId, created: [], found: [OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE, CONTROLLED_STORE_CODE], custodiansSet: false,
+      definitions: { activated: [], alreadyActive: [PHARMACY_DISPENSE_DEF_KEY] },
+      approvalTypes: { registered: [], already: ["pharmacy_restricted_antimicrobial"] },
+      aware: { source: first.aware.source, moietiesInCatalogue: first.aware.moietiesInCatalogue, classified: { Access: 0, Watch: 0, Reserve: 0 }, restricted: 0 },
+    });
     const stores = await db.select().from(resources).where(eq(resources.kind, "store"));
     expect(stores).toHaveLength(3);
     // P6 — the cabinet is the one CONTROLLED store: the ledger wants two keys there, and nowhere else.

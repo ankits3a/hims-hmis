@@ -1,4 +1,4 @@
-import type { CounterSequence, TokenLane, WireDoctorSummary, WireCounterFlow } from "../../lib/opd-api";
+import type { CounterSequence, TokenLane, WireDoctorSummary, WireCounterFlow, WireTimelineItem } from "../../lib/opd-api";
 import type { WireFeeQuote, WirePricedLine } from "../../lib/billing-api";
 
 /**
@@ -236,6 +236,62 @@ export function tokenStateOf(
   if (visit.tokenNo === null) return { kind: "held", position: null };
   if (lane === "F2" && !moneyTaken) return { kind: "held", position: visit.tokenNo };
   return { kind: "out", tokenNo: visit.tokenNo, paid: moneyTaken };
+}
+
+/* ══════════ DESK-FIXES A/B — the visit that is ALREADY open today ══════════ */
+
+/**
+ * A visit opened for this patient TODAY that has not ended — the thing the desk must offer before it
+ * offers a new seating. `referral` is set when a doctor's internal referral opened it, naming the
+ * department and doctor that sent them (read off the same timeline, never re-derived).
+ */
+export type OpenVisit = {
+  encounterId: string;
+  visitNo: string;
+  departmentId: string | null;
+  departmentName: string | null;
+  doctorId: string | null;
+  doctorName: string | null;
+  status: string;
+  visitType: string;
+  referral: { fromEncounterId: string; fromDepartmentName: string | null; fromDoctorName: string | null } | null;
+};
+
+/** The states after which a visit is over: nothing is billed or seated against it from the desk. */
+const ENDED_VISIT_STATES = new Set(["completed", "abandoned"]);
+
+/**
+ * ═══ THE DESK FORGOT A VISIT IT HAD JUST OPENED (2026-09-28 walk, defect A) ═══
+ *
+ * The desk printed MED-1 stamped UNPAID, the clerk cleared the desk, searched the patient again —
+ * and the desk offered a NEW seating while Bill said "Nothing to bill yet". The visit, its token and
+ * its fee were all still on the server; the only road to them was typing the visit number into
+ * `/billing`. Every one of today's un-ended visits is surfaced first, newest first (the timeline's
+ * own order). Pure, so the filter is pinned without a screen.
+ */
+export function openVisitsToday(items: readonly WireTimelineItem[], serviceDate: string): OpenVisit[] {
+  const byId = new Map(items.map((i) => [i.encounterId, i] as const));
+  return items
+    .filter((i) => i.serviceDate.slice(0, 10) === serviceDate && !ENDED_VISIT_STATES.has(i.status))
+    .map((i) => {
+      const fromId = i.referredFromEncounterId ?? null;
+      const from = fromId === null ? undefined : byId.get(fromId);
+      return {
+        encounterId: i.encounterId,
+        visitNo: i.visitNo ?? i.encounterId,
+        departmentId: i.departmentId,
+        departmentName: i.departmentName,
+        doctorId: i.doctorId,
+        doctorName: i.doctorName,
+        status: i.status,
+        visitType: i.visitType,
+        referral: fromId === null ? null : {
+          fromEncounterId: fromId,
+          fromDepartmentName: from?.departmentName ?? null,
+          fromDoctorName: from?.doctorName ?? null,
+        },
+      };
+    });
 }
 
 /**

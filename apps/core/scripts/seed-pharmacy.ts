@@ -4,7 +4,9 @@ import { requireEnv } from "../src/kernel/config";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { resources, sodPairs } from "../src/kernel/db/schema";
 import { createStore, isControlledStore, requireStore, setStoreControlled, setStoreCustodianRoles, storeCustodianRoles } from "../src/modules/materials";
-import { CONTROLLED_STORE_CODE, OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE, activatePharmacyDefinitions } from "../src/modules/pharmacy";
+import { classifyAwareMedicines } from "../src/modules/formulary";
+import { CONTROLLED_STORE_CODE, OPD_PHARMACY_STORE_CODE, RETAIL_PHARMACY_STORE_CODE, activatePharmacyDefinitions, registerPharmacyApprovalTypes } from "../src/modules/pharmacy";
+import type { AwareClassificationReport } from "../src/modules/formulary";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../src/kernel/db/client";
 
@@ -16,6 +18,9 @@ import type { Db, Tx } from "../src/kernel/db/client";
  *      `store_missing`, which is the honest failure and a bad first day.
  *   2. The `pharmacy_dispense` definition (D8), Class C — drafted and activated once; `startInstance`
  *      throws `no_active_definition` otherwise and the claim rolls back.
+ *   3. STAGE D5 — the `pharmacy_restricted_antimicrobial` approval type (registered once), and the WHO AWaRe 2023
+ *      classification written onto every product whose class is still null (`classifyAwareMedicines`; a value a
+ *      pharmacist set is never overwritten, the restricted flag is only raised).
  *
  * Idempotent, the `seed-ot` shape: a second run finds both and creates nothing. It runs in
  * `deploy.sh` after `seed-ot.js` and before `seed-roles.js`, and `deploy-parity.test.ts` pins it.
@@ -27,6 +32,10 @@ export type PharmacySeedResult = {
   /** 14c — the store's custodian roles were written on this run (a new store, or one seeded before them). */
   custodiansSet: boolean;
   definitions: { activated: string[]; alreadyActive: string[] };
+  /** STAGE D5 — `pharmacy_restricted_antimicrobial`, or `unknown_type` at the first steward ask in production. */
+  approvalTypes: { registered: string[]; already: string[] };
+  /** STAGE D5 — the WHO AWaRe 2023 list written onto products whose class was still null (never overwrites). */
+  aware: AwareClassificationReport;
 };
 
 /** 14c — the pharmacy's own staff keep `PHARM-OPD`, so a blind count of it never goes to them. */
@@ -84,7 +93,9 @@ export async function ensurePharmacyCounter(db: Db, actor: Actor): Promise<Pharm
   const storeId = storeIds[0]!;
   if ((await db.select({ k: sodPairs.pairKey }).from(sodPairs).limit(1)).length === 0) await seedSodPairs(db);
   const definitions = await activatePharmacyDefinitions(db, actor);
-  return { storeId, created, found, custodiansSet, definitions };
+  const approvalTypes = await registerPharmacyApprovalTypes(db, actor);
+  const aware = await withTx(db, (tx) => classifyAwareMedicines(tx, actor));
+  return { storeId, created, found, custodiansSet, definitions, approvalTypes, aware };
 }
 
 async function main(): Promise<void> {

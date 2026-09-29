@@ -978,6 +978,16 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       check: pharmacyDltTemplateIdsRecorded,
       fix: "§18: register both messages on the DLT portal (the office's Messages side shows their exact text), then the pharmacist in charge records each content-template id at /pharmacy/office?view=messages",
     },
+    {
+      /**
+       * PHARMACY STAGE D5 — RED until an ACTIVE user holds `antimicrobial_steward` at hospital scope. Until then every
+       * restricted antimicrobial line (WHO AWaRe Reserve, the carbapenems, and whatever the hospital adds) is refused
+       * at verify and hand-over with `antimicrobial_steward_not_appointed`. Role-keyed, like every `*_held` row: the
+       * approval type routes to the role, not to a permission.
+       */
+      gate: "G4", code: "antimicrobial_steward_appointed", check: heldAtHospitalScope("antimicrobial_steward"),
+      fix: "§1.11: assign `antimicrobial_steward` at /admin/users — the infectious-disease physician; else the clinical microbiologist; else the AMSP lead the medical superintendent names. Without one, no restricted antimicrobial leaves the counter",
+    },
   ],
 
   /**
@@ -1188,11 +1198,21 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "run: pnpm --filter @hmis/core seed:radiology — NOTE deploy.sh does not run it (11i finding)",
     },
     {
+      /**
+       * 18-S RS4 — stand-up precondition 6, as a row. Every `RAD-` (and `LAB-`) service is category
+       * `investigation`, and with no `gst_config` row for it pricing any imaging line refuses. G2
+       * because `seed:tariff` — which `deploy.sh` runs — writes it (ruling 2: exempt, 0%, SAC 9993).
+       */
+      gate: "G2", code: "radiology_investigation_gst",
+      check: async (db) => (await listGstCategories(db)).some((c) => c.category === "investigation"),
+      fix: "run: pnpm --filter @hmis/core seed:tariff — it writes the `investigation` category (exempt, SAC 9993) when absent",
+    },
+    {
       gate: "G3", code: "radiology_device_present",
       check: async (db) => (await listResourcesOfKind(db, "device")).length > 0,
-      // CORRECTED 2026-09-06: this named an act with no door. There is no resources screen and no
-      // create route; `seed:radiology` is the only writer of an imaging device.
-      fix: "radiology-go-live.md §5: add the machine to MODALITY_MACHINES and re-run seed:radiology — there is no resources screen",
+      // CORRECTED 2026-09-06: this named an act with no door. 18-S RS4 built the door: the Setup
+      // station registers a machine (POST /radiology/setup/devices); `seed:radiology` still seeds five.
+      fix: "radiology-go-live.md §5: register each machine at Radiology → Setup → Machines (code, room, AE title), or run seed:radiology for the standard five",
     },
     {
       gate: "G3", code: "radiology_devices_licensed",

@@ -456,6 +456,34 @@ is data, per D6 and §3.
 - **Work-up split:** the paediatric nurse fills anthropometry, vaccination status and possibly
   milestones.
 
+### 6.2.1 Paediatrics, first slice — what was built and what was DECIDED (2026-09-28, planner)
+
+Built: the PED department's consult gains a **Child** tab (sections `paeds.informant`,
+`paeds.growth`, `paeds.immunisation`, `paeds.birth`, `paeds.milestones`, `paeds.feeding`, all in
+`opd_section_records`, no migration); the header shows a child's age as Y-M-D.
+
+- **D20. Growth references.** Under 5 years: WHO Child Growth Standards 2006, daily LMS tables from
+  WHO's own `anthro` data, WHO's restricted z beyond ±3 SD for weight and BMI, and WHO's 0.7 cm
+  length/height adjustment. **5–18 years: no z-score.** The IAP 2015 paper (Indian Pediatr
+  2015;52:47-55) prints centiles only; its companion (IJEM 2015;19:470-6) says the L, M and S values
+  "can be obtained by writing to the authors for research purpose". Deriving them from printed
+  centiles would be inventing reference values. The screen shows the measurement and BMI and says why.
+  **Owner:** obtain the LMS file (and its terms) from the IAP Growth Chart Committee.
+- **D21. Weight.** Today's weight is one measured on this visit's vitals (not carried forward).
+  Otherwise the last measured weight is shown, flagged with its age in days; weight-for-age is charted at
+  the age it was taken, and no BMI is made from an old weight.
+- **D22. An estimated date of birth charts nothing.** Day-exact z-scores from an age typed as "2 years"
+  would be false precision.
+- **D23. Immunisation.** The IAP-ACVIP 2023 timetable (Indian Pediatr 2024;61:113-125, Table I),
+  routine vaccines only. Due from the table's age; overdue from the end of the table's range, or four
+  weeks after a single age. The four weeks is a vaccination-desk convention, not an IAP number. Hep B-4 is
+  optional. National UIP differences are notes and change no status. "Given today" (dose, batch, site) is
+  append-only: an entry cannot be removed or edited, only marked entered-in-error with a reason. A
+  dose already on record on any visit or on the card is refused. The IAP has since published a 2025
+  schedule (doi 10.1007/s13312-026-00311-w). Moving to it is for the paediatric HOD to decide.
+- Not built: weight-based dosing (§11.1, a licence ruling); the vaccination-card print; the
+  paediatric nurse work-up.
+
 ### 6.3 Gynaecology and obstetrics (third)
 
 - **Obstetric score** (G P L A). **LMP → EDD and gestational age**, calculated. A pregnancy flag on

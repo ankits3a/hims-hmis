@@ -49,8 +49,14 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
   const p = data.patient;
   const name = p.restricted ? (p.alias ?? "—") : (p.name ?? p.alias ?? "—");
   const vitals = vitalsLine(data.vitals);
+  /*
+    EVERY DIAGNOSIS PRINTS WITH ITS OWN CODE (consult walk 2026-09-28, defect C). The display string
+    carries every tag but only the PRIMARY code, so two diagnoses printed as "A · B (A01.00)" and the
+    second code was lost from the paper. The coded rows print tag by tag whenever the payload has them;
+    a payload from before the rows existed prints the display string as it always did.
+  */
   const rows = data.encounter.diagnoses ?? [];
-  const eyedDiagnoses = rows.some((d) => d.laterality !== null) ? rows : null;
+  const codedDiagnoses = rows.length > 0 ? rows : null;
   return (
     <div className="space-y-3">
       <div className="print-doc w-[560px] space-y-2 rounded-lg border p-4">
@@ -61,13 +67,17 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
           ))}
         </header>
 
+        {/*
+          THE PRESCRIBER IS THE DOCTOR ID, AND ONLY THAT — owner rulings 2026-09-06 ("As a medical
+          Institution with college, there's no need of mentioning Dr. Name and their registration
+          number. Only Dr. ID is required.") and 2026-09-28 ("Prescription print: Doctor ID only").
+          The name and the council number are not read here even if an old payload carries them.
+          No signature line joins it: K50 (owner 2026-08-15) makes the signed QR the authentication.
+        */}
         <section className="space-y-1">
-          <p className="text-sm font-medium">{data.doctor.displayName}</p>
+          <p data-testid="rx-doctor-id" className="text-sm font-medium">{t("rx.doctorId")} <span className="font-mono">{data.doctor.code ?? "—"}</span></p>
           {data.doctor.departmentName !== null && (
             <p className="text-xs text-neutral-600">{data.doctor.departmentName}</p>
-          )}
-          {data.doctor.registrationNo !== null && (
-            <p className="text-xs text-neutral-600">{t("rx.regNo")}: {data.doctor.registrationNo}</p>
           )}
         </section>
 
@@ -92,8 +102,8 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
               tag but only the PRIMARY code, so it cannot say which tag is which eye — a visit that
               names an eye prints tag by tag from the coded rows; every other visit prints as before.
             */}
-            {t("rx.diagnosis")}: {eyedDiagnoses !== null
-              ? eyedDiagnoses.map((d) => `${d.text}${d.icd10Code === null ? "" : ` (${d.icd10Code}${d.laterality === null ? "" : `, ${t(`rx.eye.${d.laterality}`)}`})`}`).join(" · ")
+            {t("rx.diagnosis")}: {codedDiagnoses !== null
+              ? codedDiagnoses.map((d) => `${d.text}${d.icd10Code === null ? "" : ` (${d.icd10Code}${d.laterality === null ? "" : `, ${t(`rx.eye.${d.laterality}`)}`})`}`).join(" · ")
               : <>{data.encounter.diagnosis}{data.encounter.icd10Code !== null ? ` (${data.encounter.icd10Code})` : ""}</>}
           </p>
         )}

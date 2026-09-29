@@ -56,7 +56,8 @@ describe("PatientPicker", () => {
     const row = await screen.findByRole("button", { name: /Asha Devi/ });
     await user.click(row);
 
-    expect(onPick).toHaveBeenCalledWith({ id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", administrativeGender: "female", dob: "1990-04-02T00:00:00.000Z" });
+    // DESK-FIXES D — the row's mobile travels with the pick (the billing rail read "no number on file").
+    expect(onPick).toHaveBeenCalledWith({ id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", administrativeGender: "female", dob: "1990-04-02T00:00:00.000Z", phone: "9876500000" });
     await waitFor(() =>
       expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).startsWith("/api/patients/search?q=98765"))).toBe(true),
     );

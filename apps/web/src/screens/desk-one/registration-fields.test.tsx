@@ -180,7 +180,14 @@ describe("FD-12: the registration counter's full record", () => {
     expect(body.guardian.authorityDsr).toBe(false);
   });
 
-  it("an unknown age is not a minor — the guardian is never demanded from an adult who cannot recall a year", async () => {
+  /*
+    DESK-FIXES E (2026-09-28 walk) — this row used to assert that a registration with NO age at all
+    was submittable, and the walk's slip printed "Age: —". DECIDED: age or date of birth is mandatory
+    at registration (standard Indian hospital practice; the server refuses `age_or_dob_required`),
+    and an ESTIMATED age is enough. What the row always protected still stands: an unknown age is
+    not a minor, so no guardian is demanded while the clerk is still asking.
+  */
+  it("DESK-FIXES E: no age and no date of birth cannot be registered — an estimate unlocks it, and no guardian is demanded", async () => {
     const posted: { body: unknown }[] = [];
     mountDesk(posted);
     await openEnrolment();
@@ -188,14 +195,21 @@ describe("FD-12: the registration counter's full record", () => {
 
     await user.type(screen.getByTestId("reg-name"), "Asha Devi");
     await user.click(screen.getByTestId("reg-sex-female"));
-    // no age at all
+    // no age at all: refused before the server refuses it, and the screen says what is missing
+    expect(screen.getByTestId("reg-submit")).toBeDisabled();
+    expect(screen.getByTestId("reg-age-required")).toBeInTheDocument();
+    expect(screen.queryByTestId("guardian-why")).not.toBeInTheDocument();
+
+    // an estimated age is enough
+    await user.type(screen.getByTestId("reg-age"), "60");
     expect(screen.getByTestId("reg-submit")).toBeEnabled();
+    expect(screen.queryByTestId("reg-age-required")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("reg-submit"));
 
     await waitFor(() => expect(posted).toHaveLength(1));
     const body = posted[0]!.body as Record<string, unknown>;
     expect(body["guardian"]).toBeUndefined();
-    expect(body["ageYears"]).toBeUndefined();
+    expect(body["ageYears"]).toBe(60);
   });
 
   /*
@@ -230,6 +244,8 @@ describe("FD-12: the registration counter's full record", () => {
 
     await user.type(screen.getByTestId("reg-name"), "Asha Devi");
     await user.click(screen.getByTestId("reg-sex-female"));
+    // DESK-FIXES E — age or DOB is mandatory at registration now; an estimate is enough.
+    await user.type(screen.getByTestId("reg-age"), "34");
 
     await user.click(screen.getByTestId("fold-more"));
     await user.type(screen.getByTestId("reg-father"), "Ram Prasad");
@@ -281,6 +297,8 @@ describe("FD-12: the registration counter's full record", () => {
 
     await user.type(screen.getByTestId("reg-name"), "Asha Devi");
     await user.click(screen.getByTestId("reg-sex-female"));
+    // DESK-FIXES E — age or DOB is mandatory at registration now; an estimate is enough.
+    await user.type(screen.getByTestId("reg-age"), "34");
     await user.click(screen.getByTestId("fold-cover"));
 
     await user.click(screen.getByTestId("cover-add"));
@@ -326,6 +344,8 @@ describe("FD-12: the registration counter's full record", () => {
 
     await user.type(screen.getByTestId("reg-name"), "Asha Devi");
     await user.click(screen.getByTestId("reg-sex-female"));
+    // DESK-FIXES E — age or DOB is mandatory at registration now; an estimate is enough.
+    await user.type(screen.getByTestId("reg-age"), "34");
     await user.click(screen.getByTestId("fold-abha"));
 
     await waitFor(() => expect(screen.getByTestId("abha-not-configured")).toBeInTheDocument());

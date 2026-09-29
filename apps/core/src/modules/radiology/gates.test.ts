@@ -72,8 +72,14 @@ describe("the two enforcement planes, pinned against each other (18a T5 A3 / F9 
   it("F19: the satisfy edge names four roles and the permission model grants one — a MEASURED disagreement", () => {
     expect(rolesOn("satisfied")).toEqual(["doctor", "radiographer", "radiologist", "system"]);
     expect(holdersOf("radiology.gates.satisfy")).toEqual(["radiographer"]);
-    /** And check-in is the same hand: the desk that takes the money opens no gate set. */
-    expect(holdersOf("radiology.checkin")).toEqual(["radiographer"]);
+    /**
+     * Check-in — 18-S RS3, DECIDED: the desk now holds it too. The owner-approved board makes
+     * opening the patient at the desk on the day of the slot the check-in (SPINE H3), and the
+     * `imaging_study` definition already named `radiology_receptionist` on `scheduled → checked_in`
+     * (so the two planes now COINCIDE on that edge). Check-in OPENS the gate set and satisfies
+     * nothing: the separation this test exists for is the satisfy pin above, which is unchanged.
+     */
+    expect(holdersOf("radiology.checkin")).toEqual(["radiographer", "radiology_receptionist"]);
   });
 });
 
