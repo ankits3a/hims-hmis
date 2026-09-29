@@ -272,7 +272,8 @@ describe("the radiology reads, and the two confidentiality rules (18a T8 A8)", (
   it("`reportView` needs `radiology.reports.read`, which the treating doctor holds and the worklist is separate from", async () => {
     const study = await acquireStudy(db, fx, { idemKey: "rv1", now: NOW, slot: SLOT });
     const { reportId } = await withTx(db, (tx) => draftReport(tx, fx.radiologist, {
-      studyId: study.studyId, body: { findings: "Normal." },
+      /** 18-S RS8a — an impression is required to sign (`impression_required`). */
+      studyId: study.studyId, body: { findings: "Normal." }, impression: "Normal study.",
     }));
     const signed = await withTx(db, (tx) => signReport(tx, fx.radiologist, {
       studyId: study.studyId, reportId, secondFactorAt: FRESH, now: NOW,

@@ -18,7 +18,7 @@ import type { StationLink, StationStat } from "../components/station/station-she
  * the department turns green.
  */
 
-export type RadiologyStationKey = "desk" | "diary" | "display" | "worklist" | "room" | "portable" | "usg" | "safety" | "setup";
+export type RadiologyStationKey = "desk" | "diary" | "display" | "worklist" | "room" | "read" | "portable" | "usg" | "safety" | "setup";
 
 /** The browsable stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
 export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: RadiologyStationKey; labelKey: string })[] = [
@@ -29,6 +29,8 @@ export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: R
   { key: "worklist", to: "/radiology/worklist", labelKey: "nav.radiologyWorklist", permission: "radiology.worklist.read" },
   /** 18-S RS6 — the modality rooms: console, dose log, rejects & repeats, downtime (header views). */
   { key: "room", to: "/radiology/room", labelKey: "nav.radiologyRoom", permission: "radiology.acquire" },
+  /** 18-S RS8a — the reading room: the radiologist's urgency-sorted list and the report workspace. */
+  { key: "read", to: "/radiology/read", labelKey: "nav.radiologyReading", permission: "radiology.reports.write" },
   /** 18-S RS2b — the technologist's round of the beds the trolley goes to. */
   { key: "portable", to: "/radiology/portable", labelKey: "nav.radiologyPortable", permission: "radiology.acquire" },
   /** 18-S RS7 — the sonologist's room, the Form F register, the §19 registration, the monthly return. */
