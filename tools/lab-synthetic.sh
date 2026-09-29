@@ -45,6 +45,9 @@ for s in ops opd patients billing tariff membership formulary materials ot pharm
   pnpm -s "seed:$s" >/dev/null && echo "seed:$s ok"
 done
 pnpm -s seed:roles >/dev/null || true   # exits 1 while roles lack holders; deploy ignores it too
+# Not in the deploy's order (production's was configured once, by hand), but the desk's walk-in door
+# refuses "registration_config row 'main' is missing" without it — found by the §13 walk, 2026-09-28.
+UHID_PREFIX=U pnpm -s seed:registration >/dev/null && echo "seed:registration ok"
 
 step "synthetic staff (seed:staff, passwords on stdin only)"
 CRED_DIR="$HOME/.hmis-synthetic"; CRED="$CRED_DIR/$DB.credentials"
