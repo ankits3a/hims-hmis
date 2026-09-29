@@ -252,7 +252,9 @@ describe("modality rooms (18-S RS6)", () => {
     await withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, { studyId: study.studyId, now: NOW }));
 
     const room = await roomView(db, fx.radiographer, study.studyId, NOW);
-    expect(room.renal).toEqual({ creatinineUmolL: 72, egfr: null, sampledAt: NOW.toISOString() });
+    // 18-S RS5 × RS6 seam: the kidney gate now stores the CKD-EPI 2021 eGFR beside the creatinine,
+    // and the console shows it (72 µmol/L for this fixture's patient → 99 mL/min/1.73m²).
+    expect(room.renal).toEqual({ creatinineUmolL: 72, egfr: 99, sampledAt: NOW.toISOString() });
 
     await withTx(db, (tx) => recordAcquired(tx, fx.radiographer, fx.decls, {
       studyId: study.studyId, imageSource: "no_pacs_images", doseDlp: 900, contrastGiven: false,

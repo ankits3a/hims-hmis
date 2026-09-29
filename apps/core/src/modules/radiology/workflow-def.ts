@@ -175,10 +175,15 @@ export const imagingGateDefinition: WorkflowDefinition = defineWorkflow({
      * question. `radiologist` stays — T5 A5 requires it (`prior_contrast_reaction` is satisfiable
      * only with a radiologist's reason).
      */
+    /**
+     * 18-S RS5 — `radiology_nurse` joins: the prep & safety bay's nurse clears the prep gates with
+     * evidence (the approved board's seat). The nurse is on NEITHER exit below — waive and override
+     * stay the radiologist's, and the bay asks for an override through the approvals spine.
+     */
     {
       from: "open",
       to: "satisfied",
-      roles: ["radiographer", "radiologist", "doctor", "system"],
+      roles: ["radiographer", "radiologist", "doctor", "system", "radiology_nurse"],
     },
     // Only the kinds the active `study_types` body marks `waivable` — `waiveGate` enforces that,
     // and `identity_two_factor` and `form_f` are never among them (T5 A6, T5 A2).

@@ -195,7 +195,9 @@ export class RadiologyAcquisitionController {
    * not, which is the separation that actually matters here.
    */
   @Post(":studyId/contrast")
-  @RequirePermission("radiology.acquire", "hospital")
+  // 18-S RS5 — `radiology.contrast.record` (held by radiographer, radiologist and radiology_nurse),
+  // split off `radiology.acquire` so the nurse who injects can record it without driving the machine.
+  @RequirePermission("radiology.contrast.record", "hospital")
   async contrast(
     @CurrentActor() actor: Actor,
     @Param("studyId") studyId: string,
@@ -233,7 +235,8 @@ export class RadiologyAcquisitionController {
    * deliberately not the actor who typed the row.
    */
   @Post("contrast-reactions")
-  @RequirePermission("radiology.acquire", "hospital")
+  // 18-S RS5 — the nurse watching the patient after the injection records the reaction too.
+  @RequirePermission("radiology.contrast.record", "hospital")
   async reaction(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const input = parsed(reactionBody, body);
     try {
