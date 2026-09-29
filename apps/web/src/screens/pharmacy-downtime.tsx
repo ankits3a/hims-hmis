@@ -12,6 +12,7 @@ import {
 import { PatientPicker } from "../components/patient-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OfficeHead } from "./pharmacy-office/office-page";
 import { downscaleToJpeg } from "./slip-capture";
 import type { WirePatientHit } from "../lib/patients-api";
 import type {
@@ -167,21 +168,20 @@ export function PharmacyDowntime(): React.ReactElement {
     && paid !== "" && Number(paid) >= 0 && (mode === "cash" || ref.trim() !== "");
 
   return (
-    <div className="space-y-5 p-4">
-      <h1 className="text-xl font-semibold">{t("pharmacyDowntime.title")}</h1>
-      <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyDowntime.intro")}</p>
+    <div className="space-y-4" data-testid="pharmacy-downtime">
+      <OfficeHead title={t("pharmacyDowntime.title")} lead={t("pharmacyDowntime.intro")} />
       {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       {done !== null ? (
-        <section className="space-y-2 rounded border p-3" data-testid="paper-done">
+        <section className="ofp-card space-y-2" data-testid="paper-done">
           <p className="font-medium text-green-800">{t("pharmacyDowntime.entered", { serial: done.sheet?.serial ?? "", invoice: done.invoiceNo, amount: rupees(done.netPaise) })}</p>
           <p className="text-sm">{t("pharmacyDowntime.stampSheet")}</p>
           <Button type="button" onClick={next}>{t("pharmacyDowntime.nextSheet")}</Button>
         </section>
       ) : (
-        <>
+        <div className="ofp-card space-y-4">
           <section className="space-y-2">
-            <h2 className="font-semibold">{t("pharmacyDowntime.sheet")}</h2>
+            <h2 className="ofp-label">{t("pharmacyDowntime.sheet")}</h2>
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (qr.trim() !== "") void scan(); }}>
               <Input aria-label={t("pharmacyDowntime.scanSheet")} placeholder={t("pharmacyDowntime.scanSheet")} value={qr}
                 onChange={(e) => { setQr(e.target.value); setSheet(null); }} className="max-w-md" autoFocus />
@@ -221,7 +221,7 @@ export function PharmacyDowntime(): React.ReactElement {
           {headerReady && (
             <>
               <section className="space-y-2">
-                <h2 className="font-semibold">{t("pharmacyRetail.customer")}</h2>
+                <h2 className="ofp-label">{t("pharmacyRetail.customer")}</h2>
                 {customer === null && !registering && (
                   <div className="space-y-2">
                     <PatientPicker onPick={(hit) => { setCustomer({ kind: "existing", id: hit.id, label: `${hit.name ?? hit.uhid} · ${hit.uhid}` }); stale(); }} />
@@ -272,7 +272,7 @@ export function PharmacyDowntime(): React.ReactElement {
               </section>
 
               <section className="space-y-2">
-                <h2 className="font-semibold">{t("pharmacyDowntime.lines")}</h2>
+                <h2 className="ofp-label">{t("pharmacyDowntime.lines")}</h2>
                 <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") void search(); }}>
                   <Input aria-label={t("pharmacyRetail.search")} placeholder={t("pharmacyRetail.search")} value={q} onChange={(e) => setQ(e.target.value)} className="max-w-md" />
                   <Button type="submit" variant="outline">{t("pharmacyRetail.find")}</Button>
@@ -289,7 +289,7 @@ export function PharmacyDowntime(): React.ReactElement {
                   </ul>
                 )}
                 {lines.length > 0 && (
-                  <table className="text-sm">
+                  <div className="ofp-scroll"><table className="text-sm">
                     <tbody>
                       {lines.map((l, i) => (
                         <tr key={`${l.entry.itemId}-${String(i)}`} data-testid={`paper-line-${String(i)}`}>
@@ -311,7 +311,7 @@ export function PharmacyDowntime(): React.ReactElement {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 )}
                 <Button type="button" variant="outline" disabled={!linesValid} onClick={() => { void runPreview(); }}>{t("pharmacyRetail.price")}</Button>
               </section>
@@ -367,13 +367,13 @@ export function PharmacyDowntime(): React.ReactElement {
               )}
             </>
           )}
-        </>
+        </div>
       )}
 
-      <section className="space-y-1">
-        <h2 className="font-semibold">{t("pharmacyDowntime.recent")}</h2>
-        {entered.data !== undefined && entered.data.length === 0 && <p className="text-sm text-muted-foreground">{t("pharmacyDowntime.noneYet")}</p>}
-        <ul className="text-sm">
+      <section className="ofp-box">
+        <h2 className="ofp-group ofp-label">{t("pharmacyDowntime.recent")} · {entered.data?.length ?? "…"}</h2>
+        {entered.data !== undefined && entered.data.length === 0 && <p className="ofp-empty">{t("pharmacyDowntime.noneYet")}</p>}
+        <ul className="ofp-rows">
           {(entered.data ?? []).map((r) => (
             <li key={r.id} data-testid={`paper-row-${r.id}`}>
               {t("pharmacyDowntime.row", {

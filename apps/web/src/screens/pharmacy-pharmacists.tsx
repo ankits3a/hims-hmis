@@ -5,6 +5,8 @@ import {
   endPharmacistRegistration, fetchPharmacists, filePharmacistRegistration, pharmacyErrorText,
 } from "../lib/pharmacy-api";
 import { Button } from "@/components/ui/button";
+import { OfficeHead, fieldCls, labelCls } from "./pharmacy-office/office-page";
+import { Sheet } from "./pharmacy-office/sheet";
 import type { WirePharmacist } from "../lib/pharmacy-api";
 
 /**
@@ -30,6 +32,11 @@ export function PharmacyPharmacists(): React.ReactElement {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+
+  /* B5 — one register, the ones that need an act first: no registration, then renewals due, then the rest. */
+  const need = (p: WirePharmacist): number => (p.current === null ? 0 : p.renewalDueInDays != null ? 1 : 2);
+  const people = [...(list.data ?? [])].sort((a, b) => need(a) - need(b));
+  const inSheet = filing !== null || ending !== null;
 
   const refresh = async (): Promise<void> => { await qc.invalidateQueries({ queryKey: ["pharmacy", "pharmacists"] }); };
 
@@ -61,28 +68,28 @@ export function PharmacyPharmacists(): React.ReactElement {
   };
 
   return (
-    <div className="space-y-4 p-4">
-      <h1 className="text-xl font-semibold">{t("pharmacyPharmacists.title")}</h1>
-      <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyPharmacists.intro")}</p>
-      {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
+    <div className="space-y-4" data-testid="pharmacy-pharmacists">
+      <OfficeHead title={t("pharmacyPharmacists.title")} lead={t("pharmacyPharmacists.intro")} />
+      {!inSheet && error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {done !== null && <p role="status" className="text-sm text-green-700">{done}</p>}
+      <div className="ofp-box">
       {list.data !== undefined && list.data.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t("pharmacyPharmacists.none")}</p>
+        <p className="ofp-empty">{t("pharmacyPharmacists.none")}</p>
       )}
-      <ul className="space-y-3">
-        {(list.data ?? []).map((p) => (
-          <li key={p.userId} className="rounded border p-3" data-testid={`pharmacist-${p.userId}`}>
+      <ul className="ofp-rows">
+        {people.map((p) => (
+          <li key={p.userId} className="ofp-stack" data-testid={`pharmacist-${p.userId}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="font-medium">{p.fullName} <span className="text-xs text-muted-foreground">{p.username}</span></p>
               <p className="text-sm" data-testid={`pharmacist-status-${p.userId}`}>
                 {p.current === null
-                  ? <span className="text-red-700">{t("pharmacyPharmacists.noneOnFile")}</span>
+                  ? <span className="pill rd">{t("pharmacyPharmacists.noneOnFile")}</span>
                   : t("pharmacyPharmacists.current", {
                     council: p.current.council, no: p.current.registrationNo,
                     until: p.current.validUntil ?? t("pharmacyPharmacists.noEndDate"),
                   })}
                 {p.renewalDueInDays !== undefined && p.renewalDueInDays !== null && (
-                  <span className="ml-2 rounded bg-amber-100 px-1 text-xs text-amber-900" data-testid={`pharmacist-renewal-${p.userId}`}>
+                  <span className="pill gd ml-2" data-testid={`pharmacist-renewal-${p.userId}`}>
                     {p.renewalDueInDays === 0 ? t("pharmacyPharmacists.renewToday") : t("pharmacyPharmacists.renewIn", { count: p.renewalDueInDays })}
                   </span>
                 )}
@@ -98,29 +105,38 @@ export function PharmacyPharmacists(): React.ReactElement {
                 </Button>
               )}
             </div>
+            {/* B5 — filing and ending are sheets over the register, as every form in the office is. */}
             {filing === p.userId && (
-              <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void file(p); }}>
-                <label className="text-sm">{t("pharmacyPharmacists.council")}
-                  <input className="ml-1 rounded border px-2 py-1" value={draft.council} onChange={(e) => setDraft({ ...draft, council: e.target.value })} />
-                </label>
-                <label className="text-sm">{t("pharmacyPharmacists.registrationNo")}
-                  <input className="ml-1 rounded border px-2 py-1" value={draft.registrationNo} onChange={(e) => setDraft({ ...draft, registrationNo: e.target.value })} />
-                </label>
-                <label className="text-sm">{t("pharmacyPharmacists.validUntil")}
-                  <input type="date" className="ml-1 rounded border px-2 py-1" value={draft.validUntil} onChange={(e) => setDraft({ ...draft, validUntil: e.target.value })} />
-                </label>
-                <Button type="submit" size="sm" disabled={draft.council.trim() === "" || draft.registrationNo.trim() === ""}>
+              <Sheet title={`${p.current === null ? t("pharmacyPharmacists.file") : t("pharmacyPharmacists.renew")} · ${p.fullName}`} testId={`pharmacist-file-${p.userId}`} onClose={() => setFiling(null)}>
+              <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void file(p); }}>
+                {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className={labelCls}>{t("pharmacyPharmacists.council")}
+                    <input className={fieldCls} value={draft.council} onChange={(e) => setDraft({ ...draft, council: e.target.value })} />
+                  </label>
+                  <label className={labelCls}>{t("pharmacyPharmacists.registrationNo")}
+                    <input className={fieldCls} value={draft.registrationNo} onChange={(e) => setDraft({ ...draft, registrationNo: e.target.value })} />
+                  </label>
+                  <label className={labelCls}>{t("pharmacyPharmacists.validUntil")}
+                    <input type="date" className={fieldCls} value={draft.validUntil} onChange={(e) => setDraft({ ...draft, validUntil: e.target.value })} />
+                  </label>
+                </div>
+                <Button type="submit" disabled={draft.council.trim() === "" || draft.registrationNo.trim() === ""}>
                   {t("pharmacyPharmacists.save")}
                 </Button>
               </form>
+              </Sheet>
             )}
             {ending === p.userId && p.current !== null && (
-              <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void end(p, p.current!.id); }}>
-                <label className="text-sm">{t("pharmacyPharmacists.reason")}
-                  <input className="ml-1 rounded border px-2 py-1" value={reason} onChange={(e) => setReason(e.target.value)} />
+              <Sheet title={`${t("pharmacyPharmacists.end")} · ${p.fullName}`} testId={`pharmacist-end-${p.userId}`} onClose={() => setEnding(null)}>
+              <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void end(p, p.current!.id); }}>
+                {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
+                <label className={labelCls}>{t("pharmacyPharmacists.reason")}
+                  <input className={fieldCls} value={reason} onChange={(e) => setReason(e.target.value)} />
                 </label>
-                <Button type="submit" size="sm" disabled={reason.trim().length < 3}>{t("pharmacyPharmacists.confirmEnd")}</Button>
+                <Button type="submit" variant="destructive" disabled={reason.trim().length < 3}>{t("pharmacyPharmacists.confirmEnd")}</Button>
               </form>
+              </Sheet>
             )}
             {p.history.some((h) => h.endedAt !== null) && (
               <ul className="mt-2 text-xs text-muted-foreground" aria-label={t("pharmacyPharmacists.history")}>
@@ -132,6 +148,7 @@ export function PharmacyPharmacists(): React.ReactElement {
           </li>
         ))}
       </ul>
+      </div>
     </div>
   );
 }

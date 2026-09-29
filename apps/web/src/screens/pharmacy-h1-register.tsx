@@ -6,6 +6,7 @@ import { todayIst } from "../lib/opd-api";
 import { fetchH1Register, pharmacyErrorText } from "../lib/pharmacy-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OfficeHead } from "./pharmacy-office/office-page";
 
 /**
  * ═══ PHARMACY P9 — THE SCHEDULE H1 REGISTER ═══
@@ -32,29 +33,43 @@ export function PharmacyH1Register(): React.ReactElement {
   const reg = useQuery({ queryKey: ["pharmacy", "h1", from, to], queryFn: () => fetchH1Register(from, to), enabled: /^\d{4}-\d{2}$/.test(month) });
   const rows = reg.data?.rows ?? [];
   return (
-    <div className="space-y-4 p-4">
-      <style>{"@media print { body * { visibility: hidden; } .h1-print, .h1-print * { visibility: visible; } .h1-print { position: absolute; left: 0; top: 0; width: 100%; } }"}</style>
-      <h1 className="text-xl font-semibold">{t("pharmacyH1.title")}</h1>
-      <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyH1.intro")}</p>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-sm">
+    <div className="space-y-4" data-testid="pharmacy-h1-register">
+      <style>{"@media print { body * { visibility: hidden; } .h1-print, .h1-print * { visibility: visible; } .h1-print { position: absolute; left: 0; top: 0; width: 100%; } .h1-cards { display: none !important; } .h1-table { display: block !important; } }"}</style>
+      <OfficeHead title={t("pharmacyH1.title")} lead={t("pharmacyH1.intro")}>
+        <label className="flex items-center gap-2 text-sm">
           {t("pharmacyH1.month")}
           <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-44" data-testid="h1-month" />
         </label>
         <Button type="button" variant="outline" onClick={() => window.print()} disabled={rows.length === 0}>{t("pharmacyH1.print")}</Button>
-      </div>
+      </OfficeHead>
       {reg.error !== null && <p role="alert" className="text-sm text-red-600">{pharmacyErrorText(reg.error, t)}</p>}
       {rows.some((r) => r.restricted) && <p className="max-w-3xl text-xs text-amber-800">{t("pharmacyH1.sealedNote")}</p>}
-      {reg.data !== undefined && rows.length === 0 && <p className="text-sm">{t("pharmacyH1.none")}</p>}
+      {reg.data !== undefined && rows.length === 0 && <p className="ofp-box ofp-empty">{t("pharmacyH1.none")}</p>}
       {rows.length > 0 && (
-        <div className="h1-print space-y-2">
+        <div className="h1-print ofp-card space-y-2">
           <div className="text-sm">
             <p className="font-semibold">{t("pharmacyH1.title")} · {t("pharmacyH1.rule")}</p>
             <p>{t("pharmacyH1.period", { from: dmy(from), to: dmy(to) })}</p>
             <p>{t("pharmacyH1.licence")}</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs">
+          {/* B5 — on a phone the register reads as one card per entry; the table (and the print) is for wider screens. */}
+          <ul className="h1-cards space-y-2 sm:hidden" data-testid="h1-cards">
+            {rows.map((r) => (
+              <li key={r.entryNo} className="rounded border p-2 text-xs">
+                <p className="font-semibold">{r.entryNo} · {r.drugName} · {r.qtyBase} {r.unit}</p>
+                <p className="text-muted-foreground">{dmy(todayIst(new Date(r.dispensedAt)))} {fmtIst(r.dispensedAt)} · {t("pharmacyH1.batch")} {r.batchNo}</p>
+                <p>
+                  <span className="text-muted-foreground">{t("pharmacyH1.patient")}: </span>{r.patientName}
+                  {r.restricted && <span className="ml-1 text-amber-800">({t("pharmacyH1.sealed")})</span>}
+                  {r.patientAddress !== null && <span className="text-muted-foreground">, {r.patientAddress}</span>}
+                </p>
+                <p><span className="text-muted-foreground">{t("pharmacyH1.prescriber")}: </span>{r.prescriberName}{r.prescriberRegNo !== null ? `, ${r.prescriberRegNo}` : ""}{r.prescriberAddress != null ? `, ${r.prescriberAddress}` : ""}</p>
+                {r.pharmacistRegNo !== null && <p><span className="text-muted-foreground">{t("pharmacyH1.pharmacist")}: </span>{r.pharmacistRegNo}</p>}
+              </li>
+            ))}
+          </ul>
+          <div className="h1-table ofp-scroll hidden sm:block">
+            <table className="w-full min-w-[48rem] border-collapse text-xs">
               <thead>
                 <tr className="text-left">
                   {(["sno", "when", "patient", "prescriber", "drug", "batch", "qty", "pharmacist"] as const).map((k) => (

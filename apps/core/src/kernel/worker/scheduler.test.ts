@@ -18,6 +18,7 @@ import { billingManifest } from "../../modules/billing";
 import * as labSweepsMod from "../../modules/lab/sweeps";
 import * as pharmacyExpiryMod from "../../modules/pharmacy/expiry";
 import * as radiologyChasersMod from "../../modules/radiology/chasers";
+import * as radiologyEscalationsMod from "../../modules/radiology/escalations";
 import * as rosterCalendarMod from "../../modules/roster/calendar";
 import * as rosterProposerMod from "../../modules/roster/proposer";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
@@ -378,6 +379,15 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepOverdueQa");
       return { blocked: [], skipped: [] };
     }),
+    /**
+     * 18-S RS10 T2 — stubbed on `modules/radiology/escalations` (the eleventh's rule). Un-stubbed it
+     * reads the department and starts / resolves workflow instances; its behaviour is asserted in
+     * `modules/radiology/escalations.test.ts`.
+     */
+    jest.spyOn(radiologyEscalationsMod, "sweepImagingEscalations").mockImplementation(async () => {
+      invoked.push("sweepImagingEscalations");
+      return { raised: [], resolved: [], notActive: [] };
+    }),
   ];
 }
 
@@ -455,6 +465,8 @@ const THE_EIGHTEEN = [
   "runRefillReminders",
   // 18-S RS11 T3 — the TWENTY-THIRD, `every(3_600_000)`: the overdue-QA sweep (aerb).
   "sweepOverdueQa",
+  // 18-S RS10 T2 — the TWENTY-FOURTH, `every(60_000)`: the HOD's escalations on the obligation spine.
+  "sweepImagingEscalations",
 ];
 
 /**

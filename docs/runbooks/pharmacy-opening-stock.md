@@ -3,51 +3,76 @@
 Owner ruling 2026-09-22: the counter first runs on TRIAL stock so a real ticket can be walked end to end.
 Then the pharmacist counts the real shelf onto one sheet, the trial stock is wiped, and the sheet is received.
 
-## 1. The sheet
+## 1. On screen — start here
 
-Start from `docs/runbooks/pharmacy-opening-stock-template.csv` (open it in Excel or LibreOffice and save it
-as CSV again). One row per **brand + batch** on the shelf:
+**Pharmacy office → Stock → Opening stock sheet** (`/pharmacy/office?view=stock&page=opening`, 2026-09-29).
+Whoever captures deliveries (`materials.grn.capture`) types the shelf in, one row per **brand + batch**:
 
-| column | what to write | example |
+| cell | what to type | example |
 |---|---|---|
-| `brand` | the name on the strip, with its strength, or the item code from /pharmacy/items | `Dolo 650` |
-| `batch` | the batch number as printed | `DOBS4521` |
-| `expiry` | month/year as printed | `08/2027` |
-| `mrp_per_pack` | rupees, as printed on the pack | `33.60` |
-| `pack_size` | tablets in the strip; `1` for a bottle, tube or inhaler | `15` |
-| `packs` | whole packs you counted | `12` |
-| `rack` | where it sits (replaces the suggested rack) | `A1` |
-| `supplier_name` | optional — an active vendor's name or code; blank means "OPENING STOCK" | |
-| `purchase_rate_per_pack` | optional — what the hospital paid per pack; blank is valued at 0 | `24.00` |
+| Brand | start typing and pick from the list — it shows strength, form and pack from the item master | `dolo` → Dolo 650 tablet |
+| Pack | tablet strip, capsule strip, bottle, vial, ampoule, tube, pouch, sachet, box, other | Tablet strip |
+| Per pack | units in one pack — 15 tablets in a strip, `1` for a bottle | `15` |
+| Batch | as printed | `DOBS4521` |
+| Expiry | month/year as printed | `08/27` |
+| Packs | whole packs counted | `12` |
+| Free | optional — packs the supplier gave free; received as a free-goods line at cost ₹0 | `1` |
+| MRP ₹/pack | as printed on the pack | `33.60` |
+| Rate ₹/pack | optional — what the hospital paid per pack; blank is valued at ₹0 | `24.00` |
+| Disc % | optional — trade discount; lowers the **cost** only | `10` |
+| Rack | where it sits | `A1` |
+| Supplier | optional — an active supplier; blank means OPENING STOCK | |
 
-Rules the script enforces, so you learn them from the sheet and not at the counter:
+- **Enter or Tab** moves to the next cell; a new row is always waiting at the end. The rows are kept in this
+  browser as a draft until they are captured, so a reload loses nothing.
+- Each row shows **cost per unit** (rate × (1 − disc/100) ÷ pack, rounded down to the paisa) and the
+  **margin against MRP** as you type. GST shows from the item; change it with the row's **Edit item**.
+- A second after you stop typing, every row is judged by the **server** — the same rules as the CSV (§2) —
+  and a row that will be refused says why, in red, under it. **Capture as GRNs** stays off until no row is
+  refused.
+- **Capture books goods receipts (GRNs). Nothing is on the shelf yet.** A second person — the pharmacist —
+  logs in, opens each GRN in **Stock → Goods receipt (GRN)** (the link on the screen), runs QC and posts it.
+  Only then can the counter sell it. The owner entering stock and checking it needs two logins.
+- **The sale price is the MRP.** A full strip bills at the printed MRP; a loose tablet at its share, rounded
+  down. There is no sale price and no counter discount on this screen (an open money ruling).
 
-- **The brand must already be on the shelf** (loaded from the starter list). A name it cannot place is
-  refused with the three nearest names; a name that fits two items (e.g. `Cetzine` — 10 mg tablet and
+**A brand that is not in the list.** The list's last choice is **+ New drug** (also a button at the top), for a
+holder of `materials.items.manage`. It asks for brand and strength, the **generic** (searched in the formulary —
+OPD, emergency and IPD prescribe from it, and this link is how a prescription reaches the brand), form, pack type
+and size, HSN (3004), GST (5%; Nil for the 36 life-saving drugs and contraceptives; 18% only for a non-medicine
+under HSN 2106 — there is no 12% slab for medicines since 22 Sep 2025), schedule (defaults to the formulary's),
+MRP per pack and storage (room / 2–8 °C). **Add the drug** creates the item with its pack, sets its MRP and puts
+it on sale at the counter in one step, then drops it into the row. It also needs `pharmacy.sale_items.manage`,
+and changing a schedule needs `formulary.manage`; without them it says which and writes nothing.
+
+A drug in the item master that the counter does not sell yet shows "not sold at the counter yet"; picking it puts
+it on sale (`pharmacy.sale_items.manage`).
+
+## 2. The rules every row is judged by (screen and sheet alike)
+
+- **The brand must be sold at the counter.** On screen you pick it; in a sheet a name it cannot place is
+  refused with the three nearest names, and a name that fits two items (e.g. `Cetzine` — 10 mg tablet and
   5 mg/5 mL syrup) is refused until you add the strength.
 - **Expired stock is not received.** Segregate it. Stock expiring within six months is received on its own
-  GRN and waits for the materials head to accept it in **/approvals**; run the script again after that.
-- **MRP must divide into whole paise per tablet.** ₹33.60 on a strip of 15 is fine; ₹35.50 on a strip of 15
-  is not (₹2.3666…), and the stock gate refuses it. Such rows are refused by name — bring them to the
-  pharmacist in charge.
-- **A strip size the item does not have yet** (the starter list assumed 10) is added as a new pack unit, which
-  needs a materials head on the command (`--head`).
+  GRN and waits for the materials head to accept it in **/approvals**.
+- **An MRP that does not divide into whole paise is received** (owner ruling 2026-09-22). ₹35.50 on a strip
+  of 15 is fine: a full strip bills ₹35.50, a loose tablet ₹2.36.
+- **Cost after discount above MRP is refused** — the GRN gate would refuse it too.
+- **A pack size the item does not have yet** (the starter list assumed 10) is added as a new pack unit
+  (`strip15`, `box10`), which needs `materials.items.manage`. So does creating the OPENING STOCK supplier
+  (`materials.vendors.manage`). The screen says so before anything is written.
+- Rack labels are set only when the person capturing holds `pharmacy.sale_items.manage`.
 - Two rows with the same brand and batch are refused — add the packs together.
+- All or nothing, and once: one refused row stops the capture, and the same rows captured twice capture
+  nothing the second time (challan `OPENING/<hash>`).
 
-## 2. From the screen (no engineer needed)
+## 2a. Upload a sheet instead (CSV)
 
-`/materials/grn` → **Opening stock sheet** (gap closure A1, 2026-09-28). Whoever captures deliveries
-(`materials.grn.capture`, normally the storekeeper) picks the CSV and presses **Check**. Every row is judged
-exactly as the script below judges it, and nothing is written. **Capture as GRNs** stays off until no row is
-refused. It then books one GRN per supplier and stops. The pharmacist opens each GRN in the list below it,
-runs QC and posts, as for any delivery. A short-dated GRN asks for the near-expiry approval first.
-
-- A sheet that adds a pack size or creates the OPENING STOCK supplier needs `materials.items.manage` /
-  `materials.vendors.manage`. Check says so before anything is written; the materials head uploads that sheet.
-- Rack labels are set only when the uploader holds `pharmacy.sale_items.manage`. Otherwise Check says how
-  many are left for the pharmacist in charge.
-- The same file twice captures nothing. The script below picks up GRNs the screen captured, QCs and posts
-  them, and never captures them again.
+Under the grid, **Upload a sheet (CSV) instead**. Start from `docs/runbooks/pharmacy-opening-stock-template.csv`
+(open it in Excel or LibreOffice and save it as CSV again). Columns: `brand`, `batch`, `expiry`,
+`mrp_per_pack`, `pack_size`, `packs`, `rack`, `supplier_name`, `purchase_rate_per_pack`, and optionally
+`pack_type`, `free_packs`, `trade_discount_pct` — the same cells as the grid. **Check** judges every row by §2
+and writes nothing; **Capture as GRNs** books one GRN per supplier for the pharmacist's QC, exactly as the grid.
 
 ## 3. From the command line (order of the day)
 
