@@ -6235,6 +6235,7 @@
       "value": "what they say",
       "placeholder": "ask — do not read it to them",
       "noId": "No scheduled drug on this ticket; no identity check at the window.",
+      "tokenMismatch": "That is not today’s token for this visit — ask the patient again, or check the last 4 of the phone instead.",
       "button": "Handed over"
     },
     "sub": {
