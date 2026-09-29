@@ -147,6 +147,12 @@ export {
 export type { MwlExport, MwlRow } from "./mwl";
 export { IMAGES_READ, openImages, renderViewerUrl, studyImageViews } from "./views";
 export type { ImageViewRow } from "./views";
+// 18-S RS12 — the archive's doors in and the PACS inbox.
+export {
+  PACS_INTERFACE, PACS_RECONCILE, attachUnmatched, doseDisagreement, ingestArrival, ingestDoseSr, matchVerdict,
+  openUnmatchedCount, pacsArchiveConfigured, pacsInbox, parseDoseSr, parseOrthancStudy, rejectUnmatched,
+} from "./pacs";
+export type { ArrivalNotice, ArrivalOutcome, DoseConflictRow, DoseSrNotice, InboxRow as PacsInboxRow } from "./pacs"; // RS9 exports its own InboxRow (the doctor's results); the archive's is re-exported by this name
 export type { ReportView, StudyView, WorklistRow, WorklistView } from "./read";
 export type {
   PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,
@@ -155,3 +161,8 @@ export * from "./events";
 // ── ABDM S2 — what radiology releases to the national network (modules/abdm reads only this) ──
 export { signedImagingReportsForRelease } from "./abdm-release";
 export type { ImagingReleaseReport } from "./abdm-release";
+// ── 18-S RS9 — the closed loop: who the treating doctor is, acted-upon, and the north star RS10's floor reads ──
+export { isTreatingDoctor, treatingDoctorsOf } from "./closed-loop";
+export type { InboxRow, TreatingDoctors } from "./closed-loop";
+export { NORTH_STAR_SOURCES, northStar } from "./north-star";
+export type { NorthStar, NorthStarRow, NorthStarSource } from "./north-star";

@@ -323,6 +323,9 @@ export const qaRecords = pgTable(
  */
 export const DOSE_SOURCES = ["imaging", "cath_lab", "radiotherapy"] as const;
 export type DoseSource = (typeof DOSE_SOURCES)[number];
+/** 18-S RS12 — a typed number, or the machine's Radiation Dose SR. */
+export const DOSE_ORIGINS = ["manual", "dose_sr"] as const;
+export type DoseOrigin = (typeof DOSE_ORIGINS)[number];
 
 export const doseRegister = pgTable(
   "radiation_dose_register",
@@ -345,8 +348,17 @@ export const doseRegister = pgTable(
     doseDlp: numeric("dose_dlp", { precision: 10, scale: 3 }),
     doseDap: numeric("dose_dap", { precision: 10, scale: 3 }),
     fluoroSeconds: integer("fluoro_seconds"),
+    /** 18-S RS12 — Average Glandular Dose, mGy (mammography). */
+    doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
     /** PROVENANCE: a human read the console because the machine emits no dose SR. 18a's word. */
     doseManual: boolean("dose_manual").notNull().default(false),
+    /**
+     * 18-S RS12 — where the numbers came from: `manual` (typed at the console, every row before
+     * RS12) or `dose_sr` (the machine's Radiation Dose SR, forwarded by the archive). A register row
+     * is written once; a later SR that disagrees is kept as a conflict on radiology's receipt, never
+     * written over this row.
+     */
+    doseOrigin: text("dose_origin").notNull().default("manual"),
     /** Which quantity the DRL was set on, the level itself, and the verdict — all three or none. */
     drlQuantity: text("drl_quantity"),
     drlValue: numeric("drl_value", { precision: 10, scale: 3 }),
@@ -383,8 +395,10 @@ export const doseRegister = pgTable(
     check(
       "radiation_dose_register_dose_ck",
       sql`${t.doseCtdivol} is not null or ${t.doseDlp} is not null
-          or ${t.doseDap} is not null or ${t.fluoroSeconds} is not null`,
+          or ${t.doseDap} is not null or ${t.fluoroSeconds} is not null
+          or ${t.doseAgd} is not null`,
     ),
+    check("radiation_dose_register_origin_ck", inList(t.doseOrigin, DOSE_ORIGINS)),
     /**
      * The comparison travels whole or not at all: quantity, level and verdict together. A row with
      * `over_drl = true` and no level is a verdict nobody can check.

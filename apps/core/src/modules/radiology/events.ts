@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
+import { IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_KINDS, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
 import { BEDSIDE_LOCATION_MAX_LENGTH } from "./kinds";
 
 /**
@@ -225,6 +226,50 @@ export const imagingExposureRepeated = defineEvent("imaging.exposure_repeated", 
   reason: z.enum(REPEAT_REASON_CODES),
 }));
 
+/**
+ * 18-S RS12 — the archive holds this study's images: matched by accession (or UID) AND the UHID,
+ * or attached at Send from a held notice. Emitted ONCE per study, on the first arrival — a later
+ * notice for the same UID refreshes the counts and emits nothing. Ids and counts only.
+ */
+export const imagingImagesArrived = defineEvent("imaging.images_arrived", MODULE, z.object({
+  studyId: id,
+  studyInstanceUid: z.string().min(1),
+  instanceCount: z.number().int().min(0),
+  via: z.enum(["notice", "send", "reconciled"]),
+}));
+
+/**
+ * 18-S RS12 — a human resolved an archive study no order could claim: attached to a study (the
+ * patient is the study's) or rejected (a phantom, a test, a duplicate). The reason is typed and
+ * kept on the inbox row, not here — it may name a patient.
+ */
+export const imagingImagesReconciled = defineEvent("imaging.images_reconciled", MODULE, z.object({
+  unmatchedId: id,
+  outcome: z.enum(["attached", "rejected"]),
+  studyId: id.nullable(),
+  unmatchedReason: z.string().min(1),
+}));
+
+/**
+ * ═══ 18-S RS9 — THE LOOP CLOSES, AND THE REPORT LEAVES THE BUILDING ═══
+ *
+ * `report_acted_upon` is the north-star's stop: the treating doctor said what the report changed.
+ * The payload carries the OUTCOME CODE and never the doctor's line (a free-text clinical sentence,
+ * the header's rule). `report_handed_over` carries the collector's TYPE, never the name or the ID
+ * digits. `media_requested` is a film or CD asked for at the window (ruling 1).
+ */
+export const imagingReportActedUpon = defineEvent("imaging.report_acted_upon", MODULE, z.object({
+  reportId: id, studyId: id, version: z.number().int().positive(), outcome: z.enum(IMAGING_ACTED_OUTCOMES),
+}));
+export const imagingReportHandedOver = defineEvent("imaging.report_handed_over", MODULE, z.object({
+  handoverId: id, reportId: id, studyId: id,
+  collectorKind: z.enum(IMAGING_COLLECTOR_KINDS),
+  filmSheets: z.number().int().nonnegative(), cd: z.boolean(),
+}));
+export const imagingMediaRequested = defineEvent("imaging.media_requested", MODULE, z.object({
+  requestId: id, studyId: id, kind: z.enum(IMAGING_MEDIA_KINDS), quantity: z.number().int().positive(), included: z.boolean(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -243,4 +288,9 @@ export const RADIOLOGY_EVENTS = [
   imagingBedsideRequested,
   imagingBookingChanged,
   imagingExposureRepeated,
+  imagingImagesArrived,
+  imagingImagesReconciled,
+  imagingReportActedUpon,
+  imagingReportHandedOver,
+  imagingMediaRequested,
 ] as const;

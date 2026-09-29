@@ -3,7 +3,7 @@
 The imaging department: the order, the schedule, the safety gates, the acquisition and the report.
 
 **Two companion runbooks cover the rest of the series and neither replaces this one.**
-`radiology-pacs-go-live.md` is 18b (worklist export, UIDs, the viewer door).
+`radiology-pacs-go-live.md` is 18b and 18-S RS12 (worklist export, UIDs, the viewer door, and the Orthanc + OHIF install, arrivals, dose reports and the Unmatched-images inbox).
 `radiation-safety-go-live.md` is 18c (the AERB registers) and **its §0 is a hard stop on the whole
 department** — read it before you deploy, not after.
 
@@ -508,9 +508,65 @@ tick the warning, Sign and publish. Open Print preview: the name, qualification 
 are on it, the referrer is a Doctor ID. `select signer, sign_checks from imaging_reports where
 status = 'signed' order by created_at desc limit 1` shows both blocks.
 
-## 14. The reading room, part 2 — co-sign, prelim, amend, the critical-call ladder (18-S RS8b)
+## 14. Release, hand-over and the closed loop (18-S RS9)
 
-**Migration** `0149_radiology_cosign_ladder` (number taken at rebase): two report statuses
+**Migration `0147_radiology_closed_loop`** (additive): `imaging_report_delivery` gains `acted_at`,
+`acted_by`, `acted_outcome`, `acted_note`; two new tables, `imaging_report_handovers` and
+`imaging_media_requests`. No permission, role or seed changes — re-running `seed:roles` is not
+needed for this section.
+
+**Release.** Unchanged: the radiologist publishes from the report (`POST …/reports/publish`). The
+patient's *report ready* message (`imaging_report_ready`, English + Hindi, order number only — never
+the study) is **queued, not sent** at release when the bill is settled or the report is RED; a
+patient who said STOP is suppressed at send time. There is no patient link and no OTP service yet.
+
+**The doctor's side (the consult, between patients).** The doctor's *Imaging results* list sits
+under "Nobody is in the chair" in `/opd/consult`:
+- red/orange criticals not yet read back come first — *Read back and acknowledge* records the
+  doctor's own read-back on the same critical row the reading room uses;
+- then unread (chased at 24 h), then read-not-acted, then acted (kept 14 days);
+- *Open report* is the read that lands — **only the treating doctor's opening stamps the first
+  read** (the ordering clinician, or the doctor of the visit). A technologist or another doctor
+  opening it no longer silences the 24-hour Unread Watchman;
+- *Mark acted upon* — one of *changed treatment / referred / follow-up booked / discussed with
+  patient / no change needed* plus one line (4+ characters). **This stops the north-star clock.**
+  An amended report re-opens the loop: the doctor acts again on the new version.
+- A doctor who is not treating the patient is refused by name (`not_treating_doctor`).
+
+**The imaging desk (`/radiology/reports`, *Report hand-over*).** `radiology.schedule` (the
+receptionist). One register, last 30 days, rows that need the desk first:
+abnormal and not collected in 24 h (call the patient) → amended after hand-over → film/CD to print →
+film/CD to hand → no patient notice recorded → not collected. Open a row, say who is collecting:
+- **Patient** — check name and age against the slip or UHID + phone;
+- **Relative** — name, relation, and the ID they show (type + **last four** characters only). There
+  is no OTP to the patient's phone yet; the ID record stands in until an OTP provider exists;
+- **Ward staff** — name (the film goes into the patient's file);
+- **Courier** — name, on the patient's written request, sealed envelope.
+For an outside-prescription study (no doctor in the hospital), the hand-over is recorded as the
+report's first read.
+
+**Film and CD (ruling 1).** *Ask for film* / *Ask for a CD* records the request. An X-ray's **first**
+film sheet is included (no charge); every other sheet and every CD is **charged at the billing
+counter** under `RAD-FILM` / `RAD-CD` (§6a — the desk screen composes no money and links no invoice).
+*Mark printed* when it comes off the printer; tick *Hand over with the report* at the hand-over.
+
+**The north star (`GET /radiology/north-star?from=YYYY-MM-DD&to=YYYY-MM-DD`, radiologist / HOD).**
+Per modality × source (OPD / IPD / ER / OUT): studies ordered, median and 90th-percentile minutes
+order → signed, signed → first read, order → acted, signed-unread > 24 h, published-not-acted > 72 h.
+Source until IPD/ER modules exist: outside prescription or self → OUT; day-care or bedside → IPD;
+STAT → ER; else OPD. The HOD screen that shows it is RS10.
+
+**Verify once.** Publish a report on a study ordered by a doctor user; open it as that doctor from
+the consult → `imaging_report_delivery.first_read_by` is the doctor. Mark it acted upon →
+`acted_*` set, one `imaging.report_acted_upon` event (outcome only, never the line). At the desk,
+ask for a film on an X-ray (first sheet `included = true`), mark printed, hand over to a relative →
+one `imaging_report_handovers` row, one `imaging.report_handed_over` event (collector type only),
+the media row carries the hand-over id. `GET /radiology/north-star` shows the study with an
+order → acted time.
+
+## 15. The reading room, part 2 — co-sign, prelim, amend, the critical-call ladder (18-S RS8b)
+
+**Migration** `0151_radiology_cosign_ladder` (number taken at rebase): two report statuses
 (`awaiting_cosign`, `cosigned`) with one-waiting-per-study as an index, `ladder_rung` and
 `chase_windows` on `imaging_critical_findings`, and the insert-only `imaging_critical_call_attempts`
 (one row per telephone call). Nothing to seed.

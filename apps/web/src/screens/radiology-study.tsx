@@ -7,6 +7,7 @@ import {
   startAcquisition, waiveGate,
 } from "../lib/radiology-api";
 import { DOSE_UNITS, fetchCumulativeDose } from "../lib/aerb-api";
+import { fmtIst } from "../lib/format";
 import { Button } from "@/components/ui/button";
 import { RadiologyStation } from "./radiology-station";
 
@@ -263,8 +264,16 @@ export function RadiologyStudy(): React.ReactElement {
             /** Close review C5 — keyed on ACQUISITION, so a no-DICOM study shows its state, not the radio. */
             <div className="space-y-1 text-sm" data-testid="study-uid-recorded">
               {s.studyInstanceUid !== null
-                ? <p>{t("radiology.study.studyUidRecorded")}: <code>{s.studyInstanceUid}</code></p>
+                ? <p>{t("radiology.study.studyUidRecorded")}: <code className="break-all">{s.studyInstanceUid}</code></p>
                 : <p>{t("radiology.study.sourceNoImages")}</p>}
+              {/** 18-S RS12 — the archive's own word, when it has spoken: the counts are Orthanc's, not ours. */}
+              {s.studyInstanceUid !== null && (
+                <p className="text-xs text-muted-foreground" data-testid="archive-state">
+                  {s.archive == null
+                    ? t("radiology.study.archiveNone")
+                    : t("radiology.study.archiveHeld", { series: s.archive.seriesCount, images: s.archive.instanceCount, at: fmtIst(s.archive.arrivedAt) })}
+                </p>
+              )}
               {s.studyInstanceUid !== null
                 ? (
                   <p className="flex items-center gap-2">

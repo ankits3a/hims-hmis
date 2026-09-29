@@ -18,13 +18,15 @@ import type { StationLink, StationStat } from "../components/station/station-she
  * the department turns green.
  */
 
-export type RadiologyStationKey = "desk" | "diary" | "display" | "worklist" | "room" | "read" | "portable" | "usg" | "safety" | "setup";
+export type RadiologyStationKey = "desk" | "diary" | "reports" | "display" | "worklist" | "room" | "read" | "portable" | "usg" | "safety" | "setup";
 
 /** The browsable stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
 export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: RadiologyStationKey; labelKey: string })[] = [
   { key: "desk", to: "/radiology/reception", labelKey: "nav.radiologyReception", permission: "radiology.schedule" },
   /** 18-S RS3 — the desk's diary (machines × time) and the waiting-hall TV. */
   { key: "diary", to: "/radiology/diary", labelKey: "nav.radiologyDiary", permission: "radiology.schedule" },
+  /** 18-S RS9 — report hand-over: the release register, film/CD, the named collector. */
+  { key: "reports", to: "/radiology/reports", labelKey: "nav.radiologyReports", permission: "radiology.schedule" },
   { key: "display", to: "/radiology/display", labelKey: "nav.radiologyDisplay", permission: "radiology.display.read" },
   { key: "worklist", to: "/radiology/worklist", labelKey: "nav.radiologyWorklist", permission: "radiology.worklist.read" },
   /** 18-S RS6 — the modality rooms: console, dose log, rejects & repeats, downtime (header views). */
