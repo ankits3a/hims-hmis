@@ -7,7 +7,7 @@ import { resources, services } from "../src/kernel/db/schema";
 import {
   DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_RULED_SERVICES, STUDY_TYPE_SEEDS,
   activateSeededDefinition,
-  activeDefinitionRow, draftDefinition, registerRadiologyApprovalTypes,
+  activeDefinitionRow, draftDefinition, ensureEscalationDefinitions, registerRadiologyApprovalTypes,
 } from "../src/modules/radiology";
 import type { Actor } from "@hmis/contracts";
 import type { StudyType } from "../src/modules/radiology";
@@ -187,6 +187,12 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   /** The approval TYPE must exist before a publish can be requested against it. `REGISTRAR`, not
    * `SEEDER`: the kernel refuses a system actor here twice over. See the constant. */
   await registerRadiologyApprovalTypes(db, registrar);
+  /**
+   * 18-S RS10 T2 — the HOD's escalation obligations: one class-C `imaging_esc_*` workflow
+   * definition per cause, activated when none is (zero governance approvals for class C — the
+   * approval-flow precedent above). Without them the sweep reports `notActive` and raises nothing.
+   */
+  await ensureEscalationDefinitions(db, registrar);
 
   const serviceIdByCode = new Map<string, string>();
   for (const seed of STUDY_TYPE_SEEDS) {

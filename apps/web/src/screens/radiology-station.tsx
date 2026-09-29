@@ -18,7 +18,7 @@ import type { StationLink, StationStat } from "../components/station/station-she
  * the department turns green.
  */
 
-export type RadiologyStationKey = "desk" | "diary" | "reports" | "display" | "worklist" | "room" | "read" | "portable" | "usg" | "safety" | "setup" | "prep";
+export type RadiologyStationKey = "desk" | "diary" | "reports" | "display" | "worklist" | "room" | "read" | "portable" | "usg" | "safety" | "setup" | "prep" | "hod";
 
 /** The browsable stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
 export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: RadiologyStationKey; labelKey: string })[] = [
@@ -42,6 +42,8 @@ export const RADIOLOGY_STATIONS: readonly (Omit<StationLink, "label"> & { key: R
   { key: "safety", to: "/radiology/radiation-safety", labelKey: "nav.radiationSafety", permission: "aerb.registers.read" },
   /** 18-S RS4 — machines, books and prices. Its three views sit in the header (`views`). */
   { key: "setup", to: "/radiology/setup", labelKey: "nav.radiologySetup", permission: "radiology.devices.manage" },
+  /** 18-S RS10 — the Supervisor & HOD: floor, escalations, approvals, quality, equipment, roster, money, access log. */
+  { key: "hod", to: "/radiology/hod", labelKey: "nav.radiologyHod", permission: "radiology.definitions.manage" },
 ];
 
 export function RadiologyStation({
