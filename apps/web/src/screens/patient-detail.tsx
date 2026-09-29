@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useForm, FormProvider } from "react-hook-form";
+import { useForm, FormProvider, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import { FormKit, TextField, SelectField, CheckboxField } from "../components/fo
 import { SubmitButton } from "../components/submit-button";
 import { PatientPhoto } from "../components/patient-photo";
 import { QrCard, type QrCardData } from "../components/qr-card";
+import { DmyDateInput } from "../components/dmy-date-input";
 import { PaperScreen } from "../components/paper-screen";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { ageOf } from "./desk-one/model";
@@ -200,6 +201,7 @@ function RecordDeathDialog({ patient, open, onOpenChange }: { patient: PatientRo
   const [date, setDate] = useState(() => istDay(new Date().toISOString()));
   const [certNo, setCertNo] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(date);
 
   const mark = async (idempotencyKey: string): Promise<void> => {
     if (certNo.trim() === "") { setError(t("profile.death.certRequired")); return; }
@@ -221,8 +223,8 @@ function RecordDeathDialog({ patient, open, onOpenChange }: { patient: PatientRo
         <p style={{ fontSize: 13 }}>{t("patient.markDeceasedWarning")}</p>
         <div>
           <label className="block text-sm font-medium" htmlFor="deceased-date">{t("patient.deceasedDate")}</label>
-          <input id="deceased-date" data-field type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <p style={{ fontSize: 11.5, color: "var(--dim)", margin: "4px 0 0" }}>{dmy(date)}</p>
+          <DmyDateInput id="deceased-date" data-field value={date} onChange={setDate} />
+          <p style={{ fontSize: 11.5, color: dateOk ? "var(--dim)" : "var(--red)", margin: "4px 0 0" }}>{dateOk ? dmy(date) : t("profile.death.dateFormat")}</p>
         </div>
         <div>
           <label className="block text-sm font-medium" htmlFor="death-cert-no">{t("profile.death.certLabel")}</label>
@@ -231,7 +233,7 @@ function RecordDeathDialog({ patient, open, onOpenChange }: { patient: PatientRo
         </div>
         {error !== null && <p role="alert" style={{ color: "var(--red)", fontSize: 12.5 }}>{error}</p>}
         <div className="flex justify-end">
-          <SubmitButton plain className="pri" onClick={mark} disabled={certNo.trim() === ""}>{t("patient.confirmDeceased")}</SubmitButton>
+          <SubmitButton plain className="pri" onClick={mark} disabled={certNo.trim() === "" || !dateOk}>{t("patient.confirmDeceased")}</SubmitButton>
         </div>
       </DialogContent>
     </Dialog>
@@ -264,7 +266,8 @@ const patchSchema = z.object({
   name: z.string().min(1),
   phone: z.string().regex(phonePattern).optional().or(z.literal("")),
   altPhone: z.string().regex(phonePattern).optional().or(z.literal("")),
-  dob: z.string().optional().or(z.literal("")),
+  // UX-AUDIT 2026-09-29 · BOARD — typed DD-MM-YYYY; the field hands over `YYYY-MM-DD` only for a real day.
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Type the date of birth as DD-MM-YYYY").optional().or(z.literal("")),
   sex: z.enum(["male", "female", "other", "unknown"]),
   administrativeGender: z.enum(["male", "female", "other", "unknown"]),
   reasonClass: z.string().optional(),
@@ -413,7 +416,23 @@ function DemographicsForm({ patient, onSaved }: { patient: PatientRow; onSaved: 
                 state, never dirty, so no PATCH carries it. */}
             {!restricted && <TextField name="name" label={t("register.name")} readOnly={abdmLocked} />}
             <div>
-              <TextField name="dob" label={t("register.dob")} type="date" readOnly={abdmLocked} />
+              {/* UX-AUDIT 2026-09-29 · BOARD — read and typed in Indian order, DD-MM-YYYY (finding 5:
+                  the native control printed 12 March as "03/12/1955"). */}
+              <label className="block text-sm font-medium" htmlFor="f-dob">{t("register.dob")}</label>
+              <Controller
+                name="dob"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <>
+                    <DmyDateInput
+                      id="f-dob" data-field className="w-full rounded border px-2 py-1"
+                      value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur}
+                      readOnly={abdmLocked} aria-readonly={abdmLocked ? true : undefined}
+                    />
+                    {fieldState.error?.message !== undefined && <p role="alert" className="text-sm text-red-600">{fieldState.error.message}</p>}
+                  </>
+                )}
+              />
               <p className="note">{dmy(form.watch("dob") ?? "")}</p>
             </div>
             <SelectField name="administrativeGender" disabled={abdmLocked} label={t("patient.administrativeGender")} options={gender} />

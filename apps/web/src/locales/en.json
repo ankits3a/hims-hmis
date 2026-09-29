@@ -10632,6 +10632,7 @@
       "title": "Record a death",
       "certLabel": "Death certificate number",
       "certHint": "For a death in this hospital: the MCCD certificate number (Form 4 / 4A). The death is not recorded without it.",
+      "dateFormat": "Type the date as DD-MM-YYYY, e.g. 20-08-2026.",
       "certRequired": "Enter the death certificate number — a death is not recorded without it.",
       "cert": "death certificate {{number}}"
     },

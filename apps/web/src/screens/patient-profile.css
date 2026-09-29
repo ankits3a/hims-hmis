@@ -54,6 +54,15 @@
 .pf .banner.gd { border: 1px solid var(--gold-line); background: var(--gold-soft); }
 .pf .banner.dead { border: 1px solid var(--line); background: var(--wash); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .pf .dock { display: none; }
+/*
+ * The agent dock is sticky on the bottom edge (components/agent-dock.tsx) and its collapsed bar is
+ * 46px tall. Each column reserves that much at its foot, so the last line of the lane, the timeline
+ * and the acts never sits under the bar at any width (coordinator review of desk-1440.png).
+ */
+.pf { --pf-dock-h: 46px; }
+.pf .pf-lane { padding-bottom: var(--pf-dock-h); }
+.pf .pf-main { padding-bottom: calc(24px + var(--pf-dock-h)); }
+.pf .pf-side { padding-bottom: calc(16px + var(--pf-dock-h)); }
 
 /* The "Edit details" drawer: over the timeline from the right; the lane stays visible. */
 .pf-drawer-back { position: fixed; inset: 0; background: rgba(19, 36, 32, .18); z-index: 40; }
@@ -75,7 +84,9 @@
   .pf .pf-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lane" "side" "main"; }
   .pf .pf-lane { border-right: 0; border-bottom: 1px solid var(--line); }
   .pf .pf-who, .pf .pf-body { padding-left: 16px; padding-right: 16px; }
-  .pf .pf-main { padding: 12px 16px 80px; }
+  /* Phone: the pinned next-act row (56px) sits on top of the agent bar, so both are reserved. */
+  .pf .pf-main { padding: 12px 16px calc(56px + var(--pf-dock-h)); }
+  .pf .pf-lane { padding-bottom: 0; }
   .pf .pf-side { display: none; border-right: 0; padding: 12px 16px; }
   .pf .pf-side.open { display: flex; }
   .pf .keys { display: none; }

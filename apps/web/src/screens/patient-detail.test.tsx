@@ -267,7 +267,10 @@ describe("PatientDetail", () => {
 
     await user.click(await screen.findByRole("button", { name: "Record a death" }));
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Date of death"), { target: { value: "2026-08-20" } });
+    // Typed in Indian order (coordinator review): DD-MM-YYYY in, the ISO calendar day out.
+    const died = within(dialog).getByLabelText("Date of death");
+    await user.clear(died);
+    await user.type(died, "20-08-2026");
     const confirm = within(dialog).getByRole("button", { name: "Confirm deceased" });
 
     // Teeth: no number, no save.
@@ -311,6 +314,21 @@ describe("PatientDetail", () => {
     const alert = await within(dialog).findByRole("alert");
     expect(alert).toHaveTextContent(/^A death is recorded only with its death certificate number/);
     expect(alert).not.toHaveTextContent(/ApiError|death_certificate_required/);
+  });
+
+  it("a half-typed date of death is not a date: the confirm stays held and nothing is sent", async () => {
+    stubSeat(BASE);
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Record a death" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Death certificate number"), "MCCD/2026/0412");
+    const died = within(dialog).getByLabelText("Date of death");
+    await user.clear(died);
+    await user.type(died, "31-02-2026"); // not a day
+    expect(within(dialog).getByRole("button", { name: "Confirm deceased" })).toBeDisabled();
+    expect(within(dialog).getByText(/DD-MM-YYYY/)).toBeInTheDocument();
+    expect(fetchCalls().some((c) => c.method === "PATCH")).toBe(false);
   });
 
   it("D10/D-33: the deceased banner shows the printed date and number, and clearing posts an exact PATCH of null", async () => {
@@ -467,6 +485,32 @@ describe("22c-A T7 — the amendment surface", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(patches()[0]).toMatchObject({ administrativeGender: "other", reasonClass: "legal_change" });
+  });
+
+  /* Coordinator review — the date of birth reads and takes Indian order, not the browser's US one. */
+  it("the date of birth reads DD-MM-YYYY and a typed 12-03-1955 leaves as 1955-03-12, with its reason", async () => {
+    await open();
+    const dob = await screen.findByLabelText("Date of birth");
+    expect(dob).toHaveValue("02-04-1990");
+    expect(dob).toHaveAttribute("type", "text");
+    await userEvent.clear(dob);
+    await userEvent.type(dob, "12-03-1955");
+    expect(screen.getByText("12-Mar-1955")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Reason for amendment"), "document_correction");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(patches()[0]).toEqual({ dob: "1955-03-12", reasonClass: "document_correction" });
+  });
+
+  it("a date of birth that is not a real day is refused on the form and never sent", async () => {
+    await open();
+    const dob = await screen.findByLabelText("Date of birth");
+    await userEvent.clear(dob);
+    await userEvent.type(dob, "31-02-1990");
+    await userEvent.selectOptions(screen.getByLabelText("Reason for amendment"), "document_correction");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText("Type the date of birth as DD-MM-YYYY")).toBeInTheDocument();
+    expect(patches()).toHaveLength(0);
   });
 
   it("a Class II edit still saves with no reason — the desk does not justify a typo fix", async () => {
