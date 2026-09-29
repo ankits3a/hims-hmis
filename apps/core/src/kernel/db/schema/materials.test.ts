@@ -174,7 +174,7 @@ const CENSUS: Record<string, string[]> = {
     "taxable_paise", "total_paise", "updated_at", "updated_by", "vendor_gstin", "vendor_id",
   ],
   supplier_return_lines: [
-    "batch_id", "cgst_paise", "gst_rate_bps", "hsn_code", "id", "igst_paise", "item_id", "ledger_entry_id", "qty_base",
+    "batch_id", "cgst_paise", "gst_rate_bps", "hsn_code", "id", "igst_paise", "item_id", "ledger_entry_id", "note", "qty_base",
     "rate_paise", "reason", "return_id", "sgst_paise", "store_resource_id", "taxable_paise",
   ],
   supplier_credit_notes: [

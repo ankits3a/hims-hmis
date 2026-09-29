@@ -302,6 +302,9 @@ export type MaterialsErrorCode =
   | "item_merge_unapproved"
   /** A new use of an item that was merged into another — order, receive, level or edit the survivor instead. */
   | "item_merged"
+  // ── GAP-CLOSURE A5 — the stock ledger statement ──
+  /** The statement's range or filter out of shape: a date not YYYY-MM-DD, from after to, a batch of another item. */
+  | "ledger_invalid"
   // ── PHARMACY GAP A6b — indents (`indents.ts`) ──
   /** No such indent. */
   | "unknown_indent"

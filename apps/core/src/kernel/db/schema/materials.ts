@@ -1441,7 +1441,8 @@ export const supplierReturns = pgTable(
  * One batch leaving one store on a return. `rate_paise` is PER BASE UNIT before GST — the GRN's cost
  * for that batch (`stock_batches.landed_cost_paise`) unless a person changed it on the draft;
  * `taxable = qty_base × rate`, GST half-up per line, split as the header says. `reason`: `expired`,
- * `near_expiry`, `damaged`, `recalled`. `ledger_entry_id` is the `return` row dispatch wrote.
+ * `near_expiry`, `damaged`, `recalled`. `ledger_entry_id` is the `return` row dispatch wrote. `note`
+ * (gap-closure A5) is the person's words for the line on a manual return — what was damaged and how.
  */
 export const supplierReturnLines = pgTable(
   "supplier_return_lines",
@@ -1461,6 +1462,8 @@ export const supplierReturnLines = pgTable(
     igstPaise: bigint("igst_paise", { mode: "number" }).notNull().default(0),
     hsnCode: text("hsn_code"),
     ledgerEntryId: text("ledger_entry_id"),
+    /** A5 — the person's words for this line (why it goes back). Nullable: the agent's and the recall's drafts carry none. */
+    note: text("note"),
   },
   (t) => [
     uniqueIndex("supplier_return_lines_batch_ux").on(t.returnId, t.batchId, t.storeResourceId),

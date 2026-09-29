@@ -98,3 +98,119 @@
   .d1.pof .pof-right { width: 300px; }
   .d1.pof .row-act { width: 104px; }
 }
+
+/*
+ * ── A5: a Paper & Pine island inside a legacy side — the manual return sheet, a draft's lines, the
+ * stock ledger. The legacy wrapper hands buttons and fields back to Tailwind (`revert-layer` above),
+ * so the island re-asserts Desk One's primitives one class deeper; nothing outside `.pof-pine` moves.
+ */
+.pof-pine { font: 13px/1.45 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; color: var(--ink); }
+.d1 .pof-legacy .pof-pine .pri {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 6px;
+  background: var(--green); color: #f2faf6; border: 1px solid var(--green); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.d1 .pof-legacy .pof-pine .pri:disabled { opacity: .35; cursor: default; }
+.d1 .pof-legacy .pof-pine .sec {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 13px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 12.5px; font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.d1 .pof-legacy .pof-pine .sec:hover:not(:disabled) { border-color: var(--faint); }
+.d1 .pof-legacy .pof-pine .sec:disabled { opacity: .4; cursor: default; }
+.d1 .pof-legacy .pof-pine .lnk { background: none; border: none; padding: 0; font: inherit; color: var(--green); font-weight: 600; text-decoration: underline; cursor: pointer; }
+.d1 .pof-legacy .pof-pine .in {
+  height: 36px; width: 100%; min-width: 0; border-radius: 6px; border: 1px solid var(--line); background: var(--card);
+  padding: 0 10px; font-size: 13px; color: var(--ink);
+}
+.d1 .pof-legacy .pof-pine .in:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.d1 .pof-legacy .pof-pine .in:disabled { background: var(--wash); color: var(--dim); }
+.pof-pine .fld { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.pof-pine .pr-dim { color: var(--dim); font-size: 12px; margin: 0; }
+.pof-pine .pr-small { font-size: 11px; }
+.pof-pine .pr-bad { color: var(--red); font-size: 12.5px; font-weight: 500; margin: 0; }
+.pof-pine .nowrap { white-space: nowrap; }
+
+/* the return sheet */
+.pof-pine.pr-sheet { display: flex; flex-direction: column; gap: 14px; }
+.pof-pine .pr-lines { display: flex; flex-direction: column; gap: 10px; }
+.pof-pine .pr-results { display: flex; flex-direction: column; max-height: 280px; overflow-y: auto; }
+.pof-pine .pr-results > p { padding: 10px 12px; }
+.d1 .pof-legacy .pof-pine .pr-hit {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; background: var(--card); border: none;
+  border-top: 1px solid var(--line2); text-align: left; cursor: pointer; font: inherit; color: var(--ink);
+}
+.d1 .pof-legacy .pof-pine .pr-hit:first-child { border-top: none; }
+.d1 .pof-legacy .pof-pine .pr-hit:hover:not(:disabled), .d1 .pof-legacy .pof-pine .pr-hit:focus-visible { background: var(--wash); outline: none; box-shadow: inset 3px 0 0 var(--green); }
+.d1 .pof-legacy .pof-pine .pr-hit:disabled { cursor: default; opacity: .6; }
+.pof-pine .pr-hit-main { display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0; }
+.pof-pine .pr-hit-main b { font-weight: 600; overflow-wrap: anywhere; }
+.pof-pine .pr-hit-side { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12px; }
+.pof-pine .pr-act { color: var(--green); font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+.pof-pine .pr-rows { display: flex; flex-direction: column; gap: 8px; }
+.pof-pine .pr-line { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.pof-pine .pr-line-head { display: flex; align-items: flex-start; gap: 10px; }
+.d1 .pof-legacy .pof-pine .pr-x { width: 36px; padding: 0; flex-shrink: 0; color: var(--dim); }
+.pof-pine .pr-line-grid { display: grid; grid-template-columns: minmax(150px, 190px) minmax(130px, 170px) 1fr; gap: 10px; }
+.pof-pine .pr-qty { display: flex; gap: 6px; }
+.pof-pine .pr-qty .in:first-child { width: 70px; flex-shrink: 0; }
+.pof-pine .pr-line-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; }
+.pof-pine .pr-line-foot .pr-dim { flex-grow: 1; }
+.pof-pine .pr-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.pof-pine .pr-foot > .pr-dim { flex-grow: 1; }
+@media (max-width: 640px) {
+  .pof-pine .pr-line-grid { grid-template-columns: 1fr 1fr; }
+  .pof-pine .pr-note { grid-column: 1 / -1; }
+}
+
+/* the stock ledger */
+.pof-pine.pl { display: flex; flex-direction: column; gap: 14px; outline: none; }
+.pof-pine .pl-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
+.pof-pine .pl-head h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.pof-pine .pl-filters { display: grid; grid-template-columns: minmax(240px, 2fr) repeat(2, minmax(150px, 1fr)) repeat(2, 150px) auto; gap: 12px; padding: 14px; align-items: end; }
+.pof-pine .pl-item { position: relative; }
+.pof-pine .pl-hits { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; margin-top: 4px; box-shadow: 0 10px 28px rgba(19,36,32,.12); }
+.pof-pine .pl-picked { display: flex; align-items: center; gap: 8px; min-height: 36px; flex-wrap: wrap; }
+.pof-pine .pl-empty { padding: 24px 4px; font-size: 13px; }
+.pof-pine .pl-sums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.pof-pine .pl-sum { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; }
+.pof-pine .pl-sum b { font-size: 16px; font-weight: 600; }
+.pof-pine .pl-sum-close { box-shadow: inset 3px 0 0 var(--green); }
+.pof-pine .pl-table { overflow-x: auto; }
+.pof-pine .lt { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.pof-pine .lt th { text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.pof-pine .lt td { padding: 8px 10px; border-top: 1px solid var(--line2); vertical-align: middle; }
+.pof-pine .lt .num { text-align: right; white-space: nowrap; }
+.pof-pine .lt tr.edge td { background: var(--wash); font-weight: 600; }
+.pof-pine .lt .pl-in { color: var(--green); }
+.pof-pine .lt .pl-out { color: var(--red); }
+@media (max-width: 1100px) {
+  .pof-pine .pl-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pof-pine .pl-item { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+  .pof-pine .pl-sums { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pof-pine .lt .wide { display: none; }
+  .pof-pine .lt td, .pof-pine .lt th { padding: 7px 6px; }
+}
+/* the phone: each movement is a card — when and balance on top, what and how much, the document and batch */
+@media (max-width: 700px) {
+  .pof-pine .pl-table { overflow: visible; }
+  .pof-pine .lt, .pof-pine .lt tbody { display: block; }
+  .pof-pine .lt thead { display: none; }
+  .pof-pine .lt tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "when bal" "kind qty" "doc batch";
+    gap: 4px 10px; padding: 10px 12px; border-top: 1px solid var(--line2); align-items: center;
+  }
+  .pof-pine .lt tr.edge { grid-template-areas: "when bal" "qin qout"; background: var(--wash); }
+  .pof-pine .lt td { display: block; padding: 0; border: none; }
+  .pof-pine .lt tr.edge td { background: transparent; }
+  .pof-pine .lt .c-when { grid-area: when; }
+  .pof-pine .lt .c-kind { grid-area: kind; }
+  .pof-pine .lt .c-doc { grid-area: doc; min-width: 0; overflow-wrap: anywhere; }
+  .pof-pine .lt .c-batch { grid-area: batch; text-align: right; }
+  .pof-pine .lt .c-in, .pof-pine .lt .c-out { grid-area: qty; text-align: right; }
+  .pof-pine .lt tr.edge .c-in { grid-area: qin; text-align: left; }
+  .pof-pine .lt tr.edge .c-out { grid-area: qout; }
+  .pof-pine .lt .c-bal { grid-area: bal; }
+  .pof-pine .lt td[data-label]::before { content: attr(data-label) " "; font-family: "IBM Plex Mono", monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  .pof-pine .lt td:empty { display: none; }
+}
