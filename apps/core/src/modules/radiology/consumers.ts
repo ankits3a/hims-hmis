@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import { imagingStudies } from "../../kernel/db/schema/radiology";
@@ -11,6 +11,8 @@ import { IMAGING_STUDY_DEF_KEY } from "./workflow-def";
 import { studyTypeByService } from "./study-types";
 import { pcpndtApplicability } from "./applicability";
 import { patients } from "../../kernel/db/schema/patients";
+import { events } from "../../kernel/db/schema/events";
+import { imagingBedsideRequested } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { DispatchedEvent, Handler } from "../../kernel/events/subscriptions";
 
@@ -113,6 +115,7 @@ export async function handleOrderPlaced(
   }
 
   const byService = await studyTypeByService(tx);
+  const bedsideByItem = await bedsideRequestedFor(tx, payload.orderId);
   const created: CreatedStudy[] = [];
 
   /** `for…of` over `payload.itemIds`, NOT over the rows the select returned — order is the assertion. */
@@ -194,12 +197,37 @@ export async function handleOrderPlaced(
        * runs — which is the correct direction for the half with the criminal statute behind it.
        */
       formFRequired: applicability.applicable,
+      /**
+       * 18-S RS2b — the ward and bed the ORDER asked for (`imaging.bedside_requested`), or null.
+       * Copied as written: `resolveBedside` at booking is what refuses a non-portable machine for it,
+       * on the effective value, so a fixed CT cannot take this study until the desk clears it.
+       */
+      bedsideLocation: bedsideByItem.get(itemId) ?? null,
     });
 
     created.push({ studyId, accessionNo, orderItemId: itemId });
   }
 
   return created;
+}
+
+/**
+ * 18-S RS2b — the bedside places `placeImagingOrder` recorded for this order, by item. Read from the
+ * event log because that is where placement wrote them (see `imagingBedsideRequested` for why an
+ * event and not a column). A payload that no longer parses is refused rather than skipped: silently
+ * dropping a ward's bed would send the patient to the department.
+ */
+async function bedsideRequestedFor(tx: Tx, orderId: string): Promise<Map<string, string>> {
+  const rows = await (tx as unknown as Db)
+    .select({ payload: events.payload })
+    .from(events)
+    .where(and(eq(events.name, imagingBedsideRequested.name), eq(events.correlationId, orderId)));
+  const byItem = new Map<string, string>();
+  for (const row of rows) {
+    const parsed = imagingBedsideRequested.payloadSchema.parse(row.payload);
+    for (const item of parsed.items) byItem.set(item.orderItemId, item.bedsideLocation);
+  }
+  return byItem;
 }
 
 /** The `Handler` `workerConsumers` registers. Its own transaction — the `accrualConsumer` shape. */

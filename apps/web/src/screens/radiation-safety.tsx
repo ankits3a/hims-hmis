@@ -12,6 +12,12 @@ import type {
   WireAppointment, WireBadge, WireBadgeGap, WireCalendarRow, WireDeviceChoice, WireDoseRow,
   WireLicence, WireLicenceGap, WireQaRecord, WireUserChoice,
 } from "../lib/aerb-api";
+import { RadiologyStation } from "./radiology-station";
+import { useAuth } from "../lib/auth";
+import { fetchAttention } from "../lib/aerb-api";
+import {
+  IncidentsView, PregnancyView, QaDueBlock, SafetyAttentionList, TldImportView,
+} from "../components/radiology/radiation-safety-views";
 
 /**
  * PLAN 18c T1 / D11 — **THE RADIATION-SAFETY REGISTER: one screen, the tabs an inspector asks for.**
@@ -27,7 +33,12 @@ import type {
  * All five registers are built as of T5. The tab list is still declared as a constant rather than
  * inlined, because `BUILT` is what a future phase narrows if it ever adds a sixth.
  */
-const TABS = ["licences", "people", "qa", "dose", "badges", "calendar"] as const;
+/**
+ * 18-S RS11 adds three registers: the TLD import (the quarterly report, dry run → confirm), the
+ * radiation incident register, and the pregnant-worker declarations. The tabs are the station's
+ * header views now (owner layout rule: the menu in the header); none of 18c's was removed.
+ */
+const TABS = ["licences", "people", "qa", "dose", "badges", "tld", "incidents", "pregnancy", "calendar"] as const;
 type Tab = (typeof TABS)[number];
 /** T5 — every register the inspector asks for is built. */
 const BUILT: readonly Tab[] = [...TABS];
@@ -825,7 +836,20 @@ function Outcome({ message }: { message: string | null }): React.ReactElement | 
 
 export function RadiationSafety(): React.ReactElement {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>("licences");
+  const { can } = useAuth();
+  /**
+   * 18-S RS11 — the radiologist (HOD) holds `aerb.incidents.read` and not the register read: they
+   * reach this station for the incident register alone, and are shown only that view. A reader
+   * holding neither (a test harness without a session) sees the station as it always was.
+   */
+  const incidentsOnly = can("aerb.incidents.read") && !can("aerb.registers.read");
+  const [tab, setTab] = useState<Tab>(incidentsOnly ? "incidents" : "licences");
+  const attention = useQuery({
+    queryKey: ["aerb", "attention"],
+    queryFn: fetchAttention,
+    enabled: !incidentsOnly,
+  });
+  const attentionRows = attention.data?.rows ?? [];
   const [includeInactive, setIncludeInactive] = useState(false);
   const onDate = istToday();
 
@@ -853,7 +877,7 @@ export function RadiationSafety(): React.ReactElement {
   const badges = useQuery({
     queryKey: ["aerb", "badges"],
     queryFn: fetchBadges,
-    enabled: tab === "badges",
+    enabled: tab === "badges" || tab === "tld",
   });
   const [calendarIncludeOk, setCalendarIncludeOk] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -928,7 +952,7 @@ export function RadiationSafety(): React.ReactElement {
     ? licences.data?.canManage
     : tab === "qa"
       ? qa.data?.canManage
-      : tab === "badges"
+      : tab === "badges" || tab === "tld"
         ? badges.data?.canManage
         : tab === "people" ? people.data?.canManage : false) ?? false;
 
@@ -1023,25 +1047,51 @@ export function RadiationSafety(): React.ReactElement {
   });
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">{t("aerb.title")}</h1>
+    <RadiologyStation
+      station="safety"
+      title={t("aerb.title")}
+      place={t("radiology.station.safetyPlace")}
+      views={(
+        <div className="flex gap-1 flex-wrap" role="tablist" aria-label={t("aerb.tabsLabel")}>
+          {(incidentsOnly ? (["incidents"] as const) : TABS).map((k) => (
+            <button
+              key={k}
+              role="tab"
+              type="button"
+              aria-selected={k === tab}
+              disabled={!BUILT.includes(k)}
+              data-testid={`aerb-tab-${k}`}
+              className="st-nv"
+              aria-current={k === tab ? "page" : undefined}
+              onClick={() => { openTab(k); }}
+            >
+              {t(`aerb.tab.${k}`)}
+            </button>
+          ))}
+        </div>
+      )}
+      stats={incidentsOnly ? [] : [
+        { label: t("aerb.rs11.stats.red"), value: attentionRows.filter((r) => r.severity === "red").length, tone: "danger" },
+        { label: t("aerb.rs11.stats.qa"), value: attentionRows.filter((r) => r.view === "qa").length, tone: "waiting" },
+        { label: t("aerb.rs11.stats.incidents"), value: attentionRows.filter((r) => r.view === "incidents").length, tone: "waiting" },
+        { label: t("aerb.rs11.stats.pregnancy"), value: attentionRows.filter((r) => r.view === "pregnancy").length },
+      ]}
+      list={incidentsOnly ? undefined : (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">{t("aerb.rs11.attention.title")}</h3>
+          <SafetyAttentionList rows={attentionRows} onOpen={(v) => { openTab(v); }} />
+        </div>
+      )}
+      listSummary={incidentsOnly ? undefined : t("aerb.rs11.attention.summary", { count: attentionRows.length })}
+      closeListOn={tab}
+    >
+    <div className="space-y-4">
 
-      <div className="flex gap-2 flex-wrap" role="tablist" aria-label={t("aerb.tabsLabel")}>
-        {TABS.map((k) => (
-          <button
-            key={k}
-            role="tab"
-            type="button"
-            aria-selected={k === tab}
-            disabled={!BUILT.includes(k)}
-            data-testid={`aerb-tab-${k}`}
-            className={`border px-3 py-1 text-sm ${k === tab ? "bg-black text-white" : ""} ${BUILT.includes(k) ? "" : "opacity-40"}`}
-            onClick={() => { openTab(k); }}
-          >
-            {t(`aerb.tab.${k}`)}
-          </button>
-        ))}
-      </div>
+
+
+      {tab === "tld" ? <TldImportView canManage={canManage} /> : null}
+      {tab === "incidents" ? <IncidentsView /> : null}
+      {tab === "pregnancy" ? <PregnancyView /> : null}
 
       {tab === "licences"
         ? (
@@ -1293,6 +1343,8 @@ export function RadiationSafety(): React.ReactElement {
       {tab === "qa"
         ? (
           <section className="space-y-4">
+            {/* 18-S RS11 T3 — what is due, what is overdue, and the machines a QA has stopped. */}
+            <QaDueBlock />
             {/*
               * The stopped machines first, for the same reason the licence gap comes first: the
               * register's job is to surface the state that must not be missed, and a machine the
@@ -1850,5 +1902,6 @@ export function RadiationSafety(): React.ReactElement {
 
       {!BUILT.includes(tab) ? <p>{t("aerb.notYet")}</p> : null}
     </div>
+    </RadiologyStation>
   );
 }

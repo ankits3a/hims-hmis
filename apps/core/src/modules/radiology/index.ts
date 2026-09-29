@@ -14,7 +14,7 @@ export { RadiologyError, RADIOLOGY_ERROR_CODES, radiologyHttpStatus } from "./er
 export type { RadiologyErrorCode } from "./errors";
 export {
   RADIOLOGY_RESOURCE_KINDS, SCHEDULABLE_DEVICE_STATUSES, DEVICE_MODALITY_ATTRIBUTE,
-  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES,
+  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES, BEDSIDE_LOCATION_MAX_LENGTH,
 } from "./kinds";
 export type { ImagingModality } from "./kinds";
 export {
@@ -32,8 +32,13 @@ export {
   COMPLETED_VISIT_GRACE_DAYS, DUPLICATE_WINDOW_HOURS, addImagingViews, placeImagingOrder,
 } from "./place";
 export type {
-  PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
+  ExternalReferrerInput, PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
 } from "./place";
+/** 18-S RS2 — the ordering door's read (the consult and the imaging desk). */
+export { ADVISORY_DUPLICATE_DAYS, imagingDoorFor } from "./advised";
+export type {
+  AdvisedImagingLine, ImagingBookEntry, ImagingDoorView, ImagingOrderable, ImagingRecentItem, ImagingVisitOrder,
+} from "./advised";
 export {
   IMAGING_DEFINITION_KINDS, VIEWER_URL_PLACEHOLDERS, activateSeededDefinition, activeDefinition, activeDefinitionRow, draftDefinition,
   parseDefinitionBody, publishDefinition, requestDefinitionPublish,
@@ -98,7 +103,35 @@ export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
 export type { ReportContent, ReportRow } from "./reports";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
+// 18-S RS8a — the reading room: the pre-sign pipeline (a later guard joins PRE_SIGN_CHECKS), the
+// signer block (ruling 4), the governed templates/signatories books and the reading reads.
+export { CRITICAL_TERMS, PRE_SIGN_CHECKS, criticalTermsIn, runPreSignChecks } from "./checks";
+export type { PreSignCheck, PreSignContext, PreSignFinding, PreSignLevel } from "./checks";
+export { dryRunPreSign } from "./reports";
+export type { SignChecksRecord } from "./reports";
+export { signedContentDigest, signerSnapshot } from "./signer";
+export type { SignerBlock } from "./signer";
+export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
+export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
+export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
+export type { ReadingContext, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
 export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
+// 18-S RS2b — the machine list, the portable round, and `bedsideStudiesFor`: THE IPD SEAM. The ward
+// screen the IPD plan builds imports it from here; it has no route of its own until then.
+export { imagingDevices } from "./devices";
+export type { ImagingDeviceRow } from "./devices";
+export { bedsideStudiesFor, portableRound } from "./bedside";
+// 18-S RS4 — the machine register's write door and the Setup station's reads.
+export {
+  BOOKED_STUDY_STATUSES, DEVICE_AE_TITLE_RE, RADIOLOGY_DEVICES_MANAGE, SETTABLE_DEVICE_STATUSES,
+  bookedStudiesOn, createImagingDevice, editImagingDevice, isIonisingModality, setImagingDeviceStatus,
+} from "./machines";
+export type { BookedStudyRow, CreateImagingDeviceInput, EditImagingDevicePatch, SettableDeviceStatus } from "./machines";
+export {
+  INVESTIGATION_GST_CATEGORY, RADIOLOGY_RULED_SERVICES, setupBooks, setupPrices, setupRooms,
+} from "./setup";
+export type { BookRow, BookVersionRow, SetupPriceRow, SetupRoomRow } from "./setup";
+export type { BedsideStudyRow } from "./bedside";
 export { DICOM_UID_MAX_LENGTH, STUDY_UID_ROOT, isValidDicomUid, mintStudyInstanceUid } from "./uid";
 export {
   DEVICE_AE_TITLE_ATTRIBUTE, DICOM_MODALITY, MWL_READ, MWL_STATUSES, istDayWindow, mwlExport,

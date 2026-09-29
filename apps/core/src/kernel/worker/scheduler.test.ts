@@ -21,6 +21,7 @@ import * as radiologyChasersMod from "../../modules/radiology/chasers";
 import * as rosterCalendarMod from "../../modules/roster/calendar";
 import * as rosterProposerMod from "../../modules/roster/proposer";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
+import * as aerbQaMod from "../../modules/aerb/qa";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -369,6 +370,14 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("runRefillReminders");
       return { held: null, enqueued: [] };
     }),
+    /**
+     * 18-S RS11 T3 — stubbed on `modules/aerb/qa`, the module the index re-exports FROM (the
+     * eleventh's rule). Its behaviour is asserted in `modules/aerb/qa-overdue.test.ts`.
+     */
+    jest.spyOn(aerbQaMod, "sweepOverdueQa").mockImplementation(async () => {
+      invoked.push("sweepOverdueQa");
+      return { blocked: [], skipped: [] };
+    }),
   ];
 }
 
@@ -444,6 +453,8 @@ const THE_EIGHTEEN = [
   // PHARMACY P6 (patient messages) — the TWENTY-SECOND, `dailyIst("10:00")`: opt-in refill reminders.
   // Already past at the pin's 17:30 IST with no heartbeat, so it fires on the first tick, like 01:30 and 02:10.
   "runRefillReminders",
+  // 18-S RS11 T3 — the TWENTY-THIRD, `every(3_600_000)`: the overdue-QA sweep (aerb).
+  "sweepOverdueQa",
 ];
 
 /**

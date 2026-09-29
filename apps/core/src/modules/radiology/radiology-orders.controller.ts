@@ -1,9 +1,10 @@
-import { Body, Controller, Headers, Inject, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { addImagingViews, placeImagingOrder } from "./place";
+import { imagingDoorFor } from "./advised";
 import { idSchema, isoDateSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -35,6 +36,11 @@ const itemSchema = z.object({
   duplicateOfItemId: idSchema.nullish(),
   duplicateReason: z.string().min(1).max(400).nullish(),
   parentItemId: idSchema.nullish(),
+  /**
+   * 18-S RS2b — the ward and bed, for a study the machine goes to. Carried to the service, which
+   * trims it and owns the refusal (`invalid_bedside_location`); the bound here only caps the body.
+   */
+  bedsideLocation: z.string().max(400).nullish(),
 });
 
 const orderBody = z.object({
@@ -55,10 +61,27 @@ const orderBody = z.object({
   /** DD9's walk-in leg: an outside slip places under `external_prescription` with a referrer. */
   authority: z.enum(["clinician", "external_prescription"]).optional(),
   externalReferrerId: idSchema.nullish(),
+  /** 18-S RS2 — the slip's referrer, typed at the desk; `place.ts` finds or makes the counterparty. */
+  referrer: z.object({
+    name: z.string().trim().min(1).max(200),
+    registrationNo: z.string().trim().min(1).max(64),
+  }).nullish(),
 });
 
+/**
+ * An outside slip names its doctor: an `external_prescription` without a referrer id or the typed
+ * name + registration is refused at the wire rather than as a raw CHECK violation in the kernel.
+ */
+const referrerRule = (b: { authority?: string; externalReferrerId?: string | null; referrer?: unknown }) =>
+  b.authority !== "external_prescription" || (b.externalReferrerId ?? null) !== null || (b.referrer ?? null) !== null;
+const referrerMessage = { message: "an outside prescription needs the referrer's name and registration number", path: ["referrer"] };
+
+const placeBody = orderBody.refine(referrerRule, referrerMessage);
+
 /** The add-on inherits the parent's group; naming a group here would let a caller re-parent it. */
-const addViewsBody = orderBody.omit({ orderGroupId: true });
+const addViewsBody = orderBody.omit({ orderGroupId: true }).refine(referrerRule, referrerMessage);
+
+const advisedQuery = z.object({ encounterNo: z.string().trim().min(1).max(32) });
 
 @Controller("radiology")
 export class RadiologyOrdersController {
@@ -75,6 +98,23 @@ export class RadiologyOrdersController {
    */
   private decls() { return collectOrderKinds(this.registry); }
 
+  /**
+   * 18-S RS2 (18a-iv T1) — THE ORDERING DOOR'S READ: a visit's advised imaging lines against the
+   * active book, the book itself with prices, the 30-day look-back and the visit's standing imaging
+   * orders. ONE route for both seats that place — the consult and the imaging desk — so it is
+   * guarded on the permission both hold, `radiology.orders.place`: the doctor holds neither
+   * `radiology.schedule` nor `radiology.definitions.read`, and a second route over the same reader
+   * would be two answers to one question. PHI-logged as `opd.visit`, as the lab desk's is.
+   */
+  @Get("advised")
+  @RequirePermission("radiology.orders.place", "hospital")
+  async advised(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<unknown> {
+    const { encounterNo } = parsed(advisedQuery, query);
+    try {
+      return await imagingDoorFor(this.db, actor, encounterNo);
+    } catch (e) { toHttp(e); }
+  }
+
   @Post("orders")
   @RequirePermission("radiology.orders.place", "hospital")
   async place(
@@ -82,7 +122,7 @@ export class RadiologyOrdersController {
     @Body() body: unknown,
     @Headers("idempotency-key") key?: string,
   ): Promise<unknown> {
-    const input = parsed(orderBody, body);
+    const input = parsed(placeBody, body);
     try {
       return await placeImagingOrder(
         this.db, actor, this.decls(), input as unknown as PlaceImagingOrderInput, key,

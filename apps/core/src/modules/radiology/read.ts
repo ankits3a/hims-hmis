@@ -75,7 +75,7 @@ const REPORT_READ = "radiology.reports.read";
 
 type Clearance = { canSeeConfidential: boolean; userId: string };
 
-async function clearanceOf(db: Db, actor: Actor): Promise<Clearance> {
+export async function clearanceOf(db: Db, actor: Actor): Promise<Clearance> {
   if (actor.type !== "user") {
     throw new RadiologyError(
       "forbidden",
@@ -104,6 +104,10 @@ export type WorklistRow = {
   patientName: string;
   formFRequired: boolean;
   restricted: boolean;
+  /** 18-S RS3 — when the order arrived (the desk's "waiting to book" clock). */
+  createdAt: Date;
+  /** 18-S RS3 — when the patient was checked in (the desk's "here and not ready" clock). */
+  checkedInAt: Date | null;
 };
 
 /** The technologist's day and the radiologist's unread list, from one index (DD16). */
@@ -140,6 +144,8 @@ export async function worklist(
       encounterNo: imagingStudies.encounterNo,
       patientId: imagingStudies.patientId,
       formFRequired: imagingStudies.formFRequired,
+      createdAt: imagingStudies.createdAt,
+      checkedInAt: imagingStudies.checkedInAt,
       restricted: orderItems.restricted,
       name: patients.name,
       alias: patients.alias,
@@ -206,6 +212,7 @@ export async function worklist(
       { name: r.name, alias: r.alias, isConfidential: r.isConfidential }, clearance.canSeeConfidential,
     ),
     formFRequired: r.formFRequired, restricted: r.restricted,
+    createdAt: r.createdAt, checkedInAt: r.checkedInAt,
   }));
 }
 
@@ -292,6 +299,7 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
       { name: row.name, alias: row.alias, isConfidential: row.isConfidential }, clearance.canSeeConfidential,
     ),
     formFRequired: row.study.formFRequired, restricted: row.restricted,
+    createdAt: row.study.createdAt, checkedInAt: row.study.checkedInAt,
     laterality: row.study.laterality,
     ionising: row.study.ionising, contrastGiven: row.study.contrastGiven,
     bedsideLocation: row.study.bedsideLocation,

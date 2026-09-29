@@ -404,7 +404,8 @@ export function LabDesk(): React.ReactElement {
               </select>
             </label>
             <div className="col-span-2 flex gap-2 md:col-span-4">
-              <Button type="submit" disabled={fields.name.trim() === "" || register.isPending}>{t("lab.desk.regSave")}</Button>
+              {/* DESK-FIXES E — age is mandatory at registration (DECIDED 2026-09-28; an estimate is fine). */}
+              <Button type="submit" disabled={fields.name.trim() === "" || !/^\d{1,3}$/.test(fields.ageYears.trim()) || register.isPending}>{t("lab.desk.regSave")}</Button>
               <Button type="button" variant="outline" onClick={() => setRegistering(false)}>{t("lab.desk.cancel")}</Button>
             </div>
           </form>

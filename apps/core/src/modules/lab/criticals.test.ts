@@ -116,6 +116,31 @@ describe("lab critical calls (17b T6)", () => {
     expect(acked[0]!.payload).toMatchObject({ callId, resultId, attempts: 2 });
   });
 
+  /**
+   * THE §13 WALK FINDING (2026-09-28): a potassium of 6.8 closed on "five point eight". The read-back
+   * must SAY the value; a wrong one is refused and the call stays open with nobody named as closer.
+   */
+  it("a read-back that says the WRONG value is refused readback_mismatch, and the call stays open", async () => {
+    const { callId } = await criticalCall();
+    for (const wrong of ["five point eight", "5.8", "sixty eight", "68", "noted, will review"]) {
+      await expect(withTx(db, (tx) => acknowledgeCritical(tx, fx.bench.actor, {
+        callId, attempt: { contact: "Dr Rao, mobile", outcome: "spoke" }, readback: wrong,
+      }, AT))).rejects.toMatchObject({ code: "readback_mismatch" });
+    }
+    const [call] = await db.select().from(labCriticalCalls).where(eq(labCriticalCalls.id, callId));
+    expect([call!.closedAt, call!.readbackText, call!.closedBy]).toEqual([null, null, null]);
+    expect(await openCriticalCalls(db, fx.bench.actor)).toHaveLength(1);
+    expect(await eventsNamed("lab.critical_acknowledged")).toHaveLength(0);
+  });
+
+  it.each(["K 6.8, repeat sent", "potassium 6.80", "पोटैशियम ६.८"])(
+    "the value in digits closes it too — %s", async (said) => {
+      const { callId } = await criticalCall();
+      const out = await withTx(db, (tx) => acknowledgeCritical(tx, fx.bench.actor, { callId, readback: said }, AT));
+      expect(out.closed).toBe(true);
+    },
+  );
+
   it("a second read-back is refused critical_already_closed — not a borrowed already_verified", async () => {
     const { callId } = await criticalCall();
     await withTx(db, (tx) => acknowledgeCritical(tx, fx.bench.actor, {

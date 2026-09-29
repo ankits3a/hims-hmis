@@ -83,6 +83,26 @@ export function istDateOf(at: Date): string {
   return new Date(at.getTime() + IST_UTC_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
 }
 
+/** The IST calendar month of an instant, `YYYY-MM`. */
+export function istMonthKey(at: Date): string {
+  return istDateOf(at).slice(0, 7);
+}
+
+/** The UTC instant at which the IST calendar month `monthsBack` months before `now`'s began. */
+export function istMonthStartUtc(now: Date, monthsBack: number): Date {
+  const [y, m] = istMonthKey(now).split("-").map(Number) as [number, number];
+  const istMidnightAsUtc = Date.UTC(y, m - 1 - monthsBack, 1);
+  return new Date(istMidnightAsUtc - IST_UTC_OFFSET_MINUTES * 60_000);
+}
+
+/**
+ * STAGE D3 — the instant an IST wall-clock `HH:MM` falls on an IST calendar day (`YYYY-MM-DD`): the fridge
+ * log's 09:00 and 17:00 slots and its day boundary. Beside `istDateOf` so the census has one pharmacy site.
+ */
+export function istInstantOf(day: string, hhmm: string): Date {
+  return new Date(Date.parse(`${day}T${hhmm}:00.000Z`) - IST_UTC_OFFSET_MINUTES * 60_000);
+}
+
 /**
  * PHARMACY P4 — THE REORDER LIST'S THREE NUMBERS (doc 16 §9, Replenishment, drafting tier).
  *

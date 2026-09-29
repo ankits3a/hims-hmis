@@ -1155,13 +1155,17 @@ signed report. `lab_reception` holds NO `lab.results.*` at all — it is a count
 prints and hands over, and a front-office login able to read every result in the building is exactly
 the hole `restricted` and the alias rule exist to close. `phlebotomist` reads the worklist and
 touches no result: the chair needs to know who is next and which tube, never a number.
-`lab.reports.release_unpaid` is held by `billing_manager` and by nobody in the lab, because
-releasing a held report is a decision to carry a receivable and that is the money office's to make.
+`lab.reports.release_unpaid` was held by `billing_manager` alone, because releasing a held report is
+a decision to carry a receivable and that is not the laboratory's to make (see the 2026-09-28
+amendment below: the decision is now the owner's approval, and the counter performs it).
 **Amended by the owner on 2026-09-02 (Plan 17c §7):** `lab_reception` gains
 `approvals.requests.create` — the counter may raise the release request for a held report; the
 billing manager still decides it — and the counter's report centre (`/lab/reports`) may render a
 SIGNED report to print it, aliased and logged per read and only once the interlock allows the
-hand-over; what stays refused is any result before signature and every list's restricted test names.
+hand-over; what stays refused is any result before signature and every list's restricted test names. **Amended 2026-09-28 (the owner's credit ruling, gap A3, and the §13 walk):** the release DECISION
+is the owner's approval, and `lab_reception` gains `lab.reports.release_unpaid` to perform the approved
+hand-over — the release is a print, and until then no role held both the print and the release, so a
+held report could be released by nobody.
 
 | Permission | pathologist | lab_technician | phlebotomist | lab_reception | lab_bridge |
 |---|---|---|---|---|---|
@@ -1182,6 +1186,7 @@ hand-over; what stays refused is any result before signature and every list's re
 | `lab.reports.publish` | ✓ | | | | |
 | `lab.reports.print` | ✓ | | | ✓ | |
 | `lab.reports.amend` | ✓ | | | | |
+| `lab.reports.release_unpaid` | | | | ✓ | |
 | `lab.orders.place` | ✓ | | | ✓ | |
 
 Thirty-four grants are held outside that table. **`doctor` gains `lab.orders.place`,
@@ -1230,7 +1235,7 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.orders.place` | | | ✓ | | | |
 | `radiology.worklist.read` | ✓ | ✓ | ✓ | | | |
 | `radiology.schedule` | | | ✓ | | | |
-| `radiology.checkin` | | ✓ | | | | |
+| `radiology.checkin` | | ✓ | ✓ | | | |
 | `radiology.gates.satisfy` | | ✓ | | | | |
 | `radiology.gates.override` | ✓ | | | | | |
 | `radiology.acquire` | ✓ | ✓ | | | | |
@@ -1240,9 +1245,11 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.reports.read` | ✓ | ✓ | | | | |
 | `radiology.definitions.read` | ✓ | ✓ | ✓ | | | |
 | `radiology.definitions.manage` | ✓ | | | | | |
+| `radiology.devices.manage` | ✓ | | | | | |
 | `radiology.bill_decisions.manage` | | | ✓ | | | |
 | `radiology.criticals.ack` | ✓ | | | | | |
 | `radiology.mwl.read` | | ✓ | | | ✓ | |
+| `radiology.display.read` | | | ✓ | | | |
 | `pcpndt.registrations.manage` | | | | ✓ | | |
 | `pcpndt.registrations.read` | ✓ | | | ✓ | | |
 | `pcpndt.form_f.write` | ✓ | | | | | |
@@ -1251,6 +1258,7 @@ floor raised, and the override demands a reason and is evented.
 | `aerb.registers.manage` | | | | | | ✓ |
 | `aerb.registers.read` | | | | | | ✓ |
 | `aerb.doses.read` | ✓ | ✓ | | | | ✓ |
+| `aerb.incidents.read` | ✓ | | | | | ✓ |
 
 **Plan 18c T1 adds the sixth column and the last three rows.** The AERB registers are their own
 module (`aerb`) for the reason `pcpndt` is: the cath lab and radiation oncology owe an equipment
@@ -1260,7 +1268,10 @@ recommended appointee is a senior radiographer who will also hold `radiographer`
 survives that because a QA failure blocks the machine through the resource registry rather than
 through whichever hat the person is wearing. `aerb.doses.read` is deliberately a THIRD permission
 rather than part of `.read`: the twelve-month cumulative-dose nudge belongs on a radiologist's study
-screen, and the licence file, the QA book and the badge register do not.
+screen, and the licence file, the QA book and the badge register do not. **18-S RS11 adds
+`aerb.incidents.read`** for the same reason: the radiation incident register is the radiologist-in-
+charge's to know about (the department's HOD), the licence file is still not, and recording or
+closing an incident stays `aerb.registers.manage`, the RSO's pen.
 
 Thirteen grants are held outside that table. **`doctor` gains `radiology.orders.place` and
 `radiology.reports.read`** — the referring clinician orders the scan and reads the REPORT, and not
@@ -1277,6 +1288,23 @@ a desk that could schedule but not bill would be a split with nothing to compens
 NOT gain `patients.update` or `billing.credit.extend`: imaging bills at the counter before the scan,
 so no imaging path issues an invoice that leaves a remainder. All four new roles are created by
 `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper` precedent.
+
+**Plan 18-S RS3 (the imaging front desk) adds one permission and three grants.** `radiology_receptionist`
+gains `radiology.checkin`: the owner-approved board makes opening the patient at the desk on the day of
+the slot the check-in (presence is derived, no button records it), and the `imaging_study` definition
+already named `radiology_receptionist` on `scheduled → checked_in`. Check-in OPENS the gate set and
+satisfies nothing, so the desk still cannot record that a patient is not pregnant. The new
+`radiology.display.read` guards the imaging waiting-hall board (`GET /radiology/display`), the OPD
+board's pattern: **`display` gains `radiology.display.read`** — the same kiosk TV account shows either
+hall's board — and the receptionist holds it to turn the TV on.
+
+**Plan 18-S RS4 (the Setup station) adds one permission and one grant.** `radiology.devices.manage`
+guards the machine register — registering an imaging machine, setting its DICOM AE title, and taking it
+out of service with a reason (`/radiology/setup/*`) — and the Setup station's books and prices reads.
+**`radiologist` gains it**, the same holder as `radiology.definitions.manage`: the department's head
+answers for what its machines are and whether they may be booked. It is NOT a QA power: a machine
+`qa_blocked` by a failed QA is released only by the radiation safety officer's passing QA record, and
+the register refuses to walk a machine out of `qa_blocked` (or out of `retired`) whoever asks.
 
 **The OPD dispense counter (Plan 16c T1) declares four permissions and one new role, and the SHAPE
 is the Pharmacy Act.** `pharmacy.dispense.scheduled` — the hand-over of a dispense carrying a
@@ -1337,6 +1365,20 @@ template ids, the WhatsApp template names and the pharmacy's phone on the office
 `pharmacy.adr.record` (reporting a suspected adverse drug reaction on the PvPI form) goes to `pharmacy`,
 `pharmacy_incharge` and `doctor`. `pharmacy.adr.manage` (WHO-UMC causality, sent to PvPI, closed) goes to
 `pharmacy_incharge` and `medical_superintendent`. Both are defaults the owner may change.
+**Pharmacy stage D2 logs medication errors and near misses, blame-free.**
+`pharmacy.incidents.record` (logging a medication error or near miss, NCC MERP A–I) goes to `pharmacy`,
+`pharmacy_assistant`, `pharmacy_incharge` and `doctor`. `pharmacy.incidents.review` (root cause, action taken,
+closed; the only grant told the reporter's name) goes to `pharmacy_incharge` and `medical_superintendent`.
+Both are defaults the owner may change.
+**Pharmacy stage D3 logs the fridges twice a day, and an excursion holds the cold stock.**
+`pharmacy.coldchain.record` (reading a fridge: current, min and max) goes to `pharmacy`, `pharmacy_assistant`
+and `storekeeper`. `pharmacy.coldchain.manage` (adding and editing fridges, closing an excursion by releasing
+or writing off each held batch) goes to `pharmacy_incharge` and `materials_head`.
+Both are defaults the owner may change.
+**Pharmacy stage D5 adds the role `antimicrobial_steward`, held with a clinical role.** It holds
+`pharmacy.antimicrobial.approve` (reading a restricted-antimicrobial request's prescription line and prescriber)
+and the approvals pair `approvals.requests.read` and `approvals.requests.decide`, because it is the approver of
+`pharmacy_restricted_antimicrobial`. A steward may not approve their own prescription.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1359,6 +1401,10 @@ template ids, the WhatsApp template names and the pharmacy's phone on the office
 | `pharmacy.messages.manage` | | | ✓ |
 | `pharmacy.adr.record` | ✓ | | ✓ |
 | `pharmacy.adr.manage` | | | ✓ |
+| `pharmacy.incidents.record` | ✓ | ✓ | ✓ |
+| `pharmacy.incidents.review` | | | ✓ |
+| `pharmacy.coldchain.record` | ✓ | ✓ | |
+| `pharmacy.coldchain.manage` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |
@@ -1370,9 +1416,10 @@ with the prescriber as the responsible clinician (the `lab_reception` shape), an
 requires the kernel permission AND the kind's own. `pharmacy` also carries the four cashier strings
 its window needs — `billing.invoice.issue`, `billing.invoice.read`, `billing.receipt.record`,
 `billing.session.own` — the `lab_reception` precedent, for the same reason: a counter that could
-pick but not bill would be a split with nothing to compensate for it. It does NOT gain
-`billing.credit.extend`: an OPD dispense is paid before the drug leaves, and the credit holds for
-IPD and TPA are 16d's. `pharmacy_assistant` gains `orders.read`, `patients.read` (the allergy
+pick but not bill would be a split with nothing to compensate for it. It gains
+`billing.credit.extend` only as the right to ASK: the owner ruled on 2026-09-28 that nobody but the owner
+issues credit, so an OPD dispense is paid before the drug leaves unless the owner grants that exact amount on
+credit (gap A3b). `pharmacy_assistant` gains `orders.read`, `patients.read` (the allergy
 register at the window, Group B's reason) and `formulary.read`, and no billing string at all — the
 aide picks, the pharmacist bills; the shelf it picks from is read for it by the counter's own routes. Both roles carry grants and, on this
 deployment, **no holders** until a registered pharmacist is assigned.

@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { newId } from "@hmis/contracts";
+import { CODED_SYSTEMS, newId } from "@hmis/contracts";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { imagingDefinitions } from "../../kernel/db/schema/radiology";
@@ -179,12 +179,218 @@ export const doseReferenceLevelsBodySchema = z.object({
   })).min(1),
 });
 
+/**
+ * PLAN 18-S RS6 — **THE PROTOCOL BOOK: how each examination is done, as governed clinical data.**
+ *
+ * A protocol is the radiologist's instruction to the technologist — technique, exposure, slices or
+ * sequences, the contrast dose per kilogram and its ceiling, the breath-hold words said to the
+ * patient. It is clinical, so it is published like every other book in this file: drafted by the
+ * radiologist (HOD), approved by the medical superintendent, published as a version. **Nothing is
+ * seeded** (DECIDED, RS6): the hospital's protocols are its radiologists' to write, and a seeded
+ * default would be a protocol nobody chose, read aloud to a patient.
+ *
+ * Keyed the way the DRL book is: `study_type_code` for an examination's own protocol, `modality`
+ * for a department-wide default, and the study type wins where both match (`protocolFor`).
+ *
+ * The console READS this; nothing here refuses a scan. A study with no protocol shows "no protocol
+ * published" and the technologist works from the radiologist's word — the book is guidance, and a
+ * missing page must not stop an ER head CT.
+ */
+const range = z.object({ min: z.number().positive().max(100_000), max: z.number().positive().max(100_000) })
+  .refine((r) => r.min <= r.max, { message: "a range's min is above its max" });
+
+export const PROTOCOL_CONTRAST_PHASES = [
+  "non_contrast", "arterial", "portal_venous", "nephrographic", "delayed", "multiphase", "angiographic", "mri_gadolinium",
+] as const;
+
+export const imagingProtocolSchema = z.object({
+  /** Exactly one key is required; `study_type_code` wins where both match (`protocolFor`). */
+  study_type_code: z.string().min(1).max(40).optional(),
+  modality: z.enum(IMAGING_MODALITIES).optional(),
+  /** What the technologist sees at the top of the card — "CT abdomen, triple phase". */
+  name: z.string().min(1).max(160),
+  /** The instruction in the radiologist's words: positioning, coverage, reconstruction. */
+  technique: z.string().min(1).max(2000),
+  /** The machine's own stored protocol name, when the console should just pick it. */
+  preset: z.string().min(1).max(80).optional(),
+  kv: range.optional(),
+  mas: range.optional(),
+  /** CT only — reconstructed slice thickness and pitch. */
+  ct: z.object({ slice_mm: z.number().positive().max(20), pitch: z.number().positive().max(3) }).optional(),
+  /** MRI only — the sequences, in order. */
+  sequences: z.array(z.string().min(1).max(80)).max(40).optional(),
+  contrast: z.object({
+    agent: z.string().min(1).max(120).optional(),
+    phase: z.enum(PROTOCOL_CONTRAST_PHASES),
+    ml_per_kg: z.number().positive().max(5),
+    max_ml: z.number().positive().max(500),
+    /** Seconds from the start of the injection to the scan (bolus tracking is written in `technique`). */
+    delay_s: z.number().int().min(0).max(1800),
+    rate_ml_s: z.number().positive().max(10).optional(),
+  }).optional(),
+  /** Said to the patient — both languages or neither; the console shows the one the patient speaks. */
+  breath_hold: z.object({ en: z.string().min(1).max(400), hi: z.string().min(1).max(400) }).optional(),
+  /**
+   * The paediatric variant: weight bands, each with its own exposure and contrast per kilogram. A
+   * child is dosed by weight, never by age, and a band the child's weight falls outside of is a
+   * question for the radiologist, not a rounding.
+   */
+  paediatric: z.object({
+    bands: z.array(z.object({
+      from_kg: z.number().min(0).max(200),
+      to_kg: z.number().positive().max(200),
+      kv: range.optional(),
+      mas: range.optional(),
+      ml_per_kg: z.number().positive().max(5).optional(),
+      note: z.string().min(1).max(400).optional(),
+    }).refine((b) => b.from_kg < b.to_kg, { message: "a weight band's from_kg must be below its to_kg" })).min(1),
+  }).optional(),
+}).refine((p) => p.study_type_code !== undefined || p.modality !== undefined, {
+  message: "a protocol must name a study_type_code or a modality",
+});
+
+export const imagingProtocolsBodySchema = z.object({
+  protocols: z.array(imagingProtocolSchema).min(1),
+}).refine(
+  (b) => new Set(b.protocols.map((p) => `${p.study_type_code ?? ""}|${p.study_type_code === undefined ? p.modality ?? "" : ""}`)).size
+    === b.protocols.length,
+  { message: "two protocols share a key — the console would have two answers for one examination" },
+);
+
+export type ImagingProtocolsBody = z.infer<typeof imagingProtocolsBodySchema>;
+export type ImagingProtocol = z.infer<typeof imagingProtocolSchema>;
+
+/**
+ * The protocol for one examination: the study type's own, else the modality's default, else null.
+ * Pure, so the room read and its test agree on one rule.
+ */
+export function protocolFor(
+  body: ImagingProtocolsBody, studyTypeCode: string, modality: string,
+): { protocol: ImagingProtocol; matchedOn: "study_type" | "modality" } | null {
+  const own = body.protocols.find((p) => p.study_type_code === studyTypeCode);
+  if (own !== undefined) return { protocol: own, matchedOn: "study_type" };
+  const dflt = body.protocols.find((p) => p.study_type_code === undefined && p.modality === modality);
+  return dflt === undefined ? null : { protocol: dflt, matchedOn: "modality" };
+}
+
+/**
+ * PLAN 18-S RS8a — **THE REPORT TEMPLATES BOOK: structured templates with coded categories.**
+ *
+ * `templates.ts` (18a T8) kept the seven section skeletons as a constant and argued, rightly, that a
+ * SECTION LIST decides nothing clinical. A template that REQUIRES a category does: "a mammogram is
+ * not signed without a BI-RADS" is a department rule, and this file's header is where department
+ * rules live — drafted by the radiologist, approved by the medical superintendent, published as a
+ * version. So the structured templates are a governed book, and the seven constants stay as the
+ * fallback a study gets when the book is not published or has no template for it (a missing page
+ * must not stop a report).
+ *
+ * A template carries:
+ *   · `modalities` / `study_type_codes` — which studies it is offered for (`study_type_codes`
+ *     first, then the modality, the DRL book's rule);
+ *   · `sections` — each with the words its "normal study" macro inserts;
+ *   · `macros` — further named phrases for a section;
+ *   · `coded` — the categories the report carries, and whether one is REQUIRED before signing
+ *     (`coded_category_required`, the pre-sign check).
+ *
+ * **Nothing is seeded active** (DECIDED, RS8a): the words a normal study inserts are clinical
+ * content and they are the HOD's. A reference set ships as a draft to paste
+ * (`docs/runbooks/radiology-report-templates.reference.json`, RS8a).
+ */
+export const REPORT_SECTION_KEYS = ["indication", "technique", "comparison", "findings", "biometry", "impression", "recommendation"] as const;
+
+const templateKey = z.string().regex(/^[a-z0-9_]{1,40}$/, "a template key is 1–40 of a–z, 0–9 and _");
+
+export const reportTemplateSchema = z.object({
+  key: templateKey,
+  name: z.string().min(1).max(120),
+  modalities: z.array(z.enum(IMAGING_MODALITIES)).min(1),
+  study_type_codes: z.array(z.string().min(1).max(40)).max(200).default([]),
+  sections: z.array(z.object({
+    key: z.enum(REPORT_SECTION_KEYS),
+    label: z.string().min(1).max(60),
+    /** The "normal study" macro for this section. */
+    normal: z.string().max(4000).optional(),
+  })).min(1).max(REPORT_SECTION_KEYS.length)
+    .refine((s) => new Set(s.map((x) => x.key)).size === s.length, { message: "a section is listed twice" })
+    .refine((s) => s.some((x) => x.key === "impression"), {
+      message: "every template has an impression — a report is not signed without one",
+    }),
+  macros: z.array(z.object({
+    key: templateKey,
+    label: z.string().min(1).max(80),
+    section: z.enum(REPORT_SECTION_KEYS),
+    text: z.string().min(1).max(4000),
+  })).max(100).default([]),
+  coded: z.array(z.object({ system: z.enum(CODED_SYSTEMS), required: z.boolean() })).max(4).default([])
+    .refine((c) => new Set(c.map((x) => x.system)).size === c.length, { message: "a coded system is listed twice" }),
+});
+
+export const reportTemplatesBodySchema = z.object({
+  templates: z.array(reportTemplateSchema).min(1).max(200),
+}).refine(
+  (b) => new Set(b.templates.map((t) => t.key)).size === b.templates.length,
+  { message: "two templates share a key — a report would name a template with two meanings" },
+);
+
+export type ReportTemplatesBody = z.infer<typeof reportTemplatesBodySchema>;
+export type GovernedReportTemplate = z.infer<typeof reportTemplateSchema>;
+
+/**
+ * The templates offered for one study: those naming its study-type code first, then those naming
+ * its modality. Pure, so the reading room's read and the pre-sign check agree on one rule.
+ */
+export function templatesFor(
+  body: ReportTemplatesBody, studyTypeCode: string, modality: string,
+): GovernedReportTemplate[] {
+  const own = body.templates.filter((t) => t.study_type_codes.includes(studyTypeCode));
+  const byModality = body.templates.filter((t) => !own.includes(t)
+    && t.study_type_codes.length === 0 && (t.modalities as readonly string[]).includes(modality));
+  return [...own, ...byModality];
+}
+
+/**
+ * PLAN 18-S RS8a / owner ruling 4 — **WHO MAY SIGN AN IMAGING REPORT, AND WHAT THE PRINT SAYS ABOUT THEM.**
+ *
+ * Ruling 4: the printed report carries the signing radiologist's or sonologist's NAME,
+ * QUALIFICATION, COUNCIL REGISTRATION NUMBER and digital signature. The spike found a name
+ * (`users.full_name`) and, sometimes, a council number (`opd_doctors.registration_no`, the roster's
+ * `nmr`/`smr` credential) — and **no qualification anywhere general**. The roster's credential
+ * register has no route and no screen, so adding a key there would be a reader without a writer.
+ *
+ * DECIDED (RS8a): the department's **list of authorised signatories** is a governed book. It is what
+ * NABH asks an imaging department to hold (who may sign a diagnostic report), it is the HOD's to
+ * draft and the medical superintendent's to approve, and it has a writer today — Setup → Books. The
+ * council number here is optional: where it is blank, the roster's `nmr`/`smr` credential and then
+ * `opd_doctors.registration_no` are read (`signer.ts`). A signer who is not on the list, or whose
+ * council number is found nowhere, is refused `signer_credentials_missing` — a signature whose print
+ * cannot carry what ruling 4 requires is not made.
+ */
+export const reportSignatoriesBodySchema = z.object({
+  signatories: z.array(z.object({
+    user_id: z.string().min(1).max(64),
+    /** As printed: "MBBS, MD (Radiodiagnosis)". */
+    qualification: z.string().min(2).max(160),
+    /** As printed: "Consultant Radiologist". */
+    designation: z.string().min(1).max(120).optional(),
+    /** As printed: "Jharkhand State Medical Council · 2014/1187". */
+    council_reg_no: z.string().min(3).max(120).optional(),
+  })).min(1).max(200),
+}).refine(
+  (b) => new Set(b.signatories.map((s) => s.user_id)).size === b.signatories.length,
+  { message: "a person is listed twice — the print would have two qualifications for one signer" },
+);
+
+export type ReportSignatoriesBody = z.infer<typeof reportSignatoriesBodySchema>;
+
 const SCHEMA_BY_KIND = {
   study_types: studyTypesBodySchema,
   pregnancy_policy: pregnancyPolicyBodySchema,
   critical_categories: criticalCategoriesBodySchema,
   pacs_settings: pacsSettingsBodySchema,
   dose_reference_levels: doseReferenceLevelsBodySchema,
+  imaging_protocols: imagingProtocolsBodySchema,
+  report_templates: reportTemplatesBodySchema,
+  report_signatories: reportSignatoriesBodySchema,
 } as const;
 
 export type StudyTypesBody = z.infer<typeof studyTypesBodySchema>;

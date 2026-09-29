@@ -7,7 +7,9 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
 import { UnpaidMark } from "../components/unpaid-mark";
-import { EyeSections, fetchVisitSections } from "./opd-eye-sections";
+import { ImagingOrderPanel } from "../components/radiology/imaging-order-panel";
+import { EyeSections, eyeSummary, fetchVisitSections } from "./opd-eye-sections";
+import { PaedsSections, childAgeText } from "./opd-paeds-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
@@ -16,7 +18,7 @@ import type {
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
   WireDrugDiseaseHit, WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
   WireRxHistoryItem, WireVitalsHistoryItem,
-  WireAdvisedTest, WirePriceListRow,
+  WireAdvisedTest, WirePriceListRow, WireRxDraftLine, WireRxLine,
 } from "../lib/opd-api";
 import { Link } from "@tanstack/react-router";
 import { fmtIst, fmtPaise } from "../lib/format";
@@ -184,21 +186,25 @@ function ErrorLine({ message }: { message: string | null }): React.ReactElement 
  * `.transform().pipe()` rather than `z.preprocess` for the reason opd-admin.tsx and opd-vitals.tsx
  * both document (K41): `z.preprocess`'s `z.input` collapses to `unknown`, which does not typecheck
  * against `useForm`'s field-value shape, while this keeps `z.input` the honest string the DOM holds.
+ * (The durationDays field below.)
+ *
+ * CONSULT WALK 2026-09-28 (defect G) — the walk found "Too small: expected string to have >=1
+ * characters" under an empty Dose: zod's own sentence, which `FormKit` prints as it arrives. The
+ * schema is therefore built with the screen's words (`rxSchemaWith(t)`) where the form is made.
  */
-const durationDaysField = z
-  .string()
-  .transform((v) => (v.trim() === "" ? null : Number(v)))
-  .pipe(z.number().int().positive().nullable());
-
-const rxSchema = z.object({
+type RxMessages = { drug: string; dose: string; route: string; frequency: string; days: string };
+const rxSchemaWith = (m?: RxMessages) => z.object({
   lines: z
     .array(
       z.object({
-        drug: z.string().min(1),
-        dose: z.string().min(1),
-        route: z.string().min(1),
-        frequency: z.string().min(1),
-        durationDays: durationDaysField,
+        drug: z.string().min(1, m?.drug),
+        dose: z.string().min(1, m?.dose),
+        route: z.string().min(1, m?.route),
+        frequency: z.string().min(1, m?.frequency),
+        durationDays: z
+          .string()
+          .transform((v) => (v.trim() === "" ? null : Number(v)))
+          .pipe(z.number(m?.days).int(m?.days).positive(m?.days).nullable()),
         instructions: z.string(),
         noSubstitution: z.boolean(),
         /**
@@ -218,12 +224,15 @@ const rxSchema = z.object({
     )
     .min(1),
 });
-type RxFormInput = z.input<typeof rxSchema>;
-type RxFormValues = z.output<typeof rxSchema>;
+type RxSchema = ReturnType<typeof rxSchemaWith>;
+type RxFormInput = z.input<RxSchema>;
+type RxFormValues = z.output<RxSchema>;
 type RxLineValues = RxFormValues["lines"][number];
 
 const EMPTY_LINE: RxFormInput["lines"][number] = {
-  drug: "", dose: "", route: "oral", frequency: "OD", durationDays: "", instructions: "",
+  /* No frequency until the doctor taps one (walk 2026-09-28): a pre-selected "1-0-0 (OD)" was issued
+     by default, and on an eye OPD's screen "OD" also reads as the right eye. */
+  drug: "", dose: "", route: "oral", frequency: "", durationDays: "", instructions: "",
   noSubstitution: false, medicineId: null, eye: null, taper: null,
 };
 
@@ -237,6 +246,50 @@ function rowHasContent(l: RxFormInput["lines"][number]): boolean {
 function rowsKey(lines: RxFormInput["lines"]): string {
   const written = lines.filter(rowHasContent);
   return written.length === 0 ? "" : JSON.stringify(written);
+}
+
+/**
+ * ═══ THE UNISSUED LINES, AS THE VISIT KEEPS THEM (consult walk 2026-09-28, defect A) ═══
+ *
+ * The walk lost four written lines to a reload: the editor was the only place they lived. They now
+ * ride the consult note as `rxDraft` — the editor's written rows, blanks and all, the days as the
+ * box's text — and come back into the editor when the visit is opened again, in any tab. The key
+ * order is fixed HERE, so two drafts compare by content and not by how jsonb happened to store them.
+ */
+function draftRowsOf(lines: RxFormInput["lines"]): WireRxDraftLine[] {
+  return lines.filter(rowHasContent).map((l) => {
+    const row: WireRxDraftLine = {
+      drug: l.drug, dose: l.dose, route: l.route, frequency: l.frequency, durationDays: String(l.durationDays ?? ""),
+      instructions: l.instructions, noSubstitution: l.noSubstitution, medicineId: l.medicineId ?? null,
+    };
+    if (l.eye != null) row.eye = l.eye;
+    if (l.taper != null && l.taper.length > 0) row.taper = l.taper;
+    return row;
+  });
+}
+const draftKey = (rows: WireRxDraftLine[]): string => (rows.length === 0 ? "" : JSON.stringify(rows));
+
+/** A saved draft row (or an issued line) back in the editor's own shape. */
+function formRowOf(d: WireRxDraftLine | WireRxLine): RxFormInput["lines"][number] {
+  return {
+    drug: d.drug ?? "", dose: d.dose ?? "", route: d.route ?? "oral", frequency: d.frequency ?? "",
+    durationDays: d.durationDays === null || d.durationDays === undefined ? "" : String(d.durationDays),
+    instructions: d.instructions ?? "", noSubstitution: d.noSubstitution === true,
+    medicineId: "medicineId" in d ? (d.medicineId ?? null) : null,
+    eye: d.eye ?? null, taper: d.taper ?? null,
+  };
+}
+
+/** The same medicines, as a pharmacist reads them — used to tell a draft that WAS issued from one that was not. */
+function sameLines(a: readonly (WireRxDraftLine | WireRxLine)[], b: readonly (WireRxDraftLine | WireRxLine)[]): boolean {
+  const k = (l: WireRxDraftLine | WireRxLine): string =>
+    [l.drug.trim(), l.dose.trim(), l.route, l.frequency, String(l.durationDays ?? "").trim()].join("|");
+  return a.length === b.length && a.every((l, i) => k(l) === k(b[i]!));
+}
+
+/** The visit's CURRENT prescription — the active row of the highest version — or null. */
+function latestIssued(rows: readonly WirePrescription[]): WirePrescription | null {
+  return rows.filter((r) => r.status === "active").reduce<WirePrescription | null>((best, r) => (best === null || r.version > best.version ? r : best), null);
 }
 
 // ─────────────────────────── PLAN 16a T6 — the check-suite wire shapes ───────────────────────────
@@ -279,7 +332,7 @@ function v2BodyOf(v: V2State, on: boolean): Record<string, unknown> {
   };
 }
 /** The designed tabs (Consult.dc.html). Complaints, Diagnosis and Advice are the v1 note form, split. */
-type TabId = "summary" | "vitals" | "eye" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
+type TabId = "summary" | "vitals" | "eye" | "paeds" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
 
 /**
  * ═══ THE DIAGNOSIS GOES UP AS A LIST, AND THE CODES RIDE WITH THEIR OWN WORDS ═══
@@ -523,6 +576,16 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
    */
   const [issuedRowsKey, setIssuedRowsKey] = useState<string | null>(null);
   const loadedNoteFor = useRef<string | null>(null);
+  /**
+   * Defect A — what the SERVER holds as this visit's unissued lines, in `draftKey` form: "" = nothing,
+   * "stale" = a draft that was in fact issued (a tab closed between the issue and the clear), which
+   * the next save clears. `rehydrateNext` makes the next visit read re-seed the screen (a takeover).
+   */
+  const rxSavedKey = useRef<string>("");
+  const rehydrateNext = useRef(false);
+  const [rxHydrated, setRxHydrated] = useState(0);
+  /** A chip removed is a save (defect G): set by the tag field, spent by the effect after the render. */
+  const saveAfterRender = useRef(false);
 
   // ——— boot: am I a doctor, and what is my queue today? ———
 
@@ -736,11 +799,16 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const correctedAllergies = (allergies.data?.items ?? []).filter((a) => a.status === "entered_in_error");
   const dob = patient.data?.patient.dob ?? null;
   const ageYears = dob !== null ? ageYearsAt(dob, new Date()) : null;
+  /* §6.2 — a child's age reads in years, months and days ("1 y 3 m 13 d"); an adult's stays in years. */
+  const childAge = dob !== null ? childAgeText(dob, new Date()) : null;
   const timelineItems = timeline.data?.items ?? [];
 
   // The note mirrors the encounter the server already holds; the visit query is its source of truth.
   useEffect(() => {
-    if (encounter === null || loadedNoteFor.current === encounter.id) return;
+    if (encounter === null) return;
+    /* A read-only tab follows the tab that writes; a takeover re-seeds once from the fresh read (defect A). */
+    if (loadedNoteFor.current === encounter.id && !rehydrateNext.current && !readOnly) return;
+    rehydrateNext.current = false;
     loadedNoteFor.current = encounter.id;
     /*
       ═══ THE DESK'S WORDS ARE A RECORDED FACT, NOT THE DOCTOR'S ENTRY (owner's walk, 2026-09-23) ═══
@@ -781,11 +849,38 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       || loadedV2.internalComment !== "" || loadedV2.diagnosisKind !== null || loadedV2.rxStockChoices.length > 0;
     setV2(loadedV2);
     setStockAnswered(Object.fromEntries(loadedV2.rxStockChoices.map((c) => [c.chosen === "keep" ? c.keptMedicineId : c.offeredMedicineId, true as const])));
-    lastSavedNote.current = JSON.stringify({ ...noteBodyOf(next, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(loadedV2, v2On.current) });
-  }, [encounter, visit.data]);
+    /*
+      DEFECT A — the lines written and not issued come back into the editor, un-issued, so Complete
+      still issues them. A draft that matches the prescription already issued is one whose clear was
+      lost (the tab closed between the two): it is not restored — that would invite a duplicate issue —
+      and the next save clears it.
+    */
+    const saved = Array.isArray(encounter.rxDraft) ? encounter.rxDraft : [];
+    const issuedNow = latestIssued(visit.data?.prescriptions ?? []);
+    const stale = saved.length > 0 && issuedNow !== null && sameLines(saved, issuedNow.lines);
+    const restored = stale ? [] : saved.map(formRowOf);
+    if (restored.length > 0) {
+      rxForm.reset({ lines: restored });
+      setIssuedRowsKey(null);
+      setRxOpen(null);
+    } else if (readOnly) {
+      rxForm.reset({ lines: [EMPTY_LINE] });
+    }
+    const restoredRows = draftRowsOf(restored);
+    rxSavedKey.current = stale ? "stale" : draftKey(restoredRows);
+    setRxHydrated((n) => n + 1);
+    lastSavedNote.current = JSON.stringify({
+      ...noteBodyOf(next, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(loadedV2, v2On.current),
+      ...(restoredRows.length > 0 ? { rxDraft: restoredRows } : {}),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rxForm is stable; readOnly re-runs it for the follow/takeover cases
+  }, [encounter, visit.data, readOnly]);
 
   const rxForm = useForm<RxFormInput, unknown, RxFormValues>({
-    resolver: zodResolver(rxSchema),
+    resolver: zodResolver(rxSchemaWith({
+      drug: t("opdConsult.rxRequired.drug"), dose: t("opdConsult.rxRequired.dose"), route: t("opdConsult.rxRequired.route"),
+      frequency: t("opdConsult.rxRequired.frequency"), days: t("opdConsult.rxRequired.days"),
+    })),
     defaultValues: { lines: [EMPTY_LINE] },
   });
   const lines = useFieldArray({ control: rxForm.control, name: "lines" });
@@ -808,6 +903,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   }, [lines.fields]);
   /* The label follows what Complete will do: "Issue & complete" while written rows are un-issued. */
   const rxWaiting = (() => { const k = rowsKey(rxForm.watch("lines")); return k !== "" && k !== issuedRowsKey; })();
+  /** Defect B — the prescription this visit already issued (its current version), or null. */
+  const issuedRx = latestIssued(visit.data?.prescriptions ?? []);
 
   // ——— CONSULT V2: stock beside each medicine, and the alternative at zero (D13, D14) ———
   const watchedLines = rxForm.watch("lines");
@@ -865,7 +962,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
 
   // ——— CONSULT V2: "your work so far" — one line per section, visible on every tab ———
   const splitList = (x: string): string[] => splitTags(x);
+  /* Defect G — the Summary ("what will be saved") named every base section and none of the eye's. */
+  const eyeRow = eyeSummary(t, engine.data);
   const allWorkRows: WorkRow[] = [
+    ...(engine.data !== undefined && engine.data.profile !== null ? [{ id: "eye", label: t("opdEye.tab"), text: eyeRow.text, count: eyeRow.items }] : []),
     { id: "complaints", label: t("opdConsultV2.sec.complaints"), text: splitList(note.chiefComplaint).join(" · "), count: splitList(note.chiefComplaint).length },
     { id: "exam", label: t("opdConsultV2.sec.exam"), text: v2.examination.map((f) => f.text).join(" · "), count: v2.examination.length },
     {
@@ -874,7 +974,13 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       count: splitList(note.diagnosis).length,
     },
     { id: "inv", label: t("opdConsultV2.sec.inv"), text: advisedTests.map((x) => x.name).join(" · "), count: advisedTests.length },
-    { id: "rx", label: t("opdConsultV2.sec.rx"), text: watchedLines.filter((l) => l.drug.trim() !== "").map((l) => `${l.drug.trim()} ${l.frequency}`).join(" · "), count: watchedLines.filter((l) => l.drug.trim() !== "").length },
+    /*
+      DEFECT B — after an issue (or on reopening an issued visit) the row said "— not yet", inviting a
+      second issue. Lines waiting in the editor still lead; otherwise the issued version is named.
+    */
+    rxWaiting || issuedRx === null
+      ? { id: "rx", label: t("opdConsultV2.sec.rx"), text: watchedLines.filter((l) => l.drug.trim() !== "").map((l) => `${l.drug.trim()} ${l.frequency}`).join(" · "), count: watchedLines.filter((l) => l.drug.trim() !== "").length }
+      : { id: "rx", label: t("opdConsultV2.sec.rx"), text: t("opdConsultV2.rxIssuedStrip", { n: issuedRx.version, lines: issuedRx.lines.map((l) => `${l.drug.trim()} ${l.frequency}`).join(" · ") }), count: issuedRx.lines.length },
     { id: "treat", label: t("opdConsultV2.sec.treat"), text: v2.treatment.join(" · "), count: v2.treatment.length },
     { id: "advice", label: t("opdConsultV2.sec.advice"), text: note.advice.trim(), count: note.advice.trim() === "" ? 0 : 1 },
     {
@@ -886,7 +992,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   /** The work strip follows the layout too: the same order as the tabs, and no row for a section the layout leaves off. */
   const workRows = orderRows(allWorkRows, layout.data);
   const goToSection = (id: string): void => {
-    const tabFor: Record<string, TabId> = { complaints: "complaints", dx: "dx", advice: "advice", inv: "inv", exam: "exam", rx: "rx", treat: "treat", notes: "notes" };
+    const tabFor: Record<string, TabId> = { eye: "eye", complaints: "complaints", dx: "dx", advice: "advice", inv: "inv", exam: "exam", rx: "rx", treat: "treat", notes: "notes" };
     setTab(tabFor[id] ?? "complaints");
     const anchorFor: Record<string, string> = { complaints: "note-chief", dx: "note-diagnosis", advice: "note-advice" };
     setTimeout(() => {
@@ -895,7 +1001,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     }, 0);
   };
   const tabHas = (id: TabId): boolean => {
-    const map: Partial<Record<TabId, string[]>> = { complaints: ["complaints"], dx: ["dx"], inv: ["inv"], advice: ["advice"], exam: ["exam"], rx: ["rx"], treat: ["treat"], notes: ["notes"] };
+    const map: Partial<Record<TabId, string[]>> = { eye: ["eye"], complaints: ["complaints"], dx: ["dx"], inv: ["inv"], advice: ["advice"], exam: ["exam"], rx: ["rx"], treat: ["treat"], notes: ["notes"] };
     const ids = map[id] ?? [];
     return workRows.some((r) => ids.includes(r.id) && r.count > 0);
   };
@@ -1155,6 +1261,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     setCdsError(null);
     rxForm.reset({ lines: [EMPTY_LINE] });
     setIssuedRowsKey(null);
+    rxSavedKey.current = "";
+    rehydrateNext.current = false;
+    saveAfterRender.current = false;
   };
 
   // ——— the queue actions ———
@@ -1205,6 +1314,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     const q = allergyText.trim();
     allergyAsked.current = q;
     if (!allergyOpen || q.length < 3) { setAllergyHits([]); setAllergyKnown(true); return; }
+    /* Defect E — the pick wrote its own term into the box; asking again re-opened the list over Severity. */
+    if (allergyPick !== null && allergyPick.term === q) { setAllergyHits([]); setAllergyKnown(true); return; }
     let live = true;
     const timer = setTimeout(() => {
       void api<{ items: WireAllergenHit[]; known: boolean }>(
@@ -1220,7 +1331,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         .catch(() => { if (live) { setAllergyHits([]); setAllergyKnown(true); } });
     }, 120);
     return () => { live = false; clearTimeout(timer); };
-  }, [allergyText, allergyOpen]);
+  }, [allergyText, allergyOpen, allergyPick]);
 
   /**
    * ═══ TAPPING A TEMPLATE APPENDS; IT NEVER REPLACES ═══
@@ -1581,7 +1692,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     try {
       const r = await takeLease(activeEncounterId, tabToken.current, true);
       setLease(r.held ? "mine" : "other");
-      if (r.held) await queryClient.invalidateQueries({ queryKey: ["opd", "visit", activeEncounterId] });
+      /* Defect A — the other tab may have written since this one last read: re-seed from the fresh read. */
+      if (r.held) { rehydrateNext.current = true; await queryClient.invalidateQueries({ queryKey: ["opd", "visit", activeEncounterId] }); }
     } catch (e) {
       setNoteError(opdErrorMessage(e));
     }
@@ -1610,12 +1722,13 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const saveNote = async (opts?: { force?: boolean; v2?: V2State }): Promise<void> => {
     if (active === null) return;
     if (readOnly) return; // D17: a read-only tab writes nothing
-    const body = { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current) };
+    const body = { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current), ...rxDraftPart() };
     const key = JSON.stringify(body);
     if (key === lastSavedNote.current && opts?.force !== true) return;
     setNoteError(null);
     try {
       await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...body, ...leaseBody() });
+      if (body.rxDraft !== undefined) rxSavedKey.current = draftKey(body.rxDraft ?? []);
       lastSavedNote.current = key;
       setNoteSaved(true);
       setSavedAt(new Date());
@@ -1624,6 +1737,51 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       setNoteError(opdErrorMessage(e));
     }
   };
+
+  /**
+   * DEFECT A — the unissued lines, as the note carries them: the written rows while they differ from
+   * what was last issued; `null` once there is nothing unissued but the server still holds a draft
+   * (that is the clear, after an issue); and nothing at all otherwise, so a note save with no
+   * prescription in play sends exactly the body it always did.
+   */
+  const rxDraftPart = (): { rxDraft?: WireRxDraftLine[] | null } => {
+    const rows = rxUnissued() ? draftRowsOf(rxForm.getValues("lines")) : [];
+    if (rows.length > 0) return { rxDraft: rows };
+    return rxSavedKey.current !== "" ? { rxDraft: null } : {};
+  };
+  /* The lines save on their own short pause after the doctor stops writing — a line is not a blur. */
+  const rxNowKey = rowsKey(watchedLines);
+  useEffect(() => {
+    if (active === null || readOnly) return;
+    const id = setTimeout(() => {
+      if (draftKey(rxDraftPart().rxDraft ?? []) !== rxSavedKey.current) void saveNote();
+    }, 900);
+    return () => { clearTimeout(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the written rows, the issue, and a fresh hydration
+  }, [rxNowKey, issuedRowsKey, rxHydrated, readOnly]);
+  /* Leaving the page with lines the server does not hold yet asks first (the browser words the question). */
+  const rxUnsaved = useRef<() => boolean>(() => false);
+  rxUnsaved.current = () => {
+    if (active === null || readOnly) return false;
+    const rows = rxUnissued() ? draftRowsOf(rxForm.getValues("lines")) : [];
+    return rows.length > 0 && draftKey(rows) !== rxSavedKey.current;
+  };
+  useEffect(() => {
+    const onLeave = (e: BeforeUnloadEvent): void => {
+      if (!rxUnsaved.current()) return;
+      e.preventDefault();
+      e.returnValue = ""; // Chrome still wants it set to show the prompt
+    };
+    window.addEventListener("beforeunload", onLeave);
+    return () => { window.removeEventListener("beforeunload", onLeave); };
+  }, []);
+  /* Defect G — removing a chip saves now, not at the next blur (the field keeps the focus after ×). */
+  useEffect(() => {
+    if (!saveAfterRender.current) return;
+    saveAfterRender.current = false;
+    void saveNote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per note change that asked for it
+  }, [note]);
 
   /*
     CONSULT V2 — a chip or a toggle is not a blur, so the v2 sections autosave on their own short
@@ -1812,6 +1970,19 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     setOverrideError(null);
   };
 
+  /** Closing the warnings issues nothing; the lines stay in the editor as written (defect F: Cancel). */
+  const closeOverride = (): void => {
+    setMatches(null);
+    setReasons([]);
+    setInteractionHits([]);
+    setInteractionReasons([]);
+    setDuplicateHits([]);
+    setDuplicateReasons([]);
+    setDiseaseHits([]);
+    setDiseaseReasons([]);
+    setOverrideError(null);
+  };
+
   /** The dialog carries four kinds now; only the allergy-only case may call itself an allergy. */
   const allergyOnly = matches !== null
     && interactionHits.length === 0 && duplicateHits.length === 0 && diseaseHits.length === 0;
@@ -1896,6 +2067,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current),
         ...v2BodyOf(v2, v2On.current),
         ...leaseBody(),
+        /* Everything written is issued by now (above), so a draft the server still holds is cleared with the visit. */
+        ...(rxSavedKey.current !== "" ? { rxDraft: null } : {}),
         admissionAdvised,
         referralTo: orNull(referralTo),
         referralNote: orNull(referralNote),
@@ -2430,6 +2603,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               <button type="button" className="cx-hbtn" data-testid="history-open" onClick={() => { setHistoryOpen(true); }}>
                 {t("opdConsultV2.history.button")}
               </button>
+              {/* Defect D — the ⋯ menu is hidden at ≥900 px, and it was My layout's only door. */}
+              <button type="button" className="cx-hbtn cx-hide-md" data-testid="my-layout-open" onClick={() => { setMyLayoutOpen(true); }}>
+                {t("opdLayout.my.menu")}
+              </button>
               <button type="button" className="cx-hbtn cx-hide-md" data-testid="save-draft" onClick={() => void saveNote({ force: true })}>
                 {t("opdConsultV2.saveDraft")}
               </button>
@@ -2518,7 +2695,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       <div className="cx-name">
                         <span data-testid="panel-patient-name">{patient.data?.patient.name ?? patient.data?.patient.alias ?? patientLabel(active.summary)}</span>
                         <small>
-                          {" · "}<span data-testid="panel-patient-age">{t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.administrativeGender ?? "—"}</span>
+                          {" · "}<span data-testid="panel-patient-age">{childAge ?? t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.administrativeGender ?? "—"}</span>
                           {activeToken !== null && <> · {t("opdConsultV2.token", { n: activeToken })}</>}
                           {" · "}<span data-testid="panel-uhid" className="mo" style={{ fontSize: 12 }}>{patient.data?.patient.uhid ?? active.summary?.uhid ?? "—"}</span>
                         </small>
@@ -2610,7 +2787,12 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               setAllergyText(e.target.value);
                               setAllergyPick(null); // the code belonged to the OLD words
                             }}
-                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addAllergy(); } }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") { e.preventDefault(); void addAllergy(); }
+                              /* Esc closes the list first — and only the list: the screen's own Esc must not see it. */
+                              if (e.key === "Escape" && allergyHits.length > 0) { e.preventDefault(); e.stopPropagation(); allergyAsked.current = ""; setAllergyHits([]); }
+                            }}
+                            onBlur={() => { allergyAsked.current = ""; setAllergyHits([]); }}
                             className="in" style={{ width: "100%", height: 30, fontSize: 12.5 }}
                             placeholder={t("opdConsult.allergyPlaceholder")}
                           />
@@ -2818,6 +3000,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       ["vitals", t("opdConsultV2.tabs.vitals")],
                       // Consult engine (D19): the department's own sections, only where its profile names them.
                       ...(engine.data?.profile === "ophthalmology" ? [["eye", t("opdEye.tab")] as const] : []),
+                      ...(engine.data?.profile === "paediatrics" ? [["paeds", t("opdPaeds.tab")] as const] : []),
                       ["complaints", t("opdConsultV2.tabs.complaints")],
                       ["exam", t("opdConsultV2.tabs.exam")],
                       ["dx", t("opdConsultV2.tabs.dx")],
@@ -2856,6 +3039,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 {tab === "eye" && active !== null && (
                   <div role="tabpanel" id="tabpanel-eye" aria-labelledby="tab-eye">
                     <EyeSections key={active.encounterId} encounterId={active.encounterId} leaseBody={leaseBody} readOnly={readOnly} />
+                  </div>
+                )}
+                {tab === "paeds" && active !== null && (
+                  <div role="tabpanel" id="tabpanel-paeds" aria-labelledby="tab-paeds">
+                    <PaedsSections key={active.encounterId} encounterId={active.encounterId} leaseBody={leaseBody} readOnly={readOnly} />
                   </div>
                 )}
                 {tab === "exam" && (
@@ -2932,7 +3120,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         id="note-chief"
                         label={t("opdConsult.chiefComplaint")}
                         value={note.chiefComplaint}
-                        onChange={(next) => { setNote((n) => ({ ...n, chiefComplaint: next })); }}
+                        onChange={(next) => {
+                          if (splitTags(next).length < splitTags(note.chiefComplaint).length) saveAfterRender.current = true;
+                          setNote((n) => ({ ...n, chiefComplaint: next }));
+                        }}
                         suggest={async (q) => {
                           const r = await completeComplaint(q);
                           /*
@@ -3059,7 +3250,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       id="note-diagnosis"
                       label={t("opdConsult.diagnosis")}
                       value={note.diagnosis}
-                      onChange={(next) => { setNote((n) => ({ ...n, diagnosis: next })); }}
+                      onChange={(next) => {
+                        if (splitTags(next).length < splitTags(note.diagnosis).length) saveAfterRender.current = true;
+                        setNote((n) => ({ ...n, diagnosis: next }));
+                      }}
                       suggest={async (q) => {
                         const r = await api<{ items: WireIcd10Hit[] }>(
                           "GET", `/opd/cds/complete/diagnosis?q=${encodeURIComponent(q)}`,
@@ -3363,6 +3557,44 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                     second implementation of a clinical decision; handing the lines down to the
                     editor is the same doctor, the same checks, one panel lower.
                   */}
+                  {/*
+                    DEFECT B — a reopened consult showed an EMPTY Rx tab over a prescription already at
+                    the pharmacy (walk 41). The current version is shown here, read-only; changing it is a
+                    deliberate act that brings its lines into the editor as the next version.
+                  */}
+                  {issuedRx !== null && (
+                    <div className="box" data-testid="rx-issued" style={{ marginBottom: 13, padding: 12, borderColor: "var(--green)", background: "var(--green-soft)" }}>
+                      <span className="tag" style={{ color: "var(--green)" }}>{t("opdConsult.rxIssued.heading", { n: issuedRx.version, at: fmtIst(issuedRx.issuedAt) })}</span>
+                      <ol style={{ margin: "7px 0 0", paddingLeft: 20, fontSize: 13 }}>
+                        {issuedRx.lines.map((l, i) => (
+                          <li key={i} data-testid={`rx-issued-line-${String(i)}`}>
+                            {[l.drug, l.dose, l.frequency, l.route, l.eye != null ? t(`rx.eye.${l.eye}`) : "", l.durationDays !== null ? t("rx.days", { n: l.durationDays }) : "", l.instructions ?? ""]
+                              .filter((x) => x.trim() !== "").join(" · ")}
+                          </li>
+                        ))}
+                      </ol>
+                      <p style={{ margin: "7px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{t("opdConsult.rxIssued.note")}</p>
+                      <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
+                        <button type="button" className="sec" data-testid="rx-issued-print" style={{ height: 30, fontSize: 12 }}
+                          onClick={() => {
+                            void api<WireRxPrint>("GET", `/opd/prescriptions/${issuedRx.id}/print`).then(setRxPrint).catch((e: unknown) => { setRxError(opdErrorMessage(e)); });
+                          }}>
+                          {t("opdConsult.rxIssued.print")}
+                        </button>
+                        {!readOnly && rowsKey(watchedLines) === "" && (
+                          <button type="button" className="sec" data-testid="rx-issued-amend" style={{ height: 30, fontSize: 12 }}
+                            onClick={() => {
+                              const rows = issuedRx.lines.map(formRowOf);
+                              rxForm.reset({ lines: rows });
+                              setIssuedRowsKey(rowsKey(rows));
+                              setRxOpen(null);
+                            }}>
+                            {t("opdConsult.rxIssued.amend", { n: issuedRx.version + 1 })}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {draft.data?.draft != null && (
                     <div className="box" data-testid="rx-draft" style={{ marginBottom: 13, padding: 12, borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
                       <span className="tag">{t("opdConsult.draft.heading")}</span>
@@ -3782,6 +4014,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               {active !== null && tab === "inv" && (
                 <LabResultsPanel visitNo={visit.data?.encounter.visitNo ?? null} />
               )}
+              {/* PLAN 18-S RS2 — the imaging order door; all of it lives in its own file. */}
+              {active !== null && tab === "inv" && (
+                <ImagingOrderPanel encounterNo={visit.data?.encounter.visitNo ?? null} clinicianUserId={me.data?.userId ?? null} advisedKey={advisedTests.map((a) => a.serviceId).join(",")} />
+              )}
               {tab === "inv" && active !== null && <SectionHistory visits={timelineItems} currentEncounterId={active.encounterId} sections={["inv"]} testId="history-foot-inv" />}
 
               {/* (c) follow-up, referral fields — the Advice & follow-up tab; Complete lives in the header */}
@@ -3854,17 +4090,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         */
         title={allergyOnly ? t("opdConsult.overrideTitle") : t("opdConsult.overrideTitleChecks")}
         titleId="override-title" testId="override-dialog"
-        onClose={() => {
-          setMatches(null);
-          setReasons([]);
-          setInteractionHits([]);
-          setInteractionReasons([]);
-          setDuplicateHits([]);
-          setDuplicateReasons([]);
-          setDiseaseHits([]);
-          setDiseaseReasons([]);
-          setOverrideError(null);
-        }}
+        onClose={closeOverride}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           <p style={{ margin: 0, fontSize: 12.5 }}>
@@ -3875,6 +4101,25 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               <label style={{ display: "block", marginBottom: 5, fontSize: 12.5, fontWeight: 600 }} htmlFor={`override-reason-${String(i)}`}>
                 {t("opdConsult.overrideMatch", { n: m.lineIndex + 1, substance: m.substance })}
               </label>
+              {/*
+                Defect F — the class alone ("Penicillin") did not say WHICH medicine tripped it, nor how
+                bad the recorded reaction was. The drug is the refused line's own; the severity is the
+                allergy on file with that name (absent when none matches by name — then nothing is said).
+              */}
+              {(() => {
+                const drug = pendingLines.current[m.lineIndex]?.drug ?? "";
+                const sev = activeAllergies.find((a) => a.substance.trim().toLowerCase() === m.substance.trim().toLowerCase())?.severity ?? null;
+                return (
+                  <p data-testid={`override-match-${String(i)}`} style={{ margin: "0 0 5px", fontSize: 12.5 }}>
+                    {t("opdConsult.overrideMatchDrug", { drug, substance: m.substance })}
+                    {sev !== null && (
+                      <span style={{ fontWeight: 700, color: sev === "severe" ? "var(--red)" : "var(--gold)" }}>
+                        {` · ${t("opdConsult.overrideMatchSeverity", { severity: t(`opdConsult.severity.${sev}`) })}`}
+                      </span>
+                    )}
+                  </p>
+                );
+              })()}
               <input
                 id={`override-reason-${String(i)}`}
                 value={reasons[i] ?? ""}
@@ -3960,7 +4205,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
             <p style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("opdConsult.inSystemOnly")}</p>
           )}
           <ErrorLine message={overrideError} />
-          <button type="button" className="pri" style={{ alignSelf: "flex-start" }} onClick={() => void confirmOverride()}>{t("opdConsult.overrideConfirm")}</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="pri" onClick={() => void confirmOverride()}>{t("opdConsult.overrideConfirm")}</button>
+            <button type="button" className="sec" data-testid="override-cancel" onClick={() => { closeOverride(); setTab("rx"); }}>{t("opdConsult.cancel")}</button>
+          </div>
         </div>
       </DeskModal>
 

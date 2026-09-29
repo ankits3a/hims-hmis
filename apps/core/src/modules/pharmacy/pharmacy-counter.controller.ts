@@ -24,6 +24,8 @@ import { checkPickScan } from "./scan";
 import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { authorisationDetail, decideAuthorisation, requestAuthorisation } from "./authorisations";
+import { askSteward, stewardRequestDetail, stewardStates } from "./antimicrobial";
+import type { StewardLineState, StewardRequestDetail, StewardVerdict } from "./antimicrobial";
 import type { AuthorisationDetail } from "./authorisations";
 import type { AuthorisationRow } from "./authorisation-reads";
 import { reorderAdvice } from "./replenishment";
@@ -83,12 +85,14 @@ const pickBody = z.object({
   })).optional(),
 });
 const billBody = z.object({
-  tenders: z.array(z.object({ mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().nonnegative(), refText: z.string().max(120).optional() })).min(1),
+  tenders: z.array(z.object({ mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().nonnegative(), refText: z.string().max(120).optional() })),
   panNumber: z.string().max(20).optional(),
   form60: z.boolean().optional(),
   changeGivenPaise: z.number().int().nonnegative().optional(),
   tags: z.array(z.string().min(1)).optional(),
-});
+  /** GAP A3b — on credit, on the owner's granted approval; billing checks the grant against the dispense and amount. */
+  credit: z.object({ reason: z.string().trim().min(1).max(500), approvalId: z.string().min(1).max(64) }).optional(),
+}).refine((b) => b.tenders.length > 0 || b.credit !== undefined, { message: "a bill is paid by a tender, or on the owner's credit", path: ["tenders"] });
 /** P1 — the short book. `itemId` when the counter knows the drug; the name as said otherwise. */
 const shortBookBody = z.object({
   itemId: idSchema.optional(),
@@ -246,6 +250,47 @@ export class PharmacyCounterController {
     const input = parsed(z.object({ authorise: z.boolean(), reason: z.string().max(500) }), body);
     try {
       return await decideAuthorisation(this.db, actor, id, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * STAGE D5 — ask the ANTIMICROBIAL STEWARD to approve one restricted line (its moiety set on this dispense). The
+   * counter's permission to ask, as for the prescriber; the Act's registration inside (`askSteward`). The decision is
+   * made in /approvals.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/lines/:idx/steward")
+  async askSteward(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string, @Body() body: unknown): Promise<StewardVerdict> {
+    const lineIdx = parsed(z.object({ idx: z.coerce.number().int().nonnegative() }), { idx }).idx;
+    const input = parsed(z.object({
+      indication: z.string().min(1).max(300), cultureSent: z.boolean(), plannedDays: z.number().int().min(1).max(90), note: z.string().max(500).optional(),
+    }), body);
+    try {
+      return await askSteward(this.db, actor, id, lineIdx, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** STAGE D5 — where each restricted line of this ticket stands with the steward (the desk's line note and its ⋯ ask). */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/steward")
+  async stewardLines(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ lines: StewardLineState[] }> {
+    try {
+      return { lines: await stewardStates(this.db, actor, id) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** STAGE D5 — the steward reads the prescription line the request is about, and whose it is, beside the inbox card. */
+  @RequirePermission("pharmacy.antimicrobial.approve", "hospital")
+  @Get("steward-requests/:approvalId")
+  async stewardRequest(@CurrentActor() actor: Actor, @Param("approvalId") approvalId: string): Promise<StewardRequestDetail> {
+    try {
+      return await stewardRequestDetail(this.db, actor, approvalId);
     } catch (e) {
       return toHttp(e);
     }

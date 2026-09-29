@@ -488,7 +488,18 @@ type ReceiptListRow = Omit<ReceiptRowSelect, "panNumber"> & { panCaptured: boole
  * who is being paid and against what KIND of document, and the reference number is verified
  * against the physical document at pay time, never read off a list.
  */
-type RefundVoucherListRow = Omit<RefundVoucherRow, "payeeIdRef">;
+type RefundVoucherListRow = Omit<RefundVoucherRow, "payeeIdRef"> & {
+  /**
+   * ═══ UX-AUDIT 2026-09-28 — THE WORKLIST SAID "Patient: p-1" ═══
+   *
+   * The office read a raw internal id off every voucher. The id stays (it is the key), and beside
+   * it rides the SAME alias-safe summary `listMismatches` and `listDues` carry: `getPatientSummaries`
+   * applies the confidential gate (§14), so a restricted patient arrives with `name: null` and the
+   * alias, never the name. ONE batched call for the whole page — the N+1 the old "no name lookup"
+   * note was avoiding was a per-row CLIENT round trip, and a server-side batch has no such cost.
+   */
+  uhid: string; name: string | null; alias: string | null; restricted: boolean;
+};
 
 type InvoiceDetail = { invoice: InvoiceRow; lines: InvoiceLineRow[]; settlement: Settlement };
 type InvoicePrint = {
@@ -1004,38 +1015,48 @@ export class BillingController {
    * `listCreditNotes` precedent). */
   @RequirePermission("billing.reports.read", "hospital")
   @Get("refunds")
-  async refundList(@Query() query: unknown): Promise<{ items: RefundVoucherListRow[] }> {
+  async refundList(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: RefundVoucherListRow[] }> {
     const q = parsed(refundsQuery, query);
     const conditions = [];
     if (q.patientId !== undefined) conditions.push(eq(refundVouchers.patientId, q.patientId));
     if (q.status !== undefined) conditions.push(eq(refundVouchers.status, q.status));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const rows = await this.db
+      .select({
+        id: refundVouchers.id,
+        voucherNo: refundVouchers.voucherNo,
+        patientId: refundVouchers.patientId,
+        kind: refundVouchers.kind,
+        creditNoteId: refundVouchers.creditNoteId,
+        invoiceId: refundVouchers.invoiceId,
+        amountPaise: refundVouchers.amountPaise,
+        method: refundVouchers.method,
+        payeeName: refundVouchers.payeeName,
+        payeeIdType: refundVouchers.payeeIdType,
+        reasonClass: refundVouchers.reasonClass,
+        reason: refundVouchers.reason,
+        guardFlags: refundVouchers.guardFlags,
+        approvalId: refundVouchers.approvalId,
+        status: refundVouchers.status,
+        requestedBy: refundVouchers.requestedBy,
+        issuedAt: refundVouchers.issuedAt,
+        paidBy: refundVouchers.paidBy,
+        paidAt: refundVouchers.paidAt,
+        cashierSessionId: refundVouchers.cashierSessionId,
+      })
+      .from(refundVouchers).where(where)
+      .orderBy(desc(refundVouchers.issuedAt), desc(refundVouchers.voucherNo));
+    const summaries = await getPatientSummaries(this.db, actor, rows.map((r) => r.patientId));
+    const byPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
     return {
-      items: await this.db
-        .select({
-          id: refundVouchers.id,
-          voucherNo: refundVouchers.voucherNo,
-          patientId: refundVouchers.patientId,
-          kind: refundVouchers.kind,
-          creditNoteId: refundVouchers.creditNoteId,
-          invoiceId: refundVouchers.invoiceId,
-          amountPaise: refundVouchers.amountPaise,
-          method: refundVouchers.method,
-          payeeName: refundVouchers.payeeName,
-          payeeIdType: refundVouchers.payeeIdType,
-          reasonClass: refundVouchers.reasonClass,
-          reason: refundVouchers.reason,
-          guardFlags: refundVouchers.guardFlags,
-          approvalId: refundVouchers.approvalId,
-          status: refundVouchers.status,
-          requestedBy: refundVouchers.requestedBy,
-          issuedAt: refundVouchers.issuedAt,
-          paidBy: refundVouchers.paidBy,
-          paidAt: refundVouchers.paidAt,
-          cashierSessionId: refundVouchers.cashierSessionId,
-        })
-        .from(refundVouchers).where(where)
-        .orderBy(desc(refundVouchers.issuedAt), desc(refundVouchers.voucherNo)),
+      items: rows.map((row) => {
+        const summary = byPatient.get(row.patientId);
+        return {
+          ...row,
+          uhid: summary?.uhid ?? "", name: summary?.name ?? null, alias: summary?.alias ?? null,
+          restricted: summary?.restricted ?? false,
+        };
+      }),
     };
   }
 

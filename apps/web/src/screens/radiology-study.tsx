@@ -8,6 +8,7 @@ import {
 } from "../lib/radiology-api";
 import { DOSE_UNITS, fetchCumulativeDose } from "../lib/aerb-api";
 import { Button } from "@/components/ui/button";
+import { RadiologyStation } from "./radiology-station";
 
 /**
  * PLAN 18a T9 — **THE STUDY CONSOLE: the ten gates, the override lane, and the acquisition.**
@@ -113,10 +114,26 @@ export function RadiologyStudy(): React.ReactElement {
   });
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">
-        {s === null ? t("radiology.study.unknown") : `${s.accessionNo} — ${s.patientName}`}
-      </h1>
+    <RadiologyStation
+      station="worklist"
+      title={s === null ? t("radiology.study.unknown") : `${s.accessionNo} — ${s.patientName}`}
+      place={t("radiology.station.studyPlace")}
+      stats={[]}
+    >
+    <div className="space-y-4">
+      {/* 18-S RS6 — the room console works this study step by step; this page stays the full record. */}
+      {s !== null && s.acquiredAt === null
+        ? (
+          <p className="text-sm">
+            <a
+              href={`/radiology/room?study=${encodeURIComponent(studyId)}`} className="font-medium underline" data-testid="to-room-console"
+              onClick={(e) => { e.preventDefault(); void navigate({ to: "/radiology/room", search: { study: studyId } }); }}
+            >
+              {t("radiology.study.toRoom")}
+            </a>
+          </p>
+        )
+        : null}
       {s !== null
         ? (
           <p className="text-sm">
@@ -296,5 +313,6 @@ export function RadiologyStudy(): React.ReactElement {
         </div>
       </section>
     </div>
+    </RadiologyStation>
   );
 }

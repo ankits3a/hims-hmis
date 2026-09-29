@@ -461,6 +461,17 @@ export const opdEncounters = pgTable(
     diagnosisKind: text("diagnosis_kind"),
     rxStockChoices: jsonb("rx_stock_choices"),
     /**
+     * ═══ THE PRESCRIPTION BEING WRITTEN, NOT YET ISSUED (consult walk 2026-09-28, defect A) ═══
+     *
+     * The editor's rows as the doctor left them — `{ drug, dose, route, frequency, durationDays,
+     * instructions, noSubstitution, medicineId?, eye?, taper? }[]`, possibly incomplete — saved by the
+     * consult note's own path (treating doctor, in_consultation, the edit lease) so a reload, a second
+     * tab or a lease takeover finds them. NULL = nothing unissued. It is NOT a prescription: nothing
+     * downstream reads it (the pharmacy, the print, FHIR and the QR all read `opd_prescriptions`), and
+     * it is not the scribe's transcription (`opd_prescription_drafts`), which a desk may issue.
+     */
+    rxDraft: jsonb("rx_draft"),
+    /**
      * ═══ D17 — ONE TAB EDITS AT A TIME (owner, 2026-09-23) ═══
      *
      * A doctor may open a patient in a new browser tab. Two tabs writing the same note would each

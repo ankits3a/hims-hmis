@@ -53,11 +53,26 @@ export async function getPatientPhoto(
   actor: Actor,
   patientId: string,
 ): Promise<{ mimeType: string; bytes: Buffer } | null> {
+  const read = await readPatientPhoto(db, actor, patientId);
+  return read.visible ? read.photo : null;
+}
+
+/**
+ * DESK-FIXES F (2026-09-28) — the same read, telling "this patient has no photo" apart from "no such
+ * patient (or not one this reader may see)". The route answers the first 204 — an ordinary answer,
+ * not an error the console paints red on every photo-less patient — and the second 404, exactly as
+ * before, so the difference reveals nothing the patient read itself would not.
+ */
+export async function readPatientPhoto(
+  db: Db,
+  actor: Actor,
+  patientId: string,
+): Promise<{ visible: false } | { visible: true; photo: { mimeType: string; bytes: Buffer } | null }> {
   const resolved = await getPatient(db, actor, patientId);
-  if (!resolved) return null;
+  if (!resolved) return { visible: false };
   const rows = await db
     .select({ mimeType: patientPhotos.mimeType, bytes: patientPhotos.bytes })
     .from(patientPhotos)
     .where(eq(patientPhotos.patientId, resolved.patient.id));
-  return rows[0] ?? null;
+  return { visible: true, photo: rows[0] ?? null };
 }

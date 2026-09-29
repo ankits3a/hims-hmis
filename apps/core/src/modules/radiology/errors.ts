@@ -39,6 +39,8 @@ export const RADIOLOGY_ERROR_CODES = [
   "duplicate_recent",
   "unknown_study",
   "unknown_study_type",
+  /** 18-S RS2 — an outside prescription placed without the referrer's name and registration. */
+  "referrer_required",
   /** Consult v2 — the patient-scoped reports read: no such patient, or one this reader may not see. */
   "unknown_patient",
   /** Consult v2 — a patient's reports are read by a person, never an agent or device credential. */
@@ -120,6 +122,8 @@ export const RADIOLOGY_ERROR_CODES = [
   "unknown_administration",
   /** ── 18a-iii T3 — a bedside location on a machine that does not leave the department ── */
   "device_not_portable",
+  /** ── 18-S RS2b — an order's bedside location that is blank or longer than the column's rule ── */
+  "invalid_bedside_location",
   /**
    * ── 18a-iii T4 — an outside film recorded at the acquisition console ──
    *
@@ -128,6 +132,21 @@ export const RADIOLOGY_ERROR_CODES = [
    * are at the wrong counter, and the message has to say which one.
    */
   "outside_study_only",
+  /**
+   * ── 18-S RS4 — the machine register (Setup) ──
+   *
+   * Five codes, because a person at the Setup station acts on each differently: a bad AE title is a
+   * typo to fix against the modality's own console, a duplicate is a clash with another machine that
+   * must be named, an unknown device is a stale screen, an invalid device is a form that asked for
+   * something the register cannot hold (a room that is not a room, a modality change on a machine
+   * with a history), and a locked status is a door that belongs to somebody else — a QA block is
+   * lifted only by a passing QA record in the AERB register, and a retired machine stays retired.
+   */
+  "invalid_ae_title",
+  "duplicate_ae_title",
+  "unknown_device",
+  "invalid_device",
+  "device_status_locked",
   // ── reports (T8) ──
   "second_factor_required",
   "laterality_mismatch",
@@ -135,6 +154,32 @@ export const RADIOLOGY_ERROR_CODES = [
   "already_signed",
   "prelim_not_publishable",
   "report_not_signed",
+  /**
+   * ── 18-S RS8a — the reading room's pre-sign checks and the signer block ──
+   *
+   * Each check that REFUSES has its own code, because each is fixed differently: an empty
+   * impression is written, a side conflict is corrected against the study's side, a sex-specific
+   * organ is corrected in the text (or the patient's registration, if that is what is wrong), a
+   * missing category is chosen from the template's system. `checks_unacknowledged` is the WARNINGS'
+   * refusal: a critical term was found and the signer neither flagged it nor said they saw it.
+   * `signer_credentials_missing` is about WHO is signing (403, the file's own rule): ruling 4 prints
+   * the signer's qualification and council number, and a signature that cannot print them is not
+   * made.
+   */
+  "impression_required",
+  "side_conflict",
+  "sex_organ_mismatch",
+  "coded_category_required",
+  "checks_unacknowledged",
+  "signer_credentials_missing",
+  /**
+   * PLAN 18-S RS7 — the obstetric report. `foetal_sex_disclosure` is a SENTENCE that states the sex
+   * of a foetus (`pcpndt/foetal-sex.ts`): refused on prelim, sign, amend and publish, and no lane — not the
+   * medical superintendent's F66 override — lifts it. `invalid_biometry` is a measurement block the
+   * published formulas cannot be applied to (out of range, an unknown key, or not an obstetric study).
+   */
+  "foetal_sex_disclosure",
+  "invalid_biometry",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -155,6 +200,7 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   duplicate_recent: 409,
   unknown_study: 404,
   unknown_study_type: 422,
+  referrer_required: 422,
   unknown_patient: 404,
   user_actor_required: 403,
 
@@ -195,7 +241,13 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   vial_expired: 422,
   unknown_administration: 404,
   device_not_portable: 422,
+  invalid_bedside_location: 422,
   outside_study_only: 422,
+  invalid_ae_title: 422,
+  duplicate_ae_title: 409,
+  unknown_device: 404,
+  invalid_device: 422,
+  device_status_locked: 409,
 
   second_factor_required: 403,
   laterality_mismatch: 422,
@@ -203,6 +255,15 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   already_signed: 409,
   prelim_not_publishable: 422,
   report_not_signed: 422,
+
+  impression_required: 422,
+  side_conflict: 422,
+  sex_organ_mismatch: 422,
+  coded_category_required: 422,
+  checks_unacknowledged: 422,
+  signer_credentials_missing: 403,
+  foetal_sex_disclosure: 422,
+  invalid_biometry: 422,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

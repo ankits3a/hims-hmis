@@ -180,7 +180,12 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
       body: { findings: "Single live fetus." }, impression: "It's a boy, congratulations.",
     });
     const e = await sign(study.studyId, reportId).catch((x: unknown) => x);
-    expect((e as { code: string }).code).toBe("lexical_lockout");
+    /**
+     * 18-S RS7 T1 — on an OBSTETRIC report "boy" is now the foetal-sex guard's refusal, which is
+     * STRONGER than the word list's: no medical-superintendent lane lifts it. Still refused, still
+     * naming the hit; only the code is the Act's harm rather than the lexicon's word.
+     */
+    expect((e as { code: string }).code).toBe("foetal_sex_disclosure");
     expect(String(e)).toMatch(/"boy"/);
     expect(await latestSigned(db, study.studyId)).toBeUndefined();
   });
@@ -338,7 +343,8 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     expect(out.notified).toBe(false);
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
     expect(row!.status).toBe("published");
-    expect(await db.select().from(notifications)).toEqual([]);
+    /** 18-S RS3 T4 — the booking's own appointment message is not the report notice; count only the latter. */
+    expect(await db.select().from(notifications).where(eq(notifications.templateKey, "imaging_report_ready"))).toEqual([]);
   });
 
   /** …and the exception that proves the rule: a RED critical is told regardless of settlement. */
@@ -349,7 +355,7 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     const out = await withTx(db, (tx) => publishReport(tx, fx.radiologist, fx.decls, { studyId: study.studyId, now: NOW }));
 
     expect(out.notified).toBe(true);
-    expect(await db.select().from(notifications)).toHaveLength(1);
+    expect(await db.select().from(notifications).where(eq(notifications.templateKey, "imaging_report_ready"))).toHaveLength(1);
   });
 
   /**

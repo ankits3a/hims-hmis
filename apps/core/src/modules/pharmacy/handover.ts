@@ -12,10 +12,13 @@ import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsBy
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
 import { REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { assertStewardApprovals } from "./antimicrobial";
+import { assertNoColdChainHold } from "./cold-chain";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { prepareControlledHandover } from "./controlled-dispense";
 import type { ControlledHandoverInput } from "./controlled-dispense";
 import { dispenseHandedOver } from "./events";
+import { ownerCreditCovers } from "./credit";
 import { PharmacyError } from "./errors";
 import { registrationNoOf, requireRegisteredPharmacist } from "./pharmacists";
 import { batchTermsPerBase } from "./price";
@@ -93,6 +96,9 @@ export async function handOverDispense(
   // wherever a line carrying it can be found — including one written before the guard above existed.
   // PHARMACY P6: "may not dispense" is now "has no current licence for" (`assertControlledLinesAllowed`).
   await assertControlledLinesAllowed(db, lines.map((l) => ({ lineIdx: l.lineIdx, drug: (l.rxLine as RxLine).drug, scheduleFlag: l.scheduleFlag, ndpsClass: l.ndpsClass })), now);
+  // STAGE D3 — a batch a fridge excursion holds (or one written off after it) does not leave until the
+  // pharmacy in-charge has decided it: the store's frozen list, checked at the last gate.
+  await assertNoColdChainHold(db, d.storeResourceId, lines.map((l) => ({ lineIdx: l.lineIdx, batchId: l.batchId })));
 
   const visible = await getPatient(db, actor, d.patientId);
   if (visible === null) throw new PharmacyError("unknown_dispense", `dispense ${dispenseId} not found`);
@@ -127,6 +133,12 @@ export async function handOverDispense(
   const doctor = await getDoctor(db, rx.doctorId);
   const medicines = await medicinesByIds(db, lines.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
+  // STAGE D5 — a restricted antimicrobial leaves only with the steward's grant bound to this dispense, asked again at
+  // the last gate (a product restricted after verify is caught here), and never a grant the prescriber gave themselves.
+  await assertStewardApprovals(db, { id: d.id, patientId: d.patientId }, doctor?.userId ?? null, lines.map((l) => {
+    const medicine = l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId);
+    return { lineIdx: l.lineIdx, drug: medicine?.brandName ?? (l.rxLine as RxLine).drug, medicine };
+  }));
   /**
    * PHARMACY P6 — a controlled line (Schedule X, or an NDPS class) leaves the cabinet only when the
    * prescription carries what the law asks, the pharmacy keeps its copy, who took it is written down,
@@ -156,7 +168,7 @@ export async function handOverDispense(
      * money the same way the ledger's own writes are.
      */
     const settlement = await invoiceSettlement(tx, invoiceId);
-    if (settlement.state !== "settled") {
+    if (settlement.state !== "settled" && !(await ownerCreditCovers(tx, invoiceId))) {
       throw new PharmacyError(
         "invoice_not_settled",
         `₹${(settlement.outstandingPaise / 100).toFixed(2)} is outstanding on this bill — the medicine stays at the counter until it is paid or the bill is corrected`,

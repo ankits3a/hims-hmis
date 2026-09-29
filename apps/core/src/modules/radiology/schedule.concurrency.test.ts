@@ -113,7 +113,7 @@ describe("the imaging slot is held by the database, not by a read (18a T4 A1)", 
     await book(winner.studyId);
     await expect(book(loser.studyId)).rejects.toMatchObject({ code: "slot_taken" });
 
-    await withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, { studyId: winner.studyId }));
+    await withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, { studyId: winner.studyId, reason: "Patient asked to change" }));
 
     const retry = await book(loser.studyId);
     expect(retry.scheduledAt).toEqual(SLOT);

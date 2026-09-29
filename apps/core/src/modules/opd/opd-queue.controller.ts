@@ -107,6 +107,26 @@ const consultNoteBody = z.object({
     keptMedicineId: z.string().min(1).max(64),
     chosen: z.enum(["swap", "keep"]),
   })).max(30).nullable().optional(),
+  /**
+   * CONSULT WALK 2026-09-28 (defect A) — the unissued editor rows. LENIENT on content (a row being
+   * written has blanks; the issue path is where a line must be complete) and bounded like every
+   * other list on this body: thirty rows, each field capped at the prescription line's own limits.
+   */
+  rxDraft: z.array(z.object({
+    drug: z.string().max(300),
+    dose: z.string().max(100),
+    route: z.string().max(100),
+    frequency: z.string().max(200),
+    durationDays: z.union([z.string().max(8), z.number().int().nonnegative().max(3650)]).nullable(),
+    instructions: z.string().max(2000),
+    noSubstitution: z.boolean(),
+    medicineId: z.string().min(1).max(64).nullish(),
+    eye: z.enum(["od", "os", "ou"]).nullish(),
+    taper: z.array(z.object({
+      timesPerDay: z.number().int().min(1).max(12),
+      days: z.number().int().min(1).max(60),
+    })).max(8).nullish(),
+  })).max(30).nullable().optional(),
   leaseToken: z.string().min(8).max(64).optional(),
 });
 const reminderBody = z.object({ text: z.string().trim().min(1).max(300) });

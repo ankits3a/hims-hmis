@@ -39,10 +39,27 @@ export type {
 } from "./badges";
 export {
   ANNUAL_LIMIT_MSV, DAYS_PER_MONTH, DEFAULT_INVESTIGATION_LEVEL_MSV_PER_MONTH,
-  FIVE_YEAR_AVERAGE_LIMIT_MSV, FIVE_YEAR_TOTAL_LIMIT_MSV, investigationLevelFor,
+  FIVE_YEAR_AVERAGE_LIMIT_MSV, FIVE_YEAR_TOTAL_LIMIT_MSV, PREGNANT_WORKER_FOETAL_LIMIT_MSV,
+  QA_DEFAULT_INTERVAL_YEARS, RADIATION_SAFETY_SOURCES, investigationLevelFor,
 } from "./limits";
-// PLAN 18c T2 — the QA register and the lockout.
-export { qaRegister, recordQa } from "./qa";
-export type { QaRecordRow, QaRegisterRow, RecordQaInput, RecordQaOutcome } from "./qa";
+// PLAN 18c T2 — the QA register and the lockout. 18-S RS11 T3 — QA due, and the overdue sweep.
+export { QA_SWEEP_ACTOR, overdueQaFor, qaDueList, qaRegister, recordQa, sweepOverdueQa } from "./qa";
+export type {
+  QaDueRow, QaDueState, QaRecordRow, QaRegisterRow, QaSweepResult, RecordQaInput, RecordQaOutcome,
+} from "./qa";
+// 18-S RS11 — the TLD import, the incident register, pregnancy declarations and the RSO's list.
+export { importTldReads, parseDose, parseReportDate, splitCsv } from "./tld-import";
+export type { TldImportInput, TldImportReport, TldImportRow } from "./tld-import";
+export {
+  AERB_NOTIFY_WITHIN_HOURS, closeIncident, incidentRegister, investigateIncident, notifyRequiredFor,
+  recordIncident, recordIncidentNotification, updateIncidentActions,
+} from "./incidents";
+export type { IncidentRow, RecordIncidentInput } from "./incidents";
+export {
+  activeDeclarations, declarePregnancy, endPregnancyDeclaration, foetalShare, pregnancyDeclarations,
+} from "./pregnancy";
+export type { DeclarePregnancyInput, PregnancyDeclarationRow } from "./pregnancy";
+export { attentionList } from "./attention";
+export type { AttentionRow, AttentionView } from "./attention";
 export type { AppointmentRow, LicenceRegisterRow } from "./read";
 export * from "./events";

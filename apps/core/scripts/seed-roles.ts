@@ -305,6 +305,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — a doctor who sees a reaction reports it to the ADR register (PvPI form); the
       // allergy it writes blocks the drug on the next prescription. DEFAULT — owner may change.
       "pharmacy.adr.record",
+      // PHARMACY STAGE D2 — a doctor who catches a medication error or near miss logs it (blame-free: the
+      // log shows the role, the name only to the reviewer). DEFAULT — owner may change.
+      "pharmacy.incidents.record",
     ],
   },
   /**
@@ -400,7 +403,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "resources.read",
     ],
   },
-  { roleKey: "display", permissions: ["opd.display.read"] },
+  /**
+   * The kiosk TV account. 18-S RS3 adds the imaging hall board beside the OPD token board: the same
+   * account drives the TV in either waiting hall, and both boards show tokens (imaging: token plus
+   * first name and initial) and nothing else.
+   */
+  { roleKey: "display", permissions: ["opd.display.read", "radiology.display.read"] },
   {
     roleKey: "pharmacy",
     permissions: [
@@ -455,7 +463,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // own; `orders.place/read/cancel` because the claim PLACES the `medication` order (D1, the
       // `lab_reception` shape); and the four billing strings `lab_reception` holds for the same
       // reason — a department counter that bills at the window issues the invoice itself (S3).
-      // NOT `billing.credit.extend`: credit holds for IPD/TPA are 16d's.
+      // `billing.credit.extend` came later (gap A3b, below), as the right to ASK the owner — never to extend.
       "pharmacy.dispense.place",
       "pharmacy.dispense.read",
       "pharmacy.dispense.scheduled",
@@ -485,6 +493,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // credits it and REQUESTS the refund. The payout stays the cashier's, behind billing's approval.
       "billing.credit_note.issue",
       "billing.refund.request",
+      // GAP A3b (owner ruling 2026-09-28: "nobody can issue credit except owner", whole hospital) — this
+      // is the right to ASK the owner (`POST /billing/credit-requests`) and to bill against the owner's
+      // GRANTED approval for that exact amount. It extends no credit on its own: `issueInvoice` refuses
+      // every credit remainder without the owner's grant.
+      "billing.credit.extend",
       // PHARMACY P19 — the walk-in counter: sell, and register the customer who has no UHID yet.
       // `sellRetail` asserts `patients.register` itself, and only on the branch that registers.
       "pharmacy.retail.sell",
@@ -510,6 +523,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — the pharmacist reports a suspected adverse drug reaction (the PvPI form); the
       // report writes the patient's allergy in the same transaction. DEFAULT — owner may change.
       "pharmacy.adr.record",
+      // PHARMACY STAGE D2 — the pharmacist logs a medication error or near miss from the desk line's ⋯ menu.
+      // DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      // PHARMACY STAGE D3 — the pharmacist reads the fridge at 09:00 and 17:00 IST (current, min, max); an
+      // out-of-range reading holds the store's cold batches. DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },
   {
@@ -916,6 +935,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D1 — the MS chairs pharmacovigilance: assesses causality, sends to PvPI, closes.
       // DEFAULT — owner may change.
       "pharmacy.adr.manage",
+      // PHARMACY STAGE D2 — the MS reviews medication errors and near misses (root cause, action taken) and
+      // closes them; the only other reader told the reporter's name. DEFAULT — owner may change.
+      "pharmacy.incidents.review",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1149,6 +1171,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P6 — the head of stores witnesses a movement at the controlled-drug cabinet (a receipt, a
       // destruction, a discrepancy booked) but holds no key to it. DEFAULT — owner may change.
       "pharmacy.ndps.witness",
+      // PHARMACY STAGE D3 — the head of stores keeps the fridges' master (which store, what range) and closes
+      // an excursion: release each held batch with its reason, or write it off. DEFAULT — owner may change.
+      "pharmacy.coldchain.manage",
     ],
   },
   {
@@ -1168,6 +1193,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.stock.receive",
       // 14c — the storekeeper counts other stores (the pharmacy's, a ward's), never the one they keep.
       "materials.counts.perform",
+      // PHARMACY STAGE D3 — the storekeeper reads the main store's fridge on the same schedule as the counter's.
+      // DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1267,10 +1295,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   //      the decision, the lists are the guard (17c §8.8).
   //   3. **`phlebotomist` reads the worklist and touches no result.** The chair needs to know WHO
   //      is next and WHAT tube; it never needs a number.
-  //   4. **`lab.reports.release_unpaid` goes to `billing_manager` and to nobody in the lab.** The
-  //      interlock collects a self-pay balance (DD6); the decision to hand the document over anyway
-  //      is a decision to carry a receivable, and that is the money office's to make. The lab asks;
-  //      billing answers. See `modules/lab/approval-types.ts`.
+  //   4. **`lab.reports.release_unpaid` — the DECISION is the owner's approval, the ACT is the
+  //      counter's.** The interlock collects a self-pay balance (DD6); handing the document over
+  //      anyway is carrying a receivable, which since 2026-09-28 only the OWNER approves
+  //      (`lab_release_unpaid_owner`). `lab_reception` performs the approved hand-over (it holds the
+  //      print it needs); `billing_manager` keeps the string from DD6. See `modules/lab/approval-types.ts`.
   //
   // ═══ `billing.credit.extend` ON THREE OF THE FOUR, AND IT IS A MEASUREMENT, NOT A PREFERENCE ═══
   //
@@ -1373,6 +1402,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * it at all, and the seat's button was a 403 for everyone (17c close review pass 1, F2a).
        */
       "approvals.requests.create",
+      /**
+       * OWNER RULING 2026-09-28 (credit is the owner's, gap A3) + THE §13 WALK FINDING (same day).
+       * The DECISION to release a held report unpaid is the OWNER's approval (`lab_release_unpaid_owner`),
+       * bound to one order and spent on one hand-over. The ACT is a print at this counter, and
+       * `releaseUnpaid` is `printReport`: it needs `lab.reports.print` (held here) AND this route's
+       * grant. The billing manager held this string without `lab.reports.print`, so NOBODY could complete
+       * a release — the counter got 403 and the billing office could not open the counter. The control
+       * is the approval (`assertReleaseApproval`: granted, owner type, this order, used once), not who
+       * clicks; the counter asks, the owner decides, the counter hands over.
+       */
+      "lab.reports.release_unpaid",
     ],
   },
   /**
@@ -1422,12 +1462,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * right to DRAFT; the MS decides whether it goes live.
        */
       "radiology.definitions.manage",
+      /**
+       * 18-S RS4 — the machine register: register an imaging machine, set its AE title, and take it
+       * out of service with a reason. The same holder as the books above, for the same reason: the
+       * department's head answers for what its machines are and whether they may be booked. A QA
+       * block is still lifted only by the RSO's passing QA record (`aerb/qa.ts`), not by this grant.
+       */
+      "radiology.devices.manage",
       "pcpndt.form_f.read",
       "pcpndt.form_f.write",
       "pcpndt.registrations.read",
       "orders.read",
       /** PLAN 18c T1 / D2 — the cumulative-dose nudge at protocolling (O4). Reads doses, not the file. */
       "aerb.doses.read",
+      // 18-S RS11 — the radiologist-in-charge (HOD) reads the radiation incident register.
+      "aerb.incidents.read",
     ],
   },
   {
@@ -1476,11 +1525,18 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * `imaging_gate` definition's `open → satisfied` transition (F8). Withholding it here alone
        * would have been a separation that did not hold.
        *
-       * **NOT `radiology.checkin` either**: check-in is where the gate set OPENS from the patient's
-       * sex, age and the study type's flags, and it is the radiographer's act at the console.
+       * **`radiology.checkin` — 18-S RS3, DECIDED.** 18a withheld it ("check-in is the
+       * radiographer's act at the console"), while the `imaging_study` definition already named
+       * `radiology_receptionist` on `scheduled → checked_in`. The owner-approved board (SPINE H3,
+       * plan rule "presence is derived") makes opening the patient at the desk on the day of the
+       * slot the check-in, so the desk's route matched its workflow edge. Check-in OPENS the gate
+       * set; it satisfies nothing, so the first separation above is untouched.
        */
       "radiology.orders.place",
       "radiology.schedule",
+      "radiology.checkin",
+      /** 18-S RS3 — the desk turns on the waiting-hall TV and can see what it shows. */
+      "radiology.display.read",
       "radiology.worklist.read",
       "radiology.bill_decisions.manage",
       "radiology.definitions.read",
@@ -1535,6 +1591,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "aerb.registers.manage",
       "aerb.registers.read",
       "aerb.doses.read",
+      // 18-S RS11 — the incident register, read (writing it is `aerb.registers.manage`).
+      "aerb.incidents.read",
     ],
   },
   {
@@ -1584,6 +1642,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       "patients.read",
       "formulary.read",
+      // PHARMACY STAGE D2 — the aide who picks is the one who sees the look-alike box: a near miss is theirs
+      // to log. Blame-free; the reviewer alone is told who. DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      // PHARMACY STAGE D3 — the aide reads the fridge when the pharmacist is at the window. DEFAULT — owner may change.
+      "pharmacy.coldchain.record",
     ],
   },  /**
    * PHARMACY P17 — THE PHARMACIST IN CHARGE, held IN ADDITION to `pharmacy`. The pharmacist named on
@@ -1625,6 +1688,30 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PvPI, closed. DEFAULT — owner may change.
       "pharmacy.adr.record",
       "pharmacy.adr.manage",
+      // PHARMACY STAGE D2 — the in-charge logs medication errors and near misses and reviews them: root
+      // cause, action taken, closed. DEFAULT — owner may change.
+      "pharmacy.incidents.record",
+      "pharmacy.incidents.review",
+      // PHARMACY STAGE D3 — the in-charge adds and edits the fridges and closes an excursion: every held batch
+      // released with its stability reason or written off. DEFAULT — owner may change.
+      "pharmacy.coldchain.manage",
+    ],
+  },
+  /**
+   * PHARMACY STAGE D5 — THE ANTIMICROBIAL STEWARD, held IN ADDITION to a clinical role, as `pharmacy_incharge` is held
+   * with `pharmacy`. DECIDED 2026-09-28 (owner: "I leave upon you to choose the right and logical role"), per ICMR
+   * AMSP 2018: admin grants it to the infectious-disease physician; else the clinical microbiologist; else a senior
+   * physician the medical superintendent names as AMSP lead. It is the `approverRole` of
+   * `pharmacy_restricted_antimicrobial`, so it holds the generic approvals pair (a role named as approver that cannot
+   * open the queue is the silence `materials_head` once had), and its own grant to read the request's prescription
+   * line. It may not approve its own prescription: the counter's gate refuses a grant the prescriber gave.
+   */
+  {
+    roleKey: "antimicrobial_steward",
+    permissions: [
+      "approvals.requests.read",
+      "approvals.requests.decide",
+      "pharmacy.antimicrobial.approve",
     ],
   },
 ];
@@ -1871,6 +1958,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PLAN 16c T1 — the aide's title names the one thing the role cannot do.
   pharmacy_assistant: "Pharmacy Assistant (claims, picks and labels; completes NO Schedule H/H1 dispense)",
   pharmacy_incharge: "Pharmacist in Charge (held with pharmacy; the unredacted H1 register for the inspector)",
+  // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
+  antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

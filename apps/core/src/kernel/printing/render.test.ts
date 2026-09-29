@@ -346,7 +346,9 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     it("carries the identity band that stops a page being matched to the wrong person", async () => {
       const doc = await renderPrescriptionSheet(db, { encounterId }, MON);
       expect(doc!.html).toContain("Muskan Arora");
-      expect(doc!.html).toContain("Signature, name &amp; registration no.");
+      // Owner 2026-09-28: the blank sheet's signature block asks for the Doctor ID and a signature — no name, no council number.
+      expect(doc!.html).toContain("Doctor ID · signature of the treating physician");
+      expect(doc!.html).not.toContain("registration no.");
       // The five rows the design added, each labelled as the artboard labels it.
       for (const label of ["Name:", "UHID:", "Gender:", "DOB:", "Doctor ID:", "Encounter ID:", "Encounter Type:", "Visit/Admn Date:", "Department:", "Speciality:"]) {
         expect(doc!.html).toContain(`<span class="lb">${label}</span>`);

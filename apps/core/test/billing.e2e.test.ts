@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, mkCashier, seedBillingBase } from "./helpers/billing";
-import { billingConfig, events, invoices, opdConfig, receipts, refundVouchers } from "../src/kernel/db/schema";
+import { billingConfig, events, invoices, opdConfig, patients, receipts, refundVouchers } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { DEFAULT_LETTERHEAD } from "../src/modules/opd/config";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -787,6 +787,23 @@ describe("billing e2e", () => {
     expect(typeof row.issuedAt).toBe("string");
     expect(typeof row.paidAt).toBe("string");
     expect(Object.keys(row)).toContain("cashierSessionId");
+
+    /**
+     * UX-AUDIT 2026-09-28 — the back office read "Patient: p-1" off every voucher. The row now
+     * carries the alias-safe summary `listMismatches` carries, batched once per page, and a SEALED
+     * record hands over its alias and never its name (§14) — the fixture flips the same patient to
+     * confidential so the absence assertion runs against a name that really exists. (`payeeName`
+     * is the PAY-TIME name typed off the document, a different field, and stays.)
+     */
+    expect(row.name).toBe("Anita Verma");
+    expect(row.uhid).toMatch(/\S/);
+    expect(row.restricted).toBe(false);
+    await db.update(patients).set({ isConfidential: true, alias: "Patient S-7" }).where(eq(patients.id, patientId));
+    const sealed = await http().get("/billing/refunds").set(...auth(cashier.token)).expect(200);
+    const [sealedRow] = sealed.body.items as [Record<string, unknown>];
+    expect(sealedRow.restricted).toBe(true);
+    expect(sealedRow.name).toBeNull();
+    expect(sealedRow.alias).toBe("Patient S-7");
   });
 
   it("the session: variance close files the SoD approval, only the OWN cashier may confirm, and the list reads it back", async () => {

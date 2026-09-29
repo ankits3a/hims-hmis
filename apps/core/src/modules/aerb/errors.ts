@@ -61,6 +61,25 @@ export const AERB_ERROR_CODES = [
    */
   "badge_already_issued",
   "read_already_recorded",
+  /**
+   * 18-S RS11 — the incident register, the TLD import and the pregnancy declaration.
+   *
+   *   · **`unknown_incident` (404)**.
+   *   · **`incident_state` (409)** — the act does not fit where the incident is (investigate a
+   *     closed one, close an open one that was never investigated).
+   *   · **`incident_actions_open` (409)** — close refused while a corrective action has no done date.
+   *   · **`notification_required` (409)** — close refused while AERB must be told and the date and
+   *     reference are not on the row.
+   *   · **`tld_import_rejected` (422)** — the file has at least one bad row; NOTHING was written, and
+   *     the detail carries every row with its errors (all-or-nothing, never a partial import).
+   *   · **`declaration_active` (409)** — this worker already has an active pregnancy declaration.
+   */
+  "unknown_incident",
+  "incident_state",
+  "incident_actions_open",
+  "notification_required",
+  "tld_import_rejected",
+  "declaration_active",
 ] as const;
 
 export type AerbErrorCode = (typeof AERB_ERROR_CODES)[number];
@@ -91,6 +110,13 @@ const STATUS: Record<AerbErrorCode, number> = {
 
   badge_already_issued: 409,
   read_already_recorded: 409,
+
+  unknown_incident: 404,
+  incident_state: 409,
+  incident_actions_open: 409,
+  notification_required: 409,
+  tld_import_rejected: 422,
+  declaration_active: 409,
 };
 
 export function aerbHttpStatus(code: AerbErrorCode): number {

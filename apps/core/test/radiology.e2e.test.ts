@@ -176,6 +176,15 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       "radiology.reports.amend", "radiology.reports.read", "radiology.worklist.read",
       "orders.read.restricted",
     ], "rad");
+    /**
+     * 18-S RS8a / ruling 4 — the list of authorised signatories, published: the print carries the
+     * signer's qualification and council number, so a signature is made only by someone on it.
+     */
+    await db.insert(imagingDefinitions).values({
+      id: "01DEF00000000000000000004", kind: "report_signatories", version: 1, status: "active",
+      draftedBy: "e2e", publishedBy: "e2e", publishedAt: NOW,
+      body: { signatories: [{ user_id: radiologist.id, qualification: "MD (Radiodiagnosis)", council_reg_no: "JSMC 2014/1187" }] },
+    });
     counter = await staff(["radiology.bill_decisions.manage"], "csh");
     bridge = await staff(["radiology.mwl.read"], "mwl");
 
@@ -383,6 +392,10 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       reportId: drafted.body.reportId,
     });
     expect([signed.status, signed.body.version]).toEqual([201, drafted.body.version + 1]);
+    /** 18-S RS8a / ruling 4 — the print names the signer with qualification and council number. */
+    const printed = await get(`/radiology/reports/${signed.body.reportId}/print`, radiologist.token);
+    expect([printed.status, printed.body.report.signer.qualification, printed.body.report.signer.councilRegNo])
+      .toEqual([200, "MD (Radiodiagnosis)", "JSMC 2014/1187"]);
     /** 18b T4 / §6.8 — the signed version carries no provenance; only the machine's draft does. */
     expect((await get(`/radiology/reports/${signed.body.reportId}`, radiologist.token)).body.report.provenance).toBeNull();
     const chain = (await get(`/radiology/studies/${study!.id}`, radiologist.token)).body.study.reports;
@@ -563,6 +576,61 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect((await get("/radiology/bill-decisions", counter.token)).status).toBe(200);
     /** …and the radiographer, who holds the worklist, cannot touch the counter's queue. */
     expect((await get("/radiology/bill-decisions", radiographer.token)).status).toBe(403);
+  }, 60_000);
+
+  /**
+   * 18-S RS2 — THE ORDERING DOOR OVER HTTP. The read is on `radiology.orders.place` (the doctor and
+   * the desk both hold it; the cashier does not), and the walk-in's typed referrer reaches the ROW —
+   * 22c-A's C1 is a schema that drops a field and answers 201, so the assertion reads the order.
+   */
+  it("RS2: the advised read and the walk-in referrer, through the real routes", async () => {
+    await db.update(opdEncounters).set({
+      advisedTests: [{ serviceId: services["CT-ABDO-CONTRAST"]!, code: "RAD-CT-ABDO-CONTRAST", name: "CT abdomen", pricePaise: 400000 }],
+    }).where(eq(opdEncounters.visitNo, VISIT));
+
+    expect((await request(server()).get(`/radiology/advised?encounterNo=${VISIT}`)).status).toBe(401);
+    expect((await get(`/radiology/advised?encounterNo=${VISIT}`, counter.token)).status).toBe(403);
+    const read = await get(`/radiology/advised?encounterNo=${VISIT}`, doctor.token);
+    expect(read.status).toBe(200);
+    expect(read.body.lines).toEqual([expect.objectContaining({
+      serviceId: services["CT-ABDO-CONTRAST"], alreadyOrderedItemId: null,
+      orderable: expect.objectContaining({ studyTypeCode: "CT-ABDO-CONTRAST", contrast: "required" }),
+    })]);
+    expect((await get("/radiology/advised?encounterNo=V2608319999", doctor.token)).status).toBe(404);
+
+    const base = {
+      patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY, orderingClinicianId: doctor.id,
+      indication: "outside slip: abdominal pain", items: [{ serviceId: services["CT-ABDO-CONTRAST"] }],
+      authority: "external_prescription",
+    };
+    expect((await post("/radiology/orders", doctor.token, base)).status).toBe(400);
+    const placed = await post("/radiology/orders", doctor.token, {
+      ...base, referrer: { name: "Dr R. Sharma", registrationNo: "DMC/12345" },
+    });
+    expect(placed.status).toBe(201);
+    const [row] = await db.select({ ref: orders.externalReferrerId, authority: orders.authority })
+      .from(orders).where(eq(orders.orderNo, placed.body.orderNo as string));
+    expect(row).toEqual({ ref: expect.any(String), authority: "external_prescription" });
+
+    const after = await get(`/radiology/advised?encounterNo=${VISIT}`, doctor.token);
+    expect(after.body.lines[0].alreadyOrderedOrderNo).toBe(placed.body.orderNo);
+  }, 60_000);
+
+  /**
+   * 18-S RS2b — the two floor reads over HTTP: the machine list a counter books from, and the
+   * technologist's portable round. The radiologist holds the worklist read but not `acquire`.
+   */
+  it("GET /radiology/devices and /radiology/portable/round answer behind their own permissions", async () => {
+    expect((await request(server()).get("/radiology/devices")).status).toBe(401);
+    expect((await get("/radiology/devices", counter.token)).status).toBe(403);
+    const list = await get("/radiology/devices", radiologist.token);
+    expect(list.status).toBe(200);
+    expect((list.body as { devices: { code: string; licensedNow: boolean | null }[] }).devices
+      .map((d) => [d.code, d.licensedNow])).toEqual([["DEV-CT", true], ["DEV-USG", null]]);
+
+    expect((await get("/radiology/portable/round", radiologist.token)).status).toBe(403);
+    const round = await get("/radiology/portable/round", radiographer.token);
+    expect([round.status, round.body]).toEqual([200, { rows: [] }]);
   }, 60_000);
 
   it("the `imaging` order kind resolves off the REAL manifest, not off a fixture decl", async () => {
