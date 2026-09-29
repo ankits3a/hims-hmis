@@ -17,6 +17,7 @@ import { RadiologyImagesController } from "./radiology-images.controller";
 import { RadiologyFloorController } from "./radiology-floor.controller";
 import { RadiologySetupController } from "./radiology-setup.controller";
 import { RadiologyRoomController } from "./radiology-room.controller";
+import { RadiologyReadingController } from "./radiology-reading.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -57,6 +58,8 @@ import { RadiologyRoomController } from "./radiology-room.controller";
     RadiologySetupController,
     // 18-S RS6 — the modality rooms: the console read, the in-room repeat, the reject analysis.
     RadiologyRoomController,
+    // 18-S RS8a — the reading room: its worklist, the study in hand, the print.
+    RadiologyReadingController,
     // 18-S RS7 — the Form F register by serial and the monthly return.
     RadiologyPcpndtController,
   ],

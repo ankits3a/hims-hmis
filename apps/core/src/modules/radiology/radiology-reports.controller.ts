@@ -5,7 +5,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import {
-  acknowledgeCritical, amendReport, draftReport, flagCritical, proposeDraft, publishReport, savePrelim, signReport,
+  acknowledgeCritical, amendReport, draftReport, dryRunPreSign, flagCritical, proposeDraft, publishReport, savePrelim,
+  signReport,
 } from "./reports";
 import { reportView, studyView, worklist } from "./read";
 import { patientReportsForDoctor } from "./patient-reports";
@@ -48,13 +49,26 @@ const contentBody = z.object({
   }).nullish(),
 });
 
+/** 18-S RS8a — the warning codes (`checks.ts`) the signer has read and acknowledges. */
+const acknowledged = z.array(z.string().min(1).max(60)).max(20).optional();
+
 const signBody = z.object({
   reportId: idSchema,
   criticalCategory: z.enum(["red", "orange", "yellow"]).nullish(),
+  acknowledgedWarnings: acknowledged,
 });
 
 const amendBody = contentBody.extend({
   reason: z.string().min(1).max(400),
+  criticalCategory: z.enum(["red", "orange", "yellow"]).nullish(),
+  acknowledgedWarnings: acknowledged,
+});
+
+/** 18-S RS8a — the dry run: the text on the screen, checked, nothing written. */
+const checksBody = z.object({
+  templateKey: z.string().min(1).max(40).optional(),
+  body: z.record(z.string(), z.unknown()),
+  impression: z.string().max(8000).nullish(),
   criticalCategory: z.enum(["red", "orange", "yellow"]).nullish(),
 });
 
@@ -182,6 +196,25 @@ export class RadiologyReportsController {
         secondFactorAt: req.hmisSession?.secondFactorAt ?? null,
         windowMinutes: this.cfg.secondFactorWindowMinutes,
         criticalCategory: input.criticalCategory ?? null,
+        acknowledgedWarnings: input.acknowledgedWarnings ?? [],
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 18-S RS8a — the pre-sign checks on the text in front of the reader, before any save. The same
+   * pipeline `signReport` runs, so the screen shows what the signature will meet. Writes nothing.
+   */
+  @Post("studies/:studyId/reports/checks")
+  @RequirePermission("radiology.reports.write", "hospital")
+  async checks(
+    @CurrentActor() actor: Actor, @Param("studyId") studyId: string, @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(checksBody, body);
+    try {
+      return await withTx(this.db, (tx) => dryRunPreSign(tx, actor, {
+        studyId, templateKey: input.templateKey, body: input.body,
+        impression: input.impression ?? null, criticalCategory: input.criticalCategory ?? null,
       }));
     } catch (e) { toHttp(e); }
   }
@@ -202,6 +235,7 @@ export class RadiologyReportsController {
         criticalCategory: input.criticalCategory ?? null,
         secondFactorAt: req.hmisSession?.secondFactorAt ?? null,
         windowMinutes: this.cfg.secondFactorWindowMinutes,
+        acknowledgedWarnings: input.acknowledgedWarnings ?? [],
       }));
     } catch (e) { toHttp(e); }
   }

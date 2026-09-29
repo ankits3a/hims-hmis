@@ -68,6 +68,8 @@ describe("the Setup station's reads (18-S RS4)", () => {
       expect(books.map((b) => b.kind)).toEqual([
         "study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels",
         "imaging_protocols", // 18-S RS6 — the protocol book the room console reads
+        // 18-S RS8a — the reading room's two books.
+        "report_templates", "report_signatories",
       ]);
       const studyTypes = books[0]!;
       expect(studyTypes.active).toMatchObject({ version: active!.version, status: "active" });
