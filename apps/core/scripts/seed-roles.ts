@@ -529,6 +529,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D3 — the pharmacist reads the fridge at 09:00 and 17:00 IST (current, min, max); an
       // out-of-range reading holds the store's cold batches. DEFAULT — owner may change.
       "pharmacy.coldchain.record",
+      // PHARMACY STAGE D4 — the pharmacist checks the counter's own emergency tray and restocks a deficient one from
+      // PHARM-OPD (the shelf the pharmacy keeps). DEFAULT — owner may change.
+      "pharmacy.trays.check",
     ],
   },
   {
@@ -1262,15 +1265,19 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     // NOT `ot.discharge` — see separation 3 above. NOT `ot.gates.satisfy`: the gates are the
     // coordinator's and the clinicians', and a scrub nurse satisfying a consent gate is the
     // documentation-gate failure mode this module is built to remove.
-    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record"],
+    // PHARMACY STAGE D4 — the OT's emergency tray is the theatre nurse's to check (daily seal, monthly, after use) and
+    // to receive its restock into. DEFAULT — owner may change.
+    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check"],
   },
   {
     roleKey: "recovery_nurse",
-    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge"],
+    // PHARMACY STAGE D4 — the recovery bay's emergency tray. DEFAULT — owner may change.
+    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check"],
   },
   {
     roleKey: "daycare_coordinator",
-    permissions: ["ot.cases.read", "ot.cases.book", "ot.cases.cancel", "ot.gates.satisfy", "ot.list.manage", "ot.definitions.read"],
+    // PHARMACY STAGE D4 — the day-care ward's emergency tray. DEFAULT — owner may change.
+    permissions: ["ot.cases.read", "ot.cases.book", "ot.cases.cancel", "ot.gates.satisfy", "ot.list.manage", "ot.definitions.read", "pharmacy.trays.check"],
   },
   // ══════════════ PLAN 17 T2 / DD16 — THE LABORATORY'S FOUR ROLES ══════════════
   //
@@ -1528,6 +1535,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * no business in any of them.
        */
       "aerb.doses.read",
+      // PHARMACY STAGE D4 — the CT / MRI room's emergency tray (a contrast reaction is the use). DEFAULT — owner may change.
+      "pharmacy.trays.check",
     ],
   },
   {
@@ -1694,6 +1703,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.incidents.record",
       // PHARMACY STAGE D3 — the aide reads the fridge when the pharmacist is at the window. DEFAULT — owner may change.
       "pharmacy.coldchain.record",
+      // PHARMACY STAGE D4 — the aide checks a tray and carries its restock. DEFAULT — owner may change.
+      "pharmacy.trays.check",
     ],
   },  /**
    * PHARMACY P17 — THE PHARMACIST IN CHARGE, held IN ADDITION to `pharmacy`. The pharmacist named on
@@ -1742,6 +1753,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D3 — the in-charge adds and edits the fridges and closes an excursion: every held batch
       // released with its stability reason or written off. DEFAULT — owner may change.
       "pharmacy.coldchain.manage",
+      // PHARMACY STAGE D4 — the in-charge sets up the emergency trays, names who keeps each and keeps its list (item,
+      // par, expiry margin); and checks one like any pharmacist. DEFAULT — owner may change.
+      "pharmacy.trays.check",
+      "pharmacy.trays.manage",
     ],
   },
   /**

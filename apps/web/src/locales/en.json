@@ -5754,7 +5754,11 @@
     "antimicrobial_steward_approval_required": "This is a restricted antimicrobial — ask the antimicrobial steward from the line's ⋯ menu and wait for the approval",
     "antimicrobial_steward_not_appointed": "Nobody is appointed antimicrobial steward — a restricted antimicrobial cannot leave until the hospital appoints one",
     "antimicrobial_self_approval": "The prescribing doctor approved their own prescription — ask the antimicrobial steward again so another steward decides",
-    "restricted_antimicrobial_walk_in": "A restricted antimicrobial is not sold at the walk-in counter — only at the OPD counter, on this hospital's prescription, with the steward's approval"
+    "restricted_antimicrobial_walk_in": "A restricted antimicrobial is not sold at the walk-in counter — only at the OPD counter, on this hospital's prescription, with the steward's approval",
+    "invalid_tray": "This tray check or change does not add up — count every item on the list, read the seal, and check the dates",
+    "unknown_tray": "This emergency tray is not on file",
+    "unknown_tray_check": "This tray check is not on file",
+    "tray_already_restocked": "This check was restocked already — the tray's keeper receives that restock"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -6256,7 +6260,14 @@
       "batch": "Batch & shelf",
       "qty": "Change the quantity",
       "decline": "Decline this line",
-      "nearMiss": "Record a near miss"
+      "nearMiss": "Record a near miss",
+      "reaction": "Report a reaction"
+    },
+    "reaction": {
+      "open": "Report a reaction",
+      "title": "Report an adverse reaction",
+      "titleDrug": "Report a reaction — {{drug}}",
+      "done": "{{no}} recorded. The allergy is on the patient's record; the office sends it to PvPI."
     },
     "partialOwed": "giving {{n}} of {{of}} — say why under ⋯ before the tick counts",
     "partialSaid": "giving {{n}} of {{of}} — {{reason}}",
@@ -8183,6 +8194,8 @@
         "counts": "Counts",
         "transfers": "Transfers & indents",
         "downtime": "Paper dispenses after downtime",
+        "cold": "Fridge temperature log",
+        "trays": "Crash cart & emergency trays",
         "master": "Item master",
         "sells": "What the counter sells · GST slab",
         "formulary": "Formulary",
@@ -8192,6 +8205,8 @@
         "retail": "Retail licence (Form 20/21)",
         "pharmacists": "Pharmacists & registrations",
         "messages": "Patient messages & consent",
+        "adr": "Adverse drug reactions (PvPI)",
+        "incidents": "Medication errors & near misses",
         "reports": "Reports"
       }
     },
@@ -8322,7 +8337,11 @@
         "excursionNo": "Excursion",
         "fridge": "Fridge",
         "heldBatches": "Batches on hold",
-        "slot": "Reading due"
+        "slot": "Reading due",
+        "tray": "Tray",
+        "location": "Kept in",
+        "trayCheckNo": "Check",
+        "expiry": "Expiry"
       },
       "copilot": {
         "tag": "Office copilot · drafted, not done",
@@ -8780,6 +8799,42 @@
           "why": "A restricted antimicrobial leaves only with the steward's approval; an urgent request is decided within four hours.",
           "pri": "Open approvals",
           "who": "The antimicrobial steward"
+        },
+        "tray_deficient": {
+          "title": "{{tray}} — {{no}} found the tray deficient; not restocked",
+          "sub": "{{location}} · an emergency tray short or expiring is not ready for the next patient",
+          "act": "Restock",
+          "head": "Restock the emergency tray",
+          "why": "Emergency medications are replenished promptly after use or when found short (NABH MOM). Restock issues exactly the deficit from the pharmacy; the tray's keeper receives it.",
+          "pri": "Open the emergency trays",
+          "who": "Pharmacist or pharmacy aide"
+        },
+        "tray_daily_missed": {
+          "title": "{{tray}} — today's seal check is not done",
+          "sub": "{{location}} · due by 10:00",
+          "act": "Check now",
+          "head": "Check the tray's seal",
+          "why": "Every emergency tray's seal is checked daily (NABH MOM: emergency medications are checked). A broken seal means a full check.",
+          "pri": "Open the emergency trays",
+          "who": "The tray's keeper"
+        },
+        "tray_monthly_missed": {
+          "title": "{{tray}} — this month's full check is not done",
+          "sub": "{{location}} · due by the 7th",
+          "act": "Open and count",
+          "head": "Do the monthly full check",
+          "why": "Once a month the tray is opened and every item counted against par and its expiry read (NABH MOM).",
+          "pri": "Open the emergency trays",
+          "who": "The tray's keeper or the pharmacist"
+        },
+        "tray_expiring": {
+          "title": "{{tray}} — {{item}} batch {{batch}} expires {{expiry}}",
+          "sub": "{{qty}} in the tray · replace it before it expires",
+          "act": "Replace",
+          "head": "Replace expiring tray stock",
+          "why": "A tray drug inside 30 days of expiry is replaced so the tray is never found with expired stock at a code.",
+          "pri": "Open the emergency trays",
+          "who": "Pharmacist"
         }
       }
     },
@@ -10242,6 +10297,99 @@
         "close": "Close excursion",
         "callInCharge": "The held stock does not leave until the pharmacy in-charge decides it.",
         "closed": "Closed {{when}} by {{by}}"
+      }
+    },
+    "trays": {
+      "title": "Emergency trays and crash carts",
+      "lead": "A daily seal check by 10:00 IST, a full open check every month by the 7th, and a full check and restock after every use. The pharmacy decides short and expiring, not the sheet.",
+      "addTray": "Set up a tray",
+      "empty": "No emergency tray is set up yet.",
+      "dailyPill": "Daily seal · {{state}}",
+      "monthlyPill": "Monthly full · {{state}}",
+      "state": {
+        "done": "done",
+        "due": "due",
+        "missed": "missed",
+        "not_due": "not due"
+      },
+      "deficientPill": "{{no}} deficient — restock",
+      "inTransit": "Restock on its way",
+      "expiringPill_one": "{{count}} batch expiring",
+      "expiringPill_other": "{{count}} batches expiring",
+      "never": "Not checked yet",
+      "last": "{{no}} · {{kind}} · {{when}} · {{result}}",
+      "kind": {
+        "daily_seal": "Daily seal check",
+        "monthly_full": "Monthly full check",
+        "after_use": "After use"
+      },
+      "result": {
+        "ok": "complete",
+        "deficient": "deficient"
+      },
+      "finding": {
+        "seal_mismatch": "seal differs",
+        "short": "short of par",
+        "expiring": "expiring within 30 days"
+      },
+      "restock": "Restock from pharmacy",
+      "receive": "Receive restock",
+      "restocked_one": "Restock sent from the pharmacy: {{count}} unit. The tray's keeper receives it.",
+      "restocked_other": "Restock sent from the pharmacy: {{count}} units. The tray's keeper receives it.",
+      "received": "Restock received into the tray.",
+      "editList": "Tray list",
+      "chargingNote": "Drugs used from a tray are not charged to the patient from here; the ER and IPD bills will do that.",
+      "savedOk": "{{no}} saved — the tray is complete.",
+      "savedDeficient_one": "{{no}} saved — deficient; {{count}} unit to restock.",
+      "savedDeficient_other": "{{no}} saved — deficient; {{count}} units to restock.",
+      "expectedSeal": "Last sealed with {{seal}}",
+      "sealWarn": "This is not the seal the tray was last closed with. The check will be deficient: open the tray and do a full check.",
+      "noList": "This tray has no list yet — the pharmacist in charge sets its items and par first.",
+      "short": "short",
+      "expiring": "expiring",
+      "save": "Save check",
+      "history": "Checks · {{name}}",
+      "historyEmpty": "No checks yet.",
+      "restockState": "Restock: {{status}}",
+      "transfer": {
+        "in_transit": "on its way",
+        "received": "received",
+        "discrepancy": "received short"
+      },
+      "seals": "Seal seen {{seen}} · new seal {{fresh}}",
+      "lineSummary": "{{item}} {{present}}/{{par}} (used {{used}}, restock {{restock}})",
+      "role": {
+        "pharmacy": "Pharmacist",
+        "pharmacy_assistant": "Pharmacy aide",
+        "pharmacy_incharge": "Pharmacist in charge",
+        "ot_nurse": "OT nurse",
+        "recovery_nurse": "Recovery nurse",
+        "radiographer": "Radiographer",
+        "daycare_coordinator": "Day-care coordinator"
+      },
+      "saveTray": "Set up tray",
+      "saveKeepers": "Save keepers",
+      "list": "Items and par",
+      "change": "change",
+      "addLine": "Add to list",
+      "saveLine": "Save",
+      "f": {
+        "sealSeen": "Seal number seen",
+        "sealNew": "New seal number",
+        "item": "Item",
+        "par": "Par",
+        "present": "Present",
+        "expiry": "Earliest expiry",
+        "event": "Event",
+        "eventHint": "e.g. code blue, OPD 2",
+        "note": "Note",
+        "keepers": "Kept by",
+        "name": "Tray name",
+        "location": "Where it is kept",
+        "locationHint": "OPD procedure room, CT room, OT-1",
+        "addItem": "Add an item",
+        "margin": "Expiry margin (days)",
+        "active": "On the list"
       }
     }
   },

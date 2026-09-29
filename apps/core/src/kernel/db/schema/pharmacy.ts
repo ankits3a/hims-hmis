@@ -5,7 +5,7 @@ import {
 import { roles, users } from "./auth";
 import { invoiceLines, invoices } from "./billing";
 import { formularyMedicines, formularySalts } from "./formulary";
-import { items, stockBatches, stockLedger, stockReservations, stockWriteOffs } from "./materials";
+import { items, stockBatches, stockLedger, stockReservations, stockWriteOffs, transfers } from "./materials";
 import { opdDoctors, opdEncounters, opdPrescriptions } from "./opd";
 import { orderItems, orders } from "./orders";
 import { patientAllergies, patients } from "./patients";
@@ -1057,5 +1057,116 @@ export const pharmacyColdExcursionDecisions = pgTable(
     check("pharmacy_cold_excursion_decisions_decision_ck", sql.raw(`decision in (${inList(COLD_EXCURSION_DECISIONS)})`)),
     check("pharmacy_cold_excursion_decisions_shape_ck",
       sql.raw(`(decision = 'release') = (reason is not null and btrim(reason) <> '') and (decision = 'write_off') = (write_off_id is not null)`)),
+  ],
+);
+
+/**
+ * ═══ PHARMACY STAGE D4 — CRASH-CART AND EMERGENCY-TRAY CHECKS (NABH MOM: emergency medications are available,
+ * standardised, checked and replenished promptly after use) ═══
+ *
+ * A TRAY IS A STORE: a `resources` row of kind `store`, a child of `PHARM-OPD`, `attributes.tray = true` and a
+ * location label. Its stock is real stock, so FEFO, expiry and the ledger already work. Three tables:
+ *
+ *   `pharmacy_tray_templates`   — the fixed list: item and par quantity per tray, and an optional expiry margin
+ *                                 (days; 30 when null). A MASTER row edited in place under `pharmacy.trays.manage`,
+ *                                 every save a `trays.template_saved` event with the before and the after (D3's
+ *                                 fridge shape). The trigger refuses DELETE (set it inactive) and any change of
+ *                                 tray, item or creator.
+ *   `pharmacy_tray_checks`      — APPEND-ONLY: daily seal / monthly full / after use; the seal seen and the new
+ *                                 seal; the result the SERVER decided (`ok` / `deficient`) and why (`findings`);
+ *                                 after use, the optional patient and the event. The ONE change it takes is the
+ *                                 restock (`restock_transfer_id`, `restocked_by`, `restocked_at`), once, from null —
+ *                                 the status-column exception of the stage's shared rules.
+ *   `pharmacy_tray_check_lines` — APPEND-ONLY: per template item, the par then, the quantity present, the earliest
+ *                                 expiry seen, the batch if scanned, how many of those expire inside the margin,
+ *                                 what the use consumed from the ledger, and the quantity the restock is to issue.
+ */
+export const TRAY_CHECK_KINDS = ["daily_seal", "monthly_full", "after_use"] as const;
+export type TrayCheckKind = (typeof TRAY_CHECK_KINDS)[number];
+export const TRAY_CHECK_RESULTS = ["ok", "deficient"] as const;
+export type TrayCheckResult = (typeof TRAY_CHECK_RESULTS)[number];
+
+export const pharmacyTrayTemplates = pgTable(
+  "pharmacy_tray_templates",
+  {
+    id: text("id").primaryKey(),
+    trayResourceId: text("tray_resource_id").notNull().references(() => resources.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    /** Base units the tray holds when complete. */
+    parQty: integer("par_qty").notNull(),
+    /** A line expiring within this many days is deficient; null is the stage's 30. */
+    minExpiryDays: integer("min_expiry_days"),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull().references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_tray_templates_tray_item_ux").on(t.trayResourceId, t.itemId),
+    check("pharmacy_tray_templates_par_ck", sql`${t.parQty} > 0 and ${t.parQty} <= 10000`),
+    check("pharmacy_tray_templates_margin_ck", sql`${t.minExpiryDays} is null or (${t.minExpiryDays} between 0 and 365)`),
+  ],
+);
+
+export const pharmacyTrayChecks = pgTable(
+  "pharmacy_tray_checks",
+  {
+    id: text("id").primaryKey(),
+    /** The register's serial — `TC-000042` on screen. */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
+    trayResourceId: text("tray_resource_id").notNull().references(() => resources.id),
+    kind: text("kind").notNull(),
+    sealSeen: text("seal_seen"),
+    sealNew: text("seal_new"),
+    /** Decided by the server from the lines and the seal, never taken from the client. */
+    result: text("result").notNull(),
+    /** Why it is deficient: `seal_mismatch`, `short`, `expiring`. Empty when ok. */
+    findings: jsonb("findings").$type<string[]>().notNull().default([]),
+    /** `after_use` only: whom the tray was used on, if known, and the event ("code blue OPD 2"). */
+    patientId: text("patient_id").references(() => patients.id),
+    event: text("event"),
+    note: text("note"),
+    checkedBy: text("checked_by").notNull().references(() => users.id),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The restock from PHARM-OPD this deficient check raised: set once, from null, all three together. */
+    restockTransferId: text("restock_transfer_id").references(() => transfers.id),
+    restockedBy: text("restocked_by").references(() => users.id),
+    restockedAt: timestamp("restocked_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("pharmacy_tray_checks_seq_ux").on(t.seq),
+    index("pharmacy_tray_checks_tray_at_idx").on(t.trayResourceId, t.checkedAt),
+    check("pharmacy_tray_checks_kind_ck", sql.raw(`kind in (${inList(TRAY_CHECK_KINDS)})`)),
+    check("pharmacy_tray_checks_result_ck", sql.raw(`result in (${inList(TRAY_CHECK_RESULTS)})`)),
+    check("pharmacy_tray_checks_after_use_ck", sql.raw(`kind = 'after_use' or (patient_id is null and event is null)`)),
+    check("pharmacy_tray_checks_restock_ck",
+      sql.raw(`(restock_transfer_id is null) = (restocked_by is null) and (restock_transfer_id is null) = (restocked_at is null) and (restock_transfer_id is null or result = 'deficient')`)),
+  ],
+);
+
+export const pharmacyTrayCheckLines = pgTable(
+  "pharmacy_tray_check_lines",
+  {
+    checkId: text("check_id").notNull().references(() => pharmacyTrayChecks.id),
+    itemId: text("item_id").notNull().references(() => items.id),
+    /** The template's par when the check was made. */
+    parQty: integer("par_qty").notNull(),
+    qtyPresent: integer("qty_present").notNull(),
+    earliestExpiry: date("earliest_expiry"),
+    /** The batch, if the checker scanned one. */
+    batchId: text("batch_id").references(() => stockBatches.id),
+    /** Of what is present, how many expire inside the margin (to be replaced). */
+    qtyExpiring: integer("qty_expiring").notNull().default(0),
+    /** `after_use`: what left the tray's ledger as consumption (on hand less present). */
+    qtyUsed: integer("qty_used").notNull().default(0),
+    /** What the restock issues for this line: par less present, plus the expiring. */
+    qtyRestock: integer("qty_restock").notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.checkId, t.itemId], name: "pharmacy_tray_check_lines_pk" }),
+    check("pharmacy_tray_check_lines_qty_ck",
+      sql.raw(`par_qty > 0 and qty_present >= 0 and qty_expiring >= 0 and qty_expiring <= qty_present and qty_used >= 0 and qty_restock >= 0`)),
   ],
 );
