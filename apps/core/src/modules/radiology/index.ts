@@ -84,7 +84,7 @@ export {
 export type { EgfrAssessment, RenalBand } from "./egfr";
 export { ROOM_GATE_KINDS, isRoomGate, prepBayList, prepStudyView } from "./prep-bay";
 export type { PrepBayRow, PrepGate, PrepStudyView } from "./prep-bay";
-export { decideGateOverride, gateOverrideRequests, requestGateOverride } from "./override-requests";
+export { applyGrantedGateOverride, decideGateOverride, gateOverrideRequests, requestGateOverride } from "./override-requests";
 export type { GateOverrideDecision, GateOverrideRequest } from "./override-requests";
 export {
   LATE_ENTRY_MINUTES, abortAcquisition, recordAcquired, resolveStudyInstanceUid, startAcquisition,
@@ -184,3 +184,15 @@ export { isTreatingDoctor, treatingDoctorsOf } from "./closed-loop";
 export type { InboxRow, TreatingDoctors } from "./closed-loop";
 export { NORTH_STAR_SOURCES, northStar } from "./north-star";
 export type { NorthStar, NorthStarRow, NorthStarSource } from "./north-star";
+// 18-S RS10 — the HOD's escalations on the kernel obligation spine, and the inbox-grant consumer.
+export {
+  ESCALATION_SPECS, IMAGING_ESCALATION_CAUSES, RADIOLOGY_ESCALATION_DEFINITIONS, ensureEscalationDefinitions,
+  escalationCauses, escalationList, sweepImagingEscalations,
+} from "./escalations";
+export type { EscalationCauseRow, EscalationListRow, ImagingEscalationCause } from "./escalations";
+export { RADIOLOGY_APPROVAL_GRANTED_CONSUMER, approvalGrantedConsumer } from "./approval-consumer";
+export {
+  supervisorAccessLog, supervisorApprovals, supervisorEquipment, supervisorFloor, supervisorMoney, supervisorQuality,
+  supervisorRoster,
+} from "./supervisor";
+export type { SupervisorFloor } from "./supervisor";
