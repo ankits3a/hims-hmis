@@ -643,12 +643,12 @@ Approvals · Quality · Equipment · Roster · Money · Access log.
 pnpm seed:radiology      # idempotent: what exists is left alone (§2)
 ```
 
-It now also activates seven class-C workflow definitions, `imaging_esc_stat_unread`,
+It now also activates eight class-C workflow definitions, `imaging_esc_stat_unread`,
 `_held_study`, `_red_critical`, `_machine_down`, `_licence_gap`, `_bill_decision_stale`,
-`_abnormal_unopened` (class C needs no governance approval — the approval-flow precedent). Until they
+`_abnormal_unopened`, `_unmatched_pacs` (class C needs no governance approval — the approval-flow precedent). Until they
 are active the station still LISTS each cause but tells nobody, and says so in a gold banner
 ("Escalations are not switched on for …"). Check: `select def_key from workflow_definitions where
-def_key like 'imaging_esc_%' and status = 'active'` → seven rows.
+def_key like 'imaging_esc_%' and status = 'active'` → eight rows.
 
 **Step 2 — the worker job.** `sweepImagingEscalations` runs every minute in the worker (job 24;
 Prometheus leg 1a + an `absent()` term). Each cycle: a cause with no open obligation → start one; an
@@ -663,6 +663,7 @@ obligation whose cause cleared → `resolved`, timers cancelled. Nothing else wr
 | Licence gap | no AERB licence covering today AND a study booked on the machine | RSO (50 %: radiologists) | 60 min | licence filed / bookings moved |
 | Bill decision stale | open > 24 h | billing manager | 4 h → radiologists | resolved at the desk |
 | Abnormal unopened | a critical-category report released > 24 h, first read not stamped | radiologists | 60 min | the treating doctor opens it (or the hand-over, for an outside study) |
+| Unmatched images | an archive study (RS12 inbox) open > 24 h | technologists | 4 h → radiologists | attached or rejected in *Unmatched images* |
 
 Who "radiologists" are is the roster's answer: a `roster_escalation_targets` row for
 `workflow.timer_rung` narrows it to whoever is on; without one it is every holder of the role. Nobody

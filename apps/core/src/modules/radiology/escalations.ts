@@ -46,7 +46,7 @@ export const IMAGING_ESCALATION_PREFIX = "imaging_esc_";
 
 export const IMAGING_ESCALATION_CAUSES = [
   "stat_unread", "held_study", "red_critical", "machine_down", "licence_gap",
-  "bill_decision_stale", "abnormal_unopened",
+  "bill_decision_stale", "abnormal_unopened", "unmatched_pacs",
 ] as const;
 export type ImagingEscalationCause = (typeof IMAGING_ESCALATION_CAUSES)[number];
 
@@ -55,6 +55,8 @@ export const STAT_UNREAD_MINUTES = 15;
 export const HELD_STUDY_MINUTES = 30;
 export const BILL_DECISION_STALE_HOURS = 24;
 export const ABNORMAL_UNOPENED_HOURS = 24;
+/** RS12 moved it here: an archive study nobody has attached or rejected for a day. */
+export const UNMATCHED_PACS_HOURS = 24;
 
 type CauseSpec = {
   title: string;
@@ -112,6 +114,12 @@ export const ESCALATION_SPECS: Record<ImagingEscalationCause, CauseSpec> = {
     ladder: [{ atPercent: 1, toRole: "radiologist" }, { atPercent: 100, toRole: "medical_superintendent" }],
     seat: "/radiology/reports",
   },
+  // RS12's inbox: the technologist knows who was on the table, so the rooms first, then the HOD.
+  unmatched_pacs: {
+    title: "Archive study unmatched for more than a day", minutes: 240, respondMinutes: 60,
+    ladder: [{ atPercent: 1, toRole: "radiographer" }, { atPercent: 100, toRole: "radiologist" }],
+    seat: "/radiology/room?view=unmatched",
+  },
 };
 
 export function escalationDefKey(cause: ImagingEscalationCause): string {
@@ -164,7 +172,8 @@ export async function ensureEscalationDefinitions(db: Db, activator: Actor): Pro
 
 export type EscalationCauseRow = {
   cause: ImagingEscalationCause;
-  subjectType: "imaging_study" | "imaging_critical_finding" | "resource" | "imaging_bill_decision" | "imaging_report";
+  subjectType: "imaging_study" | "imaging_critical_finding" | "resource" | "imaging_bill_decision" | "imaging_report"
+    | "imaging_unmatched_study";
   subjectId: string;
   patientId: string | null;
   /** When the clock this cause is about started (images in, check-in, flagged, raised, released). */
@@ -321,6 +330,22 @@ export async function escalationCauses(db: Db, now: Date = new Date()): Promise<
       gateKinds: null,
       detail: `${String(r.critical_category)} report released, not opened by the treating doctor`,
       seat: ESCALATION_SPECS.abnormal_unopened.seat,
+    });
+  }
+
+  // ── An archive study (RS12) nobody has attached or rejected for a day. No patient: the DICOM
+  //    identity is exactly what did not match.
+  for (const r of await rowsOf(db, sql`
+    select u.id, u.received_at, u.accession_number, u.modality, u.reason
+      from imaging_unmatched_studies u
+     where u.status = 'open' and u.received_at < ${minutesAgo(now, UNMATCHED_PACS_HOURS * 60)}
+  `)) {
+    out.push({
+      cause: "unmatched_pacs", subjectType: "imaging_unmatched_study", subjectId: String(r.id), patientId: null,
+      since: asDate(r.received_at), studyId: null, accessionNo: r.accession_number === null ? null : String(r.accession_number),
+      studyTypeCode: null, deviceCode: null, gateKinds: null,
+      detail: `${r.modality === null ? "archive study" : String(r.modality)} · ${String(r.reason).replaceAll("_", " ")}`,
+      seat: ESCALATION_SPECS.unmatched_pacs.seat,
     });
   }
 

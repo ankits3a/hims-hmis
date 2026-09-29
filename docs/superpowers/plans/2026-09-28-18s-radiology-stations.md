@@ -1140,6 +1140,110 @@ migration:
 "books" grant, so **no new permission**. **No migration** — the floor is a read, escalations are
 workflow instances, the consumer writes nothing new.
 
+#### RS10 as built (this PR; lane `radiology-rs10`, rebased on RS12 `cd4a6c4b`; **no migration**)
+- **T1 · the floor (core).** `supervisor.ts` `supervisorFloor` → `GET /radiology/supervisor/floor`:
+  the pipeline in eight stages (booked today · checked in · ready · on the table · to read · draft ·
+  signed · released today), each with its count, the held count (checked in with a gate open) and the
+  longest wait by accession — the stage's instant is the study's own domain column (check-in,
+  acquisition start, images in, signature; `ready` has none, so its workflow state entry); rooms
+  (status, licence today, queue, on the table, next free slot walked over today's bookings,
+  technologist `null` — the roster cannot say); readers' load (to read, STAT, drafts, the reading
+  room's own "is reading" derivation from the image-view log in the last hour); turnaround = RS9's
+  `northStar` over the last seven IST days, order → signed median + P90 against the RS8a class
+  target by source (ER/STAT 30 min, IPD 6 h, OPD and outside 24 h; no percentile → no verdict);
+  leakage = open `acquired_unbilled` decisions at the active list price (`listPriceList`), unpriced
+  counted; open criticals; RS12's unmatched inbox (`measured` = an archive is configured —
+  `pacsArchiveConfigured`); licence gaps with their booked count; overdue QA; open/raised escalations;
+  pending radiology approvals. Seven more reads on the same controller: `escalations`, `approvals`,
+  `quality`, `equipment`, `roster`, `money`, `access-log`.
+- **T2 · escalations on the spine (core).** `escalations.ts`: eight causes, each a class-C workflow
+  definition `imaging_esc_<cause>` (`open` with a percent ladder + respond clock → `resolved`,
+  `system` only) activated by `seed:radiology` (`ensureEscalationDefinitions`); `sweepImagingEscalations`
+  (worker job 24, every 60 s, advisory-locked) starts an instance for a new cause and resolves one
+  whose cause cleared (timers cancelled). The kernel does the rest: `escalation.triggered` →
+  `kernel/alerts` rows (generic branch — no kernel edit), acts seen / owned / handed over, the respond
+  clock stopped by the obligations consumer. Causes: STAT unread > 15 min; held at a gate > 30 min;
+  red critical past the `critical_categories` red window (no book → once the chaser marked it);
+  machine `down` / `qa_blocked`; no licence today with a study booked; bill decision open > 24 h;
+  abnormal (critical-category) report released > 24 h with no first read (RS9); RS12 archive study
+  unmatched > 24 h. `escalationList` joins the viewer's own alert on each obligation (for the acts).
+- **T3 · inbox grants apply (core).** `approval-consumer.ts` on `approval.granted` (radiology manifest
+  subscription + `workerConsumers` + both consumer censuses): for `imaging_gate_override` it runs
+  `applyGrantedGateOverride` — the apply half extracted from RS5's `decideGateOverride`, which now
+  calls it too — as the approver, with the decision note; a terminal gate is a no-op (idempotent), a
+  domain refusal (never-override kind, §5(2) term) is swallowed so the event is not redelivered
+  forever; the gate stays open for a human.
+- **T4 · HOD discount — MOVED to the billing plan (not built).** Billing's discount approval is
+  `billing_discount`, approver `billing_manager`, bound to the counter's draft id + line and consumed
+  only inside `issueInvoice` (`assertGrantedApproval` on that exact type). An HOD approval would need
+  either a new approver on billing's type or billing to accept a radiology type — both change
+  billing's behaviour, which the brief forbids. The radiology desk composes no money (RS9 DECIDED),
+  so there is also no desk request to hang it on. Credit stays owner-only (`billing_credit_owner`,
+  unchanged). The station says so on Approvals.
+- **T5 · the station (web).** `/radiology/hod` (`screens/radiology-hod.tsx`, station `hod`, nav +
+  manifest menu *Supervisor & HOD*, `radiology.definitions.manage`), eight header views: **Floor**
+  (live 30 s; the shift in three sentences, tiles, pipeline, rooms, readers, turnaround, gaps, the
+  five-priorities table; right list = escalations, red first); **Escalated** (in hand: what, since,
+  the seat that closes it; the spine's acts through `POST /alerts/:id/ack` — Seen, Take it on for 15
+  min–4 h, Hand over to a radiology role holder; "the ladder has not reached you" when the viewer
+  holds no alert; ONE docked act = open the seat, Enter); **Approvals** (gate override granted /
+  refused here through RS5's decide route by a holder of `radiology.gates.override`; a book → the
+  MS's `/approvals?focus=`; bill decisions read-only with the desk's link; the discount note);
+  **Quality** (seven NABH indicators × seven days, target and verdict, "not measured yet" instead of
+  a zero; five priorities); **Equipment** (status, 30-day uptime from `resource_status_history`,
+  licence, queue, last change + reason; QA due; the RSO's red/amber counts without pregnancy rows;
+  the ticket note); **Roster** (RAD positions from a published roster, else the holders of each
+  radiology role, labelled); **Money** (billed on the day by modality × source, month to date,
+  leakage, decisions); **Access log** (image views + imaging PHI reads, who / role / patient / what
+  / why, break-glass flagged from `break_glass_grants`, no-care-link amber; the HOD's own review is
+  PHI-logged and kept out of the list). English + Hindi (`radiology.hod.*`, `nav.radiologyHod`).
+- **T6 · docs.** `radiology-go-live.md` §16 (switching escalations on, the cause table, the acts,
+  the inbox grant, verify once); this section and the spike above.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *The HOD's grant is the books grant* (`radiology.definitions.manage`, radiologist only) — no new
+    permission; the resident (reports.sign since RS8b) is not a supervisor.
+  - *One obligation definition per cause, class C* (routine operational config, the approval-flow
+    precedent: zero governance approvals, activated by the seed). Ladder: the department's
+    radiologists at 1 % (the HOD is one; a roster target narrows it), the medical superintendent at
+    100 % (NABH's escalation ends at the administrative head); money → billing manager first;
+    licence → RSO first; unmatched images → technologists first. Budgets: 15 min (STAT, red), 30
+    (held), 60 (machine, licence, abnormal), 240 (bill, unmatched).
+  - *A cause resolves only by its seat's act* — the HOD's acts are the spine's (seen / take it on /
+    hand over); "accept the delay with a reason" (board) is not built: the spine has no such act and
+    a radiology-only one would be the second system the plan forbids.
+  - *Rung ≥ 2 on a red critical is subsumed*: RS8b's chaser climbs one rung per red window (15 / 30 /
+    45 min), so rung 2 is always past the window this cause already uses.
+  - *No patient on the supervisory reads*: accession + study type; the seat shows the patient. The
+    access log names patients (it must) and writes one PHI row per patient, reason "HOD access-log
+    review".
+  - *Leakage is estimated at the active list price*; an unpriced service is counted, never ₹0-ed
+    silently.
+  - *Uptime* = the last 30 days not in `down` / `maintenance` / `qa_blocked`; a machine with no
+    history reads "not measured".
+- **Pins (old → new).** Scheduler jobs 23 → 24 (`jobs.ts`, `jobs.test`, `scheduler.test` census + spy,
+  `worker-runtime.e2e` list, `alerts-parity` list + counts, `docker/prod/prometheus/alerts.yml` leg 1a
+  + an `absent()` term); worker consumers +1 `radiology.approval_granted` (`worker.module.ts`,
+  `seed-cursors.test`, `worker-runtime.e2e` subscription census); SPA routes 81 → 82
+  (`caddyfile-parity`, `/radiology/hod`); nav + `radiologyManifest.menu` +1 (nav-parity by content);
+  radiology manifest subscriptions 1 → 2; API routes +8 (all GET). No permission, role, seed-roles,
+  README, event, notify template, error code or migration change.
+- **Counts.** See the PR body (fail-first per CRITICAL task: the new suites cannot load against
+  main, and mutants were run against each).
+- **Moved later.** HOD discount → billing plan (T4 above); the RS8b reading-room items (calendar-aware
+  yellow window, rung-naming alert text, a staff-directory picker for the read-back) → after #401
+  lands, in its own files; SMS as a channel for these alerts → the notify gateway's matrix (the spine
+  already routes every alert through it); `activeDeclarations` on the HOD screen → never (RS11
+  DECIDED: the declaration is the RSO's only); an `aerb.incident_recorded` escalation → the next RSO
+  phase (open incidents already count in Equipment's RSO line); service tickets, AMC, PM calendar,
+  MRI helium → the biomedical plan; RS6's recall-for-repeat as a second study and the HOD's
+  free-repeat approval → RS8c; the board's "accept the delay" and "page" acts → when the spine has
+  them; peer-review discrepancy → RS8c; NABH export → a later phase.
+- **Money/law questions the rulings do not settle.** (1) Who may give the HOD's ≤ 10 % discount in
+  the software — the ruling says the HOD, billing's approval type says the billing manager; the
+  owner should say whether the HOD becomes an approver on `billing_discount` for imaging lines (a
+  billing change). (2) Whether break-glass review of imaging openings is the HOD's act or the
+  security office's (built read-only here).
+
 ### RS11 · Radiation safety, completed
 - **Core:**
   - TLD CSV import from the service provider's file (ruling 5);

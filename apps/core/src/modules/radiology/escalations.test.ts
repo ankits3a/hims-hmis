@@ -1,8 +1,9 @@
 import { and, eq, isNull } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { acquireStudy, placeAndCreateStudy, setupRadiologyFixture } from "../../../test/helpers/radiology";
 import {
-  aerbLicences, events, imagingBillDecisions, imagingCriticalFindings, imagingStudies, resources, workflowInstances,
+  aerbLicences, events, imagingBillDecisions, imagingCriticalFindings, imagingStudies, imagingUnmatchedStudies, resources, workflowInstances,
   workflowTimers,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
@@ -205,6 +206,23 @@ describe("the HOD's escalations on the obligation spine (18-S RS10 T2)", () => {
     await stampFirstRead(db, signed.reportId, fx.doctor.id, new Date(NOW.getTime() + 26 * 60 * MIN));
     const after = await sweepImagingEscalations(db, new Date(NOW.getTime() + 26 * 60 * MIN));
     expect(after.resolved.filter((x) => x.cause === "abnormal_unopened")).toHaveLength(1);
+  });
+
+  it("an archive study unmatched for more than a day is raised; attaching or rejecting it resolves it (RS12's inbox)", async () => {
+    const id = newId();
+    await db.insert(imagingUnmatchedStudies).values({
+      id, studyInstanceUid: "2.25.1234567", accessionNumber: "R2608310099", modality: "CT", reason: "no_match",
+      receivedAt: new Date(NOW.getTime() - 23 * 60 * MIN), lastSeenAt: NOW,
+    });
+    expect((await sweepImagingEscalations(db, NOW)).raised).toEqual([]);
+    const r = await sweepImagingEscalations(db, new Date(NOW.getTime() + 2 * 60 * MIN));
+    expect(r.raised).toEqual([expect.objectContaining({ cause: "unmatched_pacs", subjectId: id })]);
+    const list = await escalationList(db, fx.radiologist, new Date(NOW.getTime() + 2 * 60 * MIN));
+    expect(list.rows[0]).toMatchObject({ cause: "unmatched_pacs", accessionNo: "R2608310099", seat: "/radiology/room?view=unmatched" });
+    await db.update(imagingUnmatchedStudies).set({ status: "rejected", resolvedBy: fx.radiologist.id, resolvedAt: NOW, resolutionReason: "test phantom" })
+      .where(eq(imagingUnmatchedStudies.id, id));
+    expect((await sweepImagingEscalations(db, new Date(NOW.getTime() + 2 * 60 * MIN))).resolved)
+      .toEqual([expect.objectContaining({ cause: "unmatched_pacs" })]);
   });
 
   it("a cause whose definition was never activated is reported, not silently dropped", async () => {

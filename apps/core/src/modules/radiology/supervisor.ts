@@ -10,6 +10,7 @@ import { listPriceList } from "../tariff";
 import { onDutyNow, orgDepartmentByCode, resolverEnabled } from "../roster";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { imagingDevices } from "./devices";
+import { pacsArchiveConfigured } from "./pacs";
 import { escalationCauses, openEscalations } from "./escalations";
 import { northStar, percentiles, sourceOf } from "./north-star";
 import { READING_WRITE, TAT_MINUTES, tatClassOf } from "./reading";
@@ -114,7 +115,7 @@ export type SupervisorFloor = {
     rows: { billDecisionId: string; studyId: string; accessionNo: string; studyTypeCode: string; raisedAt: string; ageMin: number; listPricePaise: number | null }[];
   };
   criticals: { openRed: number; openAll: number; oldestRedMin: number | null };
-  /** The PACS inbox (RS12). `measured: false` until the inbox store exists on this database. */
+  /** The PACS inbox (RS12). `measured: false` while no archive is configured (nothing can arrive). */
   unmatchedPacs: { measured: boolean; open: number; olderThan24h: number };
   licenceGaps: { deviceId: string; code: string; name: string; booked: number }[];
   qaOverdue: { deviceCode: string; qaType: string; dueOn: string; daysOverdue: number; state: string }[];
@@ -127,11 +128,6 @@ export function targetFor(source: NorthStarSource): number {
   if (source === "ER") return TAT_MINUTES.stat;
   if (source === "IPD") return TAT_MINUTES.ipd;
   return TAT_MINUTES.opd;
-}
-
-async function tableExists(db: Db, name: string): Promise<boolean> {
-  const r = await rowsOf(db, sql`select to_regclass(${`public.${name}`}) is not null as "exists"`);
-  return r[0]?.exists === true;
 }
 
 export async function supervisorFloor(db: Db, now: Date = new Date()): Promise<SupervisorFloor> {
@@ -284,14 +280,13 @@ export async function supervisorFloor(db: Db, now: Date = new Date()): Promise<S
   `))[0] ?? {};
 
   // ── the PACS inbox (RS12's `imaging_unmatched_studies`), read only where it exists.
-  let unmatchedPacs = { measured: false, open: 0, olderThan24h: 0 };
-  if (await tableExists(db, "imaging_unmatched_studies")) {
-    const u = (await rowsOf(db, sql`
-      select count(*)::int as open, count(*) filter (where created_at < ${new Date(now.getTime() - 86_400_000)})::int as old
-        from imaging_unmatched_studies where status = 'open'
-    `))[0] ?? {};
-    unmatchedPacs = { measured: true, open: Number(u.open ?? 0), olderThan24h: Number(u.old ?? 0) };
-  }
+  // `measured` is whether an archive is configured at all (RS12's `pacs_settings.archive`): with
+  // none, nothing can arrive, and a zero would read as "all matched".
+  const u = (await rowsOf(db, sql`
+    select count(*)::int as open, count(*) filter (where received_at < ${new Date(now.getTime() - 86_400_000)})::int as old
+      from imaging_unmatched_studies where status = 'open'
+  `))[0] ?? {};
+  const unmatchedPacs = { measured: await pacsArchiveConfigured(db), open: Number(u.open ?? 0), olderThan24h: Number(u.old ?? 0) };
 
   const bookedByDevice = new Map<string, number>();
   for (const r of booked) {

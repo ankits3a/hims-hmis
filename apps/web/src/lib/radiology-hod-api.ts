@@ -38,7 +38,8 @@ export type WireFloor = {
 };
 
 export type EscalationCause =
-  | "stat_unread" | "held_study" | "red_critical" | "machine_down" | "licence_gap" | "bill_decision_stale" | "abnormal_unopened";
+  | "stat_unread" | "held_study" | "red_critical" | "machine_down" | "licence_gap" | "bill_decision_stale" | "abnormal_unopened"
+  | "unmatched_pacs";
 
 export type WireEscalation = {
   cause: EscalationCause;

@@ -4248,7 +4248,8 @@
         "machine_down": "Machine out of service",
         "licence_gap": "No licence, patient booked",
         "bill_decision_stale": "Bill decision open over a day",
-        "abnormal_unopened": "Abnormal report unopened 24 h"
+        "abnormal_unopened": "Abnormal report unopened 24 h",
+        "unmatched_pacs": "Archive study unmatched over a day"
       },
       "seat": {
         "stat_unread": "the reading room",
@@ -4257,7 +4258,8 @@
         "machine_down": "the rooms' downtime view",
         "licence_gap": "radiation safety",
         "bill_decision_stale": "the rejects and bill decisions",
-        "abnormal_unopened": "report hand-over"
+        "abnormal_unopened": "report hand-over",
+        "unmatched_pacs": "the unmatched-images inbox"
       },
       "doIt": {
         "stat_unread": "Open the reading room",
@@ -4266,7 +4268,8 @@
         "machine_down": "Open downtime",
         "licence_gap": "Open licences",
         "bill_decision_stale": "Open bill decisions",
-        "abnormal_unopened": "Open hand-over"
+        "abnormal_unopened": "Open hand-over",
+        "unmatched_pacs": "Open unmatched images"
       },
       "escIntro": "Each row is a station's own clock that ran out. It is a kernel obligation: the ladder tells the radiologists first and the medical superintendent when the budget runs out. It closes by itself when its cause is fixed at the seat.",
       "notActive": "Escalations are not switched on for: {{causes}}. Run the radiology seed (runbook §16) — until then these causes are shown here and alert nobody.",
