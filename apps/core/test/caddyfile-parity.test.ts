@@ -419,7 +419,7 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // PHARMACY PARITY P5 — 71 -> 72 with `/pharmacy/office/reports`, the office opened on its
     // Reports side (the owner's and the billing office's door). Measured from the failing run:
     // `Received length: 72`.
-    expect(routes).toHaveLength(77); // 18-S RS6: 76 -> 77, `/radiology/room` — the modality rooms // 18-S RS4: 75 -> 76, `/radiology/setup` — the Setup station (machines, books, prices); // 18-S RS3: 73 -> 75, `/radiology/diary` and `/radiology/display` (measured: `Received length: 75`) // 18-S RS2b: 72 -> 73, `/radiology/portable` — the portable round (measured: `Received length: 73`) // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
+    expect(routes).toHaveLength(78); // 18-S RS8a: 77 -> 78, `/radiology/read` — the reading room (worklist + report workspace); // 18-S RS6: 76 -> 77, `/radiology/room` — the modality rooms // 18-S RS4: 75 -> 76, `/radiology/setup` — the Setup station (machines, books, prices); // 18-S RS3: 73 -> 75, `/radiology/diary` and `/radiology/display` (measured: `Received length: 75`) // 18-S RS2b: 72 -> 73, `/radiology/portable` — the portable round (measured: `Received length: 73`) // PHASE O T4: 68 -> 69, `/me/reach` — a person's own settings, linked from the bell's footer and absent from the nav // MERGE 2026-09-15: main's grants + the lane's, measured from the failing run
     expect(routes).toContain("/opd/slips");
     expect(routes).toContain("/reports/opd-day");
     expect(routes).toContain("/radiology/radiation-safety");
@@ -474,6 +474,7 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     expect(routes).toContain("/radiology/room"); // 18-S RS6
     expect(routes).toContain("/radiology/diary"); // 18-S RS3
     expect(routes).toContain("/radiology/display"); // 18-S RS3
+    expect(routes).toContain("/radiology/read"); // 18-S RS8a
     // The three parameterised ones too: a parameterised path is still a SPA path, and if
     // `/radiology` ever became a proxied prefix these are the legs that would catch it.
     expect(routes).toContain("/radiology/studies/$studyId");
