@@ -5560,6 +5560,8 @@
   },
   "pharmacyReorder": {
     "title": "Reorder list",
+    "toOrders": "Purchase orders →",
+    "listTitle": "The counter's shelf · {{count}} lines",
     "intro": "What the counter will run out of, from its own use over the last {{days}} days. A line is flagged under {{min}} days of cover, and the suggestion tops it up to {{target}} days, in whole packs. Nothing here moves stock: the store issues it, or purchasing orders it.",
     "print": "Print requisition",
     "none": "No sale items yet.",
