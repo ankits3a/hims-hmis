@@ -7547,6 +7547,8 @@
   "pharmacyRetailLicence": {
     "title": "Retail drug licence",
     "intro": "The walk-in counter sells to the public only under a current Form 20 and Form 21 licence. Record it exactly as printed. An entry is never edited: record a renewal or a correction as a new entry, and the latest entry is the licence.",
+    "newLicence": "Record a licence",
+    "stateMissing": "Walk-in sales are closed: no retail drug licence (Form 20/21) is recorded. Record it here with “Record a licence”.",
     "current": "Current: Form 20 {{f20}}, Form 21 {{f21}}, valid until {{to}}.",
     "form20": "Form 20 no.",
     "form21": "Form 21 no.",
