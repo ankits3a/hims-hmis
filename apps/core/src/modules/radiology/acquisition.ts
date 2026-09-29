@@ -168,6 +168,17 @@ export async function startAcquisition(
     const onDate = istDayString(now);
     const { registrationId } = await assertMachineRegistered(tx, study.deviceResourceId, onDate);
     await assertPersonRegistered(tx, actor.id, registrationId);
+    /**
+     * ═══ 18-S RS8b T3 — FORM F BEFORE THE PROCEDURE (PCPNDT Rules, rule 9(4) / Form F) ═══
+     *
+     * The `form_f` GATE is satisfied by an OPEN form (the sonologist has started the paperwork) and
+     * keeps those semantics; `recordAcquired` demanded a RECORDED one — but that is the END of the
+     * scan, so a scan could START on a form nobody had signed, and the images of a scan whose
+     * declaration was never completed would already exist. The declaration precedes the procedure,
+     * so the recorded form is now demanded HERE, before the machine is taken. `recordAcquired`
+     * keeps its own check: a form cannot be un-recorded, but the two statements guard two acts.
+     */
+    await assertFormFRecorded(tx, study.id, study.formFRequired);
   }
 
   /**

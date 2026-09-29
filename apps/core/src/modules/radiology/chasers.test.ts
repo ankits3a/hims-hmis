@@ -137,7 +137,8 @@ describe("the chasers (18a-iii T5)", () => {
     const late = await minutesAfterFlag(criticalId, 20); // window is 15 min
     const result = await sweepCriticalChaser(db, late);
 
-    expect(result.chased).toEqual([{ criticalId, category: "red", overdueMin: 5 }]);
+    /** 18-S RS8b — one window past, so the call has escalated to the ladder's second rung. */
+    expect(result.chased).toEqual([{ criticalId, category: "red", overdueMin: 5, rung: "unit_head" }]);
     expect((await emitted("imaging.critical_overdue"))[0]!.payload).toMatchObject({
       criticalId, reportId: study.reportId, studyId: study.studyId, category: "red", overdueMin: 5,
     });
@@ -213,7 +214,8 @@ describe("the chasers (18a-iii T5)", () => {
     const { criticalId } = await flag(study.reportId);
     await withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, {
       criticalId, acknowledgedByClinicianId: fx.doctor.id,
-      readBack: "left upper lobe mass, will admit", now: NOW,
+      /** 18-S RS8b — a read-back names the report's finding; this fixture's report says "No abnormality." */
+      readBack: "no abnormality, noted", now: NOW,
     }));
 
     expect((await sweepCriticalChaser(db, await minutesAfterFlag(criticalId, 20))).chased).toEqual([]);

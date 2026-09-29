@@ -56,7 +56,7 @@ import type { Db } from "../src/kernel/db/client";
  *      `available` again → drafted → signed under a FRESH second factor → published → the envelope
  *      item `completed`.
  *   2. **An obstetric ultrasound on the same patient.** `restricted` at placement, a `form_f` gate
- *      at check-in, and **`recordAcquired` REFUSED until the Form F is recorded** — the statutory
+ *      at check-in, and **the START refused until the Form F is recorded** (18-S RS8b T3) — the statutory
  *      control, end to end, through the routes a console calls.
  */
 describe("radiology, end to end, through the real manifest (18a T9)", () => {
@@ -505,18 +505,19 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(last.body.study.state).toBe("ready");
 
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study!.id));
-    expect((await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {})).status).toBe(201);
 
     /**
-     * ═══ THE ACT, END TO END: THE EXPOSURE IS REFUSED UNTIL THE DECLARATION IS SIGNED ═══
+     * ═══ THE ACT, END TO END: THE SCAN IS REFUSED UNTIL THE DECLARATION IS SIGNED ═══
      *
      * The gate passed on an OPEN form — the sonologist has started the paperwork. The REGISTER
      * demands a RECORDED one, and H8 is the difference: a form filled in after the scan is a form
      * written to match what was found.
+     *
+     * 18-S RS8b T3 — this used to START the scan on the open form and refuse at `acquired`, which
+     * pinned the old order (the images existed before the declaration). The PCPNDT Rules put Form F
+     * BEFORE the procedure, so the START is what is refused now.
      */
-    const refused = await post(`/radiology/studies/${study!.id}/acquisition/acquired`, radiographer.token, {
-      imageSource: "no_pacs_images",
-    });
+    const refused = await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {});
     expect([refused.status, refused.body.code]).toEqual([422, "form_f_missing"]);
 
     const recorded = await post(`/pcpndt/form-f/${opened.body.formFId}/record`, radiographer.token, {
@@ -527,6 +528,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     });
     expect(recorded.status).toBe(201);
 
+    expect((await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {})).status).toBe(201);
     const lands = await post(`/radiology/studies/${study!.id}/acquisition/acquired`, radiographer.token, {
       imageSource: "no_pacs_images",
     });

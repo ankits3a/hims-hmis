@@ -180,6 +180,18 @@ export const RADIOLOGY_ERROR_CODES = [
    */
   "foetal_sex_disclosure",
   "invalid_biometry",
+  /**
+   * PLAN 18-S RS8b — co-sign and the critical ladder. `cosign_required`: the study has only a
+   * resident's signature, and nothing leaves the department until a consultant co-signs it.
+   * `cosign_not_consultant` and `cosign_own_report` are about WHO is co-signing (403): only a
+   * consultant (`radiologist`) co-signs, and never a report they signed as the resident.
+   * `read_back_mismatch`: the clinician's read-back does not name the finding, so the call is not
+   * closed — the clinician repeats it again.
+   */
+  "cosign_required",
+  "cosign_not_consultant",
+  "cosign_own_report",
+  "read_back_mismatch",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -264,6 +276,10 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   signer_credentials_missing: 403,
   foetal_sex_disclosure: 422,
   invalid_biometry: 422,
+  cosign_required: 422,
+  cosign_not_consultant: 403,
+  cosign_own_report: 403,
+  read_back_mismatch: 422,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

@@ -829,6 +829,44 @@ migration:
   printed imaging report, or must the radiologist's signature be a Digital Signature Certificate
   under the IT Act, 2000 (§3/§3A)? Built as the former; the print does not claim a DSC.
 
+#### RS8b spike (read on main `02236033`, 29 Sep, before any code)
+- **(a) The resident today.** There is no resident role: `seed-roles.ts` declares `radiologist`,
+  `radiographer`, `radiology_receptionist`, `pcpndt_incharge`, `radiation_safety_officer` and
+  `modality_bridge`, and only `radiologist` holds `radiology.reports.sign`. Anybody who holds that
+  string signs a FINAL report — there is no co-sign state (`imaging_reports.status` CHECK:
+  prelim · draft · signed · amended · superseded) and `publishReport` only asks "is there a signed
+  version". So today a non-consultant can sign only by being given the consultant's role.
+- **(b) The critical call today.** `imaging_critical_findings` carries `category`,
+  `communicated_to` (free text), `channel` (a column nothing writes), `read_back_text`,
+  `communicated_at`, `acknowledged_by` (the clinician, F76), `recorded_by`, `acknowledged_at` and
+  `chased_at`. `acknowledgeCritical` demands a non-empty read-back for `red` only and checks it
+  against nothing but the §5(2) lockout — "noted" closes a red call. The chaser
+  (`sweepCriticalChaser`, every 60 s) reads each tier's `communicate_within_min` from the active
+  `critical_categories` book and, once past it, stamps `chased_at` and emits ONE
+  `imaging.critical_overdue`; it never chases the same finding again and has no rung, no person,
+  no second window (its own header: "the ladder is a later phase's").
+- **(c) Rungs through the roster.** `modules/roster` has `whoIsOn(position, at)` (flag
+  `ROSTER_RESOLVER_ENABLED`, off unless set; with the flag off or no published roster it answers
+  every holder of the position's RBAC role — for `unit_head` that is every `doctor`, useless for a
+  phone call). Positions: `unit_head` exists; there is **no RMO position** (nearest is
+  `casualty_mo`), no HOD position, and no link from an ordering clinician to their unit. The
+  treating doctor IS resolvable: `orders.ordering_clinician_id`. So **DECIDED:** the ladder's rungs
+  are fixed — treating doctor (the order's clinician, by name) → unit head (roster `unit_head`) →
+  duty RMO (roster `casualty_mo`, the duty medical officer who covers the wards out of hours) → HOD
+  (the `medical_superintendent` role's holders, the administrative head the NABH escalation policy
+  ends at). A rung names a ROLE; the screen shows who holds it today only when a PUBLISHED roster
+  answers, else the role's name — never the whole `doctor` role.
+- **(d) Prelim and amend.** Routes exist: `POST /radiology/studies/:id/reports/prelim`
+  (`radiology.reports.write`, lockout + foetal-sex guard) and `…/amend`
+  (`radiology.reports.amend`, second factor, the RS8a checks, the signer block, re-publish if v1
+  was published, which notifies through `notifyIfDue`). Flag: `POST /radiology/reports/:id/critical`;
+  acknowledge: `POST /radiology/criticals/:id/acknowledge` (`radiology.criticals.ack`). **Web
+  callers of all four: zero** (`radiology-api.ts` and `radiology-reading-api.ts` ship none).
+  Prelim is not restricted by priority anywhere.
+- **(e) Law follow-up.** `startAcquisition` checks the `form_f` GATE (satisfied by an OPEN form)
+  and the machine/person registration; only `recordAcquired` calls `assertFormFRecorded`. So a scan
+  can start on a Form F nobody has signed. The web USG room already records the form before Start.
+
 ### RS9 · Release and the closed loop
 - **Core:**
   - `imaging_report_delivery` gains `acted_at`, `acted_by` and `acted_note` (gap 6);

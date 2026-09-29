@@ -111,6 +111,13 @@ export { dryRunPreSign } from "./reports";
 export type { SignChecksRecord } from "./reports";
 export { signedContentDigest, signerSnapshot } from "./signer";
 export type { SignerBlock } from "./signer";
+// 18-S RS8b — co-sign (the resident signs, the consultant co-signs) and the critical-call ladder.
+export { CONSULTANT_ROLE, RESIDENT_ROLE, cosignReport, signsAsResident } from "./reports";
+export {
+  ACKNOWLEDGED_LOG_HOURS, CRITICAL_RUNG_ROLES, criticalCallBoard, readBackNamesFinding, recordCallAttempt,
+} from "./critical-ladder";
+export type { CriticalCallView, LadderRungView } from "./critical-ladder";
+export type { ResidentSignature } from "./signer";
 export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
 export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
 export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
