@@ -8762,7 +8762,11 @@
         "gstr2b": "GSTR-2B reconciliation",
         "gstr3b": "GSTR-3B summary",
         "activity": "Activity",
-        "tally": "Tally export"
+        "tally": "Tally export",
+        "topSelling": "Top-selling items",
+        "losses": "Loss-booking register",
+        "dailyStock": "Daily stock",
+        "catalogue": "Item catalogue"
       },
       "about": {
         "sales": "Every sale and refund, by bill, item, doctor, patient, pharmacist or tender.",
@@ -8774,7 +8778,11 @@
         "gstr2b": "The GST portal's 2B set against the bills we booked.",
         "gstr3b": "The month's return from the books: outward tax, ITC and the cash to pay.",
         "activity": "What happened to a document, and what each edit changed.",
-        "tally": "Every voucher of a period as TallyPrime XML, and the ledger names it uses."
+        "tally": "Every voucher of a period as TallyPrime XML, and the ledger names it uses.",
+        "topSelling": "The period's best sellers by units and by value, with share and ABC class.",
+        "losses": "Every write-off and count shortage: what was lost, its cost, why, and who approved it.",
+        "dailyStock": "Opening, in, out and closing stock per item, for a store and a range.",
+        "catalogue": "The item master as one sheet: HSN, GST, schedule, storage, packs, levels, rack."
       },
       "preset": {
         "today": "Today",
@@ -8854,7 +8862,35 @@
         "amount": "Amount",
         "field": "Field",
         "before": "Before",
-        "after": "After"
+        "after": "After",
+        "rank": "#",
+        "unitShare": "Unit share",
+        "salesValue": "Sales value",
+        "valueShare": "Value share",
+        "cumulative": "Cumulative",
+        "abc": "ABC",
+        "rankBy": "Rank",
+        "costLost": "Cost lost",
+        "reason": "Reason",
+        "approvedBy": "Approved by",
+        "disposal": "Disposal (agency · manifest)",
+        "opening": "Opening",
+        "totalIn": "Total in",
+        "totalOut": "Total out",
+        "closing": "Closing",
+        "schedule": "Schedule",
+        "storage": "Storage",
+        "manufacturer": "Manufacturer",
+        "leadDays": "Lead time (days)",
+        "lasa": "LASA",
+        "highAlert": "High alert",
+        "packs": "Packs",
+        "min": "Min",
+        "reorder": "Reorder",
+        "max": "Max",
+        "levels": "Levels (min/reorder/max)",
+        "rack": "Rack",
+        "class": "Class"
       },
       "kind": {
         "sale": "Sales invoice",
@@ -8964,6 +9000,63 @@
         "note": "From the hospital's books, for every bill it issued (a return is per GSTIN). Claim no more ITC than GSTR-2B shows — reconcile it first. Set-off follows rule 88A: IGST credit first, then CGST and SGST each against its own head. Filing stays the accountant's act on the portal.",
         "cashTotal": "Payable in cash for the period: {{amount}}",
         "creditNotes": "Vendor credit notes of {{amount}} carry no tax split in the books — reverse their ITC by hand."
+      },
+      "exportXlsx": "Excel (.xlsx)",
+      "exportCsv": "CSV",
+      "allItems_one": "{{count}} item",
+      "allItems_other": "{{count}} items",
+      "topNote": "Net of refunds, as the sales register counts them. Value includes GST. ABC by cumulative value: A up to 70%, B up to 90%, C the rest; the top seller is always A.",
+      "topBy": {
+        "value": "By value",
+        "units": "By units"
+      },
+      "abc": {
+        "A_one": "Class A · {{count}} item",
+        "A_other": "Class A · {{count}} items",
+        "B_one": "Class B · {{count}} item",
+        "B_other": "Class B · {{count}} items",
+        "C_one": "Class C · {{count}} item",
+        "C_other": "Class C · {{count}} items"
+      },
+      "lossLines_one": "{{count}} line",
+      "lossLines_other": "{{count}} lines",
+      "countVariance": "Count variance",
+      "lossReason": {
+        "expiry": "Expired",
+        "damage": "Damaged",
+        "recall": "Recalled",
+        "shrinkage": "Shrinkage"
+      },
+      "dailyStockNote": "From the stock ledger: opening + in − out = closing, for each item. Pick a store to read one shelf; all stores shows transfers on both sides.",
+      "stockIn": {
+        "grn": "GRN",
+        "transferIn": "Transfer in",
+        "saleReturn": "Patient returns",
+        "adjustIn": "Found / adjusted in"
+      },
+      "stockOut": {
+        "sale": "Sold / dispensed",
+        "transferOut": "Transfer out",
+        "supplierReturn": "To supplier",
+        "writeOff": "Written off / short"
+      },
+      "yes": "Yes",
+      "storage": {
+        "ambient": "Room temperature",
+        "cold_2_8": "Cold 2–8 °C",
+        "frozen": "Frozen",
+        "narcotic": "Narcotic cabinet",
+        "flammable": "Flammable"
+      },
+      "findItem": "Find an item",
+      "itemCount_one": "{{count}} item",
+      "itemCount_other": "{{count}} items",
+      "catalogueNote": "Every active item in the item master. Levels are min / reorder / max in base units; pick a store for its own levels and rack.",
+      "sideBySide": "Side by side",
+      "versionNone": "nothing before",
+      "version": {
+        "before": "Before",
+        "after": "After"
       }
     },
     "tally": {
