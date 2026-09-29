@@ -1,7 +1,8 @@
 import {
   BadRequestException, Body, Controller, ConflictException, ForbiddenException, Get, HttpCode,
-  HttpException, Inject, NotFoundException, Param, Patch, PayloadTooLargeException, Post, Put, Query,
+  HttpException, Inject, NotFoundException, Param, Patch, PayloadTooLargeException, Post, Put, Query, Res,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB, DOCUMENT_STORE } from "../../kernel/tokens";
@@ -22,7 +23,7 @@ import type { AbhaCapability } from "./abdm";
 import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssurance } from "./identity";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { searchPatients } from "./search";
-import { getPatientPhoto, storePatientPhoto } from "./photos";
+import { readPatientPhoto, storePatientPhoto } from "./photos";
 import {
   captureDocument, listDocuments, markDocumentEnteredInError, readDocument,
 } from "./documents";
@@ -74,7 +75,7 @@ function toHttp(e: unknown): never {
     }
     /* ABDM S0 — a 400 the client must be able to tell apart from a malformed body, so the code is a
        field and not only the message's prefix. */
-    if (e.code === "abha_verified_only_by_abdm") {
+    if (e.code === "abha_verified_only_by_abdm" || e.code === "age_or_dob_required") {
       throw new HttpException({ statusCode: 400, message: e.message, code: e.code, error: "Bad Request" }, 400);
     }
     /* ABDM S1 — two refusals a client must tell apart, so both carry the code; the duplicate carries
@@ -456,6 +457,22 @@ export class PatientsController {
   async register(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const b = parsed(registerBody, body);
     try {
+      /*
+        ═══ DESK-FIXES E — AGE OR DATE OF BIRTH IS MANDATORY AT REGISTRATION (DECIDED 2026-09-28) ═══
+
+        A real-Chromium walk registered a patient with neither, and every slip after it printed
+        "Age: —". Standard Indian corporate-hospital practice (and the owner's standing instruction
+        for non-money rulings): the registration desk does not create a record without an age — an
+        ESTIMATED age (`ageYears`, stored `dob_estimated`) is enough for the adult who cannot recall
+        a birth year. Doses, reference ranges and the minor/guardian rule all read it.
+
+        Enforced HERE, on the counter's route, and not inside `registerPatient`: the pharmacy's
+        walk-in customer and other in-module callers of the function keep their own rules. It runs
+        before the duplicate probe so an incomplete form is told what is missing first.
+      */
+      if (b.dob === undefined && b.ageYears === undefined) {
+        throw new PatientError("age_or_dob_required", "an age (an estimate is fine) or a date of birth is required to register");
+      }
       if (b.acknowledgedDuplicates !== true) {
         const candidates = await nearMatches(this.db, actor, b);
         if (candidates.length > 0) {
@@ -554,10 +571,22 @@ export class PatientsController {
 
   @RequirePermission("patients.read", "hospital")
   @Get(":id/photo")
-  async getPhoto(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ mimeType: string; imageBase64: string }> {
-    const photo = await getPatientPhoto(this.db, actor, id);
-    if (!photo) throw new NotFoundException("no photo");
-    return { mimeType: photo.mimeType, imageBase64: photo.bytes.toString("base64") };
+  async getPhoto(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Res({ passthrough: true }) res: Response,
+  ): Promise<{ mimeType: string; imageBase64: string } | undefined> {
+    const read = await readPatientPhoto(this.db, actor, id);
+    /* Unknown or not visible to this reader: 404, unchanged — the photo is exactly as visible as its patient. */
+    if (!read.visible) throw new NotFoundException("no photo");
+    /*
+      DESK-FIXES F — a visible patient with no photo is 204 No Content, not a 404. Most patients
+      have none, and a 404 per patient opened painted the console red (18 on one walk) and made a
+      real failure indistinguishable from the ordinary case.
+    */
+    if (read.photo === null) {
+      res.status(204);
+      return undefined;
+    }
+    return { mimeType: read.photo.mimeType, imageBase64: read.photo.bytes.toString("base64") };
   }
 
   /**

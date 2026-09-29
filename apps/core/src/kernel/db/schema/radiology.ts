@@ -98,8 +98,12 @@ export const IMAGING_GATE_KIND_VALUES = [
   "mlc_check",
 ] as const;
 
-/** DD13 — the three governed definition kinds, and 18b T3's fourth: where the images are viewed. */
-export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels"] as const;
+/**
+ * DD13 — the three governed definition kinds, and 18b T3's fourth: where the images are viewed.
+ * 18c T3 added the DRL book; 18-S RS6 adds `imaging_protocols`, the protocol book the room console
+ * reads (technique, contrast per kg, breath-hold script) — authored by the HOD, never seeded.
+ */
+export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels", "imaging_protocols"] as const;
 
 /** DD15 — the report version chain's five states. `prelim` is O-11's UNVERIFIED draft. */
 export const IMAGING_REPORT_STATUSES = ["prelim", "draft", "signed", "amended", "superseded"] as const;

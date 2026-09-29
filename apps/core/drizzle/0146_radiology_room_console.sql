@@ -1,0 +1,4 @@
+ALTER TABLE "imaging_definitions" DROP CONSTRAINT "imaging_definitions_kind_ck";--> statement-breakpoint
+ALTER TABLE "radiation_dose_register" ADD COLUMN "drl_reason" text;--> statement-breakpoint
+ALTER TABLE "imaging_definitions" ADD CONSTRAINT "imaging_definitions_kind_ck" CHECK ("imaging_definitions"."kind" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels', 'imaging_protocols'));--> statement-breakpoint
+ALTER TABLE "radiation_dose_register" ADD CONSTRAINT "radiation_dose_register_drl_reason_ck" CHECK ("radiation_dose_register"."drl_reason" is null or "radiation_dose_register"."over_drl" = true);

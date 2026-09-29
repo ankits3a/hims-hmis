@@ -11,7 +11,8 @@ import { assertDeviceLicensed, recordDose } from "../aerb";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { isValidDicomUid, mintStudyInstanceUid } from "./uid";
 import { RadiologyError } from "./errors";
-import { imagingStudyAcquired } from "./events";
+import { imagingExposureRepeated, imagingStudyAcquired } from "./events";
+import type { RepeatReasonCode } from "./events";
 import { evaluateReadiness } from "./gates";
 import { assertContrastPermissible } from "./contrast";
 import { authorisationOf, encounterPayer, hasBillDecision, raiseBillDecision } from "./money";
@@ -78,7 +79,17 @@ export async function startAcquisition(
   tx: Tx,
   actor: Actor,
   decls: readonly OrderKindDecl[],
-  input: { studyId: string; now?: Date },
+  input: {
+    studyId: string;
+    now?: Date;
+    /**
+     * 18-S RS6 — the bedside radiation checklist the technologist attests before a portable exposure
+     * (2 m clear, apron on whoever stays, no pregnant staff or patient in the bay), kept as the note
+     * on the `in_acquisition` transition — the study's own history, beside who started it and when.
+     * Recorded, not required: the gate model (and its refusals) is `gates.ts`'s, not this field's.
+     */
+    bedsideSafety?: string | null;
+  },
 ): Promise<StartAcquisitionResult> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
@@ -208,7 +219,8 @@ export async function startAcquisition(
     await advanceOrderItem(tx, actor, decls, study.orderItemId, "in_progress", {});
   }
 
-  await transition(tx, study.workflowInstanceId, "in_acquisition", actor);
+  const bedsideSafety = (input.bedsideSafety ?? "").trim();
+  await transition(tx, study.workflowInstanceId, "in_acquisition", actor, bedsideSafety === "" ? {} : { note: bedsideSafety });
   await tx.update(imagingStudies)
     .set({ status: "in_acquisition", acquisitionStartedAt: now, authorisedBy })
     .where(eq(imagingStudies.id, study.id));
@@ -240,6 +252,17 @@ export type RecordAcquiredInput = {
   contrastVolumeMl?: number | null;
   repeatOfStudyId?: string | null;
   repeatReason?: string | null;
+  /**
+   * 18-S RS6 — why the dose came in above the published DRL, typed at the console. A nudge's answer,
+   * never a precondition: the scan is recorded with or without it, and it is kept on the register
+   * row only when the server's verdict is OVER (`recordDose`).
+   */
+  drlReason?: string | null;
+  /**
+   * 18-S RS6 — why a with-contrast examination was scanned plain. Carried on the
+   * `contrast_not_given` bill decision's detail so the counter reads the reason with the reversal.
+   */
+  contrastNotGivenReason?: string | null;
   /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is DERIVED from it, never typed. */
   acquiredAt?: Date;
   now?: Date;
@@ -521,7 +544,7 @@ export async function recordAcquired(
        */
       drl: level === null || measured === null
         ? null
-        : { quantity: level.quantity, value: level.value, over: measured > level.value },
+        : { quantity: level.quantity, value: level.value, over: measured > level.value, reason: input.drlReason ?? null },
       occurredAt: acquiredAt,
     });
   }
@@ -569,7 +592,10 @@ export async function recordAcquired(
 
   /** D2 — the with-contrast service was billed and the contrast was not given. */
   if (!contrastGiven && studyType.contrast_option === "required") {
-    await raise("contrast_not_given", { studyTypeCode: study.studyTypeCode, serviceId: study.serviceId });
+    await raise("contrast_not_given", {
+      studyTypeCode: study.studyTypeCode, serviceId: study.serviceId,
+      ...((input.contrastNotGivenReason ?? "").trim() === "" ? {} : { reason: input.contrastNotGivenReason!.trim() }),
+    });
   }
   /** D6 — a repeat exposure is a second scan and usually not a second charge. */
   if (repeatOf !== null) {
@@ -640,4 +666,50 @@ export async function abortAcquisition(
     at: now, reason: input.reason,
   });
   return { studyId: study.id, status: "ready" };
+}
+
+/**
+ * PLAN 18-S RS6 — **A REPEATED EXPOSURE, recorded at the console while the patient is still on the
+ * table.**
+ *
+ * The retake a technologist makes before sending — the view was mispositioned, the patient moved,
+ * the exposure was wrong — is the commonest repeat in any department and the one the reject
+ * analysis (AERB QA, NABH's repeat-rate indicator) counts. 18a modelled only the OTHER repeat, a
+ * second study row (`repeat_of_study_id`) that nothing creates yet; this is the in-room one.
+ *
+ * Two facts, one transaction:
+ *   · `imaging.exposure_repeated` — machine, study type and a reason CODE; the Rooms station's
+ *     repeat rate is its projection;
+ *   · the `repeat_no_charge` bill decision (ruling 8: *a repeat for a technical reason is free*),
+ *     raised ONCE per study however many views are retaken — the counter decides a study's money
+ *     once, and a queue with one row per retake is the queue that stops being read (A5).
+ *
+ * `in_acquisition` only: a repeat after the images were sent is a recall, which is the second-study
+ * path, and a repeat before the start is not an exposure.
+ */
+export async function recordRepeatExposure(
+  tx: Tx,
+  actor: Actor,
+  input: { studyId: string; reason: RepeatReasonCode; now?: Date },
+): Promise<{ studyId: string; billDecisionId: string | null }> {
+  const study = await loadStudy(tx, input.studyId);
+  if (study.status !== "in_acquisition" || study.deviceResourceId === null) {
+    throw new RadiologyError(
+      "bad_transition",
+      `study ${input.studyId} is ${study.status} — a repeat is recorded while the patient is on the machine`,
+      { studyId: input.studyId, status: study.status },
+    );
+  }
+  await appendEvent(tx, imagingExposureRepeated.make({
+    actor, patientId: study.patientId, encounterId: study.encounterNo,
+    payload: {
+      studyId: study.id, deviceResourceId: study.deviceResourceId,
+      studyTypeCode: study.studyTypeCode, reason: input.reason,
+    },
+  }));
+  if (await hasBillDecision(tx, study.id, "repeat_no_charge")) return { studyId: study.id, billDecisionId: null };
+  const { billDecisionId } = await raiseBillDecision(tx, actor, {
+    studyId: study.id, kind: "repeat_no_charge", detail: { reason: input.reason, inRoom: true },
+  });
+  return { studyId: study.id, billDecisionId };
 }

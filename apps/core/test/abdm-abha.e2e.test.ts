@@ -216,8 +216,8 @@ describe("ABDM S1 e2e — configured, create OFF", () => {
   });
 
   it("ONE ABHA, ONE PATIENT over HTTP: registering a second patient with a linked ABHA is 409 abha_already_linked naming the UHID", async () => {
-    const first = await as(clerk).post("/patients", { name: "Sunita Sharma", sex: "female", phone: "9876543210", abhaNumber: ABHA, abhaVerificationStatus: "self_declared" }).expect(201);
-    const second = await as(clerk).post("/patients", { name: "Another Person", sex: "female", phone: "9876543211", abhaNumber: "91234567890123", abhaVerificationStatus: "self_declared" }).expect(409);
+    const first = await as(clerk).post("/patients", { name: "Sunita Sharma", sex: "female", phone: "9876543210", ageYears: 40, abhaNumber: ABHA, abhaVerificationStatus: "self_declared" }).expect(201);
+    const second = await as(clerk).post("/patients", { name: "Another Person", sex: "female", phone: "9876543211", ageYears: 40, abhaNumber: "91234567890123", abhaVerificationStatus: "self_declared" }).expect(409);
     expect(second.body).toMatchObject({ code: "abha_already_linked", detail: { uhid: first.body.patient.uhid } });
   });
 

@@ -172,10 +172,14 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // absent series is its alarm too: a reminder job that never runs looks exactly like patients
         // who simply did not need a refill this week.
         "runRefillReminders",
+        // 18-S RS11 T3 — the twenty-third: the overdue-QA sweep. HOURLY (`every(3_600_000)`), and
+        // placed in leg 1b (the 26-hour daily leg) on purpose: leg 1a pages at 300 s, which an
+        // hourly job exceeds every hour by design. A dead worker still shows here within a day.
+        "sweepOverdueQa",
       ].sort(),
     );
-    expect(registered).toHaveLength(22); // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(22); // no job registered twice
+    expect(registered).toHaveLength(23); // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(23); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {
