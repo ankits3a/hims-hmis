@@ -1254,6 +1254,7 @@ floor raised, and the override demands a reason and is evented.
 | `aerb.registers.manage` | | | | | | ✓ | |
 | `aerb.registers.read` | | | | | | ✓ | |
 | `aerb.doses.read` | ✓ | ✓ | | | | ✓ | |
+| `aerb.incidents.read` | ✓ | | | | | ✓ | |
 
 **Plan 18c T1 adds the sixth column and the last three rows.** The AERB registers are their own
 module (`aerb`) for the reason `pcpndt` is: the cath lab and radiation oncology owe an equipment
@@ -1263,7 +1264,10 @@ recommended appointee is a senior radiographer who will also hold `radiographer`
 survives that because a QA failure blocks the machine through the resource registry rather than
 through whichever hat the person is wearing. `aerb.doses.read` is deliberately a THIRD permission
 rather than part of `.read`: the twelve-month cumulative-dose nudge belongs on a radiologist's study
-screen, and the licence file, the QA book and the badge register do not.
+screen, and the licence file, the QA book and the badge register do not. **18-S RS11 adds
+`aerb.incidents.read`** for the same reason: the radiation incident register is the radiologist-in-
+charge's to know about (the department's HOD), the licence file is still not, and recording or
+closing an incident stays `aerb.registers.manage`, the RSO's pen.
 
 Thirteen grants are held outside that table. **`doctor` gains `radiology.orders.place` and
 `radiology.reports.read`** — the referring clinician orders the scan and reads the REPORT, and not

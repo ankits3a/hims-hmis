@@ -1472,6 +1472,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       /** PLAN 18c T1 / D2 — the cumulative-dose nudge at protocolling (O4). Reads doses, not the file. */
       "aerb.doses.read",
+      // 18-S RS11 — the radiologist-in-charge (HOD) reads the radiation incident register.
+      "aerb.incidents.read",
     ],
   },
   {
@@ -1613,6 +1615,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "aerb.registers.manage",
       "aerb.registers.read",
       "aerb.doses.read",
+      // 18-S RS11 — the incident register, read (writing it is `aerb.registers.manage`).
+      "aerb.incidents.read",
     ],
   },
   {
