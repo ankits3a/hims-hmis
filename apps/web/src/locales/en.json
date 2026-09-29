@@ -1434,13 +1434,13 @@
     "over": "Over",
     "cancel": "Cancel",
     "confirmClose": "Finish closing",
-    "confirmCloseHint": "After a billing manager approves the variance, press Finish closing to close this drawer. Until then it will not close.",
+    "confirmCloseHint": "After it is approved, press Finish closing. Until then the drawer will not close.",
     "notApprovedYet": "Not approved yet. A billing manager has to approve this variance before the drawer can close.",
-    "approvalPending": "Waiting for a billing manager to approve this variance. It has to be someone other than you.",
-    "approvalPendingSince": "Waiting since {{time}} for a billing manager to approve this variance. It has to be someone other than you.",
+    "approvalPending": "Someone other than you has to decide it.",
+    "approvalPendingSince": "Waiting since {{time}}. Someone other than you has to decide it.",
     "approvalGranted": "A billing manager approved this variance. Finish closing to close the drawer.",
     "approvalRejected": "A billing manager did not approve this variance. Withdraw the count and count the drawer again.",
-    "lockout": "Your drawer is awaiting a variance approval. You cannot take money at the counter until a billing manager approves this variance, because every receipt and cash voucher payment needs an OPEN session.",
+    "lockout": "You cannot take money at the counter until a billing manager approves this variance.",
     "status": {
       "open": "OPEN",
       "closing": "AWAITING APPROVAL",
@@ -1450,7 +1450,8 @@
       "title": "Open a drawer",
       "float": "Opening float",
       "floatRequired": "Enter the opening float",
-      "submit": "Open drawer"
+      "submit": "Open drawer",
+      "explain": "Count the float into the drawer, type it here, then open. It is the figure the close is counted against."
     },
     "close": {
       "open": "Close drawer",
@@ -1459,7 +1460,10 @@
       "denom": "₹{{rupees}}",
       "counted": "Counted",
       "note": "Close note",
-      "submit": "Close drawer"
+      "submit": "Close drawer",
+      "note_col": "Note",
+      "count_col": "Count",
+      "amount_col": "Amount"
     },
     "summary": {
       "title": "Day summary"
@@ -1471,6 +1475,45 @@
       "reasonRequired": "Say why the count is being withdrawn — the record is worthless without it.",
       "submit": "Withdraw and reopen the drawer",
       "cancel": "Keep this count"
+    },
+    "closingTitle": "Your count is in",
+    "strip": {
+      "open": "Drawer open",
+      "closing": "Drawer awaiting approval",
+      "since": "since",
+      "float": "opening float",
+      "receipts_one": "{{count}} receipt taken",
+      "receipts_other": "{{count}} receipts taken"
+    },
+    "openItems": {
+      "title": "Open on this drawer",
+      "sub": "Clear these before you close",
+      "mismatched_one": "{{count}} UPI/card payment the statement disputes",
+      "mismatched_other": "{{count}} UPI/card payments the statement disputes",
+      "mismatchedBody": "The bank's statement did not match what was taken. The billing office settles it — tell them before you close.",
+      "unconfirmed_one": "{{count}} UPI/card payment not yet confirmed",
+      "unconfirmed_other": "{{count}} UPI/card payments not yet confirmed",
+      "unconfirmedBody": "Taken and receipted; the settlement statement has not confirmed it yet. Nothing to do at the counter — it is not in your cash.",
+      "refunds_one": "{{count}} cash refund queued",
+      "refunds_other": "{{count}} cash refunds queued",
+      "refundsBody": "Approved and not yet paid. The patient may come back today — hold the cash, do not bank it.",
+      "partPaid_one": "{{count}} bill part-paid, awaiting balance",
+      "partPaid_other": "{{count}} bills part-paid, awaiting balance",
+      "partPaidBody": "You took money against these and a balance is still due.",
+      "restricted": "Restricted patient",
+      "clear": "Nothing is open on this drawer."
+    },
+    "ifClosed": {
+      "title": "If you closed the drawer now",
+      "float": "Opening float",
+      "receipts": "Receipts taken",
+      "refundsPaid": "Cash refunds paid out",
+      "refundsHeld": "Refunds still held",
+      "shouldHold": "Drawer should hold",
+      "afterCount": "shown after your count",
+      "blindTitle": "Count it before you see the figure",
+      "blindBody": "The count opens blank and the drawer's total stays hidden until you have typed yours. A cashier shown the answer first will find it every time — and a real short will never be found.",
+      "start": "Start blind count"
     }
   },
   "billingOffice": {

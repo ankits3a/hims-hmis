@@ -51,12 +51,17 @@
  * not wear `.pp`: `desk-one.css`'s `.pp button` / `.pp input` resets strip the shadcn controls the
  * lab screens still use (a Chromium walk showed the bench's "Scan the tube" button turn to bare text).
  */
+/*
+ * UX-AUDIT 2026-09-28 — `.cs`, the cashier-session screen, joins for the palette only, for `.st`'s
+ * reason: `.pp`'s button reset would strip the latch button (`SubmitButton`) and `MoneyInput`.
+ */
 .d1,
 .lg,
 .dash,
 .pp,
 .shell,
-.st {
+.st,
+.cs {
   --paper: #f4f7f4;
   --card: #ffffff;
   --ink: #132420;
