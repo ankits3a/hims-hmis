@@ -175,7 +175,7 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
 
     const reg = await db.select().from(pharmacyRegH1);
     expect(reg).toHaveLength(1); // the H1 line only
-    expect(reg[0]).toMatchObject({ patientName: "Asha Devi", prescriberName: "Dr dr.sen", drugName: "Azee 500 500 mg tablet", batchNo: "AZ-1", qtyBase: 3, unit: "tablet" });
+    expect(reg[0]).toMatchObject({ patientName: "Asha Devi", prescriberName: "Dr dr.sen", drugName: "Azee 500 tablet", batchNo: "AZ-1", qtyBase: 3, unit: "tablet" });
     const consumedEvents = await db.select().from(events).where(eq(events.name, "material.consumed"));
     expect(consumedEvents).toHaveLength(2);
     expect(consumedEvents.map((e) => (e.payload as { caseRef: { type: string } }).caseRef.type)).toEqual(["pharmacy_dispense", "pharmacy_dispense"]);

@@ -25,6 +25,7 @@ import { batchTermsPerBase } from "./price";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { registerDrugName } from "./drug-name";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { RxLine } from "../opd";
 import type { DispenseView } from "./queue";
@@ -50,10 +51,8 @@ export type HandoverInput = {
  *   3. The order items go to `completed` (DD4), which closes the envelope.
  *   4. R-4 — one `pharmacy_reg_h1` row per H1 line, Rule 65(3)'s fields COPIED at write time.
  */
-/** The drug as the registers name it: brand, strength and form, else the doctor's words. */
-function medicineName(med: { brandName: string; strengthLabel: string | null; form: string } | undefined, fallback: string): string {
-  return med === undefined ? fallback : `${med.brandName}${med.strengthLabel === null ? "" : ` ${med.strengthLabel}`} ${med.form}`;
-}
+/** The drug as the registers name it: brand, strength (once) and form, else the doctor's words (`drug-name.ts`). */
+const medicineName = registerDrugName;
 
 export async function handOverDispense(
   db: Db,
