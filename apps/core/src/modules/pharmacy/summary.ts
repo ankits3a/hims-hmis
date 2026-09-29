@@ -4,6 +4,8 @@ import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { isIsoDate } from "./config";
 import { PharmacyError } from "./errors";
 import { openOnDay } from "./queue";
+import { collectionsBlind } from "../billing";
+import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -142,4 +144,22 @@ export async function counterSummary(db: Db, day: string): Promise<CounterSummar
     notCollected: arrived?.notCollected ?? 0,
     scan: { pickedLines, scannedLines },
   };
+}
+
+/**
+ * ═══ OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen") ═══
+ *
+ * The counter's billed total is the whole counter's, but on a one-pharmacist counter it IS her own
+ * takings — and float + takings is what her drawer should hold. So while HER drawer is uncounted and
+ * she is not a drawer supervisor (`billing.session.read`), `billedPaise` is left OFF the response;
+ * every count stays. Billing's `collectionsBlind` is the one rule.
+ */
+export type CounterSummaryView = Omit<CounterSummary, "billedPaise"> & { billedPaise?: number };
+
+export async function counterSummaryFor(db: Db, viewer: Actor, day: string): Promise<CounterSummaryView> {
+  const s = await counterSummary(db, day);
+  if (!(await collectionsBlind(db, viewer, viewer, day))) return s;
+  const { billedPaise: _hidden, ...counts } = s;
+  void _hidden;
+  return counts;
 }

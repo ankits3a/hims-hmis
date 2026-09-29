@@ -5161,6 +5161,7 @@
       "drawer": "The drawer",
       "noDrawerRole": "This login holds no drawer — the billing counter collects.",
       "varianceLine": "Counted at close, against this. A variance is a conversation, not an accusation — but it is always a conversation.",
+      "blindCountLine": "Counted blind at close: what the drawer should hold is shown after you submit your count.",
       "yourDay": "Your day",
       "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
       "reportFailed": "Your day could not be read — nothing is printed until it can be.",
@@ -5886,7 +5887,8 @@
       "handedOverMine": "you handed over",
       "moneyMine": "money you took",
       "returnsRefunds": "returns · refunds",
-      "drawerHolds": "drawer should hold"
+      "drawerHolds": "drawer should hold",
+      "drawerFloat": "drawer float"
     },
     "keys": {
       "title": "keys",

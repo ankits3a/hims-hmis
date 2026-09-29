@@ -437,7 +437,8 @@ export async function fetchH1Register(from: string, to: string): Promise<WireH1R
 export type WireCounterSummary = {
   day: string; handedOver: number;
   medianMinutes: { queueToHandover: number | null; claimToHandover: number | null };
-  billedPaise: number;
+  /** Absent for a pharmacist whose own drawer is uncounted (blind count, owner ruling 2026-09-28). */
+  billedPaise?: number;
   open: { queued: number; claimed: number; verified: number; picked: number; billed: number };
   declinedLines: number; declinedTop: { reason: string; lines: number }[];
   substitutions: number; cancelled: number; refundedAfterBilling: number; returns: number;
@@ -655,9 +656,11 @@ export async function resolveShortBook(id: string, resolution: "ordered" | "rece
 }
 
 export type WireMyShift = {
-  day: string; handedOver: number; takenPaise: number; byMode: { cash: number; upi: number; card: number };
+  /** `takenPaise` / `byMode` are absent while the drawer is uncounted (blind count, owner ruling 2026-09-28). */
+  day: string; handedOver: number; takenPaise?: number; byMode?: { cash: number; upi: number; card: number };
   receipts: number; returns: number; refunds: number;
-  drawer: { status: string; openingFloatPaise: number; expectedCashPaise: number } | null;
+  /** `expectedCashPaise` is absent before the count unless the reader supervises drawers (blind count, owner ruling 2026-09-28). */
+  drawer: { status: string; openingFloatPaise: number; expectedCashPaise?: number } | null;
 };
 export async function fetchMyShift(): Promise<WireMyShift> {
   return api<WireMyShift>("GET", "/pharmacy/summary/mine");

@@ -163,7 +163,11 @@ export function CounterFigures({ onBack, onGo }: { onBack: () => void; onGo: (hr
               <Figure card={billing} statKey="desk.billing.float" label={t("desk.billing.float")} onGo={onGo} />
               <Figure card={billing} statKey="desk.billing.cash" label={t("desk.billing.cash")} onGo={onGo} />
               <Figure card={billing} statKey="desk.billing.expectedCash" label={t("desk.billing.expectedCash")} onGo={onGo} />
-              <p className="w-full text-xs text-muted-foreground">{t("registrationCounter.figures.varianceLine")}</p>
+              {/* OWNER RULING 2026-09-28 — BLIND COUNT: before her count the server does not send the
+                  expected figure, so "counted against this" would point at nothing — say why instead. */}
+              {statOf(billing, "desk.billing.expectedCash") !== null
+                ? <p className="w-full text-xs text-muted-foreground">{t("registrationCounter.figures.varianceLine")}</p>
+                : <p className="w-full text-xs text-muted-foreground" data-testid="drawer-blind">{t("registrationCounter.figures.blindCountLine")}</p>}
             </div>
           )}
         </section>
