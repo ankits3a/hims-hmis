@@ -1155,13 +1155,17 @@ signed report. `lab_reception` holds NO `lab.results.*` at all — it is a count
 prints and hands over, and a front-office login able to read every result in the building is exactly
 the hole `restricted` and the alias rule exist to close. `phlebotomist` reads the worklist and
 touches no result: the chair needs to know who is next and which tube, never a number.
-`lab.reports.release_unpaid` is held by `billing_manager` and by nobody in the lab, because
-releasing a held report is a decision to carry a receivable and that is the money office's to make.
+`lab.reports.release_unpaid` was held by `billing_manager` alone, because releasing a held report is
+a decision to carry a receivable and that is not the laboratory's to make (see the 2026-09-28
+amendment below: the decision is now the owner's approval, and the counter performs it).
 **Amended by the owner on 2026-09-02 (Plan 17c §7):** `lab_reception` gains
 `approvals.requests.create` — the counter may raise the release request for a held report; the
 billing manager still decides it — and the counter's report centre (`/lab/reports`) may render a
 SIGNED report to print it, aliased and logged per read and only once the interlock allows the
-hand-over; what stays refused is any result before signature and every list's restricted test names.
+hand-over; what stays refused is any result before signature and every list's restricted test names. **Amended 2026-09-28 (the owner's credit ruling, gap A3, and the §13 walk):** the release DECISION
+is the owner's approval, and `lab_reception` gains `lab.reports.release_unpaid` to perform the approved
+hand-over — the release is a print, and until then no role held both the print and the release, so a
+held report could be released by nobody.
 
 | Permission | pathologist | lab_technician | phlebotomist | lab_reception | lab_bridge |
 |---|---|---|---|---|---|
@@ -1182,6 +1186,7 @@ hand-over; what stays refused is any result before signature and every list's re
 | `lab.reports.publish` | ✓ | | | | |
 | `lab.reports.print` | ✓ | | | ✓ | |
 | `lab.reports.amend` | ✓ | | | | |
+| `lab.reports.release_unpaid` | | | | ✓ | |
 | `lab.orders.place` | ✓ | | | ✓ | |
 
 Thirty-four grants are held outside that table. **`doctor` gains `lab.orders.place`,
