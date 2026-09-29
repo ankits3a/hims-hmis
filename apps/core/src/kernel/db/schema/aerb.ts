@@ -352,6 +352,12 @@ export const doseRegister = pgTable(
     drlValue: numeric("drl_value", { precision: 10, scale: 3 }),
     /** NULL means "no published DRL for this examination" — which is NOT the same as "under". */
     overDrl: boolean("over_drl"),
+    /**
+     * 18-S RS6 — the technologist's reason, typed at the console, when the examination came in ABOVE
+     * the level. A DRL is a nudge and never a block; the reason is what turns an over-DRL row from a
+     * number into something the RSO can review. Only an over-DRL row may carry one (CHECK below).
+     */
+    drlReason: text("drl_reason"),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
     recordedBy: text("recorded_by").notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
@@ -387,6 +393,11 @@ export const doseRegister = pgTable(
       "radiation_dose_register_drl_ck",
       sql`(${t.drlQuantity} is null and ${t.drlValue} is null and ${t.overDrl} is null)
           or (${t.drlQuantity} is not null and ${t.drlValue} is not null and ${t.overDrl} is not null)`,
+    ),
+    /** 18-S RS6 — a reason explains an over-DRL verdict; on any other row it explains nothing. */
+    check(
+      "radiation_dose_register_drl_reason_ck",
+      sql`${t.drlReason} is null or ${t.overDrl} = true`,
     ),
   ],
 );

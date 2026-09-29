@@ -54,7 +54,7 @@ export interface RecordDoseInput {
   fluoroSeconds?: number | null;
   doseManual?: boolean;
   /** All three or none — the caller's comparison, stored as a fact. */
-  drl?: { quantity: DoseQuantity; value: string | number; over: boolean } | null;
+  drl?: { quantity: DoseQuantity; value: string | number; over: boolean; reason?: string | null } | null;
   occurredAt: Date;
 }
 
@@ -97,6 +97,12 @@ export async function recordDose(
     drlQuantity: input.drl?.quantity ?? null,
     drlValue: input.drl === null || input.drl === undefined ? null : num(input.drl.value),
     overDrl: input.drl?.over ?? null,
+    /**
+     * 18-S RS6 — kept only beside an OVER verdict (the CHECK says the same). A reason offered for an
+     * examination that came in under its level explains nothing; the console asks for one only when
+     * the number it was shown is above the level, and the server's verdict is the one that counts.
+     */
+    drlReason: input.drl?.over === true && (input.drl.reason ?? "").trim() !== "" ? input.drl.reason!.trim() : null,
     occurredAt: input.occurredAt,
     recordedBy: actor.id,
   });
@@ -123,6 +129,8 @@ export interface DoseRegisterRow {
   drlQuantity: string | null;
   drlValue: string | null;
   overDrl: boolean | null;
+  /** 18-S RS6 — the technologist's reason for an over-DRL examination, or null. */
+  drlReason: string | null;
   occurredAt: string;
 }
 
@@ -193,6 +201,7 @@ export async function doseRegisterRows(
     drlQuantity: doseRegister.drlQuantity,
     drlValue: doseRegister.drlValue,
     overDrl: doseRegister.overDrl,
+    drlReason: doseRegister.drlReason,
     occurredAt: doseRegister.occurredAt,
   })
     .from(doseRegister)

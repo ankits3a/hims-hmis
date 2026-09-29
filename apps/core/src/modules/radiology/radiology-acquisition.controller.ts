@@ -59,6 +59,10 @@ const acquiredBody = z.object({
   contrastVolumeMl: z.number().positive().max(999_999).nullish(),
   repeatOfStudyId: idSchema.nullish(),
   repeatReason: z.string().min(1).max(400).nullish(),
+  /** 18-S RS6 — why the dose came in above the DRL; kept only beside an over-DRL verdict. */
+  drlReason: z.string().min(1).max(400).nullish(),
+  /** 18-S RS6 — why a with-contrast examination was scanned plain; rides the bill decision. */
+  contrastNotGivenReason: z.string().min(1).max(400).nullish(),
   /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is derived, never sent. */
   acquiredAt: z.string().datetime().optional(),
 });
@@ -150,6 +154,8 @@ export class RadiologyAcquisitionController {
         contrastVolumeMl: input.contrastVolumeMl ?? null,
         repeatOfStudyId: input.repeatOfStudyId ?? null,
         repeatReason: input.repeatReason ?? null,
+        drlReason: input.drlReason ?? null,
+        contrastNotGivenReason: input.contrastNotGivenReason ?? null,
         acquiredAt: input.acquiredAt === undefined ? undefined : new Date(input.acquiredAt),
       }));
     } catch (e) { toHttp(e); }
