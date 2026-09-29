@@ -10,6 +10,8 @@ import type { ResourceKindDecl } from "../../kernel/resources/kinds";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { QaResult } from "../../kernel/db/schema/aerb";
+import { QA_DEFAULT_INTERVAL_YEARS } from "./limits";
+import { withTx } from "../../kernel/db/client";
 
 /**
  * PLAN 18c T2 — **THE QUALITY-ASSURANCE REGISTER, AND THE LOCKOUT THAT ACTUALLY BLOCKS.**
@@ -31,13 +33,17 @@ import type { QaResult } from "../../kernel/db/schema/aerb";
  * through the kernel's own `collectResourceKinds` — one source of truth, no second copy of the
  * `device` vocabulary anywhere.
  *
- * ═══ AN OVERDUE QA IS NOT A BLOCK (D4) ═══
+ * ═══ AN OVERDUE QA IS NOT A BLOCK (D4) — REVERSED BY 18-S RS11 T3 ═══
  *
- * The tempting symmetry is "a failure blocks, so an expiry blocks too". It is wrong here. A licence
- * expiry stops the machine because the LAW says the machine may not operate; an overdue QA means a
- * test is late, and a system that stops a CT at midnight because a physicist's visit slipped by a
- * day sends a trauma patient to another hospital. Overdue is a calendar row (T5) and a line on the
- * inspector's print. The RSO blocks; the calendar tells them to.
+ * 18c argued that an overdue QA is a late test, not a lawful stop. 18-S RS11 (owner ruling 5, the
+ * brief's T3) reverses it: a machine whose QA is past due — the record's `nextDueOn`, or
+ * performed + 2 years when the record names none (`QA_DEFAULT_INTERVAL_YEARS`) — is put into
+ * `qa_blocked` by `sweepOverdueQa`, through the SAME writer a failed QA uses
+ * (`changeResourceStatus`), and only a passing QA lifts it. DECIDED: a machine operated without its
+ * periodic QA is outside its licence conditions; the calendar has shown the due date for 30 days
+ * before the block. The sweep touches only an `available` machine: a machine with a patient on the
+ * table is never stopped mid-scan, and `down` / `maintenance` are somebody else's statuses (the
+ * sweep catches the machine the next hour it is free).
  */
 
 
@@ -81,6 +87,8 @@ export interface RecordQaOutcome {
   blocked: boolean;
   /** The failing record this pass released, if it released one. */
   releasedRecordId: string | null;
+  /** 18-S RS11 — tests still past due on this machine, when a pass could not release it. */
+  stillOverdue?: string[];
 }
 
 /**
@@ -229,6 +237,14 @@ export async function recordQa(
     if (blocking !== undefined && input.performedOn < blocking.performedOn) {
       return { recordId, blocked: false, releasedRecordId: null };
     }
+    /**
+     * 18-S RS11 T3 — a pass of ONE test does not clear a machine whose OTHER tests are overdue: the
+     * overdue block is lifted only when nothing on the machine is past due any more.
+     */
+    const stillOverdue = await overdueQaFor(tx, input.deviceResourceId, today);
+    if (stillOverdue.length > 0) {
+      return { recordId, blocked: false, releasedRecordId: null, stillOverdue: stillOverdue.map((o) => o.qaType) };
+    }
 
     const at = new Date();
     await changeResourceStatus(tx, actor, kinds, input.deviceResourceId, "available", {
@@ -288,4 +304,140 @@ export async function qaRegister(
     .orderBy(desc(qaRecords.performedOn), desc(qaRecords.recordedAt));
 
   return rows.map((r) => ({ ...r, releasedAt: r.releasedAt?.toISOString() ?? null }));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════ */
+/*  18-S RS11 T3 — QA DUE, OVERDUE, AND THE SWEEP THAT BLOCKS                                     */
+/* ══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** The system actor the overdue sweep writes as — named, so the status history says who. */
+export const QA_SWEEP_ACTOR: Actor = { type: "system", id: "aerb-qa-overdue-sweep" };
+
+/** Days before the due date a test shows as "due" (the calendar's window). */
+const QA_DUE_WINDOW_DAYS = 30;
+
+function addYears(isoDate: string, years: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number) as [number, number, number];
+  // 29 Feb + 2 years → 28 Feb (clamped), never 1 Mar.
+  const last = new Date(Date.UTC(y + years, m, 0)).getUTCDate();
+  return `${String(y + years).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(Math.min(d, last)).padStart(2, "0")}`;
+}
+
+export type QaDueState = "ok" | "due" | "overdue" | "failed";
+
+export interface QaDueRow {
+  deviceResourceId: string;
+  deviceCode: string;
+  deviceName: string;
+  deviceStatus: string;
+  qaType: string;
+  /** The record the due date is counted from (the latest pass / conditional; a failure if none). */
+  lastRecordId: string;
+  lastPerformedOn: string;
+  lastResult: string;
+  dueOn: string;
+  /** TRUE when the due date is the 2-year default because the record named none. */
+  defaultInterval: boolean;
+  state: QaDueState;
+  daysOverdue: number;
+}
+
+/**
+ * One row per machine × test: when it is next due. The due date counts from the latest test that
+ * did NOT fail — its `nextDueOn`, or performed + 2 years. A test with only failures on file is
+ * `failed` (the failure already blocked the machine) and due from the first failure.
+ */
+export async function qaDueList(db: Db | Tx, opts: { onDate?: string; deviceResourceId?: string } = {}): Promise<QaDueRow[]> {
+  const asOf = opts.onDate ?? istDayString(new Date());
+  const rows = await (db as Db).select({
+    id: qaRecords.id,
+    deviceResourceId: qaRecords.deviceResourceId,
+    qaType: qaRecords.qaType,
+    result: qaRecords.result,
+    performedOn: qaRecords.performedOn,
+    nextDueOn: qaRecords.nextDueOn,
+    recordedAt: qaRecords.recordedAt,
+    code: resources.code,
+    name: resources.name,
+    status: resources.status,
+  })
+    .from(qaRecords)
+    .innerJoin(resources, eq(resources.id, qaRecords.deviceResourceId))
+    .where(opts.deviceResourceId === undefined
+      ? sql`${resources.status} <> 'retired'`
+      : eq(qaRecords.deviceResourceId, opts.deviceResourceId));
+
+  const byKey = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const key = `${r.deviceResourceId}\u0000${r.qaType}`;
+    (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(r);
+  }
+  const out: QaDueRow[] = [];
+  const dayMs = 86_400_000;
+  for (const group of byKey.values()) {
+    const newestFirst = [...group].sort((a, b) => (a.performedOn === b.performedOn
+      ? b.recordedAt.getTime() - a.recordedAt.getTime()
+      : a.performedOn < b.performedOn ? 1 : -1));
+    const good = newestFirst.find((r) => r.result !== "fail");
+    const last = good ?? newestFirst[newestFirst.length - 1]!;
+    const defaultInterval = good !== undefined && good.nextDueOn === null;
+    const dueOn = good === undefined
+      ? last.performedOn
+      : good.nextDueOn ?? addYears(good.performedOn, QA_DEFAULT_INTERVAL_YEARS);
+    const daysOverdue = Math.floor((Date.parse(`${asOf}T00:00:00Z`) - Date.parse(`${dueOn}T00:00:00Z`)) / dayMs);
+    const state: QaDueState = good === undefined ? "failed"
+      : daysOverdue > 0 ? "overdue" : daysOverdue >= -QA_DUE_WINDOW_DAYS ? "due" : "ok";
+    out.push({
+      deviceResourceId: last.deviceResourceId, deviceCode: last.code, deviceName: last.name, deviceStatus: last.status,
+      qaType: last.qaType, lastRecordId: last.id, lastPerformedOn: last.performedOn, lastResult: last.result,
+      dueOn, defaultInterval, state, daysOverdue,
+    });
+  }
+  const rank: Record<QaDueState, number> = { failed: 0, overdue: 1, due: 2, ok: 3 };
+  return out.sort((a, b) => rank[a.state] - rank[b.state] || b.daysOverdue - a.daysOverdue || a.deviceCode.localeCompare(b.deviceCode));
+}
+
+/** The tests past due on one machine today (a `failed` test is the failure's block, not this one). */
+export async function overdueQaFor(exec: Db | Tx, deviceResourceId: string, asOf: string): Promise<QaDueRow[]> {
+  return (await qaDueList(exec, { onDate: asOf, deviceResourceId })).filter((r) => r.state === "overdue");
+}
+
+export interface QaSweepResult {
+  blocked: { deviceResourceId: string; deviceCode: string; qaTypes: string[] }[];
+  /** Overdue, but not `available` (on the table, down, maintenance) — caught on a later run. */
+  skipped: { deviceResourceId: string; deviceCode: string; status: string }[];
+}
+
+/**
+ * The worker's sweep (hourly). Every AVAILABLE machine with a test past due goes to `qa_blocked`
+ * through `changeResourceStatus` — the writer a failed QA uses — one transaction per machine, so one
+ * refusal (a patient put on the table between the read and the write) stops only that machine's
+ * write. Idempotent: a machine already `qa_blocked` is not listed again.
+ */
+export async function sweepOverdueQa(
+  db: Db, kinds: readonly ResourceKindDecl[], now: Date = new Date(),
+): Promise<QaSweepResult> {
+  const asOf = istDayString(now);
+  const overdue = (await qaDueList(db, { onDate: asOf })).filter((r) => r.state === "overdue");
+  const byDevice = new Map<string, QaDueRow[]>();
+  for (const r of overdue) (byDevice.get(r.deviceResourceId) ?? byDevice.set(r.deviceResourceId, []).get(r.deviceResourceId)!).push(r);
+  const result: QaSweepResult = { blocked: [], skipped: [] };
+  for (const [deviceResourceId, tests] of byDevice) {
+    const first = tests[0]!;
+    if (first.deviceStatus === "qa_blocked") continue;
+    if (first.deviceStatus !== "available") {
+      result.skipped.push({ deviceResourceId, deviceCode: first.deviceCode, status: first.deviceStatus });
+      continue;
+    }
+    try {
+      await withTx(db, (tx) => changeResourceStatus(tx, QA_SWEEP_ACTOR, kinds, deviceResourceId, "qa_blocked", {
+        reason: `QA overdue: ${tests.map((t) => `${t.qaType} (due ${t.dueOn})`).join(", ")}`,
+        at: now,
+      }));
+      result.blocked.push({ deviceResourceId, deviceCode: first.deviceCode, qaTypes: tests.map((t) => t.qaType) });
+    } catch {
+      result.skipped.push({ deviceResourceId, deviceCode: first.deviceCode, status: "busy" });
+    }
+  }
+  return result;
 }

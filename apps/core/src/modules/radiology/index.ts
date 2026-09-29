@@ -109,6 +109,16 @@ export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
 export { imagingDevices } from "./devices";
 export type { ImagingDeviceRow } from "./devices";
 export { bedsideStudiesFor, portableRound } from "./bedside";
+// 18-S RS4 — the machine register's write door and the Setup station's reads.
+export {
+  BOOKED_STUDY_STATUSES, DEVICE_AE_TITLE_RE, RADIOLOGY_DEVICES_MANAGE, SETTABLE_DEVICE_STATUSES,
+  bookedStudiesOn, createImagingDevice, editImagingDevice, isIonisingModality, setImagingDeviceStatus,
+} from "./machines";
+export type { BookedStudyRow, CreateImagingDeviceInput, EditImagingDevicePatch, SettableDeviceStatus } from "./machines";
+export {
+  INVESTIGATION_GST_CATEGORY, RADIOLOGY_RULED_SERVICES, setupBooks, setupPrices, setupRooms,
+} from "./setup";
+export type { BookRow, BookVersionRow, SetupPriceRow, SetupRoomRow } from "./setup";
 export type { BedsideStudyRow } from "./bedside";
 export { DICOM_UID_MAX_LENGTH, STUDY_UID_ROOT, isValidDicomUid, mintStudyInstanceUid } from "./uid";
 export {

@@ -1198,11 +1198,21 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       fix: "run: pnpm --filter @hmis/core seed:radiology — NOTE deploy.sh does not run it (11i finding)",
     },
     {
+      /**
+       * 18-S RS4 — stand-up precondition 6, as a row. Every `RAD-` (and `LAB-`) service is category
+       * `investigation`, and with no `gst_config` row for it pricing any imaging line refuses. G2
+       * because `seed:tariff` — which `deploy.sh` runs — writes it (ruling 2: exempt, 0%, SAC 9993).
+       */
+      gate: "G2", code: "radiology_investigation_gst",
+      check: async (db) => (await listGstCategories(db)).some((c) => c.category === "investigation"),
+      fix: "run: pnpm --filter @hmis/core seed:tariff — it writes the `investigation` category (exempt, SAC 9993) when absent",
+    },
+    {
       gate: "G3", code: "radiology_device_present",
       check: async (db) => (await listResourcesOfKind(db, "device")).length > 0,
-      // CORRECTED 2026-09-06: this named an act with no door. There is no resources screen and no
-      // create route; `seed:radiology` is the only writer of an imaging device.
-      fix: "radiology-go-live.md §5: add the machine to MODALITY_MACHINES and re-run seed:radiology — there is no resources screen",
+      // CORRECTED 2026-09-06: this named an act with no door. 18-S RS4 built the door: the Setup
+      // station registers a machine (POST /radiology/setup/devices); `seed:radiology` still seeds five.
+      fix: "radiology-go-live.md §5: register each machine at Radiology → Setup → Machines (code, room, AE title), or run seed:radiology for the standard five",
     },
     {
       gate: "G3", code: "radiology_devices_licensed",

@@ -1678,6 +1678,9 @@ describe("OpdConsult", () => {
     await user.selectOptions(screen.getByLabelText("Route"), "oral");
     await waitFor(() => { expect(screen.getByTestId("rx-card-head-0")).not.toHaveTextContent("Taper:"); });
     expect(screen.getByTestId("rx-card-head-0")).not.toHaveTextContent("RIGHT EYE");
+    // the taper's text is gone and NO frequency stands in for it — the doctor chooses one (walk 2026-09-28)
+    expect(screen.getByTestId("sig-0-freq-OD")).toHaveAttribute("aria-checked", "false");
+    await user.click(screen.getByTestId("sig-0-freq-OD"));
     await user.click(screen.getByTestId("sig-0-days-5"));
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
     await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
@@ -1756,6 +1759,7 @@ describe("OpdConsult", () => {
     await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
     expect(screen.getByLabelText("Drug")).toHaveValue("Warf 5");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
     // The pre-check opened the dialog, and NOTHING was posted to the issue route.
@@ -1847,6 +1851,7 @@ describe("OpdConsult", () => {
     await user.type(screen.getByLabelText("Drug"), "warf");
     await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
     return screen.findByRole("dialog");
   }
@@ -1935,6 +1940,7 @@ describe("OpdConsult", () => {
     await user.type(screen.getByLabelText("Drug"), "warf");
     await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
     // Patient A's override dialog is open, holding A's hit.
@@ -2024,6 +2030,7 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await user.type(await screen.findByLabelText("Drug"), "Some Ayurvedic Tonic");
     await user.type(screen.getByLabelText("Dose"), "10 ml");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
     // A soft hit posts straight through: no dialog, no gate.
@@ -2082,6 +2089,7 @@ describe("OpdConsult", () => {
     await user.type(screen.getByLabelText("Drug"), "warf");
     await user.click(await screen.findByTestId("rx-drug-0-hit-m-warf"));
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(1));
@@ -2318,6 +2326,7 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
     await screen.findByRole("dialog");
 
@@ -2401,7 +2410,7 @@ describe("OpdConsult", () => {
 
     // The doctor meets the override dialog exactly as if they had pressed Issue.
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/Penicillin/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Line 1: Penicillin")).toBeInTheDocument();
     expect(callsTo("POST", ISSUE_PATH)).toHaveLength(1);
     expect(callsTo("POST", COMPLETE_PATH)).toHaveLength(0);
     expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
@@ -2497,6 +2506,7 @@ describe("OpdConsult", () => {
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
 
     /* (2) The doctor glances at the queue before issuing. Stage one, exactly as designed. */
     await user.keyboard("{Escape}");
@@ -3843,6 +3853,7 @@ describe("OpdConsult — the drug typeahead", () => {
     // What is shown must not outlive the pick it describes.
     expect(screen.queryByTestId("rx-shorthand-0")).toBeNull();
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
     const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { medicineId: string | null }[] };
@@ -3870,6 +3881,7 @@ describe("OpdConsult — the drug typeahead", () => {
     await user.click(within(panel).getByTestId("sig-0-days-7"));
     expect(within(panel).getByTestId("sig-0-days-7")).toHaveAttribute("aria-checked", "false");
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
 
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
@@ -3944,6 +3956,7 @@ describe("OpdConsult — the drug typeahead", () => {
     // the list closes, and the id rides the line into the prescription POST
     expect(screen.queryByTestId("rx-drug-0-hits")).toBeNull();
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
     const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { medicineId: string | null }[] };
@@ -3962,6 +3975,8 @@ describe("OpdConsult — the drug typeahead", () => {
     await user.type(screen.getByLabelText("Drug"), "Tab Crocin 650 (hand written)");
 
     await user.type(screen.getByLabelText("Dose"), "1 tab");
+
+    await user.click(screen.getByTestId("sig-0-freq-OD")); // a new line pre-selects no frequency (walk 2026-09-28)
     await user.click(screen.getByRole("button", { name: "Issue & print" }));
     await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
     const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { drug: string; medicineId: string | null }[] };

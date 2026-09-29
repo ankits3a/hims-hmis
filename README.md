@@ -1230,7 +1230,7 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.orders.place` | | | ✓ | | | |
 | `radiology.worklist.read` | ✓ | ✓ | ✓ | | | |
 | `radiology.schedule` | | | ✓ | | | |
-| `radiology.checkin` | | ✓ | | | | |
+| `radiology.checkin` | | ✓ | ✓ | | | |
 | `radiology.gates.satisfy` | | ✓ | | | | |
 | `radiology.gates.override` | ✓ | | | | | |
 | `radiology.acquire` | ✓ | ✓ | | | | |
@@ -1240,9 +1240,11 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.reports.read` | ✓ | ✓ | | | | |
 | `radiology.definitions.read` | ✓ | ✓ | ✓ | | | |
 | `radiology.definitions.manage` | ✓ | | | | | |
+| `radiology.devices.manage` | ✓ | | | | | |
 | `radiology.bill_decisions.manage` | | | ✓ | | | |
 | `radiology.criticals.ack` | ✓ | | | | | |
 | `radiology.mwl.read` | | ✓ | | | ✓ | |
+| `radiology.display.read` | | | ✓ | | | |
 | `pcpndt.registrations.manage` | | | | ✓ | | |
 | `pcpndt.registrations.read` | ✓ | | | ✓ | | |
 | `pcpndt.form_f.write` | ✓ | | | | | |
@@ -1251,6 +1253,7 @@ floor raised, and the override demands a reason and is evented.
 | `aerb.registers.manage` | | | | | | ✓ |
 | `aerb.registers.read` | | | | | | ✓ |
 | `aerb.doses.read` | ✓ | ✓ | | | | ✓ |
+| `aerb.incidents.read` | ✓ | | | | | ✓ |
 
 **Plan 18c T1 adds the sixth column and the last three rows.** The AERB registers are their own
 module (`aerb`) for the reason `pcpndt` is: the cath lab and radiation oncology owe an equipment
@@ -1260,7 +1263,10 @@ recommended appointee is a senior radiographer who will also hold `radiographer`
 survives that because a QA failure blocks the machine through the resource registry rather than
 through whichever hat the person is wearing. `aerb.doses.read` is deliberately a THIRD permission
 rather than part of `.read`: the twelve-month cumulative-dose nudge belongs on a radiologist's study
-screen, and the licence file, the QA book and the badge register do not.
+screen, and the licence file, the QA book and the badge register do not. **18-S RS11 adds
+`aerb.incidents.read`** for the same reason: the radiation incident register is the radiologist-in-
+charge's to know about (the department's HOD), the licence file is still not, and recording or
+closing an incident stays `aerb.registers.manage`, the RSO's pen.
 
 Thirteen grants are held outside that table. **`doctor` gains `radiology.orders.place` and
 `radiology.reports.read`** — the referring clinician orders the scan and reads the REPORT, and not
@@ -1277,6 +1283,23 @@ a desk that could schedule but not bill would be a split with nothing to compens
 NOT gain `patients.update` or `billing.credit.extend`: imaging bills at the counter before the scan,
 so no imaging path issues an invoice that leaves a remainder. All four new roles are created by
 `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper` precedent.
+
+**Plan 18-S RS3 (the imaging front desk) adds one permission and three grants.** `radiology_receptionist`
+gains `radiology.checkin`: the owner-approved board makes opening the patient at the desk on the day of
+the slot the check-in (presence is derived, no button records it), and the `imaging_study` definition
+already named `radiology_receptionist` on `scheduled → checked_in`. Check-in OPENS the gate set and
+satisfies nothing, so the desk still cannot record that a patient is not pregnant. The new
+`radiology.display.read` guards the imaging waiting-hall board (`GET /radiology/display`), the OPD
+board's pattern: **`display` gains `radiology.display.read`** — the same kiosk TV account shows either
+hall's board — and the receptionist holds it to turn the TV on.
+
+**Plan 18-S RS4 (the Setup station) adds one permission and one grant.** `radiology.devices.manage`
+guards the machine register — registering an imaging machine, setting its DICOM AE title, and taking it
+out of service with a reason (`/radiology/setup/*`) — and the Setup station's books and prices reads.
+**`radiologist` gains it**, the same holder as `radiology.definitions.manage`: the department's head
+answers for what its machines are and whether they may be booked. It is NOT a QA power: a machine
+`qa_blocked` by a failed QA is released only by the radiation safety officer's passing QA record, and
+the register refuses to walk a machine out of `qa_blocked` (or out of `retired`) whoever asks.
 
 **The OPD dispense counter (Plan 16c T1) declares four permissions and one new role, and the SHAPE
 is the Pharmacy Act.** `pharmacy.dispense.scheduled` — the hand-over of a dispense carrying a

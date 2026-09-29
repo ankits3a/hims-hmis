@@ -271,6 +271,69 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J1 hops 1–2, J9 last hop, J10 banner.
 - Migration: none expected.
 
+**RS3 spike** (read on main `3276ff7a`, 29 Sep, before any code):
+- **(a) Money.** `authorisationOf` accepts four facts: a linked `invoice_line_id` (`invoice`), a
+  `D…` encounter (`daycare`), a non-self `intendedPayer` (`payer_branch`), or `priority = stat`.
+  The only writer of the invoice fact is `POST /radiology/studies/:id/invoice-line`
+  (`linkInvoiceLine`: same patient, same service, one line per study) — **zero web callers**.
+  Radiology composes no invoice. The existing path the desk reuses is billing's own:
+  `POST /billing/invoices/preview` → `POST /billing/invoices` (tender inside; the acting user's
+  open drawer; `refText` for UPI/card) → `GET /billing/invoices/:id` for the minted line id →
+  link. `radiology_receptionist` already holds `billing.invoice.issue/.read`, `billing.receipt.record`,
+  `billing.session.own`, `radiology.bill_decisions.manage`. Billing refuses a second charge for
+  the same service on the visit (`duplicate_invoice_refused`, with the existing invoice id) — the
+  desk's recovery is to link that line. No billing signature changed.
+- **(b) Desk acts.** Reschedule took device + instant (+ bedside) and refused `bad_transition`
+  (not scheduled/checked-in), `device_unavailable`, `modality_mismatch`, `slot_taken`,
+  `device_not_portable` — **no reason**. No-show took nothing (scheduled/checked-in only) — **no
+  reason**. Cancel required a reason only from `in_acquisition` (`reason_required`), refused
+  `already_acquired` after images; from the machine it raises `performed_then_cancelled`. The
+  device diary listed live studies per machine with no length, type or name.
+- **(c) Slot conflict.** Yes: `assertSlotFree` locks the device row and refuses an overlapping
+  interval (`slot_taken`, F55), with the exact-instant partial unique as the last line. No licence
+  check at booking — `device_not_licensed` is refused at acquisition only.
+- **(d) Hall display.** The OPD board reads `boardSnapshot` behind `opd.display.read` (held by the
+  kiosk `display` role); tokens, rooms, doctors, no patient field; voice rides `queue.called`
+  realtime frames. It reads OPD queue sessions, so imaging needs its own read. Imaging has no token
+  of its own and no call act.
+
+**RS3 as built** (this PR; one lane, no migration):
+- **Core.** `GET /radiology/studies/:id/counter` (`counter.ts`, `radiology.schedule`): gates
+  check-in will open (`deriveGateSet`, nothing opened), prep (`prep.ts`, one derivation for desk,
+  slip and message), payer + `authorisationOf`, film/CD add-ons only when the tariff has
+  `RAD-FILM`/`RAD-CD`. `GET /radiology/display` (`display.ts`, new `radiology.display.read`).
+  Device diary widened (length, type, priority, name); worklist gains `createdAt`, `checkedInAt`.
+  Reschedule / no-show / cancel **require a reason in every band** and append
+  `imaging.booking_changed` (act, reason, from, to). Booking and moving queue
+  `imaging_appointment_booked` through `kernel/notify` (expired by ref on move / no-show / cancel).
+- **Web.** The counter's four steps with a dock (Enter) in `/radiology/reception`; `/radiology/diary`
+  and `/radiology/display` as stations; `StationShell.closeListOn`.
+- **DECIDED.**
+  - The desk holds `radiology.checkin` — the approved board makes opening at the desk the arrival,
+    and the workflow edge already named the role; check-in opens gates, satisfies none.
+  - The hall token is the **accession** on the slip; first name + initial; confidential or
+    restricted = token only; the board writes no PHI row (the OPD board writes none; a polling TV
+    would write one per patient per poll).
+  - Voice calling is **not built** on the hall board: imaging has no call act (RS6's console bell).
+  - Prep derives from type flags and, for ultrasound fasting vs full bladder, the seeded code family,
+    until RS4's `imaging_protocols` makes prep data. A PCPNDT study's message carries **no prep**.
+  - An unlicensed ionising machine is not offered for booking at the desk (from `/radiology/devices`'
+    `licensedNow`); the server still refuses only at acquisition — a booking-time refusal belongs
+    with RS4's status writer.
+  - The desk's time box is IST (18a's desk sent the typed time as UTC — a 5 h 30 min error, fixed).
+  - Film/CD without tariff services: a note, never a desk-typed price.
+- **Counts.** Core: 4 fail-first RS3 schedule tests, counter 13, display 6, notify template + queue
+  4; radiology module + notify + e2e + pins green. Web: reception 16 (15 failed against the old
+  screen), diary 6, display 3; 23 files / 187 tests across the touched web suites. Pins:
+  seed-roles (permissions 203, pairs 424, held 189), caddyfile routes 75, radiology events 15,
+  notify catalog +1.
+- **Still not built, and who owns it.** Pre-authorisation record and deposit flow (Plan 46 / IPD);
+  IPD running bill (IPD plan); HOD discount request as an approval (RS10); booking-time licence
+  refusal and machine status writes (RS4); film/CD tariff services (RS4); voice call and "call on the
+  display" bell (RS6); outside-CD desk view and the reports release register (RS9); protected ER holds
+  and sedation blocks in the diary; the copilot panel at the counter; the WhatsApp sender (provider
+  lane).
+
 ### RS4 · Machines, books and prices (Setup)
 - **Core — coordinate: `kernel/resources` is shared.**
   - A write route for imaging devices: create, edit, AE title, status, and `portable`.
@@ -285,6 +348,71 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J10.
 - Migration: device attributes, if not in the resource's JSON.
 
+#### RS4 spike (measured on main `4d05ffdc`, 29 Sep)
+- **(a) No kernel route is needed.** `kernel/resources/index.ts` exports the registry's write surface
+  (`createResource`, `updateResource`, `moveResource`, `changeResourceStatus`), and DD14 deliberately
+  ships no kernel write route: OPD rooms, lab instruments and stores already delegate into it from
+  their own module routes. Radiology is the fourth caller. `kernel/**` is untouched. There is no
+  `resources.manage` in `seed-roles` (DD14 says why) — so RS4 mints a MODULE permission,
+  `radiology.devices.manage`.
+- **(b) Status lives on `resources.status`**, vocabulary declared by radiology's `device` kind. Writers
+  before RS4: `assignResource`/`releaseResource` at acquisition (`in_use` ↔ `available`), and
+  `aerb/qa.ts` (`qa_blocked` on a failed QA, back to `available` on a newer passing QA — *"the ONLY exit
+  from qa_blocked"*). Nothing wrote `down`, `maintenance` or `retired`.
+- **(c) GST categories are DATA**: `gst_config.category` is free text, `services.category` keys it, and
+  `seed:tariff` writes rows skip-if-present. `investigation` is one seed row — **no migration.**
+- **(d) The governed publish**: `POST /radiology/definitions/draft` (`radiology.definitions.manage`,
+  the radiologist) drafts AND files an `imaging_definition_publish` approval in one transaction; the
+  medical superintendent decides it in the kernel approvals inbox (`/approvals?focus=<id>`), which
+  refuses requester = approver; `POST /radiology/definitions/publish` re-checks the approval's status
+  and subject. **Two distinct humans are enforced (drafter ≠ MS); the publisher may be the drafter** —
+  the plan's "activator is not the drafter" is not a rule of this route. Reported, not changed (it would
+  be a governance change beyond RS4). A web editor reuses both routes as-is.
+- **(e) Booking-time licence refusal: a one-call add** — `aerb`'s `assertDeviceLicensed` (already
+  called by `startAcquisition`) after `assertDeviceBookable` in `scheduleStudy` and `rescheduleStudy`,
+  on the study type's `ionising` and the slot's IST day. `device_unavailable` for a down /
+  maintenance / qa_blocked / retired machine already existed (18a T4 A2).
+
+#### RS4 as built (this PR)
+- **Machines (T1).** `modules/radiology/machines.ts` + `radiology-setup.controller.ts`:
+  `GET|POST /radiology/setup/devices`, `PATCH /radiology/setup/devices/:id`,
+  `POST /radiology/setup/devices/:id/status` — all `radiology.devices.manage` (granted to `radiologist`).
+  AE title `^[A-Z0-9_]{1,16}$`, unique among imaging devices under a transaction advisory lock
+  (`invalid_ae_title`, `duplicate_ae_title` naming the other machine). Status needs a reason
+  (`reason_required`); `in_use` is not settable; out-of-service answers with the booked studies
+  (scheduled / checked_in / ready). Audit = the registry's `resource.*` events + `resource_status_history`
+  (reason on both). Five new codes: `invalid_ae_title`, `duplicate_ae_title`, `unknown_device`,
+  `invalid_device`, `device_status_locked`.
+- **Booking refusals (T2).** `scheduleStudy`/`rescheduleStudy` refuse `device_not_licensed` (aerb's
+  sentence: machine code + name, the RSO remedy, no ULID); the walk-in passes an unlicensed machine over
+  and, when every candidate was unlicensed, answers with that refusal.
+- **Prices and GST (T3).** `seed:tariff` writes `investigation` (exempt, 0 %, SAC 9993) when absent;
+  `seed:radiology` ensures `RAD-FILM`, `RAD-CD`, `RAD-2ND-XR-US`, `RAD-2ND-CT-MR` (category
+  `investigation`, unpriced). The existing `RAD-` services were already `investigation` — nothing moved.
+  Census row `radiology_investigation_gst` (G2).
+- **Web (T4).** `/radiology/setup?view=machines|books|prices`, the `setup` station, header views.
+  Books reuses the definitions routes and links the approvals inbox; Prices is read-only.
+- **Migration: none.** Device attributes are the resource's jsonb.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *Who manages machines:* the radiologist (HOD), the holder of the books — a new
+    `radiology.devices.manage`, not a reuse of `definitions.manage`, so the audit names the act.
+  - *A QA block is lifted only by QA*, and *retired is final*: Setup refuses to walk a machine out of
+    either (fail-safe; `aerb/qa.ts` stays the one exit from `qa_blocked`). Into `qa_blocked` is allowed.
+  - *Modality never changes* on a registered machine: its studies, doses and licences were recorded
+    against it.
+  - *Ruled prices are not activated by a seed.* A price is chargeable only through a tariff revision the
+    owner approves; the four ruled prices are carried in `RADIOLOGY_RULED_SERVICES`, shown on Prices
+    beside the price in force, and entered per `radiology-go-live.md` §6a.
+  - *X-ray's one included film* is a desk rule (first film unbilled); no bill logic enforces it yet —
+    it belongs to the phase that builds the film counter (RS9 release / hand-over).
+  - *AE title stricter at the writer than the export* (A–Z 0–9 _), see `radiology-pacs-go-live.md` §2.
+- **Moved out of RS4:** `imaging_protocols` → **RS6** (its first reader is the room console's Protocol
+  step), `report_templates` with the coded categories → **RS8** (its reader is the reading room). Each
+  needs a widened `imaging_definitions_kind_ck` — a kernel schema edit plus a migration — and a kind
+  with no reader would be a book nobody reads; they ship with their consumer.
+- **No census row for AE titles**: a hospital may run a CR or a portable with no worklist, so "every
+  ionising machine has an AE title" would be a permanent red. Setup's *No AE title* count shows it.
+
 ### RS5 · Prep & safety bay
 - **Web:**
   - `prep:bay`: every prep gate, with evidence, waive, and override-by-approval (kernel approvals);
@@ -296,6 +424,8 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 
 ### RS6 · Modality rooms
 - **Web:**
+  - **From RS4:** the `imaging_protocols` definition kind (schema, CHECK widening — one migration — and
+    a seeded empty draft) arrives here with its first reader, the Protocol step.
   - `room:console`: per machine, MWL-backed. Identify (room gates) → Protocol (protocol book, weight-based contrast,
     breath-hold script in Hindi and English) → Acquire (start/abort, dose entry) → Send (acquired).
   - `room:portable`, `room:dose`, `room:rejects` (bill decisions resolved through their route, first web caller),
@@ -303,6 +433,126 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
   - The IR suite screen is **deferred to RS12**.
 - **Core:** repeat and contrast-not-given raise their bill decisions from the console act.
 - **Journeys:** J1–J3 room hops, J6, J8, J10.
+
+**RS6 spike** (read on main `4d05ffdc`, 29 Sep, before any code):
+- **(a) Dose fields and the DRL book.** `recordAcquired` takes four numbers — `doseCtdivol` (mGy),
+  `doseDlp` (mGy·cm), `doseDap` (Gy·cm²), `fluoroSeconds` — plus `doseManual`; an ionising study
+  must carry at least one (`dose_required`, backed by `imaging_studies_dose_ck`). The modality
+  vocabulary is `xray | usg | ct | mri | mammography`, so the console asks CT for CTDIvol + DLP,
+  X-ray for DAP (+ fluoro seconds when screened), mammography for DAP, and nothing for USG / MRI.
+  There is **no AGD column**: a mammography unit that shows only AGD cannot be recorded as AGD
+  (moved to RS12's dose SR). The DRL book (`dose_reference_levels`) is `{levels: [{study_type_code?
+  | modality?, quantity: ctdivol|dlp|dap|fluoro_seconds, value, source?}]}`; `drlFor` picks study
+  type first, then modality, on a quantity the examination actually measured, and the verdict is
+  STORED on `radiation_dose_register` (`drl_quantity`, `drl_value`, `over_drl`). **There is no reason
+  column** — nowhere to keep "why above the DRL".
+- **(b) Abort and repeat.** `abortAcquisition` (reason required) sends `in_acquisition → ready`,
+  releases the machine, keeps `acquisition_started_at`, raises nothing. A repeat is modelled only
+  as a SECOND study row: `repeat_of_study_id` + `repeat_reason` (both or neither, CHECK) on
+  `recordAcquired`, which raises `repeat_no_charge` then. **Nothing creates such a row** — no route
+  and no screen — so `repeat_no_charge` has never been raised. `contrast_not_given` is raised by
+  `recordAcquired` itself when `contrast_option = required` and `contrastGiven` is false (detail:
+  study type + service, no reason). `acquired_unbilled` likewise; `performed_then_cancelled` by
+  `cancelStudy`. The queue (`GET /radiology/bill-decisions`, resolve) is
+  `radiology.bill_decisions.manage` — the desk and billing manager, **not the radiographer** (the
+  performer does not decide who pays; kept).
+- **(c) Room gates' evidence.** `identity_two_factor`: `{secondIdentifier: dob|uhid|wristband,
+  value}` — UHID and wristband compared with the patient master's UHID, DOB with the DOB; a
+  mismatch leaves the gate open (`gate_open`); never waivable, overridable with a reason.
+  `laterality_confirm`: `{patientStated: left|right|bilateral|na}` — records the side on the study;
+  a side that disagrees with one already recorded is refused; never overridable. Satisfy is
+  `radiology.gates.satisfy` (radiographer holds it).
+- **(d) Adding `imaging_protocols`.** `IMAGING_DEFINITION_KIND_VALUES` (kernel schema
+  `radiology.ts`) feeds `imaging_definitions_kind_ck` through `inList`; widening it is one
+  drop-and-add of the CHECK (0054 and 0062 did exactly this). `SCHEMA_BY_KIND` in `definitions.ts`
+  gains the body schema; the draft / publish / active routes take the kind from the same enum, so
+  they need no change. `seed:radiology` seeds only `study_types`; `pacs_settings` and
+  `dose_reference_levels` are never seeded — so the house pattern is **no seeded draft** for a book
+  the hospital authors.
+
+**RS6 as built** (this PR; lane `radiology-rs6`, rebased on RS4 `5a3713b9`; one migration, `0146`):
+- **T1 · the protocol book (core).** `imaging_protocols` is a governed definition kind: kernel
+  `IMAGING_DEFINITION_KIND_VALUES` + `imaging_definitions_kind_ck` widened (migration
+  `0146_radiology_room_console`), `imagingProtocolsBodySchema` in `definitions.ts` (per
+  `study_type_code`, or a `modality` default; technique, preset, kV/mAs ranges, CT slice/pitch, MRI
+  sequences, contrast phase + mL/kg + max + delay (+ agent, rate), breath-hold EN + HI (both or
+  neither), paediatric weight bands; refuses no key, duplicate key, inverted range, half a script, a
+  band with from ≥ to). `protocolFor` picks the study type's own, then the modality default. Drafted,
+  approved and published through the SAME routes as every book; Setup → Books lists it (RS4's
+  `setupBooks` iterates the kinds). **Nothing seeded, not even an empty draft** (DECIDED: the house
+  seeds only `study_types`; a body needs ≥ 1 protocol, so an empty draft is not a valid body).
+- **Core reads and acts** (`room.ts`, `radiology-room.controller.ts`, all `radiology.acquire`):
+  `GET /radiology/studies/:id/room` (patient in hand: age/sex, active allergies, last charted OPD
+  weight, the creatinine / eGFR the renal gate was satisfied with, the active protocol, the DRLs that
+  apply, repeats so far; one `imaging.study` PHI row); `POST …/acquisition/repeat {reason}`
+  (`recordRepeatExposure`: `in_acquisition` only; appends `imaging.exposure_repeated`; ONE
+  `repeat_no_charge` per study, detail `{reason, inRoom: true}`); `GET /radiology/room/rejects?from&to`
+  (repeats ÷ studies acquired per machine × technologist, reasons, log by accession, open
+  `repeat_no_charge` / `contrast_not_given` decisions by kind — no money, no names).
+  `acquired` gains `drlReason` (kept on the new `radiation_dose_register.drl_reason` only beside an
+  over-DRL verdict; CHECK `radiation_dose_register_drl_reason_ck`) and `contrastNotGivenReason`
+  (rides the `contrast_not_given` detail). `start` gains optional `bedsideSafety` (the note on the
+  `in_acquisition` transition; `.strict()` still refuses `onDate`).
+- **T2 · the Room console (web).** `/radiology/room` — the `room` station, header views Room console
+  · Dose log · Rejects & repeats · Downtime; `?machine=&study=` in the search. Right list = the
+  machine's floor list (STAT first, then on the table → ready → arrived → booked), clocks STAT > 10
+  min and ready > 20 min; opening a patient checks in a booked study (no presence button);
+  `RoomConsole` (`components/radiology/room-console.tsx`) Identify → Protocol → Acquire → Send with
+  one docked act (Enter). Room gates (`identity_two_factor`, `laterality_confirm`) are closed at the
+  console; any other open gate is shown with a link to `/radiology/prep` and the dock stays shut.
+  Refusals in the server's words with the seat: `device_not_licensed` → Radiation safety,
+  `device_unavailable` / `already_occupied` → Downtime, `payment_required` → desk, `not_ready` /
+  `gate_open` → prep. The study page links to the console and the console's lane links back.
+- **T3 · Portable round.** A bed opens `RoomConsole` in bedside mode inline; the three bedside
+  radiation checks gate Start and are attested as text on the start.
+- **T4 · Dose log / Rejects & repeats.** Dose log over the existing `GET /aerb/doses` (radiographer
+  holds `aerb.doses.read`), machine × IST day, above-DRL list with reasons (missing reason in red).
+  Rejects over the new read; resolve through the existing bill-decisions route, offered only to a
+  holder of `radiology.bill_decisions.manage`.
+- **T5 · Downtime.** Machine statuses from `/radiology/devices`; *Report breakdown* = RS4's
+  `setSetupDeviceStatus(id, "down", reason)` (holder of `radiology.devices.manage`), answers with the
+  studies to move and links the diary; a technologist is told who marks a machine down; the paper
+  note (manual accession sheets, back-entry with the paper time — `acquiredAt` / E11's late entry).
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *An in-room retake is the repeat the console records* (event + one no-charge decision per
+    study); the second-study repeat (`repeat_of_study_id`) stays for a recall after Send — nothing
+    creates one yet (moved to RS8/RS10, below).
+  - *Repeat rate = repeats ÷ studies acquired* on that machine by that technologist; an exposure
+    count needs MPPS (RS12). Target under 3 % (board). Repeat reason codes: positioning, motion,
+    exposure, artefact, equipment.
+  - *The technologist does not resolve bill decisions* — `radiology.bill_decisions.manage` stays with
+    the desk and the billing manager (18a's "the performer does not decide who pays"); the board's
+    "technologist confirms a free repeat" is not built.
+  - *The technologist does not mark a machine down* — RS4 made it `radiology.devices.manage`
+    (radiologist); Downtime tells a technologist to call the radiologist in charge and biomedical.
+  - *The bedside checklist is attested text, not a gate* — a new gate kind is the gate model's and
+    the prep bay's (RS5); the server records it on the start transition, the console requires it.
+  - *Weight* comes from the last OPD vitals row; the technologist may type the weight on the table
+    for the volume (not stored). The contrast volume is a suggestion; the volume given is typed.
+  - *DRL reason* is asked only when a typed number is above a published level; never required, never
+    blocks; kept only on an over-DRL register row (a reason on an under row explains nothing).
+  - *Reject log names the accession, not the patient* (QA register; no PHI needed for a rate).
+- **Pins.** Radiology events 15 → 16 (`imaging.exposure_repeated`); caddyfile routes 76 → 77
+  (`/radiology/room`); Setup books 5 → 6 kinds; nav + `radiologyManifest.menu` + one station row.
+  No new permission, no seed-roles change, no new error code.
+- **Counts.** Core: `room.test.ts` 10 (T1 4 failed against the code without the kind/schema/
+  migration; the repeat, DRL-reason and contrast-reason tests failed against mutants; the bedside
+  note test failed against a start that dropped it); touched suites after rebase — radiology, aerb,
+  kernel schema, snapshot chain, radiology e2e, caddyfile parity, seed-radiology, seed-roles: 76
+  suites / 999 tests green. Web: `radiology-room.test.tsx` 13 (the file cannot load against main),
+  portable 5 (the inline-console test failed against the old screen); touched web suites 17 files /
+  158 tests green. Walk: 1920/1440/1280/1024/768/390 × 11 screens, 0 page errors, 0 sideways
+  overflow (`/opt/hmis-context/rs6-walk/`).
+- **Moved later.** Recall-for-repeat as a second study (`repeat_of_study_id` writer) and the HOD's
+  approval of a free repeat → RS10 (approvals) / RS8 (reading room recall); AGD for mammography and
+  dose from MPPS / dose SR → RS12; the MRI zone and screening form, contrast record and reaction
+  forms → RS5 (linked by route); the call bell on the hall display, the protocol-change request to
+  the reading room and the copilot panel → RS8/RS10; a breakdown ticket to biomedical and helium /
+  chiller monitoring → RS10 (equipment); IR suite → RS12; per-exposure counts → RS12 (MPPS).
+- **Money/law questions the rulings do not settle.** (1) Whether an in-room repeat needs any bill
+  decision at all (nothing was charged twice) — built per the brief and ruling 8, one per study;
+  the owner may prefer none. (2) Mammography units that report only AGD cannot be recorded until
+  RS12; AERB's register accepts it, ours does not yet.
 
 ### RS7 · Ultrasound & PCPNDT
 - **Web:**
@@ -315,10 +565,132 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J4.
 - Migration: none expected.
 
+#### RS7 spike (read on main `5a3713b9`, 29 Sep, before any code)
+- **(a) Form F — stored vs statutory** (PCPNDT Rules r.9(4), Form F as amended 2014). Columns:
+  serial/year/machine/person/study/patient, `indication_code`, `gestation_weeks`, `applicability`,
+  `result_summary`, signer and verifier; three jsonb blocks (`sections`, `declaration`, `referral`)
+  that 18a left free-form (the only UI wrote `sections: {F: …}`). Statutory items: **Section A** —
+  centre and registration no. (from the registration), name/age/address/phone (the patient record,
+  read at print), **living sons and daughters (5)**, **husband's/father's name (6)**, **referring
+  doctor + registration no. or self-referral (8)**, **LMP / weeks (9)**; **Section B** (ultrasound) —
+  the performing doctor (person), indication i–xxiii (11), procedure (12), **date of the woman's
+  declaration (13)**, date of the procedure (the study's acquisition), result (15, the signed report),
+  to whom conveyed (16), MTP indication (17); **Section C** is invasive (genetic clinic, not this
+  department); **Section D** — her declaration and the doctor's. Missing as STRUCTURE: 5, 6, 8's
+  referrer, 9's LMP, 13 — **all storable under named keys in `sections` jsonb**, so no statutory
+  column is missing and **no migration**. Finding: `result_summary` is accepted by the API and refused
+  by `pcpndt_form_f_immutable` at completion (F63's trigger) — the result is the signed report's.
+- **(b) Registrations.** `POST /pcpndt/registrations`, `…/:id/machines`, `…/:id/persons`,
+  `POST /pcpndt/machines|persons/:id/deactivate` — `pcpndt.registrations.manage` (in-charge);
+  `GET /pcpndt/registrations` — `pcpndt.registrations.read` (radiologist, in-charge), **zero web
+  callers** before RS7. Form F: `POST /pcpndt/form-f`, `…/:id/record` — `form_f.write` (radiologist);
+  `…/:id/verify` — `form_f.verify` (in-charge; no role holds write+verify, `same_actor`);
+  `GET /pcpndt/studies/:id/form-f` — `form_f.read` (radiologist, radiographer, in-charge; PHI row).
+- **(c) One sitting.** Yes: `signReport` needs `radiology.reports.sign` and a second factor on the
+  SESSION no older than the window (15 min) — the web calls `POST /auth/totp/verify` then signs. No
+  SoD between who scanned and who signs (SoD exists only on the Form F: writer ≠ verifier). **Gap
+  found:** the signature had no PCPNDT membership check — a radiologist registered on no certificate
+  could sign an obstetric report of a scan performed on a registered machine. Closed (below).
+  Also: the radiologist does not hold `radiology.gates.satisfy`, so a sonologist alone could open a
+  Form F but not move the study to `ready` — the `form_f` gate takes no caller evidence (it reads
+  the register), so RS7 gives that one kind its own door behind `form_f.write` (below).
+- **(d) Where the sex could leak.** The report body/impression/amend reason/critical notes are read
+  by the F66 lexical lockout — but its DEMOGRAPHIC tier (`male`, `female`, `boy` …) is **liftable by
+  the medical superintendent**, so *"single live male foetus"* was one approval from a signed report.
+  Other free text: the Form F `result_summary` (unguarded), gate waive/override reasons (coded tier
+  only). DECIDED standard: a deterministic phrase check (below), refusing with a named code, never
+  editing text.
+
+#### RS7 as built (this PR; one lane, no migration)
+- **T1 — the foetal-sex guard** (`pcpndt/foetal-sex.ts`, the Act's module; radiology imports it).
+  Rules: a sex word beside a foetal noun with only fixed filler words between ("male foetus", "the
+  foetus appears to be female", "fetal gender: male"; strictly foetal nouns on EVERY report — N9's
+  pregnant trauma CT; baby/twin/genitalia only on obstetric reports); a sex stated as a value
+  ("sex: M", "लिंग: पुरुष"); words with no innocent reading on an obstetric scan (boy, girl, लड़का,
+  लड़की, ladka/ladki, bare male, the foetal genital anatomy and the turtle/hamburger signs). Case,
+  Latin diacritics (NFKD, œ→oe) and the Devanagari nukta folded; Unicode word boundaries; a comma or
+  full stop breaks a phrase ("28 y, female, single live intrauterine foetus" passes). Refusal
+  `foetal_sex_disclosure` (422) on prelim, sign, amend, publish (re-reads the SIGNED text), free-text
+  notes, and the Form F `result_summary`; checked BEFORE the lexical lockout; `lockoutOverride` never
+  reaches it. Nothing is ever edited.
+- **The Act at the signature** (`reports.ts` `assertSignerRegistered`): a `form_f_required` study is
+  signed (and amended) only by a person registered on its machine's registration on the IST day —
+  `person_not_registered` / `machine_not_registered`, the acquisition's own checks.
+- **T2 — biometry** (`@hmis/contracts` `obstetric.ts`, pure; web copy `lib/obstetric.ts` with a
+  parity test, because the web imports only types from contracts): Robinson CRL, Hadlock 1984
+  BPD/HC/AC/FL, Hadlock 1985 EFW (4-parameter; 3 without BPD), composite GA (CRL when present, else
+  the mean of the Hadlock ages), EDD by LMP (Naegele) and by scan, AFI bands, FHR 110–160 flag,
+  1–4 foetuses. Stored in `imaging_reports.body.obstetric_biometry` (jsonb — no table); the server
+  validates (`invalid_biometry`: out of range, unknown key — there is no sex field — or not an
+  obstetric study) and **recomputes `derived` on every save**, discarding any caller's.
+  **The declaration** (`body.pcpndt_declaration`, English + Hindi) is written by the server into
+  every signed obstetric version and stripped from anything a caller sends.
+- **T3 — `/radiology/usg`, Scan room** (station key `usg`, nav `pcpndt.form_f.write`, `anyOf`
+  registrations.read / form_f.read for the books): right = checked-in → signed ultrasound studies on
+  ultrasound machines, each with its Form F serial and state from the register; lane = the patient on
+  the couch (machine, room, serial, LMP, weeks); centre = Form F (indication from the Act's list →
+  open → her declaration, sons/daughters, husband's name, LMP, referral → sign) → Start scan →
+  measurements with live GA/EFW/EDD → rule-built draft + the fixed declaration → save → sign (TOTP
+  verify, then sign) → publish; non-obstetric: organ chips → report → sign. One next act in the dock
+  (Enter). Refusals in plain words naming the machine and the person, with the seat that fixes them.
+  **`POST /radiology/pcpndt/studies/:id/form-f-gate`** (`form_f.write`) closes ONLY the `form_f`
+  gate from the register row and evaluates readiness (`usg-room.ts`).
+- **T4 — the books.** `GET /radiology/pcpndt/register?month=` (`form_f.read`): the IST month's
+  serials by serial — state (open / signed / verified / cancelled = open form on a cancelled or
+  no-show study, serial kept), missing statutory fields (`pcpndt/form-f-fields.ts`), signer names,
+  and the per-machine-per-year gap check; **no patient field**. `GET /radiology/pcpndt/monthly-return?month=`
+  (`registrations.read`): per ultrasound machine — scans, PCPNDT scans, Form F opened/signed/verified/
+  open/cancelled, scans without a signed form; discrepancies (scan without signed form, signed not
+  verified, opened not scanned, signed with fields missing, serial gap); due the 5th with days left;
+  CSV. Web: Form F, Registration (first caller of `GET /pcpndt/registrations`, now labelled with
+  machine codes and people's names — additive fields; renewal clock at 90 days) and Monthly return
+  (this/last month, copy the CSV — submission is the nodal officer's act on the state portal).
+- **T5 —** `docs/runbooks/pcpndt-go-live.md` §9 (the sonologist's day, the register, the return);
+  §6/§7 prose swept for the new renewal clock and the prepared return.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *The register lists serials, not women* — the board's register shows patient names; this one does
+    not (the module's written rule, `pcpndt/manifest.ts`). The name is one click away, PHI-logged.
+  - *Verification does not hold the scan or the report* — the in-charge's counter-signature is a
+    register act; the return lists "signed, not verified" as a discrepancy to close.
+  - *`female` alone on an obstetric report* is not a foetal-sex disclosure (the new guard passes it)
+    but F66's demographic tier still asks for a rephrase or the MS there — unchanged; the room's
+    drafts never write the mother's sex (it is on the header).
+  - *Negation is not an escape* — "the foetus is not male" is refused.
+  - *Images*: the room records the acquisition as `no_pacs_images` until RS12's PACS.
+  - *The list starts at check-in* — the desk checks in (the radiologist has no `radiology.checkin`);
+    opening a patient in the room is "on the couch".
+  - *The monthly view opens on last month up to the 5th*, this month after.
+  - *Composite GA* = CRL when measured, else the arithmetic mean of the Hadlock ages (the consoles' AUA).
+- **Counts.** Core: `pcpndt/foetal-sex.test.ts` 40 (true positives + false-positive guards),
+  `radiology/obstetric-report.test.ts` 11 (**10 failed against the unwired code**, 1 non-regression
+  guard passed), `radiology/pcpndt-books.test.ts` 6, `pcpndt/registrations.test.ts` +1 (failed
+  against the old reader), `pcpndt/form-f.test.ts` +1 (failed against the old `recordFormF`),
+  `reports.test.ts` A3 now expects the stronger `foetal_sex_disclosure`. Contracts
+  `obstetric.test.ts` 7 (Robinson/Hadlock published-table checks). Web: `radiology-usg.test.tsx` 9
+  (2 failed with `verifySecondFactor` / `closeFormFGate` removed — mutation proof),
+  `lib/obstetric.test.ts` 2 (parity). After the rebase on RS6 (`583db9ff`): core touched suites
+  (`modules/pcpndt`, `modules/radiology`, `radiology.e2e`, caddyfile/nav parity, roles-catalog,
+  seed-roles) **50 suites / 627 tests green**; web 12 files / 117 tests; contracts 30; `vite build`
+  green. Pins: caddyfile routes 77 → 78 (`/radiology/usg`, after RS6's `/radiology/room`); no new
+  permission, event, template or migration.
+- **Moved later / owed.** Ages of living children (Form F item 5 asks sons and daughters WITH ages;
+  counts only here); Form F items 16–17 (to whom the result was conveyed, MTP indication); the
+  foetal-sex phrase check on gate waive/override reasons (coded tier only today) → RS8's pre-sign
+  checks; the printed report's signer block and the declaration on paper → RS8/RS9 print (the signed
+  body carries `pcpndt_declaration` for it); Form G and the inspection bundle; the Rule 13 intimation
+  letter; registration WRITES on screen (the in-charge still uses the API/runbook §2–§4).
+- **Law questions the rulings do not settle.** (1) The server lets a scan START on an OPEN Form F
+  (the gate) and refuses only the ACQUIRED mark without a recorded one; the room records before it
+  starts. Whether the Act's "before the procedure" should be enforced at start is an owner/legal call
+  (changing it re-orders 18a's A2 design). (2) `recordFormF` does not refuse a form missing statutory
+  fields; the register and the return flag them. (3) Two-year statutory retention vs the hospital's
+  five years online (ruling 6) — nothing is deleted either way.
+
 ### RS8 · Reading room (HEAVY)
 - **Core:**
   - **Coded report fields:** BI-RADS, TI-RADS, LI-RADS, PI-RADS, O-RADS, Fleischner and ASPECTS, carried by
-    `report_templates` (RS4). Calculators are deterministic.
+    `report_templates` (moved here from RS4 — the kind, its schema and its CHECK widening ship with the
+    reading room that reads them). Calculators are deterministic.
   - **Pre-sign checks, deterministic:** side against the order and the dictation; sex-specific organs; critical
     terms with negation handling; measurement against the prior. The checks run before any model.
   - **Co-sign:**
@@ -381,6 +753,109 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Web:** tabs added to `radiation-safety.tsx`, or moved into the station per RS1.
 - **Journeys:** J6.
 - Migration: incidents.
+
+#### RS11 spike (read on main `583db9ff`, 29 Sep, before any code)
+- **(a) TLD reads today.** One route, `POST /aerb/badges/reads` (`aerb.registers.manage`), typed a
+  line at a time on the Badges tab: badge, period start/end, Hp(10) and Hp(0.07) mSv, report date,
+  lab ref, remarks. `recordBadgeRead` refuses a negative dose, an inverted period, a period ending
+  before the badge was issued, and a second read for the same badge × period
+  (`read_already_recorded`). The **investigation flag** is Hp(10) ≥ the monthly level (settings row,
+  default 1 mSv) pro-rated by days worn (`investigationLevelFor`, ÷ 30.44 days); the verdict and the
+  level are STORED on the row and an over-level read emits `radiation.dose_limit_warning` (nobody
+  consumes it). Limits (30 / 20-avg / 100 mSv) are constants; `badgeRegister` sums per WORKER and
+  flags the worst calendar year. **No import, no projection, no foetal comparison.**
+- **(b) QA → `qa_blocked`.** Confirmed: `aerb/qa.ts recordQa` writes `qa_blocked` through
+  `changeResourceStatus` in the same transaction as a `fail`, and a newer `pass` is the only exit
+  (RS4 kept Setup out of it). **Gap: an overdue QA blocks nothing** — 18c's D4 said so on purpose;
+  the calendar shows `overdue` and nothing acts. No job exists in `aerb` (manifest: "no job").
+- **(c) Incidents.** None. The only neighbour is radiology's contrast-reaction register
+  (`reactions.ts`). No table, route or screen records an unintended exposure or an AERB notification.
+- **(d) Pregnant worker.** None. No declaration table; the board's People view marks the pregnancy
+  roster gate "NOT BUILT"; 18c's runbook §8 lists "roster gates for a pregnant radiographer" as not
+  turned on.
+
+#### RS11 as built (this PR; lane `radiology-rs11`, rebased on `c3ba8525`; one migration, `0147`)
+- **T1 · TLD import (core).** `aerb/tld-import.ts`, `POST /aerb/badges/import {csv, reportedOn,
+  labRef, dryRun}` (`aerb.registers.manage`). Layout: badge no. · wearer name · period from · period
+  to · Hp(10) mSv · Hp(0.07) mSv · remarks, headers matched tolerantly (synonyms, then shapes like
+  "Name of the Radiation Worker"); dates day-first or ISO; BDL / ND / NIL / "-" / "<x" → 0.000 with
+  the words kept in remarks. Per-row errors: unknown badge, badge not worn that period, period
+  already on file, period repeated in the file, unparseable date/dose, period ending after the
+  report date. **All-or-nothing**: a dry run previews; a confirm with any bad row is `422
+  tld_import_rejected` with every row in `detail.rows`; a clean confirm writes every row through
+  `recordBadgeRead` in one transaction (stored investigation verdict, `radiation.dose_limit_warning`).
+  Flags per row: investigation level (1 mSv / month pro-rated), year on course for > 20 mSv
+  (projection = the calendar-year Hp(10) ÷ days worn × days in year), year over 30 mSv, the foetal
+  limit for a declared-pregnant wearer, a wearer name that differs from the badge book (warning).
+- **T2 · Incident register (core).** `aerb_incidents` (migration 0147), `aerb/incidents.ts`,
+  `GET /aerb/incidents` (`aerb.incidents.read`, NEW — RSO + radiologist), `POST /aerb/incidents`,
+  `…/:id/investigate`, `…/:id/actions`, `…/:id/notify`, `…/:id/close` (`aerb.registers.manage`).
+  Kinds: wrong patient, wrong study, pregnant patient, repeat over threshold, equipment malfunction,
+  worker over limit, other. `INC-yy-nnn` under an advisory lock. open → investigated (root cause +
+  ≥ 1 action) → closed; close refuses `incident_actions_open` / `notification_required`. PHI surface
+  `aerb.incident_register` (one row per patient disclosed; confidential patients by alias). Event
+  `aerb.incident_recorded` (no patient, no worker in the payload).
+- **T3 · QA overdue → `qa_blocked` (core).** `qaDueList` (due = the record's `nextDueOn`, else
+  performed + 2 years; counted from the latest non-failed record per machine × test);
+  `sweepOverdueQa` in the worker, **hourly** (`kernel/worker/jobs.ts`, job 23), writes `qa_blocked`
+  through `changeResourceStatus` as system actor `aerb-qa-overdue-sweep`, only on an `available`
+  machine. `recordQa`'s pass no longer releases while another test on the machine is overdue
+  (`stillOverdue`). `GET /aerb/qa/due`.
+- **T4 · Pregnant worker (core).** `aerb_pregnancy_declarations` (same migration), `aerb/pregnancy.ts`,
+  `GET|POST /aerb/pregnancy`, `POST /aerb/pregnancy/:id/end` (read `aerb.registers.read`, write
+  `aerb.registers.manage`). Foetal dose = her Hp(10) reads after the declaration, pro-rated by days;
+  compared with 1 mSv on the declaration list, on every import row and on a typed read
+  (`recordBadgeRead` → `overFoetalLimit`). `activeDeclarations` exported for RS10.
+- **The RSO's one list.** `GET /aerb/attention` (`attentionList`): QA failed / overdue / due, open
+  incidents (red when the AERB clock ran out), workers over a statutory limit, investigation-level
+  reads of the last 90 days, active pregnancy declarations. Exported for RS10's escalations.
+- **T5 · Web.** Radiation safety's tabs are the station's header views (`views`), + TLD import,
+  Incidents, Pregnant workers; QA gains the due list with the blocked machines; the right column is
+  "Needs you" (a row opens its view); header stats. `components/radiology/radiation-safety-views.tsx`.
+  Nav row gains `anyOf: ["aerb.incidents.read"]`; a holder of incidents-read without registers-read
+  sees the Incidents view only. `StationShell`: `closeListOn` now also folds the header Menu (a tab
+  picked from the Menu on a phone was left covering the screen — found on the walk).
+- **Constants with sources** (`aerb/limits.ts`): `PREGNANT_WORKER_FOETAL_LIMIT_MSV = 1`,
+  `QA_DEFAULT_INTERVAL_YEARS = 2`, `RADIATION_SAFETY_SOURCES` (30 / 20-avg / investigation level /
+  foetal / QA cadence / TLD service), served on `/aerb/attention`.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *An overdue QA blocks* (reverses 18c D4, per the brief and ruling 5): a machine operated past its
+    periodic QA is outside its licence conditions; the calendar shows it 30 days ahead.
+  - *The block is a worker sweep, not a booking-time check* (the house pattern — `sweepBatchExpiry`,
+    the radiology chasers): a booking-time write would roll back with the booking's own refusal.
+    Hourly, so a machine busy at one tick is caught at the next. Only `available` machines; `down` /
+    `maintenance` / in use are someone else's status.
+  - *A machine with no QA record at all is not blocked by the sweep*: the licence gate already refuses
+    an unlicensed machine, and the licence is issued on the acceptance QA.
+  - *AERB notification*: required for any exposure significantly above intended (the RSO's recorded
+    judgement) or any worker over a limit; clock 24 h from recording; shown red, never a block.
+  - *Incident read = RSO + radiologist* (`aerb.incidents.read`, new); write stays the RSO's.
+  - *Pregnancy: a prompt, not a roster gate* (least invasive): the RSO list says "reassign or
+    restrict"; the roster is untouched; the declaration is visible only on the RSO's register (the
+    radiologist does not hold `aerb.registers.read`), and the room console names no one.
+  - *Foetal dose = post-declaration Hp(10), pro-rated* (no abdomen badge modelled).
+  - *Projection* compares against 20 mSv (the five-year-average annual limit); the actual year
+    against 30.
+  - *A worker over a limit does not open an incident automatically* (18c D9, record-only): the list
+    tells the RSO to record one.
+- **Pins.** Permissions 204 → 205 (declared), held 190 → 191, model pairs 425 → 427, model
+  permissions 184 → 185, `aerb` 3 → 4, radiologist 16 → 17, radiation_safety_officer 3 → 4 (README
+  table + prose); scheduler jobs 22 → 23 (`jobs.test`, `scheduler.test` census + spy,
+  `worker-runtime.e2e`, `alerts-parity`, `docker/prod/prometheus/alerts.yml` daily leg + absent term);
+  AERB events 3 → 4; AERB error codes 10 → 16; PHI surface +1 (`aerb.incident_register`). No new web
+  route (caddyfile routes unchanged), no new nav row.
+- **Counts.** See the PR body (fail-first per CRITICAL task: the four new core suites cannot load
+  against main, and eight mutants were run — seven killed, one equivalent).
+- **Moved later.** HOD escalations reading `attentionList` / `activeDeclarations` /
+  `aerb.incident_recorded` → RS10; a roster gate for a declared-pregnant worker → the roster module
+  (Plan 20) if the owner wants a hard stop; a correction route for a re-sent TLD line (still
+  refused as "already on file"); an XLSX import (CSV only); per-test QA intervals as a governed book
+  (today the RSO types `nextDueOn` per record); the board's investigation workflow for an
+  over-level read (finding, worker's explanation) → a later RSO phase.
+- **Money/law questions the rulings do not settle.** (1) The AERB reporting window — 24 h is DECIDED
+  as prompt reporting; the owner / RSO should confirm against the current AERB directive for
+  diagnostic X-ray unusual occurrences. (2) Whether an overdue QA should block at all (the brief says
+  yes; 18c said no) — the owner may revert to calendar-only.
 
 ### RS12 · Real PACS, IR and teleradiology (infrastructure)
 - 18b-ii per ruling 6:

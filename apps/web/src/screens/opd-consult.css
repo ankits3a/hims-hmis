@@ -168,14 +168,21 @@ button.cx-rxadd:hover { background: rgba(14,107,78,.09); }
 }
 
 /* ——— step 5 (main-session review) ——— */
-/* the tab bar is ONE row at every width: it scrolls sideways with faded edges rather than wrapping */
-.cx-tabs [role="tablist"] {
-  flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%);
-  padding: 0 14px 0 2px !important; gap: 5px !important;
+/*
+  The tab bar WRAPS at desktop and tablet widths, as the board draws it: one scrolling row hid
+  "Notes" off the right edge at 1440 (consult walk 2026-09-28). Only a phone keeps the single row that
+  scrolls sideways with faded edges, where two rows of tabs would push the work below the fold.
+*/
+.cx-tabs [role="tablist"] { gap: 5px !important; }
+@media (max-width: 767px) {
+  .cx-tabs [role="tablist"] {
+    flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%);
+    padding: 0 14px 0 2px !important;
+  }
+  .cx-tabs [role="tablist"]::-webkit-scrollbar { display: none; }
 }
-.cx-tabs [role="tablist"]::-webkit-scrollbar { display: none; }
 .cx-tabs [role="tab"] { padding: 0 10px; flex: none; }
 .cx-tabs { padding-left: 16px; padding-right: 16px; }
 

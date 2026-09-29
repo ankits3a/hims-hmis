@@ -132,6 +132,21 @@ export const RADIOLOGY_ERROR_CODES = [
    * are at the wrong counter, and the message has to say which one.
    */
   "outside_study_only",
+  /**
+   * ── 18-S RS4 — the machine register (Setup) ──
+   *
+   * Five codes, because a person at the Setup station acts on each differently: a bad AE title is a
+   * typo to fix against the modality's own console, a duplicate is a clash with another machine that
+   * must be named, an unknown device is a stale screen, an invalid device is a form that asked for
+   * something the register cannot hold (a room that is not a room, a modality change on a machine
+   * with a history), and a locked status is a door that belongs to somebody else — a QA block is
+   * lifted only by a passing QA record in the AERB register, and a retired machine stays retired.
+   */
+  "invalid_ae_title",
+  "duplicate_ae_title",
+  "unknown_device",
+  "invalid_device",
+  "device_status_locked",
   // ── reports (T8) ──
   "second_factor_required",
   "laterality_mismatch",
@@ -139,6 +154,14 @@ export const RADIOLOGY_ERROR_CODES = [
   "already_signed",
   "prelim_not_publishable",
   "report_not_signed",
+  /**
+   * PLAN 18-S RS7 — the obstetric report. `foetal_sex_disclosure` is a SENTENCE that states the sex
+   * of a foetus (`pcpndt/foetal-sex.ts`): refused on prelim, sign, amend and publish, and no lane — not the
+   * medical superintendent's F66 override — lifts it. `invalid_biometry` is a measurement block the
+   * published formulas cannot be applied to (out of range, an unknown key, or not an obstetric study).
+   */
+  "foetal_sex_disclosure",
+  "invalid_biometry",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -202,6 +225,11 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   device_not_portable: 422,
   invalid_bedside_location: 422,
   outside_study_only: 422,
+  invalid_ae_title: 422,
+  duplicate_ae_title: 409,
+  unknown_device: 404,
+  invalid_device: 422,
+  device_status_locked: 409,
 
   second_factor_required: 403,
   laterality_mismatch: 422,
@@ -209,6 +237,8 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   already_signed: 409,
   prelim_not_publishable: 422,
   report_not_signed: 422,
+  foetal_sex_disclosure: 422,
+  invalid_biometry: 422,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

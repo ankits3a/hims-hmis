@@ -12,7 +12,7 @@ const DATA: WireRxPrint = {
     addressLines: ["CHAURASIA CHOWK, HAJIPUR", "BIHAR 844101"],
   },
   patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, restricted: false, ageYears: 34, administrativeGender: "female" },
-  doctor: { displayName: "Dr Meera Rao", registrationNo: "BMC/12345", departmentName: "General Medicine" },
+  doctor: { code: "DR-0114", departmentName: "General Medicine" },
   encounter: {
     id: "enc-1", visitNo: "V2608180001", serviceDate: "2026-08-18", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
     advice: "warm fluids", followUpDays: 7, chiefComplaint: "fever 3d",
@@ -58,10 +58,9 @@ describe("RxPrint", () => {
     expect(screen.getByText("CHAURASIA CHOWK, HAJIPUR")).toBeInTheDocument();
     expect(screen.getByText("BIHAR 844101")).toBeInTheDocument();
 
-    // the prescriber
-    expect(screen.getByText("Dr Meera Rao")).toBeInTheDocument();
+    // the prescriber — by Doctor ID only (owner rulings 2026-09-06 and 2026-09-28)
+    expect(screen.getByTestId("rx-doctor-id")).toHaveTextContent("Doctor ID DR-0114");
     expect(screen.getByText("General Medicine")).toBeInTheDocument();
-    expect(screen.getByText("Reg. No.: BMC/12345")).toBeInTheDocument();
 
     // the patient and the service date
     expect(screen.getByTestId("rx-patient-name")).toHaveTextContent("Asha Devi");
@@ -207,4 +206,61 @@ describe("RxPrint — the eye of a diagnosis (board \"Ophthal\")", () => {
     }} />);
     expect(screen.getByTestId("rx-diagnosis")).toHaveTextContent("Diagnosis: Acute pharyngitis (J02.9)");
   });
+
+  /*
+   * CONSULT WALK 2026-09-28 (defect C) — two diagnoses printed as "Typhoid fever… · Acute URI…
+   * (A01.00)": the display string carries every tag and only the PRIMARY code, so J06.9 vanished
+   * from the paper. Every coded row prints with its own code, eye or no eye.
+   */
+  it("C1: two diagnoses without an eye print each with its OWN code — none is dropped", () => {
+    renderWithProviders(<RxPrint data={{
+      ...DATA,
+      encounter: {
+        ...DATA.encounter, diagnosis: "Typhoid fever, unspecified · Acute upper respiratory infection, unspecified", icd10Code: "A01.00",
+        diagnoses: [
+          { text: "Typhoid fever, unspecified", icd10Code: "A01.00", laterality: null },
+          { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", laterality: null },
+        ],
+      },
+    }} />);
+    expect(screen.getByTestId("rx-diagnosis")).toHaveTextContent(
+      "Diagnosis: Typhoid fever, unspecified (A01.00) · Acute upper respiratory infection, unspecified (J06.9)",
+    );
+  });
+
+  it("C2: an uncoded tag beside a coded one prints bare, and the coded one keeps its code", () => {
+    renderWithProviders(<RxPrint data={{
+      ...DATA,
+      encounter: {
+        ...DATA.encounter, diagnosis: "Viral fever · Acute upper respiratory infection, unspecified", icd10Code: "J06.9",
+        diagnoses: [
+          { text: "Viral fever", icd10Code: null, laterality: null },
+          { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", laterality: null },
+        ],
+      },
+    }} />);
+    expect(screen.getByTestId("rx-diagnosis")).toHaveTextContent(
+      "Diagnosis: Viral fever · Acute upper respiratory infection, unspecified (J06.9)",
+    );
+  });
 });
+
+/*
+ * DEFECT H — OWNER RULINGS 2026-09-06 ("As a medical Institution with college, there's no need of
+ * mentioning Dr. Name and their registration number. Only Dr. ID is required.") and 2026-09-28
+ * ("Prescription print: Doctor ID only"). The e-Rx printed the doctor's name and "Reg. No.". The
+ * fixture below is the payload as the server sent it BEFORE the ruling — name and council number
+ * included — so the absence is asserted against a payload that HAS them, not one that never did.
+ */
+describe("RxPrint — the prescriber is the Doctor ID only (H)", () => {
+  it("H1: prints 'Doctor ID <code>' and neither the doctor's name nor the registration number, even when the payload carries them", () => {
+    const legacy = { ...DATA, doctor: { code: "DR-0114", displayName: "Dr Meera Rao", registrationNo: "BMC/12345", departmentName: "General Medicine" } } as unknown as WireRxPrint;
+    const { container } = renderWithProviders(<RxPrint data={legacy} />);
+    const doc = container.querySelector(".print-doc")!.textContent ?? "";
+    expect(doc).toContain("Doctor ID DR-0114");
+    expect(doc).not.toContain("Meera");
+    expect(doc).not.toContain("BMC/12345");
+    expect(doc).not.toMatch(/Reg\. ?No/i);
+  });
+});
+

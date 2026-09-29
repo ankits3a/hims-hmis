@@ -6,6 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy } from "./schedule";
 import { registerOutsideStudy } from "./outside";
+import { counterView } from "./counter";
 import { IMAGE_ARRIVALS } from "../../kernel/db/schema/radiology";
 import { BEDSIDE_LOCATION_MAX_LENGTH, IMAGING_MODALITIES } from "./kinds";
 import { idSchema, parsed, toHttp } from "./radiology-http";
@@ -29,7 +30,7 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * `cancel` and `no-show` are idempotent by their own state machines — a second cancel of a
  * cancelled study is `bad_transition`, which is the honest answer rather than a silent success.
  */
-const scheduleBody = z.object({
+const scheduleFields = {
   deviceResourceId: idSchema,
   /** An ISO instant. The caller resolves the clock; a route that took a date and a time would be
    *  a second place that knows about IST. */
@@ -40,7 +41,14 @@ const scheduleBody = z.object({
    * department. Only a portable device accepts one — `resolveBedside` refuses the rest.
    */
   bedsideLocation: z.string().min(1).max(BEDSIDE_LOCATION_MAX_LENGTH).nullish(),
-});
+};
+const scheduleBody = z.object(scheduleFields);
+/**
+ * 18-S RS3 — a move carries the desk's reason. `nullish` at the wire so the refusal is the domain's
+ * `reason_required` (one sentence, one code) rather than a zod 400 the screen would special-case.
+ */
+const rescheduleBody = z.object({ ...scheduleFields, reason: z.string().max(400).nullish() });
+const noShowBody = z.object({ reason: z.string().max(400).nullish() });
 
 /**
  * 18a-iii T4 / D5 — a film from another centre. On `radiology.schedule`, not `radiology.acquire`:
@@ -57,8 +65,9 @@ const outsideBody = z.object({
   notes: z.string().min(1).max(2_000).nullish(),
 });
 
+/** 18-S RS3 — required by the domain in every band; `nullish` here so the refusal is `reason_required`. */
 const cancelBody = z.object({
-  reason: z.string().min(1).max(400).nullish(),
+  reason: z.string().max(400).nullish(),
 });
 
 @Controller("radiology/studies")
@@ -93,11 +102,11 @@ export class RadiologyScheduleController {
     @Param("studyId") studyId: string,
     @Body() body: unknown,
   ): Promise<unknown> {
-    const input = parsed(scheduleBody, body);
+    const input = parsed(rescheduleBody, body);
     try {
       return await withTx(this.db, (tx) => rescheduleStudy(tx, actor, {
         studyId, deviceResourceId: input.deviceResourceId, scheduledAt: new Date(input.scheduledAt),
-        bedsideLocation: input.bedsideLocation,
+        bedsideLocation: input.bedsideLocation, reason: input.reason ?? null,
       }));
     } catch (e) { toHttp(e); }
   }
@@ -144,9 +153,11 @@ export class RadiologyScheduleController {
   async noShow(
     @CurrentActor() actor: Actor,
     @Param("studyId") studyId: string,
+    @Body() body: unknown,
   ): Promise<unknown> {
+    const input = parsed(noShowBody, body ?? {});
     try {
-      return await withTx(this.db, (tx) => markNoShow(tx, actor, studyId));
+      return await withTx(this.db, (tx) => markNoShow(tx, actor, studyId, input.reason ?? null));
     } catch (e) { toHttp(e); }
   }
 
@@ -168,6 +179,22 @@ export class RadiologyScheduleController {
       return await withTx(this.db, (tx) => cancelStudy(tx, actor, this.decls(), {
         studyId, reason: input.reason ?? null,
       }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 18-S RS3 — the imaging counter's read: one study, the four steps' facts (checks that WILL open,
+   * prep, payer, authorisation, film/CD add-ons). Behind `radiology.schedule`, the desk's own
+   * permission: it names the patient and answers "can this scan start", which is the desk's
+   * question.
+   */
+  @Get(":studyId/counter")
+  @RequirePermission("radiology.schedule", "hospital")
+  async counter(
+    @CurrentActor() actor: Actor, @Param("studyId") studyId: string,
+  ): Promise<unknown> {
+    try {
+      return { study: await counterView(this.db, actor, studyId) };
     } catch (e) { toHttp(e); }
   }
 

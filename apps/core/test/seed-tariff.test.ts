@@ -40,7 +40,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
 
     expect(report.settings).toBe("seeded");
     expect(report.categoriesSeeded.sort()).toEqual(
-      ["consultation", "device", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent"], // 16c T2: +3 medicine slabs
+      ["consultation", "device", "investigation", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent"], // 16c T2: +3 medicine slabs
     );
     expect(report.categoriesLeft).toEqual([]);
     expect(report.capsSeeded.sort()).toEqual(
@@ -49,8 +49,22 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
 
     // The CONTROL for R1: the row cannot pass by writing nothing.
     expect(await db.select().from(gstSettings).where(eq(gstSettings.id, "main"))).toHaveLength(1);
-    expect(await listGstCategories(db)).toHaveLength(8); // 16c T2: +3 medicine slabs
+    expect(await listGstCategories(db)).toHaveLength(9); // 18-S RS4: +1 investigation; 16c T2: +3 medicine slabs
     expect(await listAdjustmentRules(db)).toHaveLength(4);
+  });
+
+  /**
+   * 18-S RS4 — ruling 2 (owner delegation, 28 Sep): imaging and laboratory investigations are exempt
+   * healthcare, SAC 9993 (Notification 12/2017-CT(R) entry 74), at 0%. Every `RAD-` and `LAB-`
+   * service carries this category and `gst_config` had no row for it, so pricing any of them
+   * refused (radiology stand-up precondition 6). A CA confirms the 6-digit SAC at the first filing.
+   */
+  it("seeds the investigation category — exempt, 0%, SAC 9993 (18-S ruling 2)", async () => {
+    await seedTariffConfig(db);
+    const investigation = (await listGstCategories(db)).find((c) => c.category === "investigation");
+    expect(investigation).toEqual({
+      category: "investigation", sacCode: "9993", exempt: true, rateBps: 0, specialRule: null, thresholdPaise: null,
+    });
   });
 
   it("R1 — a SECOND run over a CORRECTED gst_config row leaves the correction alone", async () => {
@@ -70,7 +84,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
     expect(report.settings).toBe("left untouched");
     expect(report.categoriesSeeded).toEqual([]);
     expect(report.categoriesLeft.sort()).toEqual(
-      ["consultation", "device", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent"], // 16c T2
+      ["consultation", "device", "investigation", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent"], // 16c T2
     );
     expect(report.capsSeeded).toEqual([]);
 
@@ -79,7 +93,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
     expect(consultation?.rateBps).toBe(500);
     expect(consultation?.exempt).toBe(false);
     // …and nothing was duplicated on the way.
-    expect(await listGstCategories(db)).toHaveLength(8); // 16c T2: +3 medicine slabs
+    expect(await listGstCategories(db)).toHaveLength(9); // 18-S RS4: +1 investigation; 16c T2: +3 medicine slabs
   });
 
   it("R1 — a SECOND run over a CORRECTED discount cap leaves the correction alone", async () => {
