@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { ApiError, api } from "./api";
 import type { WireRenderedDocument } from "./print-api";
 
 /**
@@ -65,6 +65,8 @@ export type WireReturnLine = {
   batchId: string; batchNo: string; expiryDate: string | null; storeResourceId: string; storeCode: string; storeName: string;
   reason: ReturnLineReason; qtyBase: number; ratePaise: number; taxablePaise: number; gstRateBps: number;
   cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: number; ledgerEntryId: string | null;
+  /** A5 — the person's words for the line. */
+  note: string | null;
 };
 export type WireReturn = WireReturnSummary & {
   note: string | null; vendorGstin: string | null; closeReason: string | null; cancelReason: string | null; recallNo: string | null;
@@ -145,6 +147,53 @@ export const recordCredit = async (id: string, input: { vendorCreditNoteNo: stri
   (await api<{ return: WireReturn }>("POST", `/materials/supplier-returns/${id}/credit-note`, input)).return;
 export const cancelCredit = async (id: string, reason: string): Promise<WireReturn> =>
   (await api<{ return: WireReturn }>("POST", `/materials/supplier-returns/${id}/credit-note/cancel`, { reason })).return;
+
+// ── GAP-CLOSURE A5 — a person's manual return, and a draft's lines edited ──
+/** The reasons a person picks on the office's return sheet, most common first. */
+export const MANUAL_REASONS: readonly ReturnLineReason[] = ["damaged", "near_expiry", "expired", "recalled"];
+export type WireReturnableVendor = { vendorId: string; vendorCode: string; vendorName: string; gstin: string | null; batches: number; windowDays: number };
+export type WireReturnableBatch = {
+  storeResourceId: string; storeCode: string; storeName: string;
+  itemId: string; itemCode: string; itemName: string; baseUom: string; pack: Pack;
+  batchId: string; batchNo: string; expiryDate: string | null; landedCostPaise: number;
+  onHand: number; reserved: number; frozen: number; onOtherDocuments: number; available: number;
+  recalled: boolean; reasons: ReturnLineReason[]; pastWindow: boolean; returnableUntil: string | null;
+};
+export type ReturnLineInput = { batchId: string; storeResourceId: string; qtyBase: number; reason: ReturnLineReason; note?: string | null };
+export const fetchReturnVendors = async (): Promise<WireReturnableVendor[]> =>
+  (await api<{ vendors: WireReturnableVendor[] }>("GET", "/materials/supplier-returns/vendors")).vendors;
+export async function fetchReturnable(vendorId: string, q = "", exceptReturnId: string | null = null): Promise<WireReturnableBatch[]> {
+  const p = new URLSearchParams({ vendorId });
+  if (q.trim() !== "") p.set("q", q.trim());
+  if (exceptReturnId !== null) p.set("exceptReturnId", exceptReturnId);
+  return (await api<{ batches: WireReturnableBatch[] }>("GET", `/materials/supplier-returns/returnable?${p.toString()}`)).batches;
+}
+export const createReturn = async (input: { vendorId: string; note?: string | null; lines: ReturnLineInput[] }): Promise<WireReturn> =>
+  (await api<{ return: WireReturn }>("POST", "/materials/supplier-returns", input)).return;
+export const updateReturn = async (id: string, patch: { note?: string | null; lines?: ReturnLineInput[] }): Promise<WireReturn> =>
+  (await api<{ return: WireReturn }>("PATCH", `/materials/supplier-returns/${id}`, patch)).return;
+
+/**
+ * A5 — a refusal of a return's lines as the rule that fired, from the server's `code` and `detail`
+ * (`detail.why` names the case; `batchNo`, `available`, `required`, `returnableUntil` fill it in).
+ * Null when the refusal has no more specific sentence than `materialsErrors`.
+ */
+export function returnRefusal(e: unknown): { key: string; params: Record<string, string | number> } | null {
+  if (!(e instanceof ApiError)) return null;
+  const body = e.body as { code?: string; detail?: Record<string, unknown> } | null;
+  const code = body?.code;
+  const d = body?.detail ?? {};
+  const params: Record<string, string | number> = {};
+  for (const k of ["batchNo", "available", "required", "returnableUntil", "days", "status"]) {
+    const v = d[k];
+    if (typeof v === "string" || typeof v === "number") params[k] = v;
+  }
+  if (code === "return_invalid" && typeof d.why === "string") return { key: `pharmacyOffice.returns.refusal.${d.why}`, params };
+  if ((code === "insufficient_stock" || code === "return_window_passed" || code === "not_returnable") && typeof params.batchNo === "string") {
+    return { key: `pharmacyOffice.returns.refusal.${code}`, params };
+  }
+  return null;
+}
 
 // ── destruction ──
 export const fetchWriteOff = async (id: string): Promise<WireWriteOff> => (await api<{ writeOff: WireWriteOff }>("GET", `/materials/write-offs/${id}`)).writeOff;

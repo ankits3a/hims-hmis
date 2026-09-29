@@ -80,6 +80,8 @@ export type ReturnLineInput = {
   ratePaise?: number | null;
   /** Defaults to the rate the purchase was billed at. */
   gstRateBps?: number | null;
+  /** A5 — the person's words for the line (what was damaged, what was wrong with the supply). */
+  note?: string | null;
 };
 
 export type ReturnInput = { vendorId: string; interState?: boolean; note?: string | null; lines: ReturnLineInput[] };
@@ -236,6 +238,10 @@ async function stockRows(
     expiryFrom?: string | null; expiryTo?: string | null; orRecalled?: boolean; storeResourceId?: string | null; batchIds?: readonly string[];
     /** Every batch named, whatever its date (the recall's return). */
     anyExpiry?: boolean;
+    /** A5 — only batches this vendor's GRN brought in. */
+    vendorId?: string | null;
+    /** A5 — item name or code, or batch number, contains this (case-insensitive). */
+    search?: string | null;
   },
 ): Promise<StockRow[]> {
   const dated = [
@@ -266,6 +272,11 @@ async function stockRows(
       window,
       ...(where.storeResourceId == null ? [] : [eq(stockBalances.resourceId, where.storeResourceId)]),
       ...(where.batchIds === undefined ? [] : [inArray(stockBalances.batchId, [...where.batchIds])]),
+      ...(where.vendorId == null ? [] : [eq(stockBatches.vendorId, where.vendorId)]),
+      ...(where.search == null || where.search.trim() === "" ? [] : [(() => {
+        const like = `%${where.search.trim().toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        return sql`(lower(${items.name}) like ${like} or lower(${items.code}) like ${like} or lower(${stockBatches.batchNo}) like ${like})`;
+      })()]),
     ))
     .orderBy(sql`${stockBatches.expiryDate} asc nulls last`, asc(items.name), asc(stockBatches.batchNo), asc(resources.code))
     .limit(ROW_LIMIT);
@@ -273,7 +284,7 @@ async function stockRows(
 }
 
 /** The pack a person counts in: the item's purchase pack, if it has one bigger than the base unit. */
-async function packsOf(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, { uom: string; multiplier: number }>> {
+export async function packsOf(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, { uom: string; multiplier: number }>> {
   const out = new Map<string, { uom: string; multiplier: number }>();
   const wanted = [...new Set(itemIds)];
   if (wanted.length === 0) return out;
@@ -514,11 +525,87 @@ export async function planSupplierReturns(db: Db | Tx, now: Date = new Date(), o
   return { asOf: today, groups: ordered, toDestroy, alreadyHeld, taxablePaise: ordered.reduce((s, g) => s + g.taxablePaise, 0) };
 }
 
+// ═══════════════════════════════════ A5 — what a person may put on a manual return ═══════════════════════════════════
+
+export type ReturnableVendor = { vendorId: string; vendorCode: string; vendorName: string; gstin: string | null; batches: number; windowDays: number };
+
+/**
+ * GAP-CLOSURE A5 — the suppliers a manual return can go to: every real supplier (never the hospital's
+ * OPENING or TRIAL stock) whose GRN brought in OWNED stock some store still holds, with how many
+ * (store, batch) rows that is. The office's "New return" sheet picks from it.
+ */
+export async function returnableVendors(db: Db, actor: Actor): Promise<ReturnableVendor[]> {
+  await requirePerm(db, actor, RETURNS_MANAGE, "listing the suppliers stock can go back to");
+  const rows = await stockRows(db, { anyExpiry: true });
+  const out = new Map<string, ReturnableVendor>();
+  for (const r of rows) {
+    if (r.vendorId === null || r.ownership !== "owned" || supplierKindOf(r.vendorCode === null ? null : { code: r.vendorCode }) !== "supplier") continue;
+    const v = out.get(r.vendorId) ?? {
+      vendorId: r.vendorId, vendorCode: r.vendorCode!, vendorName: r.vendorName ?? r.vendorCode!, gstin: r.vendorGstin, batches: 0,
+      windowDays: returnWindowDays({ expiryReturnDays: r.vendorReturnDays }),
+    };
+    v.batches += 1;
+    out.set(r.vendorId, v);
+  }
+  return [...out.values()].sort((a, b) => a.vendorName.localeCompare(b.vendorName));
+}
+
+export type ReturnableBatch = {
+  storeResourceId: string; storeCode: string; storeName: string;
+  itemId: string; itemCode: string; itemName: string; baseUom: string; pack: { uom: string; multiplier: number } | null;
+  batchId: string; batchNo: string; expiryDate: string | null; landedCostPaise: number;
+  onHand: number; reserved: number; frozen: number; onOtherDocuments: number;
+  /** What a return may take now: on hand, less reserved, less frozen unless recalled, less what other live documents hold. */
+  available: number;
+  recalled: boolean;
+  /** The reasons that fit this batch today; `expired` only while its window is open. */
+  reasons: ReturnLineReason[];
+  /** Expired and past the vendor's window: it is destroyed, not returned. */
+  pastWindow: boolean;
+  returnableUntil: string | null;
+};
+
+/**
+ * GAP-CLOSURE A5 — the stock a manual return to `vendorId` can carry: every OWNED batch that vendor's
+ * GRN brought in, at every store that holds it, with what is free to go and the reasons that fit it
+ * today. `exceptReturnId` is the draft being edited — its own lines do not count against it.
+ * Writes nothing; `createSupplierReturn` / `updateSupplierReturn` check every line again.
+ */
+export async function returnableStock(
+  db: Db, actor: Actor, input: { vendorId: string; search?: string | null; exceptReturnId?: string | null }, now: Date = new Date(),
+): Promise<ReturnableBatch[]> {
+  await requirePerm(db, actor, RETURNS_MANAGE, "finding stock to return to a supplier");
+  const vendor = await returnableVendor(db, input.vendorId);
+  const today = istDay(now);
+  const windowDays = returnWindowDays(vendor);
+  const rows = (await stockRows(db, { anyExpiry: true, vendorId: vendor.id, search: input.search ?? null })).filter((r) => r.ownership === "owned");
+  const committed = await committedByPair(db, rows.map((r) => r.batchId), input.exceptReturnId == null ? {} : { returnId: input.exceptReturnId });
+  const packs = await packsOf(db, rows.map((r) => r.itemId));
+  return rows.map((r) => {
+    const held = committed.get(pairKey(r.storeResourceId, r.batchId)) ?? 0;
+    const byDate = returnVerdict({ expiryDate: r.expiryDate, windowDays, recalled: false, today });
+    const reasons: ReturnLineReason[] = [];
+    if (byDate.reason === "expired" && byDate.returnable) reasons.push("expired");
+    if (byDate.reason === "near_expiry") reasons.push("near_expiry");
+    if (r.recalled) reasons.push("recalled");
+    // Past its window an expired batch is destroyed, not sent back under another name: the screen offers no reason for it.
+    if (!byDate.pastWindow) reasons.push("damaged");
+    return {
+      storeResourceId: r.storeResourceId, storeCode: r.storeCode, storeName: r.storeName,
+      itemId: r.itemId, itemCode: r.itemCode, itemName: r.itemName, baseUom: r.baseUom, pack: packs.get(r.itemId) ?? null,
+      batchId: r.batchId, batchNo: r.batchNo, expiryDate: r.expiryDate, landedCostPaise: r.landedCostPaise,
+      onHand: r.onHand, reserved: r.reserved, frozen: r.frozen, onOtherDocuments: held,
+      available: Math.max(0, exitAvailable({ qtyOnHand: r.onHand, qtyReserved: r.reserved, qtyFrozen: r.frozen }, r.recalled) - held),
+      recalled: r.recalled, reasons, pastWindow: byDate.pastWindow, returnableUntil: byDate.until,
+    };
+  });
+}
+
 // ═══════════════════════════════════ lines ═══════════════════════════════════
 
 type ResolvedLine = {
   itemId: string; batchId: string; storeResourceId: string; reason: ReturnLineReason; qtyBase: number; ratePaise: number;
-  taxablePaise: number; gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number; hsnCode: string | null;
+  taxablePaise: number; gstRateBps: number; cgstPaise: number; sgstPaise: number; igstPaise: number; hsnCode: string | null; note: string | null;
 };
 
 type VendorRow = typeof vendors.$inferSelect;
@@ -532,10 +619,12 @@ type VendorRow = typeof vendors.$inferSelect;
 async function resolveLines(
   tx: Tx, vendor: VendorRow, input: readonly ReturnLineInput[], interState: boolean, today: string, exceptReturnId: string | null,
 ): Promise<ResolvedLine[]> {
-  if (input.length === 0) throw new MaterialsError("return_invalid", "a return carries at least one line");
-  if (input.length > MAX_LINES) throw new MaterialsError("return_invalid", `a return carries at most ${String(MAX_LINES)} lines`);
+  // A5 — every refusal a person can meet on the office's return sheet names its case in `detail.why`,
+  // so the screen says which rule fired rather than one sentence for all of them.
+  if (input.length === 0) throw new MaterialsError("return_invalid", "a return carries at least one line", { why: "no_lines" });
+  if (input.length > MAX_LINES) throw new MaterialsError("return_invalid", `a return carries at most ${String(MAX_LINES)} lines`, { why: "too_many_lines" });
   const keys = input.map((l) => pairKey(l.storeResourceId, l.batchId));
-  if (new Set(keys).size !== keys.length) throw new MaterialsError("return_invalid", "a store's batch appears twice on the return");
+  if (new Set(keys).size !== keys.length) throw new MaterialsError("return_invalid", "a store's batch appears twice on the return", { why: "duplicate_line" });
   const batchIds = [...new Set(input.map((l) => l.batchId))];
   const storeIds = [...new Set(input.map((l) => l.storeResourceId))];
   const batches = await tx.select().from(stockBatches).where(inArray(stockBatches.id, batchIds));
@@ -551,19 +640,20 @@ async function resolveLines(
     const item = its.find((i) => i.id === batch.itemId)!;
     const store = stores.find((s) => s.id === l.storeResourceId);
     if (store === undefined || store.kind !== "store") throw new MaterialsError("unknown_store", `resource ${l.storeResourceId} is not a store`);
-    if (isTransit(store.code)) throw new MaterialsError("return_invalid", "stock in transit is received first, then returned");
+    if (isTransit(store.code)) throw new MaterialsError("return_invalid", "stock in transit is received first, then returned", { why: "in_transit" });
     if (batch.ownership !== "owned") {
       throw new MaterialsError("not_returnable", `batch ${batch.batchNo} is ${batch.ownership} stock; only the hospital's own purchased stock goes back on a debit note`, { batchNo: batch.batchNo });
     }
     if (batch.vendorId !== vendor.id) {
-      throw new MaterialsError("return_invalid", `batch ${batch.batchNo} came from another supplier; it goes back to the vendor whose GRN brought it in`, { batchNo: batch.batchNo });
+      throw new MaterialsError("return_invalid", `batch ${batch.batchNo} came from another supplier; it goes back to the vendor whose GRN brought it in`, { batchNo: batch.batchNo, why: "other_supplier" });
     }
-    if (!RETURN_LINE_REASONS.includes(l.reason)) throw new MaterialsError("return_invalid", `"${String(l.reason)}" is not a return reason`);
+    if (!RETURN_LINE_REASONS.includes(l.reason)) throw new MaterialsError("return_invalid", `"${String(l.reason)}" is not a return reason`, { why: "bad_reason" });
+    const note = cleanNote(l.note);
     const recalled = batch.recallStatus === "frozen";
     const byDate = returnVerdict({ expiryDate: batch.expiryDate, windowDays, recalled: false, today });
-    if (l.reason === "recalled" && !recalled) throw new MaterialsError("return_invalid", `batch ${batch.batchNo} is not recalled`, { batchNo: batch.batchNo });
+    if (l.reason === "recalled" && !recalled) throw new MaterialsError("return_invalid", `batch ${batch.batchNo} is not recalled`, { batchNo: batch.batchNo, why: "not_recalled" });
     if (l.reason === "expired") {
-      if (byDate.reason !== "expired") throw new MaterialsError("return_invalid", `batch ${batch.batchNo} has not expired (expiry ${batch.expiryDate ?? "none"})`, { batchNo: batch.batchNo });
+      if (byDate.reason !== "expired") throw new MaterialsError("return_invalid", `batch ${batch.batchNo} has not expired (expiry ${batch.expiryDate ?? "none"})`, { batchNo: batch.batchNo, why: "not_expired" });
       if (!byDate.returnable) {
         throw new MaterialsError("return_window_passed", `batch ${batch.batchNo} expired ${batch.expiryDate!}; this vendor takes expired stock back until ${byDate.until!} — it is destroyed instead`, {
           batchNo: batch.batchNo, expiryDate: batch.expiryDate, returnableUntil: byDate.until, windowDays,
@@ -571,9 +661,9 @@ async function resolveLines(
       }
     }
     if (l.reason === "near_expiry" && byDate.reason !== "near_expiry") {
-      throw new MaterialsError("return_invalid", `batch ${batch.batchNo} is not within ${String(NEAR_EXPIRY_RETURN_DAYS)} days of its expiry`, { batchNo: batch.batchNo });
+      throw new MaterialsError("return_invalid", `batch ${batch.batchNo} is not within ${String(NEAR_EXPIRY_RETURN_DAYS)} days of its expiry`, { batchNo: batch.batchNo, why: "not_near_expiry", days: NEAR_EXPIRY_RETURN_DAYS });
     }
-    if (!Number.isSafeInteger(l.qtyBase) || l.qtyBase <= 0 || l.qtyBase > MAX_QTY) throw new MaterialsError("return_invalid", "a line returns a whole number of base units, at least one");
+    if (!Number.isSafeInteger(l.qtyBase) || l.qtyBase <= 0 || l.qtyBase > MAX_QTY) throw new MaterialsError("return_invalid", "a line returns a whole number of base units, at least one", { batchNo: batch.batchNo, why: "bad_qty" });
     const bal = bals.find((b) => b.resourceId === l.storeResourceId && b.batchId === l.batchId);
     const held = committed.get(pairKey(l.storeResourceId, l.batchId)) ?? 0;
     const can = (bal === undefined ? 0 : exitAvailable(bal, recalled)) - held;
@@ -590,7 +680,7 @@ async function resolveLines(
     const taxable = l.qtyBase * rate;
     return {
       itemId: batch.itemId, batchId: batch.id, storeResourceId: l.storeResourceId, reason: l.reason, qtyBase: l.qtyBase, ratePaise: rate,
-      taxablePaise: taxable, gstRateBps: bps, ...splitGst(lineGstPaise(taxable, bps), interState), hsnCode: item.hsnCode,
+      taxablePaise: taxable, gstRateBps: bps, ...splitGst(lineGstPaise(taxable, bps), interState), hsnCode: item.hsnCode, note,
     };
   });
 }
@@ -739,7 +829,7 @@ export async function updateSupplierReturn(
     let count = (await tx.select({ id: supplierReturnLines.id }).from(supplierReturnLines).where(eq(supplierReturnLines.returnId, returnId))).length;
     if (patch.lines !== undefined || patch.interState !== undefined) {
       const input = patch.lines ?? (await tx.select().from(supplierReturnLines).where(eq(supplierReturnLines.returnId, returnId)))
-        .map((l) => ({ batchId: l.batchId, storeResourceId: l.storeResourceId, qtyBase: l.qtyBase, reason: l.reason as ReturnLineReason, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps }));
+        .map((l) => ({ batchId: l.batchId, storeResourceId: l.storeResourceId, qtyBase: l.qtyBase, reason: l.reason as ReturnLineReason, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps, note: l.note }));
       const lines = await resolveLines(tx, vendor, input, interState, istDay(now), returnId);
       await tx.delete(supplierReturnLines).where(eq(supplierReturnLines.returnId, returnId));
       await insertLines(tx, returnId, lines);
@@ -773,6 +863,7 @@ export async function approveSupplierReturn(db: Db, actor: Actor, returnId: stri
     const stored = await tx.select().from(supplierReturnLines).where(eq(supplierReturnLines.returnId, returnId));
     await resolveLines(tx, vendor, stored.map((l) => ({
       batchId: l.batchId, storeResourceId: l.storeResourceId, qtyBase: l.qtyBase, reason: l.reason as ReturnLineReason, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
+      note: l.note,
     })), r.interState, istDay(now), returnId);
     await tx.update(supplierReturns).set({ status: "approved", approvedBy: actor.id, approvedAt: now, updatedBy: actor.id, updatedAt: now })
       .where(eq(supplierReturns.id, returnId));
@@ -970,6 +1061,8 @@ export type ReturnLineView = {
   batchId: string; batchNo: string; expiryDate: string | null; storeResourceId: string; storeCode: string; storeName: string;
   reason: ReturnLineReason; qtyBase: number; ratePaise: number; taxablePaise: number; gstRateBps: number;
   cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: number; ledgerEntryId: string | null;
+  /** A5 — the person's words for the line. */
+  note: string | null;
 };
 
 export type ReturnView = ReturnSummary & {
@@ -1023,7 +1116,7 @@ async function readSupplierReturn(db: Db, returnId: string): Promise<ReturnView 
       batchId: l.batchId, batchNo, expiryDate: expiry, storeResourceId: l.storeResourceId, storeCode, storeName,
       reason: l.reason as ReturnLineReason, qtyBase: l.qtyBase, ratePaise: l.ratePaise, taxablePaise: l.taxablePaise, gstRateBps: l.gstRateBps,
       cgstPaise: l.cgstPaise, sgstPaise: l.sgstPaise, igstPaise: l.igstPaise, totalPaise: l.taxablePaise + l.cgstPaise + l.sgstPaise + l.igstPaise,
-      ledgerEntryId: l.ledgerEntryId,
+      ledgerEntryId: l.ledgerEntryId, note: l.note,
     })),
     credit: credit === undefined ? null : {
       id: credit.id, creditNo: credit.creditNo, vendorCreditNoteNo: credit.vendorCreditNoteNo, creditNoteDate: credit.creditNoteDate,
