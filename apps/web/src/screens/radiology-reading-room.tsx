@@ -142,6 +142,7 @@ export function FollowupsView({ views }: { views: React.ReactNode }): React.Reac
       stats={[
         { label: t("radiology.fu.tile.open"), value: tiles?.open ?? 0 },
         { label: t("radiology.fu.tile.overdue"), value: tiles?.overdue ?? 0, tone: "danger" },
+        { label: t("radiology.fu.state.open"), value: tiles?.notActed ?? 0, tone: "danger" },
       ]}
       lane={row === null
         ? <p className="mt-4 text-sm text-muted-foreground">{t("radiology.fu.nobody")}</p>
@@ -165,9 +166,8 @@ export function FollowupsView({ views }: { views: React.ReactNode }): React.Reac
     >
       <div className="flex min-h-full flex-col gap-3" data-testid="followups">
         <p className="m-0 text-sm">{t("radiology.fu.why")}</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Tile label={t("radiology.fu.tile.open")} value={tiles?.open ?? "—"} />
-          <Tile label={t("radiology.fu.tile.notActed")} value={tiles === undefined ? "—" : `${tiles.overdue} / ${tiles.notActed}`} tone="danger" />
+        {/* The lane's stats carry open / overdue / not acted; the centre carries only what they do not (UX 4). */}
+        <div className="grid grid-cols-2 gap-2">
           <Tile label={t("radiology.fu.tile.onTime")} value={tiles?.closedOnTime90 == null ? "—" : `${tiles.closedOnTime90}%`} tone="ok" />
           <Tile label={t("radiology.fu.tile.month")} value={tiles?.recommendedThisMonth ?? "—"} />
         </div>
@@ -322,11 +322,10 @@ export function PeerView({ views }: { views: React.ReactNode }): React.ReactElem
     >
       <div className="flex min-h-full flex-col gap-3" data-testid="peer-review">
         <p className="m-0 text-sm">{t("radiology.peer.why")}</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <Tile label={t("radiology.peer.tile.sampled")} value={board === undefined ? "—" : `${board.tiles.sampledThisMonth} + ${board.tiles.triggeredThisMonth}`} />
           <Tile label={t("radiology.peer.tile.agreement")} value={board?.tiles.agreementPct == null ? "—" : `${board.tiles.agreementPct}%`} tone="ok" />
           <Tile label={t("radiology.peer.tile.significant")} value={board?.tiles.significantThisMonth ?? "—"} tone="danger" />
-          <Tile label={t("radiology.peer.tile.overdue")} value={board?.tiles.overdue ?? "—"} tone="warn" />
         </div>
         {q.isError && <p role="alert" className="text-sm text-red-700">{radiologyErrorText(q.error)}</p>}
         {current !== null && <PeerCaseCard key={current.reviewId} reviewId={current.reviewId} onDone={() => { setInHand(null); void qc.invalidateQueries({ queryKey: ["radiology", "reading", "peer"] }); }} />}
@@ -580,7 +579,8 @@ function OverreadCard({ row, onDone }: { row: WireTeleRow; onDone: () => void })
     <article className="flex flex-col gap-3 rounded border bg-card p-3 text-sm" data-testid={`overread-${row.teleReadId}`}>
       <header className="flex flex-wrap items-baseline gap-2">
         <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-950">{t("radiology.tele.prelimBadge")}</span>
-        <b>{row.readerName}</b><span className="mo text-xs text-muted-foreground">{row.readerNmcNo} · {timeWord(row.prelimAt)}</span>
+        {/* The reader and NMC number are the lane's (one fact, one card). */}
+        <span className="mo text-xs text-muted-foreground">{timeWord(row.prelimAt)}</span>
       </header>
       <div className="space-y-1 rounded border bg-muted/30 p-2" data-testid="overread-prelim">
         <p className="m-0"><b>{t("radiology.tele.findings")}.</b> {row.prelim.findings ?? "—"}</p>
