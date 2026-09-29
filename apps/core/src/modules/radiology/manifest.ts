@@ -77,6 +77,8 @@ export const radiologyManifest: ModuleManifest = {
     { label: "Imaging worklist", path: "/radiology/worklist", permission: "radiology.worklist.read" },
     // 18-S RS6 — the modality rooms: the technologist's console, dose log, rejects and downtime.
     { label: "Modality rooms", path: "/radiology/room", permission: "radiology.acquire" },
+    // 18-S RS8a — the reading room: the radiologist's urgency-sorted list and the report workspace.
+    { label: "Reading room", path: "/radiology/read", permission: "radiology.reports.write" },
     // 18-S RS2b — the technologist's portable round (the beds the trolley goes to).
     { label: "Portable round", path: "/radiology/portable", permission: "radiology.acquire" },
     // 18-S RS3 — the desk's diary (machines × time) and the waiting-hall display.

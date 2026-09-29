@@ -27,7 +27,10 @@ import {
 import {
   PAYMENT_RUN_APPROVAL_TYPE, PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE, availableQty, findStoreByCode, listItems,
 } from "../src/modules/materials";
-import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
+import {
+  IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeDefinitionRow as activeImagingDefinitionRow, activeStudyTypes,
+  parseDefinitionBody as parseImagingDefinitionBody,
+} from "../src/modules/radiology";
 import {
   HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
   ROSTER_RESOLVER_FLAG, departmentsWithoutPublishedCycle, livePeriodCount, publishedCycleCount,
@@ -1228,6 +1231,20 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return devices.length > 0 && (await unlicensedDevices(db, istToday())).length === 0;
       },
       fix: "18c §2: file each ionising machine's AERB licence at /radiology/radiation-safety until GET /aerb/licences/gaps is empty",
+    },
+    {
+      /**
+       * 18-S RS8a / ruling 4 — a report is signed only by someone on the published list of
+       * authorised signatories (the print carries their qualification and council number). G3: a
+       * governed book, drafted by the HOD and approved by the MS — no deploy writes it. Until it is
+       * green, `signReport` refuses every signature with `signer_credentials_missing`.
+       */
+      gate: "G3", code: "radiology_report_signatories",
+      check: async (db) => {
+        const row = await activeImagingDefinitionRow(db, "report_signatories");
+        return row !== undefined && parseImagingDefinitionBody("report_signatories", row.body).signatories.length > 0;
+      },
+      fix: "radiology-go-live.md §13: the head of radiology drafts the list of authorised signatories (qualification, council number) at Radiology → Setup → Books; the medical superintendent approves it",
     },
     {
       gate: "G4", code: "radiology_rso_appointed",
