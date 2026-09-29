@@ -12,10 +12,15 @@ import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { consentSchema, consentEvidence } from "../ot";
 import { guardiansWithAuthority, listAllergies } from "../patients";
 import { findLockoutHits } from "../pcpndt";
+import { latestVerifiedCreatinine } from "../lab";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { RadiologyError } from "./errors";
 import { imagingGateEvaluated } from "./events";
 import { requireStudyType } from "./study-types";
+import { ageInYearsOn } from "./applicability";
+import {
+  EGFR_HOLD_BELOW, EGFR_HYDRATE_BELOW, IV_HYDRATION_INSTRUCTION, METFORMIN_NOTE, assessEgfr,
+} from "./egfr";
 import { IMAGING_GATE_DEF_KEY } from "./workflow-def";
 import type { PregnancyPolicyBody } from "./definitions";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -211,6 +216,17 @@ const renalSchema = z.object({
   source: z.enum(["internal", "external"]),
   /** Typed, because nothing in this system records a CKD diagnosis yet. Shortens the window only. */
   ckdFlagged: z.boolean().default(false),
+  /**
+   * 18-S RS5 — a POINTER at the lab's own signed creatinine (`latestVerifiedCreatinine`). When it
+   * is given, the value and the draw instant are READ from the lab and the typed pair is ignored:
+   * a number copied off a report is the thing the pointer exists to replace.
+   */
+  labResultId: z.string().min(1).max(64).optional(),
+  /**
+   * 18-S RS5 T1 — eGFR 30–44: the person clearing the gate confirms the IV-hydration instruction
+   * is on the patient's plan. The instruction's TEXT is this file's constant, never typed.
+   */
+  ivHydration: z.boolean().default(false),
 });
 
 /**
@@ -226,6 +242,16 @@ const priorContrastReactionSchema = z.object({
    */
   radiologistId: z.string().min(1).optional(),
   reason: z.string().min(1).max(400).optional(),
+  /**
+   * 18-S RS5 — the premedication the bay gave on the radiologist's plan (drug, dose, instant). It is
+   * RECORDED with the decision; it does not replace it — a documented reaction is still cleared
+   * only by a named radiologist's reason (P2).
+   */
+  premedication: z.array(z.object({
+    drug: z.string().min(1).max(120),
+    dose: z.string().min(1).max(60),
+    givenAt: z.string().min(1),
+  })).max(10).optional(),
 });
 
 const mriSafetySchema = z.object({
@@ -235,6 +261,37 @@ const mriSafetySchema = z.object({
   cochlear: z.boolean(),
   metalFb: z.boolean(),
   claustrophobia: z.boolean().default(false),
+  /**
+   * ═══ 18-S RS5 T4 — THE FULL SCREENING FORM, ALL OPTIONAL SO THE FOUR-QUESTION CONSOLE STILL WORKS ═══
+   *
+   * The standard questionnaire (ACR / the Indian MR-safety forms): two more questions that STOP a
+   * scanner — a neurostimulator or drug pump, and metal in the eye — and the rest recorded. The
+   * zone the patient is cleared into, the MR-conditional card's particulars (there is no document
+   * store route, so the card's model and serial are recorded instead of an image), the metal
+   * sweep, and the two signatures as typed names with the instant.
+   */
+  neurostimulator: z.boolean().default(false),
+  orbitMetal: z.boolean().default(false),
+  welderOrMetalWork: z.boolean().default(false),
+  prosthesis: z.boolean().default(false),
+  pregnancy: z.enum(["no", "yes", "unsure", "na"]).optional(),
+  tattoos: z.boolean().default(false),
+  priorSurgery: z.string().max(400).optional(),
+  weightKg: z.number().positive().max(400).optional(),
+  zone: z.enum(["I", "II", "III", "IV"]).optional(),
+  conditionalCard: z.object({
+    device: z.string().min(1).max(120),
+    model: z.string().min(1).max(120),
+    serial: z.string().max(60).optional(),
+    conditions: z.string().max(400).optional(),
+  }).optional(),
+  metalSweep: z.boolean().optional(),
+  signatures: z.object({
+    signer: z.enum(["patient", "guardian"]),
+    signerName: z.string().min(1).max(120),
+    technologistName: z.string().min(1).max(120),
+    signedAt: z.string().min(1),
+  }).optional(),
 });
 
 const chaperoneSchema = z.object({ chaperoneUserId: z.string().min(1).max(64) });
@@ -652,6 +709,20 @@ async function computeSatisfaction(
      */
     case "renal_function": {
       const parsed = parseEvidence(renalSchema, raw, "renal_function");
+      if (parsed.labResultId !== undefined) {
+        const latest = await latestVerifiedCreatinine(tx, study.patientId);
+        if (!latest || latest.resultId !== parsed.labResultId) {
+          throw new RadiologyError(
+            "evidence_invalid",
+            "that creatinine is not this patient's latest signed result in the lab — reopen the patient "
+            + "and use the one on file",
+            { labResultId: parsed.labResultId, latest: latest?.resultId ?? null },
+          );
+        }
+        parsed.creatinineUmolL = latest.valueUmolL;
+        parsed.sampledAt = latest.sampledAt.toISOString();
+        parsed.source = "internal";
+      }
       const context = study.encounterNo.startsWith("V") ? "opd" : "admitted";
       const base = context === "opd" ? RENAL_VALIDITY_DAYS_OPD : RENAL_VALIDITY_DAYS_ADMITTED;
       const validDays = parsed.ckdFlagged ? Math.min(base, RENAL_VALIDITY_DAYS_CKD) : base;
@@ -665,17 +736,67 @@ async function computeSatisfaction(
           { ageDays, validDays, context, ckdFlagged: parsed.ckdFlagged },
         );
       }
-      if (parsed.creatinineUmolL > RENAL_CREATININE_CEILING_UMOL_L) {
+      /**
+       * ═══ 18-S RS5 T1 (Gap 3) — THE eGFR DECIDES; THE CEILING IS THE FALLBACK ═══
+       *
+       * `egfr.ts` carries the equation and the bands. The age is taken on the day the gate is
+       * cleared, from the patient master — never typed — and so is the sex. When no eGFR can be
+       * computed (no date of birth, no binary sex, a child) the 176.8 µmol/L ceiling decides exactly
+       * as it did before this phase.
+       */
+      const person = (await (tx as unknown as Db).select({ sex: patients.sex, dob: patients.dob })
+        .from(patients).where(eq(patients.id, study.patientId)))[0];
+      const assessed = assessEgfr(parsed.creatinineUmolL, {
+        sex: person?.sex ?? "unknown",
+        ageYears: person?.dob ? ageInYearsOn(person.dob, now) : null,
+      });
+      const { ivHydration, ...recorded } = parsed;
+      const stored = { kind: "renal_function", ...recorded, context, validDays, ageDays };
+
+      if (!assessed.computed) {
+        if (parsed.creatinineUmolL > RENAL_CREATININE_CEILING_UMOL_L) {
+          throw new RadiologyError(
+            "gate_open",
+            `creatinine ${String(parsed.creatinineUmolL)} µmol/L is above the `
+            + `${String(RENAL_CREATININE_CEILING_UMOL_L)} µmol/L ceiling for contrast — this is the `
+            + "radiologist's override with a reason, not a satisfied gate (P1)",
+            {
+              creatinineUmolL: parsed.creatinineUmolL, ceiling: RENAL_CREATININE_CEILING_UMOL_L,
+              egfr: null, egfrNotComputed: assessed.reason,
+            },
+          );
+        }
+        /** H5 — the `external` flag stays in the stored evidence, visible to whoever reads it later. */
+        return { ...stored, egfr: null, egfrNotComputed: assessed.reason };
+      }
+
+      const egfrFacts = { egfr: assessed.egfr, egfrBand: assessed.band, egfrEquation: "CKD-EPI 2021" };
+      if (assessed.band === "hold") {
         throw new RadiologyError(
           "gate_open",
-          `creatinine ${String(parsed.creatinineUmolL)} µmol/L is above the `
-          + `${String(RENAL_CREATININE_CEILING_UMOL_L)} µmol/L ceiling for contrast — this is the `
-          + "radiologist's override with a reason, not a satisfied gate (P1)",
-          { creatinineUmolL: parsed.creatinineUmolL, ceiling: RENAL_CREATININE_CEILING_UMOL_L },
+          `eGFR ${String(assessed.egfr)} mL/min/1.73m² (creatinine ${String(parsed.creatinineUmolL)} µmol/L) is `
+          + `under ${String(EGFR_HOLD_BELOW)} — contrast is held for the radiologist, whose override with a `
+          + "reason is the only way past this gate (P1)",
+          { ...egfrFacts, creatinineUmolL: parsed.creatinineUmolL },
         );
       }
-      /** H5 — the `external` flag stays in the stored evidence, visible to whoever reads it later. */
-      return { kind: "renal_function", ...parsed, context, validDays, ageDays };
+      const metformin = assessed.metforminHold ? { metforminNote: METFORMIN_NOTE } : {};
+      if (assessed.band === "hydrate") {
+        if (!ivHydration) {
+          throw new RadiologyError(
+            "gate_open",
+            `eGFR ${String(assessed.egfr)} mL/min/1.73m² is between ${String(EGFR_HOLD_BELOW)} and `
+            + `${String(EGFR_HYDRATE_BELOW - 1)}: contrast may go ahead only with IV hydration — `
+            + `${IV_HYDRATION_INSTRUCTION}. Confirm the hydration is on the plan, or ask the radiologist`,
+            { ...egfrFacts, creatinineUmolL: parsed.creatinineUmolL, hydrationRequired: true },
+          );
+        }
+        return {
+          ...stored, ...egfrFacts, ...metformin,
+          hydration: { instruction: IV_HYDRATION_INSTRUCTION, confirmedBy: actor.id },
+        };
+      }
+      return { ...stored, ...egfrFacts, ...metformin };
     }
 
     /**
@@ -715,10 +836,12 @@ async function computeSatisfaction(
           { radiologistId: parsed.radiologistId },
         );
       }
+      for (const dose of parsed.premedication ?? []) agedDays(now, dose.givenAt, "premedication.givenAt");
       return {
         kind: "prior_contrast_reaction", contrastAllergyFound: true,
         substances: hits.map((h) => h.substance), allergiesChecked: active.length,
         radiologistId: parsed.radiologistId, reason: parsed.reason.trim(),
+        ...(parsed.premedication === undefined ? {} : { premedication: parsed.premedication }),
       };
     }
 
@@ -727,10 +850,12 @@ async function computeSatisfaction(
      * metallic foreign body are not questions the console answers — they are the radiologist's, and
      * MR-CONDITIONAL devices exist, which is exactly why the lane is an override with a reason
      * rather than a satisfied gate. `claustrophobia` and `implants` are recorded and block nothing.
+     * 18-S RS5 T4 adds two more that stop the scanner — a neurostimulator or drug pump, and metal in
+     * the orbit — and records the rest of the form (zone, card, sweep, signatures) as it arrives.
      */
     case "mri_safety": {
       const parsed = parseEvidence(mriSafetySchema, raw, "mri_safety");
-      const blocking = (["pacemaker", "clips", "cochlear", "metalFb"] as const)
+      const blocking = (["pacemaker", "clips", "cochlear", "metalFb", "neurostimulator", "orbitMetal"] as const)
         .filter((k) => parsed[k]);
       if (blocking.length > 0) {
         throw new RadiologyError(
