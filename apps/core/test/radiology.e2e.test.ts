@@ -176,6 +176,15 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       "radiology.reports.amend", "radiology.reports.read", "radiology.worklist.read",
       "orders.read.restricted",
     ], "rad");
+    /**
+     * 18-S RS8a / ruling 4 — the list of authorised signatories, published: the print carries the
+     * signer's qualification and council number, so a signature is made only by someone on it.
+     */
+    await db.insert(imagingDefinitions).values({
+      id: "01DEF00000000000000000004", kind: "report_signatories", version: 1, status: "active",
+      draftedBy: "e2e", publishedBy: "e2e", publishedAt: NOW,
+      body: { signatories: [{ user_id: radiologist.id, qualification: "MD (Radiodiagnosis)", council_reg_no: "JSMC 2014/1187" }] },
+    });
     counter = await staff(["radiology.bill_decisions.manage"], "csh");
     bridge = await staff(["radiology.mwl.read"], "mwl");
 
@@ -383,6 +392,10 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       reportId: drafted.body.reportId,
     });
     expect([signed.status, signed.body.version]).toEqual([201, drafted.body.version + 1]);
+    /** 18-S RS8a / ruling 4 — the print names the signer with qualification and council number. */
+    const printed = await get(`/radiology/reports/${signed.body.reportId}/print`, radiologist.token);
+    expect([printed.status, printed.body.report.signer.qualification, printed.body.report.signer.councilRegNo])
+      .toEqual([200, "MD (Radiodiagnosis)", "JSMC 2014/1187"]);
     /** 18b T4 / §6.8 — the signed version carries no provenance; only the machine's draft does. */
     expect((await get(`/radiology/reports/${signed.body.reportId}`, radiologist.token)).body.report.provenance).toBeNull();
     const chain = (await get(`/radiology/studies/${study!.id}`, radiologist.token)).body.study.reports;
