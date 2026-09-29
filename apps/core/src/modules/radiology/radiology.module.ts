@@ -18,6 +18,7 @@ import { RadiologyFloorController } from "./radiology-floor.controller";
 import { RadiologySetupController } from "./radiology-setup.controller";
 import { RadiologyPrepController } from "./radiology-prep.controller";
 import { RadiologyRoomController } from "./radiology-room.controller";
+import { RadiologyPacsController } from "./radiology-pacs.controller";
 import { RadiologyReadingController } from "./radiology-reading.controller";
 import { RadiologyReleaseController } from "./radiology-release.controller";
 
@@ -66,6 +67,8 @@ import { RadiologyReleaseController } from "./radiology-release.controller";
     RadiologyReadingController,
     // 18-S RS7 — the Form F register by serial and the monthly return.
     RadiologyPcpndtController,
+    // 18-S RS12 — the archive's doors in (arrivals, dose reports) and the PACS inbox.
+    RadiologyPacsController,
     // 18-S RS9 — release and the closed loop: the doctor's inbox and acted-upon, the north star, the hand-over desk.
     RadiologyReleaseController,
   ],

@@ -20,7 +20,9 @@ export type WireProtocol = {
   breath_hold?: { en: string; hi: string };
   paediatric?: { bands: { from_kg: number; to_kg: number; kv?: WireRange; mas?: WireRange; ml_per_kg?: number; note?: string }[] };
 };
-export type WireDrl = { study_type_code?: string; modality?: string; quantity: "ctdivol" | "dlp" | "dap" | "fluoro_seconds"; value: number; source?: string };
+export type WireDrl = { study_type_code?: string; modality?: string; quantity: "ctdivol" | "dlp" | "dap" | "fluoro_seconds" | "agd"; value: number; source?: string };
+/** 18-S RS12 — the machine's Radiation Dose SR waiting for Send (`room.ts` `doseReport`). */
+export type WireDoseReport = { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null };
 
 /** `room.ts`'s `RoomView`. */
 export type WireRoomView = {
@@ -38,6 +40,8 @@ export type WireRoomView = {
   drl: WireDrl[];
   renal: { creatinineUmolL: number | null; egfr: number | null; sampledAt: string | null } | null;
   repeats: { reason: RepeatReason; at: string }[];
+  /** 18-S RS12 — optional so a server before RS12 still types. */
+  doseReport?: WireDoseReport | null;
 };
 
 export type WireRejects = {
@@ -79,6 +83,7 @@ export type AcquiredBody = {
   imageSource: "pacs" | "no_pacs_images";
   studyInstanceUid?: string | null;
   doseCtdivol?: number | null; doseDlp?: number | null; doseDap?: number | null; fluoroSeconds?: number | null;
+  doseAgd?: number | null;
   doseManual?: boolean;
   contrastGiven?: boolean; contrastAgent?: string | null; contrastVolumeMl?: number | null;
   drlReason?: string | null; contrastNotGivenReason?: string | null;
@@ -127,13 +132,17 @@ export function paediatricBand(p: WireProtocol, kg: number | null): NonNullable<
 }
 
 /** The dose fields a modality is recorded in (`recordAcquired`'s four numbers). */
-export const DOSE_FIELDS: Record<string, readonly ("doseCtdivol" | "doseDlp" | "doseDap" | "fluoroSeconds")[]> = {
+export type DoseField = "doseCtdivol" | "doseDlp" | "doseDap" | "fluoroSeconds" | "doseAgd";
+/** 18-S RS12 — mammography records Average Glandular Dose (the unit's own number), DAP where shown. */
+export const DOSE_FIELDS: Record<string, readonly DoseField[]> = {
   ct: ["doseCtdivol", "doseDlp"],
   xray: ["doseDap", "fluoroSeconds"],
-  mammography: ["doseDap"],
+  mammography: ["doseAgd", "doseDap"],
 };
 
-const FIELD_QUANTITY = { doseCtdivol: "ctdivol", doseDlp: "dlp", doseDap: "dap", fluoroSeconds: "fluoro_seconds" } as const;
+export const FIELD_QUANTITY = { doseCtdivol: "ctdivol", doseDlp: "dlp", doseDap: "dap", fluoroSeconds: "fluoro_seconds", doseAgd: "agd" } as const;
+/** The dose report's key for each console field. */
+export const FIELD_REPORT_KEY = { doseCtdivol: "ctdivol", doseDlp: "dlp", doseDap: "dap", fluoroSeconds: "fluoroSeconds", doseAgd: "agd" } as const;
 
 /**
  * Which typed numbers sit above a published level — shown beside the field so the technologist can

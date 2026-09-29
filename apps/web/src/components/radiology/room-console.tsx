@@ -6,7 +6,7 @@ import {
   fetchReadiness, radiologyErrorCode, radiologyErrorText, satisfyGate, startAcquisition,
 } from "../../lib/radiology-api";
 import {
-  DOSE_FIELDS, REPEAT_REASONS, abortAcquisition, aboveDrl, fetchRoomView, paediatricBand, recordRepeat,
+  DOSE_FIELDS, FIELD_QUANTITY, FIELD_REPORT_KEY, REPEAT_REASONS, abortAcquisition, aboveDrl, fetchRoomView, paediatricBand, recordRepeat,
   sendAcquired, startAtBedside, suggestedContrastMl,
 } from "../../lib/radiology-room-api";
 import type { AcquiredBody, RepeatReason, WireProtocol, WireRoomView } from "../../lib/radiology-room-api";
@@ -167,7 +167,14 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
   const doseFields = v === undefined || !v.ionising ? [] : DOSE_FIELDS[v.modality] ?? [];
   const typed = Object.fromEntries(doseFields.map((f) => [f, num(dose[f] ?? "")]));
   const over = v === undefined ? [] : aboveDrl(v.drl, typed);
-  const anyDose = doseFields.some((f) => typed[f] !== null);
+  /**
+   * 18-S RS12 — the machine's dose report came first: Send records its numbers when nothing is
+   * typed ("dose entry becomes a confirmation"). Typing a number instead records the typed one, and
+   * the server keeps any disagreement with the report as a conflict for the RSO.
+   */
+  const doseReport = v?.doseReport ?? null;
+  const anyDose = doseFields.some((f) => typed[f] !== null) || (doseReport !== null && doseFields.length > 0);
+  const anyTyped = doseFields.some((f) => typed[f] !== null);
   const contrastApplies = v !== undefined && v.contrastOption !== "none";
   const effectiveGiven = contrastGiven ?? (v?.contrastOption === "required");
 
@@ -178,7 +185,7 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
       if (u !== "" && u !== v?.mintedStudyInstanceUid) b.studyInstanceUid = u;
     }
     for (const f of doseFields) if (typed[f] !== null) (b as Record<string, unknown>)[f] = f === "fluoroSeconds" ? Math.round(typed[f]!) : typed[f];
-    if (anyDose) b.doseManual = true;
+    if (anyTyped) b.doseManual = true;
     if (over.length > 0 && drlReason.trim() !== "") b.drlReason = drlReason.trim();
     if (contrastApplies) {
       b.contrastGiven = effectiveGiven;
@@ -436,11 +443,13 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
                         : (
                           <div className="grid gap-2 py-2 sm:grid-cols-2">
                             {doseFields.map((f) => {
-                              const level = v.drl.find((l) => ({ doseCtdivol: "ctdivol", doseDlp: "dlp", doseDap: "dap", fluoroSeconds: "fluoro_seconds" })[f] === l.quantity);
+                              const level = v.drl.find((l) => FIELD_QUANTITY[f] === l.quantity);
+                              const fromReport = doseReport === null ? null : doseReport[FIELD_REPORT_KEY[f]];
                               return (
                                 <label key={f} className="text-sm">
                                   {t(`radiology.room.dose.${f}`)}
                                   <input className={`${field} mo`} inputMode="decimal" value={dose[f] ?? ""} data-testid={`dose-${f}`}
+                                    placeholder={fromReport === null ? undefined : String(fromReport)}
                                     onChange={(e) => setDose((d) => ({ ...d, [f]: e.target.value.replace(/[^\d.]/g, "") }))} />
                                   <span className="text-xs text-muted-foreground">{level === undefined ? t("radiology.room.dose.noLevel") : t("radiology.room.dose.level", { value: level.value })}</span>
                                 </label>
@@ -448,6 +457,13 @@ export function RoomConsole({ studyId, mode = "room", onDone }: {
                             })}
                           </div>
                         )}
+                      {doseReport !== null && doseFields.length > 0 && (
+                        <p className="pb-2 text-sm text-emerald-900" data-testid="dose-report">
+                          {t("radiology.room.dose.fromReport", {
+                            values: doseFields.map((f) => doseReport[FIELD_REPORT_KEY[f]]).filter((x) => x !== null).map(String).join(" · "),
+                          })}
+                        </p>
+                      )}
                       {over.length > 0 && (
                         <label className="block pb-2 text-sm" data-testid="drl-over">
                           <span className="text-amber-800">{t("radiology.room.dose.over")}</span>

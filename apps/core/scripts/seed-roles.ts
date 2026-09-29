@@ -1485,6 +1485,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * block is still lifted only by the RSO's passing QA record (`aerb/qa.ts`), not by this grant.
        */
       "radiology.devices.manage",
+      /**
+       * 18-S RS12 — the PACS inbox: attach an archive study no order could claim to the study it
+       * belongs to, or reject it (a phantom, a test), with a reason. The radiologist and the
+       * technologist both hold it; the machine never attaches on a name.
+       */
+      "radiology.pacs.reconcile",
       "pcpndt.form_f.read",
       "pcpndt.form_f.write",
       "pcpndt.registrations.read",
@@ -1520,6 +1526,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       // PLAN 18b T1 — the worklist export, so a radiographer can check what the console will show.
       "radiology.mwl.read",
+      // 18-S RS12 — the PACS inbox: the technologist knows who was on the table.
+      "radiology.pacs.reconcile",
       /**
        * PLAN 18c T1 / D2 — the patient's twelve-month cumulative dose, which is the nudge the
        * console shows before a repeat CT (O4). **`aerb.doses.read` and NOT `aerb.registers.read`**:
@@ -1652,7 +1660,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
      * the bridge is a user with this role and a password in the runbook's vault line.
      */
     roleKey: "modality_bridge",
-    permissions: ["radiology.mwl.read"],
+    // 18-S RS12 — and the way back: the same bridge posts Orthanc's arrivals and dose reports.
+    // Still no clinical string: `pacs.interface` writes image counts and a dose RECEIPT, and the
+    // register is written only when the technologist presses Send.
+    permissions: ["radiology.mwl.read", "radiology.pacs.interface"],
   },
   /**
    * PLAN 17-E T2 — THE LAB'S BRIDGE, AND IT IS `modality_bridge`'S SHAPE ON PURPOSE.
@@ -2005,7 +2016,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   pcpndt_incharge: "PCPNDT In-charge (registration, machines, persons; VERIFIES Form F, writes none)",
   // PLAN 18b T1 — a machine account. The title says so, because a staffing card is where an
   // administrator would otherwise assign it to a person.
-  modality_bridge: "Modality bridge (a MACHINE account: pulls the worklist export; holds nothing else)",
+  modality_bridge: "Modality bridge (a MACHINE account: pulls the worklist export, posts the archive's arrivals and dose reports; holds nothing else)",
   // PLAN 17-E T2 — the analyser bridge, the same shape one department over.
   lab_bridge: "Laboratory instrument bridge (a MACHINE account: asks what to run on a tube and posts what it measured; holds nothing else)",
   // PLAN 16c T1 — the aide's title names the one thing the role cannot do.

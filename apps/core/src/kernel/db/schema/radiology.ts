@@ -222,7 +222,25 @@ export const imagingStudies = pgTable(
     doseDlp: numeric("dose_dlp", { precision: 10, scale: 3 }),
     doseDap: numeric("dose_dap", { precision: 10, scale: 3 }),
     fluoroSeconds: integer("fluoro_seconds"),
+    /**
+     * 18-S RS12 — Average Glandular Dose (mGy), the quantity a mammography unit reports and the one
+     * AERB asks for on a mammogram. Before RS12 a unit that showed only AGD could not be recorded.
+     */
+    doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
     doseManual: boolean("dose_manual").notNull().default(false),
+    /**
+     * ═══ 18-S RS12 — THE IMAGES ARRIVED IN THE ARCHIVE ═══
+     *
+     * Written only by `pacs.ts` from an Orthanc arrival notice that matched this study by accession
+     * (then by UID) AND by the patient's UHID — never by a name. NULL means no archive has told us
+     * it holds this study, which is not the same as "no images": a CR with no DICOM link is
+     * `no_pacs_images` and still has a film. The counts are the archive's, refreshed on every
+     * notice for the same UID (a late series grows them); they are facts about the PACS, not a
+     * workflow state, so nothing here moves the study.
+     */
+    imagesArrivedAt: timestamp("images_arrived_at", { withTimezone: true }),
+    imageSeriesCount: integer("image_series_count"),
+    imageInstanceCount: integer("image_instance_count"),
     contrastGiven: boolean("contrast_given").notNull().default(false),
     contrastAgent: text("contrast_agent"),
     contrastVolumeMl: numeric("contrast_volume_ml", { precision: 8, scale: 2 }),
@@ -294,7 +312,8 @@ export const imagingStudies = pgTable(
       "imaging_studies_dose_ck",
       sql`${t.acquiredAt} is null or ${t.ionising} = false
           or ${t.doseCtdivol} is not null or ${t.doseDlp} is not null
-          or ${t.doseDap} is not null or ${t.fluoroSeconds} is not null`,
+          or ${t.doseDap} is not null or ${t.fluoroSeconds} is not null
+          or ${t.doseAgd} is not null`,
     ),
     /** D6 — the pointer and the reason are one fact in two columns (`order_items_duplicate_ck`'s shape). */
     check(
@@ -627,6 +646,133 @@ export const imagingImageViews = pgTable(
     index("imaging_image_views_study_idx").on(t.studyId, t.viewedAt),
     index("imaging_image_views_viewer_idx").on(t.viewerId, t.viewedAt),
     check("imaging_image_views_via_ck", inList(t.via, IMAGE_VIEW_CHANNELS)),
+  ],
+);
+
+/**
+ * ═══ PLAN 18-S RS12 — THE ARCHIVE'S INBOX: studies the PACS holds that no order could claim ═══
+ *
+ * An Orthanc arrival notice is matched to a study by ACCESSION, then by Study Instance UID, and in
+ * both cases only when the DICOM PatientID is that study's patient's UHID (`pacs.ts`). Everything
+ * else lands here, one row per DICOM study (UNIQUE on the UID — a re-sent notice updates the row,
+ * never adds one), and waits for a human: the technologist who knows who was on the table, or the
+ * radiologist. **Nothing here is ever attached by a patient NAME** — two Sunita Devis in one day is
+ * the ordinary case, and a wrong-patient image is the error this whole queue exists to stop.
+ *
+ * `awaiting_acquisition` is the reason the machine usually resolves itself: the images reached the
+ * archive before the room pressed Send, and `recordAcquired` attaches them on the SAME accession
+ * and UHID check (never a looser one) when it runs; a re-sent notice that now matches on that rule
+ * attaches likewise. Every other resolution — and every rejection — is a human's.
+ *
+ * The DICOM patient name and ID are kept because a reconciler cannot decide without them; they are
+ * the modality's strings, not a patient record, and the inbox read logs a PHI line per candidate.
+ */
+export const UNMATCHED_STUDY_REASONS = [
+  "no_match", "patient_mismatch", "uid_mismatch", "awaiting_acquisition", "study_closed", "outside_study", "no_identifiers",
+] as const;
+export type UnmatchedStudyReason = (typeof UNMATCHED_STUDY_REASONS)[number];
+export const UNMATCHED_STUDY_STATUSES = ["open", "attached", "rejected"] as const;
+
+export const imagingUnmatchedStudies = pgTable(
+  "imaging_unmatched_studies",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyInstanceUid: text("study_instance_uid").notNull().unique(),
+    accessionNumber: text("accession_number"),
+    dicomPatientId: text("dicom_patient_id"),
+    dicomPatientName: text("dicom_patient_name"),
+    modality: text("modality"),
+    /** DICOM StudyDate as the modality stamped it (its clock, not ours). */
+    studyDate: date("study_date"),
+    seriesCount: integer("series_count").notNull().default(0),
+    instanceCount: integer("instance_count").notNull().default(0),
+    /** The archive's own id for the study (Orthanc's), so the reconciler can open it there. */
+    archiveRef: text("archive_ref"),
+    reason: text("reason").notNull(),
+    /** The study the accession named, when one did — shown beside the row, never attached by itself. */
+    candidateStudyId: text("candidate_study_id").references(() => imagingStudies.id),
+    status: text("status").notNull().default("open"),
+    resolvedStudyId: text("resolved_study_id").references(() => imagingStudies.id),
+    /** NULL only for the machine's own `awaiting_acquisition` attach at Send. */
+    resolvedBy: text("resolved_by"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolutionReason: text("resolution_reason"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("imaging_unmatched_studies_status_idx").on(t.status, t.receivedAt),
+    index("imaging_unmatched_studies_accession_idx").on(t.accessionNumber),
+    check("imaging_unmatched_studies_reason_ck", inList(t.reason, UNMATCHED_STUDY_REASONS)),
+    check("imaging_unmatched_studies_status_ck", inList(t.status, UNMATCHED_STUDY_STATUSES)),
+    /** Open means unresolved, and a resolution carries its instant — one fact in two columns. */
+    check("imaging_unmatched_studies_resolved_ck", sql`(${t.status} = 'open') = (${t.resolvedAt} is null)`),
+    check("imaging_unmatched_studies_attached_ck", sql`${t.status} <> 'attached' or ${t.resolvedStudyId} is not null`),
+    /**
+     * A human's resolution names the human and the reason. The machine resolves only by ATTACHING,
+     * and only on the same accession + UHID rule a fresh notice is matched by (`resolvedBy` NULL);
+     * it never rejects.
+     */
+    check(
+      "imaging_unmatched_studies_human_ck",
+      sql`${t.status} = 'open' or (${t.resolvedBy} is not null and ${t.resolutionReason} is not null)
+          or (${t.status} = 'attached' and ${t.resolvedBy} is null)`,
+    ),
+  ],
+);
+
+/**
+ * ═══ PLAN 18-S RS12 — EVERY RADIATION DOSE SR THE ARCHIVE FORWARDED, AND WHAT BECAME OF IT ═══
+ *
+ * One row per SR instance (UNIQUE on its SOP Instance UID — the idempotency key: Orthanc's change
+ * feed is at-least-once). The register is written only through aerb's `recordDose`, from
+ * `recordAcquired`, so the DRL comparison runs exactly once per examination; this table is the
+ * receipt, and the place a disagreement with a number the technologist typed is KEPT rather than
+ * resolved by overwriting either:
+ *
+ *   · `pending`        — the study is not acquired yet; Send will use these numbers if none is typed.
+ *   · `recorded`       — Send used them; the register row says `dose_origin = 'dose_sr'`.
+ *   · `confirmed`      — a typed number was already on the register and the SR agrees with it.
+ *   · `conflict`       — it does not; both values are in `conflict`, the register is untouched.
+ *   · `unmatched`      — no study carries this UID or accession yet (re-tried on reconciliation).
+ *   · `not_applicable` — the study is not ionising, or was an outside study.
+ */
+export const DOSE_SR_OUTCOMES = ["pending", "recorded", "confirmed", "conflict", "unmatched", "not_applicable"] as const;
+export type DoseSrOutcome = (typeof DOSE_SR_OUTCOMES)[number];
+export const DOSE_SR_TEMPLATES = ["ct_10011", "projection_10001", "unknown"] as const;
+
+export const imagingDoseSrReceipts = pgTable(
+  "imaging_dose_sr_receipts",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    sopInstanceUid: text("sop_instance_uid").notNull().unique(),
+    studyInstanceUid: text("study_instance_uid").notNull(),
+    accessionNumber: text("accession_number"),
+    studyId: text("study_id").references(() => imagingStudies.id),
+    template: text("template").notNull(),
+    doseCtdivol: numeric("dose_ctdivol", { precision: 10, scale: 3 }),
+    doseDlp: numeric("dose_dlp", { precision: 10, scale: 3 }),
+    doseDap: numeric("dose_dap", { precision: 10, scale: 3 }),
+    fluoroSeconds: integer("fluoro_seconds"),
+    doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
+    outcome: text("outcome").notNull(),
+    /** For `conflict`: `{quantity: {typed, sr}}` per disagreeing quantity. */
+    conflict: jsonb("conflict"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("imaging_dose_sr_receipts_uid_idx").on(t.studyInstanceUid),
+    index("imaging_dose_sr_receipts_study_idx").on(t.studyId),
+    index("imaging_dose_sr_receipts_outcome_idx").on(t.outcome, t.receivedAt),
+    check("imaging_dose_sr_receipts_outcome_ck", inList(t.outcome, DOSE_SR_OUTCOMES)),
+    check("imaging_dose_sr_receipts_template_ck", inList(t.template, DOSE_SR_TEMPLATES)),
+    check(
+      "imaging_dose_sr_receipts_dose_ck",
+      sql`${t.doseCtdivol} is not null or ${t.doseDlp} is not null or ${t.doseDap} is not null
+          or ${t.fluoroSeconds} is not null or ${t.doseAgd} is not null`,
+    ),
+    check("imaging_dose_sr_receipts_conflict_ck", sql`(${t.outcome} = 'conflict') = (${t.conflict} is not null)`),
   ],
 );
 

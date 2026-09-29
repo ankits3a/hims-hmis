@@ -43,7 +43,7 @@ export async function openImages(
   tx: Tx,
   actor: Actor,
   input: { studyId: string; now?: Date },
-): Promise<{ url: string; viewId: string; studyInstanceUid: string }> {
+): Promise<{ url: string; viewId: string; studyInstanceUid: string; viewer: "ohif" | "other" }> {
   if (actor.type !== "user") {
     throw new RadiologyError("forbidden", `a ${actor.type} actor does not look at images`);
   }
@@ -92,7 +92,8 @@ export async function openImages(
     actor, patientId: study.patientId, surface: "imaging.study",
     encounterId: study.encounterNo, reason: `images opened for ${study.accessionNo} via external_pacs`,
   });
-  return { url, viewId, studyInstanceUid: study.studyInstanceUid };
+  /** 18-S RS12 — which viewer the book points at, so a screen can say "Open in OHIF" (ruling 6). */
+  return { url, viewId, studyInstanceUid: study.studyInstanceUid, viewer: settings.viewer ?? "other" };
 }
 
 /** The consumer in the same PR (D6): who opened this study's images, latest first. */

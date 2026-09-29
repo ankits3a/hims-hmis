@@ -119,6 +119,12 @@ export const radiologyManifest: ModuleManifest = {
     // 18-S RS4 — the machine register (register, edit, status with a reason) and the Setup
     // station's reads. The radiologist, who already drafts the department's books, holds it.
     "radiology.devices.manage",
+    // 18-S RS12 — the archive talks back. `pacs.interface` is a MACHINE permission beside
+    // `mwl.read`: the bridge on the Orthanc host posts arrivals and dose reports (only
+    // `modality_bridge` holds it). `pacs.reconcile` is the inbox — attach or reject an archive
+    // study no order could claim, with a reason (technologist and radiologist).
+    "radiology.pacs.interface",
+    "radiology.pacs.reconcile",
     // 18-S RS5 — the contrast injection and a contrast reaction. Split off `radiology.acquire` so the
     // radiology NURSE (who injects and watches for the reaction) can record both without being
     // able to start or finish an acquisition. Held by everyone who held `acquire` for these routes.
