@@ -72,4 +72,6 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   incident: "POST /pharmacy/incidents",
   /** STAGE D3 — a retried click must not log one fridge reading twice (and cannot open a second excursion). */
   coldReading: "POST /pharmacy/cold-chain/readings",
+  /** STAGE D4 — a retried click must not record one tray check twice (an after-use check posts consumption). */
+  trayCheck: "POST /pharmacy/trays/checks",
 } as const;

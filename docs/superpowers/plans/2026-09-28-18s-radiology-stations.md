@@ -997,7 +997,7 @@ migration:
   and the machine/person registration; only `recordAcquired` calls `assertFormFRecorded`. So a scan
   can start on a Form F nobody has signed. The web USG room already records the form before Start.
 
-#### RS8b as built (this PR; lane `radiology-rs8b`; one migration, `0151_radiology_cosign_ladder`, numbered at rebase — 0149 went to RS9, 0150 to RS12; runbook section is §16 — RS5 took §14, RS9 §15)
+#### RS8b as built (this PR; lane `radiology-rs8b`; one migration, `0152_radiology_cosign_ladder`, numbered at rebase — 0149 went to RS9, 0150 to RS12, 0151 to pharmacy D4 (#399); runbook section is §16 — RS5 took §14, RS9 §15)
 - **T1 — co-sign.** New role `radiology_resident` (six strings: `radiology.worklist.read`,
   `.reports.write`, `.reports.sign`, `.reports.read`, `.criticals.ack`, `.definitions.read`; no new
   permission). `signReport` by a user holding `radiology_resident` and NOT `radiologist`

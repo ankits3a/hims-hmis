@@ -233,7 +233,7 @@ describe("the fridge log and the excursion hold (pharmacy stage D3)", () => {
       const after = await coldChainToday(db, incharge.actor, at(46));
       expect(after.open).toMatchObject([{ no: "CE-000001", label: "Vaccine fridge 1", batches: 1 }]);
 
-      const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null, cold: null, steward: null };
+      const empty: NeedInputs = { buy: null, pay: null, returns: null, grns: null, retail: null, cabinet: null, pharmacists: null, adr: null, incidents: null, cold: null, steward: null, trays: null };
       const needs = buildNeeds({ ...empty, cold: today }, at(45));
       expect(needs.rows).toMatchObject([{ source: "STOCK", kind: "cold_reading_missed", clock: { tone: "gd" }, params: { label: "Vaccine fridge 1", slot: "09:00" } }]);
       expect(needs.sides).toContain("STOCK");
