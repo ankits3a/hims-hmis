@@ -1,3 +1,4 @@
+import { RadiologyPcpndtController } from "./radiology-pcpndt.controller";
 import { Module } from "@nestjs/common";
 import { eq } from "drizzle-orm";
 import { imagingStudies } from "../../kernel/db/schema/radiology";
@@ -59,6 +60,8 @@ import { RadiologyReadingController } from "./radiology-reading.controller";
     RadiologyRoomController,
     // 18-S RS8a — the reading room: its worklist, the study in hand, the print.
     RadiologyReadingController,
+    // 18-S RS7 — the Form F register by serial and the monthly return.
+    RadiologyPcpndtController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {
