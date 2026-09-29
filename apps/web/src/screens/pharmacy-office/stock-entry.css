@@ -9,7 +9,7 @@
 .se .se-result { padding: 12px 14px; border: 1px solid var(--green-line, rgba(14,107,78,.35)); border-radius: 6px; background: var(--green-soft, rgba(14,107,78,.08)); }
 .se .se-grid { background: var(--card, #fff); border: 1px solid var(--line, #dfe7e1); border-radius: 8px; }
 .se .se-grid table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
-.se .se-grid th { position: sticky; top: 0; z-index: 1; background: var(--wash, #eef3ef); text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--dim, #5c6f66); padding: 7px 4px; border-bottom: 1px solid var(--line, #dfe7e1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.se .se-grid th { position: sticky; top: 0; z-index: 1; background: var(--wash, #eef3ef); text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--dim, #5c6f66); padding: 7px 4px; border-bottom: 1px solid var(--line, #dfe7e1); line-height: 1.2; vertical-align: bottom; }
 .se .se-grid th:first-child { padding-left: 10px; }
 .se .se-grid td { padding: 5px 3px; vertical-align: top; }
 .se .se-grid td:first-child { padding-left: 10px; }
@@ -24,19 +24,19 @@
 .se col.c-cost { width: 92px; }
 .se col.c-gst { width: 44px; }
 .se col.c-rack { width: 60px; }
-.se col.c-sup { width: 120px; }
+.se col.c-sup { width: 140px; }
 .se col.c-x { width: 28px; }
-.se .se-in { width: 100%; height: 32px; min-width: 0; padding: 0 6px; border: 1px solid var(--line, #dfe7e1); border-radius: 5px; background: var(--card, #fff); font: inherit; font-size: 13px; color: var(--ink, #132420); }
-.se select.se-in { padding: 0 2px; }
-.se .se-in:focus { outline: 2px solid var(--green-line, rgba(14,107,78,.35)); outline-offset: 0; border-color: var(--green, #0e6b4e); }
-.se .se-in.se-picked { border-color: var(--green-line, rgba(14,107,78,.35)); background: var(--green-soft, rgba(14,107,78,.06)); font-weight: 600; }
-.se .se-meta { display: block; margin-top: 3px; font-size: 11px; color: var(--dim, #5c6f66); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d1 .se .se-in, .se .se-in { width: 100%; height: 32px; min-width: 0; padding: 0 6px; border: 1px solid var(--line, #dfe7e1); border-radius: 5px; background: var(--card, #fff); font: inherit; font-size: 13px; color: var(--ink, #132420); }
+.d1 .se select.se-in, .se select.se-in { padding: 0 2px; }
+.d1 .se .se-in:focus, .se .se-in:focus { outline: 2px solid var(--green-line, rgba(14,107,78,.35)); outline-offset: 0; border-color: var(--green, #0e6b4e); }
+.d1 .se .se-in.se-picked, .se .se-in.se-picked { border-color: var(--green-line, rgba(14,107,78,.35)); background: var(--green-soft, rgba(14,107,78,.06)); font-weight: 600; }
+.se .se-meta { display: block; margin-top: 3px; font-size: 11px; line-height: 1.35; color: var(--dim, #5c6f66); }
 .se .se-meta button { color: var(--green, #0e6b4e); font-size: 11px; }
 .se .se-cost { font-size: 12px; line-height: 1.25; }
 .se .se-cost b { display: block; font-weight: 600; }
 .se .se-cost span { display: block; font-size: 11px; }
 .se .se-gst { font-size: 12px; padding-top: 12px !important; color: var(--dim, #5c6f66); }
-.se .se-x button { width: 26px; height: 32px; color: var(--dim, #5c6f66); font-size: 18px; line-height: 1; border-radius: 5px; }
+.d1 .se .se-x button, .se .se-x button { width: 26px; height: 32px; color: var(--dim, #5c6f66); font-size: 18px; line-height: 1; border-radius: 5px; }
 .se .se-x button:hover { background: var(--red-soft, rgba(178,58,48,.08)); color: var(--red, #b23a30); }
 .se tr.se-why td { padding: 0 10px 7px; font-size: 12px; }
 .se .se-combo { position: relative; }
@@ -63,7 +63,8 @@
   .se .se-grid td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: 10.5px; font-weight: 600; color: var(--dim, #5c6f66); }
   .se .se-grid td.se-brand { grid-column: 1 / -1; padding-right: 30px !important; }
   .se .se-grid td.se-x { position: absolute; top: 6px; right: 6px; }
+  .se .se-grid td.se-sup { grid-column: span 2; }
   .se .se-gst { padding-top: 0 !important; }
-  .se .se-in { height: 38px; font-size: 15px; }
+  .d1 .se .se-in, .se .se-in { height: 38px; font-size: 15px; }
   .se tr.se-why td { padding: 0 12px 10px !important; }
 }

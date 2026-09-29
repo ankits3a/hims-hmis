@@ -173,7 +173,7 @@ export function NewDrugSheet({ initialName, onDone }: { initialName: string; onD
       )}
       <p className="text-xs text-muted-foreground">{t("stockEntry.nd.gstHint")}</p>
 
-      {problems.length > 0 && <p className="text-sm text-muted-foreground" data-testid="nd-problems">{problems.join(" · ")}</p>}
+      {problems.length > 0 && <p className="text-sm text-muted-foreground" data-testid="nd-problems">{t("stockEntry.nd.stillNeeded", { list: problems.join(" · ") })}</p>}
       {error !== null && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <Button type="submit" disabled={problems.length > 0 || busy} data-testid="nd-save">{t("stockEntry.nd.save")}</Button>
     </form>

@@ -300,7 +300,7 @@ export function StockEntryView(): React.ReactElement {
           {rows.map((r, i) => (
             <RowView
               key={r.key} row={r} index={i} last={i === rows.length - 1}
-              reasons={r.item === null && !isBlank(r) ? [t("stockEntry.pickBrand")] : reasonsFor(r.key)}
+              reasons={r.item === null ? (isBlank({ ...r, query: "" }) ? [] : [t("stockEntry.pickBrand")]) : reasonsFor(r.key)}
               near={fresh !== null && fresh.rows.find((x) => x.line === sendable.findIndex((s) => s.key === r.key) + 1)?.near === true && r.item !== null}
               mayCreate={mayCreate} mayPutOnSale={mayPutOnSale}
               onChange={(p) => update(r.key, p)} onRemove={() => remove(r.key)} onPick={(item) => pick(r.key, item)}
@@ -420,7 +420,7 @@ function RowView({ row, index, last, reasons, near, mayCreate, mayPutOnSale, onC
         </td>
         <td data-label={t("stockEntry.col.gst")} className="se-gst">{gst === undefined || gst === null ? "—" : gst === 0 ? t("stockEntry.nil") : `${String(gst / 100)}%`}</td>
         <td data-label={t("stockEntry.col.rack")}>{input("rack", t("stockEntry.col.rack"))}</td>
-        <td data-label={t("stockEntry.col.supplier")}>{input("supplier", t("stockEntry.col.supplier"), { list: "se-suppliers", placeholder: t("stockEntry.openingStock") })}</td>
+        <td data-label={t("stockEntry.col.supplier")} className="se-sup">{input("supplier", t("stockEntry.col.supplier"), { list: "se-suppliers", placeholder: t("stockEntry.openingStock") })}</td>
         <td className="se-x">
           {!last && <button type="button" aria-label={t("stockEntry.removeRow", { n: index + 1 })} data-testid={`se-remove-${String(index)}`} onClick={onRemove}>×</button>}
         </td>
