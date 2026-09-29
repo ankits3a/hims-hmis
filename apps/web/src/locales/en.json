@@ -4007,7 +4007,8 @@
         "none": "Not started",
         "draft": "Draft",
         "prelim": "Prelim",
-        "signed": "Signed"
+        "signed": "Signed",
+        "awaiting_cosign": "Awaiting consultant"
       },
       "clock": {
         "onTable": "images not in yet",
@@ -4144,7 +4145,12 @@
         "publish": "Publish",
         "publishHint": "Signed, not yet released. Publishing sends it to the doctor, the report counter and the patient.",
         "next": "Next study",
-        "doneHint": "Signed and published. A change now needs an amendment."
+        "doneHint": "Signed and published. A change now needs an amendment.",
+        "cosign": "Co-sign and publish",
+        "cosignHint": "You co-sign {{name}}'s report under your own second factor; it is then released.",
+        "signForCosign": "Sign for co-sign",
+        "signForCosignHint": "Your signature goes to a consultant for co-sign; nothing is released until they do.",
+        "awaitingHint": "Waiting for a consultant's co-sign. Move on to the next study."
       },
       "totpLabel": "Authenticator code",
       "signedPublished": "Signed and published.",
@@ -4170,9 +4176,41 @@
         "acquired": "Acquired",
         "critical": "Critical result: {{category}}",
         "reportedBy": "Reported by",
+        "draftedBy": "Drafted by {{name}} (resident), signed for co-sign {{at}}; co-signed by the consultant above.",
         "signerNotRecorded": "Signer details were not recorded at signing (a report signed before 29 Sep 2026).",
         "councilReg": "Council registration",
         "esigned": "Electronically signed {{at}} IST with a second factor"
+      },
+      "viewList": "Reading list",
+      "signedForCosign": "Signed for co-sign — a consultant co-signs it before it leaves the department.",
+      "cosigned": "Co-signed and published.",
+      "cosignedNotified": "Co-signed and published — the patient has been told the report is ready.",
+      "prelimIssued": "Prelim issued — the treating doctor can read it now; it is not the final report.",
+      "prelimBanner": "PRELIMINARY — final report follows",
+      "issuePrelim": "Issue prelim",
+      "prelimHint": "STAT and ER only: the treating doctor reads it now; the signed report replaces it.",
+      "awaitingMine": "Signed for co-sign — waiting for a consultant. Nothing has been released.",
+      "awaitingConsultant": "Awaiting consultant — {{name}} (resident) signed this for your co-sign.",
+      "amend": {
+        "open": "Amend",
+        "title": "Amend the signed report",
+        "reason": "Reason",
+        "reasons": {
+          "addendum": "Addendum",
+          "laterality": "Correction of laterality",
+          "measurement": "Correction of measurement",
+          "clinical_information": "Clinical information received",
+          "other": "Other"
+        },
+        "note": "What changed, in one line",
+        "notePlaceholder": "e.g. right, not left — the order and the images agree",
+        "notifyPublished": "The amendment is released at once and the original recipients are told the report has changed.",
+        "notifyUnpublished": "The report is not yet released; the amendment replaces the signed version.",
+        "cancel": "Cancel amendment",
+        "dock": "Sign the amendment",
+        "dockHint": "An amendment is a new signed version under your second factor; the original stays on record.",
+        "done": "Amended — version {{version}} is the signed report.",
+        "donePublished": "Amended — version {{version}} is released and the original recipients are told."
       }
     },
     "setup": {
@@ -4293,6 +4331,72 @@
         "notInTariff": "Not in the active tariff",
         "filmRule": "An X-ray includes one film; this service is for further sheets, and for CT, MRI and ultrasound film on request."
       }
+    },
+    "calls": {
+      "view_one": "Critical calls ({{count}})",
+      "view_other": "Critical calls ({{count}})",
+      "stat": "Critical calls open",
+      "statOverdue": "Calls overdue",
+      "statClosed": "Closed, 48 h",
+      "title": "Critical calls",
+      "place": "Reading room · critical calls",
+      "listTitle": "Open calls",
+      "listSummary_one": "{{count}} open call",
+      "listSummary_other": "{{count}} open calls",
+      "none": "No critical call is open.",
+      "nobody": "No call in hand.",
+      "inHand": "Call in hand",
+      "flaggedAt": "Flagged at {{at}}",
+      "openStudy": "Open the study",
+      "overdueShort": "overdue",
+      "clockLine": "{{name}} · {{cat}} · {{rung}}",
+      "clocksQuiet": "No call past its window.",
+      "clocksSummary_one": "{{count}} call past its window",
+      "clocksSummary_other": "{{count}} calls past their window",
+      "overdueBanner_one": "{{count}} critical call is past its window — ring the next rung now.",
+      "overdueBanner_other": "{{count}} critical calls are past their window — ring the next rung now.",
+      "overdue": "Overdue by {{mins}} min (window {{window}} min) — the call has moved up the ladder.",
+      "dueIn": "Due in {{mins}} min",
+      "finding": "The finding to read back",
+      "ladder": "Escalation ladder",
+      "rung": {
+        "treating_doctor": "Treating doctor",
+        "unit_head": "Unit head",
+        "duty_rmo": "Duty RMO",
+        "hod": "HOD"
+      },
+      "rungRole": {
+        "treating_doctor": "The ordering doctor",
+        "unit_head": "Unit head on call (no roster published)",
+        "duty_rmo": "Duty RMO (no roster published)",
+        "hod": "Medical Superintendent"
+      },
+      "outcome": {
+        "no_answer": "no answer",
+        "answered": "answered",
+        "read_back_ok": "read back"
+      },
+      "who": "Who you rang ({{rung}})",
+      "someoneElse": "Someone else — type the name",
+      "namePlaceholder": "Name of the person rung",
+      "noAnswer": "No answer",
+      "answered": "Answered",
+      "clinician": "Clinician who read it back",
+      "clinicianHint": "Pick the clinician who read it back — a read-back is recorded against a person with an HMIS account.",
+      "readBackLabel": "Their read-back, as they said it",
+      "readBackHint": "The clinician repeats the finding in their own words",
+      "dock": {
+        "call": "Call the {{rung}}",
+        "callHint": "Ring them, then record what happened.",
+        "outcome": "Record the outcome",
+        "outcomeHint": "No answer moves the call to the next rung; Answered opens the read-back.",
+        "close": "Close with read-back",
+        "closeHint": "The call closes only on a read-back that names the finding."
+      },
+      "logTitle_one": "Closed in the last 48 hours ({{count}})",
+      "logTitle_other": "Closed in the last 48 hours ({{count}})",
+      "logEmpty": "Nothing closed in the last 48 hours.",
+      "closedBy": "read back by {{name}} at {{at}}"
     }
   },
   "pcpndt": {
