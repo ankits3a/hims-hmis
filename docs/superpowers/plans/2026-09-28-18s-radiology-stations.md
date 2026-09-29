@@ -434,6 +434,42 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Core:** repeat and contrast-not-given raise their bill decisions from the console act.
 - **Journeys:** J1–J3 room hops, J6, J8, J10.
 
+**RS6 spike** (read on main `4d05ffdc`, 29 Sep, before any code):
+- **(a) Dose fields and the DRL book.** `recordAcquired` takes four numbers — `doseCtdivol` (mGy),
+  `doseDlp` (mGy·cm), `doseDap` (Gy·cm²), `fluoroSeconds` — plus `doseManual`; an ionising study
+  must carry at least one (`dose_required`, backed by `imaging_studies_dose_ck`). The modality
+  vocabulary is `xray | usg | ct | mri | mammography`, so the console asks CT for CTDIvol + DLP,
+  X-ray for DAP (+ fluoro seconds when screened), mammography for DAP, and nothing for USG / MRI.
+  There is **no AGD column**: a mammography unit that shows only AGD cannot be recorded as AGD
+  (moved to RS12's dose SR). The DRL book (`dose_reference_levels`) is `{levels: [{study_type_code?
+  | modality?, quantity: ctdivol|dlp|dap|fluoro_seconds, value, source?}]}`; `drlFor` picks study
+  type first, then modality, on a quantity the examination actually measured, and the verdict is
+  STORED on `radiation_dose_register` (`drl_quantity`, `drl_value`, `over_drl`). **There is no reason
+  column** — nowhere to keep "why above the DRL".
+- **(b) Abort and repeat.** `abortAcquisition` (reason required) sends `in_acquisition → ready`,
+  releases the machine, keeps `acquisition_started_at`, raises nothing. A repeat is modelled only
+  as a SECOND study row: `repeat_of_study_id` + `repeat_reason` (both or neither, CHECK) on
+  `recordAcquired`, which raises `repeat_no_charge` then. **Nothing creates such a row** — no route
+  and no screen — so `repeat_no_charge` has never been raised. `contrast_not_given` is raised by
+  `recordAcquired` itself when `contrast_option = required` and `contrastGiven` is false (detail:
+  study type + service, no reason). `acquired_unbilled` likewise; `performed_then_cancelled` by
+  `cancelStudy`. The queue (`GET /radiology/bill-decisions`, resolve) is
+  `radiology.bill_decisions.manage` — the desk and billing manager, **not the radiographer** (the
+  performer does not decide who pays; kept).
+- **(c) Room gates' evidence.** `identity_two_factor`: `{secondIdentifier: dob|uhid|wristband,
+  value}` — UHID and wristband compared with the patient master's UHID, DOB with the DOB; a
+  mismatch leaves the gate open (`gate_open`); never waivable, overridable with a reason.
+  `laterality_confirm`: `{patientStated: left|right|bilateral|na}` — records the side on the study;
+  a side that disagrees with one already recorded is refused; never overridable. Satisfy is
+  `radiology.gates.satisfy` (radiographer holds it).
+- **(d) Adding `imaging_protocols`.** `IMAGING_DEFINITION_KIND_VALUES` (kernel schema
+  `radiology.ts`) feeds `imaging_definitions_kind_ck` through `inList`; widening it is one
+  drop-and-add of the CHECK (0054 and 0062 did exactly this). `SCHEMA_BY_KIND` in `definitions.ts`
+  gains the body schema; the draft / publish / active routes take the kind from the same enum, so
+  they need no change. `seed:radiology` seeds only `study_types`; `pacs_settings` and
+  `dose_reference_levels` are never seeded — so the house pattern is **no seeded draft** for a book
+  the hospital authors.
+
 ### RS7 · Ultrasound & PCPNDT
 - **Web:**
   - `usg:room`: Form F first, then structured obstetric biometry (GA by CRL/FL, EFW by Hadlock, EDD), then sign in
