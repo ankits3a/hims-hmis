@@ -177,3 +177,18 @@ export { isTreatingDoctor, treatingDoctorsOf } from "./closed-loop";
 export type { InboxRow, TreatingDoctors } from "./closed-loop";
 export { NORTH_STAR_SOURCES, northStar } from "./north-star";
 export type { NorthStar, NorthStarRow, NorthStarSource } from "./north-star";
+// ── 18-S RS8c — the reading room, part 3: follow-ups (IR's skin-dose follow-up and RS10's floor read these),
+// peer review, night reads. The worker's daily sweeps are imported by `jobs.ts` through this barrel.
+export {
+  FOLLOWUP_SWEEP_ACTOR, addInterval, bookFollowup, closeFollowup, doctorFollowups, followupBoard, followupsFromBody,
+  markFollowupNotified, openFollowupsAtSignature, sweepOverdueFollowups,
+} from "./followups";
+export type { FollowupBoard, FollowupDraft, FollowupSource, FollowupView } from "./followups";
+export {
+  PEER_SAMPLE_RATE, drawPeerSample, peerBoard, peerCase, sampleSize, scorePeerReview, sweepPeerSample,
+} from "./peer-review";
+export type { PeerBoard, PeerCase, PeerScore, ReaderAgreement } from "./peer-review";
+export { assertNotTeleReader, teleBoard, teleReaderOf } from "./tele";
+export type { TeleBoard, TeleQueueRow, TeleReader } from "./tele";
+export { overReadNightPrelim } from "./reports";
+export type { TeleradiologyBody } from "./definitions";

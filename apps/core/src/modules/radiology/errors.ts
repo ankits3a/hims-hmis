@@ -230,6 +230,22 @@ export const RADIOLOGY_ERROR_CODES = [
   "report_not_published",
   "collector_details_required",
   "unknown_media_request",
+  /**
+   * ── 18-S RS8c — follow-ups, peer review, night reads ──
+   *
+   * `unknown_followup` / `unknown_peer_review` / `unknown_tele_read`: a stale row id.
+   * `peer_review_own_report`: nobody scores their own report (the case is blind, so the refusal is
+   * the only place the reviewer learns it was theirs — they take the next case).
+   * `tele_reader_prelim_only`: a night-read partner's radiologist issues PRELIMS; signing, co-signing
+   * and amending are the hospital consultant's (ruling 7). `overread_not_consultant`: the morning
+   * over-read is a consultant radiologist's act.
+   */
+  "unknown_followup",
+  "unknown_peer_review",
+  "peer_review_own_report",
+  "tele_reader_prelim_only",
+  "unknown_tele_read",
+  "overread_not_consultant",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -332,6 +348,13 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   report_not_published: 422,
   collector_details_required: 422,
   unknown_media_request: 404,
+
+  unknown_followup: 404,
+  unknown_peer_review: 404,
+  peer_review_own_report: 403,
+  tele_reader_prelim_only: 403,
+  unknown_tele_read: 404,
+  overread_not_consultant: 403,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

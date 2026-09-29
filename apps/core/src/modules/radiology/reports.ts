@@ -6,7 +6,7 @@ import { advanceOrderItem } from "../../kernel/orders/advance";
 import { secondFactorFresh } from "../../kernel/auth/totp";
 import { transition } from "../../kernel/workflow/instances";
 import {
-  imagingCriticalCallAttempts, imagingCriticalFindings, imagingReports, imagingStudies,
+  imagingCriticalCallAttempts, imagingCriticalFindings, imagingReports, imagingStudies, imagingTeleReads,
 } from "../../kernel/db/schema/radiology";
 import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { invoiceLines } from "../../kernel/db/schema/billing";
@@ -40,6 +40,9 @@ import type { ImagingCriticalCategory } from "../../kernel/db/schema/radiology";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
+import { openFollowupsAtSignature, reconcileFollowupsAtAmendment } from "./followups";
+import { openAmendmentReview } from "./peer-review";
+import { assertNotTeleReader, openTeleRead, overRead, teleReaderOf } from "./tele";
 
 /**
  * PLAN 18a T8 — **THE REPORT: versioned, signed under a fresh second factor, and never overwritten.**
@@ -114,6 +117,12 @@ export type ReportContent = {
   body: Record<string, unknown>;
   impression?: string | null;
   laterality?: string | null;
+  /**
+   * 18-S RS8c — the night-read provider's key, set ONLY by `savePrelim` for a listed teleradiology
+   * reader (`imaging_reports.external_reporter_id`, the column 18a reserved for O-3). Never copied
+   * forward: the signed version is the hospital consultant's.
+   */
+  externalReporterId?: string | null;
 };
 
 /** The default skeleton for a study, when the caller does not name one. */
@@ -160,6 +169,7 @@ async function insertVersion(
       supersedesId: signer?.supersedesId ?? null,
       lockoutOverride: signer?.lockoutOverride ?? null,
       provenance: provenance ?? null,
+      externalReporterId: status === "prelim" ? content.externalReporterId ?? null : null,
       signer: signer?.block ?? null,
       signChecks: signer?.checks ?? null,
     });
@@ -311,7 +321,11 @@ export async function savePrelim(
       { terms: hits.map((h) => h.term), tier },
     );
   }
-  return await insertVersion(tx, study, "prelim", { ...input, body });
+  /** 18-S RS8c T3 — a night-read partner's prelim carries the provider and opens the over-read row. */
+  const tele = await teleReaderOf(tx, actor.id);
+  const created = await insertVersion(tx, study, "prelim", { ...input, body, externalReporterId: tele?.provider.key ?? null });
+  if (tele !== null) await openTeleRead(tx, tele, study, created.reportId, new Date());
+  return created;
 }
 
 function assertReportable(status: string, studyId: string): void {
@@ -352,6 +366,8 @@ export async function signReport(
 ): Promise<{ reportId: string; version: number; awaitingCosign?: boolean }> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
+  /** 18-S RS8c — a night-read partner's radiologist issues prelims; the hospital's consultant signs. */
+  await assertNotTeleReader(tx, actor, "sign");
 
   /** A1 — §11.19-D-27. Checked FIRST: nothing about the content matters if the signer is not fresh. */
   const windowMinutes = input.windowMinutes ?? SECOND_FACTOR_WINDOW_MINUTES;
@@ -440,6 +456,8 @@ export async function signReport(
    */
   await tx.update(imagingReports).set({ status: "superseded" })
     .where(and(eq(imagingReports.studyId, study.id), eq(imagingReports.status, "awaiting_cosign")));
+  /** 18-S RS8c T1 — the recommendations this signature carries become follow-up rows. */
+  await openFollowupsAtSignature(tx, actor, study, { reportId: created.reportId, body: content.body }, now);
 
   /**
    * ═══ F69 (CLOSE REVIEW) — SIGNING `red` NOW RAISES THE CRITICAL. IT USED TO RAISE NOTHING. ═══
@@ -556,6 +574,7 @@ export async function cosignReport(
 ): Promise<{ reportId: string; version: number; cosignedId: string }> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
+  await assertNotTeleReader(tx, actor, "co-sign");
   const windowMinutes = input.windowMinutes ?? SECOND_FACTOR_WINDOW_MINUTES;
   const factorAt = input.secondFactorAt;
   if (factorAt === null || !secondFactorFresh({ secondFactorAt: factorAt }, windowMinutes, now)) {
@@ -626,6 +645,8 @@ export async function cosignReport(
   } catch (e) {
     throw asAlreadySigned(e, study.id);
   }
+  /** 18-S RS8c T1 — the co-signed report is the hospital's: its recommendations become follow-ups. */
+  await openFollowupsAtSignature(tx, actor, study, { reportId: created.reportId, body: content.body }, now);
 
   /** The critical, if any, was raised at the resident's signature; only a category with no call gets one now. */
   if (category !== null) {
@@ -999,6 +1020,7 @@ export async function amendReport(
 ): Promise<{ reportId: string; version: number; supersededId: string }> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
+  await assertNotTeleReader(tx, actor, "amend");
 
   if (input.reason.trim() === "") {
     throw new RadiologyError("reason_required", "an amendment carries a reason — what changed and why");
@@ -1071,6 +1093,12 @@ export async function amendReport(
     },
     category,
   );
+  /**
+   * 18-S RS8c — the amendment decides what is still recommended (T1), and the version it superseded
+   * goes to blind peer review, read by whoever signed it (T2: "every amendment").
+   */
+  await reconcileFollowupsAtAmendment(tx, actor, study, { reportId: created.reportId, body: amendContent.body }, now);
+  await openAmendmentReview(tx, previous);
 
   /**
    * ═══ F70 (CLOSE REVIEW) — AN AMENDMENT OF A PUBLISHED REPORT IS PUBLISHED WITH IT ═══
@@ -1485,4 +1513,34 @@ export async function acknowledgeCritical(
     },
   }));
   return { criticalId: input.criticalId, acknowledgedAt };
+}
+
+/* ═══════════════════════ 18-S RS8c T3 — the morning over-read of a night prelim ═══════════════════════ */
+
+/**
+ * `tele.ts` `overRead` with this file's signing acts: draft, sign (every check a signature meets,
+ * the signer block, the follow-ups), amend, publish — all in the caller's transaction and under the
+ * consultant's own fresh second factor.
+ */
+export async function overReadNightPrelim(
+  tx: Tx,
+  actor: Actor,
+  decls: readonly OrderKindDecl[],
+  input: {
+    teleReadId: string; grade: string; note?: string | null; findings?: string | null; impression?: string | null;
+    secondFactorAt: Date | null; windowMinutes?: number; acknowledgedWarnings?: readonly string[]; now?: Date;
+  },
+): Promise<{ teleReadId: string; grade: "concur" | "minor" | "major"; finalReportId: string }> {
+  const now = input.now ?? new Date();
+  const [tele] = await (tx as unknown as Db).select({ studyId: imagingTeleReads.studyId }).from(imagingTeleReads)
+    .where(eq(imagingTeleReads.id, input.teleReadId));
+  const studyId = tele?.studyId ?? "";
+  const factor = { secondFactorAt: input.secondFactorAt, windowMinutes: input.windowMinutes, acknowledgedWarnings: input.acknowledgedWarnings ?? [], now };
+  return await overRead(tx, actor, { ...input, now }, {
+    latestSigned: (t, id) => latestSigned(t, id),
+    draft: async (content) => await draftReport(tx, actor, { studyId, ...content }),
+    sign: async (reportId) => await signReport(tx, actor, { studyId, reportId, ...factor }),
+    amend: async (content) => await amendReport(tx, actor, { studyId, ...content, ...factor }),
+    publish: async () => await publishReport(tx, actor, decls, { studyId, now }),
+  });
 }

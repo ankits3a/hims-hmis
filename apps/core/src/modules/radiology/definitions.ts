@@ -404,6 +404,56 @@ export const reportSignatoriesBodySchema = z.object({
 
 export type ReportSignatoriesBody = z.infer<typeof reportSignatoriesBodySchema>;
 
+/**
+ * ═══ 18-S RS8c — THE NIGHT-READ PROVIDER (ruling 7) ═══
+ *
+ * A contracted Indian teleradiology provider whose NMC-registered radiologists read nights as a
+ * PRELIM, over-read by a consultant next morning. The book is the provider register the ruling
+ * needs: the provider, its DPA under the DPDP Act (the date it was signed), the promise that the data
+ * stays in India (a literal `true` — a provider that cannot say so cannot be entered), and each reader
+ * as a named HMIS user with their NMC registration number. A listed reader's reports are PRELIM
+ * only (`tele.ts`). The prelim targets are the ruling's (30 min STAT, 60 urgent) unless the contract
+ * says tighter. The HOD drafts it, the medical superintendent approves (Setup → Books). No money:
+ * the per-read fee is the contract's payable, not built here.
+ */
+const clockSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24-hour, IST)");
+export const teleradiologyBodySchema = z.object({
+  providers: z.array(z.object({
+    key: z.string().regex(/^[a-z][a-z0-9_]{1,39}$/, "a short key: lower-case letters, digits, underscores"),
+    name: z.string().min(2).max(160),
+    /** The data-processing agreement under the DPDP Act, signed on (YYYY-MM-DD). */
+    dpa_signed_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD"),
+    data_in_india: z.literal(true),
+    readers: z.array(z.object({
+      user_id: z.string().min(1).max(64),
+      name: z.string().min(2).max(160),
+      /** National Medical Commission / State Medical Council registration, as printed. */
+      nmc_reg_no: z.string().min(3).max(120),
+    })).min(1).max(100),
+  })).min(1).max(10),
+  /** The night the provider covers, IST (the board: 21:00–08:00). Shown as coverage; not enforced. */
+  night_from: clockSchema.default("21:00"),
+  night_to: clockSchema.default("08:00"),
+  /** Prelim targets, minutes from images-in (ruling 7). */
+  prelim_minutes: z.object({
+    stat: z.number().int().min(5).max(30).default(30),
+    urgent: z.number().int().min(10).max(60).default(60),
+  }).default({ stat: 30, urgent: 60 }),
+  /** The consultant's over-read is due by this time next morning, IST (the board: 10:00). */
+  overread_by: clockSchema.default("10:00"),
+}).refine(
+  (b) => {
+    const ids = b.providers.flatMap((p) => p.readers.map((r) => r.user_id));
+    return new Set(ids).size === ids.length;
+  },
+  { message: "a reader is listed twice — one person reads for one provider" },
+).refine(
+  (b) => new Set(b.providers.map((p) => p.key)).size === b.providers.length,
+  { message: "two providers share a key" },
+);
+
+export type TeleradiologyBody = z.infer<typeof teleradiologyBodySchema>;
+
 const SCHEMA_BY_KIND = {
   study_types: studyTypesBodySchema,
   pregnancy_policy: pregnancyPolicyBodySchema,
@@ -413,6 +463,7 @@ const SCHEMA_BY_KIND = {
   imaging_protocols: imagingProtocolsBodySchema,
   report_templates: reportTemplatesBodySchema,
   report_signatories: reportSignatoriesBodySchema,
+  teleradiology: teleradiologyBodySchema,
 } as const;
 
 export type StudyTypesBody = z.infer<typeof studyTypesBodySchema>;
