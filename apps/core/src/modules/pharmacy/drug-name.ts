@@ -19,5 +19,6 @@ function brandSaysStrength(brand: string, strength: string): boolean {
   if (squash(brand).includes(squash(strength))) return true;
   const lead = /^(\d+(?:\.\d+)?)/.exec(strength)?.[1];
   if (lead === undefined || /[+/,]/.test(strength)) return false;
-  return (brand.match(/\d+(?:\.\d+)?/g) ?? []).includes(lead);
+  const numbers: string[] = brand.match(/\d+(?:\.\d+)?/g) ?? [];
+  return numbers.includes(lead);
 }
