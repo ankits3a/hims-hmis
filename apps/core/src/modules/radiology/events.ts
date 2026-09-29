@@ -223,6 +223,30 @@ export const imagingExposureRepeated = defineEvent("imaging.exposure_repeated", 
   reason: z.enum(REPEAT_REASON_CODES),
 }));
 
+/**
+ * 18-S RS12 — the archive holds this study's images: matched by accession (or UID) AND the UHID,
+ * or attached at Send from a held notice. Emitted ONCE per study, on the first arrival — a later
+ * notice for the same UID refreshes the counts and emits nothing. Ids and counts only.
+ */
+export const imagingImagesArrived = defineEvent("imaging.images_arrived", MODULE, z.object({
+  studyId: id,
+  studyInstanceUid: z.string().min(1),
+  instanceCount: z.number().int().min(0),
+  via: z.enum(["notice", "send", "reconciled"]),
+}));
+
+/**
+ * 18-S RS12 — a human resolved an archive study no order could claim: attached to a study (the
+ * patient is the study's) or rejected (a phantom, a test, a duplicate). The reason is typed and
+ * kept on the inbox row, not here — it may name a patient.
+ */
+export const imagingImagesReconciled = defineEvent("imaging.images_reconciled", MODULE, z.object({
+  unmatchedId: id,
+  outcome: z.enum(["attached", "rejected"]),
+  studyId: id.nullable(),
+  unmatchedReason: z.string().min(1),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -241,4 +265,6 @@ export const RADIOLOGY_EVENTS = [
   imagingBedsideRequested,
   imagingBookingChanged,
   imagingExposureRepeated,
+  imagingImagesArrived,
+  imagingImagesReconciled,
 ] as const;

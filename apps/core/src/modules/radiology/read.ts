@@ -247,6 +247,11 @@ export type StudyView = WorklistRow & {
   views: ImageViewRow[];
   /** Close review B4 — the screen renders "Open images" because the SERVER says this reader may. */
   canOpenImages: boolean;
+  /**
+   * 18-S RS12 — the archive's word: when it first said it holds this study, and how much. Null
+   * until a notice matched (or a human attached one) — not the same as "no images".
+   */
+  archive: { arrivedAt: Date; seriesCount: number; instanceCount: number } | null;
   reports: { id: string; version: number; status: string; publishedAt: Date | null; machineDrafted: boolean }[];
 };
 
@@ -309,6 +314,9 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),
     views: await studyImageViews(db, studyId),
     canOpenImages: await hasPermission(db, actor.id, IMAGES_READ, "hospital"),
+    archive: row.study.imagesArrivedAt === null
+      ? null
+      : { arrivedAt: row.study.imagesArrivedAt, seriesCount: row.study.imageSeriesCount ?? 0, instanceCount: row.study.imageInstanceCount ?? 0 },
     reports,
   };
 }

@@ -27,7 +27,7 @@ import {
 import {
   PAYMENT_RUN_APPROVAL_TYPE, PO_APPROVAL_TYPE, PO_OWNER_APPROVAL_TYPE, STOCK_ADJUSTMENT_APPROVAL_TYPE, availableQty, findStoreByCode, listItems,
 } from "../src/modules/materials";
-import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes } from "../src/modules/radiology";
+import { IMAGING_GATE_DEF_KEY, IMAGING_STUDY_DEF_KEY, activeStudyTypes, pacsArchiveConfigured } from "../src/modules/radiology";
 import {
   HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
   ROSTER_RESOLVER_FLAG, departmentsWithoutPublishedCycle, livePeriodCount, publishedCycleCount,
@@ -1228,6 +1228,17 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
         return devices.length > 0 && (await unlicensedDevices(db, istToday())).length === 0;
       },
       fix: "18c §2: file each ionising machine's AERB licence at /radiology/radiation-safety until GET /aerb/licences/gaps is empty",
+    },
+    {
+      /**
+       * 18-S RS12 — PACS NOT CONFIGURED until a `pacs_settings` book names the archive (ruling 6:
+       * on-premise Orthanc + OHIF). G3: the archive is the hospital's equipment and its address is the
+       * owner's infrastructure act; no deploy writes it. Red on every box until then, and that is true:
+       * the department runs on films and typed doses, and the seams wait.
+       */
+      gate: "G3", code: "radiology_pacs_configured",
+      check: async (db) => pacsArchiveConfigured(db),
+      fix: "radiology-pacs-go-live.md §4: publish pacs_settings with viewer 'ohif', enabled, and the archive block (Orthanc AE title + address) once the owner's infra person has installed it",
     },
     {
       gate: "G4", code: "radiology_rso_appointed",

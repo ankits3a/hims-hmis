@@ -17,6 +17,7 @@ import { RadiologyImagesController } from "./radiology-images.controller";
 import { RadiologyFloorController } from "./radiology-floor.controller";
 import { RadiologySetupController } from "./radiology-setup.controller";
 import { RadiologyRoomController } from "./radiology-room.controller";
+import { RadiologyPacsController } from "./radiology-pacs.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -59,6 +60,8 @@ import { RadiologyRoomController } from "./radiology-room.controller";
     RadiologyRoomController,
     // 18-S RS7 — the Form F register by serial and the monthly return.
     RadiologyPcpndtController,
+    // 18-S RS12 — the archive's doors in (arrivals, dose reports) and the PACS inbox.
+    RadiologyPacsController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {

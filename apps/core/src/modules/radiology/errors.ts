@@ -162,6 +162,18 @@ export const RADIOLOGY_ERROR_CODES = [
    */
   "foetal_sex_disclosure",
   "invalid_biometry",
+  /**
+   * PLAN 18-S RS12 — the archive's inbox. `invalid_pacs_notice` is a notice the bridge sent that
+   * names no Study Instance UID (or no dose, for a dose report) — the bridge's defect, not a
+   * patient's. `unknown_unmatched` is a stale inbox row. `not_acquired` is an attach to a study the
+   * room has not sent yet (press Send first; the images then attach themselves if the accession and
+   * UHID agree). `images_already_attached` is an attach to a study that already holds a DICOM study
+   * from the archive — one HMIS study is one DICOM study.
+   */
+  "invalid_pacs_notice",
+  "unknown_unmatched",
+  "not_acquired",
+  "images_already_attached",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -239,6 +251,10 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   report_not_signed: 422,
   foetal_sex_disclosure: 422,
   invalid_biometry: 422,
+  invalid_pacs_notice: 422,
+  unknown_unmatched: 404,
+  not_acquired: 409,
+  images_already_attached: 409,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

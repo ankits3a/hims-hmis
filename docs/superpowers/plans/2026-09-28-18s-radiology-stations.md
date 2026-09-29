@@ -867,6 +867,147 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - Night teleradiology per ruling 7: an external reporter identity, prelim, and morning over-read.
 - Procurement and the deploy are owner-authorised steps.
 
+#### RS12 spike (read on main `c3ba8525`, 29 Sep, before any code)
+- **(a) What 18b built vs deferred.** Built: the MWL pull export (`mwl.ts`, `GET /radiology/mwl`,
+  dcmtk dump, `modality_bridge`), the Study Instance UID minted from the study (`uid.ts`, `2.25.` +
+  SHA-256 bits) and written at Send (`resolveStudyInstanceUid`, partial unique index), the viewer
+  door (`views.ts` `openImages`: `image_source = pacs` + UID + an active enabled `pacs_settings` →
+  view row + `imaging.image_viewed` + PHI line → URL), the offline drafter. Deferred to 18b-ii (its
+  §6, verbatim): the Orthanc container, **reconciliation / `study.unmatched` and any consumer of
+  `imaging.study_acquired`**, the **dose SR hook**, the Orthanc authorization bridge, **embedded
+  OHIF**, tiering/offsite/restore, teleradiology, MPPS.
+- **(b) `pacs_settings`** was `{viewer_url_template (https, only `{accessionNo}`/`{studyInstanceUid}`),
+  enabled}`, governed like every book; nothing seeds it.
+- **(c) The bridge's authentication.** The kernel has no service-account door (agents hold no
+  permissions — `guards.ts`), so the bridge is a USER whose only role is `modality_bridge`
+  (`radiology.mwl.read`); `lab_bridge` (`lab.results.interface`) is the same shape for a machine that
+  POSTS. RS12 follows it: a new machine string `radiology.pacs.interface` on `modality_bridge`.
+- **(d) "Images arrived", smallest honest design.** DECIDED: Orthanc's REST `/changes` feed
+  (`StableStudy`) polled by the **bridge on the archive host**, which posts Orthanc's own study +
+  statistics JSON to a bridge route; HMIS parses (the bridge stays a shell script) and matches
+  **accession first, then UID, and in both cases the DICOM PatientID must equal the study's UHID**;
+  everything else → `imaging_unmatched_studies`. Not a worker poller inside HMIS: HMIS never dials
+  the PACS (18b D1's pull direction, mirrored), `worker.module.ts` stays untouched, and a hospital
+  with no archive is a no-op by construction (nothing posts). The "PACS not configured" state is a
+  census row over the book's new `archive` block. Dose: from the **Radiation Dose SR** the modality
+  sends to the archive (the bridge forwards `/instances/{id}/tags?simplify` for SOP class
+  `…88.67`); **not MPPS** — Orthanc has no MPPS receiver, and the dose MPPS carries is in the RDSR.
+- **Found:** `/radiology/read` (RS8a, PR #393) is not on main, so T4's reading-room half cannot be
+  wired here; the door it will call (`openImages`) is the same one the study console uses, and it now
+  returns `viewer`. Recorded, not blocked.
+
+#### RS12 (code) as built (this PR; lane `radiology-rs12`, rebased on RS11 `9dec14c1`; one migration, `0148_radiology_pacs_inbox`)
+- **T1 · arrivals (core).** `pacs.ts` + `radiology-pacs.controller.ts`:
+  `POST /radiology/pacs/arrivals` (`radiology.pacs.interface`, 200, idempotent) takes Orthanc's
+  `GET /studies/{id}` + `/statistics` as-is; `parseOrthancStudy` (pure) → `{UID, accession, PatientID,
+  name, modality, StudyDate, series, instances, archive id}`, refusing a notice with no valid UID
+  (`invalid_pacs_notice`). `matchVerdict` (pure): the accession's study (else the UID's), and only
+  when PatientID = that patient's UHID (trimmed, case-folded) — **never a name**. Verdicts:
+  match → `imaging_studies.image_source = pacs`, the archive's UID (replacing a minted/absent one),
+  new additive columns `images_arrived_at`, `image_series_count`, `image_instance_count`, event
+  `imaging.images_arrived` (once per study); a re-sent notice refreshes counts (greatest) and emits
+  nothing; otherwise one `imaging_unmatched_studies` row per UID (UNIQUE) with a reason —
+  `patient_mismatch`, `no_match`, `no_identifiers`, `uid_mismatch` (a second archive study for one
+  order, or a UID the technologist TYPED that the archive contradicts), `study_closed`,
+  `outside_study`, `awaiting_acquisition` (images before Send). Serialised per UID by an advisory lock.
+  **At Send** (`recordAcquired`): a held `awaiting_acquisition` arrival gives the study its UID when
+  none was typed and attaches itself (`via: send`, `resolved_by` NULL — the CHECK allows the machine
+  only to ATTACH, never to reject); a typed UID that disagrees turns it into `uid_mismatch`.
+- **T2 · dose SR (core).** `POST /radiology/pacs/dose-reports` takes the SR instance's simplified tags;
+  `parseDoseSr` (pure) reads DCM 113813 DLP total (else Σ 113838), 113830 Mean CTDIvol (the highest
+  acquisition), 113722 DAP total, 113730 fluoro time, 111637 AGD (the higher breast), converting
+  **units read from each item** (Gy·m² → Gy·cm² ×10,000, …; an unknown unit drops the number); template
+  from `ContentTemplateSequence` (10011 / 10001). Receipts in `imaging_dose_sr_receipts` (UNIQUE on
+  the SR's SOP Instance UID): matched by the same accession/UID + UHID rule. Before Send → `pending`,
+  and Send with **no typed dose** records the SR's numbers **through the existing `recordDose` call**
+  (so `drlFor` runs; register `dose_origin = 'dose_sr'`, `dose_manual = false`) → `recorded`. After a
+  typed number → `confirmed` (≤ 2 % or 0.05) or `conflict` (both values kept on the receipt; **the
+  register row is never rewritten**). Non-ionising / outside → `not_applicable`; unplaced →
+  `unmatched`, re-tried when the archive study is matched or attached. **AGD** added additively:
+  `imaging_studies.dose_agd`, `radiation_dose_register.dose_agd`, both dose CHECKs widened, aerb
+  `DOSE_QUANTITIES`/`DOSE_UNITS` (`agd`, mGy), the DRL book's `DRL_QUANTITIES` (`agd`), the
+  acquisition route's body (`doseAgd`). The room read carries `doseReport` (the pending SR).
+- **T3 · reconciliation (core).** `GET /radiology/pacs/inbox` (open rows with the accession's
+  candidate study — name through `displayName`, one PHI line per candidate — dose conflicts, the
+  unplaced-dose count, `configured`), `POST …/unmatched/:id/attach {accessionNo, reason}` and
+  `…/reject {reason}` (`radiology.pacs.reconcile`, radiologist + radiographer). Attach refuses a study
+  not yet sent (`not_acquired`, names the room), an outside film (`outside_study_only`), a study that
+  already holds an archive study (`images_already_attached`), a UID recorded on another study
+  (`duplicate_study_instance_uid`), a resolved row (`already_resolved`), a blank reason
+  (`reason_required`); on success the study takes the archive's UID/counts, the row is `attached`
+  with person/time/reason, event `imaging.images_reconciled`, PHI line, and the UID's unplaced dose
+  reports are settled. Reject keeps the row with its reason; nothing is ever deleted.
+- **T4 · web.** Rooms station gains a fifth header view **Unmatched images**
+  (`/radiology/room?view=unmatched`, `screens/radiology-pacs-inbox.tsx`): right = the one list of open
+  archive studies; left = the one in hand; centre = the images' identity beside the order's (a
+  disagreeing UHID in red), accession + reason, **Attach** docked (Enter), Reject folded below;
+  nothing in hand → the archive's state ("PACS not configured") and the dose disagreements. Room
+  console: mammography asks **AGD**; a waiting dose report is shown ("From the machine's dose report
+  …"), Send is open with nothing typed and sends no dose. Study console: "In the archive: 3 series,
+  212 images, since 10:42" / "Not in the archive yet"; long UIDs wrap. `openImages` returns `viewer`;
+  the tab opens the server's URL (OHIF's `?StudyInstanceUIDs=` when the book says `ohif`).
+- **T5 · docs.** `radiology-pacs-go-live.md` rewritten for Orthanc + OHIF (sizing, ports, AE titles,
+  `orthanc.json`, OHIF, the modalities' RDSR, the three bridge jobs incl. the `/changes` poller,
+  retention/backup per ruling 6, the daily inbox act, acceptance, rollback). Census row
+  `radiology_pacs_configured` (G3): RED until an enabled `pacs_settings` names its `archive`.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *Push from the archive host, not a poller in HMIS* — HMIS never dials the PACS; no worker change.
+  - *Match = accession (then UID) AND UHID; never a name*; a blank PatientID is not a match.
+  - *The archive's UID replaces our minted one*; a technologist-TYPED UID the archive contradicts
+    goes to a human.
+  - *Reconciliation: one technologist or radiologist with a reason, audited* — no second person.
+  - *Dose from the RDSR, not MPPS* (Orthanc has no MPPS SCP). CT register CTDIvol = the highest
+    acquisition's; mammography AGD = the higher breast's; agreement tolerance 2 % or 0.05.
+  - *A typed dose is never overwritten*; the conflict is the RSO's to review.
+  - *`pacs_settings.viewer = 'ohif'` must open by `StudyInstanceUIDs`*; new tab, no embed until the
+    owner's network and monitors are in (ruling 6); the book's `archive` block is optional so every
+    earlier book parses.
+  - *The inbox lives in the Rooms station* (the technologist knows who was on the table); the
+    radiologist reaches it by the same route (the view checks the grant, not the station).
+  - *Retention*: MLC never on a timer; minors until 21 when later than 5 years; nothing deleted
+    automatically.
+- **Pins.** Permissions: `radiology` manifest 18 → 20 (`radiology.pacs.interface`, `.pacs.reconcile`);
+  `allPermissions` 205 → 207, `modelPairs` 427 → 430, `modelPermissions` 185 → 187,
+  `heldPermissions` 191 → 193, V5 `declared` 205 → 207 / `held` 185 → 187 (after RS11's +1); per
+  role radiologist 17 → 18, radiographer 10 → 11, modality_bridge 1 → 2; README radiology table +2 rows and the RS12
+  prose paragraph. Radiology events 16 → 18. Error codes +4 (`invalid_pacs_notice`,
+  `unknown_unmatched`, `not_acquired`, `images_already_attached`). Standup census +1 radiology row.
+  No new route in the web router, no nav entry, caddyfile routes unchanged (a header view).
+- **Counts** — see the PR body (touched suites, fail-first mutants, walk at 1920/1440/1280/1024/768/390
+  in `/opt/hmis-context/rs12-walk/`).
+- **Moved later.** The reading room's own "Open in OHIF" (RS8a's `/radiology/read` calls the same
+  `openImages`); a per-machine RDSR/MWL capability flag on the device; an HOD escalation for inbox rows
+  older than a shift (RS10's alerts spine); Orthanc-side authorization per study (the plugin that asks
+  HMIS who may view) — until then the proxy's LAN-only auth is the gate.
+
+#### RS12 — NEXT (not built): the IR suite
+- **Screen** `room:ir` (a Rooms view): WHO sign-in (identity, site/side, consent, allergy, anticoagulant
+  status + INR/platelets, contrast/renal gate from RS5, sedation plan, the operator and the
+  anaesthetist), **time-out** (the procedure, side, the image on the monitor, antibiotics), running
+  **fluoro time and cumulative air kerma / DAP** from the unit (RDSR TID 10001 already parsed here:
+  113730, 113722; add 113725 Dose (RP) Total), a **skin-dose alert** at the SIR/NCRP 168 trigger
+  (reference-point air kerma 3 Gy or peak skin dose 3 Gy → a documented follow-up at 2–4 weeks), and
+  **sign-out** (the procedure done, specimens, devices left in, the plan).
+- **Data it needs:** an `imaging_ir_checklists` row per study (three phases, each with who and when —
+  the OT's `ot_case_gates` shape), the IR procedure book (a `study_types` subset with
+  `interventional: true` + a consent template), the RDSR's reference-point air kerma, and a follow-up
+  obligation for a skin-dose trigger (RS8's follow-ups table). Money: device/consumable billing is the
+  OT's materials path — no new rule (none ruled).
+
+#### RS12 — NEXT (not built): night teleradiology (ruling 7)
+- **Identity:** a `teleradiology_reporter` role for the contracted provider's NMC-registered
+  radiologists — a named user each (NMC number on the person), hospital scope, holding
+  `radiology.reports.write` + a new `radiology.reports.prelim` only (never `sign`/`amend`), time-boxed
+  by the kernel's temp-role grant to the night window; images via the same OHIF door (the provider
+  reads over a site-to-site VPN; data stays in India, DPA under the DPDP Act).
+- **Flow:** STAT/urgent studies after hours routed to the provider's worklist; a **prelim** within 30 min
+  (STAT) / 60 min (urgent) — the existing prelim status, marked `provenance.reader = teleradiology`;
+  the consultant's **morning over-read** signs (or amends) and logs a discrepancy grade (RS8's peer
+  review table, `source = teleradiology`) for the monthly provider review.
+- **Data it needs:** the provider register (name, DPA date, NMC numbers), per-study routing flag and
+  TAT clocks (RS10's alerts), and the discrepancy log. Money: the provider's per-read fee is a payable
+  (procurement), not a patient charge — nothing built until the owner signs the contract.
+
 ### Order
 
 RS0 (parallel, all along) · RS1 → RS2 → RS3 ∥ RS4 → RS5 → RS6 ∥ RS7 → RS8 → RS9 → RS10 → RS11 → RS12.
