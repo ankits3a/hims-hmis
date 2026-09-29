@@ -68,7 +68,11 @@ import type { StudyType } from "../src/modules/radiology";
  * through `materials/stores.ts`, `opd/masters.ts`, `lab/instruments.ts` and two seeds. The
  * laboratory has an instruments door; radiology has none.
  *
- * So **this script is the only writer of an imaging device**, and a second CT is added by adding it
+ * **18-S RS4 BUILT THE DOOR**: Radiology → Setup → Machines (`POST /radiology/setup/devices`,
+ * `modules/radiology/machines.ts`) registers a machine, sets its AE title and its status. The rest
+ * of this paragraph is the history of why that door was needed.
+ *
+ * So **this script was the only writer of an imaging device**, and a second CT was added by adding it
  * to `MODALITY_MACHINES` and re-running — which is safe, because every step is find-or-create. That
  * is a deployment act rather than a hospital one, and it is a real gap rather than a preference;
  * it is recorded in `docs/runbooks/radiology-go-live.md` §5 as such.

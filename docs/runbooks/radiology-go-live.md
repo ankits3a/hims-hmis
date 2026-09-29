@@ -131,30 +131,34 @@ the authenticator's next code.
 ## 5. The machines
 
 Each `device` resource carries a `modality` attribute, and `scheduleStudy` matches a study type
-against it. **The AE title a modality worklist needs cannot be set at all** — nothing in the
-workspace writes `attributes.aeTitle`, so `GET /radiology/mwl` is permanently empty; the PACS
-runbook's §2 carries the measurement. This sentence used to say "set the AE title too", seven lines
-above the paragraph below declaring there is no door for a machine.
+against it. **The device registry row is also what an AERB licence points at**: a machine that does
+not exist as a resource cannot be licensed, and therefore cannot be used for an ionising examination.
+The machines must exist before you enter the certificates.
 
-**The device registry row is what an AERB licence points at.** A machine that does not exist as a
-resource cannot be licensed, and therefore cannot be used for an ionising examination. The machines
-must exist before you enter the certificates.
+**18-S RS4 built the door: Radiology → Setup → Machines** (`/radiology/setup`, grant
+`radiology.devices.manage`, held by the `radiologist`). Until RS4 there was none — `seed:radiology`
+was the only writer of an imaging device and nothing could set an AE title, so `GET /radiology/mwl`
+was permanently empty.
 
-**THERE IS NO RESOURCES SCREEN, and this section said otherwise until it was measured.** The kernel
-exposes `/resources/board`, `/resources/tree` and `/resources/:id/history` — all GET — and no create
-or update route at all. `createResource` is reached only through `materials/stores.ts`,
-`opd/masters.ts`, `lab/instruments.ts` and two seed scripts. **The laboratory has a door for its
-instruments; radiology has none for its machines.**
-
-So `seed:radiology` is the only writer of an imaging device, and the honest instruction is:
-
-> A hospital with two CTs, a second DR unit or a C-arm adds it to `MODALITY_MACHINES` in
-> `apps/core/scripts/seed-radiology.ts` and re-runs `pnpm seed:radiology`. Every step is
-> find-or-create, so a re-run adds the new machine and touches nothing else.
-
-**That is a deployment act, not a hospital one**, and it is a gap rather than a design: a hospital
-cannot commission a machine on a Sunday without an engineer. It is recorded here so nobody looks for
-a screen, and it is the same shape as §0 — a capability whose door was never built.
+1. `seed:radiology` still seeds the standard seven (§5a). Register every other machine at Setup:
+   code, the name on the door, modality, room, and whether it goes to the bedside.
+2. **Set each DICOM machine's AE title** exactly as it is configured on the modality's console —
+   capitals, digits and underscore, up to 16 (`CT_1`). The register refuses anything else
+   (`invalid_ae_title`) and refuses a title another machine already uses (`duplicate_ae_title`,
+   naming that machine). **A machine's studies appear in the modality worklist only once its AE title
+   is set** (`radiology-pacs-go-live.md` §2). A machine with no worklist (a CR cassette unit) is left
+   without one; it is booked and acquired by hand as before.
+3. **Taking a machine out of service** — `down`, `maintenance`, `qa_blocked`, `retired` — needs a
+   reason, which is kept on the machine's history and its `resource.status_changed` event. The answer
+   lists every study still booked on it (scheduled / checked in / ready): the desk moves them from the
+   diary (§11). New bookings on it are refused `device_unavailable` from that moment.
+4. **Two statuses the register will not walk a machine out of** (`device_status_locked`): a
+   `qa_blocked` machine is released only by the RSO's passing QA record (Radiation safety → QA), and a
+   `retired` machine stays retired (register a returning machine under a new code). A machine's
+   modality never changes: retire it and register the new one.
+5. **An ionising machine with no active AERB licence is now refused at BOOKING** (`device_not_licensed`,
+   naming the machine and the RSO), not first at the console with the patient on the table (18-S RS4
+   T2). The console's check stays: a licence can lapse between booking and the day.
 
 ### 5a. The two portables (18-S RS2b)
 
@@ -189,8 +193,30 @@ plan"*. The routes and the grants are real and the ceremony works; the screen is
 
 **The `investigation` GST category must exist**, or pricing refuses `gst_config_missing`. Every
 imaging service is that category — and so is every laboratory service, so **this is one ruling for
-both departments**, not two. The SAC code and whether it is exempt are a CA-and-owner decision. Do
-not ship a placeholder into production.
+both departments**, not two. **18-S RS4: `seed:tariff` (which `deploy.sh` runs) now writes it when
+absent** — exempt, 0 %, SAC `9993`, per plan 18-S ruling 2 (Notification 12/2017-CT(R) entry 74; film
+and CD given with the study are part of the same composite supply). A CA confirms the 6-digit SAC at
+the first filing; a corrected row is never overwritten by a later deploy. `standup:check` row
+`radiology_investigation_gst` (G2) is green when the row exists.
+
+### 6a. Film, CD and outside reads (ruling 1, 18-S RS4)
+
+`seed:radiology` also ensures four services in the `investigation` category, **unpriced**:
+
+| Code | Service | Ruled price |
+|---|---|---|
+| `RAD-FILM` | Imaging film, per sheet | ₹250 |
+| `RAD-CD` | Imaging CD | ₹300 |
+| `RAD-2ND-XR-US` | Outside second-opinion read — X-ray or ultrasound | ₹600 |
+| `RAD-2ND-CT-MR` | Outside second-opinion read — CT or MRI | ₹1,500 |
+
+**Enter these four prices in the next tariff revision** (draft, set the item, submit, owner approves,
+activate) — the seed does not activate a tariff version, because a price becomes chargeable only
+through that approval. Setup → Prices shows each `RAD-` service with its GST category, the price in
+force and, for these four, the ruled price, so the gap is visible until it is closed. **An X-ray
+includes one film**: `RAD-FILM` is for further sheets and for CT, MRI and USG film on request; the
+desk applies that rule — nothing on the bill enforces it yet. The digital report and the image link
+are always free.
 
 Until a version is active, `startAcquisition` on a routine self-pay study refuses **`402
 payment_required`** — *"take the money, or record it as stat if this is an emergency"* (DD12a). That
