@@ -160,6 +160,10 @@ export type {
   PurchaseRegisterLine, PurchaseRegisterRow, ReconBill, StockValuation, SupplierPaymentRead, ValuationGroup, ValuationRow,
 } from "./reports";
 
+// ── PHARMACY GAP CLOSURE C — daily stock (opening, in, out, closing), the loss-booking register, the item catalogue ──
+export { LOSS_ADJUSTMENT_REASONS, STOCK_IN_KINDS, STOCK_OUT_KINDS, itemCatalogue, lossBookings, stockMovementSummary } from "./stock-reports";
+export type { CatalogueItem, LossBooking, StockInKind, StockMovementRow, StockMovementSummary, StockOutKind } from "./stock-reports";
+
 // ── PHARMACY P6 — the controlled-drug cabinet: two keys at the ledger, its register, its balance and its daily check ──
 export { CONTROLLED_ATTRIBUTE, isControlledStore, setStoreControlled } from "./controlled";
 export type { Custody } from "./controlled";
