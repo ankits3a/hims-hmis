@@ -23,7 +23,10 @@ export type Closing = {
     lines: number; substituted: number; declined: number;
   };
   money: {
-    invoiceNo: string; netPayablePaise: number; cgstPaise: number; sgstPaise: number;
+    invoiceNo: string; netPayablePaise: number;
+    /** The invoice's rounding, so a screen can say what was taken AND why it differs from the lines (display only). */
+    roundingPaise: number;
+    cgstPaise: number; sgstPaise: number;
     receiptNo: string | null; changeGivenPaise: number; tenders: { mode: string; amountPaise: number; refText: string | null }[];
   } | null;
   registers: { h1Rows: number; batches: number };
@@ -40,7 +43,7 @@ export async function closingFor(db: Db, actor: Actor, dispenseId: string): Prom
   let money: Closing["money"] = null;
   if (d.invoiceId !== null) {
     const [inv] = await db.select({
-      invoiceNo: invoices.invoiceNo, netPayablePaise: invoices.netPayablePaise,
+      invoiceNo: invoices.invoiceNo, netPayablePaise: invoices.netPayablePaise, roundingPaise: invoices.roundingPaise,
       cgstPaise: invoices.cgstPaise, sgstPaise: invoices.sgstPaise,
     }).from(invoices).where(eq(invoices.id, d.invoiceId));
     if (inv !== undefined) {
@@ -52,7 +55,7 @@ export async function closingFor(db: Db, actor: Actor, dispenseId: string): Prom
         .select({ mode: receiptTenders.mode, amountPaise: receiptTenders.amountPaise, refText: receiptTenders.refText })
         .from(receiptTenders).where(eq(receiptTenders.receiptId, paid.receiptId));
       money = {
-        invoiceNo: inv.invoiceNo, netPayablePaise: inv.netPayablePaise, cgstPaise: inv.cgstPaise, sgstPaise: inv.sgstPaise,
+        invoiceNo: inv.invoiceNo, netPayablePaise: inv.netPayablePaise, roundingPaise: inv.roundingPaise, cgstPaise: inv.cgstPaise, sgstPaise: inv.sgstPaise,
         receiptNo: paid?.receiptNo ?? null, changeGivenPaise: paid?.changeGivenPaise ?? 0, tenders,
       };
     }
@@ -65,7 +68,8 @@ export async function closingFor(db: Db, actor: Actor, dispenseId: string): Prom
   return {
     ticket: {
       dispenseNo: d.dispenseNo, claimedByName: names.get(d.claimedBy ?? "") ?? null, claimedAt: d.claimedAt,
-      handedOverAt: d.handedOverAt, lines: lines.length,
+      // A split's further batches are the same prescription line (the `batches` count below has them).
+      handedOverAt: d.handedOverAt, lines: lines.filter((l) => l.splitFromLineIdx === null).length,
       substituted: lines.filter((l) => l.substitutionType === "generic").length,
       declined: lines.filter((l) => l.status === "declined").length,
     },

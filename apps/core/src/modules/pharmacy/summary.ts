@@ -107,7 +107,8 @@ export async function counterSummary(db: Db, day: string): Promise<CounterSummar
         partlyCheckedLines += Array.isArray(p.partlyCheckedLineIdxs) ? p.partlyCheckedLineIdxs.length : 0;
         break;
       case "dispense.picked":
-        for (const l of Array.isArray(p.lines) ? (p.lines as { scanned?: unknown }[]) : []) {
+        for (const l of Array.isArray(p.lines) ? (p.lines as { scanned?: unknown; splitFrom?: unknown }[]) : []) {
+          if (typeof l.splitFrom === "number") continue; // a split's further batch is the same line, and nobody scans it separately
           pickedLines += 1;
           if (l.scanned === true) scannedLines += 1;
         }

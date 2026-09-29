@@ -233,6 +233,8 @@ export async function listQueue(db: Db, actor: Actor, filter: { serviceDate: str
 
 export type DispenseLineView = {
   lineIdx: number;
+  /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it); null otherwise. */
+  splitFromLineIdx: number | null;
   rxLine: RxLine;
   status: string;
   declinedReason: string | null;
@@ -489,7 +491,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       }
     }
     views.push({
-      lineIdx: l.lineIdx, rxLine: l.rxLine as RxLine, status: l.status, declinedReason: l.declinedReason,
+      lineIdx: l.lineIdx, splitFromLineIdx: l.splitFromLineIdx, rxLine: l.rxLine as RxLine, status: l.status, declinedReason: l.declinedReason,
       substitutionType: l.substitutionType, qtyBase: l.qtyBase, scheduleFlag: l.scheduleFlag,
       ndpsClass: l.ndpsClass, controlled: isControlled(l),
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
@@ -530,7 +532,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     controlled: d.status === "handed_over" || d.status === "cancelled" ? null : await controlledChecklist(db, {
       lines: views.map((v) => ({
         lineIdx: v.lineIdx, drug: v.dispensedMedicine?.brandName ?? v.rxLine.drug, scheduleFlag: v.scheduleFlag, ndpsClass: v.ndpsClass,
-        qtyBase: v.qtyBase, rxLine: v.rxLine, status: v.status,
+        qtyBase: v.qtyBase, rxLine: v.rxLine, status: v.status, splitFromLineIdx: v.splitFromLineIdx,
       })),
       prescriber: prescriber === null ? null : { id: prescriber.id, displayName: prescriber.displayName, registrationNo: prescriber.registrationNo ?? null },
       patientAddress: visible.patient.addressLine ?? null,

@@ -86,8 +86,8 @@ describe("scanning the pack at the pick (pharmacy P13)", () => {
     expect(b.lines[0]!.batchId).not.toBe(a.lines[0]!.batchId);
 
     expect(await pickedEvent()).toEqual([
-      [{ lineIdx: 0, batchId: a.lines[0]!.batchId, qtyBase: 10, fefoOverride: false, scanned: true }],
-      [{ lineIdx: 0, batchId: b.lines[0]!.batchId, qtyBase: 10, fefoOverride: true, scanned: true }],
+      [{ lineIdx: 0, batchId: a.lines[0]!.batchId, qtyBase: 10, fefoOverride: false, scanned: true, splitFrom: null }],
+      [{ lineIdx: 0, batchId: b.lines[0]!.batchId, qtyBase: 10, fefoOverride: true, scanned: true, splitFrom: null }],
     ]);
   });
 
