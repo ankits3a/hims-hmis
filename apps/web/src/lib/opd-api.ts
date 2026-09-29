@@ -415,6 +415,11 @@ export type WireTimelineItem = {
   encounterId: string; serviceDate: string; openedAt: string; status: string; visitType: string;
   doctorId: string | null; doctorName: string | null; departmentId: string | null; departmentName: string | null;
   diagnosis: string | null; icd10Code: string | null; prescriptionLineCount: number; dangerFlagged: boolean;
+  /**
+   * DESK-FIXES B — the visit an internal referral opened this one FROM (set only by the doctor's
+   * `POST /refer`). Optional: an older server sends none, and absent reads as "not a referral".
+   */
+  referredFromEncounterId?: string | null;
 };
 
 // ——— errors ———

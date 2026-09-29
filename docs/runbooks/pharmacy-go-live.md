@@ -80,6 +80,7 @@ It declares six pharmacy rows. Five are checkable; the sixth says itself that it
 | 8 | **The pharmacist can open a cashier drawer** (`billing.session.own`); billing refuses a tender with no open session | they can open a session at `/billing` |
 | 9 | A CA has signed the GST rows | `select ca_signed from gst_settings where id = 'main'` → `true` |
 | 10 | Every pharmacist who will verify or hand over Schedule H/H1 has a current state council registration on file (pharmacy P2) | census row **`pharmacist_council_number`**. The pharmacist in charge files each colleague's registration at `/pharmacy/pharmacists`; nobody files their own. **Without one, the counter's verify and every scheduled hand-over refuse with `pharmacist_not_registered`**, and the label prints the number. A login that holds `pharmacy` but is not a pharmacist (on this deployment `admin`) stays unregistered, and so cannot verify. That is the Act, not a fault. **Renewals (P15):** census row **`pharmacist_registration_not_lapsing`** is red while any registration ends within 60 days, and the register screen marks who ("renew within N days"). File the renewed certificate before the date, because the day after it, verify refuses that pharmacist. |
+| 11 | **`antimicrobial_steward` held by a human** (pharmacy stage D5) — the infectious-disease physician; else the clinical microbiologist; else the AMSP lead the medical superintendent names. Held IN ADDITION to their clinical role. `seed-pharmacy.js` registers the `pharmacy_restricted_antimicrobial` approval type and classifies the catalogue by WHO AWaRe 2023 (Reserve and the carbapenems start restricted; a pharmacist edits either at `/formulary/admin`) | census row **`antimicrobial_steward_appointed`** green. **Without one, every restricted antimicrobial line refuses with `antimicrobial_steward_not_appointed`**, and the office's Law side shows it red. A steward may not approve their own prescription |
 
 > **§1.9 WAS BLOCKED ON THE INCLUSIVE-VERSUS-EXCLUSIVE QUESTION. RESOLVED 2026-09-16 (pharmacy P1,
 > `docs/superpowers/plans/2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md`).**
@@ -244,9 +245,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 119 codes
+## 4. What refuses, and why — all 123 codes
 
-`errors.ts` declares 119, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 123, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -318,6 +319,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `invalid_adr` · `unknown_adr` · `adr_closed` | an ADR report is incomplete (no suspected medicine, a future date, a dispense of another patient), not on file, or already closed | fix the form; a closed report takes no further act — report again if it recurs |
 | `invalid_incident` · `unknown_incident` · `incident_closed` | a medication incident whose kind contradicts its NCC MERP category (A–B near miss, C–I error), a dispense line of another patient, a review without its root cause and action, a close before review; one not on file; one already closed | fix the form; review before closing; a closed incident takes no further act — record a new one |
 | `cold_chain_excursion_open` · `invalid_cold_chain` · `unknown_cold_unit` · `unknown_excursion` · `excursion_closed` | a batch held by a fridge's open temperature excursion (or written off after one) at the window or the walk-in counter; a fridge reading whose min, current and max are not low to high, a fridge with an empty range, a close that leaves a held batch undecided or releases one without its reason; a fridge or excursion not on file; an excursion already closed | call the pharmacy in-charge: they close the excursion from the fridge log, releasing each batch with its stability reason or writing it off; re-read the thermometer and enter it again |
+| `antimicrobial_steward_approval_required` · `antimicrobial_steward_not_appointed` · `antimicrobial_self_approval` · `restricted_antimicrobial_walk_in` | a restricted antimicrobial (WHO AWaRe Reserve, a carbapenem, or one the hospital restricted at `/formulary/admin`) at verify or hand-over without the antimicrobial steward's granted approval for this dispense; nobody holds `antimicrobial_steward`; the only grant was given by the prescribing doctor; a restricted antimicrobial at the walk-in counter | ask the antimicrobial steward from the line's ⋯ menu (indication, culture sent, planned days) and wait for the decision in /approvals; appoint a steward (§1.11); ask again so another steward decides; sell it only against this hospital's prescription at the OPD counter |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:
 `version_not_active` (§1.7) · `no_open_session` (§1.8) · `billing_not_configured` ·

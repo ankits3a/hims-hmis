@@ -1,4 +1,4 @@
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { setupTestDb, truncateAll } from "./helpers/db";
@@ -9,7 +9,7 @@ import { assignRole, grantPermissionToRole } from "../src/kernel/auth/permission
 import { withTx } from "../src/kernel/db/client";
 import {
   billingConfig, formularyInteractions, labOrderables, opdDepartments, opdDoctors, permissions,
-  resources, rolePermissions, services, pharmacySaleItems,
+  resources, rolePermissions, services, pharmacySaleItems, users,
 } from "../src/kernel/db/schema";
 import { registerBillingApprovalTypes } from "../src/modules/billing/approval-types";
 import { registerPatientApprovalTypes } from "../src/modules/patients/approval-types";
@@ -782,6 +782,17 @@ describe("standup:check — the readiness census (11i T2)", () => {
     await withTx(db, (tx) => endPharmacistRegistration(tx, fx.incharge.actor, reg.id, "left the hospital"));
     rows = await runCensus(db, "pharmacy");
     expect(rows.find((r) => r.code === "pharmacist_council_number")?.verdict).toBe("RED");
+    fx.unregister();
+  });
+
+  it("the antimicrobial steward row is RED after the deploy, and green only once an active user holds the role (stage D5)", async () => {
+    const fx = await seedPharmacyBase(db);
+    await ensurePharmacyCounter(db, ACTOR);
+    expect((await runCensus(db, "pharmacy")).find((r) => r.code === "antimicrobial_steward_appointed")?.verdict).toBe("RED");
+    const steward = await mkUser(db, "dr.id.steward", ["antimicrobial_steward"]);
+    expect((await runCensus(db, "pharmacy")).find((r) => r.code === "antimicrobial_steward_appointed")?.verdict).toBe("ok");
+    await db.update(users).set({ active: false }).where(eq(users.id, steward.id));
+    expect((await runCensus(db, "pharmacy")).find((r) => r.code === "antimicrobial_steward_appointed")?.verdict).toBe("RED");
     fx.unregister();
   });
 

@@ -7,7 +7,7 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy } from "./schedule";
 import { registerOutsideStudy } from "./outside";
 import { IMAGE_ARRIVALS } from "../../kernel/db/schema/radiology";
-import { IMAGING_MODALITIES } from "./kinds";
+import { BEDSIDE_LOCATION_MAX_LENGTH, IMAGING_MODALITIES } from "./kinds";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -39,7 +39,7 @@ const scheduleBody = z.object({
    * row's value alone; explicit `null` clears it, which is how a study comes back into the
    * department. Only a portable device accepts one — `resolveBedside` refuses the rest.
    */
-  bedsideLocation: z.string().min(1).max(120).nullish(),
+  bedsideLocation: z.string().min(1).max(BEDSIDE_LOCATION_MAX_LENGTH).nullish(),
 });
 
 /**
