@@ -754,6 +754,29 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Journeys:** J6.
 - Migration: incidents.
 
+#### RS11 spike (read on main `583db9ff`, 29 Sep, before any code)
+- **(a) TLD reads today.** One route, `POST /aerb/badges/reads` (`aerb.registers.manage`), typed a
+  line at a time on the Badges tab: badge, period start/end, Hp(10) and Hp(0.07) mSv, report date,
+  lab ref, remarks. `recordBadgeRead` refuses a negative dose, an inverted period, a period ending
+  before the badge was issued, and a second read for the same badge × period
+  (`read_already_recorded`). The **investigation flag** is Hp(10) ≥ the monthly level (settings row,
+  default 1 mSv) pro-rated by days worn (`investigationLevelFor`, ÷ 30.44 days); the verdict and the
+  level are STORED on the row and an over-level read emits `radiation.dose_limit_warning` (nobody
+  consumes it). Limits (30 / 20-avg / 100 mSv) are constants; `badgeRegister` sums per WORKER and
+  flags the worst calendar year. **No import, no projection, no foetal comparison.**
+- **(b) QA → `qa_blocked`.** Confirmed: `aerb/qa.ts recordQa` writes `qa_blocked` through
+  `changeResourceStatus` in the same transaction as a `fail`, and a newer `pass` is the only exit
+  (RS4 kept Setup out of it). **Gap: an overdue QA blocks nothing** — 18c's D4 said so on purpose;
+  the calendar shows `overdue` and nothing acts. No job exists in `aerb` (manifest: "no job").
+- **(c) Incidents.** None. The only neighbour is radiology's contrast-reaction register
+  (`reactions.ts`). No table, route or screen records an unintended exposure or an AERB notification.
+- **(d) Pregnant worker.** None. No declaration table; the board's People view marks the pregnancy
+  roster gate "NOT BUILT"; 18c's runbook §8 lists "roster gates for a pregnant radiographer" as not
+  turned on.
+
+#### RS11 as built (this PR; lane `radiology-rs11`)
+_Filled in at the close — see below._
+
 ### RS12 · Real PACS, IR and teleradiology (infrastructure)
 - 18b-ii per ruling 6:
   - Orthanc behind the hospital network;
