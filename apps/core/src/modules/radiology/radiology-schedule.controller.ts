@@ -6,6 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy } from "./schedule";
 import { registerOutsideStudy } from "./outside";
+import { counterView } from "./counter";
 import { IMAGE_ARRIVALS } from "../../kernel/db/schema/radiology";
 import { BEDSIDE_LOCATION_MAX_LENGTH, IMAGING_MODALITIES } from "./kinds";
 import { idSchema, parsed, toHttp } from "./radiology-http";
@@ -178,6 +179,22 @@ export class RadiologyScheduleController {
       return await withTx(this.db, (tx) => cancelStudy(tx, actor, this.decls(), {
         studyId, reason: input.reason ?? null,
       }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 18-S RS3 — the imaging counter's read: one study, the four steps' facts (checks that WILL open,
+   * prep, payer, authorisation, film/CD add-ons). Behind `radiology.schedule`, the desk's own
+   * permission: it names the patient and answers "can this scan start", which is the desk's
+   * question.
+   */
+  @Get(":studyId/counter")
+  @RequirePermission("radiology.schedule", "hospital")
+  async counter(
+    @CurrentActor() actor: Actor, @Param("studyId") studyId: string,
+  ): Promise<unknown> {
+    try {
+      return { study: await counterView(this.db, actor, studyId) };
     } catch (e) { toHttp(e); }
   }
 

@@ -4,6 +4,9 @@ import { resources } from "../../kernel/db/schema/resources";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { recordPhiAccess } from "../../kernel/phi/audit";
+import { patients } from "../../kernel/db/schema/patients";
+import { displayName } from "../patients";
+import { clearanceOf } from "./read";
 import { DEVICE_MODALITY_ATTRIBUTE, DEVICE_PORTABLE_ATTRIBUTE, SCHEDULABLE_DEVICE_STATUSES } from "./kinds";
 import { RadiologyError } from "./errors";
 import { imagingBookingChanged, imagingStudyScheduled } from "./events";
@@ -733,18 +736,34 @@ export async function autoSlotWalkIn(
  * and F42 already established the shape: one row per DISTINCT patient, never one per read, because
  * a partial access log is worse than none.
  */
+/**
+ * 18-S RS3 — WIDENED for the desk's diary grid: a block needs its LENGTH (the snapshotted
+ * `duration_min`), what it is, its priority and whose it is. The name goes through `displayName`,
+ * the worklist's own rule, and the PHI row below was already written per patient.
+ */
+export type DiaryEntry = {
+  studyId: string; accessionNo: string; scheduledAt: Date | null; status: string;
+  durationMin: number; studyTypeCode: string; priority: string; patientName: string;
+  bedsideLocation: string | null;
+};
+
 export async function deviceDiary(
   exec: Db,
   actor: Actor,
   deviceResourceId: string,
-): Promise<{ studyId: string; accessionNo: string; scheduledAt: Date | null; status: string }[]> {
+): Promise<DiaryEntry[]> {
+  const clearance = await clearanceOf(exec, actor);
   const rows = await exec
     .select({
       studyId: imagingStudies.id, accessionNo: imagingStudies.accessionNo,
       scheduledAt: imagingStudies.scheduledAt, status: imagingStudies.status,
       patientId: imagingStudies.patientId,
+      durationMin: imagingStudies.durationMin, studyTypeCode: imagingStudies.studyTypeCode,
+      priority: imagingStudies.priority, bedsideLocation: imagingStudies.bedsideLocation,
+      name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
     })
     .from(imagingStudies)
+    .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
     .where(and(
       eq(imagingStudies.deviceResourceId, deviceResourceId),
       inArray(imagingStudies.status, ["scheduled", "checked_in", "ready", "in_acquisition"]),
@@ -755,9 +774,10 @@ export async function deviceDiary(
   for (const patientId of new Set(rows.map((r) => r.patientId))) {
     await recordPhiAccess(exec, { actor, patientId, surface: "imaging.worklist", reason });
   }
-  return rows.map((row) => {
-    const { patientId: _omitted, ...rest } = row;
-    void _omitted;
-    return rest;
-  });
+  return rows.map((row) => ({
+    studyId: row.studyId, accessionNo: row.accessionNo, scheduledAt: row.scheduledAt, status: row.status,
+    durationMin: row.durationMin, studyTypeCode: row.studyTypeCode, priority: row.priority,
+    bedsideLocation: row.bedsideLocation,
+    patientName: displayName({ name: row.name, alias: row.alias, isConfidential: row.isConfidential }, clearance.canSeeConfidential),
+  }));
 }
