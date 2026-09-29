@@ -820,10 +820,12 @@ function ControlledStrip({ onOpen }: { onOpen: () => void }): React.ReactElement
   const q = useQuery({ queryKey: ["pharmacy", "controlled", "today"], queryFn: fetchControlledToday });
   const n = q.data?.needsYou.length ?? 0;
   if (n === 0) return null;
+  const text = t("pharmacyOffice.controlled.strip", { count: n, first: t(`pharmacyOffice.controlled.needs.${q.data!.needsYou[0]!.key}`, q.data!.needsYou[0]!.params) });
+  // B5 — it rides on top of every office page, so it is one quiet line, not a banner: the text, then the way in.
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded border border-amber-400 bg-amber-50/60 p-2 text-sm" data-testid="controlled-strip">
-      <span className="flex-1">{t("pharmacyOffice.controlled.strip", { count: n, first: t(`pharmacyOffice.controlled.needs.${q.data!.needsYou[0]!.key}`, q.data!.needsYou[0]!.params) })}</span>
-      <Button type="button" variant="outline" onClick={onOpen}>{t("pharmacyOffice.controlled.open")}</Button>
+    <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50/70 px-2.5 py-1 text-xs text-amber-900" data-testid="controlled-strip">
+      <span className="min-w-0 flex-1 truncate" title={text}>{text}</span>
+      <button type="button" className="shrink-0 font-semibold underline" onClick={onOpen}>{t("pharmacyOffice.controlled.open")}</button>
     </div>
   );
 }

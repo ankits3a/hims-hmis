@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItems, fetchStores,
+  captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItem, fetchItems, fetchStores,
   fetchVendors, materialsErrorText, postGrn, requestNearExpiry, runGrnQc,
 } from "../lib/materials-api";
 import { fetchPurchaseOrders, fetchReceivable } from "../lib/purchase-api";
@@ -45,11 +45,13 @@ type DraftLine = {
   itemId: string; uom: string; qtyInUom: string;
   batchNo: string; expiryDate: string;
   mrpRupees: string; mrpUom: string; costRupees: string; freeGoods: boolean;
+  /** B5 — what the supplier's bill says one pack costs. A helper only: it fills `costRupees`, and is never sent. */
+  packRupees: string;
 };
 
 const emptyLine = (): DraftLine => ({
   itemId: "", uom: "", qtyInUom: "", batchNo: "", expiryDate: "",
-  mrpRupees: "", mrpUom: "", costRupees: "", freeGoods: false,
+  mrpRupees: "", mrpUom: "", costRupees: "", freeGoods: false, packRupees: "",
 });
 
 /** Rupees typed by a human → integer paise (DD7). The ONE place this screen converts money. */
@@ -163,6 +165,39 @@ export function MaterialsGrn(): React.ReactElement {
 
   const grn: WireGrn | undefined = openGrn.data;
   const hasNearExpiry = grn?.lines.some((l) => l.nearExpiry) === true;
+  /** Captured and not yet through QC: every line's verdict is still to come, whatever its fields say. */
+  const awaitingQc = grn?.status === "gate_qc" || grn?.status === "draft";
+  const itemLabel = (itemId: string): string => {
+    const it = (items.data ?? []).find((i) => i.id === itemId);
+    return it === undefined ? itemId : `${it.code} · ${it.name}`;
+  };
+
+  /*
+   * The walk of 2026-09-30 / B5 — a line's Unit and "MRP per" are PICKED from the item's own units
+   * (its base unit and its packs), never typed: a typed "Strip" or "stp" is a unit the item does not
+   * have. The item's detail carries its packs; one read per item chosen on the sheet.
+   */
+  const chosenIds = [...new Set(lines.map((l) => l.itemId).filter((id) => id !== ""))];
+  const details = useQueries({
+    queries: chosenIds.map((id) => ({ queryKey: ["materials", "item", id], queryFn: () => fetchItem(id) })),
+  });
+  const baseOf = (itemId: string): string | null => (items.data ?? []).find((x) => x.id === itemId)?.baseUom ?? null;
+  const unitsOf = (itemId: string, keep: string[]): { uom: string; mult: number | null }[] => {
+    const base = baseOf(itemId);
+    const packs = details[chosenIds.indexOf(itemId)]?.data?.uoms ?? [];
+    const out: { uom: string; mult: number | null }[] = base === null ? [] : [{ uom: base, mult: 1 }];
+    for (const u of packs) if (!out.some((o) => o.uom === u.uom)) out.push({ uom: u.uom, mult: u.toBaseMultiplier });
+    // A unit already on the line (an order's pack) stays choosable even before the item's packs arrive.
+    for (const k of keep) if (k !== "" && !out.some((o) => o.uom === k)) out.push({ uom: k, mult: null });
+    return out;
+  };
+  const unitLabel = (u: { uom: string; mult: number | null }, base: string | null): string =>
+    (u.mult !== null && u.mult > 1 && base !== null ? `${u.uom} (${String(u.mult)} ${base})` : u.uom);
+  /** A pack price typed on the bill → the cost of ONE base unit, to the paisa (DD7: the server still gets per base unit). */
+  const fromPack = (pack: string, mult: number): string => {
+    const n = Number(pack);
+    return pack.trim() === "" || !Number.isFinite(n) ? "" : (n / mult).toFixed(2);
+  };
 
   /* B5 — ONE list of deliveries: what still needs a hand (QC, post) first, then the settled ones. */
   const settled = (st: string): boolean => st === "posted" || st === "rejected";
@@ -277,26 +312,35 @@ export function MaterialsGrn(): React.ReactElement {
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 {t("materialsGrn.challanDate")}
-                <input className={fieldCls} value={challanDate} onChange={(e) => setChallanDate(e.target.value)} />
+                <input type="date" className={fieldCls} value={challanDate} onChange={(e) => setChallanDate(e.target.value)} />
               </label>
             </div>
 
             <h3 className="text-sm font-medium">{t("materialsGrn.lines")}</h3>
-            {lines.map((l, i) => (
+            {lines.map((l, i) => {
+              const base = baseOf(l.itemId);
+              const units = unitsOf(l.itemId, [l.uom, l.mrpUom]);
+              const pack = units.find((u) => u.uom === l.uom);
+              const mult = pack?.mult != null && pack.mult > 1 ? pack.mult : null;
+              const costNum = Number(l.costRupees);
+              return (
               <div key={i} className="grid gap-2 border-t pt-2 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.item")}
                   <select
                     className={fieldCls} value={l.itemId}
-                    onChange={(e) => setLine(i, { itemId: e.target.value })}
+                    onChange={(e) => setLine(i, { itemId: e.target.value, uom: "", mrpUom: "", packRupees: "" })}
                   >
                     <option value="">—</option>
-                    {(items.data ?? []).map((it) => <option key={it.id} value={it.id}>{it.code}</option>)}
+                    {(items.data ?? []).map((it) => <option key={it.id} value={it.id}>{`${it.code} · ${it.name}`}</option>)}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.uom")}
-                  <input className={fieldCls} value={l.uom} onChange={(e) => setLine(i, { uom: e.target.value })} />
+                  <select className={fieldCls} value={l.uom} disabled={l.itemId === ""} onChange={(e) => setLine(i, { uom: e.target.value, packRupees: "" })}>
+                    <option value="">—</option>
+                    {units.map((u) => <option key={u.uom} value={u.uom}>{unitLabel(u, base)}</option>)}
+                  </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.qty")}
@@ -311,7 +355,7 @@ export function MaterialsGrn(): React.ReactElement {
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.expiry")}
-                  <input className={fieldCls} value={l.expiryDate} onChange={(e) => setLine(i, { expiryDate: e.target.value })} />
+                  <input type="date" className={fieldCls} value={l.expiryDate} onChange={(e) => setLine(i, { expiryDate: e.target.value })} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.mrp")}
@@ -319,16 +363,37 @@ export function MaterialsGrn(): React.ReactElement {
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   {t("materialsGrn.mrpUom")}
-                  <input className={fieldCls} value={l.mrpUom} onChange={(e) => setLine(i, { mrpUom: e.target.value })} />
+                  <select className={fieldCls} value={l.mrpUom} disabled={l.itemId === ""} onChange={(e) => setLine(i, { mrpUom: e.target.value })}>
+                    <option value="">—</option>
+                    {units.map((u) => <option key={u.uom} value={u.uom}>{unitLabel(u, base)}</option>)}
+                  </select>
                 </label>
-                <label className="flex flex-col gap-1 text-xs">
-                  {t("materialsGrn.cost")}
-                  <input
-                    className={fieldCls} inputMode="decimal" value={l.costRupees}
-                    disabled={l.freeGoods}
-                    onChange={(e) => setLine(i, { costRupees: e.target.value })}
-                  />
-                </label>
+                {/* B5 — where people type the strip's price. The field says in words that it is ONE base unit, the
+                    pack price (when the unit is a pack) fills it, and the line under it shows what a pack then costs. */}
+                <div className="flex flex-col gap-1 text-xs">
+                  {mult !== null && !l.freeGoods && (
+                    <label className="flex flex-col gap-1">
+                      {t("materialsGrn.packPrice", { pack: l.uom })}
+                      <input
+                        className={fieldCls} inputMode="decimal" value={l.packRupees}
+                        onChange={(e) => setLine(i, { packRupees: e.target.value, costRupees: fromPack(e.target.value, mult) })}
+                      />
+                    </label>
+                  )}
+                  <label className="flex flex-col gap-1">
+                    {t("materialsGrn.costPer", { unit: base ?? t("materialsGrn.baseUnit") })}
+                    <input
+                      className={fieldCls} inputMode="decimal" value={l.costRupees}
+                      disabled={l.freeGoods}
+                      onChange={(e) => setLine(i, { costRupees: e.target.value, packRupees: "" })}
+                    />
+                  </label>
+                  {mult !== null && !l.freeGoods && l.costRupees.trim() !== "" && Number.isFinite(costNum) && (
+                    <span className="text-muted-foreground" data-testid={`grn-line-${String(i)}-per-pack`}>
+                      {t("materialsGrn.perPack", { cost: (costNum * mult).toFixed(2), pack: l.uom, mult, unit: base ?? "" })}
+                    </span>
+                  )}
+                </div>
                 <label className="flex items-center gap-2 text-xs">
                   <input
                     type="checkbox" checked={l.freeGoods}
@@ -337,7 +402,8 @@ export function MaterialsGrn(): React.ReactElement {
                   {t("materialsGrn.freeGoods")}
                 </label>
               </div>
-            ))}
+              );
+            })}
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setLines((p) => [...p, emptyLine()])}>
                 {t("materialsGrn.addLine")}
@@ -354,24 +420,34 @@ export function MaterialsGrn(): React.ReactElement {
               {feedback}
               <p><span className={grnPill(grn.status)}>{t(`materialsGrn.status_${grn.status}`, { defaultValue: grn.status })}</span></p>
               <div className="ofp-box ofp-scroll">
-              <table className="ofp-table min-w-[32rem]">
+              <table className="ofp-table min-w-[48rem]">
                 <thead>
                   <tr>
                     <th>{t("materialsGrn.item")}</th>
                     <th>{t("materialsGrn.qtyBase")}</th>
                     <th>{t("materialsGrn.batchNo")}</th>
+                    <th>{t("materialsGrn.expiry")}</th>
+                    <th>{t("materialsGrn.mrp")}</th>
+                    <th>{t("materialsGrn.cost")}</th>
                     <th>{t("materialsGrn.verdict")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {grn.lines.map((l) => (
                     <tr key={l.id}>
-                      <td>{(items.data ?? []).find((it) => it.id === l.itemId)?.code ?? l.itemId}</td>
+                      {/* The walk of 2026-09-30: the person running QC holds the strip against THIS row, so it
+                          names the drug and carries what QC checks — never an id, never a verdict before QC. */}
+                      <td>{itemLabel(l.itemId)}</td>
                       <td>{l.qtyBase}</td>
                       <td>{l.batchNo ?? "—"}</td>
+                      <td className="whitespace-nowrap">{l.expiryDate ?? "—"}</td>
+                      <td className="whitespace-nowrap">{l.mrpPaise === null ? "—" : `₹${(l.mrpPaise / 100).toFixed(2)}${l.mrpUom === null ? "" : ` / ${l.mrpUom}`}`}</td>
+                      <td className="whitespace-nowrap">{`₹${(l.unitCostPaise / 100).toFixed(2)}`}</td>
                       <td>
                         {/* THE RULE, AS A SENTENCE. Never the raw code — see the header. */}
-                        {l.rejectReason !== null
+                        {awaitingQc
+                          ? <span className="text-neutral-600">{t("materialsGrn.status_gate_qc")}</span>
+                          : l.rejectReason !== null
                           ? <span className="text-red-600">{t(`materialsGrn.rule_${l.rejectReason}`)}</span>
                           : l.nearExpiry
                             ? <span className="text-amber-700">{t("materialsGrn.rule_near_expiry")}</span>

@@ -34,7 +34,7 @@ export function PharmacyH1Register(): React.ReactElement {
   const rows = reg.data?.rows ?? [];
   return (
     <div className="space-y-4" data-testid="pharmacy-h1-register">
-      <style>{"@media print { body * { visibility: hidden; } .h1-print, .h1-print * { visibility: visible; } .h1-print { position: absolute; left: 0; top: 0; width: 100%; } }"}</style>
+      <style>{"@media print { body * { visibility: hidden; } .h1-print, .h1-print * { visibility: visible; } .h1-print { position: absolute; left: 0; top: 0; width: 100%; } .h1-cards { display: none !important; } .h1-table { display: block !important; } }"}</style>
       <OfficeHead title={t("pharmacyH1.title")} lead={t("pharmacyH1.intro")}>
         <label className="flex items-center gap-2 text-sm">
           {t("pharmacyH1.month")}
@@ -52,7 +52,23 @@ export function PharmacyH1Register(): React.ReactElement {
             <p>{t("pharmacyH1.period", { from: dmy(from), to: dmy(to) })}</p>
             <p>{t("pharmacyH1.licence")}</p>
           </div>
-          <div className="ofp-scroll">
+          {/* B5 — on a phone the register reads as one card per entry; the table (and the print) is for wider screens. */}
+          <ul className="h1-cards space-y-2 sm:hidden" data-testid="h1-cards">
+            {rows.map((r) => (
+              <li key={r.entryNo} className="rounded border p-2 text-xs">
+                <p className="font-semibold">{r.entryNo} · {r.drugName} · {r.qtyBase} {r.unit}</p>
+                <p className="text-muted-foreground">{dmy(todayIst(new Date(r.dispensedAt)))} {fmtIst(r.dispensedAt)} · {t("pharmacyH1.batch")} {r.batchNo}</p>
+                <p>
+                  <span className="text-muted-foreground">{t("pharmacyH1.patient")}: </span>{r.patientName}
+                  {r.restricted && <span className="ml-1 text-amber-800">({t("pharmacyH1.sealed")})</span>}
+                  {r.patientAddress !== null && <span className="text-muted-foreground">, {r.patientAddress}</span>}
+                </p>
+                <p><span className="text-muted-foreground">{t("pharmacyH1.prescriber")}: </span>{r.prescriberName}{r.prescriberRegNo !== null ? `, ${r.prescriberRegNo}` : ""}{r.prescriberAddress != null ? `, ${r.prescriberAddress}` : ""}</p>
+                {r.pharmacistRegNo !== null && <p><span className="text-muted-foreground">{t("pharmacyH1.pharmacist")}: </span>{r.pharmacistRegNo}</p>}
+              </li>
+            ))}
+          </ul>
+          <div className="h1-table ofp-scroll hidden sm:block">
             <table className="w-full min-w-[48rem] border-collapse text-xs">
               <thead>
                 <tr className="text-left">
