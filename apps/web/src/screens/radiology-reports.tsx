@@ -141,7 +141,7 @@ export function RadiologyReports(): React.ReactElement {
   );
 
   const lane = inHand === null ? undefined : (
-    <div className="space-y-1 text-sm" data-acc={inHand.accessionNo}>
+    <div className="mt-4 space-y-1 border-t pt-3 text-sm" data-acc={inHand.accessionNo}>
       <b className="block">{inHand.patientName}</b>
       <span className="block text-xs text-muted-foreground">{inHand.uhid}</span>
       <span className="block">{inHand.studyName}</span>
@@ -279,7 +279,7 @@ export function RadiologyReports(): React.ReactElement {
       </label>
       {error !== null && <Refusal code={error.code} message={error.message} />}
       <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center gap-3 rounded border bg-card p-3 shadow-sm" data-testid="release-dock">
-        <span className="min-w-0 flex-1 text-xs text-muted-foreground">{ready ? t("radiology.release.dockHint") : t("radiology.release.dockWait")}</span>
+        <span className="min-w-0 basis-full text-xs text-muted-foreground sm:flex-1 sm:basis-auto">{ready ? t("radiology.release.dockHint") : t("radiology.release.dockWait")}</span>
         <button type="button" className="px-2 text-sm underline" onClick={() => take(null)}>{t("radiology.release.back")}</button>
         <button
           type="button" data-testid="dock-act" className="rounded bg-green-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"

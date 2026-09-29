@@ -125,16 +125,16 @@ export function ImagingResultsInbox(): React.ReactElement | null {
         )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 3 }}>
           {critOpen && (
-            <button type="button" className="pri" style={{ background: "var(--red)", borderColor: "var(--red)", padding: "3px 10px", fontSize: 12 }} onClick={() => start(r, "readback")}>
+            <button type="button" className="pri" style={{ background: "var(--red)", borderColor: "var(--red)", padding: "3px 10px", fontSize: 12, height: 30 }} onClick={() => start(r, "readback")}>
               {t("radiology.results.readBack")}
             </button>
           )}
-          <button type="button" className="sec" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => start(r, "report")}>{t("radiology.results.openReport")}</button>
-          <button type="button" className="sec" style={{ padding: "3px 10px", fontSize: 12 }} disabled={images.isPending} onClick={() => { setImagesMsg(null); images.mutate(r); }}>
+          <button type="button" className="sec" style={{ padding: "3px 10px", fontSize: 12, height: 30 }} onClick={() => start(r, "report")}>{t("radiology.results.openReport")}</button>
+          <button type="button" className="sec" style={{ padding: "3px 10px", fontSize: 12, height: 30 }} disabled={images.isPending} onClick={() => { setImagesMsg(null); images.mutate(r); }}>
             {t("radiology.results.openImages")}
           </button>
           {r.state !== "acted" && (
-            <button type="button" className="sec" style={{ padding: "3px 10px", fontSize: 12, color: "var(--green)" }} onClick={() => start(r, "acted")}>
+            <button type="button" className="sec" style={{ padding: "3px 10px", fontSize: 12, height: 30, color: "var(--green)" }} onClick={() => start(r, "acted")}>
               {t("radiology.results.markActed")}
             </button>
           )}
@@ -160,7 +160,7 @@ export function ImagingResultsInbox(): React.ReactElement | null {
             {ACTED_OUTCOMES.map((k) => (
               <button
                 key={k} type="button" role="radio" aria-checked={outcome === k} className={outcome === k ? "pri" : "sec"}
-                style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setOutcome(k)}
+                style={{ padding: "3px 10px", fontSize: 12, height: 30 }} onClick={() => setOutcome(k)}
               >
                 {t(`radiology.results.outcome.${k}`)}
               </button>
