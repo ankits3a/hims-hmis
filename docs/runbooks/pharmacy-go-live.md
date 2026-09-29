@@ -203,6 +203,10 @@ A blank slab still bills as exempt.
 > config (`tools/print-relay/README.md`). Until a relay has claimed any job in the last 24 hours (or a
 > `pharmacy_thermal` job in the last 7 days) the desk prints the SAME documents from the browser and
 > says so once. `⋯ → Reprint` on the done screen sends a second copy.
+>
+> **Rack and strip labels (gap A6, 2026-09-29)** go to a separate destination, **`pharmacy_label`**:
+> the barcode sticker printer, 50 × 25 mm. Map it in the relay config beside `pharmacy_thermal`. A
+> strip label's QR scans at the desk's pick as that item and that batch.
 
 > **A PICKED DISPENSE THAT IS ABANDONED FOR 30 MINUTES IS CANCELLED BY THE SERVER, AND THE STOCK
 > GOES BACK ON THE SHELF.** `PICK_RESERVATION_MINUTES = 30`, swept every 60 seconds by the worker job
@@ -245,9 +249,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 127 codes
+## 4. What refuses, and why — all 128 codes
 
-`errors.ts` declares 127, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 128, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -321,6 +325,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `cold_chain_excursion_open` · `invalid_cold_chain` · `unknown_cold_unit` · `unknown_excursion` · `excursion_closed` | a batch held by a fridge's open temperature excursion (or written off after one) at the window or the walk-in counter; a fridge reading whose min, current and max are not low to high, a fridge with an empty range, a close that leaves a held batch undecided or releases one without its reason; a fridge or excursion not on file; an excursion already closed | call the pharmacy in-charge: they close the excursion from the fridge log, releasing each batch with its stability reason or writing it off; re-read the thermometer and enter it again |
 | `antimicrobial_steward_approval_required` · `antimicrobial_steward_not_appointed` · `antimicrobial_self_approval` · `restricted_antimicrobial_walk_in` | a restricted antimicrobial (WHO AWaRe Reserve, a carbapenem, or one the hospital restricted at `/formulary/admin`) at verify or hand-over without the antimicrobial steward's granted approval for this dispense; nobody holds `antimicrobial_steward`; the only grant was given by the prescribing doctor; a restricted antimicrobial at the walk-in counter | ask the antimicrobial steward from the line's ⋯ menu (indication, culture sent, planned days) and wait for the decision in /approvals; appoint a steward (§1.11); ask again so another steward decides; sell it only against this hospital's prescription at the OPD counter |
 | `invalid_tray` · `unknown_tray` · `unknown_tray_check` · `tray_already_restocked` | an emergency-tray check that leaves an item on the tray's list uncounted, a daily check without the seal number, an expiry that contradicts its count, a restock of a check that found the tray complete (or deficient on its seal alone, or superseded by a later check), a tray set up with no keeper; a tray or check not on file; a check already restocked | count every item on the list; a seal mismatch is answered by opening the tray for a full check; restock from the latest check; the tray's keeper receives the restock already sent |
+| `invalid_label` | a rack or strip label the books cannot stand behind: a rack label for an item with no rack in that store, a strip label with no batch (or another item's batch, or a pack the item does not have), a batch with no MRP on the books, more than 500 labels in one print | set the item's rack first (Items → What the counter sells); pick the strip's batch from the list; enter the batch's MRP at GRN; split a big print |
 
 **Six refusals the counter surfaces that are NOT pharmacy's**, and staff will meet them:
 `version_not_active` (§1.7) · `no_open_session` (§1.8) · `billing_not_configured` ·

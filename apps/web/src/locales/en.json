@@ -5880,7 +5880,8 @@
     "invalid_tray": "This tray check or change does not add up — count every item on the list, read the seal, and check the dates",
     "unknown_tray": "This emergency tray is not on file",
     "unknown_tray_check": "This tray check is not on file",
-    "tray_already_restocked": "This check was restocked already — the tray's keeper receives that restock"
+    "tray_already_restocked": "This check was restocked already — the tray's keeper receives that restock",
+    "invalid_label": "The books cannot back this label — set the item's rack, pick a batch of that item that has an MRP, or print fewer than 500 at once"
   },
   "pharmacyCounter": {
     "partlyChecked": "Checked only in part",
@@ -8325,6 +8326,7 @@
         "sells": "What the counter sells · GST slab",
         "formulary": "Formulary",
         "duplicates": "Duplicates & merge",
+        "labels": "Rack & strip labels",
         "h1": "H1 register",
         "controlled": "Narcotics & Schedule X",
         "retail": "Retail licence (Form 20/21)",
@@ -10539,6 +10541,38 @@
         "transfer": "Transfer",
         "count": "Count"
       }
+    },
+    "labels": {
+      "title": "Rack & strip labels",
+      "lead": "50 × 25 mm stickers for the pharmacy's barcode label printer. A rack label goes on the shelf edge; a strip label goes on a loose strip cut from its box, and its QR scans at the desk's pick as that batch.",
+      "store": "Store",
+      "find": "Find an item",
+      "everyRack": "One rack label for every item shown",
+      "print": {
+        "rack_one": "Print {{count}} rack label",
+        "rack_other": "Print {{count}} rack labels",
+        "strip_one": "Print {{count}} strip label",
+        "strip_other": "Print {{count}} strip labels"
+      },
+      "queued_one": "{{count}} label sent to the label printer.",
+      "queued_other": "{{count}} labels sent to the label printer.",
+      "browser_one": "No print relay is serving the label printer — {{count}} label printed from this browser.",
+      "browser_other": "No print relay is serving the label printer — {{count}} labels printed from this browser.",
+      "tooMany": "One print takes at most {{max}} labels — print in parts.",
+      "empty": "Nothing on this store's racks or in its stock.",
+      "col": {
+        "item": "Item",
+        "rack": "Rack",
+        "rackLabels": "Rack labels",
+        "batch": "Batch · expiry · MRP",
+        "stripLabels": "Strip labels"
+      },
+      "noRack": "no rack — set it in What the counter sells",
+      "noStock": "no stock here",
+      "noMrp": "no MRP on the books",
+      "exp": "Exp {{date}}",
+      "rackCopies": "Rack labels for {{item}}",
+      "stripCopies": "Strip labels for batch {{batch}}"
     },
     "trays": {
       "title": "Emergency trays and crash carts",
