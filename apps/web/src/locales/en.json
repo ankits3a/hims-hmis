@@ -6302,6 +6302,64 @@
       "noRelayOnce": "No counter printer is set up — bills and labels print from this screen.",
       "frameRefused": "This browser would not open the print dialog."
     },
+    "returns": {
+      "menu": "Return or cancel this ticket",
+      "act": {
+        "return": "Take medicine back (return)",
+        "refund": "Cancel and refund this bill",
+        "cancel": "Cancel this ticket"
+      },
+      "title": {
+        "return": "Take medicine back",
+        "refund": "Cancel the paid ticket and refund",
+        "cancel": "Cancel this ticket"
+      },
+      "lead": {
+        "return": "Sealed, intact packs only, in whole strips, within the return window. Each pack goes back to the batch it was given from.",
+        "refund": "The medicine has not left the counter. The whole bill is credited and the picked stock goes back on the shelf.",
+        "cancel": "Nothing has been billed. Any stock picked for this ticket goes back on the shelf."
+      },
+      "nothing": "No line on this ticket left the counter on a batch — there is nothing to take back.",
+      "batch": "back to batch {{batch}} · exp {{expiry}}",
+      "fromBatch": "batch {{batch}} · exp {{expiry}} — back on the shelf",
+      "picked": "picked {{n}} {{unit}}",
+      "noBatch": "no batch picked",
+      "given": "given {{n}} {{unit}}",
+      "qty": "How many {{drug}} are coming back",
+      "whose": "Whose reason",
+      "class": {
+        "mistake": "Our mistake (wrong medicine, quantity or bill)",
+        "genuine": "Patient's reason (no longer needed, doctor changed it)"
+      },
+      "why": "What happened — the refund approver reads this",
+      "whyCancel": "Why is this ticket cancelled",
+      "sealed": "I have inspected every pack: sealed and intact",
+      "money": {
+        "return": "Billing works out the refund from the bill when you accept; the amount is shown here after.",
+        "refund": "The whole bill is credited; the refund amount is shown here after.",
+        "cancel": "No money has been taken on this ticket."
+      },
+      "submit": {
+        "return": "Take back and raise the refund",
+        "refund": "Cancel and raise the refund",
+        "cancel": "Cancel the ticket"
+      },
+      "working": "Working…",
+      "close": "Close",
+      "done": "Done",
+      "doneTitle": {
+        "return": "Return accepted — the packs are back on the shelf.",
+        "refund": "Ticket cancelled — the stock is back on the shelf.",
+        "cancel": "Ticket cancelled."
+      },
+      "refundOf": "Refund of {{amount}} requested · credit note {{no}}",
+      "refundNoAmount": "Refund requested · credit note {{no}}",
+      "approval": "No money goes back from this desk. A billing manager must approve this refund in Approvals; the billing office then issues the voucher and the cashier pays it from the drawer.",
+      "left": "{{n}} can still come back on line {{line}}",
+      "logReturned": "Medicine taken back. Credit note {{no}}; the refund waits for a billing manager.",
+      "logRefunded": "Paid ticket cancelled. Credit note {{no}}; the refund waits for a billing manager.",
+      "logCancelled": "Ticket cancelled; its stock is back on the shelf."
+    },
     "short": {
       "title": "Note a shortage",
       "label": "medicine that is out",

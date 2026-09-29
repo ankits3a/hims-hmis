@@ -5,6 +5,7 @@ import { ControlledStep } from "./controlled";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
 import { DonePaper } from "./paper";
+import { TicketMenu } from "./returns";
 import type { ShortDrug } from "./short-book";
 import { hindiRefusal, hindiSig } from "./phrasebook";
 import { istToday, sigOf } from "./work";
@@ -118,7 +119,10 @@ export function TicketPanel({
   if (stage === "done") {
     return (
       <div style={{ maxWidth: 720 }}>
-        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700 }} data-testid="desk-done">{t("pharmacyDesk.doneTitle", { who })}</h1>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, flexGrow: 1 }} data-testid="desk-done">{t("pharmacyDesk.doneTitle", { who })}</h1>
+          <TicketMenu dispense={inHand} />
+        </div>
         <p className="mo" style={{ margin: "3px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
           {[label, takenLabel, t("pharmacyDesk.lines", { count: inHand.lines.length })].filter((x) => x !== null).join(" · ")}
         </p>
@@ -148,6 +152,8 @@ export function TicketPanel({
         <span style={{ flexGrow: 1 }} />
         {/* While the cross-check is owed the banner carries this control; one control, not two. */}
         {typed && !slipOwed ? <button className="sec" onClick={onOpenSlip}>{t("pharmacyDesk.slip.see")} <span className="kb">S</span></button> : null}
+        {/* Return / cancel — the ticket's exceptions behind ⋯ (`returns.tsx`). */}
+        <TicketMenu dispense={inHand} />
       </div>
       <p style={{ margin: "5px 0 0 0", fontSize: 12.5, color: "var(--dim)" }}>
         {t("pharmacyDesk.rxVersion", { version: inHand.prescriptionVersion })}
