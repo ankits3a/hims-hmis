@@ -867,6 +867,87 @@ migration:
   and the machine/person registration; only `recordAcquired` calls `assertFormFRecorded`. So a scan
   can start on a Form F nobody has signed. The web USG room already records the form before Start.
 
+#### RS8b as built (this PR; lane `radiology-rs8b`; one migration, `0149_radiology_cosign_ladder`, numbered at rebase)
+- **T1 — co-sign.** New role `radiology_resident` (six strings: `radiology.worklist.read`,
+  `.reports.write`, `.reports.sign`, `.reports.read`, `.criticals.ack`, `.definitions.read`; no new
+  permission). `signReport` by a user holding `radiology_resident` and NOT `radiologist`
+  (`signsAsResident`) runs the same checks, takes the resident's second factor and inserts an
+  `awaiting_cosign` version carrying a `ResidentSignature` (name, instants, content hash — no
+  council number: the resident is not the signatory of record). `publishReport` refuses
+  `cosign_required`. `cosignReport` (`POST …/reports/cosign`, `radiology.reports.sign` + second
+  factor): only a `radiologist` (`cosign_not_consultant`), never the resident's own
+  (`cosign_own_report`), under the consultant's own fresh factor; the RS8a checks run again with the
+  consultant's acknowledgements; the resident's row flips to `cosigned` by compare-and-set (a second
+  consultant gets `stale_state`) and a `signed` version is inserted whose signer block is the
+  consultant's with `draftedBy` = the resident. Reading list: `awaiting_cosign` state, sorted to the
+  top for a consultant. Migration: status CHECK widened + `imaging_reports_one_awaiting_ux`.
+- **T2 — the ladder.** `imaging_critical_call_attempts` (insert-only: rung, who rung — a user or a
+  typed name, outcome `no_answer` / `answered` / `read_back_ok`, recorded by, when);
+  `imaging_critical_findings.ladder_rung` (0 treating doctor · 1 unit head · 2 duty RMO · 3 HOD, only
+  climbs) and `chase_windows`. `recordCallAttempt` (`POST /radiology/criticals/:id/calls`,
+  `radiology.criticals.ack`): compare-and-set on the rung; no answer climbs one. `acknowledgeCritical`
+  now refuses a read-back that does not name the finding (`read_back_mismatch`, `readBackNamesFinding`:
+  a critical term the report states, not negated, or a content word of the impression) and writes the
+  closing `read_back_ok` row — the RS9 doctor read-back calls the same function and inherits it. The
+  chaser escalates one rung per tier window of the `critical_categories` book (was: once), at most
+  three events, each `imaging.critical_overdue` carrying `rung`. Board read
+  `GET /radiology/reading/criticals` (open calls oldest first with the four rungs and who holds each
+  today; the last 48 h closed).
+- **T3 — Form F before the scan.** `startAcquisition` calls `assertFormFRecorded` beside the machine
+  and person registration checks; the `form_f` GATE still passes on an open form (semantics kept).
+  Three tests that pinned the old order (start on an open form, refuse at `acquired`) now assert the
+  refusal at the start, each with a comment: `acquisition.test.ts` A2, `portable.test.ts`, the e2e
+  STUDY TWO.
+- **T4 — the screen.** `/radiology/read`: header views **Reading list · Critical calls (n)**
+  (`?view=criticals`, no new SPA route). Resident dock **Sign for co-sign** (no publish); consultant
+  opening an awaiting study sees the resident's text + checks and **Co-sign and publish**; **Issue
+  prelim** on STAT/urgent with the PRELIMINARY banner (first web caller of prelim); **Amend** on a
+  signed study — reason code, one-line note, corrected findings/impression, second factor (first web
+  caller of amend); the print adds the drafting resident. Critical calls: one call in hand, the
+  ladder, **Call** → **No answer / Answered** (Call itself records nothing), the read-back box,
+  overdue banner, the 48-hour log; English + Hindi.
+- **DECIDED** (standard Indian teaching-hospital answers, open to owner objection):
+  - *Resident vs consultant by ROLE KEY, a user with both roles is a consultant* — "may sign, but not
+    finally" cannot be said with a permission, and the workflow engine already separates on role keys.
+  - *Co-signing is agreeing, not editing* — the consultant who wants different words signs their own
+    version, which supersedes the resident's (NABH: the signatory owns the text they sign).
+  - *A resident's red critical is raised at the resident's signature* — the ER hears of the bleed from
+    whoever read it; the co-sign raises no second call.
+  - *Prelim offered on STAT and ER (urgent) only, in the screen*; the server's prelim route keeps its
+    existing rule (any reportable study) — narrowing it would break the classic report screen.
+  - *Rungs:* treating doctor = the order's clinician; unit head = roster `unit_head`; duty RMO =
+    roster `casualty_mo` (no RMO position exists); HOD = the `medical_superintendent` holders (no HOD
+    position). Names shown only from a PUBLISHED roster, else the role's name (spike c).
+  - *The chaser climbs one rung per tier window, three at most* (red: 15/30/45 min).
+  - *The read-back is lexical and generous* (one shared finding word or the critical term), and a
+    negated critical term never closes the call; red still demands a read-back, orange/yellow may be
+    acknowledged without one (unchanged).
+  - *A read-back is recorded against a person with an HMIS account* (F76); a callee typed by name can
+    be recorded as rung, but closing needs the clinician picked — nobody is pre-chosen for them.
+  - *The amendment's stored reason is in English* ("Correction of laterality: …"), whatever the
+    screen's language — it is the record.
+  - *Form F recorded before Start* (PCPNDT Rules: the declaration precedes the procedure).
+- **Counts.** Core: `cosign.test.ts` 11 (10 fail with the co-sign branch/guards mutated out; with only
+  the publish gate and own-report check removed, the 2 that pin them fail), `critical-ladder.test.ts`
+  8 (5 fail with the read-back rule, the rung climb and the windowed chaser mutated out; the pure
+  read-back unit and the board did not exist on main), T3 2 fail with the start-time check removed.
+  Web: `radiology-reading-rs8b.test.tsx` 7 (6 fail against main's screen; the seventh is an absence
+  test — "no Prelim on a routine study" — which a revert cannot fail). Touched suites: see the PR.
+  Pins: roles 40 → 41 (`radiology_resident`), model pairs 427 → 433, `KNOWN_ROLE_KEYS` 42 → 43, README
+  radiology table 6 → 7 columns (+ prose); distinct/held permissions unchanged (185 / 191); radiology
+  error codes +4 (`cosign_required`, `cosign_not_consultant`, `cosign_own_report`,
+  `read_back_mismatch`); events unchanged in number (`imaging.critical_overdue` gains optional
+  `rung`); SPA routes 79 unchanged; API routes +3 (cosign, calls, criticals board).
+- **Moved later.** A staff-directory picker so ANY clinician with an account can be named at the
+  read-back (today: the people the ladder names) → RS10; a real HOD / RMO roster position and the
+  treating doctor's unit → IPD/roster; a calendar-aware "next working day" yellow window (the book is
+  minutes, ≤ 1440) and the alert text naming the rung → RS10; co-sign on the classic report screen
+  (the reading room is the co-sign seat) → not planned. Follow-ups, peer review, night/outside reads →
+  RS8c.
+- **For the owner (law):** may a DNB/MD resident's PRELIM (unsigned by a consultant) be handed to the
+  treating doctor in the ER as a quotable document? Built as the Indian teaching-hospital norm (yes,
+  marked PRELIMINARY, never published to the patient). The RS8a DSC question stands.
+
 ### RS9 · Release and the closed loop
 - **Core:**
   - `imaging_report_delivery` gains `acted_at`, `acted_by` and `acted_note` (gap 6);

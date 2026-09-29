@@ -507,3 +507,67 @@ shows `impression_required` (red) and `critical_term` (amber), the dock is dead.
 tick the warning, Sign and publish. Open Print preview: the name, qualification and council number
 are on it, the referrer is a Doctor ID. `select signer, sign_checks from imaging_reports where
 status = 'signed' order by created_at desc limit 1` shows both blocks.
+
+## 14. The reading room, part 2 — co-sign, prelim, amend, the critical-call ladder (18-S RS8b)
+
+**Migration** `0149_radiology_cosign_ladder` (number taken at rebase): two report statuses
+(`awaiting_cosign`, `cosigned`) with one-waiting-per-study as an index, `ladder_rung` and
+`chase_windows` on `imaging_critical_findings`, and the insert-only `imaging_critical_call_attempts`
+(one row per telephone call). Nothing to seed.
+
+**Residents (co-sign).** `seed:roles` creates `radiology_resident` with no holders. Assign it at
+`/admin/users` to each DNB/MD resident — **not** together with `radiologist` (a user holding both is
+a consultant, and signs final reports). A resident:
+- drafts, and may **Issue prelim** on STAT and ER (urgent) studies — the treating doctor reads it
+  with the banner "PRELIMINARY — final report follows"; a prelim is never published;
+- signs with **Sign for co-sign**: the checks run and the resident's second factor is taken, and the
+  version is stored `awaiting_cosign`. **Nothing is released.** Publishing it is refused
+  `cosign_required`;
+- telephones and closes critical calls (a red finding the resident signs is raised at once — the
+  call does not wait for the co-sign).
+
+A consultant (`radiologist`) sees the study at the TOP of the reading list as **Awaiting
+consultant**; opening it shows the resident's text, the checks (the consultant ticks any warning in
+their own name) and the dock **Co-sign and publish**, under the consultant's own second factor. The
+signed version's signer block is the consultant's, and carries `draftedBy` (the resident, their
+signature instant and content hash); the print adds "Drafted by … (resident); co-signed by the
+consultant above". Refusals: `cosign_not_consultant` (a non-consultant), `cosign_own_report` (the
+resident, later made a consultant, co-signing their own), `stale_state` (another consultant
+co-signed first). To change the text, the consultant writes and signs their own version instead —
+that supersedes the resident's.
+
+**Amend.** Reading room → a signed study → **Amend**: a reason code (Addendum · Correction of
+laterality · Correction of measurement · Clinical information received · Other), one line saying
+what changed, the corrected findings and impression, then **Sign the amendment** under the second
+factor. The checks run as at Sign. The stored reason reads "<reason>: <note>". If the report had
+been published, the amendment is published at once and the patient's "report ready" message is
+re-sent (the existing path — settlement still gates the message, a red critical does not wait).
+Residents hold no amendment.
+
+**The critical-call ladder** (Reading room → header **Critical calls**, `?view=criticals`;
+`radiology.criticals.ack`). Rungs, in order: **treating doctor** (the order's clinician, by name) →
+**unit head** (roster position `unit_head`) → **duty RMO** (roster position `casualty_mo`) → **HOD**
+(the `medical_superintendent` role's holders). The two roster rungs show names only when a roster is
+PUBLISHED and `ROSTER_RESOLVER_ENABLED=true`; otherwise they show the role and the radiologist types
+who they rang. Per call: **Call the <rung>** opens two outcomes — **No answer** (moves the call one
+rung up; the HOD is the top) or **Answered** (opens the read-back). The call closes ONLY on
+**Close with read-back**, naming the clinician (a person with an HMIS account) and what they said;
+a read-back that does not name the finding (no word of the impression, or the critical term
+negated — "no pneumothorax") is refused `read_back_mismatch`, and the doctor's own read-back from
+their results inbox meets the same rule. The **chaser** (every 60 s) escalates one rung per tier
+window from the `critical_categories` book — red 15 min → unit head, 30 → duty RMO, 45 → HOD, at
+most three `imaging.critical_overdue` events per call, each naming the rung. Closed calls stay in
+the **Closed in the last 48 hours** log.
+
+**Form F before the scan (PCPNDT).** `startAcquisition` now refuses a PCPNDT-applicable study whose
+Form F is only OPEN (`form_f_missing`): record the form (the woman's declaration and the doctor's)
+before pressing Start. The USG room already does this in that order; the general room console and
+the portable round now meet the same refusal.
+
+**Verify once.** Assign `radiology_resident` to a test user. As them, sign a STAT chest film with
+a "pneumothorax" impression flagged red: the dock said **Sign for co-sign**, and
+`select status from imaging_reports where study_id = '<id>' order by version desc limit 1` is
+`awaiting_cosign`; the Critical calls view lists the call at "Treating doctor". Record **No answer**
+— the call moves to "Unit head". As a radiologist, the study is first in the list; **Co-sign and
+publish**. Back on Critical calls, **Answered** → type "noted" → refused `read_back_mismatch`; type
+"left pneumothorax" → the call moves to the 48-hour log.
