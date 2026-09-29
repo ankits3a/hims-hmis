@@ -25,6 +25,10 @@ import type {
 const input = "border px-2 py-1";
 const primary = "border px-3 py-1 text-sm bg-black text-white disabled:opacity-50";
 const secondary = "border px-3 py-1 text-sm disabled:opacity-50";
+/** Cells padded so adjacent headers never run together ("LineBadge"), the walk's 1440 finding. */
+const table = "w-full text-sm [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:px-2 [&_td]:py-1 [&_td]:align-top";
+/** The room console's dock (RS6): ONE next act, pinned. */
+const dock = "sticky bottom-0 flex flex-wrap items-end gap-3 rounded border bg-card p-3 shadow-sm";
 
 function Label({ text, children }: { text: string; children: React.ReactNode }): React.ReactElement {
   return (
@@ -98,7 +102,7 @@ export function QaDueBlock(): React.ReactElement {
         ? <p className="text-sm" data-testid="aerb-qa-due-none">{t("aerb.rs11.qaDue.none")}</p>
         : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className={table}>
               <thead><tr className="text-left">
                 <th>{t("aerb.rs11.qaDue.machine")}</th><th>{t("aerb.rs11.qaDue.test")}</th>
                 <th>{t("aerb.rs11.qaDue.last")}</th><th>{t("aerb.rs11.qaDue.due")}</th><th>{t("aerb.rs11.qaDue.state")}</th>
@@ -193,7 +197,7 @@ export function TldImportView({ canManage }: { canManage: boolean }): React.Reac
                 : t("aerb.rs11.tld.ready", { total: preview.rows.length, flagged: preview.flagged.investigation })}
             </p>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className={table}>
                 <thead><tr className="text-left">
                   <th>{t("aerb.rs11.tld.line")}</th><th>{t("aerb.rs11.tld.badge")}</th><th>{t("aerb.rs11.tld.period")}</th>
                   <th>Hp(10)</th><th>{t("aerb.rs11.tld.flags")}</th>
@@ -203,7 +207,7 @@ export function TldImportView({ canManage }: { canManage: boolean }): React.Reac
                     <tr key={r.line} data-testid={`aerb-tld-row-${String(r.line)}`} className={r.errors.length > 0 ? "text-red-700" : ""}>
                       <td className="mo">{r.line}</td>
                       <td>{r.badgeNo}{r.userName !== null ? ` · ${r.userName}` : ""}</td>
-                      <td className="mo">{r.periodStart ?? "?"}..{r.periodEnd ?? "?"}</td>
+                      <td className="mo whitespace-nowrap">{r.periodStart ?? "?"} – {r.periodEnd ?? "?"}</td>
                       <td className="mo">{r.hp10Msv ?? "?"}</td>
                       <td className="break-words">
                         {[...r.errors,
@@ -221,7 +225,7 @@ export function TldImportView({ canManage }: { canManage: boolean }): React.Reac
         )
         : null}
 
-      <div className="sticky bottom-0 flex flex-wrap gap-2 bg-card py-2" data-testid="aerb-tld-dock">
+      <div className={dock} data-testid="aerb-tld-dock">
         {preview !== null && preview.errorCount === 0
           ? (
             <button type="button" className={primary} data-testid="aerb-tld-confirm" disabled={confirm.isPending} onClick={() => { confirm.mutate(); }}>
@@ -351,7 +355,7 @@ function IncidentDetail({ incident, canManage, onDone }: { incident: WireInciden
         : null}
       {writable && incident.state === "investigated"
         ? (
-          <div className="sticky bottom-0 flex flex-wrap items-end gap-2 bg-card py-2" data-testid="aerb-incident-dock">
+          <div className={dock} data-testid="aerb-incident-dock">
             <Label text={t("aerb.rs11.incident.closureNote")}>
               <input className={input} data-testid="aerb-incident-closure-note" value={closureNote} onChange={(e) => { setClosureNote(e.target.value); }} />
             </Label>
@@ -465,7 +469,7 @@ function NewIncidentForm({ onDone, onCancel }: { onDone: (m: string) => void; on
         {t(notifiable ? "aerb.rs11.incident.willNotify" : "aerb.rs11.incident.wontNotify")}
       </p>
       <Refusal testId="aerb-incident-new-error" message={error} />
-      <div className="sticky bottom-0 flex gap-2 bg-card py-2">
+      <div className={dock}>
         <button type="button" className={primary} data-testid="aerb-incident-record" disabled={d.description.trim() === "" || d.immediateAction.trim() === "" || save.isPending} onClick={() => { save.mutate(); }}>
           {t("aerb.rs11.incident.record")}
         </button>
@@ -501,7 +505,7 @@ export function IncidentsView(): React.ReactElement {
       {rows.length > 0
         ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className={table}>
               <thead><tr className="text-left">
                 <th>{t("aerb.rs11.incident.no")}</th><th>{t("aerb.rs11.incident.kindLabel")}</th>
                 <th>{t("aerb.rs11.incident.who")}</th><th>{t("aerb.rs11.incident.aerb")}</th><th>{t("aerb.rs11.incident.state")}</th>
@@ -567,7 +571,7 @@ export function PregnancyView(): React.ReactElement {
       {rows.length > 0
         ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className={table}>
               <thead><tr className="text-left">
                 <th>{t("aerb.rs11.pregnancy.worker")}</th><th>{t("aerb.rs11.pregnancy.declaredOn")}</th>
                 <th>{t("aerb.rs11.pregnancy.expectedOn")}</th><th>{t("aerb.rs11.pregnancy.foetal")}</th><th />

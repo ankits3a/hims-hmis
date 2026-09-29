@@ -1083,6 +1083,7 @@ export function RadiationSafety(): React.ReactElement {
         </div>
       )}
       listSummary={incidentsOnly ? undefined : t("aerb.rs11.attention.summary", { count: attentionRows.length })}
+      closeListOn={tab}
     >
     <div className="space-y-4">
 
