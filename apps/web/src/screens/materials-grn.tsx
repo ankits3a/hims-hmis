@@ -151,6 +151,12 @@ export function MaterialsGrn(): React.ReactElement {
 
   const grn: WireGrn | undefined = openGrn.data;
   const hasNearExpiry = grn?.lines.some((l) => l.nearExpiry) === true;
+  /** Captured and not yet through QC: every line's verdict is still to come, whatever its fields say. */
+  const awaitingQc = grn?.status === "gate_qc" || grn?.status === "draft";
+  const itemLabel = (itemId: string): string => {
+    const it = (items.data ?? []).find((i) => i.id === itemId);
+    return it === undefined ? itemId : `${it.code} · ${it.name}`;
+  };
 
   return (
     <div className="space-y-6 p-4">
@@ -224,7 +230,7 @@ export function MaterialsGrn(): React.ReactElement {
                     onChange={(e) => setLine(i, { itemId: e.target.value })}
                   >
                     <option value="">—</option>
-                    {(items.data ?? []).map((it) => <option key={it.id} value={it.id}>{it.code}</option>)}
+                    {(items.data ?? []).map((it) => <option key={it.id} value={it.id}>{`${it.code} · ${it.name}`}</option>)}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
@@ -291,18 +297,28 @@ export function MaterialsGrn(): React.ReactElement {
                     <th>{t("materialsGrn.item")}</th>
                     <th>{t("materialsGrn.qtyBase")}</th>
                     <th>{t("materialsGrn.batchNo")}</th>
+                    <th>{t("materialsGrn.expiry")}</th>
+                    <th>{t("materialsGrn.mrp")}</th>
+                    <th>{t("materialsGrn.cost")}</th>
                     <th>{t("materialsGrn.verdict")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {grn.lines.map((l) => (
                     <tr key={l.id} className="border-t">
-                      <td>{l.itemId}</td>
+                      {/* The walk of 2026-09-30: the person running QC holds the strip against THIS row, so it
+                          names the drug and carries what QC checks — never an id, never a verdict before QC. */}
+                      <td>{itemLabel(l.itemId)}</td>
                       <td>{l.qtyBase}</td>
                       <td>{l.batchNo ?? "—"}</td>
+                      <td>{l.expiryDate ?? "—"}</td>
+                      <td>{l.mrpPaise === null ? "—" : `₹${(l.mrpPaise / 100).toFixed(2)}${l.mrpUom === null ? "" : ` / ${l.mrpUom}`}`}</td>
+                      <td>{`₹${(l.unitCostPaise / 100).toFixed(2)}`}</td>
                       <td>
                         {/* THE RULE, AS A SENTENCE. Never the raw code — see the header. */}
-                        {l.rejectReason !== null
+                        {awaitingQc
+                          ? <span className="text-neutral-600">{t("materialsGrn.status_gate_qc")}</span>
+                          : l.rejectReason !== null
                           ? <span className="text-red-600">{t(`materialsGrn.rule_${l.rejectReason}`)}</span>
                           : l.nearExpiry
                             ? <span className="text-amber-700">{t("materialsGrn.rule_near_expiry")}</span>

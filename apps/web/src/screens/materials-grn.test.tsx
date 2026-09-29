@@ -99,7 +99,7 @@ async function fillHeaderAndLine(
 ): Promise<void> {
   await screen.findByRole("option", { name: "ACME" });
   await screen.findByRole("option", { name: "MAIN" });
-  await screen.findByRole("option", { name: "CROC500" });
+  await screen.findByRole("option", { name: "CROC500 · Crocin 500mg tablet" });
   await user.selectOptions(screen.getByLabelText("Vendor"), "v-1");
   await user.selectOptions(screen.getByLabelText("Store"), "st-1");
   await user.type(screen.getByLabelText(/^Challan no\.$/), "CH/1");
@@ -243,6 +243,33 @@ describe("MaterialsGrn", () => {
     expect(await screen.findByRole("button", { name: "Request near-expiry acceptance" })).toBeInTheDocument();
     // …and the line says WHY, in words.
     expect(screen.getByText(/Short shelf life/)).toBeInTheDocument();
+  });
+
+  /**
+   * THE WALK OF 2026-09-30. The second pharmacist opened a captured GRN to QC it and read a ULID where
+   * the drug should be, no expiry, no MRP and no cost — nothing to hold against the strip in their
+   * hand — and a green "Accepted" on every line (the expired one too) BEFORE QC had run.
+   */
+  it("an opened GRN names the item and shows what QC checks, and claims no verdict before QC", async () => {
+    const captured = { ...grnWith(null), status: "gate_qc", qcBy: null };
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/materials/grns": { status: 201, body: { grnId: "g-1", grnNo: "GRN2608270001" } },
+      "GET /api/materials/grns/g-1": { status: 200, body: { grn: captured } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    const user = userEvent.setup();
+    await fillHeaderAndLine(user);
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+
+    const table = await screen.findByRole("table");
+    expect(table).toHaveTextContent("CROC500 · Crocin 500mg tablet");
+    expect(table).not.toHaveTextContent("it-1");
+    expect(table).toHaveTextContent("2028-06-30");
+    expect(table).toHaveTextContent("₹5.00 / strip");
+    expect(table).toHaveTextContent("₹7.00");
+    expect(table).toHaveTextContent("Awaiting QC");
+    expect(table).not.toHaveTextContent("Accepted");
   });
 
   /** DD16's second tab: the two worklists are tables here, not screens of their own. */
