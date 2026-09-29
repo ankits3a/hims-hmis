@@ -1078,6 +1078,128 @@ migration:
   treating doctor in the ER as a quotable document? Built as the Indian teaching-hospital norm (yes,
   marked PRELIMINARY, never published to the patient). The RS8a DSC question stands.
 
+#### RS8c spike (read on `lane/radiology-rs8b` `fe533078` = main `9e387f23` + RS8b, 29 Sep, before any code)
+- **(a) Where a recommendation lives.** Nowhere as a row. RS8a's coded categories sit in the signed
+  body under `coded` (`{system: {value, inputs?}}`), and the calculators in `@hmis/contracts`
+  `imaging-coded.ts` already carry the intervals: `fleischnerRecommendation` returns
+  `firstCtMonths: [from, to]`, `tiradsScore` returns `advice: fna | follow_up | no_further`, and the
+  BI-RADS / LI-RADS / Lung-RADS labels name theirs ("short-interval follow-up (6 months)"). The
+  board's `addFollowup` (RS9's note) never existed in code. The body is append-only by trigger, so a
+  follow-up is a separate, mutable object (the `imaging_report_delivery` argument, 18a-iii T5).
+- **(b) Booking.** `placeImagingOrder(db, …)` opens its own `withTx`; drizzle nests a transaction
+  called on a `Tx` as a SAVEPOINT, so it can run inside the follow-up's locked transaction (one order
+  or none). It needs an OPEN visit (`assertEncounterOpen`: OPD open or completed ≤ 7 days) and both
+  `orders.place` + `radiology.orders.place` — the doctor and the desk hold them, the radiologist does
+  not. `placedAt` must be passed (F28's time bomb).
+- **(c) The escalation spine.** RS10 (#404, the obligations-spine sweep `sweepImagingEscalations`) is
+  NOT merged; the alerts manifest is kernel. So the overdue voice is an event
+  (`imaging.followup_overdue`), riding the existing 08:00 IST Watchman job (no new job: a new job is a
+  seven-site census).
+- **(d) The external reporter.** `imaging_reports.external_reporter_id` exists ("O-3's outsourced
+  night read — a `counterparties.id`") and nothing writes it. A prelim has NO author column (signer
+  columns are for signed rows), so "who read it at night" needs a row of its own. No role or book
+  names a teleradiology reader; RS12's NEXT note proposed a role + permission. `provenance` cannot
+  carry it: `signReport` refuses any version with provenance (`machine_draft_not_signable`).
+- **(e) Peer review inputs.** Signed versions carry `signer_id`, `signed_at`, `supersedes_id`; a
+  first signature = `supersedes_id is null`; RS8b's `awaiting_cosign`/`cosigned` rows are the
+  resident's and are not the hospital's report. Nothing samples, blinds or scores.
+
+#### RS8c as built (this PR; lane `radiology-rs8c`, built on RS8b's branch; one migration, `0153_radiology_reading_room_3` — numbered at rebase)
+- **T1 — follow-ups (core).** `imaging_followups` (study, signed version, patient, source
+  `birads | tirads | lirads | lungrads | fleischner | other`, recommendation words, interval, IST due
+  day, state `open → notified → booked → closed`, CHECKs for every half-record). `followups.ts`:
+  `followupsFromBody` (pure; BI-RADS 3 → 6 mo, TI-RADS "follow up" → 1 yr, LR-3/LR-4 → 3 mo,
+  Lung-RADS 3 → 6 / 4A → 3 mo, Fleischner's earliest month, the radiologist's tick
+  `body.followup = {text, weeks|months}`, a malformed tick refuses the signature); rows open in the
+  signature's transaction (`signReport`, RS8b's `cosignReport`; a resident's `awaiting_cosign` opens
+  none); `amendReport` reconciles (a dropped source closes `withdrawn_by_amendment`, a kept one keeps
+  its row); `markFollowupNotified`, `closeFollowup` (five human reasons + a line), `bookFollowup`
+  (row locked, `placeImagingOrder` nested, under the original order's clinician, the patient's latest
+  OPD visit, `imaging.followup_booked`); the booked study's own signature closes the row `done_here`;
+  `sweepOverdueFollowups` (once per row, `imaging.followup_overdue`). Routes:
+  `GET /radiology/reading/followups`, `POST /radiology/followups/:id/{notified,close,book}`,
+  `GET /radiology/results/followups`.
+- **T2 — peer review (core).** `imaging_peer_reviews` (`random | amendment | overread_discrepancy`,
+  RADPEER `1 2a 2b 3a 3b 4a 4b`, learning case, CHECK: nobody scores their own, a score ≥ 2 has a
+  line). `peer-review.ts`: `drawPeerSample(month)` — per reader ⌈3 %⌉ of first signatures in the IST
+  month, at least one, crypto shuffle, idempotent; the Watchman job draws the month just closed;
+  `openAmendmentReview` from `amendReport`; `peerBoard` (my queue — never my own; recent scores with
+  no names; agreement per reader over 90 days, named); `peerCase` (blind: no reader, no signer block;
+  own case refused `peer_review_own_report`); `scorePeerReview` (compare-and-set). Routes
+  `GET /radiology/reading/peer`, `GET …/peer/:id`, `POST …/peer/:id/score` (`radiology.reports.amend`).
+- **T3 — night & outside reads (core).** Governed book `teleradiology` (providers with key, name,
+  `dpa_signed_on`, `data_in_india: true`, readers `{user_id, name, nmc_reg_no}`; night window, prelim
+  minutes 30/60, over-read by 10:00). `tele.ts`: a listed reader's `savePrelim` stamps
+  `external_reporter_id` (provider key) and opens ONE `imaging_tele_reads` row per study (snapshot of
+  provider, reader, NMC number; the ruling's clock images-in → first prelim); `signReport`,
+  `cosignReport`, `amendReport` refuse a listed reader `tele_reader_prelim_only` whatever roles they
+  hold; `overReadNightPrelim` (a `radiologist`, second factor): CONCUR signs the prelim's words and
+  publishes; MINOR/MAJOR sign the consultant's corrected words (or AMEND an already-signed report,
+  the reason naming the partner), publish, log the line, open a blind peer case;
+  `imaging.overread_recorded`. RS9's inbox row gains `overread` (grade + partner). Routes
+  `GET /radiology/reading/tele` (queue, 30-day discrepancy log, TAT summary, coverage, outside films
+  to read), `POST /radiology/tele/:id/overread`.
+- **T4 — the views (web).** `/radiology/read?view=followups|peer|tele` (header views after Critical
+  calls; Follow-ups for the whole room, Peer review and Night & outside for consultants),
+  `screens/radiology-reading-room.tsx`: right = the one list (overdue first / my queue / waiting
+  prelims), lane = the row in hand, centre = the work, ONE dock act (Book — for a holder of the
+  ordering grant; else "Record that they were told" / "Close with the reason"; "Save score";
+  "Concur and sign" / "Sign the correction"), Clocks running = overdue follow-ups / cases over 14 days /
+  late prelims; English + Hindi.
+- **T5 — the doctor's inbox.** `ImagingResultsInbox` gains **Follow-ups to book** with *Book it*
+  (refusals in the server's words) and the "Night read corrected — MAJOR · partner" pill.
+  IR sedation charting left alone (not this phase's).
+- **T6 — docs.** Runbook §17 (numbered after RS8b/RS10/IR's §16s), this section.
+- **DECIDED** (standard Indian-corporate-hospital answers, open to owner objection):
+  - *The due day is the interval's EARLIEST bound* ("CT at 6–12 months" is due at 6) — a follow-up
+    chased early is a call; one chased late is a missed cancer.
+  - *An FNA advice (TI-RADS), BI-RADS 4/5, LR-5, LR-M open no row* — they are procedures and MDT
+    decisions for the doctor now, not interval imaging.
+  - *The referrer books* (board: "radiology sends the letter; the referrer books") — the reading
+    room records the notice and closes; booking needs the ordering grant (doctor, desk). No grant
+    widened.
+  - *The booking is placed under the ORIGINAL order's clinician* on the patient's latest OPD visit;
+    no visit → `encounter_closed`, the desk opens one. Same service as the original study.
+  - *Nothing is sent* — "notified" records a letter / call / conversation a person made; the
+    WhatsApp adapter is not on main and no follow-up template exists.
+  - *Overdue = due before today (IST)*, chased once by the daily 08:00 job; RS10's spine picks the
+    event up after #404 merges.
+  - *Peer sample 3 % (board), at least one per reader per month*, first signatures only; every
+    amendment; every night discrepancy. *Agreement = RADPEER 1*; 2a/2b "minor", 3–4 "significant".
+  - *Blind*: cases carry no reader; agreement bars are named (the board draws them) — the HOD's
+    per-case unblinding is not built.
+  - *The night reader is an identity, not a role*: listed in the governed book (NMC number, DPA,
+    data in India), holding `radiology_resident`'s grants in HMIS; the listing forbids every
+    signature. No new role or permission (RS12's note proposed one; the book is what the ruling
+    names and it has a writer today).
+  - *One over-read row per study*; a revised prelim moves the row, the clock keeps the first prelim.
+  - *The over-read signs and releases in one act* (RS8a's "sign and publish"); a discrepancy's line
+    goes to the log, never into the report.
+  - *The night window is shown, not enforced* — a prelim at 08:30 is still over-read.
+- **Pins.** Migration 0153 (3 tables + the definitions kind CHECK); definition kinds 8 → 9
+  (`setup.test.ts`); radiology events 21 → 24 (`imaging.followup_overdue`, `.followup_booked`,
+  `.overread_recorded`); error codes +6 (`unknown_followup`, `unknown_peer_review`,
+  `peer_review_own_report`, `tele_reader_prelim_only`, `unknown_tele_read`,
+  `overread_not_consultant`); API routes +10; **no** permission, role, seed-roles, README, nav or
+  SPA-route change (caddyfile routes unchanged); `router.tsx` — `/radiology/read`'s `view` search
+  admits three more values; `kernel/worker/jobs.ts` — the Watchman job's run body calls two more
+  sweeps (no new job, no census change); `kernel/db/schema/radiology.ts` — three tables appended.
+- **Counts** — see the PR body (fail-first: 11 core mutants, 5 web mutants, every one killed).
+- **Moved later.** A follow-up letter / WhatsApp template (provider + Meta approval); follow-ups as
+  an RS10 escalation cause (after #404); IR's skin-dose follow-up writing a row here (RS12b, #410,
+  can call `openFollowupsAtSignature`'s sibling when it merges); the HOD's per-case unblinding and
+  the Friday learning-case list as a screen; routing STAT/urgent studies to the partner's worklist
+  after hours and a temp-role grant boxed to the night window; the partner's monthly TAT/discrepancy
+  report as an export; CD import / image upload for outside films (RS12); automatic measurement
+  against the prior (needs structured measurements).
+- **Money/law for the owner.** (1) The teleradiology per-read fee: a payable to the provider under
+  the contract (RS12 note) — nothing built; the contract's price and penalty for late prelims are
+  the owner's. (2) Is a prelim by a partner's NMC-registered radiologist, over-read next morning,
+  sufficient for an ER decision at night under the hospital's NABH policy, or must a consultant of
+  the hospital be phoned for every STAT CT? Built as ruling 7 reads (prelim acted on; over-read by
+  10:00). (3) Retention of the discrepancy log and peer scores (peer-review privilege is not
+  statutory in India): kept indefinitely today.
+
 ### RS9 · Release and the closed loop
 - **Core:**
   - `imaging_report_delivery` gains `acted_at`, `acted_by` and `acted_note` (gap 6);
