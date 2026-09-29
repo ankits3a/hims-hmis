@@ -2134,6 +2134,7 @@
   },
   "materialsGrn": {
     "title": "Goods receipt",
+    "lead": "Every delivery at the gate, those still waiting for QC or posting first; under them, stock running out of date and transfers that did not tally. Receive a delivery with N. Nothing is on the shelf until its GRN is posted.",
     "tabGate": "Gate",
     "tabWorklists": "Worklists",
     "newGrn": "Receive a delivery",

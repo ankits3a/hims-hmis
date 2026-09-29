@@ -97,6 +97,8 @@ async function fillHeaderAndLine(
   user: ReturnType<typeof userEvent.setup>,
   over: { qty?: string } = {},
 ): Promise<void> {
+  // B5 — receiving a delivery is a sheet over the list, opened by the page's one "new" act.
+  await user.click(await screen.findByRole("button", { name: "Receive a delivery" }));
   await screen.findByRole("option", { name: "ACME" });
   await screen.findByRole("option", { name: "MAIN" });
   await screen.findByRole("option", { name: "CROC500" });
@@ -183,6 +185,7 @@ describe("MaterialsGrn", () => {
     });
     renderWithProviders(<MaterialsGrn />);
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Receive a delivery" }));
     await screen.findByRole("option", { name: "ACME" });
     await user.selectOptions(screen.getByLabelText("Vendor"), "v-1");
     await screen.findByRole("option", { name: /MPO2609240001/ });
@@ -245,8 +248,8 @@ describe("MaterialsGrn", () => {
     expect(screen.getByText(/Short shelf life/)).toBeInTheDocument();
   });
 
-  /** DD16's second tab: the two worklists are tables here, not screens of their own. */
-  it("the second tab carries the expiring and discrepancy worklists", async () => {
+  /** DD16's two worklists — once a second tab, now groups of the one page under the deliveries (B5: no tabs). */
+  it("shows the expiring and discrepancy worklists on the page, with no tab to find them behind", async () => {
     mockRoutes({
       ...baseRoutes(),
       "GET /api/materials/expiring": {
@@ -270,10 +273,11 @@ describe("MaterialsGrn", () => {
       },
     });
     renderWithProviders(<MaterialsGrn />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Worklists" }));
-
     expect(await screen.findByText(/B-OLD/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Worklists" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Gate" })).toBeNull();
+    // …and no capture form above the list: it is a sheet.
+    expect(screen.queryByLabelText("Vendor")).toBeNull();
     expect(screen.getByText(/19 days left/)).toBeInTheDocument();
     expect(screen.getByText(/42 on hand/)).toBeInTheDocument();
     expect(screen.getByText(/tr-1/)).toBeInTheDocument();
