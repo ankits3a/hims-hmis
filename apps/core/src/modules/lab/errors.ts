@@ -93,6 +93,8 @@ export const LAB_ERROR_CODES = [
   /** Consult v2 — the patient-scoped results read: no such patient, or one this reader may not see. */
   "unknown_patient",
   "critical_already_closed",
+  /** §13 walk 2026-09-28 — a read-back that does not say the value does not close the call. */
+  "readback_mismatch",
   // ── reports (T7) ──
   "report_print_blocked",
   "collector_identity_required",
@@ -200,6 +202,7 @@ const STATUS: Record<LabErrorCode, number> = {
   unknown_result: 404,
   unknown_patient: 404,
   critical_already_closed: 409,
+  readback_mismatch: 422,
 
   report_print_blocked: 422,
   collector_identity_required: 422,
