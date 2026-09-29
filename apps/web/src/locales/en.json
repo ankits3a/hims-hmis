@@ -479,6 +479,21 @@
       "days": "{{n}} days",
       "prescriber": "Prescribed by {{name}}",
       "ownPrescription": "You wrote this prescription — another steward must approve it; a grant from you will not let it leave the pharmacy."
+    },
+    "nearExpiry": {
+      "challan": "challan {{no}}",
+      "invoice": "invoice {{no}}",
+      "item": "Item",
+      "batch": "Batch",
+      "expiry": "Expires",
+      "qty": "Quantity",
+      "daysLeft_one": "{{count}} day left",
+      "daysLeft_other": "{{count}} days left",
+      "expired": "already expired"
+    },
+    "bankChange": {
+      "account": "Account {{from}} → {{to}}",
+      "none": "none on file"
     }
   },
   "opd": {
