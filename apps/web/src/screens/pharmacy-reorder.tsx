@@ -7,6 +7,7 @@ import { fetchReorderAdvice, fetchShortBook, pharmacyErrorText, resolveShortBook
 import { setStockLevel } from "../lib/purchase-api";
 import { materialsErrorText } from "../lib/materials-api";
 import { Button } from "@/components/ui/button";
+import { OfficeHead } from "./pharmacy-office/office-page";
 import type { WireReorderLine } from "../lib/pharmacy-api";
 
 /**
@@ -20,8 +21,9 @@ import type { WireReorderLine } from "../lib/pharmacy-api";
  * P8 adds the shelf's other risk below the list: batches that will expire before the counter's pace
  * sells them (send them back while there is time), and stock already past its date (quarantine).
  */
-const TONE: Record<WireReorderLine["status"], string> = {
-  stock_out: "bg-red-100 text-red-800", reorder: "bg-amber-100 text-amber-900", ok: "bg-green-50 text-green-800", no_movement: "bg-muted text-muted-foreground",
+/** The line's state as the board's pill (B5): out is red, reorder gold, fine pine, no use plain. */
+const PILL: Record<WireReorderLine["status"], string> = {
+  stock_out: "pill rd", reorder: "pill gd", ok: "pill on", no_movement: "pill",
 };
 
 export function PharmacyReorder(): React.ReactElement {
@@ -32,61 +34,62 @@ export function PharmacyReorder(): React.ReactElement {
   /* PARITY P2 — whoever raises orders sets the levels, here, in place. */
   const canLevel = can("materials.po.raise") && advice.data?.store !== undefined;
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-4" data-testid="pharmacy-reorder">
       <style>{"@media print { body * { visibility: hidden; } .reorder-print, .reorder-print * { visibility: visible; } .reorder-print { position: absolute; left: 0; top: 0; } .reorder-print .no-need { display: none; } }"}</style>
-      <div className="flex flex-wrap items-baseline gap-3">
-        <h1 className="text-xl font-semibold">{t("pharmacyReorder.title")}</h1>
+      {/* B5 — inside the office the page heading is the office's; the link goes to the orders it feeds, not to the office it is in. */}
+      <OfficeHead
+        title={t("pharmacyReorder.title")}
+        lead={w === undefined ? null : t("pharmacyReorder.intro", { days: w.days, min: w.minCoverDays, target: w.targetCoverDays })}
+      >
         {can("materials.po.raise") && (
-          <Link to="/pharmacy/office" className="text-sm underline" data-testid="reorder-office-link">{t("pharmacyReorder.p2.office")}</Link>
+          <Link to="/pharmacy/office" search={{ view: "buy", page: "orders" }} className="text-sm underline" data-testid="reorder-office-link">{t("pharmacyReorder.toOrders")}</Link>
         )}
-      </div>
-      {w !== undefined && (
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          {t("pharmacyReorder.intro", { days: w.days, min: w.minCoverDays, target: w.targetCoverDays })}
-        </p>
-      )}
+      </OfficeHead>
       <ShortBook />
       {advice.error !== null && <p role="alert" className="text-sm text-red-600">{pharmacyErrorText(advice.error, t)}</p>}
       {advice.data !== undefined && advice.data.items.length === 0 && <p className="text-sm">{t("pharmacyReorder.none")}</p>}
       {advice.data !== undefined && advice.data.items.length > 0 && (
         <>
-          <Button type="button" variant="outline" onClick={() => window.print()}>{t("pharmacyReorder.print")}</Button>
-          <div className="reorder-print overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="ofp-label flex-1">{t("pharmacyReorder.listTitle", { count: advice.data.items.length })}</h2>
+            <Button type="button" variant="outline" onClick={() => window.print()}>{t("pharmacyReorder.print")}</Button>
+          </div>
+          <div className="reorder-print ofp-box ofp-scroll">
+            <table className="ofp-table min-w-[64rem]">
               <thead>
-                <tr className="text-left">
-                  <th className="py-1 pr-3">{t("pharmacyReorder.item")}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.status")}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.available")}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.used", { days: w?.days ?? 30 })}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.cover")}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.suggest")}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.source")}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.p2.levels")}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.p2.onOrder")}</th>
-                  <th className="py-1 pr-3">{t("pharmacyReorder.p2.toBuy")}</th>
+                <tr>
+                  <th>{t("pharmacyReorder.item")}</th>
+                  <th>{t("pharmacyReorder.status")}</th>
+                  <th>{t("pharmacyReorder.available")}</th>
+                  <th>{t("pharmacyReorder.used", { days: w?.days ?? 30 })}</th>
+                  <th>{t("pharmacyReorder.cover")}</th>
+                  <th>{t("pharmacyReorder.suggest")}</th>
+                  <th>{t("pharmacyReorder.source")}</th>
+                  <th>{t("pharmacyReorder.p2.levels")}</th>
+                  <th>{t("pharmacyReorder.p2.onOrder")}</th>
+                  <th>{t("pharmacyReorder.p2.toBuy")}</th>
                 </tr>
               </thead>
               <tbody>
                 {advice.data.items.map((l) => (
                   <tr key={l.itemId} data-testid={`reorder-${l.code}`} className={l.suggestBase === 0 && (l.orderBase ?? 0) === 0 ? "no-need" : ""}>
-                    <td className="py-1 pr-3">{l.name} <span className="text-xs text-muted-foreground">{l.code}</span></td>
-                    <td className="py-1 pr-3"><span className={`rounded px-1 text-xs ${TONE[l.status]}`}>{t(`pharmacyReorder.${l.status}`)}</span></td>
-                    <td className="py-1 pr-3">{l.available} {l.baseUom}</td>
-                    <td className="py-1 pr-3">{l.usedInWindow}</td>
-                    <td className="py-1 pr-3">
+                    <td>{l.name} <span className="text-xs text-muted-foreground">{l.code}</span></td>
+                    <td><span className={PILL[l.status] ?? "pill"}>{t(`pharmacyReorder.${l.status}`)}</span></td>
+                    <td>{l.available} {l.baseUom}</td>
+                    <td>{l.usedInWindow}</td>
+                    <td>
                       {l.daysOfCover === null ? t("pharmacyReorder.noCover") : l.daysOfCover}
                       {l.unsoldByExpiry > 0 && (
                         <span className="block text-xs text-amber-800">{t("pharmacyReorder.unsoldHint", { n: l.unsoldByExpiry })}</span>
                       )}
                     </td>
-                    <td className="py-1 pr-3">{l.suggestBase === 0 ? "" : `${String(l.suggestBase)} ${l.baseUom}${l.suggestPacks !== null ? ` (${l.suggestPacks})` : ""}`}</td>
-                    <td className="py-1 pr-3">
+                    <td>{l.suggestBase === 0 ? "" : `${String(l.suggestBase)} ${l.baseUom}${l.suggestPacks !== null ? ` (${l.suggestPacks})` : ""}`}</td>
+                    <td>
                       {l.suggestBase === 0 ? "" : l.source === null
                         ? t("pharmacyReorder.purchase")
                         : t("pharmacyReorder.sourceHas", { store: l.source.storeName, n: l.source.available })}
                     </td>
-                    <td className="py-1 pr-3">
+                    <td>
                       {canLevel
                         ? <LevelsCell itemId={l.itemId} code={l.code} storeResourceId={advice.data.store!.id} levels={l.levels ?? null} />
                         : l.levels == null ? "" : `${String(l.levels.minBase)} / ${String(l.levels.reorderBase)} / ${String(l.levels.maxBase)}`}
@@ -105,35 +108,35 @@ export function PharmacyReorder(): React.ReactElement {
       )}
       {advice.data !== undefined && w !== undefined && (
         <section className="space-y-2" data-testid="reorder-expiring">
-          <h2 className="text-lg font-semibold">{t("pharmacyReorder.expiringTitle", { days: w.nearExpiryDays })}</h2>
+          <h2 className="ofp-label">{t("pharmacyReorder.expiringTitle", { days: w.nearExpiryDays })}</h2>
           <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyReorder.expiringIntro")}</p>
           {advice.data.expiring.length === 0
             ? <p className="text-sm">{t("pharmacyReorder.noneExpiring", { days: w.nearExpiryDays })}</p>
             : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="ofp-box ofp-scroll">
+                <table className="ofp-table min-w-[44rem]">
                   <thead>
-                    <tr className="text-left">
-                      <th className="py-1 pr-3">{t("pharmacyReorder.item")}</th>
-                      <th className="py-1 pr-3">{t("pharmacyReorder.batch")}</th>
-                      <th className="py-1 pr-3">{t("pharmacyReorder.expiry")}</th>
-                      <th className="py-1 pr-3">{t("pharmacyReorder.daysLeft")}</th>
-                      <th className="py-1 pr-3">{t("pharmacyReorder.available")}</th>
-                      <th className="py-1 pr-3">{t("pharmacyReorder.unsold")}</th>
-                      <th className="py-1 pr-3">{t("pharmacyReorder.action")}</th>
+                    <tr>
+                      <th>{t("pharmacyReorder.item")}</th>
+                      <th>{t("pharmacyReorder.batch")}</th>
+                      <th>{t("pharmacyReorder.expiry")}</th>
+                      <th>{t("pharmacyReorder.daysLeft")}</th>
+                      <th>{t("pharmacyReorder.available")}</th>
+                      <th>{t("pharmacyReorder.unsold")}</th>
+                      <th>{t("pharmacyReorder.action")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {advice.data.expiring.map((e) => (
                       <tr key={e.batchId} data-testid={`expiring-${e.batchNo}`}>
-                        <td className="py-1 pr-3">{e.name} <span className="text-xs text-muted-foreground">{e.code}</span></td>
-                        <td className="py-1 pr-3">{e.batchNo}</td>
-                        <td className="py-1 pr-3">{e.expiryDate}</td>
-                        <td className="py-1 pr-3">{e.daysLeft === 0 ? t("pharmacyReorder.lastDay") : e.daysLeft}</td>
-                        <td className="py-1 pr-3">{e.available} {e.baseUom}</td>
-                        <td className="py-1 pr-3">{e.unsoldByExpiry === 0 ? "" : `${String(e.unsoldByExpiry)} ${e.baseUom}`}</td>
-                        <td className="py-1 pr-3">
-                          <span className={`rounded px-1 text-xs ${e.action === "move_back" ? "bg-amber-100 text-amber-900" : "bg-green-50 text-green-800"}`}>
+                        <td>{e.name} <span className="text-xs text-muted-foreground">{e.code}</span></td>
+                        <td>{e.batchNo}</td>
+                        <td>{e.expiryDate}</td>
+                        <td>{e.daysLeft === 0 ? t("pharmacyReorder.lastDay") : e.daysLeft}</td>
+                        <td>{e.available} {e.baseUom}</td>
+                        <td>{e.unsoldByExpiry === 0 ? "" : `${String(e.unsoldByExpiry)} ${e.baseUom}`}</td>
+                        <td>
+                          <span className={e.action === "move_back" ? "pill gd" : "pill on"}>
                             {t(`pharmacyReorder.${e.action}`)}
                           </span>
                         </td>
@@ -147,9 +150,9 @@ export function PharmacyReorder(): React.ReactElement {
       )}
       {advice.data !== undefined && advice.data.expiredOnShelf.length > 0 && (
         <section className="space-y-2" data-testid="reorder-expired">
-          <h2 className="text-lg font-semibold text-red-700">{t("pharmacyReorder.expiredTitle")}</h2>
+          <h2 className="ofp-label ofp-red">{t("pharmacyReorder.expiredTitle")}</h2>
           <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyReorder.expiredIntro")}</p>
-          <ul className="text-sm">
+          <ul className="ofp-box ofp-rows">
             {advice.data.expiredOnShelf.map((e) => (
               <li key={e.batchId} data-testid={`expired-${e.batchNo}`}>
                 {e.name} <span className="text-xs text-muted-foreground">{e.code}</span> · {t("pharmacyReorder.batch")} {e.batchNo} · {t("pharmacyReorder.expiry")} {e.expiryDate} · {t("pharmacyReorder.onHand")} {e.onHand} {e.baseUom}
@@ -243,30 +246,30 @@ function ShortBook(): React.ReactElement | null {
   const rows = book.data.entries;
   return (
     <section className="space-y-2" data-testid="reorder-short-book">
-      <h2 className="text-lg font-semibold">{t("pharmacyReorder.short.title", { count: rows.length })}</h2>
+      <h2 className="ofp-label">{t("pharmacyReorder.short.title", { count: rows.length })}</h2>
       <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyReorder.short.intro")}</p>
       {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {rows.length === 0 ? <p className="text-sm">{t("pharmacyReorder.short.none")}</p> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="ofp-box ofp-scroll">
+          <table className="ofp-table min-w-[40rem]">
             <thead>
-              <tr className="text-left">
-                <th className="py-1 pr-3">{t("pharmacyReorder.item")}</th>
-                <th className="py-1 pr-3">{t("pharmacyReorder.short.noted")}</th>
-                <th className="py-1 pr-3">{t("pharmacyReorder.short.qty")}</th>
-                <th className="py-1 pr-3">{t("pharmacyReorder.short.from")}</th>
-                {canResolve && <th className="py-1 pr-3" />}
+              <tr>
+                <th>{t("pharmacyReorder.item")}</th>
+                <th>{t("pharmacyReorder.short.noted")}</th>
+                <th>{t("pharmacyReorder.short.qty")}</th>
+                <th>{t("pharmacyReorder.short.from")}</th>
+                {canResolve && <th />}
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} data-testid={`short-${r.id}`}>
-                  <td className="py-1 pr-3">{r.drugName}{r.itemId === null && <span className="ml-1 rounded bg-muted px-1 text-xs text-muted-foreground">{t("pharmacyReorder.short.notStocked")}</span>}</td>
-                  <td className="py-1 pr-3">{IST_WHEN.format(new Date(r.notedAt))} · {r.notedByName ?? "—"}</td>
-                  <td className="py-1 pr-3">{r.qtyWanted ?? ""}</td>
-                  <td className="py-1 pr-3">{t(`pharmacyReorder.short.source.${r.source}`)}</td>
+                  <td>{r.drugName}{r.itemId === null && <span className="ml-1 rounded bg-muted px-1 text-xs text-muted-foreground">{t("pharmacyReorder.short.notStocked")}</span>}</td>
+                  <td>{IST_WHEN.format(new Date(r.notedAt))} · {r.notedByName ?? "—"}</td>
+                  <td>{r.qtyWanted ?? ""}</td>
+                  <td>{t(`pharmacyReorder.short.source.${r.source}`)}</td>
                   {canResolve && (
-                    <td className="py-1 pr-3 whitespace-nowrap">
+                    <td className="whitespace-nowrap">
                       {(["ordered", "received", "dismissed"] as const).map((how) => (
                         <Button key={how} type="button" size="sm" variant="outline" className="mr-1" onClick={() => void resolve(r.id, how)}>
                           {t(`pharmacyReorder.short.${how}`)}

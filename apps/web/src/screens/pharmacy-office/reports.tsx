@@ -45,7 +45,12 @@ const ALL_REPORTS: readonly ReportKey[] = [
 const EXTRA_KEYS = ["A", "D", "F", "G", "H", "J", "K", "N", "O", "U", "V", "Z"] as const;
 export const keyOf = (i: number): string => (i < 9 ? String(i + 1) : i === 9 ? "0" : EXTRA_KEYS[i - 10] ?? "");
 
-type Col<R> = { key: string; label: string; num?: boolean; money?: boolean; value: (r: R) => string | number | null };
+/**
+ * `value` is what the export and the print carry. On screen only: `lines` puts a list (packs, levels,
+ * racks) one entry to a line, each unbroken, and `cell` adds classes to the cell (gap C: at 1440 the
+ * catalogue split "PHARM-OPD R-12-B" at its hyphens).
+ */
+type Col<R> = { key: string; label: string; num?: boolean; money?: boolean; value: (r: R) => string | number | null; lines?: (r: R) => readonly string[]; cell?: string };
 type Totals = Record<string, string | number | null>;
 
 const cellText = (c: { money?: boolean }, v: string | number | null): string =>
@@ -267,7 +272,14 @@ function Table<R>({ testId, cols, rows, rowKey, totals, expand, rowClass }: {
                       </button>
                     </td>
                   )}
-                  {cols.map((c) => <td key={c.key} className={`py-1 pr-2 ${c.num === true || c.money === true ? "text-right tabular-nums" : ""}`}>{cellText(c, c.value(r))}</td>)}
+                  {cols.map((c) => {
+                    const lines = c.lines?.(r);
+                    return (
+                      <td key={c.key} className={`py-1 pr-2 ${c.num === true || c.money === true ? "text-right tabular-nums" : ""} ${c.cell ?? ""}`}>
+                        {lines === undefined ? cellText(c, c.value(r)) : lines.length === 0 ? "—" : lines.map((l, i) => <div key={i} className="whitespace-nowrap">{l}</div>)}
+                      </td>
+                    );
+                  })}
                 </tr>
                 {inner !== null && <tr><td /><td colSpan={cols.length} className="bg-muted/40 p-2">{inner}</td></tr>}
               </Fragment>
@@ -1031,27 +1043,30 @@ function CatalogueReport({ sheet }: Bind): React.ReactElement {
   const yes = (b: boolean): string => (b ? t("pharmacyOffice.reports.yes") : "");
   const one = store !== "";
   const level = (r: WireCatalogueRow): WireCatalogueRow["levels"][number] | null => r.levels[0] ?? null;
+  const packLines = (r: WireCatalogueRow): string[] => [`1 ${r.baseUom}`, ...r.packs.map((p) => `${p.uom} = ${String(p.toBase)}`)];
+  const levelLines = (r: WireCatalogueRow): string[] => r.levels.map((l) => `${l.storeCode} ${String(l.minBase)}/${String(l.reorderBase)}/${String(l.maxBase)}`);
+  const rackLines = (r: WireCatalogueRow): string[] => r.racks.map((x) => (one ? x.location : `${x.storeCode} ${x.location}`));
   const cols: Col<WireCatalogueRow>[] = [
-    { key: "code", label: L("code"), value: (r) => r.code },
-    { key: "name", label: L("item"), value: (r) => r.name },
+    { key: "code", label: L("code"), cell: "whitespace-nowrap", value: (r) => r.code },
+    { key: "name", label: L("item"), cell: "min-w-48", value: (r) => r.name },
     { key: "class", label: L("class"), value: (r) => r.class },
-    { key: "hsn", label: L("hsn"), value: (r) => r.hsnCode ?? "—" },
+    { key: "hsn", label: L("hsn"), cell: "whitespace-nowrap", value: (r) => r.hsnCode ?? "—" },
     { key: "gst", label: L("gstRate"), value: (r) => (r.gstRateBps === null ? "—" : `${String(r.gstRateBps / 100)}%`) },
     { key: "schedule", label: L("schedule"), value: (r) => r.schedule ?? "—" },
-    { key: "storage", label: L("storage"), value: (r) => t(`pharmacyOffice.reports.storage.${r.storageClass}`, { defaultValue: r.storageClass }) },
+    { key: "storage", label: L("storage"), cell: "whitespace-nowrap", value: (r) => t(`pharmacyOffice.reports.storage.${r.storageClass}`, { defaultValue: r.storageClass }) },
     { key: "manufacturer", label: L("manufacturer"), value: (r) => r.manufacturer ?? "—" },
     { key: "lead", label: L("leadDays"), num: true, value: (r) => r.leadTimeDays },
     { key: "lasa", label: L("lasa"), value: (r) => yes(r.lasa) },
     { key: "highAlert", label: L("highAlert"), value: (r) => yes(r.highAlert) },
-    { key: "packs", label: L("packs"), value: (r) => [`1 ${r.baseUom}`, ...r.packs.map((p) => `${p.uom} = ${String(p.toBase)}`)].join(" · ") },
+    { key: "packs", label: L("packs"), value: (r) => packLines(r).join(" · "), lines: packLines },
     ...(one ? [
       { key: "min", label: L("min"), num: true, value: (r: WireCatalogueRow) => level(r)?.minBase ?? null },
       { key: "reorder", label: L("reorder"), num: true, value: (r: WireCatalogueRow) => level(r)?.reorderBase ?? null },
       { key: "max", label: L("max"), num: true, value: (r: WireCatalogueRow) => level(r)?.maxBase ?? null },
     ] : [
-      { key: "levels", label: L("levels"), value: (r: WireCatalogueRow) => r.levels.map((l) => `${l.storeCode} ${String(l.minBase)}/${String(l.reorderBase)}/${String(l.maxBase)}`).join(" · ") || "—" },
+      { key: "levels", label: L("levels"), value: (r: WireCatalogueRow) => levelLines(r).join(" · ") || "—", lines: levelLines },
     ]),
-    { key: "rack", label: L("rack"), value: (r) => r.racks.map((x) => (one ? x.location : `${x.storeCode} ${x.location}`)).join(" · ") || "—" },
+    { key: "rack", label: L("rack"), value: (r) => rackLines(r).join(" · ") || "—", lines: rackLines },
   ];
   const needle = find.trim().toLowerCase();
   const rows = d === undefined ? [] : needle === "" ? d.rows : d.rows.filter((r) => r.code.toLowerCase().includes(needle) || r.name.toLowerCase().includes(needle));
