@@ -1132,7 +1132,7 @@ migration:
   - **The late message covers `credit_note.issued` too** — a correction can be what settles a bill.
   - **Retention of a relative's ID last four (money/law question 3):** part of the medical record,
     kept for the record's retention period, no separate deletion (runbook §15a).
-- **Pins.** Migration `0151` (renumbered from 0150 at rebase; RS12 took 0150); radiology events 19 → 20; approval types 23 → 24
+- **Pins.** Migration `0151` (renumbered from 0150 at rebase; RS12 took 0150); radiology events 21 → 22 (RS12 took 19 → 21); approval types 23 → 24
   (`test/seed-roles.test.ts`); worker consumers + `radiology.report_ready_on_payment`
   (`seed-cursors.test.ts`, `worker-runtime.e2e.test.ts`, `worker.module.ts` — additive); web
   `APPROVAL_KINDS` + inbox words; three error codes. No permission, role, route (web) or nav change.
