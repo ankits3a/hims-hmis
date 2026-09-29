@@ -321,6 +321,13 @@ granting the key to a door that opens on nothing would manufacture the appearanc
 path. That one needs wiring and an owner ruling on whether a bypass may cross the confidential
 gate, not a role row.
 
+Owner ruling of 2026-09-28 gives `auth.break_glass.use` to the `medical_superintendent` role and to
+no other role in the model. It now opens exactly one door: merging a sealed (confidential) patient
+record refuses until the Medical Superintendent who approved the merge records a break-glass on
+that record. It still opens no screen — no route sets `breakGlassBypass` — and no clinical or ER
+role holds it; whether ER staff may open any record stays an open owner question. Every use lands
+in the break-glass review queue the same role already reviews.
+
 Owner ruling of 2026-08-26 assigns ten pairs that appear in no table above, closing permissions
 that had no holder at all and therefore answered 403 to every account on the deployment. A new
 `tariff_editor` role reads the price list, manages services and DRAFTS a version; the `owner` role
