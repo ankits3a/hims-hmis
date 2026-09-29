@@ -154,6 +154,15 @@ export const RADIOLOGY_ERROR_CODES = [
   "already_signed",
   "prelim_not_publishable",
   "report_not_signed",
+  /**
+   * ── 18-S RS5 T2 — the prep bay asks the radiologist to override ──
+   *
+   * `override_already_requested`: a second "please override" for a gate that already has one
+   * waiting — the answer is to wait for (or chase) the radiologist, not to file a duplicate.
+   * `unknown_override_request`: the decision names a request that is not an imaging gate override.
+   */
+  "override_already_requested",
+  "unknown_override_request",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -229,6 +238,8 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   already_signed: 409,
   prelim_not_publishable: 422,
   report_not_signed: 422,
+  override_already_requested: 409,
+  unknown_override_request: 404,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

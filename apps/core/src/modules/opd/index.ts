@@ -34,6 +34,8 @@ export { getPrescription, listPrescriptions, matchAllergies, runRxChecks, verify
 export { isCurrent as isCurrentDose } from "./rx-checks";
 export { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 export { registerVitalsStartGuard, vitalsGateVerdict } from "./consultation";
+// 18-S RS5 — the imaging prep bay reads the latest weight (contrast volume by weight) from here.
+export { lastActiveVitals } from "./vitals";
 export type { VitalsStartGuard } from "./consultation";
 export type { DraftRow, SaveDraftInput } from "./prescription-drafts";
 export type {

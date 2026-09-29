@@ -422,6 +422,47 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Core:** eGFR in the kidney gate (gap 3). An override request becomes an approval row for the radiologist or HOD.
 - **Journeys:** J1 prep hop, J5.
 
+**RS5 spike** (read on main `4d05ffdc`, 29 Sep, before any code):
+- **(a) Who can satisfy which gate.** Two planes, measured. The guard: `radiology.gates.satisfy`
+  is held by `radiographer` ALONE (`radiology_receptionist` is denied it by name — the first
+  separation). The engine: `imaging_gate` `open → satisfied` names `radiographer`, `radiologist`,
+  `doctor`, `system` (F19: the narrower guard wins). One definition covers every KIND, so a role
+  on that edge can satisfy all ten. Waive and override are `radiologist` on both planes. **There is
+  no prep-nurse role** (`ot_nurse`/`recovery_nurse` are the theatre's). **DECIDED** (standard: a
+  radiology nurse staffs the prep bay): new role `radiology_nurse` holding `radiology.worklist.read`,
+  `radiology.gates.satisfy` and a new `radiology.contrast.record`, and named on the engine's satisfy
+  edge; NOT `radiology.gates.override`, NOT `radiology.checkin`. The contrast routes guarded on
+  `radiology.acquire` (the machine) — giving the nurse `acquire` would let her start and finish an
+  acquisition, so the two contrast POSTs move to `radiology.contrast.record`, held by everyone who
+  held `acquire` (radiologist, radiographer) plus the nurse.
+- **(b) Evidence per kind** (`gates.ts`): identity `{secondIdentifier: dob|uhid|wristband, value}`
+  compared to the patient master (wristband = the UHID); pregnancy `{declared, lmpDate?,
+  hcgResultRef?, hcgResultAt?}` judged by the `pregnancy_policy` (default: a declaration alone does
+  not carry an ionising study; LMP reassuring ≤ 28 days); contrast consent = `ot`'s `consentSchema`
+  (procedureCode = study type, templateVersion, language, signer patient|guardian + guardianId with
+  consent authority, witness required for a thumb impression, laterality, conversionCovered,
+  signedAt); renal `{creatinineUmolL, sampledAt, source internal|external, ckdFlagged}`, window 30 d
+  OPD / 7 d admitted; prior reaction `{radiologistId?, reason?}` — the allergy list is read by the
+  gate, and a contrast allergy needs a named radiologist + reason; MRI `{implants[], pacemaker,
+  clips, cochlear, metalFb, claustrophobia}` — any of the four hard ones is override-only; Form F
+  takes nothing (the register is read); chaperone `{chaperoneUserId}` — an active user, not the
+  actor, not the patient; side `{patientStated}`; MLC `{status registered|ruled_out, mlcNo?}`.
+- **(c) Overrides today.** `POST …/gates/:kind/override` on `radiology.gates.override` + the
+  engine's `radiologist` edge, reason required, lexical §5(2) check, evented. `form_f` and
+  `laterality_confirm` never; `identity_two_factor` override-only (never waived). Nothing lets a
+  satisfier ASK. **The kernel approvals spine carries it:** `requestApproval(tx, …)` on the caller's
+  transaction with a subject (the gate), a note, an approver role, a closure SLA + ladder,
+  `approval.requested`, requester ≠ approver SoD; `approveRequest`/`rejectRequest` are Db-first
+  (their own transaction). Radiology already registers one type (`imaging_definition_publish`) the
+  same way, so a second type is the house pattern and no local request table is needed.
+- **(d) Creatinine and eGFR.** No reader existed: the lab keeps signed values in `lab_results`
+  (analyte `CREA`, mg/dL, in the catalogue fixture), and `patientResultsForDoctor` is the doctor's
+  (PHI-logged, clinician-gated). A small `latestVerifiedCreatinine` is added to the lab's index
+  (verified, not superseded, not restricted, whole merge chain, unit-converted, draw instant from the
+  specimen). eGFR CKD-EPI 2021 is computable server-side: `patients.dob` + `patients.sex` are on the
+  master, `ageInYearsOn` exists (`applicability.ts`), no race term. Not computable → no DOB, a sex
+  other than female/male, or under 18 (CKD-EPI is an adult equation) → the ceiling stays.
+
 ### RS6 · Modality rooms
 - **Web:**
   - **From RS4:** the `imaging_protocols` definition kind (schema, CHECK widening — one migration — and
