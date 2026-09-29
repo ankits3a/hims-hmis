@@ -48,3 +48,4 @@
 
 /* No keyboard on a phone or tablet: the keycap is noise there. */
 @media (max-width: 768px) { .d1 .pof-legacy .ofp-kb { display: none; } }
+.d1 .pof-legacy .ofp-rows > li.ofp-stack { display: block; }
