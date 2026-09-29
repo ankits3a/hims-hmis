@@ -85,6 +85,7 @@
     "radiologyDiary": "Imaging diary",
     "radiologyDisplay": "Imaging hall display",
     "radiologyReading": "Reading room",
+    "radiologyPrep": "Prep & safety bay",
     "radiologyUsg": "Ultrasound & PCPNDT"
   },
   "palette": {
@@ -3126,6 +3127,305 @@
     }
   },
   "radiology": {
+    "bay": {
+      "title": "Prep & safety bay",
+      "place": "Prep bay · the gates before the room",
+      "listTitle": "In the prep bay",
+      "empty": "Nobody is waiting in the bay. A study appears here after check-in while a safety gate the bay closes is still open.",
+      "nobody": "Nobody in hand. Open a patient from the list.",
+      "inBay": "{{count}} in the bay",
+      "statBay": "In the bay",
+      "statAsked": "Asked the radiologist",
+      "clockAsked": "{{name}} · waiting for the radiologist on {{gates}}",
+      "clocksQuiet": "No override request is waiting.",
+      "clocksSummary": "{{count}} waiting for the radiologist",
+      "clocksNone": "Nothing waiting",
+      "briefTitle": "Pick a patient from the list.",
+      "brief": "The bay closes the safety gates the check-in opened, each with its evidence. Identity and side are checked by the technologist with the patient on the table. When the last gate closes the study becomes ready for the room by itself.",
+      "gatesTitle": "Gates · {{closed}} of {{total}} closed",
+      "noGates": "No gates are open — the study has not been checked in.",
+      "room": "closed at the console",
+      "record": "Record evidence",
+      "satisfied": "{{gate}} recorded.",
+      "asked": "Asked the radiologist about {{gate}}. The patient waits in the bay until the answer comes.",
+      "waived": "{{gate}} waived, with the reason on record.",
+      "askedShort": "asked",
+      "askedPill": "asked the radiologist",
+      "askedLine": "Asked by {{who}}: {{note}}",
+      "ask": "Ask the radiologist to override",
+      "askNote": "Why — the radiologist decides from what you write",
+      "askSend": "Send to the radiologist",
+      "waive": "Waive (does not apply)",
+      "waiveReason": "Reason (required)",
+      "waiveSend": "Waive with this reason",
+      "cancel": "Cancel",
+      "neverOverride": "Never overridden.",
+      "overriddenBy": "Overridden by the radiologist: {{reason}}",
+      "waivedLine": "Waived: {{reason}}",
+      "kidneyLine": "Creatinine {{umol}} µmol/L · eGFR {{egfr}}",
+      "recordedLine": "Evidence on record.",
+      "age": "{{years}} y",
+      "sex": {
+        "female": "female",
+        "male": "male",
+        "other": "other",
+        "unknown": "sex not recorded"
+      },
+      "allergies": "Allergies",
+      "noAllergies": "No allergy on the list.",
+      "kidneyTag": "Kidney",
+      "noCreatinine": "No signed creatinine in the lab.",
+      "creatinineLine": "Creatinine {{value}} {{unit}} · drawn {{date}}",
+      "band": {
+        "hold": "held for the radiologist",
+        "hydrate": "hydration needed",
+        "clear": "clear"
+      },
+      "weight": "Weight",
+      "lmp": "LMP",
+      "studyTag": "Study",
+      "state": {
+        "open": "open",
+        "satisfied": "satisfied",
+        "waived": "waived",
+        "overridden": "overridden"
+      },
+      "what": {
+        "identity_two_factor": "Name and a second identifier said by the patient, compared with the record.",
+        "pregnancy_screen": "A woman of child-bearing age having ionising radiation: declared, LMP, or a urine test.",
+        "contrast_consent": "Signed contrast consent in the patient's language, witnessed.",
+        "renal_function": "Creatinine with its eGFR (CKD-EPI 2021): under 30 the radiologist decides; 30–44 needs IV hydration.",
+        "prior_contrast_reaction": "The allergy list is read by the system. A previous reaction needs the radiologist's decision; premedication is recorded.",
+        "mri_safety": "The MRI screening form, signed by the patient and the technologist.",
+        "form_f": "PCPNDT Form F signed by the registered sonologist. No waiver, no override.",
+        "chaperone_present": "A named member of staff in the room.",
+        "laterality_confirm": "The side said by the patient. Never overridden.",
+        "mlc_check": "Medico-legal case: its number, or ruled out."
+      },
+      "identity": {
+        "first": "First identifier: the name — ask “what is your name?” ({{name}}).",
+        "second": "Second identifier",
+        "uhid": "UHID said by the patient",
+        "wristband": "Wristband scanned",
+        "dob": "Date of birth said",
+        "value": "What was said or scanned",
+        "hint": "Compared with the record. Ask again rather than read it off the slip."
+      },
+      "pregnancy": {
+        "declared": "The patient declares she is not pregnant",
+        "lmp": "Last menstrual period",
+        "upt": "Urine pregnancy test at the bay",
+        "uptNone": "Not done",
+        "uptNegative": "Negative",
+        "uptPositive": "Positive",
+        "uptAt": "Tested at",
+        "positive": "A positive test cannot satisfy this gate. Ask the radiologist.",
+        "hint": "For an ionising study a declaration alone is not enough: add the LMP (within 28 days) or a negative urine test."
+      },
+      "consent": {
+        "text": "I have been told that for my {{study}} a contrast medium will be injected into a vein. It helps the images. It can rarely cause a reaction — itching, rash, sickness, breathlessness — or strain the kidneys. The staff will watch me after the injection. I agree to the contrast being given.",
+        "language": "Language the patient signed in",
+        "signer": "Signed by",
+        "patient": "Patient",
+        "guardian": "Guardian",
+        "whichGuardian": "Which guardian",
+        "witness": "Witness (name)",
+        "interpreter": "Interpreter (if any)",
+        "signedAt": "Signed at",
+        "thumb": "Thumb impression instead of a signature",
+        "record": "Record the signed consent"
+      },
+      "kidney": {
+        "lab": "Lab result: {{value}} {{unit}}, drawn {{date}}",
+        "noEgfr": "no eGFR (no date of birth or sex on record, or under 18) — the 2.0 mg/dL ceiling applies",
+        "outside": "An outside report on paper",
+        "value": "Creatinine",
+        "unit": "Unit",
+        "sampled": "Blood drawn on",
+        "ckd": "Known chronic kidney disease (shortens the window to 7 days)",
+        "hold": "eGFR under 30: this gate cannot be satisfied. Ask the radiologist.",
+        "hydrationLabel": "IV hydration on the plan:",
+        "hydrationNeeded": "Required for eGFR 30–44.",
+        "hydrationIfNeeded": "Tick only if it is on the plan."
+      },
+      "reaction": {
+        "none": "No contrast allergy on the patient's list ({{count}} allergies read). Confirm and record.",
+        "confirmNone": "Confirm — no contrast allergy",
+        "found": "Contrast allergy on the list: {{list}}. Only a named radiologist's decision clears this gate.",
+        "premed": "Premedication given",
+        "drug": "Drug",
+        "dose": "Dose",
+        "at": "Given at",
+        "addDose": "Add a dose",
+        "radiologist": "Radiologist who decided",
+        "reason": "The radiologist's reason",
+        "title": "Contrast reaction",
+        "severityLabel": "Severity",
+        "severity": {
+          "mild": "Mild",
+          "moderate": "Moderate",
+          "severe": "Severe"
+        },
+        "onsetLabel": "Onset",
+        "onset": {
+          "immediate": "Immediate",
+          "delayed": "Delayed"
+        },
+        "manifestation": "What happened",
+        "signs": {
+          "urticaria": "Hives / itching",
+          "nausea": "Nausea",
+          "vomiting": "Vomiting",
+          "bronchospasm": "Wheeze",
+          "hypotension": "Low blood pressure",
+          "laryngealOedema": "Throat swelling",
+          "vasovagal": "Faint (vasovagal)",
+          "extravasation": "Extravasation"
+        },
+        "treatment": "Treatment given",
+        "clinician": "Managing clinician",
+        "outcomeLabel": "Outcome",
+        "outcomeOpen": "Still being watched",
+        "outcome": {
+          "recovered": "Recovered",
+          "recovering": "Recovering",
+          "admitted": "Admitted",
+          "referred": "Referred",
+          "died": "Died"
+        },
+        "observedBy": "Seen by",
+        "observedAt": "Seen at",
+        "writesAllergy": "Recording this adds “{{agent}} (contrast media)” to the patient's allergy list — the next study's prior-reaction gate reads it.",
+        "record": "Record the reaction",
+        "recorded": "Reaction recorded. “{{agent}} (contrast media)” is now on the allergy list; the next contrast study will stop at the prior-reaction gate."
+      },
+      "formF": {
+        "hint": "Form F is opened and signed by the registered sonologist on this machine. The bay only checks that it exists.",
+        "check": "Check the register"
+      },
+      "chaperone": {
+        "who": "Chaperone in the room",
+        "hint": "A named member of staff, not the person doing the scan."
+      },
+      "side": {
+        "said": "Side the patient says",
+        "left": "Left",
+        "right": "Right",
+        "bilateral": "Both"
+      },
+      "mlc": {
+        "status": "Medico-legal",
+        "registered": "MLC registered",
+        "ruledOut": "Ruled out",
+        "number": "MLC number"
+      },
+      "mri": {
+        "stops": "Stops the scanner — the radiologist decides",
+        "recorded": "Recorded",
+        "no": "No",
+        "yes": "Yes",
+        "q": {
+          "pacemaker": "Cardiac pacemaker or defibrillator (ICD)",
+          "cochlear": "Cochlear implant or hearing device",
+          "clips": "Aneurysm clip in the brain",
+          "neurostimulator": "Neurostimulator, insulin or drug pump",
+          "metalFb": "Metal fragments in the body (shrapnel, bullet)",
+          "orbitMetal": "Metal ever in the eye",
+          "welderOrMetalWork": "Works as a welder or with metal grinding",
+          "prosthesis": "Joint replacement, plates, screws or stents",
+          "tattoos": "Tattoos or permanent make-up",
+          "claustrophobia": "Afraid of closed spaces"
+        },
+        "implants": "Other implants (comma separated)",
+        "surgery": "Previous surgery",
+        "pregnancy": "Pregnant?",
+        "preg": {
+          "no": "No",
+          "yes": "Yes",
+          "unsure": "Not sure",
+          "na": "Not applicable"
+        },
+        "weight": "Weight (kg)",
+        "positive": "Positive for: {{list}}. This cannot satisfy the screen — an MR-conditional device is the radiologist's decision. Record the card if the patient has one.",
+        "card": {
+          "device": "Device",
+          "model": "Model",
+          "serial": "Serial number",
+          "conditions": "MR conditions (field strength, mode)"
+        },
+        "cardNote": "The card's particulars are recorded; there is no place to upload its photo yet.",
+        "zone": "Cleared into zone",
+        "zones": {
+          "I": "Zone I — public",
+          "II": "Zone II — reception and screening",
+          "III": "Zone III — control room",
+          "IV": "Zone IV — the magnet room"
+        },
+        "sweep": "Metal-detector sweep done",
+        "signatures": "Signatures",
+        "signer": "Signed by",
+        "signerName": "Patient or guardian (name)",
+        "technologist": "Technologist (name)",
+        "signedAt": "Signed at",
+        "incomplete_one": "{{count}} question unanswered — answer every question, choose the zone, sweep and sign.",
+      "incomplete_other": "{{count}} questions unanswered — answer every question, choose the zone, sweep and sign.",
+        "submit": "Record the screening",
+        "askPositive": "Ask the radiologist with this screening"
+      },
+      "contrast": {
+        "title": "Contrast",
+        "notYet": "Contrast is recorded once the patient is on the table (the study is in the room).",
+        "noPermission": "Recording contrast needs the contrast grant.",
+        "agent": "Agent",
+        "other": "Other…",
+        "otherName": "Agent name",
+        "batch": "Batch",
+        "expiry": "Expiry",
+        "expired": "The vial expired on {{date}}. Take another vial.",
+        "volume": "Volume (mL)",
+        "suggestion": "Suggested {{ml}} mL for {{kg}} kg",
+        "noSuggestion": "No weight on record — no suggestion",
+        "route": "Route",
+        "routes": {
+          "intravenous": "Intravenous",
+          "intraarterial": "Intra-arterial",
+          "oral": "Oral",
+          "rectal": "Rectal",
+          "intraarticular": "Intra-articular",
+          "intrathecal": "Intrathecal",
+          "intravesical": "Intravesical",
+          "intracavitary": "Intracavitary"
+        },
+        "site": "Site",
+        "sitePlaceholder": "R antecubital, 20G",
+        "rate": "Injection rate, mL per second",
+        "injectorLabel": "Injector",
+        "injector": {
+          "power": "power injector",
+          "hand": "hand injection"
+        },
+        "givenBy": "Given by",
+        "givenAt": "Given at",
+        "me": "Me",
+        "extravasation": "Cannula checked — no extravasation",
+        "record": "Record the injection",
+        "recorded": "Injection recorded."
+      },
+      "dock": {
+        "empty": "Nobody waiting",
+        "emptyHint": "the list fills as patients are checked in",
+        "take": "Take {{name}}",
+        "takeHint": "the next patient in the bay",
+        "record": "Record {{gate}}",
+        "openHint_one": "{{count}} gate open · evidence, or ask the radiologist",
+      "openHint_other": "{{count}} gates open · evidence, or ask the radiologist",
+        "waiting": "Waiting for the radiologist on {{gate}}",
+        "waitingHint": "the patient waits in the bay",
+        "next": "Next: {{name}}",
+        "done": "Bay gates closed",
+        "doneHint": "identity and side are checked at the console · {{room}}"
+      }
+    },
     "usg": {
       "views": {
         "room": "Scan room",
@@ -3635,6 +3935,10 @@
       "safetyPlace": "Radiation safety officer's registers"
     },
     "worklist": {
+      "overrideAsk": "{{name}} · {{gate}} — asked by {{who}}",
+      "noOverrideAsks": "No override request waiting",
+      "overrideAsksSummary_one": "{{count}} override request waiting",
+      "overrideAsksSummary_other": "{{count}} override requests waiting",
       "title": "Imaging worklist",
       "viewLabel": "View",
       "accession": "Accession",
@@ -3665,6 +3969,12 @@
       "clearBed": "Bring to the department instead"
     },
     "study": {
+      "noForm": "The evidence form needs the prep bay's view of this patient, which your role does not read. Open the prep bay, or ask a technologist or the prep nurse.",
+      "askedBy": "The prep bay asks for an override — {{who}}: {{note}}",
+      "decisionReason": "Your reason (required)",
+      "grantOverride": "Grant and override",
+      "refuseOverride": "Refuse",
+      "openContrast": "Contrast and reaction (prep bay)",
       "toRoom": "Open in the room console →",
       "unknown": "No such study, or you may not see it.",
       "gates": "Safety gates",

@@ -125,4 +125,7 @@ export type { BenchArrivalRow, PublishableOrder, WorklistRow } from "./worklist"
 export { LAB_BENCH_NAMES, LAB_BENCH_TOPIC, LAB_REALTIME_NAMES, LAB_TOPIC_SPACES, labTopicRouter, labTopicsFor } from "./realtime";
 // ── ABDM S2 — what the lab releases to the national network (modules/abdm reads only this) ──
 export { encounterNoOfLabOrder, verifiedLabTestsForRelease } from "./abdm-release";
+// ── PLAN 18-S RS5 — the imaging kidney gate reads the latest signed serum creatinine from here ──
+export { CREATININE_ANALYTE_CODES, latestVerifiedCreatinine } from "./creatinine";
+export type { LatestCreatinine } from "./creatinine";
 export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";

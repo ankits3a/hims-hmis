@@ -180,7 +180,8 @@ describe("the two radiology workflow definitions (18a T2 A4)", () => {
    * at a console at two in the morning.
    */
   it("every role named on a transition is a real role key, not a typo", () => {
-    const declaredByThisPhase = ["radiologist", "radiographer", "radiology_receptionist"];
+    // 18-S RS5 adds `radiology_nurse` (seed-roles' ROLE_MODEL declares it) on the gate's satisfy edge.
+    const declaredByThisPhase = ["radiologist", "radiographer", "radiology_receptionist", "radiology_nurse"];
     const preexisting = ["doctor", "system"];
     const allowed = new Set([...declaredByThisPhase, ...preexisting]);
     for (const def of RADIOLOGY_WORKFLOW_DEFINITIONS) {
