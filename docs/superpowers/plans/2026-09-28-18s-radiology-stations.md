@@ -668,7 +668,10 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
   `reports.test.ts` A3 now expects the stronger `foetal_sex_disclosure`. Contracts
   `obstetric.test.ts` 7 (Robinson/Hadlock published-table checks). Web: `radiology-usg.test.tsx` 9
   (2 failed with `verifySecondFactor` / `closeFormFGate` removed — mutation proof),
-  `lib/obstetric.test.ts` 2 (parity). Pins: caddyfile routes 76 → 77 (`/radiology/usg`); no new
+  `lib/obstetric.test.ts` 2 (parity). After the rebase on RS6 (`583db9ff`): core touched suites
+  (`modules/pcpndt`, `modules/radiology`, `radiology.e2e`, caddyfile/nav parity, roles-catalog,
+  seed-roles) **50 suites / 627 tests green**; web 12 files / 117 tests; contracts 30; `vite build`
+  green. Pins: caddyfile routes 77 → 78 (`/radiology/usg`, after RS6's `/radiology/room`); no new
   permission, event, template or migration.
 - **Moved later / owed.** Ages of living children (Form F item 5 asks sons and daughters WITH ages;
   counts only here); Form F items 16–17 (to whom the result was conveyed, MTP indication); the
