@@ -49,6 +49,8 @@ const PATIENT = {
   mergedIntoPatientId: null,
   promotionalOptIn: false,
   deceasedAt: null,
+  deathCertificateNo: null,
+  createdAt: "2011-01-12T05:00:00.000Z",
 };
 
 const ALLERGIES = [
@@ -87,6 +89,30 @@ const QR = {
   dob: "1990-04-02T00:00:00.000Z",
 };
 
+/**
+ * UX-AUDIT 2026-09-29 · BOARD — acts follow permissions, so every render now happens as a SEAT: the
+ * screen asks `GET /auth/me` and draws only what that seat may do. `ALL` is a seat holding every
+ * permission this screen consults, so the behavioural tests keep testing behaviour; the seat tests
+ * at the foot of the file pin what each role does and does not see.
+ */
+const ALL = [
+  "patients.read", "patients.register", "patients.update", "patients.deceased.write", "patients.merge",
+  "opd.visits.read", "opd.visits.open", "opd.appointments.manage", "billing.invoice.read", "billing.receipt.record",
+];
+function me(perms: string[]): unknown {
+  return { actor: { type: "user", id: "u-1" }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } } };
+}
+/** `stubFetch` as a seat: the token is set and `/auth/me` answers with `perms`. */
+function stubSeat(routes: Record<string, unknown>, perms: string[] = ALL): void {
+  setToken("t");
+  stubFetch({ "GET /api/auth/me": me(perms), ...routes });
+}
+/** The form moved into the "Edit details" drawer (board §2): open it, and return the drawer. */
+async function openEdit(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+  return screen.findByTestId("edit-drawer");
+}
+
 function fetchCalls(): { url: string; method: string; body: string }[] {
   return vi.mocked(fetch).mock.calls.map(([input, init]) => ({
     url: String(input),
@@ -94,6 +120,13 @@ function fetchCalls(): { url: string; method: string; body: string }[] {
     body: typeof init?.body === "string" ? init.body : "",
   }));
 }
+
+const BASE = {
+  "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+  "GET /api/patients/p-1/allergies": { items: [] },
+  "GET /api/patients/p-1/guardians": { items: [] },
+  "GET /api/patients/p-1/qr": QR,
+};
 
 describe("PatientDetail", () => {
   beforeEach(() => {
@@ -103,60 +136,54 @@ describe("PatientDetail", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    setToken(null);
   });
 
-  it("renders demographics, UHID, a struck-through corrected allergy (still present), and the guardian's SERVER-COMPUTED effective authority", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+  it("renders the name, UHID, a struck-through corrected allergy (still present), and the guardian's SERVER-COMPUTED effective authority", async () => {
+    stubSeat({
+      ...BASE,
       "GET /api/patients/p-1/allergies": { items: ALLERGIES },
       "GET /api/patients/p-1/guardians": GUARDIANS,
-      "GET /api/patients/p-1/qr": QR,
     });
     renderWithProviders(<PatientDetail />);
 
-    expect(await screen.findByText("Asha Devi")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Asha Devi" })).toBeInTheDocument();
     expect(screen.getByText("HMS0000001234")).toBeInTheDocument();
 
+    // UX-AUDIT 2026-09-29 · BOARD — the corrections table moved into "Edit details"; the lane's band
+    // shows active allergies only and says a corrected one exists.
+    const drawer = within(await openEdit());
     // corrected row: struck through, but the substance and its reason stay visible (E-8 — never hidden)
-    const correctedCell = await screen.findByText("Peanuts");
+    const correctedCell = await drawer.findByText("Peanuts");
     expect(correctedCell).toHaveClass("line-through");
-    expect(screen.getByText("Wrong patient chart", { exact: false })).toBeInTheDocument();
+    expect(drawer.getByText("Wrong patient chart", { exact: false })).toBeInTheDocument();
     // the still-active row is untouched
-    expect(screen.getByText("Penicillin")).not.toHaveClass("line-through");
+    expect(drawer.getByText("Penicillin")).not.toHaveClass("line-through");
 
     // guardian: stored flags are all true; the screen must render the server's
     // effectiveAuthority (all false) — the exact opposite of what a stored-flags
     // implementation would show.
-    expect(screen.getByText("Messages")).toHaveClass("line-through");
-    expect(screen.getByText("Consents")).toHaveClass("line-through");
-    expect(screen.getByText("Data requests")).toHaveClass("line-through");
-    expect(screen.getByText("Bills")).toHaveClass("line-through");
+    expect(await drawer.findByText("Messages")).toHaveClass("line-through");
+    expect(drawer.getByText("Consents")).toHaveClass("line-through");
+    expect(drawer.getByText("Data requests")).toHaveClass("line-through");
+    expect(drawer.getByText("Bills")).toHaveClass("line-through");
   });
 
   it("D-31: shows the sealed-guardian-messages banner when the patient has sensitiveContext", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: { ...PATIENT, sensitiveContext: true }, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-    });
+    stubSeat({ ...BASE, "GET /api/patients/p-1": { patient: { ...PATIENT, sensitiveContext: true }, resolvedFrom: null } });
     renderWithProviders(<PatientDetail />);
 
-    expect(
-      await screen.findByText("Sensitive context: guardian messages are sealed (D-31)"),
-    ).toBeInTheDocument();
+    // Beside the messages consent on the page, and again under Representative in the drawer.
+    expect(await screen.findByText("Sensitive context: guardian messages are sealed (D-31)")).toBeInTheDocument();
+    const drawer = within(await openEdit());
+    expect(drawer.getByText("Sensitive context: guardian messages are sealed (D-31)")).toBeInTheDocument();
   });
 
   it("dirty-field PATCH: editing only the phone number sends a body with exactly that one key", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-      "PATCH /api/patients/p-1": { patient: { ...PATIENT, phone: "9998887766" }, changed: ["phone"] },
-    });
+    stubSeat({ ...BASE, "PATCH /api/patients/p-1": { patient: { ...PATIENT, phone: "9998887766" }, changed: ["phone"] } });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
+    await openEdit();
 
     const phoneInput = await screen.findByLabelText("Mobile number");
     await user.clear(phoneInput);
@@ -171,50 +198,46 @@ describe("PatientDetail", () => {
   });
 
   /**
-   * PLAN 11g / T-D6, DD5 — the edit form's half, and it is the half a plain deletion would have
-   * got wrong. The control is gone, but the record's CURRENT value stays in the form's state and
-   * is never marked dirty, so a PATCH of some other field cannot silently UN-confidential a
-   * patient who already is one. `PATIENT` here is `isConfidential: true` for exactly that reason.
+   * PLAN 11g / T-D6, DD5 — the edit form's half. The control is gone, but the record's CURRENT value
+   * stays in the form's state and is never marked dirty, so a PATCH of some other field cannot
+   * silently UN-confidential a patient who already is one. UX-AUDIT 2026-09-29 · BOARD: a
+   * confidential record's drawer carries no contact or address fields (owner, 28-Sep), so the
+   * unrelated field amended here is the paper-era UHID.
    */
   it("DD5: the confidential control is off the edit form, and an unrelated PATCH does not carry the field", async () => {
     const confidential = { ...PATIENT, isConfidential: true, alias: "VIP-1" };
-    stubFetch({
+    stubSeat({
+      ...BASE,
       "GET /api/patients/p-1": { patient: confidential, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-      "PATCH /api/patients/p-1": { patient: { ...confidential, district: "Raipur" }, changed: ["district"] },
+      "PATCH /api/patients/p-1": { patient: { ...confidential, legacyUhid: "OLD-9" }, changed: ["legacyUhid"] },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
+    await openEdit();
 
-    const district = await screen.findByLabelText("District");
+    const legacy = await screen.findByLabelText("Old UHID (paper era)");
     // The neighbour is still rendered, so this asserts the ONE control is gone.
     expect(screen.getByLabelText("Sensitive context (seals guardian messages)")).toBeInTheDocument();
     expect(screen.queryByLabelText("Confidential record (VIP/staff)")).toBeNull();
     expect(screen.queryByLabelText("Public alias")).toBeNull();
 
-    await user.clear(district);
-    await user.type(district, "Raipur");
+    await user.type(legacy, "OLD-9");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(fetchCalls().some((c) => c.method === "PATCH")).toBe(true));
     const body = JSON.parse(fetchCalls().find((c) => c.method === "PATCH")?.body ?? "{}") as Record<string, unknown>;
-    expect(Object.keys(body)).toEqual(["district"]);
+    expect(Object.keys(body)).toEqual(["legacyUhid"]);
     expect(body).not.toHaveProperty("isConfidential");
   });
 
   it("D9: the promotional opt-in toggle posts an exact single-field PATCH", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-      "PATCH /api/patients/p-1": { patient: { ...PATIENT, promotionalOptIn: true }, changed: ["promotionalOptIn"] },
-    });
+    stubSeat({ ...BASE, "PATCH /api/patients/p-1": { patient: { ...PATIENT, promotionalOptIn: true }, changed: ["promotionalOptIn"] } });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
 
+    // UX-AUDIT 2026-09-29 · BOARD — the consent is READ on the page ("promotional messages: no") and
+    // changed behind "Change".
+    await user.click(await within(await screen.findByTestId("profile-messages")).findByRole("button", { name: "Change" }));
     const toggle = (await screen.findByLabelText("Promotional messages (opted in)")) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
     await user.click(toggle);
@@ -226,45 +249,83 @@ describe("PatientDetail", () => {
     expect(body).toEqual({ promotionalOptIn: true });
   });
 
-  it("D10/D-33: marking deceased with a date posts an exact single-field PATCH", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
+  /**
+   * OWNER RULING 2026-09-29 (law) — "Record a death" does not save without the death certificate
+   * number (MCCD Form 4 / 4A for a death in this hospital). The screen holds the confirm until a
+   * number is typed, and the PATCH carries the date AND the number.
+   */
+  it("OWNER RULING 2026-09-29: a death is not recorded without the death certificate number", async () => {
+    stubSeat({
+      ...BASE,
       "PATCH /api/patients/p-1": {
-        patient: { ...PATIENT, deceasedAt: "2026-08-20T00:00:00.000Z" },
-        changed: ["deceasedAt"],
+        patient: { ...PATIENT, deceasedAt: "2026-08-20T00:00:00.000Z", deathCertificateNo: "MCCD/2026/0412" },
+        changed: ["deceasedAt", "deathCertificateNo"],
       },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole("button", { name: "Mark deceased" }));
+    await user.click(await screen.findByRole("button", { name: "Record a death" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Date of death"), { target: { value: "2026-08-20" } });
-    await user.click(within(dialog).getByRole("button", { name: "Confirm deceased" }));
+    const confirm = within(dialog).getByRole("button", { name: "Confirm deceased" });
+
+    // Teeth: no number, no save.
+    expect(confirm).toBeDisabled();
+    await user.click(confirm);
+    expect(fetchCalls().some((c) => c.method === "PATCH")).toBe(false);
+    expect(within(dialog).getByText(/MCCD certificate number \(Form 4 \/ 4A\)/)).toBeInTheDocument();
+
+    await user.type(within(dialog).getByLabelText("Death certificate number"), "MCCD/2026/0412");
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
 
     await waitFor(() => expect(fetchCalls().some((c) => c.method === "PATCH")).toBe(true));
-    const patched = fetchCalls().find((c) => c.method === "PATCH")!;
-    const body = JSON.parse(patched.body) as Record<string, unknown>;
-    expect(body).toEqual({ deceasedAt: "2026-08-20T00:00:00.000Z" });
+    const body = JSON.parse(fetchCalls().find((c) => c.method === "PATCH")!.body) as Record<string, unknown>;
+    expect(body).toEqual({ deceasedAt: "2026-08-20T00:00:00.000Z", deathCertificateNo: "MCCD/2026/0412" });
   });
 
-  it("D10/D-33: the deceased banner shows the date and clearing posts an exact PATCH of null", async () => {
-    const deceasedPatient = { ...PATIENT, deceasedAt: "2026-08-15T00:00:00.000Z" };
+  it("OWNER RULING 2026-09-29: the server's refusal is shown in its own words", async () => {
+    setToken("t");
     stubFetch({
+      "GET /api/auth/me": me(ALL),
+      ...BASE,
+    });
+    // A server that refuses: replace fetch with one that answers the PATCH 400.
+    const inner = vi.mocked(fetch).getMockImplementation()!;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return new Response(JSON.stringify({
+          statusCode: 400, code: "death_certificate_required",
+          message: "death_certificate_required: a death is recorded only with its death certificate number — for a death in this hospital, the MCCD certificate (Form 4 / 4A) number",
+        }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      return inner(input, init);
+    }));
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Record a death" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Death certificate number"), "X");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm deceased" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent(/^A death is recorded only with its death certificate number/);
+    expect(alert).not.toHaveTextContent(/ApiError|death_certificate_required/);
+  });
+
+  it("D10/D-33: the deceased banner shows the printed date and number, and clearing posts an exact PATCH of null", async () => {
+    const deceasedPatient = { ...PATIENT, deceasedAt: "2026-08-15T00:00:00.000Z", deathCertificateNo: "MCCD/2026/0400" };
+    stubSeat({
+      ...BASE,
       "GET /api/patients/p-1": { patient: deceasedPatient, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
       "PATCH /api/patients/p-1": { patient: PATIENT, changed: ["deceasedAt"] },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
 
-    expect(await screen.findByText("Marked deceased on 2026-08-15")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Mark deceased" })).toBeNull();
+    expect(await screen.findByText("Marked deceased on 15-Aug-2026")).toBeInTheDocument();
+    expect(screen.getByTestId("deceased-banner")).toHaveTextContent("death certificate MCCD/2026/0400");
+    expect(screen.queryByRole("button", { name: "Record a death" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Clear deceased mark" }));
 
@@ -275,19 +336,17 @@ describe("PatientDetail", () => {
   });
 
   it("E-8: a correction posts to entered-in-error with the typed reason, and is blocked without one", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+    stubSeat({
+      ...BASE,
       "GET /api/patients/p-1/allergies": { items: [ALLERGIES[1]] }, // the still-active one
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
       "POST /api/patients/p-1/allergies/al-1/entered-in-error": { ok: true },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
 
-    await screen.findByText("Penicillin");
-    await user.click(screen.getByRole("button", { name: "Entered in error" }));
-    const dialog = await screen.findByRole("dialog");
+    const drawer = within(await openEdit());
+    await user.click(await drawer.findByRole("button", { name: "Entered in error" }));
+    const dialog = await screen.findByRole("dialog", { name: "Entered in error" });
     const submit = within(dialog).getByRole("button", { name: "Entered in error" });
 
     // Teeth: blocked with an empty reason.
@@ -305,7 +364,7 @@ describe("PatientDetail", () => {
   });
 
   it("shows the merged-record banner when the server resolved the URL id to a different canonical patient", async () => {
-    stubFetch({
+    stubSeat({
       "GET /api/patients/p-1": { patient: { ...PATIENT, id: "p-2" }, resolvedFrom: "p-1" },
       "GET /api/patients/p-2/allergies": { items: [] },
       "GET /api/patients/p-2/guardians": { items: [] },
@@ -316,20 +375,17 @@ describe("PatientDetail", () => {
     expect(await screen.findByText("This record was merged")).toBeInTheDocument();
   });
 
-  it("card reissue calls POST /patients/:id/qr/reissue and renders the new payload", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-      "POST /api/patients/p-1/qr/reissue": { qrVersion: 2, payload: "2.p-1.2.def456" },
-    });
+  /**
+   * D-23 — reissue kills every older card. UX-AUDIT 2026-09-29 · BOARD: the payload (it carries the
+   * internal patient id) is no longer printed as text; it is what the card's QR encodes, so the
+   * assertion reads it off the card that will be printed.
+   */
+  it("card reissue calls POST /patients/:id/qr/reissue and the card printed next carries the new payload", async () => {
+    stubSeat({ ...BASE, "POST /api/patients/p-1/qr/reissue": { qrVersion: 2, payload: "2.p-1.2.def456" } });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
 
-    expect(await screen.findByText("1.p-1.1.abc123")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Reissue card" }));
+    await user.click(await screen.findByRole("button", { name: /Reissue card/ }));
     const dialog = await screen.findByRole("dialog");
     expect(
       within(dialog).getByText("Reissuing invalidates every previously printed card for this patient."),
@@ -337,19 +393,20 @@ describe("PatientDetail", () => {
     await user.click(within(dialog).getByRole("button", { name: "Reissue card" }));
 
     await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST")).toBe(true));
-    expect(await screen.findByText("2.p-1.2.def456")).toBeInTheDocument();
-    expect(screen.queryByText("1.p-1.1.abc123")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("reissued-note")).toHaveTextContent("version 2");
+    await user.click(screen.getByTestId("print-card"));
+    await waitFor(() => expect(screen.getByTestId("qr-card-print")).toHaveAttribute("data-payload", "2.p-1.2.def456"));
+    expect(document.body.textContent).not.toContain("1.p-1.1.abc123");
+    expect(document.body.textContent).not.toContain("2.p-1.2.def456");
   });
 
   /**
-   * PLAN 07b T2 — THE DEAD END, ENDED. Confirming a match on the registration desk routed here and
-   * this screen had no onward action at all, so the clerk navigated away and searched for the same
-   * person a second time. The action must ALSO take the patient in hand, or the destination is just
-   * another empty screen and nothing has been gained.
+   * PLAN 07b T2 — THE DEAD END, ENDED. The action must ALSO take the patient in hand, or the
+   * destination is just another empty screen and nothing has been gained.
    */
   it("an onward action takes the patient in hand and then navigates", async () => {
     sessionStorage.clear();
-    stubFetch({
+    stubSeat({
       "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
       "GET /api/patients/p-1/allergies": { items: [] },
       "GET /api/patients/p-1/guardians": { items: [] },
@@ -357,30 +414,29 @@ describe("PatientDetail", () => {
     renderWithProviders(<PatientDetail />);
     await screen.findByTestId("onward-actions");
 
-    await userEvent.setup().click(screen.getByTestId("onward-open-visit"));
+    await userEvent.setup().click(await screen.findByTestId("onward-open-visit"));
 
     expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}")).toMatchObject({ patientId: "p-1" });
     expect(navigate).toHaveBeenCalledWith({ to: "/opd/desk" });
   });
 });
+
 /**
- * PLAN 22c-A — CLOSE REVIEW m13. T7's UI shipped with zero coverage: the assurance stamp, the
- * administrative-gender select, the reason select and the client-side Class-I gate. That hole is
- * also what let C1 (the server silently dropping `administrativeGender`) reach a reviewer instead
- * of a test — nothing here ever drove the field end to end.
+ * PLAN 22c-A — CLOSE REVIEW m13. The assurance stamp, the administrative-gender select, the reason
+ * select and the client-side Class-I gate.
  */
 describe("22c-A T7 — the amendment surface", () => {
-  function open(): void {
-    stubFetch({
-      /* ABDM S1 — the shared fixture's ABHA is `verified`, and a verified record now LOCKS name, birth and
-         gender (the lock has its own block below). These tests are about the Class I reason gate, so they
-         amend a record whose ABHA is the patient's own statement. */
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+  async function open(): Promise<void> {
+    stubSeat({
+      ...BASE,
+      /* ABDM S1 — the shared fixture's ABHA is `verified`, and a verified record LOCKS name, birth and
+         gender. These tests are about the Class I reason gate, so they amend a record whose ABHA is
+         the patient's own statement. */
       "GET /api/patients/p-1": { patient: { ...PATIENT, abhaVerificationStatus: "self_declared" }, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
     });
     renderWithProviders(<PatientDetail />);
+    await openEdit();
   }
   const patches = (): Record<string, unknown>[] =>
     fetchCalls()
@@ -388,23 +444,24 @@ describe("22c-A T7 — the amendment surface", () => {
       .map((c) => JSON.parse(c.body) as Record<string, unknown>);
 
   it("shows the identity assurance stamp", async () => {
-    open();
+    stubSeat(BASE);
+    renderWithProviders(<PatientDetail />);
     expect(await screen.findByTestId("identity-assurance")).toHaveTextContent(/ID verified/i);
   });
 
   it("REFUSES to save a Class I change with no reason, and never calls the API", async () => {
-    open();
+    await open();
     const name = await screen.findByLabelText("Full name");
     await userEvent.clear(name);
     await userEvent.type(name, "Asha Sharma");
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(screen.getByText(/needs a reason/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/needs a reason/i));
     expect(patches()).toHaveLength(0);
   });
 
   it("sends administrativeGender WITH its reason once one is chosen", async () => {
     // The round-trip that C1 broke on the server: the field must leave the browser named.
-    open();
+    await open();
     await userEvent.selectOptions(await screen.findByLabelText("Administrative gender"), "other");
     await userEvent.selectOptions(screen.getByLabelText("Reason for amendment"), "legal_change");
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -413,7 +470,7 @@ describe("22c-A T7 — the amendment surface", () => {
   });
 
   it("a Class II edit still saves with no reason — the desk does not justify a typo fix", async () => {
-    open();
+    await open();
     const phone = await screen.findByLabelText("Mobile number");
     await userEvent.clear(phone);
     await userEvent.type(phone, "9000000000");
@@ -424,18 +481,12 @@ describe("22c-A T7 — the amendment surface", () => {
 
   /**
    * FD-23 — the redesign's two structural claims, asserted rather than eyeballed: this screen wears
-   * the counter's design scope, and the agent is on it. Without these a later refactor could drop
-   * either and every behavioural test above would stay green.
+   * the counter's design scope, and the agent is on it.
    */
   it("wears the counter's paper-pine scope and carries the desk agent", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: ALLERGIES },
-      "GET /api/patients/p-1/guardians": GUARDIANS,
-      "GET /api/patients/p-1/qr": QR,
-    });
+    stubSeat({ ...BASE, "GET /api/patients/p-1/allergies": { items: ALLERGIES }, "GET /api/patients/p-1/guardians": GUARDIANS });
     renderWithProviders(<PatientDetail />);
-    await screen.findByText("Asha Devi");
+    await screen.findByRole("heading", { name: "Asha Devi" });
 
     expect(document.querySelector(".pp")).not.toBeNull();
     expect(screen.getByTestId("agent-dock")).toBeInTheDocument();
@@ -444,30 +495,13 @@ describe("22c-A T7 — the amendment surface", () => {
 
   /* The agent answers from the row already fetched — no lookup, and it names where it came from. */
   it("the agent answers about THIS record and says so", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: ALLERGIES },
-      "GET /api/patients/p-1/guardians": GUARDIANS,
-      "GET /api/patients/p-1/qr": QR,
-    });
+    stubSeat({ ...BASE, "GET /api/patients/p-1/allergies": { items: ALLERGIES }, "GET /api/patients/p-1/guardians": GUARDIANS });
     renderWithProviders(<PatientDetail />);
-    await screen.findByText("Asha Devi");
+    await screen.findByRole("heading", { name: "Asha Devi" });
 
     const user = userEvent.setup();
     await user.type(screen.getByTestId("agent-ask"), "what is their uhid?{Enter}");
-    /*
-      FD-25 — THE TOGGLE CLICK IS GONE, AND ITS ABSENCE IS THE FIX.
-
-      This test used to ask a question and then click "▲ LOG" to reveal the answer, which is an
-      accurate description of what the bar did and a bad description of what a clerk would do: the
-      answer was rendered only inside the pull-up, so asking produced nothing visible and the person
-      who typed the question had no reason to know a toggle existed. Submitting now opens the panel,
-      so the click that used to reveal the answer would now hide it.
-
-      A test that documents a workaround is a test that will keep the workaround alive.
-    */
-
-    /* Scoped to the dock: the UHID is also in the header, and the claim here is about the ANSWER. */
+    /* Scoped to the dock: the UHID is also in the lane, and the claim here is about the ANSWER. */
     const dock = within(screen.getByTestId("agent-dock"));
     expect(dock.getByText(/HMS0000001234/)).toBeInTheDocument();
     // it names its source rather than sounding omniscient
@@ -479,10 +513,9 @@ describe("22c-A T7 — the amendment surface", () => {
    * FD-34 — THE FAMILY A SHARED MOBILE MAKES
    * ═════════════════════════════════════════════════════════════════════════════════════════════
    *
-   * Owner, 2026-09-13: Ankit's record must name Sunil when the two share a number, and Sunil's must
-   * name Ankit. The symmetry is the SERVER's (`modules/patients/linked.ts` derives it from one
-   * predicate, and `linked.test.ts` pins both directions); what these three cases pin is that the
-   * screen renders what it is handed and says nothing it was not told.
+   * The symmetry is the SERVER's (`modules/patients/linked.ts`); these cases pin that the screen
+   * renders what it is handed and says nothing it was not told. UX-AUDIT 2026-09-29 · BOARD: the
+   * shared number is masked to its last four digits.
    */
   const LINKED = {
     numbers: ["9876543210"],
@@ -502,13 +535,7 @@ describe("22c-A T7 — the amendment surface", () => {
   };
 
   it("lists the patients who share this mobile, and opens the one that is clicked", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-      "GET /api/patients/p-1/linked": LINKED,
-    });
+    stubSeat({ ...BASE, "GET /api/patients/p-1/linked": LINKED });
     renderWithProviders(<PatientDetail />);
 
     // The section paints before its query answers, so the ROW is what to wait for — not the heading.
@@ -518,24 +545,18 @@ describe("22c-A T7 — the amendment surface", () => {
     /*
       THE SECOND ROW IS THE TEETH. Bimla's PRIMARY number is a different one and she is family
       through her ALTERNATE — a row rendered from `phone` rather than from the server's `sharedOn`
-      would print 9000000000 here and tell the clerk the two share a number they do not.
+      would print 0000 here and tell the clerk the two share a number they do not.
     */
-    expect(section.getByTestId("linked-HMS0000001236")).toHaveTextContent("shares 9876543210");
+    expect(section.getByTestId("linked-HMS0000001236")).toHaveTextContent("shares •••••• 3210");
     // …and it says what it knows: a shared number, never an invented relationship.
-    expect(screen.getByText("same contact number")).toBeInTheDocument();
+    expect(section.getByText(/is inferred, never a relationship/)).toBeInTheDocument();
 
     fireEvent.click(section.getByTestId("linked-HMS0000001235"));
     expect(navigate).toHaveBeenCalledWith({ to: "/patients/$patientId", params: { patientId: "p-2" } });
   });
 
   it("says so plainly when nobody else is on the number", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-      "GET /api/patients/p-1/linked": { numbers: ["9876543210"], items: [], total: 0 },
-    });
+    stubSeat({ ...BASE, "GET /api/patients/p-1/linked": { numbers: ["9876543210"], items: [], total: 0 } });
     renderWithProviders(<PatientDetail />);
 
     expect(await screen.findByTestId("linked-empty")).toHaveTextContent(
@@ -544,18 +565,11 @@ describe("22c-A T7 — the amendment surface", () => {
   });
 
   /**
-   * A NUMBER ON THIRTY RECORDS IS A SHOP, NOT A HOUSEHOLD — and the screen has to say it, because
-   * twenty names under the heading "Linked patients" read as a family to the clerk who is looking
-   * at them. The server caps the list; this line is what stops the cap from being a silent lie.
+   * A NUMBER ON THIRTY RECORDS IS A SHOP, NOT A HOUSEHOLD — and the screen has to say it. The server
+   * caps the list; this line is what stops the cap from being a silent lie.
    */
   it("warns when the number is on more records than a household has", async () => {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-      "GET /api/patients/p-1/linked": { ...LINKED, total: 30 },
-    });
+    stubSeat({ ...BASE, "GET /api/patients/p-1/linked": { ...LINKED, total: 30 } });
     renderWithProviders(<PatientDetail />);
 
     expect(await screen.findByTestId("linked-beyond-cap")).toHaveTextContent(
@@ -565,56 +579,48 @@ describe("22c-A T7 — the amendment surface", () => {
 
   /* D-34 — a phoneless record is a designed path, and there is nothing to ask about it. */
   it("draws no family section at all for a patient with no number", async () => {
-    stubFetch({
+    stubSeat({
+      ...BASE,
       "GET /api/patients/p-1": { patient: { ...PATIENT, phone: null, altPhone: null }, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
       "GET /api/patients/p-1/linked": { numbers: [], items: [], total: 0 },
     });
     renderWithProviders(<PatientDetail />);
-    await screen.findByText("Asha Devi");
+    await screen.findByRole("heading", { name: "Asha Devi" });
 
     expect(screen.queryByTestId("linked-patients")).toBeNull();
   });
 });
 
 /**
- * ABDM S0 — `verified` is ABDM's answer, never a clerk's choice. The server now refuses a move to it
- * (400 `abha_verified_only_by_abdm`), so the edit form stops offering it: a record the registry
- * verified still SHOWS the stamp (and a clerk may take it down), and any other record's control has
- * no "verified" to pick.
+ * ABDM S0 — `verified` is ABDM's answer, never a clerk's choice. A record the registry verified
+ * still SHOWS the stamp (and a clerk may take it down), and any other record's control has no
+ * "verified" to pick.
  */
 describe("ABDM S0 — the counter cannot offer 'verified'", () => {
-  function openWith(status: string): void {
-    stubFetch({
-      "GET /api/patients/p-1": { patient: { ...PATIENT, abhaVerificationStatus: status }, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
-    });
+  async function openWith(status: string): Promise<void> {
+    stubSeat({ ...BASE, "GET /api/patients/p-1": { patient: { ...PATIENT, abhaVerificationStatus: status }, resolvedFrom: null } });
     renderWithProviders(<PatientDetail />);
+    await openEdit();
   }
-  const statusSelect = async (): Promise<HTMLSelectElement> => {
-    await screen.findByText("Asha Devi");
-    return waitFor(() => {
+  const statusSelect = async (): Promise<HTMLSelectElement> =>
+    waitFor(() => {
       const el = document.getElementById("f-abhaVerificationStatus");
       expect(el).not.toBeNull();
       return el as HTMLSelectElement;
     });
-  };
 
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
-  it("an unverified record's status control offers none and self_declared only", async () => {
-    openWith("self_declared");
+  it("an unverified record's status control offers none and self_declared only, in printed words", async () => {
+    await openWith("self_declared");
     const select = await statusSelect();
     expect([...select.options].map((o) => o.value)).toEqual(["none", "self_declared"]);
+    expect([...select.options].map((o) => o.textContent)).toEqual(["Not recorded", "not verified"]);
     expect(select.value).toBe("self_declared");
   });
 
   it("an ABDM-verified record still shows verified, and offers taking it down", async () => {
-    openWith("verified");
+    await openWith("verified");
     const select = await statusSelect();
     expect([...select.options].map((o) => o.value)).toEqual(["none", "self_declared", "verified"]);
     expect(select.value).toBe("verified");
@@ -624,24 +630,23 @@ describe("ABDM S0 — the counter cannot offer 'verified'", () => {
 /**
  * ABDM S1 — "Verify with ABDM" on the record: drawn only when this hospital can verify (the
  * capability says so), and it opens the verification flow pre-filled with the record's ABHA.
+ * UX-AUDIT 2026-09-29 · BOARD: it lives under "Less often".
  */
 describe("ABDM S1 — Verify with ABDM on the record", () => {
   function openWith(canVerify: boolean): void {
-    stubFetch({
+    stubSeat({
+      ...BASE,
       "GET /api/patients/p-1": { patient: { ...PATIENT, abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: "self_declared" }, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
       "GET /api/patients/abha/capability": { configured: canVerify, canRecord: true, canCreate: false, canVerify, canScanShare: canVerify, reason: "test" },
     });
     renderWithProviders(<PatientDetail />);
   }
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
   it("is not drawn when the hospital cannot verify", async () => {
     openWith(false);
-    await screen.findByText("Asha Devi");
-    await waitFor(() => expect(document.getElementById("f-abhaNumber")).not.toBeNull());
+    await screen.findByTestId("less-often");
+    await waitFor(() => expect(fetchCalls().some((c) => c.url.includes("/abha/capability"))).toBe(true));
     expect(screen.queryByTestId("patient-abdm-verify")).toBeNull();
   });
 
@@ -658,20 +663,19 @@ describe("ABDM S1 — Verify with ABDM on the record", () => {
  * The form says so and does not let them be typed over; mobile stays editable.
  */
 describe("ABDM S1 — the demographics lock on the record", () => {
-  function openWith(status: string): void {
-    stubFetch({
+  async function openWith(status: string): Promise<void> {
+    stubSeat({
+      ...BASE,
       "GET /api/patients/p-1": { patient: { ...PATIENT, abhaNumber: "91-2345-6789-0123", abhaVerificationStatus: status }, resolvedFrom: null },
-      "GET /api/patients/p-1/allergies": { items: [] },
-      "GET /api/patients/p-1/guardians": { items: [] },
-      "GET /api/patients/p-1/qr": QR,
       "GET /api/patients/abha/capability": { configured: false, canRecord: true, canCreate: false, canVerify: false, canScanShare: false, reason: "test" },
     });
     renderWithProviders(<PatientDetail />);
+    await openEdit();
   }
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
   it("verified: name and date of birth are read-only, gender inert, the phone editable, and the note says why", async () => {
-    openWith("verified");
+    await openWith("verified");
     await screen.findByTestId("abdm-demographics-locked");
     await waitFor(() => expect(document.getElementById("f-name")).not.toBeNull());
     expect(document.getElementById("f-name")).toHaveAttribute("readonly");
@@ -681,9 +685,141 @@ describe("ABDM S1 — the demographics lock on the record", () => {
   });
 
   it("not verified: nothing is locked", async () => {
-    openWith("self_declared");
+    await openWith("self_declared");
     await waitFor(() => expect(document.getElementById("f-name")).not.toBeNull());
     expect(screen.queryByTestId("abdm-demographics-locked")).toBeNull();
     expect(document.getElementById("f-name")).not.toHaveAttribute("readonly");
+  });
+});
+
+/**
+ * ═══ UX-AUDIT 2026-09-29 · BOARD — WHAT THE APPROVED BOARD CHANGES, PINNED ═══
+ *
+ * Each case below fails against the edit-form page this replaced (`git show origin/main:` of this
+ * screen): allergies were below a 20-input form, there was no history, both mobiles printed in
+ * full, dates were ISO, a sealed record's H1 was the real name, and every act drew for every role.
+ */
+describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  const FRONT_DESK = [
+    "patients.read", "patients.register", "patients.update", "opd.visits.read", "opd.visits.open",
+    "opd.appointments.manage", "opd.appointments.read", "opd.queue.read",
+  ];
+  const DOCTOR = ["patients.read", "patients.update", "opd.visits.read", "opd.consult", "lab.results.read", "radiology.reports.read"];
+  const CASHIER = ["patients.read", "billing.invoice.read", "billing.invoice.issue", "billing.receipt.record"];
+
+  const TIMELINE = {
+    items: [{
+      encounterId: "e-1", visitNo: "OP-26-18422", serviceDate: "2026-09-18", openedAt: "2026-09-18T04:30:00.000Z", status: "completed",
+      visitType: "new", doctorId: "d-1", doctorName: "Dr. S. Rao", departmentId: "gm", departmentName: "General Medicine",
+      diagnosis: "Type 2 diabetes", icd10Code: "E11.9", prescriptionLineCount: 4, dangerFlagged: false,
+    }],
+  };
+  const INVOICES = {
+    items: [
+      { id: "inv-1", invoiceNo: "OP/26/004411", patientId: "p-1", encounterId: "e-1", netPayablePaise: 124000, creditExtended: false, issuedAt: "2026-09-18T05:00:00.000Z", serviceDay: "2026-09-18", seq: 2 },
+      { id: "inv-2", invoiceNo: "OP/26/003982", patientId: "p-1", encounterId: null, netPayablePaise: 215000, creditExtended: false, issuedAt: "2026-08-02T05:00:00.000Z", serviceDay: "2026-08-02", seq: 1 },
+    ],
+  };
+  const DUES = {
+    items: [{ invoiceId: "inv-2", invoiceNo: "OP/26/003982", patientId: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, serviceDay: "2026-08-02", issuedAt: "2026-08-02T05:00:00.000Z", netPayablePaise: 215000, outstandingPaise: 65000, creditExtended: false, seq: 1 }],
+  };
+
+  it("allergies are in the lane on arrival, before anything is opened — severe in brick red", async () => {
+    stubSeat({ ...BASE, "GET /api/patients/p-1/allergies": { items: [...ALLERGIES, { ...ALLERGIES[1], id: "al-3", substance: "Sulfa drugs", severity: "severe", reaction: "Anaphylaxis" }] } }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    const band = within(await screen.findByTestId("allergy-band"));
+    expect(await band.findByText("Allergies · 2 active")).toBeInTheDocument();
+    expect(band.getByText("Penicillin")).toBeInTheDocument();
+    expect(band.getByText("Severe")).toHaveClass("sev", "s");
+    expect(band.queryByText("Peanuts")).toBeNull(); // the corrected one lives under Edit details
+    expect(band.getByText(/1 corrected entry/)).toBeInTheDocument();
+    expect(screen.queryByTestId("edit-drawer")).toBeNull();
+    // Read first, edit behind a button: no form field is on the page until "Edit details".
+    expect(document.getElementById("f-name")).toBeNull();
+    expect(document.getElementById("f-phone")).toBeNull();
+  });
+
+  it("prints dates as 02-Apr-1990 and masks mobiles to their last four digits — no ISO, no full number", async () => {
+    stubSeat({ ...BASE, "GET /api/patients/p-1": { patient: { ...PATIENT, altPhone: "9414022871" }, resolvedFrom: null }, "GET /api/patients/p-1/guardians": GUARDIANS }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    const lane = within(await screen.findByTestId("profile-lane"));
+    expect(await lane.findByText("02-Apr-1990")).toBeInTheDocument();
+    expect(lane.getByText("•••••• 3210")).toBeInTheDocument();
+    expect(lane.getByText("•••••• 2871")).toBeInTheDocument();
+    expect(await lane.findByText(/Sunita Kumar/)).toBeInTheDocument();
+    expect(lane.getByText(/declared · mother/)).toBeInTheDocument();
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
+    expect(text).not.toMatch(/9876543210|9414022871|9998887771/);
+    expect(text).not.toMatch(/self_declared|id_verified/);
+  });
+
+  it("front desk: one dated timeline with source chips, the diagnosis line only; no money reads; no Record a death", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    const tl = within(await screen.findByTestId("timeline"));
+    expect(await tl.findByText("18-Sep-2026")).toBeInTheDocument();
+    const row = tl.getByText("General Medicine · Dr. S. Rao").closest("[data-testid=timeline-row]") as HTMLElement;
+    expect(row).toHaveTextContent("OPD");
+    expect(row).toHaveTextContent("Type 2 diabetes");
+    expect(row).not.toHaveTextContent("E11.9"); // the code and medicines are opd.consult's
+    expect(row).not.toHaveTextContent("medicines");
+    expect(row).toHaveTextContent("visit OP-26-18422");
+    expect(fetchCalls().some((c) => c.url.includes("/billing/"))).toBe(false);
+    expect(await screen.findByRole("button", { name: "Edit details" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record a death" })).toBeNull();
+    // No filter chips or tabs on the timeline (owner rule).
+    expect(screen.queryByRole("tab")).toBeNull();
+  });
+
+  it("doctor seat: full clinical line, no money, no Edit details, no Record a death, no Take payment", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, DOCTOR);
+    renderWithProviders(<PatientDetail />);
+    const tl = within(await screen.findByTestId("timeline"));
+    expect(await tl.findByText(/Type 2 diabetes \(E11\.9\) · 4 medicines prescribed/)).toBeInTheDocument();
+    expect(screen.queryByTestId("onward-bill")).toBeNull();
+    expect(screen.queryByTestId("onward-open-visit")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Record a death" })).toBeNull();
+    expect(fetchCalls().some((c) => c.url.includes("/billing/"))).toBe(false);
+    // patients.update: the doctor may still add an allergy and correct the record's details.
+    expect(screen.getByRole("button", { name: "Edit details" })).toBeInTheDocument();
+  });
+
+  it("billing seat: bills with amounts and what is still due, a Take-payment act, and no visit reads", async () => {
+    stubSeat({ ...BASE, "GET /api/billing/invoices": INVOICES, "GET /api/billing/patients/p-1/dues": DUES }, CASHIER);
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByTestId("today-dues")).toHaveTextContent("₹650.00 due");
+    expect(screen.getByTestId("today-dues")).toHaveTextContent("from 02-Aug-2026 · bill OP/26/003982");
+    const tl = within(screen.getByTestId("timeline"));
+    expect(await tl.findByText("OP/26/004411")).toBeInTheDocument();
+    expect(tl.getByText("₹1,240.00")).toBeInTheDocument();
+    expect(tl.getByText("₹1,500.00 paid · ₹650.00 due")).toBeInTheDocument();
+    expect(screen.getByTestId("onward-bill")).toHaveTextContent("Take ₹650.00");
+    expect(screen.queryByRole("button", { name: "Edit details" })).toBeNull();
+    expect(fetchCalls().some((c) => c.url.includes("/opd/"))).toBe(false);
+  });
+
+  it("restricted record: the alias is the name; the real name, contact, address and family links are not drawn", async () => {
+    const sealed = { ...PATIENT, isConfidential: true, alias: "Patient R-2291", sensitiveContext: true };
+    stubSeat({ ...BASE, "GET /api/patients/p-1": { patient: sealed, resolvedFrom: null } }, [...FRONT_DESK, "patients.deceased.write"]);
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByRole("heading", { name: "Patient R-2291" })).toBeInTheDocument();
+    expect(screen.getByTestId("restricted-pill")).toHaveTextContent("Restricted record");
+    expect(screen.getByTestId("restricted-banner")).toHaveTextContent("Medical Superintendent");
+    await waitFor(() => expect(fetchCalls().some((c) => c.url.includes("/auth/me"))).toBe(true));
+    const text = (): string => document.body.textContent ?? "";
+    expect(text()).not.toContain("Asha Devi");
+    expect(text()).not.toContain("3210");
+    expect(text()).not.toContain("MG Road");
+    expect(fetchCalls().some((c) => c.url.includes("/linked") || c.url.includes("/guardians"))).toBe(false);
+    // …and not in the edit form either.
+    const drawer = await openEdit();
+    expect(drawer).toHaveTextContent("Edit details · Patient R-2291");
+    expect(document.getElementById("f-name")).toBeNull();
+    expect(document.getElementById("f-phone")).toBeNull();
+    expect(document.getElementById("f-addressLine")).toBeNull();
+    expect(text()).not.toContain("Asha Devi");
   });
 });

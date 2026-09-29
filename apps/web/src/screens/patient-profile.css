@@ -1,0 +1,90 @@
+/*
+ * UX-AUDIT 2026-09-29 · BOARD — the patient profile (`docs/design/2026-09-29-patient-profile/`).
+ * Ported from the owner-approved board: lane 316 · centre · acts 300 at desktop; two columns below
+ * 1200 (acts under the lane); one column below 768 with the next act pinned and the rest behind
+ * "More". Palette and primitives come from `paper-pine.css` / `desk-one.css` (`.pp`); only the
+ * board's own shapes live here, scoped to `.pf`.
+ */
+.pf { font-family: "IBM Plex Sans", "IBM Plex Sans Devanagari", system-ui, sans-serif; }
+.pf .pf-grid {
+  flex-grow: 1; display: grid; grid-template-columns: 316px minmax(0, 1fr) 300px;
+  grid-template-areas: "lane main side"; align-items: stretch; min-width: 0;
+}
+.pf .pf-lane { grid-area: lane; border-right: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; min-width: 0; }
+.pf .pf-main { grid-area: main; padding: 16px 20px 24px; min-width: 0; }
+.pf .pf-side { grid-area: side; border-left: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--paper); min-width: 0; }
+.pf .pf-who { padding: 16px 18px 12px; display: flex; gap: 12px; }
+.pf .pf-who h1 { margin: 0; font-size: 18px; line-height: 23px; font-weight: 600; overflow-wrap: anywhere; }
+.pf .pf-ph { width: 52px; height: 62px; border-radius: 5px; flex-shrink: 0; object-fit: cover; background: linear-gradient(160deg, #dfe7e1, #c7d5cb); }
+.pf .pf-ph.hidden { background: var(--wash); display: flex; align-items: flex-end; justify-content: center; font-size: 9px; color: var(--dim); padding-bottom: 3px; }
+.pf .pf-body { padding: 0 18px 12px; }
+.pf .safety { border: 1px solid var(--red-line); background: var(--red-soft); border-radius: 8px; padding: 10px 12px; }
+.pf .al { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; line-height: 18px; padding: 2px 0; }
+.pf .sev { font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); color: var(--dim); background: var(--card); white-space: nowrap; }
+.pf .sev.s { border-color: var(--red-line); color: var(--red); background: #fff; }
+.pf .fact { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line2); font-size: 12.5px; }
+.pf .fact > span:first-child { color: var(--dim); flex-shrink: 0; }
+.pf .fact > span:last-child { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.pf .lnk { color: var(--green); font-weight: 600; font-size: 11.5px; }
+.pf .lnk.rd { color: var(--red); }
+.pf .keys { margin-top: auto; padding: 10px 18px; border-top: 1px solid var(--line); font-size: 11px; color: var(--dim); display: flex; gap: 10px; flex-wrap: wrap; }
+.pf .today { border: 1px solid var(--green-line); background: var(--green-soft); border-radius: 8px; padding: 12px 14px; display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.pf .today > div { flex: 1 1 180px; min-width: 0; }
+.pf .today .money { flex: 0 0 190px; border-left: 1px solid var(--green-line); padding-left: 14px; }
+.pf .today b { font-weight: 600; font-size: 14px; display: block; }
+.pf .today .s { font-size: 12px; color: var(--dim); }
+.pf .day { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; }
+.pf .day .d { font-size: 12.5px; font-weight: 600; }
+.pf .day .ln { flex: 1; height: 1px; background: var(--line); }
+.pf .ev { display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px; border-top: 1px solid var(--line2); font-size: 12.5px; line-height: 17px; }
+.pf .ev:first-child { border-top: 0; }
+.pf .ev.owe { background: var(--gold-soft); }
+.pf .ev .t { font-weight: 600; overflow-wrap: anywhere; }
+.pf .ev .s { color: var(--dim); font-size: 11.5px; overflow-wrap: anywhere; }
+.pf .ev .r { margin-left: auto; text-align: right; white-space: nowrap; padding-left: 8px; }
+.pf .hl { color: var(--red); font-weight: 600; }
+.pf .src { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 20px; border-radius: 3px; font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 700; letter-spacing: .1em; border: 1px solid var(--line); color: var(--dim); background: var(--wash); flex-shrink: 0; }
+.pf .acts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.pf .acts2 .sec { justify-content: center; height: 36px; font-size: 12.5px; }
+.pf .rare { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; align-items: flex-start; }
+.pf .rare button { color: var(--green); }
+.pf .rare button.rd { color: var(--red); }
+.pf .refuse { border: 1px solid var(--red-line); background: var(--red-soft); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; line-height: 18px; }
+.pf .banner { border-radius: 8px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px; }
+.pf .banner.gd { border: 1px solid var(--gold-line); background: var(--gold-soft); }
+.pf .banner.dead { border: 1px solid var(--line); background: var(--wash); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.pf .dock { display: none; }
+
+/* The "Edit details" drawer: over the timeline from the right; the lane stays visible. */
+.pf-drawer-back { position: fixed; inset: 0; background: rgba(19, 36, 32, .18); z-index: 40; }
+.pf-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); z-index: 41; background: var(--card); border-left: 1px solid var(--line); display: flex; flex-direction: column; box-shadow: -6px 0 18px rgba(19, 36, 32, .12); }
+.pf-drawer .hd { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+.pf-drawer .hd b { flex: 1; font-size: 14px; }
+.pf-drawer .bd { flex: 1; overflow-y: auto; padding: 14px 18px 24px; display: flex; flex-direction: column; gap: 18px; font-size: 12.5px; }
+.pf-drawer .jump { display: flex; gap: 8px; flex-wrap: wrap; }
+.pf-drawer .chip { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line); background: var(--card); font-size: 11.5px; color: var(--dim); }
+.pf-drawer h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.pf-drawer .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pf-drawer .note { font-size: 12px; color: var(--dim); margin: 0; }
+
+@media (max-width: 1199px) {
+  .pf .pf-grid { grid-template-columns: 300px minmax(0, 1fr); grid-template-areas: "lane main" "side main"; }
+  .pf .pf-side { border-left: 0; border-right: 1px solid var(--line); border-top: 1px solid var(--line); }
+}
+@media (max-width: 767px) {
+  .pf .pf-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "lane" "side" "main"; }
+  .pf .pf-lane { border-right: 0; border-bottom: 1px solid var(--line); }
+  .pf .pf-who, .pf .pf-body { padding-left: 16px; padding-right: 16px; }
+  .pf .pf-main { padding: 12px 16px 80px; }
+  .pf .pf-side { display: none; border-right: 0; padding: 12px 16px; }
+  .pf .pf-side.open { display: flex; }
+  .pf .keys { display: none; }
+  /* Board §5: who, allergies, today, timeline — the identity facts sit behind "More" with the acts. */
+  .pf .pf-facts { display: none; }
+  .pf.more .pf-facts { display: block; }
+  .pf .today .money { flex: 1 1 100%; border-left: 0; padding-left: 0; border-top: 1px solid var(--green-line); padding-top: 8px; }
+  .pf .dock { display: flex; position: sticky; bottom: 46px; z-index: 5; gap: 10px; padding: 10px 16px; background: var(--card); border-top: 1px solid var(--line); }
+  .pf .dock .pri { flex: 1; justify-content: center; }
+  .pf .ev .r { white-space: normal; }
+  .pf-drawer .grid2 { grid-template-columns: 1fr; }
+}
