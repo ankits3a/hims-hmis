@@ -79,6 +79,7 @@
     "opdDayReport": "OPD report",
     "pharmacyOffice": "Pharmacy office",
     "pharmacyReports": "Pharmacy reports",
+    "radiologyRoom": "Modality rooms",
     "radiologyPortable": "Portable round",
     "radiologySetup": "Imaging setup",
     "radiologyDiary": "Imaging diary",
@@ -3310,6 +3311,7 @@
       "clearBed": "Bring to the department instead"
     },
     "study": {
+      "toRoom": "Open in the room console →",
       "unknown": "No such study, or you may not see it.",
       "gates": "Safety gates",
       "ready": "Every gate is clear — this study is ready.",
@@ -3367,13 +3369,299 @@
       "laterality_confirm": "Side",
       "mlc_check": "MLC"
     },
+    "room": {
+      "title": "Modality rooms",
+      "noMachine": "No machine set up",
+      "machine": "Machine",
+      "machineAlert": "needs attention",
+      "toPortable": "Portable round →",
+      "views": {
+        "console": "Room console",
+        "dose": "Dose log",
+        "rejects": "Rejects & repeats",
+        "downtime": "Downtime"
+      },
+      "steps": "Console steps",
+      "step": {
+        "identify": "Identify",
+        "protocol": "Protocol",
+        "acquire": "Acquire",
+        "send": "Send"
+      },
+      "state": {
+        "scheduled": "booked",
+        "checked_in": "arrived",
+        "ready": "ready",
+        "in_acquisition": "on the table",
+        "acquired": "sent",
+        "reported": "reported",
+        "published": "published"
+      },
+      "status": {
+        "available": "Available",
+        "in_use": "In use",
+        "down": "Down",
+        "maintenance": "Maintenance",
+        "qa_blocked": "QA blocked",
+        "retired": "Retired"
+      },
+      "gateState": {
+        "open": "open",
+        "satisfied": "done",
+        "waived": "waived",
+        "overridden": "overridden"
+      },
+      "sex": {
+        "male": "Male",
+        "female": "Female",
+        "other": "Other",
+        "unknown": "Unknown"
+      },
+      "listTitle": "{{machine}} worklist",
+      "listEmpty": "Nothing booked on this machine today.",
+      "listSummary_one": "{{count}} on this machine's list",
+      "listSummary_other": "{{count}} on this machine's list",
+      "readyStat": "Ready for the table",
+      "clockStat": "{{name}} · {{study}} — STAT waiting {{min}} min",
+      "clockReady": "{{name}} · {{study}} — ready {{min}} min",
+      "clocksQuiet": "Nothing overdue on this machine.",
+      "clocksSummary_one": "{{count}} running over",
+      "clocksSummary_other": "{{count}} running over",
+      "clocksNone": "none",
+      "machineDown": "{{machine}} is {{status}}. Nothing can start on it; booked patients are listed for moving under Downtime.",
+      "machineUnlicensed": "{{machine}} has no AERB licence in force today, so no ionising study can start on it. The Radiation Safety Officer files the certificate under Radiation safety → Licences.",
+      "sent": "{{acc}} is sent — it has left this list and is on the reading worklist.",
+      "nextReady": "Ready for the table: {{name}} · {{study}}. Open them from the list — opening means they are in the room.",
+      "noneReady": "Nobody on this list can start yet — each is waiting on the prep bay, the desk or the machine. The list says what for.",
+      "mwlNote": "The scanner pulls this list as a DICOM worklist once its AE title is set (Setup → Machines), so the name and accession are not typed at the scanner.",
+      "fix": {
+        "licence": "Open Radiation safety → Licences",
+        "downtime": "Open Downtime",
+        "desk": "Open the imaging front desk",
+        "prep": "Open the prep bay",
+        "pcpndt": "Open the PCPNDT registration",
+        "formF": "Open the study's Form F"
+      },
+      "prepOpen": "The prep bay still owes: {{gates}}. The patient goes back to prep before anything starts here.",
+      "identify": {
+        "title": "Identify on the table",
+        "noGate": "No identity gate on this study.",
+        "done": "Identity {{state}}",
+        "first": "First identifier — the patient says their name and age",
+        "firstSaid": "Said “{{name}}, {{age}}” in their own words — matches",
+        "second": "Second identifier — checked against the patient master",
+        "kind": "Second identifier",
+        "kinds": {
+          "wristband": "Wristband",
+          "uhid": "UHID said or on slip",
+          "dob": "Date of birth"
+        },
+        "value": "Value",
+        "scanHint": "Scan or type the UHID",
+        "check": "Check",
+        "never": "Never ask “are you …?”. A relative answers for a child or an unconscious patient."
+      },
+      "side": {
+        "title": "Side — the order says {{side}}",
+        "done": "Side confirmed: {{side}}",
+        "notRecorded": "no side yet",
+        "points": "Patient points {{side}}",
+        "never": "There is no override for the side. A disagreement goes back to the referring doctor.",
+        "left": "left",
+        "right": "right",
+        "bilateral": "both sides",
+        "na": "no side"
+      },
+      "bedside": {
+        "title": "Radiation safety at the bedside",
+        "distance": "Everyone else 2 m away; screens between beds; “X-ray — step away” said aloud",
+        "apron": "Lead apron and thyroid shield on you and on anyone who must stay to hold the patient",
+        "pregnancy": "No pregnant staff, visitor or patient in the bay",
+        "clearFirst": "Clear the bay first — the three checks above",
+        "evidence": "Bedside radiation safety confirmed: everyone else 2 m away; lead apron on staff who stayed; no pregnant staff, visitor or patient in the bay"
+      },
+      "protocol": {
+        "noBook": "No protocol book is published yet. Work from the radiologist's instruction; the HOD writes the book under Setup → Books.",
+        "noEntry": "The protocol book has no protocol for {{study}}. Work from the radiologist's instruction.",
+        "toBooks": "Open Setup → Books",
+        "default": "department default",
+        "preset": "Machine preset",
+        "slice": "Slice / pitch",
+        "sequences": "Sequences",
+        "contrast": "Contrast",
+        "max": "max {{ml}} mL",
+        "delay": "scan at {{s}} s",
+        "rate": "{{rate}} mL per second",
+        "weight": "Weight (kg)",
+        "needWeight": "Type the weight for the volume",
+        "suggest": "Suggested volume: {{ml}} mL (the price includes the contrast)",
+        "band": "Child in the {{from}}–{{to}} kg band",
+        "say": "Say to the patient"
+      },
+      "phase": {
+        "non_contrast": "Plain",
+        "arterial": "Arterial",
+        "portal_venous": "Portal venous",
+        "nephrographic": "Nephrographic",
+        "delayed": "Delayed",
+        "multiphase": "Multiphase",
+        "angiographic": "Angiographic",
+        "mri_gadolinium": "Gadolinium"
+      },
+      "acquire": {
+        "clear": "Licence, machine, gates and payment are checked when you press Start; Start puts the patient on {{machine}}."
+      },
+      "dose": {
+        "title": "Dose, read from the console",
+        "none": "This machine's modality records no dose here.",
+        "doseCtdivol": "CTDIvol (mGy)",
+        "doseDlp": "DLP (mGy·cm)",
+        "doseDap": "DAP (Gy·cm²)",
+        "fluoroSeconds": "Fluoroscopy time, seconds",
+        "level": "Hospital DRL {{value}}",
+        "noLevel": "No DRL set",
+        "over": "Above the hospital's DRL. Say why — this never stops the scan.",
+        "reasonHint": "e.g. large patient, repeat series, protocol",
+        "heading": "Dose log",
+        "breaches": "Above DRL",
+        "noBreach": "Nothing above the DRL on this day.",
+        "noReason": "no reason given",
+        "studies": "Ionising studies",
+        "above": "Above DRL",
+        "typed": "Typed at the console",
+        "day": "Day",
+        "empty": "No dose recorded on this machine on this day.",
+        "col": {
+          "time": "Time",
+          "patient": "Patient",
+          "study": "Study",
+          "drl": "DRL"
+        },
+        "noLevelShort": "no level",
+        "overShort": "above {{value}}",
+        "underShort": "within",
+        "note": "Every ionising study writes its dose row in the same transaction as “sent”. The DRL is a signal to look at the protocol, never a limit."
+      },
+      "contrast": {
+        "title": "Contrast",
+        "given": "Given",
+        "notGiven": "Not given — scanned plain",
+        "agent": "Agent and batch",
+        "volume": "Volume given (mL)",
+        "reversal": "Booked with contrast and scanned plain: the contrast part of the bill goes to the bill-decisions queue. Say why.",
+        "reasonHint": "e.g. cannula tissued, patient refused",
+        "reactionNote": "A reaction is recorded in the prep bay's contrast record."
+      },
+      "repeat": {
+        "title": "Repeat or abort",
+        "reason": "Repeat reason",
+        "record": "Record a repeat",
+        "count_one": "{{count}} repeat on this study",
+        "count_other": "{{count}} repeats on this study",
+        "free": "A repeat is never charged: it raises a no-charge bill decision once per study and counts against the room's repeat rate.",
+        "reasons": {
+          "positioning": "Positioning",
+          "motion": "Patient motion",
+          "exposure": "Exposure too low / high",
+          "artefact": "Artefact (metal, clothing)",
+          "equipment": "Equipment fault"
+        }
+      },
+      "abort": {
+        "open": "Abort acquisition…",
+        "reasonHint": "Why — e.g. patient could not lie still",
+        "go": "Abort",
+        "keep": "Keep scanning"
+      },
+      "send": {
+        "title": "Send",
+        "after": "Sending records the acquisition; the study leaves this list and appears on the reading worklist."
+      },
+      "dock": {
+        "toProtocol": "Protocol →",
+        "toAcquire": "Acquire →",
+        "start": "Start",
+        "toSend": "Send →",
+        "send": "Send to reading",
+        "prepHold": "A prep gate is still open — the prep bay closes it first",
+        "identifyFirst": "Identify the patient first — both identifiers, and the side if the study has one",
+        "identified": "Identity and side are confirmed",
+        "protocolHint": "Read the protocol card, then acquire",
+        "startHint": "Puts the patient on {{machine}} and marks it busy",
+        "doseFirst": "An ionising study needs its dose from the console",
+        "sendHint": "Dose and contrast recorded — check the images, then send",
+        "notStarted": "Start the acquisition first",
+        "sendFinal": "Records the acquisition and puts the study on the reading worklist"
+      },
+      "lane": {
+        "onTable": "On the table",
+        "ageSex": "Age · sex",
+        "allergies": "Allergies",
+        "nka": "None recorded",
+        "weight": "Weight",
+        "notCharted": "not charted",
+        "renal": "Kidney",
+        "creatinine": "creatinine",
+        "pending": "pending",
+        "pregnancy": "Pregnancy screen",
+        "priorDose": "Prior dose, 12 months",
+        "noPrior": "none on record",
+        "prior_one": "{{count}} study in {{months}} months · {{over}} above DRL",
+        "prior_other": "{{count}} studies in {{months}} months · {{over}} above DRL",
+        "studyPage": "Open the study page",
+        "clear": "Clear the table"
+      },
+      "rejects": {
+        "heading": "Rejects & repeats",
+        "window": "{{from}} to {{to}}",
+        "rate": "Repeat rate",
+        "repeats": "Repeats",
+        "open": "Bill decisions open",
+        "acquired": "Studies",
+        "byRoom": "By machine and technologist — target under {{target}}%",
+        "tech": "Technologist",
+        "none": "No studies or repeats in this window.",
+        "reasons": "Reasons",
+        "log": "Repeat log",
+        "decisions": "Bill decisions from the rooms",
+        "noDecisions": "No bill decision open.",
+        "kind": {
+          "repeat_no_charge": "Repeat · no charge",
+          "contrast_not_given": "Contrast not given"
+        },
+        "resolution": "Resolution",
+        "resolutionHint": "What was done — e.g. no charge confirmed",
+        "resolve": "Resolve",
+        "withDesk": "With the imaging front desk to decide",
+        "note": "The rate is repeats per study acquired on that machine; an exposure count needs the machine's MPPS feed. Repeats are never charged."
+      },
+      "down": {
+        "heading": "Downtime",
+        "place": "Machines, breakdowns and the paper kit",
+        "machines": "Machines",
+        "out": "Out of service",
+        "outList": "Out of service",
+        "allUp": "Every machine is in service.",
+        "unlicensed": "no AERB licence today",
+        "report": "Report a breakdown",
+        "pick": "Machine…",
+        "reasonHint": "What is wrong — e.g. tube arcing, detector not responding",
+        "markDown": "Mark down",
+        "ask": "Marking a machine down is the radiologist in charge's act (Setup → Machines). Tell them, and biomedical engineering, what is wrong.",
+        "toMove_one": "{{machine}} is down. {{count}} booked patient to move:",
+        "toMove_other": "{{machine}} is down. {{count}} booked patients to move:",
+        "toDiary": "Move them in the imaging diary",
+        "paperTitle": "When HMIS itself is down",
+        "paper": "Each room keeps pre-numbered manual accession sheets (name, UHID, study, side, dose, technologist, time). Scan on paper, hand the sheet to the desk, and back-enter each study once HMIS returns — the entry records the paper time and is marked late."
+      }
+    },
     "portable": {
       "title": "Portable round",
       "place": "Wards · at the bedside",
       "beds": "Beds",
       "wards": "Wards",
       "next": "Next bed",
-      "open": "Open study",
+      "open": "Go to this bed",
       "empty": "No bedside studies on the round.",
       "ipdNote": "Ordering a portable study from the ward arrives with the IPD plan. Until then a study reaches this round when the imaging desk books it on a portable machine with a ward and bed."
     },
@@ -3471,7 +3759,8 @@
           "pregnancy_policy": "Pregnancy policy",
           "critical_categories": "Critical categories",
           "pacs_settings": "PACS settings",
-          "dose_reference_levels": "Dose reference levels"
+          "dose_reference_levels": "Dose reference levels",
+          "imaging_protocols": "Imaging protocols"
         }
       },
       "prices": {

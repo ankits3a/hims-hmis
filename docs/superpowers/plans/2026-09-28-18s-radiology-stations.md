@@ -434,6 +434,126 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Core:** repeat and contrast-not-given raise their bill decisions from the console act.
 - **Journeys:** J1–J3 room hops, J6, J8, J10.
 
+**RS6 spike** (read on main `4d05ffdc`, 29 Sep, before any code):
+- **(a) Dose fields and the DRL book.** `recordAcquired` takes four numbers — `doseCtdivol` (mGy),
+  `doseDlp` (mGy·cm), `doseDap` (Gy·cm²), `fluoroSeconds` — plus `doseManual`; an ionising study
+  must carry at least one (`dose_required`, backed by `imaging_studies_dose_ck`). The modality
+  vocabulary is `xray | usg | ct | mri | mammography`, so the console asks CT for CTDIvol + DLP,
+  X-ray for DAP (+ fluoro seconds when screened), mammography for DAP, and nothing for USG / MRI.
+  There is **no AGD column**: a mammography unit that shows only AGD cannot be recorded as AGD
+  (moved to RS12's dose SR). The DRL book (`dose_reference_levels`) is `{levels: [{study_type_code?
+  | modality?, quantity: ctdivol|dlp|dap|fluoro_seconds, value, source?}]}`; `drlFor` picks study
+  type first, then modality, on a quantity the examination actually measured, and the verdict is
+  STORED on `radiation_dose_register` (`drl_quantity`, `drl_value`, `over_drl`). **There is no reason
+  column** — nowhere to keep "why above the DRL".
+- **(b) Abort and repeat.** `abortAcquisition` (reason required) sends `in_acquisition → ready`,
+  releases the machine, keeps `acquisition_started_at`, raises nothing. A repeat is modelled only
+  as a SECOND study row: `repeat_of_study_id` + `repeat_reason` (both or neither, CHECK) on
+  `recordAcquired`, which raises `repeat_no_charge` then. **Nothing creates such a row** — no route
+  and no screen — so `repeat_no_charge` has never been raised. `contrast_not_given` is raised by
+  `recordAcquired` itself when `contrast_option = required` and `contrastGiven` is false (detail:
+  study type + service, no reason). `acquired_unbilled` likewise; `performed_then_cancelled` by
+  `cancelStudy`. The queue (`GET /radiology/bill-decisions`, resolve) is
+  `radiology.bill_decisions.manage` — the desk and billing manager, **not the radiographer** (the
+  performer does not decide who pays; kept).
+- **(c) Room gates' evidence.** `identity_two_factor`: `{secondIdentifier: dob|uhid|wristband,
+  value}` — UHID and wristband compared with the patient master's UHID, DOB with the DOB; a
+  mismatch leaves the gate open (`gate_open`); never waivable, overridable with a reason.
+  `laterality_confirm`: `{patientStated: left|right|bilateral|na}` — records the side on the study;
+  a side that disagrees with one already recorded is refused; never overridable. Satisfy is
+  `radiology.gates.satisfy` (radiographer holds it).
+- **(d) Adding `imaging_protocols`.** `IMAGING_DEFINITION_KIND_VALUES` (kernel schema
+  `radiology.ts`) feeds `imaging_definitions_kind_ck` through `inList`; widening it is one
+  drop-and-add of the CHECK (0054 and 0062 did exactly this). `SCHEMA_BY_KIND` in `definitions.ts`
+  gains the body schema; the draft / publish / active routes take the kind from the same enum, so
+  they need no change. `seed:radiology` seeds only `study_types`; `pacs_settings` and
+  `dose_reference_levels` are never seeded — so the house pattern is **no seeded draft** for a book
+  the hospital authors.
+
+**RS6 as built** (this PR; lane `radiology-rs6`, rebased on RS4 `5a3713b9`; one migration, `0146`):
+- **T1 · the protocol book (core).** `imaging_protocols` is a governed definition kind: kernel
+  `IMAGING_DEFINITION_KIND_VALUES` + `imaging_definitions_kind_ck` widened (migration
+  `0146_radiology_room_console`), `imagingProtocolsBodySchema` in `definitions.ts` (per
+  `study_type_code`, or a `modality` default; technique, preset, kV/mAs ranges, CT slice/pitch, MRI
+  sequences, contrast phase + mL/kg + max + delay (+ agent, rate), breath-hold EN + HI (both or
+  neither), paediatric weight bands; refuses no key, duplicate key, inverted range, half a script, a
+  band with from ≥ to). `protocolFor` picks the study type's own, then the modality default. Drafted,
+  approved and published through the SAME routes as every book; Setup → Books lists it (RS4's
+  `setupBooks` iterates the kinds). **Nothing seeded, not even an empty draft** (DECIDED: the house
+  seeds only `study_types`; a body needs ≥ 1 protocol, so an empty draft is not a valid body).
+- **Core reads and acts** (`room.ts`, `radiology-room.controller.ts`, all `radiology.acquire`):
+  `GET /radiology/studies/:id/room` (patient in hand: age/sex, active allergies, last charted OPD
+  weight, the creatinine / eGFR the renal gate was satisfied with, the active protocol, the DRLs that
+  apply, repeats so far; one `imaging.study` PHI row); `POST …/acquisition/repeat {reason}`
+  (`recordRepeatExposure`: `in_acquisition` only; appends `imaging.exposure_repeated`; ONE
+  `repeat_no_charge` per study, detail `{reason, inRoom: true}`); `GET /radiology/room/rejects?from&to`
+  (repeats ÷ studies acquired per machine × technologist, reasons, log by accession, open
+  `repeat_no_charge` / `contrast_not_given` decisions by kind — no money, no names).
+  `acquired` gains `drlReason` (kept on the new `radiation_dose_register.drl_reason` only beside an
+  over-DRL verdict; CHECK `radiation_dose_register_drl_reason_ck`) and `contrastNotGivenReason`
+  (rides the `contrast_not_given` detail). `start` gains optional `bedsideSafety` (the note on the
+  `in_acquisition` transition; `.strict()` still refuses `onDate`).
+- **T2 · the Room console (web).** `/radiology/room` — the `room` station, header views Room console
+  · Dose log · Rejects & repeats · Downtime; `?machine=&study=` in the search. Right list = the
+  machine's floor list (STAT first, then on the table → ready → arrived → booked), clocks STAT > 10
+  min and ready > 20 min; opening a patient checks in a booked study (no presence button);
+  `RoomConsole` (`components/radiology/room-console.tsx`) Identify → Protocol → Acquire → Send with
+  one docked act (Enter). Room gates (`identity_two_factor`, `laterality_confirm`) are closed at the
+  console; any other open gate is shown with a link to `/radiology/prep` and the dock stays shut.
+  Refusals in the server's words with the seat: `device_not_licensed` → Radiation safety,
+  `device_unavailable` / `already_occupied` → Downtime, `payment_required` → desk, `not_ready` /
+  `gate_open` → prep. The study page links to the console and the console's lane links back.
+- **T3 · Portable round.** A bed opens `RoomConsole` in bedside mode inline; the three bedside
+  radiation checks gate Start and are attested as text on the start.
+- **T4 · Dose log / Rejects & repeats.** Dose log over the existing `GET /aerb/doses` (radiographer
+  holds `aerb.doses.read`), machine × IST day, above-DRL list with reasons (missing reason in red).
+  Rejects over the new read; resolve through the existing bill-decisions route, offered only to a
+  holder of `radiology.bill_decisions.manage`.
+- **T5 · Downtime.** Machine statuses from `/radiology/devices`; *Report breakdown* = RS4's
+  `setSetupDeviceStatus(id, "down", reason)` (holder of `radiology.devices.manage`), answers with the
+  studies to move and links the diary; a technologist is told who marks a machine down; the paper
+  note (manual accession sheets, back-entry with the paper time — `acquiredAt` / E11's late entry).
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *An in-room retake is the repeat the console records* (event + one no-charge decision per
+    study); the second-study repeat (`repeat_of_study_id`) stays for a recall after Send — nothing
+    creates one yet (moved to RS8/RS10, below).
+  - *Repeat rate = repeats ÷ studies acquired* on that machine by that technologist; an exposure
+    count needs MPPS (RS12). Target under 3 % (board). Repeat reason codes: positioning, motion,
+    exposure, artefact, equipment.
+  - *The technologist does not resolve bill decisions* — `radiology.bill_decisions.manage` stays with
+    the desk and the billing manager (18a's "the performer does not decide who pays"); the board's
+    "technologist confirms a free repeat" is not built.
+  - *The technologist does not mark a machine down* — RS4 made it `radiology.devices.manage`
+    (radiologist); Downtime tells a technologist to call the radiologist in charge and biomedical.
+  - *The bedside checklist is attested text, not a gate* — a new gate kind is the gate model's and
+    the prep bay's (RS5); the server records it on the start transition, the console requires it.
+  - *Weight* comes from the last OPD vitals row; the technologist may type the weight on the table
+    for the volume (not stored). The contrast volume is a suggestion; the volume given is typed.
+  - *DRL reason* is asked only when a typed number is above a published level; never required, never
+    blocks; kept only on an over-DRL register row (a reason on an under row explains nothing).
+  - *Reject log names the accession, not the patient* (QA register; no PHI needed for a rate).
+- **Pins.** Radiology events 15 → 16 (`imaging.exposure_repeated`); caddyfile routes 76 → 77
+  (`/radiology/room`); Setup books 5 → 6 kinds; nav + `radiologyManifest.menu` + one station row.
+  No new permission, no seed-roles change, no new error code.
+- **Counts.** Core: `room.test.ts` 10 (T1 4 failed against the code without the kind/schema/
+  migration; the repeat, DRL-reason and contrast-reason tests failed against mutants; the bedside
+  note test failed against a start that dropped it); touched suites after rebase — radiology, aerb,
+  kernel schema, snapshot chain, radiology e2e, caddyfile parity, seed-radiology, seed-roles: 76
+  suites / 999 tests green. Web: `radiology-room.test.tsx` 13 (the file cannot load against main),
+  portable 5 (the inline-console test failed against the old screen); touched web suites 17 files /
+  158 tests green. Walk: 1920/1440/1280/1024/768/390 × 11 screens, 0 page errors, 0 sideways
+  overflow (`/opt/hmis-context/rs6-walk/`).
+- **Moved later.** Recall-for-repeat as a second study (`repeat_of_study_id` writer) and the HOD's
+  approval of a free repeat → RS10 (approvals) / RS8 (reading room recall); AGD for mammography and
+  dose from MPPS / dose SR → RS12; the MRI zone and screening form, contrast record and reaction
+  forms → RS5 (linked by route); the call bell on the hall display, the protocol-change request to
+  the reading room and the copilot panel → RS8/RS10; a breakdown ticket to biomedical and helium /
+  chiller monitoring → RS10 (equipment); IR suite → RS12; per-exposure counts → RS12 (MPPS).
+- **Money/law questions the rulings do not settle.** (1) Whether an in-room repeat needs any bill
+  decision at all (nothing was charged twice) — built per the brief and ruling 8, one per study;
+  the owner may prefer none. (2) Mammography units that report only AGD cannot be recorded until
+  RS12; AERB's register accepts it, ours does not yet.
+
 ### RS7 · Ultrasound & PCPNDT
 - **Web:**
   - `usg:room`: Form F first, then structured obstetric biometry (GA by CRL/FL, EFW by Hadlock, EDD), then sign in
