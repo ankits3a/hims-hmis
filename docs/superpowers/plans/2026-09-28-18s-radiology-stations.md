@@ -588,6 +588,43 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - Migrations: co-sign state, follow-ups, peer reviews — **three PRs**, one migration each.
 - Claims: `seed-roles` + pins.
 
+**The split (29 Sep).** RS8 is the HEAVY phase, so it ships as three PRs, each with at most one
+migration:
+- **RS8a — the reading room, part 1:** the `report_templates` governed book with coded categories and
+  their calculators; the deterministic pre-sign checks (one pipeline, a dry-run read for the screen);
+  the signer block snapshotted at sign and printed (ruling 4); the reading workspace
+  (`/radiology/read`: worklist with TAT clocks, report view).
+- **RS8b — part 2:** co-sign for residents (`radiology_resident`, `awaiting_cosign`,
+  `cosign_required`, seed-roles pins); the critical-call ladder UI (`read:critical`, first web callers
+  of flag/acknowledge); the prelim and amend UI (`read:amend`).
+- **RS8c — part 3:** the follow-ups tracker (`imaging_followups` + the due sweep), peer review
+  (`imaging_peer_reviews`), night and outside reads (`read:tele`).
+
+#### RS8a spike (read on main `5a3713b9`, 29 Sep, before any code)
+- **(a) The report body.** `imaging_reports.body` is `jsonb`, written as `Record<string, unknown>`
+  (the controller's zod is `z.record(z.string(), z.unknown())`); the impression has its own column.
+  Every reader of the body takes STRING entries only — `abdm-release.ts` `sectionsOf` filters to
+  non-empty strings, the report screen reads `findings` and spreads the rest. So a non-string key is
+  invisible to every existing reader: **coded categories live in the body under one reserved key,
+  `coded`** (`{ birads: "4A", tirads: {...}, … }`), no table and no column. The row is append-only by
+  trigger (`to_jsonb(NEW) - status - published_at`), so anything added to the row is protected with no
+  trigger change.
+- **(b) The signer at sign.** `insertVersion` stores `signer_id`, `signed_at`, `second_factor_at` —
+  an id and two instants; **no name, no qualification, no council number**. Where they live today:
+  the name is `users.full_name`; a council number is `opd_doctors.registration_no` (what the lab
+  report prints, 17-F) and the roster's `staff_credentials` (`nmr` / `smr`, R4 — **no route, no
+  screen**: a reader without a writer); a **qualification exists nowhere general** —
+  only `pcpndt_registered_persons.qualification` (sonologists) and `aerb_persons.qualification`
+  (RSO). The TOTP secret has no key id (`user_totp` is keyed by user; `enabled_at` names the
+  enrolment).
+- **(c) Printing.** The imaging report is **not printed anywhere** today — no component, no
+  `kernel/printing` renderer. The lab's A4 (`lab-report-print.tsx`, `.print-doc`, from a signed
+  snapshot) is the precedent.
+- **(d) TAT fields.** The worklist row carries `priority` (stat / urgent / routine), `createdAt`,
+  `checkedInAt`, `scheduledAt`; the study also has `acquiredAt` and `bedsideLocation`. There is no
+  source column (OPD / IPD / ER): no IPD or ER module exists. There is no claim: a draft row has no
+  author column, but `imaging_image_views` records who opened the images and when.
+
 ### RS9 · Release and the closed loop
 - **Core:**
   - `imaging_report_delivery` gains `acted_at`, `acted_by` and `acted_note` (gap 6);
