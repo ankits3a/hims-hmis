@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MyDay } from "./my-day";
+import { MyDay, SectionTable } from "./my-day";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
 import { todayIst } from "../lib/opd-api";
@@ -293,4 +293,19 @@ describe("07c T2/T3/T5 — my day", () => {
       expect(screen.getByRole("button", { name: "6 months" })).toBeInTheDocument();
     },
   );
+});
+
+/**
+ * UX 2026-09-30 — a section table's mono columns (visit no., UHID) do not break, so at a 390px phone
+ * the table was 452px wide and the whole page scrolled sideways by 84px (measured in Chromium). jsdom
+ * has no layout; this pins the decision: the table sits in its own horizontal scroller, so a wide
+ * table scrolls inside its box and the page stays the width of the screen. `/counter/figures`
+ * renders the same component.
+ */
+describe("SectionTable — a wide table scrolls inside its own box", () => {
+  it("wraps the table in a horizontal scroller", () => {
+    renderWithProviders(<SectionTable section={SECTION as never} />);
+    const scroller = screen.getByRole("table").parentElement as HTMLElement;
+    expect(scroller.style.overflowX).toBe("auto");
+  });
 });
