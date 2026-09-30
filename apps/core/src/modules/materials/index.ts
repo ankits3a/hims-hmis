@@ -70,6 +70,10 @@ export {
   getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist,
 } from "./transfers";
 export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
+// ── PHARMACY GAP A6b — indents: a sub-store asks, the supplying store answers with a transfer ──
+export { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";
+export type { IndentLineInput, IndentStatus, IndentView, IssueIndentInput, RaiseIndentInput } from "./indents";
+export { MaterialsIndentsController } from "./materials-indents.controller";
 /**
  * DD13's half of the interface Plan 15 imports: it appends `consignmentDeployed` (exported above,
  * from T2) and reads `consumptionsFor` to compose the discharge bill.
