@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchClosing, fetchPatientRail } from "../../lib/pharmacy-api";
+import { askDispenseDiscount, fetchClosing, fetchPatientRail, previewBill } from "../../lib/pharmacy-api";
 import { billQtyText, quoteAmountPaise } from "../../lib/pharmacy-bill";
 import { OwnerCreditAsk } from "../owner-credit-ask";
-import type { Tender, WireDispense, WirePricedDraft } from "../../lib/pharmacy-api";
+import { DiscountSheet, DiscountWait, discountLabel, useDiscountApproval } from "./discount";
+import type { AppliedDiscount } from "./discount";
+import type { Tender, TenderPayable, WireDispense, WirePricedDraft } from "../../lib/pharmacy-api";
 
 /**
  * ═══ PD-6 — THE BILL IS THE RIGHT RAIL AND BUILDS LIVE (PD-D5) ═══
@@ -27,6 +29,9 @@ const MODES: readonly TenderMode[] = ["cash", "upi", "card", "split"];
 
 export const rupees = (paise: number): string =>
   `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** A rounding line, signed: ruling 2026-09-30 makes it a deduction (−₹0.60), which `rupees` would print as "₹-0.60". */
+export const signedRupees = (paise: number): string => (paise < 0 ? `−${rupees(-paise)}` : `+${rupees(paise)}`);
 
 const toPaise = (s: string): number | null => {
   const t = s.trim().replace(/,/g, "");
@@ -60,6 +65,19 @@ export function tendersFor(mode: TenderMode, payable: number, cashText: string, 
   const upi = toPaise(upiText);
   if (cash === null || upi === null || cash <= 0 || upi <= 0 || cash + upi !== payable || ref === "") return null;
   return { tenders: [{ mode: "cash", amountPaise: cash }, { mode: "upi", amountPaise: upi, refText: ref }], changePaise: 0 };
+}
+
+/**
+ * ═══ OWNER RULING 2026-09-30 — THE PAYABLE FOLLOWS THE TENDER BEING CHOSEN ═══
+ *
+ * *"If patient is paying using cash then keep whole-rupee rounding, round down. If paying via UPI or Card
+ * then we can collect to the paisa."* The server quotes both (`byTender`); the rail shows the one for the
+ * tender under the cashier's finger, so ₹33.60 reads ₹33.00 on Cash and Split and ₹33.60 on UPI and Card.
+ * An older server without `byTender` is read as it always was.
+ */
+export function payableFor(mode: TenderMode, preview: Pick<WirePricedDraft, "totals" | "byTender">): TenderPayable {
+  if (preview.byTender === undefined) return { netPayablePaise: preview.totals.netPayablePaise, roundingPaise: preview.totals.roundingPaise };
+  return mode === "upi" || mode === "card" ? preview.byTender.digital : preview.byTender.cash;
 }
 
 /** E27 — the reservation's deadline, said in the draft's own sentence. `null` before the pick: nothing is held. */
@@ -97,6 +115,7 @@ export function railQty(status: string, line: { lineIdx: number; qtyBase: number
 
 export function BillRail({
   dispense, preview, liveQty = null, previewError, drawerOpen, busy, error, now, onTake, onCredit, onDraft, onOpenDrawer,
+  discount = null, onDiscount = null,
 }: {
   dispense: WireDispense;
   preview: WirePricedDraft | null;
@@ -114,6 +133,9 @@ export function BillRail({
   onCredit: (credit: { reason: string; approvalId: string }) => void;
   onDraft: () => void;
   onOpenDrawer: () => void;
+  /** OWNER RULING 2026-09-30 — the sale discount on this bill (the desk prices the preview with it), and how to change it. */
+  discount?: AppliedDiscount | null;
+  onDiscount?: ((d: AppliedDiscount | null) => void) | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [mode, setMode] = useState<TenderMode>("upi");
@@ -123,9 +145,17 @@ export function BillRail({
   const status = dispense.status;
   const collected = status === "picked";
   const paid = status === "billed" || status === "handed_over";
-  const payable = preview?.totals.netPayablePaise ?? null;
+  const due = preview === null ? null : payableFor(mode, preview);
+  const payable = due?.netPayablePaise ?? null;
+  /* The owner's credit carries no tender: it is billed on the cash rule (rounded down, never above MRP). */
+  const creditPayable = preview === null ? null : payableFor("cash", preview).netPayablePaise;
   const plan = payable === null ? null : tendersFor(mode, payable, cash, upi, ref);
-  const canTake = collected && drawerOpen === true && plan !== null && !busy;
+  /* A discount above the pharmacist's 10% waits for its approval; the money keys wait with it. */
+  const approval = useDiscountApproval(discount);
+  const discountReady = discount === null || approval.status === "none" || approval.status === "granted";
+  const canTake = collected && drawerOpen === true && plan !== null && !busy && discountReady;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   /* GAP A3b — credit, only on the owner's yes (owner ruling 2026-09-28). Closed unless opened. */
   const [creditOpen, setCreditOpen] = useState(false);
@@ -137,6 +167,7 @@ export function BillRail({
   useEffect(() => {
     setCash(""); setUpi(""); setRef(""); setMode("upi");
     setCreditOpen(false); setCreditReason(""); setCreditApproval(null);
+    setMenuOpen(false); setSheetOpen(false);
   }, [dispense.id]);
 
   /* PD-D6 — `1-4` choose the tender, `Ctrl+⏎` takes it; guarded exactly as the buttons are. */
@@ -195,6 +226,28 @@ export function BillRail({
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 15px 3px 15px" }}>
         <span className="tag" style={{ flexGrow: 1 }}>{t("pharmacyDesk.bill.title")}</span>
         <span className={paid ? "stamp pd" : "stamp un"}>{paid ? t("pharmacyDesk.bill.paid") : t("pharmacyDesk.bill.unpaid")}</span>
+        {/* OWNER RULING 2026-09-30 — the bill's exceptions live behind ⋯, as the line's do: the discount first. */}
+        {collected && onDiscount !== null && preview !== null ? (
+          <span style={{ position: "relative" }}>
+            <button
+              type="button" aria-label={t("pharmacyDiscount.menu")} aria-expanded={menuOpen} aria-haspopup="true" data-testid="desk-bill-menu"
+              onClick={() => setMenuOpen((m) => !m)}
+              style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dim)" }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg>
+            </button>
+            {menuOpen ? (
+              <span className="lmenu" style={{ display: "block", minWidth: 200 }}>
+                <button type="button" data-testid="desk-discount-open" onClick={() => { setMenuOpen(false); setSheetOpen(true); }}>
+                  {discount === null ? t("pharmacyDiscount.open") : t("pharmacyDiscount.change")}
+                </button>
+                {discount !== null ? (
+                  <button type="button" onClick={() => { setMenuOpen(false); onDiscount(null); }}>{t("pharmacyDiscount.remove")}</button>
+                ) : null}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
       </div>
 
       <div style={{ flexGrow: 1, overflowY: "auto", padding: "4px 15px 0 15px" }}>
@@ -215,7 +268,7 @@ export function BillRail({
             {taken !== null ? (
               <>
                 {taken.roundingPaise !== undefined && taken.roundingPaise !== 0 ? (
-                  <Row what={t("pharmacyDesk.bill.rounding")} amt={rupees(taken.roundingPaise)} tone="var(--dim)" />
+                  <Row what={t("pharmacyDesk.bill.rounding")} amt={signedRupees(taken.roundingPaise)} tone="var(--dim)" />
                 ) : null}
                 <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 0 0 0", marginTop: 4, borderTop: "2px solid var(--ink)" }}>
                   <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{t("pharmacyDesk.bill.took")}</span>
@@ -241,18 +294,22 @@ export function BillRail({
               </div>
             ))}
             {preview.totals.discountPaise > 0 ? (
-              <Row what={t("pharmacyDesk.bill.discount")} amt={`−${rupees(preview.totals.discountPaise)}`} tone="var(--green)" />
+              <Row
+                what={discount === null ? t("pharmacyDesk.bill.discount") : `${t("pharmacyDesk.bill.discount")} ${discountLabel(discount)} · ${discount.reason}`}
+                amt={`−${rupees(preview.totals.discountPaise)}`} tone="var(--green)" testId="desk-discount-row"
+              />
             ) : null}
             <Row what={t("pharmacyDesk.bill.cgst")} amt={rupees(preview.totals.cgstPaise)} tone="var(--dim)" />
             <Row what={t("pharmacyDesk.bill.sgst")} amt={rupees(preview.totals.sgstPaise)} tone="var(--dim)" />
-            {(taken?.roundingPaise ?? preview.totals.roundingPaise) !== 0 ? (
-              <Row what={t("pharmacyDesk.bill.rounding")} amt={rupees(taken?.roundingPaise ?? preview.totals.roundingPaise)} tone="var(--dim)" />
+            {(taken?.roundingPaise ?? due?.roundingPaise ?? 0) !== 0 ? (
+              <Row what={t("pharmacyDesk.bill.rounding")} amt={signedRupees(taken?.roundingPaise ?? due?.roundingPaise ?? 0)} tone="var(--dim)" testId="desk-rounding" />
             ) : null}
             <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 0 0 0", marginTop: 4, borderTop: "2px solid var(--ink)" }}>
               <span style={{ flexGrow: 1, fontSize: 13, fontWeight: 600 }}>{paid ? t("pharmacyDesk.bill.took") : t("pharmacyDesk.bill.toCollect")}</span>
-              <span className="mo" data-testid="desk-payable" style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(taken?.netPayablePaise ?? preview.totals.netPayablePaise)}</span>
+              <span className="mo" data-testid="desk-payable" style={{ fontSize: 21, fontWeight: 600, letterSpacing: "-.02em" }}>{rupees(taken?.netPayablePaise ?? payable ?? preview.totals.netPayablePaise)}</span>
             </div>
             <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.inside")}</p>
+            {paid ? null : <DiscountWait discount={discount} />}
             {/* C7 — a card the patient holds that is NOT on this bill is said, never applied here (money is billing's). */}
             {preview.totals.discountPaise > 0 || heldCard === null ? null : (
               <p role="status" data-testid="desk-member-note" style={{ margin: "9px 0 0 0", fontSize: 11.5, color: "var(--gold-ink, var(--gold))", lineHeight: "16px" }}>
@@ -327,7 +384,7 @@ export function BillRail({
             </>
           )}
           {/* GAP A3b — owner ruling 2026-09-28: nobody but the owner gives credit. The drawer is not needed: no money moves. */}
-          {payable !== null && payable > 0 ? (
+          {creditPayable !== null && creditPayable > 0 && discountReady ? (
             <div data-testid="desk-credit" style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--line2)" }}>
               {!creditOpen ? (
                 <button type="button" className="sec" data-testid="desk-credit-open" style={{ width: "100%", height: 32 }} onClick={() => setCreditOpen(true)}>
@@ -340,15 +397,15 @@ export function BillRail({
                     <input className="in" data-testid="desk-credit-reason" value={creditReason} onChange={(e) => setCreditReason(e.target.value)} style={{ height: 36, marginTop: 4 }} />
                   </label>
                   <OwnerCreditAsk
-                    draftId={dispense.id} patientId={dispense.patient.id} amountPaise={payable} reason={creditReason}
-                    amountText={rupees(payable)} onGranted={onCreditGranted}
+                    draftId={dispense.id} patientId={dispense.patient.id} amountPaise={creditPayable} reason={creditReason}
+                    amountText={rupees(creditPayable)} onGranted={onCreditGranted}
                   />
                   {creditApproval !== null ? (
                     <button
                       type="button" className="pri" data-testid="desk-credit-bill" style={{ width: "100%", marginTop: 10, height: 42 }} disabled={busy}
                       onClick={() => onCredit({ reason: creditReason.trim(), approvalId: creditApproval })}
                     >
-                      {t("pharmacyDesk.bill.creditBill", { amount: rupees(payable) })}
+                      {t("pharmacyDesk.bill.creditBill", { amount: rupees(creditPayable) })}
                     </button>
                   ) : null}
                 </>
@@ -367,13 +424,30 @@ export function BillRail({
           <p style={{ margin: "7px 0 0 0", fontSize: 10.5, color: "var(--dim)", lineHeight: "15px" }}>{t("pharmacyDesk.bill.draftNothingHeld")}</p>
         </div>
       ) : null}
+      {sheetOpen && onDiscount !== null ? (
+        <DiscountSheet
+          scopeKey={`dispense:${dispense.id}`}
+          initial={discount}
+          price={async (d) => {
+            const p = await previewBill(dispense.id, d);
+            return {
+              quote: p.discount ?? null, cash: p.byTender?.cash ?? null, digital: p.byTender?.digital ?? null,
+              taxPaise: p.totals.cgstPaise + p.totals.sgstPaise,
+            };
+          }}
+          ask={(d) => askDispenseDiscount(dispense.id, d)}
+          onApply={(d) => { setSheetOpen(false); onDiscount(d); }}
+          onRemove={discount === null ? null : () => { setSheetOpen(false); onDiscount(null); }}
+          onClose={() => setSheetOpen(false)}
+        />
+      ) : null}
     </aside>
   );
 }
 
-function Row({ what, amt, tone }: { what: string; amt: string; tone: string }): React.ReactElement {
+function Row({ what, amt, tone, testId }: { what: string; amt: string; tone: string; testId?: string }): React.ReactElement {
   return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
+    <div data-testid={testId} style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "6px 0", borderTop: "1px solid var(--line2)" }}>
       <span style={{ flexGrow: 1, fontSize: 11.5, color: tone }}>{what}</span>
       <span className="mo" style={{ fontSize: 11.5, color: tone }}>{amt}</span>
     </div>
