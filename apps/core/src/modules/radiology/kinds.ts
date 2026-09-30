@@ -91,6 +91,13 @@ export const DEVICE_MODALITY_ATTRIBUTE = "modality";
 export const DEVICE_PORTABLE_ATTRIBUTE = "portable";
 
 /**
+ * 18-S RS2b — the longest ward-and-bed string a bedside location may be. `bedside_location` is
+ * unbounded `text`; this is the ONE bound, read by the schedule route, the order route, placement
+ * and the `imaging.bedside_requested` payload, so a place accepted at one door is accepted at all.
+ */
+export const BEDSIDE_LOCATION_MAX_LENGTH = 120;
+
+/**
  * The modalities this slice ships study types for. `attributes.modality` on a `device` resource is
  * matched against a study type's `modality` (T4 A3), so a spelling that drifts between the seed and
  * the scheduler produces a machine nothing can be booked on — 16a's DD5 again, and the reason both

@@ -306,7 +306,7 @@ export async function debitNoteDocument(db: Db, actor: Actor, returnId: string):
   const issued = r.debitNoteNo !== null;
   const rows = r.lines.map((l, i) => `<tr>
       <td>${String(i + 1)}</td><td>${esc(l.itemName)}<div class="c">${esc(l.itemCode)}${l.hsnCode === null ? "" : ` · HSN ${esc(l.hsnCode)}`}</div></td>
-      <td>${esc(l.batchNo)}<div class="c">exp ${dayLabel(l.expiryDate)}</div></td><td>${esc(REASON_WORDS[l.reason] ?? l.reason)}</td>
+      <td>${esc(l.batchNo)}<div class="c">exp ${dayLabel(l.expiryDate)}</div></td><td>${esc(REASON_WORDS[l.reason] ?? l.reason)}${l.note === null ? "" : `<div class="c">${esc(l.note)}</div>`}</td>
       <td class="n">${esc(qtyText(l.qtyBase, l.baseUom, l.pack))}</td><td class="n">${rupees(l.ratePaise)}</td><td class="n">${rupees(l.taxablePaise)}</td>
       <td class="n">${(l.gstRateBps / 100).toFixed(l.gstRateBps % 100 === 0 ? 0 : 2)}%</td>
       <td class="n">${r.interState ? rupees(l.igstPaise) : `${rupees(l.cgstPaise)} + ${rupees(l.sgstPaise)}`}</td><td class="n">${rupees(l.totalPaise)}</td></tr>`).join("");

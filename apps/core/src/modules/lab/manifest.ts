@@ -44,9 +44,10 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * never have signed. Collapsing them would either give the front office a signing permission or
  * make the pathologist queue every hand-over.
  *
- * `lab.reports.release_unpaid` is declared here and granted to **nobody in the lab** — the approval
- * that uses it is held by `billing_manager` (DD6, `approval-types.ts`). A permission the module
- * declares and no lab role holds is the honest shape for a control another office exercises.
+ * `lab.reports.release_unpaid` is declared here. The DECISION it executes is the owner's approval
+ * (`lab_release_unpaid_owner`, owner credit ruling 2026-09-28); the ACT is a print, so it is held by
+ * `lab_reception`, which holds the print it needs (the §13 walk found no role holding both). The
+ * control is the approval — granted, this order, used once — not the grant.
  *
  * ═══ TWO SUBSCRIPTIONS, AND THEY LANDED WITH THE HANDLER — 17-E T7b (the `partnersManifest` RULE) ═══
  *

@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, mkCashier, seedBillingBase } from "./helpers/billing";
-import { billingConfig, events, invoices, opdConfig, receipts, refundVouchers } from "../src/kernel/db/schema";
+import { billingConfig, events, invoices, opdConfig, patients, receipts, refundVouchers } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { DEFAULT_LETTERHEAD } from "../src/modules/opd/config";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -66,6 +66,7 @@ const ROUTES: [method: "get" | "post" | "put", path: string, permission: string]
   ["get", "/billing/refunds", "billing.reports.read"],
   ["post", "/billing/sessions", "billing.session.own"],
   ["get", "/billing/sessions/current", "billing.session.own"],
+  ["get", "/billing/sessions/current/open-items", "billing.session.own"], // UX-AUDIT 2026-09-28
   ["post", "/billing/sessions/X/close", "billing.session.own"],
   ["post", "/billing/sessions/X/confirm-close", "billing.session.own"],
   ["get", "/billing/sessions", "billing.session.read"],
@@ -725,6 +726,36 @@ describe("billing e2e", () => {
   });
 
   /**
+   * OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen"). The unfiltered list carries every
+   * receipt's amount, receiver and drawer, so a cashier could sum her own open session into what her
+   * drawer should hold. Without `billing.session.read` she gets receipts only for a named patient —
+   * which is how every cashier screen calls this route — and a supervisor keeps the whole list.
+   */
+  it("BLIND COUNT: the unfiltered receipt list is refused to a cashier without billing.session.read; her patient lookup answers; the supervisor's list stands", async () => {
+    await createRole(db, "plain_cashier_t", "plain_cashier_t");
+    for (const p of ["billing.invoice.read", "billing.receipt.record", "billing.session.own", "patients.read"]) {
+      await grantPermissionToRole(db, registry, "plain_cashier_t", p);
+    }
+    const plain = await mkUser(db, "plain_cashier", ["plain_cashier_t"]);
+    const patientId = await registerPatient("Suman Lata", "9876543230");
+    await openSession(plain.token);
+    await http().post("/billing/receipts").set(...auth(plain.token)).send({
+      patientId, tenders: [{ mode: "cash", amountPaise: 50_000 }], note: "advance",
+    }).expect(201);
+
+    const refused = await http().get("/billing/receipts").set(...auth(plain.token)).expect(403);
+    expect(refused.body.code).toBe("receipt_filter_required");
+    expect(JSON.stringify(refused.body)).not.toContain("50000");
+
+    const mine = await http().get("/billing/receipts").query({ patientId }).set(...auth(plain.token)).expect(200);
+    expect(mine.body.items).toHaveLength(1);
+
+    // `cashier` in this suite holds billing.session.read (COUNTER_PERMISSIONS): the supervisor's view
+    const all = await http().get("/billing/receipts").set(...auth(cashier.token)).expect(200);
+    expect(all.body.items).toHaveLength(1);
+  });
+
+  /**
    * The refund worklist's own disclosure: `payeeIdRef` is the identity-DOCUMENT reference captured
    * when the money leaves. `payeeName` and `payeeIdType` STAY — a worklist must show who is being
    * paid and against what kind of document; the reference is verified against the physical document
@@ -786,6 +817,23 @@ describe("billing e2e", () => {
     expect(typeof row.issuedAt).toBe("string");
     expect(typeof row.paidAt).toBe("string");
     expect(Object.keys(row)).toContain("cashierSessionId");
+
+    /**
+     * UX-AUDIT 2026-09-28 — the back office read "Patient: p-1" off every voucher. The row now
+     * carries the alias-safe summary `listMismatches` carries, batched once per page, and a SEALED
+     * record hands over its alias and never its name (§14) — the fixture flips the same patient to
+     * confidential so the absence assertion runs against a name that really exists. (`payeeName`
+     * is the PAY-TIME name typed off the document, a different field, and stays.)
+     */
+    expect(row.name).toBe("Anita Verma");
+    expect(row.uhid).toMatch(/\S/);
+    expect(row.restricted).toBe(false);
+    await db.update(patients).set({ isConfidential: true, alias: "Patient S-7" }).where(eq(patients.id, patientId));
+    const sealed = await http().get("/billing/refunds").set(...auth(cashier.token)).expect(200);
+    const [sealedRow] = sealed.body.items as [Record<string, unknown>];
+    expect(sealedRow.restricted).toBe(true);
+    expect(sealedRow.name).toBeNull();
+    expect(sealedRow.alias).toBe("Patient S-7");
   });
 
   it("the session: variance close files the SoD approval, only the OWN cashier may confirm, and the list reads it back", async () => {
@@ -824,8 +872,59 @@ describe("billing e2e", () => {
     expect(current.body.session).toBeNull();
   });
 
+  /**
+   * UX-AUDIT 2026-09-28 — "OPEN ON THIS DRAWER" reads the caller's own live drawer and carries NO
+   * CASH FIGURE: the close is a blind count, so the payload's keys are pinned whole — a cash total,
+   * a "collected" or an expected added later turns this red before it reaches the screen.
+   */
+  it("open items: unconfirmed UPI and a part-paid bill on the cashier's own drawer, and no cash figure anywhere", async () => {
+    const none = await http().get("/billing/sessions/current/open-items").set(...auth(cashier.token)).expect(200);
+    expect(none.body).toEqual({ items: null });
+
+    const patientId = await registerPatient("Meena Bai", "9876543212");
+    await openSession(cashier.token, 200_000);
+    await issuePaid(patientId, base.genericServiceId); // ₹560 in CASH — must not surface below
+
+    const approvalId = await ownerCredit("draft-open-1", patientId, 56_000, "settles later");
+    const issued = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-open-1", patientId,
+      lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
+      credit: { reason: "settles later", approvalId },
+    }).expect(201);
+    const receipt = await http().post("/billing/receipts").set(...auth(cashier.token))
+      .send({ patientId, tenders: [{ mode: "upi", amountPaise: 20_000, refText: "UPI-1" }] }).expect(201);
+    await http().post(`/billing/receipts/${receipt.body.receiptId as string}/allocations`).set(...auth(cashier.token))
+      .send({ invoiceId: issued.body.invoiceId, amountPaise: 20_000 }).expect(201);
+
+    const res = await http().get("/billing/sessions/current/open-items").set(...auth(cashier.token)).expect(200);
+    const items = res.body.items as Record<string, unknown>;
+    expect(Object.keys(items).sort()).toEqual(
+      ["nonCashMismatched", "nonCashUnconfirmed", "partPaid", "receipts", "refundsPaidHere", "refundsQueued"],
+    );
+    expect(items).toMatchObject({
+      receipts: 2,
+      nonCashUnconfirmed: { count: 1, paise: 20_000 },
+      nonCashMismatched: { count: 0, paise: 0 },
+      refundsQueued: { count: 0, paise: 0 },
+      refundsPaidHere: 0,
+      partPaid: { count: 1, paise: 36_000 },
+    });
+    const partPaid = items.partPaid as { items: Record<string, unknown>[] };
+    expect(partPaid.items).toEqual([expect.objectContaining({
+      invoiceId: issued.body.invoiceId, outstandingPaise: 36_000, patientName: "Meena Bai",
+    })]);
+    // THE BLIND COUNT: neither the cash taken (56000) nor the drawer's expected (256000) is on the wire.
+    const wire = JSON.stringify(res.body);
+    expect(wire).not.toContain("56000");
+    expect(wire).not.toContain("256000");
+
+    // Another cashier's drawer is not hers: with none of his own open, he reads null.
+    const other = await http().get("/billing/sessions/current/open-items").set(...auth(cashier2.token)).expect(200);
+    expect(other.body).toEqual({ items: null });
+  });
+
   it("the 403 sweep: every route in the table refuses a permission-less user, BY THE PERMISSION IT NAMES", async () => {
-    expect(ROUTES).toHaveLength(31);
+    expect(ROUTES).toHaveLength(32); // UX-AUDIT 2026-09-28: 31 -> 32, `sessions/current/open-items`
     for (const [method, path, permission] of ROUTES) {
       const res = await http()[method](path).set(...auth(rando.token)).send({});
       expect({ method, path, status: res.status, message: res.body.message }).toEqual({

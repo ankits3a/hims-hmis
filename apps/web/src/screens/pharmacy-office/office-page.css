@@ -1,0 +1,55 @@
+/*
+ * ═══ GAP-CLOSURE B5 — THE FOLDED PAGES, IN THE OFFICE'S PAPER & PINE ═══
+ *
+ * The office board's list box, table and section label, for the pages B3 folded into the office
+ * (`office-page.tsx`). Tokens are `styles/paper-pine.css`'s; everything is scoped under the office
+ * frame's `.pof-legacy`, so no other seat changes.
+ */
+/* The board's primary act is pine, not the shadcn default ink: the office's buttons wear it. */
+.d1 .pof-legacy { --primary: #0e6b4e; --primary-foreground: #f2faf6; --ring: rgba(14, 107, 78, .45); --destructive: #b23a30; }
+
+.d1 .pof-legacy .ofp-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+.d1 .pof-legacy .ofp-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.d1 .pof-legacy .ofp-kb {
+  display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 18px; margin-left: 4px;
+  padding: 0 4px; border-radius: 3px; border: 1px solid currentColor; opacity: .7;
+  font: 600 9px/1 "IBM Plex Mono", monospace;
+}
+
+/* The search that heads a list. */
+.d1 .pof-legacy .ofp-search { width: 100%; max-width: 28rem; }
+
+/* The one list: a white box on the paper, its rows ruled by the board's hairline. */
+.d1 .pof-legacy .ofp-box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.d1 .pof-legacy .ofp-scroll { overflow-x: auto; }
+.d1 .pof-legacy .ofp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.d1 .pof-legacy .ofp-table th {
+  padding: 9px 12px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line);
+  font: 600 9.5px/1.2 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--faint);
+}
+.d1 .pof-legacy .ofp-table td { padding: 9px 12px; border-top: 1px solid var(--line2); vertical-align: middle; }
+.d1 .pof-legacy .ofp-table tbody tr:first-child td { border-top: none; }
+.d1 .pof-legacy .ofp-table tbody tr:hover td { background: var(--wash); }
+.d1 .pof-legacy .ofp-table tr.ofp-dim td { color: var(--dim); }
+.d1 .pof-legacy .ofp-table .ofp-code { font-family: "IBM Plex Mono", monospace; font-size: 12px; white-space: nowrap; }
+.d1 .pof-legacy .ofp-rowacts { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: 6px; }
+
+/* A group inside the one list: the board's mono label, then its rows. */
+.d1 .pof-legacy .ofp-group { padding: 10px 12px 6px; border-top: 1px solid var(--line); }
+.d1 .pof-legacy .ofp-group:first-child { border-top: none; }
+.d1 .pof-legacy .ofp-box > section + section { border-top: 1px solid var(--line); }
+.d1 .pof-legacy .ofp-label { font: 600 9.5px/1.2 "IBM Plex Mono", monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.d1 .pof-legacy .ofp-rows > li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-top: 1px solid var(--line2); font-size: 13px; }
+.d1 .pof-legacy .ofp-rows > li:first-child { border-top: none; }
+.d1 .pof-legacy .ofp-empty { padding: 14px 12px; font-size: 13px; color: var(--dim); }
+
+/* A card of the page that is not the list (a flow, a figure strip). */
+.d1 .pof-legacy .ofp-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 0; }
+
+/* No keyboard on a phone or tablet: the keycap is noise there. */
+@media (max-width: 768px) { .d1 .pof-legacy .ofp-kb { display: none; } }
+.d1 .pof-legacy .ofp-rows > li.ofp-stack { display: block; }
+.d1 .pof-legacy .ofp-label.ofp-red { color: var(--red); }
+
+/* The formulary's mapping worklist is a shared component with its own border; inside the office it is a white card like the rest. */
+.d1 .pof-legacy [data-testid="mapping-worklist"] { background: var(--card); border-color: var(--line); border-radius: 8px; }

@@ -514,8 +514,82 @@ pathologist of record … users … the analyser list").
   - The golden fixture leaves 13 descriptive analytes (urine and stool microscopy, the smear) with no band, so
     `lab_range_sources_present` can never pass on it alone. The synthetic supplement gives them text bands.
   - The owner's real catalogue must band every analyte too, or this row stays RED.
-- **Not yet rehearsed:** the §13 five-seat walk-through, Drills A–D and the analyser bridge step 3b. G1–G4
-  green on synthetic data says the stand-up can be done; it does not say the seats work end to end.
+- **Not yet rehearsed:** Drills A–D. The §13 walk and step 3b are below.
+
+### The §13 walk on the same database, 2026-09-28
+
+Run by an agent in Chromium, through the shipped screens, as the synthetic staff. The front desk was
+`meena.front`, reception `sanjay.lab`, the chair `vikas.phlebo`, the bench `abha.tech` and `nitin.tech`,
+the pathologist `dr.meera`, the owner `ramesh.front` and billing `priya.billing`. There were six orders,
+`L2609280001`–`L2609280006`, all on synthetic patients.
+
+**What held, step by step:**
+- **Before step 1:** the cashier drawer opened with a float.
+- **Personas:**
+  - one name with no mobile (Munni) registered;
+  - a family of three on one mobile registered as three records at the front desk, through the recorded
+    "register anyway";
+  - a minor's registration required the guardian;
+  - one seat ran in Hindi: every UI string was translated except the environment banner, and test names are
+    English only because the catalogue has no Hindi names.
+- **Desk:** HIV would not order until "Consent taken by" named someone. A test on credit showed "Pay at the
+  report" and the report was held.
+- **Chair:**
+  - labels printed in order of draw;
+  - a wrong wristband was refused;
+  - a cross-scanned tube was refused and both tubes were named.
+- **Bench:**
+  - a tube with no wristband scan needed a named re-checker before Receive;
+  - HB 145 was refused as absurd;
+  - K 6.8 opened a critical call by itself, and Clocks running opened by itself.
+- **Verify:**
+  - the critical order stayed first;
+  - auto-verification is off;
+  - sign and publish produced v1 for every order.
+- **Report centre:**
+  - HIV is "in person only" with no notice;
+  - every patient notice is **queued and not sent** (`notifications.status = queued`, `sent_channel` empty);
+  - a printed hand-over wrote a `lab_report_deliveries` row with the collector;
+  - `phi_access_log` holds 16 rows.
+- **Step 3b:** two AU480 runs posted by `bridge.au480` both stayed live. Nothing was signable ("Sign 0
+  results") until a run was chosen with a reason. The reason is in `lab.result_chosen`.
+- **Census:** after a pull, `lab_approval_type_registered` read RED until `seed:lab` ran (the new
+  `lab_release_unpaid_owner` type). The census caught a stale environment.
+
+**What failed, with the plan phase that owns each** (`docs/superpowers/plans/2026-09-26-17f-lims-stations.md`,
+"Findings from the §13 walk"):
+
+1. **SAFETY.** A critical call closed on a WRONG read-back: "five point eight" for K 6.8. `criticals.ts`
+   closes on any non-empty read-back and never compares it with the value.
+2. **Money flow unreachable.** A held report cannot be released by anyone. The counter has the screen but
+   not `lab.reports.release_unpaid` (403). `billing_manager` has the permission but not `lab.reports.print`,
+   so it cannot open the screen. The owner's approval (ruling of 28 Sep) was granted and could not be used.
+3. **Save & complete is unusable on a panel with a formula analyte** (RFT's UCR, the lipid profile, LFT,
+   CBC's ANC). The button lights only when every analyte has a value; a formula has none until its inputs are
+   saved; and a typed formula value is refused (422), which aborts the batch. The per-row Save works.
+4. **The wristband scan lives only in the browser.** Reopening a patient mid-draw (a reload, or serving
+   someone else first) sends the tubes as "no wristband scan", and the bench demands a named re-check.
+5. **A pathologist cannot start a result.** `accessioned→in_analysis` allows only `lab_technician` and
+   `lab_bridge` (403 `role_denied`). §13 step 3b's "at 02:00 there may be nobody at the bench" does not
+   hold.
+6. **Verify cannot move a rerun choice before signing.** The other run disappears once one is chosen.
+7. **The lab desk's own registration has no "register anyway"** for a near-duplicate (409 with no
+   override). The front desk has it. Ruling 6 removes this door anyway.
+8. **Raw UTC timestamps:** "Opened 2026-09-28T17:13:44.372Z" on the critical call, and
+   "Authorised: 2026-09-28T17:18:02.838Z" **on the printed report**.
+9. **The report prints an invented date of birth** ("1981-09-28") for a patient registered by age only.
+10. **A patient with no phone gets notices queued for ever**, and the register says "notice queued" rather
+    than "no phone — in person".
+11. **The bench and verify show four decimals** ("11.8000", "12.0000 – 15.0000"). The printed report is
+    right.
+12. **The station shell has no language switch.** The app chrome had one; Hindi had to be set on another
+    screen.
+13. **The environment banner covers the top of every full-viewport header** (the station shell and Desk One)
+    on a non-production box.
+14. "KFT", the common Indian name for RFT, finds nothing at the desk.
+
+Also: `tools/lab-synthetic.sh` did not run `seed:registration`, so the desk refused "registration_config row
+'main' is missing" (now fixed). It had no front-desk user either (`meena.front` added).
 
 ## 14. Executed on UAT — **NOT YET RUN**
 

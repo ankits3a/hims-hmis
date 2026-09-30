@@ -39,7 +39,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  * GAP CLOSURE A1 (2026-09-28) moved this out of `scripts/import-opening-stock.ts`: the owner's audit
  * found opening stock could only be loaded by an engineer. There are now two callers:
  *
- *   · the SCREEN (`/materials/grn` → Opening stock) calls `captureOpeningStock`. It CAPTURES one GRN per
+ *   · the SCREEN (the office's Stock → Opening stock sheet: the grid, or its CSV upload) calls `captureOpeningStock`. It CAPTURES one GRN per
  *     vendor and stops. The pharmacist QCs and posts those GRNs in the GRN worklist like any delivery —
  *     DD8's two stages, two people, and the uploader never judges their own sheet.
  *   · the SCRIPT calls `applyOpeningStock`, which captures (or picks up what the screen captured) and then
@@ -49,11 +49,25 @@ import type { Db, Tx } from "../../kernel/db/client";
  * its OWN GRN, which waits for the `materials_near_expiry_acceptance` approval (the materials head decides
  * it in /approvals). Stock that has already expired is REFUSED — it is segregated, not received.
  *
- * ═══ WHAT IT REFUSES, AND WHY THE MRP RULE WILL BITE ═══
+ * ═══ THE LOOSE-MRP RULING — AN MRP THAT DOES NOT DIVIDE IS RECEIVED ═══
  *
- * `mrpPerBaseUnit` refuses an MRP that does not divide into whole paise per tablet ("₹85 on a strip of 12
- * has no honest integer answer") and QC rejects the line as `mrp_unconvertible`. So a strip of 15 at
- * ₹35.50 is REFUSED here, at plan time, with that reason — before the gate would have.
+ * Owner ruling 2026-09-22 (money): ₹35.50 on a strip of 15 is RECEIVED. A full strip bills at the printed
+ * ₹35.50 and a loose tablet at the per-tablet share rounded DOWN (₹2.36) — `saleAmountPaise` in materials.
+ * QC rule 6 already compares it exactly (`comparePackPrices`), so this planner no longer refuses it either;
+ * until 2026-09-29 it did, with a stale "QC refuses it (mrp_unconvertible)" that QC had stopped saying.
+ *
+ * ═══ TWO SHAPES OF INPUT, ONE JUDGEMENT ═══
+ *
+ * The CSV sheet and the on-screen grid (2026-09-29, the office's Stock → Opening stock sheet) are both
+ * turned into `OpeningInputRow`s — text cells keyed by the CSV's column names, plus the item id when the
+ * grid picked one from the master — and judged by ONE function, `planOpeningRows`. There is no second
+ * set of rules for the screen.
+ *
+ *   pack_type              optional: tablet_strip, capsule_strip, bottle, vial, ampoule, tube, pouch,
+ *                          sachet, box, other. Names a NEW pack unit (`box10`); blank is a strip.
+ *   free_packs             optional: packs the supplier gave free. Received as a FREE-GOODS line at cost 0.
+ *   trade_discount_pct     optional: lowers the COST only — cost/unit = rate × (1 − d/100) ÷ pack size,
+ *                          rounded down to the paisa. The sale price stays the MRP.
  *
  * A pack size the item does not have yet (the starter list defaults every strip to 10) is added as a
  * new unit `strip<N>` — an item-master act, so it needs `materials.items.manage`. So does creating the
@@ -67,13 +81,35 @@ import type { Db, Tx } from "../../kernel/db/client";
  */
 
 export const OPENING_VENDOR_CODE = "OPENING-STOCK";
-const COLUMNS = ["brand", "batch", "expiry", "mrp_per_pack", "pack_size", "packs", "rack", "supplier_name", "purchase_rate_per_pack"] as const;
+const COLUMNS = [
+  "brand", "batch", "expiry", "mrp_per_pack", "pack_size", "packs", "rack", "supplier_name", "purchase_rate_per_pack",
+  "pack_type", "free_packs", "trade_discount_pct",
+] as const;
 const REQUIRED = ["brand", "batch", "expiry", "mrp_per_pack", "pack_size", "packs"] as const;
 /** A hospital shelf is ~350 items × a few batches. Past this, split the sheet — the GRN takes 200 lines. */
 export const OPENING_MAX_ROWS = 2000;
 
+/**
+ * What a pack is. The word names a NEW pack unit when the item has none of that size yet (`strip15`,
+ * `box10`); a size the item already has is used whatever it is called. A new drug's base unit follows it too
+ * (`stock-drug.ts`): a tablet strip counts tablets, a bottle counts bottles.
+ */
+export const PACK_TYPES = ["tablet_strip", "capsule_strip", "bottle", "vial", "ampoule", "tube", "pouch", "sachet", "box", "other"] as const;
+export type PackType = (typeof PACK_TYPES)[number];
+/** The word a new pack unit starts with. */
+export const PACK_UOM_PREFIX: Record<PackType, string> = {
+  tablet_strip: "strip", capsule_strip: "strip", bottle: "bottle", vial: "vial", ampoule: "ampoule", tube: "tube",
+  pouch: "pouch", sachet: "sachet", box: "box", other: "pack",
+};
+
 export type OpeningRow = {
   line: number; brand: string; batch: string; expiryDate: string; mrpPaise: number; packSize: number; packs: number;
+  /** Packs received free — a separate free-goods GRN line at cost 0. */
+  freePacks: number;
+  /** Rupees paid per pack before the trade discount, in paise; 0 when not given. */
+  ratePaise: number;
+  /** The trade discount in basis points (12.5% = 1250). Lowers the cost, never the sale price. */
+  discountBps: number;
   rack: string; supplier: string; costPerBasePaise: number; itemId?: string; itemCode?: string; itemName?: string; uom?: string;
   newUom: boolean; vendorKey: string; near: boolean; reasons: string[];
 };
@@ -90,6 +126,13 @@ export type OpeningPlan = {
   rows: OpeningRow[]; refusals: number; grns: OpeningGrn[]; storeId: string; newUoms: number; needsVendor: boolean;
   zeroCost: number; racks: { itemId: string; rack: string }[]; units: number; fileHash: string;
 };
+
+/**
+ * One row to judge: text cells under the CSV's column names, and — from the on-screen grid — the item the
+ * person PICKED, which is then used instead of matching the brand text. `line` is what the person sees:
+ * the sheet's line number, or the grid's row number.
+ */
+export type OpeningInputRow = { line: number; cells: Partial<Record<(typeof COLUMNS)[number], string>>; itemId?: string };
 
 /** Lowercase, punctuation to single spaces — "DOLO-650" and "Dolo 650" are one name. */
 export function norm(s: string): string {
@@ -141,6 +184,30 @@ export function rupeesToPaise(text: string): number | null {
   return Number(r) * 100 + Number(p.padEnd(2, "0"));
 }
 
+/** "12.5" → 1250 basis points; blank → 0; null for anything outside 0 ≤ d < 100 with at most two decimals. */
+export function discountToBps(text: string): number | null {
+  if (text.trim() === "") return 0;
+  const paise = rupeesToPaise(text);
+  return paise === null || paise >= 10_000 ? null : paise;
+}
+
+/**
+ * THE COST OF ONE BASE UNIT — rate × (1 − d/100) ÷ pack size, rounded DOWN to the paisa, in integers.
+ * Rounded down so the cost QC compares with the MRP is never above what was paid; QC compares it exactly
+ * against the pack's MRP (`comparePackPrices`), and this planner refuses on the same comparison.
+ */
+export function costPerBase(ratePaise: number, discountBps: number, packSize: number): number {
+  return Math.floor((ratePaise * (10_000 - discountBps)) / (10_000 * packSize));
+}
+
+/** The pack type as written — the key, or its words ("tablet strip", "Bottle"); blank is null (a strip). */
+export function packTypeOf(text: string): PackType | null | undefined {
+  const k = norm(text).replace(/ /g, "_");
+  if (k === "") return null;
+  if (k === "strip") return "tablet_strip";
+  return (PACK_TYPES as readonly string[]).includes(k) ? k as PackType : undefined;
+}
+
 /** IST calendar day, `YYYY-MM-DD` — the day a challan is dated and a batch expires in. */
 function istDay(at: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
@@ -164,17 +231,63 @@ export function readOpeningSheet(text: string): CsvFile {
   return file;
 }
 
+/** THE CSV DOOR — the sheet's header checked, then the one judgement. */
 export async function planOpeningStock(db: Db, file: CsvFile, fileText: string, now: Date): Promise<OpeningPlan> {
   const missing = REQUIRED.filter((c) => !file.header.includes(c));
   if (missing.length > 0) throw new Error(`the sheet is missing column(s): ${missing.join(", ")} (template: docs/runbooks/pharmacy-opening-stock-template.csv)`);
   const unknown = file.header.filter((h) => h !== "" && !(COLUMNS as readonly string[]).includes(h));
   if (unknown.length > 0) throw new Error(`unknown column(s): ${unknown.join(", ")} — a misspelt column would otherwise be silently empty`);
+  return planOpeningRows(db, file.rows, fileText, now);
+}
+
+/**
+ * THE GRID'S ROW, as the screen sends it. Numbers are sent as the person typed them (text), so a typo
+ * is judged by the same reader as the sheet's — "35.555" is refused here exactly as it is in a CSV.
+ */
+export type OpeningGridRow = {
+  itemId: string; batch: string; expiry: string; mrpPerPack: string; packSize: string; packs: string;
+  freePacks?: string; ratePerPack?: string; discountPct?: string; packType?: string; rack?: string; supplier?: string;
+};
+
+/** THE GRID DOOR — the picked item and the typed cells, turned into the sheet's row and judged the same way. */
+export async function planOpeningGrid(db: Db, rows: readonly OpeningGridRow[], now: Date): Promise<OpeningPlan> {
+  if (rows.length === 0) throw new PharmacyError("opening_stock_unreadable", "no rows to receive", { rows: 0 });
+  if (rows.length > OPENING_MAX_ROWS) {
+    throw new PharmacyError("opening_stock_unreadable", `${String(rows.length)} rows — receive them in parts of ${String(OPENING_MAX_ROWS)} or fewer`, { rows: rows.length });
+  }
+  const input: OpeningInputRow[] = rows.map((r, i) => ({
+    line: i + 1, itemId: r.itemId,
+    cells: {
+      brand: "", batch: r.batch, expiry: r.expiry, mrp_per_pack: r.mrpPerPack, pack_size: r.packSize, packs: r.packs,
+      free_packs: r.freePacks ?? "", purchase_rate_per_pack: r.ratePerPack ?? "", trade_discount_pct: r.discountPct ?? "",
+      pack_type: r.packType ?? "", rack: r.rack ?? "", supplier_name: r.supplier ?? "",
+    },
+  }));
+  // The same grid sent twice is the same challan, so it captures once — the sheet's promise, kept by the grid.
+  return planOpeningRows(db, input, JSON.stringify(rows), now);
+}
+
+/** Whole number ≥ `min` from a cell; null when it is not one. Blank reads as `blank`. */
+function wholeOf(text: string | undefined, min: number, blank: number | null): number | null {
+  const t = (text ?? "").trim();
+  if (t === "") return blank;
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isSafeInteger(n) && n >= min ? n : null;
+}
+
+/**
+ * THE ONE JUDGEMENT. Every row, from a sheet or from the grid, is read and checked here and nowhere else;
+ * a refused row carries its reasons and the plan is captured whole or not at all.
+ */
+export async function planOpeningRows(db: Db, input: readonly OpeningInputRow[], hashSource: string, now: Date): Promise<OpeningPlan> {
   const store = await findStoreByCode(db, OPD_PHARMACY_STORE_CODE);
   if (store === undefined) throw new PharmacyError("store_missing", `the "${OPD_PHARMACY_STORE_CODE}" store does not exist — run seed:pharmacy first`);
-  const fileHash = createHash("sha256").update(fileText).digest("hex").slice(0, 10);
+  const fileHash = createHash("sha256").update(hashSource).digest("hex").slice(0, 10);
   const today = istDay(now);
 
   const shelf = (await listSaleItems(db)).filter((s) => s.active && s.itemActive);
+  const onShelf = new Set(shelf.map((s) => s.itemId));
   const items = await itemsByIds(db, shelf.map((s) => s.itemId));
   const uoms = await uomsByItems(db, shelf.map((s) => s.itemId));
   const index = new Map<string, Set<string>>();
@@ -185,24 +298,35 @@ export async function planOpeningStock(db: Db, file: CsvFile, fileText: string, 
   const opening = (await listVendors(db, { search: OPENING_VENDOR_CODE })).find((v) => v.code === OPENING_VENDOR_CODE);
   const seen = new Map<string, number>();
 
-  const rows: OpeningRow[] = file.rows.map((r) => {
+  const rows: OpeningRow[] = input.map((r) => {
     const c = r.cells;
     const row: OpeningRow = {
-      line: r.line, brand: c.brand ?? "", batch: (c.batch ?? "").trim(), expiryDate: "", mrpPaise: 0, packSize: 0, packs: 0,
-      rack: c.rack ?? "", supplier: c.supplier_name ?? "", costPerBasePaise: 0, newUom: false, vendorKey: "", near: false, reasons: [],
+      line: r.line, brand: c.brand ?? "", batch: (c.batch ?? "").trim(), expiryDate: "", mrpPaise: 0, packSize: 0, packs: 0, freePacks: 0,
+      ratePaise: 0, discountBps: 0, rack: c.rack ?? "", supplier: c.supplier_name ?? "", costPerBasePaise: 0, newUom: false, vendorKey: "",
+      near: false, reasons: [],
     };
-    const hits = index.get(norm(row.brand));
-    if (row.brand === "") row.reasons.push("brand_required");
-    else if (hits === undefined) {
-      const near = [...index.keys()].map((k) => ({ k, s: similarity(norm(row.brand), k) })).sort((a, b) => b.s - a.s).slice(0, 3)
-        .map((x) => items.get([...index.get(x.k)!][0]!)?.name ?? x.k);
-      row.reasons.push(`not on the shelf: "${row.brand}" — did you mean: ${[...new Set(near)].join(" | ")}`);
-    } else if (hits.size > 1) {
-      row.reasons.push(`"${row.brand}" is ambiguous — write the strength or the code: ${[...hits].map((id) => items.get(id)?.code ?? id).join(", ")}`);
+    if (r.itemId !== undefined) {
+      // The grid PICKED the item: no name matching, but the same shelf — an item not sold at the counter is refused.
+      if (onShelf.has(r.itemId)) {
+        row.itemId = r.itemId;
+        row.itemCode = items.get(r.itemId)?.code;
+        row.itemName = items.get(r.itemId)?.name;
+        if (row.brand === "") row.brand = row.itemName ?? "";
+      } else row.reasons.push("not sold at the counter yet — put it on sale (+ New drug), then enter its stock");
     } else {
-      row.itemId = [...hits][0]!;
-      row.itemCode = items.get(row.itemId)?.code;
-      row.itemName = items.get(row.itemId)?.name;
+      const hits = index.get(norm(row.brand));
+      if (row.brand === "") row.reasons.push("brand_required");
+      else if (hits === undefined) {
+        const near = [...index.keys()].map((k) => ({ k, s: similarity(norm(row.brand), k) })).sort((a, b) => b.s - a.s).slice(0, 3)
+          .map((x) => items.get([...index.get(x.k)!][0]!)?.name ?? x.k);
+        row.reasons.push(`not on the shelf: "${row.brand}" — did you mean: ${[...new Set(near)].join(" | ")}`);
+      } else if (hits.size > 1) {
+        row.reasons.push(`"${row.brand}" is ambiguous — write the strength or the code: ${[...hits].map((id) => items.get(id)?.code ?? id).join(", ")}`);
+      } else {
+        row.itemId = [...hits][0]!;
+        row.itemCode = items.get(row.itemId)?.code;
+        row.itemName = items.get(row.itemId)?.name;
+      }
     }
     if (row.batch === "") row.reasons.push("batch_required");
     const expiry = expiryOf(c.expiry ?? "");
@@ -211,23 +335,37 @@ export async function planOpeningStock(db: Db, file: CsvFile, fileText: string, 
     const mrp = rupeesToPaise(c.mrp_per_pack ?? "");
     if (mrp === null || mrp <= 0) row.reasons.push(`mrp_per_pack must be rupees like 35.50, got "${c.mrp_per_pack ?? ""}"`);
     else row.mrpPaise = mrp;
-    row.packSize = Number(c.pack_size ?? "");
-    if (!Number.isInteger(row.packSize) || row.packSize < 1) row.reasons.push(`pack_size must be a whole number ≥ 1, got "${c.pack_size ?? ""}"`);
-    row.packs = Number(c.packs ?? "");
-    if (!Number.isInteger(row.packs) || row.packs < 1) row.reasons.push(`packs must be a whole number ≥ 1, got "${c.packs ?? ""}"`);
-    if (mrp !== null && Number.isInteger(row.packSize) && row.packSize > 0 && mrp % row.packSize !== 0) {
-      row.reasons.push(`MRP ₹${(mrp / 100).toFixed(2)} on a pack of ${String(row.packSize)} is not whole paise per unit — QC refuses it (mrp_unconvertible); needs a person's decision`);
-    }
-    const rate = (c.purchase_rate_per_pack ?? "") === "" ? 0 : rupeesToPaise(c.purchase_rate_per_pack ?? "");
+    const packSize = wholeOf(c.pack_size, 1, null);
+    if (packSize === null) row.reasons.push(`pack_size must be a whole number ≥ 1, got "${c.pack_size ?? ""}"`);
+    else row.packSize = packSize;
+    const free = wholeOf(c.free_packs, 0, 0);
+    if (free === null) row.reasons.push(`free_packs must be a whole number, got "${c.free_packs ?? ""}"`);
+    else row.freePacks = free;
+    // A row may be all free goods; otherwise at least one pack was counted.
+    const packs = wholeOf(c.packs, row.freePacks > 0 ? 0 : 1, row.freePacks > 0 ? 0 : null);
+    if (packs === null) row.reasons.push(`packs must be a whole number ≥ 1, got "${c.packs ?? ""}"`);
+    else row.packs = packs;
+    const packType = packTypeOf(c.pack_type ?? "");
+    if (packType === undefined) row.reasons.push(`pack_type must be one of ${PACK_TYPES.join(", ")}, got "${c.pack_type ?? ""}"`);
+    const discount = discountToBps(c.trade_discount_pct ?? "");
+    if (discount === null) row.reasons.push(`trade_discount_pct must be a percentage from 0 to below 100, got "${c.trade_discount_pct ?? ""}"`);
+    else row.discountBps = discount;
+    const rate = (c.purchase_rate_per_pack ?? "").trim() === "" ? 0 : rupeesToPaise(c.purchase_rate_per_pack ?? "");
     if (rate === null) row.reasons.push(`purchase_rate_per_pack must be rupees, got "${c.purchase_rate_per_pack ?? ""}"`);
-    else if (row.packSize > 0) row.costPerBasePaise = Math.floor(rate / row.packSize);
-    if (mrp !== null && rate !== null && rate > mrp) row.reasons.push("purchase rate above MRP — QC refuses it (mrp_below_cost)");
+    else {
+      row.ratePaise = rate;
+      if (row.packSize > 0) row.costPerBasePaise = costPerBase(rate, row.discountBps, row.packSize);
+    }
+    // QC rule 6's comparison, exactly: the MRP of the pack against the cost of the units in it.
+    if (mrp !== null && row.packSize > 0 && row.costPerBasePaise * row.packSize > mrp) {
+      row.reasons.push("cost after discount is above MRP — QC refuses it (mrp_below_cost)");
+    }
 
-    if (row.itemId !== undefined && Number.isInteger(row.packSize) && row.packSize > 0) {
+    if (row.itemId !== undefined && row.packSize > 0) {
       const item = items.get(row.itemId)!;
       const u = (uoms.get(row.itemId) ?? []).find((x) => x.toBaseMultiplier === row.packSize);
       if (u !== undefined) row.uom = u.uom;
-      else { row.uom = `strip${String(row.packSize)}`; row.newUom = true; }
+      else { row.uom = `${PACK_UOM_PREFIX[packType ?? "tablet_strip"]}${String(row.packSize)}`; row.newUom = true; }
       if (row.expiryDate !== "") {
         const left = daysBetween(today, row.expiryDate);
         if (left <= 0) row.reasons.push(`expired ${row.expiryDate} — segregate it; expired stock is not received`);
@@ -280,9 +418,9 @@ export async function planOpeningStock(db: Db, file: CsvFile, fileText: string, 
   return {
     rows, refusals: rows.length - good.length, grns, storeId: store.id, newUoms: newUomKeys.size, fileHash,
     needsVendor: opening === undefined && good.some((r) => r.vendorKey === OPENING_VENDOR_CODE),
-    zeroCost: good.filter((r) => r.costPerBasePaise === 0).length,
+    zeroCost: good.filter((r) => r.packs > 0 && r.costPerBasePaise === 0).length,
     racks: [...racks].map(([itemId, rack]) => ({ itemId, rack })),
-    units: good.reduce((n, r) => n + r.packs * r.packSize, 0),
+    units: good.reduce((n, r) => n + (r.packs + r.freePacks) * r.packSize, 0),
   };
 }
 
@@ -333,10 +471,18 @@ async function captureGroups(
     if (g.state !== "new") continue;
     const { grnId, grnNo } = await captureGrn(tx, actors.storekeeper, {
       vendorId: g.vendorId, source: "challan", storeResourceId: plan.storeId, challanNo: g.challanNo, challanDate: today, now, serviceDate: today,
-      lines: g.rows.map((r) => ({
-        itemId: r.itemId!, uom: r.uom!, qtyInUom: r.packs, batchNo: r.batch, expiryDate: r.expiryDate,
-        mrpPaise: r.mrpPaise, mrpUom: r.uom!, unitCostPaise: r.costPerBasePaise,
-      })),
+      // The paid packs, then the free ones as a FREE-GOODS line at cost 0 — same batch, same MRP, so they
+      // land on one pile, whose purchase price is the paid line's (it is posted first).
+      lines: g.rows.flatMap((r) => [
+        ...(r.packs > 0 ? [{
+          itemId: r.itemId!, uom: r.uom!, qtyInUom: r.packs, batchNo: r.batch, expiryDate: r.expiryDate,
+          mrpPaise: r.mrpPaise, mrpUom: r.uom!, unitCostPaise: r.costPerBasePaise,
+        }] : []),
+        ...(r.freePacks > 0 ? [{
+          itemId: r.itemId!, uom: r.uom!, qtyInUom: r.freePacks, batchNo: r.batch, expiryDate: r.expiryDate,
+          mrpPaise: r.mrpPaise, mrpUom: r.uom!, unitCostPaise: 0, freeGoods: true,
+        }] : []),
+      ]),
     });
     g.grnId = grnId; g.grnNo = grnNo; g.state = "captured";
     out.captured.push({ grnId, grnNo, challanNo: g.challanNo, near: g.near, lines: g.rows.length });

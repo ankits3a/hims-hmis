@@ -158,7 +158,8 @@ describe("narcotic, psychotropic and Schedule X lines at the desk (pharmacy P6)"
     // The agent's card: what the law asks, before the witness is called.
     expect(picked.controlled?.blocking).toEqual([]);
     expect(picked.controlled?.checks.filter((c) => c.atHandover).map((c) => c.key)).toEqual(["retained_prescription", "endorsement", "collected_by", "witness"]);
-    const [cabinetBalance] = await db.select().from(stockBalances).where(and(eq(stockBalances.resourceId, cabinet)));
+    // The cabinet holds two items, so read the alprax row by name: an unordered first row was the morphine's half the time.
+    const [cabinetBalance] = await db.select().from(stockBalances).where(and(eq(stockBalances.resourceId, cabinet), eq(stockBalances.itemId, alpraxItem)));
     expect(cabinetBalance?.qtyReserved).toBeGreaterThan(0); // the reservation is at the cabinet, not the counter
 
     const doc = await retained(id);
@@ -197,6 +198,28 @@ describe("narcotic, psychotropic and Schedule X lines at the desk (pharmacy P6)"
     expect(row).toMatchObject({ ndpsClass: "narcotic", qtyBase: 10, balanceAfter: 50 });
   });
 
+  it("DESK FIXES 2026-09-30 — a narcotic line the first cabinet batch cannot cover is split across CABINET batches; one register row per batch, both under two keys", async () => {
+    await recordControlledLicence(db, keeper.actor, FORM_3G, MON);
+    await recordEndPrescriber(db, keeper.actor, { doctorId: fx.doctor.doctorId, training: "IAPC foundation course in palliative care, 2024" }, MON);
+    const early = newId();
+    await db.insert(stockBatches).values({ id: early, itemId: morphineItem, batchNo: "MO-0", expiryDate: "2027-06-30", mrpPaise: 5000, mrpUom: "strip", landedCostPaise: 300, ownership: "owned", createdBy: HEAD.id });
+    await withTx(db, (tx) => postMovement(tx, fx.pharmacist.actor, {
+      resourceId: cabinet, batchId: early, qtyDelta: 4, reason: "grn", refType: "test", refId: early, occurredAt: MON,
+      custody: { witnessId: fx.incharge.id, counterparty: "ACME Pharma", documentRef: "INV-78" },
+    }));
+    const { id, tokenNo } = await billed([morcontin()], [10]);
+    const picked = await getDispense(db, fx.pharmacist.actor, id, MON3);
+    expect(picked.lines.map((l) => [l.lineIdx, l.qtyBase, l.splitFromLineIdx, l.controlled])).toEqual([[0, 4, null, true], [1, 6, 0, true]]);
+    const doc = await retained(id);
+    const done = await handOverDispense(db, fx.pharmacist.actor, fx.decls, id, { identity: { via: "token", value: String(tokenNo) }, controlled: controlledInput(doc, { endorsed: undefined }) }, MON3);
+    expect(done.status).toBe("handed_over");
+    const reg = await db.select().from(controlledStockRegister).where(eq(controlledStockRegister.movement, "consume"));
+    expect(reg.map((r) => [r.qtyBase, r.witnessId]).sort()).toEqual([[4, fx.incharge.id], [6, fx.incharge.id]]);
+    const consumed = await db.select().from(stockLedger).where(eq(stockLedger.reason, "consume"));
+    expect(consumed.every((c) => c.resourceId === cabinet)).toBe(true);
+    expect(consumed.map((c) => c.qtyDelta).sort()).toEqual([-4, -6]);
+  });
+
   it("the prescription must carry the prescriber's registration number and the patient's address", async () => {
     await recordControlledLicence(db, keeper.actor, FORM_20F, MON);
     const { id, tokenNo } = await billed([alprax()], [10]);
@@ -220,6 +243,23 @@ describe("narcotic, psychotropic and Schedule X lines at the desk (pharmacy P6)"
   it("more than the prescription states is refused (dose × frequency × days)", async () => {
     await recordControlledLicence(db, keeper.actor, FORM_20F, MON);
     const { id, tokenNo } = await billed([alprax({ durationDays: 5 })], [8]); // OD × 5 days = 5
+    const doc = await retained(id);
+    await expect(handOverDispense(db, fx.pharmacist.actor, fx.decls, id, { identity: { via: "token", value: String(tokenNo) }, controlled: controlledInput(doc) }, MON3))
+      .rejects.toMatchObject({ code: "controlled_qty_exceeds_prescribed", message: expect.stringContaining("8 of 5") });
+  });
+
+  it("DESK FIXES 2026-09-30 — the prescribed-quantity limit reads a SPLIT line whole: 4 + 4 of a 5-tablet prescription is 8 of 5, refused", async () => {
+    await recordControlledLicence(db, keeper.actor, FORM_20F, MON);
+    const early = newId();
+    await db.insert(stockBatches).values({ id: early, itemId: alpraxItem, batchNo: "AX-0", expiryDate: "2027-06-30", mrpPaise: 5000, mrpUom: "strip", landedCostPaise: 300, ownership: "owned", createdBy: HEAD.id });
+    await withTx(db, (tx) => postMovement(tx, fx.pharmacist.actor, {
+      resourceId: cabinet, batchId: early, qtyDelta: 4, reason: "grn", refType: "test", refId: early, occurredAt: MON,
+      custody: { witnessId: fx.incharge.id, counterparty: "ACME Pharma", documentRef: "INV-79" },
+    }));
+    const { id, tokenNo } = await billed([alprax({ durationDays: 5 })], [8]); // OD × 5 days = 5; picked 4 (AX-0) + 4 (AX-1)
+    const picked = await getDispense(db, fx.pharmacist.actor, id, MON3);
+    expect(picked.lines.map((l) => [l.qtyBase, l.splitFromLineIdx])).toEqual([[4, null], [4, 0]]);
+    expect(picked.controlled?.blocking).toContain("quantity");
     const doc = await retained(id);
     await expect(handOverDispense(db, fx.pharmacist.actor, fx.decls, id, { identity: { via: "token", value: String(tokenNo) }, controlled: controlledInput(doc) }, MON3))
       .rejects.toMatchObject({ code: "controlled_qty_exceeds_prescribed", message: expect.stringContaining("8 of 5") });

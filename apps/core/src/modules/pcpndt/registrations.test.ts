@@ -50,6 +50,16 @@ describe("the PCPNDT registration, its machines and its people (18a T6)", () => 
     expect(book[0]!.persons.map((p) => p.userId)).toEqual([fx.sonologist.id]);
   });
 
+  /** 18-S RS7 — the Registration view names machines and people, so the book carries their labels. */
+  it("labels each machine with its device code and name, and each person with their full name", async () => {
+    const book = await readRegister(db);
+    const [machine] = book[0]!.machines;
+    const [person] = book[0]!.persons;
+    expect(machine!.deviceCode).toEqual(expect.any(String));
+    expect(machine!.deviceName).toEqual(expect.any(String));
+    expect(person!.fullName).toEqual(expect.any(String));
+  });
+
   /**
    * ═══ WITHDRAWN ROWS ARE IN THE BOOK, AND THAT IS THE DECISION ═══
    *

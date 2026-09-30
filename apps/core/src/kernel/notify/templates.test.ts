@@ -20,6 +20,8 @@ describe("the notification template registry (D8)", () => {
     expect(Object.keys(notificationTemplates).sort()).toEqual([
       "appointment_confirmed",
       "appointment_reminder",
+      /** 18-S RS3 T4 — the imaging desk's appointment and prep message (recorded; the provider is not on main). */
+      "imaging_appointment_booked",
       /** PLAN 18a T2 — the imaging twin of the lab's notice, same shape and same omissions. */
       "imaging_report_ready",
       "owner_escalation_sms",
@@ -120,6 +122,31 @@ describe("the notification template registry (D8)", () => {
       .toEqual(["patient", "transactional", undefined]);
     expect(template.expiresAt(params, OCCURRED_AT).toISOString())
       .toBe(new Date(OCCURRED_AT.getTime() + 72 * 60 * 60 * 1000).toISOString());
+  });
+
+  /**
+   * ═══ 18-S RS3 T4 — THE APPOINTMENT MESSAGE NAMES THE SLOT AND THE PREP, NEVER THE STUDY ═══
+   *
+   * The same omission as the report notice above, for the same reason: "your obstetric ultrasound
+   * at 11:00" on a household phone is a notice about a pregnancy. The body carries the accession
+   * (the token on the slip), the day and time, and the prep keys rendered as instructions.
+   */
+  it("renders the imaging appointment from the accession, the slot and prep keys alone, naming no study", () => {
+    const template = notificationTemplates.imaging_appointment_booked!;
+    const params = { accessionNo: "X2608310001", slotStart: "2026-08-31T09:00:00.000Z", prep: ["nil_by_mouth_4h", "creatinine_report"] };
+    for (const lang of ["en", "hi"] as const) {
+      const body = template.render[lang](params);
+      expect(body).toContain("X2608310001");
+      expect(body).toContain("31");
+      expect(body).not.toMatch(/\b(CT|MRI|USG|x-?ray|ultrasound|mammograph\w*|obstetric\w*|pregnan\w*|head|abdomen)\b/i);
+    }
+    expect(template.render.en(params)).toMatch(/4 hours/);
+    expect(template.render.en(params)).toMatch(/creatinine/i);
+    expect(template.render.hi(params)).toMatch(DEVANAGARI);
+    /** No prep → no prep sentence, and nothing breaks. */
+    expect(template.render.en({ ...params, prep: [] })).not.toMatch(/Before/);
+    expect([template.audience, template.class, template.channels]).toEqual(["patient", "transactional", undefined]);
+    expect(template.expiresAt(params, OCCURRED_AT).toISOString()).toBe("2026-08-31T09:00:00.000Z");
   });
 
   /**

@@ -145,6 +145,22 @@ export async function fetchVendor(id: string): Promise<{ vendor: WireVendor; doc
   return api<{ vendor: WireVendor; documents: WireVendorDocument[] }>("GET", `/materials/vendors/${id}`);
 }
 
+/** WALK FINDING 2026-09-29 — what a near-expiry approval is about: the GRN, its supplier and its short-dated lines. */
+export type WireNearExpiryView = {
+  grnId: string; grnNo: string; vendorName: string; challanNo: string; invoiceNo: string | null;
+  lines: { itemCode: string; itemName: string; batchNo: string | null; expiryDate: string | null; daysLeft: number | null; qtyBase: number; baseUom: string }[];
+};
+export async function fetchNearExpiryView(grnId: string): Promise<WireNearExpiryView> {
+  return api<WireNearExpiryView>("GET", `/materials/grns/${grnId}/near-expiry`);
+}
+
+/** A supplier's bank changes, account numbers MASKED (the server never sends the new one on this read). */
+export type WireBankChange = { id: string; vendorId: string; oldMasked: string | null; newMasked: string; status: string };
+export async function fetchBankChanges(vendorId: string): Promise<WireBankChange[]> {
+  const { changes } = await api<{ changes: WireBankChange[] }>("GET", `/materials/vendors/${vendorId}/bank-changes`);
+  return changes;
+}
+
 export async function createVendor(input: {
   code: string; legalName: string; tradeName?: string | null;
   gstin?: string | null; pan?: string | null; paymentTermsDays?: number | null;

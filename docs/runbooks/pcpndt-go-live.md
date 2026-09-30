@@ -146,8 +146,10 @@ nobody made.
 
 - Hang the certificate where patients can see it.
 - Keep the Form F register retrievable for the retention period the Act sets.
-- **The renewal is a diary entry, not a system feature.** `validTo` blocks scans the day it passes;
-  nothing warns you beforehand. Put the renewal date in a human calendar the day you perform §2.
+- **The renewal is still a human's diary entry.** `validTo` blocks scans the day it passes. Since
+  18-S RS7 the station's *Registration* view (`/radiology/usg?view=register`) shows each certificate's
+  renewal clock and turns red inside 90 days — a screen somebody must open, not an alert that finds
+  them. Put the renewal date in a human calendar the day you perform §2.
 
 ---
 
@@ -155,7 +157,8 @@ nobody made.
 
 - **Form F itself** — the per-scan record. It is a clinical act on the screen the build already ships,
   not a commissioning step.
-- **The appropriate authority's own filings**, inspections and returns.
+- **The appropriate authority's own filings and inspections.** The monthly return is PREPARED by the
+  station (§9) and SENT by the nodal officer on the state portal; the software never claims it was sent.
 - **Rollback.** Deactivating a registration stops every covered scan on its machines immediately.
   That is the correct behaviour when a certificate lapses and it is not a maintenance operation.
 
@@ -171,3 +174,66 @@ runbook files, of which it had none.
 **Its own guards were correct throughout.** `startAcquisition` would have refused every covered scan
 on an empty register, which is the right failure. What was missing was anyone being told before the
 patient was on the table.
+
+---
+
+## 9. The sonologist's day and the monthly return (18-S RS7)
+
+**Where:** `/radiology/usg` — the *Ultrasound & PCPNDT* station. Four header views: **Scan room**
+(the sonologist, `pcpndt.form_f.write`), **Form F** (the register by serial, `pcpndt.form_f.read`),
+**Registration** and **Monthly return** (`pcpndt.registrations.read` — the in-charge and the
+radiologist).
+
+### 9.1 A pregnancy scan, in the order the room enforces
+
+1. **Open the patient from the list.** The list is today's checked-in ultrasound studies on the
+   ultrasound machines; the desk checks her in, not the room. Opening her means she is on the couch.
+2. **Form F — open.** Pick the indication from the Act's list (Section B, i–xxiii). *Open Form F*
+   takes the next serial on that machine for the year. **The serial is never given back:** a scan
+   that does not happen leaves the form in the register as *cancelled (serial kept)*.
+3. **Form F — fill and sign.** Husband's/father's name, living sons and daughters (the form carries
+   them; the report never does), LMP, referral (self or the referring doctor with registration no.),
+   and her declaration (*"मैं अपने गर्भस्थ शिशु का लिंग नहीं जानना चाहती"*) ticked once she has
+   signed or given her thumb impression. *Sign Form F* records YOUR declaration and closes the
+   `form_f` gate from that row. It refuses a person not registered on THIS machine's registration.
+4. **Start the scan**, then type the biometry as you measure: CRL, or BPD/HC/AC/FL, FHR per foetus;
+   AFI, placenta, presentation. GA (Robinson CRL / Hadlock), EFW (Hadlock 4-parameter; 3 without
+   BPD), EDD by LMP and by scan appear live. There is no field for the sex of the foetus.
+5. **Scan done — draft the report.** The findings and impression are drafted by rule from the
+   numbers (no inference). Edit freely. The fixed PCPNDT declaration line sits under the report and
+   cannot be edited; the server writes it into the signed version.
+6. **Save, then sign** with your authenticator code (a fresh second factor on your session), then
+   **Publish**.
+
+**Refusals you will see, and who fixes them:**
+- *The report states the sex of the foetus* (`foetal_sex_disclosure`) — remove the words. Nobody —
+  not the medical superintendent, not the owner — can approve it.
+- *Not registered on the PCPNDT registration that covers US-n* (`person_not_registered`) — the
+  in-charge adds you (§4) before you scan or sign on that machine.
+- *US-n is not on the registration today* (`machine_not_registered`) — §3, or the certificate lapsed.
+- *Checks still open before the scan* — identity, pregnancy screen, chaperone: the prep bay closes them.
+
+### 9.2 The Form F register
+
+The month's serials per machine, **without patient names** (a list of forms is a list of pregnant
+women; a name is seen only by opening her form, which writes a PHI audit row). Each row shows its
+state — open, signed, verified, cancelled — and the statutory fields still missing. The right column
+is the gap check per machine per year: `0001 → n · no gap`, or the missing serials in red. A gap
+is a finding for the in-charge, never something to "fill".
+
+The in-charge verifies each signed form from the register (click the serial → the form → *Verify*).
+Verification is a counter-signature in the register; it does not hold the scan.
+
+### 9.3 The monthly return — by the 5th
+
+1. Open *Monthly return*. Up to the 5th it opens on LAST month (the one due); after, on this month.
+2. Close the discrepancies first: *scanned without a signed Form F* (a violation unless closed),
+   *signed, not verified*, *opened, scan not done*, *signed with fields missing*, *a serial gap*.
+3. **Copy the return** (Enter) — the CSV per machine: ultrasound scans, pregnancy scans, Form F
+   opened / signed / verified / open / cancelled, scans without a signed form, and the total.
+4. The nodal officer pastes/uploads it on the state PCPNDT portal and keeps the acknowledgement with
+   the register. **The software records nothing about the sending** — that is the officer's act.
+
+Retention: the Act asks for two years; the hospital keeps imaging records five years online (plan
+18-S ruling 6). Nothing in the register is ever deleted.
+

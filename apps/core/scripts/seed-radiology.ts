@@ -5,8 +5,9 @@ import { createResource } from "../src/kernel/resources/registry";
 import { createService } from "../src/modules/tariff";
 import { resources, services } from "../src/kernel/db/schema";
 import {
-  IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, STUDY_TYPE_SEEDS, activateSeededDefinition,
-  activeDefinitionRow, draftDefinition, registerRadiologyApprovalTypes,
+  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_RULED_SERVICES, STUDY_TYPE_SEEDS,
+  activateSeededDefinition,
+  activeDefinitionRow, draftDefinition, ensureEscalationDefinitions, registerRadiologyApprovalTypes,
 } from "../src/modules/radiology";
 import type { Actor } from "@hmis/contracts";
 import type { StudyType } from "../src/modules/radiology";
@@ -17,8 +18,8 @@ import type { StudyType } from "../src/modules/radiology";
  *
  * ═══ WHAT IT DOES, AND THE ONE THING IT DELIBERATELY DOES NOT ═══
  *
- * It creates the tariff services the twenty study types bind to, the five `device` resources the
- * scheduler books onto, and — **only when no book is active yet** — it drafts and activates the
+ * It creates the tariff services the twenty study types bind to, the seven `device` resources the
+ * scheduler books onto (five department machines and, since 18-S RS2b, two portables), and — **only when no book is active yet** — it drafts and activates the
  * `study_types` definition. On every later run it leaves the active book untouched and says so; see
  * the block above that check for why a re-run must never supersede one.
  *
@@ -67,7 +68,11 @@ import type { StudyType } from "../src/modules/radiology";
  * through `materials/stores.ts`, `opd/masters.ts`, `lab/instruments.ts` and two seeds. The
  * laboratory has an instruments door; radiology has none.
  *
- * So **this script is the only writer of an imaging device**, and a second CT is added by adding it
+ * **18-S RS4 BUILT THE DOOR**: Radiology → Setup → Machines (`POST /radiology/setup/devices`,
+ * `modules/radiology/machines.ts`) registers a machine, sets its AE title and its status. The rest
+ * of this paragraph is the history of why that door was needed.
+ *
+ * So **this script was the only writer of an imaging device**, and a second CT was added by adding it
  * to `MODALITY_MACHINES` and re-running — which is safe, because every step is find-or-create. That
  * is a deployment act rather than a hospital one, and it is a real gap rather than a preference;
  * it is recorded in `docs/runbooks/radiology-go-live.md` §5 as such.
@@ -76,12 +81,39 @@ import type { StudyType } from "../src/modules/radiology";
  * than duplicating. `seed:roles`' own posture.
  */
 
-const MODALITY_MACHINES: { modality: (typeof IMAGING_MODALITIES)[number]; code: string; name: string }[] = [
+type MachineSpec = {
+  modality: (typeof IMAGING_MODALITIES)[number];
+  code: string;
+  name: string;
+  /** 18-S RS2b — the machine goes to the bed. Written as `attributes.portable = true` and nothing else. */
+  portable?: true;
+};
+
+const MODALITY_MACHINES: MachineSpec[] = [
   { modality: "xray", code: "XR-1", name: "X-ray room 1" },
   { modality: "usg", code: "USG-1", name: "Ultrasound room 1" },
   { modality: "ct", code: "CT-1", name: "CT scanner" },
   { modality: "mri", code: "MRI-1", name: "MRI scanner" },
   { modality: "mammography", code: "MMG-1", name: "Mammography unit" },
+  /**
+   * ═══ 18-S RS2b — THE TWO MACHINES THAT GO TO THE BED ═══
+   *
+   * 18a-iii T3 built the bedside study (`imaging_studies.bedside_location`, `resolveBedside`) and
+   * nothing in the product wrote `attributes.portable`, so every bedside booking was refused
+   * `device_not_portable` — the commissioning walk's F2: *"the bedside study is unreachable TWICE:
+   * no caller, and nothing writes attributes.portable"*. These two rows are the writer.
+   *
+   * **No AERB licence is seeded for PX-1, on purpose.** A portable X-ray emits ionising radiation
+   * and may not be operated without its own licence; a seeded placeholder would be the hospital
+   * claiming paper it does not hold. So PX-1 sits in `GET /aerb/licences/gaps` (and the standup
+   * check's `radiology_devices_licensed` row stays red) until the RSO files the real certificate —
+   * `radiology-go-live.md` says so. USG-P1 needs no AERB licence; it needs its PCPNDT machine entry.
+   *
+   * Find-or-create by code like every machine above: a re-run never rewrites an existing row's
+   * attributes, so a hospital that re-configured PX-1 by hand keeps what it set.
+   */
+  { modality: "xray", code: "PX-1", name: "Portable X-ray", portable: true },
+  { modality: "usg", code: "USG-P1", name: "Portable ultrasound", portable: true },
 ];
 
 /** The actor a seed runs as. Named so an audit row says which script wrote the row. */
@@ -126,7 +158,7 @@ async function ensureService(db: Db, code: string, name: string): Promise<string
 
 async function ensureDevice(
   db: Db,
-  spec: { modality: string; code: string; name: string },
+  spec: MachineSpec,
 ): Promise<{ resourceId: string; created: boolean }> {
   const existing = await db.select({ id: resources.id })
     .from(resources)
@@ -136,13 +168,16 @@ async function ensureDevice(
     kind: "device",
     code: spec.code,
     name: spec.name,
-    attributes: { modality: spec.modality },
+    attributes: spec.portable
+      ? { modality: spec.modality, [DEVICE_PORTABLE_ATTRIBUTE]: true } : { modality: spec.modality },
   }));
   return { resourceId, created: true };
 }
 
 export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   services: number;
+  /** 18-S RS4 — ruling 1's film, CD and outside-read services, ensured (never priced here). */
+  ruledServices: number;
   devicesCreated: number;
   definitionId: string;
   version: number;
@@ -152,10 +187,32 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   /** The approval TYPE must exist before a publish can be requested against it. `REGISTRAR`, not
    * `SEEDER`: the kernel refuses a system actor here twice over. See the constant. */
   await registerRadiologyApprovalTypes(db, registrar);
+  /**
+   * 18-S RS10 T2 — the HOD's escalation obligations: one class-C `imaging_esc_*` workflow
+   * definition per cause, activated when none is (zero governance approvals for class C — the
+   * approval-flow precedent above). Without them the sweep reports `notActive` and raises nothing.
+   */
+  await ensureEscalationDefinitions(db, registrar);
 
   const serviceIdByCode = new Map<string, string>();
   for (const seed of STUDY_TYPE_SEEDS) {
     serviceIdByCode.set(seed.service_code, await ensureService(db, seed.service_code, seed.name));
+  }
+
+  /**
+   * ═══ 18-S RS4 T3 — RULING 1's FOUR SERVICES: THE ROWS, NOT THE PRICES ═══
+   *
+   * Film per sheet, CD, and the two outside second-opinion reads. Same category as every study
+   * (`investigation`, ruling 2 — composite supply with the study). The ruled PRICES
+   * (`RADIOLOGY_RULED_SERVICES`) are NOT written: a price becomes chargeable only through a tariff
+   * revision the owner approves, and this script activating one would collapse that governance.
+   * The Setup station's Prices view shows ruled-vs-tariff, and `radiology-go-live.md` §5b is the
+   * step that enters them.
+   */
+  let ruledServices = 0;
+  for (const ruled of RADIOLOGY_RULED_SERVICES) {
+    await ensureService(db, ruled.code, ruled.name);
+    ruledServices += 1;
   }
 
   let devicesCreated = 0;
@@ -201,6 +258,7 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   if (active) {
     return {
       services: serviceIdByCode.size,
+      ruledServices,
       devicesCreated,
       definitionId: active.id,
       version: active.version,
@@ -214,6 +272,7 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
 
   return {
     services: serviceIdByCode.size,
+    ruledServices,
     devicesCreated,
     definitionId: drafted.definitionId,
     version: drafted.version,
@@ -225,7 +284,8 @@ async function main(): Promise<void> {
   const db = createDb(requireEnv("DATABASE_URL")).db;
   const result = await seedRadiology(db, registrarFromEnv());
   console.log(
-    `seed:radiology — ${String(result.services)} services ensured, `
+    `seed:radiology — ${String(result.services)} study services and ${String(result.ruledServices)} ruled `
+    + "(film, CD, outside reads — unpriced until the tariff revision) ensured, "
     + `${String(result.devicesCreated)} device(s) created, `
     + `study_types v${String(result.version)} ACTIVE as ${result.definitionId}.`,
   );

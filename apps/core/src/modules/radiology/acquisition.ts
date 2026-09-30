@@ -11,11 +11,13 @@ import { assertDeviceLicensed, recordDose } from "../aerb";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { isValidDicomUid, mintStudyInstanceUid } from "./uid";
 import { RadiologyError } from "./errors";
-import { imagingStudyAcquired } from "./events";
+import { imagingExposureRepeated, imagingStudyAcquired } from "./events";
+import type { RepeatReasonCode } from "./events";
 import { evaluateReadiness } from "./gates";
 import { assertContrastPermissible } from "./contrast";
 import { authorisationOf, encounterPayer, hasBillDecision, raiseBillDecision } from "./money";
 import { activeDoseReferenceLevels, drlFor, requireStudyType } from "./study-types";
+import { attachHeldAtSend, heldArrivalFor, pendingDoseFor, settlePendingDose } from "./pacs";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -78,7 +80,17 @@ export async function startAcquisition(
   tx: Tx,
   actor: Actor,
   decls: readonly OrderKindDecl[],
-  input: { studyId: string; now?: Date },
+  input: {
+    studyId: string;
+    now?: Date;
+    /**
+     * 18-S RS6 — the bedside radiation checklist the technologist attests before a portable exposure
+     * (2 m clear, apron on whoever stays, no pregnant staff or patient in the bay), kept as the note
+     * on the `in_acquisition` transition — the study's own history, beside who started it and when.
+     * Recorded, not required: the gate model (and its refusals) is `gates.ts`'s, not this field's.
+     */
+    bedsideSafety?: string | null;
+  },
 ): Promise<StartAcquisitionResult> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
@@ -157,6 +169,17 @@ export async function startAcquisition(
     const onDate = istDayString(now);
     const { registrationId } = await assertMachineRegistered(tx, study.deviceResourceId, onDate);
     await assertPersonRegistered(tx, actor.id, registrationId);
+    /**
+     * ═══ 18-S RS8b T3 — FORM F BEFORE THE PROCEDURE (PCPNDT Rules, rule 9(4) / Form F) ═══
+     *
+     * The `form_f` GATE is satisfied by an OPEN form (the sonologist has started the paperwork) and
+     * keeps those semantics; `recordAcquired` demanded a RECORDED one — but that is the END of the
+     * scan, so a scan could START on a form nobody had signed, and the images of a scan whose
+     * declaration was never completed would already exist. The declaration precedes the procedure,
+     * so the recorded form is now demanded HERE, before the machine is taken. `recordAcquired`
+     * keeps its own check: a form cannot be un-recorded, but the two statements guard two acts.
+     */
+    await assertFormFRecorded(tx, study.id, study.formFRequired);
   }
 
   /**
@@ -208,7 +231,8 @@ export async function startAcquisition(
     await advanceOrderItem(tx, actor, decls, study.orderItemId, "in_progress", {});
   }
 
-  await transition(tx, study.workflowInstanceId, "in_acquisition", actor);
+  const bedsideSafety = (input.bedsideSafety ?? "").trim();
+  await transition(tx, study.workflowInstanceId, "in_acquisition", actor, bedsideSafety === "" ? {} : { note: bedsideSafety });
   await tx.update(imagingStudies)
     .set({ status: "in_acquisition", acquisitionStartedAt: now, authorisedBy })
     .where(eq(imagingStudies.id, study.id));
@@ -234,12 +258,25 @@ export type RecordAcquiredInput = {
   doseDlp?: number | null;
   doseDap?: number | null;
   fluoroSeconds?: number | null;
+  /** 18-S RS12 — mammography's Average Glandular Dose, mGy. */
+  doseAgd?: number | null;
   doseManual?: boolean;
   contrastGiven?: boolean;
   contrastAgent?: string | null;
   contrastVolumeMl?: number | null;
   repeatOfStudyId?: string | null;
   repeatReason?: string | null;
+  /**
+   * 18-S RS6 — why the dose came in above the published DRL, typed at the console. A nudge's answer,
+   * never a precondition: the scan is recorded with or without it, and it is kept on the register
+   * row only when the server's verdict is OVER (`recordDose`).
+   */
+  drlReason?: string | null;
+  /**
+   * 18-S RS6 — why a with-contrast examination was scanned plain. Carried on the
+   * `contrast_not_given` bill decision's detail so the counter reads the reason with the reversal.
+   */
+  contrastNotGivenReason?: string | null;
   /** E11 — the PAPER instant for a downtime backfill. `lateEntry` is DERIVED from it, never typed. */
   acquiredAt?: Date;
   now?: Date;
@@ -334,9 +371,29 @@ export async function recordAcquired(
    */
   const ionising = studyType.ionising;
 
-  /** M4 — the CHECK enforces this at the database; the refusal here names the field instead of the constraint. */
-  const doseGiven = [input.doseCtdivol, input.doseDlp, input.doseDap, input.fluoroSeconds]
+  /**
+   * ═══ 18-S RS12 — THE MACHINE'S DOSE REPORT, WHEN IT CAME FIRST ═══
+   *
+   * A Radiation Dose SR the archive forwarded before Send waits as a `pending` receipt on this
+   * study (`pacs.ts`). When the technologist typed NO number, Send records the SR's — through the
+   * same `recordDose` call below, so the DRL comparison runs on them exactly as on typed ones, and
+   * the register row says `dose_origin = 'dose_sr'`. When the technologist DID type, the typed
+   * numbers are recorded and every pending SR is compared with them afterwards (confirmed or a
+   * conflict kept on the receipt) — a typed value is never silently replaced.
+   */
+  const typedDose = [input.doseCtdivol, input.doseDlp, input.doseDap, input.fluoroSeconds, input.doseAgd]
     .some((v) => v !== undefined && v !== null);
+  const pendingSr = ionising && !typedDose ? await pendingDoseFor(tx, study.id) : null;
+  const dose = pendingSr === null
+    ? {
+      ctdivol: input.doseCtdivol ?? null, dlp: input.doseDlp ?? null, dap: input.doseDap ?? null,
+      fluoroSeconds: input.fluoroSeconds ?? null, agd: input.doseAgd ?? null,
+      origin: "manual" as const, manual: input.doseManual ?? false,
+    }
+    : { ...pendingSr.latest, origin: "dose_sr" as const, manual: false };
+
+  /** M4 — the CHECK enforces this at the database; the refusal here names the field instead of the constraint. */
+  const doseGiven = [dose.ctdivol, dose.dlp, dose.dap, dose.fluoroSeconds, dose.agd].some((v) => v !== null);
   if (ionising && !doseGiven) {
     throw new RadiologyError(
       "dose_required",
@@ -380,7 +437,16 @@ export async function recordAcquired(
     );
   }
 
-  const studyInstanceUid = resolveStudyInstanceUid(study.id, input);
+  /**
+   * 18-S RS12 — images that reached the archive before Send, held on this study's accession and
+   * UHID: their UID is the one recorded when the technologist typed none (the archive's answer
+   * beats our minted guess). A typed UID that disagrees leaves them for a human (`uid_mismatch`).
+   */
+  const held = input.imageSource === "pacs" ? await heldArrivalFor(tx, study.id) : null;
+  const studyInstanceUid = resolveStudyInstanceUid(study.id, {
+    imageSource: input.imageSource,
+    studyInstanceUid: input.studyInstanceUid ?? held?.studyInstanceUid ?? null,
+  });
   const contrastGiven = input.contrastGiven ?? false;
   /**
    * ═══ 18a-iii T1 — THE THREE REFUSALS MOVED TO `contrast.ts`, VERBATIM ═══
@@ -438,11 +504,12 @@ export async function recordAcquired(
     .set({
       status: "acquired", acquiredAt, acquiredBy: actor.id, lateEntry,
       imageSource: input.imageSource, ionising, studyInstanceUid,
-      doseCtdivol: input.doseCtdivol?.toString() ?? null,
-      doseDlp: input.doseDlp?.toString() ?? null,
-      doseDap: input.doseDap?.toString() ?? null,
-      fluoroSeconds: input.fluoroSeconds ?? null,
-      doseManual: input.doseManual ?? false,
+      doseCtdivol: dose.ctdivol?.toString() ?? null,
+      doseDlp: dose.dlp?.toString() ?? null,
+      doseDap: dose.dap?.toString() ?? null,
+      fluoroSeconds: dose.fluoroSeconds,
+      doseAgd: dose.agd?.toString() ?? null,
+      doseManual: dose.manual,
       contrastGiven,
       contrastAgent: input.contrastAgent ?? null,
       contrastVolumeMl: input.contrastVolumeMl?.toString() ?? null,
@@ -495,10 +562,11 @@ export async function recordAcquired(
      * naming both CTDIvol and DLP for one study type cannot decide the verdict by array order.
      */
     const measuredQuantities = {
-      ctdivol: input.doseCtdivol ?? null,
-      dlp: input.doseDlp ?? null,
-      dap: input.doseDap ?? null,
-      fluoro_seconds: input.fluoroSeconds ?? null,
+      ctdivol: dose.ctdivol,
+      dlp: dose.dlp,
+      dap: dose.dap,
+      fluoro_seconds: dose.fluoroSeconds,
+      agd: dose.agd,
     };
     const level = drlFor(levels, study.studyTypeCode, studyType.modality, measuredQuantities);
     const measured = level === null ? null : measuredQuantities[level.quantity];
@@ -509,11 +577,13 @@ export async function recordAcquired(
       deviceResourceId: study.deviceResourceId,
       modality: studyType.modality,
       procedureCode: study.studyTypeCode,
-      doseCtdivol: input.doseCtdivol ?? null,
-      doseDlp: input.doseDlp ?? null,
-      doseDap: input.doseDap ?? null,
-      fluoroSeconds: input.fluoroSeconds ?? null,
-      doseManual: input.doseManual ?? false,
+      doseCtdivol: dose.ctdivol,
+      doseDlp: dose.dlp,
+      doseDap: dose.dap,
+      fluoroSeconds: dose.fluoroSeconds,
+      doseAgd: dose.agd,
+      doseManual: dose.manual,
+      doseOrigin: dose.origin,
       /**
        * A level exists but this examination carried no number of that QUANTITY — a CT with a DLP
        * where the level is set on CTDIvol — is `null`, not `false`. There is nothing to compare,
@@ -521,10 +591,12 @@ export async function recordAcquired(
        */
       drl: level === null || measured === null
         ? null
-        : { quantity: level.quantity, value: level.value, over: measured > level.value },
+        : { quantity: level.quantity, value: level.value, over: measured > level.value, reason: input.drlReason ?? null },
       occurredAt: acquiredAt,
     });
   }
+  /** 18-S RS12 — every pending dose report of this study settled against what the register now holds. */
+  await settlePendingDose(tx, study.id, pendingSr?.receiptIds[0] ?? null, now);
 
   await transition(tx, study.workflowInstanceId, "acquired", actor);
   /**
@@ -543,6 +615,9 @@ export async function recordAcquired(
 
   /** A7 — the machine goes back on the diary. Skipping this is the `0036`-class trap m4 exists for. */
   await releaseResource(tx, actor, RADIOLOGY_RESOURCE_KINDS, study.deviceResourceId!, { at: now });
+
+  /** 18-S RS12 — the held arrival, attached on the UID Send just recorded (or left for a human). */
+  if (held !== null) await attachHeldAtSend(tx, actor, study.id, held, studyInstanceUid, now);
 
   await appendEvent(tx, imagingStudyAcquired.make({
     actor, patientId: study.patientId, encounterId: study.encounterNo,
@@ -569,7 +644,10 @@ export async function recordAcquired(
 
   /** D2 — the with-contrast service was billed and the contrast was not given. */
   if (!contrastGiven && studyType.contrast_option === "required") {
-    await raise("contrast_not_given", { studyTypeCode: study.studyTypeCode, serviceId: study.serviceId });
+    await raise("contrast_not_given", {
+      studyTypeCode: study.studyTypeCode, serviceId: study.serviceId,
+      ...((input.contrastNotGivenReason ?? "").trim() === "" ? {} : { reason: input.contrastNotGivenReason!.trim() }),
+    });
   }
   /** D6 — a repeat exposure is a second scan and usually not a second charge. */
   if (repeatOf !== null) {
@@ -640,4 +718,50 @@ export async function abortAcquisition(
     at: now, reason: input.reason,
   });
   return { studyId: study.id, status: "ready" };
+}
+
+/**
+ * PLAN 18-S RS6 — **A REPEATED EXPOSURE, recorded at the console while the patient is still on the
+ * table.**
+ *
+ * The retake a technologist makes before sending — the view was mispositioned, the patient moved,
+ * the exposure was wrong — is the commonest repeat in any department and the one the reject
+ * analysis (AERB QA, NABH's repeat-rate indicator) counts. 18a modelled only the OTHER repeat, a
+ * second study row (`repeat_of_study_id`) that nothing creates yet; this is the in-room one.
+ *
+ * Two facts, one transaction:
+ *   · `imaging.exposure_repeated` — machine, study type and a reason CODE; the Rooms station's
+ *     repeat rate is its projection;
+ *   · the `repeat_no_charge` bill decision (ruling 8: *a repeat for a technical reason is free*),
+ *     raised ONCE per study however many views are retaken — the counter decides a study's money
+ *     once, and a queue with one row per retake is the queue that stops being read (A5).
+ *
+ * `in_acquisition` only: a repeat after the images were sent is a recall, which is the second-study
+ * path, and a repeat before the start is not an exposure.
+ */
+export async function recordRepeatExposure(
+  tx: Tx,
+  actor: Actor,
+  input: { studyId: string; reason: RepeatReasonCode; now?: Date },
+): Promise<{ studyId: string; billDecisionId: string | null }> {
+  const study = await loadStudy(tx, input.studyId);
+  if (study.status !== "in_acquisition" || study.deviceResourceId === null) {
+    throw new RadiologyError(
+      "bad_transition",
+      `study ${input.studyId} is ${study.status} — a repeat is recorded while the patient is on the machine`,
+      { studyId: input.studyId, status: study.status },
+    );
+  }
+  await appendEvent(tx, imagingExposureRepeated.make({
+    actor, patientId: study.patientId, encounterId: study.encounterNo,
+    payload: {
+      studyId: study.id, deviceResourceId: study.deviceResourceId,
+      studyTypeCode: study.studyTypeCode, reason: input.reason,
+    },
+  }));
+  if (await hasBillDecision(tx, study.id, "repeat_no_charge")) return { studyId: study.id, billDecisionId: null };
+  const { billDecisionId } = await raiseBillDecision(tx, actor, {
+    studyId: study.id, kind: "repeat_no_charge", detail: { reason: input.reason, inRoom: true },
+  });
+  return { studyId: study.id, billDecisionId };
 }

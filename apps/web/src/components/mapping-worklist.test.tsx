@@ -305,7 +305,7 @@ describe("MappingWorklist", () => {
     });
     renderWithProviders(<MappingWorklist />);
 
-    await user.click(await screen.findByTestId("mapping-status-mapped"));
+    await user.click(await screen.findByTestId("mapping-open-mapped"));
     expect(await screen.findByTestId("mapping-decision-sub-warf")).toHaveTextContent("Mapped to aspirin by 01HPHARMACIST0000000000001.");
     // A person's own decision says nothing about an adoption.
     expect(screen.getByTestId("mapping-decision-sub-warf")).not.toHaveTextContent("Adopted under");
@@ -345,11 +345,11 @@ describe("MappingWorklist", () => {
     mockRoutes({ "GET /api/formulary/substances": worklist([adopted, ruled]) });
     renderWithProviders(<MappingWorklist />);
 
-    await user.click(await screen.findByTestId("mapping-status-mapped"));
+    await user.click(await screen.findByTestId("mapping-open-mapped"));
     expect(await screen.findByTestId("mapping-decision-sub-nacl")).toHaveTextContent(
       "Mapped to sodium chloride by 01HOWNER00000000000000001. Adopted under owner-resolution-2026-09-16, not reviewed one by one.",
     );
-    await user.click(screen.getByTestId("mapping-status-unmappable"));
+    await user.click(screen.getByTestId("mapping-open-unmappable"));
     expect(await screen.findByTestId("mapping-decision-sub-egg")).toHaveTextContent(
       "Ruled not a moiety by 01HOWNER00000000000000001. Adopted under owner-resolution-2026-09-16, not reviewed one by one.",
     );
@@ -403,13 +403,34 @@ describe("MappingWorklist", () => {
     const section = await screen.findByTestId("mapping-worklist");
     await screen.findByTestId("mapping-card-sub-chlor");
     // Every button that decides anything lives inside exactly one substance's card.
-    // The status tabs only filter the list, so they are the one legitimate control outside a card.
+    // The decided groups' disclosures only show or hide rows, so they are the one legitimate control outside a card.
     const deciding = within(section).getAllByRole("button")
-      .filter((b) => b.getAttribute("role") !== "tab")
+      .filter((b) => !b.hasAttribute("aria-expanded"))
       .filter((b) => /map|moiety|create/i.test(b.textContent ?? ""));
     expect(deciding.length).toBeGreaterThan(0);
     for (const b of deciding) expect(b.closest("[data-testid^='mapping-card-']")).not.toBeNull();
     expect(within(section).queryByRole("checkbox")).toBeNull();
     expect(within(section).queryByText(/accept all|map all|select all/i)).toBeNull();
+  });
+
+  /** B5 — no status tabs: one list, the waiting group open first and the decided groups folded under it. */
+  it("shows one list grouped by decision, with no tabs; a decided group is fetched only when opened", async () => {
+    const user = userEvent.setup();
+    const warf = item({ id: "sub-warf", sctid: "63167009", name: "Warfarin sodium (substance)", status: "mapped", saltId: "s-warf", saltName: "warfarin", mappedBy: "01HPHARMACIST0000000000001" });
+    mockRoutes({ "GET /api/formulary/substances": worklist([PARA, warf]) });
+    renderWithProviders(<MappingWorklist />);
+
+    const section = await screen.findByTestId("mapping-worklist");
+    expect(await screen.findByTestId("mapping-card-sub-para")).toBeInTheDocument();
+    expect(within(section).queryByRole("tablist")).toBeNull();
+    expect(within(section).queryByRole("tab")).toBeNull();
+    // Only the waiting group was asked for; the decided ones wait until opened.
+    expect(calls("GET", "/formulary/substances").map((c) => c.url.searchParams.get("status"))).toEqual(["pending"]);
+    expect(screen.getByTestId("mapping-open-mapped")).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(screen.getByTestId("mapping-open-mapped"));
+    expect(await screen.findByTestId("mapping-card-sub-warf")).toBeInTheDocument();
+    // The waiting rows stay on screen: opening a group does not swap the list.
+    expect(screen.getByTestId("mapping-card-sub-para")).toBeInTheDocument();
   });
 });

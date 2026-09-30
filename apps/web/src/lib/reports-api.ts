@@ -118,9 +118,49 @@ export type WireActivityChange = { field: string; label: string; before: string 
 export type WireActivityEntry = {
   at: string; name: string; actorId: string; actorName: string; status: string | null; changes: WireActivityChange[];
   facts: Record<string, string | number | boolean | null>;
+  /** STAGE C — the document as it stood after this event (absent from a server older than stage C). */
+  state?: Record<string, string | number | boolean | null>;
 };
-export type WireActivity = { kind: string; id: string; no: string; label: string; entries: WireActivityEntry[] };
+export type WireActivity = { kind: string; id: string; no: string; label: string; entries: WireActivityEntry[]; labels?: Record<string, string> };
 export type WireActivityFeed = { from: string; to: string; rows: { at: string; name: string; actorName: string; docNo: string | null; amountPaise: number | null }[] };
+
+// ── STAGE C (`office-stock-reports.ts`, materials' `stock-reports.ts`) ──
+export type AbcClass = "A" | "B" | "C";
+export type WireTopSellingRow = {
+  rank: number; itemId: string; itemCode: string; itemName: string; qtyBase: number; valuePaise: number;
+  unitShareBps: number | null; valueShareBps: number | null; cumulativeValueBps: number | null; abc: AbcClass;
+};
+export type WireTopSelling = {
+  from: string; to: string; preset: string; storeCode: string | null; byValue: WireTopSellingRow[]; byUnits: WireTopSellingRow[];
+  totals: { items: number; qtyBase: number; valuePaise: number }; classes: Record<AbcClass, { items: number; valuePaise: number }>;
+};
+export type WireLossRow = {
+  source: "write_off" | "count"; docId: string; docNo: string | null; date: string; at: string; storeCode: string; storeName: string;
+  itemId: string; itemCode: string; itemName: string; batchId: string; batchNo: string; expiryDate: string | null;
+  qtyBase: number; valuePaise: number; reason: string; requestedBy: string; approvedBy: string | null; postedBy: string | null;
+  disposalAgency: string | null; manifestNo: string | null; note: string | null;
+};
+export type WireLossRegister = {
+  from: string; to: string; rows: WireLossRow[]; byReason: { reason: string; lines: number; qtyBase: number; valuePaise: number }[];
+  totals: { lines: number; qtyBase: number; valuePaise: number }; truncated: boolean;
+};
+export const STOCK_IN_KINDS = ["grn", "transferIn", "saleReturn", "adjustIn"] as const;
+export const STOCK_OUT_KINDS = ["sale", "transferOut", "supplierReturn", "writeOff"] as const;
+export type WireDailyStockRow = {
+  itemId: string; itemCode: string; itemName: string; baseUom: string; openingQty: number;
+  in: Record<(typeof STOCK_IN_KINDS)[number], number>; inQty: number; out: Record<(typeof STOCK_OUT_KINDS)[number], number>; outQty: number; closingQty: number;
+};
+export type WireDailyStock = {
+  from: string; to: string; rows: WireDailyStockRow[]; totals: { items: number; openingQty: number; inQty: number; outQty: number; closingQty: number }; truncated: boolean;
+};
+export type WireCatalogueRow = {
+  id: string; code: string; name: string; class: string; hsnCode: string | null; gstRateBps: number | null; baseUom: string; storageClass: string;
+  manufacturer: string | null; leadTimeDays: number | null; lasa: boolean; highAlert: boolean; schedule: string | null;
+  packs: { uom: string; toBase: number }[];
+  levels: { storeResourceId: string; storeCode: string; minBase: number; reorderBase: number; maxBase: number }[];
+  racks: { storeCode: string; location: string }[];
+};
+export type WireCatalogue = { storeCode: string | null; rows: WireCatalogueRow[]; truncated: boolean };
 
 function query(r: Partial<RangeInput> & Record<string, string | number | undefined>): string {
   const p = new URLSearchParams();
@@ -155,6 +195,10 @@ export const fetchNonMoving = (days: number, store: string): Promise<WireNonMovi
 export const reconcileGstr2b = (input: { format: "json" | "csv"; content: string; preset: ReportPreset; from: string; to: string }): Promise<WireGstr2b> =>
   api("POST", `${BASE}/gstr2b`, input.preset === "custom" ? input : { format: input.format, content: input.content, preset: input.preset });
 export const fetchActivityFeed = (r: RangeInput): Promise<WireActivityFeed> => api("GET", `${BASE}/activity${query(r)}`);
+export const fetchTopSelling = (r: RangeInput): Promise<WireTopSelling> => api("GET", `${BASE}/top-selling${query(r)}`);
+export const fetchLossRegister = (r: RangeInput): Promise<WireLossRegister> => api("GET", `${BASE}/losses${query(r)}`);
+export const fetchDailyStock = (r: RangeInput): Promise<WireDailyStock> => api("GET", `${BASE}/daily-stock${query(r)}`);
+export const fetchCatalogue = (store: string): Promise<WireCatalogue> => api("GET", `${BASE}/catalogue${query({ store })}`);
 export const fetchActivity = (no: string): Promise<WireActivity> => api("GET", `${BASE}/activity/document${query({ no })}`);
 
 /**

@@ -66,6 +66,9 @@ describe("FD-24 T1: the print outbox", () => {
     expect(DESTINATION_OF.vitals_slip).toBe("vitals_thermal"); // R3 — its own printer
     // Board "Ophthal" — the glasses prescription is its own A4 sheet, on the same laser as the prescription.
     expect(DESTINATION_OF.opd_glasses_rx).toBe("front_desk_a4");
+    // Gap A6 — the stickers go to the label printer, never the 72 mm bill roll.
+    expect(DESTINATION_OF.pharmacy_rack_label).toBe("pharmacy_label");
+    expect(DESTINATION_OF.pharmacy_strip_label).toBe("pharmacy_label");
   });
 
   /**

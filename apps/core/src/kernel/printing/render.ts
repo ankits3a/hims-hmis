@@ -915,11 +915,11 @@ export async function renderPrescriptionSheet(
     something in its place would have left the row empty. `opd_doctors.code` is that column now, so
     the design's own row is what prints.
 
-    The compliance question the substitution was answering is answered by the sheet's other half:
-    the signature block asks the treating physician for their name and registration number IN THEIR
-    OWN HAND, which is what NMC Code of Ethics reg. 1.4.2 wants on a prescription and what a blank
-    pad is for. The printed sheet identifies the prescriber to the HOSPITAL; the signature
-    identifies them to the regulator.
+    OWNER, 2026-09-28: *"Prescription print: Doctor ID only."* The signature block used to ask the
+    treating physician for their name and registration number in their own hand (the NMC Code of
+    Ethics reg. 1.4.2 reading); the owner has ruled the hospital's paper carries the Doctor ID and a
+    signature, so the block now asks for exactly that. The lab report's signing pathologist (full
+    name and council number) is the one exception, and it is not this sheet.
   */
   const doctorCell = esc(s.doctorCode ?? "—");
 
@@ -1080,7 +1080,7 @@ export async function renderPrescriptionSheet(
         <div class="sig">
           <div class="b">
             <div class="thin"></div>
-            <div class="c">Signature, name &amp; registration no. of the treating physician</div>
+            <div class="c">Doctor ID · signature of the treating physician</div>
           </div>
         </div>
       </div>

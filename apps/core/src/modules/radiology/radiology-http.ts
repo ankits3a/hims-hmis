@@ -3,6 +3,8 @@ import { z } from "zod";
 import { OrderError, orderHttpStatus } from "../../kernel/orders/errors";
 import { ResourceError, resourceHttpStatus } from "../../kernel/resources/errors";
 import { WorkflowError } from "../../kernel/workflow/instances";
+import { ApprovalError } from "../../kernel/approvals/types";
+import { SodViolationError } from "../../kernel/auth/sod";
 import { BillingError, billingHttpStatus } from "../billing";
 import { TariffError, tariffHttpStatus } from "../tariff";
 import { PcpndtError, pcpndtHttpStatus } from "../pcpndt";
@@ -54,6 +56,15 @@ export function toHttp(e: unknown): never {
   if (e instanceof WorkflowError) {
     throw httpError(e.code === "role_denied" ? 403 : 409, e.message, e.code);
   }
+  /**
+   * 18-S RS5 T2 — the override request rides the kernel's approvals spine, so its refusals reach
+   * this mapper: an approval engine refusal is a 409 with its own code, and the requester ≠ approver
+   * SoD (a radiologist deciding their own request) is a 403.
+   */
+  if (e instanceof ApprovalError) {
+    throw httpError(e.code === "unknown_approval" ? 404 : 409, e.message, e.code);
+  }
+  if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation");
   throw e;
 }
 

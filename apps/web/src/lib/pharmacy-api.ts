@@ -69,6 +69,8 @@ export type WireRxLine = {
 };
 export type WireMedicine = { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag?: string | null };
 export type WireDispenseLine = {
+  /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it). Absent from an older server. */
+  splitFromLineIdx?: number | null;
   lineIdx: number; rxLine: WireRxLine; status: string; declinedReason: string | null; substitutionType: string;
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
@@ -209,7 +211,8 @@ export async function fetchPatientRail(id: string): Promise<WirePatientRail> {
 /** The board's three boxes on the done screen (`closing.ts`), read once when the ticket has closed. */
 export type WireClosing = {
   ticket: { dispenseNo: string | null; claimedByName: string | null; claimedAt: string | null; handedOverAt: string | null; lines: number; substituted: number; declined: number };
-  money: { invoiceNo: string; netPayablePaise: number; cgstPaise: number; sgstPaise: number; receiptNo: string | null; changeGivenPaise: number; tenders: { mode: string; amountPaise: number; refText: string | null }[] } | null;
+  /** `roundingPaise` — the invoice's own rounding (what was taken minus the raw total). Absent from an older server. */
+  money: { invoiceNo: string; netPayablePaise: number; roundingPaise?: number; cgstPaise: number; sgstPaise: number; receiptNo: string | null; changeGivenPaise: number; tenders: { mode: string; amountPaise: number; refText: string | null }[] } | null;
   registers: { h1Rows: number; batches: number };
 };
 export async function fetchClosing(id: string): Promise<WireClosing> {
@@ -234,6 +237,31 @@ export async function fetchPlacements(id: string, lineIdx: number, q: string): P
 /** PD-9 — ask the prescriber to authorise one refusal on one line. */
 export async function askPrescriber(dispenseId: string, lineIdx: number, input: { book: string; about: string; note?: string }): Promise<WireLineAuthorisation> {
   return api<WireLineAuthorisation>("POST", `/pharmacy/dispenses/${dispenseId}/lines/${String(lineIdx)}/authorisations`, input);
+}
+/** STAGE D5 — where one restricted antimicrobial line stands with the antimicrobial steward. */
+export type WireStewardLine = {
+  lineIdx: number; drug: string; appointed: boolean;
+  status: "none" | "pending" | "granted" | "rejected" | "self_approved";
+  approvalId: string | null; decisionNote: string | null;
+};
+export async function fetchStewardLines(dispenseId: string): Promise<WireStewardLine[]> {
+  const { lines } = await api<{ lines: WireStewardLine[] }>("GET", `/pharmacy/dispenses/${dispenseId}/steward`);
+  return lines;
+}
+/** STAGE D5 — ask the antimicrobial steward to approve one restricted line; the decision is made in /approvals. */
+export async function askSteward(
+  dispenseId: string, lineIdx: number, input: { indication: string; cultureSent: boolean; plannedDays: number; note?: string },
+): Promise<{ status: WireStewardLine["status"]; approvalId: string | null }> {
+  return api("POST", `/pharmacy/dispenses/${dispenseId}/lines/${String(lineIdx)}/steward`, input);
+}
+/** STAGE D5 — what the steward reads beside the inbox card (`pharmacy.antimicrobial.approve`). */
+export type WireStewardRequest = {
+  approvalId: string; dispenseNo: string | null;
+  lines: { lineIdx: number; drug: string; brandName: string; dose: string; frequency: string; durationDays: number | null }[];
+  prescriberUserId: string | null; prescriberName: string | null;
+};
+export async function fetchStewardRequest(approvalId: string): Promise<WireStewardRequest> {
+  return api<WireStewardRequest>("GET", `/pharmacy/steward-requests/${approvalId}`);
 }
 /** PD-9 — the request as the prescriber reads it. */
 export type WireAuthorisationDetail = {
@@ -412,7 +440,8 @@ export async function fetchH1Register(from: string, to: string): Promise<WireH1R
 export type WireCounterSummary = {
   day: string; handedOver: number;
   medianMinutes: { queueToHandover: number | null; claimToHandover: number | null };
-  billedPaise: number;
+  /** Absent for a pharmacist whose own drawer is uncounted (blind count, owner ruling 2026-09-28). */
+  billedPaise?: number;
   open: { queued: number; claimed: number; verified: number; picked: number; billed: number };
   declinedLines: number; declinedTop: { reason: string; lines: number }[];
   substitutions: number; cancelled: number; refundedAfterBilling: number; returns: number;
@@ -465,6 +494,8 @@ export type WireRetailPreview = {
   lines: {
     lineIdx: number; medicineId: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null;
     itemId: string; batchId: string; batchNo: string; expiryDate: string | null; qtyBase: number; fefoOverride: boolean;
+    /** UX-AUDIT 2026-09-28 — the line's rate, GST (inside the MRP) and amount. Absent from an older server. */
+    price?: { unitPaise: number; grossPaise: number; discountPaise: number; taxPaise: number; gstRateBps: number; amountPaise: number };
   }[];
   totals: { grossPaise: number; discountPaise: number; taxPaise: number; netPayablePaise: number };
   checks: {
@@ -506,6 +537,8 @@ export type WireRetailSale = {
 export type WireRetailSaleRow = {
   id: string; soldAt: string; soldBy: string; invoiceId: string; invoiceNo: string; netPaise: number;
   scheduled: boolean; lineCount: number; registeredHere: boolean;
+  /** UX-AUDIT 2026-09-28 — who bought it; a restricted customer has no name. Absent from an older server. */
+  customer?: { uhid: string; name: string | null; alias: string | null } | null;
   /** P20 — absent from an older server. */
   channel?: "walk_in" | "downtime"; enteredAt?: string; sheet?: { desk: string; serial: number } | null;
 };
@@ -626,9 +659,11 @@ export async function resolveShortBook(id: string, resolution: "ordered" | "rece
 }
 
 export type WireMyShift = {
-  day: string; handedOver: number; takenPaise: number; byMode: { cash: number; upi: number; card: number };
+  /** `takenPaise` / `byMode` are absent while the drawer is uncounted (blind count, owner ruling 2026-09-28). */
+  day: string; handedOver: number; takenPaise?: number; byMode?: { cash: number; upi: number; card: number };
   receipts: number; returns: number; refunds: number;
-  drawer: { status: string; openingFloatPaise: number; expectedCashPaise: number } | null;
+  /** `expectedCashPaise` is absent before the count unless the reader supervises drawers (blind count, owner ruling 2026-09-28). */
+  drawer: { status: string; openingFloatPaise: number; expectedCashPaise?: number } | null;
 };
 export async function fetchMyShift(): Promise<WireMyShift> {
   return api<WireMyShift>("GET", "/pharmacy/summary/mine");

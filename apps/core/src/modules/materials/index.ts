@@ -70,6 +70,10 @@ export {
   getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock, transferWorklist,
 } from "./transfers";
 export type { IssueLine, TransferLineRow, TransferRow, TransferView, TransferWithLines } from "./transfers";
+// ── PHARMACY GAP A6b — indents: a sub-store asks, the supplying store answers with a transfer ──
+export { cancelIndent, getIndent, issueIndent, listIndents, raiseIndent, rejectIndent } from "./indents";
+export type { IndentLineInput, IndentStatus, IndentView, IssueIndentInput, RaiseIndentInput } from "./indents";
+export { MaterialsIndentsController } from "./materials-indents.controller";
 /**
  * DD13's half of the interface Plan 15 imports: it appends `consignmentDeployed` (exported above,
  * from T2) and reads `consumptionsFor` to compose the discharge bill.
@@ -159,6 +163,10 @@ export type {
   BatchFacts, MaterialsDocKind, MaterialsDocRef, NonMovingReport, NonMovingRow, NonMovingSuggestion, PurchaseAdjustment, PurchaseRegister,
   PurchaseRegisterLine, PurchaseRegisterRow, ReconBill, StockValuation, SupplierPaymentRead, ValuationGroup, ValuationRow,
 } from "./reports";
+
+// ── PHARMACY GAP CLOSURE C — daily stock (opening, in, out, closing), the loss-booking register, the item catalogue ──
+export { LOSS_ADJUSTMENT_REASONS, STOCK_IN_KINDS, STOCK_OUT_KINDS, itemCatalogue, lossBookings, stockMovementSummary } from "./stock-reports";
+export type { CatalogueItem, LossBooking, StockInKind, StockMovementRow, StockMovementSummary, StockOutKind } from "./stock-reports";
 
 // ── PHARMACY P6 — the controlled-drug cabinet: two keys at the ledger, its register, its balance and its daily check ──
 export { CONTROLLED_ATTRIBUTE, isControlledStore, setStoreControlled } from "./controlled";

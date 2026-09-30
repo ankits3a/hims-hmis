@@ -83,6 +83,13 @@ export type ConsultNote = {
   diagnosisKind?: DiagnosisKind | null;
   /** D14 — offered/kept at a zero-stock line. `at` and `by` are stamped by the SERVER (see `stampStockChoices`). */
   rxStockChoices?: RxStockChoiceInput[] | null;
+  /**
+   * CONSULT WALK 2026-09-28 (defect A) — the prescription rows written and NOT YET ISSUED, as the
+   * editor holds them (half-written rows included), so a reload, a second tab or a lease takeover
+   * finds them. Replaced whole; null = nothing unissued. Never a prescription: nothing downstream
+   * reads it, and only `issuePrescription` makes one.
+   */
+  rxDraft?: RxDraftLine[] | null;
   /** D17 — the writing tab's lease token (`lease.ts`). Absent = the shipped client, unchecked. Never stored. */
   leaseToken?: string;
 };
@@ -93,6 +100,12 @@ export const DIAGNOSIS_KINDS = ["provisional", "final"] as const;
 export type DiagnosisKind = (typeof DIAGNOSIS_KINDS)[number];
 export type RxStockChoiceInput = { offeredMedicineId: string; keptMedicineId: string; chosen: "swap" | "keep" };
 export type RxStockChoice = RxStockChoiceInput & { by: string; at: string };
+/** An editor row as typed — every field may still be blank; `durationDays` is the box's text or a number. */
+export type RxDraftLine = {
+  drug: string; dose: string; route: string; frequency: string; durationDays: string | number | null;
+  instructions: string; noSubstitution: boolean; medicineId?: string | null;
+  eye?: "od" | "os" | "ou" | null; taper?: { timesPerDay: number; days: number }[] | null;
+};
 
 /**
  * D14 IS AN AUDIT, SO THE CLIENT NEVER NAMES WHO OR WHEN. The list is re-sent whole on every
@@ -134,7 +147,7 @@ export function assertLeaseFor(
 /** The encounter columns a note writes — the same set moveEncounter's patch accepts, so a completion is ONE update. */
 type NoteColumns = Partial<Pick<EncounterRow,
   "chiefComplaint" | "diagnosis" | "icd10Code" | "advice" | "admissionAdvised" | "referralTo" | "referralNote"
-  | "advisedTests" | "examination" | "treatment" | "doctorNote" | "internalComment" | "diagnosisKind">>;
+  | "advisedTests" | "examination" | "treatment" | "doctorNote" | "internalComment" | "diagnosisKind" | "rxDraft">>;
 
 /**
  * The structured list a note writes, or null when the note says nothing about diagnoses at all.
@@ -208,6 +221,7 @@ function noteColumns(note: ConsultNote | undefined): NoteColumns {
   if (note.doctorNote !== undefined) patch.doctorNote = note.doctorNote;
   if (note.internalComment !== undefined) patch.internalComment = note.internalComment;
   if (note.diagnosisKind !== undefined) patch.diagnosisKind = note.diagnosisKind;
+  if (note.rxDraft !== undefined) patch.rxDraft = note.rxDraft === null || note.rxDraft.length === 0 ? null : note.rxDraft;
   return patch;
 }
 

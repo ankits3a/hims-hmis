@@ -11,7 +11,8 @@
  * AERB register asks for it and because an interventional procedure's fluoroscopy time is the
  * quantity a DRL is usually set on for that room.
  */
-export const DOSE_QUANTITIES = ["ctdivol", "dlp", "dap", "fluoro_seconds"] as const;
+/** 18-S RS12 — `agd` (mammography's Average Glandular Dose) added; before it a mammogram reporting only AGD had no column. */
+export const DOSE_QUANTITIES = ["ctdivol", "dlp", "dap", "fluoro_seconds", "agd"] as const;
 export type DoseQuantity = (typeof DOSE_QUANTITIES)[number];
 
 export const DOSE_UNITS: Readonly<Record<DoseQuantity, string>> = {
@@ -23,12 +24,15 @@ export const DOSE_UNITS: Readonly<Record<DoseQuantity, string>> = {
   dap: "Gy·cm²",
   /** Fluoroscopy time. A duration, not a dose — see the header. */
   fluoro_seconds: "s",
+  /** Average Glandular Dose (mammography), 18-S RS12. */
+  agd: "mGy",
 };
 
 /** The register column each quantity lives in, so a caller never spells one twice. */
-export const DOSE_QUANTITY_COLUMNS: Readonly<Record<DoseQuantity, "doseCtdivol" | "doseDlp" | "doseDap" | "fluoroSeconds">> = {
+export const DOSE_QUANTITY_COLUMNS: Readonly<Record<DoseQuantity, "doseCtdivol" | "doseDlp" | "doseDap" | "fluoroSeconds" | "doseAgd">> = {
   ctdivol: "doseCtdivol",
   dlp: "doseDlp",
   dap: "doseDap",
   fluoro_seconds: "fluoroSeconds",
+  agd: "doseAgd",
 };

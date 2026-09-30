@@ -6,6 +6,8 @@ import type { TFunction } from "i18next";
 import { CircleCheck, Inbox as InboxIcon, CircleX } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { fetchStewardRequest } from "../lib/pharmacy-api";
+import { fetchBankChanges, fetchNearExpiryView, fetchVendor } from "../lib/materials-api";
 import { fmtRupees } from "../lib/format";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -145,6 +147,108 @@ function UrgencyPill({ urgency }: { urgency: ApprovalItem["urgencyClass"] }): Re
   );
 }
 
+/**
+ * STAGE D5 — the prescription line a restricted-antimicrobial request is about, and whose prescription it is, read
+ * under the steward's own grant. A steward who wrote it is told so: their grant would not let the medicine leave.
+ */
+function StewardLine({ approvalId }: { approvalId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const { actor } = useAuth();
+  const q = useQuery({ queryKey: ["pharmacy", "steward-request", approvalId], queryFn: () => fetchStewardRequest(approvalId), retry: false, staleTime: 60_000 });
+  if (q.data === undefined) return null;
+  const own = actor !== null && q.data.prescriberUserId === actor.id;
+  return (
+    <div data-testid={`steward-line-${approvalId}`} style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 3 }}>
+      {q.data.lines.map((l) => (
+        <span key={l.lineIdx} className="mo">
+          {t("inbox.steward.line", { brand: l.brandName, dose: l.dose, frequency: l.frequency })}
+          {l.durationDays === null ? "" : ` · ${t("inbox.steward.days", { n: l.durationDays })}`}
+        </span>
+      ))}
+      {q.data.prescriberName === null ? null : <span style={{ color: "var(--dim)" }}>{t("inbox.steward.prescriber", { name: q.data.prescriberName })}</span>}
+      {own ? <p role="note" style={{ margin: 0, fontWeight: 600, color: "var(--red)" }}>{t("inbox.steward.ownPrescription")}</p> : null}
+    </div>
+  );
+}
+
+/** "5 Dec 2026" — a calendar date as the carton prints it, never shifted by the reader's timezone. */
+function calendarDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(Date.parse(`${iso}T00:00:00Z`));
+}
+
+/**
+ * WALK FINDING 2026-09-29 — the near-expiry card said only "Accept a delivery of items that expire
+ * soon". The approver now sees what the yes puts on the shelf: the GRN, the supplier, and each
+ * short-dated line with its batch, expiry, days left and quantity (`GET /materials/grns/:id/near-expiry`).
+ * A reader without the materials grant sees the card as before — the server refuses, nothing is shown.
+ */
+function NearExpiryLines({ approvalId, grnId }: { approvalId: string; grnId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const q = useQuery({ queryKey: ["materials", "grn-near-expiry", grnId], queryFn: () => fetchNearExpiryView(grnId), retry: false, staleTime: 60_000 });
+  if (q.data === undefined) return null;
+  const v = q.data;
+  const cell: React.CSSProperties = { padding: "5px 10px 5px 0", borderTop: "1px solid var(--line2)", verticalAlign: "top" };
+  return (
+    <div data-testid={`near-expiry-${approvalId}`} style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 5 }}>
+      <span>
+        <b className="mo">{v.grnNo}</b>
+        {" · "}{v.vendorName}
+        <span style={{ color: "var(--dim)" }}>{" · "}{v.invoiceNo === null ? t("inbox.nearExpiry.challan", { no: v.challanNo }) : t("inbox.nearExpiry.invoice", { no: v.invoiceNo })}</span>
+      </span>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", minWidth: "100%", fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ textAlign: "left" }}>
+              <th className="tag" style={{ padding: "0 10px 4px 0", fontWeight: 600 }}>{t("inbox.nearExpiry.item")}</th>
+              <th className="tag" style={{ padding: "0 10px 4px 0", fontWeight: 600 }}>{t("inbox.nearExpiry.batch")}</th>
+              <th className="tag" style={{ padding: "0 10px 4px 0", fontWeight: 600 }}>{t("inbox.nearExpiry.expiry")}</th>
+              <th className="tag" style={{ padding: "0 10px 4px 0", fontWeight: 600, textAlign: "right" }}>{t("inbox.nearExpiry.qty")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {v.lines.map((l, i) => (
+              <tr key={`${l.itemCode}-${l.batchNo ?? ""}-${String(i)}`}>
+                <td style={cell}>{l.itemName}</td>
+                <td className="mo" style={cell}>{l.batchNo ?? "—"}</td>
+                <td style={cell}>
+                  {l.expiryDate === null ? "—" : calendarDate(l.expiryDate)}
+                  {l.daysLeft === null ? null : (
+                    <span style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: l.daysLeft < 0 ? "var(--red)" : "var(--gold-ink, var(--gold))" }}>
+                      {l.daysLeft < 0 ? t("inbox.nearExpiry.expired") : t("inbox.nearExpiry.daysLeft", { count: l.daysLeft })}
+                    </span>
+                  )}
+                </td>
+                <td className="mo" style={{ ...cell, textAlign: "right", whiteSpace: "nowrap" }}>{`${String(l.qtyBase)} ${l.baseUom}`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * WALK FINDING 2026-09-29 (the same blindness) — a supplier bank change said only "Change the bank
+ * account a supplier is paid into": not which supplier, not which account. It now names both, the
+ * account MASKED as the server keeps it on this read (the unmasked number stays `vendors.manage`'s).
+ */
+function BankChangeLine({ approvalId, vendorId, changeId }: { approvalId: string; vendorId: string; changeId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const vendor = useQuery({ queryKey: ["materials", "vendor", vendorId], queryFn: () => fetchVendor(vendorId), retry: false, staleTime: 60_000 });
+  const changes = useQuery({ queryKey: ["materials", "bank-changes", vendorId], queryFn: () => fetchBankChanges(vendorId), retry: false, staleTime: 60_000 });
+  const change = changes.data?.find((c) => c.id === changeId);
+  if (vendor.data === undefined && change === undefined) return null;
+  return (
+    <div data-testid={`bank-change-${approvalId}`} style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 3 }}>
+      {vendor.data === undefined ? null : <b>{vendor.data.vendor.legalName}</b>}
+      {change === undefined ? null : (
+        <span className="mo">{t("inbox.bankChange.account", { from: change.oldMasked ?? t("inbox.bankChange.none"), to: change.newMasked })}</span>
+      )}
+    </div>
+  );
+}
+
 function ApprovalCard({
   item, onDecide, canDecide, isOwn, focused = false,
 }: {
@@ -237,6 +341,11 @@ function ApprovalCard({
             )}
           </div>
 
+          {item.typeKey === "pharmacy_restricted_antimicrobial" && can("pharmacy.antimicrobial.approve") ? <StewardLine approvalId={item.id} /> : null}
+          {item.typeKey === "materials_near_expiry_acceptance" && item.subjectType === "grn" && item.subjectId !== undefined
+            ? <NearExpiryLines approvalId={item.id} grnId={item.subjectId} /> : null}
+          {item.typeKey === "materials_vendor_bank_change" && item.payeeId !== null && item.subjectId !== undefined
+            ? <BankChangeLine approvalId={item.id} vendorId={item.payeeId} changeId={item.subjectId} /> : null}
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{kindExplain(item, t)}</p>
           {runId === null ? null : (
             <button
@@ -246,6 +355,19 @@ function ApprovalCard({
               {t("inbox.openRun")}
             </button>
           )}
+          {/*
+            UX-AUDIT 2026-09-28 · BOARD (merge review) — a merge is decided on sight of the two records.
+            The MS opens it on /merge, where the comparison is frozen as captured at request time and
+            Approve / Refuse sit beside it. This card keeps working for anyone who decides from here.
+          */}
+          {item.typeKey === "patient_merge" && item.subjectId !== undefined ? (
+            <a
+              href={`/merge?request=${encodeURIComponent(item.subjectId)}`} data-testid="open-merge-review"
+              style={{ alignSelf: "flex-start", color: "var(--green)", fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3 }}
+            >
+              {t("inbox.openMerge")}
+            </a>
+          ) : null}
         </div>
 
         {actions === null ? null : (

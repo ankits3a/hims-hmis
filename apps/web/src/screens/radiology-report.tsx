@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useParams } from "@tanstack/react-router";
+import { useParams, useRouter } from "@tanstack/react-router";
 import {
   draftReport, fetchReport, fetchStudy, proposeDraft, publishReport, radiologyErrorText, signReport,
 } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
+import { RadiologyStation } from "./radiology-station";
 
 /**
  * PLAN 18a T9 — **THE REPORT: written, signed under a fresh second factor, published.**
@@ -28,6 +29,7 @@ export function RadiologyReport(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { studyId } = useParams({ from: "/authed/radiology/studies/$studyId/report" });
+  const router = useRouter({ warn: false });
   const [findings, setFindings] = useState("");
   const [impression, setImpression] = useState("");
   const [critical, setCritical] = useState<"" | "red" | "orange" | "yellow">("");
@@ -132,11 +134,27 @@ export function RadiologyReport(): React.ReactElement {
   const signableId = draftId ?? s?.reports.find(humanUnsigned)?.id ?? null;
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">
-        {s === null ? t("radiology.study.unknown") : `${t("radiology.report.title")} — ${s.accessionNo}`}
-      </h1>
+    <RadiologyStation
+      station="worklist"
+      title={s === null ? t("radiology.study.unknown") : `${t("radiology.report.title")} — ${s.accessionNo}`}
+      place={t("radiology.station.reportPlace")}
+      stats={[]}
+    >
+    <div className="space-y-4">
 
+      {/** 18-S RS8a — the reading room is the workspace now; this screen stays reachable, and each links to the other. */}
+      <p className="text-sm" data-testid="to-reading-room">
+        <a
+          href={`/radiology/read?study=${studyId}`} className="underline underline-offset-2"
+          onClick={(e) => {
+            if (router === undefined) return;
+            e.preventDefault();
+            void router.navigate({ to: "/radiology/read", search: { study: studyId } });
+          }}
+        >
+          {t("radiology.report.openReadingRoom")}
+        </a>
+      </p>
       {error !== null ? <p role="alert" className="text-red-600">{error}</p> : null}
       {note !== null ? <p role="status" className="text-green-700">{note}</p> : null}
 
@@ -199,5 +217,6 @@ export function RadiologyReport(): React.ReactElement {
         )
         : null}
     </div>
+    </RadiologyStation>
   );
 }

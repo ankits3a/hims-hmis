@@ -119,6 +119,32 @@ export const instrumentEnrolled = defineEvent(
   }),
 );
 
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — ONE CARD RECOGNISED AT A COUNTER, and what it read as.
+ *
+ * The card-recognition board's right column is "cards today": the counter's own day of cards, each
+ * with how it read (usable, expired, suspended, no match). Nothing recorded that — a lookup writes a
+ * `search_audit` row with the typed text and nothing about the outcome — so the list had no source.
+ * An EVENT rather than a table, for the reason `instrument.enrolled` gives: no migration, and the
+ * spine is where "what did somebody do" lives. `events.test.ts` names this very event as the one it
+ * was written to admit.
+ *
+ * NO MONEY, BY CONSTRUCTION (E-32): the payload is a code, a holder id and a status word. The list
+ * is built from this payload and nothing else, so it cannot carry a figure the event never held.
+ */
+export const instrumentRecognised = defineEvent(
+  "instrument.recognised",
+  MODULE,
+  z.object({
+    code: z.string().min(1),
+    source: z.enum(["card", "coupon", "none"]),
+    instanceId: id.nullable(),
+    origin: z.string().min(1).nullable(),
+    standing: z.enum(["usable", "not_yet_valid", "expired", "suspended", "cancelled"]).nullable(),
+    linked: z.boolean(),
+  }),
+);
+
 export const MEMBERSHIP_EVENTS = [
   instrumentGraceHonored,
   couponRedemptionReleased,
@@ -126,4 +152,5 @@ export const MEMBERSHIP_EVENTS = [
   holderBookImported,
   instrumentHolderLinked,
   instrumentEnrolled,
+  instrumentRecognised,
 ] as const;
