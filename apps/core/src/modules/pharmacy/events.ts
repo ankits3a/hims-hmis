@@ -13,7 +13,21 @@ const id = z.string().min(1);
 /** D11 — a row entered the counter's queue: from the `prescription.issued` consumer, or from a first scan. */
 export const dispenseQueued = defineEvent("dispense.queued", MODULE, z.object({
   dispenseId: id, prescriptionId: id, prescriptionVersion: z.number().int().positive(),
-  patientId: id, encounterId: id, source: z.enum(["prescription_issued", "scan"]),
+  patientId: id, encounterId: id, source: z.enum(["prescription_issued", "scan", "paper"]),
+}));
+
+/**
+ * 2026-09-30 — a PAPER prescription entered at the desk by the pharmacist (`paper-rx.ts`). The audit
+ * record of the door: who typed it, the prescriber as written, the date on the paper, the photo on
+ * the patient's record (null when no line needed one), and what was asked for.
+ */
+export const paperRxEntered = defineEvent("paper_rx.entered", MODULE, z.object({
+  dispenseId: id, prescriptionId: id, patientId: id, encounterId: id, source: z.literal("paper"),
+  enteredBy: id, doctorId: id, prescriberName: z.string().min(1), prescriberRegNo: z.string().nullable(),
+  rxDate: z.string(), documentId: id.nullable(),
+  lines: z.array(z.object({
+    lineIdx: z.number().int().nonnegative(), itemId: id, medicineId: id, qtyBase: z.number().int().positive(), scheduleFlag: z.string().nullable(),
+  })).min(1),
 }));
 
 /** The counter took the Rx: through which door, and how many lines it carries. The order comes at verify. */
@@ -315,7 +329,7 @@ export const trayRestocked = defineEvent("trays.restocked", MODULE, z.object({
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
-  dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
+  dispenseQueued, paperRxEntered, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
   authorisationRequested, authorisationDecided,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,

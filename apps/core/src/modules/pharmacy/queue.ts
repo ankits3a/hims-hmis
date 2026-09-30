@@ -45,7 +45,7 @@ export type DispenseLineRow = typeof pharmacyDispenseLines.$inferSelect;
 export async function enqueueDispense(
   tx: Tx,
   actor: Actor,
-  input: { prescriptionId: string; prescriptionVersion: number; patientId: string; encounterId: string; source: "prescription_issued" | "scan" },
+  input: { prescriptionId: string; prescriptionVersion: number; patientId: string; encounterId: string; source: "prescription_issued" | "scan" | "paper" },
   now: Date,
 ): Promise<{ dispenseId: string; created: boolean }> {
   // A re-issue is a NEW `opd_prescriptions` row (version + 1) on the SAME encounter — supersession

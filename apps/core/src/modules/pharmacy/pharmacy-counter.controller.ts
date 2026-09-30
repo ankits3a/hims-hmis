@@ -5,6 +5,10 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
+import { enterPaperPrescription, paperRxContext } from "./paper-rx";
+import type { PaperRxContext } from "./paper-rx";
+import { searchShelfAt } from "./retail";
+import { findStoreByCode } from "../materials";
 import { cachedShelfIndex, matchOpenLines } from "./auto-match";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
@@ -57,6 +61,20 @@ import { myShift } from "./shift";
 import type { MyShift } from "./shift";
 import type { RenderedDocument } from "../../kernel/printing/render";
 
+const paperRxBody = z.object({
+  patientId: idSchema,
+  doctorId: idSchema.optional(),
+  rxDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  photo: z.object({ mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]), imageBase64: z.string().min(1) }).optional(),
+  lines: z.array(z.object({
+    itemId: idSchema,
+    qtyBase: z.number().int().positive().max(100_000),
+    dose: z.string().max(60).optional(),
+    frequency: z.string().max(60).optional(),
+    durationDays: z.number().int().positive().max(365).nullable().optional(),
+    instructions: z.string().max(200).nullable().optional(),
+  })).min(1).max(30),
+});
 const claimBody = z.object({ dispenseId: idSchema, door: z.enum(["rx_qr", "patient_qr", "token", "uhid"]) });
 const verifyBody = z.object({
   lines: z.array(z.object({
@@ -629,6 +647,50 @@ export class PharmacyCounterController {
     const { reason } = parsed(reasonBody, body);
     try {
       return await cancelDispense(this.db, actor, this.decls(), id, reason, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * 2026-09-30 — DISPENSE FROM A PAPER PRESCRIPTION (`paper-rx.ts`). The sheet's context (the
+   * patient's visits that day, the hospital's doctors), the OPD shelf to choose medicines from, and
+   * the entry itself, which answers with the ticket already claimed by this pharmacist.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("paper-rx/context")
+  async paperRxContext(@CurrentActor() actor: Actor, @Query("patientId") patientId?: string, @Query("rxDate") rxDate?: string): Promise<PaperRxContext> {
+    const id = parsed(idSchema, patientId);
+    try {
+      return await paperRxContext(this.db, actor, id, rxDate ?? istDateOf(new Date()), new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("paper-rx/shelf")
+  async paperRxShelf(@Query("q") q?: string): Promise<{ items: RetailShelfEntry[] }> {
+    try {
+      const store = await findStoreByCode(this.db, OPD_PHARMACY_STORE_CODE);
+      if (store === undefined) return { items: [] };
+      return { items: await searchShelfAt(this.db, store.id, (q ?? "").slice(0, 200), new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("paper-rx")
+  async paperRx(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DispenseView> {
+    const input = parsed(paperRxBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.paperRx, key }, input,
+        () => enterPaperPrescription(this.db, this.cfg, this.documents, actor, {
+          patientId: input.patientId, doctorId: input.doctorId, rxDate: input.rxDate,
+          photo: input.photo === undefined ? undefined : { mimeType: input.photo.mimeType, bytes: Buffer.from(input.photo.imageBase64, "base64") },
+          lines: input.lines,
+        }, new Date()));
     } catch (e) {
       return toHttp(e);
     }
