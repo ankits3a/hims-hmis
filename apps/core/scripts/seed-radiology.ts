@@ -7,7 +7,7 @@ import { resources, services } from "../src/kernel/db/schema";
 import {
   DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_RULED_SERVICES, STUDY_TYPE_SEEDS,
   activateSeededDefinition,
-  activeDefinitionRow, draftDefinition, registerRadiologyApprovalTypes,
+  activeDefinitionRow, draftDefinition, ensureEscalationDefinitions, registerRadiologyApprovalTypes,
 } from "../src/modules/radiology";
 import type { Actor } from "@hmis/contracts";
 import type { StudyType } from "../src/modules/radiology";
@@ -18,7 +18,7 @@ import type { StudyType } from "../src/modules/radiology";
  *
  * ═══ WHAT IT DOES, AND THE ONE THING IT DELIBERATELY DOES NOT ═══
  *
- * It creates the tariff services the twenty study types bind to, the seven `device` resources the
+ * It creates the tariff services the twenty-four study types bind to, the eight `device` resources the
  * scheduler books onto (five department machines and, since 18-S RS2b, two portables), and — **only when no book is active yet** — it drafts and activates the
  * `study_types` definition. On every later run it leaves the active book untouched and says so; see
  * the block above that check for why a re-run must never supersede one.
@@ -95,6 +95,12 @@ const MODALITY_MACHINES: MachineSpec[] = [
   { modality: "ct", code: "CT-1", name: "CT scanner" },
   { modality: "mri", code: "MRI-1", name: "MRI scanner" },
   { modality: "mammography", code: "MMG-1", name: "Mammography unit" },
+  /**
+   * 18-S RS12b — the IR suite's C-arm / DSA unit. `xray` because that is what it images with and the
+   * IR procedures' study types book onto it by that modality. Like PX-1, NO AERB licence is seeded:
+   * an interventional unit is LICENSED equipment and sits in the licence gaps until the RSO files it.
+   */
+  { modality: "xray", code: "IR-1", name: "IR suite (C-arm / DSA)" },
   /**
    * ═══ 18-S RS2b — THE TWO MACHINES THAT GO TO THE BED ═══
    *
@@ -187,6 +193,12 @@ export async function seedRadiology(db: Db, registrar: Actor): Promise<{
   /** The approval TYPE must exist before a publish can be requested against it. `REGISTRAR`, not
    * `SEEDER`: the kernel refuses a system actor here twice over. See the constant. */
   await registerRadiologyApprovalTypes(db, registrar);
+  /**
+   * 18-S RS10 T2 — the HOD's escalation obligations: one class-C `imaging_esc_*` workflow
+   * definition per cause, activated when none is (zero governance approvals for class C — the
+   * approval-flow precedent above). Without them the sweep reports `notActive` and raises nothing.
+   */
+  await ensureEscalationDefinitions(db, registrar);
 
   const serviceIdByCode = new Map<string, string>();
   for (const seed of STUDY_TYPE_SEEDS) {

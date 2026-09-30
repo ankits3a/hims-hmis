@@ -31,6 +31,17 @@ export const PHARMACY_ERROR_CODES = [
   "antimicrobial_steward_not_appointed",
   "antimicrobial_self_approval",
   "restricted_antimicrobial_walk_in",
+  /**
+   * STAGE D4 — the emergency trays: a tray, template line, check or restock that does not make sense (a full check
+   * that leaves a template item uncounted, a daily check without the seal seen, a restock of a check with nothing
+   * short); a tray or check not on file; a check already restocked.
+   */
+  "invalid_tray",
+  "unknown_tray",
+  "unknown_tray_check",
+  "tray_already_restocked",
+  /** GAP A6 — a rack or strip label the books cannot stand behind: no rack, no batch of that item, no MRP, too many at once. */
+  "invalid_label",
   // ── sale items and the price rule (T2) ──
   "unknown_item",
   "not_a_drug",
@@ -281,6 +292,11 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   antimicrobial_steward_not_appointed: 409,
   antimicrobial_self_approval: 409,
   restricted_antimicrobial_walk_in: 409,
+  invalid_tray: 400,
+  unknown_tray: 404,
+  unknown_tray_check: 404,
+  tray_already_restocked: 409,
+  invalid_label: 400,
   interaction_block: 409,
   qty_required: 400,
   store_missing: 409,

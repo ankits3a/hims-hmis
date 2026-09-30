@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Billing Back Office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f4f7f4;--card:#ffffff;--ink:#132420;--line:#dfe7e1;--line2:#ecf1ed;--dim:#5c6f66;--faint:#8ea69a;--wash:#eef3ef;
+--green:#0e6b4e;--green-soft:rgba(14,107,78,.08);--green-line:rgba(14,107,78,.35);--gold:#dd8f1c;--gold-ink:#9a6208;--gold-soft:rgba(221,143,28,.10);
+--gold-line:rgba(221,143,28,.45);--red:#b23a30;--red-soft:rgba(178,58,48,.08);--red-line:rgba(178,58,48,.4);--mint:#35c48f;}
+*{box-sizing:border-box}
+body{margin:0;background:#e9eee9;color:var(--ink);font-family:"IBM Plex Sans","IBM Plex Sans Devanagari",system-ui,sans-serif;font-size:13px}
+.hi{font-family:"IBM Plex Sans Devanagari",sans-serif;color:var(--dim);font-weight:400}
+.mo{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:var(--dim)}
+.pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+.sec{white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 14px;border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.pill{display:inline-flex;align-items:center;height:21px;padding:0 8px;border-radius:4px;font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+.pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+.pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold-ink)}
+.pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+.src{display:inline-flex;align-items:center;justify-content:center;width:64px;height:20px;border-radius:3px;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:700;letter-spacing:.08em;border:1px solid var(--line);color:var(--dim);background:var(--wash);flex-shrink:0}
+.ns{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:3px;border:1px dashed var(--gold);color:var(--gold-ink);background:var(--gold-soft);font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.fact{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.fact>span:first-child{color:var(--dim)}
+.fact>span:last-child{text-align:right}
+/* page chrome */
+.strip{background:var(--ink);color:#d9efe4;padding:12px 24px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px}
+.strip b{color:#fff}
+.strip .mint{width:8px;height:8px;border-radius:50%;background:var(--mint)}
+.sect{padding:22px 24px 8px;max-width:1520px;margin:0 auto}
+.sect h2{margin:0 0 4px;font-size:15px}
+.sect p.lead{margin:0 0 12px;color:var(--dim);font-size:12.5px;max-width:900px;line-height:18px}
+.scroll{overflow-x:auto;padding-bottom:6px}
+.art{background:var(--paper);border:1px solid #cfd9d2;border-radius:6px;overflow:hidden;box-shadow:0 6px 20px rgba(19,36,32,.08);display:flex;flex-direction:column}
+/* app header */
+.hdr{height:46px;flex-shrink:0;display:flex;align-items:center;gap:4px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;padding-right:14px;margin-right:6px;border-right:1px solid var(--line)}
+.brand{white-space:nowrap}
+.hdr>span{white-space:nowrap}
+.brand span{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:700;letter-spacing:.12em}
+.nav{display:inline-flex;align-items:center;height:46px;padding:0 11px;font-size:12.5px;font-weight:500;color:var(--dim);border-bottom:2px solid transparent;white-space:nowrap}
+.nav.on{color:var(--ink);font-weight:600;border-bottom-color:var(--green)}
+.grow{flex-grow:1}
+.body3{flex-grow:1;display:flex;min-height:0}
+.lane{width:296px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--card)}
+.centre{flex-grow:1;min-width:0;display:flex;flex-direction:column;background:var(--paper)}
+.list{width:352px;flex-shrink:0;border-left:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;padding:14px 14px 12px;gap:12px}
+/* list rows */
+.row{display:flex;gap:10px;padding:10px 12px;border-top:1px solid var(--line2);align-items:flex-start}
+.row:first-child{border-top:none}
+.row.sel{background:var(--green-soft);box-shadow:inset 3px 0 0 var(--green)}
+.row .t{font-size:12px;font-weight:600;line-height:17px}
+.row .s{font-size:11px;color:var(--dim);margin-top:2px;line-height:15px}
+.row .r{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.row .n{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--faint);width:14px;padding-top:3px;flex-shrink:0}
+/* centre flow */
+.flowhd{padding:18px 24px 12px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.flowhd h1{margin:0;font-size:19px;font-weight:600}
+.flow{flex-grow:1;overflow:hidden;padding:0 24px;display:flex;flex-direction:column;gap:10px}
+.step{display:flex;gap:14px;padding:13px 16px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.step .num{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:700;border:1px solid var(--line);color:var(--dim);background:var(--wash)}
+.step.done .num{background:var(--green);border-color:var(--green);color:#fff}
+.step.now{border-color:var(--green-line);box-shadow:inset 3px 0 0 var(--green)}
+.step.now .num{border-color:var(--green);color:var(--green);background:var(--card)}
+.step h3{margin:2px 0 3px;font-size:13.5px;font-weight:600}
+.step .m{font-size:12px;color:var(--dim);line-height:17px}
+.fld{display:flex;flex-direction:column;gap:4px;flex:1;min-width:160px}
+.fld label{font-size:11.5px;font-weight:600}
+.inp{height:36px;border:1px solid var(--line);border-radius:6px;background:var(--card);padding:0 10px;display:flex;align-items:center;font-size:12.5px}
+.inp.ph{color:var(--faint)}
+.inp.focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+.bar{flex-shrink:0;margin-top:12px;padding:12px 24px;background:var(--card);border-top:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.bar .why{font-size:11.5px;color:var(--dim);line-height:16px}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:var(--card);font-size:12.5px;line-height:17px}
+.opt.on{border-color:var(--green-line);background:var(--green-soft)}
+.radio{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--faint);flex-shrink:0;margin-top:2px}
+.opt.on .radio{border:4px solid var(--green)}
+.money{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px}
+.money div{background:var(--wash);border-radius:6px;padding:8px 10px}
+.money .k{font-size:10.5px;color:var(--dim)}
+.money .v{font-family:"IBM Plex Mono",monospace;font-size:14px;font-weight:600;margin-top:2px}
+/* menu */
+.menu{margin:0 16px;background:#fff;border:1px solid var(--line);border-top:none;border-radius:0 0 10px 10px;padding:16px 18px 18px;box-shadow:0 10px 28px rgba(19,36,32,.10)}
+.mcols{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}
+.ent{display:block;padding:7px 10px;border-radius:6px;font-size:12.5px;line-height:17px}
+.ent:hover{background:var(--wash)}
+.ent b{display:block;font-weight:600}
+.ent .was{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--faint)}
+.ent.cur{background:var(--green-soft)}
+/* phone */
+.phone{width:390px;height:844px;flex-shrink:0;background:var(--paper);border:1px solid #cfd9d2;border-radius:22px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 6px 20px rgba(19,36,32,.10)}
+.phone .hdr{padding:0 16px}
+.phones{display:flex;gap:28px;align-items:flex-start}
+/* notes */
+.notes{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:18px 22px}
+.notes ul{margin:8px 0 0;padding-left:18px}
+.notes li{margin:0 0 9px;line-height:19px;font-size:13px}
+.notes li b{font-weight:600}
+.cap{font-size:11.5px;color:var(--dim);margin:8px 0 0}
+</style>
+</head>
+<body>
+
+<div class="strip"><span class="mint"></span><b>Board · Billing back office</b><span class="mo">/billing/office</span><span>·</span><span>draft for approval</span><span>·</span><span class="mo">28-Sep-2026</span><span class="grow"></span><span style="font-size:11.5px;color:#7fa392">Synthetic data. <span class="ns" style="background:transparent">needs server</span> = the server does not have this yet.</span></div>
+
+<!-- ============ 1. DESKTOP ============ -->
+<section class="sect">
+  <h2>1 · Desktop 1440 — Today, with a refund voucher to pay opened</h2>
+  <p class="lead">Left: the voucher in hand. Centre: its steps, numbered, with the one next act pinned at the bottom. Right: everything that needs the billing office today, most urgent first, in one list, with a chip naming where each row comes from.</p>
+  <div class="scroll">
+  <div class="art" style="width:1440px;height:940px">
+    <header class="hdr">
+      <div class="brand"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg><span>BILLING OFFICE</span></div>
+      <nav style="display:flex"><a class="nav on">Today</a><a class="nav">Refunds ▾</a><a class="nav">Receipts ▾</a><a class="nav">Reconciliation ▾</a><a class="nav">Day book</a><a class="nav">GSTR-1</a><a class="nav">Unbilled visits</a></nav>
+      <span class="grow"></span>
+      <span class="pill gd">2 vouchers to pay · ₹20,900.00</span>
+      <span class="pill rd" style="margin-left:6px">₹12.50 short-settled</span>
+      <span class="mo" style="margin:0 14px;font-size:11px;color:var(--dim)">28-SEP-2026 · 11:40</span>
+      <span style="font-size:12.5px;font-weight:600">Neha Kulkarni</span>
+    </header>
+    <div class="body3">
+      <aside class="lane">
+        <div style="padding:18px 18px 10px">
+          <div style="display:flex;align-items:center;gap:8px"><span class="src">PAY</span><span class="mo" style="font-size:11px;color:var(--dim)">RFV/26-27/000004</span></div>
+          <h2 style="margin:10px 0 0;font-size:16px;line-height:22px;font-weight:600">Pay a refund — Sunita Verma</h2>
+          <div style="font-size:12px;color:var(--dim);margin-top:3px">UHID <span class="mo">SH-2026-004812</span> · F · 46 y</div>
+        </div>
+        <div style="padding:0 18px;flex-grow:1">
+          <div class="fact"><span>Amount</span><span class="mo" style="font-weight:600">₹2,400.00</span></div>
+          <div class="fact"><span>Kind</span><span>Refund against a bill</span></div>
+          <div class="fact"><span>Bill</span><span class="mo">INV/26-27/003918</span></div>
+          <div class="fact"><span>Credit note</span><span class="mo">CN/26-27/000061</span></div>
+          <div class="fact"><span>Pay by</span><span>Cash</span></div>
+          <div class="fact"><span>Reason</span><span>Genuine</span></div>
+          <div class="fact"><span>Approved</span><span>26-Sep-2026 · Neha Kulkarni</span></div>
+          <div class="fact"><span>Voucher issued</span><span>26-Sep-2026 · Arjun Mehta</span></div>
+          <div class="tag" style="margin:16px 0 6px">Why it is here</div>
+          <p style="margin:0;font-size:12.5px;line-height:18px">MRI brain was cancelled after the bill was paid; the credit note freed ₹2,400.00. The voucher is approved and issued; nobody has handed the money over yet.</p>
+          <div class="tag" style="margin:16px 0 6px">Flag the approver saw</div>
+          <p style="margin:0;font-size:12px;line-height:17px;color:var(--gold-ink)">None — the line was not delivered and the visit is still open.</p>
+        </div>
+        <div style="padding:12px 18px;border-top:1px solid var(--line);font-size:11px;color:var(--dim);line-height:15px">Paid by whoever holds <b>billing.refund.pay</b> and an open drawer. <span class="kb">Esc</span> puts it back.</div>
+      </aside>
+
+      <main class="centre">
+        <div class="flowhd"><h1>Pay voucher RFV/26-27/000004</h1><span style="font-size:12.5px;color:var(--dim)">₹2,400.00 cash to Sunita Verma · steps 1–3 are done</span></div>
+        <div class="flow">
+          <div class="step done"><span class="num">✓</span><div><h3>Refund requested</h3><div class="m">26-Sep-2026 10:12 by Arjun Mehta (billing desk) · reason: “MRI brain cancelled — scanner down, patient did not wait” · Genuine</div></div></div>
+          <div class="step done"><span class="num">✓</span><div><h3>Approved</h3><div class="m">26-Sep-2026 12:40 by Neha Kulkarni · every refund is approved before a voucher exists</div></div></div>
+          <div class="step done"><span class="num">✓</span><div><h3>Voucher issued</h3><div class="m">RFV/26-27/000004 · ₹2,400.00 · cash · capped at what the hospital actually received on INV/26-27/003918</div></div></div>
+          <div class="step now"><span class="num">4</span><div style="flex-grow:1"><h3>Who takes the money</h3><div class="m">The name as on the ID shown at the counter. The ID number is kept on the voucher and never shown on a list again.</div>
+            <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+              <div class="fld"><label>Payee name</label><div class="inp focus">Sunita Verma</div></div>
+              <div class="fld" style="max-width:190px"><label>ID shown</label><div class="inp">Aadhaar ▾</div></div>
+              <div class="fld" style="max-width:220px"><label>ID number</label><div class="inp ph">last 4 digits are enough</div></div>
+            </div>
+            <div class="opt" style="margin-top:10px;max-width:520px"><span class="radio"></span><span>Someone else collects for the patient — name the relation (son, husband…)</span></div>
+          </div></div>
+          <div class="step"><span class="num">5</span><div style="flex-grow:1"><h3>From which drawer</h3><div class="m">Your drawer · counter 2 · open since 08:02. The payout is written to this drawer’s close; its expected cash stays hidden until you count (blind count, owner ruling 28-Sep-2026).</div></div><span class="pill on" style="align-self:center">drawer open</span></div>
+          <div class="step"><span class="num">6</span><div><h3>Print the voucher and take a signature</h3><div class="m">The printed voucher carries RFV/26-27/000004, the amount in words, and a line for the payee’s signature.</div></div></div>
+        </div>
+        <div class="bar">
+          <div class="why grow">The drawer shortens by ₹2,400.00 the moment you pay. Paying by bank transfer instead? Change it at step 4 — no drawer is needed.</div>
+          <button class="sec">Not now</button>
+          <button class="pri" style="min-width:300px">Pay ₹2,400.00 in cash and print <span class="kb" style="background:transparent;color:#cfe8dc;border-color:#3f8a70">A</span></button>
+        </div>
+      </main>
+
+      <aside class="list">
+        <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:15px;font-weight:600">Needs you today</span><span class="hi" style="font-size:12px">आज आपके लिए</span><span class="grow"></span><span style="font-size:11px;color:var(--dim)">9 · most urgent first</span></div>
+        <div class="box" style="overflow:hidden">
+          <div class="row"><span class="n">1</span><span class="src" style="color:var(--red);border-color:var(--red-line);background:var(--red-soft)">RECON</span><div class="grow"><div class="t">UPI settled ₹12.50 short on RCP/26-27/001482</div><div class="s">Rakesh Yadav · HDFC statement of 27-Sep-2026</div></div><div class="r"><span class="pill rd">2 d</span></div></div>
+          <div class="row sel"><span class="n">2</span><span class="src">PAY</span><div class="grow"><div class="t">Pay RFV/26-27/000004 · ₹2,400.00 cash</div><div class="s">Sunita Verma · approved 26-Sep-2026</div></div><div class="r"><span class="pill gd">2 d</span></div></div>
+          <div class="row"><span class="n">3</span><span class="src">PAY</span><div class="grow"><div class="t">Pay RFV/26-27/000005 · ₹18,500.00 bank</div><div class="s">Imran Qureshi · unused advance · approved today</div></div><div class="r"><span class="pill">today</span></div></div>
+          <div class="row"><span class="n">4</span><span class="src">APPROVE</span><div class="grow"><div class="t">Refund ₹1,200.00 on INV/26-27/004102</div><div class="s">Lakshmi Iyer · consultation already seen <span class="ns">needs server</span></div></div><div class="r"><span class="pill gd">5 h</span></div></div>
+          <div class="row"><span class="n">5</span><span class="src">UNBILLED</span><div class="grow"><div class="t">OPD visit V2609280041 has no bill</div><div class="s">Mohd. Aslam · 28-Sep-2026 09:40 <span class="ns">needs server</span></div></div><div class="r"><span class="pill">today</span></div></div>
+          <div class="row"><span class="n">6</span><span class="src">UNBILLED</span><div class="grow"><div class="t">2 follow-up visits yesterday have no bill</div><div class="s">V2609270112 · V2609270118 · 27-Sep-2026</div></div><div class="r"><span class="pill">1 d</span></div></div>
+          <div class="row"><span class="n">7</span><span class="src">DAY BOOK</span><div class="grow"><div class="t">3 paper receipts from downtime, 27-Sep-2026</div><div class="s">₹4,150.00 taken on paper · check against the slips</div></div><div class="r"><span class="pill">1 d</span></div></div>
+          <div class="row"><span class="n">8</span><span class="src">RECON</span><div class="grow"><div class="t">Card statement for 27-Sep-2026 not uploaded</div><div class="s">41 tenders · ₹1,24,650.00 <span class="ns">needs server</span></div></div><div class="r"><span class="pill">1 d</span></div></div>
+          <div class="row"><span class="n">9</span><span class="src">GSTR-1</span><div class="grow"><div class="t">September GSTR-1 due 11-Oct-2026</div><div class="s">4 hospital GSTINs billed · B2C in one line</div></div><div class="r"><span class="pill">13 d</span></div></div>
+        </div>
+        <div class="box" style="padding:11px 14px;display:flex;align-items:center;gap:8px"><span class="tag grow">Clocks running · 4</span><span style="font-size:11.5px;color:var(--gold-ink);font-weight:600">oldest voucher: 2 d</span><span style="color:var(--dim)">▾</span></div>
+        <div style="font-size:11px;color:var(--dim);line-height:15px">No filter tabs. The list is the whole office; pages for browsing everything live in the header menu.</div>
+      </aside>
+    </div>
+  </div>
+  </div>
+</section>
+
+<!-- ============ 2. MISMATCH ============ -->
+<section class="sect">
+  <h2>2 · A settlement mismatch opened (row 1)</h2>
+  <p class="lead">What was taken, what the bank should have paid after its fee, what it did pay, and the difference against the ₹1.00 tolerance — in rupees, never paise. Deciding what to do with it is new: today a mismatch can only be looked at.</p>
+  <div class="scroll">
+  <div class="art" style="width:1440px;height:640px">
+    <header class="hdr">
+      <div class="brand"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg><span>BILLING OFFICE</span></div>
+      <nav style="display:flex"><a class="nav on">Today</a><a class="nav">Refunds ▾</a><a class="nav">Receipts ▾</a><a class="nav">Reconciliation ▾</a><a class="nav">Day book</a><a class="nav">GSTR-1</a><a class="nav">Unbilled visits</a></nav>
+      <span class="grow"></span><span class="mo" style="font-size:11px;color:var(--dim)">MON 28-SEP-2026 · 11:42</span>
+    </header>
+    <div class="body3">
+      <aside class="lane">
+        <div style="padding:18px 18px 10px">
+          <div style="display:flex;align-items:center;gap:8px"><span class="src" style="color:var(--red);border-color:var(--red-line);background:var(--red-soft)">RECON</span><span class="mo" style="font-size:11px;color:var(--dim)">RCP/26-27/001482</span></div>
+          <h2 style="margin:10px 0 0;font-size:16px;line-height:22px;font-weight:600">UPI settled short — Rakesh Yadav</h2>
+          <div style="font-size:12px;color:var(--dim);margin-top:3px">UHID <span class="mo">SH-2026-003377</span></div>
+        </div>
+        <div style="padding:0 18px">
+          <div class="fact"><span>Taken</span><span>26-Sep-2026 11:42 · UPI</span></div>
+          <div class="fact"><span>Counter</span><span>OPD 1 · Pooja Nair</span></div>
+          <div class="fact"><span>Statement</span><span>HDFC · settled 27-Sep-2026</span></div>
+          <div class="fact"><span>Uploaded by</span><span>Neha Kulkarni · 28-Sep 10:05</span></div>
+        </div>
+      </aside>
+      <main class="centre">
+        <div class="flowhd"><h1>Settle the difference on RCP/26-27/001482</h1><span style="font-size:12.5px;color:var(--dim)">₹12.50 beyond the ₹1.00 tolerance</span></div>
+        <div class="flow">
+          <div class="step done"><span class="num">✓</span><div style="flex-grow:1"><h3>What the bank owed and paid</h3>
+            <div class="money"><div><div class="k">Taken at counter</div><div class="v">₹500.00</div></div><div><div class="k">Expected after fee</div><div class="v">₹492.50</div></div><div><div class="k">Settled</div><div class="v">₹480.00</div></div><div style="background:var(--red-soft)"><div class="k">Short</div><div class="v" style="color:var(--red)">₹12.50</div></div></div>
+            <div class="m" style="margin-top:6px">Expected is fixed when the money was taken, from the fee rate on that day — a later fee change never rewrites it.</div></div></div>
+          <div class="step now"><span class="num">2</span><div style="flex-grow:1"><h3>What happened <span class="ns" style="margin-left:6px">needs server</span></h3>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:8px;max-width:760px">
+              <div class="opt on"><span class="radio"></span><span><b>The bank short-paid.</b> Raise a dispute with HDFC; the row stays open until the credit arrives on a later statement.</span></div>
+              <div class="opt"><span class="radio"></span><span><b>Accept it as a bank charge.</b> Written off with your reason; the day book shows it as a charge, not as missing money.</span></div>
+              <div class="opt"><span class="radio"></span><span><b>Wrong statement row.</b> Upload the corrected statement; the row matches again on upload.</span></div>
+            </div></div></div>
+        </div>
+        <div class="bar"><div class="why grow">A dispute keeps the ₹12.50 on the clock list until it is credited.</div><button class="sec">Not now</button><button class="pri" style="min-width:260px">Raise a dispute with HDFC <span class="kb" style="background:transparent;color:#cfe8dc;border-color:#3f8a70">A</span></button></div>
+      </main>
+      <aside class="list">
+        <div style="font-size:15px;font-weight:600">Needs you today</div>
+        <div class="box" style="overflow:hidden">
+          <div class="row sel"><span class="n">1</span><span class="src" style="color:var(--red);border-color:var(--red-line);background:var(--red-soft)">RECON</span><div class="grow"><div class="t">UPI settled ₹12.50 short on RCP/26-27/001482</div><div class="s">Rakesh Yadav · HDFC 27-Sep-2026</div></div><div class="r"><span class="pill rd">2 d</span></div></div>
+          <div class="row"><span class="n">2</span><span class="src">PAY</span><div class="grow"><div class="t">Pay RFV/26-27/000004 · ₹2,400.00 cash</div><div class="s">Sunita Verma</div></div><div class="r"><span class="pill gd">2 d</span></div></div>
+          <div class="row"><span class="n">3</span><span class="src">PAY</span><div class="grow"><div class="t">Pay RFV/26-27/000005 · ₹18,500.00 bank</div><div class="s">Imran Qureshi</div></div><div class="r"><span class="pill">today</span></div></div>
+          <div class="row" style="color:var(--faint)"><span class="n">…</span><div class="grow" style="font-size:11.5px">6 more</div></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+  </div>
+</section>
+
+<!-- ============ 3. MENU ============ -->
+<section class="sect">
+  <h2>3 · The header menu open — every page by name, the five tabs gone</h2>
+  <p class="lead">Grey under each entry = where it lives today. Each page is one list, newest first, no filter tabs; opening a row puts it in the left lane with its act pinned, exactly like Today.</p>
+  <div class="scroll">
+  <div class="art" style="width:1440px;height:400px;background:var(--paper)">
+    <header class="hdr">
+      <div class="brand"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg><span>BILLING OFFICE</span></div>
+      <nav style="display:flex"><a class="nav">Today</a><a class="nav on">Refunds ▾</a><a class="nav">Receipts ▾</a><a class="nav">Reconciliation ▾</a><a class="nav">Day book</a><a class="nav">GSTR-1</a><a class="nav">Unbilled visits</a></nav>
+    </header>
+    <div class="menu">
+      <div class="mcols">
+        <div><div class="tag" style="padding:0 10px 6px">Refunds <span class="hi" style="letter-spacing:0;text-transform:none">रिफ़ंड</span> <span class="kb">R</span></div>
+          <a class="ent cur"><b>Vouchers to pay</b><span class="was">office · Refunds tab, below two forms</span></a>
+          <a class="ent"><b>Request a refund</b><span class="was">office · Refunds tab · patient picker (#358)</span></a>
+          <a class="ent"><b>Waiting for approval</b><span class="ns">needs server</span></a>
+          <a class="ent"><b>All vouchers</b><span class="was">office · Refunds tab</span></a></div>
+        <div><div class="tag" style="padding:0 10px 6px">Receipts <span class="hi" style="letter-spacing:0;text-transform:none">रसीदें</span> <span class="kb">V</span></div>
+          <a class="ent"><b>Void a receipt (entered in error)</b><span class="was">office · Refunds tab · receipt lookup (#358)</span></a>
+          <a class="ent"><b>Paper receipts from downtime</b><span class="was">day book · degraded count</span></a></div>
+        <div><div class="tag" style="padding:0 10px 6px">Reconciliation <span class="hi" style="letter-spacing:0;text-transform:none">मिलान</span> <span class="kb">C</span></div>
+          <a class="ent"><b>Upload a UPI / card statement</b><span class="was">office · Recon tab</span></a>
+          <a class="ent"><b>Mismatches</b><span class="was">office · Recon tab</span></a></div>
+        <div><div class="tag" style="padding:0 10px 6px">Day book <span class="hi" style="letter-spacing:0;text-transform:none">रोज़नामचा</span> <span class="kb">D</span></div>
+          <a class="ent"><b>Day book — any date</b><span class="was">office · Day book tab</span></a></div>
+        <div><div class="tag" style="padding:0 10px 6px">GSTR-1 <span class="kb">G</span></div>
+          <a class="ent"><b>Summary by GSTIN, SAC and rate</b><span class="was">office · GSTR-1 tab</span></a></div>
+        <div><div class="tag" style="padding:0 10px 6px">Unbilled visits <span class="hi" style="letter-spacing:0;text-transform:none">बिना बिल</span> <span class="kb">U</span></div>
+          <a class="ent"><b>Visits with no bill — any date</b><span class="was">office · orphans tab</span></a>
+          <a class="ent"><b>Raise the missing bill</b><span class="ns">needs server</span></a></div>
+      </div>
+    </div>
+    <p class="cap" style="margin:14px 16px 0">1100–1280 px: the Today list becomes a drawer from the right edge (a count badge in the header opens it). Below 1100: the page links fold behind one <b>Menu</b> button. The address stays <span class="mo">/billing/office</span>; each page gets its own path under it, and the old tab state redirects.</p>
+  </div>
+  </div>
+</section>
+
+<!-- ============ 4. PHONE ============ -->
+<section class="sect">
+  <h2>4 · Phone 390 — the vouchers to pay come first, not below two forms</h2>
+  <p class="lead">Left: Today on a phone, the list is the page. Right: a voucher opened — the steps stack, and the one act stays pinned at the thumb.</p>
+  <div class="scroll"><div class="phones">
+    <div class="phone">
+      <header class="hdr"><div class="brand" style="border:none;margin:0;padding:0"><svg width="12" height="12" viewBox="0 0 14 14"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg><span style="font-size:11px">BILLING OFFICE</span></div><span class="grow"></span><span class="sec" style="height:32px;font-size:12px">☰ Menu</span></header>
+      <div style="padding:14px 16px 8px"><div style="font-size:17px;font-weight:600">Needs you today</div><div style="font-size:12px;color:var(--dim)">9 things · most urgent first</div></div>
+      <div style="padding:0 16px;flex-grow:1;overflow:hidden">
+        <div class="box" style="overflow:hidden">
+          <div class="row"><span class="src" style="width:58px;color:var(--red);border-color:var(--red-line);background:var(--red-soft)">RECON</span><div class="grow"><div class="t">UPI ₹12.50 short · RCP/26-27/001482</div><div class="s">Rakesh Yadav</div></div><span class="pill rd">2 d</span></div>
+          <div class="row"><span class="src" style="width:58px">PAY</span><div class="grow"><div class="t">RFV/26-27/000004 · ₹2,400.00 cash</div><div class="s">Sunita Verma</div></div><span class="pill gd">2 d</span></div>
+          <div class="row"><span class="src" style="width:58px">PAY</span><div class="grow"><div class="t">RFV/26-27/000005 · ₹18,500.00 bank</div><div class="s">Imran Qureshi</div></div><span class="pill">today</span></div>
+          <div class="row"><span class="src" style="width:58px">APPROVE</span><div class="grow"><div class="t">Refund ₹1,200.00 · INV/26-27/004102</div><div class="s">Lakshmi Iyer · consultation seen</div></div><span class="pill gd">5 h</span></div>
+          <div class="row"><span class="src" style="width:58px">UNBILLED</span><div class="grow"><div class="t">V2609280041 has no bill</div><div class="s">Mohd. Aslam · 28-Sep-2026 09:40</div></div><span class="pill">today</span></div>
+          <div class="row"><span class="src" style="width:58px">UNBILLED</span><div class="grow"><div class="t">2 visits yesterday, no bill</div><div class="s">27-Sep-2026</div></div><span class="pill">1 d</span></div>
+          <div class="row"><span class="src" style="width:58px">DAY BOOK</span><div class="grow"><div class="t">3 paper receipts · ₹4,150.00</div><div class="s">27-Sep-2026 downtime</div></div><span class="pill">1 d</span></div>
+          <div class="row"><span class="src" style="width:58px">RECON</span><div class="grow"><div class="t">Card statement not uploaded</div><div class="s">27-Sep-2026 · 41 tenders</div></div><span class="pill">1 d</span></div>
+          <div class="row"><span class="src" style="width:58px">GSTR-1</span><div class="grow"><div class="t">September due 11-Oct-2026</div><div class="s">4 GSTINs</div></div><span class="pill">13 d</span></div>
+        </div>
+        <div class="box" style="padding:10px 12px;margin-top:10px;display:flex"><span class="tag grow">Clocks running · 4</span><span style="color:var(--dim)">▾</span></div>
+      </div>
+    </div>
+    <div class="phone">
+      <header class="hdr"><span style="font-size:18px;color:var(--dim);margin-right:8px">←</span><span class="src">PAY</span><span class="mo" style="font-size:11px;color:var(--dim);margin-left:8px">RFV/26-27/000004</span></header>
+      <div style="padding:14px 16px 6px"><div style="font-size:16px;font-weight:600">Pay ₹2,400.00 to Sunita Verma</div><div style="font-size:12px;color:var(--dim)">UHID <span class="mo">SH-2026-004812</span> · cash · INV/26-27/003918</div></div>
+      <div style="padding:6px 16px;display:flex;flex-direction:column;gap:8px;flex-grow:1;overflow:hidden">
+        <div class="step done" style="padding:10px 12px"><span class="num">✓</span><div><h3 style="font-size:13px">Requested · approved · issued</h3><div class="m">26-Sep-2026 · Arjun Mehta → Neha Kulkarni</div></div></div>
+        <div class="step now" style="padding:10px 12px"><span class="num">4</span><div style="flex-grow:1"><h3 style="font-size:13px">Who takes the money</h3>
+          <div class="fld" style="margin-top:6px"><label>Payee name</label><div class="inp focus">Sunita Verma</div></div>
+          <div style="display:flex;gap:8px;margin-top:8px"><div class="fld" style="min-width:0"><label>ID shown</label><div class="inp">Aadhaar ▾</div></div><div class="fld" style="min-width:0"><label>ID number</label><div class="inp ph">last 4</div></div></div></div></div>
+        <div class="step" style="padding:10px 12px"><span class="num">5</span><div><h3 style="font-size:13px">From your drawer</h3><div class="m">Counter 2 · open since 08:02</div></div></div>
+        <div class="step" style="padding:10px 12px"><span class="num">6</span><div><h3 style="font-size:13px">Print and take a signature</h3></div></div>
+      </div>
+      <div class="bar" style="padding:12px 16px;flex-direction:column;align-items:stretch;gap:8px"><button class="pri" style="width:100%">Pay ₹2,400.00 in cash and print</button><button class="sec" style="width:100%;height:34px">Not now</button></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============ 5. WHAT CHANGES ============ -->
+<section class="sect">
+  <div class="notes">
+    <h2>5 · What changes and why</h2>
+    <ul>
+      <li><b>Five filter-style tabs → one ranked list.</b> Refunds, Recon, Day book, GSTR-1 and Unbilled visits were tabs you had to visit to find out whether anything was waiting. “Needs you today” pulls every waiting thing into one list, most urgent first, with a chip (PAY · APPROVE · RECON · UNBILLED · DAY BOOK · GSTR-1) saying where it came from.</li>
+      <li><b>The pages move into the header menu</b> (Refunds, Receipts, Reconciliation, Day book, GSTR-1, Unbilled visits) — no sidebar, no tabs. Each page is one unfiltered list; the forms (request a refund, void a receipt, upload a statement) become entries in the menu rather than sitting on top of the work.</li>
+      <li><b>At 390 the vouchers to pay were below two forms.</b> On the phone the list is the page and the vouchers sit at the top of it; opening one stacks its steps and pins “Pay” at the thumb.</li>
+      <li><b>Black-and-neutral styling → Paper &amp; Pine.</b> Same tokens, header, source chips, left lane and pinned act as the pharmacy office board the owner approved, so both back offices read as one product.</li>
+      <li><b>Unbilled visits get a date and a way out.</b> Each row shows the visit number, patient, doctor ID and the visit’s own date and time; opening one offers “Raise the missing bill” (new) instead of a dead-end list.</li>
+      <li><b>A voucher is paid as a numbered flow</b>: requested → approved → issued → who takes the money → which drawer → print. The ID number is typed once and never shown back (as today); the approver’s flags (“consultation already seen”, “line already delivered”) stay visible and never block.</li>
+      <li><b>Money reads as money.</b> ₹ with two decimals, dates as 28-Sep-2026, printed numbers (RFV/…, RCP/…, INV/…) and UHIDs — never paise, internal ids or status words. Builds on PR #358’s patient picker, receipt lookup and names on vouchers.</li>
+      <li><b>No credit on this screen.</b> Credit is the owner’s alone (ruling 28-Sep-2026); the billing office sees refunds and settlements, never a “give credit” act.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 6. QUESTIONS ============ -->
+<section class="sect" style="padding-bottom:40px">
+  <div class="notes" style="border-color:var(--gold-line)">
+    <h2>6 · Questions for the owner (money)</h2>
+    <ul>
+      <li><b>Short settlements:</b> may the billing manager accept a bank short-payment as a charge, and up to what amount per receipt (suggested: up to ₹50.00; above that it comes to you)? Or must every difference be disputed?</li>
+      <li><b>Large refunds:</b> today every refund is approved by the billing manager. Should refunds above an amount (suggested ₹25,000.00) come to you instead, the way credit does?</li>
+    </ul>
+  </div>
+</section>
+
+</body>
+</html>

@@ -162,23 +162,31 @@ describe("registration service", () => {
     await grantDeceasedWrite(clerk.id);
 
     const markedAt = "2026-08-20T10:15:00.000Z";
-    const marked = await withTx(db, (tx) => updatePatient(tx, clerk, patient.id, { deceasedAt: markedAt }));
-    expect(marked.changed).toEqual(["deceasedAt"]);
+    // OWNER RULING 2026-09-29 — a death saves only with its certificate number (privacy-write.test.ts
+    // A-DC pins the refusal); the diff below now carries both fields, in PATCHABLE's order.
+    const marked = await withTx(db, (tx) => updatePatient(tx, clerk, patient.id, { deceasedAt: markedAt, deathCertificateNo: "MCCD/2026/0412" }));
+    expect(marked.changed).toEqual(["deceasedAt", "deathCertificateNo"]);
     expect(marked.patient.deceasedAt?.toISOString()).toBe(markedAt);
 
     const afterMark = await db.select().from(events).where(eq(events.name, "patient.updated"));
     expect(afterMark).toHaveLength(1);
     const markPayload = afterMark[0]!.payload as { changes: { field: string; from: string | null; to: string | null }[] };
-    expect(markPayload.changes).toEqual([{ field: "deceasedAt", from: null, to: markedAt }]);
+    expect(markPayload.changes).toEqual([
+      { field: "deceasedAt", from: null, to: markedAt },
+      { field: "deathCertificateNo", from: null, to: "MCCD/2026/0412" },
+    ]);
 
     const cleared = await withTx(db, (tx) => updatePatient(tx, clerk, patient.id, { deceasedAt: null }));
-    expect(cleared.changed).toEqual(["deceasedAt"]);
+    expect(cleared.changed).toEqual(["deceasedAt", "deathCertificateNo"]);
     expect(cleared.patient.deceasedAt).toBeNull();
 
     const afterClear = await db.select().from(events).where(eq(events.name, "patient.updated"));
     expect(afterClear).toHaveLength(2);
     const clearPayload = afterClear[1]!.payload as { changes: { field: string; from: string | null; to: string | null }[] };
-    expect(clearPayload.changes).toEqual([{ field: "deceasedAt", from: markedAt, to: null }]);
+    expect(clearPayload.changes).toEqual([
+      { field: "deceasedAt", from: markedAt, to: null },
+      { field: "deathCertificateNo", from: "MCCD/2026/0412", to: null },
+    ]);
   });
 
   it("promotionalOptIn defaults false when omitted at registration, and updatePatient leaves it untouched when the patch key is absent", async () => {

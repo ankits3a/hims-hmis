@@ -8,6 +8,8 @@ import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
 import { UnpaidMark } from "../components/unpaid-mark";
 import { ImagingOrderPanel } from "../components/radiology/imaging-order-panel";
+// 18-S RS9 T3 — the doctor's imaging results, between patients (own component; one line below).
+import { ImagingResultsInbox } from "../components/radiology/imaging-results-inbox";
 import { EyeSections, eyeSummary, fetchVisitSections } from "./opd-eye-sections";
 import { PaedsSections, childAgeText } from "./opd-paeds-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
@@ -2657,7 +2659,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               <p style={{ margin: "0 0 5px", fontSize: 16, fontWeight: 700 }}>{t("opdConsult.noPatientTitle")}</p>
               <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("opdConsult.noPatientBody")}</p>
               <p data-testid="pick-patient-hint" style={{ margin: "9px 0 0", fontSize: 11.5, color: "var(--faint)" }}>{t("opdConsult.pickPatientHint")}</p>
-            </div></div>
+            </div><ImagingResultsInbox /></div>
           )}
 
           {active !== null && (

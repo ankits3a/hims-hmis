@@ -73,7 +73,8 @@ describe("refund vouchers: the four guards, approval-gated always, refund-to-pay
   const SERVICE_DAY = "2026-08-19";
   const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-  const PAYEE = { payeeName: "Asha Devi", payeeIdType: "aadhaar", payeeIdRef: "XXXX-XXXX-1234" };
+  // OWNER RULING 2026-09-28 — Aadhaar is never stored: the payee's ID is recorded by TYPE, no number.
+  const PAYEE = { payeeName: "Asha Devi", payeeIdType: "aadhaar" };
 
   beforeAll(async () => {
     ({ db, pool, teardown } = await setupTestDb());
@@ -625,7 +626,7 @@ describe("refund vouchers: the four guards, approval-gated always, refund-to-pay
     const transferVoucher = await issueRefundVoucher(db, cashier.actor, ask(transferApproval, "bank_transfer"), NOW);
     // Refund-to-payer: the identity is mandatory at PAY time for EVERY method (spec §7).
     await expect(
-      payRefundVoucher(db, cashier.actor, { voucherId: transferVoucher.voucherId, payeeName: "", payeeIdType: "aadhaar", payeeIdRef: "XXXX-XXXX-1234" }, NOW),
+      payRefundVoucher(db, cashier.actor, { voucherId: transferVoucher.voucherId, payeeName: "", payeeIdType: "aadhaar" }, NOW),
     ).rejects.toBeInstanceOf(z.ZodError);
 
     const paid = await payRefundVoucher(db, cashier.actor, { voucherId: transferVoucher.voucherId, ...PAYEE }, NOW);
@@ -633,6 +634,83 @@ describe("refund vouchers: the four guards, approval-gated always, refund-to-pay
 
     const [stillIssued] = await db.select().from(refundVouchers).where(eq(refundVouchers.id, cashVoucher.voucherId));
     expect(stillIssued!.status).toBe("issued"); // the refused payment moved nothing
+  });
+
+  // ===========================================================================================
+  // OWNER RULINGS 2026-09-28 (money) — refunds above ₹25,000.00 are the owner's; Aadhaar is never stored
+  // ===========================================================================================
+
+  test("OWNER RULING 2026-09-28: a refund above ₹25,000.00 asks the OWNER (billing_refund_owner); at ₹25,000.00 it stays the billing manager's", async () => {
+    const cashier = await cashierWithSession("cashier-owner-line");
+    const patientId = await mkTestPatient();
+    await advanceOfCash(cashier, patientId, 3_000_000);
+    const ask = (amountPaise: number) => ({
+      kind: "advance_refund", patientId, amountPaise, reasonClass: "genuine", reason: "advance returned",
+    } as const);
+
+    const atLine = await requestRefund(db, cashier.actor, ask(2_500_000));
+    const above = await requestRefund(db, cashier.actor, ask(2_500_001));
+
+    const [atRow] = await db.select().from(approvals).where(eq(approvals.id, atLine.approvalId));
+    const [aboveRow] = await db.select().from(approvals).where(eq(approvals.id, above.approvalId));
+    expect(atRow!).toMatchObject({ typeKey: "billing_refund", approverRole: "billing_manager", amountPaise: 2_500_000 });
+    expect(aboveRow!).toMatchObject({ typeKey: "billing_refund_owner", approverRole: "owner", amountPaise: 2_500_001 });
+  });
+
+  test("OWNER RULING 2026-09-28: above ₹25,000.00 a billing manager's grant cannot issue the voucher; the owner's grant does", async () => {
+    const cashier = await cashierWithSession("cashier-owner-issue");
+    const manager = await mkBillingManager(db, "manager-owner-issue");
+    const patientId = await mkTestPatient();
+    await advanceOfCash(cashier, patientId, 3_000_000);
+    const issue = (approvalId: string) => issueRefundVoucher(db, cashier.actor, {
+      kind: "advance_refund", patientId, amountPaise: 2_600_000, reasonClass: "genuine",
+      reason: "advance returned", approvalId, method: "bank_transfer",
+    }, NOW);
+
+    // The manager's type, granted by the manager, for the exact subject, patient and amount: refused.
+    const managerGrant = await grantedRefundApproval({
+      subjectId: patientId, patientId, amountPaise: 2_600_000, requester: cashier.actor, approver: manager.actor,
+    });
+    expect(await codeOf(issue(managerGrant))).toMatchObject({
+      code: "approval_subject_mismatch",
+      detail: { expected: { typeKey: "billing_refund_owner" }, got: { typeKey: "billing_refund" } },
+    });
+    expect(await db.select().from(refundVouchers)).toHaveLength(0);
+
+    const asked = await requestRefund(db, cashier.actor, {
+      kind: "advance_refund", patientId, amountPaise: 2_600_000, reasonClass: "genuine", reason: "advance returned",
+    });
+    await approveRequest(db, base.owner, { approvalId: asked.approvalId, note: "owner approves the large refund" });
+    const voucher = await issue(asked.approvalId);
+    expect(voucher).toMatchObject({ status: "issued", amountPaise: 2_600_000, method: "bank_transfer" });
+    expect(await db.select().from(refundVouchers)).toHaveLength(1);
+  });
+
+  test("OWNER RULING 2026-09-28: paying a voucher never stores an Aadhaar number — not under Aadhaar, not as twelve digits under another type", async () => {
+    const cashier = await cashierWithSession("cashier-aadhaar");
+    const manager = await mkBillingManager(db, "manager-aadhaar");
+    const patientId = await mkTestPatient();
+    await advanceOfCash(cashier, patientId, 20_000);
+    const approvalId = await grantedRefundApproval({
+      subjectId: patientId, patientId, amountPaise: 20_000, requester: cashier.actor, approver: manager.actor,
+    });
+    const voucher = await issueRefundVoucher(db, cashier.actor, {
+      kind: "advance_refund", patientId, amountPaise: 20_000, reasonClass: "genuine",
+      reason: "unused advance returned", approvalId, method: "cash",
+    }, NOW);
+    const pay = (idType: string, ref?: string) => payRefundVoucher(db, cashier.actor, {
+      voucherId: voucher.voucherId, payeeName: "Asha Devi", payeeIdType: idType, ...(ref === undefined ? {} : { payeeIdRef: ref }),
+    }, NOW);
+
+    expect(await codeOf(pay("aadhaar", "XXXX-XXXX-1234"))).toMatchObject({ code: "aadhaar_not_stored" });
+    expect(await codeOf(pay("pan", "1234 5678 9012"))).toMatchObject({ code: "aadhaar_not_stored" });
+    const [untouched] = await db.select().from(refundVouchers).where(eq(refundVouchers.id, voucher.voucherId));
+    expect(untouched!).toMatchObject({ status: "issued", payeeIdRef: null });
+
+    const paid = await pay("aadhaar");
+    expect(paid).toMatchObject({ status: "paid" });
+    const [stored] = await db.select().from(refundVouchers).where(eq(refundVouchers.id, voucher.voucherId));
+    expect(stored!).toMatchObject({ status: "paid", payeeName: "Asha Devi", payeeIdType: "aadhaar", payeeIdRef: null });
   });
 
   // ===========================================================================================

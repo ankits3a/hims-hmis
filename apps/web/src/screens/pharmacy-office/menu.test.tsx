@@ -5,6 +5,8 @@ import { setToken } from "../../lib/api";
 import i18next from "../../lib/i18n";
 import { renderWithRouter } from "../../test-utils";
 import { PharmacyOffice } from "./pharmacy-office";
+import { routeOf } from "./today";
+import type { WireNeedRow } from "../../lib/office-needs-api";
 
 /**
  * GAP-CLOSURE B3 — the Menu artboard: the stores screens are pages of the office's header menu. A side
@@ -45,7 +47,7 @@ const FOLDED: [string, string, string][] = [
   ["buy", "reorder", "pharmacyReorder.title"],
   ["buy", "vendors", "materialsVendors.title"],
   ["stock", "grn", "materialsGrn.title"],
-  ["stock", "opening", "materialsGrn.title"],
+  ["stock", "opening", "stockEntry.title"],
   ["stock", "counts", "materialsCounts.title"],
   ["stock", "transfers", "materialsTransfers.title"],
   ["stock", "downtime", "pharmacyDowntime.title"],
@@ -129,7 +131,7 @@ describe("the office's header menu (gap-closure B3)", () => {
     await waitFor(() => expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Stock"]));
     await userEvent.click(screen.getByTestId("office-view-stock"));
     const drop = await screen.findByTestId("office-drop-stock");
-    expect(within(drop).getAllByRole("menuitem").map((b) => b.getAttribute("data-testid"))).toEqual(["office-entry-grn", "office-entry-transfers"]);
+    expect(within(drop).getAllByRole("menuitem").map((b) => b.getAttribute("data-testid"))).toEqual(["office-entry-grn", "office-entry-transfers", "office-entry-ledger"]);
   });
 
   it("a pharmacist whose only grant is the H1 register reaches the office on its Law side", async () => {
@@ -151,5 +153,60 @@ describe("the office's header menu (gap-closure B3)", () => {
     const frame = await screen.findByTestId("office-page-stock");
     await waitFor(() => expect(frame).toHaveAttribute("data-page", "grn"));
     expect(within(frame).queryByRole("heading", { level: 1, name: i18next.t("materialsCounts.title") })).toBeNull();
+  });
+});
+
+/**
+ * Stage D — the four safety registers are pages of the office's menu: the ADR register and the
+ * medication-incident log under Law, the fridge log and the emergency trays under Stock.
+ */
+const STAGE_D: [string, string, string, string][] = [
+  ["law", "adr", "adr-view", "pharmacy.adr.record"],
+  ["law", "incidents", "incidents-view", "pharmacy.incidents.record"],
+  ["stock", "cold", "cold-chain-view", "pharmacy.coldchain.record"],
+  ["stock", "trays", "trays-view", "pharmacy.trays.check"],
+];
+
+describe("the office's menu carries the stage-D safety pages", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  it("each stage-D entry is named in the dropdown and renders its register inside the frame, at its own URL", async () => {
+    mock([...EVERY_GRANT, ...STAGE_D.map(([, , , g]) => g)]);
+    renderWithRouter(<><PharmacyOffice /><Where /></>, "/pharmacy/office");
+    await screen.findByTestId("office-view-stock");
+    for (const [side, page, view] of STAGE_D) {
+      await userEvent.click(screen.getByTestId(`office-view-${side}`));
+      const drop = await screen.findByTestId(`office-drop-${side}`);
+      const entry = within(drop).getByTestId(`office-entry-${page}`);
+      expect(entry).toHaveTextContent(i18next.t(`pharmacyOffice.menu.page.${page}`));
+      expect(i18next.exists(`pharmacyOffice.menu.page.${page}`)).toBe(true);
+      await userEvent.click(entry);
+      await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(`/pharmacy/office?view=${side}&page=${page}`));
+      const frame = screen.getByTestId(`office-page-${side}`);
+      expect(frame).toHaveAttribute("data-page", page);
+      expect(await within(frame).findByTestId(view)).toBeInTheDocument();
+    }
+  }, 30_000);
+
+  it("a person whose only grant is the fridge log sees Stock with that one page and nothing else", async () => {
+    mock(["pharmacy.coldchain.record"]);
+    renderWithRouter(<PharmacyOffice />, "/pharmacy/office?view=stock");
+    const nav = await screen.findByRole("navigation", { name: "Office" });
+    await waitFor(() => expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Today", "Stock"]));
+    const frame = await screen.findByTestId("office-page-stock");
+    await waitFor(() => expect(frame).toHaveAttribute("data-page", "cold"));
+    expect(await within(frame).findByTestId("cold-chain-view")).toBeInTheDocument();
+  });
+
+  it("the Today list's stage-D rows open their page, not only the side", () => {
+    const row = (kind: string): WireNeedRow => ({ kind, ref: { id: "x" } }) as unknown as WireNeedRow;
+    const cases: [string, string, string][] = [
+      ["adr_pvpi_overdue", "law", "adr"], ["adr_pvpi_serious", "law", "adr"], ["adr_pvpi", "law", "adr"],
+      ["incident_review_overdue", "law", "incidents"], ["incident_review", "law", "incidents"],
+      ["cold_excursion_open", "stock", "cold"], ["cold_reading_missed", "stock", "cold"],
+      ["tray_deficient", "stock", "trays"], ["tray_daily_missed", "stock", "trays"], ["tray_monthly_missed", "stock", "trays"], ["tray_expiring", "stock", "trays"],
+    ];
+    for (const [kind, view, page] of cases) expect([kind, routeOf(row(kind), "pri")]).toEqual([kind, { to: "view", view, page }]);
   });
 });

@@ -6,13 +6,16 @@ import { fetchItems, materialsErrorText } from "../../lib/materials-api";
 import { csvRupees, downloadCsv, toCsv } from "../../lib/payables-api";
 import { printInFrame } from "../../lib/print-api";
 import { rupees } from "../../lib/purchase-api";
+import { money, printReport } from "../../lib/reports-api";
 import {
   EXPIRY_PRESETS, RECALL_SOURCES, approveReturn, cancelCredit, cancelReturn, closeRecall, closeReturn, dispatchReturn, draftReturns,
   fetchDebitNote, fetchExpiryReport, fetchManifest, fetchOfficeReturns, fetchRecall, fetchRecallBatches, fetchReturn, fetchReturnPlan,
-  fetchWriteOff, postWriteOff, qtyText, raiseRecall, raiseWriteOff, recordCredit, returnFromRecall,
+  fetchReturnable, fetchWriteOff, postWriteOff, qtyText, raiseRecall, raiseWriteOff, recordCredit, returnFromRecall, updateReturn,
 } from "../../lib/returns-api";
 import { Button } from "@/components/ui/button";
+import { LinesEditor, NewReturnSheet, linesFromReturn, linesReady, refusalText, toInput } from "./return-draft";
 import { Sheet } from "./sheet";
+import type { DraftLine } from "./return-draft";
 import type {
   ExpiryPreset, RecallSource, WireDestroyCandidate, WireExpiryRow, WireRecallSummary, WireReturn, WireReturnSummary, WireWriteOff,
   WireWriteOffSummary, WriteOffReason,
@@ -36,6 +39,8 @@ import type {
  *     posted with the disposal agency's manifest, which prints.
  *   - R raises a RECALL on a batch; its sheet shows where the batch sits and who it was dispensed to
  *     (read-only, for the callback), and one tap drafts its return.
+ *   - N (gap-closure A5) drafts a return by hand — damaged stock, short expiry, a recall — from the
+ *     supplier's stock (`return-draft.tsx`); E on a draft's sheet edits its lines until it is approved.
  */
 export type Open =
   | { kind: "expiry"; preset: ExpiryPreset }
@@ -44,7 +49,8 @@ export type Open =
   | { kind: "writeoff"; id: string }
   | { kind: "newWriteoff"; candidates: WireDestroyCandidate[] }
   | { kind: "recall"; id: string }
-  | { kind: "newRecall" };
+  | { kind: "newRecall" }
+  | { kind: "newReturn" };
 
 const RETURN_TONE: Record<string, string> = {
   draft: "bg-muted text-muted-foreground", approved: "bg-sky-100 text-sky-900", dispatched: "bg-amber-100 text-amber-900",
@@ -79,6 +85,7 @@ export function ReturnsView({ initialOpen }: { initialOpen?: Open } = {}): React
     if (k === "d" && canManage && d !== undefined && d.plan.vendors > 0) { e.preventDefault(); setOpen({ kind: "plan" }); return; }
     if (k === "w" && canWriteOff) { e.preventDefault(); void openWriteOff(); return; }
     if (k === "r" && canRecall) { e.preventDefault(); setOpen({ kind: "newRecall" }); return; }
+    if (k === "n" && canManage) { e.preventDefault(); setOpen({ kind: "newReturn" }); return; }
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     const rows = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>("button[data-ret-row]") ?? []);
     if (rows.length === 0) return;
@@ -150,6 +157,11 @@ export function ReturnsView({ initialOpen }: { initialOpen?: Open } = {}): React
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-sm">
+            {canManage && (
+              <Button type="button" data-testid="returns-new" onClick={() => setOpen({ kind: "newReturn" })}>
+                {t("pharmacyOffice.returns.manual.new")} <kbd className="ml-1 rounded border px-1 text-xs">N</kbd>
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={() => setOpen({ kind: "expiry", preset: "90" })}>
               {t("pharmacyOffice.returns.openExpiry")} <kbd className="ml-1 rounded border px-1 text-xs">E</kbd>
             </Button>
@@ -204,6 +216,8 @@ export function ReturnsView({ initialOpen }: { initialOpen?: Open } = {}): React
       {open?.kind === "newWriteoff" && <NewWriteOffSheet candidates={open.candidates} onClose={() => setOpen(null)} onRaised={(w) => { setNotice(t("pharmacyOffice.returns.writeOff.raised", { no: w.writeOffNo })); setOpen({ kind: "writeoff", id: w.id }); }} />}
       {open?.kind === "writeoff" && <WriteOffSheet id={open.id} onClose={() => setOpen(null)} onDone={setNotice} />}
       {open?.kind === "newRecall" && <NewRecallSheet onClose={() => setOpen(null)} onRaised={(id, no) => { setNotice(t("pharmacyOffice.returns.recall.raised", { no })); setOpen({ kind: "recall", id }); }} />}
+      {open?.kind === "newReturn" && <NewReturnSheet onClose={() => setOpen(null)}
+        onMade={(r) => { setNotice(t("pharmacyOffice.returns.manual.made", { no: r.returnNo })); setOpen({ kind: "return", id: r.id }); }} />}
       {open?.kind === "recall" && <RecallSheet id={open.id} onClose={() => setOpen(null)} onReturn={(id) => setOpen({ kind: "return", id })} onDone={setNotice} />}
     </div>
   );
@@ -230,7 +244,8 @@ async function print(fetchDoc: () => Promise<Parameters<typeof printInFrame>[0]>
 /**
  * THE EXPIRY REPORT (Healthray s13/s14): a preset or a custom range, Item-wise or Supplier-wise; qty
  * in packs and base units, MRP, cost value, the supplier (OPENING / TRIAL stock shown as such), the
- * last day it may go back, and the return or write-off raised for it. CSV of the tab on screen.
+ * last day it may go back, and the return or write-off raised for it. CSV of the tab on screen, and
+ * Print (gap C): the same tab as A4, for the store's file or the vendor's rep.
  */
 function ExpirySheet({ initial, onClose, onReturn }: { initial: ExpiryPreset; onClose: () => void; onReturn: (id: string) => void }): React.ReactElement {
   const { t } = useTranslation();
@@ -258,6 +273,26 @@ function ExpirySheet({ initial, onClose, onReturn }: { initial: ExpiryPreset; on
         r.suppliers.map((s) => [kind(s), s.rows, s.qtyBase, csvRupees(s.costValuePaise), csvRupees(s.returnableValuePaise)]),
       ));
     }
+  };
+  const [printFailed, setPrintFailed] = useState(false);
+  const printNow = (): void => {
+    if (r === undefined) return;
+    const title = `${t("pharmacyOffice.returns.expiry.title")} · ${t(tab === "items" ? "pharmacyOffice.returns.expiry.itemWise" : "pharmacyOffice.returns.expiry.supplierWise")}`;
+    const range = r.from === null || r.to === null ? r.asOf : r.from === r.to ? r.from : `${r.from} – ${r.to}`;
+    const subtitle = `${t(`pharmacyOffice.returns.expiry.preset.${r.preset}`)} · ${range}`;
+    const ok = tab === "items"
+      ? printReport(title, subtitle,
+        ["Item", "Batch", "Expiry", "Days", "Store", "Qty", "MRP", "Cost value", "Supplier", "Returnable until", "Raised"],
+        r.rows.map((x) => [`${x.itemName} (${x.itemCode})`, x.batchNo, x.expiryDate, String(x.daysToExpiry), x.storeCode, qtyText(x.qtyBase, x.baseUom, x.pack),
+          x.mrpPaise === null ? "—" : `${money(x.mrpPaise)}/${x.mrpUom ?? ""}`, money(x.costValuePaise), kind(x), x.returnableUntil ?? "—", flag(x)]),
+        ["Total", "", "", "", "", "", "", money(r.costValuePaise), "", "", ""],
+        [false, false, false, true, false, true, true, true, false, false, false])
+      : printReport(title, subtitle,
+        ["Supplier", "Batches", "Qty (base)", "Cost value", "Returnable value"],
+        r.suppliers.map((s) => [kind(s), String(s.rows), String(s.qtyBase), money(s.costValuePaise), money(s.returnableValuePaise)]),
+        ["Total", String(r.rows.length), "", money(r.costValuePaise), money(r.suppliers.reduce((n, s) => n + s.returnableValuePaise, 0))],
+        [false, true, true, true, true]);
+    setPrintFailed(!ok);
   };
   const rowsTable = (rows: readonly WireExpiryRow[]): React.ReactElement => (
     <table className="w-full text-sm">
@@ -311,7 +346,9 @@ function ExpirySheet({ initial, onClose, onReturn }: { initial: ExpiryPreset; on
           <Button type="button" data-testid="expiry-tab-suppliers" variant={tab === "suppliers" ? "default" : "outline"} onClick={() => setTab("suppliers")}>{t("pharmacyOffice.returns.expiry.supplierWise")}</Button>
           <span className="flex-1 text-xs text-muted-foreground">{r === undefined ? "" : t("pharmacyOffice.returns.expiry.summary", { count: r.rows.length, amount: rupees(r.costValuePaise) })}</span>
           <Button type="button" variant="outline" onClick={exportCsv} disabled={r === undefined}>{t("pharmacyOffice.pay.csv")}</Button>
+          <Button type="button" variant="outline" data-testid="expiry-print" onClick={printNow} disabled={r === undefined || r.rows.length === 0}>{t("pharmacyOffice.reports.print")}</Button>
         </div>
+        {printFailed && <p role="alert" className="text-sm text-red-600">{t("pharmacyOffice.reports.printFailed")}</p>}
         {q.error !== null && <p role="alert" className="text-sm text-red-600">{materialsErrorText(q.error, t)}</p>}
         {r !== undefined && r.rows.length === 0 && <p className="text-muted-foreground">{t("pharmacyOffice.returns.expiry.none")}</p>}
         {r !== undefined && r.rows.length > 0 && (
@@ -425,7 +462,12 @@ function ReturnSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
   const [why, setWhy] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /* A5 — a draft's lines, being edited (null when not). */
+  const [editing, setEditing] = useState<{ lines: DraftLine[]; note: string } | null>(null);
   const r = q.data;
+  const held = useQuery({
+    queryKey: ["pharmacy", "office", "returnable", r?.vendorId ?? "", id], queryFn: () => fetchReturnable(r!.vendorId, "", id), enabled: editing !== null && r !== undefined,
+  });
   useEffect(() => {
     if (r !== undefined && credit === null && r.status === "dispatched") setCredit({ no: "", date: todayIst(), amount: (r.totalPaise / 100).toFixed(2), reason: "" });
   }, [r, credit]);
@@ -444,7 +486,24 @@ function ReturnSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
     }
   };
   const me = actor?.id;
-  const approvable = r?.status === "draft" && can("materials.returns.approve") && r.createdBy !== me;
+  const editable = r?.status === "draft" && can("materials.returns.manage");
+  const startEdit = (): void => { if (r !== undefined) { setError(null); setEditing({ lines: linesFromReturn(r), note: r.note ?? "" }); } };
+  const saveEdit = async (): Promise<void> => {
+    if (editing === null) return;
+    setBusy(true); setError(null);
+    try {
+      const next = await updateReturn(id, { note: editing.note.trim() === "" ? null : editing.note.trim(), lines: toInput(editing.lines) });
+      qc.setQueryData(["pharmacy", "office", "return", id], next);
+      await qc.invalidateQueries({ queryKey: ["pharmacy", "office"] });
+      setEditing(null);
+      onDone(t("pharmacyOffice.returns.manual.saved", { no: next.returnNo }));
+    } catch (e) {
+      setError(refusalText(e, t));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const approvable = editing === null && r?.status === "draft" && can("materials.returns.approve") && r.createdBy !== me;
   const dispatchable = r?.status === "approved" && can("materials.returns.manage") && r.approvedBy !== me;
   const creditable = r?.status === "dispatched" && can("materials.bills.manage");
   const approve = (): void => void act(() => approveReturn(id), t("pharmacyOffice.returns.sheet.approved"));
@@ -454,6 +513,8 @@ function ReturnSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
     const typing = ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement).tagName);
     if (typing || busy || e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
+    if (k === "/" && editing !== null) { e.preventDefault(); document.querySelector<HTMLInputElement>("[data-return-search]")?.focus(); return; }
+    if (k === "e" && editable && editing === null) { e.preventDefault(); startEdit(); return; }
     if (k === "a" && approvable) { e.preventDefault(); approve(); }
     if (k === "d" && dispatchable) { e.preventDefault(); dispatch(); }
     if (k === "p" && r !== undefined) { e.preventDefault(); doPrint(); }
@@ -473,8 +534,23 @@ function ReturnSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
             <span className="text-xs text-muted-foreground">{t("pharmacyOffice.returns.sheet.draftedBy", { name: r.names[r.createdBy] ?? "" })}</span>
             {r.approvedBy !== null && <span className="text-xs text-muted-foreground">{t("pharmacyOffice.returns.sheet.approvedBy", { name: r.names[r.approvedBy] ?? "" })}</span>}
           </div>
-          {r.note !== null && <p className="text-xs text-muted-foreground">{r.note}</p>}
-          <div className="overflow-x-auto">
+          {r.note !== null && editing === null && <p className="text-xs text-muted-foreground">{r.note}</p>}
+          {editing !== null && (
+            <div className="pof-pine pr-sheet" data-testid="return-edit">
+              <LinesEditor vendorId={r.vendorId} exceptReturnId={id} lines={editing.lines} onChange={(lines) => setEditing({ ...editing, lines })} />
+              <label className="fld">
+                <span className="tag">{t("pharmacyOffice.returns.manual.returnNote")}</span>
+                <input className="in" value={editing.note} maxLength={500} onChange={(e) => setEditing({ ...editing, note: e.target.value })} aria-label={t("pharmacyOffice.returns.manual.returnNote")} />
+              </label>
+              {error !== null && <p role="alert" className="pr-bad" data-testid="return-edit-error">{error}</p>}
+              <div className="pr-foot">
+                <span className="pr-dim">{t("pharmacyOffice.returns.manual.editHint")}</span>
+                <button type="button" className="sec" disabled={busy} onClick={() => { setEditing(null); setError(null); }}>{t("pharmacyOffice.returns.manual.discard")}</button>
+                <button type="button" className="pri" data-testid="return-edit-save" disabled={busy || !linesReady(editing.lines, held.data)} onClick={() => void saveEdit()}>{t("pharmacyOffice.returns.manual.saveEdit")}</button>
+              </div>
+            </div>
+          )}
+          {editing === null && <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="return-lines">
               <thead><tr className="text-left text-xs text-muted-foreground">
                 <th className="py-1 pr-2">{t("pharmacyOffice.sheet.item")}</th><th className="py-1 pr-2">{t("pharmacyOffice.returns.col.batch")}</th>
@@ -487,7 +563,7 @@ function ReturnSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
                   <tr key={l.id} className="border-t" data-testid={`return-line-${l.batchNo}`}>
                     <td className="py-1 pr-2">{l.itemName} <span className="text-xs text-muted-foreground">{l.itemCode} · {l.storeCode}</span></td>
                     <td className="py-1 pr-2 text-xs"><span className="font-mono">{l.batchNo}</span> · {l.expiryDate ?? "—"}</td>
-                    <td className="py-1 pr-2 text-xs">{t(`pharmacyOffice.returns.reason.${l.reason}`)}</td>
+                    <td className="py-1 pr-2 text-xs">{t(`pharmacyOffice.returns.reason.${l.reason}`)}{l.note !== null && <span className="block text-muted-foreground" data-testid={`return-line-note-${l.batchNo}`}>{l.note}</span>}</td>
                     <td className="py-1 pr-2 text-right text-xs">{qtyText(l.qtyBase, l.baseUom, l.pack)}</td>
                     <td className="py-1 pr-2 text-right tabular-nums">{rupees(l.ratePaise)}/{l.baseUom}</td>
                     <td className="py-1 pr-2 text-right tabular-nums">{rupees(l.taxablePaise)}</td>
@@ -497,14 +573,14 @@ function ReturnSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
                 ))}
               </tbody>
             </table>
-          </div>
-          <div className="flex flex-wrap justify-end gap-6" data-testid="return-totals">
+          </div>}
+          {editing === null && <div className="flex flex-wrap justify-end gap-6" data-testid="return-totals">
             <span>{t("pharmacyOffice.sheet.taxable")} <b className="tabular-nums">{rupees(r.taxablePaise)}</b></span>
             {r.interState
               ? <span>IGST <b className="tabular-nums">{rupees(r.igstPaise)}</b></span>
               : <><span>CGST <b className="tabular-nums">{rupees(r.cgstPaise)}</b></span><span>SGST <b className="tabular-nums">{rupees(r.sgstPaise)}</b></span></>}
             <span>{t("pharmacyOffice.sheet.total")} <b className="tabular-nums">{rupees(r.totalPaise)}</b></span>
-          </div>
+          </div>}
 
           {r.credit !== null && (
             <p className="rounded bg-green-50 p-2 text-green-900" data-testid="return-credit">
@@ -537,15 +613,16 @@ function ReturnSheet({ id, onClose, onDone }: { id: string; onClose: () => void;
             </div>
           )}
 
-          {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
-          <div className="flex flex-wrap items-center gap-2">
+          {error !== null && editing === null && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          {editing === null && <div className="flex flex-wrap items-center gap-2">
+            {editable && <Button type="button" variant="outline" data-testid="return-edit-lines" onClick={startEdit}>{t("pharmacyOffice.returns.manual.edit")} <kbd className="ml-1 rounded border px-1 text-xs">E</kbd></Button>}
             {approvable && <Button type="button" disabled={busy} onClick={approve}>{t("pharmacyOffice.returns.sheet.approve")} <kbd className="ml-1 rounded border px-1 text-xs">A</kbd></Button>}
-            {r.status === "draft" && !approvable && <span className="text-muted-foreground">{t(r.createdBy === me ? "pharmacyOffice.returns.sheet.notYourApproval" : "pharmacyOffice.returns.sheet.waitingHead")}</span>}
+            {r.status === "draft" && !approvable && editing === null && <span className="text-muted-foreground">{t(r.createdBy === me ? "pharmacyOffice.returns.sheet.notYourApproval" : "pharmacyOffice.returns.sheet.waitingHead")}</span>}
             {dispatchable && <Button type="button" disabled={busy} onClick={dispatch}>{t("pharmacyOffice.returns.sheet.dispatch")} <kbd className="ml-1 rounded border px-1 text-xs">D</kbd></Button>}
             {r.status === "approved" && r.approvedBy === me && <span className="text-muted-foreground">{t("pharmacyOffice.returns.sheet.notYourDispatch")}</span>}
             <Button type="button" variant="outline" onClick={doPrint}>{t(r.debitNoteNo === null ? "pharmacyOffice.returns.sheet.printReturn" : "pharmacyOffice.returns.sheet.printDebit")} <kbd className="ml-1 rounded border px-1 text-xs">P</kbd></Button>
             {["draft", "approved", "dispatched", "credited"].includes(r.status) && <Button type="button" variant="ghost" aria-label={t("pharmacyOffice.sheet.more")} onClick={() => setMore((m) => !m)}>⋯</Button>}
-          </div>
+          </div>}
           {more && (
             <div className="flex flex-wrap items-center gap-2 rounded border p-2" data-testid="return-more">
               <input className="flex-1 rounded border px-2 py-1" placeholder={t("pharmacyOffice.returns.sheet.why")} aria-label={t("pharmacyOffice.returns.sheet.why")} value={why} onChange={(e) => setWhy(e.target.value)} />

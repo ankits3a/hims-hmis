@@ -39,6 +39,8 @@ export type PatientErrorCode =
   | "evidence_required"
   | "confidential_write_denied"
   | "deceased_write_denied"
+  /* OWNER RULING 2026-09-29 (law) — a date of death saves only with its death certificate number. */
+  | "death_certificate_required"
   /**
    * FD-8 — registration now ENDS AT THE UHID, so `POST /patients` is a counter act and must carry
    * the near-match warning the walk-in has always had. A WARNING a human may override, never a gate.
@@ -65,7 +67,14 @@ export type PatientErrorCode =
    * them. `abha_demographics_locked`: name, date of birth and gender are ABDM's while the ABHA is
    * `verified`, and change only by re-verifying (`abha-verified.ts`).
    */
-  | "abha_already_linked" | "abha_demographics_locked";
+  | "abha_already_linked" | "abha_demographics_locked"
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD (merge review) — `merge_refused`: the Medical Superintendent refused
+   * this merge, so the request is closed and nothing may run it. `sealed_needs_break_glass`: one of
+   * the two records is sealed (confidential), and the owner's rule is that the MS records a
+   * break-glass on it before the merge runs (`merge.ts`).
+   */
+  | "merge_refused" | "sealed_needs_break_glass";
 
 export class PatientError extends Error {
   constructor(

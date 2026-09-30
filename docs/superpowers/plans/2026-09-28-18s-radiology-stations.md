@@ -422,6 +422,136 @@ There is no IPD or ER module; nothing here creates one. PR #385, merged 4f426929
 - **Core:** eGFR in the kidney gate (gap 3). An override request becomes an approval row for the radiologist or HOD.
 - **Journeys:** J1 prep hop, J5.
 
+**RS5 spike** (read on main `4d05ffdc`, 29 Sep, before any code):
+- **(a) Who can satisfy which gate.** Two planes, measured. The guard: `radiology.gates.satisfy`
+  is held by `radiographer` ALONE (`radiology_receptionist` is denied it by name — the first
+  separation). The engine: `imaging_gate` `open → satisfied` names `radiographer`, `radiologist`,
+  `doctor`, `system` (F19: the narrower guard wins). One definition covers every KIND, so a role
+  on that edge can satisfy all ten. Waive and override are `radiologist` on both planes. **There is
+  no prep-nurse role** (`ot_nurse`/`recovery_nurse` are the theatre's). **DECIDED** (standard: a
+  radiology nurse staffs the prep bay): new role `radiology_nurse` holding `radiology.worklist.read`,
+  `radiology.gates.satisfy` and a new `radiology.contrast.record`, and named on the engine's satisfy
+  edge; NOT `radiology.gates.override`, NOT `radiology.checkin`. The contrast routes guarded on
+  `radiology.acquire` (the machine) — giving the nurse `acquire` would let her start and finish an
+  acquisition, so the two contrast POSTs move to `radiology.contrast.record`, held by everyone who
+  held `acquire` (radiologist, radiographer) plus the nurse.
+- **(b) Evidence per kind** (`gates.ts`): identity `{secondIdentifier: dob|uhid|wristband, value}`
+  compared to the patient master (wristband = the UHID); pregnancy `{declared, lmpDate?,
+  hcgResultRef?, hcgResultAt?}` judged by the `pregnancy_policy` (default: a declaration alone does
+  not carry an ionising study; LMP reassuring ≤ 28 days); contrast consent = `ot`'s `consentSchema`
+  (procedureCode = study type, templateVersion, language, signer patient|guardian + guardianId with
+  consent authority, witness required for a thumb impression, laterality, conversionCovered,
+  signedAt); renal `{creatinineUmolL, sampledAt, source internal|external, ckdFlagged}`, window 30 d
+  OPD / 7 d admitted; prior reaction `{radiologistId?, reason?}` — the allergy list is read by the
+  gate, and a contrast allergy needs a named radiologist + reason; MRI `{implants[], pacemaker,
+  clips, cochlear, metalFb, claustrophobia}` — any of the four hard ones is override-only; Form F
+  takes nothing (the register is read); chaperone `{chaperoneUserId}` — an active user, not the
+  actor, not the patient; side `{patientStated}`; MLC `{status registered|ruled_out, mlcNo?}`.
+- **(c) Overrides today.** `POST …/gates/:kind/override` on `radiology.gates.override` + the
+  engine's `radiologist` edge, reason required, lexical §5(2) check, evented. `form_f` and
+  `laterality_confirm` never; `identity_two_factor` override-only (never waived). Nothing lets a
+  satisfier ASK. **The kernel approvals spine carries it:** `requestApproval(tx, …)` on the caller's
+  transaction with a subject (the gate), a note, an approver role, a closure SLA + ladder,
+  `approval.requested`, requester ≠ approver SoD; `approveRequest`/`rejectRequest` are Db-first
+  (their own transaction). Radiology already registers one type (`imaging_definition_publish`) the
+  same way, so a second type is the house pattern and no local request table is needed.
+- **(d) Creatinine and eGFR.** No reader existed: the lab keeps signed values in `lab_results`
+  (analyte `CREA`, mg/dL, in the catalogue fixture), and `patientResultsForDoctor` is the doctor's
+  (PHI-logged, clinician-gated). A small `latestVerifiedCreatinine` is added to the lab's index
+  (verified, not superseded, not restricted, whole merge chain, unit-converted, draw instant from the
+  specimen). eGFR CKD-EPI 2021 is computable server-side: `patients.dob` + `patients.sex` are on the
+  master, `ageInYearsOn` exists (`applicability.ts`), no race term. Not computable → no DOB, a sex
+  other than female/male, or under 18 (CKD-EPI is an adult equation) → the ceiling stays.
+
+**RS5 as built** (this PR; one lane, **no migration**):
+- **Core.**
+  - `egfr.ts` — CKD-EPI 2021 (no race term), rounded as a lab prints it, bands on the rounded figure.
+    The kidney gate (`gates.ts` `renal_function`) reads age and sex from the patient master on the
+    day the gate is cleared: **< 30 → `gate_open`** (the radiologist's override), **30–44 → satisfiable
+    only with `ivHydration: true`**, the instruction text stored as evidence, **< 45 → the metformin
+    note stored**; no eGFR (no DOB, sex not female/male, under 18) → the 176.8 µmol/L ceiling, as
+    before. Evidence now carries `egfr`, `egfrBand`, `egfrEquation` or `egfr: null` +
+    `egfrNotComputed`. The gate also accepts `labResultId` — the value and draw instant are then READ
+    from the lab (refused unless it is the latest signed one).
+  - `modules/lab` gains `latestVerifiedCreatinine` (index export, additive): analyte `CREA`,
+    verified, not superseded, not restricted, whole merge chain, mg/dL converted, draw instant from
+    the specimen. `modules/opd` exports `lastActiveVitals` (additive) for the weight.
+  - **The override request** (`override-requests.ts`): approval type **`imaging_gate_override`**
+    (approver `radiologist`, urgent, 30 min, no act-first) registered by `seed:radiology` beside
+    `imaging_definition_publish`. `POST /radiology/studies/:id/gates/:kind/override-request`
+    (`radiology.gates.satisfy`, note required, one pending per gate — `override_already_requested`;
+    **`form_f` and `laterality_confirm` refuse the request itself**); `GET
+    /radiology/gate-override-requests` and `POST …/:approvalId/decide` (`radiology.gates.override`):
+    grant → `approveRequest` then the EXISTING `overrideGate` with the reason (checked on execute:
+    granted, this type, this gate; the §5(2) lexical check runs before the grant commits); refuse →
+    `rejectRequest`. A grant given in the kernel `/approvals` inbox is applied by the same decide.
+  - `prep-bay.ts`: `GET /radiology/prep` (checked-in studies with an open PREP gate, STAT first) and
+    `GET /radiology/prep/studies/:id` (patient in hand), both `radiology.gates.satisfy`, PHI-logged.
+    Room gates = `identity_two_factor`, `laterality_confirm` (Gap 4, UI routing only).
+  - Evidence shapes widened (optional fields only): MRI gains `neurostimulator` and `orbitMetal`
+    (both **stop the scanner**) and records welder, prosthesis, pregnancy, tattoos, prior surgery,
+    weight, zone, the MR-conditional card, the sweep and the two typed signatures; the prior-reaction
+    gate records `premedication[]` (drug, dose, time) beside the radiologist's named decision.
+  - Two error codes: `override_already_requested` (409), `unknown_override_request` (404).
+    `radiology-http.ts` maps `ApprovalError` (409/404) and `SodViolationError` (403).
+- **Web.** `/radiology/prep` — the *Prep & safety bay* station (`radiology.gates.satisfy`): one list,
+  *Clocks running* = requests waiting on the radiologist; lane = allergies (contrast marked), the
+  lab's creatinine with eGFR and band, weight, LMP; centre = every gate as a **form** (no JSON), room
+  gates "closed at the console" with no control, *Ask the radiologist to override*, *Waive* only for a
+  holder of `radiology.gates.override`; the contrast record and reaction under the gates; dock = the
+  one next act (Enter). The study console lost its JSON textarea (per-kind forms, and the
+  radiologist's grant/refuse on a pending request); the worklist's clocks list the waiting requests
+  for the radiologist. MRI screening form (T4); contrast panel (T5: agent, batch, expiry — expired
+  refused before sending — weight-based volume suggestion, route, site, rate, injector, extravasation
+  check) and reaction (severity, onset, signs, treatment, clinician, outcome; says it writes the
+  allergy the next study's gate reads). English + Hindi (`radiology.bay.*`; `radiology.prep.*` is
+  RS3's prep instructions).
+- **DECIDED.**
+  - **`radiology_nurse`** is a new role (the standard Indian-hospital prep-bay nurse): worklist.read,
+    gates.satisfy, contrast.record; on the `imaging_gate` satisfy edge; **no override, no waiver, no
+    check-in**. The `imaging_gate` definition changed, so a deployment re-runs the §3 activation
+    ceremony once (runbook §14; §13 at build, renumbered when RS8a took §13).
+  - **`radiology.contrast.record`** is split off `radiology.acquire` for the two contrast POSTs, so
+    the nurse who injects does not also get to start/finish acquisitions; everyone who could record
+    contrast before still can.
+  - The request rides **kernel approvals**, not a radiology table: the spine carries requester,
+    subject, note, approver role, SLA ladder, `approval.requested` and the requester ≠ approver SoD.
+    The radiologist therefore holds `approvals.requests.read`/`.decide` (the spine's invariant).
+  - **A waiver stays the radiologist's act** (the server's rule since 18a): the bay shows *Waive*
+    only to an override holder; the nurse's "does not apply" goes as *Ask the radiologist*, answered
+    by an override carrying that reason.
+  - A **positive MRI screen is not sent** (the server would store nothing): the form hands a summary
+    note to *Ask the radiologist*. **No card upload** — there is no document-store route; the card's
+    device, model, serial and conditions are recorded as fields.
+  - **Rate, injector and the extravasation check** have no column; they are written into the
+    administration's site line (≤ 120 characters) until a migration adds them.
+  - The **urine pregnancy test at the bay** is recorded as the policy's `hcg_result` with a
+    `bay-urine-hcg:negative:<instant>` pointer (no lab row exists for a bedside strip).
+  - Weight-based volume **suggestion only**: iodinated 1 mL/kg to 100 mL; gadobutrol 0.1 mL/kg; a
+    0.5 M gadolinium agent 0.2 mL/kg.
+- **Counts.** Core, fail-first: eGFR gate block 4 failed on the pre-RS5 `gates.ts` (4 failed, 48
+  skipped), then green; override requests 8 of 9 failed against a no-lane stub and the pre-RS5
+  gate definition (the ninth — the nurse cannot override — is a regression pin that already held),
+  and the never-override refusal test failed with the refusal mutated out. Touched core suites after
+  rebase: **45 suites, 532 tests green** (radiology module, seed-roles, radiology e2e, seed-radiology,
+  nav-parity, caddyfile-parity, lab manifest). Web: the prep-bay file failed to resolve and the new
+  console test failed on the old console (the JSON textarea), then green; touched web suites **17
+  files, 132 tests green**. Pins: seed-roles permissions 204 → 205, pairs 425 → 432, model
+  permissions 184 → 185, held 190 → 191, roles 40 → 41, radiologist 16 → 19, radiographer 10 → 11,
+  radiology manifest 18 → 19 permissions, approval types 22 → 23 (approver roles + `radiologist`),
+  non-table pairs 200 → 202; caddyfile routes 76 → 77; README radiology table + `radiology_nurse`
+  column and `radiology.contrast.record` row.
+- **Walk.** `/opt/hmis-context/rs5-walk/` — the bay with nobody in hand, the kidney gate (eGFR 32,
+  hydration), MRI screening with an asked gate, the contrast + reaction panel on the table, and the
+  study console's form, at 1920/1440/1280/1024/768/390: 0 page errors, 0 sideways overflow.
+- **Moved later.** Premedication timers and the earliest-scan clock, cannula and fasting records and
+  the sedation pre-check (the board's "bay work"; not gates in the code) → RS6 with the room console;
+  the consents register (`prep:consents` as its own view) → RS9 with the release register;
+  auto-applying a grant from the kernel inbox (an `approval.granted` consumer) → RS10 with the HOD's
+  approvals; columns for injection rate / injector / extravasation → the next radiology migration;
+  the card photo → when a document store exists; eGFR for children (Schwartz needs height) → the
+  paediatric radiology slice.
+
 ### RS6 · Modality rooms
 - **Web:**
   - **From RS4:** the `imaging_protocols` definition kind (schema, CHECK widening — one migration — and
@@ -829,6 +959,125 @@ migration:
   printed imaging report, or must the radiologist's signature be a Digital Signature Certificate
   under the IT Act, 2000 (§3/§3A)? Built as the former; the print does not claim a DSC.
 
+#### RS8b spike (read on main `02236033`, 29 Sep, before any code)
+- **(a) The resident today.** There is no resident role: `seed-roles.ts` declares `radiologist`,
+  `radiographer`, `radiology_receptionist`, `pcpndt_incharge`, `radiation_safety_officer` and
+  `modality_bridge`, and only `radiologist` holds `radiology.reports.sign`. Anybody who holds that
+  string signs a FINAL report — there is no co-sign state (`imaging_reports.status` CHECK:
+  prelim · draft · signed · amended · superseded) and `publishReport` only asks "is there a signed
+  version". So today a non-consultant can sign only by being given the consultant's role.
+- **(b) The critical call today.** `imaging_critical_findings` carries `category`,
+  `communicated_to` (free text), `channel` (a column nothing writes), `read_back_text`,
+  `communicated_at`, `acknowledged_by` (the clinician, F76), `recorded_by`, `acknowledged_at` and
+  `chased_at`. `acknowledgeCritical` demands a non-empty read-back for `red` only and checks it
+  against nothing but the §5(2) lockout — "noted" closes a red call. The chaser
+  (`sweepCriticalChaser`, every 60 s) reads each tier's `communicate_within_min` from the active
+  `critical_categories` book and, once past it, stamps `chased_at` and emits ONE
+  `imaging.critical_overdue`; it never chases the same finding again and has no rung, no person,
+  no second window (its own header: "the ladder is a later phase's").
+- **(c) Rungs through the roster.** `modules/roster` has `whoIsOn(position, at)` (flag
+  `ROSTER_RESOLVER_ENABLED`, off unless set; with the flag off or no published roster it answers
+  every holder of the position's RBAC role — for `unit_head` that is every `doctor`, useless for a
+  phone call). Positions: `unit_head` exists; there is **no RMO position** (nearest is
+  `casualty_mo`), no HOD position, and no link from an ordering clinician to their unit. The
+  treating doctor IS resolvable: `orders.ordering_clinician_id`. So **DECIDED:** the ladder's rungs
+  are fixed — treating doctor (the order's clinician, by name) → unit head (roster `unit_head`) →
+  duty RMO (roster `casualty_mo`, the duty medical officer who covers the wards out of hours) → HOD
+  (the `medical_superintendent` role's holders, the administrative head the NABH escalation policy
+  ends at). A rung names a ROLE; the screen shows who holds it today only when a PUBLISHED roster
+  answers, else the role's name — never the whole `doctor` role.
+- **(d) Prelim and amend.** Routes exist: `POST /radiology/studies/:id/reports/prelim`
+  (`radiology.reports.write`, lockout + foetal-sex guard) and `…/amend`
+  (`radiology.reports.amend`, second factor, the RS8a checks, the signer block, re-publish if v1
+  was published, which notifies through `notifyIfDue`). Flag: `POST /radiology/reports/:id/critical`;
+  acknowledge: `POST /radiology/criticals/:id/acknowledge` (`radiology.criticals.ack`). **Web
+  callers of all four: zero** (`radiology-api.ts` and `radiology-reading-api.ts` ship none).
+  Prelim is not restricted by priority anywhere.
+- **(e) Law follow-up.** `startAcquisition` checks the `form_f` GATE (satisfied by an OPEN form)
+  and the machine/person registration; only `recordAcquired` calls `assertFormFRecorded`. So a scan
+  can start on a Form F nobody has signed. The web USG room already records the form before Start.
+
+#### RS8b as built (this PR; lane `radiology-rs8b`; one migration, `0156_radiology_cosign_ladder`, numbered at rebase — 0149 went to RS9, 0150 to RS12, 0151 to pharmacy D4 (#399), 0152 to pharmacy A5 (#369), 0153 to RS9b (#403), 0154 to pharmacy desk fixes (#419), 0155 to pharmacy indents (#409); runbook section is §17 — RS5 took §14, RS9 §15 (RS9b §15a), RS10 §16)
+- **T1 — co-sign.** New role `radiology_resident` (six strings: `radiology.worklist.read`,
+  `.reports.write`, `.reports.sign`, `.reports.read`, `.criticals.ack`, `.definitions.read`; no new
+  permission). `signReport` by a user holding `radiology_resident` and NOT `radiologist`
+  (`signsAsResident`) runs the same checks, takes the resident's second factor and inserts an
+  `awaiting_cosign` version carrying a `ResidentSignature` (name, instants, content hash — no
+  council number: the resident is not the signatory of record). `publishReport` refuses
+  `cosign_required`. `cosignReport` (`POST …/reports/cosign`, `radiology.reports.sign` + second
+  factor): only a `radiologist` (`cosign_not_consultant`), never the resident's own
+  (`cosign_own_report`), under the consultant's own fresh factor; the RS8a checks run again with the
+  consultant's acknowledgements; the resident's row flips to `cosigned` by compare-and-set (a second
+  consultant gets `stale_state`) and a `signed` version is inserted whose signer block is the
+  consultant's with `draftedBy` = the resident. Reading list: `awaiting_cosign` state, sorted to the
+  top for a consultant. Migration: status CHECK widened + `imaging_reports_one_awaiting_ux`.
+- **T2 — the ladder.** `imaging_critical_call_attempts` (insert-only: rung, who rung — a user or a
+  typed name, outcome `no_answer` / `answered` / `read_back_ok`, recorded by, when);
+  `imaging_critical_findings.ladder_rung` (0 treating doctor · 1 unit head · 2 duty RMO · 3 HOD, only
+  climbs) and `chase_windows`. `recordCallAttempt` (`POST /radiology/criticals/:id/calls`,
+  `radiology.criticals.ack`): compare-and-set on the rung; no answer climbs one. `acknowledgeCritical`
+  now refuses a read-back that does not name the finding (`read_back_mismatch`, `readBackNamesFinding`:
+  a critical term the report states, not negated, or a content word of the impression) and writes the
+  closing `read_back_ok` row — the RS9 doctor read-back calls the same function and inherits it. The
+  chaser escalates one rung per tier window of the `critical_categories` book (was: once), at most
+  three events, each `imaging.critical_overdue` carrying `rung`. Board read
+  `GET /radiology/reading/criticals` (open calls oldest first with the four rungs and who holds each
+  today; the last 48 h closed).
+- **T3 — Form F before the scan.** `startAcquisition` calls `assertFormFRecorded` beside the machine
+  and person registration checks; the `form_f` GATE still passes on an open form (semantics kept).
+  Three tests that pinned the old order (start on an open form, refuse at `acquired`) now assert the
+  refusal at the start, each with a comment: `acquisition.test.ts` A2, `portable.test.ts`, the e2e
+  STUDY TWO.
+- **T4 — the screen.** `/radiology/read`: header views **Reading list · Critical calls (n)**
+  (`?view=criticals`, no new SPA route). Resident dock **Sign for co-sign** (no publish); consultant
+  opening an awaiting study sees the resident's text + checks and **Co-sign and publish**; **Issue
+  prelim** on STAT/urgent with the PRELIMINARY banner (first web caller of prelim); **Amend** on a
+  signed study — reason code, one-line note, corrected findings/impression, second factor (first web
+  caller of amend); the print adds the drafting resident. Critical calls: one call in hand, the
+  ladder, **Call** → **No answer / Answered** (Call itself records nothing), the read-back box,
+  overdue banner, the 48-hour log; English + Hindi.
+- **DECIDED** (standard Indian teaching-hospital answers, open to owner objection):
+  - *Resident vs consultant by ROLE KEY, a user with both roles is a consultant* — "may sign, but not
+    finally" cannot be said with a permission, and the workflow engine already separates on role keys.
+  - *Co-signing is agreeing, not editing* — the consultant who wants different words signs their own
+    version, which supersedes the resident's (NABH: the signatory owns the text they sign).
+  - *A resident's red critical is raised at the resident's signature* — the ER hears of the bleed from
+    whoever read it; the co-sign raises no second call.
+  - *Prelim offered on STAT and ER (urgent) only, in the screen*; the server's prelim route keeps its
+    existing rule (any reportable study) — narrowing it would break the classic report screen.
+  - *Rungs:* treating doctor = the order's clinician; unit head = roster `unit_head`; duty RMO =
+    roster `casualty_mo` (no RMO position exists); HOD = the `medical_superintendent` holders (no HOD
+    position). Names shown only from a PUBLISHED roster, else the role's name (spike c).
+  - *The chaser climbs one rung per tier window, three at most* (red: 15/30/45 min).
+  - *The read-back is lexical and generous* (one shared finding word or the critical term), and a
+    negated critical term never closes the call; red still demands a read-back, orange/yellow may be
+    acknowledged without one (unchanged).
+  - *A read-back is recorded against a person with an HMIS account* (F76); a callee typed by name can
+    be recorded as rung, but closing needs the clinician picked — nobody is pre-chosen for them.
+  - *The amendment's stored reason is in English* ("Correction of laterality: …"), whatever the
+    screen's language — it is the record.
+  - *Form F recorded before Start* (PCPNDT Rules: the declaration precedes the procedure).
+- **Counts.** Core: `cosign.test.ts` 11 (10 fail with the co-sign branch/guards mutated out; with only
+  the publish gate and own-report check removed, the 2 that pin them fail), `critical-ladder.test.ts`
+  8 (5 fail with the read-back rule, the rung climb and the windowed chaser mutated out; the pure
+  read-back unit and the board did not exist on main), T3 2 fail with the start-time check removed.
+  Web: `radiology-reading-rs8b.test.tsx` 7 (6 fail against main's screen; the seventh is an absence
+  test — "no Prelim on a routine study" — which a revert cannot fail). Touched suites: see the PR.
+  Pins: roles 40 → 41 (`radiology_resident`), model pairs 427 → 433, `KNOWN_ROLE_KEYS` 42 → 43, README
+  radiology table 6 → 7 columns (+ prose); distinct/held permissions unchanged (185 / 191); radiology
+  error codes +4 (`cosign_required`, `cosign_not_consultant`, `cosign_own_report`,
+  `read_back_mismatch`); events unchanged in number (`imaging.critical_overdue` gains optional
+  `rung`); SPA routes 79 unchanged; API routes +3 (cosign, calls, criticals board).
+- **Moved later.** A staff-directory picker so ANY clinician with an account can be named at the
+  read-back (today: the people the ladder names) → RS10; a real HOD / RMO roster position and the
+  treating doctor's unit → IPD/roster; a calendar-aware "next working day" yellow window (the book is
+  minutes, ≤ 1440) and the alert text naming the rung → RS10; co-sign on the classic report screen
+  (the reading room is the co-sign seat) → not planned. Follow-ups, peer review, night/outside reads →
+  RS8c.
+- **For the owner (law):** may a DNB/MD resident's PRELIM (unsigned by a consultant) be handed to the
+  treating doctor in the ER as a quotable document? Built as the Indian teaching-hospital norm (yes,
+  marked PRELIMINARY, never published to the patient). The RS8a DSC question stands.
+
 ### RS9 · Release and the closed loop
 - **Core:**
   - `imaging_report_delivery` gains `acted_at`, `acted_by` and `acted_note` (gap 6);
@@ -845,6 +1094,174 @@ migration:
 - **The north-star read model:** order → acted, per modality and source.
 - **Journeys:** J1 last hops, J4 release, J9 doctor hop.
 - Migration: delivery columns.
+
+**RS9 spike** (read on main `583db9ff`, 29 Sep, before any code):
+- **(a) `imaging_report_delivery`** is one row per REPORT VERSION (`report_ux`), holding `first_read_at/by`
+  and `unread_chased_at` only (18a-iii T5: the report row is append-only by trigger 0047, so its delivery
+  is a separate, mutable object). Two writers: `reportView` (`read.ts`) stamps first read for **any**
+  holder of `radiology.reports.read` who is not the signer — the radiographer holds it, so a technologist
+  opening the report silences the 24 h Unread Watchman exactly as the treating doctor would; and the
+  Watchman (`chasers.ts`) upserts `unread_chased_at`. Nothing records acted-upon.
+- **(b) Where the treating doctor reads imaging today.** The consult's "Since then" brief
+  (`lib/brief-history.ts` → `GET /radiology/reports/patient/:id`, `patient-reports.ts`) — impression,
+  critical category and signed time only, and it writes **no** first read. The full report
+  (`GET /radiology/reports/:id`, the one first-read writer) has one web caller, the department's own
+  `radiology-report.tsx`. So in practice first read is written by the department, not the doctor. The
+  critical acknowledge route (`POST /radiology/criticals/:id/acknowledge`) needs `radiology.criticals.ack`,
+  which only `radiologist` holds — the doctor cannot call it; `acknowledgeCritical` already records the
+  clinician who read back separately from the actor (F76). RS2's consult panel places orders only.
+- **(c) The lab's hand-over.** `lab_report_deliveries` rows (channel `print | whatsapp | in_person |
+  doctor_screen`, a free-text `collector_identity` required for a physical hand-over, an `approval_id` for
+  an unpaid release). 17-F F8's collector type / relation columns and the patient OTP are **not built**
+  ("blocked by the owner: read receipts and patient OTP need a real provider"). There is no OTP service
+  for patients anywhere on main (ABHA's OTP is ABDM's, for ABHA only). Imaging reuses the SHAPE (a
+  register of physical hand-overs, collector named) with typed collector columns, and defers the OTP.
+- **(d) Notify.** `imaging_report_ready` already exists (18a T2) and `publishReport` already enqueues it in
+  the publish transaction (`notifyIfDue`): token-only (order number, no study, no link — there is no
+  patient-facing link on main, the lab's twin has none either), EN + HI, 72 h expiry, `transactional`,
+  enqueued only when the invoice is settled or the report is RED critical, and a failed enqueue never
+  fails the publish. Consent: `transactional` needs no opt-in; a patient's STOP suppresses every patient
+  message at the pump (`opted_out`, P6), deceased suppresses. Other patient kinds on main:
+  `patient_lab_report_ready`, `imaging_appointment_booked` (RS3), OPD appointment/refill families. The
+  WhatsApp adapter is not on main: rows are RECORDED, never claimed sent.
+
+**RS9 as built** (this PR; lane `radiology-rs9`; one migration, `0149_radiology_closed_loop` (renumbered from 0147 at merge; RS11 took 0147, RS8a 0148)):
+- **T1 · acted upon (core).** `imaging_report_delivery` + `acted_at/by/outcome/note` (all-or-none
+  CHECK, outcome from the board's five, note ≥ 4 characters). `POST /radiology/reports/:id/acted`
+  (`radiology.reports.read` + the treating-doctor check in `closed-loop.ts`): the **treating doctor** is
+  the order's `ordering_clinician_id` or the visit's doctor (`opd_encounters.doctor_id → opd_doctors.user_id`);
+  anyone else `not_treating_doctor`, naming who can act. An act stamps the first read if empty and
+  appends `imaging.report_acted_upon` (outcome code only). **`reportView` now stamps the first read only
+  for the treating doctor** (spike a — a technologist's read silenced the Watchman).
+- **T2 · the north star.** `GET /radiology/north-star?from&to` (`north-star.ts`, **`radiology.reports.sign`** —
+  the grant only the reporting radiologist holds; the HOD is a radiologist, the desk/technologist/referrer
+  are not). Per modality (from the active study-type book) × source: ordered, median + p90 (nearest rank,
+  whole minutes) order → first signature, signed → first read and order → acted on the current version,
+  signed-unread > 24 h, published-not-acted > 72 h, plus totals. `northStar` is exported for RS10's floor.
+- **T3 · the doctor's results (web).** `components/radiology/imaging-results-inbox.tsx`, mounted by one
+  line in `opd-consult.tsx` under "Nobody is in the chair". `GET /radiology/results`: current released
+  versions the doctor treats, open criticals first, then unread, read-not-acted, acted (14 days).
+  Open report (`GET /radiology/reports/:id` — the read that lands), Open images (existing logged
+  `images/open`), Mark acted upon. **Read-back:** `POST /radiology/reports/:id/read-back` calls the
+  same `acknowledgeCritical` (RS8b is not built; this is the first doctor-side caller).
+- **T4 · Report hand-over (web + core).** `/radiology/reports` (station `reports`, `radiology.schedule`):
+  `GET /radiology/release` (30 days, needs derived: abnormal uncollected 24 h, amended after hand-over,
+  media to print / to hand, notice not recorded, not collected), `POST /radiology/studies/:id/media`,
+  `POST /radiology/media/:id/printed`, `POST /radiology/reports/:id/handover` (collector typed; CHECKs repeat
+  the rules). Tables `imaging_report_handovers`, `imaging_media_requests`. Events
+  `imaging.report_handed_over` (collector type only) and `imaging.media_requested`.
+- **T5 · patient message.** Already on main (18a T2, spike d): `imaging_report_ready` queued in the
+  publish transaction, EN + HI, order number only, settled-or-RED, STOP suppresses at the pump. RS9 adds a
+  pin (release.test T5) and shows the recorded state on the register; no secure link exists to add.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *Treating doctor* = ordering clinician or the visit's doctor; a covering colleague is not (the OPD's
+    D5 rule — coverage is a transfer of the visit).
+  - *Only the treating doctor's read lands*; for a study with no in-house doctor (outside prescription /
+    self) the **hand-over** is the first read, so the Watchman does not chase a report nobody here awaits.
+  - *An amendment re-opens the loop* (acts and reads are per report version); acting on a superseded
+    version is `report_superseded`, naming the current version.
+  - *The doctor's read-back* goes through a treating-doctor route calling the same `acknowledgeCritical`;
+    `radiology.criticals.ack` stays the radiologist's (no grant widened).
+  - *No patient OTP service exists*: a relative is recorded by name, relation and ID type + last four
+    characters (masked Aadhaar is lawful); the OTP is deferred and the screen says so.
+  - *Film/CD*: the X-ray's first sheet is `included`; the rest name `RAD-FILM` / `RAD-CD` and are charged
+    at the billing counter — the desk composes no money and links no invoice.
+  - *The hand-over is the desk's* (`radiology.schedule`) — no new permission.
+  - *Source*: OUT (outside prescription / self) → IPD (day-care or bedside) → ER (STAT) → OPD, until IPD
+    and ER modules exist.
+  - *PHI*: the inbox logs `imaging.report` and the register `imaging.worklist` per patient (existing
+    surfaces; the kernel union was not widened).
+- **Pins.** Migration 0147; radiology events 16 → 19; caddyfile routes 78 → 79 (`/radiology/reports`, after RS7's `/radiology/usg`);
+  nav + `radiologyManifest.menu` + station row `reports`; six error codes (`not_treating_doctor`,
+  `acted_note_required`, `report_superseded`, `report_not_published`, `collector_details_required`,
+  `unknown_media_request`). No permission, seed-roles, notify template or kernel change.
+- **Moved later.** Patient secure link + OTP + plain-words summary (provider + DPIA); the 30-minute SMS
+  fallback and "abnormal unopened 24 h → call task" as an obligation/alert (RS10); follow-ups to book in
+  the doctor's inbox (RS8's `imaging_followups`); the signer block on the doctor's report view (RS8a's
+  print); messaging the radiologist from the report; the outside-CD desk view (RS3 left it here — still
+  open, RS10/RS12); billing film/CD from the hand-over desk itself; the HOD north-star screen (RS10); the
+  ward inbox (IPD).
+- **Money/law questions the rulings do not settle.** (1) Is a report **held at the window until paid**
+  (the board draws "held for money · released unpaid only by the billing manager")? Nothing holds it —
+  18a A6 made money gate only the message; RS9 built no hold. (2) A report released unpaid gets no
+  "ready" message, and nothing sends it when the bill is paid later. (3) Retention of the relative's ID
+  last-four under DPDP (kept with the hand-over row, indefinitely today).
+
+### RS9b · The patient's copy and the bill (RS9's three money questions)
+
+**RS9b spike** (read on main `8cd13d28`, 29 Sep, before any code):
+- **(a) Where the patient's copy leaves.** One writer: `handOverReport` (`release.ts`) — the report
+  at the window and the printed film/CD riding with it (`mediaRequestIds`). Requesting and printing
+  film are internal acts. The doctor's paths (`reportView`, `GET /radiology/results`, the consult
+  brief, the read-back, the reading room's print view) are separate functions and none calls the
+  desk's code. The patient message is queued only by `notifyIfDue` inside `publishReport` /
+  `amendReport` (settled-or-RED); there is no patient link.
+- **(b) The lab's held copy.** `interlock.ts` + `printReport`'s `approvalId`: a GRANTED approval,
+  of the release type, about THIS order, spent once (a delivery row carrying it). 17-F ruling 12
+  ("released unpaid ONLY by the billing manager") was **superseded 28 Sep** by the owner's credit
+  ruling (#347): the type is now `lab_release_unpaid_owner`, approver **owner**. The dues row is
+  untouched.
+- **(c) Who is "unpaid dues at the desk".** `money.ts` `authorisationOf`: `invoice` / `daycare` /
+  `payer_branch` / `stat`. Only self-pay with an invoice line can owe the desk; day-care and bedside
+  compose into a running bill; payer branches are billed to the payer; STAT runs first and the bill
+  follows (ruling 8).
+- **(d) The settlement event.** Billing emits `payment.received { receiptId, invoiceId, patientId,
+  amountPaise }` on every allocation (receipt at the counter, tender on issue, held-receipt
+  settlement) and `credit_note.issued { invoiceId, … }`. Partners already consumes both by name. The
+  ledger answer is `invoiceSettlement` (exported). No billing signature needs to change.
+
+**RS9b as built** (this PR; lane `radiology-rs9b`; one migration, `0153_radiology_release_unpaid`):
+- **T1 · the hold (core).** `held.ts`: `patientCopyHold` (IPD/day-care/bedside → STAT → no line →
+  payer → ledger), `assertPatientCopyReleasable` (called by `handOverReport` after the collector
+  checks, before any write), `requestUnpaidRelease`. Refusals in plain words with the amount and the
+  bill: `report_held_for_dues` (402), `release_not_authorised` (403 — asked and pending, or refused,
+  naming the owner's note), `release_not_needed` (409). `POST /radiology/reports/:id/release-unpaid`
+  (`radiology.schedule`, reason ≥ 4 characters) files `imaging_release_unpaid_owner` (approver owner,
+  urgent, 60 min, no act-first; subject = the study; the amount and reason in the request). The
+  hand-over that follows spends the grant: `imaging_report_handovers.release_approval_id` (unique
+  partial index) and `imaging.report_released_unpaid` (hand-over, report, study, approval, paise still
+  due). The register row gains `hold` (amount, bill, the owner's release state) and the need
+  `held_for_dues`. The doctor's read paths are untouched.
+- **T2 · ready on later payment (core).** `reports.ts` `enqueueReportReady` — the one writer of
+  `imaging_report_ready`, now shared by the publish path and `ready-on-payment.ts`'s consumer
+  `radiology.report_ready_on_payment` on `payment.received` + `credit_note.issued`. It re-reads the
+  invoice and queues only when **settled**, for the current released version of each imaging study
+  on that bill; the per-version dedupe key makes it exactly once whichever path runs first. Consent
+  as the publish path (the pump suppresses STOP/deceased). A failed enqueue is swallowed (A7) so the
+  cursor never stalls.
+- **T3 · the desk (web).** `/radiology/reports`: held rows read "Held for dues ₹N"; the in-hand
+  panel names the bill, links *Collect at billing* (`/billing/dues`), says the doctor's copy is not
+  held; the docked *Hand over* waits with "send the patient to billing, or ask the owner". *Ask the
+  owner to release unpaid* (reason) → pending ("Asked the owner at HH:MM") → granted (dock opens, "₹N
+  stays owed") or refused (the owner's note). The approvals inbox has words for the new type (EN + HI).
+- **T4 · docs.** Runbook §15a (release); this section.
+- **DECIDED** (open to owner objection):
+  - **The owner, not the billing manager, releases a held imaging copy unpaid.** The phase brief
+    said `billing_manager` "mirroring the lab's ruling 12"; that ruling was superseded on 28 Sep by
+    the owner's own credit ruling (whole hospital: "nobody can issue credit except owner"), and the
+    lab now asks the owner. Money rulings are the owner's; an orchestrator default cannot widen them.
+    The billing manager's `approveRequest` on this type is refused by the kernel (tested).
+  - **STAT is never held**, even with an unpaid line (ruling 8: the bill follows); **bedside is IPD**
+    (running bill) until the IPD module exists.
+  - **A study with no invoice line is not held** — the amount is unknown and the counter's
+    `acquired_unbilled` decision owns it.
+  - **Printing film/CD is not held**; collecting it is (it rides the hand-over).
+  - **A grant is spent by one hand-over**; an amended version handed over again needs a new decision
+    (the lab's M8 rule).
+  - **The late message covers `credit_note.issued` too** — a correction can be what settles a bill.
+  - **Retention of a relative's ID last four (money/law question 3):** part of the medical record,
+    kept for the record's retention period, no separate deletion (runbook §15a).
+- **Pins.** Migration `0151` (renumbered from 0150 at rebase; RS12 took 0150); radiology events 21 → 22 (RS12 took 19 → 21); approval types 23 → 24
+  (`test/seed-roles.test.ts`); worker consumers + `radiology.report_ready_on_payment`
+  (`seed-cursors.test.ts`, `worker-runtime.e2e.test.ts`, `worker.module.ts` — additive); web
+  `APPROVAL_KINDS` + inbox words; three error codes. No permission, role, route (web) or nav change.
+- **Moved later.** The owner's approval from a phone notification (the inbox is the seat today);
+  holding the ABDM share of a report (ABDM releases signed reports to the patient's own PHR — the lab
+  does not hold its ABDM share either; an owner question if it should); a "held 3 days → billing"
+  sweep (the lab's 17-F idea — RS10's escalations); the patient secure link (still unbuilt).
+- **Money/law questions the rulings do not settle.** (1) Should a report linked to the national
+  health record (ABDM) be held for dues like the printed copy? (2) Should a RED critical report's
+  patient message, queued unpaid today, be the only unpaid exception? Both are left as built.
 
 ### RS10 · Supervisor & HOD
 - **Core:**
@@ -863,6 +1280,164 @@ migration:
   `hod:roster` (roster module), `hod:money` and `hod:audit`.
 - **Journeys:** J2 escalation, J5, J8, J10 floor, J11.
 - Claims: the alerts/notify manifests.
+
+#### RS10 spike (read on main `8cd13d28`, 29 Sep, before any code)
+- **(a) What the spine gives.** An *obligation* is a `kernel/workflow` instance whose state carries an
+  `sla`: `startInstance` lays the resolve timer, a percent `ladder` (every rung at state entry, each
+  `{atPercent, toRole}`) and an optional `respondMinutes` clock (`timers.ts scheduleSlaTimer`).
+  `runDueTimers` (worker, every tick) fires them: a ladder rung → `escalation.triggered` with the
+  rung's people (`resolveRung` → the roster's `escalationRecipients(…"workflow.timer_rung"…)`, else
+  every holder of the role; nobody → the duty managers; nobody again → `fallbackExhausted`, and the
+  alerts consumer sends it to the owners), the respond clock → `respond.overdue` (the same people are
+  asked again). `kernel/alerts` turns both into per-user rows (`refType workflow_instance`) with the
+  three acts `POST /alerts/:id/ack {kind: seen | owned (+ownedUntil) | handed_over (+toUserId)}`; the
+  obligations consumer cancels ONLY the respond clock on seen/owned (handed-over keeps it running; the
+  ladder always keeps running — saying "mine" is not the work). A transition to a terminal state
+  cancels every open timer (`transition` → `cancelOpenTimers`). **So radiology feeds it with no kernel
+  edit**: one class-C workflow definition per cause (the `approvalFlowDefinition` shape — `open` with
+  the sla, `resolved` terminal, `system` only), started by a radiology sweep when a cause appears and
+  moved to `resolved` by the same sweep when the cause clears. `escalation.triggered` is already a
+  generic branch of the alerts consumer, so the alert title is `Escalation: imaging_esc_<cause> ·
+  open · rung n` — structural, no patient (GC6). The SMS leg is the notify gateway's: an alert to a
+  person with a phone goes as app + SMS per Plan 10's matrix; the only radiology-specific fallback is
+  the ladder's last rung (the medical superintendent). The existing `imaging.critical_overdue` /
+  `imaging.report_unread` alerts stay as they are (duty managers); RS10 adds the HOD's obligations
+  beside them, not instead.
+- **(b) The kernel inbox grant.** `approveRequest` appends `approval.granted {approvalId, typeKey,
+  decidedBy, note, …}` in the deciding transaction; **no module subscribes to it** (materials and
+  pharmacy re-check on execute). RS5's `decideGateOverride` applies an inbox grant only when somebody
+  presses *grant* again at radiology's own route. A radiology consumer on `approval.granted` (worker,
+  `radiologyManifest.subscriptions` + `workerConsumers` + the consumer censuses) can call the same
+  apply half — re-read the approval (granted, this type, subject = an `imaging_gate`), skip a gate
+  already terminal (idempotent under at-least-once), skip the never-override kinds, run the EXISTING
+  `overrideGate` as the approver (a user holding `radiologist`, which the approval's approver role
+  guarantees) with the decision note as the reason, then `evaluateReadiness`. A domain refusal
+  (lexical term in the note, the gate moved) is swallowed — a consumer that throws is redelivered
+  forever — and the gate stays open for a human.
+- **(c) The roster.** `onDutyNow(tx, departmentId, at)` answers the positions a PUBLISHED period
+  declares for a department (`source: published`) or `static`; `whoIsOn(position)` answers a
+  position (flag `ROSTER_RESOLVER_ENABLED`, off unless set; off or unpublished → every holder of the
+  position's eligible RBAC role). Radiology's department is `RAD` (Radiodiagnosis); the only imaging
+  position is `radiologist_on_call` (eligible role `radiologist`). **There is no technologist, nurse
+  or receptionist position and no room on an assignment**, so "technologist on shift per room"
+  cannot be answered by the roster; the HOD's Roster view shows the RAD positions with their source
+  and, for the four radiology roles with no position, who HOLDS the role (labelled "not rostered").
+- **(d) Audit reads.** `imaging_image_views` (study, viewer, via `viewer_link | report | …`, host,
+  instant) is written by `openImages`; `phi_access_log` (actor, patient, surface, context
+  `treating | serving | none`, sealed, reason, instant) carries the imaging surfaces
+  `imaging.worklist | imaging.study | imaging.report | imaging.patient_reports`, `pcpndt.form_f`,
+  `aerb.dose_register`, `aerb.incident_register`. Break-glass is `break_glass_grants` (user, patient
+  or null, reason, window, reviewed). Role = `role_assignments` + live temp grants. An access-log read
+  joins these; no table is added.
+
+**RS10 decisions before code.** The HOD's grant is `radiology.definitions.manage` (held by
+`radiologist` alone; the resident of RS8b holds `.definitions.read` only) — the department head's
+"books" grant, so **no new permission**. **No migration** — the floor is a read, escalations are
+workflow instances, the consumer writes nothing new.
+
+#### RS10 as built (this PR; lane `radiology-rs10`, rebased on RS12 `cd4a6c4b`; **no migration**)
+- **T1 · the floor (core).** `supervisor.ts` `supervisorFloor` → `GET /radiology/supervisor/floor`:
+  the pipeline in eight stages (booked today · checked in · ready · on the table · to read · draft ·
+  signed · released today), each with its count, the held count (checked in with a gate open) and the
+  longest wait by accession — the stage's instant is the study's own domain column (check-in,
+  acquisition start, images in, signature; `ready` has none, so its workflow state entry); rooms
+  (status, licence today, queue, on the table, next free slot walked over today's bookings,
+  technologist `null` — the roster cannot say); readers' load (to read, STAT, drafts, the reading
+  room's own "is reading" derivation from the image-view log in the last hour); turnaround = RS9's
+  `northStar` over the last seven IST days, order → signed median + P90 against the RS8a class
+  target by source (ER/STAT 30 min, IPD 6 h, OPD and outside 24 h; no percentile → no verdict);
+  leakage = open `acquired_unbilled` decisions at the active list price (`listPriceList`), unpriced
+  counted; open criticals; RS12's unmatched inbox (`measured` = an archive is configured —
+  `pacsArchiveConfigured`); licence gaps with their booked count; overdue QA; open/raised escalations;
+  pending radiology approvals. Seven more reads on the same controller: `escalations`, `approvals`,
+  `quality`, `equipment`, `roster`, `money`, `access-log`.
+- **T2 · escalations on the spine (core).** `escalations.ts`: eight causes, each a class-C workflow
+  definition `imaging_esc_<cause>` (`open` with a percent ladder + respond clock → `resolved`,
+  `system` only) activated by `seed:radiology` (`ensureEscalationDefinitions`); `sweepImagingEscalations`
+  (worker job 24, every 60 s, advisory-locked) starts an instance for a new cause and resolves one
+  whose cause cleared (timers cancelled). The kernel does the rest: `escalation.triggered` →
+  `kernel/alerts` rows (generic branch — no kernel edit), acts seen / owned / handed over, the respond
+  clock stopped by the obligations consumer. Causes: STAT unread > 15 min; held at a gate > 30 min;
+  red critical past the `critical_categories` red window (no book → once the chaser marked it);
+  machine `down` / `qa_blocked`; no licence today with a study booked; bill decision open > 24 h;
+  abnormal (critical-category) report released > 24 h with no first read (RS9); RS12 archive study
+  unmatched > 24 h. `escalationList` joins the viewer's own alert on each obligation (for the acts).
+- **T3 · inbox grants apply (core).** `approval-consumer.ts` on `approval.granted` (radiology manifest
+  subscription + `workerConsumers` + both consumer censuses): for `imaging_gate_override` it runs
+  `applyGrantedGateOverride` — the apply half extracted from RS5's `decideGateOverride`, which now
+  calls it too — as the approver, with the decision note; a terminal gate is a no-op (idempotent), a
+  domain refusal (never-override kind, §5(2) term) is swallowed so the event is not redelivered
+  forever; the gate stays open for a human.
+- **T4 · HOD discount — MOVED to the billing plan (not built).** Billing's discount approval is
+  `billing_discount`, approver `billing_manager`, bound to the counter's draft id + line and consumed
+  only inside `issueInvoice` (`assertGrantedApproval` on that exact type). An HOD approval would need
+  either a new approver on billing's type or billing to accept a radiology type — both change
+  billing's behaviour, which the brief forbids. The radiology desk composes no money (RS9 DECIDED),
+  so there is also no desk request to hang it on. Credit stays owner-only (`billing_credit_owner`,
+  unchanged). The station says so on Approvals.
+- **T5 · the station (web).** `/radiology/hod` (`screens/radiology-hod.tsx`, station `hod`, nav +
+  manifest menu *Supervisor & HOD*, `radiology.definitions.manage`), eight header views: **Floor**
+  (live 30 s; the shift in three sentences, tiles, pipeline, rooms, readers, turnaround, gaps, the
+  five-priorities table; right list = escalations, red first); **Escalated** (in hand: what, since,
+  the seat that closes it; the spine's acts through `POST /alerts/:id/ack` — Seen, Take it on for 15
+  min–4 h, Hand over to a radiology role holder; "the ladder has not reached you" when the viewer
+  holds no alert; ONE docked act = open the seat, Enter); **Approvals** (gate override granted /
+  refused here through RS5's decide route by a holder of `radiology.gates.override`; a book → the
+  MS's `/approvals?focus=`; bill decisions read-only with the desk's link; the discount note);
+  **Quality** (seven NABH indicators × seven days, target and verdict, "not measured yet" instead of
+  a zero; five priorities); **Equipment** (status, 30-day uptime from `resource_status_history`,
+  licence, queue, last change + reason; QA due; the RSO's red/amber counts without pregnancy rows;
+  the ticket note); **Roster** (RAD positions from a published roster, else the holders of each
+  radiology role, labelled); **Money** (billed on the day by modality × source, month to date,
+  leakage, decisions); **Access log** (image views + imaging PHI reads, who / role / patient / what
+  / why, break-glass flagged from `break_glass_grants`, no-care-link amber; the HOD's own review is
+  PHI-logged and kept out of the list). English + Hindi (`radiology.hod.*`, `nav.radiologyHod`).
+- **T6 · docs.** `radiology-go-live.md` §16 (switching escalations on, the cause table, the acts,
+  the inbox grant, verify once); this section and the spike above.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *The HOD's grant is the books grant* (`radiology.definitions.manage`, radiologist only) — no new
+    permission; the resident (reports.sign since RS8b) is not a supervisor.
+  - *One obligation definition per cause, class C* (routine operational config, the approval-flow
+    precedent: zero governance approvals, activated by the seed). Ladder: the department's
+    radiologists at 1 % (the HOD is one; a roster target narrows it), the medical superintendent at
+    100 % (NABH's escalation ends at the administrative head); money → billing manager first;
+    licence → RSO first; unmatched images → technologists first. Budgets: 15 min (STAT, red), 30
+    (held), 60 (machine, licence, abnormal), 240 (bill, unmatched).
+  - *A cause resolves only by its seat's act* — the HOD's acts are the spine's (seen / take it on /
+    hand over); "accept the delay with a reason" (board) is not built: the spine has no such act and
+    a radiology-only one would be the second system the plan forbids.
+  - *Rung ≥ 2 on a red critical is subsumed*: RS8b's chaser climbs one rung per red window (15 / 30 /
+    45 min), so rung 2 is always past the window this cause already uses.
+  - *No patient on the supervisory reads*: accession + study type; the seat shows the patient. The
+    access log names patients (it must) and writes one PHI row per patient, reason "HOD access-log
+    review".
+  - *Leakage is estimated at the active list price*; an unpriced service is counted, never ₹0-ed
+    silently.
+  - *Uptime* = the last 30 days not in `down` / `maintenance` / `qa_blocked`; a machine with no
+    history reads "not measured".
+- **Pins (old → new).** Scheduler jobs 23 → 24 (`jobs.ts`, `jobs.test`, `scheduler.test` census + spy,
+  `worker-runtime.e2e` list, `alerts-parity` list + counts, `docker/prod/prometheus/alerts.yml` leg 1a
+  + an `absent()` term); worker consumers +1 `radiology.approval_granted` (`worker.module.ts`,
+  `seed-cursors.test`, `worker-runtime.e2e` subscription census); SPA routes 81 → 82
+  (`caddyfile-parity`, `/radiology/hod`); nav + `radiologyManifest.menu` +1 (nav-parity by content);
+  radiology manifest subscriptions 1 → 2; API routes +8 (all GET). No permission, role, seed-roles,
+  README, event, notify template, error code or migration change.
+- **Counts.** See the PR body (fail-first per CRITICAL task: the new suites cannot load against
+  main, and mutants were run against each).
+- **Moved later.** HOD discount → billing plan (T4 above); the RS8b reading-room items (calendar-aware
+  yellow window, rung-naming alert text, a staff-directory picker for the read-back) → after #401
+  lands, in its own files; SMS as a channel for these alerts → the notify gateway's matrix (the spine
+  already routes every alert through it); `activeDeclarations` on the HOD screen → never (RS11
+  DECIDED: the declaration is the RSO's only); an `aerb.incident_recorded` escalation → the next RSO
+  phase (open incidents already count in Equipment's RSO line); service tickets, AMC, PM calendar,
+  MRI helium → the biomedical plan; RS6's recall-for-repeat as a second study and the HOD's
+  free-repeat approval → RS8c; the board's "accept the delay" and "page" acts → when the spine has
+  them; peer-review discrepancy → RS8c; NABH export → a later phase.
+- **Money/law questions the rulings do not settle.** (1) Who may give the HOD's ≤ 10 % discount in
+  the software — the ruling says the HOD, billing's approval type says the billing manager; the
+  owner should say whether the HOD becomes an approver on `billing_discount` for imaging lines (a
+  billing change). (2) Whether break-glass review of imaging openings is the HOD's act or the
+  security office's (built read-only here).
 
 ### RS11 · Radiation safety, completed
 - **Core:**
@@ -986,6 +1561,255 @@ migration:
 - The IR suite (`room:ir`): sign in, time out, fluoro and skin-dose alert, sign out.
 - Night teleradiology per ruling 7: an external reporter identity, prelim, and morning over-read.
 - Procurement and the deploy are owner-authorised steps.
+
+#### RS12 spike (read on main `c3ba8525`, 29 Sep, before any code)
+- **(a) What 18b built vs deferred.** Built: the MWL pull export (`mwl.ts`, `GET /radiology/mwl`,
+  dcmtk dump, `modality_bridge`), the Study Instance UID minted from the study (`uid.ts`, `2.25.` +
+  SHA-256 bits) and written at Send (`resolveStudyInstanceUid`, partial unique index), the viewer
+  door (`views.ts` `openImages`: `image_source = pacs` + UID + an active enabled `pacs_settings` →
+  view row + `imaging.image_viewed` + PHI line → URL), the offline drafter. Deferred to 18b-ii (its
+  §6, verbatim): the Orthanc container, **reconciliation / `study.unmatched` and any consumer of
+  `imaging.study_acquired`**, the **dose SR hook**, the Orthanc authorization bridge, **embedded
+  OHIF**, tiering/offsite/restore, teleradiology, MPPS.
+- **(b) `pacs_settings`** was `{viewer_url_template (https, only `{accessionNo}`/`{studyInstanceUid}`),
+  enabled}`, governed like every book; nothing seeds it.
+- **(c) The bridge's authentication.** The kernel has no service-account door (agents hold no
+  permissions — `guards.ts`), so the bridge is a USER whose only role is `modality_bridge`
+  (`radiology.mwl.read`); `lab_bridge` (`lab.results.interface`) is the same shape for a machine that
+  POSTS. RS12 follows it: a new machine string `radiology.pacs.interface` on `modality_bridge`.
+- **(d) "Images arrived", smallest honest design.** DECIDED: Orthanc's REST `/changes` feed
+  (`StableStudy`) polled by the **bridge on the archive host**, which posts Orthanc's own study +
+  statistics JSON to a bridge route; HMIS parses (the bridge stays a shell script) and matches
+  **accession first, then UID, and in both cases the DICOM PatientID must equal the study's UHID**;
+  everything else → `imaging_unmatched_studies`. Not a worker poller inside HMIS: HMIS never dials
+  the PACS (18b D1's pull direction, mirrored), `worker.module.ts` stays untouched, and a hospital
+  with no archive is a no-op by construction (nothing posts). The "PACS not configured" state is a
+  census row over the book's new `archive` block. Dose: from the **Radiation Dose SR** the modality
+  sends to the archive (the bridge forwards `/instances/{id}/tags?simplify` for SOP class
+  `…88.67`); **not MPPS** — Orthanc has no MPPS receiver, and the dose MPPS carries is in the RDSR.
+- **Found:** `/radiology/read` (RS8a, PR #393) is not on main, so T4's reading-room half cannot be
+  wired here; the door it will call (`openImages`) is the same one the study console uses, and it now
+  returns `viewer`. Recorded, not blocked.
+
+#### RS12 (code) as built (this PR; lane `radiology-rs12`, rebased on RS11 `9dec14c1`; one migration, `0150_radiology_pacs_inbox` — renumbered from 0148 at merge; RS8a took 0148, RS9 0149)
+- **T1 · arrivals (core).** `pacs.ts` + `radiology-pacs.controller.ts`:
+  `POST /radiology/pacs/arrivals` (`radiology.pacs.interface`, 200, idempotent) takes Orthanc's
+  `GET /studies/{id}` + `/statistics` as-is; `parseOrthancStudy` (pure) → `{UID, accession, PatientID,
+  name, modality, StudyDate, series, instances, archive id}`, refusing a notice with no valid UID
+  (`invalid_pacs_notice`). `matchVerdict` (pure): the accession's study (else the UID's), and only
+  when PatientID = that patient's UHID (trimmed, case-folded) — **never a name**. Verdicts:
+  match → `imaging_studies.image_source = pacs`, the archive's UID (replacing a minted/absent one),
+  new additive columns `images_arrived_at`, `image_series_count`, `image_instance_count`, event
+  `imaging.images_arrived` (once per study); a re-sent notice refreshes counts (greatest) and emits
+  nothing; otherwise one `imaging_unmatched_studies` row per UID (UNIQUE) with a reason —
+  `patient_mismatch`, `no_match`, `no_identifiers`, `uid_mismatch` (a second archive study for one
+  order, or a UID the technologist TYPED that the archive contradicts), `study_closed`,
+  `outside_study`, `awaiting_acquisition` (images before Send). Serialised per UID by an advisory lock.
+  **At Send** (`recordAcquired`): a held `awaiting_acquisition` arrival gives the study its UID when
+  none was typed and attaches itself (`via: send`, `resolved_by` NULL — the CHECK allows the machine
+  only to ATTACH, never to reject); a typed UID that disagrees turns it into `uid_mismatch`.
+- **T2 · dose SR (core).** `POST /radiology/pacs/dose-reports` takes the SR instance's simplified tags;
+  `parseDoseSr` (pure) reads DCM 113813 DLP total (else Σ 113838), 113830 Mean CTDIvol (the highest
+  acquisition), 113722 DAP total, 113730 fluoro time, 111637 AGD (the higher breast), converting
+  **units read from each item** (Gy·m² → Gy·cm² ×10,000, …; an unknown unit drops the number); template
+  from `ContentTemplateSequence` (10011 / 10001). Receipts in `imaging_dose_sr_receipts` (UNIQUE on
+  the SR's SOP Instance UID): matched by the same accession/UID + UHID rule. Before Send → `pending`,
+  and Send with **no typed dose** records the SR's numbers **through the existing `recordDose` call**
+  (so `drlFor` runs; register `dose_origin = 'dose_sr'`, `dose_manual = false`) → `recorded`. After a
+  typed number → `confirmed` (≤ 2 % or 0.05) or `conflict` (both values kept on the receipt; **the
+  register row is never rewritten**). Non-ionising / outside → `not_applicable`; unplaced →
+  `unmatched`, re-tried when the archive study is matched or attached. **AGD** added additively:
+  `imaging_studies.dose_agd`, `radiation_dose_register.dose_agd`, both dose CHECKs widened, aerb
+  `DOSE_QUANTITIES`/`DOSE_UNITS` (`agd`, mGy), the DRL book's `DRL_QUANTITIES` (`agd`), the
+  acquisition route's body (`doseAgd`). The room read carries `doseReport` (the pending SR).
+- **T3 · reconciliation (core).** `GET /radiology/pacs/inbox` (open rows with the accession's
+  candidate study — name through `displayName`, one PHI line per candidate — dose conflicts, the
+  unplaced-dose count, `configured`), `POST …/unmatched/:id/attach {accessionNo, reason}` and
+  `…/reject {reason}` (`radiology.pacs.reconcile`, radiologist + radiographer). Attach refuses a study
+  not yet sent (`not_acquired`, names the room), an outside film (`outside_study_only`), a study that
+  already holds an archive study (`images_already_attached`), a UID recorded on another study
+  (`duplicate_study_instance_uid`), a resolved row (`already_resolved`), a blank reason
+  (`reason_required`); on success the study takes the archive's UID/counts, the row is `attached`
+  with person/time/reason, event `imaging.images_reconciled`, PHI line, and the UID's unplaced dose
+  reports are settled. Reject keeps the row with its reason; nothing is ever deleted.
+- **T4 · web.** Rooms station gains a fifth header view **Unmatched images**
+  (`/radiology/room?view=unmatched`, `screens/radiology-pacs-inbox.tsx`): right = the one list of open
+  archive studies; left = the one in hand; centre = the images' identity beside the order's (a
+  disagreeing UHID in red), accession + reason, **Attach** docked (Enter), Reject folded below;
+  nothing in hand → the archive's state ("PACS not configured") and the dose disagreements. Room
+  console: mammography asks **AGD**; a waiting dose report is shown ("From the machine's dose report
+  …"), Send is open with nothing typed and sends no dose. Study console: "In the archive: 3 series,
+  212 images, since 10:42" / "Not in the archive yet"; long UIDs wrap. `openImages` returns `viewer`;
+  the tab opens the server's URL (OHIF's `?StudyInstanceUIDs=` when the book says `ohif`).
+- **T5 · docs.** `radiology-pacs-go-live.md` rewritten for Orthanc + OHIF (sizing, ports, AE titles,
+  `orthanc.json`, OHIF, the modalities' RDSR, the three bridge jobs incl. the `/changes` poller,
+  retention/backup per ruling 6, the daily inbox act, acceptance, rollback). Census row
+  `radiology_pacs_configured` (G3): RED until an enabled `pacs_settings` names its `archive`.
+- **DECIDED** (standard Indian-corporate-hospital answer, open to owner objection):
+  - *Push from the archive host, not a poller in HMIS* — HMIS never dials the PACS; no worker change.
+  - *Match = accession (then UID) AND UHID; never a name*; a blank PatientID is not a match.
+  - *The archive's UID replaces our minted one*; a technologist-TYPED UID the archive contradicts
+    goes to a human.
+  - *Reconciliation: one technologist or radiologist with a reason, audited* — no second person.
+  - *Dose from the RDSR, not MPPS* (Orthanc has no MPPS SCP). CT register CTDIvol = the highest
+    acquisition's; mammography AGD = the higher breast's; agreement tolerance 2 % or 0.05.
+  - *A typed dose is never overwritten*; the conflict is the RSO's to review.
+  - *`pacs_settings.viewer = 'ohif'` must open by `StudyInstanceUIDs`*; new tab, no embed until the
+    owner's network and monitors are in (ruling 6); the book's `archive` block is optional so every
+    earlier book parses.
+  - *The inbox lives in the Rooms station* (the technologist knows who was on the table); the
+    radiologist reaches it by the same route (the view checks the grant, not the station).
+  - *Retention*: MLC never on a timer; minors until 21 when later than 5 years; nothing deleted
+    automatically.
+- **Pins.** Permissions: `radiology` manifest 18 → 20 (`radiology.pacs.interface`, `.pacs.reconcile`);
+  `allPermissions` 205 → 207, `modelPairs` 427 → 430, `modelPermissions` 185 → 187,
+  `heldPermissions` 191 → 193, V5 `declared` 205 → 207 / `held` 185 → 187 (after RS11's +1); per
+  role radiologist 17 → 18, radiographer 10 → 11, modality_bridge 1 → 2; README radiology table +2 rows and the RS12
+  prose paragraph. Radiology events 16 → 18. Error codes +4 (`invalid_pacs_notice`,
+  `unknown_unmatched`, `not_acquired`, `images_already_attached`). Standup census +1 radiology row.
+  No new route in the web router, no nav entry, caddyfile routes unchanged (a header view).
+- **Counts** — see the PR body (touched suites, fail-first mutants, walk at 1920/1440/1280/1024/768/390
+  in `/opt/hmis-context/rs12-walk/`).
+- **Moved later.** The reading room's own "Open in OHIF" (RS8a's `/radiology/read` calls the same
+  `openImages`); a per-machine RDSR/MWL capability flag on the device; an HOD escalation for inbox rows
+  older than a shift (RS10's alerts spine); Orthanc-side authorization per study (the plugin that asks
+  HMIS who may view) — until then the proxy's LAN-only auth is the gate.
+
+#### RS12 — NEXT: the IR suite (built in RS12b — see "RS12b as built" below)
+- **Screen** `room:ir` (a Rooms view): WHO sign-in (identity, site/side, consent, allergy, anticoagulant
+  status + INR/platelets, contrast/renal gate from RS5, sedation plan, the operator and the
+  anaesthetist), **time-out** (the procedure, side, the image on the monitor, antibiotics), running
+  **fluoro time and cumulative air kerma / DAP** from the unit (RDSR TID 10001 already parsed here:
+  113730, 113722; add 113725 Dose (RP) Total), a **skin-dose alert** at the SIR/NCRP 168 trigger
+  (reference-point air kerma 3 Gy or peak skin dose 3 Gy → a documented follow-up at 2–4 weeks), and
+  **sign-out** (the procedure done, specimens, devices left in, the plan).
+- **Data it needs:** an `imaging_ir_checklists` row per study (three phases, each with who and when —
+  the OT's `ot_case_gates` shape), the IR procedure book (a `study_types` subset with
+  `interventional: true` + a consent template), the RDSR's reference-point air kerma, and a follow-up
+  obligation for a skin-dose trigger (RS8's follow-ups table). Money: device/consumable billing is the
+  OT's materials path — no new rule (none ruled).
+
+#### RS12b spike (read on main `063a998e`, 29 Sep, before any code)
+- **(a) What marks a study as IR.** Nothing today: the modality vocabulary is `xray | usg | ct | mri |
+  mammography` and no study type or device carries an IR flag; no IR study type is seeded and no
+  `IR-1` device exists (`seed-radiology.ts` seeds 7 machines, none IR). The procedure (PCN, PTBD,
+  CT-guided biopsy, DSA) is a property of the **study type**, not the room: a CT-guided biopsy runs on
+  the CT, a PCN on the C-arm. So the flag goes on the governed `study_types` body.
+- **(b) The dose path.** `recordAcquired` takes CTDIvol, DLP, DAP, fluoro seconds, AGD and writes
+  `imaging_studies` + `radiation_dose_register` (`recordDose`) in one transaction; the dose SR
+  parser reads 113722 DAP and 113730 fluoro time but **not 113725 Dose (RP) Total** (Ka,r). No Ka,r
+  column anywhere. Nothing reads a dose after Send, so a threshold alert has no home yet.
+- **(c) The OT's shapes.** `ot/index.ts` exports `consentSchema` (procedure code, template version,
+  language, interpreter, witness, thumb impression, signer/guardian, laterality, `signedAt`),
+  `NPO_SOLIDS_HOURS` (6) / `NPO_CLEAR_FLUIDS_HOURS` (2), `ADULT_AGE_YEARS`; the WHO run is
+  `ot_checklist_runs` (`items [{key, answer, note?}]`, `participants`, `recorded_by`) and the
+  time-out needs ≥ 2 DISTINCT participants (A13). `completeChecklist` itself is bound to an OT case,
+  so it cannot be called for a study — the shapes are reused, the decision (A13) is restated with
+  its source.
+- **(d) Coagulation from the lab.** `lab/index.ts` exports only `latestVerifiedCreatinine`. The golden
+  catalogue carries `INR` (unitless) and `PLT` (`10^3/uL`); nothing reads either for another module.
+- **(e) The spine.** RS10 (#404, the obligation-spine escalations) is not merged; radiology feeds no
+  obligation today.
+- **(f) Where it lives on screen.** The Rooms station's header views (`console · dose · rejects ·
+  downtime · unmatched`); `?view=ir` is a sixth, so no new route, nav row or caddyfile entry.
+
+#### RS12b as built (this PR; lane `radiology-ir`, on main `9e387f23`; one migration, `0159_radiology_ir_suite` — to be renumbered at rebase after #403 / #401 / #369)
+- **T1 · the IR case (core).** An IR case is the `imaging_studies` row whose study type says
+  `interventional: true` (DECIDED — no parallel table, 18a-iii's portable reasoning). `study_types`
+  gains optional `interventional` and `bleeding_risk` (`low | high`, SIR 2019) — every earlier book
+  still parses. Migration 0152: `imaging_ir_checklists` (one row per WHO phase `sign_in | time_out |
+  sign_out`, the OT's `items [{key, answer, note?}]` + `participants` shape, UNIQUE per study ×
+  phase), `imaging_ir_sedation_vitals` (BP, HR, SpO₂, RASS, drug; range CHECK),
+  `imaging_ir_cases` (coagulation override verdict/reason/by/at, skin follow-up, procedure note,
+  recovery hand-off; all-or-none CHECKs; a hand-off needs a note). `ir.ts` +
+  `radiology-ir.controller.ts`: `GET /radiology/ir/cases`, `GET /radiology/studies/:id/ir`,
+  `POST …/ir/sign-in | time-out | sign-out | coagulation-override | vitals | skin-follow-up | note |
+  handoff`. **Refusals:** `startAcquisition` refuses an IR study without Sign in AND Time out
+  (`ir_checklist_incomplete`, detail `missing`); `recordAcquired` refuses one without Sign out;
+  Sign in refuses a high-bleeding-risk procedure with no signed INR / PLT in 7 days, INR > 1.5 or
+  PLT < 50,000/µL (`coagulation_out_of_range`, detail verdicts + numbers) unless the radiologist
+  recorded an override (`radiology.gates.override`; reason ≥ 5 chars; once; event
+  `imaging.ir_coagulation_overridden`; `coagulation_in_range` when there is nothing to override).
+  Sign in also checks the identity/side room gates are closed, the consent (OT `consentSchema`:
+  this procedure, a witness, the side, a minor's guardian with consent authority), site marked,
+  allergies read, anticoagulant note when continued, IV + resus, and fasting 6 h / 2 h (OT's
+  `NPO_*` hours) for moderate/deep sedation except STAT. Time out needs ≥ 2 distinct people (OT A13).
+  The lab index gains `latestVerifiedInr` / `latestVerifiedPlatelets` (`coagulation.ts`: verified,
+  not superseded, not restricted, merge chain; platelets normalised to /µL from `10^3/uL`,
+  `10^9/L`, `lakh/cumm`, `/uL`; any other unit skipped).
+- **T2 · IR dose (core).** Ka,r (mGy) is recorded through the existing path: `recordAcquired`
+  `doseKar` → `imaging_studies.dose_ka_r` + `radiation_dose_register.dose_ka_r` (`recordDose`), and
+  from the dose SR (113725 Dose (RP) Total, Gy → mGy, `imaging_dose_sr_receipts.dose_ka_r`; compared
+  like the other quantities). Ka,r is NOT one of the quantities the dose CHECKs count (no unit
+  reports it without DAP/fluoro). At Send: Ka,r ≥ 3 Gy without a documented skin follow-up (patient
+  told, skin check 14–28 days out) is refused `skin_followup_required`; then one
+  `imaging.ir_skin_dose_alert` per trigger reached — `skin_followup` (3 Gy) and
+  `substantial_radiation_dose_level` (5 Gy). **The RSO obligation is moved to RS10** (#404, the
+  obligation spine, not merged): the events are raised and exported (`IR_KAR_*`, `skinDoseLevels`)
+  for its consumer.
+- **T3 · web.** Rooms station sixth header view **IR suite** (`?view=ir`, `screens/radiology-ir.tsx`,
+  `lib/radiology-ir-api.ts`): right = the one IR list (STAT first, on the table, booked, sent-not-
+  handed-over) with Clocks (a sedation reading due, a STAT waiting); left = the patient (allergies,
+  weight, kidney, machine); centre = stepper, coagulation card with the numbers, dates and rule (the
+  refusal in words; the override form only to a holder of `radiology.gates.override`, others are
+  told to ask), Sign in / Time out / Sign out as forms, the dose tiles (fluoro min:s, DAP, Ka,r in
+  Gy, red at 3 Gy with the SRDL line at 5 Gy; filled from a waiting dose SR), the sedation chart
+  with its 5-min clock (15-min after Send), the skin-check form, the procedure note and the
+  hand-off with rule-drafted EN + HI instructions. One act docked (Enter): Sign in → Time out →
+  Start → Sign out (or *Record sedation reading* when one is due) → Book the skin check (Ka,r ≥
+  3 Gy) → Send → note → hand-off → next case. The Room console links `ir_checklist_incomplete`,
+  `coagulation_out_of_range` and `skin_followup_required` to the IR suite.
+- **T4 · docs.** `radiology-go-live.md` §18 (the IR machine as a device, the procedure book, the
+  checklist, the thresholds, verify-once).
+- **DECIDED** (standard Indian-corporate-hospital / SIR–CIRSE answer, open to owner objection):
+  - *IR is a flag on the study type*, not a modality or a machine flag — a CT-guided biopsy runs on
+    the CT; the C-arm is modality `xray`. Seeds (fresh DB only): `IR-PCN`, `IR-PTBD`,
+    `IR-CT-BIOPSY` (high risk), `IR-DSA` (low), and machine `IR-1` (no licence seeded, like PX-1).
+  - *A WHO phase is recorded once* (a moment, not a form edited later); the note is editable until
+    the hand-off; the hand-off, the override and the skin follow-up are once each.
+  - *Every IR consent names a witness*; consent = the OT's evidence shape; the bilingual form text
+    stays the hospital's paper (version recorded).
+  - *Coagulation* is read from the lab's signed rows only; a missing value is refused like an
+    out-of-range one; the override is the radiologist's with a written reason, recorded before Sign
+    in; a STAT procedure is not exempt from the coagulation rule (only from fasting).
+  - *Fasting* 6 h solids / 2 h clear for moderate/deep sedation; STAT proceeds with the times kept.
+  - *Sedation vitals* every 5 min on the table, every 15 min after Send until hand-off; charting is
+    the technologist's / radiologist's `radiology.acquire` (no nurse-held permission added).
+  - *Ka,r thresholds*: 3 Gy skin follow-up (2–4 weeks), 5 Gy SRDL (NCRP 168); a typed Ka,r is
+    mGy; the tile shows Gy.
+  - *Bed rest drafted* 6 h (high bleeding risk) / 4 h (low); instructions rule-drafted, never
+    inference, operator edits.
+- **Pins.** Radiology events 21 → 23; error codes +7 (`not_interventional`,
+  `ir_checklist_incomplete`, `ir_phase_recorded`, `coagulation_out_of_range`,
+  `coagulation_in_range`, `skin_followup_required`, `ir_handoff_recorded`); `STUDY_TYPE_SEEDS`
+  20 → 24, seeded services 20 → 24, seeded devices 7 → 8 (`definitions.test`, `seed-radiology.test`);
+  web `ROOM_VIEWS` 5 → 6. No new permission, route in `router.tsx`, nav row or caddyfile route
+  (a header view); `seed-roles` untouched.
+- **Counts** — see the PR body (core `ir.test.ts` 11 + 1 e2e; 7 core mutants killed; web
+  `radiology-ir.test.tsx` 9; 4 web mutants killed; walk in `/opt/hmis-context/rs12b-walk/`).
+- **Moved later.** The RSO/radiologist obligation for a skin-dose trigger → RS10's spine (the
+  events are its input); a skin-check appointment booked into OPD (today a date on the case) →
+  the follow-up tracker (RS8's follow-ups); a printed procedure note / consent form (no print
+  template) → a later print phase; device/consumable billing (catheters, drains) → the OT's
+  materials path when the owner rules IR consumable pricing; a nurse-held charting permission;
+  the IR suite in the HOD's quality indicators (RS10).
+- **Money/law questions the rulings do not settle.** (1) IR procedure prices and consumables
+  (catheters, drains, needles) — nothing seeded or ruled. (2) Whether the coagulation override
+  needs a second consultant (built: the operating radiologist alone, in writing).
+
+#### RS12 — NEXT (not built): night teleradiology (ruling 7)
+- **Identity:** a `teleradiology_reporter` role for the contracted provider's NMC-registered
+  radiologists — a named user each (NMC number on the person), hospital scope, holding
+  `radiology.reports.write` + a new `radiology.reports.prelim` only (never `sign`/`amend`), time-boxed
+  by the kernel's temp-role grant to the night window; images via the same OHIF door (the provider
+  reads over a site-to-site VPN; data stays in India, DPA under the DPDP Act).
+- **Flow:** STAT/urgent studies after hours routed to the provider's worklist; a **prelim** within 30 min
+  (STAT) / 60 min (urgent) — the existing prelim status, marked `provenance.reader = teleradiology`;
+  the consultant's **morning over-read** signs (or amends) and logs a discrepancy grade (RS8's peer
+  review table, `source = teleradiology`) for the monthly provider review.
+- **Data it needs:** the provider register (name, DPA date, NMC numbers), per-study routing flag and
+  TAT clocks (RS10's alerts), and the discrepancy log. Money: the provider's per-read fee is a payable
+  (procurement), not a patient charge — nothing built until the owner signs the contract.
 
 ### Order
 

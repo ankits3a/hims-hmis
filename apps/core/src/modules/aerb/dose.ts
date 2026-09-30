@@ -9,7 +9,7 @@ import { resources } from "../../kernel/db/schema/resources";
 import { AerbError } from "./errors";
 import { DOSE_QUANTITIES } from "./units";
 import type { DoseQuantity } from "./units";
-import type { DoseSource } from "../../kernel/db/schema/aerb";
+import type { DoseOrigin, DoseSource } from "../../kernel/db/schema/aerb";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -52,7 +52,13 @@ export interface RecordDoseInput {
   doseDlp?: string | number | null;
   doseDap?: string | number | null;
   fluoroSeconds?: number | null;
+  /** 18-S RS12 — Average Glandular Dose, mGy. */
+  doseAgd?: string | number | null;
+  /** 18-S RS12b — reference-point air kerma Ka,r, mGy (interventional fluoroscopy). */
+  doseKar?: string | number | null;
   doseManual?: boolean;
+  /** 18-S RS12 — `dose_sr` when the numbers are the machine's Radiation Dose SR; default `manual`. */
+  doseOrigin?: DoseOrigin;
   /** All three or none — the caller's comparison, stored as a fact. */
   drl?: { quantity: DoseQuantity; value: string | number; over: boolean; reason?: string | null } | null;
   occurredAt: Date;
@@ -93,7 +99,10 @@ export async function recordDose(
     doseDlp: num(input.doseDlp),
     doseDap: num(input.doseDap),
     fluoroSeconds: input.fluoroSeconds ?? null,
+    doseAgd: num(input.doseAgd),
+    doseKar: num(input.doseKar),
     doseManual: input.doseManual ?? false,
+    doseOrigin: input.doseOrigin ?? "manual",
     drlQuantity: input.drl?.quantity ?? null,
     drlValue: input.drl === null || input.drl === undefined ? null : num(input.drl.value),
     overDrl: input.drl?.over ?? null,
@@ -125,7 +134,13 @@ export interface DoseRegisterRow {
   doseDlp: string | null;
   doseDap: string | null;
   fluoroSeconds: number | null;
+  /** 18-S RS12 — mammography's AGD, mGy. */
+  doseAgd: string | null;
+  /** 18-S RS12b — Ka,r, mGy (interventional). */
+  doseKar: string | null;
   doseManual: boolean;
+  /** 18-S RS12 — `manual` or `dose_sr`. */
+  doseOrigin: string;
   drlQuantity: string | null;
   drlValue: string | null;
   overDrl: boolean | null;
@@ -197,7 +212,10 @@ export async function doseRegisterRows(
     doseDlp: doseRegister.doseDlp,
     doseDap: doseRegister.doseDap,
     fluoroSeconds: doseRegister.fluoroSeconds,
+    doseAgd: doseRegister.doseAgd,
+    doseKar: doseRegister.doseKar,
     doseManual: doseRegister.doseManual,
+    doseOrigin: doseRegister.doseOrigin,
     drlQuantity: doseRegister.drlQuantity,
     drlValue: doseRegister.drlValue,
     overDrl: doseRegister.overDrl,

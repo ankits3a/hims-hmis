@@ -75,8 +75,18 @@ describe("break-glass e2e", () => {
     const pending = await request(app.getHttpServer())
       .get("/auth/break-glass/pending").set("Authorization", `Bearer ${token}`).expect(200);
     expect(pending.body.items).toHaveLength(1);
+    // DECIDED 2026-09-28: the person who broke the glass may not review it, even holding .review.
+    const self = await request(app.getHttpServer())
+      .post(`/auth/break-glass/${res.body.grantId}/review`)
+      .set("Authorization", `Bearer ${token}`).send({ note: "justified" }).expect(403);
+    expect(self.body.code).toBe("sod_violation");
+    const { id: reviewerId } = await createUser(db, { username: "ms2", fullName: "MS", password: "p1234567" });
+    const { token: reviewerToken } = await createSession(db, cfg, reviewerId);
+    await createRole(db, "reviewer", "Reviewer");
+    await grantPermissionToRole(db, registry, "reviewer", "auth.break_glass.review");
+    await assignRole(db, { userId: reviewerId, roleKey: "reviewer", scopeType: "hospital" });
     await request(app.getHttpServer())
       .post(`/auth/break-glass/${res.body.grantId}/review`)
-      .set("Authorization", `Bearer ${token}`).send({ note: "justified" }).expect(204);
+      .set("Authorization", `Bearer ${reviewerToken}`).send({ note: "justified" }).expect(204);
   });
 });

@@ -1,6 +1,9 @@
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "./consumers";
+import { RADIOLOGY_READY_ON_PAYMENT_CONSUMER, READY_ON_PAYMENT_EVENTS } from "./ready-on-payment";
 import { orderPlaced } from "../../kernel/orders/events";
+import { approvalGranted } from "../../kernel/approvals/events";
+import { RADIOLOGY_APPROVAL_GRANTED_CONSUMER } from "./approval-consumer";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -84,10 +87,16 @@ export const radiologyManifest: ModuleManifest = {
     // 18-S RS3 — the desk's diary (machines × time) and the waiting-hall display.
     { label: "Imaging diary", path: "/radiology/diary", permission: "radiology.schedule" },
     { label: "Imaging hall display", path: "/radiology/display", permission: "radiology.display.read" },
+    // 18-S RS9 — report hand-over: the release register, film and CD, the named collector.
+    { label: "Report hand-over", path: "/radiology/reports", permission: "radiology.schedule" },
     // 18-S RS4 — the Setup station: machines, books and prices.
     { label: "Imaging setup", path: "/radiology/setup", permission: "radiology.devices.manage" },
+    // 18-S RS5 — the prep & safety bay (the gates the order opened, contrast and reaction).
+    { label: "Prep & safety bay", path: "/radiology/prep", permission: "radiology.gates.satisfy" },
     // 18-S RS7 — the sonologist's room, the Form F register, the §19 registration, the monthly return.
     { label: "Ultrasound & PCPNDT", path: "/radiology/usg", permission: "pcpndt.form_f.write" },
+    // 18-S RS10 — the Supervisor & HOD station (the department head's books grant).
+    { label: "Supervisor & HOD", path: "/radiology/hod", permission: "radiology.definitions.manage" },
   ],
   permissions: [
     "radiology.orders.place",
@@ -115,8 +124,29 @@ export const radiologyManifest: ModuleManifest = {
     // 18-S RS4 — the machine register (register, edit, status with a reason) and the Setup
     // station's reads. The radiologist, who already drafts the department's books, holds it.
     "radiology.devices.manage",
+    // 18-S RS12 — the archive talks back. `pacs.interface` is a MACHINE permission beside
+    // `mwl.read`: the bridge on the Orthanc host posts arrivals and dose reports (only
+    // `modality_bridge` holds it). `pacs.reconcile` is the inbox — attach or reject an archive
+    // study no order could claim, with a reason (technologist and radiologist).
+    "radiology.pacs.interface",
+    "radiology.pacs.reconcile",
+    // 18-S RS5 — the contrast injection and a contrast reaction. Split off `radiology.acquire` so the
+    // radiology NURSE (who injects and watches for the reaction) can record both without being
+    // able to start or finish an acquisition. Held by everyone who held `acquire` for these routes.
+    "radiology.contrast.record",
   ],
-  subscriptions: [{ event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER }],
+  subscriptions: [
+    { event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER },
+    // 18-S RS10 T3 — a gate-override grant given in the kernel `/approvals` inbox applies itself
+    // (`approval-consumer.ts`). Declared with its handler in `workerConsumers` in ONE commit.
+    { event: approvalGranted.name, consumer: RADIOLOGY_APPROVAL_GRANTED_CONSUMER },
+    /**
+     * 18-S RS9b T2 — the "report ready" message for a bill paid AFTER release. Handler, worker
+     * install and both consumer censuses land in the same commit (a declaration with no handler is a
+     * boot error).
+     */
+    ...READY_ON_PAYMENT_EVENTS.map((event) => ({ event, consumer: RADIOLOGY_READY_ON_PAYMENT_CONSUMER })),
+  ],
   resourceKinds: RADIOLOGY_RESOURCE_KINDS,
   orderKinds: [
     {

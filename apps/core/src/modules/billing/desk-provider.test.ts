@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
-  issuePaidInvoice, issuePaidInvoiceByTender, mkCashier, openSessionFor, seedBillingBase,
+  grantDrawerSupervisor, issuePaidInvoice, issuePaidInvoiceByTender, mkBillingManager, mkCashier, openSessionFor, seedBillingBase,
 } from "../../../test/helpers/billing";
 import { mkPatient } from "../../../test/helpers/opd";
 import { billingDeskProvider, cashierDay } from "./desk-provider";
-import { liveExpectedCashPaise } from "./sessions";
+import { beginClose, liveExpectedCashPaise } from "./sessions";
+import { istDay } from "./time";
 import { issueInvoice, previewInvoice } from "./invoices";
 import { newId } from "@hmis/contracts";
 import { formatPaise } from "../../kernel/report/money";
@@ -130,6 +131,9 @@ describe("billing desk provider — the per-cashier day (07c T2, spike S1)", () 
 
   /** A day this cashier did not work is zeroes on every mode, not a missing section (E-4). */
   it("a day with no collections is a zeroed section rather than an absent one", async () => {
+    // 2026-09-30 can be on/after this drawer's real-clock opening day — read as a drawer supervisor so
+    // the blind count (OWNER RULING 2026-09-28) does not decide this test; the blind half is below.
+    await grantDrawerSupervisor(db, "cashier");
     const [section] = await billingDeskProvider.report!(ctxFor(asha, "2026-09-30"));
     expect(section!.rows).toEqual([
       ["report.mode.cash", "₹0.00"], ["report.mode.upi", "₹0.00"], ["report.mode.card", "₹0.00"],
@@ -157,6 +161,10 @@ describe("billing desk provider — the per-cashier day (07c T2, spike S1)", () 
 
   // ═══ FD-1 T3 — the drawer on the card: float, and the cash it should hold NOW (the close's formula) ═══
   it("the drawer: my float and the cash I should hold now — the close's own arithmetic, live; no session says so", async () => {
+    // Read as a DRAWER SUPERVISOR (OWNER RULING 2026-09-28 — BLIND COUNT): this test pins the
+    // arithmetic, which only a `billing.session.read` holder may see before the count; the blind
+    // half is the describe below.
+    await grantDrawerSupervisor(db, "cashier");
     await issuePaidInvoice(db, asha, { patientId, serviceId: base.genericServiceId }, T0);
     const [card] = await billingDeskProvider.load(ctxFor(asha));
     const stat = (k: string): string | undefined => card!.stats!.find((s) => s.key === k)?.value;
@@ -188,5 +196,116 @@ describe("billing desk provider — the per-cashier day (07c T2, spike S1)", () 
     const [carolCard] = await billingDeskProvider.load(ctxFor(carol));
     expect(carolCard!.stats!.find((s) => s.key === "desk.billing.noDrawer")!.value).toBe("—");
     expect(carolCard!.stats!.find((s) => s.key === "desk.billing.float")).toBeUndefined();
+  });
+});
+
+/**
+ * ═══ OWNER RULING 2026-09-28 — BLIND COUNT ═══
+ *
+ * *"The cashier must never see her own drawer's EXPECTED cash before she has submitted her count."*
+ * The card is the /me/desk payload, so the stat must be ABSENT from what the server returns — a
+ * blank in the UI would still be readable in the JSON. A supervisor (`billing.session.read`) still
+ * sees it; after the count (`closing`) the drawer's own holder does too.
+ */
+describe("billing desk provider — the blind count (owner ruling 2026-09-28)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let base: Awaited<ReturnType<typeof seedBillingBase>>;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => {
+    await truncateAll(db);
+    await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
+    base = await seedBillingBase(db);
+  });
+
+  const ctxFor = (u: { id: string }): DeskProviderCtx => {
+    const actor = { type: "user" as const, id: u.id };
+    return { db, actor, reader: actor, date: DAY, now: T0 };
+  };
+
+  it("a cashier's own open drawer: float on the card, NO expected-cash stat anywhere in the payload", async () => {
+    const asha = await mkCashier(db, "asha_blind");
+    await openSessionFor(db, asha, 200000);
+    const patientId = (await mkPatient(db, asha.actor, { name: "Ramesh Kale", phone: "9876540031" })).id;
+    await issuePaidInvoice(db, asha, { patientId, serviceId: base.genericServiceId }, T0);
+    const cards = await billingDeskProvider.load(ctxFor(asha));
+    const stats = cards[0]!.stats!;
+    expect(stats.find((s) => s.key === "desk.billing.float")!.value).toBe(formatPaise(200000));
+    expect(stats.find((s) => s.key === "desk.billing.expectedCash")).toBeUndefined();
+    const session = (await db.select().from(cashierSessions).where(eq(cashierSessions.cashierUserId, asha.id)))[0]!;
+    const expected = await liveExpectedCashPaise(db, session);
+    expect(expected).toBeGreaterThan(200000);
+    // the figure is nowhere in what the server sends — not under another key either
+    expect(JSON.stringify(cards)).not.toContain("expectedCash");
+    expect(JSON.stringify(cards)).not.toContain(formatPaise(expected));
+  });
+
+  it("after her count is submitted (closing), the drawer's own holder sees expected again", async () => {
+    const asha = await mkCashier(db, "asha_blind2");
+    await openSessionFor(db, asha, 200000);
+    await beginClose(db, asha.actor, { denominations: { "50000": 1 } });   // short: files a variance, session → closing
+    const stats = (await billingDeskProvider.load(ctxFor(asha)))[0]!.stats!;
+    expect(stats.find((s) => s.key === "desk.billing.expectedCash")!.value).toBe(formatPaise(200000));
+  });
+
+  /*
+   * THE SECOND HALF (owner follow-up, same day): float + collected IS the expected cash, so while her
+   * drawer is open the COLLECTED money leaves the card, the day report and the facts too; the receipt
+   * count stays. `TODAY` is the real-clock IST day because `openSession` stamps the real clock.
+   */
+  const TODAY = istDay(new Date());
+  const todayCtx = (u: { id: string }): DeskProviderCtx => {
+    const actor = { type: "user" as const, id: u.id };
+    return { db, actor, reader: actor, date: TODAY, now: new Date() };
+  };
+  const MONEY_FACTS = ["billing.collectedPaise", "billing.cashPaise", "billing.upiPaise", "billing.cardPaise", "billing.invoicedPaise"];
+
+  it("collected today: an uncounted drawer's card, report and facts carry NO collected money — the receipt count stays", async () => {
+    const asha = await mkCashier(db, "asha_blind3");
+    await openSessionFor(db, asha, 200000);
+    const stats = (await billingDeskProvider.load(todayCtx(asha)))[0]!.stats!;
+    expect(stats.map((s) => s.key)).toEqual(["desk.billing.receipts", "desk.billing.float"]);
+    expect(await billingDeskProvider.report!(todayCtx(asha))).toEqual([]);
+    const facts = await billingDeskProvider.facts!(todayCtx(asha));
+    expect(facts).toEqual({ "billing.receipts": 0, "billing.invoicesIssued": 0 });
+  });
+
+  it("collected today: after the count (closing) the holder sees her collections again", async () => {
+    const asha = await mkCashier(db, "asha_blind4");
+    await openSessionFor(db, asha, 200000);
+    await beginClose(db, asha.actor, { denominations: { "50000": 1 } });
+    const stats = (await billingDeskProvider.load(todayCtx(asha)))[0]!.stats!;
+    expect(stats.find((s) => s.key === "desk.billing.collected")!.value).toBe(formatPaise(0));
+    expect(stats.find((s) => s.key === "desk.billing.cash")!.value).toBe(formatPaise(0));
+    expect(await billingDeskProvider.report!(todayCtx(asha))).toHaveLength(1);
+    const facts = await billingDeskProvider.facts!(todayCtx(asha));
+    for (const k of MONEY_FACTS) expect({ [k]: facts[k] }).toEqual({ [k]: 0 });   // dotted keys: not a toHaveProperty path
+  });
+
+  it("collected today: a day BEFORE the open drawer's opening day was counted already, so it shows", async () => {
+    const asha = await mkCashier(db, "asha_blind5");
+    await openSessionFor(db, asha, 200000);
+    const stats = (await billingDeskProvider.load({ ...todayCtx(asha), date: DAY }))[0]!.stats!;
+    expect(stats.find((s) => s.key === "desk.billing.collected")).toBeDefined();
+  });
+
+  it("collected today: a supervisor (billing.session.read) still reads collections beside her own open drawer", async () => {
+    await grantDrawerSupervisor(db, "billing_manager");
+    const meera = await mkBillingManager(db, "meera_mgr2");
+    await openSessionFor(db, meera, 150000);
+    const stats = (await billingDeskProvider.load(todayCtx(meera)))[0]!.stats!;
+    expect(stats.find((s) => s.key === "desk.billing.collected")!.value).toBe(formatPaise(0));
+    expect(await billingDeskProvider.report!(todayCtx(meera))).toHaveLength(1);
+    expect((await billingDeskProvider.facts!(todayCtx(meera)))["billing.collectedPaise"]).toBe(0);
+  });
+
+  it("a supervisor (billing.session.read) with her own open drawer still sees expected before the count", async () => {
+    await grantDrawerSupervisor(db, "billing_manager");
+    const meera = await mkBillingManager(db, "meera_mgr");
+    await openSessionFor(db, meera, 150000);
+    const stats = (await billingDeskProvider.load(ctxFor(meera)))[0]!.stats!;
+    expect(stats.find((s) => s.key === "desk.billing.expectedCash")!.value).toBe(formatPaise(150000));
   });
 });

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
-import { fetchWorklist, radiologyErrorText } from "../lib/radiology-api";
+import { fetchOverrideRequests, fetchWorklist, radiologyErrorText } from "../lib/radiology-api";
+import { useAuth } from "../lib/auth";
 import { Button } from "@/components/ui/button";
 import type { WireWorklistRow } from "../lib/radiology-api";
 import { RadiologyStation } from "./radiology-station";
@@ -29,6 +30,19 @@ export function RadiologyWorklist(): React.ReactElement {
     queryFn: () => fetchWorklist(view),
   });
 
+  /**
+   * 18-S RS5 T2 — the prep bay's "please override" requests, for the radiologist, under "Clocks
+   * running": each opens the study console, where the grant or refusal is given with a reason.
+   */
+  const { can } = useAuth();
+  const asks = useQuery({
+    queryKey: ["radiology", "override-requests", "all"],
+    queryFn: () => fetchOverrideRequests(),
+    enabled: can("radiology.gates.override"),
+    retry: false,
+    refetchInterval: 30_000,
+  });
+  const waiting = asks.data?.requests ?? [];
   const rows: WireWorklistRow[] = q.data?.rows ?? [];
   /** `stat` first, then by slot. The sort is presentation; the server owns which rows exist. */
   const ordered = [...rows].sort((a, b) => {
@@ -42,6 +56,23 @@ export function RadiologyWorklist(): React.ReactElement {
       title={t("radiology.worklist.title")}
       place={t("radiology.station.worklistPlace")}
       stats={[{ label: t("radiology.station.onList"), value: rows.length }, { label: t("radiology.station.stat"), value: rows.filter((r) => r.priority === "stat").length, tone: "danger" }]}
+      {...(can("radiology.gates.override") ? {
+        clocks: (
+          <ul className="m-0 list-none space-y-1 p-0 text-sm" data-testid="override-asks">
+            {waiting.map((w) => (
+              <li key={w.approvalId}>
+                <button type="button" className="text-left underline"
+                  onClick={() => { void navigate({ to: "/radiology/studies/$studyId", params: { studyId: w.studyId } }); }}>
+                  {t("radiology.worklist.overrideAsk", { name: w.patientName, gate: t(`radiology.gate.${w.kind}`, { defaultValue: w.kind }), who: w.requesterName ?? "—" })}
+                </button>
+              </li>
+            ))}
+            {waiting.length === 0 && <li className="text-muted-foreground">{t("radiology.worklist.noOverrideAsks")}</li>}
+          </ul>
+        ),
+        clocksAlert: waiting.length > 0,
+        clocksSummary: waiting.length > 0 ? t("radiology.worklist.overrideAsksSummary", { count: waiting.length }) : t("radiology.worklist.noOverrideAsks"),
+      } : {})}
     >
     <div className="space-y-4">
 

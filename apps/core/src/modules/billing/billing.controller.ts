@@ -98,7 +98,13 @@ import {
 } from "./receipts";
 import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
-import { beginClose, confirmClose, listSessions, openSession, recountSession } from "./sessions";
+import { resolveMismatch } from "./recon-resolve";
+import type { ResolveMismatchResult } from "./recon-resolve";
+import { billingOfficeNeeds } from "./office-needs";
+import type { BillingOfficeNeeds } from "./office-needs";
+import { beginClose, confirmClose, isDrawerSupervisor, listSessions, openSession, recountSession } from "./sessions";
+import { drawerOpenItems } from "./drawer-open-items";
+import type { DrawerOpenItems, PartPaidItem } from "./drawer-open-items";
 import { istDay } from "./time";
 import type { FeeQuote } from "./charge-rules";
 import type { BillingConfig } from "./config";
@@ -412,8 +418,16 @@ const issueRefundBody = z.discriminatedUnion("kind", [
     approvalId: z.string().min(1), method: refundMethodSchema,
   }),
 ]);
+// OWNER RULING 2026-09-28 — Aadhaar is never stored: the ID is recorded by TYPE; a reference is optional
+// and `payRefundVoucher` refuses an Aadhaar number in it.
 const payRefundBody = z.object({
-  payeeName: z.string().min(1), payeeIdType: z.string().min(1), payeeIdRef: z.string().min(1),
+  payeeName: z.string().min(1), payeeIdType: z.string().min(1), payeeIdRef: z.string().min(1).optional(),
+});
+// UX-AUDIT 2026-09-28 · BOARD — what the office decided about a settlement mismatch (`recon-resolve.ts`).
+const resolveMismatchBody = z.object({
+  outcome: z.enum(["dispute", "bank_charge", "reupload"]),
+  reason: z.string().min(1).max(500),
+  approvalId: z.string().min(1).optional(),
 });
 const refundsQuery = z.object({
   patientId: z.string().min(1).optional(),
@@ -860,8 +874,18 @@ export class BillingController {
    */
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("receipts")
-  async receiptList(@Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
+  async receiptList(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
     const q = parsed(receiptsQuery, query);
+    /*
+     * OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen"). The UNFILTERED list is every receipt
+     * with its amount, receiver and drawer: a cashier could add up her own open session and read
+     * what her drawer should hold before she counts it. So without a `patientId` it is a drawer
+     * supervisor's list (`billing.session.read`); a cashier's lookup and reprint flows — every web
+     * caller of this route — always name the patient, and those still answer.
+     */
+    if (q.patientId === undefined && !(await isDrawerSupervisor(this.db, actor))) {
+      throw httpError(403, "the unfiltered receipt list is a drawer supervisor's (billing.session.read); name a patient", "receipt_filter_required");
+    }
     const where = q.patientId === undefined ? undefined : eq(receipts.patientId, q.patientId);
     return {
       items: await this.db
@@ -1080,6 +1104,41 @@ export class BillingController {
   }
 
   /**
+   * UX-AUDIT 2026-09-28 — "OPEN ON THIS DRAWER": the acting cashier's own live drawer's open items
+   * (unconfirmed UPI/card, queued cash refunds, part-paid bills). On `billing.session.own` because
+   * it reads only the caller's own drawer, found here and never taken from the URL. Carries NO cash
+   * figure — the close is a blind count (`drawer-open-items.ts`). `null` when no drawer is live.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Get("sessions/current/open-items")
+  async sessionOpenItems(@CurrentActor() actor: Actor): Promise<{
+    items: (Omit<DrawerOpenItems, "partPaid"> & {
+      partPaid: { count: number; paise: number; items: (PartPaidItem & { patientName: string | null; uhid: string | null })[] };
+    }) | null;
+  }> {
+    const own = await listSessions(this.db, { cashierUserId: actor.id });
+    const live = own.find((s) => s.status === "open" || s.status === "closing");
+    if (live === undefined) return { items: null };
+    const found = await drawerOpenItems(this.db, live.id);
+    // The patient's NAME through the one summary helper every billing print uses — so a
+    // confidential patient shows by alias here exactly as everywhere else.
+    const people = await getPatientSummaries(this.db, actor, found.partPaid.items.map((i) => i.patientId));
+    const byId = new Map(people.map((p) => [p.requestedId, p] as const));
+    return {
+      items: {
+        ...found,
+        partPaid: {
+          ...found.partPaid,
+          items: found.partPaid.items.map((i) => {
+            const p = byId.get(i.patientId);
+            return { ...i, patientName: p === undefined ? null : p.restricted ? p.alias : p.name, uhid: p?.uhid ?? null };
+          }),
+        },
+      },
+    };
+  }
+
+  /**
    * FD-11 — WITHDRAW A MISTYPED CLOSING COUNT AND COUNT AGAIN.
    *
    * On the cashier's OWN drawer permission, because it is their own drawer and `recountSession`
@@ -1150,6 +1209,44 @@ export class BillingController {
   async reconMismatches(@CurrentActor() actor: Actor): Promise<{ items: MismatchRow[] }> {
     try {
       return { items: await listMismatches(this.db, actor) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — decide a settlement mismatch: dispute it with the bank, accept it as a
+   * bank charge (OWNER RULING 2026-09-28: up to ₹50.00 per receipt here; above that the first call asks
+   * the owner and the call carrying the granted approval applies it), or send it back for a corrected
+   * statement. On the upload permission: the person who reconciles statements decides what a statement
+   * row that did not reconcile means.
+   */
+  @RequirePermission("billing.recon.upload", "hospital")
+  @Post("recon/mismatches/:tenderId/resolve")
+  async reconResolve(
+    @CurrentActor() actor: Actor, @Param("tenderId") tenderId: string, @Body() body: unknown,
+    @Headers("idempotency-key") idemKey?: string,
+  ): Promise<ResolveMismatchResult> {
+    const b = parsed(resolveMismatchBody, body);
+    try {
+      // A money act on the office screen: a replayed decision returns the original answer (the refunds' shape).
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: `POST /billing/recon/mismatches/${tenderId}/resolve`, key: idemKey },
+        b,
+        () => resolveMismatch(this.db, actor, { tenderId, ...b }),
+      );
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** UX-AUDIT 2026-09-28 · BOARD — the back office's one ranked "needs you today" list (`office-needs.ts`). */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("office/needs")
+  async officeNeeds(@CurrentActor() actor: Actor): Promise<BillingOfficeNeeds> {
+    try {
+      return await billingOfficeNeeds(this.db, actor);
     } catch (e) {
       toHttp(e);
     }

@@ -46,6 +46,12 @@ export type {
   GraceHonorInput, GraceHonorResult, RecognisedCoupon, RecognisedMembership, RecognitionResult,
   ResolveInstrumentsInput,
 } from "./recognition";
+// UX-AUDIT 2026-09-28 · BOARD — the card-recognition counter's own view and its "cards today" list.
+export { cardsToday, nextActOf, recogniseAtCounter, recordRecognition, standingOf } from "./counter-view";
+export type {
+  CardTodayRow, CounterAllowance, CounterHolder, CounterMembership, CounterNextAct, CounterRecognition,
+  CounterStanding,
+} from "./counter-view";
 // RC-2 T4 / D5 — enrol is not apply. The lane refuses while owner ruling O-15 is open.
 export { enrolMember, membershipSalesEnabled, requireSalesLane } from "./enrolment";
 export type { EnrolInput, EnrolResult } from "./enrolment";

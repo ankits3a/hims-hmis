@@ -62,6 +62,18 @@ export const studyTypeSchema = z.object({
   chaperone_required: z.boolean(),
   laterality_applicable: z.boolean(),
   gates: z.array(z.enum(IMAGING_GATE_KIND_VALUES)).default([]),
+  /**
+   * 18-S RS12b — an image-guided PROCEDURE (PCN, PTBD, CT-guided biopsy, angiography), worked in the
+   * IR suite: WHO sign in → time out → sign out, the sedation chart, Ka,r with the skin-dose alerts
+   * (`ir.ts`). Optional so every book published before RS12b still parses; absent means false.
+   */
+  interventional: z.boolean().optional(),
+  /**
+   * 18-S RS12b — the SIR 2019 bleeding-risk class of the procedure. `high` (PCN, PTBD, solid-organ
+   * biopsy) makes the sign-in ask the lab for INR ≤ 1.5 and platelets ≥ 50,000/µL within 7 days;
+   * `low` (or absent) asks nothing. Only meaningful on an interventional type.
+   */
+  bleeding_risk: z.enum(["low", "high"]).optional(),
 });
 
 export const studyTypesBodySchema = z.object({
@@ -143,7 +155,28 @@ export const pacsSettingsBodySchema = z.object({
       return names.length > 0 && names.every((n) => (VIEWER_URL_PLACEHOLDERS as readonly string[]).includes(n));
     }, { message: `the template must name at least one of {${VIEWER_URL_PLACEHOLDERS.join("} {")}} and nothing else in braces` }),
   enabled: z.boolean(),
-});
+  /**
+   * 18-S RS12 — which viewer the template points at (ruling 6: OHIF). Optional so every book
+   * published before RS12 still parses; `ohif` is checked at publish for the one query OHIF opens a
+   * study by, `StudyInstanceUIDs={studyInstanceUid}` — an OHIF link by accession opens an empty
+   * study list, which a reader would take for "no images".
+   */
+  viewer: z.enum(["ohif", "other"]).optional(),
+  /**
+   * 18-S RS12 — the archive (Orthanc) this hospital runs, for the runbook and the census: its
+   * DICOM AE title and its web address on the hospital network. HMIS never calls it — the bridge
+   * on the archive host forwards arrivals and dose reports to HMIS (`pacs.ts`) — so this is a
+   * statement of configuration, and its absence is what the census reads as "PACS not configured".
+   */
+  archive: z.object({
+    kind: z.literal("orthanc"),
+    ae_title: z.string().regex(/^[A-Z0-9_]{1,16}$/, { message: "an AE title is A-Z, 0-9 and _, at most 16" }),
+    base_url: z.string().url().max(500),
+  }).optional(),
+}).refine(
+  (b) => b.viewer !== "ohif" || b.viewer_url_template.includes("StudyInstanceUIDs={studyInstanceUid}"),
+  { message: "an OHIF viewer opens a study by StudyInstanceUIDs={studyInstanceUid} — put that in the template" },
+);
 
 /**
  * PLAN 18c T3 / D6 — **DIAGNOSTIC REFERENCE LEVELS, a governed book like every other.**
@@ -163,7 +196,8 @@ export const pacsSettingsBodySchema = z.object({
  * examinations: DLP for a CT protocol, DAP for an interventional room, fluoroscopy seconds for a
  * screening procedure. `aerb/units.ts` owns what each one is measured in.
  */
-export const DRL_QUANTITIES = ["ctdivol", "dlp", "dap", "fluoro_seconds"] as const;
+/** 18-S RS12 — `agd` added: a mammography DRL is set on Average Glandular Dose (AERB, ICRP 135). */
+export const DRL_QUANTITIES = ["ctdivol", "dlp", "dap", "fluoro_seconds", "agd"] as const;
 
 export const doseReferenceLevelsBodySchema = z.object({
   levels: z.array(z.object({

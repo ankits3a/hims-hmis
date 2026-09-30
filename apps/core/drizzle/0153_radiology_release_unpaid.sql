@@ -1,0 +1,2 @@
+ALTER TABLE "imaging_report_handovers" ADD COLUMN "release_approval_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "imaging_report_handovers_release_ux" ON "imaging_report_handovers" USING btree ("release_approval_id") WHERE "imaging_report_handovers"."release_approval_id" is not null;

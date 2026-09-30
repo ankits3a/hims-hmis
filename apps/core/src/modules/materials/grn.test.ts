@@ -12,7 +12,7 @@ import { registerMaterialsApprovalTypes } from "./approval-types";
 import { registerItem, setPriceRegulation } from "./items";
 import { createStore } from "./stores";
 import { balances, movementsFor, recallBatch } from "./ledger";
-import { captureGrn, getGrn, listGrns, lotsForBatch, postGrn, requestNearExpiryAcceptance, runGateQc } from "./grn";
+import { captureGrn, getGrn, listGrns, lotsForBatch, nearExpiryAcceptanceView, postGrn, requestNearExpiryAcceptance, runGateQc } from "./grn";
 import { activateVendor, addVendorDocument, blacklistVendor, registerVendor } from "./vendors";
 import type { CaptureLine } from "./grn";
 import type { Actor } from "@hmis/contracts";
@@ -742,6 +742,34 @@ describe("the GRN gate (Plan 14 T6)", () => {
     // The event names the approval that allowed it — the audit trail for short-dated stock.
     const received = await eventsNamed("grn.received");
     expect((received[0]?.payload as { approvalId: string }).approvalId).toBe(approvalId);
+  });
+
+  /**
+   * WALK FINDING 2026-09-29 — the approver's card read only "Accept a delivery of items that expire
+   * soon — Asked by …": no GRN, no supplier, no drug, no batch, no date. The view is what the card
+   * shows: the GRN and its supplier, and ONLY the near-expiry lines, each with batch, expiry, the
+   * days left on the approver's day (IST) and the quantity in base units.
+   */
+  it("WALK FINDING — the near-expiry approval names the GRN, the supplier and each short-dated line with its days left", async () => {
+    await seedSodPairs(db);
+    await registerMaterialsApprovalTypes(db, { type: "user", id: "seed-materials" });
+    const reag = await drugItem("REAG", { shelfLifeDays: 180 });
+    const croc = await drugItem("CROC500");
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId, invoiceNo: "INV/77",
+      challanNo: "CH/NEAR2", challanDate: CHALLAN, now: T0,
+      lines: [goodLine(croc), goodLine(reag, { batchNo: "RG-9", expiryDate: "2026-12-05" })],
+    }));
+    await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+    const grn = await getGrn(db, grnId);
+    const view = await nearExpiryAcceptanceView(db, grnId, T0);
+    expect(view).toEqual({
+      grnId, grnNo: grn!.grnNo, vendorName: "Acme Pharma Pvt Ltd", challanNo: "CH/NEAR2", invoiceNo: "INV/77",
+      lines: [{ itemCode: "REAG", itemName: "Item REAG", batchNo: "RG-9", expiryDate: "2026-12-05", daysLeft: 100, qtyBase: 300, baseUom: "tablet" }],
+    });
+    await expect(nearExpiryAcceptanceView(db, newId(), T0)).rejects.toMatchObject({ code: "unknown_document" });
   });
 
   it("requesting a near-expiry acceptance for a GRN with no near-expiry line is refused", async () => {

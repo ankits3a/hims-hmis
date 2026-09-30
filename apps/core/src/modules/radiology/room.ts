@@ -15,6 +15,7 @@ import { imagingExposureRepeated, REPEAT_REASON_CODES } from "./events";
 import { clearanceOf } from "./read";
 import { activeDoseReferenceLevels, requireStudyType } from "./study-types";
 import { mintStudyInstanceUid } from "./uid";
+import { pendingDoseFor } from "./pacs";
 import type { ImagingDeviceRow } from "./devices";
 import type { DoseReferenceLevel, ImagingProtocol } from "./definitions";
 import type { RepeatReasonCode } from "./events";
@@ -77,6 +78,11 @@ export type RoomView = {
   drl: DoseReferenceLevel[];
   renal: { creatinineUmolL: number | null; egfr: number | null; sampledAt: string | null } | null;
   repeats: { reason: RepeatReasonCode; at: Date }[];
+  /**
+   * 18-S RS12 — the machine's Radiation Dose SR, when the archive forwarded one before Send. The
+   * console then shows it and asks for no typing: Send records these numbers (`dose_sr`).
+   */
+  doseReport: { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null; kar?: number | null } | null;
 };
 
 /** Whole years between a date of birth and `now`, or null when the master holds no DOB. */
@@ -208,6 +214,7 @@ export async function roomView(db: Db, actor: Actor, studyId: string, now: Date 
     drl,
     renal,
     repeats,
+    doseReport: (await pendingDoseFor(db, study.id, { lock: false }))?.latest ?? null,
   };
 }
 

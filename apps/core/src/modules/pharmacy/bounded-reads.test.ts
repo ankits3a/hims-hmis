@@ -332,7 +332,7 @@ describe("the pharmacy counter over a national-scale catalogue", () => {
 
     const reg = await db.select().from(pharmacyRegH1);
     expect(reg).toHaveLength(1); // the H1 line only — paracetamol is OTC and carries no register row
-    expect(reg[0]).toMatchObject({ drugName: "Azee 500 500 mg tablet", batchNo: "AZ-1", qtyBase: 3, unit: "tablet", medicineId: fx.med.azithro });
+    expect(reg[0]).toMatchObject({ drugName: "Azee 500 tablet", batchNo: "AZ-1", qtyBase: 3, unit: "tablet", medicineId: fx.med.azithro });
     expect(h.lines.map((l) => l.batchId)).toEqual([crocinBatch, azeeBatch]);
   });
 });

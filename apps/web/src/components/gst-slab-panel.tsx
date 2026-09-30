@@ -40,7 +40,9 @@ export function GstSlabPanel(): React.ReactElement | null {
       <p className="max-w-3xl text-sm text-muted-foreground">{t("pharmacyItems.gstIntro")}</p>
       {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {note !== null && <p role="status" className="text-sm text-green-700">{note}</p>}
-      {rows.length === 0 ? <p className="text-sm">{t("pharmacyItems.gstAllOk", { n: plan.data.length })}</p> : (
+      {/* B5 — with no drug on the item master there is nothing to be "all" of: say what is missing instead. */}
+      {plan.data.length === 0 ? <p className="text-sm" data-testid="gst-no-drugs">{t("pharmacyItems.gstNoDrugs")}</p>
+        : rows.length === 0 ? <p className="text-sm">{t("pharmacyItems.gstAllOk", { n: plan.data.length })}</p> : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

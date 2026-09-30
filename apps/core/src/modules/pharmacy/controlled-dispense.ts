@@ -1,5 +1,6 @@
 import { withTx } from "../../kernel/db/client";
 import { invoiceHeadsByIds } from "../billing";
+import { medicinesByIds } from "../formulary";
 import { captureDocument, getPatient, listDocuments } from "../patients";
 import { controlledLicenceStates, controlOf, isEndPrescriber, LICENCE_NAMES, requireCustodian, requirePerson, verifyWitness } from "./controlled";
 import { getDispenseRow } from "./queue";
@@ -34,6 +35,8 @@ import type { ControlledLicenceKind, WitnessInput } from "./controlled";
  */
 export type ControlledLineFacts = {
   lineIdx: number; drug: string; scheduleFlag: string | null; ndpsClass: string | null; qtyBase: number | null; rxLine: RxLine; status: string;
+  /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (`pick.ts` split it). */
+  splitFromLineIdx?: number | null;
 };
 
 export type ControlledCheck = {
@@ -82,13 +85,28 @@ export async function controlledChecklist(
   }
   const address = input.patientAddress?.trim() ?? "";
   checks.push({ key: "patient_address", ok: address !== "", atHandover: false, detail: address === "" ? "no address on the patient's record" : address });
+  // The prescribed medicine's strength turns a dose written as a mass ("10 mg") into tablets; without it the
+  // prescribed quantity is unknown and the check fails closed, never the milligrams read as a count.
+  const prescribedMeds = await medicinesByIds(db, lines.map((l) => l.rxLine.medicineId ?? null).filter((m): m is string => m !== null));
+  /*
+    DESK FIXES 2026-09-30 — the limit is the PRESCRIPTION LINE's: a line the pick split across batches is
+    read whole (its own rows plus every row split from it), or 4 + 4 of a 5-tablet prescription would pass
+    as two lines of 4. Each row still gets its own register particulars (`lineFacts`, the custody below).
+  */
+  const givenOf = (l: ControlledLineFacts): number | null => {
+    if (l.qtyBase === null) return null;
+    return lines.filter((x) => x.splitFromLineIdx === l.lineIdx).reduce((n, x) => n + (x.qtyBase ?? 0), l.qtyBase);
+  };
   const lineFacts = lines.map((l, i) => {
-    const prescribed = prefillQtyBase(l.rxLine);
-    const ok = prescribed !== null && l.qtyBase !== null && l.qtyBase <= prescribed;
-    checks.push({
-      key: "quantity", ok, atHandover: false,
-      detail: `line ${String(l.lineIdx + 1)} ${l.drug}: ${l.qtyBase === null ? "—" : String(l.qtyBase)} of ${prescribed === null ? "no stated quantity" : String(prescribed)} prescribed`,
-    });
+    const prescribed = prefillQtyBase(l.rxLine, prescribedMeds.get(l.rxLine.medicineId ?? "")?.strengthLabel);
+    if (l.splitFromLineIdx == null) {
+      const given = givenOf(l);
+      const ok = prescribed !== null && given !== null && given <= prescribed;
+      checks.push({
+        key: "quantity", ok, atHandover: false,
+        detail: `line ${String(l.lineIdx + 1)} ${l.drug}: ${given === null ? "—" : String(given)} of ${prescribed === null ? "no stated quantity" : String(prescribed)} prescribed`,
+      });
+    }
     return { lineIdx: l.lineIdx, drug: l.drug, scheduleX: controls[i]!.scheduleX, ndpsClass: controls[i]!.ndpsClass, prescribedQty: prescribed, qtyBase: l.qtyBase };
   });
   checks.push({ key: "retained_prescription", ok: false, atHandover: true, detail: anyX ? "the duplicate, kept two years (r.65(9)(a))" : "a copy kept with the register" });

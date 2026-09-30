@@ -7,6 +7,7 @@ import { orderItems } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
+import { isTreatingDoctor } from "./closed-loop";
 import { outsideStudyFor } from "./outside";
 import { mintStudyInstanceUid } from "./uid";
 import { IMAGES_READ, studyImageViews } from "./views"; // pass 2 N2 — the button follows the door's own string
@@ -247,6 +248,11 @@ export type StudyView = WorklistRow & {
   views: ImageViewRow[];
   /** Close review B4 — the screen renders "Open images" because the SERVER says this reader may. */
   canOpenImages: boolean;
+  /**
+   * 18-S RS12 — the archive's word: when it first said it holds this study, and how much. Null
+   * until a notice matched (or a human attached one) — not the same as "no images".
+   */
+  archive: { arrivedAt: Date; seriesCount: number; instanceCount: number } | null;
   reports: { id: string; version: number; status: string; publishedAt: Date | null; machineDrafted: boolean }[];
 };
 
@@ -309,6 +315,9 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),
     views: await studyImageViews(db, studyId),
     canOpenImages: await hasPermission(db, actor.id, IMAGES_READ, "hospital"),
+    archive: row.study.imagesArrivedAt === null
+      ? null
+      : { arrivedAt: row.study.imagesArrivedAt, seriesCount: row.study.imageSeriesCount ?? 0, instanceCount: row.study.imageInstanceCount ?? 0 },
     reports,
   };
 }
@@ -405,8 +414,19 @@ export async function reportView(db: Db, actor: Actor, reportId: string): Promis
    * succeeded — so the write is last, after the PHI log, and its only effect on the caller is a
    * column they do not read.
    */
+  /**
+   * ═══ 18-S RS9 T1 — AND IT MUST BE THE TREATING DOCTOR'S READ ═══
+   *
+   * The first version stamped the first read for ANY holder of `radiology.reports.read` who was not
+   * the signer — and the radiographer holds it. A technologist opening the report to check a
+   * measurement silenced the Unread Watchman exactly as the doctor who ordered the scan would have,
+   * so the net meant to catch "the clinician never saw it" caught nothing whenever the department
+   * looked at its own work (RS9 spike a). The read that lands is the TREATING doctor's: the ordering
+   * clinician or the visit's doctor (`closed-loop.ts`). A study with no in-house treating doctor (an
+   * outside prescription) has its first read stamped at the hand-over desk instead (`release.ts`).
+   */
   if (row.report.status === "signed" && row.report.publishedAt !== null
-      && row.report.signerId !== actor.id) {
+      && row.report.signerId !== actor.id && await isTreatingDoctor(db, actor, row.study.id)) {
     /**
      * An UPSERT on `imaging_report_delivery`, not an update of the report: the report row is
      * append-only by database trigger (`imaging_reports_forbid_mutation`, migration 0047) and only

@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patient Profile Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f4f7f4;--card:#ffffff;--ink:#132420;--line:#dfe7e1;--line2:#ecf1ed;--dim:#5c6f66;--faint:#8ea69a;--wash:#eef3ef;
+--green:#0e6b4e;--green-soft:rgba(14,107,78,.08);--green-line:rgba(14,107,78,.35);--gold:#dd8f1c;--gold-ink:#9a6208;--gold-soft:rgba(221,143,28,.10);--gold-line:rgba(221,143,28,.45);
+--red:#b23a30;--red-soft:rgba(178,58,48,.08);--red-line:rgba(178,58,48,.4);--agent:#132420;--agent-fg:#d9efe4;--mint:#35c48f}
+*{box-sizing:border-box}
+body{margin:0;background:#e8eee9;color:var(--ink);font-family:"IBM Plex Sans","IBM Plex Sans Devanagari",system-ui,sans-serif}
+.hi{font-family:"IBM Plex Sans Devanagari","IBM Plex Sans",sans-serif}
+.mo{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:var(--dim)}
+.pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+.sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+.sec.rd{border-color:var(--red-line);color:var(--red)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+.pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+.pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold-ink)}
+.pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+.src{display:inline-flex;align-items:center;justify-content:center;width:46px;height:20px;border-radius:3px;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:700;letter-spacing:.1em;border:1px solid var(--line);color:var(--dim);background:var(--wash);flex-shrink:0}
+.ns{display:inline-flex;align-items:center;height:17px;padding:0 6px;border-radius:3px;border:1px dashed var(--gold);color:var(--gold-ink);font-family:"IBM Plex Mono",monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;vertical-align:middle}
+.nav{display:inline-flex;align-items:center;height:46px;padding:0 11px;font-size:12.5px;font-weight:500;color:var(--dim);border-bottom:2px solid transparent}
+.nav.on{color:var(--ink);font-weight:600;border-bottom-color:var(--green)}
+.fact{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.fact>span:first-child{color:var(--dim)}
+.wrap{max-width:1520px;margin:0 auto;padding:24px 24px 60px}
+.strip{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:14px 18px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.strip h1{margin:0;font-size:17px;font-weight:600}
+.cap{display:flex;align-items:baseline;gap:12px;margin:34px 0 10px;flex-wrap:wrap}
+.cap h2{margin:0;font-size:15px;font-weight:600}
+.cap p{margin:0;font-size:12.5px;color:var(--dim)}
+.scroll{overflow-x:auto;padding-bottom:8px}
+.ab{background:var(--paper);border:1px solid #c9d6cd;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(19,36,32,.08)}
+.hdr{height:46px;display:flex;align-items:center;gap:4px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;padding-right:14px;margin-right:6px;border-right:1px solid var(--line)}
+.lane{width:316px;flex-shrink:0;border-right:1px solid var(--line);background:var(--card);display:flex;flex-direction:column}
+.side{width:300px;flex-shrink:0;border-left:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--paper)}
+.ph{width:52px;height:62px;border-radius:5px;background:linear-gradient(160deg,#dfe7e1,#c7d5cb);flex-shrink:0;display:flex;align-items:flex-end;justify-content:center;font-size:9px;color:var(--dim);padding-bottom:3px}
+.safety{border:1px solid var(--red-line);background:var(--red-soft);border-radius:8px;padding:10px 12px}
+.al{display:flex;gap:8px;align-items:baseline;font-size:12.5px;line-height:18px;padding:2px 0}
+.sev{font-size:10px;font-weight:600;padding:0 5px;border-radius:3px;border:1px solid var(--line);color:var(--dim);background:var(--card);white-space:nowrap}
+.sev.s{border-color:var(--red-line);color:var(--red);background:#fff}
+.today{border:1px solid var(--green-line);background:var(--green-soft);border-radius:8px;padding:12px 14px;display:flex;gap:18px;align-items:flex-start}
+.tl{position:relative}
+.day{display:flex;align-items:center;gap:10px;margin:16px 0 6px}
+.day .d{font-size:12.5px;font-weight:600}
+.day .ln{flex:1;height:1px;background:var(--line)}
+.ev{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-top:1px solid var(--line2);font-size:12.5px;line-height:17px}
+.ev:first-child{border-top:0}
+.ev .t{font-weight:600}
+.ev .s{color:var(--dim);font-size:11.5px}
+.ev .r{margin-left:auto;text-align:right;white-space:nowrap}
+.hl{color:var(--red);font-weight:600}
+.chip{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:13px;border:1px solid var(--line);background:var(--card);font-size:11.5px;color:var(--dim)}
+.chip.on{border-color:var(--green-line);color:var(--green);background:var(--green-soft)}
+.act{display:flex;align-items:center;gap:8px;width:100%;justify-content:flex-start}
+.agent{border-color:var(--green-line);box-shadow:inset 3px 0 0 var(--mint);padding:12px 14px}
+.dock{border-top:1px solid var(--line);background:var(--card);padding:10px 16px;display:flex;align-items:center;gap:12px}
+.why{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.why .box{padding:14px 16px;font-size:13px;line-height:19px}
+.why b{display:block;font-size:13px;margin-bottom:4px}
+.was{color:var(--red);font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.wrong{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px}
+.wrong .box{padding:12px 14px;font-size:12.5px;line-height:18px}
+.wrong .m{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--red);font-weight:600}
+.cmpt{width:100%;border-collapse:collapse;font-size:12.5px}
+.cmpt th{text-align:left;padding:8px 12px;background:var(--wash);border-bottom:1px solid var(--line);font-weight:600}
+.cmpt td{padding:8px 12px;border-top:1px solid var(--line2);vertical-align:top}
+@media (max-width:760px){.why{grid-template-columns:1fr}.wrap{padding:16px 16px 40px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="strip">
+  <span class="tag" style="color:var(--green)">Board</span>
+  <h1>Patient profile</h1>
+  <span class="mo" style="font-size:12px;color:var(--dim)">/patients/:id</span>
+  <span class="pill gd">draft for approval</span>
+  <span class="mo" style="font-size:12px;color:var(--dim)">29-Sep-2026</span>
+  <span style="flex-grow:1"></span>
+  <span style="font-size:12px;color:var(--dim)">Patient 360 for the front desk, the doctor and the billing clerk · synthetic patient · <span class="ns">needs server</span> = drawn, not yet on the server</span>
+</div>
+
+<!-- TODAY -->
+<div class="cap"><h2>0 · What is wrong today</h2><p>Measured in Chromium on 29-Sep-2026 with a busy synthetic patient (3 active allergies, 1 corrected, a guardian, 3 linked records, ABHA, old paper UHID).</p></div>
+<div class="wrong">
+  <div class="box"><div class="m">allergies at y = 1,137 px · fold 900</div><b>Allergies are below the fold.</b> A 20-field edit form sits above them. A Penicillin anaphylaxis is not visible until you scroll past the address and PIN code.</div>
+  <div class="box"><div class="m">0 visits · 0 bills · 0 results · 0 documents</div><b>No history at all.</b> The page fetches only the patient row, allergies, guardians, linked records and the QR. The server already has visit timeline, dues, balance, lab and radiology reports, documents and dispenses per patient; none are shown.</div>
+  <div class="box"><div class="m">20 open inputs on load</div><b>It is an edit form, not a profile.</b> Every field is live on arrival; reading the record and changing it are the same screen, with one Save at the bottom.</div>
+  <div class="box"><div class="m">390 px: page 541 px wide · labels overlap</div><b>Phone is broken.</b> The 320 px left column never stacks; the form is squeezed to ~120 px ("Full name" and "Mobile number" print over each other) and the allergy table renders empty.</div>
+  <div class="box"><div class="m">"1955-03-12" · "03/12/1955" · "self_declared"</div><b>Raw dates and enums.</b> Card shows the ISO date; the date input shows US month-first (12 March reads as 3 December); ABHA status is the enum string; guardian relationship shows "(other)".</div>
+  <div class="box"><div class="m">"3.01J9PATKAMLA…b7e1f09c44"</div><b>Internal id on screen.</b> The QR payload, which contains the internal patient id, is printed under the card.</div>
+  <div class="box"><div class="m">both mobiles in full, 4 places</div><b>No masking.</b> Mobile and alternate in the form, the guardian's number, and each linked record's "shares 98290…".</div>
+  <div class="box"><div class="m">restricted: real name as the H1</div><b>Sealed record shows the real name.</b> The alias is a grey 12 px bracket beside it; the real name also sits in the Full name field. Only the printed card uses the alias.</div>
+  <div class="box"><div class="m">0 permission checks in the screen or the route</div><b>Every act shows to every role.</b> Mark deceased, Reissue card, End guardian, Take payment all draw for anyone who reaches the URL; the server refuses later.</div>
+  <div class="box"><div class="m">"Print card", "Save consent" unstyled</div><b>Two buttons look like text</b> (the <span class="mo">.pp</span> reset strips them). "Mark deceased" is the first thing in the main column, above the name's details.</div>
+</div>
+
+<!-- DESKTOP -->
+<div class="cap"><h2>1 · Desktop 1440 — front-desk clerk</h2><p>Who (left, safety first) · where today and the one timeline (centre) · the acts this role may take (right). Nothing is editable until "Edit details".</p></div>
+<div class="scroll"><div class="ab" style="width:1440px">
+  <header class="hdr">
+    <div class="brand"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg><span class="mo" style="font-size:12px;font-weight:700;letter-spacing:.12em">FRONT DESK</span></div>
+    <nav style="display:flex"><a class="nav">Desk One</a><a class="nav">Appointments</a><a class="nav on">Patients</a><a class="nav">Merge review</a><a class="nav">Dues</a></nav>
+    <span style="flex-grow:1"></span>
+    <span class="sec" style="height:30px;color:var(--dim)">Find a patient <span class="kb">F8</span></span>
+    <span class="mo" style="margin:0 14px;font-size:11px;color:var(--dim)">TUE 29-SEP-2026 · 11:40</span>
+    <span style="font-size:12.5px;font-weight:600">Neha Joshi <span style="font-weight:400;color:var(--dim)">· Front desk</span></span>
+  </header>
+  <div style="display:flex;height:1010px">
+    <!-- LEFT: who -->
+    <aside class="lane">
+      <div style="padding:16px 18px 12px;display:flex;gap:12px">
+        <div class="ph">photo</div>
+        <div style="min-width:0">
+          <h2 style="margin:0;font-size:18px;line-height:23px;font-weight:600">Kamla Devi Sharma</h2>
+          <div class="hi" style="font-size:12.5px;color:var(--dim)">कमला देवी शर्मा</div>
+          <div class="mo" style="font-size:13px;margin-top:2px">HMS0000014207</div>
+          <div style="font-size:12px;color:var(--dim)">71 y · Female · B+</div>
+        </div>
+      </div>
+      <div style="padding:0 18px">
+        <div class="safety">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="tag" style="color:var(--red)">Allergies · 3 active</span><span style="margin-left:auto;font-size:11.5px;color:var(--green);font-weight:600">+ Add</span></div>
+          <div class="al"><b>Penicillin</b><span style="flex:1">anaphylaxis</span><span class="sev s">severe</span></div>
+          <div class="al"><b>Sulfa drugs</b><span style="flex:1">rash</span><span class="sev">moderate</span></div>
+          <div class="al"><b>Iodinated contrast</b><span style="flex:1;color:var(--dim)">reaction not recorded</span><span class="sev">mild</span></div>
+          <div style="font-size:11px;color:var(--dim);margin-top:4px">1 corrected entry · shown struck through under Edit details</div>
+        </div>
+        <div class="tag" style="margin:14px 0 2px">Identity</div>
+        <div class="fact"><span>Born</span><span>12-Mar-1955</span></div>
+        <div class="fact"><span>Mobile</span><span class="mo">•••••• 1236 <span style="font-family:'IBM Plex Sans';color:var(--green);font-weight:600;font-size:11.5px">Show</span></span></div>
+        <div class="fact"><span>Alternate</span><span class="mo">•••••• 2871</span></div>
+        <div class="fact"><span>Address</span><span style="text-align:right">Shastri Nagar, Jaipur 302016</span></div>
+        <div class="fact"><span>Language</span><span>Hindi</span></div>
+        <div class="fact"><span>ABHA</span><span>kamla.sharma55@abdm <span class="pill gd" style="height:18px;font-size:9.5px">not verified</span></span></div>
+        <div class="fact"><span>Identity</span><span>Staff verified</span></div>
+        <div class="fact"><span>Paper file</span><span class="mo">JPR/2011/0448</span></div>
+        <div class="fact"><span>Patient since</span><span>12-Jan-2011 · 17 visits <span class="ns">needs server</span></span></div>
+        <div class="tag" style="margin:14px 0 2px">People</div>
+        <div class="fact"><span>Representative</span><span style="text-align:right">Rajesh Kumar Sharma<br><span style="font-size:11px;color:var(--dim)">declared · messages, consents, bills · to 31-Mar-2027</span></span></div>
+        <div class="fact"><span>Same mobile</span><span style="text-align:right;color:var(--green);font-weight:500">Rajesh K. Sharma · Pooja Sharma<br>Aarav Sharma (12 y)</span></div>
+        <p style="margin:4px 0 0;font-size:11px;line-height:15px;color:var(--dim)">"Same mobile" is inferred, never a relationship. Only the representative was declared.</p>
+      </div>
+      <div style="flex-grow:1"></div>
+      <div style="padding:10px 18px;border-top:1px solid var(--line);font-size:11px;color:var(--dim);display:flex;gap:10px;flex-wrap:wrap"><span><span class="kb">⏎</span> open visit</span><span><span class="kb">E</span> edit</span><span><span class="kb">P</span> print card</span><span><span class="kb">F2</span> ask</span></div>
+    </aside>
+
+    <!-- CENTRE -->
+    <main style="flex-grow:1;min-width:0;padding:16px 20px;overflow:hidden">
+      <div class="tag" style="margin-bottom:6px">Today · 29-Sep-2026</div>
+      <div class="today">
+        <div style="flex:1"><div style="font-weight:600;font-size:14px">In the Cardiology queue · token C-14</div><div style="font-size:12px;color:var(--dim)">2nd in line for Dr. A. Mathur · arrived 10:52 · consult fee paid ₹500.00</div></div>
+        <div style="flex:1"><div style="font-weight:600;font-size:14px">Lab · 2 tests collected</div><div style="font-size:12px;color:var(--dim)">Lipid profile, HbA1c · sample 10:12 · results due 14:00</div></div>
+        <div style="flex:0 0 190px;border-left:1px solid var(--green-line);padding-left:14px"><div style="font-weight:600;font-size:14px;color:var(--gold-ink)">₹650.00 due</div><div style="font-size:12px;color:var(--dim)">from 02-Aug-2026 · bill OP/26/003982</div></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin:18px 0 0">
+        <h3 style="margin:0;font-size:15px;font-weight:600;flex:1">History · newest first</h3>
+      </div>
+
+      <div class="day"><span class="d">27-Sep-2026</span><span class="ln"></span></div>
+      <div class="box">
+        <div class="ev"><span class="src">LAB</span><div><div class="t">HbA1c <span class="hl">8.1 % · high</span></div><div class="s">Report signed · Central Lab</div></div><span class="r" style="color:var(--green);font-weight:600">Open report</span></div>
+      </div>
+      <div class="day"><span class="d">18-Sep-2026</span><span class="ln"></span></div>
+      <div class="box">
+        <div class="ev"><span class="src">OPD</span><div><div class="t">General Medicine · Dr. S. Rao</div><div class="s">Type 2 diabetes · hypertension · 4 medicines prescribed</div></div><span class="r s">visit OP-26-18422</span></div>
+        <div class="ev"><span class="src">XRAY</span><div><div class="t">Chest X-ray PA</div><div class="s">Reported: no active lung lesion</div></div><span class="r" style="color:var(--green);font-weight:600">Open report</span></div>
+        <div class="ev"><span class="src">BILL</span><div><div class="t">OP/26/004411 · consultation, X-ray</div><div class="s">paid by UPI</div></div><span class="r mo">₹1,240.00</span></div>
+        <div class="ev"><span class="src">PHAR</span><div><div class="t">Pharmacy sale PH/26/08817 · 4 items</div><div class="s">paid in cash</div></div><span class="r mo">₹863.50</span></div>
+      </div>
+      <div class="day"><span class="d">02-Aug-2026</span><span class="ln"></span></div>
+      <div class="box">
+        <div class="ev"><span class="src">OPD</span><div><div class="t">Orthopaedics · Dr. R. Menon</div><div class="s">Osteoarthritis, both knees · physiotherapy advised</div></div><span class="r s">visit OP-26-11903</span></div>
+        <div class="ev" style="background:var(--gold-soft)"><span class="src">BILL</span><div><div class="t">OP/26/003982 · X-ray both knees, consult</div><div class="s">₹1,500.00 paid · <b style="color:var(--gold-ink)">₹650.00 due</b></div></div><span class="r mo">₹2,150.00</span></div>
+        <div class="ev"><span class="src">DOC</span><div><div class="t">Outside discharge summary · SMS Hospital</div><div class="s">scanned at the desk · 3 pages</div></div><span class="r" style="color:var(--green);font-weight:600">View</span></div>
+      </div>
+      <div class="day"><span class="d">14 earlier visits · since 12-Jan-2011</span><span class="ln"></span><span style="font-size:12px;color:var(--green);font-weight:600">Show more</span></div>
+      <p style="font-size:11.5px;color:var(--dim);margin:6px 0 0">One list for visits, lab and radiology reports, bills, pharmacy sales and documents, from the endpoints that already exist. No filter chips or tabs (owner rule): the source chip on each row says what it is.</p>
+    </main>
+
+    <!-- RIGHT: acts -->
+    <aside class="side">
+      <section class="box" style="padding:14px">
+        <div class="tag" style="margin-bottom:10px">Next act</div>
+        <span class="pri" style="width:100%">Open at Desk One <span class="kb" style="background:transparent;color:#cfe8dc;border-color:#3f8a70">⏎</span></span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          <span class="sec">Book</span><span class="sec">Take ₹650.00</span><span class="sec">Print card</span><span class="sec">Edit details</span>
+        </div>
+        <div class="tag" style="margin:14px 0 6px">Less often</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+          <span style="color:var(--green)">Verify ABHA with ABDM</span>
+          <span style="color:var(--green)">Add a representative</span>
+          <span style="color:var(--green)">Reissue card <span style="color:var(--dim)">· old cards stop working</span></span>
+          <span style="color:var(--green)">Ask for a merge <span style="color:var(--dim)">· goes to the MS</span></span>
+          <span style="color:var(--red)">Record a death</span>
+        </div>
+        <p style="margin:10px 0 0;font-size:11px;line-height:15px;color:var(--dim)">Each act is drawn only for a role that holds its permission. The clerk never sees a button the server would refuse.</p>
+      </section>
+      <section class="box" style="padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px"><span class="tag" style="flex:1">Card</span><span class="pill on">in use</span></div>
+        <div style="font-weight:600;margin-top:6px;font-size:13px">Arogya Family Card · Gold</div>
+        <div class="mo" style="font-size:12px">AZ-4471-2093</div>
+        <div style="font-size:11.5px;color:var(--dim)">to 30-Mar-2027 · 3 of 4 free consults left <span class="ns">needs server</span></div>
+      </section>
+      <section class="box" style="padding:12px 14px">
+        <div class="tag">Messages</div>
+        <div style="font-size:12.5px;margin-top:4px">Hindi · promotional messages: <b>yes</b> <span style="color:var(--green);font-weight:600;font-size:11.5px">Change</span></div>
+      </section>
+      <section class="box agent">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--mint)"></span><span class="tag" style="color:var(--green)">Desk copilot · spotted</span></div>
+        <p style="margin:8px 0 0;font-size:12.5px;line-height:17px">₹650.00 has been due since 02-Aug-2026. She is at the desk now; mention it before she goes in?</p>
+      </section>
+    </aside>
+  </div>
+</div></div>
+
+<!-- EDIT -->
+<div class="cap"><h2>2 · "Edit details" — a drawer, not the page</h2><p>Opens over the timeline from the right; the lane stays visible so the clerk still sees who and the allergies. Same PATCH as today (changed fields only, reason for identity fields).</p></div>
+<div class="scroll"><div class="ab" style="width:760px">
+  <div style="display:flex;height:420px">
+    <div style="flex:1;background:rgba(19,36,32,.06);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--dim)">timeline, dimmed</div>
+    <div style="width:520px;background:var(--card);border-left:1px solid var(--line);display:flex;flex-direction:column">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center"><b style="flex:1">Edit details · Kamla Devi Sharma</b><span class="kb">Esc</span></div>
+      <div style="padding:14px 18px;font-size:12.5px;flex:1">
+        <div style="display:flex;gap:8px;margin-bottom:12px"><span class="chip on">Identity</span><span class="chip">Contact &amp; address</span><span class="chip">ABHA</span><span class="chip">Allergies</span><span class="chip">Representative</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><div class="tag">Full name</div><div class="box" style="padding:8px 10px">Kamla Devi Sharma</div></div>
+          <div><div class="tag">Date of birth</div><div class="box" style="padding:8px 10px">12-Mar-1955 <span style="color:var(--dim)">· 71 y</span></div></div>
+          <div><div class="tag">Gender</div><div class="box" style="padding:8px 10px">Female</div></div>
+          <div><div class="tag">Blood group</div><div class="box" style="padding:8px 10px">B+</div></div>
+        </div>
+        <div style="margin-top:12px;padding:10px 12px;border:1px solid var(--gold-line);background:var(--gold-soft);border-radius:6px">Changing name, birth date or gender needs a reason: <span class="chip">Clerical error</span> <span class="chip">Document correction</span> <span class="chip">Patient's request</span> <span class="chip">Legal change</span></div>
+      </div>
+      <div class="dock"><span style="flex:1;font-size:12px;color:var(--dim)">Nothing changed yet</span><span class="sec">Cancel</span><span class="pri">Save changes</span></div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ROLES -->
+<div class="cap"><h2>3 · One page, three seats</h2><p>The layout never changes; permissions decide which rows carry detail and which acts are drawn.</p></div>
+<div class="scroll"><div style="display:flex;gap:14px;min-width:1180px">
+  <div class="ab" style="flex:1">
+    <div class="hdr"><span class="mo" style="font-size:11px;font-weight:700;letter-spacing:.12em">DOCTOR · Dr. A. Mathur, Cardiology</span></div>
+    <div style="padding:14px 16px">
+      <div class="today" style="padding:10px 12px"><div style="flex:1"><div style="font-weight:600">Your patient now · token C-14</div><div style="font-size:12px;color:var(--dim)">BP 152/94 · pulse 88 · SpO₂ 97 % at triage 10:58</div></div><span class="pri" style="height:34px">Start consult</span></div>
+      <div class="day"><span class="d">27-Sep-2026</span><span class="ln"></span></div>
+      <div class="box"><div class="ev"><span class="src">LAB</span><div><div class="t">HbA1c <span class="hl">8.1 %</span> <span class="s">(was 7.4 % on 12-Mar-2026)</span></div></div></div></div>
+      <div class="day"><span class="d">18-Sep-2026</span><span class="ln"></span></div>
+      <div class="box">
+        <div class="ev"><span class="src">OPD</span><div><div class="t">Gen. Medicine · E11.9, I10</div><div class="s">Metformin 500 mg BD · Amlodipine 5 mg OD · Telmisartan 40 mg OD · Atorvastatin 10 mg HS</div></div></div>
+        <div class="ev"><span class="src">XRAY</span><div><div class="t">Chest X-ray PA — no active lesion</div></div></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--dim);margin:10px 0 0">Bills and pharmacy amounts are folded to one line ("2 bills"). Acts: Start consult, Add allergy, Print card. No Take payment, no Edit identity.</p>
+    </div>
+  </div>
+  <div class="ab" style="flex:1">
+    <div class="hdr"><span class="mo" style="font-size:11px;font-weight:700;letter-spacing:.12em">BILLING CLERK · Counter 2</span></div>
+    <div style="padding:14px 16px">
+      <div class="today" style="padding:10px 12px;border-color:var(--gold-line);background:var(--gold-soft)"><div style="flex:1"><div style="font-weight:600;color:var(--gold-ink)">₹650.00 due · 1 bill</div><div style="font-size:12px;color:var(--dim)">Advance on record ₹0.00 · card: Arogya Gold (benefit shows on the bill)</div></div><span class="pri" style="height:34px">Take ₹650.00</span></div>
+      <div class="day"><span class="d">18-Sep-2026</span><span class="ln"></span></div>
+      <div class="box">
+        <div class="ev"><span class="src">BILL</span><div><div class="t">OP/26/004411</div><div class="s">paid by UPI</div></div><span class="r mo">₹1,240.00</span></div>
+        <div class="ev"><span class="src">PHAR</span><div><div class="t">PH/26/08817</div><div class="s">paid in cash</div></div><span class="r mo">₹863.50</span></div>
+        <div class="ev"><span class="src">OPD</span><div><div class="t">General Medicine visit</div><div class="s">diagnosis not shown to this seat</div></div></div>
+      </div>
+      <div class="day"><span class="d">02-Aug-2026</span><span class="ln"></span></div>
+      <div class="box"><div class="ev" style="background:var(--gold-soft)"><span class="src">BILL</span><div><div class="t">OP/26/003982</div><div class="s">₹1,500.00 paid · ₹650.00 due</div></div><span class="r" style="color:var(--green);font-weight:600">Reprint</span></div></div>
+      <p style="font-size:11.5px;color:var(--dim);margin:10px 0 0">Visit rows show department and doctor only (no <span class="mo">opd.consult</span>). Acts: Take payment, Reprint bill, Print card.</p>
+    </div>
+  </div>
+</div></div>
+<div class="box" style="margin-top:10px;overflow:hidden"><table class="cmpt">
+  <thead><tr><th>Shown</th><th>Front desk</th><th>Doctor</th><th>Billing clerk</th><th>Decided by</th></tr></thead>
+  <tbody>
+    <tr><td>Allergies band</td><td>yes</td><td>yes</td><td>yes</td><td>everyone who opens the record</td></tr>
+    <tr><td>Diagnosis, medicines, result values</td><td>diagnosis line only</td><td>full</td><td>no</td><td><span class="mo">opd.visits.read</span> / <span class="mo">opd.consult</span> (server already splits these)</td></tr>
+    <tr><td>Amounts and dues</td><td>yes</td><td>folded</td><td>yes</td><td><span class="mo">billing.invoice.read</span></td></tr>
+    <tr><td>Full mobile</td><td>on "Show", audited <span class="ns">needs server</span></td><td>masked</td><td>on "Show", audited</td><td>job needs the number</td></tr>
+    <tr><td>Edit details, record a death, reissue card</td><td>yes</td><td>no</td><td>no</td><td><span class="mo">patients.register</span></td></tr>
+  </tbody></table></div>
+
+<!-- RESTRICTED -->
+<div class="cap"><h2>4 · A restricted (sealed) patient</h2><p>The alias is the name everywhere on this page. The real name is not drawn and not in the edit form.</p></div>
+<div class="scroll"><div class="ab" style="width:1000px">
+  <div style="display:flex;height:430px">
+    <aside class="lane">
+      <div style="padding:16px 18px 12px;display:flex;gap:12px">
+        <div class="ph" style="background:var(--wash)">hidden</div>
+        <div>
+          <span class="pill rd">Restricted record</span>
+          <h2 style="margin:6px 0 0;font-size:18px;font-weight:600">Patient R-2291</h2>
+          <div class="mo" style="font-size:13px">HMS0000014207</div>
+          <div style="font-size:12px;color:var(--dim)">71 y · Female</div>
+        </div>
+      </div>
+      <div style="padding:0 18px">
+        <div class="safety"><div class="tag" style="color:var(--red)">Allergies · 3 active</div><div class="al"><b>Penicillin</b><span style="flex:1">anaphylaxis</span><span class="sev s">severe</span></div><div style="font-size:11px;color:var(--dim)">+ 2 more</div></div>
+        <div class="fact" style="margin-top:10px"><span>Mobile</span><span>hidden</span></div>
+        <div class="fact"><span>Address</span><span>hidden</span></div>
+        <div class="fact"><span>Same mobile</span><span>not shown on a restricted record</span></div>
+        <div class="fact"><span>Messages to family</span><span style="color:var(--red)">sealed</span></div>
+      </div>
+    </aside>
+    <main style="flex:1;padding:16px 20px">
+      <div class="refuse" style="border:1px solid var(--red-line);background:var(--red-soft);border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:18px"><b style="color:var(--red)">This record is restricted.</b> Staff see the alias, the UHID, age and allergies. The name, contact and address open only through break-glass by the Medical Superintendent (owner ruling 28-Sep-2026), with a reason, logged, and never reviewed by the same person. <span class="ns">needs server</span></div>
+      <div class="day"><span class="d">History</span><span class="ln"></span></div>
+      <div class="box"><div class="ev"><span class="src">OPD</span><div><div class="t">18-Sep-2026 · General Medicine</div><div class="s">details for the treating doctor only</div></div></div><div class="ev"><span class="src">BILL</span><div><div class="t">OP/26/004411 · billed to Patient R-2291</div></div><span class="r mo">₹1,240.00</span></div></div>
+      <div style="display:flex;gap:8px;margin-top:14px"><span class="pri">Open at Desk One</span><span class="sec">Print card (alias)</span><span class="sec rd">Break glass</span></div>
+    </main>
+  </div>
+</div></div>
+
+<!-- PHONE -->
+<div class="cap"><h2>5 · Phone 390</h2><p>One column: who, allergies, today, timeline. The next act is pinned at the bottom; the rest sit behind "More".</p></div>
+<div class="scroll"><div class="ab" style="width:390px;border-radius:18px">
+  <header class="hdr" style="padding:0 12px"><span class="sec" style="height:32px;padding:0 10px">☰ Menu</span><span class="mo" style="font-size:11px;font-weight:700;letter-spacing:.12em;margin-left:10px">PATIENT</span><span style="flex-grow:1"></span><span class="sec" style="height:32px;padding:0 10px">Find</span></header>
+  <div style="padding:14px 16px">
+    <div style="display:flex;gap:10px"><div class="ph" style="width:44px;height:52px">photo</div><div><b style="font-size:16px">Kamla Devi Sharma</b><div class="mo" style="font-size:12.5px">HMS0000014207</div><div style="font-size:12px;color:var(--dim)">71 y · F · B+ · •••••• 1236</div></div></div>
+    <div class="safety" style="margin-top:12px"><div class="tag" style="color:var(--red)">Allergies · 3</div><div class="al"><b>Penicillin</b><span style="flex:1">anaphylaxis</span><span class="sev s">severe</span></div><div class="al"><b>Sulfa drugs</b><span style="flex:1">rash</span><span class="sev">moderate</span></div><div class="al"><b>Iodinated contrast</b><span style="flex:1"></span><span class="sev">mild</span></div></div>
+    <div class="today" style="margin-top:10px;flex-direction:column;gap:6px;padding:10px 12px"><div><b>Cardiology queue · C-14</b> <span style="font-size:12px;color:var(--dim)">· 2nd</span></div><div style="font-size:12px">Lab: 2 tests collected · due 14:00</div><div style="font-size:12px;color:var(--gold-ink);font-weight:600">₹650.00 due since 02-Aug-2026</div></div>
+    <div class="day" style="margin-top:8px"><span class="d">27-Sep-2026</span><span class="ln"></span></div>
+    <div class="box"><div class="ev"><span class="src">LAB</span><div><div class="t">HbA1c <span class="hl">8.1 %</span></div><div class="s">signed · Central Lab</div></div></div></div>
+    <div class="day"><span class="d">18-Sep-2026</span><span class="ln"></span></div>
+    <div class="box"><div class="ev"><span class="src">OPD</span><div><div class="t">Gen. Medicine · Dr. S. Rao</div><div class="s">Type 2 diabetes · hypertension</div></div></div><div class="ev"><span class="src">BILL</span><div><div class="t">OP/26/004411</div></div><span class="r mo">₹1,240.00</span></div></div>
+  </div>
+  <div class="dock" style="padding:10px 16px"><span class="pri" style="flex:1">Open at Desk One</span><span class="sec">More ▾</span></div>
+</div></div>
+
+<!-- WHY -->
+<div class="cap"><h2>6 · What changes and why</h2></div>
+<div class="why">
+  <div class="box"><span class="was">Allergies at y 1,137</span><b>Allergies first, in the lane, always visible</b>A red-edged band under the name; severe in brick red. Adding one is a link in the band, and corrections move into Edit details.</div>
+  <div class="box"><span class="was">No history</span><b>One timeline instead of many boxes</b>Visits, lab and radiology reports, bills, pharmacy sales and documents on one dated list, from existing endpoints (<span class="mo">/opd/patients/:id/timeline</span>, <span class="mo">/billing/patients/:id/dues</span>, <span class="mo">/billing/invoices?patientId</span>, <span class="mo">/lab/reports/patient/:id</span>, <span class="mo">/radiology/reports/patient/:id</span>, <span class="mo">/patients/:id/documents</span>, <span class="mo">/pharmacy/patients/:id/dispenses</span>).</div>
+  <div class="box"><span class="was">20 open inputs</span><b>Read first, edit behind a button</b>The form becomes the "Edit details" drawer with five sections. Same dirty-fields PATCH and identity reason; no behaviour lost.</div>
+  <div class="box"><span class="was">No "today"</span><b>A "today" band answers "where are they now"</b>Open visit and queue position, tests in progress, money due. It is empty and hidden when nothing is open.</div>
+  <div class="box"><span class="was">0 permission checks</span><b>Acts follow permissions</b>The acts panel draws only what the seat may do; the timeline folds clinical detail or money by the same permissions the server already enforces.</div>
+  <div class="box"><span class="was">Real name as H1 on a sealed record</span><b>Alias is the name</b>Restricted records show the alias, UHID, age and allergies. Name, contact, address and family links open only by break-glass.</div>
+  <div class="box"><span class="was">ISO, enum, internal id</span><b>Only printed words</b>12-Mar-1955; "not verified" not "self_declared"; "representative" not "(other)"; the QR payload is no longer printed on screen.</div>
+  <div class="box"><span class="was">Mobiles in full ×4</span><b>Masked mobiles</b>Last four digits everywhere; "Show" reveals one number to a seat that must call, and is logged.</div>
+  <div class="box"><span class="was">Page 541 px on a 390 phone</span><b>Phone stacks</b>One column, pinned next act, 16 px gutters, no sideways scroll.</div>
+  <div class="box"><span class="was">"Mark deceased" first in the column</span><b>Rare acts under "Less often"</b>Record a death, reissue card, ask for a merge sit together below the common acts, each still behind its own confirm.</div>
+</div>
+
+<div class="cap"><h2>7 · Questions for the owner</h2><p>Money and law only.</p></div>
+<div class="box" style="padding:14px 18px;font-size:13px;line-height:20px">
+  <b>Decided by the standard:</b> the front desk sees the patient's dues on this page, so they can be raised before the consult. <b>Already ruled (28-Sep-2026):</b> only the Medical Superintendent breaks the glass on a restricted record.<br>
+  <b>Q1 · Recording a death.</b> Should "Record a death" require the death certificate number (or the MCCD form) before it saves? Today it saves with a date only. Recommended: for a death in the hospital, require the MCCD certificate number (Form 4 / 4A) before it saves.
+</div>
+
+</div>
+</body>
+</html>

@@ -198,7 +198,7 @@ export async function claimDispense(
       id: newId(), dispenseId: d.id, lineIdx, rxLine: line,
       orderedMedicineId: ordered, dispensedMedicineId,
       substitutionType: (ordered === null && viaText !== null ? "resolved" : "none") as "resolved" | "none",
-      itemId: (item?.id ?? null) as string | null, qtyBase: prefillQtyBase(line), scheduleFlag: scheduleFlag as string | null,
+      itemId: (item?.id ?? null) as string | null, qtyBase: prefillQtyBase(line, med?.strengthLabel), scheduleFlag: scheduleFlag as string | null,
       ndpsClass: ndpsClass as string | null, status: "open" as const,
     };
   });

@@ -173,6 +173,15 @@ export const RADIOLOGY_ERROR_CODES = [
   "checks_unacknowledged",
   "signer_credentials_missing",
   /**
+   * ── 18-S RS5 T2 — the prep bay asks the radiologist to override ──
+   *
+   * `override_already_requested`: a second "please override" for a gate that already has one
+   * waiting — the answer is to wait for (or chase) the radiologist, not to file a duplicate.
+   * `unknown_override_request`: the decision names a request that is not an imaging gate override.
+   */
+  "override_already_requested",
+  "unknown_override_request",
+  /**
    * PLAN 18-S RS7 — the obstetric report. `foetal_sex_disclosure` is a SENTENCE that states the sex
    * of a foetus (`pcpndt/foetal-sex.ts`): refused on prelim, sign, amend and publish, and no lane — not the
    * medical superintendent's F66 override — lifts it. `invalid_biometry` is a measurement block the
@@ -180,6 +189,75 @@ export const RADIOLOGY_ERROR_CODES = [
    */
   "foetal_sex_disclosure",
   "invalid_biometry",
+  /**
+   * PLAN 18-S RS8b — co-sign and the critical ladder. `cosign_required`: the study has only a
+   * resident's signature, and nothing leaves the department until a consultant co-signs it.
+   * `cosign_not_consultant` and `cosign_own_report` are about WHO is co-signing (403): only a
+   * consultant (`radiologist`) co-signs, and never a report they signed as the resident.
+   * `read_back_mismatch`: the clinician's read-back does not name the finding, so the call is not
+   * closed — the clinician repeats it again.
+   */
+  "cosign_required",
+  "cosign_not_consultant",
+  "cosign_own_report",
+  "read_back_mismatch",
+  /**
+   * PLAN 18-S RS12 — the archive's inbox. `invalid_pacs_notice` is a notice the bridge sent that
+   * names no Study Instance UID (or no dose, for a dose report) — the bridge's defect, not a
+   * patient's. `unknown_unmatched` is a stale inbox row. `not_acquired` is an attach to a study the
+   * room has not sent yet (press Send first; the images then attach themselves if the accession and
+   * UHID agree). `images_already_attached` is an attach to a study that already holds a DICOM study
+   * from the archive — one HMIS study is one DICOM study.
+   */
+  "invalid_pacs_notice",
+  "unknown_unmatched",
+  "not_acquired",
+  "images_already_attached",
+  /**
+   * ── 18-S RS9 — release and the closed loop ──
+   *
+   * `not_treating_doctor`: acted-upon and the doctor's read-back are the TREATING doctor's (the
+   * ordering clinician or the visit's doctor); anybody else is refused by name, and the recovery is
+   * to ask that doctor. `acted_note_required`: the one line of what the report changed.
+   * `report_superseded`: the version in hand was amended — act on the current one.
+   * `report_not_published`: nothing is acted on, handed over or printed before release.
+   * `collector_details_required`: a hand-over that does not name its collector as the type needs.
+   * `unknown_media_request`: a stale film/CD row.
+   *
+   * 18-S RS9b — the patient's copy and the bill. `report_held_for_dues`: the patient's copy is held
+   * while the study's self-pay bill has dues (402 — the refusal a desk resolves by sending the
+   * patient to billing; the message names the amount). `release_not_authorised`: a held copy asked
+   * to leave without the owner's granted release (pending, refused, or already spent).
+   * `release_not_needed`: an unpaid release asked for a report nothing holds.
+   */
+  "not_treating_doctor",
+  "acted_note_required",
+  "report_superseded",
+  "report_not_published",
+  "collector_details_required",
+  "unknown_media_request",
+  /**
+   * ── 18-S RS12b — the IR suite ──
+   *
+   * `not_interventional`: an IR act on a study whose type is not an image-guided procedure.
+   * `ir_checklist_incomplete`: a WHO phase missing (start before sign in + time out; Send before
+   * sign out; a phase out of order) or a phase's item not confirmed — the detail names which.
+   * `ir_phase_recorded`: a phase is recorded once. `coagulation_out_of_range`: a high-bleeding-risk
+   * procedure with no signed INR / platelet count in 7 days, INR > 1.5 or platelets < 50,000/µL and
+   * no radiologist override. `coagulation_in_range`: nothing to override. `skin_followup_required`:
+   * Ka,r ≥ 3 Gy with no documented skin follow-up. `ir_handoff_recorded`: the recovery hand-off is
+   * written once.
+   */
+  "not_interventional",
+  "ir_checklist_incomplete",
+  "ir_phase_recorded",
+  "coagulation_out_of_range",
+  "coagulation_in_range",
+  "skin_followup_required",
+  "ir_handoff_recorded",
+  "report_held_for_dues",
+  "release_not_authorised",
+  "release_not_needed",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -262,8 +340,37 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   coded_category_required: 422,
   checks_unacknowledged: 422,
   signer_credentials_missing: 403,
+  override_already_requested: 409,
+  unknown_override_request: 404,
   foetal_sex_disclosure: 422,
   invalid_biometry: 422,
+  cosign_required: 422,
+  cosign_not_consultant: 403,
+  cosign_own_report: 403,
+  read_back_mismatch: 422,
+
+  invalid_pacs_notice: 422,
+  unknown_unmatched: 404,
+  not_acquired: 409,
+  images_already_attached: 409,
+
+  not_treating_doctor: 403,
+  acted_note_required: 422,
+  report_superseded: 409,
+  report_not_published: 422,
+  collector_details_required: 422,
+  unknown_media_request: 404,
+
+  not_interventional: 422,
+  ir_checklist_incomplete: 422,
+  ir_phase_recorded: 409,
+  coagulation_out_of_range: 422,
+  coagulation_in_range: 409,
+  skin_followup_required: 422,
+  ir_handoff_recorded: 409,
+  report_held_for_dues: 402,
+  release_not_authorised: 403,
+  release_not_needed: 409,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

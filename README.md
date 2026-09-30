@@ -321,6 +321,13 @@ granting the key to a door that opens on nothing would manufacture the appearanc
 path. That one needs wiring and an owner ruling on whether a bypass may cross the confidential
 gate, not a role row.
 
+Owner ruling of 2026-09-28 gives `auth.break_glass.use` to the `medical_superintendent` role and to
+no other role in the model. It now opens exactly one door: merging a sealed (confidential) patient
+record refuses until the Medical Superintendent who approved the merge records a break-glass on
+that record. It still opens no screen — no route sets `breakGlassBypass` — and no clinical or ER
+role holds it; whether ER staff may open any record stays an open owner question. Every use lands
+in the break-glass review queue the same role already reviews.
+
 Owner ruling of 2026-08-26 assigns ten pairs that appear in no table above, closing permissions
 that had no holder at all and therefore answered 403 to every account on the deployment. A new
 `tariff_editor` role reads the price list, manages services and DRAFTS a version; the `owner` role
@@ -1230,35 +1237,50 @@ self-verify a statutory declaration is a single point of failure with a criminal
 it is a different decision — DD7 makes the radiologist the second clinical opinion on a gate the
 floor raised, and the override demands a reason and is evented.
 
-| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge | radiation_safety_officer |
-|---|---|---|---|---|---|---|
-| `radiology.orders.place` | | | ✓ | | | |
-| `radiology.worklist.read` | ✓ | ✓ | ✓ | | | |
-| `radiology.schedule` | | | ✓ | | | |
-| `radiology.checkin` | | ✓ | ✓ | | | |
-| `radiology.gates.satisfy` | | ✓ | | | | |
-| `radiology.gates.override` | ✓ | | | | | |
-| `radiology.acquire` | ✓ | ✓ | | | | |
-| `radiology.reports.write` | ✓ | | | | | |
-| `radiology.reports.sign` | ✓ | | | | | |
-| `radiology.reports.amend` | ✓ | | | | | |
-| `radiology.reports.read` | ✓ | ✓ | | | | |
-| `radiology.definitions.read` | ✓ | ✓ | ✓ | | | |
-| `radiology.definitions.manage` | ✓ | | | | | |
-| `radiology.devices.manage` | ✓ | | | | | |
-| `radiology.bill_decisions.manage` | | | ✓ | | | |
-| `radiology.criticals.ack` | ✓ | | | | | |
-| `radiology.mwl.read` | | ✓ | | | ✓ | |
-| `radiology.display.read` | | | ✓ | | | |
-| `pcpndt.registrations.manage` | | | | ✓ | | |
-| `pcpndt.registrations.read` | ✓ | | | ✓ | | |
-| `pcpndt.form_f.write` | ✓ | | | | | |
-| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | | |
-| `pcpndt.form_f.verify` | | | | ✓ | | |
-| `aerb.registers.manage` | | | | | | ✓ |
-| `aerb.registers.read` | | | | | | ✓ |
-| `aerb.doses.read` | ✓ | ✓ | | | | ✓ |
-| `aerb.incidents.read` | ✓ | | | | | ✓ |
+| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge | radiation_safety_officer | radiology_nurse | radiology_resident |
+|---|---|---|---|---|---|---|---|---|
+| `radiology.orders.place` | | | ✓ | | | | | |
+| `radiology.worklist.read` | ✓ | ✓ | ✓ | | | | ✓ | ✓ |
+| `radiology.schedule` | | | ✓ | | | | | |
+| `radiology.checkin` | | ✓ | ✓ | | | | | |
+| `radiology.gates.satisfy` | | ✓ | | | | | ✓ | |
+| `radiology.gates.override` | ✓ | | | | | | | |
+| `radiology.acquire` | ✓ | ✓ | | | | | | |
+| `radiology.reports.write` | ✓ | | | | | | | ✓ |
+| `radiology.reports.sign` | ✓ | | | | | | | ✓ |
+| `radiology.reports.amend` | ✓ | | | | | | | |
+| `radiology.reports.read` | ✓ | ✓ | | | | | | ✓ |
+| `radiology.definitions.read` | ✓ | ✓ | ✓ | | | | | ✓ |
+| `radiology.definitions.manage` | ✓ | | | | | | | |
+| `radiology.devices.manage` | ✓ | | | | | | | |
+| `radiology.bill_decisions.manage` | | | ✓ | | | | | |
+| `radiology.criticals.ack` | ✓ | | | | | | | ✓ |
+| `radiology.mwl.read` | | ✓ | | | ✓ | | | |
+| `radiology.display.read` | | | ✓ | | | | | |
+| `radiology.pacs.interface` | | | | | ✓ | | | |
+| `radiology.pacs.reconcile` | ✓ | ✓ | | | | | | |
+| `radiology.contrast.record` | ✓ | ✓ | | | | | ✓ | |
+| `pcpndt.registrations.manage` | | | | ✓ | | | | |
+| `pcpndt.registrations.read` | ✓ | | | ✓ | | | | |
+| `pcpndt.form_f.write` | ✓ | | | | | | | |
+| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | | | | |
+| `pcpndt.form_f.verify` | | | | ✓ | | | | |
+| `aerb.registers.manage` | | | | | | ✓ | | |
+| `aerb.registers.read` | | | | | | ✓ | | |
+| `aerb.doses.read` | ✓ | ✓ | | | | ✓ | | |
+| `aerb.incidents.read` | ✓ | | | | | ✓ | | |
+
+**Plan 18-S RS8b adds the eighth column, `radiology_resident` (RS5 took the seventh), and no permission.** A DNB/MD
+resident drafts, may issue a PRELIM to the treating doctor for ER/STAT work, and telephones and closes
+a critical call, so the role holds `radiology.reports.write`, `.read`, `.sign`, `radiology.criticals.ack`,
+`radiology.worklist.read` and `radiology.definitions.read`. It holds `.sign` so that it can reach the
+signature at all — **a resident's signature is `awaiting_cosign`, never `signed`**, and
+`publishReport` refuses `cosign_required` until a `radiologist` co-signs under their own second factor
+(`cosignReport`, which also refuses the resident co-signing their own). That separation is enforced on
+ROLE KEYS in `reports.ts`, the way the workflow engine separates the gate: withholding a permission
+could not have expressed "may sign, but not finally". The resident holds NO `radiology.reports.amend`
+(an amendment is a consultant's signed correction), NO `radiology.gates.override` and NO
+`pcpndt.form_f.write`.
 
 **Plan 18c T1 adds the sixth column and the last three rows.** The AERB registers are their own
 module (`aerb`) for the reason `pcpndt` is: the cath lab and radiation oncology owe an equipment
@@ -1305,6 +1327,29 @@ out of service with a reason (`/radiology/setup/*`) — and the Setup station's 
 answers for what its machines are and whether they may be booked. It is NOT a QA power: a machine
 `qa_blocked` by a failed QA is released only by the radiation safety officer's passing QA record, and
 the register refuses to walk a machine out of `qa_blocked` (or out of `retired`) whoever asks.
+
+**Plan 18-S RS5 (the prep & safety bay) adds one permission, one role and seven grants.** The new
+**`radiology_nurse`** column is the bay's nurse (DECIDED — the top-Indian-hospital standard seats a
+radiology nurse at prep): she holds `radiology.worklist.read`, `radiology.gates.satisfy` and the new
+**`radiology.contrast.record`**, and the `imaging_gate` definition names her on `open → satisfied` so
+the engine agrees with the guard. She holds **no `radiology.gates.override`**: the override stays the
+radiologist's, and the bay ASKS for one through the approvals spine (`imaging_gate_override`, approver
+`radiologist`). `radiology.contrast.record` guards the contrast injection and the contrast reaction,
+split off `radiology.acquire` so the nurse who injects can record it without starting or finishing an
+acquisition; `radiologist` and `radiographer` hold it too, so nobody who could record contrast before
+lost it. Because the radiologist now answers an approval type, **`radiologist` gains
+`approvals.requests.read` and `approvals.requests.decide`** — the approvals spine's rule that every
+approver role can open and answer its own queue.
+
+**Plan 18-S RS12 (the PACS seams) adds two permissions and three grants.** `radiology.pacs.interface`
+is a MACHINE permission: the bridge on the Orthanc host posts the archive's study-arrived notices and
+Radiation Dose SRs to `/radiology/pacs/*`, and **`modality_bridge` gains it** beside
+`radiology.mwl.read` — still no clinical string, because an arrival writes image counts and a dose
+report writes a receipt, and the dose register is written only when the technologist presses Send.
+`radiology.pacs.reconcile` is the PACS inbox — attaching an archive study that no accession and UHID
+could claim to the study it belongs to, or rejecting it, always with a reason — and **`radiologist`
+and `radiographer` each gain it**: the technologist knows who was on the table, and nothing is ever
+attached by a patient's name.
 
 **The OPD dispense counter (Plan 16c T1) declares four permissions and one new role, and the SHAPE
 is the Pharmacy Act.** `pharmacy.dispense.scheduled` — the hand-over of a dispense carrying a
@@ -1379,6 +1424,11 @@ Both are defaults the owner may change.
 `pharmacy.antimicrobial.approve` (reading a restricted-antimicrobial request's prescription line and prescriber)
 and the approvals pair `approvals.requests.read` and `approvals.requests.decide`, because it is the approver of
 `pharmacy_restricted_antimicrobial`. A steward may not approve their own prescription.
+**Pharmacy stage D4 checks the emergency trays: daily seal, monthly full, and after every use.**
+`pharmacy.trays.check` (checking a tray, restocking a deficient one from `PHARM-OPD`, receiving a restock) goes to
+`pharmacy`, `pharmacy_assistant`, `pharmacy_incharge`, `ot_nurse`, `recovery_nurse`, `radiographer` and
+`daycare_coordinator`. `pharmacy.trays.manage` (setting up a tray, naming its keepers, keeping its list) goes to
+`pharmacy_incharge`. Both are defaults the owner may change.
 
 | Permission | pharmacy | pharmacy_assistant | pharmacy_incharge |
 |---|---|---|---|
@@ -1405,6 +1455,8 @@ and the approvals pair `approvals.requests.read` and `approvals.requests.decide`
 | `pharmacy.incidents.review` | | | ✓ |
 | `pharmacy.coldchain.record` | ✓ | ✓ | |
 | `pharmacy.coldchain.manage` | | | ✓ |
+| `pharmacy.trays.check` | ✓ | ✓ | ✓ |
+| `pharmacy.trays.manage` | | | ✓ |
 | `materials.payments.prepare` | | | ✓ |
 | `materials.payments.record` | | | ✓ |
 | `materials.writeoffs.manage` | | | ✓ |

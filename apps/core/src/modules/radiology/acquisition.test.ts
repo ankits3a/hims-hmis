@@ -227,8 +227,16 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
    * A2's mutant moves `assertFormFRecorded` after the dose write. Asserting the refusal alone would
    * pass against it; what discriminates is that the ROW is untouched — no accession consumed, no
    * dose, no event, no released device.
+   *
+   * ═══ 18-S RS8b T3 — THE REFUSAL MOVED TO THE START, AND THIS TEST MOVED WITH IT ═══
+   *
+   * This test used to START the scan on an OPEN form and assert that `recordAcquired` refused —
+   * pinning the old order, in which the images of a scan whose Form F nobody had signed already
+   * existed by the time anything refused. The PCPNDT Rules put the declaration BEFORE the procedure,
+   * so `startAcquisition` now demands the RECORDED form: the start is refused, and nothing is
+   * written — the study stays `ready`, the machine stays free, the order item stays `placed`.
    */
-  it("A2: a form_f_required study with NO recorded form is refused, and NOTHING is written", async () => {
+  it("A2 / RS8b T3: a form_f_required study with only an OPEN form cannot START, and NOTHING is written", async () => {
     await rewriteBook([
       bookRow("USG-ABDO", { modality: "usg", pcpndt_applicable: true }),
       bookRow("XR-CHEST", { modality: "xray", ionising: true }),
@@ -238,19 +246,18 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     await registerDevices();
     const study = await readyStudy("USG-ABDO", "usg");
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
-    await start(study.studyId);
 
-    const e = await acquired(study.studyId).catch((x: unknown) => x);
+    const e = await start(study.studyId).catch((x: unknown) => x);
     expect((e as { code: string }).code).toBe("form_f_missing");
 
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
-    expect([row!.status, row!.acquiredAt, row!.imageSource]).toEqual(["in_acquisition", null, null]);
+    expect([row!.status, row!.acquiredAt, row!.imageSource]).toEqual(["ready", null, null]);
     expect((await db.select().from(events)).filter((e2) => e2.name === "imaging.study_acquired")).toEqual([]);
     const [device] = await db.select().from(resources).where(eq(resources.id, fx.devices.usg!));
-    expect(device!.status).toBe("in_use");
+    expect(device!.status).toBe("available");
   });
 
-  it("A2: the same call lands once the Form F is RECORDED", async () => {
+  it("A2: the scan starts and lands once the Form F is RECORDED", async () => {
     await rewriteBook([
       bookRow("USG-ABDO", { modality: "usg", pcpndt_applicable: true }),
       bookRow("XR-CHEST", { modality: "xray", ionising: true }),
@@ -260,14 +267,15 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     await registerDevices();
     const study = await readyStudy("USG-ABDO", "usg");
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
-    await start(study.studyId);
 
+    /** 18-S RS8b T3 — the form is RECORDED before the start now (the declaration precedes the procedure). */
     const [openForm] = await db.select().from(pcpndtFormF).where(eq(pcpndtFormF.studyId, study.studyId));
     const formFId = openForm!.id;
     await withTx(db, (tx) => recordFormF(tx, fx.radiographer, {
       formFId, sections: { F: "anomaly" }, declaration: { signature_kind: "signature" },
       referral: { self_referral: false },
     }));
+    await start(study.studyId);
 
     const done = await acquired(study.studyId, { imageSource: "no_pacs_images" });
     expect(done.accessionNo).toBe(study.accessionNo);

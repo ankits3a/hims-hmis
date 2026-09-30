@@ -6,7 +6,7 @@ import { testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import { allocations, events, orderItems, pharmacyRegH1, stockBalances, stockLedger } from "../../kernel/db/schema";
 import { invoiceSettlement, reverseAllocation } from "../billing";
-import { setPriceRegulation } from "../materials";
+import { recallBatch, setPriceRegulation } from "../materials";
 import { billDispense, previewDispenseBill } from "./bill";
 import { confirmSlip, listQueue } from "./queue";
 import { opdPrescriptions } from "../../kernel/db/schema";
@@ -98,12 +98,19 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
   });
 
   it("short stock: the pharmacist dispenses a partial quantity with a reason, or names a later batch that covers it (an override, evented)", async () => {
-    const v = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin, durationDays: 20 })], [60]);
+    // DESK FIXES 2026-09-30 — only more than ALL the in-date batches hold is short now (140 on the shelf).
+    const v = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin, durationDays: 50 })], [150]);
     await expect(pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, {}, MON2))
       .rejects.toThrow(expect.objectContaining({ code: "short_stock", detail: expect.objectContaining({ lineIdx: 0, available: 140 }) }));
     await expect(pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, { lines: [{ lineIdx: 0, qtyBase: 40 }] }, MON2))
       .rejects.toThrow(expect.objectContaining({ code: "qty_required" })); // a partial needs its reason
-    const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, { lines: [{ lineIdx: 0, batchId: crocinLate }] }, MON2);
+    // A NAMED batch is still one batch: 100 of CR-LATE cannot cover 150, and the override does not split.
+    await expect(pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, { lines: [{ lineIdx: 0, batchId: crocinLate }] }, MON2))
+      .rejects.toThrow(expect.objectContaining({ code: "fefo_override_unavailable" }));
+
+    const v1 = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin, durationDays: 20 })], [60]);
+    const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, v1.id, { lines: [{ lineIdx: 0, batchId: crocinLate }] }, MON2);
+    expect(p.lines).toHaveLength(1);
     expect(p.lines[0]).toMatchObject({ batchId: crocinLate, qtyBase: 60 });
     const [ev] = await db.select().from(events).where(eq(events.name, "dispense.picked"));
     expect(ev?.payload).toMatchObject({ lines: [{ lineIdx: 0, batchId: crocinLate, qtyBase: 60, fefoOverride: true }] });
@@ -111,6 +118,62 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
     const v2 = await verified([line({ drug: "Azee 500", medicineId: fx.med.azithro, frequency: "OD", durationDays: 10 })], [10]);
     const partial = await pickDispense(db, fx.pharmacist.actor, fx.decls, v2.id, { lines: [{ lineIdx: 0, qtyBase: 6, pickNote: "only 6 left; balance from tomorrow's delivery" }] }, MON2);
     expect(partial.lines[0]).toMatchObject({ batchId: azeeBatch, qtyBase: 6 });
+  });
+
+  /**
+   * DESK FIXES 2026-09-30 — DECIDED (standard Indian hospital practice): the pick splits a line FEFO
+   * across as many held, saleable, in-date batches of the item as it takes. Each later batch becomes
+   * its OWN dispense line (`splitFromLineIdx` names the prescription line), so the ledger, the bill,
+   * the label and the H1 register each get one row per batch, and every per-batch guard is the one
+   * the single-batch pick already had.
+   */
+  it("SPLIT — a quantity the first batch cannot cover is taken FEFO across batches: one line, reservation, bill row, label and H1 row per batch", async () => {
+    const azeeLater = await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-2", expiryDate: "2027-09-30", qtyBase: 10, mrpPaise: 15000 });
+    await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-OLD", expiryDate: "2026-01-31", qtyBase: 50, mrpPaise: 15000 }); // expired: never offered
+    const recalled = await stockIn(db, fx, { itemId: fx.item.azithro, batchNo: "AZ-RC", expiryDate: "2027-07-31", qtyBase: 50, mrpPaise: 15000 });
+    await withTx(db, (tx) => recallBatch(tx, fx.pharmacist.actor, recalled, "class II recall"));
+    const { issued, tokenNo } = await issueRx(db, fx, [line({ drug: "Azee 500", medicineId: fx.med.azithro, frequency: "OD", durationDays: 10 })]);
+    void tokenNo;
+    const r = await findAtCounter(db, testCfg, fx.pharmacist.actor, issued.qrPayload, MON2);
+    if (r.kind !== "dispense") throw new Error("no dispense");
+    const id = r.dispense.id;
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "rx_qr" }, MON2);
+    const v = await verifyDispense(db, fx.pharmacist.actor, fx.decls, id, { lines: [{ lineIdx: 0, qtyBase: 10 }] }, MON2);
+
+    const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, id, {}, MON2);
+    expect(p.status).toBe("picked");
+    expect(p.lines.map((l) => [l.lineIdx, l.batchId, l.qtyBase, l.splitFromLineIdx, l.rxLine.drug, l.scheduleFlag])).toEqual([
+      [0, azeeBatch, 6, null, "Azee 500", "H1"], [1, azeeLater, 4, 0, "Azee 500", "H1"],
+    ]);
+    expect(p.lines.every((l) => l.reservationId !== null)).toBe(true);
+    const held = await db.select().from(stockBalances).where(eq(stockBalances.batchId, azeeLater));
+    expect(held[0]).toMatchObject({ qtyOnHand: 10, qtyReserved: 4 });
+    // one prescription line, one order item — the split row carries none
+    const items = await db.select().from(orderItems).where(eq(orderItems.orderId, v.orderId!));
+    expect(items.map((i) => i.status)).toEqual(["in_progress"]);
+    const [ev] = await db.select().from(events).where(eq(events.name, "dispense.picked"));
+    expect(ev?.payload).toMatchObject({ lines: [{ lineIdx: 0, batchId: azeeBatch, qtyBase: 6, splitFrom: null }, { lineIdx: 1, batchId: azeeLater, qtyBase: 4, splitFrom: 0 }] });
+
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, id, MON2);
+    expect(preview.lines.map((l) => l.qty)).toEqual([6, 4]);
+    await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+    const h = await handOverDispense(db, fx.pharmacist.actor, fx.decls, id, { identity: { via: "phone_last4", value: "3210" } }, MON3);
+    expect(h.status).toBe("handed_over");
+    const consumed = await db.select().from(stockLedger).where(eq(stockLedger.reason, "consume"));
+    expect(consumed.map((c) => [c.batchId, c.qtyDelta]).sort()).toEqual([[azeeBatch, -6], [azeeLater, -4]].sort());
+    expect((await db.select().from(orderItems).where(eq(orderItems.orderId, v.orderId!))).map((i) => i.status)).toEqual(["completed"]);
+    const reg = await db.select().from(pharmacyRegH1);
+    expect(reg.map((x) => [x.batchNo, x.qtyBase, x.drugName]).sort()).toEqual([["AZ-1", 6, "Azee 500 tablet"], ["AZ-2", 4, "Azee 500 tablet"]]);
+    const label = await labelFor(db, fx.pharmacist.actor, id);
+    expect(label.lines.map((l) => [l.drug, l.qtyBase, l.batchNo])).toEqual([["Azee 500", 6, "AZ-1"], ["Azee 500", 4, "AZ-2"]]);
+  });
+
+  it("SPLIT — a partial with a reason is split too, the reason stays on the prescription's line", async () => {
+    const v = await verified([line({ drug: "Crocin 500", medicineId: fx.med.crocin, durationDays: 50 })], [150]);
+    const p = await pickDispense(db, fx.pharmacist.actor, fx.decls, v.id, { lines: [{ lineIdx: 0, qtyBase: 130, pickNote: "140 on the shelf, 20 kept for the ward" }] }, MON2);
+    expect(p.lines.map((l) => [l.lineIdx, l.batchId, l.qtyBase, l.pickNote, l.splitFromLineIdx])).toEqual([
+      [0, crocinEarly, 40, "140 on the shelf, 20 kept for the ward", null], [1, crocinLate, 90, null, 0],
+    ]);
   });
 
   it("R-1 + P1 — the bill prices each line from its batch at the printed MRP, GST inside it; the NPPA ceiling plus its GST where that is lower; totals to the paisa", async () => {
@@ -175,7 +238,7 @@ describe("the dispense counter — pick, bill, hand over (16c T4)", () => {
 
     const reg = await db.select().from(pharmacyRegH1);
     expect(reg).toHaveLength(1); // the H1 line only
-    expect(reg[0]).toMatchObject({ patientName: "Asha Devi", prescriberName: "Dr dr.sen", drugName: "Azee 500 500 mg tablet", batchNo: "AZ-1", qtyBase: 3, unit: "tablet" });
+    expect(reg[0]).toMatchObject({ patientName: "Asha Devi", prescriberName: "Dr dr.sen", drugName: "Azee 500 tablet", batchNo: "AZ-1", qtyBase: 3, unit: "tablet" });
     const consumedEvents = await db.select().from(events).where(eq(events.name, "material.consumed"));
     expect(consumedEvents).toHaveLength(2);
     expect(consumedEvents.map((e) => (e.payload as { caseRef: { type: string } }).caseRef.type)).toEqual(["pharmacy_dispense", "pharmacy_dispense"]);

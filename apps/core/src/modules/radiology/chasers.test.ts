@@ -4,7 +4,7 @@ import { acquireStudy, setupRadiologyFixture } from "../../../test/helpers/radio
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import {
-  events, imagingCriticalFindings, imagingDefinitions, imagingReportDelivery, imagingReports,
+  events, imagingCriticalFindings, imagingDefinitions, imagingReportDelivery, imagingReports, orders,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { acknowledgeCritical, draftReport, flagCritical, publishReport, signReport } from "./reports";
@@ -73,6 +73,11 @@ describe("the chasers (18a-iii T5)", () => {
       idemKey: `c${String(seq)}`, now: new Date(NOW.getTime() + seq * 25 * 3_600_000),
       slot: new Date(SLOT.getTime() + seq * 3_600_000),
     });
+    /**
+     * 18-S RS9 T1 — only the TREATING doctor's read lands, so the fixture doctor is made this
+     * study's ordering clinician (the helper places on behalf of a consultant who is not a user).
+     */
+    await db.update(orders).set({ orderingClinicianId: fx.doctor.id }).where(eq(orders.id, study.orderId));
     const draft = await withTx(db, (tx) => draftReport(tx, fx.radiologist, {
       studyId: study.studyId, body: { findings: "Normal.", technique: "Transabdominal." },
       impression: "No abnormality.",
@@ -137,7 +142,8 @@ describe("the chasers (18a-iii T5)", () => {
     const late = await minutesAfterFlag(criticalId, 20); // window is 15 min
     const result = await sweepCriticalChaser(db, late);
 
-    expect(result.chased).toEqual([{ criticalId, category: "red", overdueMin: 5 }]);
+    /** 18-S RS8b — one window past, so the call has escalated to the ladder's second rung. */
+    expect(result.chased).toEqual([{ criticalId, category: "red", overdueMin: 5, rung: "unit_head" }]);
     expect((await emitted("imaging.critical_overdue"))[0]!.payload).toMatchObject({
       criticalId, reportId: study.reportId, studyId: study.studyId, category: "red", overdueMin: 5,
     });
@@ -213,7 +219,8 @@ describe("the chasers (18a-iii T5)", () => {
     const { criticalId } = await flag(study.reportId);
     await withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, {
       criticalId, acknowledgedByClinicianId: fx.doctor.id,
-      readBack: "left upper lobe mass, will admit", now: NOW,
+      /** 18-S RS8b — a read-back names the report's finding; this fixture's report says "No abnormality." */
+      readBack: "no abnormality, noted", now: NOW,
     }));
 
     expect((await sweepCriticalChaser(db, await minutesAfterFlag(criticalId, 20))).chased).toEqual([]);

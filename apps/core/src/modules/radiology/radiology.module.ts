@@ -16,8 +16,13 @@ import { RadiologyMwlController } from "./radiology-mwl.controller";
 import { RadiologyImagesController } from "./radiology-images.controller";
 import { RadiologyFloorController } from "./radiology-floor.controller";
 import { RadiologySetupController } from "./radiology-setup.controller";
+import { RadiologyPrepController } from "./radiology-prep.controller";
 import { RadiologyRoomController } from "./radiology-room.controller";
+import { RadiologyPacsController } from "./radiology-pacs.controller";
+import { RadiologyIrController } from "./radiology-ir.controller";
 import { RadiologyReadingController } from "./radiology-reading.controller";
+import { RadiologyReleaseController } from "./radiology-release.controller";
+import { RadiologySupervisorController } from "./radiology-supervisor.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -56,12 +61,22 @@ import { RadiologyReadingController } from "./radiology-reading.controller";
     RadiologyFloorController,
     // 18-S RS4 — the Setup station: machines, books, prices.
     RadiologySetupController,
+    // 18-S RS5 — the prep & safety bay and the radiologist's override queue.
+    RadiologyPrepController,
     // 18-S RS6 — the modality rooms: the console read, the in-room repeat, the reject analysis.
     RadiologyRoomController,
     // 18-S RS8a — the reading room: its worklist, the study in hand, the print.
     RadiologyReadingController,
     // 18-S RS7 — the Form F register by serial and the monthly return.
     RadiologyPcpndtController,
+    // 18-S RS12 — the archive's doors in (arrivals, dose reports) and the PACS inbox.
+    RadiologyPacsController,
+    // 18-S RS9 — release and the closed loop: the doctor's inbox and acted-upon, the north star, the hand-over desk.
+    RadiologyReleaseController,
+    // 18-S RS12b — the IR suite: the WHO phases, coagulation, sedation chart, skin dose, note, hand-off.
+    RadiologyIrController,
+    // 18-S RS10 — the Supervisor & HOD station's reads: floor, escalations, approvals, quality, equipment, roster, money, access log.
+    RadiologySupervisorController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {

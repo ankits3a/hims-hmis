@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, mkCashier, seedBillingBase } from "./helpers/billing";
-import { billingConfig, events, invoices, opdConfig, patients, receipts, refundVouchers } from "../src/kernel/db/schema";
+import { billingConfig, events, invoices, opdConfig, patients, receipts, reconResolutions, refundVouchers } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { DEFAULT_LETTERHEAD } from "../src/modules/opd/config";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -66,11 +66,15 @@ const ROUTES: [method: "get" | "post" | "put", path: string, permission: string]
   ["get", "/billing/refunds", "billing.reports.read"],
   ["post", "/billing/sessions", "billing.session.own"],
   ["get", "/billing/sessions/current", "billing.session.own"],
+  ["get", "/billing/sessions/current/open-items", "billing.session.own"], // UX-AUDIT 2026-09-28
   ["post", "/billing/sessions/X/close", "billing.session.own"],
   ["post", "/billing/sessions/X/confirm-close", "billing.session.own"],
   ["get", "/billing/sessions", "billing.session.read"],
   ["post", "/billing/recon/upload", "billing.recon.upload"],
   ["get", "/billing/recon/mismatches", "billing.reports.read"],
+  // UX-AUDIT 2026-09-28 · BOARD — deciding a mismatch, and the back office's one ranked list.
+  ["post", "/billing/recon/mismatches/X/resolve", "billing.recon.upload"],
+  ["get", "/billing/office/needs", "billing.reports.read"],
   ["get", "/billing/day-book", "billing.reports.read"],
   ["get", "/billing/gstr1", "billing.reports.read"],
   ["get", "/billing/config", "billing.reports.read"],
@@ -641,7 +645,7 @@ describe("billing e2e", () => {
     expect(voucher.body.status).toBe("issued");
 
     const paid = await http().post(`/billing/refunds/${voucher.body.voucherId}/pay`).set(...auth(cashier.token))
-      .send({ payeeName: "Kavita Singh", payeeIdType: "aadhaar", payeeIdRef: "XXXX-1234" }).expect(201);
+      .send({ payeeName: "Kavita Singh", payeeIdType: "aadhaar" }).expect(201);
     expect(paid.body.status).toBe("paid");
     expect(await eventNames()).toEqual(expect.arrayContaining(["credit_note.issued", "refund_voucher.issued", "payment.refunded"]));
 
@@ -725,6 +729,36 @@ describe("billing e2e", () => {
   });
 
   /**
+   * OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen"). The unfiltered list carries every
+   * receipt's amount, receiver and drawer, so a cashier could sum her own open session into what her
+   * drawer should hold. Without `billing.session.read` she gets receipts only for a named patient —
+   * which is how every cashier screen calls this route — and a supervisor keeps the whole list.
+   */
+  it("BLIND COUNT: the unfiltered receipt list is refused to a cashier without billing.session.read; her patient lookup answers; the supervisor's list stands", async () => {
+    await createRole(db, "plain_cashier_t", "plain_cashier_t");
+    for (const p of ["billing.invoice.read", "billing.receipt.record", "billing.session.own", "patients.read"]) {
+      await grantPermissionToRole(db, registry, "plain_cashier_t", p);
+    }
+    const plain = await mkUser(db, "plain_cashier", ["plain_cashier_t"]);
+    const patientId = await registerPatient("Suman Lata", "9876543230");
+    await openSession(plain.token);
+    await http().post("/billing/receipts").set(...auth(plain.token)).send({
+      patientId, tenders: [{ mode: "cash", amountPaise: 50_000 }], note: "advance",
+    }).expect(201);
+
+    const refused = await http().get("/billing/receipts").set(...auth(plain.token)).expect(403);
+    expect(refused.body.code).toBe("receipt_filter_required");
+    expect(JSON.stringify(refused.body)).not.toContain("50000");
+
+    const mine = await http().get("/billing/receipts").query({ patientId }).set(...auth(plain.token)).expect(200);
+    expect(mine.body.items).toHaveLength(1);
+
+    // `cashier` in this suite holds billing.session.read (COUNTER_PERMISSIONS): the supervisor's view
+    const all = await http().get("/billing/receipts").set(...auth(cashier.token)).expect(200);
+    expect(all.body.items).toHaveLength(1);
+  });
+
+  /**
    * The refund worklist's own disclosure: `payeeIdRef` is the identity-DOCUMENT reference captured
    * when the money leaves. `payeeName` and `payeeIdType` STAY — a worklist must show who is being
    * paid and against what kind of document; the reference is verified against the physical document
@@ -752,21 +786,23 @@ describe("billing e2e", () => {
       reasonClass: "mistake", reason: "wrong service billed", approvalId, method: "cash",
     }).expect(201);
     await http().post(`/billing/refunds/${voucher.body.voucherId}/pay`).set(...auth(cashier.token))
-      .send({ payeeName: "Anita Verma", payeeIdType: "aadhaar", payeeIdRef: "9911-2233-4455" }).expect(201);
+      // OWNER RULING 2026-09-28 — Aadhaar is never stored, so the reference this test needs on the row is
+      // a driving licence number.
+      .send({ payeeName: "Anita Verma", payeeIdType: "driving_licence", payeeIdRef: "DL-0420110012345" }).expect(201);
 
     // `refund_vouchers.payee_id_ref` is the column that would put the identity document on the
     // wire, and the fixture carries it (evidence discipline 6).
     const [storedVoucher] = await db
       .select({ payeeIdRef: refundVouchers.payeeIdRef })
       .from(refundVouchers).where(eq(refundVouchers.id, voucher.body.voucherId as string));
-    expect(storedVoucher?.payeeIdRef).toBe("9911-2233-4455");
+    expect(storedVoucher?.payeeIdRef).toBe("DL-0420110012345");
 
     const worklist = await http().get("/billing/refunds").set(...auth(cashier.token)).expect(200);
     expect(worklist.body.items).toHaveLength(1);
     const [row] = worklist.body.items as [Record<string, unknown>];
     expect(Object.keys(row)).not.toContain("payeeIdRef");
     expect("payeeIdRef" in row).toBe(false);
-    expect(JSON.stringify(worklist.body)).not.toContain("9911-2233-4455");
+    expect(JSON.stringify(worklist.body)).not.toContain("DL-0420110012345");
 
     // NOT OVER-BROAD (§3.44): a worklist that cannot say who is paid, for how much, against what
     // kind of document, is not a worklist.
@@ -774,7 +810,7 @@ describe("billing e2e", () => {
     expect(row.amountPaise).toBe(netPayablePaise);
     expect(row.status).toBe("paid");
     expect(row.payeeName).toBe("Anita Verma");
-    expect(row.payeeIdType).toBe("aadhaar");
+    expect(row.payeeIdType).toBe("driving_licence");
     expect(row.patientId).toBe(patientId);
     expect(row.id).toBe(voucher.body.voucherId);
     expect(row.kind).toBe("invoice_refund");
@@ -841,8 +877,61 @@ describe("billing e2e", () => {
     expect(current.body.session).toBeNull();
   });
 
+  /**
+   * UX-AUDIT 2026-09-28 — "OPEN ON THIS DRAWER" reads the caller's own live drawer and carries NO
+   * CASH FIGURE: the close is a blind count, so the payload's keys are pinned whole — a cash total,
+   * a "collected" or an expected added later turns this red before it reaches the screen.
+   */
+  it("open items: unconfirmed UPI and a part-paid bill on the cashier's own drawer, and no cash figure anywhere", async () => {
+    const none = await http().get("/billing/sessions/current/open-items").set(...auth(cashier.token)).expect(200);
+    expect(none.body).toEqual({ items: null });
+
+    const patientId = await registerPatient("Meena Bai", "9876543212");
+    await openSession(cashier.token, 200_000);
+    await issuePaid(patientId, base.genericServiceId); // ₹560 in CASH — must not surface below
+
+    const approvalId = await ownerCredit("draft-open-1", patientId, 56_000, "settles later");
+    const issued = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-open-1", patientId,
+      lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
+      credit: { reason: "settles later", approvalId },
+    }).expect(201);
+    const receipt = await http().post("/billing/receipts").set(...auth(cashier.token))
+      .send({ patientId, tenders: [{ mode: "upi", amountPaise: 20_000, refText: "UPI-1" }] }).expect(201);
+    await http().post(`/billing/receipts/${receipt.body.receiptId as string}/allocations`).set(...auth(cashier.token))
+      .send({ invoiceId: issued.body.invoiceId, amountPaise: 20_000 }).expect(201);
+
+    const res = await http().get("/billing/sessions/current/open-items").set(...auth(cashier.token)).expect(200);
+    const items = res.body.items as Record<string, unknown>;
+    expect(Object.keys(items).sort()).toEqual(
+      ["nonCashMismatched", "nonCashUnconfirmed", "partPaid", "receipts", "refundsPaidHere", "refundsQueued"],
+    );
+    expect(items).toMatchObject({
+      receipts: 2,
+      nonCashUnconfirmed: { count: 1, paise: 20_000 },
+      nonCashMismatched: { count: 0, paise: 0 },
+      refundsQueued: { count: 0, paise: 0 },
+      refundsPaidHere: 0,
+      partPaid: { count: 1, paise: 36_000 },
+    });
+    const partPaid = items.partPaid as { items: Record<string, unknown>[] };
+    expect(partPaid.items).toEqual([expect.objectContaining({
+      invoiceId: issued.body.invoiceId, outstandingPaise: 36_000, patientName: "Meena Bai",
+    })]);
+    // THE BLIND COUNT: neither the cash taken (56000) nor the drawer's expected (256000) is on the wire.
+    const wire = JSON.stringify(res.body);
+    expect(wire).not.toContain("56000");
+    expect(wire).not.toContain("256000");
+
+    // Another cashier's drawer is not hers: with none of his own open, he reads null.
+    const other = await http().get("/billing/sessions/current/open-items").set(...auth(cashier2.token)).expect(200);
+    expect(other.body).toEqual({ items: null });
+  });
+
   it("the 403 sweep: every route in the table refuses a permission-less user, BY THE PERMISSION IT NAMES", async () => {
-    expect(ROUTES).toHaveLength(31);
+    // UX-AUDIT 2026-09-28: 31 -> 32, `sessions/current/open-items`; BOARD — +2, the mismatch decision and
+    // the office's needs list. Measured from the failing run after merging main: `Received length: 34`.
+    expect(ROUTES).toHaveLength(34);
     for (const [method, path, permission] of ROUTES) {
       const res = await http()[method](path).set(...auth(rando.token)).send({});
       expect({ method, path, status: res.status, message: res.body.message }).toEqual({
@@ -1079,6 +1168,33 @@ describe("billing e2e", () => {
     expect(mismatches.body.items).toHaveLength(1);
     expect(mismatches.body.items[0].expectedNetPaise).toBe(49_250);
     expect(mismatches.body.items[0].settledPaise).toBe(48_000);
+  });
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — deciding a mismatch is a money act on the office screen, so it rides the
+   * same Idempotency-Key discipline as the other money writes: a replayed decision returns the ORIGINAL
+   * answer and writes ONE decision row, not a second (or a spurious "already disputed" refusal).
+   */
+  it("IDEMPOTENCY: replaying POST /billing/recon/mismatches/:id/resolve with the same key decides ONCE and returns the original body", async () => {
+    const patientId = await registerPatient("Salma Begum", "9876543230");
+    await openSession(cashier.token);
+    await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-resolve-1", patientId, lines: [{ lineId: "l1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "card", amountPaise: 50_000, refText: "TXN-RES-1" }] },
+    }).expect(201);
+    await http().post("/billing/recon/upload").set(...auth(cashier.token))
+      .send({ source: "card", csv: "ref,settledPaise,settledOn\nTXN-RES-1,48000,2026-08-20" }).expect(201);
+    const [m] = (await http().get("/billing/recon/mismatches").set(...auth(cashier.token)).expect(200)).body.items as [{ tenderId: string }];
+
+    const body = { outcome: "dispute", reason: "raised with the bank" };
+    const key = `resolve-${m.tenderId}`;
+    const first = await http().post(`/billing/recon/mismatches/${m.tenderId}/resolve`)
+      .set(...auth(cashier.token)).set("Idempotency-Key", key).send(body).expect(201);
+    const replay = await http().post(`/billing/recon/mismatches/${m.tenderId}/resolve`)
+      .set(...auth(cashier.token)).set("Idempotency-Key", key).send(body).expect(201);
+    expect(first.body).toMatchObject({ status: "resolved", outcome: "dispute", shortPaise: 1_250 });
+    expect(replay.body).toEqual(first.body);
+    expect(await db.select().from(reconResolutions).where(eq(reconResolutions.tenderId, m.tenderId))).toHaveLength(1);
   });
 
   it("reports: the day book and the GSTR-1 summary serve the T10 shapes over HTTP", async () => {

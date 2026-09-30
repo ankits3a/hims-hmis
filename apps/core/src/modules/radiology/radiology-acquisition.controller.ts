@@ -56,6 +56,10 @@ const acquiredBody = z.object({
   doseDlp: z.number().nonnegative().max(9_999_999).nullish(),
   doseDap: z.number().nonnegative().max(9_999_999).nullish(),
   fluoroSeconds: z.number().int().nonnegative().max(86_400).nullish(),
+  /** 18-S RS12 — mammography's Average Glandular Dose, mGy. */
+  doseAgd: z.number().nonnegative().max(9_999_999).nullish(),
+  /** 18-S RS12b — reference-point air kerma Ka,r, mGy. */
+  doseKar: z.number().nonnegative().max(9_999_999).nullish(),
   doseManual: z.boolean().optional(),
   contrastGiven: z.boolean().optional(),
   contrastAgent: z.string().min(1).max(120).nullish(),
@@ -153,6 +157,8 @@ export class RadiologyAcquisitionController {
         doseDlp: input.doseDlp ?? null,
         doseDap: input.doseDap ?? null,
         fluoroSeconds: input.fluoroSeconds ?? null,
+        doseAgd: input.doseAgd ?? null,
+        doseKar: input.doseKar ?? null,
         doseManual: input.doseManual ?? false,
         contrastGiven: input.contrastGiven ?? false,
         contrastAgent: input.contrastAgent ?? null,
@@ -192,7 +198,9 @@ export class RadiologyAcquisitionController {
    * not, which is the separation that actually matters here.
    */
   @Post(":studyId/contrast")
-  @RequirePermission("radiology.acquire", "hospital")
+  // 18-S RS5 — `radiology.contrast.record` (held by radiographer, radiologist and radiology_nurse),
+  // split off `radiology.acquire` so the nurse who injects can record it without driving the machine.
+  @RequirePermission("radiology.contrast.record", "hospital")
   async contrast(
     @CurrentActor() actor: Actor,
     @Param("studyId") studyId: string,
@@ -230,7 +238,8 @@ export class RadiologyAcquisitionController {
    * deliberately not the actor who typed the row.
    */
   @Post("contrast-reactions")
-  @RequirePermission("radiology.acquire", "hospital")
+  // 18-S RS5 — the nurse watching the patient after the injection records the reaction too.
+  @RequirePermission("radiology.contrast.record", "hospital")
   async reaction(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const input = parsed(reactionBody, body);
     try {

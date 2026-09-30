@@ -346,7 +346,7 @@ describe("me (desk / report / export) e2e — 07c", () => {
     expect(cards.some((c) => c.key === "billing.myCollections")).toBe(false);                          // no drawer for a role with no billing.*
   });
 
-  it("FD-1: a cashier's desk carries the drawer — float and the cash it should hold — and no registration tile", async () => {
+  it("FD-1: a cashier's desk carries the drawer float — BLIND COUNT: never the cash it should hold before her count — and no registration tile", async () => {
     await ensureRole(db, "cashier_t");
     await grantPermissionToRole(db, registry, "cashier_t", "billing.session.own");
     const asha = await mkUser(db, "asha", ["cashier_t"]);
@@ -360,8 +360,38 @@ describe("me (desk / report / export) e2e — 07c", () => {
     expect(cards.map((c) => c.key).filter((k) => k !== "billing.myCollections")).toEqual([]);
     expect(cards.map((c) => c.key)).toContain("billing.myCollections");
     const stats = cards[0]!.stats!;
-    expect(stats.find((s) => s.key === "desk.billing.float")!.value).toBe(stats.find((s) => s.key === "desk.billing.expectedCash")!.value);   // nothing taken yet: the drawer should hold the float
+    // OWNER RULING 2026-09-28 — BLIND COUNT: her drawer is open and uncounted, so the /me/desk
+    // response carries NO expected-cash figure for her — absent from the JSON, not just the screen.
+    expect(stats.find((s) => s.key === "desk.billing.expectedCash")).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain("expectedCash");
     expect(stats.find((s) => s.key === "desk.billing.float")!.value).toContain("2,250");
     expect(stats.find((s) => s.key === "desk.billing.noDrawer")).toBeUndefined();
+  });
+
+  it("BLIND COUNT, collected today: a cashier's /me/desk and /me/report for today carry no collected money while her drawer is open; the receipt count stays", async () => {
+    await ensureRole(db, "cashier_t");
+    await grantPermissionToRole(db, registry, "cashier_t", "billing.session.own");
+    const asha = await mkUser(db, "asha", ["cashier_t"]);
+    await openSessionFor(db, asha, 225000);
+    const desk = await get("/me/desk", asha.token).expect(200);
+    const stats = (desk.body.cards as { key: string; stats?: { key: string }[] }[]).find((c) => c.key === "billing.myCollections")!.stats!;
+    expect(stats.map((s) => s.key)).toEqual(["desk.billing.receipts", "desk.billing.float"]);
+    const report = await get("/me/report", asha.token).expect(200);
+    expect((report.body.sections as { key: string }[]).map((x) => x.key)).not.toContain("billing.myCollections");
+  });
+
+  it("BLIND COUNT: a supervisor holding billing.session.read still reads her open drawer's expected cash on /me/desk", async () => {
+    await ensureRole(db, "supervisor_t");
+    await grantPermissionToRole(db, registry, "supervisor_t", "billing.session.own");
+    await grantPermissionToRole(db, registry, "supervisor_t", "billing.session.read");
+    const meera = await mkUser(db, "meera", ["supervisor_t"]);
+    await openSessionFor(db, meera, 225000);
+    const res = await get(`/me/desk?date=${DATE}`, meera.token).expect(200);
+    const cards = res.body.cards as { key: string; stats?: { key: string; value: string }[] }[];
+    const stats = cards.find((c) => c.key === "billing.myCollections")!.stats!;
+    expect(stats.find((s) => s.key === "desk.billing.expectedCash")!.value).toBe(stats.find((s) => s.key === "desk.billing.float")!.value);   // nothing taken yet: the float
+    const today = await get("/me/desk", meera.token).expect(200);
+    const todayStats = (today.body.cards as { key: string; stats?: { key: string }[] }[]).find((c) => c.key === "billing.myCollections")!.stats!;
+    expect(todayStats.map((x) => x.key)).toContain("desk.billing.collected");   // collected today, still hers to see
   });
 });
