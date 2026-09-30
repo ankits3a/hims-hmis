@@ -85,11 +85,97 @@ export function nextRung(attempts: readonly CriticalAttempt[]): CriticalRung | n
   return RUNGS.find((r) => !spokenTo.has(r)) ?? null;
 }
 
+/**
+ * ═══ THE §13 WALK FINDING (2026-09-28) — A READ-BACK MUST CARRY THE VALUE ═══
+ *
+ * DD12 says the call closes when the clinician REPEATS THE VALUE BACK, and the close checked only
+ * that SOMETHING was typed. On the synthetic walk a potassium of 6.8 closed on "five point eight" —
+ * the one error a read-back exists to catch, recorded as the proof that it was caught. The guard
+ * checked the adjacent property (non-empty) instead of the property (the value).
+ *
+ * So the words must contain the result's number, however the technologist types what they heard:
+ * digits ("6.8", "K 6.80"), Devanagari digits ("६.८"), or English number words ("six point eight",
+ * "one hundred and twenty"). Anything else is refused `readback_mismatch` and the call stays OPEN,
+ * so the ladder's clock keeps running. A result with no numeric value keeps the non-empty rule —
+ * there is no number to hear.
+ */
+const WORD_UNITS: Record<string, number> = {
+  zero: 0, oh: 0, nil: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+  nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+  seventeen: 17, eighteen: 18, nineteen: 19,
+};
+const WORD_TENS: Record<string, number> = {
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+const DEVANAGARI_DIGITS = "०१२३४५६७८९";
+
+/** Every number a read-back says, as digits or as English words. Exported for its own test. */
+export function numbersSpoken(readback: string): number[] {
+  const text = readback.toLowerCase()
+    .replace(/[०-९]/g, (d) => String(DEVANAGARI_DIGITS.indexOf(d)))
+    .replace(/(\d),(\d{3})\b/g, "$1$2");
+  const found: number[] = [];
+  for (const m of text.matchAll(/\d+(?:\.\d+)?/g)) found.push(Number(m[0]));
+
+  const tokens = text.split(/[^a-z]+/).filter((t) => t !== "");
+  let i = 0;
+  while (i < tokens.length) {
+    const isWord = (t: string | undefined): boolean =>
+      t !== undefined && (t in WORD_UNITS || t in WORD_TENS || t === "hundred" || t === "thousand");
+    if (!isWord(tokens[i]) && !(tokens[i] === "point" && tokens[i + 1] !== undefined && tokens[i + 1]! in WORD_UNITS)) {
+      i += 1; continue;
+    }
+    /**
+     * `prev` is what the last word was, because clinical speech runs numbers together: "one twenty"
+     * is 120 and not 1 then 20, "one thirty five" is 135, "one oh five" is 105, and "one two zero"
+     * read digit by digit is 120 — while "twenty five" is still 25 and "one hundred and twenty" 120.
+     */
+    let total = 0; let current = 0; let any = false;
+    let prev: "unit" | "zero" | "teen" | "tens" | "scale" | "and" | null = null;
+    while (i < tokens.length) {
+      const t = tokens[i]!;
+      if (t in WORD_UNITS) {
+        const v = WORD_UNITS[t]!;
+        if ((prev === "unit" || prev === "zero") && v <= 9) current = current * 10 + v;
+        else current += v;
+        prev = v === 0 ? "zero" : v <= 9 ? "unit" : "teen";
+        any = true;
+      } else if (t in WORD_TENS) {
+        const v = WORD_TENS[t]!;
+        current = prev === "unit" || prev === "teen" ? current * 100 + v : current + v;
+        prev = "tens"; any = true;
+      } else if (t === "hundred") { current = (current || 1) * 100; prev = "scale"; any = true; }
+      else if (t === "thousand") { total += (current || 1) * 1000; current = 0; prev = "scale"; any = true; }
+      else if (t === "and" && any && isWord(tokens[i + 1])) { prev = "and"; }
+      else break;
+      i += 1;
+    }
+    let value = total + current;
+    if (tokens[i] === "point") {
+      let decimals = "";
+      i += 1;
+      while (i < tokens.length && tokens[i]! in WORD_UNITS && WORD_UNITS[tokens[i]!]! <= 9) {
+        decimals += String(WORD_UNITS[tokens[i]!]); i += 1;
+      }
+      if (decimals !== "") { value = Number(`${String(value)}.${decimals}`); any = true; }
+    }
+    if (any) found.push(value);
+  }
+  return found;
+}
+
+/** True when the read-back says the result's number. `value` is the stored numeric ("6.8000"). */
+export function readbackCarriesValue(readback: string, value: string): boolean {
+  const target = Number(value);
+  if (!Number.isFinite(target)) return false;
+  return numbersSpoken(readback).some((n) => Math.abs(n - target) < 1e-9);
+}
+
 export type AcknowledgeCriticalInput = {
   callId: string;
   /** A rung: recorded, and the call stays OPEN. */
   attempt?: { contact: string; outcome: CriticalAttempt["outcome"]; rung?: CriticalRung };
-  /** The words the clinician said back. Non-empty, and the ONLY thing that closes the call. */
+  /** The words the clinician said back. Must carry the result's number; the ONLY thing that closes the call. */
   readback?: string;
 };
 
@@ -192,6 +278,17 @@ export async function acknowledgeCritical(
    * **The medico-legal record then says the hospital telephoned nobody before the read-back**,
    * which is the evidence loss m1's own comment names, in the direction it names.
    */
+  const [measured] = await tx.select({ valueNumeric: labResults.valueNumeric })
+    .from(labResults).where(eq(labResults.id, call.resultId));
+  if (measured?.valueNumeric != null && !readbackCarriesValue(readback, measured.valueNumeric)) {
+    throw new LabError(
+      "readback_mismatch",
+      `the read-back does not carry the value ${String(Number(measured.valueNumeric))} — the call stays open. ` +
+        "Ask the clinician to repeat the number and type it as they say it (digits or words).",
+      { value: String(Number(measured.valueNumeric)) },
+    );
+  }
+
   const won = await tx
     .update(labCriticalCalls)
     .set({ attempts, readbackText: readback, closedBy: actor.id, closedAt: now })

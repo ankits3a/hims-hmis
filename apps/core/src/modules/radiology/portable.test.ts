@@ -126,7 +126,8 @@ describe("the portable study (18a-iii T3)", () => {
     }));
   const rebook = (studyId: string, deviceResourceId: string, over: Record<string, unknown> = {}) =>
     withTx(db, (tx) => rescheduleStudy(tx, fx.radiographer, {
-      studyId, deviceResourceId, scheduledAt: new Date(SLOT.getTime() + (seq + 10) * 3_600_000), ...over,
+      studyId, deviceResourceId, scheduledAt: new Date(SLOT.getTime() + (seq + 10) * 3_600_000),
+      reason: "Patient asked to change", ...over,
     }));
   /** The evidence each gate a covered ward USG opens will accept. */
   const EVIDENCE: Record<string, unknown> = {
@@ -281,12 +282,12 @@ describe("the portable study (18a-iii T3)", () => {
       }
       await withTx(db, (tx) => evaluateReadiness(tx, ward.studyId));
       await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, ward.studyId));
-      await withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, {
+      /**
+       * 18-S RS8b T3 — the refusal is at the START now (PCPNDT: Form F before the procedure). This
+       * used to start the bedside scan and refuse at `recordAcquired`, pinning the old order.
+       */
+      await expect(withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, {
         studyId: ward.studyId, now: NOW,
-      }));
-
-      await expect(withTx(db, (tx) => recordAcquired(tx, fx.radiographer, fx.decls, {
-        studyId: ward.studyId, imageSource: "no_pacs_images", now: NOW,
       }))).rejects.toMatchObject({ code: "form_f_missing" });
     });
 

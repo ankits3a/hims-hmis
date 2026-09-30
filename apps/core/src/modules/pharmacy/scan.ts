@@ -1,7 +1,10 @@
+import { eq } from "drizzle-orm";
+import { items } from "../../kernel/db/schema";
 import { balances, batchesByNo, itemsByIds, resolveBarcode } from "../materials";
 import { controlOf, requireControlledStore } from "./controlled";
 import { PharmacyError } from "./errors";
 import { parseGs1 } from "./gs1";
+import { parseInHouseLabel } from "./labels";
 import { getDispenseRow, linesOf } from "./queue";
 import type { Db } from "../../kernel/db/client";
 
@@ -23,12 +26,20 @@ export type ScanMatch = { itemCode: string; batchNo: string | null; expiryDate: 
 
 export async function resolveScan(db: Db, storeResourceId: string, lineIdx: number, itemId: string, raw: string): Promise<ScanMatch> {
   const code = raw.trim();
-  const gs1 = parseGs1(code);
-  const candidates = gs1 === null ? [code] : [gs1.gtin, gs1.gtin.replace(/^0/, ""), code];
+  // GAP A6 — our own rack / strip sticker names the item by its code (and a strip its batch); the
+  // books are its source, so there is no printed expiry to cross-check.
+  const own = parseInHouseLabel(code);
+  const gs1 = own === null ? parseGs1(code) : null;
   let found: { itemId: string } | undefined;
-  for (const c of candidates) {
-    found = await resolveBarcode(db, c);
-    if (found !== undefined) break;
+  if (own !== null) {
+    const [row] = await db.select({ itemId: items.id }).from(items).where(eq(items.code, own.itemCode)).limit(1);
+    found = row;
+  } else {
+    const candidates = gs1 === null ? [code] : [gs1.gtin, gs1.gtin.replace(/^0/, ""), code];
+    for (const c of candidates) {
+      found = await resolveBarcode(db, c);
+      if (found !== undefined) break;
+    }
   }
   const n = String(lineIdx + 1);
   if (found === undefined) {
@@ -39,14 +50,15 @@ export async function resolveScan(db: Db, storeResourceId: string, lineIdx: numb
     throw new PharmacyError("scan_wrong_item", `line ${n}: this pack is ${other?.name ?? found.itemId}, not the line's medicine — put it back`, { lineIdx, scannedItemId: found.itemId });
   }
   const item = (await itemsByIds(db, [itemId])).get(itemId);
-  if (gs1 === null || gs1.batch === null) return { itemCode: item?.code ?? "", batchNo: null, expiryDate: null, batchId: null };
+  const batchNo = own !== null ? own.batchNo : gs1?.batch ?? null;
+  if (batchNo === null) return { itemCode: item?.code ?? "", batchNo: null, expiryDate: null, batchId: null };
 
   const held = new Set((await balances(db, { resourceId: storeResourceId })).filter((b) => b.qtyOnHand > 0).map((b) => b.batchId));
-  const batch = (await batchesByNo(db, itemId, gs1.batch)).find((b) => held.has(b.id));
+  const batch = (await batchesByNo(db, itemId, batchNo)).find((b) => held.has(b.id));
   if (batch === undefined) {
-    throw new PharmacyError("scan_batch_unknown", `line ${n}: the counter holds no batch ${gs1.batch} of this medicine — check the GRN`, { lineIdx, batchNo: gs1.batch });
+    throw new PharmacyError("scan_batch_unknown", `line ${n}: the counter holds no batch ${batchNo} of this medicine — check the GRN`, { lineIdx, batchNo });
   }
-  if (gs1.expiry !== null && batch.expiryDate !== gs1.expiry) {
+  if (gs1 !== null && gs1.expiry !== null && batch.expiryDate !== gs1.expiry) {
     throw new PharmacyError("scan_batch_mismatch", `line ${n}: the pack says batch ${batch.batchNo} expires ${gs1.expiry}, the books say ${batch.expiryDate ?? "no expiry"} — check the GRN before this goes out`, { lineIdx, printed: gs1.expiry, booked: batch.expiryDate });
   }
   return { itemCode: item?.code ?? "", batchNo: batch.batchNo, expiryDate: batch.expiryDate, batchId: batch.id };

@@ -39,7 +39,8 @@ const CROCIN: WireRetailShelfEntry = {
 const AZEE: WireRetailShelfEntry = { ...CROCIN, medicineId: "m-azee", brandName: "Azee 500", scheduleFlag: "H1", itemId: "i-azee", itemCode: "AZEE500" };
 const previewOf = (over: Partial<WireRetailPreview> = {}): WireRetailPreview => ({
   licence: CURRENT, prescriptionRequired: false,
-  lines: [{ lineIdx: 0, medicineId: "m-croc", brandName: "Crocin 500", strengthLabel: "500 mg", form: "tablet", scheduleFlag: "OTC", itemId: "i-croc", batchId: "b1", batchNo: "R-1", expiryDate: "2027-06-30", qtyBase: 10, fefoOverride: false }],
+  lines: [{ lineIdx: 0, medicineId: "m-croc", brandName: "Crocin 500", strengthLabel: "500 mg", form: "tablet", scheduleFlag: "OTC", itemId: "i-croc", batchId: "b1", batchNo: "R-1", expiryDate: "2027-06-30", qtyBase: 10, fefoOverride: false,
+    price: { unitPaise: 1200, grossPaise: 12000, discountPaise: 0, taxPaise: 1286, gstRateBps: 1200, amountPaise: 12000 } }],
   totals: { grossPaise: 12000, discountPaise: 0, taxPaise: 1286, netPayablePaise: 12000 },
   checks: null, ...over,
 });
@@ -50,11 +51,11 @@ const SALE: WireRetailSale = {
   lines: [{ lineIdx: 0, medicineId: "m-croc", drugName: "Crocin 500 500 mg tablet", itemId: "i-croc", itemCode: "CROC500", itemName: "Crocin", batchId: "b1", batchNo: "R-1", expiryDate: "2027-06-30", qtyBase: 10, baseUom: "tablet", unitPaise: 1200, scheduleFlag: "OTC", fefoOverride: false, returnedQtyBase: 0 }],
 };
 
+/* UX-AUDIT 2026-09-28 — a typeahead: typing lists the shelf, a pick adds it. No Find button. */
 async function addToCart(entry: WireRetailShelfEntry, qty: string): Promise<void> {
-  await userEvent.type(screen.getByRole("textbox", { name: "Medicine name, item code, or scan the pack" }), entry.brandName.slice(0, 4));
-  await userEvent.click(screen.getByRole("button", { name: "Find" }));
-  const results = await screen.findByRole("list", { name: "On the walk-in shelf" });
-  await userEvent.click(within(results).getByRole("button", { name: "Add" }));
+  await userEvent.type(screen.getByRole("combobox", { name: "Medicine name, item code, or scan the pack" }), entry.brandName.slice(0, 4));
+  const results = await screen.findByRole("listbox", { name: "On the walk-in shelf" });
+  await userEvent.click(within(results).getByRole("option", { name: new RegExp(entry.brandName) }));
   await userEvent.type(screen.getByRole("textbox", { name: `Quantity of ${entry.brandName}` }), qty);
 }
 
@@ -80,19 +81,26 @@ describe("PharmacyRetail (P19)", () => {
       "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
     });
     renderWithProviders(<PharmacyRetail />);
-    expect(await screen.findByTestId("retail-shut")).toHaveTextContent("the retail licence ended on 2026-09-14");
+    expect(await screen.findByTestId("retail-shut")).toHaveTextContent("the retail licence ended on 14/09/2026");
     expect(screen.getByText("No walk-in sale yet today.")).toBeInTheDocument();
   });
 
-  it("lists the day's sales in the hospital's time", async () => {
+  it("lists the day's sales in the hospital's time, each with who bought it, and never names a restricted customer", async () => {
     mockRoutes({
       "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
       "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [
-        { id: "s1", soldAt: "2026-09-17T09:00:00.000Z", soldBy: "u", invoiceId: "inv-1", invoiceNo: "INV-26-000123", netPaise: 12000, scheduled: true, lineCount: 1, registeredHere: false },
+        { id: "s1", soldAt: "2026-09-17T09:00:00.000Z", soldBy: "u", invoiceId: "inv-1", invoiceNo: "INV-26-000123", netPaise: 12000, scheduled: true, lineCount: 1, registeredHere: false,
+          customer: { uhid: "U0000123", name: "Ramesh Patil", alias: null } },
+        { id: "s2", soldAt: "2026-09-17T08:00:00.000Z", soldBy: "u", invoiceId: "inv-2", invoiceNo: "INV-26-000122", netPaise: 5000, scheduled: false, lineCount: 1, registeredHere: false,
+          customer: { uhid: "U0000999", name: null, alias: "Patient R" } },
       ] } },
     });
     renderWithProviders(<PharmacyRetail />);
-    expect(await screen.findByTestId("retail-row-s1")).toHaveTextContent("14:30INV-26-000123₹120.00on prescription");
+    const row = await screen.findByTestId("retail-row-s1");
+    expect(row).toHaveTextContent("Ramesh Patil₹120.00");
+    expect(row).toHaveTextContent("14:30INV-26-000123on prescription");
+    expect(screen.getByTestId("retail-row-s2")).toHaveTextContent("Patient R₹50.00");
+    expect(screen.getByRole("button", { name: "Today · 2 sales" })).toBeInTheDocument();
   });
 
   it("registers a new customer, prices the cart, takes cash with change, and offers the bill", async () => {
@@ -106,17 +114,23 @@ describe("PharmacyRetail (P19)", () => {
     renderWithProviders(<PharmacyRetail />);
     await screen.findByRole("button", { name: "New customer" });
     await newCustomer();
-    expect(screen.getByTestId("retail-customer")).toHaveTextContent("Ramesh Patil (registered when the sale is made)");
+    expect(screen.getByTestId("retail-customer")).toHaveTextContent("Ramesh Patilnew customer — registered when the sale is made");
     await addToCart(CROCIN, "10");
     await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
-    expect(await screen.findByTestId("retail-total")).toHaveTextContent("To pay: ₹120.00");
+    expect(await screen.findByTestId("retail-total")).toHaveTextContent("₹120.00");
+    // UX-AUDIT 2026-09-28 — each priced line says its batch, expiry, rate, GST and amount.
+    expect(screen.getByTestId("cart-0")).toHaveTextContent("R-130 Jun 2027₹12.0012% · ₹12.86₹120.00");
+    expect(screen.getByTestId("retail-totals")).toHaveTextContent("GST inside the MRP₹12.86");
     expect(screen.getByText("A new customer has no allergies on record yet: ask before you sell.")).toBeInTheDocument();
     expect(screen.queryByTestId("retail-rx")).toBeNull();
     // A new customer's preview names nobody: the server has no one to check against yet.
     expect(bodiesOf("POST", "/pharmacy/retail/preview")).toEqual([{ lines: [{ medicineId: "m-croc", qtyBase: 10 }] }]);
 
-    const amount = screen.getByRole("textbox", { name: "Amount (₹)" });
-    await userEvent.clear(amount);
+    // UX-AUDIT 2026-09-28 — the cash box is not prefilled: it waits for what the customer hands over.
+    const amount = screen.getByRole("textbox", { name: "Cash received (₹)" });
+    expect(amount).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Take payment and sell" })).toBeDisabled();
+    expect(screen.getByTestId("retail-bar")).toHaveTextContent("Type the cash received: at least ₹120.00.");
     await userEvent.type(amount, "200");
     expect(screen.getByTestId("retail-change")).toHaveTextContent("Change to give: ₹80.00");
     await userEvent.click(screen.getByRole("button", { name: "Take payment and sell" }));
@@ -151,9 +165,63 @@ describe("PharmacyRetail (P19)", () => {
     await userEvent.type(within(rx).getByRole("textbox", { name: "Prescriber's name" }), "Dr R. Joshi");
     await userEvent.type(within(rx).getByRole("textbox", { name: "Registration no." }), "MMC-2011-04417");
     await userEvent.type(within(rx).getByRole("textbox", { name: "Prescriber's address" }), "FC Road, Pune");
-    // No photo yet: the sale stays closed.
+    // UX-AUDIT 2026-09-28 — the date is typed as the prescription prints it, dd/mm/yyyy.
+    const date = within(rx).getByRole("textbox", { name: "Prescription date" });
+    await userEvent.type(date, "31022026");
+    expect(date).toHaveValue("31/02/2026");
+    expect(within(rx).getByText("Not a real date — type it as dd/mm/yyyy.")).toBeInTheDocument();
+    await userEvent.clear(date);
+    await userEvent.type(date, "05092026");
+    expect(date).toHaveValue("05/09/2026");
+    await userEvent.type(screen.getByRole("textbox", { name: "Cash received (₹)" }), "120");
+    // No photo yet: the sale stays closed, and the bar says why.
     expect(screen.getByRole("button", { name: "Take payment and sell" })).toBeDisabled();
+    expect(screen.getByTestId("retail-bar")).toHaveTextContent("Fill the outside prescription: a Schedule H or H1 line needs it.");
     expect(bodiesOf("POST", "/pharmacy/retail/sales")).toEqual([]);
+  });
+
+  it("offers ONE next act in the pinned bar, and says what it waits for", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/retail/shelf": { status: 200, body: { items: [CROCIN] } },
+      "POST /api/pharmacy/retail/preview": { status: 201, body: previewOf() },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    const bar = await screen.findByTestId("retail-bar");
+    expect(bar).toHaveTextContent("Step 1 · Medicines");
+    expect(within(bar).getByRole("button", { name: "Price the cart" })).toBeDisabled();
+    await addToCart(CROCIN, "10");
+    await userEvent.click(within(bar).getByRole("button", { name: "Price the cart" }));
+    const sell = await within(bar).findByRole("button", { name: "Take payment and sell" });
+    expect(sell).toHaveTextContent("Take payment and sell · ₹120.00");
+    expect(sell).toBeDisabled();
+    expect(bar).toHaveTextContent("Step 3 · Bill");
+    expect(bar).toHaveTextContent("Find or register the customer, on the left.");
+    expect(within(bar).getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("charges UPI the bill's amount exactly, with its reference, and never asks for cash", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/retail/shelf": { status: 200, body: { items: [CROCIN] } },
+      "POST /api/pharmacy/retail/preview": { status: 201, body: previewOf() },
+      "POST /api/pharmacy/retail/sales": { status: 201, body: SALE },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    await screen.findByRole("button", { name: "New customer" });
+    await newCustomer();
+    await addToCart(CROCIN, "10");
+    await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
+    await screen.findByTestId("retail-total");
+    await userEvent.click(screen.getByRole("radio", { name: "UPI" }));
+    expect(screen.queryByRole("textbox", { name: "Cash received (₹)" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Take payment and sell" })).toBeDisabled();
+    await userEvent.type(screen.getByRole("textbox", { name: "Reference" }), "UPI-4471");
+    await userEvent.click(screen.getByRole("button", { name: "Take payment and sell" }));
+    await screen.findByTestId("retail-sold");
+    expect((bodiesOf("POST", "/pharmacy/retail/sales")[0] as { tenders: unknown }).tenders).toEqual([{ mode: "upi", amountPaise: 12000, refText: "UPI-4471" }]);
   });
 
   it("shows who already matches, and sells to the one the pharmacist picks", async () => {
@@ -176,16 +244,18 @@ describe("PharmacyRetail (P19)", () => {
     await addToCart(CROCIN, "10");
     await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
     await screen.findByTestId("retail-total");
+    await userEvent.type(screen.getByRole("textbox", { name: "Cash received (₹)" }), "120");
     await userEvent.click(screen.getByRole("button", { name: "Take payment and sell" }));
     const matches = await screen.findByTestId("retail-matches");
     expect(matches).toHaveTextContent("Ramesh Patil · U0000007 · 9822001122");
     await userEvent.click(within(matches).getByRole("button", { name: "Use this person" }));
-    expect(screen.getByTestId("retail-customer")).toHaveTextContent("Ramesh Patil · U0000007");
+    expect(screen.getByTestId("retail-customer")).toHaveTextContent("Ramesh PatilU0000007");
     // Choosing a person re-prices the cart against their record before anything is sold.
     await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
     await waitFor(() => { expect(bodiesOf("POST", "/pharmacy/retail/preview")).toHaveLength(2); });
     expect(bodiesOf("POST", "/pharmacy/retail/preview")[1]).toEqual({ patientId: "p-old", lines: [{ medicineId: "m-croc", qtyBase: 10 }] });
     await screen.findByTestId("retail-total");
+    await userEvent.type(screen.getByRole("textbox", { name: "Cash received (₹)" }), "120");
     await userEvent.click(screen.getByRole("button", { name: "Take payment and sell" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Recorded allergy that no prescriber has overridden");
     expect((bodiesOf("POST", "/pharmacy/retail/sales")[1] as { customer: unknown }).customer).toEqual({ existingId: "p-old" });
@@ -221,6 +291,10 @@ describe("PharmacyRetail — returns (P19b)", () => {
     renderWithProviders(<PharmacyRetail />);
     // A shut counter still takes a pack back: a return sells nothing.
     await screen.findByTestId("retail-shut");
+    // UX-AUDIT 2026-09-28 — a return is its own entry point beside the day's list, not a form inside the sale.
+    expect(screen.queryByRole("textbox", { name: "Bill number" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Take back a sealed pack" }));
+    expect(screen.getByRole("dialog", { name: "Take back a sealed pack" })).toBeInTheDocument();
     await userEvent.type(screen.getByRole("textbox", { name: "Bill number" }), " INV-26-000123 ");
     await userEvent.click(screen.getByRole("button", { name: "Find the bill" }));
     const found = await screen.findByTestId("retail-return");
@@ -255,6 +329,7 @@ describe("PharmacyRetail — returns (P19b)", () => {
       "GET /api/pharmacy/retail/bill": { status: 404, body: { statusCode: 404, code: "unknown_retail_sale", message: "x" } },
     });
     renderWithProviders(<PharmacyRetail />);
+    await userEvent.click(await screen.findByRole("button", { name: "Take back a sealed pack" }));
     await userEvent.type(await screen.findByRole("textbox", { name: "Bill number" }), "INV-NOPE");
     await userEvent.click(screen.getByRole("button", { name: "Find the bill" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("No walk-in sale or paper dispense carries that bill number.");

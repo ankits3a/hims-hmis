@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
 import { renderWithRouter } from "../../test-utils";
 import { PharmacyOffice, PharmacyOfficeReports } from "./pharmacy-office";
-import type { WireActivity, WireGstr2b, WireNonMoving, WireSalesRegister, WireSalesRow } from "../../lib/reports-api";
+import { crc32 } from "../../lib/xlsx";
+import type {
+  WireActivity, WireCatalogue, WireDailyStock, WireGstr2b, WireLossRegister, WireNonMoving, WireSalesRegister, WireSalesRow, WireTopSelling,
+} from "../../lib/reports-api";
 
 /**
  * PHARMACY PARITY P5 — the office's Reports: the owner (who buys nothing) lands on them; a number
@@ -88,12 +91,14 @@ const recon: WireGstr2b = {
 const timeline: WireActivity = {
   kind: "supplier_bill", id: "b-1", no: "MSB2609240001", label: "ACME Pharma · ACME/0042",
   entries: [
-    { at: "2026-09-24T05:30:00.000Z", name: "supplier_bill.drafted", actorId: "u-ph", actorName: "pharm.one", status: "draft", changes: [], facts: { billNo: "MSB2609240001", source: "agent" } },
+    { at: "2026-09-24T05:30:00.000Z", name: "supplier_bill.drafted", actorId: "u-ph", actorName: "pharm.one", status: "draft", changes: [], facts: { billNo: "MSB2609240001", source: "agent" },
+      state: { status: "draft", totalPaise: 28_000, vendorBillNo: "ACME/0042" } },
     { at: "2026-09-24T05:40:00.000Z", name: "supplier_bill.updated", actorId: "u-ph", actorName: "pharm.one", status: "draft", facts: { billNo: "MSB2609240001" }, changes: [
       { field: "lines.i-croc.ratePaise", label: "Crocin 500 · Rate", before: 2_500, after: 2_600 },
       { field: "totalPaise", label: "Total", before: 28_000, after: 29_120 },
-    ] },
+    ], state: { status: "draft", totalPaise: 29_120, vendorBillNo: "ACME/0042", "lines.i-croc.ratePaise": 2_600 } },
   ],
+  labels: { status: "Status", totalPaise: "Total", vendorBillNo: "Vendor bill no.", "lines.i-croc.ratePaise": "Crocin 500 · Rate" },
 };
 
 describe("the office's reports (parity P5)", () => {
@@ -138,7 +143,7 @@ describe("the office's reports (parity P5)", () => {
     expect(within(table).queryByText("Margin %")).toBeNull();
   });
 
-  it("E exports the table as seen, totals row included", async () => {
+  it("C exports the table as seen as CSV, totals row included", async () => {
     mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/sales": register(true) }, OWNER);
     const made: Blob[] = [];
     const real = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
@@ -148,7 +153,7 @@ describe("the office's reports (parity P5)", () => {
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-sales"));
     await screen.findByTestId("sales-table");
-    await userEvent.keyboard("e");
+    await userEvent.keyboard("c");
     await waitFor(() => expect(made).toHaveLength(1));
     URL.createObjectURL = real.create;
     URL.revokeObjectURL = real.revoke;
@@ -234,5 +239,209 @@ describe("the office's reports (parity P5)", () => {
     await userEvent.keyboard("{Escape}");
     const back = await screen.findByTestId("reports-view");
     expect(within(within(back).getByTestId("report-tally")).getByText("0")).toBeTruthy();
+  });
+});
+
+// ═══════════════════════════════════ STAGE C — the reports still missing ═══════════════════════════════════
+
+/** The entries of a ZIP of STORED parts, read back from its local headers (with each CRC checked). */
+function unzipStored(bytes: Uint8Array): Map<string, string> {
+  const out = new Map<string, string>();
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let at = 0;
+  while (view.getUint32(at, true) === 0x04034b50) {
+    expect(view.getUint16(at + 8, true)).toBe(0); // stored
+    const crc = view.getUint32(at + 14, true);
+    const size = view.getUint32(at + 18, true);
+    const nameLen = view.getUint16(at + 26, true);
+    const name = new TextDecoder().decode(bytes.subarray(at + 30, at + 30 + nameLen));
+    const data = bytes.subarray(at + 30 + nameLen, at + 30 + nameLen + size);
+    expect(crc32(data)).toBe(crc);
+    out.set(name, new TextDecoder().decode(data));
+    at += 30 + nameLen + size;
+  }
+  expect(view.getUint32(at, true)).toBe(0x02014b50); // the central directory follows the last entry
+  return out;
+}
+
+const topSelling: WireTopSelling = {
+  from: "2026-09-01", to: "2026-09-28", preset: "month", storeCode: null,
+  byValue: [
+    { rank: 1, itemId: "i-cr", itemCode: "CROC500", itemName: "Crocin 500 tablet", qtyBase: 250, valuePaise: 70_000, unitShareBps: 8_333, valueShareBps: 7_000, cumulativeValueBps: 7_000, abc: "A" },
+    { rank: 2, itemId: "i-az", itemCode: "AZEE500", itemName: "Azee 500 tablet", qtyBase: 50, valuePaise: 30_000, unitShareBps: 1_667, valueShareBps: 3_000, cumulativeValueBps: 10_000, abc: "C" },
+  ],
+  byUnits: [
+    { rank: 1, itemId: "i-cr", itemCode: "CROC500", itemName: "Crocin 500 tablet", qtyBase: 250, valuePaise: 70_000, unitShareBps: 8_333, valueShareBps: 7_000, cumulativeValueBps: 7_000, abc: "A" },
+    { rank: 2, itemId: "i-az", itemCode: "AZEE500", itemName: "Azee 500 tablet", qtyBase: 50, valuePaise: 30_000, unitShareBps: 1_667, valueShareBps: 3_000, cumulativeValueBps: 10_000, abc: "C" },
+  ],
+  totals: { items: 2, qtyBase: 300, valuePaise: 100_000 },
+  classes: { A: { items: 1, valuePaise: 70_000 }, B: { items: 0, valuePaise: 0 }, C: { items: 1, valuePaise: 30_000 } },
+};
+
+const losses: WireLossRegister = {
+  from: "2026-09-01", to: "2026-09-28", truncated: false,
+  rows: [
+    { source: "write_off", docId: "w-1", docNo: "MWO2609250001", date: "2026-09-25", at: "2026-09-25T08:30:00.000Z", storeCode: "PHARM-OPD", storeName: "OPD pharmacy", itemId: "i-cr", itemCode: "CROC", itemName: "Crocin 500", batchId: "b-1", batchNo: "CR-1", expiryDate: "2028-06-30", qtyBase: 5, valuePaise: 1_250, reason: "damage", requestedBy: "ph.incharge", approvedBy: "the.ms", postedBy: "ph.incharge", disposalAgency: "BioCare CBWTF", manifestNo: "M-77", note: null },
+    { source: "count", docId: "a-1", docNo: null, date: "2026-09-26", at: "2026-09-26T05:30:00.000Z", storeCode: "PHARM-OPD", storeName: "OPD pharmacy", itemId: "i-cr", itemCode: "CROC", itemName: "Crocin 500", batchId: "b-1", batchNo: "CR-1", expiryDate: "2028-06-30", qtyBase: 4, valuePaise: 1_000, reason: "shrinkage", requestedBy: "mat.head", approvedBy: "the.ms", postedBy: "mat.head", disposalAgency: null, manifestNo: null, note: "four short" },
+  ],
+  byReason: [{ reason: "damage", lines: 1, qtyBase: 5, valuePaise: 1_250 }, { reason: "shrinkage", lines: 1, qtyBase: 4, valuePaise: 1_000 }],
+  totals: { lines: 2, qtyBase: 9, valuePaise: 2_250 },
+};
+
+const daily: WireDailyStock = {
+  from: "2026-09-25", to: "2026-09-26", truncated: false,
+  rows: [{
+    itemId: "i-cr", itemCode: "CROC", itemName: "Crocin 500", baseUom: "tablet", openingQty: 100,
+    in: { grn: 0, transferIn: 0, saleReturn: 2, adjustIn: 0 }, inQty: 2, out: { sale: 7, transferOut: 10, supplierReturn: 20, writeOff: 9 }, outQty: 46, closingQty: 56,
+  }],
+  totals: { items: 1, openingQty: 100, inQty: 2, outQty: 46, closingQty: 56 },
+};
+
+const catalogue = (store: string): WireCatalogue => ({
+  storeCode: store === "" ? null : store, truncated: false,
+  rows: [{
+    id: "i-cr", code: "CROC", name: "Crocin 500", class: "consumable", hsnCode: "30049099", gstRateBps: 1200, baseUom: "tablet", storageClass: "cold_2_8",
+    manufacturer: "GSK", leadTimeDays: 3, lasa: true, highAlert: false, schedule: "OTC", packs: [{ uom: "strip", toBase: 10 }],
+    levels: store === "" ? [{ storeResourceId: "s-1", storeCode: "PHARM-OPD", minBase: 20, reorderBase: 50, maxBase: 200 }, { storeResourceId: "s-2", storeCode: "WARD-3", minBase: 5, reorderBase: 10, maxBase: 40 }]
+      : [{ storeResourceId: "s-1", storeCode: "PHARM-OPD", minBase: 20, reorderBase: 50, maxBase: 200 }],
+    racks: [{ storeCode: "PHARM-OPD", location: "R-12" }],
+  }],
+});
+
+describe("the office's reports — stage C", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+  const ALL = [...OWNER, "pharmacy.tally.export"];
+
+  it("fourteen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
+    const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/top-selling": topSelling }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    const list = await screen.findByTestId("reports-view");
+    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G"]);
+    expect(within(within(list).getByTestId("report-catalogue")).getByText("G")).toBeTruthy();
+    list.focus();
+    await userEvent.keyboard("a");
+    const table = await screen.findByTestId("top-table");
+    await waitFor(() => expect(calls.some((c) => c.path === "/pharmacy/office/reports/top-selling?preset=month")).toBe(true));
+    expect(within(table).getByTestId("top-table-row-i-cr")).toHaveTextContent("Crocin 500 tablet");
+    expect(within(table).getByTestId("top-table-row-i-cr")).toHaveTextContent("700.00");
+    expect(within(table).getByTestId("top-table-row-i-cr")).toHaveTextContent("70.0%");
+    expect(within(table).getByTestId("top-table-row-i-az")).toHaveTextContent("C");
+    expect(within(table).getByTestId("top-table-totals")).toHaveTextContent("1,000.00");
+    expect(screen.getByTestId("abc-A")).toHaveTextContent("Class A · 1 item");
+    expect(screen.getByTestId("abc-C")).toHaveTextContent("300.00");
+    await userEvent.selectOptions(screen.getByTestId("top-by"), "units");
+    expect(within(screen.getByTestId("top-table")).getAllByRole("row")[1]).toHaveTextContent("250");
+  });
+
+  it("the loss register: each loss with its reason and approver, a count variance named as one, totals by reason", async () => {
+    mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/losses": losses }, ACCOUNTS);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-losses"));
+    const table = await screen.findByTestId("loss-table");
+    const wo = within(table).getByTestId("loss-table-row-write_off-w-1-b-1");
+    expect(wo).toHaveTextContent("MWO2609250001");
+    expect(wo).toHaveTextContent("Damaged");
+    expect(wo).toHaveTextContent("the.ms");
+    expect(wo).toHaveTextContent("BioCare CBWTF · M-77");
+    expect(within(table).getByTestId("loss-table-row-count-a-1-b-1")).toHaveTextContent("Count variance");
+    expect(within(table).getByTestId("loss-table-totals")).toHaveTextContent("22.50");
+    expect(screen.getByTestId("loss-reason-shrinkage")).toHaveTextContent("Shrinkage · 1 line · 10.00");
+  });
+
+  it("daily stock: opening, each kind of in and out, closing, per item, with a store narrowing it", async () => {
+    const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/daily-stock": daily }, ACCOUNTS);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-dailyStock"));
+    const table = await screen.findByTestId("daily-stock-table");
+    const heads = within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    expect(heads).toEqual(["Item", "Code", "Unit", "Opening", "GRN", "Transfer in", "Patient returns", "Found / adjusted in", "Total in", "Sold / dispensed", "Transfer out", "To supplier", "Written off / short", "Total out", "Closing"]);
+    const row = within(table).getByTestId("daily-stock-table-row-i-cr");
+    expect(Array.from(row.querySelectorAll("td")).map((td) => td.textContent)).toEqual(["Crocin 500", "CROC", "tablet", "100", "0", "0", "2", "0", "2", "7", "10", "20", "9", "46", "56"]);
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Store" }), "PHARM-OPD");
+    await waitFor(() => expect(calls.some((c) => c.path === "/pharmacy/office/reports/daily-stock?preset=today&store=PHARM-OPD")).toBe(true));
+  });
+
+  it("the item catalogue: the master's facts; all stores shows each store's levels, one store its own min, reorder and max", async () => {
+    const calls = mock({
+      "GET /pharmacy/office/reports/stores": STORES,
+      "GET /pharmacy/office/reports/catalogue": () => catalogue(calls.at(-1)!.path.includes("store=") ? "PHARM-OPD" : ""),
+    }, ACCOUNTS);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-catalogue"));
+    const row = await screen.findByTestId("catalogue-table-row-i-cr");
+    for (const text of ["CROC", "30049099", "12%", "OTC", "Cold 2–8 °C", "GSK", "Yes"]) expect(row).toHaveTextContent(text);
+    // Packs, levels and racks are one entry to a line, each unbroken — joined with " · " they wrapped
+    // mid-entry at 1440 ("PHARM-OPD R-" / "12-B"). The export still carries the joined text.
+    expect(Array.from(row.querySelectorAll("td > div.whitespace-nowrap"), (d) => d.textContent))
+      .toEqual(["1 tablet", "strip = 10", "PHARM-OPD 20/50/200", "WARD-3 5/10/40", "PHARM-OPD R-12"]);
+    await userEvent.selectOptions(screen.getByTestId("catalogue-store"), "PHARM-OPD");
+    await waitFor(() => expect(calls.some((c) => c.path === "/pharmacy/office/reports/catalogue?store=PHARM-OPD")).toBe(true));
+    await waitFor(() => expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(expect.arrayContaining(["Min", "Reorder", "Max", "Rack"])));
+    expect(screen.getByTestId("catalogue-table-row-i-cr")).not.toHaveTextContent("WARD-3");
+    await userEvent.type(screen.getByTestId("catalogue-find"), "zzz");
+    expect(screen.queryByTestId("catalogue-table-row-i-cr")).toBeNull();
+  });
+
+  it("E exports a real .xlsx: a zip of the workbook's parts, the header bold, text as text and money as rupee numbers", async () => {
+    mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/sales": register(true) }, OWNER);
+    const made: Blob[] = [];
+    const names: string[] = [];
+    const real = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    URL.createObjectURL = vi.fn((b: Blob) => { made.push(b); return "blob:x"; });
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { names.push(this.download); });
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-sales"));
+    await screen.findByTestId("sales-table");
+    await userEvent.keyboard("e");
+    await waitFor(() => expect(made).toHaveLength(1));
+    URL.createObjectURL = real.create;
+    URL.revokeObjectURL = real.revoke;
+    click.mockRestore();
+    expect(names).toEqual(["sales-register-2026-09-25-2026-09-25.xlsx"]);
+    expect(made[0]!.type).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    const bytes = new Uint8Array(await new Promise<ArrayBuffer>((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result as ArrayBuffer); r.readAsArrayBuffer(made[0]!); }));
+    const parts = unzipStored(bytes);
+    expect([...parts.keys()]).toEqual(["[Content_Types].xml", "_rels/.rels", "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/styles.xml", "xl/worksheets/sheet1.xml"]);
+    const sheet = parts.get("xl/worksheets/sheet1.xml")!;
+    expect(sheet).toContain('<c r="A1" t="inlineStr" s="1"><is><t xml:space="preserve">Date</t></is></c>');
+    expect(sheet).toContain("<t xml:space=\"preserve\">INV/26-27/000001</t>");
+    // The bill's ₹45.00 is the number 45 in a money cell; the refund's is −15.
+    expect(sheet).toMatch(/<c r="O2" s="2"><v>45<\/v><\/c>/);
+    expect(sheet).toMatch(/<c r="O3" s="2"><v>-15<\/v><\/c>/);
+    // The totals row is bold, and its money bold money.
+    expect(sheet).toMatch(/<row r="4"><c r="A4" t="inlineStr" s="1">.*<c r="O4" s="3"><v>30<\/v><\/c>/);
+    expect(parts.get("xl/workbook.xml")).toContain('name="Sales register"');
+  });
+
+  it("activity: an edit's two versions side by side, every field on both, the changed ones marked", async () => {
+    mock({
+      "GET /pharmacy/office/reports/stores": STORES,
+      "GET /pharmacy/office/reports/activity": { from: "2026-09-22", to: "2026-09-25", rows: [] },
+      "GET /pharmacy/office/reports/activity/document": timeline,
+    }, OWNER);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-activity"));
+    await userEvent.type(await screen.findByTestId("activity-no"), "MSB2609240001{Enter}");
+    await screen.findByTestId("activity-changes-1");
+    // The draft changed nothing, so it offers no comparison.
+    expect(screen.queryByTestId("activity-compare-0")).toBeNull();
+    await userEvent.click(screen.getByTestId("activity-compare-1"));
+    const before = await screen.findByTestId("version-before");
+    const after = screen.getByTestId("version-after");
+    expect(before).toHaveTextContent("Supplier bill entered");
+    expect(after).toHaveTextContent("Supplier bill edited");
+    for (const side of ["before", "after"] as const) {
+      const rows = within(side === "before" ? before : after).getAllByRole("row").map((r) => r.getAttribute("data-testid"));
+      expect(rows).toEqual([`version-${side}-status`, `version-${side}-totalPaise`, `version-${side}-vendorBillNo`, `version-${side}-lines.i-croc.ratePaise`]);
+    }
+    expect(screen.getByTestId("version-before-totalPaise")).toHaveAttribute("data-changed", "yes");
+    expect(screen.getByTestId("version-before-totalPaise")).toHaveTextContent("280.00");
+    expect(screen.getByTestId("version-after-totalPaise")).toHaveTextContent("291.20");
+    expect(screen.getByTestId("version-before-lines.i-croc.ratePaise")).toHaveTextContent("Crocin 500 · Rate25.00");
+    expect(screen.getByTestId("version-after-lines.i-croc.ratePaise")).toHaveTextContent("26.00");
+    expect(screen.getByTestId("version-after-vendorBillNo")).toHaveAttribute("data-changed", "no");
+    expect(screen.getByTestId("version-after-vendorBillNo")).toHaveTextContent("ACME/0042");
   });
 });

@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations"
           } > 300
         for: 2m
         labels:
@@ -49,7 +49,7 @@ groups:
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa"
           } > 93600
         for: 5m
         labels:
@@ -120,12 +120,16 @@ groups:
           # well-run department. Leg 1 cannot see either, because a job that never ran has no
           # series to be stale.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepCriticalChaser"})
+          # 18-S RS10 T2: the HOD's escalations. A sweep that never ran raises nothing — which looks
+          # exactly like a department with nothing late.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepImagingEscalations"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepUnreadWatchman"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepRosterWindows"})
           # R9: the monthly draft. It runs daily and no-ops on 29 days in 30, but it still
           # HEARTBEATS daily — so an absent series means the worker is not running it at all,
           # which is the failure that would silently stop every unit getting next month's rota.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runMonthlyProposals"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepOverdueQa"})
           # PHARMACY P6 (patient messages): the refill reminders. A job that never ran is silent —
           # patients who opted in simply stop hearing, and nobody can tell that from a quiet week.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runRefillReminders"})

@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
 import { setToken } from "../../lib/api";
 import { renderWithRouter } from "../../test-utils";
 import { PharmacyOffice } from "./pharmacy-office";
@@ -16,6 +17,12 @@ import type {
  * and a recall: raised by batch, its callback list read-only, one tap into a return.
  */
 type Call = { method: string; path: string; body: unknown };
+
+const printed = vi.fn();
+vi.mock("../../lib/print-api", async (orig) => ({
+  ...(await orig<typeof import("../../lib/print-api")>()),
+  printInFrame: (doc: { html: string }) => { printed(doc.html); return true; },
+}));
 
 function mock(routes: Record<string, unknown | ((body: unknown) => unknown)>, perms: string[], me = "u-head"): Call[] {
   const calls: Call[] = [];
@@ -95,7 +102,7 @@ const ret = (over: Partial<WireReturn> = {}): WireReturn => ({
   lines: [{
     id: "rl-1", itemId: "i-croc", itemCode: "CROC500", itemName: "Crocin 500 tablet", hsnCode: "30049099", baseUom: "tablet", pack: { uom: "strip", multiplier: 10 },
     batchId: "b-1", batchNo: "CR-1", expiryDate: "2026-10-20", storeResourceId: "s-opd", storeCode: "PHARM-OPD", storeName: "OPD pharmacy",
-    reason: "near_expiry", qtyBase: 104, ratePaise: 250, taxablePaise: 26_000, gstRateBps: 1200, cgstPaise: 1_560, sgstPaise: 1_560, igstPaise: 0, totalPaise: 29_120, ledgerEntryId: null,
+    reason: "near_expiry", qtyBase: 104, ratePaise: 250, taxablePaise: 26_000, gstRateBps: 1200, cgstPaise: 1_560, sgstPaise: 1_560, igstPaise: 0, totalPaise: 29_120, ledgerEntryId: null, note: null,
   }],
   credit: null, ...over,
 });
@@ -139,6 +146,29 @@ describe("the office returns (parity P4)", () => {
     const bySupplier = await within(sheet).findByTestId("expiry-suppliers");
     expect(within(bySupplier).getByTestId("expiry-supplier-Acme Distributors")).toHaveTextContent("can go back: ₹520.00");
     expect(within(bySupplier).getByTestId("expiry-supplier-opening")).toHaveTextContent("OPENING STOCK");
+  });
+
+  it("the expiry report prints as A4: the range, the tab on screen, every batch, the cost total", async () => {
+    printed.mockReset();
+    mock({ "GET /pharmacy/office/returns": office(), "GET /materials/expiry-report": report }, HEAD);
+    renderWithRouter(<ReturnsView initialOpen={{ kind: "expiry", preset: "90" }} />);
+    const sheet = await screen.findByTestId("expiry-sheet");
+    await within(sheet).findByTestId("expiry-items");
+    await userEvent.click(within(sheet).getByTestId("expiry-print"));
+    expect(printed).toHaveBeenCalledTimes(1);
+    const html = printed.mock.calls[0]![0] as string;
+    expect(html).toContain("Expiry report");
+    expect(html).toContain("2026-09-25 – 2026-12-24");
+    for (const batch of ["CR-1", "OPEN-7", "CR-2"]) expect(html).toContain(batch);
+    expect(html).toContain("OPENING STOCK");
+    expect(html).toContain("MRT2609250001");
+    expect(html).toContain("645.00");
+    await userEvent.click(within(sheet).getByTestId("expiry-tab-suppliers"));
+    await userEvent.click(within(sheet).getByTestId("expiry-print"));
+    const bySupplier = printed.mock.calls[1]![0] as string;
+    expect(bySupplier).toContain("Acme Distributors");
+    expect(bySupplier).toContain("520.00");
+    expect(bySupplier).not.toContain("CR-1");
   });
 
   it("D reviews the agent's plan; an unticked vendor is left out of the drafts", async () => {

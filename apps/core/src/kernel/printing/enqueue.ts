@@ -67,7 +67,14 @@ export type PrintDocument =
    * patient carries to an optician. Producer and renderer both in `modules/opd/glasses-print.ts`
    * (the renderer registered by the OPD module), so the kernel never reads `opd_section_records`.
    */
-  | "opd_glasses_rx";
+  | "opd_glasses_rx"
+  /**
+   * GAP A6 (pharmacy gap closure) — the 50 × 25 mm stickers: a rack label for the shelf edge and a
+   * strip label for a loose strip. Producer and renderer both in `modules/pharmacy/labels.ts` (the
+   * renderer registered by the pharmacy module). A job's params are a store and item/batch ids.
+   */
+  | "pharmacy_rack_label"
+  | "pharmacy_strip_label";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -81,7 +88,9 @@ export type PrintDestination =
   | "front_desk_a4"
   | "vitals_thermal"
   /** PHARMACY P1 — the pharmacy counter's 80 mm roll (72 mm printable), bill and labels alike. */
-  | "pharmacy_thermal";
+  | "pharmacy_thermal"
+  /** GAP A6 — the pharmacy's barcode label printer, a 50 × 25 mm sticker roll (not the 72 mm bill roll). */
+  | "pharmacy_label";
 
 /**
  * WHERE EACH DOCUMENT GOES, from the owner's rulings and `PrinterChoice.dc.html`.
@@ -102,6 +111,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   pharmacy_labels: "pharmacy_thermal",
   // The same A4 laser as the prescription sheet: the patient collects both papers at the one desk.
   opd_glasses_rx: "front_desk_a4",
+  pharmacy_rack_label: "pharmacy_label",
+  pharmacy_strip_label: "pharmacy_label",
 };
 
 /**

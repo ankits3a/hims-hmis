@@ -33,8 +33,8 @@ describe("the counter's queue — who holds a ticket, and who is on it (PD-1)", 
    * sealed patient's to one who may not read it (measured here, E3), so it would build a different
    * queue from the one the worker builds.
    */
-  async function queued(drug: string, medicineId: string | null, opts: { patientId?: string; at?: Date; frequency?: string; durationDays?: number } = {}): Promise<string> {
-    const { encounter } = await issueRx(db, fx, [line({ drug, medicineId, frequency: opts.frequency ?? "1-0-1", durationDays: opts.durationDays ?? 3 })], opts);
+  async function queued(drug: string, medicineId: string | null, opts: { patientId?: string; at?: Date; frequency?: string; durationDays?: number; dose?: string } = {}): Promise<string> {
+    const { encounter } = await issueRx(db, fx, [line({ drug, medicineId, frequency: opts.frequency ?? "1-0-1", durationDays: opts.durationDays ?? 3, ...(opts.dose === undefined ? {} : { dose: opts.dose }) })], opts);
     const [e] = await db.select({ eventId: events.eventId, payload: events.payload }).from(events)
       .where(and(eq(events.name, prescriptionIssued.name), eq(events.encounterId, encounter.id))).orderBy(desc(events.seq)).limit(1);
     const { dispenseId } = await withTx(db, (tx) => handlePrescriptionIssued(tx, e!.eventId, e!.payload, MON2));
@@ -89,6 +89,22 @@ describe("the counter's queue — who holds a ticket, and who is on it (PD-1)", 
     expect(rows.get(unplaceable)).toEqual({ ...none, unplaceable: 1 });
     expect(rows.get(refused)).toEqual({ ...none, scheduleX: true });
     expect(rows.get(notStocked)).toEqual({ ...none, notStocked: ["Brufen 400"] });
+  });
+
+  /**
+   * THE WALK OF 2026-09-30. The doctor's screen asks "Dose, e.g. 500 mg", so the line reads "500 mg ·
+   * 1-0-1 · 3 days". The 500 was read as a count of tablets: 3,000 wanted, the waiting row said SHORT
+   * with a hundred on the shelf, and the claim prefilled 3,000 for a six-tablet prescription.
+   */
+  it("C1 — a dose written in milligrams is counted in tablets by the medicine's strength", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 100 });
+    const id = await queued("Crocin 500", fx.med.crocin, { dose: "500 mg", frequency: "1-0-1", durationDays: 3 });
+    const [row] = await listQueue(db, fx.pharmacist.actor, { serviceDate: TODAY });
+    expect(row!.shelf).toEqual({ lines: 1, onShelf: 1, short: [], notStocked: [], unplaceable: 0, scheduleX: false });
+
+    await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "token" }, MON2);
+    const d = await getDispense(db, fx.pharmacist.actor, id, MON2);
+    expect(d.lines.map((l) => l.qtyBase)).toEqual([6]);
   });
 
   it("C1 — a claimed ticket carries no pre-check: its own lines are the truth now", async () => {

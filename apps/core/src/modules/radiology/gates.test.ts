@@ -17,6 +17,7 @@ import {
   WAIVABLE_KINDS, evaluateReadiness, gateState, isContrastAllergen, overrideGate, readiness,
   requireStudyGate, satisfyGate, studyGates, studyState, waiveGate,
 } from "./gates";
+import { IV_HYDRATION_INSTRUCTION, METFORMIN_NOTE } from "./egfr";
 import { scheduleStudy } from "./schedule";
 import { imagingGateDefinition } from "./workflow-def";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
@@ -70,10 +71,20 @@ describe("the two enforcement planes, pinned against each other (18a T5 A3 / F9 
    * ruling the close review owns, instead of one plane being quietly widened to match the other.
    */
   it("F19: the satisfy edge names four roles and the permission model grants one — a MEASURED disagreement", () => {
-    expect(rolesOn("satisfied")).toEqual(["doctor", "radiographer", "radiologist", "system"]);
-    expect(holdersOf("radiology.gates.satisfy")).toEqual(["radiographer"]);
-    /** And check-in is the same hand: the desk that takes the money opens no gate set. */
-    expect(holdersOf("radiology.checkin")).toEqual(["radiographer"]);
+    /**
+     * 18-S RS5 — `radiology_nurse` joins BOTH planes in one commit (the prep bay's nurse satisfies
+     * with evidence). She is on neither exit: the override pin above is unchanged.
+     */
+    expect(rolesOn("satisfied")).toEqual(["doctor", "radiographer", "radiologist", "radiology_nurse", "system"]);
+    expect(holdersOf("radiology.gates.satisfy")).toEqual(["radiographer", "radiology_nurse"]);
+    /**
+     * Check-in — 18-S RS3, DECIDED: the desk now holds it too. The owner-approved board makes
+     * opening the patient at the desk on the day of the slot the check-in (SPINE H3), and the
+     * `imaging_study` definition already named `radiology_receptionist` on `scheduled → checked_in`
+     * (so the two planes now COINCIDE on that edge). Check-in OPENS the gate set and satisfies
+     * nothing: the separation this test exists for is the satisfy pin above, which is unchanged.
+     */
+    expect(holdersOf("radiology.checkin")).toEqual(["radiographer", "radiology_receptionist"]);
   });
 });
 
@@ -368,7 +379,12 @@ describe("the ten imaging safety gates (18a T5)", () => {
     });
 
     /** A creatinine the gate RECORDS without reading would be a checkbox with a number on it. */
+    /**
+     * 18-S RS5 T1 — the ceiling is now the FALLBACK for a patient with no eGFR, so this pins it on a
+     * record with no date of birth. (With one, the eGFR decides: see the RS5 block below.)
+     */
     it("A4: a creatinine above the contrast ceiling cannot SATISFY — it is the override's lane", async () => {
+      await db.update(patients).set({ dob: null }).where(eq(patients.id, fx.patientId));
       const { gateId } = await contrastCt();
       const e = await satisfy(gateId, {
         creatinineUmolL: RENAL_CREATININE_CEILING_UMOL_L + 0.1, sampledAt: sampled(1), source: "internal",
@@ -376,6 +392,92 @@ describe("the ten imaging safety gates (18a T5)", () => {
       expect((e as { code: string }).code).toBe("gate_open");
       const done = await withTx(db, (tx) => overrideGate(tx, fx.radiologist, gateId, "CT is the only way to find the bleed"));
       expect(done.state).toBe("overridden");
+    });
+  });
+
+  /* ══════════════════════ 18-S RS5 T1 — eGFR IN THE KIDNEY GATE (Gap 3) ══════════════════════ */
+
+  /**
+   * The creatinine ceiling passed a 1.8 mg/dL creatinine in an 80-year-old woman — an eGFR of 28,
+   * which every contrast guideline holds. These pin the three lanes by eGFR, the hydration
+   * instruction, the metformin note, and that the ceiling survives only as the fallback.
+   *
+   * The fixture's patient is a woman born 1996 (30 on NOW); `ageTo` rewrites her date of birth.
+   */
+  describe("RS5 T1 — the kidney gate decides by eGFR (CKD-EPI 2021), the ceiling is the fallback", () => {
+    const contrastCt = async () => {
+      await rewriteBook([
+        bookRow("USG-ABDO", { modality: "usg" }),
+        bookRow("XR-CHEST", { modality: "xray", ionising: true }),
+        bookRow("CT-HEAD", { modality: "ct", ionising: true, contrast_option: "required" }),
+        bookRow("MRI-BRAIN", { modality: "mri" }),
+      ]);
+      const study = await arrive("CT-HEAD", "ct");
+      return { studyId: study.studyId, gateId: await gateIdFor(study.studyId, "renal_function") };
+    };
+    const ageTo = async (dob: Date | null, sex = "female") => {
+      await db.update(patients).set({ dob, sex }).where(eq(patients.id, fx.patientId));
+    };
+    const evidenceOf = async (gateId: string) =>
+      (await db.select().from(imagingSafetyScreenings).where(eq(imagingSafetyScreenings.id, gateId)))[0]!.evidence;
+    const today = () => NOW.toISOString();
+    /** 1.8 mg/dL and 1.6 mg/dL, both BELOW the 176.8 µmol/L ceiling. */
+    const CREA_1_8 = 159.2;
+    const CREA_1_6 = 141.5;
+
+    it("eGFR under 30 cannot be SATISFIED although the creatinine is under the ceiling — the radiologist's override", async () => {
+      await ageTo(new Date(Date.UTC(1946, 0, 1)));
+      const { gateId } = await contrastCt();
+      expect(CREA_1_8).toBeLessThan(RENAL_CREATININE_CEILING_UMOL_L);
+      const e = await satisfy(gateId, { creatinineUmolL: CREA_1_8, sampledAt: today(), source: "internal" })
+        .catch((x: unknown) => x);
+      expect((e as { code: string }).code).toBe("gate_open");
+      expect((e as { detail: { egfr: number } }).detail.egfr).toBe(28);
+      expect(String(e)).toMatch(/eGFR 28/);
+      expect(await gateState(db, gateId)).toBe("open");
+      const done = await withTx(db, (tx) => overrideGate(tx, fx.radiologist, gateId, "life-threatening bleed; hydrate and go"));
+      expect(done.state).toBe("overridden");
+    });
+
+    it("eGFR 30–44 is satisfiable ONLY with the IV-hydration instruction, and records it with the metformin note", async () => {
+      await ageTo(new Date(Date.UTC(1946, 0, 1)));
+      const { gateId } = await contrastCt();
+      const refused = await satisfy(gateId, { creatinineUmolL: CREA_1_6, sampledAt: today(), source: "internal" })
+        .catch((x: unknown) => x);
+      expect((refused as { code: string }).code).toBe("gate_open");
+      expect(String(refused)).toMatch(/hydration/i);
+      expect(await gateState(db, gateId)).toBe("open");
+
+      const done = await satisfy(gateId, {
+        creatinineUmolL: CREA_1_6, sampledAt: today(), source: "internal", ivHydration: true,
+      });
+      expect(done.state).toBe("satisfied");
+      expect(await evidenceOf(gateId)).toMatchObject({
+        kind: "renal_function", egfr: 32, egfrBand: "hydrate",
+        hydration: { instruction: IV_HYDRATION_INSTRUCTION },
+        metforminNote: METFORMIN_NOTE,
+      });
+    });
+
+    it("eGFR 45 and over is clear: the eGFR is recorded, no hydration, no metformin note", async () => {
+      const { gateId } = await contrastCt();
+      await satisfy(gateId, { creatinineUmolL: 80, sampledAt: today(), source: "internal" });
+      const ev = await evidenceOf(gateId) as Record<string, unknown>;
+      expect(ev).toMatchObject({ kind: "renal_function", egfr: 88, egfrBand: "clear", egfrEquation: "CKD-EPI 2021" });
+      expect(ev.hydration).toBeUndefined();
+      expect(ev.metforminNote).toBeUndefined();
+    });
+
+    it("with no date of birth there is no eGFR, and the creatinine ceiling decides exactly as before", async () => {
+      await ageTo(null);
+      const { gateId } = await contrastCt();
+      const e = await satisfy(gateId, {
+        creatinineUmolL: RENAL_CREATININE_CEILING_UMOL_L + 0.1, sampledAt: today(), source: "internal",
+      }).catch((x: unknown) => x);
+      expect((e as { code: string }).code).toBe("gate_open");
+      expect(String(e)).toMatch(/ceiling/);
+      await satisfy(gateId, { creatinineUmolL: 170, sampledAt: today(), source: "internal" });
+      expect(await evidenceOf(gateId)).toMatchObject({ egfr: null, egfrNotComputed: "no_dob" });
     });
   });
 

@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Merge Review Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f4f7f4;--card:#ffffff;--ink:#132420;--line:#dfe7e1;--line2:#ecf1ed;--dim:#5c6f66;--faint:#8ea69a;--wash:#eef3ef;
+--green:#0e6b4e;--green-soft:rgba(14,107,78,.08);--green-line:rgba(14,107,78,.35);--gold:#dd8f1c;--gold-ink:#9a6208;--gold-soft:rgba(221,143,28,.10);--gold-line:rgba(221,143,28,.45);
+--red:#b23a30;--red-soft:rgba(178,58,48,.08);--red-line:rgba(178,58,48,.4);--agent:#132420;--agent-fg:#d9efe4;--mint:#35c48f}
+*{box-sizing:border-box}
+body{margin:0;background:#e8eee9;color:var(--ink);font-family:"IBM Plex Sans","IBM Plex Sans Devanagari",system-ui,sans-serif}
+.hi{font-family:"IBM Plex Sans Devanagari","IBM Plex Sans",sans-serif}
+.mo{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:var(--dim)}
+.pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+.pri.dis{background:#9fb8ad;border-color:#9fb8ad}
+.sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 14px;border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+.sec.rd{border-color:var(--red-line);color:var(--red)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+.pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+.pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold-ink)}
+.pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+.src{display:inline-flex;align-items:center;justify-content:center;width:52px;height:20px;border-radius:3px;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:700;letter-spacing:.1em;border:1px solid var(--line);color:var(--dim);background:var(--wash);flex-shrink:0}
+.ns{display:inline-flex;align-items:center;height:17px;padding:0 6px;border-radius:3px;border:1px dashed var(--gold);color:var(--gold-ink);font-family:"IBM Plex Mono",monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;vertical-align:middle}
+.nav{display:inline-flex;align-items:center;height:46px;padding:0 11px;font-size:12.5px;font-weight:500;color:var(--dim);border-bottom:2px solid transparent;text-decoration:none}
+.nav.on{color:var(--ink);font-weight:600;border-bottom-color:var(--green)}
+.fact{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.row{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-top:1px solid var(--line2)}
+.row.sel{background:var(--green-soft);box-shadow:inset 3px 0 0 var(--green)}
+/* the board page */
+.wrap{max-width:1520px;margin:0 auto;padding:24px 24px 60px}
+.strip{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:14px 18px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.strip h1{margin:0;font-size:17px;font-weight:600}
+.cap{display:flex;align-items:baseline;gap:12px;margin:34px 0 10px;flex-wrap:wrap}
+.cap h2{margin:0;font-size:15px;font-weight:600}
+.cap p{margin:0;font-size:12.5px;color:var(--dim)}
+.scroll{overflow-x:auto;padding-bottom:8px}
+.ab{background:var(--paper);border:1px solid #c9d6cd;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(19,36,32,.08)}
+/* screen parts */
+.hdr{height:46px;display:flex;align-items:center;gap:4px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;padding-right:14px;margin-right:6px;border-right:1px solid var(--line)}
+.lane{width:296px;flex-shrink:0;border-right:1px solid var(--line);background:var(--card);display:flex;flex-direction:column}
+.list{width:352px;flex-shrink:0;border-left:1px solid var(--line);padding:18px 16px;display:flex;flex-direction:column;gap:14px;background:var(--paper)}
+.step{display:flex;gap:12px;align-items:flex-start;margin-bottom:14px}
+.num{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:700;background:var(--green);color:#f2faf6}
+.num.o{background:var(--card);border:1px solid var(--line);color:var(--dim)}
+.st{font-size:14px;font-weight:600;margin:2px 0 8px}
+.pick{flex:1;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+.ph{width:44px;height:52px;border-radius:5px;background:linear-gradient(160deg,#dfe7e1,#c7d5cb);flex-shrink:0;display:flex;align-items:flex-end;justify-content:center;font-size:9px;color:var(--dim);padding-bottom:3px}
+.cmp{width:100%;border-collapse:collapse;font-size:12.5px}
+.cmp th{text-align:left;font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--wash)}
+.cmp td{padding:9px 12px;border-top:1px solid var(--line2);vertical-align:top}
+.cmp td.k{color:var(--dim);width:120px}
+.cmp tr.df td{background:var(--gold-soft)}
+.cmp td.keep,.cmp th.keep{box-shadow:inset 2px 0 0 var(--green)}
+.cmp th.keep{background:var(--green-soft);color:var(--green)}
+.dfm{font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--gold-ink);text-transform:uppercase}
+.al{display:block;line-height:17px}
+.sev{font-size:10px;font-weight:600;padding:0 5px;border-radius:3px;border:1px solid var(--line);color:var(--dim);margin-left:4px}
+.sev.s{border-color:var(--red-line);color:var(--red);background:var(--red-soft)}
+.mv{font-size:10px;font-weight:700;color:var(--green);margin-left:4px}
+.radio{flex:1;padding:12px 14px;display:flex;gap:10px;align-items:flex-start}
+.radio.on{border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green);background:var(--green-soft)}
+.dot{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--faint);flex-shrink:0;margin-top:2px}
+.radio.on .dot{border:5px solid var(--green)}
+.ta{border:1px solid var(--line);border-radius:6px;background:var(--card);padding:10px 12px;font-size:13px;line-height:19px;min-height:62px}
+.chip{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:13px;border:1px solid var(--line);background:var(--card);font-size:11.5px;color:var(--dim)}
+.chip.on{border-color:var(--green-line);color:var(--green);background:var(--green-soft)}
+.dock{border-top:1px solid var(--line);background:var(--card);padding:12px 20px;display:flex;align-items:center;gap:14px}
+.refuse{border:1px solid var(--red-line);background:var(--red-soft);border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:18px}
+.refuse b{color:var(--red)}
+.agent{border-color:var(--green-line);box-shadow:inset 3px 0 0 var(--mint);padding:12px 14px}
+.why{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.why .box{padding:14px 16px;font-size:13px;line-height:19px}
+.why b{display:block;font-size:13px;margin-bottom:4px}
+.why .was{color:var(--red);font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+@media (max-width:760px){.why{grid-template-columns:1fr}.wrap{padding:16px 16px 40px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- (1) HEADER STRIP -->
+<div class="strip">
+  <span class="tag" style="color:var(--green)">Board</span>
+  <h1>Merge review</h1>
+  <span class="mo" style="font-size:12px;color:var(--dim)">/merge</span>
+  <span class="pill gd">draft for approval</span>
+  <span class="mo" style="font-size:12px;color:var(--dim)">28-Sep-2026</span>
+  <span style="flex-grow:1"></span>
+  <span style="font-size:12px;color:var(--dim)">permission <span class="mo">patients.merge</span> · approver: Medical Superintendent (owner ruling 26-Aug-2026) · <span class="ns">needs server</span> = drawn, not yet on the server</span>
+</div>
+
+<!-- (2) DESKTOP MAIN -->
+<div class="cap"><h2>1 · Desktop 1440 — the MRD officer builds a request</h2><p>Both records picked, B differs on four fields, A chosen to survive, reason typed. The pinned bar offers the one next act.</p></div>
+<div class="scroll"><div class="ab" style="width:1440px">
+  <header class="hdr">
+    <div class="brand"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg><span class="mo" style="font-size:12px;font-weight:700;letter-spacing:.12em">PATIENT RECORDS</span></div>
+    <nav style="display:flex"><a class="nav">Find a patient</a><a class="nav">Register</a><a class="nav on">Merge review</a><a class="nav">Approvals</a><a class="nav">Record requests</a></nav>
+    <span style="flex-grow:1"></span>
+    <span class="pill on">1 granted — run it</span><span class="pill gd" style="margin-left:6px">2 waiting on the MS</span>
+    <span class="mo" style="margin:0 14px;font-size:11px;color:var(--dim)">MON 28-SEP-2026 · 11:40</span>
+    <span style="font-size:12.5px;font-weight:600">Sunita Rao <span style="font-weight:400;color:var(--dim)">· MRD officer</span></span>
+  </header>
+  <div style="display:flex;height:1040px">
+    <!-- LEFT LANE: the pair in hand -->
+    <aside class="lane">
+      <div style="padding:18px 18px 10px">
+        <div class="tag">In hand · a new request</div>
+        <h2 style="margin:10px 0 2px;font-size:16px;line-height:22px;font-weight:600">Asha Devi, twice</h2>
+        <p style="margin:0;font-size:12px;color:var(--dim)">B folds into A. A keeps its UHID, name, mobile, date of birth and address.</p>
+      </div>
+      <div style="padding:0 18px">
+        <div class="box" style="padding:10px 12px;border-color:var(--green-line);background:var(--green-soft)">
+          <div class="tag" style="color:var(--green)">Survives · Record A</div>
+          <div style="font-weight:600;margin-top:4px">Asha Devi</div>
+          <div class="mo" style="font-size:12px">HMS0000004821</div>
+          <div style="font-size:11.5px;color:var(--dim)">since 14-Jan-2024 · 6 visits <span class="ns">needs server</span></div>
+        </div>
+        <div style="text-align:center;color:var(--dim);font-size:12px;padding:4px 0">▲ folds into</div>
+        <div class="box" style="padding:10px 12px">
+          <div class="tag">Closes · Record B</div>
+          <div style="font-weight:600;margin-top:4px">Asha Devi</div>
+          <div class="mo" style="font-size:12px">HMS0000019307</div>
+          <div style="font-size:11.5px;color:var(--dim)">since 27-Sep-2026 · 1 visit <span class="ns">needs server</span></div>
+        </div>
+        <div class="tag" style="margin:16px 0 4px">What the merge does</div>
+        <div class="fact"><span>B's allergies</span><span>1 moves to A</span></div>
+        <div class="fact"><span>B's guardians</span><span>none to move</span></div>
+        <div class="fact"><span>B's photo</span><span>stays on B</span></div>
+        <div class="fact"><span>B's UHID</span><span style="text-align:right">still found; opens A</span></div>
+        <div class="fact"><span>B's mobile, address</span><span style="color:var(--gold-ink);text-align:right">not copied — edit A after</span></div>
+        <div class="tag" style="margin:16px 0 4px">Who decides</div>
+        <p style="margin:0;font-size:12px;line-height:17px;color:var(--dim)">You ask. The Medical Superintendent decides within 4 hours. You cannot approve your own request, whatever roles you hold. Once granted, you run the merge; it can be undone by an unmerge request.</p>
+      </div>
+      <div style="flex-grow:1"></div>
+      <div style="padding:12px 18px;border-top:1px solid var(--line);font-size:11px;color:var(--dim);display:flex;gap:10px;flex-wrap:wrap"><span><span class="kb">Esc</span> put down</span><span><span class="kb">⏎</span> next act</span><span><span class="kb">F2</span> ask</span></div>
+    </aside>
+
+    <!-- CENTRE: numbered flow -->
+    <main style="flex-grow:1;min-width:0;display:flex;flex-direction:column">
+      <div style="flex-grow:1;overflow:hidden;padding:18px 20px 0">
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px"><h1 style="margin:0;font-size:20px;font-weight:600">Merge two records of one person</h1><span class="hi" style="font-size:13px;color:var(--dim)">रिकॉर्ड विलय</span></div>
+
+        <div class="step"><span class="num">1</span><div style="flex:1">
+          <div class="st">Pick the two records</div>
+          <div style="display:flex;gap:12px">
+            <div class="box pick"><div class="ph">photo</div><div style="flex:1"><div class="tag">Record A</div><div style="font-weight:600">Asha Devi</div><div class="mo" style="font-size:12px">HMS0000004821</div><div style="font-size:11.5px;color:var(--dim)">40 y · Female · born 12-Mar-1986 · •••••• 1236 · Jaipur</div></div><span style="font-size:12px;color:var(--green);font-weight:600">Change</span></div>
+            <div class="box pick"><div class="ph">no photo</div><div style="flex:1"><div class="tag">Record B</div><div style="font-weight:600">Asha Devi</div><div class="mo" style="font-size:12px">HMS0000019307</div><div style="font-size:11.5px;color:var(--dim)">40 y · Female · born 01-Jan-1986 · •••••• 1236 · Jaipur</div></div><span style="font-size:12px;color:var(--green);font-weight:600">Change</span></div>
+          </div>
+        </div></div>
+
+        <div class="step"><span class="num">2</span><div style="flex:1">
+          <div class="st">Compare, field by field <span style="font-weight:400;font-size:12px;color:var(--dim)">· 4 of 10 differ, marked</span></div>
+          <div class="box" style="overflow:hidden">
+          <table class="cmp">
+            <thead><tr><th></th><th class="keep">Record A · survives</th><th>Record B · closes</th><th style="width:80px"></th></tr></thead>
+            <tbody>
+              <tr><td class="k">Name</td><td class="keep">Asha Devi</td><td>Asha Devi</td><td></td></tr>
+              <tr><td class="k">Sex</td><td class="keep">Female</td><td>Female</td><td></td></tr>
+              <tr class="df"><td class="k">Date of birth</td><td class="keep">12-Mar-1986 <span style="color:var(--dim)">· 40 y</span></td><td>01-Jan-1986 <span style="color:var(--dim)">· 40 y · year only</span></td><td class="dfm">differs</td></tr>
+              <tr><td class="k">Mobile</td><td class="keep mo">98290 41236</td><td class="mo">98290 41236</td><td></td></tr>
+              <tr class="df"><td class="k">Address</td><td class="keep">Plot 14, Shastri Nagar, Jaipur 302016</td><td>Shastri Nagar, Jaipur</td><td class="dfm">differs</td></tr>
+              <tr class="df"><td class="k">ABHA</td><td class="keep">asha.devi86@abdm <span class="pill on" style="height:18px;font-size:9.5px">verified</span></td><td style="color:var(--dim)">none</td><td class="dfm">differs</td></tr>
+              <tr class="df"><td class="k">Allergies</td>
+                <td class="keep"><span class="al">Penicillin — rash<span class="sev">moderate</span></span><span class="al">Sulfa drugs — reaction not recorded</span></td>
+                <td><span class="al">Ibuprofen — swelling of lips<span class="sev s">severe</span><span class="mv">→ moves to A</span></span></td><td class="dfm">differs</td></tr>
+              <tr><td class="k">Guardians</td><td class="keep" style="color:var(--dim)">none</td><td style="color:var(--dim)">none</td><td></td></tr>
+              <tr><td class="k">Visits</td><td class="keep">6 · last 02-Aug-2026, Dr. ID D-0412 <span class="ns">needs server</span></td><td>1 · 27-Sep-2026, OPD token 34</td><td></td></tr>
+              <tr><td class="k">Registered</td><td class="keep">14-Jan-2024 · counter 1</td><td>27-Sep-2026 · counter 2 <span class="ns">needs server</span></td><td></td></tr>
+            </tbody>
+          </table></div>
+        </div></div>
+
+        <div class="step"><span class="num">3</span><div style="flex:1">
+          <div class="st">Which record survives</div>
+          <div style="display:flex;gap:12px">
+            <div class="box radio on"><span class="dot"></span><div><div style="font-weight:600">Keep A · HMS0000004821</div><div style="font-size:12px;color:var(--dim);margin-top:2px">Older, 6 visits, verified ABHA, full date of birth. The usual choice.</div></div></div>
+            <div class="box radio"><span class="dot"></span><div><div style="font-weight:600">Keep B · HMS0000019307</div><div style="font-size:12px;color:var(--dim);margin-top:2px">A would close. Its ABHA would sit on a closed record.</div></div></div>
+          </div>
+        </div></div>
+
+        <div class="step"><span class="num">4</span><div style="flex:1">
+          <div class="st">Why is this the same person? <span class="hi" style="font-weight:400;font-size:12.5px;color:var(--dim)">· यह एक ही व्यक्ति क्यों है?</span></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><span class="chip on">Re-registered without her card</span><span class="chip">Same mobile and address</span><span class="chip">Confirmed with the patient</span><span class="chip">Spelling variant</span></div>
+          <div class="ta">Re-registered at counter 2 on 27-Sep-2026 without her card. Same mobile and street; patient confirmed at the desk today that she was seen here in 2024 (Aadhaar shown, not stored).</div>
+        </div></div>
+      </div>
+      <div class="dock">
+        <div style="flex:1;font-size:12.5px;color:var(--dim)">Goes to <b style="color:var(--ink)">Dr. Meera Nair, Medical Superintendent</b> · decision due by 15:40 today · nothing changes until it is granted and you run it</div>
+        <span class="sec">Save and close</span>
+        <span class="pri">Request merge <span class="kb" style="background:transparent;color:#cfe8dc;border-color:#3f8a70">⏎</span></span>
+      </div>
+    </main>
+
+    <!-- RIGHT LIST -->
+    <aside class="list">
+      <section class="box" style="padding:0;overflow:hidden">
+        <div style="display:flex;align-items:center;padding:12px 14px"><span class="tag" style="flex-grow:1">Merge requests · 5 · most urgent first</span><span class="ns">needs server</span></div>
+        <div class="row"><span class="src">DESK</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Mohd. Irfan Qureshi</div><div style="font-size:11.5px;color:var(--dim)">HMS0000011954 into HMS0000003107 · MS granted 10:48</div></div><span class="pill on">Run merge</span></div>
+        <div class="row"><span class="src">LAB</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Kavita Sharma</div><div style="font-size:11.5px;color:var(--dim)">"Kavita Sarma" HMS0000019122 · asked 09:20 by you</div></div><span class="pill gd">1 h 40 m</span></div>
+        <div class="row"><span class="src">MRD</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Baby of Pooja Meena</div><div style="font-size:11.5px;color:var(--dim)">MS refused: "different mothers — check the birth register"</div></div><span class="pill rd">Refused</span></div>
+        <div class="row"><span class="src">IPD</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Suresh Chand Meena</div><div style="font-size:11.5px;color:var(--dim)">HMS0000018870 into HMS0000002216 · asked 11:05 by ward 3</div></div><span class="pill gd">3 h 25 m</span></div>
+        <div class="row"><span class="src">MRD</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Rakesh Gupta — unmerge</div><div style="font-size:11.5px;color:var(--dim)">Merged 24-Sep-2026 in error · father and son</div></div><span class="pill">21 h</span></div>
+      </section>
+      <section class="box agent">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--mint)"></span><span class="tag" style="color:var(--green)">Records copilot · spotted, not done</span><span class="ns" style="margin-left:auto">needs server</span></div>
+        <p style="margin:8px 0 0;font-size:12.5px;line-height:17px"><b>3 likely duplicates</b> registered this week: same mobile and year of birth, different UHID. Open one to start a request.</p>
+      </section>
+      <section class="box" style="padding:0">
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 14px"><span class="tag" style="flex-grow:1">Clocks running · 3</span><span style="font-size:11.5px;color:var(--gold-ink);font-weight:600">MS 4-h line: 1 h 40 m</span><span style="color:var(--dim)">▾</span></div>
+      </section>
+      <p style="margin:0;font-size:11px;line-height:15px;color:var(--dim)">One list, no tabs. Granted first (a patient is split until you run it), then waiting by time left, then refusals to read, then unmerges.</p>
+    </aside>
+  </div>
+</div></div>
+
+<!-- (3) OTHER STATES -->
+<div class="cap"><h2>2 · The Medical Superintendent opens a request</h2><p>Same screen, approver's seat: the comparison is frozen as captured at request time; approve or refuse, each with a note.</p></div>
+<div class="scroll"><div class="ab" style="width:1180px">
+  <header class="hdr">
+    <div class="brand"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg><span class="mo" style="font-size:12px;font-weight:700;letter-spacing:.12em">PATIENT RECORDS</span></div>
+    <nav style="display:flex"><a class="nav on">Merge review</a><a class="nav">Approvals</a></nav>
+    <span style="flex-grow:1"></span><span class="mo" style="margin:0 14px;font-size:11px;color:var(--dim)">MON 28-SEP-2026 · 12:05</span><span style="font-size:12.5px;font-weight:600">Dr. Meera Nair <span style="font-weight:400;color:var(--dim)">· Medical Superintendent</span></span>
+  </header>
+  <div style="display:flex;height:560px">
+    <aside class="lane">
+      <div style="padding:18px">
+        <div style="display:flex;gap:8px;align-items:center"><span class="src">LAB</span><span class="pill gd">due in 1 h 15 m</span></div>
+        <h2 style="margin:10px 0 2px;font-size:16px;font-weight:600">Kavita Sharma</h2>
+        <div class="fact"><span>Keeps</span><span class="mo">HMS0000006620</span></div>
+        <div class="fact"><span>Closes</span><span class="mo">HMS0000019122</span></div>
+        <div class="fact"><span>Asked by</span><span>Sunita Rao, MRD</span></div>
+        <div class="fact"><span>Asked at</span><span>28-Sep-2026 09:20</span></div>
+        <div class="tag" style="margin:14px 0 6px">Her reason</div>
+        <p style="margin:0;font-size:12.5px;line-height:18px">Lab caught two UHIDs on one sample label. Same mobile, same father's name on both, spelling variant only.</p>
+      </div>
+    </aside>
+    <main style="flex-grow:1;min-width:0;display:flex;flex-direction:column">
+      <div style="flex-grow:1;padding:18px 20px 0">
+        <div class="st" style="font-size:16px">As captured at request · 28-Sep-2026 09:20</div>
+        <div class="box" style="overflow:hidden"><table class="cmp">
+          <thead><tr><th></th><th class="keep">Keeps · HMS0000006620</th><th>Closes · HMS0000019122</th><th style="width:70px"></th></tr></thead>
+          <tbody>
+            <tr class="df"><td class="k">Name</td><td class="keep">Kavita Sharma</td><td>Kavita Sarma</td><td class="dfm">differs</td></tr>
+            <tr><td class="k">Sex · born</td><td class="keep">Female · 05-Jul-1994 · 32 y</td><td>Female · 05-Jul-1994 · 32 y</td><td></td></tr>
+            <tr><td class="k">Mobile</td><td class="keep mo">94140 22871</td><td class="mo">94140 22871</td><td></td></tr>
+            <tr class="df"><td class="k">Address</td><td class="keep">12 Malviya Nagar, Jaipur</td><td>Malviya Nagar</td><td class="dfm">differs</td></tr>
+            <tr><td class="k">Allergies · now</td><td class="keep">None recorded</td><td>None recorded</td><td></td></tr>
+          </tbody></table></div>
+        <div style="margin-top:14px"><div class="tag" style="margin-bottom:6px">Your note · required either way</div><div class="ta" style="min-height:48px;color:var(--faint)">Checked the lab slip and the two OPD cards…</div></div>
+      </div>
+      <div class="dock"><span style="flex:1;font-size:12px;color:var(--dim)">Approving lets the MRD officer run the merge. Refusing keeps both records open.</span><span class="sec rd">Refuse with reason</span><span class="pri dis">Approve · type a note first</span></div>
+    </main>
+  </div>
+</div></div>
+
+<div class="cap"><h2>3 · Refusals, where they appear</h2><p>Brick red is used only here. Each names the act that fixes it.</p></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px">
+  <div class="refuse"><b>Record A and Record B are one record.</b><br>HMS0000011954 already opens HMS0000003107 (merged 24-Sep-2026). Pick a different Record B. <span style="color:var(--dim)">— shown under step 1, before any typing</span></div>
+  <div class="refuse"><b>A request for HMS0000019122 is already waiting.</b><br>Asked by Sunita Rao at 09:20; the MS has not decided. Open it from the list instead of asking twice.</div>
+  <div class="refuse"><b>You asked for this merge, so someone else decides it.</b><br>Shown to a person who holds both roles. The Approve button is not drawn for them at all.</div>
+  <div class="refuse"><b>After a refusal, HMS0000031540 stays locked for a new request.</b> <span class="ns">needs server</span><br>Today a refused approval leaves the request "requested", so the same record can never be asked again. The server must close it on refusal.</div>
+</div>
+
+<!-- (4) PHONE -->
+<div class="cap"><h2>4 · Phone 390</h2><p>Menu button replaces the nav; the list is a drawer; A and B stack per field, the differs marker on the label line.</p></div>
+<div class="scroll"><div class="ab" style="width:390px;border-radius:18px">
+  <header class="hdr" style="padding:0 12px"><span class="sec" style="height:32px;padding:0 10px">☰ Menu</span><span class="mo" style="font-size:11px;font-weight:700;letter-spacing:.12em;margin-left:10px">MERGE REVIEW</span><span style="flex-grow:1"></span><span class="pill gd">Requests · 5</span></header>
+  <div style="padding:14px 16px">
+    <div class="step"><span class="num">1</span><div style="flex:1;min-width:0"><div class="st">Two records</div>
+      <div class="box" style="padding:10px 12px;margin-bottom:8px"><div class="tag" style="color:var(--green)">A · survives</div><b>Asha Devi</b> <span class="mo" style="font-size:11.5px">HMS0000004821</span><div style="font-size:11.5px;color:var(--dim)">40 y · F · 12-Mar-1986 · Jaipur</div></div>
+      <div class="box" style="padding:10px 12px"><div class="tag">B · closes</div><b>Asha Devi</b> <span class="mo" style="font-size:11.5px">HMS0000019307</span><div style="font-size:11.5px;color:var(--dim)">40 y · F · 01-Jan-1986 · Jaipur</div></div>
+    </div></div>
+    <div class="step"><span class="num">2</span><div style="flex:1;min-width:0"><div class="st">Compare · 4 differ</div>
+      <div class="box" style="overflow:hidden;font-size:12.5px">
+        <div style="padding:9px 12px;background:var(--gold-soft)"><div style="display:flex"><b style="flex:1">Date of birth</b><span class="dfm">differs</span></div><div><span class="tag">A</span> 12-Mar-1986</div><div><span class="tag">B</span> 01-Jan-1986 · year only</div></div>
+        <div style="padding:9px 12px;border-top:1px solid var(--line2)"><b>Mobile</b><div><span class="tag">A</span> <span class="mo">98290 41236</span></div><div><span class="tag">B</span> <span class="mo">98290 41236</span></div></div>
+        <div style="padding:9px 12px;border-top:1px solid var(--line2);background:var(--gold-soft)"><div style="display:flex"><b style="flex:1">Allergies</b><span class="dfm">differs</span></div><div><span class="tag">A</span> Penicillin — rash · moderate; Sulfa drugs</div><div><span class="tag">B</span> Ibuprofen — lip swelling <span class="sev s">severe</span> <span class="mv">→ A</span></div></div>
+        <div style="padding:9px 12px;border-top:1px solid var(--line2);color:var(--dim)">+ 7 more fields ▾</div>
+      </div></div></div>
+    <div class="step"><span class="num o">3</span><div style="flex:1"><div class="st" style="color:var(--dim)">Which survives · reason</div></div></div>
+  </div>
+  <div class="dock" style="padding:10px 16px"><span class="pri" style="width:100%">Next: which survives</span></div>
+</div></div>
+
+<!-- (5) WHAT CHANGES -->
+<div class="cap"><h2>5 · What changes and why</h2></div>
+<div class="why">
+  <div class="box"><span class="was">Audit: allergies as a bare "0"</span><b>Allergies are listed, not counted</b>Each substance with its reaction and severity (from <span class="mo">GET /patients/:id/allergies</span>), severe in brick red, and a "→ moves to A" tag on the loser's rows — the one thing the merge actually carries over.</div>
+  <div class="box"><span class="was">Audit: DOB shown as 1986-03-12</span><b>Dates read 12-Mar-1986, with age beside</b>Every date on the screen is DD-Mon-YYYY; a year-only date of birth says so, because that is usually why two records differ.</div>
+  <div class="box"><span class="was">Audit: no board</span><b>Three columns like every other desk</b>Header menu, the pair in hand on the left, the four-step flow in the centre, the requests list on the right, one pinned act.</div>
+  <div class="box"><span class="was">Hidden rule</span><b>Says what the merge does and does not do</b>Only allergies and guardians move; B's mobile and address are not copied; the photo stays. The left lane says it before the request, not after.</div>
+  <div class="box"><span class="was">Survivor as a bare radio</span><b>The survivor column is marked through the table</b>Green edge on the kept column, a reason under each choice (older, visits, verified ABHA).</div>
+  <div class="box"><span class="was">Status as a raw word</span><b>No enum strings</b>"granted / pending / rejected" become "Run merge", time left, "Refused" with the MS's note; decision time shown as a clock against the 4-hour line.</div>
+  <div class="box"><span class="was">Tracker was a dead end</span><b>The approver decides on the same screen</b>Frozen snapshot, requester's reason, note required, Approve and Refuse side by side; Approvals inbox still works.</div>
+  <div class="box"><span class="was">Kept from PR #355</span><b>Same-record block, hit details, Change, phone stacking</b>All carried over unchanged; the same-record refusal now also names the merge that made them one.</div>
+</div>
+
+<!-- (6) QUESTIONS -->
+<div class="cap"><h2>6 · Questions for the owner</h2></div>
+<div class="box" style="padding:14px 18px;font-size:13px;line-height:20px">
+  <b>Q1 · Aadhaar as evidence.</b> The reason chips invite "Aadhaar shown, not stored". Should a merge ever record the last four digits of the Aadhaar seen as proof, or never? (Aadhaar Act §29 limits storing it; the board assumes never.)<br>
+  <b>Q2 · Records with a sealed (confidential) flag.</b> Should merging a sealed record need the MS to break the glass first, or is the MS's approval itself enough? The board does not yet draw this.
+</div>
+
+</div>
+</body>
+</html>

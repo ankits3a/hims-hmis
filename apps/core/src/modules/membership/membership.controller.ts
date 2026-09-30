@@ -13,12 +13,16 @@ import { PatientError } from "../patients";
 import { MembershipError, membershipHttpStatus } from "./errors";
 import { instrumentLookupRefused } from "./events";
 import { enrolMember } from "./enrolment";
-import { graceHonor, recogniseForActor } from "./recognition";
+import { graceHonor } from "./recognition";
+import { cardsToday, recogniseAtCounter, recordRecognition } from "./counter-view";
 import { importHolderBook } from "./import/importer";
 import { listQuarantine } from "./import/quarantine";
-import { dismissMatch, listLapsedRestores, listMatchQueue, resolveMatch } from "./import/match-queue";
+import {
+  DISMISS_REASONS, dismissMatch, listLapsedRestores, listMatchQueue, markLapsedRestoreChecked, resolveMatch,
+} from "./import/match-queue";
 import { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./search-providers";
-import type { GraceHonorResult, RecognitionResult } from "./recognition";
+import type { GraceHonorResult } from "./recognition";
+import type { CardTodayRow, CounterRecognition } from "./counter-view";
 import type { HolderBookImportResult } from "./import/importer";
 import type { QuarantineRow } from "./import/quarantine";
 import type { LapsedRestoreItem, MatchQueueItem } from "./import/match-queue";
@@ -107,12 +111,21 @@ const resolveMatchBody = z.object({
   queueItemId: z.string().min(1),
   patientId: z.string().min(1),
   note: z.string().max(1000).optional(),
+  // UX-AUDIT 2026-09-28 · BOARD — the weak-link confirm; `resolveMatch` decides when it is needed.
+  confirmWeak: z.boolean().optional(),
 });
 
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — a preset `reason` may stand alone; `dismissMatch` requires the note
+ * when there is no reason or the reason is "other", so the rule has one home.
+ */
 const dismissMatchBody = z.object({
   queueItemId: z.string().min(1),
-  note: z.string().min(1).max(1000),
+  note: z.string().max(1000).optional(),
+  reason: z.enum(DISMISS_REASONS).optional(),
 });
+
+const lapsedCheckedBody = z.object({ movementId: z.string().min(1) });
 
 const graceHonorBody = z.object({
   cardCode: z.string().min(1),
@@ -255,17 +268,38 @@ export class MembershipController {
     }
   }
 
+  /*
+    UX-AUDIT 2026-09-28 · BOARD — the counter's view: the same recognition plus the holder, benefits
+    left as COUNTS (never a rupee balance — owner ruling 28-Sep-2026), how the card stands today and
+    the one next act. A presented code is recorded as `instrument.recognised` so "cards today" has a
+    source; the response is fully formed before the event is written, so a failed write is a 500
+    rather than a recognition that was shown and never recorded.
+  */
   @RequirePermission("membership.instrument.recognise", "hospital")
   @Get("recognition")
-  async recognition(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<RecognitionResult> {
+  async recognition(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<CounterRecognition> {
     const q = parsed(recognitionQuery, query);
     const codes = (q.codes ?? "").split(",").map((c) => c.trim()).filter((c) => c !== "");
+    const at = new Date();
     try {
-      return await recogniseForActor(this.db, actor, {
-        patientId: q.patientId ?? null,
-        presentedCodes: codes,
-        at: new Date(),
-      });
+      const result = await recogniseAtCounter(this.db, actor, { patientId: q.patientId ?? null, presentedCodes: codes, at });
+      await recordRecognition(this.db, actor, codes, result, at);
+      return result;
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — "CARDS TODAY": the signed-in counter's own recognitions since IST
+   * midnight, one row per code, the rows that need the counter first. Same permission as
+   * recognition, because it is a list of recognitions and nothing else.
+   */
+  @RequirePermission("membership.instrument.recognise", "hospital")
+  @Get("recognition/today")
+  async recognitionToday(@CurrentActor() actor: Actor): Promise<{ items: CardTodayRow[] }> {
+    try {
+      return { items: await cardsToday(this.db, actor, new Date()) };
     } catch (e) {
       toHttp(e);
     }
@@ -364,6 +398,24 @@ export class MembershipController {
     const b = parsed(dismissMatchBody, body);
     try {
       return await dismissMatch(this.db, actor, b, new Date());
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — "Mark checked" on a lapsed restore. Same grant as the queue it
+   * clears; it writes who looked and when, and changes no benefit.
+   */
+  @RequirePermission("membership.reconcile.operate", "hospital")
+  @Post("reconcile/lapsed/checked")
+  async reconcileLapsedChecked(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+  ): Promise<{ movementId: string; checkedAt: Date }> {
+    const b = parsed(lapsedCheckedBody, body);
+    try {
+      return await markLapsedRestoreChecked(this.db, actor, b, new Date());
     } catch (e) {
       toHttp(e);
     }

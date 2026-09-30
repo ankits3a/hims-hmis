@@ -12,6 +12,7 @@ import { consumeReservation, effectiveRegulation, getBatch, itemUomRows, itemsBy
 import { getDoctor, getPrescription, getVisit } from "../opd";
 import { getPatient } from "../patients";
 import { REGISTER_FLAGS, SCHEDULED_FLAGS, istDateOf } from "./config";
+import { assertStewardApprovals } from "./antimicrobial";
 import { assertNoColdChainHold } from "./cold-chain";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { prepareControlledHandover } from "./controlled-dispense";
@@ -24,6 +25,7 @@ import { batchTermsPerBase } from "./price";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import { registerDrugName } from "./drug-name";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { RxLine } from "../opd";
 import type { DispenseView } from "./queue";
@@ -49,10 +51,8 @@ export type HandoverInput = {
  *   3. The order items go to `completed` (DD4), which closes the envelope.
  *   4. R-4 — one `pharmacy_reg_h1` row per H1 line, Rule 65(3)'s fields COPIED at write time.
  */
-/** The drug as the registers name it: brand, strength and form, else the doctor's words. */
-function medicineName(med: { brandName: string; strengthLabel: string | null; form: string } | undefined, fallback: string): string {
-  return med === undefined ? fallback : `${med.brandName}${med.strengthLabel === null ? "" : ` ${med.strengthLabel}`} ${med.form}`;
-}
+/** The drug as the registers name it: brand, strength (once) and form, else the doctor's words (`drug-name.ts`). */
+const medicineName = registerDrugName;
 
 export async function handOverDispense(
   db: Db,
@@ -132,6 +132,12 @@ export async function handOverDispense(
   const doctor = await getDoctor(db, rx.doctorId);
   const medicines = await medicinesByIds(db, lines.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
+  // STAGE D5 — a restricted antimicrobial leaves only with the steward's grant bound to this dispense, asked again at
+  // the last gate (a product restricted after verify is caught here), and never a grant the prescriber gave themselves.
+  await assertStewardApprovals(db, { id: d.id, patientId: d.patientId }, doctor?.userId ?? null, lines.map((l) => {
+    const medicine = l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId);
+    return { lineIdx: l.lineIdx, drug: medicine?.brandName ?? (l.rxLine as RxLine).drug, medicine };
+  }));
   /**
    * PHARMACY P6 — a controlled line (Schedule X, or an NDPS class) leaves the cabinet only when the
    * prescription carries what the law asks, the pharmacy keeps its copy, who took it is written down,
@@ -143,6 +149,7 @@ export async function handOverDispense(
     lines: lines.map((l) => ({
       lineIdx: l.lineIdx, drug: medicineName(l.dispensedMedicineId === null ? undefined : medicines.get(l.dispensedMedicineId), (l.rxLine as RxLine).drug),
       scheduleFlag: l.scheduleFlag, ndpsClass: l.ndpsClass, qtyBase: l.qtyBase, rxLine: l.rxLine as RxLine, status: l.status,
+      splitFromLineIdx: l.splitFromLineIdx,
     })),
     prescriber: doctor === null ? null : { id: doctor.id, displayName: doctor.displayName, registrationNo: doctor.registrationNo ?? null },
     patientId: d.patientId, patientName: patient.name, patientAddress: patient.addressLine ?? null,

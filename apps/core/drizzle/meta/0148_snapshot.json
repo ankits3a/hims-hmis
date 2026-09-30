@@ -1,6 +1,6 @@
 {
-  "id": "4d57e117-d4b7-4e43-8011-2258fdeb4837",
-  "prevId": "4f3b43d5-02ee-4fbd-9dc5-88cf5b190c46",
+  "id": "e765859e-3381-45e4-84da-7efaa51ed479",
+  "prevId": "fc166340-19f7-4522-982e-736afa0fb00c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5972,6 +5972,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "rx_draft": {
+          "name": "rx_draft",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "edit_lease_token": {
           "name": "edit_lease_token",
           "type": "text",
@@ -9095,108 +9101,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.recon_resolutions": {
-      "name": "recon_resolutions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "tender_id": {
-          "name": "tender_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "short_paise": {
-          "name": "short_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "settled_paise": {
-          "name": "settled_paise",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "approval_id": {
-          "name": "approval_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "actor_id": {
-          "name": "actor_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "at": {
-          "name": "at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "recon_resolutions_tender_idx": {
-          "name": "recon_resolutions_tender_idx",
-          "columns": [
-            {
-              "expression": "tender_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "recon_resolutions_tender_id_receipt_tenders_id_fk": {
-          "name": "recon_resolutions_tender_id_receipt_tenders_id_fk",
-          "tableFrom": "recon_resolutions",
-          "tableTo": "receipt_tenders",
-          "columnsFrom": [
-            "tender_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "recon_resolutions_outcome_ck": {
-          "name": "recon_resolutions_outcome_ck",
-          "value": "\"recon_resolutions\".\"outcome\" in ('disputed', 'bank_charge', 'reupload')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.refund_vouchers": {
@@ -14593,6 +14497,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "aware_category": {
+          "name": "aware_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "antimicrobial_restricted": {
+          "name": "antimicrobial_restricted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -14701,6 +14618,10 @@
         "formulary_medicines_schedule_flag_ck": {
           "name": "formulary_medicines_schedule_flag_ck",
           "value": "\"formulary_medicines\".\"schedule_flag\" is null or \"formulary_medicines\".\"schedule_flag\" in ('H', 'H1', 'X', 'OTC')"
+        },
+        "formulary_medicines_aware_category_ck": {
+          "name": "formulary_medicines_aware_category_ck",
+          "value": "\"formulary_medicines\".\"aware_category\" is null or \"formulary_medicines\".\"aware_category\" in ('Access', 'Watch', 'Reserve')"
         }
       },
       "isRLSEnabled": false
@@ -29637,7 +29558,7 @@
       "checkConstraints": {
         "imaging_definitions_kind_ck": {
           "name": "imaging_definitions_kind_ck",
-          "value": "\"imaging_definitions\".\"kind\" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels')"
+          "value": "\"imaging_definitions\".\"kind\" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels', 'imaging_protocols', 'report_templates', 'report_signatories')"
         },
         "imaging_definitions_status_ck": {
           "name": "imaging_definitions_status_ck",
@@ -30105,6 +30026,18 @@
         },
         "provenance": {
           "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signer": {
+          "name": "signer",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sign_checks": {
+          "name": "sign_checks",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -36193,6 +36126,297 @@
       },
       "isRLSEnabled": false
     },
+    "public.aerb_incidents": {
+      "name": "aerb_incidents",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "incident_no": {
+          "name": "incident_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_resource_id": {
+          "name": "device_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "affected_type": {
+          "name": "affected_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "worker_user_id": {
+          "name": "worker_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "affected_name": {
+          "name": "affected_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimated_dose_msv": {
+          "name": "estimated_dose_msv",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dose_note": {
+          "name": "dose_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "immediate_action": {
+          "name": "immediate_action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root_cause": {
+          "name": "root_cause",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "corrective_actions": {
+          "name": "corrective_actions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "significantly_above_intended": {
+          "name": "significantly_above_intended",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "notify_required": {
+          "name": "notify_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notified_on": {
+          "name": "notified_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notification_ref": {
+          "name": "notification_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "investigated_at": {
+          "name": "investigated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "investigated_by": {
+          "name": "investigated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closure_note": {
+          "name": "closure_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "aerb_incidents_no_ux": {
+          "name": "aerb_incidents_no_ux",
+          "columns": [
+            {
+              "expression": "incident_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "aerb_incidents_state_idx": {
+          "name": "aerb_incidents_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aerb_incidents_device_resource_id_resources_id_fk": {
+          "name": "aerb_incidents_device_resource_id_resources_id_fk",
+          "tableFrom": "aerb_incidents",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "device_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "aerb_incidents_patient_id_patients_id_fk": {
+          "name": "aerb_incidents_patient_id_patients_id_fk",
+          "tableFrom": "aerb_incidents",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "aerb_incidents_worker_user_id_users_id_fk": {
+          "name": "aerb_incidents_worker_user_id_users_id_fk",
+          "tableFrom": "aerb_incidents",
+          "tableTo": "users",
+          "columnsFrom": [
+            "worker_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "aerb_incidents_kind_ck": {
+          "name": "aerb_incidents_kind_ck",
+          "value": "\"aerb_incidents\".\"kind\" in ('wrong_patient', 'wrong_study', 'pregnant_patient', 'repeat_over_threshold', 'equipment_malfunction', 'worker_over_limit', 'other')"
+        },
+        "aerb_incidents_state_ck": {
+          "name": "aerb_incidents_state_ck",
+          "value": "\"aerb_incidents\".\"state\" in ('open', 'investigated', 'closed')"
+        },
+        "aerb_incidents_affected_ck": {
+          "name": "aerb_incidents_affected_ck",
+          "value": "\"aerb_incidents\".\"affected_type\" in ('patient', 'worker', 'other')"
+        },
+        "aerb_incidents_who_ck": {
+          "name": "aerb_incidents_who_ck",
+          "value": "(\"aerb_incidents\".\"affected_type\" <> 'patient' or \"aerb_incidents\".\"patient_id\" is not null)\n          and (\"aerb_incidents\".\"affected_type\" <> 'worker' or \"aerb_incidents\".\"worker_user_id\" is not null)\n          and (\"aerb_incidents\".\"affected_type\" <> 'other' or \"aerb_incidents\".\"affected_name\" is not null)"
+        },
+        "aerb_incidents_dose_ck": {
+          "name": "aerb_incidents_dose_ck",
+          "value": "\"aerb_incidents\".\"estimated_dose_msv\" is null or \"aerb_incidents\".\"estimated_dose_msv\" >= 0"
+        },
+        "aerb_incidents_notified_ck": {
+          "name": "aerb_incidents_notified_ck",
+          "value": "(\"aerb_incidents\".\"notified_on\" is null) = (\"aerb_incidents\".\"notification_ref\" is null)"
+        },
+        "aerb_incidents_closed_ck": {
+          "name": "aerb_incidents_closed_ck",
+          "value": "(\"aerb_incidents\".\"state\" = 'closed') = (\"aerb_incidents\".\"closed_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.aerb_licences": {
       "name": "aerb_licences",
       "schema": "",
@@ -36545,6 +36769,114 @@
         "aerb_persons_validity_ck": {
           "name": "aerb_persons_validity_ck",
           "value": "\"aerb_persons\".\"valid_to\" is null or \"aerb_persons\".\"valid_to\" >= \"aerb_persons\".\"valid_from\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.aerb_pregnancy_declarations": {
+      "name": "aerb_pregnancy_declarations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "declared_on": {
+          "name": "declared_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expected_on": {
+          "name": "expected_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_on": {
+          "name": "ended_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "remarks": {
+          "name": "remarks",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "aerb_pregnancy_declarations_active_ux": {
+          "name": "aerb_pregnancy_declarations_active_ux",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"aerb_pregnancy_declarations\".\"ended_on\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aerb_pregnancy_declarations_user_id_users_id_fk": {
+          "name": "aerb_pregnancy_declarations_user_id_users_id_fk",
+          "tableFrom": "aerb_pregnancy_declarations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "aerb_pregnancy_declarations_expected_ck": {
+          "name": "aerb_pregnancy_declarations_expected_ck",
+          "value": "\"aerb_pregnancy_declarations\".\"expected_on\" >= \"aerb_pregnancy_declarations\".\"declared_on\""
+        },
+        "aerb_pregnancy_declarations_ended_ck": {
+          "name": "aerb_pregnancy_declarations_ended_ck",
+          "value": "\"aerb_pregnancy_declarations\".\"ended_on\" is null or \"aerb_pregnancy_declarations\".\"ended_on\" >= \"aerb_pregnancy_declarations\".\"declared_on\""
         }
       },
       "isRLSEnabled": false
@@ -37011,6 +37343,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "drl_reason": {
+          "name": "drl_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "occurred_at": {
           "name": "occurred_at",
           "type": "timestamp with time zone",
@@ -37133,6 +37471,10 @@
         "radiation_dose_register_drl_ck": {
           "name": "radiation_dose_register_drl_ck",
           "value": "(\"radiation_dose_register\".\"drl_quantity\" is null and \"radiation_dose_register\".\"drl_value\" is null and \"radiation_dose_register\".\"over_drl\" is null)\n          or (\"radiation_dose_register\".\"drl_quantity\" is not null and \"radiation_dose_register\".\"drl_value\" is not null and \"radiation_dose_register\".\"over_drl\" is not null)"
+        },
+        "radiation_dose_register_drl_reason_ck": {
+          "name": "radiation_dose_register_drl_reason_ck",
+          "value": "\"radiation_dose_register\".\"drl_reason\" is null or \"radiation_dose_register\".\"over_drl\" = true"
         }
       },
       "isRLSEnabled": false

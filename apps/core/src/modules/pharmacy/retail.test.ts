@@ -160,6 +160,29 @@ describe("walk-in retail sales (P19)", () => {
     expect((await getRetailSale(db, fx.pharmacist.actor, sale.id)).invoiceNo).not.toBe("");
   });
 
+  /*
+    UX-AUDIT 2026-09-28 — the counter screen shows each line's rate, GST and amount, and the day's
+    list names who bought: both read from the server, additively, and neither may leak a sealed name.
+  */
+  it("prices every preview line (rate, GST inside, amount) and names the customer on the day's list, never a restricted one", async () => {
+    await open();
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "R-1", qtyBase: 50, expiryDate: "2027-06-30", resourceId: retailId });
+    const lines = [{ medicineId: fx.med.crocin, qtyBase: 10 }];
+    const preview = await previewRetailSale(db, fx.pharmacist.actor, { lines }, MON);
+    const price = preview.lines[0]!.price;
+    expect(price).toMatchObject({ unitPaise: 1200, amountPaise: 12000 });
+    expect(price.gstRateBps).toBeGreaterThan(0);
+    expect(price.taxPaise).toBe(preview.totals.taxPaise); // one line: its tax is the bill's, inside the MRP
+    expect(preview.lines.reduce((n, l) => n + l.price.amountPaise, 0)).toBe(preview.totals.netPayablePaise);
+
+    const sale = await sellRetail(db, docs, fx.pharmacist.actor, { customer: newCustomer(), lines, tenders: await pay(undefined, lines) }, undefined, MON);
+    expect((await listRetailSales(db, fx.pharmacist.actor, "2026-08-17")).map((r) => r.customer))
+      .toEqual([{ uhid: sale.patient.uhid, name: "Ramesh Patil", alias: null }]);
+    await db.update(patients).set({ isConfidential: true }).where(eq(patients.id, sale.patient.id));
+    const [sealed] = await listRetailSales(db, fx.pharmacist.actor, "2026-08-17");
+    expect(sealed?.customer).toMatchObject({ uhid: sale.patient.uhid, name: null });
+  });
+
   it("registers a customer only under patients.register", async () => {
     await open();
     await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "R-1", qtyBase: 50, resourceId: retailId });
@@ -225,7 +248,7 @@ describe("walk-in retail sales (P19)", () => {
     });
     await grantPermissionToRole(db, fx.registry, "pharmacy", "pharmacy.register.read");
     const register = await h1Register(db, fx.pharmacist.actor, { from: "2026-08-17", to: "2026-08-17" });
-    expect(register.rows).toEqual([expect.objectContaining({ source: "walk_in", prescriberAddress: RX.prescriberAddress, drugName: "Azee 500 500 mg tablet" })]);
+    expect(register.rows).toEqual([expect.objectContaining({ source: "walk_in", prescriberAddress: RX.prescriberAddress, drugName: "Azee 500 tablet" })]);
   });
 
   it("never sells Schedule X, an expired batch, more than the batch holds, or to a customer recorded allergic", async () => {

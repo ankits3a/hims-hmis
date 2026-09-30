@@ -473,6 +473,24 @@ export const itemMerged = defineEvent("item.merged", MODULE, z.object({
   barcodesMoved: z.number().int().nonnegative(), ledgerEntryIds: z.array(id),
 }));
 
+// ═══ PHARMACY GAP A6b — INDENTS (`indents.ts`) ═══
+
+const indentHeader = { indentId: id, indentNo: z.string().min(1), fromResourceId: id, toResourceId: id };
+
+/** A sub-store asked a supplying store for stock (`from` asks, `to` supplies). Nothing moved. */
+export const materialIndentRaised = defineEvent("material.indent_raised", MODULE, z.object({
+  ...indentHeader, lines: z.array(z.object({ itemId: id, qtyBase: qty })).min(1),
+}));
+/** The supplying store issued it as a transfer: what was asked and what went, per item (0 for a line it could not give). */
+export const materialIndentIssued = defineEvent("material.indent_issued", MODULE, z.object({
+  ...indentHeader, transferId: id,
+  lines: z.array(z.object({ itemId: id, qtyBase: qty, qtyIssued: qty })).min(1),
+}));
+/** The supplying store refused it, with the reason. */
+export const materialIndentRejected = defineEvent("material.indent_rejected", MODULE, z.object({ ...indentHeader, reason: z.string().min(1) }));
+/** The requester withdrew it before it was answered. */
+export const materialIndentCancelled = defineEvent("material.indent_cancelled", MODULE, z.object({ ...indentHeader, reason: z.string().min(1) }));
+
 export const MATERIALS_EVENTS = [
   itemRegistered, itemUpdated,
   vendorRegistered, vendorUpdated, vendorStatusChanged,
@@ -492,4 +510,5 @@ export const MATERIALS_EVENTS = [
   supplierReturnClosed, supplierCreditRecorded, supplierCreditCancelled,
   stockWriteOffRequested, stockWriteOffRefused, stockWriteOffPosted, stockRecallClosed,
   itemMergeRequested, itemMergeRefused, itemMerged,
+  materialIndentRaised, materialIndentIssued, materialIndentRejected, materialIndentCancelled,
 ] as const;

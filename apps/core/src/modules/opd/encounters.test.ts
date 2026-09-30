@@ -5,7 +5,7 @@ import { withTx } from "../../kernel/db/client";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { events, opdDepartmentTokens, opdQueueEntries, opdQueueSessions, patients, printJobs, workflowInstances } from "../../kernel/db/schema";
 import {
-  abandonVisit, getEncounter, moveEncounter, openVisit, patientTimeline, reEnterVisit, transferQueue, reclassifyVisit,
+  abandonVisit, counterState, getEncounter, moveEncounter, openVisit, patientTimeline, reEnterVisit, transferQueue, reclassifyVisit,
 } from "./encounters";
 import type { EncounterRow } from "./encounters";
 import type { Db } from "../../kernel/db/client";
@@ -426,6 +426,38 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     expect(items[1]!.serviceDate).toBe("2026-08-10");
     const viaLoser = await patientTimeline(db, clerk.actor, loser.id);
     expect(viaLoser.map((i) => i.encounterId)).toEqual(items.map((i) => i.encounterId));
+  });
+
+  /*
+    DESK-FIXES B (2026-09-28 walk) — the desk could not tell a REFERRAL visit from any other: the
+    timeline carried no referral fact, so a patient the GM doctor had just sent to Ophthalmology was
+    offered "Revisit — assign" and a fresh GM seating. The row now says which visit sent it.
+  */
+  it("a referral visit names the visit that referred it on the timeline; an ordinary visit names none", async () => {
+    const from = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const referred = await openVisit(db, clerk.actor, {
+      patientId: patient.id, departmentId: dept2Id, doctorId: drp.doctorId,
+      referralSource: "internal_doctor", referrerName: "Dr dra", referredFromEncounterId: from.encounter.id,
+    }, MON);
+    const items = await patientTimeline(db, clerk.actor, patient.id);
+    const byId = new Map(items.map((i) => [i.encounterId, i] as const));
+    expect(byId.get(referred.encounter.id)!.referredFromEncounterId).toBe(from.encounter.id);
+    expect(byId.get(from.encounter.id)!.referredFromEncounterId).toBeNull();
+  });
+
+  /*
+    DESK-FIXES D (2026-09-28 walk) — /billing entered by the VISIT NUMBER said "no token yet" for a
+    visit holding MED-1. `counterState` resolved the encounter by either spelling and then asked the
+    queue for entries under the RAW string, which only the row id matches.
+  */
+  it("counterState reads the token by either spelling of the visit", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const byId = await counterState(db, opened.encounter.id);
+    const byNumber = await counterState(db, opened.encounter.visitNo);
+    expect(byId!.tokenNo).toBe(opened.tokenNo);
+    expect(byNumber!.tokenNo).toBe(opened.tokenNo);
+    expect(byNumber!.everJoined).toBe(true);
+    expect(byNumber!.encounterId).toBe(opened.encounter.id);
   });
 
   /**

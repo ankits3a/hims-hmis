@@ -46,6 +46,9 @@ export { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./sta
 export type { StagingRow } from "./staging";
 
 export { searchMedicines } from "./search";
+/** STAGE D5 — the WHO AWaRe 2023 list and the seed's fill-the-nulls classification (`seed:pharmacy`). */
+export { AWARE_LIST, classifyAwareMedicines, restrictedAntimicrobialExists } from "./aware";
+export type { AwareCategory, AwareClassificationReport } from "./aware";
 /**
  * The CDS regimen fill's door: a composition (moieties + strengths + form) to ONE catalogue
  * product — a stocked one first, else a generic — or null. Exact, never nearest. See `products.ts`.

@@ -189,6 +189,10 @@ const THE_EIGHTEEN = [
   "runMonthlyProposals",
   /** PHARMACY P6 (patient messages) — `dailyIst("10:00")`: the opt-in refill reminders, queued once per dispense. */
   "runRefillReminders",
+  /** 18-S RS11 T3 — `every(3_600_000)`: an overdue QA puts an available machine into `qa_blocked`. */
+  "sweepOverdueQa",
+  /** 18-S RS10 T2 — `every(60_000)`: the HOD's escalations raised on, and resolved off, the obligation spine. */
+  "sweepImagingEscalations",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -514,7 +518,11 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // `patient_messages` < `rx_issued`.
         ["pharmacy.patient_messages", ["dispense.handed_over", "retail.sold"]],
         ["pharmacy.rx_issued", ["prescription.issued"]],
+        // 18-S RS10 T3 — the inbox grant applies the gate override. `approval_granted` < `order_placed`.
+        ["radiology.approval_granted", ["approval.granted"]],
         ["radiology.order_placed", ["order.placed"]],
+        // 18-S RS9b T2 — the "report ready" message for a bill paid after release. Sorts after `order_placed`.
+        ["radiology.report_ready_on_payment", ["credit_note.issued", "payment.received"]],
       ]);
 
       // AND HALF THE EDIT WOULD NOT BOOT — on THIS registry, not a synthetic one. Installing a

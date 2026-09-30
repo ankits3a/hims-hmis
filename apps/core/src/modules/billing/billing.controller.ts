@@ -102,7 +102,9 @@ import { resolveMismatch } from "./recon-resolve";
 import type { ResolveMismatchResult } from "./recon-resolve";
 import { billingOfficeNeeds } from "./office-needs";
 import type { BillingOfficeNeeds } from "./office-needs";
-import { beginClose, confirmClose, listSessions, openSession, recountSession } from "./sessions";
+import { beginClose, confirmClose, isDrawerSupervisor, listSessions, openSession, recountSession } from "./sessions";
+import { drawerOpenItems } from "./drawer-open-items";
+import type { DrawerOpenItems, PartPaidItem } from "./drawer-open-items";
 import { istDay } from "./time";
 import type { FeeQuote } from "./charge-rules";
 import type { BillingConfig } from "./config";
@@ -872,8 +874,18 @@ export class BillingController {
    */
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("receipts")
-  async receiptList(@Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
+  async receiptList(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
     const q = parsed(receiptsQuery, query);
+    /*
+     * OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen"). The UNFILTERED list is every receipt
+     * with its amount, receiver and drawer: a cashier could add up her own open session and read
+     * what her drawer should hold before she counts it. So without a `patientId` it is a drawer
+     * supervisor's list (`billing.session.read`); a cashier's lookup and reprint flows — every web
+     * caller of this route — always name the patient, and those still answer.
+     */
+    if (q.patientId === undefined && !(await isDrawerSupervisor(this.db, actor))) {
+      throw httpError(403, "the unfiltered receipt list is a drawer supervisor's (billing.session.read); name a patient", "receipt_filter_required");
+    }
     const where = q.patientId === undefined ? undefined : eq(receipts.patientId, q.patientId);
     return {
       items: await this.db
@@ -1089,6 +1101,41 @@ export class BillingController {
   async sessionCurrent(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
     const own = await listSessions(this.db, { cashierUserId: actor.id });
     return { session: own.find((s) => s.status === "open" || s.status === "closing") ?? null };
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 — "OPEN ON THIS DRAWER": the acting cashier's own live drawer's open items
+   * (unconfirmed UPI/card, queued cash refunds, part-paid bills). On `billing.session.own` because
+   * it reads only the caller's own drawer, found here and never taken from the URL. Carries NO cash
+   * figure — the close is a blind count (`drawer-open-items.ts`). `null` when no drawer is live.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Get("sessions/current/open-items")
+  async sessionOpenItems(@CurrentActor() actor: Actor): Promise<{
+    items: (Omit<DrawerOpenItems, "partPaid"> & {
+      partPaid: { count: number; paise: number; items: (PartPaidItem & { patientName: string | null; uhid: string | null })[] };
+    }) | null;
+  }> {
+    const own = await listSessions(this.db, { cashierUserId: actor.id });
+    const live = own.find((s) => s.status === "open" || s.status === "closing");
+    if (live === undefined) return { items: null };
+    const found = await drawerOpenItems(this.db, live.id);
+    // The patient's NAME through the one summary helper every billing print uses — so a
+    // confidential patient shows by alias here exactly as everywhere else.
+    const people = await getPatientSummaries(this.db, actor, found.partPaid.items.map((i) => i.patientId));
+    const byId = new Map(people.map((p) => [p.requestedId, p] as const));
+    return {
+      items: {
+        ...found,
+        partPaid: {
+          ...found.partPaid,
+          items: found.partPaid.items.map((i) => {
+            const p = byId.get(i.patientId);
+            return { ...i, patientName: p === undefined ? null : p.restricted ? p.alias : p.name, uhid: p?.uhid ?? null };
+          }),
+        },
+      },
+    };
   }
 
   /**

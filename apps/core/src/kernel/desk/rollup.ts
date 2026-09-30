@@ -159,6 +159,12 @@ export function addDays(day: string, n: number): string {
  */
 export async function factsForWindow(
   db: Db, providers: DeskProvider[], actor: Actor, from: string, to: string, today: string, now: Date,
+  /**
+   * OWNER RULING 2026-09-28 — BLIND COUNT. WHO IS LOOKING at the live today, when it is not the
+   * subject — a supervisor's `/staff/:id/brief`. Optional and trailing, so every existing caller is
+   * unchanged; billing's facts gate a drawer's collections on the READER's permission.
+   */
+  reader: Actor = actor,
 ): Promise<DayFacts[]> {
   const stored = await db
     .select({ day: userDayFacts.day, facts: userDayFacts.facts })
@@ -173,7 +179,7 @@ export async function factsForWindow(
   if (today >= from && today <= to) {
     out.push({
       day: today,
-      facts: await liveFactsFor(providers, { db, actor, reader: actor, date: today, now }),
+      facts: await liveFactsFor(providers, { db, actor, reader, date: today, now }),
       provisional: true,
     });
   }

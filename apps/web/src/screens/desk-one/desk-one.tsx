@@ -1,13 +1,13 @@
 import { useTranslation } from "react-i18next";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../lib/auth";
 import { usePatientInHandOptional } from "../../lib/patient-in-hand";
 import { newIdempotencyKey, api } from "../../lib/api";
 import {
   getOpdConfig, putCounterFlow, listDepartments, listQueueSummary, opdErrorMessage,
-  triage, walkIn, joinQueue, bookAppointment, todayIst,
+  triage, walkIn, joinQueue, bookAppointment, todayIst, patientTimeline,
 } from "../../lib/opd-api";
 import type { WireSlot } from "../../lib/opd-api";
 import { fetchFeeQuote, issueInvoice, billingErrorMessage, fetchCurrentSession, listDues } from "../../lib/billing-api";
@@ -16,11 +16,11 @@ import { fetchRecognition } from "../../lib/membership-api";
 import { fetchDesk } from "../../lib/desk-api";
 import {
   ageYearsOf, billOf, deptQueues, firstFreeDoctor, inHall, invoiceLinesOf, istClock, istDateLabel,
-  laneOf, flowOf, LANE_TEXT, logged, rs, SEAT_LABEL, SEAT_ROUTE, SEATS, shortestLine, shouldJoinNow,
+  laneOf, flowOf, LANE_TEXT, logged, openVisitsToday, rs, SEAT_LABEL, SEAT_ROUTE, SEATS, shortestLine, shouldJoinNow,
   seatHasStage, stageForSeat, waitMinutes,
 } from "./model";
 import type { Lane, LogLine, Seat } from "./model";
-import { DeskProvider, emptySession, EMPTY_FORM, registerBodyOf } from "./session";
+import { DeskProvider, emptySession, EMPTY_FORM, formAgeYears, registerBodyOf } from "./session";
 import type { DeskApi, Person, Session } from "./session";
 import { Dossier } from "./dossier";
 import { Dock } from "./dock";
@@ -201,6 +201,40 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     retry: false,
   });
 
+  /**
+   * ═══ DESK-FIXES A/B — THE VISIT THAT IS ALREADY OPEN TODAY ═══
+   *
+   * Real-Chromium walk, 2026-09-28: the desk printed MED-1 stamped UNPAID, the clerk cleared the
+   * desk, searched the patient again — and the desk offered a NEW seating while Bill said "Nothing to
+   * bill yet". A referral the GM doctor had just opened into Ophthalmology was invisible the same way.
+   * Both visits were on the server; the desk simply never asked. It asks now: the patient's own
+   * timeline (the dossier's query key, so the history rail and this read are one request), filtered
+   * to today's un-ended visits, and — on the seats that take money — each one's fee quote, which is
+   * where the token, the ledger's money verdict and a referral's free window already live.
+   */
+  const personId = s.person?.id ?? null;
+  const timeline = useQuery({
+    queryKey: ["d1", "timeline", personId],
+    queryFn: () => patientTimeline(personId!),
+    enabled: personId !== null,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const openVisitList = useMemo(
+    () => openVisitsToday(timeline.data?.items ?? [], serviceDate),
+    [timeline.data, serviceDate],
+  );
+  const openQuotes = useQueries({
+    queries: openVisitList.map((v) => ({
+      queryKey: ["d1", "open-quote", v.encounterId],
+      queryFn: () => fetchFeeQuote(v.encounterId),
+      enabled: takesMoney,
+      staleTime: 0,
+      retry: false,
+    })),
+  });
+  const openVisits = openVisitList.map((v, i) => ({ visit: v, quote: openQuotes[i]?.data ?? null }));
+
   const lane: Lane = config.data === undefined ? "F1" : laneOf(config.data);
   const queues = useMemo(
     () => deptQueues(summaries.data?.items ?? [], departments.data?.items ?? []),
@@ -222,7 +256,13 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
    * consulted here because a panel patient still leaves an invoice behind.
    */
   const bill = billOf(quote.data ?? null);
-  const moneyTaken = s.issued !== null || (quote.data !== undefined && bill.free);
+  /*
+    DESK-FIXES A — a fourth lawful exit: the visit's fee is ALREADY on a live invoice (the quote asks
+    FD-27's own duplicate guard). Only reachable by reopening today's visit; without it the bill stage
+    offered CASH for a fee the server would refuse as `duplicate_invoice_refused`.
+  */
+  const alreadyBilled = quote.data?.alreadyBilled ?? null;
+  const moneyTaken = s.issued !== null || (quote.data !== undefined && (bill.free || alreadyBilled !== null));
 
   /* ══════════ the deferred join — RC-4's rule, and it fires here and nowhere else ══════════ */
   useEffect(() => {
@@ -292,6 +332,8 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
       startedAt: Date.now(),
       log: logged(prev.log, `file open — ${person.name} · ${person.uhid}`),
     }));
+    /* DESK-FIXES A — a visit this desk opened a minute ago must not be hidden by a cached timeline. */
+    void qc.invalidateQueries({ queryKey: ["d1", "timeline", person.id] });
     void api<{ patient: { dob: string | null; phone: string | null; addressLine: string | null } }>(
       "GET", `/patients/${encodeURIComponent(person.id)}`,
     ).then(
@@ -329,6 +371,8 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
       const { getPatientPhoto } = await import("../../lib/patients-api");
       try {
         const stored = await getPatientPhoto(person.id);
+        /* DESK-FIXES F — "no photo" is a 204 now, an ordinary answer rather than a red 404. */
+        if (stored === null) return;
         setS((prev) => (prev.person?.id !== person.id ? prev : {
           ...prev,
           photo: `data:${stored.mimeType};base64,${stored.imageBase64}`,
@@ -337,7 +381,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         /* no photo on file is the common case, not an error worth a line in the log */
       }
     })();
-  }, [seat]);
+  }, [seat, qc]);
 
   /**
    * ═══ FD-14 — THE FACE: HELD WHILE ENROLLING, UPLOADED THE MOMENT THERE IS SOMEBODY TO ATTACH IT TO ═══
@@ -482,7 +526,8 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
    */
   const enrol = useCallback(async (acknowledgeDuplicates = false) => {
     const f = s.form;
-    if (f.name.trim() === "" || f.sex === "") return;
+    /* DESK-FIXES E — the server refuses `age_or_dob_required`; the form gate is the same rule. */
+    if (f.name.trim() === "" || f.sex === "" || formAgeYears(f) === null) return;
     patch({ busy: "enrol", error: null });
     const { registerPatient, duplicateCandidates } = await import("../../lib/patients-api");
     try {
@@ -739,6 +784,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         ),
       }));
       void qc.invalidateQueries({ queryKey: ["d1", "summary"] });
+      void qc.invalidateQueries({ queryKey: ["d1", "timeline", person.id] });
     } catch (e) {
       setS((prev) => ({
         ...prev, busy: null, error: opdErrorMessage(e),
@@ -808,6 +854,8 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, `seating withdrawn — ${visit.doctorName}'s token cancelled on the board; pick again`, "warn"),
       }));
       void qc.invalidateQueries({ queryKey: ["d1", "summary"] });
+      /* DESK-FIXES A — the abandoned visit must leave the "open today" list at once. */
+      void qc.invalidateQueries({ queryKey: ["d1", "timeline"] });
     } catch (e) {
       setS((prev) => ({
         ...prev, busy: null, error: opdErrorMessage(e),
@@ -850,6 +898,50 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
       log: logged(prev.log, "assignment withdrawn at the desk — pick again", "warn"),
     }));
   }, [seat]);
+
+  /**
+   * ═══ DESK-FIXES A — BILL THE VISIT THAT IS ALREADY OPEN, NEVER A SECOND ONE ═══
+   *
+   * Puts today's open visit in hand exactly as `assign` would have left it, WITHOUT opening anything:
+   * the encounter, its token and its fee are the server's already. The bill stage then quotes that
+   * encounter and `settle` issues against it — the visit's own fee line, priced by the server — and
+   * FD-27's duplicate guard (`alreadyBilled` on the quote, and the refusal behind it) keeps a fee
+   * that is already on an invoice from being taken twice.
+   *
+   * Offered only once the quote has landed: the token and the money verdict come from it, and a
+   * bill-first visit adopted with an unknown token would have the deferred join fire on a guess.
+   */
+  const adoptVisit = useCallback((encounterId: string) => {
+    const found = openVisits.find((o) => o.visit.encounterId === encounterId);
+    if (found === undefined || found.quote === null || s.person === null) return;
+    const { visit: v, quote: q } = found;
+    const summary = (summaries.data?.items ?? []).find((x) => x.doctor.id === v.doctorId) ?? null;
+    setS((prev) => (prev.person === null ? prev : {
+      ...prev,
+      stage: stageForSeat(seat, "bill"),
+      error: null, issued: null, tender: null, armedTender: null, tenderRef: "",
+      visit: {
+        encounterId: v.encounterId,
+        patientId: q.patient?.id ?? prev.person.id,
+        visitNo: v.visitNo,
+        departmentId: v.departmentId ?? "",
+        departmentName: v.departmentName ?? "—",
+        doctorId: v.doctorId ?? "",
+        doctorName: v.doctorName ?? "—",
+        roomCode: summary?.roomCode ?? null,
+        ahead: summary?.waitingCount ?? 0,
+        waitMinutes: summary === null ? 0 : waitMinutes(summary),
+        tokenNo: q.visit?.tokenNo ?? null,
+        joining: false,
+        joinError: null,
+      },
+      log: logged(
+        prev.log,
+        `today's visit ${v.visitNo} reopened — ${v.departmentName ?? "?"} · ${v.doctorName ?? "?"}${v.referral === null ? "" : " (referral)"}; billing what it already carries, no new visit`,
+        "ok",
+      ),
+    }));
+  }, [openVisits, s.person, summaries.data, seat]);
 
   /** A slot on a later day. It is held BESIDE today's session and never replaces it. */
   const holdFutureSlot = useCallback(async (
@@ -907,6 +999,11 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     const q = quote.data;
     const visit = s.visit;
     if (q === undefined || visit === null || s.issued !== null) return;
+    /* DESK-FIXES A — a fee already on a live invoice is never tendered again (FD-27's guard, asked first). */
+    if (q.alreadyBilled != null) {
+      patch({ error: `This visit is already billed on ${q.alreadyBilled.invoiceNo} — nothing more to collect for its fee.` });
+      return;
+    }
     if (bill.free || q.draft === null) {
       setS((prev) => ({
         ...prev,
@@ -1126,12 +1223,13 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     } else if (/(drawer|cash|session|float|golla)/.test(lo)) {
       answer = cash.data?.session === null || cash.data === undefined
         ? "No drawer is open on your login, so nothing can be collected — cash, UPI and card alike. Open one, count the float, and the tender keys come back."
-        : `Your drawer opened at ${new Date(cash.data.session.openedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} with ${rs(cash.data.session.openingFloatPaise)} in it, and ${rs(s.takenPaise)} has come in as cash at this desk since you signed in.`;
+        /* OWNER RULING 2026-09-28 — BLIND COUNT: float + cash taken is the expected cash, so the copilot never says what has come in. */
+        : `Your drawer opened at ${new Date(cash.data.session.openedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} with ${rs(cash.data.session.openingFloatPaise)} in it. What it should hold now is shown after you submit your closing count.`;
     } else {
       answer = "I answer from what is on this desk right now: the queue board, the bill in the column, your drawer and today's counter lane. Try \"kis line mein kam wait hai\", \"why is this free\", \"what does the token do\".";
     }
     setS((prev) => ({ ...prev, answer, drawer: true, log: logged(prev.log, `you asked: ${q}`, "you") }));
-  }, [queues, quote.data, bill.totalPaise, lane, cash.data, s.takenPaise]);
+  }, [queues, quote.data, bill.totalPaise, lane, cash.data]);
 
   /* ══════════ the day's own figures, from `/me/desk` ══════════ */
   const dayStats = useMemo(() => {
@@ -1260,6 +1358,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     duesPaise: (dues.data?.items ?? []).reduce((sum, row) => sum + row.outstandingPaise, 0),
     duesCount: (dues.data?.items ?? []).filter((row) => row.outstandingPaise > 0).length,
     moneyTaken,
+    openVisits, adoptVisit,
     note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto, changeDoctor, reclassify,
     presentCoupon, presentSlip, settle, amend, setLane, openDrawer, clearDesk, ask, goto,
   };
@@ -1354,7 +1453,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
               <span className="pill on" style={{ height: 22 }} title="Cash may be taken">
                 <span style={{ width: 5, height: 5, borderRadius: 99, background: "var(--green)" }} />
                 cash session open · float <span className="mo">{rs(cashPill.floatPaise)}</span>
-                {s.takenPaise > 0 ? <span className="mo">+{rs(s.takenPaise)}</span> : null}
+                {/* OWNER RULING 2026-09-28 — BLIND COUNT: no "+cash taken" beside the float — the two add up to the expected cash. */}
               </span>
             ) : (
               <span

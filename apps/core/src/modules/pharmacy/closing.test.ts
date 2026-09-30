@@ -55,7 +55,7 @@ describe("the closing of a ticket", () => {
     expect(closed.ticket).toMatchObject({ lines: 2, substituted: 0, declined: 0, claimedByName: "ph.mehta", handedOverAt: at(5) });
     expect(closed.ticket.dispenseNo).toMatch(/^P\d{6}\d+$/);
     expect(closed.money).toMatchObject({
-      netPayablePaise: preview.totals.netPayablePaise, changeGivenPaise: 5_000,
+      netPayablePaise: preview.totals.netPayablePaise, roundingPaise: preview.totals.roundingPaise, changeGivenPaise: 5_000,
       tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise + 5_000 }],
     });
     expect(closed.money!.invoiceNo).not.toBe("");

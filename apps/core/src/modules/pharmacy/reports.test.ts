@@ -16,6 +16,7 @@ import { cancelBilledDispense } from "./refund";
 import { previewRetailSale, recordRetailLicence, sellRetail } from "./retail";
 import { gstr3bReport } from "./gstr3b";
 import { hsnReport, marginReport, salesRegister } from "./sales-register";
+import { itemCatalogueReport, topSellingItems } from "./office-stock-reports";
 import { verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
 import type { DocumentStore } from "../../kernel/documents/store";
@@ -185,6 +186,33 @@ describe("the sales register, the margin and the HSN summary (parity P5)", () =>
     expect(r.totals.valuePaise).toBe(r.totals.taxablePaise + r.totals.cgstPaise + r.totals.sgstPaise);
     // Azee is 5%, Crocin 12%: two rows, tablets counted as TBS.
     expect(r.rows.map((x) => [x.rateBps, x.uqc, x.qty])).toEqual([[500, "TBS", 3], [1200, "TBS", 25]]);
+  });
+
+  it("STAGE C — top-selling: the register's items net of refunds, ranked by value and by units, with share and ABC by cumulative value", async () => {
+    await aDay();
+    const byItem = await salesRegister(db, accounts.actor, { ...range, groupBy: "item" }, MON3);
+    const net = (code: string): number => byItem.groups.find((g) => g.sub === code)!.netPaise;
+    const r = await topSellingItems(db, accounts.actor, range, MON3);
+    const total = net("AZEE500") + net("CROC500");
+    expect(r.totals).toEqual({ items: 2, qtyBase: 28, valuePaise: total });
+    expect(total).toBe(byItem.totals.net.netPaise);
+    // Crocin: 25 tablets (15 + 10 walk-in); Azee: 6 sold, 3 refunded = 3.
+    expect(r.byUnits.map((x) => [x.rank, x.itemCode, x.qtyBase, x.unitShareBps])).toEqual([
+      [1, "CROC500", 25, Math.round((25 * 10_000) / 28)], [2, "AZEE500", 3, Math.round((3 * 10_000) / 28)],
+    ]);
+    const [first, second] = net("CROC500") >= net("AZEE500") ? ["CROC500", "AZEE500"] : ["AZEE500", "CROC500"];
+    expect(r.byValue.map((x) => [x.rank, x.itemCode, x.valuePaise])).toEqual([[1, first, net(first)], [2, second, net(second)]]);
+    expect(r.byValue[0]).toMatchObject({ valueShareBps: Math.round((net(first) * 10_000) / total), abc: "A" });
+    // The second item takes the running total to 100%: past 90%, so C (and the top seller is A whatever its share).
+    expect(r.byValue[1]).toMatchObject({ cumulativeValueBps: 10_000, abc: "C" });
+    expect(r.classes).toEqual({ A: { items: 1, valuePaise: net(first) }, B: { items: 0, valuePaise: 0 }, C: { items: 1, valuePaise: net(second) } });
+    await expect(topSellingItems(db, fx.pharmacist.actor, range, MON3)).rejects.toMatchObject({ code: "permission_denied" });
+  });
+
+  it("STAGE C — the item catalogue carries each drug's schedule from its formulary medicine", async () => {
+    const cat = await itemCatalogueReport(db, accounts.actor, {});
+    expect(cat.rows.find((r) => r.code === "AZEE500")).toMatchObject({ schedule: "H1" });
+    expect(cat.rows.find((r) => r.code === "CROC500")).toMatchObject({ schedule: "OTC" });
   });
 
   it("GAP A4 — GSTR-3B: 3.1(a) is GSTR-1's taxable lines net of credit notes, split by rate; with no purchases the whole tax is cash; a pharmacist is refused", async () => {

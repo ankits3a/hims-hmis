@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card Recognition Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f4f7f4;--card:#fff;--ink:#132420;--line:#dfe7e1;--line2:#ecf1ed;--dim:#5c6f66;--faint:#8ea69a;--wash:#eef3ef;
+--green:#0e6b4e;--green-soft:rgba(14,107,78,.08);--green-line:rgba(14,107,78,.35);--gold:#dd8f1c;--gold-ink:#9a6208;--gold-soft:rgba(221,143,28,.10);--gold-line:rgba(221,143,28,.45);
+--red:#b23a30;--red-soft:rgba(178,58,48,.08);--red-line:rgba(178,58,48,.4);--mint:#35c48f}
+*{box-sizing:border-box}
+body{margin:0;background:#e6ece7;color:var(--ink);font-family:"IBM Plex Sans","IBM Plex Sans Devanagari",system-ui,sans-serif}
+.mo{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:var(--dim)}
+.pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 20px;border-radius:6px;background:var(--green);color:#f2faf6;font-size:13.5px;font-weight:600;border:1px solid var(--green);font-family:inherit}
+.pri .kb{background:transparent;color:#cfe8dc;border-color:#3f8a70}
+.sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:42px;padding:0 14px;border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500;font-family:inherit;color:var(--ink)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+.pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+.pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold-ink)}
+.pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+.src{display:inline-flex;align-items:center;justify-content:center;width:62px;height:20px;border-radius:3px;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:700;letter-spacing:.1em;border:1px solid var(--line);color:var(--dim);background:var(--wash);flex-shrink:0}
+.nav{display:inline-flex;align-items:center;height:46px;padding:0 11px;font-size:12.5px;font-weight:500;color:var(--dim);border-bottom:2px solid transparent;text-decoration:none}
+.nav.on{color:var(--ink);font-weight:600;border-bottom-color:var(--green)}
+.fact{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.fact>span:first-child{color:var(--dim)}
+.row{display:flex;align-items:center;gap:10px;min-height:58px;padding:9px 14px;border-top:1px solid var(--line2)}
+.row.sel{background:var(--green-soft);box-shadow:inset 3px 0 0 var(--green)}
+.row b{display:block;font-size:13px;font-weight:600}
+.row small{display:block;font-size:11.5px;color:var(--dim);margin-top:2px}
+.ns{display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:3px;border:1px dashed var(--gold-line);color:var(--gold-ink);font-family:"IBM Plex Mono",monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;vertical-align:middle}
+.cardno{font-family:"IBM Plex Mono",monospace;font-weight:700;white-space:nowrap;letter-spacing:.04em}
+.step{display:flex;gap:14px;padding:16px 18px;border-top:1px solid var(--line2)}
+.step:first-child{border-top:none}
+.num{flex-shrink:0;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--green);color:var(--green);display:flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:700}
+.num.done{background:var(--green);color:#f2faf6}
+.num.off{border-color:var(--line);color:var(--faint)}
+.step h3{margin:2px 0 8px;font-size:14px;font-weight:600}
+.opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);font-size:12.5px}
+.opt.on{border-color:var(--green-line);background:var(--green-soft);box-shadow:inset 3px 0 0 var(--green)}
+.radio{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--faint);flex-shrink:0}
+.opt.on .radio{border:4px solid var(--green)}
+.ben{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.meter{display:inline-flex;gap:3px}
+.meter i{width:10px;height:10px;border-radius:2px;background:var(--green)}
+.meter i.u{background:var(--line)}
+.disc{padding:10px 12px;border-radius:6px;background:var(--wash);font-size:12px;line-height:17px}
+.dock{display:flex;align-items:center;gap:12px;padding:12px 20px;border-top:1px solid var(--line);background:var(--card)}
+.refuse{border:1px solid var(--red-line);background:var(--red-soft);border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:18px;color:var(--ink)}
+.refuse b{color:var(--red)}
+.input{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1.5px solid var(--green-line);border-radius:6px;background:var(--card)}
+/* board chrome */
+.strip{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 16px;background:var(--card);border-bottom:1px solid var(--line);font-size:13px}
+.strip b{font-weight:700}
+.section{padding:22px 16px 8px}
+.section h2{margin:0 0 4px;font-size:15px;font-weight:600}
+.section p.cap{margin:0 0 12px;font-size:12.5px;color:var(--dim);max-width:900px;line-height:18px}
+.scroll{overflow-x:auto;padding-bottom:8px}
+.art{background:var(--paper);border:1px solid #cfd9d2;box-shadow:0 1px 3px rgba(19,36,32,.08);overflow:hidden}
+.pair{display:flex;gap:24px;align-items:flex-start;width:max-content}
+.panel{max-width:980px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 20px;margin:0 16px 16px}
+.panel li{font-size:13px;line-height:19px;margin:0 0 8px}
+.panel h2{margin:0 0 10px;font-size:15px}
+.dim{color:var(--dim)}
+</style>
+</head>
+<body>
+
+<div class="strip">
+  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg>
+  <b>Board</b><span class="dim">·</span><b>Card recognition</b><span class="dim">·</span><span class="mo">/counter/instruments</span><span class="dim">·</span><span class="pill gd">draft for approval</span><span class="dim">·</span><span class="mo">28-Sep-2026</span>
+  <span style="flex-grow:1"></span>
+  <span style="font-size:11.5px" class="dim"><span class="ns">needs server</span> = the board shows it, the server does not send it yet</span>
+</div>
+
+<!-- ============ 1. DESKTOP 1440 ============ -->
+<div class="section">
+  <h2>1 · Desktop 1440 — a member's card in hand, one bill to carry it to</h2>
+  <p class="cap">Sunita Verma is at Counter 2 with her Arogya Family Card. She is seeing orthopaedics today. The card is active and linked to her UHID, so the bill will honour it on its own; the clerk's one act is to take this visit to the bill.</p>
+</div>
+<div class="scroll" style="padding:0 16px 8px">
+<div class="art" style="width:1440px;height:900px;display:flex;flex-direction:column">
+
+  <header style="height:46px;flex-shrink:0;display:flex;align-items:center;gap:4px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--line)">
+    <div style="display:flex;align-items:center;gap:9px;padding-right:14px;margin-right:6px;border-right:1px solid var(--line)">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg>
+      <span class="mo" style="font-size:12px;font-weight:700;letter-spacing:.12em">FRONT COUNTER</span>
+    </div>
+    <nav style="display:flex">
+      <a class="nav" href="#">Desk One</a><a class="nav" href="#">Appointments</a><a class="nav" href="#">Billing</a><a class="nav on" href="#">Cards</a><a class="nav" href="#">Reconcile</a>
+    </nav>
+    <span style="flex-grow:1"></span>
+    <span class="pill gd">4 cards to link</span>
+    <span class="pill" style="margin-left:6px">1 grace approval waiting</span>
+    <span class="mo" style="margin:0 14px;font-size:11px;color:var(--dim)">MON 28 SEP · 11:40</span>
+    <span style="font-size:12.5px;font-weight:600">Pooja Nair · Counter 2</span>
+  </header>
+
+  <div style="flex-grow:1;display:flex;min-height:0">
+    <!-- LEFT: card in hand -->
+    <aside style="width:296px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--card)">
+      <div style="padding:18px 18px 12px">
+        <div style="display:flex;align-items:center;gap:8px"><span class="src">CARD</span><span class="tag">In hand</span></div>
+        <div class="cardno" style="font-size:20px;margin-top:10px">AZ-4471-2093</div>
+        <div style="font-size:14px;font-weight:600;margin-top:4px">Arogya Family Card · Gold</div>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><span class="pill on">● Active</span><span class="pill">Valid to 31-Mar-2027</span></div>
+      </div>
+      <div style="padding:0 18px;flex-grow:1;overflow:auto">
+        <div class="tag" style="margin:6px 0 4px">Holder <span class="ns">needs server</span></div>
+        <div class="fact"><span>Name</span><span style="font-weight:600">Sunita Verma · 52 F</span></div>
+        <div class="fact"><span>UHID</span><span class="mo">HMS00018342</span></div>
+        <div class="fact"><span>Card linked to</span><span>this patient ✓</span></div>
+        <div class="tag" style="margin:14px 0 4px">Card</div>
+        <div class="fact"><span>Valid</span><span class="mo">01-Apr-2026 → 31-Mar-2027</span></div>
+        <div class="fact"><span>From</span><span>Holder book · checked</span></div>
+        <div class="fact"><span>Queue</span><span>Plan gives priority queue</span></div>
+        <div class="tag" style="margin:14px 0 2px">Benefits · left this year</div>
+        <div class="ben"><span style="flex-grow:1">Free OPD consultation</span><span class="meter"><i></i><i></i><i></i><i class="u"></i></span><span class="mo" style="width:52px;text-align:right">3 of 4</span></div>
+        <div class="ben"><span style="flex-grow:1">Member rate · lab tests</span><span class="dim" style="font-size:11.5px">every visit</span></div>
+        <div class="ben"><span style="flex-grow:1">Member rate · radiology</span><span class="dim" style="font-size:11.5px">every visit</span></div>
+        <div class="ben"><span style="flex-grow:1">Annual health check</span><span class="mo" style="width:52px;text-align:right;color:var(--dim)">0 of 1</span></div>
+        <p style="font-size:11px;color:var(--dim);margin:8px 0 0;line-height:15px">Counts of visits only <span class="ns">needs server</span>. No rupee figure is shown at the counter (E-32); the saving is worked out once, on the bill.</p>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)"><span class="kb">Esc</span>put the card down</div>
+    </aside>
+
+    <!-- CENTRE: the flow -->
+    <main style="flex-grow:1;min-width:0;display:flex;flex-direction:column">
+      <div style="padding:18px 20px 12px;display:flex;align-items:baseline;gap:12px">
+        <h1 style="margin:0;font-size:20px;font-weight:600">Card recognition</h1>
+        <span style="font-size:12.5px;color:var(--dim)">कार्ड पहचान · scan, check, carry it to the bill</span>
+      </div>
+      <div style="flex-grow:1;overflow:auto;padding:0 20px 16px">
+        <div class="box">
+          <div class="step">
+            <span class="num done">1</span>
+            <div style="flex-grow:1">
+              <h3>Scan or type the card</h3>
+              <div class="input"><span class="cardno" style="font-size:14px">AZ-4471-2093</span><span style="flex-grow:1"></span><span class="dim" style="font-size:11.5px">card number, mobile or holder name</span><span class="kb">F6</span></div>
+              <div style="font-size:12px;color:var(--dim);margin-top:6px">1 match in the holder book · recognised 11:38</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="num done">2</span>
+            <div style="flex-grow:1">
+              <h3>Which of today's visits is it for?</h3>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div class="opt on"><span class="radio"></span><span style="flex-grow:1"><b style="font-weight:600">OPD · Orthopaedics · token 14</b><span class="dim"> · booked 10:05 · not billed</span></span><span class="pill on">Free OPD consultation applies</span></div>
+                <div class="opt"><span class="radio"></span><span style="flex-grow:1"><b style="font-weight:600">Lab · 3 tests ordered</b><span class="dim"> · CBC, HbA1c, lipid profile · not billed</span></span><span class="pill on">Member rate applies</span></div>
+              </div>
+              <div style="font-size:11.5px;color:var(--dim);margin-top:6px">Visits are read from OPD for this UHID. A patient with no visit today is sent to Desk One first.</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="num">3</span>
+            <div style="flex-grow:1">
+              <h3>What the bill will do with this card</h3>
+              <div class="fact" style="border-top:none"><span>Consultation · Orthopaedics</span><span>Free OPD consultation <span class="dim">· 2 of 4 left after this bill</span></span></div>
+              <div class="fact"><span>Coupon also handed over</span><span><span class="cardno" style="font-size:12px">HCAMP-SEP26</span> <span class="pill gd" style="margin-left:6px">Not valid on this visit · lab only</span></span></div>
+              <div class="fact"><span>If two benefits reach one line</span><span>the larger one wins; they never add up</span></div>
+              <div style="font-size:11.5px;color:var(--dim);margin-top:8px">The benefit is worked out by the bill, on the bill. Nothing is used up until the bill is issued; cancelling the bill gives the visit back.</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="num">4</span>
+            <div style="flex-grow:1">
+              <h3>Say this to the member</h3>
+              <div class="disc"><b>What this card is.</b> This benefit comes from a membership or discount card. It is a discount on the hospital's own charges, it is not insurance, and it does not change the treatment offered or its priority. Ask at the counter for the card's terms.</div>
+              <div style="font-size:11px;color:var(--dim);margin-top:5px">The server's own sentence, shown word for word.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dock">
+        <div style="flex-grow:1;min-width:0">
+          <div class="tag">Next</div>
+          <div style="font-size:13px;margin-top:2px">Bill OPD token 14 for <b>Sunita Verma</b> with card <span class="cardno">AZ-4471-2093</span></div>
+        </div>
+        <button class="sec" type="button">Recognise another card</button>
+        <button class="pri" type="button">Take to the bill <span class="kb">⏎</span></button>
+      </div>
+    </main>
+
+    <!-- RIGHT: one list -->
+    <aside style="width:352px;flex-shrink:0;border-left:1px solid var(--line);padding:18px 16px;display:flex;flex-direction:column;gap:14px;background:var(--paper)">
+      <section class="box" style="flex-grow:1;overflow:hidden;display:flex;flex-direction:column">
+        <div style="padding:12px 14px;display:flex;align-items:center;gap:8px"><span class="tag" style="flex-grow:1">Cards today · 8 <span class="ns">needs server</span></span><span style="font-size:11px;color:var(--dim)">needs you first</span></div>
+        <div class="row"><span class="src" style="color:var(--gold-ink);border-color:var(--gold-line);background:var(--gold-soft)">GRACE</span><span style="flex-grow:1;min-width:0"><b>Rakesh Jain</b><small>Card <span class="cardno">MV-2210-7781</span> not in the book · approval asked</small></span><span class="pill gd">14 m</span></div>
+        <div class="row sel"><span class="src">CARD</span><span style="flex-grow:1;min-width:0"><b>Sunita Verma</b><small><span class="cardno">AZ-4471-2093</span> · in hand</small></span><span class="pill on">active</span></div>
+        <div class="row"><span class="src">COUPON</span><span style="flex-grow:1;min-width:0"><b>Kavya Reddy</b><small><span class="cardno">HCAMP-SEP26</span> · applies · not billed yet</small></span><span class="pill">32 m</span></div>
+        <div class="row"><span class="src">CARD</span><span style="flex-grow:1;min-width:0"><b>Harpreet Kaur</b><small><span class="cardno">AZ-1187-0344</span> · suspended by the partner</small></span><span class="pill rd">blocked</span></div>
+        <div class="row"><span class="src">CARD</span><span style="flex-grow:1;min-width:0"><b>Mohd. Irfan Qureshi</b><small><span class="cardno">AZ-3310-0457</span> · expired 14-Sep-2026 · billed at full rate</small></span><span class="pill rd">expired</span></div>
+        <div class="row"><span class="src">CARD</span><span style="flex-grow:1;min-width:0"><b>Anil Deshmukh</b><small><span class="cardno">SV-5520-1904</span> · billed 10:52</small></span><span class="pill on">done</span></div>
+        <div class="row"><span class="src">COUPON</span><span style="flex-grow:1;min-width:0"><b>Meera Pillai</b><small><span class="cardno">SENIOR60</span> · billed 10:20</small></span><span class="pill on">done</span></div>
+        <div class="row"><span class="src">CARD</span><span style="flex-grow:1;min-width:0"><b>Deepak Sharma</b><small><span class="cardno">AZ-0902-6615</span> · billed 09:41</small></span><span class="pill on">done</span></div>
+      </section>
+      <section class="box">
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 14px"><span class="tag" style="flex-grow:1">Clocks running · 3</span><span style="font-size:11.5px;color:var(--gold-ink);font-weight:600">grace approval 14 m</span><span class="dim">▸</span></div>
+      </section>
+    </aside>
+  </div>
+</div>
+</div>
+
+<!-- ============ 2. EXPIRED + NO MATCH ============ -->
+<div class="section">
+  <h2>2 · The card cannot be used — expired, and not in the book</h2>
+  <p class="cap">Left: an expired card is brick red from the lane to the dock; there is no apply act at all, and the one next act is to bill at the full rate. A suspended or cancelled card reads the same with its own sentence. Right: a card the holder book has never heard of goes to grace honour, which needs a supervisor's approval before anything applies.</p>
+</div>
+<div class="scroll" style="padding:0 16px 8px">
+<div class="pair">
+  <!-- EXPIRED -->
+  <div class="art" style="width:840px;height:560px;display:flex">
+    <aside style="width:296px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--card);box-shadow:inset 0 3px 0 var(--red)">
+      <div style="padding:18px">
+        <div style="display:flex;align-items:center;gap:8px"><span class="src">CARD</span><span class="tag">In hand</span></div>
+        <div class="cardno" style="font-size:20px;margin-top:10px;color:var(--dim);text-decoration:line-through;text-decoration-color:var(--red-line)">AZ-3310-0457</div>
+        <div style="font-size:14px;font-weight:600;margin-top:4px">Arogya Family Card · Silver</div>
+        <div style="display:flex;gap:6px;margin-top:10px"><span class="pill rd">✕ Expired 14-Sep-2026</span></div>
+        <div class="fact" style="margin-top:14px"><span>Holder</span><span style="font-weight:600">Mohd. Irfan Qureshi · 61 M</span></div>
+        <div class="fact"><span>UHID</span><span class="mo">HMS00011907</span></div>
+        <div class="tag" style="margin:14px 0 2px">Benefits</div>
+        <div class="ben" style="color:var(--faint)"><span style="flex-grow:1">Free OPD consultation</span><span>cannot be used</span></div>
+        <div class="ben" style="color:var(--faint)"><span style="flex-grow:1">Member rate · lab tests</span><span>cannot be used</span></div>
+      </div>
+    </aside>
+    <main style="flex-grow:1;display:flex;flex-direction:column;min-width:0">
+      <div style="padding:18px 20px;flex-grow:1">
+        <h1 style="margin:0 0 12px;font-size:18px;font-weight:600">Card recognition</h1>
+        <div class="refuse"><b>This card expired on 14-Sep-2026.</b> Nothing on it applies to today's bill. Renewal is not sold at this counter; the member can ask the card's issuer. <span style="font-family:'IBM Plex Sans Devanagari'">यह कार्ड 14-Sep-2026 को समाप्त हो गया।</span></div>
+        <div class="box" style="margin-top:12px;padding:12px 14px">
+          <div class="tag" style="margin-bottom:6px">Today's visit</div>
+          <div style="font-size:12.5px"><b style="font-weight:600">OPD · General Medicine · token 22</b> <span class="dim">· not billed</span></div>
+          <div style="font-size:12px;color:var(--dim);margin-top:4px">Billed at the hospital's full rate. A coupon, if handed over, is still checked on the bill.</div>
+        </div>
+        <div style="font-size:11.5px;color:var(--dim);margin-top:12px;line-height:16px">Suspended: "The card's issuer has paused this card." · Cancelled: "This card has been cancelled." Same red, same single act.</div>
+      </div>
+      <div class="dock">
+        <span style="flex-grow:1;font-size:12.5px"><span class="pill rd">No card benefit</span></span>
+        <button class="sec" type="button">Another card</button>
+        <button class="pri" type="button">Bill at full rate <span class="kb">⏎</span></button>
+      </div>
+    </main>
+  </div>
+
+  <!-- NO MATCH -->
+  <div class="art" style="width:620px;height:560px;display:flex;flex-direction:column">
+    <div style="padding:18px 20px;flex-grow:1">
+      <h1 style="margin:0 0 12px;font-size:18px;font-weight:600">Card recognition</h1>
+      <div class="input"><span class="cardno" style="font-size:14px">MV-2210-7781</span><span style="flex-grow:1"></span><span class="kb">F6</span></div>
+      <div class="box" style="margin-top:12px;padding:12px 14px;border-color:var(--gold-line);background:var(--gold-soft)">
+        <b style="font-size:13px">No card in the holder book matches MV-2210-7781.</b>
+        <div style="font-size:12px;color:var(--dim);margin-top:4px;line-height:17px">Check the digits, or search by the holder's mobile. If the partner's list has not reached us yet, a supervisor can allow it once (grace honour).</div>
+      </div>
+      <div class="tag" style="margin:16px 0 6px">Ask for grace honour</div>
+      <div class="fact"><span>Patient</span><span style="font-weight:600">Rakesh Jain · <span class="mo">HMS00020455</span></span></div>
+      <div class="fact"><span>Plan on the card</span><span>MediVantage Classic ▾</span></div>
+      <div class="fact"><span>Reason</span><span class="dim">Card issued 20-Sep-2026, not in book yet</span></div>
+      <div class="fact"><span>Approver</span><span>Front office supervisor</span></div>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:10px;line-height:16px">Once approved the card is honoured on this patient's bill and marked "grace" everywhere it appears. Nothing applies before approval.</div>
+    </div>
+    <div class="dock">
+      <span style="flex-grow:1"></span>
+      <button class="sec" type="button">Bill without it</button>
+      <button class="pri" type="button">Send for approval <span class="kb">⏎</span></button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ============ 3. PHONE 390 ============ -->
+<div class="section">
+  <h2>3 · Phone 390 — same card, stacked; the list is a drawer</h2>
+  <p class="cap">The card number never wraps: it is one unbreakable run in Plex Mono and shrinks rather than splits. The next act stays pinned at the bottom of the screen.</p>
+</div>
+<div class="scroll" style="padding:0 16px 8px">
+<div class="art" style="width:390px;height:780px;display:flex;flex-direction:column;border-radius:14px">
+  <header style="height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--line)">
+    <span class="sec" style="height:32px;padding:0 10px">☰ Menu</span>
+    <span style="font-size:14px;font-weight:600;flex-grow:1">Cards</span>
+    <span class="pill">Today · 8</span>
+  </header>
+  <div style="flex-grow:1;overflow:hidden;padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+    <div class="input" style="height:40px"><span class="cardno" style="font-size:13px">AZ-4471-2093</span><span style="flex-grow:1"></span><span class="dim" style="font-size:11px">1 match</span></div>
+    <div class="box" style="padding:14px">
+      <div style="display:flex;align-items:center;gap:8px"><span class="src">CARD</span><span class="pill on">● Active</span></div>
+      <div class="cardno" style="font-size:19px;margin-top:8px">AZ-4471-2093</div>
+      <div style="font-size:13px;font-weight:600;margin-top:2px">Arogya Family Card · Gold</div>
+      <div class="fact" style="margin-top:8px"><span>Holder</span><span style="font-weight:600">Sunita Verma · 52 F</span></div>
+      <div class="fact"><span>UHID</span><span class="mo">HMS00018342</span></div>
+      <div class="fact"><span>Valid to</span><span class="mo">31-Mar-2027</span></div>
+      <div class="ben"><span style="flex-grow:1">Free OPD consultation</span><span class="mo">3 of 4</span></div>
+      <div class="ben"><span style="flex-grow:1">Member rate · lab, radiology</span><span class="dim" style="font-size:11.5px">every visit</span></div>
+    </div>
+    <div>
+      <div class="tag" style="margin-bottom:6px">For which visit</div>
+      <div class="opt on"><span class="radio"></span><span style="flex-grow:1"><b style="font-weight:600">OPD · Orthopaedics · token 14</b><br><span class="dim" style="font-size:11.5px">Free OPD consultation applies</span></span></div>
+      <div class="opt" style="margin-top:6px"><span class="radio"></span><span style="flex-grow:1"><b style="font-weight:600">Lab · 3 tests</b><br><span class="dim" style="font-size:11.5px">Member rate applies</span></span></div>
+    </div>
+    <div class="disc" style="font-size:11.5px;line-height:16px"><b>What this card is.</b> This benefit comes from a membership or discount card. It is a discount on the hospital's own charges, it is not insurance…</div>
+  </div>
+  <div class="dock" style="padding:12px 16px">
+    <button class="pri" type="button" style="width:100%">Take to the bill</button>
+  </div>
+</div>
+</div>
+
+<!-- ============ 4. WHAT CHANGES ============ -->
+<div class="section"><h2>4 · What changes and why</h2></div>
+<div class="panel">
+<ul style="margin:0;padding-left:18px">
+  <li><b>Dead end after "Recognise".</b> The card now leads somewhere: step 2 picks one of the holder's visits today and the pinned act "Take to the bill" opens the billing counter on that visit with any coupon code already filled in. A card linked to the patient's UHID is honoured by the bill on its own (the server resolves members by patient); the counter only has to carry the visit and the coupon.</li>
+  <li><b>An expired card looked like an active one.</b> Status is now the first thing on the card: green "Active", brick red "Expired 14-Sep-2026", "Suspended", "Cancelled". A card that cannot be used has no apply act anywhere, its benefits read "cannot be used", and the one next act is "Bill at full rate".</li>
+  <li><b>Card code split mid-code at 390.</b> Every card and coupon number is one unbreakable Plex Mono run (no wrap); at phone width it gets smaller, never split.</li>
+  <li><b>896px centred column wasted ~60% at 1440.</b> Three columns, as on every station: the card in hand on the left, the numbered flow in the centre, the day's cards on the right.</li>
+  <li><b>Nobody could see who the card belongs to.</b> The lane shows the holder's name, age, sex and UHID, and whether the card is linked to this patient; an unlinked card is sent to Reconcile rather than applied.</li>
+  <li><b>"Benefits" was a bare list.</b> Each benefit shows how many visits are left (3 of 4) — counts, never rupees, because no counter screen shows a sales figure (E-32).</li>
+  <li><b>An unknown card was a dead end too.</b> "No match" now offers grace honour, which the server already has, behind a supervisor's approval.</li>
+  <li><b>Raw dates and states.</b> Dates print as 31-Mar-2027 and states as words; the server's disclosure sentence stays word for word, as step 4.</li>
+</ul>
+</div>
+
+<div class="section"><h2>5 · Questions for the owner</h2></div>
+<div class="panel" style="margin-bottom:32px">
+<ul style="margin:0;padding-left:18px">
+  <li><b>Cash-value benefits.</b> Some plans carry a rupee balance rather than a count of visits. Showing "₹1,250.00 left" would be a money figure on a counter screen, which E-32 rules out. Board default: show only "balance left — see the bill". Keep that, or allow the balance?</li>
+  <li><b>Expired card, member wants to renew now.</b> Card sales are switched off (ruling O-15 open), so the board says "ask the card's issuer". Should the counter instead honour a card within a few days of expiry (a grace period), or never?</li>
+</ul>
+</div>
+
+</body>
+</html>
