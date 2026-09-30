@@ -54,6 +54,8 @@ export interface RecordDoseInput {
   fluoroSeconds?: number | null;
   /** 18-S RS12 — Average Glandular Dose, mGy. */
   doseAgd?: string | number | null;
+  /** 18-S RS12b — reference-point air kerma Ka,r, mGy (interventional fluoroscopy). */
+  doseKar?: string | number | null;
   doseManual?: boolean;
   /** 18-S RS12 — `dose_sr` when the numbers are the machine's Radiation Dose SR; default `manual`. */
   doseOrigin?: DoseOrigin;
@@ -98,6 +100,7 @@ export async function recordDose(
     doseDap: num(input.doseDap),
     fluoroSeconds: input.fluoroSeconds ?? null,
     doseAgd: num(input.doseAgd),
+    doseKar: num(input.doseKar),
     doseManual: input.doseManual ?? false,
     doseOrigin: input.doseOrigin ?? "manual",
     drlQuantity: input.drl?.quantity ?? null,
@@ -133,6 +136,8 @@ export interface DoseRegisterRow {
   fluoroSeconds: number | null;
   /** 18-S RS12 — mammography's AGD, mGy. */
   doseAgd: string | null;
+  /** 18-S RS12b — Ka,r, mGy (interventional). */
+  doseKar: string | null;
   doseManual: boolean;
   /** 18-S RS12 — `manual` or `dose_sr`. */
   doseOrigin: string;
@@ -208,6 +213,7 @@ export async function doseRegisterRows(
     doseDap: doseRegister.doseDap,
     fluoroSeconds: doseRegister.fluoroSeconds,
     doseAgd: doseRegister.doseAgd,
+    doseKar: doseRegister.doseKar,
     doseManual: doseRegister.doseManual,
     doseOrigin: doseRegister.doseOrigin,
     drlQuantity: doseRegister.drlQuantity,

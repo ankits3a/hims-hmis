@@ -63,7 +63,7 @@ describe("invoiceAccrualView: DD19's seam, on live money", () => {
   let patientId: string;
 
   const NOW = new Date("2026-08-19T06:00:00Z"); // 11:30 IST — the billing suite's own fixed instant
-  const PAYEE = { payeeName: "Asha Devi", payeeIdType: "aadhaar", payeeIdRef: "XXXX-XXXX-1234" };
+  const PAYEE = { payeeName: "Asha Devi", payeeIdType: "aadhaar" };
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => teardown());

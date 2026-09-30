@@ -58,7 +58,7 @@ const NOW = new Date("2026-08-19T06:00:00Z");
 const AGREEMENT_FROM = new Date("2026-04-01T00:00:00Z");
 const CARD_FROM = new Date("2026-01-01T00:00:00Z");
 const CARD_TO = new Date("2026-12-31T00:00:00Z");
-const PAYEE = { payeeName: "Asha Devi", payeeIdType: "aadhaar", payeeIdRef: "XXXX-XXXX-1234" };
+const PAYEE = { payeeName: "Asha Devi", payeeIdType: "aadhaar" };
 
 describe("the accrual consumer: DD7's registration, its flag, and its cursor", () => {
   let db: Db;

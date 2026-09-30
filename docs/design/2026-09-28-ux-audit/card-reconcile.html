@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card Reconcile Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f4f7f4;--card:#ffffff;--ink:#132420;--line:#dfe7e1;--line2:#ecf1ed;--dim:#5c6f66;--faint:#8ea69a;--wash:#eef3ef;
+--green:#0e6b4e;--green-soft:rgba(14,107,78,.08);--green-line:rgba(14,107,78,.35);--gold:#dd8f1c;--gold-ink:#9a6208;--gold-soft:rgba(221,143,28,.10);--gold-line:rgba(221,143,28,.45);
+--red:#b23a30;--red-soft:rgba(178,58,48,.08);--red-line:rgba(178,58,48,.4);--mint:#35c48f}
+*{box-sizing:border-box}
+body{margin:0;background:#e9eeea;color:var(--ink);font-family:"IBM Plex Sans","IBM Plex Sans Devanagari",system-ui,sans-serif;font-size:13px}
+button{font:inherit;color:inherit;background:none;border:none;padding:0;text-align:left;cursor:pointer}
+.mo{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:var(--dim)}
+.pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+.pri .kb{background:transparent;color:#cfe8dc;border-color:#3f8a70}
+.pri.off{background:#b9c9c0;border-color:#b9c9c0}
+.sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 14px;border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+.pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+.pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold-ink)}
+.src{display:inline-flex;align-items:center;justify-content:center;padding:0 7px;min-width:62px;height:20px;border-radius:3px;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:700;letter-spacing:.08em;border:1px solid var(--line);color:var(--dim);background:var(--wash);white-space:nowrap;flex-shrink:0}
+.src.lp{border-color:var(--gold-line);color:var(--gold-ink);background:var(--gold-soft)}
+.nav{display:inline-flex;align-items:center;height:46px;padding:0 11px;font-size:12.5px;font-weight:500;color:var(--dim);border-bottom:2px solid transparent}
+.nav.on{color:var(--ink);font-weight:600;border-bottom-color:var(--green)}
+.fact{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.fact>span:first-child{color:var(--dim)}
+.fact>span:last-child{text-align:right}
+.ns{outline:1.5px dashed var(--gold-line);outline-offset:1px;border-radius:3px}
+.nst{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:8.5px;font-weight:700;letter-spacing:.08em;color:var(--gold-ink);background:var(--gold-soft);border:1px solid var(--gold-line);border-radius:3px;padding:0 4px;line-height:14px;vertical-align:middle;white-space:nowrap}
+.row{display:flex;align-items:center;gap:10px;width:100%;min-height:58px;padding:9px 14px;border-top:1px solid var(--line2)}
+.row.sel{background:var(--green-soft);box-shadow:inset 3px 0 0 var(--green)}
+.row b{display:block;font-size:13px;font-weight:600}
+.row small{display:block;font-size:11px;color:var(--dim);margin-top:2px;line-height:14px}
+/* board chrome */
+.bh{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:18px 24px;background:var(--card);border-bottom:1px solid var(--line)}
+.bh h1{margin:0;font-size:18px;font-weight:600}
+.sect{padding:22px 24px 6px}
+.sect h2{margin:0 0 4px;font-size:15px;font-weight:600}
+.sect p.lead{margin:0 0 12px;color:var(--dim);font-size:12.5px;max-width:980px;line-height:18px}
+.scroll{overflow-x:auto;padding-bottom:10px}
+.art{background:var(--paper);border:1px solid #cfd9d2;border-radius:6px;box-shadow:0 2px 10px rgba(19,36,32,.06);overflow:hidden}
+/* compare grid */
+.cmp{display:grid;grid-template-columns:104px 150px repeat(3,1fr);font-size:12px}
+.cmp>div{padding:8px 9px;line-height:17px;border-top:1px solid var(--line2);min-height:36px}
+.cmp .k{color:var(--dim);font-size:11.5px}
+.cmp .h{background:var(--wash)}
+.cmp .c1{background:var(--green-soft)}
+.ok,.no,.na{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;font-size:9.5px;font-weight:700;margin-right:5px;vertical-align:-2px;flex-shrink:0}
+.ok{background:var(--green);color:#fff}
+.no{background:var(--gold);color:#fff}
+.na{border:1px solid var(--line);color:var(--faint)}
+.step{display:flex;align-items:center;gap:9px;margin:0 0 8px}
+.step .n{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--green);color:var(--green);display:inline-flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:700}
+.step .n.done{background:var(--green);color:#fff}
+.step h3{margin:0;font-size:13.5px;font-weight:600}
+.radio{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--dim);display:inline-block;flex-shrink:0;vertical-align:-3px}
+.radio.on{border:5px solid var(--green)}
+.chk{width:15px;height:15px;border-radius:3px;border:1.5px solid var(--dim);display:inline-block;flex-shrink:0;vertical-align:-3px}
+.chk.on{background:var(--green);border-color:var(--green)}
+.field{display:flex;align-items:center;min-height:38px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);font-size:12.5px}
+.note{font-size:11px;color:var(--dim);line-height:15px}
+ul.why{margin:0;padding:0 0 0 18px;max-width:1040px}
+ul.why li{margin:0 0 9px;line-height:19px;font-size:13px}
+ul.why b{font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:11.5px;color:var(--dim);margin:0 0 10px}
+.minis{display:flex;gap:18px;align-items:flex-start;flex-wrap:nowrap}
+.mini{width:472px;flex-shrink:0}
+.cap{font-size:11px;color:var(--dim);margin:0 0 6px}
+</style>
+</head>
+<body>
+
+<div class="bh">
+  <span class="tag" style="color:var(--green)">Board</span>
+  <h1>Card reconcile</h1>
+  <span class="mo" style="font-size:12px;color:var(--dim)">/counter/reconcile</span>
+  <span class="pill gd">draft for approval</span>
+  <span class="mo" style="font-size:12px;color:var(--dim)">28-Sep-2026</span>
+  <span style="flex-grow:1"></span>
+  <span class="note">Permission: membership.reconcile.operate · synthetic data, no real patients</span>
+</div>
+
+<!-- ═════════ DESKTOP ═════════ -->
+<div class="sect">
+  <h2>Desktop · 1440 · a new card in hand, three patients look alike</h2>
+  <p class="lead">One card holder at a time. The left lane holds the card; the centre lays the holder beside each look-alike patient, field by field, and the bar at the bottom offers the one next act. The right list is the whole queue, oldest first, no filters.</p>
+  <div class="legend">
+    <span><span class="ok">✓</span>agrees with the card</span>
+    <span><span class="no">≠</span>differs</span>
+    <span><span class="na">–</span>not on the card</span>
+    <span><span class="nst">NEEDS SERVER</span> dashed gold outline = the current response does not carry it</span>
+  </div>
+  <div class="scroll">
+  <div class="art" style="width:1440px;height:930px;display:flex;flex-direction:column">
+
+    <header style="height:46px;flex-shrink:0;display:flex;align-items:center;gap:4px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--line)">
+      <div style="display:flex;align-items:center;gap:9px;padding-right:14px;margin-right:6px;border-right:1px solid var(--line)">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e"/></svg>
+        <span class="mo" style="font-size:12px;font-weight:700;letter-spacing:.12em">MEMBER COUNTER</span>
+      </div>
+      <nav style="display:flex">
+        <a class="nav">Recognise a card</a><a class="nav">Enrol</a><a class="nav on">Reconcile</a><a class="nav">Cards</a><a class="nav">Imports</a>
+      </nav>
+      <span style="flex-grow:1"></span>
+      <span class="pill gd">8 waiting · oldest 2 days</span>
+      <span class="mo" style="margin:0 14px;font-size:11px;color:var(--dim)">MON 28 SEP · 11:42</span>
+      <span style="font-size:12.5px;font-weight:600">Meena Rawat</span>
+    </header>
+
+    <div style="flex-grow:1;display:flex;min-height:0">
+      <!-- LEFT: in hand -->
+      <aside style="width:296px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--card)">
+        <div style="padding:18px 18px 10px">
+          <div style="display:flex;align-items:center;gap:8px"><span class="src">NEW CARD</span><span class="mo" style="font-size:11px;color:var(--dim)">card AH-FAM-018733</span></div>
+          <h2 style="margin:10px 0 2px;font-size:17px;line-height:22px;font-weight:600">Suresh Kumar Yadav</h2>
+          <div style="font-size:12px;color:var(--dim)">Arogya Family Gold · holder</div>
+        </div>
+        <div style="padding:0 18px;flex-grow:1;overflow:auto">
+          <div class="fact"><span>Partner</span><span class="ns">Arogya Health Partners</span></div>
+          <div class="fact"><span>Valid</span><span class="mo ns">01-Sep-2026 – 31-Aug-2027</span></div>
+          <div class="fact"><span>Card mobile</span><span class="mo ns">98••• ••127</span></div>
+          <div class="fact"><span>Came in</span><span>Holder book, 26-Sep-2026</span></div>
+          <div class="tag" style="margin:14px 0 4px">On this card <span class="nst">NEEDS SERVER</span></div>
+          <div class="fact"><span>1 · Suresh Kumar Yadav</span><span>holder</span></div>
+          <div class="fact"><span>2 · Sunita Yadav</span><span>wife</span></div>
+          <div class="fact"><span>3 · Aarav Yadav</span><span>son</span></div>
+          <div class="tag" style="margin:14px 0 6px">Why it is here</div>
+          <p style="margin:0;font-size:12.5px;line-height:18px">The name on the card resembles 3 registered patients. The import never links a card by itself: you decide, and the link is permanent and recorded against your name.</p>
+          <p class="note" style="margin:10px 0 0">The mobile alone proves nothing: one family often shares one number.</p>
+        </div>
+        <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)">
+          <span class="kb">Esc</span>put it back in the queue
+        </div>
+      </aside>
+
+      <!-- CENTRE -->
+      <main style="flex-grow:1;min-width:0;display:flex;flex-direction:column">
+        <div style="flex-grow:1;overflow:auto;padding:18px 20px 12px">
+          <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+            <h1 style="margin:0;font-size:20px;font-weight:600">Who is Suresh Kumar Yadav?</h1>
+            <span style="font-size:12.5px;color:var(--dim)">Compare, choose one or none, then link</span>
+          </div>
+
+          <div class="step"><span class="n done">1</span><h3>Compare the card with each patient</h3></div>
+          <div class="box" style="overflow:hidden;margin-bottom:18px">
+            <div class="cmp">
+              <div class="k" style="border-top:none"></div>
+              <div class="h" style="border-top:none"><span class="tag">The card</span></div>
+              <div class="c1" style="border-top:none;box-shadow:inset 0 3px 0 var(--green)">
+                <div style="display:flex;align-items:center;gap:7px"><span class="radio on"></span><b style="font-size:12.5px">Suresh Kumar Yadav</b></div>
+                <div class="mo" style="font-size:10.5px;color:var(--dim);margin:3px 0 5px 22px">UHID 0048213</div>
+                <span class="pill on" style="margin-left:22px">Strong match</span>
+              </div>
+              <div style="border-top:none">
+                <div style="display:flex;align-items:center;gap:7px"><span class="radio"></span><b style="font-size:12.5px">Suresh Yadav</b></div>
+                <div class="mo" style="font-size:10.5px;color:var(--dim);margin:3px 0 5px 22px">UHID 0061740</div>
+                <span class="pill" style="margin-left:22px">Possible match</span>
+              </div>
+              <div style="border-top:none">
+                <div style="display:flex;align-items:center;gap:7px"><span class="radio"></span><b style="font-size:12.5px">Suresha Kumari</b></div>
+                <div class="mo" style="font-size:10.5px;color:var(--dim);margin:3px 0 5px 22px">UHID 0039025</div>
+                <span class="pill gd" style="margin-left:22px">Weak match</span>
+              </div>
+
+              <div class="k">Name</div>
+              <div class="h">Suresh Kumar Yadav</div>
+              <div class="c1"><span class="ok">✓</span>Suresh Kumar Yadav</div>
+              <div><span class="ok">✓</span>Suresh Yadav <span class="note">(no middle name)</span></div>
+              <div><span class="no">≠</span>Suresha Kumari</div>
+
+              <div class="k">Age · DOB</div>
+              <div class="h"><span class="ns mo">52 y<br>14-Mar-1974</span></div>
+              <div class="c1"><span class="ok">✓</span><span class="mo ns">52 y<br>14-Mar-1974</span></div>
+              <div><span class="no">≠</span><span class="mo ns">29 y<br>02-Jul-1997</span></div>
+              <div><span class="no">≠</span><span class="mo ns">47 y<br>21-Jan-1979</span></div>
+
+              <div class="k">Sex</div>
+              <div class="h"><span class="ns">Male</span></div>
+              <div class="c1"><span class="ok">✓</span><span class="ns">Male</span></div>
+              <div><span class="ok">✓</span><span class="ns">Male</span></div>
+              <div><span class="no">≠</span><span class="ns">Female</span></div>
+
+              <div class="k">Mobile</div>
+              <div class="h"><span class="mo ns">98••• ••127</span></div>
+              <div class="c1"><span class="ok">✓</span><span class="mo ns">98••• ••127</span></div>
+              <div><span class="no">≠</span><span class="mo ns">97••• ••550</span></div>
+              <div><span class="ok">✓</span><span class="mo ns">98••• ••127</span> <span class="note">family phone</span></div>
+
+              <div class="k">District</div>
+              <div class="h"><span class="na">–</span><span class="note">not on the card</span></div>
+              <div class="c1"><span class="na">–</span><span class="ns">Jaipur</span></div>
+              <div><span class="na">–</span><span class="ns">Dausa</span></div>
+              <div><span class="na">–</span><span class="ns">Jaipur</span></div>
+
+              <div class="k">Last visit here</div>
+              <div class="h"></div>
+              <div class="c1"><span class="ns">12-Aug-2026 · OPD Medicine</span></div>
+              <div><span class="ns">03-Feb-2026 · OPD Ortho</span></div>
+              <div><span class="ns">19-Sep-2026 · OPD Gynae</span></div>
+
+              <div class="k">Agrees</div>
+              <div class="h"></div>
+              <div class="c1"><b style="color:var(--green)">4 of 4</b> <span class="note">details</span></div>
+              <div><b>2 of 4</b></div>
+              <div><b style="color:var(--gold-ink)">1 of 4</b></div>
+            </div>
+          </div>
+
+          <div class="step"><span class="n done">2</span><h3>Choose one patient — or none of them</h3></div>
+          <p style="margin:0 0 18px 31px;font-size:12.5px;color:var(--dim);line-height:18px">Nothing is chosen for you. You chose <b style="color:var(--ink)">Suresh Kumar Yadav · UHID 0048213</b>. If nobody here is the card holder, use “None of these” and say why.</p>
+
+          <div class="step"><span class="n">3</span><h3>How do you know? <span style="font-weight:400;color:var(--dim)">(optional for a strong match)</span></h3></div>
+          <div style="margin-left:31px;display:flex;gap:8px;flex-wrap:wrap">
+            <span class="pill on">Date of birth and mobile agree</span><span class="pill">Saw ID at the counter</span><span class="pill">Called the card’s mobile</span><span class="pill">Other…</span>
+          </div>
+        </div>
+
+        <!-- pinned action bar -->
+        <div style="flex-shrink:0;display:flex;align-items:center;gap:12px;padding:12px 20px;border-top:1px solid var(--line);background:var(--card)">
+          <div style="flex-grow:1;min-width:0">
+            <div style="font-size:13px;font-weight:600">Link card AH-FAM-018733 to Suresh Kumar Yadav · UHID 0048213</div>
+            <div class="note">Permanent. Recorded against Meena Rawat at the moment you press it.</div>
+          </div>
+          <button class="sec">None of these… <span class="kb">N</span></button>
+          <button class="pri">Link this card <span class="kb">A</span></button>
+        </div>
+      </main>
+
+      <!-- RIGHT: the queue -->
+      <aside style="width:352px;flex-shrink:0;border-left:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--paper)">
+        <section class="box" style="overflow:hidden">
+          <div style="display:flex;align-items:baseline;gap:8px;padding:12px 14px 10px">
+            <span class="tag" style="flex-grow:1;color:var(--ink)">Reconcile queue · 8</span>
+            <span class="note">oldest first</span>
+          </div>
+          <button class="row sel"><span class="src">NEW CARD</span><span style="flex-grow:1;min-width:0"><b>Suresh Kumar Yadav</b><small>AH-FAM-018733 · 3 patients look alike</small></span><span class="mo note" style="white-space:nowrap">2 d</span></button>
+          <button class="row"><span class="src">NEW CARD</span><span style="flex-grow:1;min-width:0"><b>Farzana Begum Qureshi</b><small>AH-IND-020114 · 2 patients look alike</small></span><span class="mo note" style="white-space:nowrap">2 d</span></button>
+          <button class="row"><span class="src">CAP OVER</span><span style="flex-grow:1;min-width:0"><b>Ramesh Chand Meena</b><small>AH-FAM-017902 · 6 people on a 4-person card — call the partner</small></span><span class="mo note" style="white-space:nowrap">2 d</span></button>
+          <button class="row"><span class="src lp">LAPSED RESTORE</span><span style="flex-grow:1;min-width:0"><b>Kamla Devi Sharma</b><small>Free OPD consultation given back after the card ended</small></span><span class="mo note" style="white-space:nowrap">1 d</span></button>
+          <button class="row"><span class="src">NEW CARD</span><span style="flex-grow:1;min-width:0"><b>Pradeep Singh Shekhawat</b><small>AH-FAM-018790 · 1 patient looks alike</small></span><span class="mo note" style="white-space:nowrap">1 d</span></button>
+          <button class="row"><span class="src">NEW CARD</span><span style="flex-grow:1;min-width:0"><b>Anita Kumari Jangid</b><small>AH-IND-020377 · nobody looks alike</small></span><span class="mo note" style="white-space:nowrap">1 d</span></button>
+          <button class="row"><span class="src lp">LAPSED RESTORE</span><span style="flex-grow:1;min-width:0"><b>Mohd. Irfan Khan</b><small>Lab test discount given back after the card ended</small></span><span class="mo note" style="white-space:nowrap">today</span></button>
+          <button class="row"><span class="src">NEW CARD</span><span style="flex-grow:1;min-width:0"><b>Vikram Aditya Rathore</b><small>AH-SNR-011466 · 4 patients look alike</small></span><span class="mo note" style="white-space:nowrap">today</span></button>
+        </section>
+        <section class="box">
+          <button style="width:100%;display:flex;align-items:center;gap:8px;padding:12px 14px">
+            <span class="tag" style="flex-grow:1">Clocks running · 2</span>
+            <span style="font-size:11.5px;color:var(--gold-ink);font-weight:600">oldest card 2 d</span>
+            <span style="color:var(--dim)">▾</span>
+          </button>
+        </section>
+        <p class="note" style="margin:0">A card nobody has linked still works at the counter by its number; it cannot add to a patient’s record until it is linked.</p>
+      </aside>
+    </div>
+  </div>
+  </div>
+  <p class="note" style="margin:8px 0 0">Below 1280 px the queue folds into a drawer opened from the header pill (“8 waiting”). Below 1100 px the five menu items fold into a Menu button. Labels are sized for Hindi (about 30% longer) without wrapping the bar.</p>
+</div>
+
+<!-- ═════════ SMALL STATES ═════════ -->
+<div class="sect">
+  <h2>Three moments</h2>
+  <p class="lead">A weak link asks for proof before it is allowed. “None of these” asks why. A lapsed restore is a fact to check, with the card, the benefit and the bill named in words.</p>
+  <div class="scroll"><div class="minis" style="width:1452px">
+
+    <!-- A weak confirm -->
+    <div class="mini">
+      <p class="cap"><b>A · Weak match chosen</b> — the bar will not link until the clerk says how they know</p>
+      <div class="art" style="background:var(--card)">
+        <div style="padding:16px 18px">
+          <div style="display:flex;align-items:center;gap:8px"><span class="radio on"></span><b>Suresha Kumari · UHID 0039025</b><span class="pill gd">Weak match</span></div>
+          <div style="margin:12px 0;padding:10px 12px;border:1px solid var(--gold-line);background:var(--gold-soft);border-radius:6px;font-size:12.5px;line-height:18px">
+            <b>3 of 4 details differ.</b> Name, age and sex do not agree with the card; only the mobile does, and a family shares one mobile. This link would put Suresh Kumar Yadav’s card on a woman’s record.
+          </div>
+          <div class="tag" style="margin:0 0 6px">How do you know it is the same person? · required</div>
+          <div style="display:flex;flex-direction:column;gap:7px;font-size:12.5px">
+            <span><span class="radio on"></span>&nbsp; Saw an ID at the counter</span>
+            <span><span class="radio"></span>&nbsp; Called the card’s mobile and the holder confirmed</span>
+            <span><span class="radio"></span>&nbsp; The partner corrected their file</span>
+          </div>
+          <div class="field" style="margin-top:10px;color:var(--ink)">Aadhaar seen — card name misspelt by partner, DOB 21-Jan-1979</div>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12px"><span class="chk on"></span>I understand this link is permanent and carries my name.</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line)">
+          <span class="note" style="flex-grow:1">The reason is saved with the link.</span>
+          <button class="sec">Back</button>
+          <button class="pri">Link anyway <span class="kb">A</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- B dismiss -->
+    <div class="mini">
+      <p class="cap"><b>B · None of these</b> — dismissing is a decision too, so it asks why</p>
+      <div class="art" style="background:var(--card)">
+        <div style="padding:16px 18px">
+          <b style="font-size:14px">Nobody here is Suresh Kumar Yadav</b>
+          <div class="tag" style="margin:12px 0 6px">Why · required</div>
+          <div style="display:flex;flex-direction:column;gap:7px;font-size:12.5px">
+            <span><span class="radio on"></span>&nbsp; Different people — the details disagree</span>
+            <span><span class="radio"></span>&nbsp; Not registered here yet — link at the first visit</span>
+            <span><span class="radio"></span>&nbsp; The partner’s file is wrong — told the partner</span>
+            <span><span class="radio"></span>&nbsp; Other</span>
+          </div>
+          <div class="field" style="margin-top:10px;color:var(--faint)">Add a line for the next person (optional unless “Other”)</div>
+          <p class="note" style="margin:10px 0 0">The card stays unlinked and still works at the counter by its number. When the holder next registers, the counter offers the link there.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line)">
+          <span class="note" style="flex-grow:1">Recorded against Meena Rawat.</span>
+          <button class="sec">Back</button>
+          <button class="pri">Dismiss with this reason</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- C lapsed -->
+    <div class="mini">
+      <p class="cap"><b>C · Lapsed restore in hand</b> — words and dates, not a key</p>
+      <div class="art" style="background:var(--card)">
+        <div style="padding:16px 18px">
+          <div style="display:flex;align-items:center;gap:8px"><span class="src lp">LAPSED RESTORE</span><span class="mo note">card AH-SNR-011205</span></div>
+          <b style="display:block;font-size:15px;margin:8px 0 8px">Kamla Devi Sharma</b>
+          <div class="fact"><span>Benefit given back</span><span>Free OPD consultation <span class="nst">NEEDS SERVER</span></span></div>
+          <div class="fact"><span>Given back on</span><span class="mo">27-Sep-2026 · 16:05</span></div>
+          <div class="fact"><span>Card ended</span><span class="mo ns">31-Aug-2026</span></div>
+          <div class="fact"><span>Bill</span><span class="mo ns">OPB/26/004512</span></div>
+          <div class="fact"><span>Given back by</span><span class="ns">Rohit Saini, billing</span></div>
+          <p style="margin:10px 0 0;font-size:12.5px;line-height:18px">A consultation was cancelled and its free visit returned to a card that had already ended. Check with the member whether the card was renewed.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line)">
+          <button class="sec">Open the bill</button>
+          <span style="flex-grow:1"></span>
+          <button class="pri ns">Mark checked <span class="kb">A</span></button>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ═════════ PHONE ═════════ -->
+<div class="sect">
+  <h2>Phone · 390</h2>
+  <p class="lead">Same order, stacked: the card on top, one patient per card below with the same marks, the act pinned to the bottom. The queue is a drawer behind the header count.</p>
+  <div class="art" style="width:390px;height:844px;display:flex;flex-direction:column;background:var(--paper)">
+    <header style="height:48px;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--card);border-bottom:1px solid var(--line)">
+      <button class="sec" style="height:32px;padding:0 10px">☰ Menu</button>
+      <b style="flex-grow:1;font-size:13.5px">Reconcile</b>
+      <span class="pill gd">Queue · 8</span>
+    </header>
+    <div style="flex-grow:1;overflow:hidden;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+      <div class="box" style="padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px"><span class="src">NEW CARD</span><span class="mo note">AH-FAM-018733</span></div>
+        <b style="display:block;font-size:15px;margin-top:6px">Suresh Kumar Yadav</b>
+        <div class="note" style="margin-top:2px">Male · 52 y · 14-Mar-1974 · 98••• ••127 · Family Gold</div>
+      </div>
+      <div class="box" style="padding:12px 14px;border-color:var(--green-line);background:#f7fbf8;box-shadow:inset 3px 0 0 var(--green)">
+        <div style="display:flex;align-items:center;gap:8px"><span class="radio on"></span><b style="flex-grow:1">Suresh Kumar Yadav</b><span class="pill on">Strong</span></div>
+        <div class="mo note" style="margin:2px 0 8px 23px">UHID 0048213 · last visit 12-Aug-2026</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:12px;margin-left:23px">
+          <span><span class="ok">✓</span>Name</span><span><span class="ok">✓</span>52 y</span><span><span class="ok">✓</span>Male</span><span><span class="ok">✓</span>Mobile</span>
+        </div>
+      </div>
+      <div class="box" style="padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px"><span class="radio"></span><b style="flex-grow:1">Suresh Yadav</b><span class="pill">Possible</span></div>
+        <div class="mo note" style="margin:2px 0 8px 23px">UHID 0061740 · Dausa</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:12px;margin-left:23px">
+          <span><span class="ok">✓</span>Name</span><span><span class="no">≠</span>29 y</span><span><span class="ok">✓</span>Male</span><span><span class="no">≠</span>Mobile</span>
+        </div>
+      </div>
+      <div class="box" style="padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px"><span class="radio"></span><b style="flex-grow:1">Suresha Kumari</b><span class="pill gd">Weak</span></div>
+        <div class="mo note" style="margin:2px 0 8px 23px">UHID 0039025 · Jaipur</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:12px;margin-left:23px">
+          <span><span class="no">≠</span>Name</span><span><span class="no">≠</span>47 y</span><span><span class="no">≠</span>Female</span><span><span class="ok">✓</span>Mobile</span>
+        </div>
+      </div>
+      <p class="note" style="margin:0">Tap a patient for the full side-by-side.</p>
+    </div>
+    <div style="padding:10px 14px 16px;border-top:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;gap:8px">
+      <button class="pri" style="width:100%">Link to UHID 0048213</button>
+      <button class="sec" style="width:100%;height:36px">None of these…</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ WHAT CHANGES ═════════ -->
+<div class="sect">
+  <h2>What changes and why</h2>
+  <div class="box" style="padding:16px 20px 8px;max-width:1100px">
+  <ul class="why">
+    <li><b>Candidates showed only name, UHID and “match 0.87”.</b> Each patient now sits beside the card, field by field — name, age and date of birth, sex, masked mobile, district, last visit — each marked agrees, differs or not on the card, with a count (“4 of 4”). A permanent link is decided by comparing people.</li>
+    <li><b>A raw score was the only strength signal.</b> Strength is a word — Strong, Possible, Weak — worked out from the agreeing fields, not from the name alone. DECIDED: this replaces the code’s “show the number, not a band” rule; the band cannot pre-select anything, and the fields sit beside it.</li>
+    <li><b>Weak and strong matches had the same black “Link this patient” button, placed raggedly.</b> Choosing is a radio at the top of each column; nothing is chosen for you. One green act sits in a pinned bar and names what it will do: “Link card AH-FAM-018733 to Suresh Kumar Yadav · UHID 0048213”.</li>
+    <li><b>A weak link cost the same one click.</b> Choosing a Weak patient spells out what differs, asks how the clerk knows (ID seen / called the mobile / partner corrected) and asks them to confirm the link carries their name. The reason is saved with the link (the resolve call already takes a note).</li>
+    <li><b>“Dismiss” sat under Link with no reason asked up front.</b> It is now “None of these…”, a secondary button apart from Link, opening a short list of reasons, and it says what happens to the card afterwards.</li>
+    <li><b>Lapsed restores showed a raw key (“consult-visits”) and no date.</b> They join the one queue with a LAPSED RESTORE chip, and in hand show the benefit in words, when it was given back, when the card ended, and the bill number.</li>
+    <li><b>The page was one long stacked column.</b> It becomes the house station: header menu, card in hand on the left, one numbered flow in the centre, one unfiltered queue on the right with NEW CARD / CAP OVER / LAPSED RESTORE chips, clocks folded below.</li>
+  </ul>
+  </div>
+</div>
+
+<!-- ═════════ QUESTIONS ═════════ -->
+<div class="sect" style="padding-bottom:36px">
+  <h2>Questions for the owner</h2>
+  <div class="box" style="padding:16px 20px 8px;max-width:1100px">
+  <ul class="why">
+    <li><b>A benefit given back on a card that has ended — does the member keep it?</b> Today the system gives the free visit back and only raises a flag. Choices: (a) honour it until the card is renewed, (b) cancel it quietly, (c) honour it only if renewed within 30 days. This is money, so it is yours.</li>
+    <li><b>Should partners be asked to send date of birth and sex in the holder file?</b> Without them the card side of the comparison has only the name and mobile, and most matches can only be Possible. It changes the partner agreement’s file format.</li>
+  </ul>
+  </div>
+</div>
+
+</body>
+</html>

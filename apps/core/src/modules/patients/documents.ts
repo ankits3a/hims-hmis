@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { patientDocuments, patients } from "../../kernel/db/schema";
@@ -199,4 +199,56 @@ export async function markDocumentEnteredInError(
     .where(and(eq(patientDocuments.id, documentId), eq(patientDocuments.status, "active")))
     .returning({ id: patientDocuments.id });
   if (updated.length === 0) throw new PatientError("document_not_found", `no active document ${documentId}`);
+}
+
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — WHAT IS ON FILE FOR A SET OF VISITS, FOR THE SLIP DESK'S DAY.
+ *
+ * Metadata only — kind, time, the retake request — and never the image or the note, which is why
+ * this is not a PHI read the way `listDocuments` is: it says THAT a page was filed against a visit
+ * the caller can already list, not what the page says. The caller (the OPD slip day) resolves the
+ * patients through `getPatientSummaries`, which is where a sealed record is withheld.
+ *
+ * Oldest first, so "page 2" is the second row of an encounter.
+ */
+export type EncounterDocument = {
+  id: string; encounterId: string; kind: string; capturedAt: Date; capturedBy: string;
+  retakeRequestedAt: Date | null; retakeRequestedBy: string | null; retakeReason: string | null;
+};
+
+export async function documentsForEncounters(db: Db | Tx, encounterIds: readonly string[]): Promise<EncounterDocument[]> {
+  const ids = [...new Set(encounterIds)];
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(patientDocuments)
+    .where(and(inArray(patientDocuments.encounterId, ids), eq(patientDocuments.status, "active")))
+    .orderBy(asc(patientDocuments.capturedAt));
+  return rows.map((r) => ({
+    id: r.id, encounterId: r.encounterId!, kind: r.kind, capturedAt: r.capturedAt, capturedBy: r.capturedBy,
+    retakeRequestedAt: r.retakeRequestedAt, retakeRequestedBy: r.retakeRequestedBy, retakeReason: r.retakeReason,
+  }));
+}
+
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — THE DOCTOR ASKS THE DESK FOR A CLEARER PHOTOGRAPH OF ONE PAGE.
+ *
+ * The page is NOT hidden or corrected: it is what was filed, and it may be half-readable, which is
+ * better than nothing. The request only puts the visit back on the desk's list as "retake" until a
+ * newer page is filed. First writer wins — a second request on the same page changes nothing and
+ * says so — and a page that has been entered in error cannot be asked about.
+ */
+export async function requestDocumentRetake(
+  tx: Tx, actor: Actor, documentId: string, reason: string | null, now: Date = new Date(),
+): Promise<{ documentId: string; encounterId: string | null; alreadyRequested: boolean }> {
+  if (actor.type !== "user") throw new PatientError("user_actor_required");
+  const [row] = await tx.select().from(patientDocuments).where(eq(patientDocuments.id, documentId));
+  if (!row || row.status !== "active") throw new PatientError("document_not_found", `no active document ${documentId}`);
+  if (row.retakeRequestedAt !== null) return { documentId, encounterId: row.encounterId, alreadyRequested: true };
+  const trimmed = (reason ?? "").trim();
+  await tx
+    .update(patientDocuments)
+    .set({ retakeRequestedBy: actor.id, retakeRequestedAt: now, retakeReason: trimmed === "" ? null : trimmed })
+    .where(eq(patientDocuments.id, documentId));
+  return { documentId, encounterId: row.encounterId, alreadyRequested: false };
 }

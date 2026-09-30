@@ -44,6 +44,24 @@ export const BILLING_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: nu
     typeKey: "billing_variance", title: "Billing — cashier session variance",
     approverRole: "billing_manager", urgencyClass: "routine", actFirstAllowed: false, closureSlaMinutes: 1440,
   },
+  /**
+   * OWNER RULING 2026-09-28 (money) — "refunds above ₹25,000.00 are approved by the owner instead of
+   * the billing manager". A refund at or under the line still binds to `billing_refund` above; one
+   * above it binds to THIS type (`refunds.ts` `refundApprovalTypeFor`), and a manager's grant no
+   * longer issues it.
+   */
+  {
+    typeKey: "billing_refund_owner", title: "Refund above ₹25,000.00 — only the owner approves",
+    approverRole: "owner", urgencyClass: "urgent", actFirstAllowed: false, closureSlaMinutes: 240,
+  },
+  /**
+   * OWNER RULING 2026-09-28 (money) — the billing manager may accept a bank short-settlement as a bank
+   * charge only up to ₹50.00 per receipt; above that the decision is the owner's (`recon-resolve.ts`).
+   */
+  {
+    typeKey: "billing_recon_charge_owner", title: "Bank short-settlement above ₹50.00 written off as a charge — only the owner approves",
+    approverRole: "owner", urgencyClass: "routine", actFirstAllowed: false, closureSlaMinutes: 1440,
+  },
 ];
 
 // A fixed system identity for the DRAFTER half of every approval_<typeKey> definition. createDraft

@@ -28,6 +28,10 @@ export const APPROVAL_KINDS = {
   billing_credit_extension: ["patient"],
   billing_credit_owner: ["amount", "patient"],
   billing_refund: ["amount", "patient"],
+  /* OWNER RULINGS 2026-09-28 (money) — a refund above ₹25,000.00, and a bank short-settlement above ₹50.00
+     written off as a charge, are the owner's to approve. */
+  billing_refund_owner: ["amount", "patient"],
+  billing_recon_charge_owner: ["amount", "patient"],
   billing_variance: [],
   lab_release_unpaid: ["amount", "patient"],
   lab_release_unpaid_owner: ["amount", "patient"],
@@ -42,6 +46,8 @@ export const APPROVAL_KINDS = {
   /* PARITY P3 — a supplier payment run the owner authorises; the vendors and bills are in the request note. */
   materials_payment_run_approval: ["amount"],
   imaging_definition_publish: [],
+  /* 18-S RS9b — a held imaging report released unpaid (the owner's; the dues are the amount). */
+  imaging_release_unpaid_owner: ["amount", "patient"],
   ot_definition_publish: [],
   ot_deposit_exception: ["amount", "patient"],
   tariff_revision: [],

@@ -873,9 +873,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // themselves authority is exactly the "worklist of governance decisions" card #39 describes.
       //
       // `auth.break_glass.review` is granted in the SAME breath deliberately, even though its
-      // queue cannot fill yet (see the `auth.break_glass.use` note below): the two reviews are one
+      // queue could not fill then (see the `auth.break_glass.use` note below; since 2026-09-28 the
+      // MS's own sealed-merge break-glasses fill it): the two reviews are one
       // desk, and splitting them across two commits would leave a second correction to remember.
       "auth.break_glass.review",
+      /**
+       * OWNER RULING 2026-09-28 — the Medical Superintendent holds the break-glass key, and nobody
+       * else in this model does. Why now: break-glass used to unlock nothing (the note beneath
+       * ROLE_MODEL), so a grant would have been a key to no door. PR #373 gives it one door: merging
+       * a SEALED (confidential) patient record refuses with `sealed_needs_break_glass` until the MS
+       * who approved the merge records a break-glass on that record (`modules/patients/merge.ts`).
+       * WHAT IT STILL DOES NOT DO: no route sets `breakGlassBypass`, so a grant opens no screen and
+       * crosses no confidential gate; "ER opens any record" stays an open question, and no clinical
+       * or ER role holds this string. Every use still lands in the break-glass review queue.
+       */
+      "auth.break_glass.use",
       /**
        * PLAN 07c T9 / DD14 — the same figures, for the same reason the two review desks moved here
        * in the first place: medical-record and staff governance is this role's job (spec §14, role
@@ -1776,10 +1788,41 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.antimicrobial.approve",
     ],
   },
+  /**
+   * PLAN 18-S RS8b — THE RADIOLOGY RESIDENT (DNB/MD trainee), appended. DECIDED, the Indian
+   * teaching-hospital standard: a resident drafts, may issue a PRELIM to the treating doctor for
+   * ER/STAT work, telephones and closes a critical call — and a FINAL report needs a consultant's
+   * co-sign. So the role holds `radiology.reports.sign`, and `signReport` turns a resident's
+   * signature into `awaiting_cosign` (never `signed`), which `publishReport` refuses with
+   * `cosign_required` until a `radiologist` co-signs under their own second factor. The separation
+   * is enforced on ROLE KEYS in `reports.ts` (`signsAsResident`, `cosignReport`), not on this
+   * list — the resident needs `.sign` to reach the route at all.
+   *
+   * **NOT `radiology.reports.amend`** (an amendment is a consultant's signed correction), **NOT
+   * `radiology.gates.override`** (the second clinical opinion on a gate is the consultant's) and
+   * **NOT `radiology.definitions.manage` or `pcpndt.form_f.write`** (the books and the statutory
+   * declaration are the consultant's). No holders at seed time: residents are rostered by the HOD.
+   */
+  {
+    roleKey: "radiology_resident",
+    permissions: [
+      "radiology.worklist.read",
+      "radiology.reports.write",
+      "radiology.reports.sign",
+      "radiology.reports.read",
+      "radiology.criticals.ack",
+      "radiology.definitions.read",
+    ],
+  },
 ];
 
 /**
  * ═══ WHY `auth.break_glass.use` IS NOT GRANTED TO ANY CLINICAL ROLE — MEASURED 2026-08-26 ═══
+ *
+ * AMENDED 2026-09-28 (owner ruling): `medical_superintendent` now holds it — see its ROLE_MODEL
+ * row. That grant has ONE door, the sealed-record merge step (`modules/patients/merge.ts`, PR #373);
+ * everything below about ROUTES is still true, and it is why no clinical or ER role holds the
+ * string. The measurement that follows is the 2026-08-26 one, kept as written.
  *
  * It is the obvious fourth Group C row and it is DELIBERATELY ABSENT, because granting it today
  * would ship a lie. Spec §14 promises "ER staff can open any record instantly"; the honest state of
@@ -2024,6 +2067,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   pharmacy_incharge: "Pharmacist in Charge (held with pharmacy; the unredacted H1 register for the inspector)",
   // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
   antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
+  // 18-S RS8b — the title names the separation: the resident's signature is not a final report.
+  radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

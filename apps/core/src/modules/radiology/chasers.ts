@@ -2,7 +2,7 @@ import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
-  imagingCriticalFindings, imagingReportDelivery, imagingReports, imagingStudies,
+  IMAGING_CRITICAL_RUNGS, imagingCriticalFindings, imagingReportDelivery, imagingReports, imagingStudies,
 } from "../../kernel/db/schema/radiology";
 import { withTx } from "../../kernel/db/client";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
@@ -43,12 +43,16 @@ import type { CriticalCategoriesBody } from "./definitions";
  * reads either to decide what a finding or a report IS: `acknowledged_at` remains the only answer
  * to "was this closed", and a chased finding is exactly as unacknowledged as it was a minute before.
  *
- * ═══ ONE ESCALATION EACH, AND THE LADDER IS A LATER PHASE'S ═══
+ * ═══ 18-S RS8b — THE LADDER: ONE ESCALATION PER WINDOW, UP TO THE HOD ═══
  *
- * Each row is chased ONCE. A repeating ladder — chase, wait, chase louder, wake the owner — is a
- * real thing a hospital wants and it is not this task: it needs a rung vocabulary, a per-rung
- * interval and a rota to escalate INTO, and 18a's §7 has none of the three. One escalation to the
- * people who can act is the honest first rung, and the mark is the column a ladder would extend.
+ * 18a-iii chased each row ONCE and left the ladder to a later phase for want of a rung vocabulary,
+ * a per-rung interval and somebody to escalate into. RS8b brings all three: the rungs
+ * (`IMAGING_CRITICAL_RUNGS` — treating doctor, unit head, duty RMO, HOD), the interval (the tier's
+ * own window from the book, per rung) and the people (`critical-ladder.ts`). So a call unanswered
+ * for one window moves to the unit head, two windows to the duty RMO, three to the HOD — one event
+ * per window, never more than three for a call, and never a status: `chase_windows` records how
+ * many windows were escalated, `ladder_rung` only climbs (a "no answer" at the reading room may
+ * already have moved it), and `acknowledged_at` alone says the call is closed.
  */
 
 /** The system actor these sweeps run as. They are the worker's, not a user's. */
@@ -66,10 +70,13 @@ export const CHASER_ACTOR: Actor = { type: "system", id: "radiology-chasers" };
  */
 export const UNREAD_REPORT_HOURS = 24;
 
+/** RS8b — the HOD's rung: the chaser escalates at most this many windows. */
+const TOP_RUNG = IMAGING_CRITICAL_RUNGS.length - 1;
+
 /** How many rows one cycle will chase. A sweep that cannot finish is a sweep that never runs. */
 const CHASE_LIMIT = 200;
 
-export type CriticalChaseResult = { chased: { criticalId: string; category: string; overdueMin: number }[] };
+export type CriticalChaseResult = { chased: { criticalId: string; category: string; overdueMin: number; rung: string }[] };
 export type UnreadChaseResult = { chased: { reportId: string; studyId: string; unreadHours: number }[] };
 
 /**
@@ -99,6 +106,8 @@ export async function sweepCriticalChaser(db: Db, now: Date = new Date()): Promi
       reportId: imagingCriticalFindings.reportId,
       category: imagingCriticalFindings.category,
       createdAt: imagingCriticalFindings.createdAt,
+      ladderRung: imagingCriticalFindings.ladderRung,
+      chaseWindows: imagingCriticalFindings.chaseWindows,
       studyId: imagingReports.studyId,
       patientId: imagingStudies.patientId,
     })
@@ -107,7 +116,7 @@ export async function sweepCriticalChaser(db: Db, now: Date = new Date()): Promi
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
     .where(and(
       isNull(imagingCriticalFindings.acknowledgedAt),
-      isNull(imagingCriticalFindings.chasedAt),
+      lt(imagingCriticalFindings.chaseWindows, TOP_RUNG),
     ))
     .orderBy(asc(imagingCriticalFindings.createdAt))
     .limit(CHASE_LIMIT);
@@ -118,6 +127,10 @@ export async function sweepCriticalChaser(db: Db, now: Date = new Date()): Promi
     if (windowMin === undefined) continue;
     const overdueMin = Math.floor((now.getTime() - finding.createdAt.getTime()) / 60_000) - windowMin;
     if (overdueMin <= 0) continue;
+    /** RS8b — how many whole windows have passed, capped at the top rung. */
+    const windows = Math.min(TOP_RUNG, Math.floor((overdueMin + windowMin) / windowMin));
+    if (windows <= finding.chaseWindows) continue;
+    const rungIndex = Math.max(finding.ladderRung, windows);
 
     /**
      * The mark is taken under a CONDITIONAL update rather than read-then-write. Two worker cycles
@@ -128,10 +141,14 @@ export async function sweepCriticalChaser(db: Db, now: Date = new Date()): Promi
     const won = await withTx(db, async (tx) => {
       const updated = await tx
         .update(imagingCriticalFindings)
-        .set({ chasedAt: now })
+        .set({
+          chasedAt: sql`coalesce(${imagingCriticalFindings.chasedAt}, ${now.toISOString()}::timestamptz)`,
+          chaseWindows: windows,
+          ladderRung: sql`greatest(${imagingCriticalFindings.ladderRung}, ${windows})`,
+        })
         .where(and(
           eq(imagingCriticalFindings.id, finding.id),
-          isNull(imagingCriticalFindings.chasedAt),
+          eq(imagingCriticalFindings.chaseWindows, finding.chaseWindows),
           isNull(imagingCriticalFindings.acknowledgedAt),
         ))
         .returning({ id: imagingCriticalFindings.id });
@@ -148,13 +165,13 @@ export async function sweepCriticalChaser(db: Db, now: Date = new Date()): Promi
         patientId: finding.patientId,
         payload: {
           criticalId: finding.id, reportId: finding.reportId, studyId: finding.studyId,
-          category: finding.category, overdueMin,
+          category: finding.category, overdueMin, rung: IMAGING_CRITICAL_RUNGS[rungIndex],
         },
       }));
       return true;
     });
 
-    if (won) chased.push({ criticalId: finding.id, category: finding.category, overdueMin });
+    if (won) chased.push({ criticalId: finding.id, category: finding.category, overdueMin, rung: IMAGING_CRITICAL_RUNGS[rungIndex]! });
   }
   return { chased };
 }

@@ -164,6 +164,8 @@ export const imagingOutsideStudyRegistered = defineEvent("imaging.outside_study_
 export const imagingCriticalOverdue = defineEvent("imaging.critical_overdue", MODULE, z.object({
   criticalId: id, reportId: id, studyId: id,
   category: z.enum(["red", "orange", "yellow"]), overdueMin: z.number().int().positive(),
+  /** 18-S RS8b — the ladder rung the call escalated to (treating_doctor · unit_head · duty_rmo · hod). */
+  rung: z.enum(["treating_doctor", "unit_head", "duty_rmo", "hod"]).optional(),
 }));
 
 export const imagingReportUnread = defineEvent("imaging.report_unread", MODULE, z.object({
@@ -268,6 +270,36 @@ export const imagingMediaRequested = defineEvent("imaging.media_requested", MODU
   requestId: id, studyId: id, kind: z.enum(IMAGING_MEDIA_KINDS), quantity: z.number().int().positive(), included: z.boolean(),
 }));
 
+/**
+ * 18-S RS12b — the IR suite. `imaging.ir_coagulation_overridden`: the radiologist accepted a
+ * missing or out-of-range INR / platelet count for a high-bleeding-risk procedure (the reason stays
+ * on `imaging_ir_cases`; the verdict kind travels, the numbers do not).
+ * `imaging.ir_skin_dose_alert`: at Send, the recorded reference-point air kerma reached a trigger —
+ * `skin_followup` at 3 Gy (SIR / NCRP 168: patient told, skin check at 2–4 weeks) and
+ * `substantial_radiation_dose_level` at 5 Gy (the SRDL: the RSO reviews the case). One event per
+ * level reached. The measured Ka,r is on the dose register, not on the bus. The RSO's obligation
+ * that consumes it is RS10's spine (not merged when RS12b shipped).
+ */
+export const IR_COAGULATION_VERDICTS = ["missing", "stale", "inr_high", "platelets_low"] as const;
+export const IR_SKIN_DOSE_LEVELS = ["skin_followup", "substantial_radiation_dose_level"] as const;
+export const imagingIrCoagulationOverridden = defineEvent("imaging.ir_coagulation_overridden", MODULE, z.object({
+  studyId: id, verdicts: z.array(z.enum(IR_COAGULATION_VERDICTS)).min(1),
+}));
+export const imagingIrSkinDoseAlert = defineEvent("imaging.ir_skin_dose_alert", MODULE, z.object({
+  studyId: id, accessionNo: z.string().min(1), deviceResourceId: id,
+  level: z.enum(IR_SKIN_DOSE_LEVELS), thresholdMgy: z.number().positive(),
+}));
+
+/**
+ * 18-S RS9b — a HELD patient copy left the window on the owner's granted release. The audit of the
+ * decision itself is the approval (requester, reason, the owner's note); this is the fact that the
+ * grant was USED, and how much was still due when it was. The dues stay on the account.
+ */
+export const imagingReportReleasedUnpaid = defineEvent("imaging.report_released_unpaid", MODULE, z.object({
+  handoverId: id, reportId: id, studyId: id, approvalId: id,
+  outstandingPaise: z.number().int().nonnegative(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -291,4 +323,7 @@ export const RADIOLOGY_EVENTS = [
   imagingReportActedUpon,
   imagingReportHandedOver,
   imagingMediaRequested,
+  imagingIrCoagulationOverridden,
+  imagingIrSkinDoseAlert,
+  imagingReportReleasedUnpaid,
 ] as const;

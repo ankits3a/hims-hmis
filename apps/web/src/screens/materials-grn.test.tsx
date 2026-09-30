@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -81,6 +81,11 @@ function baseRoutes(): Record<string, Handler> {
     "GET /api/materials/vendors": { status: 200, body: { vendors: VENDORS } },
     "GET /api/materials/stores": { status: 200, body: { stores: STORES } },
     "GET /api/materials/items": { status: 200, body: { items: ITEMS } },
+    // B5 — the item's own units: Unit and "MRP per" are picked from these, never typed.
+    "GET /api/materials/items/it-1": { status: 200, body: { item: { ...ITEMS[0], uoms: [
+      { id: "u-box", itemId: "it-1", uom: "box", toBaseMultiplier: 100 },
+      { id: "u-strip", itemId: "it-1", uom: "strip", toBaseMultiplier: 10 },
+    ], barcodes: [] } } },
     "GET /api/materials/grns": { status: 200, body: { grns: [] } },
   };
 }
@@ -97,15 +102,18 @@ async function fillHeaderAndLine(
   user: ReturnType<typeof userEvent.setup>,
   over: { qty?: string } = {},
 ): Promise<void> {
+  // B5 — receiving a delivery is a sheet over the list, opened by the page's one "new" act.
+  await user.click(await screen.findByRole("button", { name: "Receive a delivery" }));
   await screen.findByRole("option", { name: "ACME" });
   await screen.findByRole("option", { name: "MAIN" });
-  await screen.findByRole("option", { name: "CROC500" });
+  await screen.findByRole("option", { name: "CROC500 · Crocin 500mg tablet" });
   await user.selectOptions(screen.getByLabelText("Vendor"), "v-1");
   await user.selectOptions(screen.getByLabelText("Store"), "st-1");
   await user.type(screen.getByLabelText(/^Challan no\.$/), "CH/1");
   await user.type(screen.getByLabelText(/^Challan date/), "2026-08-27");
   await user.selectOptions(screen.getByLabelText("Item"), "it-1");
-  await user.type(screen.getByLabelText("Unit"), "box");
+  await within(screen.getByLabelText("Unit")).findByRole("option", { name: "box (100 tablet)" });
+  await user.selectOptions(screen.getByLabelText("Unit"), "box");
   await user.type(screen.getByLabelText("Quantity"), over.qty ?? "3");
 }
 
@@ -150,8 +158,8 @@ describe("MaterialsGrn", () => {
 
     await fillHeaderAndLine(user);
     await user.type(screen.getByLabelText(/^MRP \(₹\)$/), "85");
-    await user.type(screen.getByLabelText("MRP per"), "strip");
-    await user.type(screen.getByLabelText(/Landed cost per base unit/), "7");
+    await user.selectOptions(screen.getByLabelText("MRP per"), "strip");
+    await user.type(screen.getByLabelText("Cost of ONE tablet (₹)"), "7");
     await user.click(screen.getByRole("button", { name: "Capture" }));
 
     await waitFor(() => { expect(bodiesOf("POST", "/materials/grns")).toHaveLength(1); });
@@ -183,6 +191,7 @@ describe("MaterialsGrn", () => {
     });
     renderWithProviders(<MaterialsGrn />);
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Receive a delivery" }));
     await screen.findByRole("option", { name: "ACME" });
     await user.selectOptions(screen.getByLabelText("Vendor"), "v-1");
     await screen.findByRole("option", { name: /MPO2609240001/ });
@@ -190,7 +199,7 @@ describe("MaterialsGrn", () => {
     await waitFor(() => expect(screen.getByLabelText("Quantity")).toHaveValue("4"));
     expect(screen.getByLabelText("Store")).toHaveValue("st-1");
     expect(screen.getByLabelText("Unit")).toHaveValue("strip");
-    expect(screen.getByLabelText(/Landed cost per base unit/)).toHaveValue("2.60");
+    expect(screen.getByLabelText("Cost of ONE tablet (₹)")).toHaveValue("2.60");
     await user.type(screen.getByLabelText(/^Challan no\.$/), "CH/9");
     await user.type(screen.getByLabelText(/^Challan date/), "2026-09-26");
     await user.type(screen.getByLabelText("Batch"), "B-9");
@@ -214,7 +223,7 @@ describe("MaterialsGrn", () => {
 
     await fillHeaderAndLine(user, { qty: "1" });
     await user.click(screen.getByLabelText("Free goods"));
-    expect(screen.getByLabelText(/Landed cost per base unit/)).toBeDisabled();
+    expect(screen.getByLabelText("Cost of ONE tablet (₹)")).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Capture" }));
 
     await waitFor(() => { expect(bodiesOf("POST", "/materials/grns")).toHaveLength(1); });
@@ -245,8 +254,67 @@ describe("MaterialsGrn", () => {
     expect(screen.getByText(/Short shelf life/)).toBeInTheDocument();
   });
 
-  /** DD16's second tab: the two worklists are tables here, not screens of their own. */
-  it("the second tab carries the expiring and discrepancy worklists", async () => {
+  /**
+   * THE WALK OF 2026-09-30. The second pharmacist opened a captured GRN to QC it and read a ULID where
+   * the drug should be, no expiry, no MRP and no cost — nothing to hold against the strip in their
+   * hand — and a green "Accepted" on every line (the expired one too) BEFORE QC had run.
+   */
+  it("an opened GRN names the item and shows what QC checks, and claims no verdict before QC", async () => {
+    const captured = { ...grnWith(null), status: "gate_qc", qcBy: null };
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/materials/grns": { status: 201, body: { grnId: "g-1", grnNo: "GRN2608270001" } },
+      "GET /api/materials/grns/g-1": { status: 200, body: { grn: captured } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    const user = userEvent.setup();
+    await fillHeaderAndLine(user);
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+
+    const table = await screen.findByRole("table");
+    expect(table).toHaveTextContent("CROC500 · Crocin 500mg tablet");
+    expect(table).not.toHaveTextContent("it-1");
+    expect(table).toHaveTextContent("2028-06-30");
+    expect(table).toHaveTextContent("₹5.00 / strip");
+    expect(table).toHaveTextContent("₹7.00");
+    expect(table).toHaveTextContent("Awaiting QC");
+    expect(table).not.toHaveTextContent("Accepted");
+  });
+
+  /**
+   * B5 (the same walk) — the dates are date fields, the units are the item's own, and a strip's price
+   * off the bill becomes the cost of ONE tablet on screen before anything is sent: ₹26.00 a strip of 10
+   * is ₹2.60 a tablet, and the wire carries 260 paise per base unit, as it always has.
+   */
+  it("picks the unit from the item's own, takes dates as dates, and turns a pack price into the cost of one base unit", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/materials/grns": { status: 201, body: { grnId: "g-1", grnNo: "GRN2608270001" } },
+      "GET /api/materials/grns/g-1": { status: 200, body: { grn: grnWith(null) } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    const user = userEvent.setup();
+    await fillHeaderAndLine(user);
+    expect(screen.getByLabelText(/^Challan date/)).toHaveAttribute("type", "date");
+    expect(screen.getByLabelText("Expiry")).toHaveAttribute("type", "date");
+    expect(screen.getByLabelText("Unit").tagName).toBe("SELECT");
+    expect(screen.getByLabelText("MRP per").tagName).toBe("SELECT");
+
+    await user.selectOptions(screen.getByLabelText("Unit"), "strip");
+    await user.type(screen.getByLabelText("Price of one strip on the bill (₹)"), "26");
+    expect(screen.getByLabelText("Cost of ONE tablet (₹)")).toHaveValue("2.60");
+    expect(screen.getByTestId("grn-line-0-per-pack")).toHaveTextContent("= ₹26.00 for one strip of 10 tablet");
+    await user.click(screen.getByRole("button", { name: "Capture" }));
+
+    await waitFor(() => { expect(bodiesOf("POST", "/materials/grns")).toHaveLength(1); });
+    const sent = bodiesOf("POST", "/materials/grns")[0] as { challanDate: string; lines: Record<string, unknown>[] };
+    expect(sent.challanDate).toBe("2026-08-27");
+    expect(sent.lines[0]).toMatchObject({ uom: "strip", unitCostPaise: 260 });
+    expect(sent.lines[0]).not.toHaveProperty("packRupees");
+  });
+
+  /** DD16's two worklists — once a second tab, now groups of the one page under the deliveries (B5: no tabs). */
+  it("shows the expiring and discrepancy worklists on the page, with no tab to find them behind", async () => {
     mockRoutes({
       ...baseRoutes(),
       "GET /api/materials/expiring": {
@@ -270,10 +338,11 @@ describe("MaterialsGrn", () => {
       },
     });
     renderWithProviders(<MaterialsGrn />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Worklists" }));
-
     expect(await screen.findByText(/B-OLD/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Worklists" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Gate" })).toBeNull();
+    // …and no capture form above the list: it is a sheet.
+    expect(screen.queryByLabelText("Vendor")).toBeNull();
     expect(screen.getByText(/19 days left/)).toBeInTheDocument();
     expect(screen.getByText(/42 on hand/)).toBeInTheDocument();
     expect(screen.getByText(/tr-1/)).toBeInTheDocument();

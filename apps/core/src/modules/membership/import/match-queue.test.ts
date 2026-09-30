@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import {
-  coveredMembers, entitlementCounters, entitlementMovements, events, membershipInstances,
+  coveredMembers, entitlementCounters, entitlementMovements, events, lapsedRestoreChecks, membershipInstances,
   membershipPlans, patientMatchQueue, patients, registrationConfig, roles,
 } from "../../../kernel/db/schema";
 import { withTx } from "../../../kernel/db/client";
@@ -12,8 +12,10 @@ import { patientsManifest, registerPatient } from "../../patients";
 import { MembershipError } from "../errors";
 import { membershipManifest } from "../manifest";
 import {
-  dismissMatch, findPatientCandidates, listLapsedRestores, listMatchQueue, resolveMatch,
+  compareCandidate, dismissMatch, findPatientCandidates, listLapsedRestores, listMatchQueue, maskMobile,
+  markLapsedRestoreChecked, resolveMatch,
 } from "./match-queue";
+import { consumeEntitlements } from "../entitlements";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../../kernel/db/client";
 
@@ -274,5 +276,120 @@ describe("reconcile queue", () => {
     expect(shown.map((l) => ({ id: l.movementId, card: l.cardCode, key: l.benefitKey }))).toEqual([
       { id: "01HMOVEQ00000000000T5Q3", card: "QR-990", key: "consult-visits" },
     ]);
+  });
+
+  // ── UX-AUDIT 2026-09-28 · BOARD — the card beside each patient ──────────────────────────────
+
+  it("BOARD — each candidate carries its side of the comparison, the mobile masked, and a band in words", async () => {
+    await db.update(membershipInstances).set({ holderPhone: "9812300127" }).where(eq(membershipInstances.id, INSTANCE_ID));
+    const same = await register("Sunanda Phatak", "9812300127");
+    const other = await register("Sunita Patil", "9700000401");
+    await db.update(patients).set({ district: "Jaipur", dob: new Date("1974-03-14") }).where(eq(patients.id, same));
+    await enqueue([
+      { patientId: same, score: 0.95, why: "invented" },
+      { patientId: other, score: 0.31, why: "invented" },
+    ]);
+    const operator = await userHolding(["membership.reconcile.operate", "patients.confidential.read"]);
+    const [item] = await listMatchQueue(db, operator);
+    expect(item!.holder).toMatchObject({ subjectName: "Sunanda Phatak", mobileMasked: "98\u2022\u2022\u2022 \u2022\u2022127", dob: null, sex: null });
+    const [a, b] = item!.candidates;
+    expect(a).toMatchObject({ district: "Jaipur", dob: "1974-03-14", sex: "female", mobileMasked: "98\u2022\u2022\u2022 \u2022\u2022127", lastVisit: null });
+    // The card carries no DOB or sex, so the best a name + mobile can reach is Possible, 2 of 4.
+    expect(a!.comparison).toEqual({ name: "agrees", dob: "not_on_card", sex: "not_on_card", mobile: "agrees", agrees: 2, strength: "possible" });
+    expect(b!.comparison).toMatchObject({ name: "differs", mobile: "differs", agrees: 0, strength: "weak" });
+    // The full number never leaves the server.
+    expect(JSON.stringify(item)).not.toContain("9812300127");
+  });
+
+  it("BOARD — the band: Strong needs name, DOB and mobile; a differing sex or DOB makes it Weak", () => {
+    const card = { name: "Suresh Kumar Yadav", dob: "1974-03-14", sex: "male", phone: "9812300127" };
+    expect(compareCandidate(card, { name: "Suresh Kumar Yadav", dob: "1974-03-14", sex: "male", phone: "9812300127" }, 1).strength).toBe("strong");
+    expect(compareCandidate(card, { name: "Suresh Yadav", dob: "1997-07-02", sex: "male", phone: "9700000550" }, 0.4))
+      .toMatchObject({ name: "agrees", dob: "differs", strength: "weak", agrees: 2 });
+    expect(compareCandidate({ ...card, dob: null }, { name: "Suresh Yadav", dob: null, sex: "male", phone: null }, 0.4))
+      .toMatchObject({ name: "agrees", mobile: "not_on_record", strength: "possible" });
+    expect(maskMobile("+91 98123 00127")).toBe("98\u2022\u2022\u2022 \u2022\u2022127");
+    expect(maskMobile(null)).toBeNull();
+  });
+
+  it("BOARD — a WEAK link is refused without a stated proof and a confirm, and the proof is saved with the link", async () => {
+    const weak = await register("Devyani Ranadive", "9700000402");
+    const itemId = await enqueue([{ patientId: weak, score: 0.31, why: "invented" }]);
+    const operator = await userHolding(["membership.reconcile.operate", "patients.confidential.read"]);
+    await expect(resolveMatch(db, operator, { queueItemId: itemId, patientId: weak }, AT))
+      .rejects.toMatchObject({ code: "match_weak_needs_proof" });
+    await expect(resolveMatch(db, operator, { queueItemId: itemId, patientId: weak, note: "Saw an ID at the counter" }, AT))
+      .rejects.toMatchObject({ code: "match_weak_needs_proof" });
+    const unlinked = await db.select({ patientId: membershipInstances.patientId }).from(membershipInstances).where(eq(membershipInstances.id, INSTANCE_ID));
+    expect(unlinked[0]!.patientId).toBeNull();
+
+    await resolveMatch(db, operator, {
+      queueItemId: itemId, patientId: weak, note: "Saw an ID at the counter — name misspelt by the partner", confirmWeak: true,
+    }, AT);
+    const row = await db.select().from(patientMatchQueue).where(eq(patientMatchQueue.id, itemId));
+    expect(row[0]).toMatchObject({ state: "resolved", note: "Saw an ID at the counter — name misspelt by the partner" });
+  });
+
+  it("BOARD — None of these: a preset reason stands alone, \"other\" needs words, and the code is stored", async () => {
+    const p = await register("Sunandaa Phatak", "9700000403");
+    const first = await enqueue([{ patientId: p, score: 0.9, why: "invented" }]);
+    const second = await enqueue([{ patientId: p, score: 0.9, why: "invented" }]);
+    const operator = await userHolding(["membership.reconcile.operate", "patients.confidential.read"]);
+    await dismissMatch(db, operator, { queueItemId: first, reason: "different_people" }, AT);
+    await expect(dismissMatch(db, operator, { queueItemId: second, reason: "other", note: "  " }, AT))
+      .rejects.toMatchObject({ code: "match_dismiss_needs_reason" });
+    await dismissMatch(db, operator, { queueItemId: second, reason: "other", note: "holder abroad, partner told" }, AT);
+    const rows = await db.select().from(patientMatchQueue);
+    expect(rows.map((r) => [r.id === first ? "first" : "second", r.dismissReason, r.note]).sort()).toEqual([
+      ["first", "different_people", null],
+      ["second", "other", "holder abroad, partner told"],
+    ]);
+  });
+
+  it("BOARD — a lapsed restore reads in words, and Mark checked takes it off the queue once", async () => {
+    await db.update(membershipPlans).set({
+      benefits: [{ benefitKey: "consult-visits", title: "Free OPD consultation", kind: "percent_bps", value: 10000 }],
+    }).where(eq(membershipPlans.id, PLAN_ID));
+    const counterId = "01HCOUNTERQ000000000T5Q2";
+    await db.insert(entitlementCounters).values({
+      id: counterId, instanceId: INSTANCE_ID, benefitKey: "consult-visits", grantedQty: 2,
+      validFrom: AT, validTo: new Date("2027-09-01T00:00:00Z"),
+    });
+    await db.insert(entitlementMovements).values([
+      { id: "01HMOVEQ00000000000T5Q4", counterId, delta: 1, kind: "restore", actorId: "cashier-1" },
+      { id: "01HMOVEQ00000000000T5Q5", counterId, delta: 1, kind: "restore", lapsedRestore: true, actorId: "cashier-1", reason: "consult cancelled" },
+    ]);
+    const [shown] = await listLapsedRestores(db);
+    expect(shown).toMatchObject({
+      movementId: "01HMOVEQ00000000000T5Q5", benefitTitle: "Free OPD consultation", invoiceNo: null,
+      givenBackBy: "cashier-1", givenBackReason: "consult cancelled",
+    });
+    expect(shown!.cardEndedOn).toEqual(new Date("2027-09-01T00:00:00Z"));
+
+    const operator = await userHolding(["membership.reconcile.operate"]);
+    await expect(markLapsedRestoreChecked(db, operator, { movementId: "01HMOVEQ00000000000T5Q4" }, AT))
+      .rejects.toMatchObject({ code: "lapsed_restore_unknown" }); // an ordinary restore is not a flag
+    await markLapsedRestoreChecked(db, operator, { movementId: "01HMOVEQ00000000000T5Q5" }, AT);
+    expect(await listLapsedRestores(db)).toEqual([]);
+    await expect(markLapsedRestoreChecked(db, operator, { movementId: "01HMOVEQ00000000000T5Q5" }, AT))
+      .rejects.toMatchObject({ code: "match_already_resolved" });
+    const checks = await db.select().from(lapsedRestoreChecks);
+    expect(checks).toEqual([{ movementId: "01HMOVEQ00000000000T5Q5", checkedBy: operator.id, checkedAt: AT }]);
+  });
+
+  it("OWNER RULING 28-Sep (pin) — a unit given back to an ENDED card cannot be used while the card stays ended", async () => {
+    const counterId = "01HCOUNTERQ000000000T5Q3";
+    await db.insert(entitlementCounters).values({
+      id: counterId, instanceId: INSTANCE_ID, benefitKey: "consult-visits", grantedQty: 1,
+      validFrom: AT, validTo: new Date("2026-09-10T00:00:00Z"),
+    });
+    await db.insert(entitlementMovements).values([
+      { id: "01HMOVEQ00000000000T5Q6", counterId, delta: -1, kind: "consume", actorId: "cashier-1" },
+      { id: "01HMOVEQ00000000000T5Q7", counterId, delta: 1, kind: "restore", lapsedRestore: true, reversalOfId: "01HMOVEQ00000000000T5Q6", actorId: "cashier-1" },
+    ]);
+    await expect(withTx(db, (tx) => consumeEntitlements(tx, clerk, {
+      invoiceId: "01HINVQ0000000000000T5Q1", at: new Date("2026-09-20T06:00:00Z"),
+      consumes: [{ instanceId: INSTANCE_ID, benefitKey: "consult-visits", invoiceLineId: "01HLINEQ000000000000T5Q1", amountPaise: 0 }],
+    }))).rejects.toMatchObject({ code: "counter_lapsed" });
   });
 });

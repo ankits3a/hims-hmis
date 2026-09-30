@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import {
-  coveredMembers, entitlementCounters, entitlementMovements, membershipInstances, membershipPlans,
-  patientMatchQueue, patients,
+  counterparties, coveredMembers, entitlementCounters, entitlementMovements, holderBookImports, invoices,
+  lapsedRestoreChecks, membershipInstances, membershipPlans, opdDepartments, opdEncounters, patientMatchQueue,
+  patients, users,
 } from "../../../kernel/db/schema";
 import { normalizeForSearch } from "../../../kernel/search/normalize";
 import { appendEvent } from "../../../kernel/events/append";
@@ -145,6 +146,110 @@ export async function enqueueMatches(tx: Tx, rows: readonly EnqueueInput[]): Pro
   return values.map((v) => v.id);
 }
 
+/**
+ * ═══ UX-AUDIT 2026-09-28 · BOARD — THE CARD BESIDE EACH PATIENT, FIELD BY FIELD ═══
+ *
+ * The owner-approved reconcile board (`docs/design/2026-09-28-ux-audit/card-reconcile.html`) lays
+ * the holder beside each look-alike patient — name, age/DOB, sex, mobile — each marked agrees /
+ * differs / not on the card, with an "n of 4" count and a strength in WORDS (owner, 28-Sep-2026:
+ * Strong / Possible / Weak, never a decimal). The band is computed HERE, not in the browser, so the
+ * screen and the resolve refusal below can never disagree about which link is weak.
+ *
+ * WHAT THE CARD CARRIES: the holder book's column map has name and phone and no DOB or sex (the owner
+ * ruled partners are merely ASKED for them; no code). So `dob` and `sex` are `not_on_card` on every
+ * row today, and — by the board's own rule — no match reaches Strong until a partner sends a DOB.
+ * The comparison takes them anyway, so the day a column map carries them nothing here changes.
+ *
+ * THE MOBILE IS NEVER SENT WHOLE. It is compared here and leaves as `98••• ••127` (the board's mask);
+ * a shared family phone is the ordinary case, which is why a mobile alone can never make a match
+ * Strong.
+ */
+export type FieldMark = "agrees" | "differs" | "not_on_card" | "not_on_record";
+export type MatchStrength = "strong" | "possible" | "weak";
+export type CandidateComparison = {
+  name: FieldMark; dob: FieldMark; sex: FieldMark; mobile: FieldMark;
+  /** How many of the four agree — the board's "n of 4". */
+  agrees: number;
+  strength: MatchStrength;
+};
+
+/** The similarity at or above which two names "agree" — close, not merely resembling (0.3 files the row). */
+export const NAME_CLOSE_THRESHOLD = 0.5;
+
+function nameTokens(name: string): string[] {
+  return normalizeForSearch(name).split(" ").filter((w) => w.length > 0);
+}
+
+/** One name's words all present in the other's — "Suresh Yadav" inside "Suresh Kumar Yadav". */
+function namesNest(a: string, b: string): boolean {
+  const ta = nameTokens(a);
+  const tb = nameTokens(b);
+  if (ta.length === 0 || tb.length === 0) return false;
+  const [short, long] = ta.length <= tb.length ? [ta, new Set(tb)] : [tb, new Set(ta)];
+  return short.length >= 2 && short.every((w) => long.has(w));
+}
+
+function lastTen(phone: string | null | undefined): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : null;
+}
+
+function isoDay(d: Date | string | null | undefined): string | null {
+  if (d === null || d === undefined) return null;
+  if (typeof d === "string") return d.slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The board's mask: the first two and the last three digits, `98••• ••127`. Null when there is none. */
+export function maskMobile(phone: string | null | undefined): string | null {
+  const ten = lastTen(phone);
+  if (ten === null) return null;
+  return `${ten.slice(0, 2)}\u2022\u2022\u2022 \u2022\u2022${ten.slice(7)}`;
+}
+
+export type HolderFacts = { name: string; dob: Date | string | null; sex: string | null; phone: string | null };
+export type PatientFacts = { name: string; dob: Date | string | null; sex: string | null; phone: string | null };
+
+/**
+ * The comparison and the band. Weak = the name is only loose, or a sex / DOB the card DOES carry
+ * differs. Strong = name, DOB and mobile all agree. Everything else is Possible. The band never
+ * pre-selects anything; it decides only whether a link needs a stated proof (see `resolveMatch`).
+ */
+export function compareCandidate(holder: HolderFacts, patient: PatientFacts, score: number): CandidateComparison {
+  const name: FieldMark =
+    normalizeForSearch(holder.name) === normalizeForSearch(patient.name)
+      || namesNest(holder.name, patient.name) || score >= NAME_CLOSE_THRESHOLD
+      ? "agrees" : "differs";
+  const hDob = isoDay(holder.dob);
+  const pDob = isoDay(patient.dob);
+  const dob: FieldMark = hDob === null ? "not_on_card" : pDob === null ? "not_on_record" : hDob === pDob ? "agrees" : "differs";
+  const hSex = holder.sex === null || holder.sex === "" || holder.sex === "unknown" ? null : holder.sex.toLowerCase();
+  const pSex = patient.sex === null || patient.sex === "" || patient.sex === "unknown" ? null : patient.sex.toLowerCase();
+  const sex: FieldMark = hSex === null ? "not_on_card" : pSex === null ? "not_on_record" : hSex === pSex ? "agrees" : "differs";
+  const hPh = lastTen(holder.phone);
+  const pPh = lastTen(patient.phone);
+  const mobile: FieldMark = hPh === null ? "not_on_card" : pPh === null ? "not_on_record" : hPh === pPh ? "agrees" : "differs";
+  const agrees = [name, dob, sex, mobile].filter((m) => m === "agrees").length;
+  const strength: MatchStrength =
+    name === "differs" || dob === "differs" || sex === "differs"
+      ? "weak"
+      : name === "agrees" && dob === "agrees" && mobile === "agrees" ? "strong" : "possible";
+  return { name, dob, sex, mobile, agrees, strength };
+}
+
+export type MatchQueueCandidate = MatchCandidate & {
+  patientName: string;
+  uhid: string;
+  /** UX-AUDIT 2026-09-28 · BOARD — the patient's side of the comparison. */
+  dob: string | null;
+  dobEstimated: boolean;
+  sex: string | null;
+  mobileMasked: string | null;
+  district: string | null;
+  lastVisit: { on: string; department: string | null } | null;
+  comparison: CandidateComparison;
+};
+
 export type MatchQueueItem = {
   id: string;
   instanceId: string;
@@ -155,9 +260,25 @@ export type MatchQueueItem = {
   holderName: string;
   planTitle: string;
   /** Already gated: a candidate this caller may not see is not in this array and was not counted. */
-  candidates: (MatchCandidate & { patientName: string; uhid: string })[];
+  candidates: MatchQueueCandidate[];
   note: string | null;
   at: Date;
+  /** UX-AUDIT 2026-09-28 · BOARD — the card's side: who, how to reach them (masked), when valid. */
+  holder: {
+    /** The person this row is about: the covered member when there is one, else the holder. */
+    subjectName: string;
+    relation: string | null;
+    mobileMasked: string | null;
+    dob: string | null;
+    sex: string | null;
+    validFrom: Date;
+    validTo: Date;
+    partnerName: string | null;
+    cameIn: { fileName: string; on: Date } | null;
+    familyCap: number;
+    members: { memberNo: number; name: string; relation: string | null; honoured: boolean }[];
+  };
+  dismissReason: string | null;
 };
 
 /** DD9/C5 — a restore against a counter whose own validity had lapsed. A FLAG, never a queue row. */
@@ -169,7 +290,17 @@ export type LapsedRestoreItem = {
   benefitKey: string;
   invoiceId: string | null;
   at: Date;
+  /** UX-AUDIT 2026-09-28 · BOARD — the restore in words: the benefit's title, the bill, the dates, who. */
+  benefitTitle: string;
+  invoiceNo: string | null;
+  cardEndedOn: Date;
+  givenBackBy: string;
+  givenBackReason: string | null;
 };
+
+/** UX-AUDIT 2026-09-28 · BOARD — the four answers to "None of these…". */
+export const DISMISS_REASONS = ["different_people", "not_registered", "partner_file_wrong", "other"] as const;
+export type DismissReason = (typeof DISMISS_REASONS)[number];
 
 function parseCandidates(raw: unknown): MatchCandidate[] {
   if (!Array.isArray(raw)) return [];
@@ -206,6 +337,7 @@ export async function listMatchQueue(
       state: patientMatchQueue.state,
       candidates: patientMatchQueue.candidates,
       note: patientMatchQueue.note,
+      dismissReason: patientMatchQueue.dismissReason,
       at: patientMatchQueue.at,
       cardCode: membershipInstances.cardCode,
       holderName: membershipInstances.holderName,
@@ -221,35 +353,138 @@ export async function listMatchQueue(
   const parsed = rows.map((r) => ({ row: r, candidates: parseCandidates(r.candidates) }));
   const allIds = [...new Set(parsed.flatMap((p) => p.candidates.map((c) => c.patientId)))];
   // ONE gate call for the whole page, and it is the patients module's own.
-  const visible = new Set(await visiblePatientIds(db, actor, allIds));
-  const named =
-    allIds.length === 0
-      ? []
-      : await db
-          .select({ id: patients.id, name: patients.name, uhid: patients.uhid })
-          .from(patients)
-          .where(inArray(patients.id, allIds));
-  const byId = new Map(named.map((p) => [p.id, p]));
+  const visibleIds = await visiblePatientIds(db, actor, allIds);
+  const visible = new Set(visibleIds);
+  // UX-AUDIT 2026-09-28 · BOARD — only VISIBLE ids are read at all: a hidden patient's DOB, phone
+  // and district are never fetched, so no later edit to the mapping below can leak them.
+  const byId = await patientFactsById(db, visibleIds);
+  const subjects = await holderSubjects(db, parsed.map((p) => p.row));
 
-  return parsed.map(({ row, candidates }) => ({
-    id: row.id,
-    instanceId: row.instanceId,
-    memberId: row.memberId,
-    reason: row.reason,
-    state: row.state,
-    cardCode: row.cardCode,
-    holderName: row.holderName,
-    planTitle: row.planTitle,
-    candidates: candidates
-      .filter((c) => visible.has(c.patientId))
-      .map((c) => ({
-        ...c,
-        patientName: byId.get(c.patientId)?.name ?? "",
-        uhid: byId.get(c.patientId)?.uhid ?? "",
-      })),
-    note: row.note,
-    at: row.at,
-  }));
+  return parsed.map(({ row, candidates }) => {
+    const subject = subjects.get(row.id)!;
+    return {
+      id: row.id,
+      instanceId: row.instanceId,
+      memberId: row.memberId,
+      reason: row.reason,
+      state: row.state,
+      cardCode: row.cardCode,
+      holderName: row.holderName,
+      planTitle: row.planTitle,
+      candidates: candidates
+        .filter((c) => visible.has(c.patientId) && byId.has(c.patientId))
+        .map((c) => {
+          const p = byId.get(c.patientId)!;
+          return {
+            ...c,
+            patientName: p.name,
+            uhid: p.uhid,
+            dob: isoDay(p.dob),
+            dobEstimated: p.dobEstimated,
+            sex: p.sex,
+            mobileMasked: maskMobile(p.phone),
+            district: p.district,
+            lastVisit: p.lastVisit,
+            comparison: compareCandidate(subject.facts, p, c.score),
+          };
+        }),
+      note: row.note,
+      at: row.at,
+      holder: subject.wire,
+      dismissReason: row.dismissReason,
+    };
+  });
+}
+
+type PatientRowFacts = PatientFacts & {
+  uhid: string; dobEstimated: boolean; district: string | null;
+  lastVisit: { on: string; department: string | null } | null;
+};
+
+/**
+ * The patient side, for ids the gate has ALREADY passed. Reads `patients` the way this file always
+ * has (the kernel schema, behind `visiblePatientIds`), plus each patient's latest OPD visit.
+ */
+async function patientFactsById(db: Db | Tx, ids: string[]): Promise<Map<string, PatientRowFacts>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({
+      id: patients.id, name: patients.name, uhid: patients.uhid, dob: patients.dob,
+      dobEstimated: patients.dobEstimated, sex: patients.administrativeGender, phone: patients.phone,
+      district: patients.district,
+    })
+    .from(patients)
+    .where(inArray(patients.id, ids));
+  const visits = await db
+    .selectDistinctOn([opdEncounters.patientId], {
+      patientId: opdEncounters.patientId, on: opdEncounters.serviceDate, department: opdDepartments.name,
+    })
+    .from(opdEncounters)
+    .leftJoin(opdDepartments, eq(opdDepartments.id, opdEncounters.departmentId))
+    .where(inArray(opdEncounters.patientId, ids))
+    .orderBy(opdEncounters.patientId, desc(opdEncounters.serviceDate), desc(opdEncounters.id));
+  const lastVisit = new Map(visits.map((v) => [v.patientId, { on: v.on, department: v.department }] as const));
+  return new Map(rows.map((r) => [r.id, { ...r, lastVisit: lastVisit.get(r.id) ?? null }] as const));
+}
+
+type SubjectRow = { id: string; instanceId: string; memberId: string | null };
+type Subject = { facts: HolderFacts; wire: MatchQueueItem["holder"] };
+
+/** The card's side of each row: the holder, or the covered member the row is about. */
+async function holderSubjects(db: Db | Tx, rows: readonly SubjectRow[]): Promise<Map<string, Subject>> {
+  const out = new Map<string, Subject>();
+  if (rows.length === 0) return out;
+  const instanceIds = [...new Set(rows.map((r) => r.instanceId))];
+  const instances = await db
+    .select({
+      id: membershipInstances.id, holderName: membershipInstances.holderName, holderPhone: membershipInstances.holderPhone,
+      validFrom: membershipInstances.validFrom, validTo: membershipInstances.validTo,
+      partnerName: counterparties.name, fileName: holderBookImports.fileName, importedOn: holderBookImports.startedAt,
+      familyCap: membershipPlans.familyCap,
+    })
+    .from(membershipInstances)
+    .innerJoin(membershipPlans, eq(membershipPlans.id, membershipInstances.planId))
+    .leftJoin(counterparties, eq(counterparties.id, membershipInstances.counterpartyId))
+    .leftJoin(holderBookImports, eq(holderBookImports.id, membershipInstances.importId))
+    .where(inArray(membershipInstances.id, instanceIds));
+  const members = await db
+    .select({
+      id: coveredMembers.id, instanceId: coveredMembers.instanceId, memberNo: coveredMembers.memberNo,
+      name: coveredMembers.name, relation: coveredMembers.relation, phone: coveredMembers.phone,
+      honoured: coveredMembers.honoured,
+    })
+    .from(coveredMembers)
+    .where(inArray(coveredMembers.instanceId, instanceIds))
+    .orderBy(asc(coveredMembers.memberNo));
+  const instanceById = new Map(instances.map((i) => [i.id, i] as const));
+  const memberById = new Map(members.map((m) => [m.id, m] as const));
+  for (const row of rows) {
+    const inst = instanceById.get(row.instanceId);
+    if (inst === undefined) continue;
+    const member = row.memberId === null ? undefined : memberById.get(row.memberId);
+    const name = member?.name ?? inst.holderName;
+    const phone = member?.phone ?? inst.holderPhone;
+    out.set(row.id, {
+      // The holder book carries no DOB or sex (owner, 28-Sep-2026: partners are ASKED, no code).
+      facts: { name, dob: null, sex: null, phone },
+      wire: {
+        subjectName: name,
+        relation: member?.relation ?? null,
+        mobileMasked: maskMobile(phone),
+        dob: null,
+        sex: null,
+        validFrom: inst.validFrom,
+        validTo: inst.validTo,
+        partnerName: inst.partnerName,
+        cameIn: inst.fileName === null || inst.importedOn === null ? null : { fileName: inst.fileName, on: inst.importedOn },
+        familyCap: inst.familyCap,
+        members: members
+          .filter((m) => m.instanceId === row.instanceId)
+          .map((m) => ({ memberNo: m.memberNo, name: m.name, relation: m.relation, honoured: m.honoured })),
+      },
+    });
+  }
+  return out;
 }
 
 /**
@@ -271,14 +506,86 @@ export async function listLapsedRestores(db: Db, limit = 50): Promise<LapsedRest
       at: entitlementMovements.at,
       cardCode: membershipInstances.cardCode,
       holderName: membershipInstances.holderName,
+      // UX-AUDIT 2026-09-28 · BOARD — words and dates, not a key.
+      planBenefits: membershipPlans.benefits,
+      invoiceNo: invoices.invoiceNo,
+      cardEndedOn: membershipInstances.validTo,
+      actorId: entitlementMovements.actorId,
+      actorName: users.fullName,
+      givenBackReason: entitlementMovements.reason,
     })
     .from(entitlementMovements)
     .innerJoin(entitlementCounters, eq(entitlementCounters.id, entitlementMovements.counterId))
     .innerJoin(membershipInstances, eq(membershipInstances.id, entitlementCounters.instanceId))
-    .where(eq(entitlementMovements.lapsedRestore, true))
+    .innerJoin(membershipPlans, eq(membershipPlans.id, membershipInstances.planId))
+    .leftJoin(invoices, eq(invoices.id, entitlementMovements.invoiceId))
+    .leftJoin(users, eq(users.id, entitlementMovements.actorId))
+    // A restore somebody has marked checked has left the queue; its row stays, append-only.
+    .leftJoin(lapsedRestoreChecks, eq(lapsedRestoreChecks.movementId, entitlementMovements.id))
+    .where(and(eq(entitlementMovements.lapsedRestore, true), isNull(lapsedRestoreChecks.movementId)))
     .orderBy(desc(entitlementMovements.seq))
     .limit(cap);
-  return rows;
+  return rows.map(({ planBenefits, actorId, actorName, ...r }) => ({
+    ...r,
+    benefitTitle: benefitTitle(planBenefits, r.benefitKey),
+    givenBackBy: actorName ?? actorId,
+  }));
+}
+
+/**
+ * The plan's own title for a counter's key — "Free OPD consultation", never "consult-visits". Read
+ * leniently: a plan whose terms do not name this key shows the key with its punctuation softened,
+ * because a lapsed restore that cannot be named must still be shown.
+ */
+function benefitTitle(raw: unknown, key: string): string {
+  if (Array.isArray(raw)) {
+    for (const term of raw) {
+      if (typeof term !== "object" || term === null) continue;
+      const { benefitKey, title } = term as { benefitKey?: unknown; title?: unknown };
+      if (benefitKey === key && typeof title === "string" && title.trim() !== "") return title;
+    }
+  }
+  return key.replace(/[-_]+/g, " ");
+}
+
+/**
+ * ═══ UX-AUDIT 2026-09-28 · BOARD — "MARK CHECKED" ═══
+ *
+ * Until now nothing on any screen could clear a lapsed flag; the list only grew. This writes one row
+ * naming who looked (the flag itself is on an append-only log and is never touched), and refuses a
+ * movement that is not a flagged restore — a check against an ordinary restore would be a lie about
+ * what was looked at.
+ *
+ * THE OWNER'S RULING (28-Sep-2026, money): a benefit given back to a card that has ENDED is usable
+ * only once the card is renewed. The restore logic is `entitlements.ts`'s `restoreEntitlements`: the
+ * unit lands on the ENDED counter, and `consumeEntitlements` refuses any counter outside its validity
+ * (`counter_lapsed`), so the unit cannot be used while the card stays ended. There is no renewal path
+ * in the repository yet (no writer extends a counter or carries a unit to a new instance); carrying
+ * the unit onto a renewed card is owed to whoever builds renewal. Marking checked changes neither.
+ */
+export async function markLapsedRestoreChecked(
+  db: Db,
+  actor: Actor,
+  input: { movementId: string },
+  now: Date = new Date(),
+): Promise<{ movementId: string; checkedAt: Date }> {
+  const found = await db
+    .select({ id: entitlementMovements.id, lapsed: entitlementMovements.lapsedRestore, kind: entitlementMovements.kind })
+    .from(entitlementMovements)
+    .where(eq(entitlementMovements.id, input.movementId));
+  const movement = found[0];
+  if (movement === undefined || !movement.lapsed || movement.kind !== "restore") {
+    throw new MembershipError("lapsed_restore_unknown", `no lapsed restore ${input.movementId}`);
+  }
+  const written = await db
+    .insert(lapsedRestoreChecks)
+    .values({ movementId: input.movementId, checkedBy: actor.id, checkedAt: now })
+    .onConflictDoNothing({ target: lapsedRestoreChecks.movementId })
+    .returning({ movementId: lapsedRestoreChecks.movementId });
+  if (written.length === 0) {
+    throw new MembershipError("match_already_resolved", `lapsed restore ${input.movementId} was already checked`);
+  }
+  return { movementId: input.movementId, checkedAt: now };
 }
 
 /**
@@ -291,7 +598,13 @@ function queueReason(raw: string): MatchQueueReason {
   return (MATCH_QUEUE_REASONS as readonly string[]).includes(raw) ? (raw as MatchQueueReason) : "fuzzy_match";
 }
 
-export type ResolveMatchInput = { queueItemId: string; patientId: string; note?: string };
+export type ResolveMatchInput = {
+  queueItemId: string;
+  patientId: string;
+  note?: string;
+  /** UX-AUDIT 2026-09-28 · BOARD — the clerk's tick that a WEAK link is permanent and carries their name. */
+  confirmWeak?: boolean;
+};
 
 /**
  * A HUMAN LINKS THE HOLDER. This is the only writer of `membership_instances.patient_id` outside
@@ -339,6 +652,23 @@ export async function resolveMatch(
   const visible = await visiblePatientIds(db, actor, [input.patientId]);
   if (visible.length === 0) {
     throw new MembershipError("match_candidate_unknown", "that patient is not visible to you");
+  }
+  /*
+   * UX-AUDIT 2026-09-28 · BOARD — A WEAK LINK NEEDS A STATED PROOF AND A CONFIRM (owner, 28-Sep).
+   * The band is recomputed here from the same comparison the screen was shown; the client's own
+   * check is a convenience, this is the rule. The proof is the `note` the resolve always took, so it
+   * is saved with the link on the queue row.
+   */
+  const choice = parseCandidates(item.candidates).find((c) => c.patientId === input.patientId)!;
+  const subject = (await holderSubjects(db, [item])).get(item.id);
+  const facts = (await patientFactsById(db, [input.patientId])).get(input.patientId);
+  if (subject !== undefined && facts !== undefined
+    && compareCandidate(subject.facts, facts, choice.score).strength === "weak"
+    && ((input.note ?? "").trim() === "" || input.confirmWeak !== true)) {
+    throw new MembershipError(
+      "match_weak_needs_proof",
+      "this is a weak match: say how you know it is the same person, and confirm the link carries your name",
+    );
   }
   const resolved = await resolvePatientId(db, input.patientId);
   if (resolved === null) {
@@ -391,16 +721,29 @@ export async function resolveMatch(
   return { queueItemId: input.queueItemId, instanceId: item.instanceId, patientId: survivor };
 }
 
-/** Nothing to link — the resemblance was a coincidence, or the partner's row is simply wrong. */
+/**
+ * Nothing to link — the resemblance was a coincidence, or the partner's row is simply wrong.
+ *
+ * UX-AUDIT 2026-09-28 · BOARD — "None of these…" asks WHY, as a code (`DISMISS_REASONS`) beside a
+ * line of text. A preset reason stands alone; "other", or no code at all (the pre-board call), still
+ * needs the words, because the next person to meet this holder has to know what was decided.
+ */
 export async function dismissMatch(
   db: Db,
   actor: Actor,
-  input: { queueItemId: string; note: string },
+  input: { queueItemId: string; note?: string; reason?: DismissReason },
   now: Date = new Date(),
 ): Promise<{ queueItemId: string }> {
+  const note = (input.note ?? "").trim();
+  if (note === "" && (input.reason === undefined || input.reason === "other")) {
+    throw new MembershipError("match_dismiss_needs_reason", "say why nobody here is the card holder");
+  }
   const claimed = await db
     .update(patientMatchQueue)
-    .set({ state: "dismissed", resolvedBy: actor.id, resolvedAt: now, note: input.note })
+    .set({
+      state: "dismissed", resolvedBy: actor.id, resolvedAt: now,
+      note: note === "" ? null : note, dismissReason: input.reason ?? null,
+    })
     .where(and(eq(patientMatchQueue.id, input.queueItemId), eq(patientMatchQueue.state, "open")))
     .returning({ id: patientMatchQueue.id });
   if (claimed.length === 0) {

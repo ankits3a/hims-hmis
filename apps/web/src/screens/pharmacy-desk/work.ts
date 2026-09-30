@@ -164,26 +164,47 @@ export function sigOf(rx: Pick<WireRxLine, "dose" | "frequency" | "durationDays"
 }
 
 /**
- * E8 and the one-batch-per-line rule, said at the TICK. FEFO gives the earliest batch; `pick`
- * refuses when it cannot cover the quantity, and a batch that dies inside the course is a refund
- * waiting to happen. Each advice names the batch that WOULD do, so the pharmacist chooses it here
- * rather than meeting `short_stock` after the strips are pulled.
+ * E8 and the batch rules, said at the TICK. FEFO gives the earliest batch, and a batch that dies
+ * inside the course is a refund waiting to happen. Each advice names the batch that WOULD do, so the
+ * pharmacist chooses it here rather than meeting a refusal after the strips are pulled.
+ *
+ * DESK FIXES 2026-09-30 — the pick SPLITS a line FEFO across batches (`pick.ts`), so a quantity the
+ * first batch cannot cover is `split` (said, not a problem), and only more than every batch together
+ * holds is `short_all` (a partial, with a reason). A NAMED batch is still one batch: `first_short`.
  */
 export type BatchAdvice =
   | { kind: "ok"; batch: WireBatch }
   | { kind: "dies_in_course"; batch: WireBatch; better: WireBatch | null }
   | { kind: "first_short"; batch: WireBatch; better: WireBatch | null }
+  | { kind: "split"; parts: { batch: WireBatch; qty: number }[] }
+  | { kind: "short_all"; batch: WireBatch; available: number }
   | { kind: "none" };
 
 export function adviceFor(line: WireDispenseLine, qty: number, today: string, chosen: string | null): BatchAdvice {
   const batches = line.batches ?? [];
-  const batch = (chosen === null ? undefined : batches.find((b) => b.batchId === chosen)) ?? batches[0];
+  const named = chosen === null ? undefined : batches.find((b) => b.batchId === chosen);
+  const batch = named ?? batches[0];
   if (batch === undefined) return { kind: "none" };
   const covers = batches.filter((b) => b.available >= qty && b.batchId !== batch.batchId);
-  if (batch.available < qty) return { kind: "first_short", batch, better: covers[0] ?? null };
+  if (batch.available < qty && named !== undefined) return { kind: "first_short", batch, better: covers[0] ?? null };
+  if (batch.available < qty) {
+    const available = batches.reduce((n, b) => n + b.available, 0);
+    if (available < qty) return { kind: "short_all", batch, available };
+  }
   const courseEnds = line.rxLine.durationDays === null ? null : addDays(today, line.rxLine.durationDays);
   if (courseEnds !== null && batch.expiryDate !== null && batch.expiryDate < courseEnds) {
     return { kind: "dies_in_course", batch, better: covers.find((b) => b.expiryDate === null || b.expiryDate >= courseEnds) ?? null };
+  }
+  if (batch.available < qty) {
+    /* FEFO, as the pick will take them: each batch in expiry order until the quantity is met. */
+    const parts: { batch: WireBatch; qty: number }[] = [];
+    let left = qty;
+    for (const b of batches) {
+      if (left <= 0) break;
+      const take = Math.min(b.available, left);
+      if (take > 0) { parts.push({ batch: b, qty: take }); left -= take; }
+    }
+    return { kind: "split", parts };
   }
   return { kind: "ok", batch };
 }

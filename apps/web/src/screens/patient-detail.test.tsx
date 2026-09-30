@@ -435,7 +435,7 @@ describe("PatientDetail", () => {
     await userEvent.setup().click(await screen.findByTestId("onward-open-visit"));
 
     expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}")).toMatchObject({ patientId: "p-1" });
-    expect(navigate).toHaveBeenCalledWith({ to: "/opd/desk" });
+    expect(navigate).toHaveBeenCalledWith({ to: "/counter" });
   });
 });
 

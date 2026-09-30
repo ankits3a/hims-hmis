@@ -79,6 +79,9 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [justHandedOver, setJustHandedOver] = useState<string | null>(null);
   /* PARITY P1 — the line the pharmacist is on, so `N` opens the short book prefilled with its drug. */
   const [focusedDrug, setFocusedDrug] = useState<ShortDrug | null>(null);
+  /* WALK FINDING 2026-09-29 — the quantities as typed on the ticket in hand, so the bill follows an edit before the tick. */
+  const [liveQty, setLiveQty] = useState<{ dispenseId: string; qty: Readonly<Record<number, number | null>> } | null>(null);
+  const onLiveQty = useCallback((dispenseId: string, qty: Readonly<Record<number, number | null>>): void => { setLiveQty({ dispenseId, qty }); }, []);
   useEffect(() => { setFocusedDrug(null); }, [inHandId]);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -257,7 +260,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       const p = await pickDispense(inHandId, pick, newIdempotencyKey());
       settle(p);
       /* PD-7 C6 — the hold is said by its END, the time the strips go back on the shelf by themselves. */
-      const held = p.lines.filter((l) => l.pickedBatch != null).length;
+      const held = p.lines.filter((l) => l.pickedBatch != null && l.splitFromLineIdx == null).length;
       const until = heldUntil(p.pickedAt);
       say(until === null ? t("pharmacyDesk.log.collected", { count: held }) : t("pharmacyDesk.log.collectedUntil", { count: held, time: until }));
       return { ok: true };
@@ -323,7 +326,11 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       say(t("pharmacyDesk.log.handedOver", { who: d.patient.alias ?? d.patient.name ?? d.patient.uhid }));
     } catch (e) {
       answered("handover", inHandId, e);
-      const text = pharmacyErrorText(e, t);
+      /* The walk of 2026-09-30: the server answers one code for a wrong token AND for wrong phone digits,
+         so the sentence follows the method the pharmacist chose, never the one they did not. */
+      const text = pharmacyErrorCode(e) === "identity_mismatch" && identity?.via === "token"
+        ? t("pharmacyDesk.handover.tokenMismatch")
+        : pharmacyErrorText(e, t);
       setHandOverError(text);
       say(text, "err");
     } finally {
@@ -488,6 +495,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onClear={clearDesk}
               autoPrint={inHand !== null && justHandedOver === inHand.id}
               onFocusDrug={setFocusedDrug}
+              onLiveQty={onLiveQty}
             />
           </main>
 
@@ -496,6 +504,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
             <BillRail
               dispense={inHand}
               preview={preview.data ?? null}
+              liveQty={liveQty !== null && liveQty.dispenseId === inHand.id ? liveQty.qty : null}
               previewError={preview.error === null ? null : pharmacyErrorText(preview.error, t)}
               drawerOpen={drawer.isPending ? null : drawer.data?.session?.status === "open"}
               busy={busy}

@@ -1,0 +1,191 @@
+/*
+ * UX-AUDIT 2026-09-28 · BOARD — /counter/reconcile, from the approved board
+ * (`docs/design/2026-09-28-ux-audit/card-reconcile.html`). Geometry and type sizes are the board's;
+ * every colour is `paper-pine.css`'s token, worn through the station shell's `.st` scope. Nothing
+ * here defines a colour of its own except the white on a filled mark, which the board also uses.
+ */
+.st .rc { min-height: 100%; display: flex; flex-direction: column; }
+.st .rc-note { font-size: 11px; color: var(--dim); line-height: 15px; }
+.st .rc-grow { flex-grow: 1; min-width: 0; }
+.st .rc-light { font-weight: 400; color: var(--dim); }
+.st .rc-error { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--red-line); background: var(--red-soft); color: var(--red); border-radius: 6px; font-size: 12.5px; }
+.st .rc-warn { margin: 6px 0 0; font-size: 11.5px; color: var(--red); }
+.st .rc-idle { padding: 40px 8px; max-width: 520px; }
+.st .rc-idle p { margin: 0 0 8px; }
+.st .rc-box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.st .rc-plain { padding: 12px 14px; margin-bottom: 14px; }
+
+/* ── buttons ── */
+.st .rc-pri, .st .rc-sec {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; border-radius: 6px;
+  font: inherit; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.st .rc-pri { padding: 0 18px; background: var(--green); color: #f2faf6; font-size: 13px; font-weight: 600; border: 1px solid var(--green); }
+.st .rc-pri .kb { background: transparent; color: #cfe8dc; border-color: #3f8a70; }
+.st .rc-pri:disabled { background: #b9c9c0; border-color: #b9c9c0; cursor: not-allowed; }
+.st .rc-sec { padding: 0 14px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 12.5px; font-weight: 500; }
+
+/* ── pills and chips ── */
+.st .rc-pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 10.5px;
+  font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--dim); white-space: nowrap;
+}
+.st .rc-pill.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+.st .rc-pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: #9a6208; }
+.st .rc-choice { font: inherit; font-size: 11.5px; height: 26px; cursor: pointer; }
+.st .rc-headpill { height: 24px; font-size: 11px; }
+.st .rc-src {
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 7px; min-width: 62px; height: 20px;
+  border-radius: 3px; font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 700; letter-spacing: .08em;
+  border: 1px solid var(--line); color: var(--dim); background: var(--wash); white-space: nowrap; flex-shrink: 0;
+}
+.st .rc-src.lp { border-color: var(--gold-line); color: #9a6208; background: var(--gold-soft); }
+
+/* ── the lane ── */
+.st .rc-lane { margin-top: 12px; }
+.st .rc-chipline { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.st .rc-fact { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line2); font-size: 12.5px; }
+.st .rc-fact > span:first-child { color: var(--dim); }
+.st .rc-fact > span:last-child { text-align: right; }
+.st .rc-lanetag { margin: 14px 0 4px; }
+.st .rc-why { margin: 6px 0 0; font-size: 12.5px; line-height: 18px; }
+.st .rc-lane .rc-note { margin: 10px 0 0; }
+.st .rc-lanefoot {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 16px; padding: 12px 0 0; border: 0;
+  border-top: 1px solid var(--line); background: none; font: inherit; font-size: 11.5px; color: var(--dim); cursor: pointer; text-align: left;
+}
+
+/* ── the centre flow ── */
+.st .rc-flow { flex: 1; display: flex; flex-direction: column; min-height: 100%; }
+.st .rc-scroll { flex: 1; }
+.st .rc-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.st .rc-h h1 { margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; }
+.st .rc-h span { font-size: 12.5px; color: var(--dim); }
+.st .rc-step { display: flex; align-items: center; gap: 9px; margin: 0 0 8px; }
+.st .rc-n {
+  width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--green); color: var(--green); flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700;
+}
+.st .rc-n.done { background: var(--green); color: #fff; }
+.st .rc-step h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.st .rc-stepbody { margin: 0 0 18px 31px; font-size: 12.5px; color: var(--dim); line-height: 18px; }
+.st .rc-stepbody b { color: var(--ink); }
+.st .rc-flush { margin-left: 0; }
+.st .rc-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.st .rc-field {
+  display: block; width: 100%; max-width: 560px; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--card); font: inherit; font-size: 12.5px; color: var(--ink); margin-top: 10px;
+}
+.st .rc-field:focus { outline: 2px solid var(--green-line); outline-offset: 0; }
+.st input[type="radio"], .st input[type="checkbox"] { accent-color: var(--green); width: 15px; height: 15px; margin: 0; flex-shrink: 0; }
+
+/* compare grid */
+.st .rc-cmpwrap { overflow-x: auto; margin-bottom: 18px; }
+.st .rc-cmp { display: grid; font-size: 12px; }
+.st .rc-cmp > div, .st .rc-cmp > label {
+  padding: 8px 9px; line-height: 17px; border-top: 1px solid var(--line2); min-height: 36px; min-width: 0; overflow-wrap: anywhere;
+}
+.st .rc-agedob { display: inline-block; vertical-align: top; }
+.st .rc-cmp > .top { border-top: none; }
+.st .rc-cmp .k { color: var(--dim); font-size: 11.5px; }
+.st .rc-cmp .h { background: var(--wash); }
+.st .rc-cmp .c1 { background: var(--green-soft); }
+.st .rc-cmp .rc-head.c1 { box-shadow: inset 0 3px 0 var(--green); }
+.st .rc-head { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; cursor: pointer; }
+.st .rc-head b { font-size: 12.5px; font-weight: 600; }
+.st .rc-uhid { font-size: 10.5px; color: var(--dim); margin-left: 22px; }
+.st .rc-head .rc-pill { margin: 2px 0 0 22px; }
+.st .rc-radioline { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
+.st .rc-ok, .st .rc-no, .st .rc-na {
+  display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%;
+  font-size: 9.5px; font-weight: 700; margin-right: 5px; vertical-align: -2px; flex-shrink: 0;
+}
+.st .rc-ok { background: var(--green); color: #fff; }
+.st .rc-no { background: var(--gold); color: #fff; }
+.st .rc-na { border: 1px solid var(--line); color: var(--faint); }
+.st .rc-count { font-weight: 600; }
+.st .rc-count.strong { color: var(--green); }
+.st .rc-count.weak { color: #9a6208; }
+
+/* phone cards: shown only on the phone */
+.st .rc-cards { display: none; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.st .rc-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; cursor: pointer; }
+.st .rc-card.sel { border-color: var(--green-line); background: #f7fbf8; box-shadow: inset 3px 0 0 var(--green); }
+.st .rc-cardsub { margin-left: 23px; }
+.st .rc-marks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 12px; margin-left: 23px; }
+
+/* the pinned bar */
+.st .rc-bar {
+  position: sticky; bottom: -22px; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 12px -22px -22px; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--card);
+}
+.st .rc-bartext { flex: 1 1 260px; min-width: 0; }
+.st .rc-barmain { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* lapsed */
+.st .rc-lapsed { max-width: 560px; }
+.st .rc-lname { display: block; font-size: 15px; margin: 4px 0 8px; }
+
+/* ── the queue ── */
+.st .rc-queue { overflow: hidden; }
+.st .rc-qhead { display: flex; align-items: baseline; gap: 8px; padding: 12px 14px 10px; }
+.st .rc-qtitle { flex-grow: 1; color: var(--ink); }
+.st .rc-empty { margin: 0; padding: 12px 14px 16px; font-size: 12.5px; color: var(--dim); }
+.st .rc-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 58px; padding: 9px 14px; border: 0;
+  border-top: 1px solid var(--line2); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.st .rc-row:hover { background: var(--wash); }
+.st .rc-row.sel { background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); }
+.st .rc-rowtext { flex-grow: 1; min-width: 0; }
+.st .rc-rowtext b { display: block; font-size: 13px; font-weight: 600; }
+.st .rc-rowtext small { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; line-height: 14px; }
+.st .rc-age { white-space: nowrap; }
+.st .rc-clocks { list-style: none; margin: 0; padding: 0; }
+.st .rc-clocks li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 12px; }
+
+/* ── dialogs ── */
+.st .rc-scrim {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(19, 36, 32, .28);
+}
+.st .rc-dialog {
+  width: min(472px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--card);
+  border: 1px solid #cfd9d2; border-radius: 6px; box-shadow: 0 12px 28px rgba(19, 36, 32, .16);
+}
+.st .rc-dbody { padding: 16px 18px; }
+.st .rc-dfoot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 18px; border-top: 1px solid var(--line); }
+.st .rc-dtitle { font-size: 14px; }
+.st .rc-dtag { margin: 12px 0 6px; }
+.st .rc-radios { display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; }
+.st .rc-radios label, .st .rc-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.st .rc-check { margin-top: 10px; font-size: 12px; }
+.st .rc-warnbox {
+  margin: 12px 0; padding: 10px 12px; border: 1px solid var(--gold-line); background: var(--gold-soft); border-radius: 6px;
+  font-size: 12.5px; line-height: 18px;
+}
+.st .rc-dafter { margin: 10px 0 0; }
+
+/* 1001–1099: the station switch still fits, so the waiting pill stays in the header instead of
+   making a Menu that holds nothing but itself (the shell folds `views` below 1100). */
+@media (min-width: 1001px) and (max-width: 1099px) {
+  .st[data-station="reconcile"] .st-views { display: flex; }
+  .st[data-station="reconcile"] .st-menubtn.has-views { display: none; }
+}
+
+/* phone: the side-by-side becomes one card per patient; the bar stacks with Link first */
+@media (max-width: 899px) {
+  .st .rc-lanemore, .st .rc-lanefoot { display: none; }
+  .st .rc-cmpwrap { display: none; }
+  .st .rc-cards { display: flex; }
+  .st .rc-stepbody { margin-left: 0; }
+  .st .rc-bar { bottom: 0; margin: 12px -16px 0; padding: 10px 14px 16px; flex-direction: column; align-items: stretch; }
+  .st .rc-bartext { flex: none; }
+  .st .rc-bar .rc-pri { width: 100%; order: 2; }
+  .st .rc-bar .rc-sec { width: 100%; height: 36px; order: 3; }
+  .st .rc-h h1 { font-size: 18px; line-height: 24px; }
+}
+/* a long name wraps beside its radio rather than pushing the radio onto a line of its own */
+.st .rc-head .rc-radioline { flex-wrap: nowrap; align-items: flex-start; }
+.st .rc-head .rc-radioline input { margin-top: 1px; }
+.st .rc-head .rc-radioline b { min-width: 0; }

@@ -1,5 +1,5 @@
 {
-  "id": "79c29539-d67d-4003-a66b-4c10f0401f38",
+  "id": "975b80dc-469e-4b05-a71d-58e0db3fa508",
   "prevId": "b89d4419-6b32-419f-b61f-914f47d93382",
   "version": "7",
   "dialect": "postgresql",
@@ -3332,12 +3332,6 @@
         "deceased_at": {
           "name": "deceased_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "death_certificate_no": {
-          "name": "death_certificate_no",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -21499,6 +21493,12 @@
         },
         "ledger_entry_id": {
           "name": "ledger_entry_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
           "type": "text",
           "primaryKey": false,
           "notNull": false

@@ -58,6 +58,8 @@ const acquiredBody = z.object({
   fluoroSeconds: z.number().int().nonnegative().max(86_400).nullish(),
   /** 18-S RS12 — mammography's Average Glandular Dose, mGy. */
   doseAgd: z.number().nonnegative().max(9_999_999).nullish(),
+  /** 18-S RS12b — reference-point air kerma Ka,r, mGy. */
+  doseKar: z.number().nonnegative().max(9_999_999).nullish(),
   doseManual: z.boolean().optional(),
   contrastGiven: z.boolean().optional(),
   contrastAgent: z.string().min(1).max(120).nullish(),
@@ -156,6 +158,7 @@ export class RadiologyAcquisitionController {
         doseDap: input.doseDap ?? null,
         fluoroSeconds: input.fluoroSeconds ?? null,
         doseAgd: input.doseAgd ?? null,
+        doseKar: input.doseKar ?? null,
         doseManual: input.doseManual ?? false,
         contrastGiven: input.contrastGiven ?? false,
         contrastAgent: input.contrastAgent ?? null,

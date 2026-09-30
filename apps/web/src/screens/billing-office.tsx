@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { MoneyInput } from "../components/money-input";
@@ -13,7 +14,16 @@ import type { WireChargeOrphan } from "../lib/billing-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "../lib/auth";
+import { dayWords, fetchBillingNeeds } from "../lib/billing-office-api";
+import { istClock, istDateLabel } from "./desk-one/model";
+import { MENU, OLD_TABS, SIDE_KEYS, pagesOf } from "./billing-office/pages";
+import { TodayDesk } from "./billing-office/today";
+import type { OfficePage, OfficeView } from "./billing-office/pages";
+import "../styles/paper-pine.css";
+import "./desk-one/desk-one.css";
+import "./pharmacy-office/pharmacy-office.css";
+import "./billing-office/billing-office.css";
 
 /**
  * THE BACK OFFICE (Plan 08 T16 / D6 / D7 / D9) — four tabs of the work that is NOT the counter:
@@ -42,9 +52,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  *    its alias through `billingPatientLabel`, never a name (§14).
  *  · **NO IDENTITY DOCUMENT REFERENCE IS EVER RENDERED.** `GET /billing/refunds` stopped sending
  *    `payeeIdRef` in `30a272d`; `toVoucherRow` below is a second belt that keeps a future
- *    regression off the screen. The pay form COLLECTS a reference — the server requires one at pay
- *    time — but nothing reads one back onto a list. Neither belt is the security boundary: a
- *    caller with the permission can still hit the route directly.
+ *    regression off the screen. OWNER RULING 2026-09-28 — Aadhaar is never stored: the pay flow
+ *    (`billing-office/hand.tsx`) no longer collects a reference at all, only the payee's name and
+ *    the TYPE of ID shown. Neither belt is the security boundary: a caller with the permission can
+ *    still hit the route directly, and `payRefundVoucher` refuses an Aadhaar number there.
  *  · **THE 403 LANE ASSUMES NOTHING.** This screen holds no permission model: whichever route the
  *    server refuses, the refusal is rendered in ONE shared error state, in the server's own words.
  *    Which permission guards which route is the server's business (§3.5), and a client that
@@ -52,11 +63,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  *
  * The worklists follow the 15 s polling convention; T13's counter owns that convention's teeth
  * (K39/W-3) and this screen follows it.
+ *
+ * ═══ UX-AUDIT 2026-09-28 · BOARD — FIVE TABS BECAME ONE LIST AND A HEADER MENU ═══
+ *
+ * The owner-approved billing back office board (docs/design/2026-09-28-ux-audit/billing-back-office.html)
+ * rebuilt the frame on the pharmacy office's pattern: the office owns the viewport, opens on TODAY — one
+ * ranked "needs you today" (`GET /billing/office/needs`, `billing-office/today.tsx`) — and every other
+ * page lives in the header menu at `?view=<side>&page=<key>` (`billing-office/pages.ts`); the old
+ * `?tab=` state redirects. The pages below are the office's existing screens, kept working, with two
+ * changes: a voucher is PAID and a mismatch DECIDED in the item-in-hand flow on Today (`hand.tsx`), and
+ * the pay lane's ID-reference field is gone — OWNER RULING 2026-09-28: Aadhaar is never stored.
  */
 const POLL_MS = 15_000;
 
 type OfficeTab = "refunds" | "recon" | "daybook" | "gstr1" | "orphans";
-const TABS: OfficeTab[] = ["refunds", "recon", "daybook", "gstr1", "orphans"];
+/** Which of the old tabs' reads a page needs — each read stays gated, so a page nobody opened costs nothing. */
+const TAB_OF_PAGE: Record<string, OfficeTab> = {
+  pay: "refunds", request: "refunds", waiting: "refunds", all: "refunds", void: "refunds",
+  paper: "daybook", daybook: "daybook", upload: "recon", mismatches: "recon", gstr1: "gstr1", unbilled: "orphans",
+};
 
 type RefundKind = "invoice_refund" | "advance_refund";
 type RefundMethod = "cash" | "bank_transfer";
@@ -162,12 +187,6 @@ type WireIssueRefundResult = {
   amountPaise: number; method: RefundMethod; guardFlags: string[]; status: "issued";
 };
 
-type WirePayRefundResult = {
-  voucherId: string; voucherNo: string; patientId: string;
-  amountPaise: number; method: RefundMethod;
-  cashierSessionId: string | null; paidAt: string; status: "paid";
-};
-
 type WireMarkEnteredInErrorResult = { markId: string; reversedAllocationIds: string[] };
 
 type WireUploadSettlementResult = {
@@ -225,16 +244,14 @@ function sumOf(rows: WireGstr1Row[], of: (row: WireGstr1Row) => number): number 
   return rows.reduce((total, row) => total + of(row), 0);
 }
 
-/** A digit shortcut must never fire while the operator is typing an amount or a reason into a field. */
-function isTypingTarget(el: EventTarget | null): boolean {
-  return el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
-}
-
-export function BillingOffice(): React.ReactElement {
+/** The office's pages, each the block it was on the old tabs. `onHand` opens an item on Today. */
+function OfficePages({ page, onHand, onGo }: {
+  page: string; onHand: (id: string) => void; onGo: (view: OfficeView, page?: string) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
 
-  const [tab, setTab] = useState<OfficeTab>("refunds");
+  const tab: OfficeTab = TAB_OF_PAGE[page] ?? "refunds";
 
   // ——— refunds: request → issue → pay, and the entered-in-error correction ———
   const [kind, setKind] = useState<RefundKind>("advance_refund");
@@ -251,12 +268,6 @@ export function BillingOffice(): React.ReactElement {
   const [issueError, setIssueError] = useState<string | null>(null);
   const [issued, setIssued] = useState<WireIssueRefundResult | null>(null);
 
-  const [payVoucherId, setPayVoucherId] = useState<string | null>(null);
-  const [payeeName, setPayeeName] = useState("");
-  const [payeeIdType, setPayeeIdType] = useState("");
-  const [payeeIdRef, setPayeeIdRef] = useState("");
-  const [payError, setPayError] = useState<string | null>(null);
-  const [paid, setPaid] = useState<WirePayRefundResult | null>(null);
 
   const [eieReceiptId, setEieReceiptId] = useState("");
   /**
@@ -288,6 +299,8 @@ export function BillingOffice(): React.ReactElement {
   const [fromDraft, setFromDraft] = useState<string>(() => todayIst());
   const [toDraft, setToDraft] = useState<string>(() => todayIst());
   const [range, setRange] = useState<{ from: string; to: string }>(() => ({ from: todayIst(), to: todayIst() }));
+  /** UX-AUDIT 2026-09-28 · BOARD — unbilled visits get a date of their own, no longer the day book's. */
+  const [orphanDay, setOrphanDay] = useState<string>(() => todayIst());
 
   // ——— reads (each gated to its own tab, so a tab nobody opened costs nothing) ———
 
@@ -330,8 +343,8 @@ export function BillingOffice(): React.ReactElement {
    * `runDailyClose`) so a refresh cannot close the books.
    */
   const orphans = useQuery({
-    queryKey: ["billing-office", "orphans", day],
-    queryFn: () => api<{ items: WireChargeOrphan[] }>("GET", `/billing/charge-orphans?serviceDate=${encodeURIComponent(day)}`),
+    queryKey: ["billing-office", "orphans", orphanDay],
+    queryFn: () => api<{ items: WireChargeOrphan[] }>("GET", `/billing/charge-orphans?serviceDate=${encodeURIComponent(orphanDay)}`),
     enabled: tab === "orphans",
     refetchInterval: POLL_MS,
   });
@@ -346,7 +359,15 @@ export function BillingOffice(): React.ReactElement {
       // (the Rule 114B capture above all) is carried into this screen's state.
       return res.items.map((r) => ({ id: r.id, receiptNo: r.receiptNo, receivedAt: r.receivedAt, totalPaise: r.totalPaise }));
     },
-    enabled: tab === "refunds" && eiePatient !== null,
+    enabled: page === "void" && eiePatient !== null,
+  });
+
+  // The refunds waiting for a decision come from the office's own feed — `/approvals` is not billing-scoped.
+  const waiting = useQuery({
+    queryKey: ["billing-office", "needs"],
+    queryFn: fetchBillingNeeds,
+    enabled: page === "waiting",
+    refetchInterval: POLL_MS,
   });
 
   const gstr1 = useQuery({
@@ -366,31 +387,12 @@ export function BillingOffice(): React.ReactElement {
    * about WHICH permission guards which route — it renders whatever the server refused, in the
    * server's own words, wherever the operator was looking.
    */
-  const active = tab === "refunds" ? vouchers : tab === "recon" ? mismatches : tab === "daybook" ? dayBook : tab === "orphans" ? orphans : gstr1;
+  const active = page === "waiting" ? waiting : tab === "refunds" ? vouchers : tab === "recon" ? mismatches : tab === "daybook" ? dayBook : tab === "orphans" ? orphans : gstr1;
   const loadError = active.error === null ? null : billingErrorMessage(active.error);
 
   const voucherRows = vouchers.data ?? [];
   const mismatchRows = mismatches.data ?? [];
   const gstr1Groups = groupGstr1(gstr1.data ?? []);
-
-  // ——— tab shortcuts (1/2/3/4), screen-local: lib/keyboard.tsx owns the global ones ———
-
-  const tabRef = useRef(setTab);
-  tabRef.current = setTab;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.altKey || e.ctrlKey || e.metaKey || isTypingTarget(e.target)) return;
-      // "1".."4" → the four tabs. Anything else (including "" and a letter) indexes to undefined.
-      const next = TABS[Number(e.key) - 1];
-      if (next === undefined) return;
-      e.preventDefault();
-      tabRef.current(next);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-    };
-  }, []);
 
   // ——— writes ———
 
@@ -442,39 +444,6 @@ export function BillingOffice(): React.ReactElement {
       await refresh();
     } catch (e) {
       setIssueError(billingErrorMessage(e));
-    }
-  };
-
-  const openPayLane = (voucherId: string): void => {
-    setPayVoucherId(voucherId);
-    setPayeeName("");
-    setPayeeIdType("");
-    setPayeeIdRef("");
-    setPayError(null);
-    setPaid(null);
-  };
-
-  const payVoucher = async (idemKey: string): Promise<void> => {
-    if (payVoucherId === null) return;
-    // The client-side mirror of `payRefundBody`. The SERVER is the authority; this only spares the
-    // operator a round trip, and it never decides that an identity is acceptable.
-    if (payeeName.trim() === "" || payeeIdType.trim() === "" || payeeIdRef.trim() === "") {
-      setPayError(t("billingOffice.pay.required"));
-      return;
-    }
-    setPayError(null);
-    try {
-      const result = await api<WirePayRefundResult>(
-        "POST",
-        `/billing/refunds/${encodeURIComponent(payVoucherId)}/pay`,
-        { payeeName: payeeName.trim(), payeeIdType: payeeIdType.trim(), payeeIdRef: payeeIdRef.trim() },
-        idemKey,
-      );
-      setPaid(result);
-      setPayVoucherId(null);
-      await refresh();
-    } catch (e) {
-      setPayError(billingErrorMessage(e));
     }
   };
 
@@ -564,12 +533,11 @@ export function BillingOffice(): React.ReactElement {
     (r) => eieNeedle === "" || r.receiptNo.toLowerCase().includes(eieNeedle),
   );
 
-  // ——— tabs ———
+  // ——— pages ———
 
-  const refundsTab = (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div className="space-y-3">
-        <div className="space-y-2 rounded border p-2">
+  const requestPage = (
+    <div className="max-w-xl space-y-3">
+        <div className="space-y-2 rounded border bg-white p-2">
           <h2 className="text-sm font-semibold">{t("billingOffice.request.title")}</h2>
           <div className="space-y-1">
             <label className="block text-sm font-medium" htmlFor="refund-kind">{t("billingOffice.request.kind")}</label>
@@ -701,8 +669,13 @@ export function BillingOffice(): React.ReactElement {
           )}
         </div>
 
+    </div>
+  );
+
+  const voidPage = (
+    <div className="max-w-xl space-y-3">
         {/* ——— the correction lane: voiding a receipt reverses everything it settled ——— */}
-        <div className="space-y-2 rounded border p-2">
+        <div className="space-y-2 rounded border bg-white p-2">
           <h2 className="text-sm font-semibold">{t("billingOffice.eie.title")}</h2>
           <div className="space-y-1" data-testid="eie-patient">
             <p className="block text-sm font-medium">{t("billingOffice.eie.patient")}</p>
@@ -799,17 +772,21 @@ export function BillingOffice(): React.ReactElement {
         </div>
       </div>
 
-      {/* ——— the voucher worklist ——— */}
-      <div className="space-y-2 rounded border p-2">
-        <h2 className="text-sm font-semibold">{t("billingOffice.worklist.title")}</h2>
+  );
+
+  // UX-AUDIT 2026-09-28 · BOARD — "Vouchers to pay" is the issued ones; "All vouchers" every one.
+  const shownVouchers = page === "pay" ? voucherRows.filter((r) => r.status === "issued") : voucherRows;
+  const voucherPage = (
+      <div className="space-y-2 rounded border bg-white p-2">
+        <h2 className="text-sm font-semibold">{page === "pay" ? t("billingOffice.board.page.pay") : t("billingOffice.worklist.title")}</h2>
         <p data-testid="guard-flag-note" className="text-xs text-neutral-600">
           {t("billingOffice.guardFlags.note")}
         </p>
-        {voucherRows.length === 0 ? (
+        {shownVouchers.length === 0 ? (
           <p data-testid="no-vouchers" className="text-sm text-neutral-500">{t("billingOffice.worklist.empty")}</p>
         ) : (
           <ul className="space-y-2">
-            {voucherRows.map((row) => (
+            {shownVouchers.map((row) => (
               <li key={row.id} data-testid={`voucher-row-${row.id}`} className="space-y-1 rounded border p-2 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <span data-testid={`voucher-no-${row.id}`} className="font-semibold">{row.voucherNo}</span>
@@ -832,7 +809,8 @@ export function BillingOffice(): React.ReactElement {
                   </div>
                 )}
                 {row.status === "issued" && (
-                  <Button size="sm" data-testid={`voucher-pay-${row.id}`} onClick={() => openPayLane(row.id)}>
+                  /* UX-AUDIT 2026-09-28 · BOARD — a voucher is paid in the numbered flow on Today. */
+                  <Button size="sm" data-testid={`voucher-pay-${row.id}`} onClick={() => onHand(`pay:${row.id}`)}>
                     {t("billingOffice.pay.open")}
                   </Button>
                 )}
@@ -841,70 +819,12 @@ export function BillingOffice(): React.ReactElement {
           </ul>
         )}
 
-        {payVoucherId !== null && (
-          <div className="space-y-2 rounded border border-blue-400 p-2">
-            <h3 className="text-sm font-semibold">{t("billingOffice.pay.title")}</h3>
-            <p className="text-xs text-neutral-600">{t("billingOffice.pay.serverIsAuthority")}</p>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor="pay-payee-name">{t("billingOffice.pay.payeeName")}</label>
-              <input
-                id="pay-payee-name"
-                value={payeeName}
-                autoComplete="off"
-                onChange={(e) => setPayeeName(e.target.value)}
-                className="w-full rounded border px-2 py-1"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor="pay-payee-id-type">
-                {t("billingOffice.pay.payeeIdType")}
-              </label>
-              <select
-                id="pay-payee-id-type"
-                value={payeeIdType}
-                onChange={(e) => setPayeeIdType(e.target.value)}
-                className="w-full rounded border px-2 py-1"
-              >
-                <option value="">{t("billingOffice.pay.payeeIdTypePlaceholder")}</option>
-                <option value="aadhaar">{t("billingOffice.pay.aadhaar")}</option>
-                <option value="pan">{t("billingOffice.pay.pan")}</option>
-                <option value="voter_id">{t("billingOffice.pay.voterId")}</option>
-                <option value="driving_licence">{t("billingOffice.pay.drivingLicence")}</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium" htmlFor="pay-payee-id-ref">
-                {t("billingOffice.pay.payeeIdRef")}
-              </label>
-              <input
-                id="pay-payee-id-ref"
-                value={payeeIdRef}
-                autoComplete="off"
-                onChange={(e) => setPayeeIdRef(e.target.value)}
-                className="w-full rounded border px-2 py-1"
-              />
-            </div>
-            {payError !== null && (
-              <p role="alert" data-testid="pay-error" className="text-sm text-red-600">{payError}</p>
-            )}
-            <div className="flex gap-2">
-              <SubmitButton data-testid="pay-submit" onClick={(k) => payVoucher(k)}>{t("billingOffice.pay.submit")}</SubmitButton>
-              <Button variant="outline" onClick={() => setPayVoucherId(null)}>{t("billingOffice.cancel")}</Button>
-            </div>
-          </div>
-        )}
-        {paid !== null && (
-          <p role="status" data-testid="pay-done" className="text-sm">
-            {t("billingOffice.pay.done", { voucherNo: paid.voucherNo })}
-          </p>
-        )}
       </div>
-    </div>
   );
 
-  const reconTab = (
-    <div className="space-y-3">
-      <div className="space-y-2 rounded border p-2">
+  const uploadPage = (
+    <div className="max-w-3xl space-y-3">
+      <div className="space-y-2 rounded border bg-white p-2">
         <h2 className="text-sm font-semibold">{t("billingOffice.recon.title")}</h2>
         <p className="text-xs text-neutral-600">{t("billingOffice.recon.degradedNote")}</p>
         <div className="space-y-1">
@@ -952,8 +872,19 @@ export function BillingOffice(): React.ReactElement {
           </p>
         </div>
       )}
+      {uploaded !== null && uploaded.rowsMismatched > 0 && (
+        <p className="text-sm">
+          <button type="button" className="underline" data-testid="recon-to-mismatches" onClick={() => onGo("recon", "mismatches")}>
+            {t("billingOffice.board.recon.seeMismatches")}
+          </button>
+        </p>
+      )}
+    </div>
+  );
 
-      <div className="space-y-2 rounded border p-2">
+  const mismatchesPage = (
+    <div className="max-w-3xl space-y-3">
+      <div className="space-y-2 rounded border bg-white p-2">
         <h2 className="text-sm font-semibold">{t("billingOffice.recon.worklist")}</h2>
         {mismatchRows.length === 0 ? (
           <p data-testid="no-mismatches" className="text-sm text-neutral-500">{t("billingOffice.recon.noMismatches")}</p>
@@ -982,6 +913,10 @@ export function BillingOffice(): React.ReactElement {
                     {mismatchNoteText(row.mismatchNote, t)}
                   </p>
                 )}
+                {/* UX-AUDIT 2026-09-28 · BOARD — a mismatch is decided in its flow on Today. */}
+                <Button size="sm" variant="outline" className="mt-1" data-testid={`mismatch-decide-${row.tenderId}`} onClick={() => onHand(`recon:${row.tenderId}`)}>
+                  {t("billingOffice.board.recon.decide")}
+                </Button>
               </li>
             ))}
           </ul>
@@ -1124,57 +1059,89 @@ export function BillingOffice(): React.ReactElement {
     </div>
   );
 
-  return (
-    <div className="space-y-4 p-6">
-      <h1 className="text-xl font-semibold">{t("billingOffice.title")}</h1>
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — unbilled visits: a date of their own, and a way out. The billing
+   * counter already opens a bill for a visit at `/billing?encounterId=` (the OPD desk's door), so
+   * "Raise the missing bill" is a link there — nothing in billing's exported surface changes.
+   */
+  const unbilledPage = (
+    <div className="max-w-3xl space-y-3">
+      <div className="space-y-1">
+        <label className="block text-sm font-medium" htmlFor="orphan-day">{t("billingOffice.dayBook.day")}</label>
+        <input id="orphan-day" type="date" value={orphanDay} onChange={(e) => setOrphanDay(e.target.value)} className="rounded border px-2 py-1 tabular-nums" />
+      </div>
+      <p style={{ margin: "0 0 9px", fontSize: 12, color: "var(--dim)" }}>{t("billingOffice.orphans.blurb")}</p>
+      {orphans.data?.items.length === 0 ? (
+        /* The GOOD answer, and it has to read as one: an empty list means every visit that owed
+           a consultation fee has one raised against it. A blank table would read as a failure. */
+        <p data-testid="orphans-none" style={{ margin: 0, fontWeight: 600 }}>{t("billingOffice.orphans.none", { day: dayWords(orphanDay) })}</p>
+      ) : (
+        <table data-testid="orphans-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: "var(--dim)", fontSize: 10.5 }}>
+              <th>{t("billingOffice.orphans.visit")}</th>
+              <th>{t("billingOffice.orphans.type")}</th>
+              <th>{t("billingOffice.orphans.date")}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {(orphans.data?.items ?? []).map((o) => (
+              <tr key={o.encounterId} data-testid={`orphan-${o.encounterId}`}>
+                <td className="mo">{o.visitNo}</td>
+                <td data-testid={`orphan-type-${o.encounterId}`}>{visitTypeLabel(o.visitType)}</td>
+                <td className="mo">{dayWords(o.serviceDate)}</td>
+                <td style={{ textAlign: "right" }}>
+                  <Link to="/billing" search={{ encounterId: o.encounterId }} className="underline" data-testid={`orphan-raise-${o.encounterId}`}>
+                    {t("billingOffice.board.simple.unbilled_visit.act")}
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 
+  /** Refunds waiting for a decision — the manager's (open in approvals) and the owner's (above ₹25,000.00). */
+  const waitingRows = (waiting.data?.rows ?? []).filter((r) => r.kind === "approve_refund" || r.kind === "refund_owner");
+  const waitingPage = (
+    <div className="max-w-3xl space-y-2 rounded border bg-white p-2">
+      <h2 className="text-sm font-semibold">{t("billingOffice.board.page.waiting")}</h2>
+      {waiting.data !== undefined && waitingRows.length === 0 && <p data-testid="waiting-empty" className="text-sm text-neutral-500">{t("billingOffice.board.waiting.empty")}</p>}
+      <ul className="space-y-2">
+        {waitingRows.map((r) => (
+          <li key={r.id} data-testid={`waiting-${r.id}`} className="flex flex-wrap items-center gap-3 rounded border p-2 text-sm">
+            <span className="tabular-nums font-semibold">{fmtPaise(typeof r.params.amountPaise === "number" ? r.params.amountPaise : 0)}</span>
+            <span>{r.patient === null ? "" : billingPatientLabel(r.patient)}</span>
+            <span className="flex-1 text-xs text-neutral-500">{typeof r.params.note === "string" ? r.params.note : ""}</span>
+            {r.kind === "refund_owner"
+              ? <span className="text-xs font-semibold text-amber-800">{t("billingOffice.board.simple.refund_owner.act")}</span>
+              : <Link to="/approvals" search={{ focus: String(r.params.approvalId) }} className="underline">{t("billingOffice.board.simple.approve_refund.act")}</Link>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  const body = page === "request" ? requestPage
+    : page === "void" ? voidPage
+    : page === "waiting" ? waitingPage
+    : page === "pay" || page === "all" ? voucherPage
+    : page === "upload" ? uploadPage
+    : page === "mismatches" ? mismatchesPage
+    : page === "daybook" || page === "paper" ? dayBookTab
+    : page === "gstr1" ? gstr1Tab
+    : unbilledPage;
+
+  return (
+    <div className="space-y-4">
       {loadError !== null && (
         <p role="alert" data-testid="load-error" className="text-sm text-red-600">{loadError}</p>
       )}
-
-      <Tabs value={tab} onValueChange={(value) => setTab(value as OfficeTab)}>
-        {/* UX-AUDIT 2026-09-28: at 390 px the five triggers ran to x=455 and widened the page
-            (scrollWidth 463). The strip WRAPS inside its own width now — no redesign (that is the
-            later rebuild), only a free height so a second row has room and `flex-wrap` to take it. */}
-        <TabsList data-testid="office-tabs" className="max-w-full flex-wrap justify-start group-data-[orientation=horizontal]/tabs:h-auto">
-          <TabsTrigger value="refunds" data-testid="tab-refunds">{t("billingOffice.tabs.refunds")}</TabsTrigger>
-          <TabsTrigger value="recon" data-testid="tab-recon">{t("billingOffice.tabs.recon")}</TabsTrigger>
-          <TabsTrigger value="daybook" data-testid="tab-daybook">{t("billingOffice.tabs.dayBook")}</TabsTrigger>
-          <TabsTrigger value="gstr1" data-testid="tab-gstr1">{t("billingOffice.tabs.gstr1")}</TabsTrigger>
-          <TabsTrigger value="orphans" data-testid="tab-orphans">{t("billingOffice.tabs.orphans")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="refunds">{refundsTab}</TabsContent>
-        <TabsContent value="recon">{reconTab}</TabsContent>
-        <TabsContent value="daybook">{dayBookTab}</TabsContent>
-        <TabsContent value="gstr1">{gstr1Tab}</TabsContent>
-        <TabsContent value="orphans">
-          <p style={{ margin: "0 0 9px", fontSize: 12, color: "var(--dim)" }}>{t("billingOffice.orphans.blurb")}</p>
-          {orphans.data?.items.length === 0 ? (
-            /* The GOOD answer, and it has to read as one: an empty list means every visit that owed
-               a consultation fee has one raised against it. A blank table would read as a failure. */
-            <p data-testid="orphans-none" style={{ margin: 0, fontWeight: 600 }}>{t("billingOffice.orphans.none", { day })}</p>
-          ) : (
-            <table data-testid="orphans-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "var(--dim)", fontSize: 10.5 }}>
-                  <th>{t("billingOffice.orphans.visit")}</th>
-                  <th>{t("billingOffice.orphans.type")}</th>
-                  <th>{t("billingOffice.orphans.date")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(orphans.data?.items ?? []).map((o) => (
-                  <tr key={o.encounterId} data-testid={`orphan-${o.encounterId}`}>
-                    <td className="mo">{o.visitNo}</td>
-                    <td data-testid={`orphan-type-${o.encounterId}`}>{visitTypeLabel(o.visitType)}</td>
-                    <td className="mo">{o.serviceDate}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </TabsContent>
-      </Tabs>
+      {page === "paper" && <p className="bof-page-note">{t("billingOffice.board.paperNote")}</p>}
+      {body}
 
       {/* The cascade is named BEFORE the operator confirms, not after: voiding a receipt reverses
           every allocation it made, and there is no undo on the other side of this button. */}
@@ -1192,6 +1159,247 @@ export function BillingOffice(): React.ReactElement {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** True below `px`. jsdom has no `matchMedia`, so a test renders the wide desk. */
+function useNarrow(px: number): boolean {
+  const query = `(max-width: ${String(px)}px)`;
+  const [narrow, setNarrow] = useState(() => typeof window.matchMedia === "function" && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const m = window.matchMedia(query);
+    const on = (): void => setNarrow(m.matches);
+    on();
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, [query]);
+  return narrow;
+}
+
+type Where = { view: OfficeView; page: string | null; open: string | null };
+function whereOf(search: Record<string, unknown>): Where {
+  const v = typeof search.view === "string" ? search.view : null;
+  const tab = typeof search.tab === "string" ? OLD_TABS[search.tab] : undefined;
+  if (v === null && tab !== undefined) return { view: tab.view, page: tab.page, open: null };
+  return {
+    view: MENU.includes(v as OfficeView) ? (v as OfficeView) : "today",
+    page: typeof search.page === "string" ? search.page : null,
+    open: typeof search.open === "string" ? search.open : null,
+  };
+}
+
+/**
+ * ═══ UX-AUDIT 2026-09-28 · BOARD — THE BILLING BACK OFFICE ═══
+ *
+ * The frame of the approved board: the wordmark, the header menu (Today · Refunds ▾ · Receipts ▾ ·
+ * Reconciliation ▾ · Day book · GSTR-1 · Unbilled visits), the money pills, the IST clock and who is
+ * signed in; below it Today's desk or the page the menu opened. The URL is the state —
+ * `?view=&page=&open=` — so reload and back/forward land where the person was, and the old `?tab=`
+ * redirects to its page. Below 1100 px the menu folds behind one Menu button; up to 900 px the phone
+ * layout (artboard 4).
+ */
+export function BillingOffice(): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const { username } = useAuth();
+  const navigate = useNavigate();
+  const phone = useNarrow(900);
+  const folded = useNarrow(1100);
+  const drawerMode = useNarrow(1280);
+
+  const routed = useSearch({ strict: false }) as Record<string, unknown>;
+  const where = whereOf(routed);
+  const shown = where.view;
+  const sidePages = shown === "today" ? [] : pagesOf(shown);
+  const page: OfficePage | null = sidePages.find((pg) => pg.key === where.page) ?? sidePages[0] ?? null;
+
+  // The old tab state redirects to the page that replaced it.
+  const oldTab = typeof routed.tab === "string" ? routed.tab : null;
+  useEffect(() => {
+    if (oldTab === null) return;
+    const to = OLD_TABS[oldTab];
+    void navigate({ to: "/billing/office", search: to === undefined ? {} : { view: to.view, page: to.page }, replace: true });
+  }, [oldTab, navigate]);
+
+  const needs = useQuery({ queryKey: ["billing-office", "needs"], queryFn: fetchBillingNeeds, refetchInterval: POLL_MS });
+  const [drop, setDrop] = useState<OfficeView | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [full, setFull] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(id); }, []);
+  useEffect(() => { if (notice === null) return; const id = setTimeout(() => setNotice(null), 6_000); return () => clearTimeout(id); }, [notice]);
+
+  const go = useCallback((view: OfficeView, pageKey?: string, open?: string): void => {
+    setDrop(null); setMenuOpen(false); setDrawerOpen(false);
+    const search: Record<string, string> = { view };
+    if (pageKey !== undefined) search.page = pageKey;
+    if (open !== undefined) search.open = open;
+    void navigate({ to: "/billing/office", search });
+  }, [navigate]);
+  const setOpen = useCallback((id: string | null): void => {
+    void navigate({ to: "/billing/office", search: id === null ? { view: "today" } : { view: "today", open: id }, replace: true });
+  }, [navigate]);
+  const openSide = (v: OfficeView, fromKey: boolean): void => {
+    if (v === "today" || pagesOf(v).length <= 1) { go(v); return; }
+    setDrop((d) => (d === v && !fromKey ? null : v));
+    if (fromKey) setTimeout(() => document.querySelector<HTMLButtonElement>(`[data-drop="${v}"] [role="menuitem"]`)?.focus(), 0);
+  };
+
+  // A dropdown closes on a click anywhere outside it.
+  useEffect(() => {
+    if (drop === null) return;
+    const onDown = (e: MouseEvent): void => {
+      if (!(e.target instanceof Node) || document.querySelector(`[data-navi="${drop}"]`)?.contains(e.target) !== true) setDrop(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [drop]);
+
+  // The board's letters open a side (R V C D G U) — on Today and while a dropdown is open, never while typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "Escape" && drop !== null) { e.preventDefault(); setDrop(null); return; }
+      if (e.defaultPrevented || phone || folded || where.open !== null) return;
+      const el = e.target as HTMLElement | null;
+      if (el !== null && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      if (shown !== "today" && drop === null) return;
+      const side = MENU.find((v) => SIDE_KEYS[v] !== undefined && SIDE_KEYS[v] === e.key.toUpperCase());
+      if (side === undefined) return;
+      e.preventDefault();
+      openSide(side, true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  const onDropKey = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    items[e.key === "ArrowDown" ? Math.min(items.length - 1, i + 1) : Math.max(0, i - 1)]?.focus();
+    e.preventDefault();
+  };
+
+  const d = needs.data;
+  const openCount = d?.rows.filter((r) => r.state === "open").length ?? 0;
+  const sideName = (v: OfficeView): string => t(`billingOffice.board.menu.${v}`);
+  const pageName = (pg: OfficePage): string => t(`billingOffice.board.page.${pg.key}`);
+  const pills = (
+    <>
+      {d !== undefined && d.money.toPayCount > 0 && (
+        <span className="pill gd" data-testid="pill-to-pay">{t("billingOffice.board.pill.toPay", { count: d.money.toPayCount, amount: fmtPaise(d.money.toPayPaise) })}</span>
+      )}
+      {d !== undefined && d.money.shortPaise > 0 && (
+        <span className="pill rd" style={{ marginLeft: 6 }} data-testid="pill-short">{t("billingOffice.board.pill.short", { amount: fmtPaise(d.money.shortPaise) })}</span>
+      )}
+    </>
+  );
+
+  const phoneMenu = (
+    <nav className="pof-drop" aria-label={t("billingOffice.board.menuLabel")}>
+      {MENU.map((v) => {
+        const list = v === "today" ? [] : pagesOf(v);
+        if (list.length <= 1) {
+          return <button key={v} type="button" aria-current={v === shown ? "page" : undefined} data-testid={`office-view-${v}`} onClick={() => go(v)}>{sideName(v)}</button>;
+        }
+        return (
+          <div key={v} role="group" aria-label={sideName(v)} data-testid={`office-group-${v}`}>
+            <div className="tag pof-drop-head">{sideName(v)}</div>
+            {list.map((pg) => (
+              <button key={pg.key} type="button" className="pof-drop-ent" aria-current={v === shown && pg.key === page?.key ? "page" : undefined} data-testid={`office-entry-${pg.key}`} onClick={() => go(v, pg.key)}>
+                {pageName(pg)}
+              </button>
+            ))}
+          </div>
+        );
+      })}
+    </nav>
+  );
+
+  const header = phone || folded ? (
+    !full && (
+      <header className="pof-ptop">
+        <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e" /></svg>
+        <span className="mo" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".12em", flexGrow: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {shown === "today" ? t("billingOffice.board.wordmark") : t("billingOffice.board.phoneWordmark", { view: sideName(shown).toUpperCase() })}
+        </span>
+        {!phone && pills}
+        {!phone && drawerMode && where.open !== null && (
+          <button type="button" className="bof-badge" data-testid="needs-badge" onClick={() => setDrawerOpen((o) => !o)}>{t("billingOffice.board.pill.needs", { count: openCount })}</button>
+        )}
+        <button type="button" className="pof-pmenu" aria-label={t("billingOffice.board.menuAria")} aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)} data-testid="office-menu">
+          ☰ {t("billingOffice.board.menuButton")}
+        </button>
+        {menuOpen && phoneMenu}
+      </header>
+    )
+  ) : (
+    <header className="pof-top">
+      <div className="pof-brand">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0 L14 7 L7 14 L0 7 Z" fill="#0e6b4e" /></svg>
+        <span className="mo" style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".12em", whiteSpace: "nowrap" }}>{t("billingOffice.board.wordmark")}</span>
+      </div>
+      <nav aria-label={t("billingOffice.board.menuLabel")} className="pof-nav">
+        {MENU.map((v) => {
+          const list = v === "today" ? [] : pagesOf(v);
+          const multi = list.length > 1;
+          return (
+            <span key={v} className="pof-navi" data-navi={v}>
+              <button type="button" className={`nav${v === shown ? " on" : ""}${multi ? " dd" : ""}`} aria-current={v === shown ? "page" : undefined}
+                aria-haspopup={multi ? "menu" : undefined} aria-expanded={multi ? drop === v : undefined} data-testid={`office-view-${v}`} onClick={() => openSide(v, false)}>
+                {sideName(v)}
+              </button>
+              {multi && drop === v && (
+                <div className="pof-dd" role="menu" aria-label={sideName(v)} data-drop={v} data-testid={`office-drop-${v}`} onKeyDown={onDropKey}>
+                  <div className="tag pof-dd-head">
+                    {sideName(v)}
+                    {SIDE_KEYS[v] !== undefined && <span className="kb">{SIDE_KEYS[v]}</span>}
+                  </div>
+                  {list.map((pg) => (
+                    <button key={pg.key} type="button" role="menuitem" className={v === shown && pg.key === page?.key ? "pof-ent on" : "pof-ent"} data-testid={`office-entry-${pg.key}`} onClick={() => go(v, pg.key)}>
+                      <b>{pageName(pg)}</b>
+                      <span className="was">{t(`billingOffice.board.was.${pg.key}`)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
+          );
+        })}
+      </nav>
+      <div style={{ flexGrow: 1 }} />
+      {pills}
+      {drawerMode && where.open !== null && (
+        <button type="button" className="bof-badge" style={{ marginLeft: 6 }} data-testid="needs-badge" onClick={() => setDrawerOpen((o) => !o)}>{t("billingOffice.board.pill.needs", { count: openCount })}</button>
+      )}
+      <span className="mo pof-clock">{istDateLabel(now)} · {istClock(now)}</span>
+      <span className="pof-user">{username ?? ""}</span>
+    </header>
+  );
+
+  return (
+    <div className="d1 pof bof" data-lang={i18n.language.startsWith("hi") ? "hi" : "en"} data-seat="billing-office" data-testid="billing-office">
+      {header}
+      {shown === "today" ? (
+        <TodayDesk
+          data={d} error={needs.error === null ? null : billingErrorMessage(needs.error)} phone={phone}
+          drawerMode={drawerMode} drawerOpen={drawerOpen} onDrawer={setDrawerOpen}
+          openId={where.open} onOpen={setOpen} onGo={(g) => go(g.view, g.page)} onDone={setNotice} onFullScreen={setFull}
+        />
+      ) : (
+        <div className="pof-page" data-testid={`office-page-${shown}`} data-page={page?.key}>
+          <div className="pof-legacy">
+            <h1 className="mb-3 text-lg font-semibold">{page === null ? sideName(shown) : pageName(page)}</h1>
+            {page !== null && <OfficePages key={page.key} page={page.key} onHand={(id) => go("today", undefined, id)} onGo={(v, pg) => go(v, pg)} />}
+          </div>
+        </div>
+      )}
+      {notice !== null && (
+        <p role="status" data-testid="office-notice" style={{ position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 47, margin: 0, padding: "9px 14px", borderRadius: 7, border: "1px solid var(--green-line)", background: "var(--card)", color: "var(--green)", fontSize: 13, fontWeight: 500, maxWidth: "calc(100vw - 32px)" }}>{notice}</p>
+      )}
     </div>
   );
 }

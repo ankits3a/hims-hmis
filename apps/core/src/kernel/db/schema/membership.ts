@@ -403,6 +403,12 @@ export const patientMatchQueue = pgTable(
     resolvedBy: text("resolved_by"), // plain text, DD17
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     note: text("note"),
+    /**
+     * UX-AUDIT 2026-09-28 · BOARD — WHY a dismiss was decided, as a code beside the free `note`:
+     * 'different_people' | 'not_registered' | 'partner_file_wrong' | 'other'. NULL on every row
+     * decided before the board (and on every link), which is why it is nullable rather than defaulted.
+     */
+    dismissReason: text("dismiss_reason"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
     seq: bigserial("seq", { mode: "number" }),
   },
@@ -411,3 +417,18 @@ export const patientMatchQueue = pgTable(
     index("patient_match_queue_instance_idx").on(t.instanceId),
   ],
 );
+
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — "MARK CHECKED" ON A LAPSED RESTORE.
+ *
+ * DD9/C5's flag lives on `entitlement_movements`, which is append-only by trigger, so the fact that
+ * a person has looked at a flagged restore cannot be written onto the movement itself. It is its own
+ * row, one per movement (the primary key is the single-winner: two clerks pressing it at once cannot
+ * both write), naming who checked and when. Nothing here changes the benefit; it only takes the
+ * restore off the reconcile queue.
+ */
+export const lapsedRestoreChecks = pgTable("lapsed_restore_checks", {
+  movementId: text("movement_id").primaryKey().references(() => entitlementMovements.id),
+  checkedBy: text("checked_by").notNull(), // plain text, DD17
+  checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+});

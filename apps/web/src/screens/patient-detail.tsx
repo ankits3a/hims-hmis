@@ -1131,7 +1131,8 @@ export function PatientDetail(): React.ReactElement {
   const canMerge = can("patients.merge");
   const canVerifyAbha = can("patients.register") && canEdit;
 
-  const go = (to: "/opd/desk" | "/opd/appointments" | "/billing"): void => {
+  // UX-AUDIT 2026-09-28 (main, #418) — visits open at Desk One (`/counter`); `/opd/desk` is the floor's queue desk now.
+  const go = (to: "/counter" | "/opd/appointments" | "/billing"): void => {
     if (pid === null) return;
     takePatient(pid);
     void navigate({ to });
@@ -1144,7 +1145,7 @@ export function PatientDetail(): React.ReactElement {
       if (el !== null && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
       if (e.ctrlKey || e.metaKey || e.altKey || editing || document.querySelector("[role=dialog]") !== null) return;
       if ((e.key === "e" || e.key === "E") && canEdit) { e.preventDefault(); setEditing(true); }
-      if (e.key === "Enter" && canOpenVisit && (el === null || el === document.body)) { e.preventDefault(); go("/opd/desk"); }
+      if (e.key === "Enter" && canOpenVisit && (el === null || el === document.body)) { e.preventDefault(); go("/counter"); }
       if (e.key === "p" || e.key === "P") { e.preventDefault(); setPrinting(true); }
     };
     window.addEventListener("keydown", onKey);
@@ -1210,7 +1211,7 @@ export function PatientDetail(): React.ReactElement {
   const address = [patient.addressLine, patient.district, patient.pincode].filter((x): x is string => x !== null && x !== "").join(", ");
 
   const primary = canOpenVisit ? (
-    <button className="pri" style={{ width: "100%" }} data-testid="onward-open-visit" onClick={() => { go("/opd/desk"); }}>
+    <button className="pri" style={{ width: "100%" }} data-testid="onward-open-visit" onClick={() => { go("/counter"); }}>
       {t("profile.openAtDeskOne")}
     </button>
   ) : null;
@@ -1410,7 +1411,7 @@ export function PatientDetail(): React.ReactElement {
         {/* Phone: the next act pinned at the foot; the rest behind "More". */}
         <div className="dock" data-testid="phone-dock">
           {canOpenVisit
-            ? <button className="pri" onClick={() => { go("/opd/desk"); }}>{t("profile.openAtDeskOne")}</button>
+            ? <button className="pri" onClick={() => { go("/counter"); }}>{t("profile.openAtDeskOne")}</button>
             : <span style={{ flex: 1 }} />}
           <button type="button" className="sec" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>{t("profile.more")} ▾</button>
         </div>

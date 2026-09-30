@@ -1223,12 +1223,13 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     } else if (/(drawer|cash|session|float|golla)/.test(lo)) {
       answer = cash.data?.session === null || cash.data === undefined
         ? "No drawer is open on your login, so nothing can be collected — cash, UPI and card alike. Open one, count the float, and the tender keys come back."
-        : `Your drawer opened at ${new Date(cash.data.session.openedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} with ${rs(cash.data.session.openingFloatPaise)} in it, and ${rs(s.takenPaise)} has come in as cash at this desk since you signed in.`;
+        /* OWNER RULING 2026-09-28 — BLIND COUNT: float + cash taken is the expected cash, so the copilot never says what has come in. */
+        : `Your drawer opened at ${new Date(cash.data.session.openedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })} with ${rs(cash.data.session.openingFloatPaise)} in it. What it should hold now is shown after you submit your closing count.`;
     } else {
       answer = "I answer from what is on this desk right now: the queue board, the bill in the column, your drawer and today's counter lane. Try \"kis line mein kam wait hai\", \"why is this free\", \"what does the token do\".";
     }
     setS((prev) => ({ ...prev, answer, drawer: true, log: logged(prev.log, `you asked: ${q}`, "you") }));
-  }, [queues, quote.data, bill.totalPaise, lane, cash.data, s.takenPaise]);
+  }, [queues, quote.data, bill.totalPaise, lane, cash.data]);
 
   /* ══════════ the day's own figures, from `/me/desk` ══════════ */
   const dayStats = useMemo(() => {
@@ -1452,7 +1453,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
               <span className="pill on" style={{ height: 22 }} title="Cash may be taken">
                 <span style={{ width: 5, height: 5, borderRadius: 99, background: "var(--green)" }} />
                 cash session open · float <span className="mo">{rs(cashPill.floatPaise)}</span>
-                {s.takenPaise > 0 ? <span className="mo">+{rs(s.takenPaise)}</span> : null}
+                {/* OWNER RULING 2026-09-28 — BLIND COUNT: no "+cash taken" beside the float — the two add up to the expected cash. */}
               </span>
             ) : (
               <span

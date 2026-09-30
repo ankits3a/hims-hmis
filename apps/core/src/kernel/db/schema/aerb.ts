@@ -350,6 +350,11 @@ export const doseRegister = pgTable(
     fluoroSeconds: integer("fluoro_seconds"),
     /** 18-S RS12 — Average Glandular Dose, mGy (mammography). */
     doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
+    /**
+     * 18-S RS12b — reference-point air kerma Ka,r, mGy (interventional fluoroscopy). Recorded beside
+     * DAP and fluoro time; not one of the quantities the dose CHECK counts.
+     */
+    doseKar: numeric("dose_ka_r", { precision: 10, scale: 3 }),
     /** PROVENANCE: a human read the console because the machine emits no dose SR. 18a's word. */
     doseManual: boolean("dose_manual").notNull().default(false),
     /**

@@ -233,7 +233,7 @@ describe("the daily close: claim, day book, orphan scan and GSTR-1 (D9, §11.11)
       approvalId: asked.approvalId, method: "cash",
     }, NOW);
     await payRefundVoucher(db, cashier.actor, {
-      voucherId: voucher.voucherId, payeeName: "Refunded Patient", payeeIdType: "aadhaar", payeeIdRef: "XXXX-1234",
+      voucherId: voucher.voucherId, payeeName: "Refunded Patient", payeeIdType: "aadhaar",
     }, NOW);
 
     await setDegraded(db, cashier.actor, true, "the PSP terminal is offline", NOW);

@@ -18,6 +18,7 @@ import { assertContrastPermissible } from "./contrast";
 import { authorisationOf, encounterPayer, hasBillDecision, raiseBillDecision } from "./money";
 import { activeDoseReferenceLevels, drlFor, requireStudyType } from "./study-types";
 import { attachHeldAtSend, heldArrivalFor, pendingDoseFor, settlePendingDose } from "./pacs";
+import { assertIrSendable, assertIrStartable, raiseSkinDoseAlerts } from "./ir";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -128,6 +129,13 @@ export async function startAcquisition(
     );
   }
 
+  /**
+   * (1a) 18-S RS12b — an image-guided PROCEDURE starts only after the WHO Sign in and Time out
+   * (`ir.ts`). Here, beside readiness, because both answer "is this patient safe to start" and a
+   * refusal after the machine is assigned would leave it occupied by a patient nobody timed out.
+   */
+  await assertIrStartable(tx, study.id, await requireStudyType(tx, study.studyTypeCode));
+
   /** (2) DD12a — WHY this scan is allowed to start. `null` is the cashier's screen, not an error. */
   const payer = await encounterPayer(tx, study.encounterNo);
   const authorisedBy = authorisationOf(study, payer);
@@ -169,6 +177,17 @@ export async function startAcquisition(
     const onDate = istDayString(now);
     const { registrationId } = await assertMachineRegistered(tx, study.deviceResourceId, onDate);
     await assertPersonRegistered(tx, actor.id, registrationId);
+    /**
+     * ═══ 18-S RS8b T3 — FORM F BEFORE THE PROCEDURE (PCPNDT Rules, rule 9(4) / Form F) ═══
+     *
+     * The `form_f` GATE is satisfied by an OPEN form (the sonologist has started the paperwork) and
+     * keeps those semantics; `recordAcquired` demanded a RECORDED one — but that is the END of the
+     * scan, so a scan could START on a form nobody had signed, and the images of a scan whose
+     * declaration was never completed would already exist. The declaration precedes the procedure,
+     * so the recorded form is now demanded HERE, before the machine is taken. `recordAcquired`
+     * keeps its own check: a form cannot be un-recorded, but the two statements guard two acts.
+     */
+    await assertFormFRecorded(tx, study.id, study.formFRequired);
   }
 
   /**
@@ -249,6 +268,8 @@ export type RecordAcquiredInput = {
   fluoroSeconds?: number | null;
   /** 18-S RS12 — mammography's Average Glandular Dose, mGy. */
   doseAgd?: number | null;
+  /** 18-S RS12b — reference-point air kerma Ka,r, mGy (interventional fluoroscopy). */
+  doseKar?: number | null;
   doseManual?: boolean;
   contrastGiven?: boolean;
   contrastAgent?: string | null;
@@ -370,13 +391,13 @@ export async function recordAcquired(
    * numbers are recorded and every pending SR is compared with them afterwards (confirmed or a
    * conflict kept on the receipt) — a typed value is never silently replaced.
    */
-  const typedDose = [input.doseCtdivol, input.doseDlp, input.doseDap, input.fluoroSeconds, input.doseAgd]
+  const typedDose = [input.doseCtdivol, input.doseDlp, input.doseDap, input.fluoroSeconds, input.doseAgd, input.doseKar]
     .some((v) => v !== undefined && v !== null);
   const pendingSr = ionising && !typedDose ? await pendingDoseFor(tx, study.id) : null;
   const dose = pendingSr === null
     ? {
       ctdivol: input.doseCtdivol ?? null, dlp: input.doseDlp ?? null, dap: input.doseDap ?? null,
-      fluoroSeconds: input.fluoroSeconds ?? null, agd: input.doseAgd ?? null,
+      fluoroSeconds: input.fluoroSeconds ?? null, agd: input.doseAgd ?? null, kar: input.doseKar ?? null,
       origin: "manual" as const, manual: input.doseManual ?? false,
     }
     : { ...pendingSr.latest, origin: "dose_sr" as const, manual: false };
@@ -391,6 +412,13 @@ export async function recordAcquired(
       { studyId: study.id, studyTypeCode: study.studyTypeCode },
     );
   }
+
+  /**
+   * 18-S RS12b — an IR procedure is sent only after its Sign out, and a Ka,r at or above 3 Gy only
+   * with the skin follow-up documented. Before any write: a refusal here leaves the study on the
+   * table and the register untouched.
+   */
+  await assertIrSendable(tx, study.id, studyType, ionising ? dose.kar : null);
 
   /**
    * ═══ CONTRAST: THE GATES DECIDE, AND THIS IS T5's OWED HALF ═══
@@ -498,6 +526,7 @@ export async function recordAcquired(
       doseDap: dose.dap?.toString() ?? null,
       fluoroSeconds: dose.fluoroSeconds,
       doseAgd: dose.agd?.toString() ?? null,
+      doseKar: dose.kar?.toString() ?? null,
       doseManual: dose.manual,
       contrastGiven,
       contrastAgent: input.contrastAgent ?? null,
@@ -571,6 +600,7 @@ export async function recordAcquired(
       doseDap: dose.dap,
       fluoroSeconds: dose.fluoroSeconds,
       doseAgd: dose.agd,
+      doseKar: dose.kar,
       doseManual: dose.manual,
       doseOrigin: dose.origin,
       /**
@@ -617,6 +647,9 @@ export async function recordAcquired(
       studyInstanceUid,
     },
   }));
+
+  /** 18-S RS12b — Ka,r at 3 Gy (skin follow-up) and 5 Gy (SRDL): one event per trigger reached. */
+  if (ionising) await raiseSkinDoseAlerts(tx, actor, study, dose.kar);
 
   /**
    * ═══ A5 — THE BILL DECISIONS, AND ONLY WHEN A FACT DIVERGED ═══

@@ -19,13 +19,16 @@ import { ColdChainView } from "./cold-chain";
 import { ControlledView } from "./controlled";
 import { IncidentRegisterView } from "./incidents";
 import { ItemsView } from "./items";
+import { StockLedgerPage } from "./ledger";
 import { MessagesView } from "./messages";
 import { PayView } from "./pay";
 import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
 import { Sheet } from "./sheet";
+import { StockEntryView } from "./stock-entry";
 import { TodayDesk, money0 } from "./today";
 import { TrayChecksView } from "./trays";
+import { LabelsView } from "./labels";
 import { fetchControlledToday } from "../../lib/controlled-api";
 import { FormularyAdmin } from "../formulary-admin";
 import { MaterialsCounts } from "../materials-counts";
@@ -114,16 +117,23 @@ export function PharmacyOfficeReports(): React.ReactElement {
 }
 
 /** B3 — the page of a side, rendered inside the frame: the office's own sides and the folded screens as they are. */
-function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: ReturnsOpen }, buy: React.ReactElement): React.ReactElement | null {
+function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: ReturnsOpen }, buy: React.ReactElement, go: (g: Go) => void): React.ReactElement | null {
   switch (key) {
     case "orders": return buy;
     case "reorder": return <PharmacyReorder />;
     case "vendors": return <MaterialsVendors />;
     case "bills": return <PayView key={`pay-${String(seed.n)}`} {...(seed.pay === undefined ? {} : { initialOpen: seed.pay })} />;
     case "returns": return <ReturnsView key={`ret-${String(seed.n)}`} {...(seed.returns === undefined ? {} : { initialOpen: seed.returns })} />;
-    case "grn": case "opening": return <MaterialsGrn />;
+    case "grn": return <MaterialsGrn />;
+    // 2026-09-29 — the shelf entered on screen, row by row (the CSV upload folded inside it).
+    case "opening": return <StockEntryView />;
     case "counts": return <MaterialsCounts />;
     case "transfers": return <MaterialsTransfers />;
+    // A5 — the ledger's document opens where the office keeps it: a return's or write-off's sheet, else its page.
+    case "ledger": return <StockLedgerPage onOpen={(l) => go(
+      l.kind === "return" || l.kind === "writeoff" ? { to: "view", view: "returns", page: "returns", open: { kind: l.kind, id: l.id } }
+        : { to: "view", view: "stock", page: l.kind === "grn" ? "grn" : l.kind === "transfer" ? "transfers" : "counts" },
+    )} />;
     case "downtime": return <PharmacyDowntime />;
     case "cold": return <ColdChainView />;
     case "trays": return <TrayChecksView />;
@@ -131,6 +141,7 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "sells": return <PharmacyItems />;
     case "formulary": return <FormularyAdmin />;
     case "duplicates": return <ItemsView />;
+    case "labels": return <LabelsView />;
     case "h1": return <PharmacyH1Register />;
     case "controlled": return <ControlledView />;
     case "retail": return <PharmacyRetailLicence />;
@@ -208,14 +219,6 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView | "co
     open(g.view, g.page);
   };
 
-  // The opening-stock sheet lives on the goods-receipt screen; its menu entry brings it into view.
-  const pageKey = page?.key ?? null;
-  useEffect(() => {
-    if (pageKey !== "opening") return;
-    const id = setTimeout(() => document.getElementById("opening-stock-title")?.scrollIntoView({ block: "start" }), 0);
-    return () => clearTimeout(id);
-  }, [pageKey]);
-
   // A dropdown closes on a click anywhere outside it.
   useEffect(() => {
     if (drop === null) return;
@@ -274,7 +277,7 @@ export function PharmacyOffice({ initialView }: { initialView?: OfficeView | "co
     <div className="pof-legacy space-y-5">
       {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
       {canControlled && shown !== "law" && shown !== "today" && <ControlledStrip onOpen={() => open("law", "controlled")} />}
-      {page !== null && pageBody(page.key, seed, buy)}
+      {page !== null && pageBody(page.key, seed, buy, go)}
     </div>
   );
   const pageTitle = (p: OfficePage): string => t(`pharmacyOffice.menu.page.${p.key}`);
@@ -820,10 +823,12 @@ function ControlledStrip({ onOpen }: { onOpen: () => void }): React.ReactElement
   const q = useQuery({ queryKey: ["pharmacy", "controlled", "today"], queryFn: fetchControlledToday });
   const n = q.data?.needsYou.length ?? 0;
   if (n === 0) return null;
+  const text = t("pharmacyOffice.controlled.strip", { count: n, first: t(`pharmacyOffice.controlled.needs.${q.data!.needsYou[0]!.key}`, q.data!.needsYou[0]!.params) });
+  // B5 — it rides on top of every office page, so it is one quiet line, not a banner: the text, then the way in.
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded border border-amber-400 bg-amber-50/60 p-2 text-sm" data-testid="controlled-strip">
-      <span className="flex-1">{t("pharmacyOffice.controlled.strip", { count: n, first: t(`pharmacyOffice.controlled.needs.${q.data!.needsYou[0]!.key}`, q.data!.needsYou[0]!.params) })}</span>
-      <Button type="button" variant="outline" onClick={onOpen}>{t("pharmacyOffice.controlled.open")}</Button>
+    <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50/70 px-2.5 py-1 text-xs text-amber-900" data-testid="controlled-strip">
+      <span className="min-w-0 flex-1 truncate" title={text}>{text}</span>
+      <button type="button" className="shrink-0 font-semibold underline" onClick={onOpen}>{t("pharmacyOffice.controlled.open")}</button>
     </div>
   );
 }

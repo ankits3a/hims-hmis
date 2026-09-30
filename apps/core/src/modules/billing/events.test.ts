@@ -20,11 +20,14 @@ const EXPECTED_NAMES = [
   "cashier_session.opened", "cashier_session.closed", "cashier_session.recounted", "variance.flagged",
   "cash_threshold.warned", "cash_threshold.blocked", "tender.reconciled", "tender.mismatched",
   "degraded_mode.changed", "document.entered_in_error", "charge.orphan_flagged", "day.closed",
+  // UX-AUDIT 2026-09-28 · BOARD — the office decided a settlement mismatch (recon-resolve.ts). Last,
+  // so the plan's order above is untouched.
+  "tender.resolved",
 ];
 
 describe("billing event catalog (D-Events, Global Constraints: catalog discipline)", () => {
-  test("exactly twenty-one defineEvent exports, every one carrying module \"billing\"", () => {
-    expect(BILLING_EVENTS).toHaveLength(21);
+  test("exactly twenty-two defineEvent exports, every one carrying module \"billing\"", () => {
+    expect(BILLING_EVENTS).toHaveLength(22);
     for (const ev of BILLING_EVENTS) expect(ev.module).toBe("billing");
   });
 

@@ -33,7 +33,11 @@ import { effectiveGuardianAuthority, endGuardian, linkGuardian, updateGuardianAu
 import { patientGuardians } from "../../kernel/db/schema";
 import { eq } from "drizzle-orm";
 import { buildQrPayload, reissueQrCard, verifyQrScan } from "./qr";
-import { createMergeRequest, executeMerge, executeUnmerge, getMergeRequest, requestUnmerge } from "./merge";
+import {
+  createMergeRequest, executeMerge, executeUnmerge, getMergeRequest, listMergeRequests, requestUnmerge, visitSummaries,
+} from "./merge";
+import type { MergeRequestListItem, VisitSummary } from "./merge";
+import { displayNameFor } from "./display-name";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
@@ -56,6 +60,9 @@ const CONFLICT_CODES = new Set([
   // body: the caller asked for a level the record is already at or above. Found by the full core
   // suite, which the narrow runs had not reached.
   "assurance_not_increasing",
+  // UX-AUDIT 2026-09-28 · BOARD — a refused merge, and a sealed record the MS has not broken the
+  // glass on, are both STATE the caller cannot fix by changing the body.
+  "merge_refused", "sealed_needs_break_glass",
 ]);
 
 /** Patients errors → HTTP, defined once. Unrecognized errors rethrow — a 500 is a genuine bug, loudly. */
@@ -400,12 +407,49 @@ export class PatientsController {
     }
   }
 
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD (merge review) — the requests list the board's right column draws:
+   * granted first, then waiting by time left, then refused, then unmerges (`listMergeRequests`).
+   * `patients.read`, like the detail below — the MRD officer who asks and the MS who decides both
+   * hold it, and neither needs the approvals engine's read grant to see their own desk.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get("merge-requests")
+  async mergeList(@CurrentActor() actor: Actor): Promise<{ items: MergeRequestListItem[] }> {
+    return { items: await listMergeRequests(this.db, actor) };
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — visits and last visit for the two records being compared
+   * (`?ids=a,b`, at most two). Counts and a date only; no clinical content crosses this route.
+   * Declared above `@Get(":id")`, which would otherwise take `merge-visits` as a patient id.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get("merge-visits")
+  async mergeVisits(@Query("ids") ids: unknown): Promise<{ items: VisitSummary[] }> {
+    const list = typeof ids === "string" ? ids.split(",").map((x) => x.trim()).filter((x) => x !== "") : [];
+    if (list.length === 0 || list.length > 2) throw new BadRequestException("ids: one or two patient ids, comma-separated");
+    return { items: await visitSummaries(this.db, list) };
+  }
+
   @RequirePermission("patients.read", "hospital")
   @Get("merge-requests/:id")
-  async mergeDetail(@Param("id") id: string): Promise<unknown> {
+  async mergeDetail(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     const view = await getMergeRequest(this.db, id);
     if (!view) throw new NotFoundException(`unknown merge request ${id}`);
-    return view;
+    /*
+      UX-AUDIT 2026-09-28 · BOARD — the frozen snapshot now reaches the MS's seat on /merge, so the
+      seal applies to it exactly as to every other surface: a confidential record's name is its alias
+      unless this reader holds `patients.confidential.read` (`display-name.ts`).
+    */
+    type SnapRow = { name: string; alias: string | null; isConfidential: boolean };
+    const snap = view.request.snapshot as { winnerBefore: SnapRow; loserBefore: SnapRow };
+    const mask = async (row: SnapRow): Promise<SnapRow> =>
+      row.isConfidential ? { ...row, name: await displayNameFor(this.db, actor, row) } : row;
+    return {
+      ...view,
+      request: { ...view.request, snapshot: { ...snap, winnerBefore: await mask(snap.winnerBefore), loserBefore: await mask(snap.loserBefore) } },
+    };
   }
 
   @RequirePermission("patients.merge", "hospital")

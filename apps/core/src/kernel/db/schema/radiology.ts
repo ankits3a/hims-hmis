@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, jsonb, numeric, pgTable, smallint, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { invoiceLines } from "./billing";
 import { orderItems, orders } from "./orders";
@@ -109,8 +109,27 @@ export const IMAGING_GATE_KIND_VALUES = [
  */
 export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels", "imaging_protocols", "report_templates", "report_signatories"] as const;
 
-/** DD15 — the report version chain's five states. `prelim` is O-11's UNVERIFIED draft. */
-export const IMAGING_REPORT_STATUSES = ["prelim", "draft", "signed", "amended", "superseded"] as const;
+/**
+ * DD15 — the report version chain's states. `prelim` is O-11's UNVERIFIED draft.
+ *
+ * 18-S RS8b — `awaiting_cosign` is a RESIDENT's signature: the checks ran and the text is final in
+ * the resident's hands, but it is not the hospital's report until a consultant co-signs. It is
+ * never publishable (`cosign_required`). When the consultant co-signs, a `signed` version is
+ * inserted and the resident's row flips to `cosigned` (status is the one column the append-only
+ * trigger lets change).
+ */
+export const IMAGING_REPORT_STATUSES = [
+  "prelim", "draft", "signed", "amended", "superseded", "awaiting_cosign", "cosigned",
+] as const;
+
+/**
+ * 18-S RS8b — the critical-call ladder's four rungs, in order (board: treating doctor → unit head →
+ * duty RMO → HOD). Index = `imaging_critical_findings.ladder_rung`.
+ */
+export const IMAGING_CRITICAL_RUNGS = ["treating_doctor", "unit_head", "duty_rmo", "hod"] as const;
+
+/** 18-S RS8b — what one call on the ladder came to. `read_back_ok` is written by `acknowledgeCritical`. */
+export const IMAGING_CALL_OUTCOMES = ["no_answer", "answered", "read_back_ok"] as const;
 
 /** The three-tier criticality the radiologist assigns. `red` is the one that pages a human. */
 export const IMAGING_CRITICAL_CATEGORIES = ["red", "orange", "yellow"] as const;
@@ -128,6 +147,8 @@ export type ImagingGateKind = (typeof IMAGING_GATE_KIND_VALUES)[number];
 export type ImagingDefinitionKind = (typeof IMAGING_DEFINITION_KIND_VALUES)[number];
 export type ImagingReportStatus = (typeof IMAGING_REPORT_STATUSES)[number];
 export type ImagingCriticalCategory = (typeof IMAGING_CRITICAL_CATEGORIES)[number];
+export type ImagingCriticalRung = (typeof IMAGING_CRITICAL_RUNGS)[number];
+export type ImagingCallOutcome = (typeof IMAGING_CALL_OUTCOMES)[number];
 export type ImagingBillDecisionKind = (typeof IMAGING_BILL_DECISION_KINDS)[number];
 
 /**
@@ -227,6 +248,14 @@ export const imagingStudies = pgTable(
      * AERB asks for on a mammogram. Before RS12 a unit that showed only AGD could not be recorded.
      */
     doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
+    /**
+     * 18-S RS12b — reference-point air kerma Ka,r (mGy), the interventional unit's cumulative
+     * skin-dose proxy (IEC 60601-2-43; DICOM 113725 Dose (RP) Total). Kept beside DAP and fluoro
+     * time, never INSTEAD of them: it is not one of the quantities `imaging_studies_dose_ck` counts,
+     * because no unit reports Ka,r without DAP and fluoro time, and the 3 Gy / 5 Gy skin-dose
+     * triggers (`ir.ts`) read it after Send.
+     */
+    doseKar: numeric("dose_ka_r", { precision: 10, scale: 3 }),
     doseManual: boolean("dose_manual").notNull().default(false),
     /**
      * ═══ 18-S RS12 — THE IMAGES ARRIVED IN THE ARCHIVE ═══
@@ -482,6 +511,8 @@ export const imagingReports = pgTable(
     uniqueIndex("imaging_reports_study_version_ux").on(t.studyId, t.version),
     /** B10, as an index. See the table header. */
     uniqueIndex("imaging_reports_one_signed_ux").on(t.studyId).where(sql`${t.status} = 'signed'`),
+    /** 18-S RS8b — one resident signature waiting for a consultant per study, as an index. */
+    uniqueIndex("imaging_reports_one_awaiting_ux").on(t.studyId).where(sql`${t.status} = 'awaiting_cosign'`),
     index("imaging_reports_study_idx").on(t.studyId),
     check("imaging_reports_status_ck", inList(t.status, IMAGING_REPORT_STATUSES)),
     check("imaging_reports_version_ck", sql`${t.version} > 0`),
@@ -561,9 +592,19 @@ export const imagingCriticalFindings = pgTable(
      * chased finding is exactly as unacknowledged as it was a minute earlier.
      */
     chasedAt: timestamp("chased_at", { withTimezone: true }),
+    /**
+     * 18-S RS8b — THE RUNG THE CALL HAS REACHED (0 treating doctor · 1 unit head · 2 duty RMO ·
+     * 3 HOD, `IMAGING_CRITICAL_RUNGS`). It only climbs: a "no answer" on the current rung moves it
+     * one up, and the chaser moves it to the number of the tier's windows that have passed. It is
+     * WHO TO CALL NEXT, never whether the call is closed — `acknowledged_at` alone says that.
+     */
+    ladderRung: smallint("ladder_rung").notNull().default(0),
+    /** 18-S RS8b — how many of the tier's windows the chaser has already escalated (0–3). */
+    chaseWindows: smallint("chase_windows").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    check("imaging_critical_findings_rung_ck", sql`${t.ladderRung} between 0 and 3 and ${t.chaseWindows} between 0 and 3`),
     index("imaging_critical_findings_report_idx").on(t.reportId),
     /** The chaser's own query: everything unacknowledged and unchased, oldest first. */
     index("imaging_critical_findings_chase_idx")
@@ -574,6 +615,36 @@ export const imagingCriticalFindings = pgTable(
       "imaging_critical_findings_ack_ck",
       sql`(${t.acknowledgedBy} is null) = (${t.acknowledgedAt} is null)`,
     ),
+  ],
+);
+
+/**
+ * ═══ 18-S RS8b — THE CALLS MADE ON A CRITICAL, ONE ROW PER CALL ═══
+ *
+ * The board's ladder: the radiologist rings the treating doctor; no answer moves the call to the
+ * unit head, then the duty RMO, then the HOD; the call closes only on a read-back that names the
+ * finding. Each ring is a row — who was rung (a user where the roster names one, else the name the
+ * radiologist typed), on which rung, what came of it, who recorded it and when. Insert-only: the
+ * history of a critical call is what an incident review reads, so nothing here is ever updated.
+ */
+export const imagingCriticalCallAttempts = pgTable(
+  "imaging_critical_call_attempts",
+  {
+    id: text("id").primaryKey(),
+    criticalId: text("critical_id").notNull().references(() => imagingCriticalFindings.id),
+    rung: smallint("rung").notNull(),
+    calledUserId: text("called_user_id"),
+    calledName: text("called_name"),
+    outcome: text("outcome").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("imaging_critical_call_attempts_critical_idx").on(t.criticalId, t.at),
+    check("imaging_critical_call_attempts_rung_ck", sql`${t.rung} between 0 and 3`),
+    check("imaging_critical_call_attempts_outcome_ck", inList(t.outcome, IMAGING_CALL_OUTCOMES)),
+    /** A call is to somebody: a user, or a name typed off the phone. */
+    check("imaging_critical_call_attempts_callee_ck", sql`${t.calledUserId} is not null or ${t.calledName} is not null`),
   ],
 );
 
@@ -755,6 +826,8 @@ export const imagingDoseSrReceipts = pgTable(
     doseDap: numeric("dose_dap", { precision: 10, scale: 3 }),
     fluoroSeconds: integer("fluoro_seconds"),
     doseAgd: numeric("dose_agd", { precision: 10, scale: 3 }),
+    /** 18-S RS12b — 113725 Dose (RP) Total, mGy (Ka,r). Never counted by the dose CHECK below. */
+    doseKar: numeric("dose_ka_r", { precision: 10, scale: 3 }),
     outcome: text("outcome").notNull(),
     /** For `conflict`: `{quantity: {typed, sr}}` per disagreeing quantity. */
     conflict: jsonb("conflict"),
@@ -1150,10 +1223,18 @@ export const imagingReportHandovers = pgTable(
     note: text("note"),
     handedBy: text("handed_by").notNull(),
     handedAt: timestamp("handed_at", { withTimezone: true }).notNull(),
+    /**
+     * 18-S RS9b — the GRANTED `imaging_release_unpaid_owner` approval this hand-over spent, when the
+     * patient's copy was held for dues and the owner released it unpaid. Plain text — approvals are
+     * another module. UNIQUE: one grant releases one hand-over (the lab's M8 rule), so a second
+     * hand-over under the same grant fails at the database as well as in `handOverReport`.
+     */
+    releaseApprovalId: text("release_approval_id"),
   },
   (t) => [
     index("imaging_report_handovers_study_idx").on(t.studyId, t.handedAt),
     index("imaging_report_handovers_report_idx").on(t.reportId),
+    uniqueIndex("imaging_report_handovers_release_ux").on(t.releaseApprovalId).where(sql`${t.releaseApprovalId} is not null`),
     check("imaging_report_handovers_kind_ck", inList(t.collectorKind, IMAGING_COLLECTOR_KINDS)),
     check(
       "imaging_report_handovers_id_type_ck",
@@ -1203,5 +1284,128 @@ export const imagingMediaRequests = pgTable(
     check("imaging_media_requests_printed_ck", sql`(${t.printedBy} is null) = (${t.printedAt} is null)`),
     /** Handed over only once printed. */
     check("imaging_media_requests_handed_ck", sql`${t.handoverId} is null or ${t.printedAt} is not null`),
+  ],
+);
+
+/**
+ * ═══ 18-S RS12b — THE INTERVENTIONAL RADIOLOGY SUITE ═══
+ *
+ * An IR procedure (PCN, PTBD, CT-guided biopsy, angiography) is an `imaging_studies` row whose study
+ * type says `interventional: true` — DECIDED, no parallel procedure table, for the reason 18a-iii
+ * gave the portable study: one accession, one set of gates, one dose-register row, one report. What
+ * an IR case adds is carried in three tables keyed by the study:
+ *
+ *   · `imaging_ir_checklists` — the WHO surgical safety checklist, adapted (sign in → time out →
+ *     sign out). The OT's `ot_checklist_runs` shape (`items [{key, answer, note?}]`, `participants`,
+ *     who/when), one row per phase, written once: a phase is a moment the team stopped, not a form
+ *     that is edited afterwards.
+ *   · `imaging_ir_sedation_vitals` — the sedation chart (BP, HR, SpO₂, RASS, the drug given), a row
+ *     per reading; the five-minute clock is derived from the last row.
+ *   · `imaging_ir_cases` — one row per IR study for the facts that are not a checklist: the
+ *     radiologist's coagulation override (who, when, why — the audit), the skin-dose follow-up
+ *     (3 Gy), the procedure note and the recovery hand-off.
+ */
+export const IR_CHECKLIST_PHASES = ["sign_in", "time_out", "sign_out"] as const;
+export type IrChecklistPhase = (typeof IR_CHECKLIST_PHASES)[number];
+
+export const imagingIrChecklists = pgTable(
+  "imaging_ir_checklists",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    phase: text("phase").notNull(),
+    /** `[{key, answer, note?}]` — the OT's shape; the answers `ir.ts` validated. */
+    items: jsonb("items").notNull(),
+    /** User ids and/or names of the people who stopped for it (time out: ≥ 2 distinct). */
+    participants: jsonb("participants").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("imaging_ir_checklists_phase_ux").on(t.studyId, t.phase),
+    check("imaging_ir_checklists_phase_ck", inList(t.phase, IR_CHECKLIST_PHASES)),
+  ],
+);
+
+export const imagingIrSedationVitals = pgTable(
+  "imaging_ir_sedation_vitals",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    bpSystolic: integer("bp_systolic").notNull(),
+    bpDiastolic: integer("bp_diastolic").notNull(),
+    heartRate: integer("heart_rate").notNull(),
+    spo2: integer("spo2").notNull(),
+    /** Richmond Agitation–Sedation Scale, −5 (unrousable) … +4 (combative). */
+    rass: integer("rass").notNull(),
+    /** The sedative / analgesic given at this reading, as charted ("Midazolam 1 mg IV"). */
+    drug: text("drug"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("imaging_ir_sedation_vitals_study_idx").on(t.studyId, t.recordedAt),
+    check(
+      "imaging_ir_sedation_vitals_range_ck",
+      sql`${t.bpSystolic} between 40 and 300 and ${t.bpDiastolic} between 20 and 200
+          and ${t.bpDiastolic} < ${t.bpSystolic} and ${t.heartRate} between 20 and 250
+          and ${t.spo2} between 50 and 100 and ${t.rass} between -5 and 4`,
+    ),
+  ],
+);
+
+export const imagingIrCases = pgTable(
+  "imaging_ir_cases",
+  {
+    studyId: text("study_id").primaryKey().references(() => imagingStudies.id),
+    /** The radiologist's override of an out-of-range or missing INR / platelet count, with the verdict it overrode. */
+    coagOverrideVerdict: text("coag_override_verdict"),
+    coagOverrideReason: text("coag_override_reason"),
+    coagOverrideBy: text("coag_override_by"),
+    coagOverrideAt: timestamp("coag_override_at", { withTimezone: true }),
+    /** Ka,r ≥ 3 Gy: the patient was told and a skin check booked 2–4 weeks out. */
+    skinFollowUpOn: date("skin_follow_up_on"),
+    skinFollowUpNote: text("skin_follow_up_note"),
+    skinFollowUpBy: text("skin_follow_up_by"),
+    skinFollowUpAt: timestamp("skin_follow_up_at", { withTimezone: true }),
+    /** The procedure note. */
+    noteProcedure: text("note_procedure"),
+    noteApproach: text("note_approach"),
+    noteDevices: text("note_devices"),
+    noteSpecimens: text("note_specimens"),
+    noteComplications: text("note_complications"),
+    noteBloodLossMl: integer("note_blood_loss_ml"),
+    noteBy: text("note_by"),
+    noteAt: timestamp("note_at", { withTimezone: true }),
+    /** The recovery hand-off: `{vitals, bedRestHours, drainCare, instructionsEn, instructionsHi, receivedBy}`. */
+    handoff: jsonb("handoff"),
+    handoffBy: text("handoff_by"),
+    handoffAt: timestamp("handoff_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** An override is a verdict, a reason, a person and an instant — all four or none. */
+    check(
+      "imaging_ir_cases_coag_override_ck",
+      sql`(${t.coagOverrideVerdict} is null and ${t.coagOverrideReason} is null and ${t.coagOverrideBy} is null and ${t.coagOverrideAt} is null)
+          or (${t.coagOverrideVerdict} is not null and char_length(btrim(${t.coagOverrideReason})) >= 5
+              and ${t.coagOverrideBy} is not null and ${t.coagOverrideAt} is not null)`,
+    ),
+    check(
+      "imaging_ir_cases_skin_ck",
+      sql`(${t.skinFollowUpOn} is null) = (${t.skinFollowUpBy} is null) and (${t.skinFollowUpBy} is null) = (${t.skinFollowUpAt} is null)`,
+    ),
+    check(
+      "imaging_ir_cases_note_ck",
+      sql`(${t.noteProcedure} is null and ${t.noteBy} is null and ${t.noteAt} is null)
+          or (char_length(btrim(${t.noteProcedure})) >= 3 and ${t.noteBy} is not null and ${t.noteAt} is not null)`,
+    ),
+    check("imaging_ir_cases_blood_loss_ck", sql`${t.noteBloodLossMl} is null or ${t.noteBloodLossMl} between 0 and 10000`),
+    /** Handed over only with a note written. */
+    check(
+      "imaging_ir_cases_handoff_ck",
+      sql`(${t.handoff} is null and ${t.handoffBy} is null and ${t.handoffAt} is null)
+          or (${t.handoff} is not null and ${t.handoffBy} is not null and ${t.handoffAt} is not null and ${t.noteAt} is not null)`,
+    ),
   ],
 );

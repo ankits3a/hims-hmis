@@ -434,7 +434,7 @@ describe("billing lifecycle e2e", () => {
     expect(voucher.body.status).toBe("issued");
 
     const paid = await http().post(`/billing/refunds/${voucher.body.voucherId}/pay`).set(...auth(cashierA.token)).send({
-      payeeName: "Refund Story Patient", payeeIdType: "aadhaar", payeeIdRef: "XXXX-9004",
+      payeeName: "Refund Story Patient", payeeIdType: "aadhaar",
     }).expect(201);
     expect(paid.body.status).toBe("paid");
     expect(paid.body.method).toBe("bank_transfer");

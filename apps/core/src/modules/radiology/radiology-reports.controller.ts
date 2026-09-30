@@ -5,9 +5,10 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import {
-  acknowledgeCritical, amendReport, draftReport, dryRunPreSign, flagCritical, proposeDraft, publishReport, savePrelim,
-  signReport,
+  acknowledgeCritical, amendReport, cosignReport, draftReport, dryRunPreSign, flagCritical, proposeDraft, publishReport,
+  savePrelim, signReport,
 } from "./reports";
+import { recordCallAttempt } from "./critical-ladder";
 import { reportView, studyView, worklist } from "./read";
 import { patientReportsForDoctor } from "./patient-reports";
 import { idSchema, parsed, toHttp } from "./radiology-http";
@@ -62,6 +63,20 @@ const amendBody = contentBody.extend({
   reason: z.string().min(1).max(400),
   criticalCategory: z.enum(["red", "orange", "yellow"]).nullish(),
   acknowledgedWarnings: acknowledged,
+});
+
+/** 18-S RS8b — the consultant's co-signature on a resident's `awaiting_cosign` version. */
+const cosignBody = z.object({
+  reportId: idSchema,
+  acknowledgedWarnings: acknowledged,
+});
+
+/** 18-S RS8b — one ring on the critical ladder. The rung is the one the screen showed (compare-and-set). */
+const callBody = z.object({
+  rung: z.number().int().min(0).max(3),
+  calledUserId: z.string().min(1).max(64).nullish(),
+  calledName: z.string().min(1).max(120).nullish(),
+  outcome: z.enum(["no_answer", "answered"]),
 });
 
 /** 18-S RS8a — the dry run: the text on the screen, checked, nothing written. */
@@ -202,6 +217,29 @@ export class RadiologyReportsController {
   }
 
   /**
+   * 18-S RS8b — THE CO-SIGNATURE. The consultant's own second factor (the guard's option and the
+   * session's instant, as at sign); `cosignReport` refuses a non-consultant and a resident's own.
+   */
+  @Post("studies/:studyId/reports/cosign")
+  @RequirePermission("radiology.reports.sign", "hospital", { secondFactor: true })
+  async cosign(
+    @CurrentActor() actor: Actor,
+    @Req() req: AuthedRequest,
+    @Param("studyId") studyId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(cosignBody, body);
+    try {
+      return await withTx(this.db, (tx) => cosignReport(tx, actor, {
+        studyId, reportId: input.reportId,
+        secondFactorAt: req.hmisSession?.secondFactorAt ?? null,
+        windowMinutes: this.cfg.secondFactorWindowMinutes,
+        acknowledgedWarnings: input.acknowledgedWarnings ?? [],
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
    * 18-S RS8a — the pre-sign checks on the text in front of the reader, before any save. The same
    * pipeline `signReport` runs, so the screen shows what the signature will meet. Writes nothing.
    */
@@ -258,6 +296,21 @@ export class RadiologyReportsController {
     try {
       return await withTx(this.db, (tx) => flagCritical(tx, actor, {
         reportId, category: input.category, communicatedTo: input.communicatedTo ?? null,
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** 18-S RS8b — one ring on the ladder: "no answer" moves the call up a rung; "answered" opens the read-back. */
+  @Post("criticals/:criticalId/calls")
+  @RequirePermission("radiology.criticals.ack", "hospital")
+  async call(
+    @CurrentActor() actor: Actor, @Param("criticalId") criticalId: string, @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(callBody, body);
+    try {
+      return await withTx(this.db, (tx) => recordCallAttempt(tx, actor, {
+        criticalId: parsed(idSchema, criticalId), rung: input.rung,
+        calledUserId: input.calledUserId ?? null, calledName: input.calledName ?? null, outcome: input.outcome,
       }));
     } catch (e) { toHttp(e); }
   }

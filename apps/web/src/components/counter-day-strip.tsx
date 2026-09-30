@@ -21,7 +21,8 @@ export function CounterDayStrip(): React.ReactElement | null {
     ...(s.notCollected === undefined || s.notCollected === 0 ? [] : [t("pharmacyDay.notCollected", { n: s.notCollected, of: s.queuedToday ?? 0 })]),
     ...(s.medianMinutes.queueToHandover === null ? [] : [t("pharmacyDay.wait", { m: s.medianMinutes.queueToHandover })]),
     t("pharmacyDay.open", { n: open }),
-    t("pharmacyDay.billed", { amount: fmtPaise(s.billedPaise) }),
+    /* OWNER RULING 2026-09-28 — BLIND COUNT: the server leaves the billed total off while the reader's own drawer is uncounted. */
+    ...(s.billedPaise === undefined ? [] : [t("pharmacyDay.billed", { amount: fmtPaise(s.billedPaise) })]),
     t("pharmacyDay.declined", { n: s.declinedLines }),
     ...(s.declinedTop[0] === undefined ? [] : [t("pharmacyDay.topReason", { reason: s.declinedTop[0].reason })]),
     t("pharmacyDay.returns", { n: s.returns }),

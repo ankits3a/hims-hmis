@@ -56,7 +56,7 @@ import type { Db } from "../src/kernel/db/client";
  *      `available` again → drafted → signed under a FRESH second factor → published → the envelope
  *      item `completed`.
  *   2. **An obstetric ultrasound on the same patient.** `restricted` at placement, a `form_f` gate
- *      at check-in, and **`recordAcquired` REFUSED until the Form F is recorded** — the statutory
+ *      at check-in, and **the START refused until the Form F is recorded** (18-S RS8b T3) — the statutory
  *      control, end to end, through the routes a console calls.
  */
 describe("radiology, end to end, through the real manifest (18a T9)", () => {
@@ -505,18 +505,19 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(last.body.study.state).toBe("ready");
 
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study!.id));
-    expect((await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {})).status).toBe(201);
 
     /**
-     * ═══ THE ACT, END TO END: THE EXPOSURE IS REFUSED UNTIL THE DECLARATION IS SIGNED ═══
+     * ═══ THE ACT, END TO END: THE SCAN IS REFUSED UNTIL THE DECLARATION IS SIGNED ═══
      *
      * The gate passed on an OPEN form — the sonologist has started the paperwork. The REGISTER
      * demands a RECORDED one, and H8 is the difference: a form filled in after the scan is a form
      * written to match what was found.
+     *
+     * 18-S RS8b T3 — this used to START the scan on the open form and refuse at `acquired`, which
+     * pinned the old order (the images existed before the declaration). The PCPNDT Rules put Form F
+     * BEFORE the procedure, so the START is what is refused now.
      */
-    const refused = await post(`/radiology/studies/${study!.id}/acquisition/acquired`, radiographer.token, {
-      imageSource: "no_pacs_images",
-    });
+    const refused = await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {});
     expect([refused.status, refused.body.code]).toEqual([422, "form_f_missing"]);
 
     const recorded = await post(`/pcpndt/form-f/${opened.body.formFId}/record`, radiographer.token, {
@@ -527,6 +528,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     });
     expect(recorded.status).toBe(201);
 
+    expect((await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {})).status).toBe(201);
     const lands = await post(`/radiology/studies/${study!.id}/acquisition/acquired`, radiographer.token, {
       imageSource: "no_pacs_images",
     });
@@ -631,6 +633,25 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect((await get("/radiology/portable/round", radiologist.token)).status).toBe(403);
     const round = await get("/radiology/portable/round", radiographer.token);
     expect([round.status, round.body]).toEqual([200, { rows: [] }]);
+  }, 60_000);
+
+  /**
+   * 18-S RS12b — the IR suite's routes are wired and guarded: the list and the acts on
+   * `radiology.acquire` (the radiographer's; the counter has none), the coagulation override on the
+   * radiologist's `radiology.gates.override` — a radiographer is refused it at the guard.
+   */
+  it("RS12b: the IR suite's routes answer behind their permissions; the coagulation override is the radiologist's", async () => {
+    expect((await request(server()).get("/radiology/ir/cases")).status).toBe(401);
+    expect((await get("/radiology/ir/cases", counter.token)).status).toBe(403);
+    const list = await get("/radiology/ir/cases", radiographer.token);
+    expect([list.status, list.body]).toEqual([200, { rows: [] }]);
+    const ghost = "01NOSUCHSTUDY0000000000000";
+    const why = { reason: "Obstructed infected kidney — drainage outweighs the risk" };
+    expect((await post(`/radiology/studies/${ghost}/ir/coagulation-override`, radiographer.token, why)).status).toBe(403);
+    const byRadiologist = await post(`/radiology/studies/${ghost}/ir/coagulation-override`, radiologist.token, why);
+    expect([byRadiologist.status, byRadiologist.body.code]).toEqual([404, "unknown_study"]);
+    expect((await post(`/radiology/studies/${ghost}/ir/sign-in`, radiographer.token, { participants: [] })).status).toBe(400);
+    expect((await get(`/radiology/studies/${ghost}/ir`, radiographer.token)).status).toBe(404);
   }, 60_000);
 
   it("the `imaging` order kind resolves off the REAL manifest, not off a fixture decl", async () => {
