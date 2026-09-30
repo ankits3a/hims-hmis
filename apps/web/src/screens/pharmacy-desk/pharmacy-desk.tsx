@@ -8,12 +8,13 @@ import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import { useCopilot } from "../../lib/use-copilot";
 import {
-  billDispense, claimDispense, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchQueue, findAtCounter, handOverDispense,
+  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchQueue, findAtCounter, handOverDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
 import { heldByAnother, holdOf, stageOf, ticketLabel, whoLabel } from "./model";
 import { BillRail, heldUntil, holdEnded, rupees } from "./bill";
+import type { AppliedDiscount as SheetDiscount } from "./discount";
 import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { SlipSheet } from "./slip";
@@ -62,6 +63,15 @@ import "./pharmacy-desk.css";
 function typingIn(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   return el !== null && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+}
+
+/** The desk's discount: the sheet's, bound to the dispense it was given on. */
+type AppliedDiscount = SheetDiscount & { dispenseId: string };
+
+/** What the bill carries: the discount asked and, above 10%, the approval for it. */
+function discountBody(d: AppliedDiscount | null): { discount?: { kind: AppliedDiscount["kind"]; value: number; reason: string; approvalId?: string } } {
+  if (d === null) return {};
+  return { discount: { kind: d.kind, value: d.value, reason: d.reason, ...(d.approvalId === null ? {} : { approvalId: d.approvalId }) } };
 }
 
 export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.ReactElement {
@@ -169,13 +179,31 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const drawer = useQuery({ queryKey: ["billing", "session", "current"], queryFn: fetchCurrentSession, refetchInterval: 60_000, retry: false });
   /* The header's other precondition: may this login verify (Pharmacy Act 1948 §42)? A 404 (older server) says nothing. */
   const registration = useQuery({ queryKey: ["pharmacy", "pharmacists", "me"], queryFn: fetchMyRegistration, staleTime: 5 * 60_000, retry: false });
+  /*
+    OWNER RULING 2026-09-30 — the sale discount on the ticket in hand, from the bill's ⋯ sheet. It belongs to ONE
+    dispense (a different ticket starts with none), prices the preview, and rides on the bill with its approval.
+  */
+  const [discountState, setDiscount] = useState<AppliedDiscount | null>(null);
+  const discount = discountState !== null && discountState.dispenseId === inHandId ? discountState : null;
   /* Priced at batch grain, so only once collected; the last answer stays in the cache after hand-over. */
   const preview = useQuery({
-    queryKey: ["pharmacy", "bill", inHandId],
-    queryFn: () => previewBill(inHandId ?? ""),
+    queryKey: ["pharmacy", "bill", inHandId, discount?.kind ?? null, discount?.value ?? null],
+    queryFn: () => previewBill(inHandId ?? "", discount),
     enabled: inHandId !== null && (status === "picked" || status === "billed"),
     retry: false,
   });
+
+  /*
+    OWNER RULING 2026-09-30 — what was TAKEN is the invoice's own payable (the same read and key the bill rail
+    uses), never the re-priced preview: a UPI bill took ₹33.60 where the preview's cash figure says ₹33.00.
+  */
+  const closing = useQuery({
+    queryKey: ["pharmacy", "closing", inHandId],
+    queryFn: () => fetchClosing(inHandId ?? ""),
+    enabled: inHandId !== null && (status === "billed" || status === "handed_over"),
+    retry: false,
+  });
+  const takenPaise = closing.data?.money?.netPayablePaise ?? null;
 
   const hold = useCallback((id: string): void => {
     setInHandId(id);
@@ -284,7 +312,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     if (inHandId === null) return;
     setBusy(true); setBillError(null);
     try {
-      const d = await billDispense(inHandId, { tenders: [], credit }, keyFor("bill", inHandId));
+      const d = await billDispense(inHandId, { tenders: [], credit, ...discountBody(discount) }, keyFor("bill", inHandId));
       moneyKeys.current.delete(`bill:${inHandId}`);
       settle(d);
       say(t("pharmacyDesk.log.billedOnCredit"));
@@ -297,13 +325,13 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     } finally {
       setBusy(false);
     }
-  }, [inHandId, qc, settle, t]);
+  }, [discount, inHandId, qc, settle, t]);
 
   const takeMoney = useCallback(async (tenders: Tender[], changePaise: number): Promise<void> => {
     if (inHandId === null) return;
     setBusy(true); setBillError(null);
     try {
-      const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}) }, keyFor("bill", inHandId));
+      const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}), ...discountBody(discount) }, keyFor("bill", inHandId));
       moneyKeys.current.delete(`bill:${inHandId}`);
       settle(d);
       /* what was BILLED: a cash tender is the note handed over, so the change comes off it */
@@ -318,7 +346,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     } finally {
       setBusy(false);
     }
-  }, [inHandId, qc, settle, t]);
+  }, [discount, inHandId, qc, settle, t]);
 
   const handOver = useCallback(async (identity: { via: "token" | "phone_last4"; value: string } | null, controlled?: ControlledHandover): Promise<void> => {
     if (inHandId === null) return;
@@ -489,7 +517,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onCollect={collect}
               onDecline={decline}
               handOverError={handOverError}
-              takenLabel={preview.data === undefined ? null : rupees(preview.data.totals.netPayablePaise)}
+              takenLabel={takenPaise === null ? null : rupees(takenPaise)}
               onHandOver={(identity, controlled) => void handOver(identity, controlled)}
               onOpenSlip={() => setOverlay("slip")}
               queue={rows}
@@ -520,6 +548,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onCredit={(credit) => void billOnCredit(credit)}
               onDraft={draft}
               onOpenDrawer={() => void navigate({ to: "/billing/session" })}
+              discount={discount}
+              onDiscount={(d) => setDiscount(d === null ? null : { ...d, dispenseId: inHand.id })}
             />
           ) : (
             <QueueRail

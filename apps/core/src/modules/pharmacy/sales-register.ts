@@ -569,6 +569,8 @@ const buyerOf = (h: { buyerGstin: string | null; buyerLegalName: string | null }
 
 export type PeriodSale = {
   id: string; invoiceNo: string; serviceDay: string; ref: string | null; buyer: SaleBuyer | null;
+  /** OWNER RULING 2026-09-30 — the MRP total and the discount given on it (already out of the taxable value). */
+  grossPaise: number; discountPaise: number;
   taxableBasePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPayablePaise: number;
 };
 export type PeriodRefund = {
@@ -591,6 +593,7 @@ export async function pharmacySalesPeriod(db: Db, from: string, to: string): Pro
   return {
     sales: p.sales.map((h) => ({
       id: h.id, invoiceNo: h.invoiceNo, serviceDay: h.serviceDay, ref: p.docs.get(h.id)?.ref ?? null, buyer: buyerOf(h),
+      grossPaise: h.grossPaise, discountPaise: h.discountPaise,
       taxableBasePaise: h.taxableBasePaise, cgstPaise: h.cgstPaise, sgstPaise: h.sgstPaise, roundingPaise: h.roundingPaise, netPayablePaise: h.netPayablePaise,
     })),
     refunds: p.refunds.map((n) => {

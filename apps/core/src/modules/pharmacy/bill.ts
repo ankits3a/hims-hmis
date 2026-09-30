@@ -4,7 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { transition } from "../../kernel/workflow/instances";
-import { getInvoice, issueInvoice, previewInvoice } from "../billing";
+import { getInvoice, issueInvoice, previewInvoice, roundTotalBy } from "../billing";
 import { listGstCategories, serviceCategoriesByIds } from "../tariff";
 import { effectiveRegulation, getBatch, itemUomRows } from "../materials";
 import { getEncounter } from "../opd";
@@ -19,6 +19,8 @@ import { requireActiveSaleItem } from "./sale-items";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { IssueInvoiceInput, PricedDraft } from "../billing";
+import { assertDiscountCovered, pharmacyRoundingRule, quoteDiscount, requestDiscountApproval, saleDiscountPaise } from "./discount";
+import type { DiscountAsk, DiscountQuote } from "./discount";
 import type { InvoiceLineInput } from "../tariff";
 import type { DispenseView } from "./queue";
 
@@ -33,6 +35,12 @@ export type BillInput = {
    * desk through `POST /billing/credit-requests` against THIS dispense's id, the draft id below).
    */
   credit?: { reason: string; approvalId: string };
+  /**
+   * OWNER RULING 2026-09-30 — a % (basis points) or rupees (paise) off MRP, with a reason. Up to 10% the
+   * pharmacist gives it; above, `approvalId` is the in-charge's or the owner's GRANTED approval for THIS
+   * dispense and THIS discount (`discount.ts`).
+   */
+  discount?: DiscountAsk & { approvalId?: string };
 };
 
 type PricedLinePlan = { lineId: string; lineIdx: number; itemId: string } & PricedBatchLine;
@@ -189,16 +197,87 @@ export function displayDraft(
   };
 }
 
-/** What the window shows before a rupee is taken: the priced draft, through billing's own preview. */
-export async function previewDispenseBill(db: Db, actor: Actor, dispenseId: string, now: Date): Promise<DisplayDraft> {
+/** OWNER RULING 2026-09-30 — the tender the cashier has chosen. A split is cash plus UPI, so it is cash. */
+export type TenderKind = "cash" | "upi" | "card" | "split";
+export const TENDER_KINDS = ["cash", "upi", "card", "split"] as const;
+
+export function roundingRuleForTender(tender: TenderKind) {
+  return pharmacyRoundingRule([{ mode: tender === "split" ? "cash" : tender }]);
+}
+
+/**
+ * The payable under each of ruling 1's two rules, from the same raw total — so the desk switches cash ↔
+ * UPI without asking again, and never computes money itself. `cash` also covers a split and the owner's
+ * credit (no tender); `digital` is UPI or card alone.
+ */
+export type TenderPayables = { cash: { netPayablePaise: number; roundingPaise: number }; digital: { netPayablePaise: number; roundingPaise: number } };
+
+export function tenderPayables(rawTotalPaise: number): TenderPayables {
+  const cash = roundTotalBy("half_up", rawTotalPaise);
+  const exact = roundTotalBy("exact", rawTotalPaise);
+  return {
+    cash: { netPayablePaise: cash.roundedPaise, roundingPaise: cash.roundingPaise },
+    digital: { netPayablePaise: exact.roundedPaise, roundingPaise: exact.roundingPaise },
+  };
+}
+
+export type BillPreview = DisplayDraft & { byTender: TenderPayables; discount: DiscountQuote | null };
+
+/** A discount priced in a preview: the sheet has not always got its reason yet, and a preview writes nothing. */
+function previewAsk(ask: DiscountAsk): DiscountAsk {
+  return { ...ask, reason: ask.reason.trim() === "" ? "preview" : ask.reason };
+}
+
+/**
+ * What the window shows before a rupee is taken: the priced draft, through billing's own preview —
+ * rounded for `tender` (cash when unsaid) and, when the discount sheet is open, with its discount and
+ * who must approve it.
+ */
+export async function previewDispenseBill(
+  db: Db, actor: Actor, dispenseId: string, now: Date, opts: { tender?: TenderKind; discount?: DiscountAsk } = {},
+): Promise<BillPreview> {
   const d = await getDispenseRow(db, dispenseId);
   if (d.status !== "picked" && d.status !== "billed") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}, not picked`, { status: d.status });
   const encounter = await getEncounter(db, d.encounterId);
   if (encounter === null) throw new PharmacyError("not_found", `encounter ${d.encounterId} not found`);
   const plan = await priceLines(db, dispenseId, now);
   void actor;
-  const draft = await previewInvoice(db, { patientId: d.patientId, encounterId: encounter.id, lines: plan.flatMap(invoiceInputsOf) }, now);
-  return displayDraft(draft, plan, await counterPacks(db, plan.map((p) => p.itemId)));
+  const draft = await previewInvoice(db, {
+    patientId: d.patientId, encounterId: encounter.id, lines: plan.flatMap(invoiceInputsOf),
+    roundingRule: roundingRuleForTender(opts.tender ?? "cash"),
+    ...(opts.discount === undefined ? {} : { saleDiscount: previewAsk(opts.discount) }),
+  }, now);
+  return {
+    ...displayDraft(draft, plan, await counterPacks(db, plan.map((p) => p.itemId))),
+    byTender: tenderPayables(draft.totals.rawTotalPaise),
+    discount: opts.discount === undefined ? null : quoteDiscount(opts.discount, draft.totals.grossPaise, saleDiscountPaise(draft.lines)),
+  };
+}
+
+/**
+ * Asks for the discount on THIS dispense: priced exactly as the bill will price it, the tier read off the
+ * result, and the approval filed with that tier's approver for that amount. Only a picked dispense —
+ * before the pick there is no batch, so no price and nothing to approve.
+ */
+export async function askDispenseDiscount(
+  db: Db, actor: Actor, dispenseId: string, ask: DiscountAsk, now: Date,
+): Promise<{ approvalId: string; tier: DiscountQuote["tier"]; amountPaise: number }> {
+  if (ask.reason.trim() === "") throw new PharmacyError("reason_required", "a discount needs a reason the approver can read");
+  const d = await getDispenseRow(db, dispenseId);
+  if (d.status !== "picked") throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}, not picked`, { status: d.status });
+  const preview = await previewDispenseBill(db, actor, dispenseId, now, { discount: ask });
+  return requestDiscountApproval(db, actor, { draftId: d.id, patientId: d.patientId, ask, quote: preview.discount! });
+}
+
+/** The dispense's discount, priced on THIS plan's lines and judged: its quote, once the approval (if any) is checked. */
+export async function judgeDispenseDiscount(
+  db: Db, d: { id: string; patientId: string }, encounterId: string, lines: IssueInvoiceInput["lines"], discount: NonNullable<BillInput["discount"]>, now: Date,
+): Promise<{ ask: DiscountAsk; quote: DiscountQuote }> {
+  const ask: DiscountAsk = { kind: discount.kind, value: discount.value, reason: discount.reason };
+  const draft = await previewInvoice(db, { patientId: d.patientId, encounterId, lines, saleDiscount: ask, roundingRule: "exact" }, now);
+  const quote = quoteDiscount(ask, draft.totals.grossPaise, saleDiscountPaise(draft.lines));
+  await assertDiscountCovered(db, { draftId: d.id, patientId: d.patientId, ask, quote, approvalId: discount.approvalId });
+  return { ask, quote };
 }
 
 /**
@@ -249,12 +328,17 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
   const encounter = await getEncounter(db, d.encounterId);
   if (encounter === null) throw new PharmacyError("not_found", `encounter ${d.encounterId} not found`);
   const plan = await priceLines(db, dispenseId, now);
+  const lines = plan.flatMap(invoiceInputsOf);
+  const judged = input.discount === undefined ? null : await judgeDispenseDiscount(db, d, encounter.id, lines, input.discount, now);
 
   const invoiceInput: IssueInvoiceInput = {
     draftId: d.id,
     patientId: d.patientId,
     encounterId: encounter.id,
-    lines: plan.flatMap(invoiceInputsOf),
+    lines,
+    // OWNER RULING 2026-09-30 (as amended) — any cash (or no tender: the owner's credit) rounds to the nearest rupee; UPI/card alone to the paisa.
+    roundingRule: pharmacyRoundingRule(input.tenders),
+    ...(judged === null ? {} : { saleDiscount: judged.ask }),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
     ...(input.tenders.length === 0 ? {} : {
       receipt: {
@@ -271,6 +355,8 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     const result = await issueInvoice(tx as unknown as Db, actor, invoiceInput, now);
     const stored = await getInvoice(tx, result.invoiceId);
     if (stored === null) throw new PharmacyError("not_found", `invoice ${result.invoiceId} vanished inside its own transaction`);
+    // The bill must carry exactly the discount that was judged (and approved): anything else rolls it all back.
+    if (judged !== null) assertIssuedDiscount(stored.lines, judged.quote);
     const rows = mainRowsOf([...stored.lines].sort((a, b) => a.lineNo - b.lineNo), plan);
     for (const [i, p] of plan.entries()) {
       const row = rows[i]!;
@@ -291,4 +377,14 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     }));
   });
   return getDispense(db, actor, d.id, now);
+}
+
+/** The issued invoice's sale discount, read back off its stored lines, against the judged one. */
+export function assertIssuedDiscount(lines: readonly { discountPaise: number; winner: unknown }[], quote: DiscountQuote): void {
+  const issued = saleDiscountPaise(lines.map((l) => ({ discountPaise: l.discountPaise, winner: l.winner as { sourceKey: string } | null })));
+  if (issued !== quote.amountPaise) {
+    throw new PharmacyError("discount_not_bound", `the bill priced the discount at ${String(issued)}p, not the ${String(quote.amountPaise)}p judged — price it again`, {
+      issuedPaise: issued, judgedPaise: quote.amountPaise,
+    });
+  }
 }

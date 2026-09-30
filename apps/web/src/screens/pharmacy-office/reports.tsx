@@ -330,10 +330,14 @@ function SalesReport({ sheet, presetRef }: Bind): React.ReactElement {
     { key: "doctor", label: L("doctor"), value: (r) => r.prescriber ?? "—" },
     { key: "operator", label: L("operator"), value: (r) => r.operatorName },
     { key: "tender", label: L("method"), value: (r) => (r.tender === null ? "—" : t(`pharmacyOffice.reports.tender.${r.tender}`)) },
+    /* OWNER RULINGS 2026-09-30 — MRP less discount is taxable plus the two heads; add the rounding and it is the
+       total. Without the MRP and rounding columns a row read 32.00 + 0.80 + 0.80 = 34.00 and did not add up. */
+    { key: "gross", label: L("gross"), money: true, value: (r) => sign(r, r.grossPaise) },
     { key: "discount", label: L("discount"), money: true, value: (r) => sign(r, r.discountPaise) },
     { key: "taxable", label: L("taxable"), money: true, value: (r) => sign(r, r.taxablePaise) },
     { key: "cgst", label: L("cgst"), money: true, value: (r) => sign(r, r.cgstPaise) },
     { key: "sgst", label: L("sgst"), money: true, value: (r) => sign(r, r.sgstPaise) },
+    { key: "rounding", label: L("rounding"), money: true, value: (r) => sign(r, r.roundingPaise) },
     { key: "net", label: L("total"), money: true, value: (r) => sign(r, r.netPaise) },
     { key: "remaining", label: L("remaining"), money: true, value: (r) => r.outstandingPaise },
     ...(m ? [
@@ -357,6 +361,7 @@ function SalesReport({ sheet, presetRef }: Bind): React.ReactElement {
   ];
   const totals: Totals | null = d === undefined ? null : {
     date: t("pharmacyOffice.reports.totals"), label: t("pharmacyOffice.reports.totals"),
+    gross: d.totals.sales.grossPaise - d.totals.refunds.grossPaise, rounding: d.totals.sales.roundingPaise - d.totals.refunds.roundingPaise,
     discount: d.totals.sales.discountPaise - d.totals.refunds.discountPaise, taxable: d.totals.net.taxablePaise, cgst: d.totals.net.cgstPaise,
     sgst: d.totals.net.sgstPaise, net: d.totals.net.netPaise, returns: d.totals.refunds.netPaise, sales: d.totals.sales.count, refunds: d.totals.refunds.count,
     ...(m ? { profit: d.totals.profitPaise, margin: pct(d.totals.marginBps) } : {}),
@@ -705,6 +710,11 @@ function Gstr3bReport({ sheet, presetRef }: Bind): React.ReactElement {
           <Table testId="gstr3b-table" cols={cols} rows={rows} rowKey={(r) => r.key} totals={null} rowClass={(r) => (r.strong === true ? "font-semibold" : "")} />
           <p className="text-sm font-medium" data-testid="gstr3b-cash">{G("cashTotal", { amount: money(d.payable.cashPaise) })}</p>
           {d.creditNotesUnsplitPaise > 0 && <p className="text-sm text-amber-700">{G("creditNotes", { amount: money(d.creditNotesUnsplitPaise) })}</p>}
+          {d.outward.discountPaise !== undefined && (
+            <p className="text-sm text-muted-foreground" data-testid="gstr3b-discount">
+              {G("discountNote", { discount: money(d.outward.discountPaise), rounding: money(d.outward.roundingPaise ?? 0) })}
+            </p>
+          )}
         </>
       )}
     </div>

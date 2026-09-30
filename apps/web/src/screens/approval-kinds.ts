@@ -54,6 +54,10 @@ export const APPROVAL_KINDS = {
   membership_grace_honor: ["patient"],
   /* STAGE D5 — a Reserve/restricted antimicrobial the steward approves; the drug, indication and days are in the request note. */
   pharmacy_restricted_antimicrobial: ["patient"],
+  /* OWNER RULINGS 2026-09-30 (money) — a sale discount above 10% (the in-charge) and above 25% or ₹25,000 (the owner);
+     the percentage and the reason are in the request note, the rupees off are the amount. */
+  pharmacy_discount_incharge: ["amount", "patient"],
+  pharmacy_discount_owner: ["amount", "patient"],
 } as const satisfies Record<string, readonly Need[]>;
 
 export type KnownKind = keyof typeof APPROVAL_KINDS;

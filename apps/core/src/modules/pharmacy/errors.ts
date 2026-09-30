@@ -242,6 +242,13 @@ export const PHARMACY_ERROR_CODES = [
   "opening_stock_unreadable",
   /** A row was refused (not on the shelf, expired, a bad MRP…): the sheet is received whole or not at all. */
   "opening_stock_refused",
+  // ── OWNER RULINGS 2026-09-30 (money): the sale-side discount (`discount.ts`) ──
+  /** Above 10% (the in-charge) or above 25% / ₹25,000 (the owner): the bill waits for a GRANTED approval. */
+  "discount_approval_required",
+  /** The approval does not bind THIS bill and THIS discount: another dispense, another %, another amount, another tier. */
+  "discount_not_bound",
+  /** A walk-in discount that needs an approval names the customer first: an approval of money binds a patient. */
+  "discount_needs_customer",
   /** 2026-09-30 — a Schedule X or NDPS line on a paper prescription at the desk: it needs the doctor's e-prescription. */
   "paper_rx_controlled",
   /** 2026-09-30 — no hospital visit on the paper's date that is free of an e-prescription. */
@@ -390,6 +397,9 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invalid_message_setting: 400,
   opening_stock_unreadable: 400,
   opening_stock_refused: 409,
+  discount_approval_required: 409,
+  discount_not_bound: 409,
+  discount_needs_customer: 409,
   paper_rx_controlled: 409,
   paper_rx_no_visit: 409,
 };

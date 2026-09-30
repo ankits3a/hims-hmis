@@ -623,6 +623,16 @@
         "ask": "Write off {{amount}} the bank did not pay on {{patient}}'s receipt",
         "explain": "The shortfall is recorded as the bank's charge and the receipt reconciles. Your ruling: the billing manager writes off up to ₹50.00 per receipt; above that it is yours."
       },
+      "pharmacy_discount_incharge": {
+        "label": "Pharmacy discount above 10%",
+        "ask": "Allow {{amount}} off {{patient}}'s pharmacy bill",
+        "explain": "The pharmacist may give up to 10% off MRP; above that, up to 25%, is yours as pharmacy in-charge. The percentage and the reason are in the note. You may not approve a discount you asked for."
+      },
+      "pharmacy_discount_owner": {
+        "label": "Pharmacy discount above 25% or ₹25,000 (only you approve)",
+        "ask": "Allow {{amount}} off {{patient}}'s pharmacy bill",
+        "explain": "Your ruling: a discount above 25% of MRP, or worth more than ₹25,000 on one bill, is yours to approve. The percentage and the reason are in the note."
+      },
       "pharmacy_restricted_antimicrobial": {
         "label": "Restricted antimicrobial",
         "ask": "Approve a restricted antimicrobial for {{patient}}",
@@ -7446,6 +7456,9 @@
     "invalid_message_setting": "That is not in the shape the provider issues: the phone needs 10–12 digits with its STD code.",
     "opening_stock_unreadable": "That is not the opening-stock template: a column is missing or misspelt, or the sheet is empty or longer than 2,000 rows. Download the template.",
     "opening_stock_refused": "Some rows were refused, so nothing was captured. Check the sheet, fix those rows and try again.",
+    "discount_approval_required": "This discount needs approval before the bill can be taken — above 10% the pharmacy in-charge, above 25% or over ₹25,000 the owner. Ask from the discount sheet.",
+    "discount_not_bound": "The approval does not cover this bill's discount — the medicines or the discount changed. Ask again.",
+    "discount_needs_customer": "Name the customer first — an approval of money is filed against a patient.",
     "paper_rx_controlled": "Schedule X and narcotic/psychotropic medicines need the doctor's e-prescription — they are not given from a paper prescription at the desk.",
     "paper_rx_no_visit": "No hospital visit on the prescription's date that is free of an e-prescription. The front desk opens the visit; an outside doctor's paper is a walk-in sale.",
     "invalid_adr": "The reaction report is incomplete or inconsistent — check the dates and the medicines",
@@ -7564,6 +7577,43 @@
     "printBill": "Print bill",
     "backToCounter": "Back to the counter",
     "scanPack": "Scan pack"
+  },
+  "pharmacyDiscount": {
+    "menu": "More for this bill",
+    "open": "Discount…",
+    "change": "Change discount…",
+    "remove": "Remove discount",
+    "title": "Discount off MRP",
+    "unit": "Discount as",
+    "unit_pct": "% off MRP",
+    "unit_rs": "₹ off the bill",
+    "percent": "Percent",
+    "amount": "Rupees",
+    "reason": "Reason",
+    "reasonHint": "e.g. senior citizen, staff family",
+    "reasonFirst": "Write the reason first (at least 3 letters) — it is printed on the bill.",
+    "invalid": "Enter a discount above zero: up to 100%, at most two decimals.",
+    "off": "Discount {{d}}",
+    "gstInside": "GST inside the new amount",
+    "payCash": "To collect in cash",
+    "payDigital": "To collect by UPI or card",
+    "tier": {
+      "pharmacist": "Up to 10% — you can give this yourself.",
+      "pharmacy_incharge": "Above 10% — the pharmacy in-charge must approve. The bill waits until they do.",
+      "owner": "Above 25%, or more than ₹25,000 off — only the owner can approve. The bill waits until they do."
+    },
+    "who": {
+      "pharmacist": "the pharmacist",
+      "pharmacy_incharge": "the pharmacy in-charge",
+      "owner": "the owner"
+    },
+    "apply": "Apply discount",
+    "ask": "Ask {{who}}",
+    "cancel": "Cancel",
+    "rounding": "Rounding",
+    "pending": "Waiting for {{who}} to approve the discount — the bill waits.",
+    "granted": "Discount approved by {{who}} — take the money.",
+    "rejected": "{{who}} refused the discount: {{note}}. Remove it, or ask again."
   },
   "pharmacyDesk": {
     "wordmark": "PHARMACY DESK",
@@ -11452,6 +11502,8 @@
         "igst": "IGST",
         "total": "Total",
         "remaining": "Remaining",
+        "gross": "MRP",
+        "rounding": "Rounding",
         "profit": "Profit",
         "marginPct": "Margin %",
         "code": "Code",
@@ -11642,7 +11694,8 @@
         "carry": "Credit carried forward",
         "note": "From the hospital's books, for every bill it issued (a return is per GSTIN). Claim no more ITC than GSTR-2B shows — reconcile it first. Set-off follows rule 88A: IGST credit first, then CGST and SGST each against its own head. Filing stays the accountant's act on the portal.",
         "cashTotal": "Payable in cash for the period: {{amount}}",
-        "creditNotes": "Vendor credit notes of {{amount}} carry no tax split in the books — reverse their ITC by hand."
+        "creditNotes": "Vendor credit notes of {{amount}} carry no tax split in the books — reverse their ITC by hand.",
+        "discountNote": "Pharmacy bills in the period: discount allowed {{discount}} and rounding {{rounding}} — both already out of the taxable value above (a discount on the invoice reduces the value of supply; rounding is not a supply)."
       },
       "exportXlsx": "Excel (.xlsx)",
       "exportCsv": "CSV",

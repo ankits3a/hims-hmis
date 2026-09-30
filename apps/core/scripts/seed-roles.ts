@@ -1778,6 +1778,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // par, expiry margin); and checks one like any pharmacist. DEFAULT — owner may change.
       "pharmacy.trays.check",
       "pharmacy.trays.manage",
+      // OWNER RULINGS 2026-09-30 (money) — the in-charge approves a sale discount above 10% and up to 25%
+      // (`pharmacy_discount_incharge`); an approver role that cannot open the queue is the silence
+      // `materials_head` once had. Never their own ask: the kernel refuses the requester as approver.
+      "approvals.requests.read",
+      "approvals.requests.decide",
     ],
   },
   /**

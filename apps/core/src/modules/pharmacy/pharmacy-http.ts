@@ -77,3 +77,35 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   /** 2026-09-30 — a paper prescription entered at the desk: a retried click must not issue it twice. */
   paperRx: "POST /pharmacy/paper-rx",
 } as const;
+
+/**
+ * OWNER RULING 2026-09-30 — a sale discount as the wire carries it: a % off MRP in basis points (800 = 8%,
+ * at most 100%) or rupees off the bill in paise, and the reason. `approvalId` rides only on the bill.
+ */
+export const discountAskSchema = z.object({
+  kind: z.enum(["percent_bps", "flat_paise"]),
+  value: z.number().int().positive().max(1_000_000_000),
+  reason: z.string().trim().min(1).max(300),
+}).refine((d) => d.kind !== "percent_bps" || d.value <= 10000, { message: "a discount cannot exceed 100%", path: ["value"] });
+export const discountOnBillSchema = z.object({
+  kind: z.enum(["percent_bps", "flat_paise"]),
+  value: z.number().int().positive().max(1_000_000_000),
+  reason: z.string().trim().min(1).max(300),
+  approvalId: z.string().min(1).max(64).optional(),
+}).refine((d) => d.kind !== "percent_bps" || d.value <= 10000, { message: "a discount cannot exceed 100%", path: ["value"] });
+
+/** The preview's query: `?tender=cash|upi|card|split&discountKind=percent_bps&discountValue=800&discountReason=…`. */
+export const billPreviewQuery = z.object({
+  tender: z.enum(["cash", "upi", "card", "split"]).optional(),
+  discountKind: z.enum(["percent_bps", "flat_paise"]).optional(),
+  discountValue: z.string().regex(/^\d{1,10}$/).optional(),
+  discountReason: z.string().max(300).optional(),
+});
+
+export function discountFromQuery(q: z.infer<typeof billPreviewQuery>): { kind: "percent_bps" | "flat_paise"; value: number; reason: string } | undefined {
+  if (q.discountKind === undefined || q.discountValue === undefined) return undefined;
+  const value = Number(q.discountValue);
+  if (value <= 0) return undefined;
+  if (q.discountKind === "percent_bps" && value > 10000) throw new BadRequestException("a discount cannot exceed 100%");
+  return { kind: q.discountKind, value, reason: q.discountReason ?? "" };
+}

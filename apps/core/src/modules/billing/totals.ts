@@ -1,6 +1,41 @@
 import { roundTotalToRupee } from "../tariff";
 import type { PricedLine } from "../tariff";
 
+/**
+ * ═══ OWNER RULING 2026-09-30 (money) — HOW A TOTAL IS ROUNDED IS THE INVOICE'S OWN, AND PERSISTED ═══
+ *
+ * `half_up` is §170 as it has stood since 2026-08-14: the whole rupee, halves up. Every OPD, lab,
+ * radiology and front-desk invoice stays on it — it is the default, and nothing but an in-process
+ * caller can ask for another (no HTTP body declares the field).
+ *
+ * The pharmacy's, owner 2026-09-30, AMENDED the same day on PR #424: *"If the amount is 33.60, the
+ * collection should be 34. If it's 30.91 then collection should be Rs 31. If it is Rs 30.49 then
+ * collection can be Rs 30. But if it's 30.51 then collection in cash should be 31."* So cash (and any
+ * tender that includes cash, and the owner's credit) is `half_up` — the nearest rupee, up to 49 paise
+ * above MRP by his decision — and UPI or card alone is:
+ *   · `exact` — no rounding at all (₹33.60 → ₹33.60).
+ *
+ * The rule is stored on the invoice (`invoices.rounding_rule`) because a credit note against it must
+ * round the same way: an `exact` bill paid ₹33.60, and a half-up credit note would free ₹34.00 for a
+ * refund the voucher guard then refuses as more than was received.
+ */
+export const ROUNDING_RULES = ["half_up", "exact"] as const;
+export type RoundingRule = (typeof ROUNDING_RULES)[number];
+
+/** A stored `rounding_rule`, read back. A value this code does not know is refused, never guessed. */
+export function roundingRuleOf(stored: string): RoundingRule {
+  const rule = ROUNDING_RULES.find((r) => r === stored);
+  if (rule === undefined) throw new Error(`unknown rounding rule "${stored}"`);
+  return rule;
+}
+
+export function roundTotalBy(rule: RoundingRule, totalPaise: number): { roundedPaise: number; roundingPaise: number } {
+  if (rule === "half_up") return roundTotalToRupee(totalPaise);
+  // `roundTotalToRupee` owns the paise guard; reuse it so both rules refuse the same inputs.
+  roundTotalToRupee(totalPaise);
+  return { roundedPaise: totalPaise, roundingPaise: 0 };
+}
+
 /** One GSTR-1 row: the invoice's lines folded by (sacCode, rateBps, exempt). */
 export type TaxSummaryRow = {
   sacCode: string; rateBps: number; exempt: boolean;
@@ -13,7 +48,7 @@ export type InvoiceTotals = {
   taxableTurnoverPaise: number; exemptTurnoverPaise: number; // Rule 42/43 split, net of line discounts
   taxSummary: TaxSummaryRow[]; // grouped at the GSTR-1 grain, in first-appearance order
   rawTotalPaise: number; // Σ line netPaise
-  netPayablePaise: number; roundingPaise: number; // §170: roundTotalToRupee(rawTotal), applied ONCE
+  netPayablePaise: number; roundingPaise: number; // §170: roundTotalBy(rule, rawTotal), applied ONCE
 };
 
 /**
@@ -23,7 +58,7 @@ export type InvoiceTotals = {
  * (§15.1). The only arithmetic this function performs on an invoice-level base is the single §170
  * rupee rounding of the raw total (§15.2, B-03).
  */
-export function totalInvoice(lines: PricedLine[]): InvoiceTotals {
+export function totalInvoice(lines: PricedLine[], roundingRule: RoundingRule = "half_up"): InvoiceTotals {
   let grossPaise = 0;
   let discountPaise = 0;
   let taxableBasePaise = 0;
@@ -61,7 +96,7 @@ export function totalInvoice(lines: PricedLine[]): InvoiceTotals {
     }
   }
 
-  const { roundedPaise, roundingPaise } = roundTotalToRupee(rawTotalPaise);
+  const { roundedPaise, roundingPaise } = roundTotalBy(roundingRule, rawTotalPaise);
   return {
     grossPaise, discountPaise, taxableBasePaise, cgstPaise, sgstPaise,
     taxableTurnoverPaise, exemptTurnoverPaise,

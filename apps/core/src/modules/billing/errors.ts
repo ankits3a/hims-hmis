@@ -31,7 +31,12 @@ export type BillingErrorCode =
    */
   | "aadhaar_not_stored"
   /** UX-AUDIT 2026-09-28 · BOARD — resolving a settlement mismatch (`recon-resolve.ts`). */
-  | "unknown_tender" | "tender_not_mismatched" | "not_short_settled" | "recon_already_disputed";
+  | "unknown_tender" | "tender_not_mismatched" | "not_short_settled" | "recon_already_disputed"
+  /**
+   * OWNER RULING 2026-09-30 (money) — a rounding rule or a sale discount asked on a bill that is not a
+   * pharmacy bill, and a sale discount that cannot be given (no reason, over 100%, over the bill).
+   */
+  | "pharmacy_bill_only" | "sale_discount_refused";
 
 export class BillingError extends Error {
   constructor(
@@ -79,6 +84,8 @@ const VALIDATION_CODES = new Set<BillingErrorCode>([
   "patient_encounter_mismatch",
   // OWNER RULING 2026-09-28 — the request itself carries what the hospital may not keep.
   "aadhaar_not_stored",
+  // OWNER RULING 2026-09-30 — the request itself asks for what cannot be given.
+  "pharmacy_bill_only", "sale_discount_refused",
 ]);
 
 export function billingHttpStatus(code: BillingErrorCode): number {

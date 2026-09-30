@@ -407,11 +407,13 @@ describe("the office's reports — stage C", () => {
     const sheet = parts.get("xl/worksheets/sheet1.xml")!;
     expect(sheet).toContain('<c r="A1" t="inlineStr" s="1"><is><t xml:space="preserve">Date</t></is></c>');
     expect(sheet).toContain("<t xml:space=\"preserve\">INV/26-27/000001</t>");
-    // The bill's ₹45.00 is the number 45 in a money cell; the refund's is −15.
-    expect(sheet).toMatch(/<c r="O2" s="2"><v>45<\/v><\/c>/);
-    expect(sheet).toMatch(/<c r="O3" s="2"><v>-15<\/v><\/c>/);
+    // The bill's ₹45.00 is the number 45 in a money cell; the refund's is −15. (Column Q since the 2026-09-30 money
+    // rulings put MRP before the discount and Rounding before the total, so a row adds up.)
+    expect(sheet).toMatch(/<c r="Q2" s="2"><v>45<\/v><\/c>/);
+    expect(sheet).toMatch(/<c r="Q3" s="2"><v>-15<\/v><\/c>/);
+    expect(sheet).toContain('<c r="P1" t="inlineStr" s="1"><is><t xml:space="preserve">Rounding</t></is></c>');
     // The totals row is bold, and its money bold money.
-    expect(sheet).toMatch(/<row r="4"><c r="A4" t="inlineStr" s="1">.*<c r="O4" s="3"><v>30<\/v><\/c>/);
+    expect(sheet).toMatch(/<row r="4"><c r="A4" t="inlineStr" s="1">.*<c r="Q4" s="3"><v>30<\/v><\/c>/);
     expect(parts.get("xl/workbook.xml")).toContain('name="Sales register"');
   });
 
@@ -443,5 +445,42 @@ describe("the office's reports — stage C", () => {
     expect(screen.getByTestId("version-after-lines.i-croc.ratePaise")).toHaveTextContent("26.00");
     expect(screen.getByTestId("version-after-vendorBillNo")).toHaveAttribute("data-changed", "no");
     expect(screen.getByTestId("version-after-vendorBillNo")).toHaveTextContent("ACME/0042");
+  });
+});
+
+/**
+ * OWNER RULINGS 2026-09-30 (money) — the register gets MRP and rounding columns, so a row adds up: MRP less the
+ * discount is taxable plus both heads, and with the rounding it is the total. The walk before this found
+ * 32.00 + 0.80 + 0.80 = 34.00 and nothing to say where the missing 0.40 went.
+ */
+describe("the sales register adds up (owner rulings 2026-09-30)", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  it("shows MRP, discount, taxable, CGST, SGST, rounding and total for each bill, and totals the rounding", async () => {
+    const row = sale({ grossPaise: 3_360, discountPaise: 269, taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, roundingPaise: 9, netPaise: 3_100, lines: [] });
+    const reg: WireSalesRegister = {
+      ...register(false),
+      rows: [row],
+      totals: {
+        sales: { count: 1, grossPaise: 3_360, discountPaise: 269, taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, roundingPaise: 9, netPaise: 3_100 },
+        refunds: { count: 0, grossPaise: 0, discountPaise: 0, taxablePaise: 0, cgstPaise: 0, sgstPaise: 0, roundingPaise: 0, netPaise: 0 },
+        net: { taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, netPaise: 3_100 },
+        costPaise: null, profitPaise: null, marginBps: null,
+      },
+    };
+    mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/sales": reg }, ACCOUNTS);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    const list = await screen.findByTestId("reports-view");
+    list.focus();
+    await userEvent.keyboard("1");
+    const table = await screen.findByTestId("sales-table");
+    expect(within(table).getByText("MRP")).toBeTruthy();
+    expect(within(table).getByText("Rounding")).toBeTruthy();
+    const cells = [...within(table).getByTestId("sales-table-row-inv-1").querySelectorAll("td")].map((td) => td.textContent ?? "");
+    // 33.60 − 2.69 = 27.60 + 1.66 + 1.65 = 30.91; + 0.09 rounding (cash, the nearest rupee) = 31.00
+    expect(cells.join("|")).toContain("33.60|2.69|27.60|1.66|1.65|0.09|31.00");
+    const totals = [...within(table).getByTestId("sales-table-totals").querySelectorAll("td")].map((td) => td.textContent ?? "").join("|");
+    expect(totals).toContain("33.60|2.69|27.60|1.66|1.65|0.09|31.00");
   });
 });

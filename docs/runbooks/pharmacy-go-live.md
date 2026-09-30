@@ -249,9 +249,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 130 codes
+## 4. What refuses, and why — all 133 codes
 
-`errors.ts` declares 130, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 133, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -332,6 +332,9 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 `version_not_active` (§1.7) · `no_open_session` (§1.8) · `billing_not_configured` ·
 `unsettled_issue_refused` · `insufficient_stock` · `batch_frozen` (a recall — DD14 refuses the
 movement itself, which is why the pharmacy layer never needed its own recall check).
+| `discount_approval_required` | a sale discount above 10% (the in-charge) or above 25% / worth more than ₹25,000 (the owner) has no GRANTED approval yet — owner rulings 2026-09-30 | ask from the bill's ⋯ → Discount sheet; bill once it is granted |
+| `discount_not_bound` | the approval does not cover THIS bill's discount: another dispense or cart, another %, another amount (the basket changed), or the cart was already sold | ask again for the bill as it stands |
+| `discount_needs_customer` | a walk-in discount that needs an approval with no customer named — an approval of money binds a patient | find or register the customer, then ask |
 
 ## 5. The pilot window
 

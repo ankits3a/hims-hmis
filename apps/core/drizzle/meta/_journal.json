@@ -1149,6 +1149,13 @@
       "when": 1790759598534,
       "tag": "0163_materials_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1790759941407,
+      "tag": "0164_invoice_rounding_rule",
+      "breakpoints": true
     }
   ]
 }
