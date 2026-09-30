@@ -308,7 +308,13 @@ export function TabStrip<T extends string>(
     <div
       role="tablist" aria-label={label}
       {...(testId === undefined ? {} : { "data-testid": testId })}
-      style={{ display: "flex", gap: 6, borderBottom: "1px solid var(--line)", paddingBottom: 9 }}
+      /*
+        `flexWrap: "wrap"` — /opd/admin's six tabs are ~600px of pills, and a row that could not wrap
+        pushed a 390px phone 236px sideways (measured 2026-09-30). A second row of tabs is the ordinary
+        answer; the arrow keys walk the options array, not the geometry, so wrapping changes nothing
+        for the keyboard.
+      */
+      style={{ display: "flex", flexWrap: "wrap", gap: 6, borderBottom: "1px solid var(--line)", paddingBottom: 9 }}
       /*
         `else if` rather than four bare `if`s: with four keys this is the exhaustive key table it
         reads as. No `stopPropagation` — opd-consult.tsx:859 installs a window keydown listener,
