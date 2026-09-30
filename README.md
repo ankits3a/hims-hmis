@@ -566,7 +566,7 @@ missed — nothing auto-charges.
 | POST | `/billing/eie` | mark a receipt entered-in-error; reverses its live allocations |
 | GET | `/billing/patients/:patientId/balance` | advance + outstanding + dues |
 | GET | `/billing/patients/:patientId/dues` | unsettled invoices, oldest first |
-| POST | `/billing/refunds/request` | files the mandatory `billing_refund` approval |
+| POST | `/billing/refunds/request` | files the mandatory refund approval: `billing_refund` (billing manager) up to ₹25,000.00, `billing_refund_owner` (owner) above it; the note names the bill and credit note |
 | POST | `/billing/refunds` | issue the voucher (check-on-execute) |
 | POST | `/billing/refunds/:id/pay` | disburse; payee identity required, every method |
 | GET | `/billing/refunds` | worklist, filter `patientId`/`status` |
@@ -678,7 +678,9 @@ they guard ships structurally OFF pending the owner's ruling on the CA/counsel r
    watch item (a) for what it does NOT check.
 5. Confirm the five approval types are registered (`seed:billing` does this; a re-run is a no-op)
    — `billing_credit_extension`, `billing_discount`, `billing_clearance_discount`,
-   `billing_refund`, `billing_variance`, all `approverRole: "billing_manager"`.
+   `billing_refund`, `billing_variance`, all `approverRole: "billing_manager"` — plus the owner's three,
+   `billing_credit_owner`, `billing_refund_owner` (a refund above ₹25,000.00, owner rulings 2026-09-28 and
+   2026-09-30, hospital-wide: pharmacy returns, OPD, lab, OT) and `billing_recon_charge_owner`.
 6. Grant roles per the table above; every billing approval resolves to `billing_manager` — grant
    `approvals.requests.read`/`.decide` there too, or nobody can ever clear one.
 7. **FY-rollover check, first week of April:** the series counters are per-`(seriesKey, fy)` and
@@ -1014,6 +1016,14 @@ separate act. The SoD pairs the procurement spec names — PO-approver/GRN-recei
 custodian/counter — cannot be built until a purchase order (14b) and a cycle count (14c) exist, and
 a two-key rule needs a second approving actor this deployment does not yet have. The permission
 split is what those pairs will hang on.
+
+**Two-person GRN is a SETTING (owner ruling 2026-09-30), OFF by default.** Stock → Stores settings in the
+pharmacy office (`GET`/`PUT /materials/settings`; the write needs `materials.stores.manage`) holds "Require
+a different person to QC a goods receipt than the one who captured it". Off, the capturer may check and
+post their own GRN and the worklist marks it "Checked by the same person who captured it". On, `runGateQc`
+and `postGrn` refuse the capturer with `grn_same_person` — on the screen, the opening-stock script and a
+controlled-cabinet receipt alike. Each change appends `store_settings.changed` (from, to, who). The screen
+recommends turning it on once a second trained person is on every shift.
 
 | Permission | materials_head | storekeeper | pharmacy |
 |---|---|---|---|

@@ -261,3 +261,50 @@ Lane `pharmacy-desk-fixes`, from the end-to-end walk of 2026-09-29 (the owner di
   masked old → new account.
 - **H1 register drug name** no longer repeats a strength the brand carries ("Azee 500 tablet"). Rows already written keep
   their text (the register copies at write time).
+
+## Owner rulings 2026-09-30 (refunds and GRN)
+
+Lane `pharmacy-refund-grn-setting`. The owner's answers to the go-live night's questions 3 and 4
+(memory note `owner-rulings-2026-09-30-pharmacy-money`). Rounding and the sale-side discount are a
+sibling lane's (`pharmacy-discount-rounding`).
+
+**4 — Refunds: every refund goes to the billing manager; one ABOVE ₹25,000.00 goes to the owner.** As built:
+
+- The tier was already on `main` from the 28 Sep board ruling (#380): `requestRefund` files
+  `billing_refund` (approver `billing_manager`) at or under 2,500,000 paise and `billing_refund_owner`
+  (approver `owner`) above it (`refundApprovalTypeFor`, strictly greater). The approval carries the exact
+  amount, patient and subject; `issueRefundVoucher` accepts only a granted approval of the type the
+  amount needs, bound to the same amount, patient and subject.
+- ₹20,000.00 → the billing manager decides. ₹25,000.00 exactly → the billing manager. ₹25,000.01 and
+  ₹30,000.00 → the owner; a billing manager's approve or reject is refused by the engine's role check
+  (`role_denied`), and a manager-type grant cannot issue the voucher (`approval_subject_mismatch`).
+- Nobody decides their own: the kernel's `requester_approver` SoD pair refuses the requester (cashier,
+  manager or owner) deciding their own ask, and records `sod.violation_blocked`.
+- NEW in this lane: the request note now leads with the paper — `Bill <invoice no> · credit note <cn no>`
+  for a refund against a bill, `Advance balance` for an advance — so the owner's approvals card shows
+  patient, amount and bill.
+- Hospital-wide: every caller goes through `requestRefund` — pharmacy returns (`pharmacy/returns.ts`),
+  pharmacy bill refunds (`pharmacy/refund.ts`), OT (`ot/bill.ts`) and the billing counter/office
+  (`POST /billing/refunds/request`). No signature changed.
+- The line is the owner's number in code (`REFUND_OWNER_ABOVE_PAISE`), not a config row: a row a manager
+  could edit would let the manager move the line that decides whether the manager decides.
+
+**3 — Two-person GRN is a SETTING, OFF by default, recommended ON.** As built:
+
+- `materials_settings` (one row, `id = 'main'`; migration `0162_materials_settings`, additive). No row =
+  every setting off. Column `grn_qc_needs_second_person`.
+- `GET /materials/settings` (`materials.stock.read`) and `PUT /materials/settings`
+  (`materials.stores.manage` — the materials head and the admin/owner role; reused, not minted). Each
+  change appends `store_settings.changed` `{ setting, from, to }` with the actor; a save that changes
+  nothing writes nothing.
+- ON: `runGateQc` and `postGrn` refuse the GRN's capturer with `grn_same_person` (409). Because the check
+  sits in those two functions, every door obeys it — the GRN screen, `applyOpeningStock` / the
+  `import-opening-stock` script, the controlled-cabinet receipt, the seed and trial-stock scripts. A GRN
+  QC'd by its capturer before the setting was turned on still needs a second person to POST it.
+- OFF: today's behaviour, nothing blocked. The GRN worklist marks a GRN checked by its capturer
+  ("Checked by the same person who captured it") — already checked, or open in the capturer's hands.
+- Screen: pharmacy office → Stock → **Stores settings**, a switch with the line "Recommended: turn this on
+  once a second trained person (pharmacist or storekeeper) is on every shift." With the setting ON, the
+  capturer's GRN sheet says somebody else checks it and its QC/Post buttons are off.
+- DECIDED: the post is guarded as well as the QC (the ruling says "QC and post"); the near-expiry request
+  is not guarded (it decides nothing and the materials head approves it).

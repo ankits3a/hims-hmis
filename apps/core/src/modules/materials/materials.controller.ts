@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, Get, HttpException, Inject, Param, Patch, Post, Query,
+  BadRequestException, Body, Controller, Get, HttpException, Inject, Param, Patch, Post, Put, Query,
 } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
@@ -21,6 +21,8 @@ import {
   requestBankChange, suspendVendor, updateVendor,
 } from "./vendors";
 import { createStore, listStores } from "./stores";
+import { loadMaterialsSettings, updateMaterialsSettings } from "./settings";
+import type { MaterialsSettings } from "./settings";
 import { balances, movementsFor } from "./ledger";
 import { ledgerItems, stockLedgerView } from "./stock-ledger-view";
 import type { StockLedgerView } from "./stock-ledger-view";
@@ -591,6 +593,26 @@ export class MaterialsController {
     const b = parsed(storeBody, body);
     try {
       return await withTx(this.db, (tx) => createStore(tx, actor, b));
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * OWNER RULING 2026-09-30 — the stores' settings. Read under `materials.stock.read`, because the GRN
+   * worklist shows every reader whether a capturer may check their own delivery; changed only under
+   * `materials.stores.manage` (the head's grant over the shape of the stores), audited in `settings.ts`.
+   */
+  @RequirePermission("materials.stock.read", "hospital")
+  @Get("settings")
+  async settings(): Promise<{ settings: MaterialsSettings }> {
+    return { settings: await loadMaterialsSettings(this.db) };
+  }
+
+  @RequirePermission("materials.stores.manage", "hospital")
+  @Put("settings")
+  async changeSettings(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ settings: MaterialsSettings }> {
+    const b = parsed(z.object({ grnQcNeedsSecondPerson: z.boolean() }).strict(), body);
+    try {
+      return { settings: await withTx(this.db, (tx) => updateMaterialsSettings(tx, actor, b, new Date())) };
     } catch (e) { toHttp(e); }
   }
 

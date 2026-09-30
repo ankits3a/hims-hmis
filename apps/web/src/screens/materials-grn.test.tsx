@@ -401,4 +401,51 @@ describe("MaterialsGrn", () => {
     expect(await screen.findByText(/already captured as GRN2609280001/)).toBeInTheDocument();
     expect(capture).toBeDisabled();
   });
+
+  // ═══ OWNER RULING 2026-09-30 — the two-person GRN setting (off by default, recommended on) ═══
+
+  const ME = { "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "me" }, permissions: { hospital: ["materials.stock.read", "materials.grn.capture", "materials.grn.qc"], scoped: { department: {}, floor: {} } } } } };
+  const settingsReply = (on: boolean): Handler => ({ status: 200, body: { settings: { grnQcNeedsSecondPerson: on, updatedBy: null, updatedAt: null } } });
+  const grnRow = (id: string, over: { status: string; capturedBy: string; qcBy: string | null }) => ({ ...grnWith(null), id, grnNo: `GRN-${id}`, ...over });
+
+  it("setting OFF: a GRN checked by the person who captured it says so — already checked, or about to be by its capturer — and nothing is blocked", async () => {
+    const open = grnRow("g-mine", { status: "gate_qc", capturedBy: "me", qcBy: null });
+    mockRoutes({
+      ...baseRoutes(), ...ME,
+      "GET /api/materials/settings": settingsReply(false),
+      "GET /api/materials/grns": { status: 200, body: { grns: [
+        grnRow("g-self", { status: "accepted", capturedBy: "u-1", qcBy: "u-1" }),
+        grnRow("g-two", { status: "accepted", capturedBy: "u-1", qcBy: "u-2" }),
+        open,
+        grnRow("g-theirs", { status: "gate_qc", capturedBy: "u-3", qcBy: null }),
+      ] } },
+      "GET /api/materials/grns/g-mine": { status: 200, body: { grn: open } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    expect(await screen.findByTestId("grn-self-checked-g-self")).toHaveTextContent("Checked by the same person who captured it");
+    expect(await screen.findByTestId("grn-self-checked-g-mine")).toBeInTheDocument();
+    expect(screen.queryByTestId("grn-self-checked-g-two")).toBeNull();
+    expect(screen.queryByTestId("grn-self-checked-g-theirs")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "GRN-g-mine" }));
+    expect(await screen.findByTestId("grn-open-self-checked")).toBeInTheDocument();
+    expect(screen.queryByTestId("grn-capturer-blocked")).toBeNull();
+    expect(screen.getByRole("button", { name: "Run QC" })).toBeEnabled();
+  });
+
+  it("setting ON: the capturer's own GRN says somebody else checks it, and its QC and post are not offered", async () => {
+    const open = grnRow("g-mine", { status: "gate_qc", capturedBy: "me", qcBy: null });
+    mockRoutes({
+      ...baseRoutes(), ...ME,
+      "GET /api/materials/settings": settingsReply(true),
+      "GET /api/materials/grns": { status: 200, body: { grns: [open] } },
+      "GET /api/materials/grns/g-mine": { status: 200, body: { grn: open } },
+    });
+    renderWithProviders(<MaterialsGrn />);
+    await userEvent.click(await screen.findByRole("button", { name: "GRN-g-mine" }));
+    expect(await screen.findByTestId("grn-capturer-blocked")).toHaveTextContent("somebody else to check and post it");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Run QC" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "Post to stock" })).toBeDisabled();
+    expect(screen.queryByTestId("grn-self-checked-g-mine")).toBeNull();
+  });
 });

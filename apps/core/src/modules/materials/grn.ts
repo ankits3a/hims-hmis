@@ -15,6 +15,7 @@ import { grnLineRejected, grnReceived, grnRejected } from "./events";
 import { assertNotMerged, effectiveRegulation, itemUomRows, itemsByIds } from "./items";
 import { getBatch, postMovements } from "./ledger";
 import { qcLine } from "./qc";
+import { loadMaterialsSettings } from "./settings";
 import { requireStore } from "./stores";
 import { assertVendorPurchasable, hasValidDocument } from "./vendors";
 import { packPriceOf, toBase } from "./uom";
@@ -36,7 +37,8 @@ export type GrnWithLines = GrnRow & { lines: GrnLineRow[] };
  * `captureGrn` records what came off the vehicle so the vehicle can leave; `runGateQc` records the
  * verdict when somebody competent to give one arrives; `postGrn` moves the stock. **Capture and QC
  * may be the same USER in this phase** — the custodian/counter pair belongs to counts, and a
- * third pair here would be a rule nobody ruled. The PERMISSIONS are nonetheless distinct
+ * third pair here would be a rule nobody ruled (**the owner has since ruled it, 2026-09-30: a setting,
+ * off by default** — `assertSecondPersonForGrn` below). The PERMISSIONS are nonetheless distinct
  * (`grn.capture` vs `grn.qc`, DD11). **Parity P2 makes the PO-approver/receiver pair real:** a GRN
  * against a purchase order refuses, at capture and again at post, the person who approved the
  * order (`po_approver_grn_receiver`; `purchase-orders.ts`).
@@ -271,6 +273,23 @@ export async function captureGrn(
 // ═══════════════════════════════════ THE GATE ═══════════════════════════════════
 
 /**
+ * OWNER RULING 2026-09-30 — the two-person GRN rule, a SETTING (`settings.ts`), off by default. When it
+ * is on, the person who captured the GRN neither runs its QC nor posts it; when it is off, nothing here
+ * refuses anybody and the header above ("capture and QC may be the same USER") still holds. Read inside
+ * the act's own transaction, so a setting turned on a moment ago binds the very next QC.
+ */
+async function assertSecondPersonForGrn(tx: Tx, grn: GrnRow, actor: Actor, act: "qc" | "post"): Promise<void> {
+  if (grn.capturedBy !== actor.id) return;
+  const settings = await loadMaterialsSettings(tx);
+  if (!settings.grnQcNeedsSecondPerson) return;
+  throw new MaterialsError(
+    "grn_same_person",
+    `you captured GRN ${grn.grnNo}; the hospital's setting needs a different person to ${act === "qc" ? "run its QC" : "post it"}`,
+    { grnNo: grn.grnNo, act, capturedBy: grn.capturedBy },
+  );
+}
+
+/**
  * Every line through `qcLine`, in DD8's order. Writes the verdicts onto the lines and moves the
  * header to `accepted` / `partially_accepted` / `rejected`.
  *
@@ -290,6 +309,7 @@ export async function runGateQc(
       { status: grn.status },
     );
   }
+  await assertSecondPersonForGrn(tx, grn, actor, "qc");
   const lines = await tx.select().from(grnLines).where(eq(grnLines.grnId, grnId)).orderBy(asc(grnLines.id));
   const ownership = ownershipFor(grn.source);
 
@@ -402,6 +422,7 @@ export async function postGrn(
       { status: grn.status },
     );
   }
+  await assertSecondPersonForGrn(tx, grn, actor, "post");
 
   /*
    * PAID LINES FIRST (2026-09-29, the stock-entry grid's free packs). A batch row is created by the first
