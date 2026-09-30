@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, ne } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { istDayString } from "../../kernel/approvals/cumulative";
+import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import {
   IMAGING_PEER_SCORES, imagingPeerReviews, imagingReports, imagingStudies,
 } from "../../kernel/db/schema/radiology";
@@ -47,10 +47,14 @@ export type PeerScore = (typeof IMAGING_PEER_SCORES)[number];
 /** `YYYY-MM` → the IST month's [start, end) instants. */
 export function istMonthWindow(month: string): { start: Date; end: Date } {
   const [y, m] = month.split("-").map(Number) as [number, number];
-  const IST = 330 * 60_000;
+  /**
+   * No offset arithmetic here (`test/ist-clock-parity.test.ts` pins every copy of the hospital
+   * clock): the first IST day of this month and of the next come from the kernel's own
+   * `istDayWindow`, asked about noon UTC on the 1st — an instant that is the 1st in IST too.
+   */
   return {
-    start: new Date(Date.UTC(y, m - 1, 1) - IST),
-    end: new Date(Date.UTC(y, m, 1) - IST),
+    start: istDayWindow(new Date(Date.UTC(y, m - 1, 1, 12))).start,
+    end: istDayWindow(new Date(Date.UTC(y, m, 1, 12))).start,
   };
 }
 
