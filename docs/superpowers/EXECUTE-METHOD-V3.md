@@ -730,6 +730,25 @@ what you registered.
   must include the output of §2.169's grep, and the run must cover every hit.
 - On 2026-09-28 skipping it cost two red CI rounds (about 45 minutes) on a PR whose own 194 suites were green.
 
+### 9.6c SEEDS RUN IN PRODUCTION; QUEUES RUN ON COMMENTS — added 2026-09-29 (ledger §2.170, §2.171)
+
+- **Seeds.** A brief that touches `scripts/seed-*.ts` must include the result of `grep -n seed-<name> docker/prod/deploy.sh`.
+  If there is a hit, every write in that seed is a production act on the next deploy.
+- **Merge queue.** With more than one lane open against strict protection:
+  - publish the merge order as a PR comment;
+  - keep auto-merge off until your turn;
+  - watch with `update-branch` on BEHIND.
+  - Never merge out of turn: each out-of-turn merge costs every queued PR a full CI cycle.
+
+
+### 9.6d TRAIN THE NO-MIGRATION PRs; THE WATCHER IS THE BACKGROUND COMMAND — added 2026-09-30 (ledger §2.172, §2.173)
+
+- **Train.** With strict branch protection, three or more ready PRs with no migration merge into one train branch.
+  The union of their touched suites runs on that tree, and the train ships as one PR (one CI cycle). The sources
+  close as "landed via #N". A PR with a migration never rides a train.
+- **Watch.** A merge watcher is the `run_in_background` command itself. It writes to a log and is read with `tail`
+  after it exits. Never pipe it into `head` and never background it with `&` inside a foreground call. After a push,
+  start it with `sleep 90`.
 ### 9.7 BRIEF THE CLOSE REVIEWER AT THE OPERANDS, NOT THE BRANCHES — added 2026-08-28 (Plan 15 close, ledger §2.128)
 
 Three phases running, the close reviewer has returned more than the phase's own instruments found,
