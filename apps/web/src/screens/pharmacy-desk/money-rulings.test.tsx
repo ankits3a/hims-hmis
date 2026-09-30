@@ -91,8 +91,7 @@ describe("ruling 1 — the payable follows the tender (pure)", () => {
     expect(payableFor("split", PLAIN)).toEqual({ netPayablePaise: 3300, roundingPaise: -60 });
     expect(payableFor("upi", PLAIN)).toEqual({ netPayablePaise: 3360, roundingPaise: 0 });
     expect(payableFor("card", PLAIN)).toEqual({ netPayablePaise: 3360, roundingPaise: 0 });
-    const { byTender: _gone, ...old } = PLAIN;
-    expect(payableFor("upi", old)).toEqual({ netPayablePaise: 3300, roundingPaise: -60 });
+    expect(payableFor("upi", { totals: PLAIN.totals })).toEqual({ netPayablePaise: 3300, roundingPaise: -60 });
   });
   it("a percentage is read to basis points, at most 100% and two decimals", () => {
     expect(percentToBps("8")).toBe(800);

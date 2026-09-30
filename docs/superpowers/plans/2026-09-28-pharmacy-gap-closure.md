@@ -32,10 +32,62 @@ spot-checks by hand. This phase answers them.
 
 - **No role editor.** Roles stay code-owned (`admin-users.tsx` says so), and the admin screen gets a read-only
   permission grid. An in-app role editor is a privilege-escalation surface. Copy-from-role is dropped with it.
-- **No manual or bulk discount at the counter** until the owner rules on money. Only membership discounts exist today.
+- ~~No manual or bulk discount at the counter until the owner rules on money.~~ **Superseded: the owner ruled on
+  2026-09-30** — see "Owner rulings 2026-09-30 (money)" below (a sale discount with a reason, tiered approval).
 - **PO dispatch to the vendor waits** for an email/WhatsApp sender, which is a procurement decision. Print and PDF
   are what exist.
 - **The ABDM MedicationDispense push waits** for ABDM going live.
+
+## Owner rulings 2026-09-30 (money)
+
+Memory note `owner-rulings-2026-09-30-pharmacy-money`. Built in lane `pharmacy-discount-rounding` (one PR, migration
+`0162_invoice_rounding_rule`, additive: `invoices.rounding_rule text not null default 'half_up'`).
+
+**1 — Rounding by tender.** *"If patient is paying using cash then keep whole-rupee rounding, round down. If paying via
+UPI or Card then we can collect to the paisa."* Never above MRP.
+- Pharmacy bills only — the desk's dispense bill, the walk-in sale and the paper (downtime) dispense. Any cash tender
+  (a split included) → `down`: ₹33.60 is collected as ₹33.00 with a −₹0.60 rounding line. Only UPI and/or card →
+  `exact`: ₹33.60. The rule is chosen from the tenders by `pharmacy/discount.ts` `pharmacyRoundingRule` and passed to
+  billing as an internal `roundingRule`; billing refuses any rule but `half_up` on a bill that is not wholly
+  pharmacy lines (`pharmacy_bill_only`), so OPD, lab and radiology keep §170 half-up exactly as before.
+- **DECIDED:** a bill with no tender (the owner's credit) rounds `down` — never above MRP, and the dues may be paid in cash.
+- **DECIDED:** a credit note rounds by its invoice's stored rule. A `down` bill paid ₹33.00; a half-up credit note
+  would free ₹34.00 and the refund voucher would refuse it as more than was received. Partial returns floor too, so
+  their sum never passes what was paid.
+- The desk's preview carries both payables (`byTender.cash`, `byTender.digital`); the rail shows the one for the
+  tender under the cashier's finger (Cash/Split vs UPI/Card) with its rounding line. The walk-in counter does the same.
+- Register: MRP and Rounding columns (MRP − discount = taxable + CGST + SGST; + rounding = total). GSTR-3B: rounding is
+  not a supply and stays out of the taxable value; the summary states the period's pharmacy rounding beside it.
+  Tally: the Round Off ledger takes it, as before.
+
+**2 — Sale-side discount.** *"The pharmacist may give up to 10% off MRP on a bill, with a reason. Above 10% needs the
+pharmacy in-charge's approval. Above 25% goes to the owner. A discount worth more than ₹25,000 on one bill also goes to
+the owner."*
+- A % off MRP (basis points) or ₹ off the bill, with a reason, on the desk bill and the walk-in cart, from a sheet
+  behind the bill's ⋯. Up to 10% inclusive: the pharmacist gives it. Above 10% up to 25% inclusive:
+  `pharmacy_discount_incharge` (approver `pharmacy_incharge`). Above 25%, or more than ₹25,000.00 of discount on one
+  bill: `pharmacy_discount_owner` (approver `owner`). Exactly ₹25,000.00 is not "more than". Comparisons are exact
+  (cross-multiplied); a ₹ discount is judged by its share of the bill's MRP total.
+- The approval binds the bill (the dispense id, or the walk-in cart's own id, which the sale then takes as its id so
+  one approval sells once), the kind and value asked, the patient and the rupee amount. The bill waits while it is
+  pending. The kernel refuses a decision by whoever asked. An in-charge's grant never covers an owner-tier discount.
+- It prices through the SAME contest as membership benefits (`billing/sale-discount.ts`, one more `AdjustmentSource`),
+  so GST is carved out of each discounted line (`inclusiveTaxHead(charged)`): the taxable value and CGST/SGST fall
+  with the price. Rounding (ruling 1) applies after the discount. Admitted only on a pharmacy bill.
+- **DECIDED:** best single benefit per line, as the contest already rules — a member benefit that is bigger on a line
+  wins that line; the two never stack. The approval amount is the sale discount's own share.
+- **DECIDED:** a ₹ discount is spread over the lines in proportion to their MRP (largest remainder), so the shares sum
+  to the rupees asked; a % is taken off each line, half-up, as every other percentage benefit is.
+- **DECIDED:** a walk-in discount that needs an approval needs a named customer first (`discount_needs_customer`): an
+  approval of money is filed against a patient.
+- **DECIDED:** the approver role of each type is fixed, so the owner does not approve an in-charge-tier ask, and an
+  in-charge who is also billing needs a second in-charge. If the hospital has one in-charge on duty, a 10–25% discount
+  that they themselves ask for waits for the next one.
+- Shown on the bill rail, the printed desk bill (Discount (reason) −₹x), the walk-in memo (billing's invoice print),
+  the sales register (Discount column), the GSTR-3B summary (a note: already out of the taxable value, CGST Act
+  s.15(3)(a)) and the Tally sale voucher's narration (MRP less discount).
+- Permissions: no new permission string. `pharmacy_incharge` gains `approvals.requests.read` and `.decide` (an
+  approver role must be able to open its queue). Two approval types, registered by `seed:pharmacy` on deploy.
 
 ## Owed by the owner (money / law)
 

@@ -708,7 +708,7 @@ export function PharmacyRetail(): React.ReactElement {
                         <dt>{t("pharmacyRetail.gross")}</dt><dd className="mo">{rupees(preview.totals.grossPaise)}</dd>
                         {preview.totals.discountPaise > 0 && <><dt data-testid="retail-discount">{discount === null ? t("pharmacyRetail.discount") : `${t("pharmacyRetail.discount")} ${discountLabel(discount)} · ${discount.reason}`}</dt><dd className="mo">− {rupees(preview.totals.discountPaise)}</dd></>}
                         <dt>{t("pharmacyRetail.gstInside")}</dt><dd className="mo">{rupees(preview.totals.taxPaise)}</dd>
-                        {due !== null && due.roundingPaise !== 0 && <><dt>{t("pharmacyDesk.bill.rounding")}</dt><dd className="mo" data-testid="retail-rounding">{signedRupees(due.roundingPaise)}</dd></>}
+                        {due !== null && due.roundingPaise !== 0 && <><dt>{t("pharmacyDiscount.rounding")}</dt><dd className="mo" data-testid="retail-rounding">{signedRupees(due.roundingPaise)}</dd></>}
                         <dt className="rt-pay">{t("pharmacyRetail.payable")}</dt><dd className="mo rt-pay" data-testid="retail-total">{rupees(payable)}</dd>
                       </dl>
                     )}

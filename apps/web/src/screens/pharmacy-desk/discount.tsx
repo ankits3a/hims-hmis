@@ -131,6 +131,7 @@ export function DiscountSheet({ scopeKey, initial, price, ask, onApply, onRemove
             <button
               key={u} type="button" role="radio" aria-checked={unit === u} onClick={() => { setUnit(u); setText(""); }}
               style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
                 height: 34, borderRadius: 6, fontSize: 12.5, fontWeight: 600,
                 border: `1px solid ${unit === u ? "var(--green)" : "var(--line)"}`,
                 background: unit === u ? "var(--green-soft)" : "var(--card)", color: unit === u ? "var(--green)" : "var(--dim)",

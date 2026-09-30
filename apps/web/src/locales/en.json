@@ -623,6 +623,16 @@
         "ask": "Write off {{amount}} the bank did not pay on {{patient}}'s receipt",
         "explain": "The shortfall is recorded as the bank's charge and the receipt reconciles. Your ruling: the billing manager writes off up to ₹50.00 per receipt; above that it is yours."
       },
+      "pharmacy_discount_incharge": {
+        "label": "Pharmacy discount above 10%",
+        "ask": "Allow {{amount}} off {{patient}}'s pharmacy bill",
+        "explain": "The pharmacist may give up to 10% off MRP; above that, up to 25%, is yours as pharmacy in-charge. The percentage and the reason are in the note. You may not approve a discount you asked for."
+      },
+      "pharmacy_discount_owner": {
+        "label": "Pharmacy discount above 25% or ₹25,000 (only you approve)",
+        "ask": "Allow {{amount}} off {{patient}}'s pharmacy bill",
+        "explain": "Your ruling: a discount above 25% of MRP, or worth more than ₹25,000 on one bill, is yours to approve. The percentage and the reason are in the note."
+      },
       "pharmacy_restricted_antimicrobial": {
         "label": "Restricted antimicrobial",
         "ask": "Approve a restricted antimicrobial for {{patient}}",
@@ -7364,6 +7374,7 @@
     "apply": "Apply discount",
     "ask": "Ask {{who}}",
     "cancel": "Cancel",
+    "rounding": "Rounding",
     "pending": "Waiting for {{who}} to approve the discount — the bill waits.",
     "granted": "Discount approved by {{who}} — take the money.",
     "rejected": "{{who}} refused the discount: {{note}}. Remove it, or ask again."
@@ -11222,6 +11233,8 @@
         "igst": "IGST",
         "total": "Total",
         "remaining": "Remaining",
+        "gross": "MRP",
+        "rounding": "Rounding",
         "profit": "Profit",
         "marginPct": "Margin %",
         "code": "Code",
@@ -11412,7 +11425,8 @@
         "carry": "Credit carried forward",
         "note": "From the hospital's books, for every bill it issued (a return is per GSTIN). Claim no more ITC than GSTR-2B shows — reconcile it first. Set-off follows rule 88A: IGST credit first, then CGST and SGST each against its own head. Filing stays the accountant's act on the portal.",
         "cashTotal": "Payable in cash for the period: {{amount}}",
-        "creditNotes": "Vendor credit notes of {{amount}} carry no tax split in the books — reverse their ITC by hand."
+        "creditNotes": "Vendor credit notes of {{amount}} carry no tax split in the books — reverse their ITC by hand.",
+        "discountNote": "Pharmacy bills in the period: discount allowed {{discount}} and rounding {{rounding}} — both already out of the taxable value above (a discount on the invoice reduces the value of supply; rounding is not a supply)."
       },
       "exportXlsx": "Excel (.xlsx)",
       "exportCsv": "CSV",

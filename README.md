@@ -1424,6 +1424,10 @@ Both are defaults the owner may change.
 `pharmacy.antimicrobial.approve` (reading a restricted-antimicrobial request's prescription line and prescriber)
 and the approvals pair `approvals.requests.read` and `approvals.requests.decide`, because it is the approver of
 `pharmacy_restricted_antimicrobial`. A steward may not approve their own prescription.
+**Owner rulings 2026-09-30 (money) give `pharmacy_incharge` the approvals pair** `approvals.requests.read`
+and `approvals.requests.decide`, because it is the approver of `pharmacy_discount_incharge` (a sale discount above
+10% and up to 25% of MRP). Above 25%, or worth more than ₹25,000 on one bill, `pharmacy_discount_owner` goes to the
+owner. Nobody approves a discount they asked for.
 **Pharmacy stage D4 checks the emergency trays: daily seal, monthly full, and after every use.**
 `pharmacy.trays.check` (checking a tray, restocking a deficient one from `PHARM-OPD`, receiving a restock) goes to
 `pharmacy`, `pharmacy_assistant`, `pharmacy_incharge`, `ot_nurse`, `recovery_nurse`, `radiographer` and
