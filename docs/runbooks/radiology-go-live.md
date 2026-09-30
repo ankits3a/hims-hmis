@@ -809,3 +809,77 @@ a "pneumothorax" impression flagged red: the dock said **Sign for co-sign**, and
 — the call moves to "Unit head". As a radiologist, the study is first in the list; **Co-sign and
 publish**. Back on Critical calls, **Answered** → type "noted" → refused `read_back_mismatch`; type
 "left pneumothorax" → the call moves to the 48-hour log.
+
+## 18. The IR suite — image-guided procedures (18-S RS12b)
+
+**What it is.** A PCN, PTBD, CT-guided biopsy or angiography is an ordinary imaging study whose
+**study type** says `"interventional": true`. It is booked, checked in, gated (identity, side,
+pregnancy, contrast, kidney) and billed exactly like a scan; the IR suite adds the WHO surgical
+safety checklist, the coagulation rule, the sedation chart, reference air kerma (Ka,r) with the
+skin-dose alerts, the procedure note and the recovery hand-off. Screen: **Modality rooms → IR suite**
+(`/radiology/room?view=ir`). Who: `radiographer`, `radiologist` (`radiology.acquire`); the
+**coagulation override is the radiologist's** (`radiology.gates.override`). No new permission, no
+new role.
+
+**1. The machine.** The IR unit (C-arm / DSA) is a `device` like any other: Setup → Machines, modality
+**`xray`** (the IR study types book onto it by that modality), code **`IR-1`** (the seed creates it on
+a fresh database), status `available`, AE title if it pulls the worklist. **It is licensed
+equipment**: no AERB licence is seeded — until the RSO files the unit's licence (Radiation safety →
+Licences) Start is refused `device_not_licensed`, and the unit sits in `/aerb/licences/gaps`. A
+CT-guided biopsy runs on the CT and needs nothing new.
+
+**2. The procedure book.** Four IR study types are seeded on a fresh database (`IR-PCN`, `IR-PTBD`,
+`IR-CT-BIOPSY`, `IR-DSA`) with services and **no price**. On a database whose `study_types` book is
+already published (production), add them through Setup → Books → `study_types` (draft → MS approves
+→ publish): each carries `"interventional": true` and `"bleeding_risk": "high"` (PCN, PTBD,
+solid-organ / lung core biopsy) or `"low"` (diagnostic angiography). The prices go through the
+tariff revision (§6) — none is ruled, none is seeded.
+
+**3. The checklist, as the screen asks it.**
+- **Sign in (before sedation)** — who is present; identity said and the wristband read (the room
+  gates must be closed first); the **consent** for this procedure, the form version, the language it
+  was explained in, the signer (a minor's is the guardian's, who must hold consent authority) and a
+  **named witness — required on every IR consent**; site/side marked; allergy and contrast history
+  read aloud; anticoagulants (none / held / continued with the operator's note); the sedation plan
+  (local / moderate / deep) and who gives it; **fasting 6 h solids / 2 h clear fluids** for moderate
+  or deep sedation (a STAT procedure records the times and proceeds); IV access, crash cart and
+  reversal agents.
+- **Coagulation (high-bleeding-risk procedures)** — the latest **signed** INR and platelet count
+  from the lab, drawn within **7 days**: **INR ≤ 1.5, platelets ≥ 50,000/µL** (SIR 2019). Missing,
+  stale or out of range → Sign in is refused `coagulation_out_of_range`; correct and recheck, or the
+  operating radiologist overrides **in writing** on the IR suite (reason kept on the case, event
+  `imaging.ir_coagulation_overridden`). The lab's catalogue codes read are `INR` and `PLT`.
+- **Time out (before the needle)** — at least **two different people**; team introduced; patient,
+  procedure and side confirmed aloud; images displayed; antibiotic prophylaxis given or not
+  indicated; critical events said aloud. **Start is refused `ir_checklist_incomplete` until Sign in
+  and Time out are both recorded.**
+- **During** — the sedation chart: BP, HR, SpO₂, RASS and the drug, **every 5 minutes** under
+  moderate/deep sedation (the dock turns into *Record sedation reading* when one is due), then
+  **every 15 minutes** after Send until the hand-off. The dose tiles take fluoro time (min:s), DAP
+  (Gy·cm²) and **Ka,r (mGy)** from the unit's display, or fill themselves from the unit's dose SR
+  (DICOM 113725 Dose (RP) Total).
+- **Sign out (before the patient leaves the table)** — procedure done, counts correct, specimens
+  labelled or none, devices/catheters left in, dose recorded, recovery plan given. **Send is refused
+  `ir_checklist_incomplete` until Sign out is recorded.**
+
+**4. Dose thresholds.**
+- **Ka,r ≥ 3 Gy** — the tile turns red; the operator is told; the patient is told and a **skin check
+  is booked 2–4 weeks out** (*Book the skin check*). **Send is refused `skin_followup_required`
+  until it is documented.** At Send the event `imaging.ir_skin_dose_alert` (`skin_followup`) is
+  written.
+- **Ka,r ≥ 5 Gy** — the substantial radiation dose level (NCRP 168): a second event
+  (`substantial_radiation_dose_level`) for the RSO's review. The RSO's obligation that consumes these
+  events is the HOD/RSO spine (RS10); until it lands, the RSO reads them from the dose register
+  (`radiation_dose_register.dose_ka_r`).
+
+**5. After Send.** The procedure note (procedure and findings, approach, devices, specimens,
+complications, estimated blood loss) — editable until the hand-off; then the **recovery hand-off**:
+vitals, bed-rest hours (drafted 6 h for high bleeding risk, 4 h otherwise), drain/catheter care, the
+instructions **in English and Hindi** (drafted by rule, edited by the operator) and who received the
+patient. Once handed over, the case leaves the IR list.
+
+**Verify once.** On a dev database: book `IR-PCN` on IR-1 for a patient with a signed INR 1.8 →
+Sign in refused `coagulation_out_of_range`; override as the radiologist → Sign in, Time out (two
+people), Start; two sedation readings; type Ka,r 3200 → *Book the skin check* → Sign out → Send →
+`radiation_dose_register.dose_ka_r = 3200`, one `imaging.ir_skin_dose_alert`; note → hand-off → the
+list is empty.

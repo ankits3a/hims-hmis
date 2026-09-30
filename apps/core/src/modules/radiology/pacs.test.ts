@@ -255,7 +255,7 @@ describe("PACS seams (18-S RS12)", () => {
     const s = await onTable();
     expect((await roomView(db, fx.radiographer, s.studyId, NOW)).doseReport).toBeNull();
     await withTx(db, (tx) => ingestDoseSr(tx, bridge, parseDoseSr(ctSr({ sop: "1.2.9.8", uid: "1.2.9.88", accession: s.accessionNo })), NOW));
-    expect((await roomView(db, fx.radiographer, s.studyId, NOW)).doseReport).toEqual({ ctdivol: 52.1, dlp: 845.6, dap: null, fluoroSeconds: null, agd: null });
+    expect((await roomView(db, fx.radiographer, s.studyId, NOW)).doseReport).toEqual({ ctdivol: 52.1, dlp: 845.6, dap: null, fluoroSeconds: null, agd: null, kar: null });
   });
 
   it("T2: a typed number is never overwritten — an SR that disagrees is kept as a conflict, one that agrees is confirmed", async () => {
@@ -296,7 +296,7 @@ describe("PACS seams (18-S RS12)", () => {
   });
 
   it("T2: agreement is within 2 % or 0.05 of the register's unit; a factor-of-ten slip is a conflict", () => {
-    const base = { ctdivol: null, dlp: null, dap: null, fluoroSeconds: null, agd: null };
+    const base = { ctdivol: null, dlp: null, dap: null, fluoroSeconds: null, agd: null, kar: null };
     expect(doseDisagreement({ ...base, ctdivol: 12.4 }, { ...base, ctdivol: 12.37 })).toBeNull();
     expect(doseDisagreement({ ...base, dap: 2.45 }, { ...base, dap: 24.5 })).toEqual({ dap: { typed: 2.45, sr: 24.5 } });
     expect(doseDisagreement({ ...base, dlp: 800 }, { ...base, ctdivol: 50 })).toBeNull();

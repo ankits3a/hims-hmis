@@ -16,6 +16,7 @@ import { SeatLink, useNow } from "../components/radiology/imaging-counter";
 import { istDay } from "../components/radiology/desk-time";
 import { RadiologyStation } from "./radiology-station";
 import { PacsInboxView } from "./radiology-pacs-inbox";
+import { IrSuiteView } from "./radiology-ir";
 
 /**
  * PLAN 18-S RS6 — **THE MODALITY ROOMS: the technologist's station.**
@@ -37,9 +38,12 @@ import { PacsInboxView } from "./radiology-pacs-inbox";
  * The study page (`/radiology/studies/$id`) stays: the lane links to it, and it links back here.
  */
 
-/** 18-S RS12 — `unmatched`: the PACS inbox (archive studies no accession + UHID could claim). */
-export type RoomViewKey = "console" | "dose" | "rejects" | "downtime" | "unmatched";
-export const ROOM_VIEWS: readonly RoomViewKey[] = ["console", "dose", "rejects", "downtime", "unmatched"];
+/**
+ * 18-S RS12 — `unmatched`: the PACS inbox (archive studies no accession + UHID could claim).
+ * 18-S RS12b — `ir`: the IR suite (image-guided procedures: WHO phases, sedation, Ka,r).
+ */
+export type RoomViewKey = "console" | "ir" | "dose" | "rejects" | "downtime" | "unmatched";
+export const ROOM_VIEWS: readonly RoomViewKey[] = ["console", "ir", "dose", "rejects", "downtime", "unmatched"];
 export type RoomSearch = { view?: RoomViewKey; machine?: string; study?: string };
 
 const STAT_CLOCK_MIN = 10;
@@ -119,6 +123,7 @@ export function RadiologyRoom({ search }: { search: RoomSearch }): React.ReactEl
   if (view === "rejects") return <RejectsView views={views} />;
   if (view === "downtime") return <DowntimeView views={views} devices={devices} />;
   if (view === "unmatched") return <PacsInboxView views={views} />;
+  if (view === "ir") return <IrSuiteView views={views} studyId={search.study ?? null} />;
   return <ConsoleView views={views} picker={picker} machine={machine} studyId={search.study ?? null} devicesError={devicesQ.isError ? radiologyErrorText(devicesQ.error) : null} />;
 }
 
