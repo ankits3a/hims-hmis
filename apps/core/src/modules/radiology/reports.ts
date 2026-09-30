@@ -6,7 +6,7 @@ import { advanceOrderItem } from "../../kernel/orders/advance";
 import { secondFactorFresh } from "../../kernel/auth/totp";
 import { transition } from "../../kernel/workflow/instances";
 import {
-  imagingCriticalFindings, imagingReports, imagingStudies,
+  imagingCriticalCallAttempts, imagingCriticalFindings, imagingReports, imagingStudies,
 } from "../../kernel/db/schema/radiology";
 import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { invoiceLines } from "../../kernel/db/schema/billing";
@@ -28,9 +28,10 @@ import { patients } from "../../kernel/db/schema/patients";
 import { templateKeyFor } from "./templates";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { PRE_SIGN_CHECKS, runPreSignChecks } from "./checks";
-import { signerSnapshot } from "./signer";
+import { residentSignature, signerSnapshot } from "./signer";
+import { findingOf, readBackNamesFinding } from "./critical-ladder";
 import type { PreSignContext, PreSignFinding } from "./checks";
-import type { SignerBlock } from "./signer";
+import type { ResidentSignature, SignerBlock } from "./signer";
 import {
   assertNoFoetalSexDisclosure, isObstetricReport, normaliseReportBody, reportText, scanDayOf, withDeclaration,
 } from "./obstetric-report";
@@ -124,14 +125,14 @@ async function defaultTemplateKey(exec: Db | Tx, studyTypeCode: string): Promise
 async function insertVersion(
   tx: Tx,
   study: { id: string; studyTypeCode: string },
-  status: "draft" | "prelim" | "signed",
+  status: "draft" | "prelim" | "signed" | "awaiting_cosign",
   content: ReportContent,
   signer?: {
     actorId: string; signedAt: Date; secondFactorAt: Date;
     amendmentReason?: string | null; supersedesId?: string | null;
     lockoutOverride?: { approvedBy: string; reason: string } | null;
-    /** 18-S RS8a — the signer block (ruling 4) and the pre-sign checks as they ran. */
-    block?: SignerBlock | null;
+    /** 18-S RS8a — the signer block (ruling 4) and the pre-sign checks as they ran. RS8b: a resident's signature on `awaiting_cosign`. */
+    block?: SignerBlock | ResidentSignature | null;
     checks?: SignChecksRecord | null;
   },
   criticalCategory?: ImagingCriticalCategory | null,
@@ -348,7 +349,7 @@ export async function signReport(
     acknowledgedWarnings?: readonly string[];
     now?: Date;
   },
-): Promise<{ reportId: string; version: number }> {
+): Promise<{ reportId: string; version: number; awaitingCosign?: boolean }> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
 
@@ -409,6 +410,14 @@ export async function signReport(
   const checks = enforcePreSign(
     await preSignFindings(tx, study, content, category), input.acknowledgedWarnings ?? [], actor.id, now,
   );
+
+  /** 18-S RS8b — a resident's signature waits for a consultant; it is not the hospital's report yet. */
+  if (await signsAsResident(tx, actor)) {
+    return await signForCosign(tx, actor, study, content, category, {
+      factorAt, checks, now, lockoutOverride: input.lockoutOverride ?? null, communicatedTo: input.communicatedTo ?? null,
+    });
+  }
+
   const block = await signerSnapshot(tx, { userId: actor.id, now, secondFactorAt: factorAt, content });
 
   let created: { reportId: string; version: number };
@@ -425,6 +434,12 @@ export async function signReport(
   } catch (e) {
     throw asAlreadySigned(e, study.id);
   }
+  /**
+   * 18-S RS8b — a consultant who signs their OWN version while a resident's waits has replaced it:
+   * the resident's text is no longer the one anybody will co-sign.
+   */
+  await tx.update(imagingReports).set({ status: "superseded" })
+    .where(and(eq(imagingReports.studyId, study.id), eq(imagingReports.status, "awaiting_cosign")));
 
   /**
    * ═══ F69 (CLOSE REVIEW) — SIGNING `red` NOW RAISES THE CRITICAL. IT USED TO RAISE NOTHING. ═══
@@ -451,6 +466,174 @@ export async function signReport(
     });
   }
   return created;
+}
+
+/* ═══════════════════════ 18-S RS8b — the resident signs, the consultant co-signs ═══════════════════════ */
+
+/**
+ * PLAN 18-S RS8b T1 — **CO-SIGN.** DECIDED (the Indian teaching-hospital standard): a DNB/MD
+ * resident drafts and may issue a PRELIM to the treating doctor for ER/STAT work, but a FINAL report
+ * needs a consultant's signature. So a resident's Sign produces `awaiting_cosign` — the checks ran,
+ * the resident signed under their own second factor — and `publishReport` refuses `cosign_required`
+ * until a consultant (`radiologist`) co-signs under THEIR second factor, with the same pre-sign
+ * checks and their own signer block, which names the resident as `draftedBy`.
+ *
+ * A user holding BOTH roles is a consultant: the resident role adds no restriction to a consultant.
+ */
+export const RESIDENT_ROLE = "radiology_resident";
+export const CONSULTANT_ROLE = "radiologist";
+
+export async function signsAsResident(tx: Tx, actor: Actor): Promise<boolean> {
+  if (actor.type !== "user") return false;
+  if (!(await actorHoldsAnyRole(tx, actor.id, [RESIDENT_ROLE]))) return false;
+  return !(await actorHoldsAnyRole(tx, actor.id, [CONSULTANT_ROLE]));
+}
+
+async function signForCosign(
+  tx: Tx,
+  actor: Actor,
+  study: typeof imagingStudies.$inferSelect,
+  content: { templateKey: string; body: Record<string, unknown>; impression: string | null; laterality: string | null },
+  category: ImagingCriticalCategory | null,
+  at: {
+    factorAt: Date; checks: SignChecksRecord; now: Date;
+    lockoutOverride: { approvedBy: string; reason: string } | null; communicatedTo: string | null;
+  },
+): Promise<{ reportId: string; version: number; awaitingCosign: true }> {
+  if (await latestSigned(tx, study.id)) {
+    throw new RadiologyError(
+      "already_signed",
+      `study ${study.accessionNo} already has a signed report — a consultant amends it; a resident does not sign a second`,
+      { studyId: study.id },
+    );
+  }
+  const block = await residentSignature(tx, { userId: actor.id, now: at.now, secondFactorAt: at.factorAt, content });
+  let created: { reportId: string; version: number };
+  try {
+    created = await insertVersion(tx, study, "awaiting_cosign", content, {
+      actorId: actor.id, signedAt: at.now, secondFactorAt: at.factorAt, lockoutOverride: at.lockoutOverride,
+      block, checks: at.checks,
+    }, category);
+  } catch (e) {
+    const constraint = String((e as { constraint?: unknown })?.constraint ?? "");
+    if (constraint.includes("imaging_reports_one_awaiting_ux")) {
+      throw new RadiologyError(
+        "already_signed",
+        `study ${study.accessionNo} already has a resident's report waiting for a consultant's co-sign`,
+        { studyId: study.id },
+      );
+    }
+    throw e;
+  }
+  /**
+   * A critical found by the resident is COMMUNICATED NOW — the ladder does not wait for the
+   * co-sign (the board's J2: the ER hears about the bleed from whoever read it). The call hangs off
+   * this version; the co-sign does not raise a second one.
+   */
+  if (category !== null) {
+    await flagCritical(tx, actor, { reportId: created.reportId, category, communicatedTo: at.communicatedTo });
+  }
+  return { ...created, awaitingCosign: true };
+}
+
+/**
+ * The consultant's co-signature: the resident's text, unchanged, signed by the consultant. To
+ * change the text the consultant saves their own draft and signs THAT (which supersedes the
+ * resident's version) — co-signing is agreeing, not editing.
+ */
+export async function cosignReport(
+  tx: Tx,
+  actor: Actor,
+  input: {
+    studyId: string;
+    /** The resident's `awaiting_cosign` version. */
+    reportId: string;
+    secondFactorAt: Date | null;
+    windowMinutes?: number;
+    acknowledgedWarnings?: readonly string[];
+    now?: Date;
+  },
+): Promise<{ reportId: string; version: number; cosignedId: string }> {
+  const now = input.now ?? new Date();
+  const study = await loadStudy(tx, input.studyId);
+  const windowMinutes = input.windowMinutes ?? SECOND_FACTOR_WINDOW_MINUTES;
+  const factorAt = input.secondFactorAt;
+  if (factorAt === null || !secondFactorFresh({ secondFactorAt: factorAt }, windowMinutes, now)) {
+    throw new RadiologyError(
+      "second_factor_required",
+      `co-signing a report needs your own second factor, no older than ${String(windowMinutes)} minutes — the `
+      + "resident's does not stand in for yours",
+      { studyId: input.studyId, windowMinutes },
+    );
+  }
+  if (actor.type !== "user" || !(await actorHoldsAnyRole(tx, actor.id, [CONSULTANT_ROLE]))) {
+    throw new RadiologyError(
+      "cosign_not_consultant",
+      "only a consultant radiologist co-signs a resident's report — ask the consultant on the list to co-sign it",
+      { studyId: input.studyId },
+    );
+  }
+  const [awaiting] = await (tx as unknown as Db).select().from(imagingReports)
+    .where(eq(imagingReports.id, input.reportId));
+  if (!awaiting || awaiting.studyId !== study.id) {
+    throw new RadiologyError("unknown_study", `no report ${input.reportId} on study ${study.accessionNo}`);
+  }
+  if (awaiting.status !== "awaiting_cosign") {
+    throw new RadiologyError(
+      "stale_state",
+      `this version is ${awaiting.status}, not waiting for a co-sign — reload the study`,
+      { reportId: awaiting.id, status: awaiting.status },
+    );
+  }
+  if (awaiting.signerId === actor.id) {
+    throw new RadiologyError(
+      "cosign_own_report",
+      "you signed this report as the resident — a second consultant co-signs it; nobody co-signs their own",
+      { reportId: awaiting.id },
+    );
+  }
+
+  const category = awaiting.criticalCategory as ImagingCriticalCategory | null;
+  const content = {
+    templateKey: awaiting.templateKey,
+    body: awaiting.body as Record<string, unknown>,
+    impression: awaiting.impression, laterality: awaiting.laterality,
+  };
+  await assertSignable(tx, study, content, category, (awaiting.lockoutOverride ?? null) as { approvedBy: string; reason: string } | null, now);
+  await assertSignerRegistered(tx, actor, study, now);
+  /** The pre-sign checks run again, and the CONSULTANT acknowledges the warnings, in their own name. */
+  const checks = enforcePreSign(
+    await preSignFindings(tx, study, content, category), input.acknowledgedWarnings ?? [], actor.id, now,
+  );
+  const consultant = await signerSnapshot(tx, { userId: actor.id, now, secondFactorAt: factorAt, content });
+  const resident = awaiting.signer as ResidentSignature | null;
+  const block: SignerBlock = resident === null ? consultant : { ...consultant, draftedBy: { ...resident, reportId: awaiting.id } };
+
+  /** Compare-and-set: two consultants co-signing one report produce one signature. */
+  const flipped = await tx.update(imagingReports).set({ status: "cosigned" })
+    .where(and(eq(imagingReports.id, awaiting.id), eq(imagingReports.status, "awaiting_cosign")))
+    .returning({ id: imagingReports.id });
+  if (flipped.length === 0) {
+    throw new RadiologyError("stale_state", "another consultant co-signed this report a moment ago — reload the study", { reportId: awaiting.id });
+  }
+  let created: { reportId: string; version: number };
+  try {
+    created = await insertVersion(tx, study, "signed", content, {
+      actorId: actor.id, signedAt: now, secondFactorAt: factorAt,
+      lockoutOverride: (awaiting.lockoutOverride ?? null) as { approvedBy: string; reason: string } | null,
+      block, checks,
+    }, category);
+  } catch (e) {
+    throw asAlreadySigned(e, study.id);
+  }
+
+  /** The critical, if any, was raised at the resident's signature; only a category with no call gets one now. */
+  if (category !== null) {
+    const raised = await (tx as unknown as Db).select({ id: imagingCriticalFindings.id })
+      .from(imagingCriticalFindings).where(eq(imagingCriticalFindings.reportId, awaiting.id));
+    if (raised.length === 0) await flagCritical(tx, actor, { reportId: created.reportId, category, communicatedTo: null });
+  }
+  return { ...created, cosignedId: awaiting.id };
 }
 
 /**
@@ -976,6 +1159,18 @@ export async function publishReport(
   const study = await loadStudy(tx, input.studyId);
   const signed = await latestSigned(tx, study.id);
   if (!signed) {
+    /** 18-S RS8b — a resident's signature is not the hospital's report until a consultant co-signs. */
+    const awaiting = await (tx as unknown as Db).select({ id: imagingReports.id })
+      .from(imagingReports)
+      .where(and(eq(imagingReports.studyId, study.id), eq(imagingReports.status, "awaiting_cosign")));
+    if (awaiting.length > 0) {
+      throw new RadiologyError(
+        "cosign_required",
+        `study ${study.accessionNo} has a resident's report waiting for a consultant's co-sign — a consultant `
+        + "co-signs it in the reading room before it leaves the department",
+        { studyId: study.id, reportId: awaiting[0]!.id },
+      );
+    }
     /** A6 — a prelim is a real document and is deliberately not publishable. */
     const anyPrelim = await (tx as unknown as Db).select({ id: imagingReports.id })
       .from(imagingReports)
@@ -1212,7 +1407,10 @@ export async function acknowledgeCritical(
   }
   /** The table hangs off the REPORT; the study comes from it, which keeps one owner for the link. */
   const reportRows = await (tx as unknown as Db)
-    .select({ studyId: imagingReports.studyId, signerId: imagingReports.signerId })
+    .select({
+      studyId: imagingReports.studyId, signerId: imagingReports.signerId,
+      impression: imagingReports.impression, body: imagingReports.body,
+    })
     .from(imagingReports).where(eq(imagingReports.id, critical.reportId));
   const report = reportRows[0]!;
 
@@ -1260,6 +1458,25 @@ export async function acknowledgeCritical(
   /** F79 — the read-back is the likeliest place in the system for a verbatim sex disclosure. */
   await assertFreeTextSignable(tx, report.studyId, input.readBack ?? "");
 
+  /**
+   * ═══ 18-S RS8b — THE READ-BACK NAMES THE FINDING ═══
+   *
+   * The board closes a critical call "only on a correct read-back". Until now any non-empty text
+   * closed a red call — "noted" was a read-back. The clinician's words must now name what the report
+   * found (`critical-ladder.ts` `readBackNamesFinding`): a critical term the report states, or a word
+   * of its impression. Every path that closes a call comes through here, so the doctor's own
+   * read-back (RS9) meets the same rule.
+   */
+  const readBack = input.readBack?.trim() ?? "";
+  if (readBack !== "" && !readBackNamesFinding(readBack, findingOf(report))) {
+    throw new RadiologyError(
+      "read_back_mismatch",
+      "the read-back does not name the finding — ask the clinician to repeat what the report found, in their own "
+      + "words, and type what they said",
+      { criticalId: input.criticalId },
+    );
+  }
+
   const acknowledgedAt = input.now ?? new Date();
   await tx.update(imagingCriticalFindings)
     .set({
@@ -1269,6 +1486,12 @@ export async function acknowledgeCritical(
       readBackText: input.readBack ?? null,
     })
     .where(eq(imagingCriticalFindings.id, input.criticalId));
+  /** 18-S RS8b — the closing call is the ladder's last row: who read it back, on which rung. */
+  await tx.insert(imagingCriticalCallAttempts).values({
+    id: newId(), criticalId: critical.id, rung: critical.ladderRung,
+    calledUserId: input.acknowledgedByClinicianId, calledName: null,
+    outcome: "read_back_ok", recordedBy: actor.id, at: acknowledgedAt,
+  });
   await appendEvent(tx, imagingCriticalAcknowledged.make({
     actor,
     payload: {

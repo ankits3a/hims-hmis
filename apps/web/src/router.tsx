@@ -1118,12 +1118,14 @@ const radiologyWorklistRoute = createRoute({
 const radiologyReadingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/radiology/read",
-  validateSearch: (search: Record<string, unknown>): { study?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { study?: string; view?: "criticals" } => ({
     study: typeof search.study === "string" && /^[0-9A-Z]{26}$/.test(search.study) ? search.study : undefined,
+    /** 18-S RS8b — the header's second view, the critical calls. */
+    view: search.view === "criticals" ? "criticals" : undefined,
   }),
   component: function RadiologyReadingScreen() {
-    const { study } = radiologyReadingRoute.useSearch();
-    return <RadiologyReading studyId={study ?? null} />;
+    const { study, view } = radiologyReadingRoute.useSearch();
+    return <RadiologyReading studyId={study ?? null} view={view === "criticals" ? "criticals" : "list"} />;
   },
   staticData: { fullViewport: true },
 });

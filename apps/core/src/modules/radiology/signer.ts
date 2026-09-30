@@ -38,7 +38,46 @@ import type { Db, Tx } from "../../kernel/db/client";
  * `signer_credentials_missing`, NAMING what is missing and who fixes it. Nothing is guessed.
  */
 
+/**
+ * 18-S RS8b — A RESIDENT'S SIGNATURE, which is not the report's signer block. A DNB/MD resident
+ * drafts and signs for co-sign; the report the hospital issues is the consultant's. So the
+ * resident's row carries who they are, when they signed under their own second factor and the hash
+ * of the text they signed — and no qualification or council number, because the resident is not
+ * the signatory of record and is not on the department's list. The consultant's `SignerBlock`
+ * carries it forward as `draftedBy`, which is what the print's "reported by / co-signed by" reads.
+ */
+export type ResidentSignature = {
+  kind: "resident";
+  userId: string;
+  name: string;
+  role: "radiology_resident";
+  signedAt: string;
+  secondFactorAt: string;
+  contentSha256: string;
+};
+
+export async function residentSignature(
+  tx: Tx,
+  input: {
+    userId: string; now: Date; secondFactorAt: Date;
+    content: { templateKey: string; body: unknown; impression: string | null; laterality: string | null };
+  },
+): Promise<ResidentSignature> {
+  const [user] = await (tx as unknown as Db).select({ fullName: users.fullName }).from(users).where(eq(users.id, input.userId));
+  return {
+    kind: "resident",
+    userId: input.userId,
+    name: user?.fullName.trim() ?? "",
+    role: "radiology_resident",
+    signedAt: input.now.toISOString(),
+    secondFactorAt: input.secondFactorAt.toISOString(),
+    contentSha256: signedContentDigest(input.content),
+  };
+}
+
 export type SignerBlock = {
+  /** 18-S RS8b — on a co-signed report: the resident who drafted and signed it for co-sign. */
+  draftedBy?: ResidentSignature & { reportId: string };
   userId: string;
   name: string;
   qualification: string;
