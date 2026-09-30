@@ -3,11 +3,11 @@ import { z } from "zod";
 import { CONFIG, DB, DOCUMENT_STORE } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { istDateOf } from "./config";
-import { idSchema, parsed, toHttp } from "./pharmacy-http";
+import { discountAskSchema, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 import {
   counterBatches, enterPaperDispense, getRetailSale, inspectSheet, listPaperDispenses, listRetailLicences, listRetailSales,
-  pharmacyStaff, previewPaperDispense, previewRetailSale, recordRetailLicence, retailLicenceState, searchCounterShelf,
+  askRetailDiscount, pharmacyStaff, previewPaperDispense, previewRetailSale, recordRetailLicence, retailLicenceState, searchCounterShelf,
   searchRetailShelf, sellRetail,
 } from "./retail";
 import type { RetailReturnResult } from "./retail-returns";
@@ -27,8 +27,17 @@ const lineSchema = z.object({
   batchId: idSchema.optional(),
   scan: z.string().min(1).max(200).optional(),
 });
-const previewBody = z.object({ patientId: idSchema.optional(), lines: z.array(lineSchema).min(1).max(50) });
-const saleBody = z.object({
+/** OWNER RULING 2026-09-30 — the tender being chosen (for the rounding) and the discount being tried; a preview's reason may still be empty. */
+const previewDiscount = z.object({
+  kind: z.enum(["percent_bps", "flat_paise"]), value: z.number().int().positive().max(1_000_000_000), reason: z.string().max(300).default(""),
+}).refine((d) => d.kind !== "percent_bps" || d.value <= 10000, { message: "a discount cannot exceed 100%", path: ["value"] });
+const previewBody = z.object({
+  patientId: idSchema.optional(), lines: z.array(lineSchema).min(1).max(50),
+  tender: z.enum(["cash", "upi", "card", "split"]).optional(),
+  discount: previewDiscount.optional(),
+});
+const discountRequestBody = z.object({ draftId: idSchema, patientId: idSchema.optional(), lines: z.array(lineSchema).min(1).max(50), discount: discountAskSchema });
+const saleBase = z.object({
   customer: z.union([
     z.object({ existingId: idSchema }),
     z.object({
@@ -58,11 +67,16 @@ const saleBody = z.object({
   panNumber: z.string().max(10).optional(),
   form60: z.boolean().optional(),
   changeGivenPaise: z.number().int().nonnegative().optional(),
+  /** OWNER RULING 2026-09-30 — the sale discount; above 10% with its approval, bound to `draftId` (the cart's id). */
+  discount: discountOnBillSchema.optional(),
+  draftId: idSchema.optional(),
 });
+const approvedNamesCart = (b: { discount?: { approvalId?: string }; draftId?: string }): boolean => b.discount?.approvalId === undefined || b.draftId !== undefined;
+const saleBody = saleBase.refine(approvedNamesCart, { message: "an approved discount names the cart it was asked for (draftId)", path: ["draftId"] });
 const storeCode = z.enum(["PHARM-OPD", "PHARM-RETAIL"]);
 const instant = z.string().datetime({ offset: true });
 const paperPreviewBody = previewBody.extend({ storeCode, occurredAt: instant });
-const paperBody = saleBody.extend({
+const paperBody = saleBase.extend({
   sheetQr: z.string().min(1).max(300),
   storeCode,
   occurredAt: instant,
@@ -120,6 +134,18 @@ export class PharmacyRetailController {
     const input = parsed(previewBody, body);
     try {
       return await previewRetailSale(this.db, actor, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** OWNER RULING 2026-09-30 — ask for a walk-in discount above 10% on THIS cart (`askRetailDiscount`). */
+  @RequirePermission("pharmacy.retail.sell", "hospital")
+  @Post("discount-requests")
+  async askDiscount(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ approvalId: string; tier: string; amountPaise: number }> {
+    const input = parsed(discountRequestBody, body);
+    try {
+      return await askRetailDiscount(this.db, actor, input, new Date());
     } catch (e) {
       return toHttp(e);
     }

@@ -6,6 +6,7 @@ import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { esc, thermalPage } from "../../kernel/printing/render";
 import { relayServes } from "../../kernel/printing/served";
 import { getInvoice } from "../billing";
+import { saleDiscountReason } from "./discount";
 import { loadOpdConfig } from "../opd";
 import { closingFor } from "./closing";
 import { PharmacyError } from "./errors";
@@ -107,6 +108,8 @@ export function gstSummary(lines: readonly { rateBps: number; exempt: boolean; t
 
 type Part = { title: string; body: string };
 
+
+
 /** The paper names the patient as the label read does — alias-safe (`labelFor`). No requester reads as nobody. */
 function readerOf(requester: Actor | null): Actor {
   return requester ?? { type: "system", id: "pharmacy-print" };
@@ -121,6 +124,8 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
   const closing = await closingFor(db, readerOf(requester), dispenseId);
   const letterhead = (await loadOpdConfig(db)).letterhead;
   const summary = gstSummary(lines);
+  // OWNER RULING 2026-09-30 — the paper says why the bill is below MRP: the sale discount's reason, off its line.
+  const discountReason = saleDiscountReason(lines);
 
   const rows = label.billRows.map((r) => `
       <tr><td>${esc(r.serviceName)}<div class="sub">HSN ${esc(r.sacCode ?? "")}${r.exempt === true ? " · exempt" : r.rateBps === null ? "" : ` · GST ${String(r.rateBps / 100)}%`}${r.pack !== null && r.pack.packs > 0 && r.pack.packPaise !== null ? ` · ${esc(rupees(r.pack.packPaise))}/${esc(r.pack.uom)}` : ""}</div></td>
@@ -148,7 +153,7 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
     </table></div>
     <div class="sec">
       <div class="row"><span class="k">Gross</span><span class="v">${esc(rupees(invoice.grossPaise))}</span></div>
-      ${invoice.discountPaise === 0 ? "" : `<div class="row"><span class="k">Discount</span><span class="v">${esc(rupees(invoice.discountPaise))}</span></div>`}
+      ${invoice.discountPaise === 0 ? "" : `<div class="row"><span class="k">Discount${discountReason === null ? "" : ` (${esc(discountReason)})`}</span><span class="v">−${esc(rupees(invoice.discountPaise))}</span></div>`}
       <div class="row"><span class="k">Taxable value</span><span class="v">${esc(rupees(invoice.taxableBasePaise))}</span></div>
       <div class="row"><span class="k">CGST</span><span class="v">${esc(rupees(invoice.cgstPaise))}</span></div>
       <div class="row"><span class="k">SGST</span><span class="v">${esc(rupees(invoice.sgstPaise))}</span></div>

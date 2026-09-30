@@ -7,15 +7,16 @@ import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
 import { cachedShelfIndex, matchOpenLines } from "./auto-match";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
-import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { PHARMACY_IDEMPOTENT_ROUTES, billPreviewQuery, discountAskSchema, discountFromQuery, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { closingFor } from "./closing";
 import type { Closing } from "./closing";
 import { patientRail } from "./patient-rail";
 import type { PatientRail } from "./patient-rail";
 import { confirmSlip, getDispense, listQueue } from "./queue";
 import type { Quote } from "./quote";
-import { billDispense, previewDispenseBill } from "./bill";
-import type { DisplayDraft } from "./bill";
+import { askDispenseDiscount, billDispense, previewDispenseBill } from "./bill";
+import type { BillPreview } from "./bill";
+import { discountRequestStatus } from "./discount";
 import { handOverDispense } from "./handover";
 import { captureRetainedPrescription } from "./controlled-dispense";
 import { labelFor } from "./label";
@@ -92,6 +93,8 @@ const billBody = z.object({
   tags: z.array(z.string().min(1)).optional(),
   /** GAP A3b — on credit, on the owner's granted approval; billing checks the grant against the dispense and amount. */
   credit: z.object({ reason: z.string().trim().min(1).max(500), approvalId: z.string().min(1).max(64) }).optional(),
+  /** OWNER RULING 2026-09-30 — the sale discount, and above 10% its granted approval (`discount.ts`). */
+  discount: discountOnBillSchema.optional(),
 }).refine((b) => b.tenders.length > 0 || b.credit !== undefined, { message: "a bill is paid by a tender, or on the owner's credit", path: ["tenders"] });
 /** P1 — the short book. `itemId` when the counter knows the drug; the name as said otherwise. */
 const shortBookBody = z.object({
@@ -383,9 +386,40 @@ export class PharmacyCounterController {
 
   @RequirePermission("pharmacy.dispense.place", "hospital")
   @Get("dispenses/:id/bill/preview")
-  async preview(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<DisplayDraft> {
+  async preview(@CurrentActor() actor: Actor, @Param("id") id: string, @Query() query: unknown): Promise<BillPreview> {
+    const q = parsed(billPreviewQuery, query);
+    const discount = discountFromQuery(q);
     try {
-      return await previewDispenseBill(this.db, actor, id, new Date());
+      return await previewDispenseBill(this.db, actor, id, new Date(), {
+        ...(q.tender === undefined ? {} : { tender: q.tender }), ...(discount === undefined ? {} : { discount }),
+      });
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * OWNER RULING 2026-09-30 — ask for a discount above the pharmacist's 10% on THIS dispense. The server
+   * prices it, reads the tier (the in-charge up to 25%, the owner above it or over ₹25,000) and files it
+   * with that approver. The same key as the bill: whoever may take the money may ask.
+   */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Post("dispenses/:id/discount-requests")
+  async askDiscount(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ approvalId: string; tier: string; amountPaise: number }> {
+    const ask = parsed(discountAskSchema, body);
+    try {
+      return await askDispenseDiscount(this.db, actor, id, ask, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** Where a discount ask stands — the desk polls it and bills the moment it reads `granted`. */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Get("discount-requests/:approvalId")
+  async discountRequest(@Param("approvalId") approvalId: string): Promise<Awaited<ReturnType<typeof discountRequestStatus>>> {
+    try {
+      return await discountRequestStatus(this.db, approvalId);
     } catch (e) {
       return toHttp(e);
     }

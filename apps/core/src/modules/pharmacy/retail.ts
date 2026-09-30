@@ -18,7 +18,10 @@ import {
 } from "../materials";
 import { runRxChecks } from "../opd";
 import { captureDocument, getPatient, getPatientSummaries, nearMatches, registerPatient, resolvePatientId } from "../patients";
-import { displayDraft, gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, winnerOf } from "./bill";
+import { assertIssuedDiscount, displayDraft, gstCategoryMap, invoiceInputsOf, mainRowsOf, priceBatchLine, roundingRuleForTender, tenderPayables, winnerOf } from "./bill";
+import type { TenderKind, TenderPayables } from "./bill";
+import { assertDiscountCovered, pharmacyRoundingRule, quoteDiscount, requestDiscountApproval, saleDiscountPaise, saleDiscountReason } from "./discount";
+import type { DiscountAsk, DiscountQuote } from "./discount";
 import { assertNoColdChainHold } from "./cold-chain";
 import { billRowsForInvoice, counterPacks } from "./bill-rows";
 import type { BillRow } from "./bill-rows";
@@ -458,7 +461,12 @@ export type RetailPreview = {
      */
     price: { unitPaise: number; grossPaise: number; discountPaise: number; taxPaise: number; gstRateBps: number; amountPaise: number };
   }[];
-  totals: { grossPaise: number; discountPaise: number; taxPaise: number; netPayablePaise: number };
+  /** `netPayablePaise` is rounded for the tender asked (cash when unsaid) — OWNER RULING 2026-09-30. */
+  totals: { grossPaise: number; discountPaise: number; taxPaise: number; roundingPaise: number; netPayablePaise: number };
+  /** OWNER RULING 2026-09-30 — the payable under each tender rule, so the counter switches cash ↔ UPI without asking again. */
+  byTender: TenderPayables;
+  /** The discount being asked, priced, and who must approve it; null without one. */
+  discount: DiscountQuote | null;
   /** Null when no customer was named yet: nothing to check against. */
   checks: {
     allergies: { lineIdx: number; substance: string }[];
@@ -470,10 +478,24 @@ export type RetailPreview = {
 
 /** The cart, priced and judged. Writes nothing and refuses only what the cart itself makes impossible. */
 export async function previewRetailSale(
-  db: Db, actor: Actor, input: { patientId?: string; lines: RetailLineInput[] }, now: Date,
+  db: Db, actor: Actor, input: { patientId?: string; lines: RetailLineInput[]; tender?: TenderKind; discount?: DiscountAsk }, now: Date,
 ): Promise<RetailPreview> {
   await requirePermission(db, actor, SELL, "pricing a walk-in sale");
   return previewAt(db, await retailStore(db), input, now, now);
+}
+
+/**
+ * OWNER RULING 2026-09-30 — ask for a discount above 10% on a walk-in cart. `draftId` is the cart's own id,
+ * held by the counter and sent again with the sale (the sale takes it as its id, so one approval sells once).
+ * An approval of money binds a patient, so the customer is named first.
+ */
+export async function askRetailDiscount(
+  db: Db, actor: Actor, input: { draftId: string; patientId?: string; lines: RetailLineInput[]; discount: DiscountAsk }, now: Date,
+): Promise<{ approvalId: string; tier: DiscountQuote["tier"]; amountPaise: number }> {
+  await requirePermission(db, actor, SELL, "asking for a walk-in discount");
+  const preview = await previewAt(db, await retailStore(db), { ...input, discount: input.discount }, now, now);
+  const patientId = input.patientId === undefined ? null : await resolvePatientId(db, input.patientId);
+  return requestDiscountApproval(db, actor, { draftId: input.draftId, patientId, ask: input.discount, quote: preview.discount! });
 }
 
 /** P20 — a paper dispense, priced and judged as of the time on the sheet. Writes nothing. */
@@ -488,7 +510,7 @@ export async function previewPaperDispense(
 }
 
 async function previewAt(
-  db: Db, store: StoreRow, input: { patientId?: string; lines: RetailLineInput[] }, at: Date, now: Date,
+  db: Db, store: StoreRow, input: { patientId?: string; lines: RetailLineInput[]; tender?: TenderKind; discount?: DiscountAsk }, at: Date, now: Date,
 ): Promise<RetailPreview> {
   const licence = await retailLicenceState(db, now);
   const plan = await planLines(db, store.id, input.lines, at);
@@ -497,7 +519,11 @@ async function previewAt(
   for (const p of plan) priced.push(await priceBatchLine(db, gst, p, at));
   const patientId = input.patientId === undefined ? undefined : (await resolvePatientId(db, input.patientId)) ?? undefined;
   if (input.patientId !== undefined && patientId === undefined) throw new PharmacyError("not_found", `patient ${input.patientId} not found`);
-  const draft = await previewInvoice(db, { ...(patientId === undefined ? {} : { patientId }), lines: priced.flatMap(invoiceInputsOf) }, now);
+  const draft = await previewInvoice(db, {
+    ...(patientId === undefined ? {} : { patientId }), lines: priced.flatMap(invoiceInputsOf),
+    roundingRule: roundingRuleForTender(input.tender ?? "cash"),
+    ...(input.discount === undefined ? {} : { saleDiscount: { ...input.discount, reason: input.discount.reason.trim() === "" ? "preview" : input.discount.reason } }),
+  }, now);
   let checks: RetailPreview["checks"] = null;
   if (patientId !== undefined) {
     const outcome = await runRxChecks(db, patientId, checkLinesOf(plan), at);
@@ -523,8 +549,10 @@ async function previewAt(
     })),
     totals: {
       grossPaise: draft.totals.grossPaise, discountPaise: draft.totals.discountPaise,
-      taxPaise: draft.totals.cgstPaise + draft.totals.sgstPaise, netPayablePaise: draft.totals.netPayablePaise,
+      taxPaise: draft.totals.cgstPaise + draft.totals.sgstPaise, roundingPaise: draft.totals.roundingPaise, netPayablePaise: draft.totals.netPayablePaise,
     },
+    byTender: tenderPayables(draft.totals.rawTotalPaise),
+    discount: input.discount === undefined ? null : quoteDiscount(input.discount, draft.totals.grossPaise, saleDiscountPaise(draft.lines)),
     checks,
   };
 }
@@ -559,6 +587,12 @@ export type RetailSaleInput = {
   panNumber?: string;
   form60?: boolean;
   changeGivenPaise?: number;
+  /**
+   * OWNER RULING 2026-09-30 — the sale discount; above 10% with the granted approval for THIS cart, whose
+   * `draftId` (the cart's id, asked with) becomes the sale's id — so one approval sells one cart, once.
+   */
+  discount?: DiscountAsk & { approvalId?: string };
+  draftId?: string;
 };
 
 function cleanPrescription(rx: RetailPrescriptionInput, at: Date): Omit<RetailPrescriptionInput, "photo"> {
@@ -681,7 +715,20 @@ async function recordSale(
     const medicineNames = new Map(plan.map((p) => [p.lineIdx, drugNameOf(p.medicine)!]));
     const itemRows = await itemsByIds(db, plan.map((p) => p.itemId));
 
-    const id = newId();
+    const id = input.draftId ?? newId();
+    const lines = priced.flatMap(invoiceInputsOf);
+    let judged: { ask: DiscountAsk; quote: DiscountQuote } | null = null;
+    if (input.discount !== undefined) {
+      if (input.draftId !== undefined) {
+        const [sold] = await db.select({ id: pharmacyRetailSales.id }).from(pharmacyRetailSales).where(eq(pharmacyRetailSales.id, input.draftId));
+        if (sold !== undefined) throw new PharmacyError("discount_not_bound", "this cart has already been sold — its discount approval is spent");
+      }
+      const ask: DiscountAsk = { kind: input.discount.kind, value: input.discount.value, reason: input.discount.reason };
+      const draft = await previewInvoice(db, { ...(existingId === null ? {} : { patientId: existingId }), lines, saleDiscount: ask, roundingRule: "exact" }, now);
+      const quote = quoteDiscount(ask, draft.totals.grossPaise, saleDiscountPaise(draft.lines));
+      await assertDiscountCovered(db, { draftId: id, patientId: existingId, ask, quote, approvalId: input.discount.approvalId });
+      judged = { ask, quote };
+    }
     try {
       await withTx(db, async (tx) => {
         let patientId: string;
@@ -716,7 +763,10 @@ async function recordSale(
         // The invoice is issued now, with a number from now: a sheet's serial is a reconciliation
         // key, never a tax invoice number (kernel/ops/downtime-kit.ts).
         const result = await issueInvoice(tx as unknown as Db, actor, {
-          draftId: id, patientId, lines: priced.flatMap(invoiceInputsOf),
+          draftId: id, patientId, lines,
+          // OWNER RULING 2026-09-30 — any cash rounds DOWN; UPI/card alone to the paisa.
+          roundingRule: pharmacyRoundingRule(input.tenders),
+          ...(judged === null ? {} : { saleDiscount: judged.ask }),
           receipt: {
             tenders: input.tenders,
             ...(input.panNumber === undefined ? {} : { panNumber: input.panNumber }),
@@ -727,6 +777,7 @@ async function recordSale(
         }, now);
         const stored = await getInvoice(tx, result.invoiceId);
         if (stored === null) throw new PharmacyError("not_found", `invoice ${result.invoiceId} vanished inside its own transaction`);
+        if (judged !== null) assertIssuedDiscount(stored.lines, judged.quote);
         const byNo = mainRowsOf([...stored.lines].sort((a, b) => a.lineNo - b.lineNo), priced);
 
         await tx.insert(pharmacyRetailSales).values({
@@ -951,6 +1002,11 @@ export type RetailSaleView = {
   }[];
   /** The bill as a person reads it: one row per drug, a pack residue folded in (loose-MRP ruling, `bill-rows.ts`). */
   billRows: BillRow[] | null;
+  /**
+   * OWNER RULINGS 2026-09-30 — the bill's money as the memo prints it: the MRP total, the sale discount and why,
+   * the GST inside, the rounding (DOWN on cash, none on UPI/card) and what was collected. Read off the invoice.
+   */
+  money: { grossPaise: number; discountPaise: number; discountReason: string | null; taxPaise: number; roundingPaise: number; netPaise: number } | null;
 };
 
 /** One sale, with its customer: a PHI read, logged by the patient module. */
@@ -998,6 +1054,10 @@ export async function getRetailSale(db: Db, actor: Actor, saleId: string): Promi
     pharmacistRegNo: sale.pharmacistRegNo,
     lines: out,
     billRows: await billRowsForInvoice(db, sale.invoiceId, lines),
+    money: invoice === null ? null : {
+      grossPaise: invoice.invoice.grossPaise, discountPaise: invoice.invoice.discountPaise, discountReason: saleDiscountReason(invoice.lines),
+      taxPaise: invoice.invoice.cgstPaise + invoice.invoice.sgstPaise, roundingPaise: invoice.invoice.roundingPaise, netPaise: invoice.invoice.netPayablePaise,
+    },
   };
 }
 

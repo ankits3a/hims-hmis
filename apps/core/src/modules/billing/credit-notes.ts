@@ -9,7 +9,7 @@ import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { releaseRedemptions, restoreEntitlements } from "../membership";
-import { assertPaise, DISCOUNT_CATEGORIES, loadRuleConfig, percentAmount, roundTotalToRupee } from "../tariff";
+import { assertPaise, DISCOUNT_CATEGORIES, loadRuleConfig, percentAmount } from "../tariff";
 import { loadBillingConfig } from "./config";
 import { creditShare } from "./credit-share";
 import { BillingError } from "./errors";
@@ -17,6 +17,7 @@ import { emitFeeStatusChanged } from "./settle-hooks";
 import { creditNoteIssued } from "./events";
 import { invoiceSettlement } from "./invoices";
 import { nextDocNo } from "./series";
+import { roundTotalBy, roundingRuleOf } from "./totals";
 import type { CreditShare } from "./credit-share";
 import type { InvoiceLineRow } from "./invoices";
 import type { Settlement } from "./settlement";
@@ -237,11 +238,11 @@ export async function creditedInvoiceLineIdsBetween(exec: Db | Tx, start: Date, 
 async function lockInvoice(
   tx: Tx,
   invoiceId: string,
-): Promise<{ id: string; patientId: string; encounterId: string | null; rawTotalPaise: number }> {
+): Promise<{ id: string; patientId: string; encounterId: string | null; rawTotalPaise: number; roundingRule: string }> {
   const rows = await tx
     .select({
       id: invoices.id, patientId: invoices.patientId,
-      encounterId: invoices.encounterId, rawTotalPaise: invoices.rawTotalPaise,
+      encounterId: invoices.encounterId, rawTotalPaise: invoices.rawTotalPaise, roundingRule: invoices.roundingRule,
     })
     .from(invoices)
     .where(eq(invoices.id, invoiceId))
@@ -468,9 +469,12 @@ export async function issueCreditNote(
       totals = foldSteps(steps);
     }
 
-    // §170, applied ONCE to THIS document's own raw total — never to the shares (D3/D4).
+    // §170, applied ONCE to THIS document's own raw total — never to the shares (D3/D4). OWNER RULING
+    // 2026-09-30: by the INVOICE's own rule. A pharmacy bill rounded DOWN (cash) credits down too, so
+    // a full return frees exactly what was paid (₹33.60 billed, ₹33.00 paid, ₹33.00 credited) and
+    // partial returns never sum past it (Σ floor ≤ floor Σ); an `exact` bill credits to the paisa.
     const rawTotalPaise = totals.taxableBasePaise + totals.cgstPaise + totals.sgstPaise;
-    const { roundedPaise, roundingPaise } = roundTotalToRupee(rawTotalPaise);
+    const { roundedPaise, roundingPaise } = roundTotalBy(roundingRuleOf(invoice.roundingRule), rawTotalPaise);
 
     const creditNoteId = newId();
     const creditNoteNo = await nextDocNo(tx, cfg, "credit_note", now);

@@ -31,6 +31,9 @@ import { requireOpenSession } from "./sessions";
 import { settlementState } from "./settlement";
 import { istDay } from "./time";
 import { totalInvoice } from "./totals";
+import type { RoundingRule } from "./totals";
+import { assertPharmacyOnly, saleDiscountShares, saleDiscountSource } from "./sale-discount";
+import type { SaleDiscountInput } from "./sale-discount";
 import {
   advanceReceived, cashThresholdBlocked, cashThresholdWarned, invoiceCreditExtended, invoiceIssued,
   paymentReceived, receiptRecorded,
@@ -157,6 +160,14 @@ export type IssueInvoiceInput = {
    * every direct lab walk-in that named no referrer (spike S3).
    */
   attributionCode?: string;
+  /**
+   * OWNER RULING 2026-09-30 (money) — INTERNAL ONLY, never on an HTTP body (the zod bodies strip it).
+   * How the total rounds (`totals.ts` `RoundingRule`; absent = `half_up`, §170 as it always was) and a
+   * sale discount (`sale-discount.ts`). Both are admitted only on a PHARMACY bill — every line
+   * `taxInclusive` — so every other invoice prices and rounds exactly as before.
+   */
+  roundingRule?: RoundingRule;
+  saleDiscount?: SaleDiscountInput;
 };
 
 export type IssueInvoiceResult = {
@@ -194,6 +205,14 @@ export type PreviewInvoiceInput = {
    * every direct lab walk-in that named no referrer (spike S3).
    */
   attributionCode?: string;
+  /**
+   * OWNER RULING 2026-09-30 (money) — INTERNAL ONLY, never on an HTTP body (the zod bodies strip it).
+   * How the total rounds (`totals.ts` `RoundingRule`; absent = `half_up`, §170 as it always was) and a
+   * sale discount (`sale-discount.ts`). Both are admitted only on a PHARMACY bill — every line
+   * `taxInclusive` — so every other invoice prices and rounds exactly as before.
+   */
+  roundingRule?: RoundingRule;
+  saleDiscount?: SaleDiscountInput;
 };
 export type PricedDraft = {
   tariffVersionId: string;
@@ -767,9 +786,13 @@ async function priceDraftWithBenefits(
   draft: {
     encounterId?: string; patientId?: string; lines: InvoiceLineInput[]; tags?: string[];
     receipt?: { tenders: TenderInput[] }; couponCodes?: string[]; attributionCode?: string;
+    roundingRule?: RoundingRule; saleDiscount?: SaleDiscountInput;
   },
   now: Date,
 ): Promise<{ priced: PricedDraft; benefits: BenefitContext | null }> {
+  const roundingRule = draft.roundingRule ?? "half_up";
+  if (roundingRule !== "half_up") assertPharmacyOnly(draft.lines, `rounding "${roundingRule}"`);
+  if (draft.saleDiscount !== undefined) assertPharmacyOnly(draft.lines, "a sale discount");
   const encounter = await resolveEncounter(db, draft.encounterId);
   await assertOneSubject(db, draft.patientId, encounter.patientId);
   // `loadPricingContext` takes Db, NOT Tx (§14.5) and runs OUTSIDE any transaction; the engine
@@ -809,13 +832,22 @@ async function priceDraftWithBenefits(
         base,
       )
     : { ctx: base, benefits: null };
-  const lines = priceInvoiceLines(composed.ctx, draft.lines);
+  // OWNER RULING 2026-09-30 — the sale discount joins the contest LAST, the way `composeBenefits`
+  // appends a member's source: shares are fixed from each line's gross (pass one, pure), then the
+  // engine carves the tax out of what is left.
+  let ctx = composed.ctx;
+  if (draft.saleDiscount !== undefined) {
+    const grossByLine = priceInvoiceLines(base, draft.lines).map((l) => ({ lineId: l.lineId, grossPaise: l.grossPaise }));
+    const shares = saleDiscountShares(draft.saleDiscount, grossByLine);
+    ctx = { ...ctx, sources: [...ctx.sources, saleDiscountSource(draft.saleDiscount, shares)] };
+  }
+  const lines = priceInvoiceLines(ctx, draft.lines);
   return {
     priced: {
-      tariffVersionId: composed.ctx.tariff.versionId,
+      tariffVersionId: ctx.tariff.versionId,
       intendedPayer: encounter.intendedPayer,
       lines,
-      totals: totalInvoice(lines),
+      totals: totalInvoice(lines, roundingRule),
     },
     benefits: composed.benefits,
   };
@@ -1287,6 +1319,7 @@ export async function issueInvoice(
         sgstPaise: totals.sgstPaise,
         rawTotalPaise: totals.rawTotalPaise,
         roundingPaise: totals.roundingPaise,
+        roundingRule: input.roundingRule ?? "half_up",
         netPayablePaise: totals.netPayablePaise,
         creditExtended: creditBlock !== null,
         creditReason: creditBlock?.reason ?? holdBlock?.reason ?? null,

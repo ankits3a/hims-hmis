@@ -30,6 +30,29 @@ export const PHARMACY_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: n
     actFirstAllowed: false,
     closureSlaMinutes: 240,
   },
+  /**
+   * OWNER RULINGS 2026-09-30 (money) — the sale-side discount (`discount.ts`). Up to 10% the pharmacist gives
+   * it; above 10% and up to 25% the pharmacy in-charge approves THIS type; above 25%, or worth more than
+   * ₹25,000 on one bill, only the owner approves the second. Two types, because an approval type's approver
+   * is fixed at registration: an in-charge's grant can never stand in for the owner's. `urgent` and 240
+   * minutes — a patient is waiting at the counter, the owner-credit ask's SLA. No act-first: the bill waits.
+   */
+  {
+    typeKey: "pharmacy_discount_incharge",
+    title: "Pharmacy discount above 10% (Pharmacy In-charge Approval)",
+    approverRole: "pharmacy_incharge",
+    urgencyClass: "urgent",
+    actFirstAllowed: false,
+    closureSlaMinutes: 240,
+  },
+  {
+    typeKey: "pharmacy_discount_owner",
+    title: "Pharmacy discount above 25% or over ₹25,000 (Owner Approval)",
+    approverRole: "owner",
+    urgencyClass: "urgent",
+    actFirstAllowed: false,
+    closureSlaMinutes: 240,
+  },
 ];
 
 export const RESTRICTED_ANTIMICROBIAL_APPROVAL_TYPE = "pharmacy_restricted_antimicrobial";

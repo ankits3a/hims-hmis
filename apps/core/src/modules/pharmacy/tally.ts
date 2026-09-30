@@ -171,11 +171,14 @@ const cr = (ledger: string, paise: number, party = false): TallyEntry => ({ ledg
 /** A rounding or round-off as the entry that closes the voucher: a positive amount is income (credit). */
 const roundOffEntry = (ledger: string, incomePaise: number): TallyEntry => ({ ledger, amountPaise: -incomePaise, party: false });
 
+const rupeesText = (paise: number): string => `Rs ${(paise / 100).toFixed(2)}`;
+
 /** A B2B buyer (the invoice's GSTIN and legal name); `null` is a B2C counter bill. */
 export type TallyBuyer = { gstin: string; legalName: string | null } | null;
 
 export type TallySource = {
-  sales: { id: string; no: string; date: string; ref: string | null; buyer: TallyBuyer; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number }[];
+  /** `grossPaise`/`discountPaise` (OWNER RULING 2026-09-30): the MRP total and the sale discount on it, named in the narration. */
+  sales: { id: string; no: string; date: string; ref: string | null; buyer: TallyBuyer; grossPaise?: number; discountPaise?: number; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number }[];
   salesReturns: { id: string; no: string; date: string; invoiceNo: string; buyer: TallyBuyer; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number }[];
   /** One receipt; `credits` is what it settled per buyer (a receipt can settle a B2C and a B2B bill together). */
   receipts: { id: string; no: string; date: string; invoiceNos: string[]; cashPaise: number; bankPaise: number; credits: { buyer: TallyBuyer; amountPaise: number }[] }[];
@@ -206,7 +209,13 @@ export function buildVouchers(src: TallySource, l: TallyLedgers): { vouchers: Ta
   };
   for (const s of src.sales) {
     const party = buyer(s.buyer);
-    voucher(b, "sale", { remoteId: `hmis:sale:${s.id}`, number: s.no, date: s.date, reference: s.ref, party, narration: `Pharmacy bill ${s.no}${s.ref === null ? "" : ` (dispense ${s.ref})`}` }, [
+    /*
+      OWNER RULING 2026-09-30 — a discount is on the INVOICE (CGST Act s.15(3)(a)), so it is already out of
+      the taxable value the Sales ledger is credited with; it adds no entry, and the voucher still balances.
+      The narration names it, so the accountant reads MRP, discount and rounding off one voucher.
+    */
+    const disc = (s.discountPaise ?? 0) > 0 ? `; MRP ${rupeesText(s.grossPaise ?? 0)} less discount ${rupeesText(s.discountPaise ?? 0)}` : "";
+    voucher(b, "sale", { remoteId: `hmis:sale:${s.id}`, number: s.no, date: s.date, reference: s.ref, party, narration: `Pharmacy bill ${s.no}${s.ref === null ? "" : ` (dispense ${s.ref})`}${disc}` }, [
       dr(party, s.netPaise, true), cr(l.sales, s.taxablePaise), cr(l.outputCgst, s.cgstPaise), cr(l.outputSgst, s.sgstPaise), roundOffEntry(l.roundOff, s.roundingPaise),
     ]);
   }
@@ -375,7 +384,8 @@ async function sourceOf(db: Db, from: string, to: string): Promise<TallySource> 
   }
   return {
     sales: sales.sales.map((s) => ({
-      id: s.id, no: s.invoiceNo, date: s.serviceDay, ref: s.ref, buyer: s.buyer, taxablePaise: s.taxableBasePaise, cgstPaise: s.cgstPaise, sgstPaise: s.sgstPaise,
+      id: s.id, no: s.invoiceNo, date: s.serviceDay, ref: s.ref, buyer: s.buyer, grossPaise: s.grossPaise, discountPaise: s.discountPaise,
+      taxablePaise: s.taxableBasePaise, cgstPaise: s.cgstPaise, sgstPaise: s.sgstPaise,
       roundingPaise: s.roundingPaise, netPaise: s.netPayablePaise,
     })),
     salesReturns: sales.refunds.map((n) => ({
