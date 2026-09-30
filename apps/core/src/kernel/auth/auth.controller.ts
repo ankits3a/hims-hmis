@@ -20,6 +20,7 @@ import { confirmTotp, enrollTotp, recordSecondFactor, verifyTotpCode } from "./t
 import type { TotpCheck } from "./totp";
 import { badgeThrottleSubject } from "../crypto";
 import { useBreakGlass, pendingReviews, recordReview } from "./break-glass";
+import { SodViolationError } from "./sod";
 import {
   ElevationAlreadyReviewedError, RoleNotTemporarilyGrantableError, UnknownElevationError,
   UnknownRoleError, emergencyElevate, grantTempRole, pendingElevationReviews,
@@ -417,7 +418,13 @@ export class AuthController {
   ): Promise<void> {
     const parsed = z.object({ note: z.string().min(1) }).safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
-    await recordReview(this.db, id, actor, parsed.data.note);
+    try {
+      await recordReview(this.db, id, actor, parsed.data.note);
+    } catch (e) {
+      // DECIDED 2026-09-28: nobody reviews their own break-glass (`break-glass.ts`).
+      if (e instanceof SodViolationError) throw new ForbiddenException({ code: "sod_violation", message: e.message, pairKey: e.pairKey });
+      throw e;
+    }
   }
 
   @RequirePermission("auth.temp_role.grant", "hospital")

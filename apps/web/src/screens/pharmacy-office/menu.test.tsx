@@ -47,7 +47,7 @@ const FOLDED: [string, string, string][] = [
   ["buy", "reorder", "pharmacyReorder.title"],
   ["buy", "vendors", "materialsVendors.title"],
   ["stock", "grn", "materialsGrn.title"],
-  ["stock", "opening", "materialsGrn.title"],
+  ["stock", "opening", "stockEntry.title"],
   ["stock", "counts", "materialsCounts.title"],
   ["stock", "transfers", "materialsTransfers.title"],
   ["stock", "downtime", "pharmacyDowntime.title"],
@@ -131,7 +131,7 @@ describe("the office's header menu (gap-closure B3)", () => {
     await waitFor(() => expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Stock"]));
     await userEvent.click(screen.getByTestId("office-view-stock"));
     const drop = await screen.findByTestId("office-drop-stock");
-    expect(within(drop).getAllByRole("menuitem").map((b) => b.getAttribute("data-testid"))).toEqual(["office-entry-grn", "office-entry-transfers"]);
+    expect(within(drop).getAllByRole("menuitem").map((b) => b.getAttribute("data-testid"))).toEqual(["office-entry-grn", "office-entry-transfers", "office-entry-ledger"]);
   });
 
   it("a pharmacist whose only grant is the H1 register reaches the office on its Law side", async () => {

@@ -21,8 +21,9 @@ import { createStore } from "./stores";
 import { acceptSupplierBill, billDraftFromGrn, createSupplierBill, matchSupplierBill, payables, supplierLedger, vendorCredits } from "./supplier-bills";
 import {
   approveSupplierReturn, cancelVendorCredit, createSupplierReturn, dispatchSupplierReturn, draftReturnFromRecall, draftSupplierReturns,
-  expiryReport, planSupplierReturns, recordVendorCredit, returnVerdict,
+  expiryReport, getSupplierReturn, planSupplierReturns, recordVendorCredit, returnVerdict, returnableStock, returnableVendors, updateSupplierReturn,
 } from "./supplier-returns";
+import { ledgerItems, stockLedgerView } from "./stock-ledger-view";
 import { activateVendor, addVendorDocument, registerVendor } from "./vendors";
 import { getWriteOff, postWriteOff, raiseWriteOff } from "./write-offs";
 import type { Actor } from "@hmis/contracts";
@@ -449,5 +450,92 @@ describe("returns to the supplier, credit notes, write-offs and recalls (parity 
     const closed = await closeRecall(db, incharge.actor, recall.id, "all 145 back to ACME", EXPIRED);
     expect([closed.status, closed.returns.map((x) => [x.returnNo, x.status, x.qtyBase])]).toEqual(["closed", [[r.returnNo, "dispatched", 145]]]);
     expect((await getRecall(db, pharmacist.actor, recall.id)).closeNote).toBe("all 145 back to ACME");
+  });
+
+  // ─────────────────────────────── A5 — the manual return from the office screen ───────────────────────────────
+
+  it("A5: a manual return — damaged, with the line's note — its draft lines edited until approval, the stock it may carry", async () => {
+    const { batchId: b1 } = await received(vendor, 10, { batchNo: "DMG-1" });
+    const { batchId: b2 } = await received(vendor, 4, { batchNo: "WRONG-1" });
+    const { batchId: b3 } = await received(vendor, 2, { batchNo: "ODD-1" });
+    await received(opening, 5, { batchNo: "OPEN-1" });
+    // Who stock can go back to: the supplier, never the hospital's own opening stock.
+    expect((await returnableVendors(db, pharmacist.actor)).map((v) => [v.vendorCode, v.batches])).toEqual([["ACME", 3]]);
+    const held = await returnableStock(db, pharmacist.actor, { vendorId: vendor, search: "dmg" }, at(60));
+    expect(held.map((b) => [b.batchNo, b.storeCode, b.available, b.reasons])).toEqual([["DMG-1", "PHARM-OPD", 100, ["damaged"]]]);
+    // Near expiry, the batch also fits "near expiry"; expired within the window, "expired".
+    expect((await returnableStock(db, pharmacist.actor, { vendorId: vendor, search: "dmg" }, NEAR))[0]!.reasons).toEqual(["near_expiry", "damaged"]);
+    expect((await returnableStock(db, pharmacist.actor, { vendorId: vendor, search: "dmg" }, EXPIRED))[0]!.reasons).toEqual(["expired", "damaged"]);
+    // Past the window it is destroyed, not sent back under another name.
+    expect((await returnableStock(db, pharmacist.actor, { vendorId: vendor, search: "dmg" }, PAST))[0]!).toMatchObject({ reasons: [], pastWindow: true });
+    await expect(returnableStock(db, pharmacist.actor, { vendorId: opening }, at(60))).rejects.toMatchObject({ code: "not_returnable" });
+    await expect(returnableStock(db, keeper.actor, { vendorId: vendor }, at(60))).rejects.toMatchObject({ code: "permission_denied" });
+    // A reason the batch's date does not fit is refused, naming its case for the screen.
+    await expect(createSupplierReturn(db, pharmacist.actor, { vendorId: vendor, lines: [{ batchId: b1, storeResourceId: store, qtyBase: 5, reason: "near_expiry" }] }, { now: at(60) }))
+      .rejects.toMatchObject({ code: "return_invalid", detail: { batchNo: "DMG-1", why: "not_near_expiry" } });
+    await expect(createSupplierReturn(db, pharmacist.actor, { vendorId: vendor, lines: [
+      { batchId: b1, storeResourceId: store, qtyBase: 5, reason: "damaged" }, { batchId: b1, storeResourceId: store, qtyBase: 5, reason: "damaged" },
+    ] }, { now: at(60) })).rejects.toMatchObject({ code: "return_invalid", detail: { why: "duplicate_line" } });
+    const made = await createSupplierReturn(db, pharmacist.actor, { vendorId: vendor, note: "found at the counter", lines: [
+      { batchId: b1, storeResourceId: store, qtyBase: 20, reason: "damaged", note: "crushed carton" },
+      { batchId: b3, storeResourceId: store, qtyBase: 5, reason: "damaged", note: "leaking caps" },
+    ] }, { now: at(60) });
+    expect([made.source, made.status, made.lines.map((l) => [l.batchNo, l.reason, l.qtyBase, l.note]).sort()]).toEqual([
+      "manual", "draft", [["DMG-1", "damaged", 20, "crushed carton"], ["ODD-1", "damaged", 5, "leaking caps"]],
+    ]);
+    // What the draft holds is not free for another document — except for the draft itself, being edited.
+    expect((await returnableStock(db, pharmacist.actor, { vendorId: vendor, search: "DMG" }, at(61)))[0]!.available).toBe(80);
+    expect((await returnableStock(db, pharmacist.actor, { vendorId: vendor, search: "DMG", exceptReturnId: made.id }, at(61)))[0]!.available).toBe(100);
+    // The draft's lines are edited: a quantity changed and a line added.
+    const edited = await updateSupplierReturn(db, pharmacist.actor, made.id, { lines: [
+      { batchId: b1, storeResourceId: store, qtyBase: 30, reason: "damaged", note: "crushed carton" },
+      { batchId: b3, storeResourceId: store, qtyBase: 5, reason: "damaged", note: "leaking caps" },
+      { batchId: b2, storeResourceId: store, qtyBase: 40, reason: "damaged", note: "wrong strength supplied" },
+    ] }, at(62));
+    expect(edited.lines.map((l) => [l.batchNo, l.qtyBase, l.note]).sort()).toEqual([["DMG-1", 30, "crushed carton"], ["ODD-1", 5, "leaking caps"], ["WRONG-1", 40, "wrong strength supplied"]]);
+    expect(edited.taxablePaise).toBe(75 * 250);
+    // A line removed; more than is free refused with the numbers.
+    const trimmed = await updateSupplierReturn(db, pharmacist.actor, made.id, { lines: [
+      { batchId: b1, storeResourceId: store, qtyBase: 30, reason: "damaged" }, { batchId: b3, storeResourceId: store, qtyBase: 5, reason: "damaged", note: "leaking caps" },
+    ] }, at(63));
+    expect(trimmed.lines.map((l) => [l.batchNo, l.note]).sort()).toEqual([["DMG-1", null], ["ODD-1", "leaking caps"]]);
+    await expect(updateSupplierReturn(db, pharmacist.actor, made.id, { lines: [{ batchId: b3, storeResourceId: store, qtyBase: 21, reason: "damaged" }] }, at(63)))
+      .rejects.toMatchObject({ code: "insufficient_stock", detail: { batchNo: "ODD-1", available: 20, required: 21 } });
+    // Approval re-checks the lines, the note travels with them, and editing ends.
+    const approved = await approveSupplierReturn(db, head.actor, made.id, at(64));
+    expect(approved.status).toBe("approved");
+    await expect(updateSupplierReturn(db, pharmacist.actor, made.id, { lines: [{ batchId: b1, storeResourceId: store, qtyBase: 1, reason: "damaged" }] }, at(65)))
+      .rejects.toMatchObject({ code: "return_wrong_status" });
+    expect((await getSupplierReturn(db, pharmacist.actor, made.id)).lines.find((l) => l.batchNo === "ODD-1")!.note).toBe("leaking caps");
+  });
+
+  // ─────────────────────────────── A5 — the stock ledger statement ───────────────────────────────
+
+  it("A5: the stock ledger statement — opening, each movement's running balance, closing, who and the document", async () => {
+    const { batchId } = await received(vendor, 10, { batchNo: "LED-1" });
+    await withTx(db, (tx) => postMovement(tx, pharmacist.actor, {
+      resourceId: store, batchId, qtyDelta: -5, reason: "consume", patientId: "patient-1", occurredAt: at(100),
+    }));
+    const r = await createSupplierReturn(db, pharmacist.actor, { vendorId: vendor, lines: [{ batchId, storeResourceId: store, qtyBase: 20, reason: "damaged" }] }, { now: NEAR });
+    await approveSupplierReturn(db, head.actor, r.id, NEAR);
+    const sent = await dispatchSupplierReturn(db, pharmacist.actor, r.id, NEAR);
+    const all = await stockLedgerView(db, keeper.actor, { itemId: taxed });
+    expect([all.opening, all.totalIn, all.totalOut, all.closing, all.truncated]).toEqual([0, 100, 25, 75, false]);
+    expect(all.rows.map((x) => [x.kind, x.qtyIn, x.qtyOut, x.balance, x.storeCode, x.batchNo])).toEqual([
+      ["grn", 100, 0, 100, "PHARM-OPD", "LED-1"], ["consume", 0, 5, 95, "PHARM-OPD", "LED-1"], ["supplier_return", 0, 20, 75, "PHARM-OPD", "LED-1"],
+    ]);
+    expect(all.rows[0]!.docNo).toMatch(/\S/);
+    expect(all.rows[0]!.link).toEqual({ kind: "grn" });
+    expect([all.rows[2]!.docNo, all.rows[2]!.link]).toEqual([sent.debitNoteNo, { kind: "return", id: r.id }]);
+    expect(all.rows.every((x) => typeof x.actorName === "string" && x.actorName !== "")).toBe(true);
+    expect(all.batches.map((b) => b.batchNo)).toEqual(["LED-1"]);
+    // A range: what happened before it is the opening balance; opening + in − out = closing.
+    const later = await stockLedgerView(db, keeper.actor, { itemId: taxed, from: "2026-10-01", to: "2027-12-31" });
+    expect([later.opening, later.rows.length, later.rows[0]!.balance, later.closing]).toEqual([95, 1, 75, 75]);
+    const before = await stockLedgerView(db, keeper.actor, { itemId: taxed, to: "2026-09-24", storeResourceId: store, batchId });
+    expect([before.opening, before.rows.map((x) => x.kind), before.closing]).toEqual([0, ["grn", "consume"], 95]);
+    await expect(stockLedgerView(db, keeper.actor, { itemId: taxed, from: "2027-01-02", to: "2027-01-01" })).rejects.toMatchObject({ code: "ledger_invalid" });
+    await expect(stockLedgerView(db, owner.actor, { itemId: taxed })).rejects.toMatchObject({ code: "permission_denied" });
+    expect((await ledgerItems(db, keeper.actor, "croc")).map((i) => i.code)).toEqual(["CROC"]);
   });
 });

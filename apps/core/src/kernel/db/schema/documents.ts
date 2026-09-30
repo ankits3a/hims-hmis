@@ -70,6 +70,18 @@ export const patientDocuments = pgTable(
     correctedBy: text("corrected_by"),
     correctedAt: timestamp("corrected_at", { withTimezone: true }),
     correctionReason: text("correction_reason"),
+    /**
+     * UX-AUDIT 2026-09-28 · BOARD — THE DOCTOR ASKS FOR A CLEARER PHOTOGRAPH.
+     *
+     * The slip desk's board draws a "retake" row: the doctor opened the photo, could not read a
+     * line, and the desk must photograph the paper again. Three nullable columns on the page that
+     * was unreadable, rather than a status: the page stays `active` — it is still the record of
+     * what was filed and when — and a later page on the same visit is what answers the request.
+     * First writer wins; the desk's list reads "retake" until a newer page lands.
+     */
+    retakeRequestedBy: text("retake_requested_by"),
+    retakeRequestedAt: timestamp("retake_requested_at", { withTimezone: true }),
+    retakeReason: text("retake_reason"),
   },
   (t) => [
     /** The doctor's history panel reads by patient, newest first. */

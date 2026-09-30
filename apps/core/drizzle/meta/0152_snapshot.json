@@ -1,5 +1,5 @@
 {
-  "id": "c1495f33-6262-4d2e-9922-73ecb5b0ec1d",
+  "id": "975b80dc-469e-4b05-a71d-58e0db3fa508",
   "prevId": "b89d4419-6b32-419f-b61f-914f47d93382",
   "version": "7",
   "dialect": "postgresql",
@@ -21496,6 +21496,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -29293,117 +29299,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.imaging_critical_call_attempts": {
-      "name": "imaging_critical_call_attempts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "critical_id": {
-          "name": "critical_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rung": {
-          "name": "rung",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "called_user_id": {
-          "name": "called_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "called_name": {
-          "name": "called_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recorded_by": {
-          "name": "recorded_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "at": {
-          "name": "at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "imaging_critical_call_attempts_critical_idx": {
-          "name": "imaging_critical_call_attempts_critical_idx",
-          "columns": [
-            {
-              "expression": "critical_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "imaging_critical_call_attempts_critical_id_imaging_critical_findings_id_fk": {
-          "name": "imaging_critical_call_attempts_critical_id_imaging_critical_findings_id_fk",
-          "tableFrom": "imaging_critical_call_attempts",
-          "tableTo": "imaging_critical_findings",
-          "columnsFrom": [
-            "critical_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "imaging_critical_call_attempts_rung_ck": {
-          "name": "imaging_critical_call_attempts_rung_ck",
-          "value": "\"imaging_critical_call_attempts\".\"rung\" between 0 and 3"
-        },
-        "imaging_critical_call_attempts_outcome_ck": {
-          "name": "imaging_critical_call_attempts_outcome_ck",
-          "value": "\"imaging_critical_call_attempts\".\"outcome\" in ('no_answer', 'answered', 'read_back_ok')"
-        },
-        "imaging_critical_call_attempts_callee_ck": {
-          "name": "imaging_critical_call_attempts_callee_ck",
-          "value": "\"imaging_critical_call_attempts\".\"called_user_id\" is not null or \"imaging_critical_call_attempts\".\"called_name\" is not null"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.imaging_critical_findings": {
       "name": "imaging_critical_findings",
       "schema": "",
@@ -29473,20 +29368,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "ladder_rung": {
-          "name": "ladder_rung",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "chase_windows": {
-          "name": "chase_windows",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "created_at": {
           "name": "created_at",
@@ -29559,10 +29440,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "imaging_critical_findings_rung_ck": {
-          "name": "imaging_critical_findings_rung_ck",
-          "value": "\"imaging_critical_findings\".\"ladder_rung\" between 0 and 3 and \"imaging_critical_findings\".\"chase_windows\" between 0 and 3"
-        },
         "imaging_critical_findings_category_ck": {
           "name": "imaging_critical_findings_category_ck",
           "value": "\"imaging_critical_findings\".\"category\" in ('red', 'orange', 'yellow')"
@@ -30767,22 +30644,6 @@
           "method": "btree",
           "with": {}
         },
-        "imaging_reports_one_awaiting_ux": {
-          "name": "imaging_reports_one_awaiting_ux",
-          "columns": [
-            {
-              "expression": "study_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"imaging_reports\".\"status\" = 'awaiting_cosign'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "imaging_reports_study_idx": {
           "name": "imaging_reports_study_idx",
           "columns": [
@@ -30820,7 +30681,7 @@
       "checkConstraints": {
         "imaging_reports_status_ck": {
           "name": "imaging_reports_status_ck",
-          "value": "\"imaging_reports\".\"status\" in ('prelim', 'draft', 'signed', 'amended', 'superseded', 'awaiting_cosign', 'cosigned')"
+          "value": "\"imaging_reports\".\"status\" in ('prelim', 'draft', 'signed', 'amended', 'superseded')"
         },
         "imaging_reports_version_ck": {
           "name": "imaging_reports_version_ck",

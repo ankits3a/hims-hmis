@@ -1,0 +1,122 @@
+/*
+ * UX-AUDIT 2026-09-28 · BOARD — CARD RECOGNITION (`/counter/instruments`).
+ *
+ * Transcribed from the owner-approved board (docs/design/2026-09-28-ux-audit/card-recognition.html).
+ * The palette is `styles/paper-pine.css`'s and the primitives `.box .pri .sec .pill .tag .kb .mo` are
+ * `desk-one.css`'s; what is here is only what the board draws that nothing else draws. Every selector
+ * is scoped under `.pp .ci`, so no other screen changes.
+ */
+
+.pp .ci { flex-grow: 1; display: flex; min-height: 0; height: var(--pp-h); font-size: 13px; line-height: normal; }
+.pp .ci .tag { color: var(--dim); }
+.pp .ci .pri { height: 42px; padding: 0 20px; font-size: 13.5px; }
+.pp .ci .pri .kb { background: transparent; color: #cfe8dc; border-color: #3f8a70; }
+.pp .ci .sec { height: 42px; padding: 0 14px; }
+.pp .ci .pill.gd { color: #9a6208; }
+.pp .ci a.pri, .pp .ci a.sec { text-decoration: none; }
+.pp .ci a.pri { color: #f2faf6; }
+.pp .ci a.sec { color: var(--ink); }
+
+/* Every card and coupon code is ONE unbreakable Plex Mono run — at 390 px it shrinks, never splits. */
+.pp .ci .cardno { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 700; white-space: nowrap; letter-spacing: .04em; }
+.pp .ci .src {
+  display: inline-flex; align-items: center; justify-content: center; width: 62px; height: 20px; border-radius: 3px;
+  font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 700; letter-spacing: .1em;
+  border: 1px solid var(--line); color: var(--dim); background: var(--wash); flex-shrink: 0; white-space: nowrap;
+}
+.pp .ci .src.gd { color: #9a6208; border-color: var(--gold-line); background: var(--gold-soft); }
+.pp .ci .fact { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line2); font-size: 12.5px; }
+.pp .ci .fact > span:first-child { color: var(--dim); flex-shrink: 0; }
+.pp .ci .fact > span:last-child { text-align: right; min-width: 0; }
+
+/* ── the three columns ── */
+.pp .ci-lane { width: 296px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--card); min-height: 0; }
+.pp .ci-lane-head { padding: 18px 18px 12px; }
+.pp .ci-lane-body { padding: 0 18px 12px; flex-grow: 1; overflow: auto; }
+.pp .ci-lane-foot { padding: 12px 18px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--dim); }
+.pp .ci-lane.bad { box-shadow: inset 0 3px 0 var(--red); }
+.pp .ci-lane-empty { padding: 18px; font-size: 12.5px; color: var(--dim); line-height: 18px; }
+.pp .ci-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; }
+.pp .ci-title { padding: 18px 20px 12px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.pp .ci-title h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.pp .ci-flow { flex-grow: 1; overflow: auto; padding: 0 20px 16px; }
+.pp .ci-right { width: 352px; flex-shrink: 0; border-left: 1px solid var(--line); padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; background: var(--paper); min-height: 0; }
+.pp .ci-today { flex-grow: 1; overflow: auto; display: flex; flex-direction: column; min-height: 0; }
+.pp .ci-phone-today { display: none; }
+
+/* ── the numbered flow ── */
+.pp .ci .step { display: flex; gap: 14px; padding: 16px 18px; border-top: 1px solid var(--line2); }
+.pp .ci .step:first-child { border-top: none; }
+.pp .ci .step > div { flex-grow: 1; min-width: 0; }
+.pp .ci .step h3 { margin: 2px 0 8px; font-size: 14px; font-weight: 600; }
+.pp .ci .num {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--green); color: var(--green);
+  display: flex; align-items: center; justify-content: center; font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700;
+}
+.pp .ci .num.done { background: var(--green); color: #f2faf6; }
+.pp .ci .num.off { border-color: var(--line); color: var(--faint); }
+.pp .ci .scan { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border: 1.5px solid var(--green-line); border-radius: 6px; background: var(--card); }
+/* The field wears `.in` so the `.pp` form-kit geometry skips it; the box around it is the board's input. */
+.pp .ci .scan .in, .pp .ci .scan .in:focus, .pp .ci .scan .in:focus-visible {
+  flex-grow: 1; min-width: 0; width: auto; height: 36px; border: none; border-radius: 0; background: transparent; padding: 0;
+  font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 14px; letter-spacing: .04em; box-shadow: none; outline: none;
+}
+.pp .ci .scan:focus-within { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.pp .ci .hint { font-size: 12px; color: var(--dim); margin-top: 6px; }
+.pp .ci .hits { margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+.pp .ci .hit { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--line2); font-size: 12.5px; }
+.pp .ci .hit:first-child { border-top: none; }
+.pp .ci .hit .sec { height: 30px; margin-left: auto; }
+.pp .ci .opt {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--card); font-size: 12.5px; text-align: left;
+}
+.pp .ci .opt.on { border-color: var(--green-line); background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); }
+.pp .ci .radio { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--faint); flex-shrink: 0; }
+.pp .ci .opt.on .radio { border: 4px solid var(--green); }
+.pp .ci .ben { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line2); font-size: 12.5px; }
+.pp .ci .ben > span:first-child { flex-grow: 1; min-width: 0; }
+.pp .ci .ben.off { color: var(--faint); }
+.pp .ci .meter { display: inline-flex; gap: 3px; }
+.pp .ci .meter i { width: 10px; height: 10px; border-radius: 2px; background: var(--green); }
+.pp .ci .meter i.u { background: var(--line); }
+.pp .ci .disc { padding: 10px 12px; border-radius: 6px; background: var(--wash); font-size: 12px; line-height: 17px; }
+.pp .ci .refuse { border: 1px solid var(--red-line); background: var(--red-soft); border-radius: 6px; padding: 10px 12px; font-size: 12.5px; line-height: 18px; }
+.pp .ci .refuse b { color: var(--red); }
+.pp .ci .warn { border: 1px solid var(--gold-line); background: var(--gold-soft); border-radius: 8px; padding: 12px 14px; font-size: 12px; line-height: 17px; }
+.pp .ci .warn b { font-size: 13px; }
+.pp .ci .dock { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--card); flex-wrap: wrap; }
+.pp .ci .dock-next { flex-grow: 1; min-width: 0; }
+
+/* ── the day's cards ── */
+.pp .ci .row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 58px; padding: 9px 14px; border-top: 1px solid var(--line2); text-align: left; }
+.pp .ci .row:hover { background: var(--wash); }
+.pp .ci .row.sel { background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); }
+.pp .ci .row b { display: block; font-size: 13px; font-weight: 600; }
+.pp .ci .row small { display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── narrower: the list folds under the flow, then everything stacks ── */
+@media (max-width: 1279px) {
+  .pp .ci-right { display: none; }
+  .pp .ci-phone-today { display: block; padding: 0 20px 16px; }
+}
+@media (max-width: 899px) {
+  .pp .ci { flex-direction: column; height: auto; }
+  .pp .ci-lane { width: auto; border-right: none; border-bottom: 1px solid var(--line); order: 2; }
+  .pp .ci-lane.empty { display: none; }
+  .pp .ci-lane-body { overflow: visible; }
+  .pp .ci-lane-foot { display: none; }
+  .pp .ci-main { order: 1; display: contents; }
+  .pp .ci-title { order: 0; padding: 14px 16px 10px; }
+  .pp .ci-flow { order: 3; overflow: visible; padding: 14px 16px 16px; }
+  .pp .ci .dock { order: 5; position: sticky; bottom: 0; padding: 12px 16px; z-index: 2; }
+  .pp .ci-phone-today { order: 4; padding: 0 16px 16px; }
+  .pp .ci .step { padding: 14px; gap: 10px; }
+  .pp .ci .dock .pri { flex-grow: 1; }
+  .pp .ci .dock-next { flex-basis: 100%; }
+}
+@media (max-width: 480px) {
+  .pp .ci .cardno.big { font-size: 19px !important; }
+  .pp .ci .scan .in { font-size: 13px; }
+  .pp .ci .dock .sec { flex-grow: 1; }
+}

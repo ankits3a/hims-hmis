@@ -1296,21 +1296,36 @@ async function notifyIfDue(
 ): Promise<boolean> {
   const isRedCritical = signed.criticalCategory === "red";
   if (!isRedCritical && !(await invoiceIsSettled(tx, study.invoiceLineId))) return false;
+  return (await enqueueReportReady(tx, study, signed.id, now)) !== "failed";
+}
 
+/**
+ * The ONE writer of the `imaging_report_ready` message — the publish path above and, 18-S RS9b T2,
+ * the settlement consumer (`ready-on-payment.ts`) for a bill paid after release. The dedupe key is
+ * per REPORT VERSION, so whichever path runs first queues it and the other queues nothing: exactly
+ * once per version. Consent is the pump's (a STOP or a deceased patient suppresses at send), the
+ * same for both paths. A7's swallow is kept: a failed enqueue never fails the caller.
+ */
+export async function enqueueReportReady(
+  tx: Tx,
+  study: Pick<typeof imagingStudies.$inferSelect, "orderId" | "accessionNo" | "patientId">,
+  reportId: string,
+  now: Date,
+): Promise<"queued" | "already" | "failed"> {
   try {
     const orderRows = await (tx as unknown as Db).select({ orderNo: orders.orderNo })
       .from(orders).where(eq(orders.id, study.orderId));
-    await enqueueNotification(tx, {
+    const row = await enqueueNotification(tx, {
       templateKey: "imaging_report_ready",
       params: { orderNo: orderRows[0]?.orderNo ?? study.accessionNo },
-      dedupeKey: `imaging_report_ready:${signed.id}`,
+      dedupeKey: `imaging_report_ready:${reportId}`,
       occurredAt: now,
       patientId: study.patientId,
     });
-    return true;
+    return row === null ? "already" : "queued";
   } catch {
     /** A7 — deliberately swallowed. See the header; the read is the priority, not the message. */
-    return false;
+    return "failed";
   }
 }
 

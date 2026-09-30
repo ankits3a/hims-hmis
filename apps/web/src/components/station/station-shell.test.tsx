@@ -139,3 +139,23 @@ it("F1 — with nobody in hand the copilot panel is not shown, and the list is w
   expect(screen.getByText("Kamla Devi · STAT")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Copilot" })).toBeNull();
 });
+
+it("UX-AUDIT 2026-09-28 · BOARD — `laneHead={false}` leaves the lane to the screen, and `status` sits in the header", () => {
+  me([]);
+  renderWithProviders(
+    <StationShell
+      brand="OPD" stations={[]} current="slips" title="Slip desk" place="Room 4"
+      stats={[{ label: "Filed", value: 3 }]} statsLabel="Your day"
+      laneHead={false} status={<span data-testid="shell-status">9 waiting</span>}
+      lane={<p>Nobody in hand</p>}
+    >
+      <p>work</p>
+    </StationShell>,
+  );
+  const lane = screen.getByRole("complementary", { name: "In hand" });
+  /* The slip desk's board draws no station title and no standing numbers in its lane. */
+  expect(within(lane).queryByRole("heading", { name: "Slip desk" })).toBeNull();
+  expect(within(lane).queryByRole("list", { name: "Your day" })).toBeNull();
+  expect(within(lane).getByText("Nobody in hand")).toBeInTheDocument();
+  expect(within(screen.getByRole("banner")).getByTestId("shell-status")).toHaveTextContent("9 waiting");
+});

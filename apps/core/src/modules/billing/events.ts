@@ -141,6 +141,19 @@ export const tenderMismatched = defineEvent(
   z.object({ tenderId: id, receiptId: id, settledPaise: nonNegPaise, expectedNetPaise: nonNegPaise }),
 );
 
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — the billing office decided a settlement mismatch (`recon-resolve.ts`):
+ * disputed with the bank, written off as a bank charge, or sent back for a corrected statement.
+ */
+export const tenderResolved = defineEvent(
+  "tender.resolved",
+  MODULE,
+  z.object({
+    tenderId: id, receiptId: id, outcome: z.enum(["disputed", "bank_charge", "reupload"]),
+    shortPaise: paise, approvalId: id.nullable(),
+  }),
+);
+
 export const degradedModeChanged = defineEvent(
   "degraded_mode.changed",
   MODULE,
@@ -172,4 +185,6 @@ export const BILLING_EVENTS = [
   cashierSessionOpened, cashierSessionClosed, cashierSessionRecounted, varianceFlagged,
   cashThresholdWarned, cashThresholdBlocked, tenderReconciled, tenderMismatched,
   degradedModeChanged, documentEnteredInError, chargeOrphanFlagged, dayClosed,
+  // UX-AUDIT 2026-09-28 · BOARD — appended last so the plan's D-Events order above stays as it was.
+  tenderResolved,
 ] as const;

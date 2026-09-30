@@ -46,6 +46,9 @@ export { searchPatients, visiblePatientIds } from "./search";
 export { captureDocument } from "./documents";
 // PHARMACY P6 — the controlled hand-over checks the retained prescription is this patient's document.
 export { listDocuments } from "./documents";
+/* UX-AUDIT 2026-09-28 · BOARD — the OPD slip desk's day reads what is filed per visit; the doctor asks for a retake. */
+export { documentsForEncounters, requestDocumentRetake } from "./documents";
+export type { EncounterDocument } from "./documents";
 export type { MatchLane, PatientSearchResult } from "./search";
 /** FD-8 — the near-match probe, shared by `POST /patients` and the walk-in. */
 export { nearMatches } from "./duplicates";

@@ -873,9 +873,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // themselves authority is exactly the "worklist of governance decisions" card #39 describes.
       //
       // `auth.break_glass.review` is granted in the SAME breath deliberately, even though its
-      // queue cannot fill yet (see the `auth.break_glass.use` note below): the two reviews are one
+      // queue could not fill then (see the `auth.break_glass.use` note below; since 2026-09-28 the
+      // MS's own sealed-merge break-glasses fill it): the two reviews are one
       // desk, and splitting them across two commits would leave a second correction to remember.
       "auth.break_glass.review",
+      /**
+       * OWNER RULING 2026-09-28 — the Medical Superintendent holds the break-glass key, and nobody
+       * else in this model does. Why now: break-glass used to unlock nothing (the note beneath
+       * ROLE_MODEL), so a grant would have been a key to no door. PR #373 gives it one door: merging
+       * a SEALED (confidential) patient record refuses with `sealed_needs_break_glass` until the MS
+       * who approved the merge records a break-glass on that record (`modules/patients/merge.ts`).
+       * WHAT IT STILL DOES NOT DO: no route sets `breakGlassBypass`, so a grant opens no screen and
+       * crosses no confidential gate; "ER opens any record" stays an open question, and no clinical
+       * or ER role holds this string. Every use still lands in the break-glass review queue.
+       */
+      "auth.break_glass.use",
       /**
        * PLAN 07c T9 / DD14 — the same figures, for the same reason the two review desks moved here
        * in the first place: medical-record and staff governance is this role's job (spec §14, role
@@ -1806,6 +1818,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
 
 /**
  * ═══ WHY `auth.break_glass.use` IS NOT GRANTED TO ANY CLINICAL ROLE — MEASURED 2026-08-26 ═══
+ *
+ * AMENDED 2026-09-28 (owner ruling): `medical_superintendent` now holds it — see its ROLE_MODEL
+ * row. That grant has ONE door, the sealed-record merge step (`modules/patients/merge.ts`, PR #373);
+ * everything below about ROUTES is still true, and it is why no clinical or ER role holds the
+ * string. The measurement that follows is the 2026-08-26 one, kept as written.
  *
  * It is the obvious fourth Group C row and it is DELIBERATELY ABSENT, because granting it today
  * would ship a lie. Spec §14 promises "ER staff can open any record instantly"; the honest state of

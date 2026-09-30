@@ -23,7 +23,7 @@ import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
 import { runRefillReminders, sweepExpiredPicks } from "../../modules/pharmacy";
 import {
-  sweepCriticalChaser, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
+  sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
 import { collectResourceKinds } from "../resources/kinds";
@@ -567,5 +567,16 @@ export function registerAllJobs(
     name: "sweepOverdueQa",
     every: 3_600_000,
     run: async (now) => { await sweepOverdueQa(db, resourceKinds, now); },
+  });
+  /**
+   * 18-S RS10 T2 — THE HOD'S ESCALATIONS, ON THE OBLIGATION SPINE. Every minute (the shortest cause
+   * is a 15-minute STAT clock), recompute the radiology causes, start a kernel obligation for a new
+   * one and resolve one whose cause cleared; the kernel's own timers, ladder and alerts do the rest.
+   * Idempotent and serialised by an advisory lock (`modules/radiology/escalations.ts`).
+   */
+  scheduler.register({
+    name: "sweepImagingEscalations",
+    every: 60_000,
+    run: async (now) => { await sweepImagingEscalations(db, now); },
   });
 }

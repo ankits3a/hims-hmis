@@ -1,277 +1,124 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import type { QueryClient } from "@tanstack/react-query";
-import { FormProvider, useForm } from "react-hook-form";
+import { useRouter } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
-import { listDepartments, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
-import type {
-  OpdVisitType, WireAppointment, WireDepartment, WireDoctorSummary, WireOpenVisitResult,
-  WireQueueEntryView, WireQueueView, WireRoom, WireTimelineItem,
-} from "../lib/opd-api";
+import { listDepartments, opdErrorMessage, todayIst } from "../lib/opd-api";
+import type { WireDepartment, WireDoctorSummary, WireQueueEntryView, WireQueueView } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
-import { PatientPicker } from "../components/patient-picker";
-import type { PatientPickerHit } from "../components/patient-picker";
-import { TokenSlip } from "../components/token-slip";
-import type { TokenSlipProps } from "../components/token-slip";
-import type { QrCardData } from "../components/qr-card";
-import { FormKit, SelectField, TextField } from "../components/form-kit";
 import { PatientPhoto } from "../components/patient-photo";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StationShell } from "../components/station/station-shell";
+import type { StationLink } from "../components/station/station-shell";
+import "./opd-desk.css";
 
 /**
- * The OPD desk (§11.1 / D2 / D3): the front office's one screen — walk-in visit opening with the
- * printed token slip, today's arrivals check-in, the live doctor board, the picked doctor's queue,
- * abandon-with-reason and the supervisor's E2 bulk queue transfer.
+ * The OPD desk (§11.1 / D2 / D3) — THE QUEUE DESK of the OPD floor: the live doctor board, the picked
+ * doctor's line in priority order, abandon-with-reason and the supervisor's E2 bulk queue transfer.
  *
- * Three standing rules shape this file:
+ * ═══ UX-AUDIT 2026-09-28 — IT STOPPED BEING A SECOND REGISTRATION DESK ═══
+ *
+ * A Chromium audit against the boards found three equal columns, the patient drawn three times, the
+ * queue's Actions column cut off, payer and referral asked before the doctor, and two competing ways
+ * to choose a doctor. The larger finding was underneath: everything that screen did to OPEN a visit
+ * (search, arrivals check-in, payer/referral, the token slip, the billing hand-off) Desk One already
+ * does, and the owner ruled at FD-9 that the front desk is ONE screen — "keep the new design not the
+ * old one". What nothing else in the product does is below the line: one doctor's live queue, now
+ * serving, the fee stamp per token, the bay's class-0 flash, abandon, and the consented transfer.
+ * `docs/superpowers/decisions/2026-09-28-opd-desk.md` records the comparison and the DECIDED call.
+ *
+ * So this is the floor coordinator's screen, in the owner's counter layout (2026-09-25) through the
+ * station shell: LEFT the token in hand, or the floor's day; CENTRE one numbered flow — department,
+ * doctor, act — over a pinned bar offering the single next act; RIGHT the chosen doctor's line in the
+ * server's priority order with a source chip on each row, then "Clocks running", folded. Opening a
+ * visit is one header link away, at Desk One.
+ *
+ * Three standing rules shape this file, unchanged by the rebuild:
  *  · THE SERVER IS AUTHORITATIVE. No response status is branched on beyond `api()`'s 2xx/non-2xx
- *    split (every POST here rides Nest's default 201), and NO client-side permission model exists:
- *    Transfer is rendered unconditionally and a 403 is rendered inline where the clerk can read it.
+ *    split, and NO client-side permission model exists: Transfer is rendered unconditionally and a
+ *    403 is rendered inline where the clerk can read it.
  *  · Every read is BOTH polled (15 s) AND realtime-subscribed (D6) — the push is a hint, so a missed
  *    frame costs seconds, never correctness.
- *  · ONE `.print-doc` at a time: the token slip REPLACES the desk view rather than sitting beside it,
- *    which is what keeps `styles.css`'s print isolation from ever printing two documents.
+ *  · A refusal the client can know (K44 consent, K45 reason) stops the REQUEST, not just the button.
  */
 const POLL_MS = 15_000;
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
-/**
- * UTC instant → IST 'HH:MM'. Arithmetic, no Intl — the same technique as opd-api.ts's `todayIst`.
- * (Deliberately local: `opd-api.ts` is not in this task's Files list, so the appointments screen's
- * identical helper is duplicated rather than lifted.)
- */
-function fmtIst(iso: string): string {
-  const shifted = new Date(new Date(iso).getTime() + IST_OFFSET_MS);
-  return `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`;
-}
+/** DECIDED (decision doc): the OPD waiting-time target; past it the clocks raise themselves. */
+const WAIT_TARGET_MIN = 60;
 
 function patientLabel(p: { name: string | null; alias: string | null; restricted: boolean } | null | undefined): string {
   if (!p) return "—";
   return p.restricted ? (p.alias ?? "—") : (p.name ?? "—");
 }
 
-function ErrorLine({ message }: { message: string | null }): React.ReactElement | null {
-  if (message === null) return null;
-  return <p role="alert" className="text-sm text-red-600">{message}</p>;
+function sexAge(gender: string | undefined, dob: string | null | undefined, now: number): string {
+  const g = gender === "female" ? "F" : gender === "male" ? "M" : "";
+  if (dob === null || dob === undefined) return g;
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return g;
+  const years = Math.floor((now - d.getTime()) / (365.25 * 24 * 3600 * 1000));
+  return `${String(years)} ${g}`.trim();
 }
 
-type OpenVisitForm = {
-  doctorId: string;
-  intendedPayer: "self" | "tpa" | "pmjay" | "corporate";
-  referralSource: "" | "internal_doctor" | "external_rmp" | "camp" | "other";
-  referrerName: string;
-};
-
-type Opened = { slip: TokenSlipProps; visitType: OpdVisitType; encounterId: string };
-
-// ——— abandon: the reason is the rule (K45), mirrored from the server's `reason_required` ———
-
-function AbandonDialog({
-  entry, queryClient,
-}: { entry: WireQueueEntryView; queryClient: QueryClient }): React.ReactElement {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (): Promise<void> => {
-    // K45. This guard is the ONLY thing standing between an empty reason and a request: the button
-    // is deliberately NOT disabled, so "no request was sent" can mean exactly one thing.
-    if (reason.trim() === "") {
-      setError(t("opdDesk.reasonRequired"));
-      return;
-    }
-    setError(null);
-    try {
-      await api("POST", `/opd/visits/${entry.encounter.id}/abandon`, { reason: reason.trim() });
-      setOpen(false);
-      setReason("");
-      await queryClient.invalidateQueries({ queryKey: ["opd", "queue"] });
-    } catch (e) {
-      setError(opdErrorMessage(e));
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline" data-testid={`abandon-${entry.id}`}>{t("opdDesk.abandon")}</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{t("opdDesk.abandonTitle")}</DialogTitle></DialogHeader>
-        <label className="block text-sm font-medium" htmlFor={`abandon-reason-${entry.id}`}>{t("opd.labels.reason")}</label>
-        <input
-          id={`abandon-reason-${entry.id}`}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          className="w-full rounded border px-2 py-1"
-        />
-        <ErrorLine message={error} />
-        <Button onClick={() => void submit()}>{t("opdDesk.confirmAbandon")}</Button>
-      </DialogContent>
-    </Dialog>
-  );
+function minutesSince(iso: string, now: number): number {
+  return Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
 }
 
-// ——— the E2 bulk transfer: §11.1 says consent, so consent is a precondition of the REQUEST (K44) ———
-
-function TransferDialog({
-  fromDoctorId, fromDoctorName, candidates, entries, serviceDate, queryClient,
-}: {
-  fromDoctorId: string; fromDoctorName: string; candidates: WireDoctorSummary[];
-  entries: WireQueueEntryView[]; serviceDate: string; queryClient: QueryClient;
-}): React.ReactElement {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [toDoctorId, setToDoctorId] = useState("");
-  const [consented, setConsented] = useState(false);
-  const [reason, setReason] = useState("");
-  const [entryIds, setEntryIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [moved, setMoved] = useState<number | null>(null);
-
-  const toggleEntry = (id: string): void => {
-    setEntryIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+/** The Routing board's bar: fill by line length, ink by how heavy it is (6+ red, 3+ gold). */
+function barOf(waiting: number): { pct: string; ink: string } {
+  return {
+    pct: `${String(Math.min(100, waiting * 14))}%`,
+    ink: waiting >= 6 ? "var(--red)" : waiting >= 3 ? "var(--gold)" : "var(--green)",
   };
-
-  const submit = async (): Promise<void> => {
-    // K44. Consent gates the REQUEST, not just the message: without the tick nothing leaves the
-    // browser. As with abandon the button is not disabled, so the refusal has a single cause.
-    if (!consented) {
-      setError(t("opdDesk.consentRequired"));
-      return;
-    }
-    if (fromDoctorId === "" || toDoctorId === "") {
-      setError(t("opdDesk.pickDoctorFirst"));
-      return;
-    }
-    setError(null);
-    setMoved(null);
-    try {
-      const res = await api<{ transferred: number; toSessionId: string }>("POST", "/opd/queues/transfer", {
-        fromDoctorId,
-        toDoctorId,
-        serviceDate,
-        ...(entryIds.length > 0 ? { entryIds } : {}),
-        consented: true,
-        reason,
-      });
-      setMoved(res.transferred);
-      await queryClient.invalidateQueries({ queryKey: ["opd", "queue"] });
-      await queryClient.invalidateQueries({ queryKey: ["opd", "queues", "summary"] });
-    } catch (e) {
-      // A 403 from `opd.queue.transfer` lands here like any other refusal and is READ BY THE CLERK.
-      setError(opdErrorMessage(e));
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {/* Rendered unconditionally — the UI holds no permission model (Plan 05 rule). */}
-        <Button size="sm" variant="outline">{t("opdDesk.transfer")}</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{t("opdDesk.transferTitle")}</DialogTitle></DialogHeader>
-        <p className="text-sm">{t("opdDesk.fromDoctor")}: {fromDoctorName === "" ? "—" : fromDoctorName}</p>
-        <label className="block text-sm font-medium" htmlFor="transfer-to">{t("opdDesk.toDoctor")}</label>
-        <select
-          id="transfer-to"
-          value={toDoctorId}
-          onChange={(e) => setToDoctorId(e.target.value)}
-          className="w-full rounded border px-2 py-1"
-        >
-          <option value="">{t("opdDesk.pickToDoctor")}</option>
-          {candidates.filter((c) => c.doctor.id !== fromDoctorId).map((c) => (
-            <option key={c.doctor.id} value={c.doctor.id}>{c.doctor.displayName}</option>
-          ))}
-        </select>
-        <label className="block text-sm font-medium" htmlFor="transfer-reason">{t("opd.labels.reason")}</label>
-        <input
-          id="transfer-reason"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          className="w-full rounded border px-2 py-1"
-        />
-        <fieldset className="space-y-1">
-          <legend className="text-sm font-medium">{t("opdDesk.entries")}</legend>
-          {entries.map((e) => (
-            <label key={e.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                data-testid={`transfer-entry-${e.id}`}
-                checked={entryIds.includes(e.id)}
-                onChange={() => toggleEntry(e.id)}
-              />
-              {e.tokenNo} · {patientLabel(e.patient)}
-            </label>
-          ))}
-        </fieldset>
-        <div className="flex items-center gap-2 text-sm">
-          <input
-            id="transfer-consent"
-            type="checkbox"
-            checked={consented}
-            onChange={(e) => setConsented(e.target.checked)}
-          />
-          <label htmlFor="transfer-consent">{t("opdDesk.consentGiven")}</label>
-        </div>
-        <ErrorLine message={error} />
-        {moved !== null && <p className="text-sm text-emerald-700">{t("opdDesk.transferred", { n: moved })}</p>}
-        <Button onClick={() => void submit()}>{t("opdDesk.confirmTransfer")}</Button>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
-// ——— screen ———
+function dotOf(s: WireDoctorSummary): string {
+  if (s.onLeaveToday) return "var(--red)";
+  if (s.status === "in") return "var(--green)";
+  if (s.status === "out") return "var(--gold)";
+  return "var(--faint)";
+}
+
+const CLASS_INK: Record<number, string> = { 0: "var(--red)", 1: "var(--green)", 2: "var(--gold)", 3: "var(--dim)", 4: "var(--faint)" };
+
+/** OPD's screens, for the header's switch. Each is shown only to a person who may open it. */
+const OPD_STATIONS: readonly (Omit<StationLink, "label"> & { labelKey: string })[] = [
+  { key: "desk", to: "/opd/desk", labelKey: "nav.opdDesk", permission: "opd.visits.open" },
+  { key: "counter", to: "/counter", labelKey: "nav.counterDesk", permission: "patients.register" },
+  { key: "appointments", to: "/opd/appointments", labelKey: "nav.opdAppointments", permission: "opd.appointments.read" },
+  { key: "display", to: "/opd/display", labelKey: "nav.opdDisplay", permission: "opd.display.read" },
+];
+
+type Act = null | "abandon" | "transfer";
 
 export function OpdDesk(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const router = useRouter({ warn: false });
   const today = todayIst();
+  const now = Date.now();
 
-  const [patient, setPatient] = useState<PatientPickerHit | null>(null);
-  const [pickerKey, setPickerKey] = useState(0);
   const [departmentId, setDepartmentId] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
-  const navigate = useNavigate();
-  const [opened, setOpened] = useState<Opened | null>(null);
-  const [openError, setOpenError] = useState<string | null>(null);
-  const [checkInError, setCheckInError] = useState<string | null>(null);
-  const pickerRef = useRef<HTMLDivElement>(null);
+  /** The token in hand — ONE place the patient is drawn (the lane); the list row only highlights. */
+  const [inHandId, setInHandId] = useState<string | null>(null);
+  const [act, setAct] = useState<Act>(null);
+  const [reason, setReason] = useState("");
+  const [toDoctorId, setToDoctorId] = useState("");
+  const [consented, setConsented] = useState(false);
+  const [entryIds, setEntryIds] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [moved, setMoved] = useState<number | null>(null);
+  /* Below 1280px the list is a drawer: choosing a doctor opens it, taking a token closes it. */
+  const [listRequest, setListRequest] = useState<{ open: boolean; seq: number }>({ open: false, seq: 0 });
   /**
    * VD-2 T3 — THE FLASH. `queue.escalated` rides the doctor's own queue topic (VD-1 T5): the bay
    * bumped somebody to class 0 and this board learns it in the same breath. The re-read below
-   * repaints the row; the flash is the part a doctor mid-consultation actually sees. A cancel
-   * clears it — a board that flashed and went quiet would leave the doctor expecting a patient
-   * nobody is sending.
+   * repaints the row; the flash is the part a person mid-task actually sees. A cancel clears it — a
+   * board that flashed and went quiet would leave the doctor expecting a patient nobody is sending.
    */
   const [flash, setFlash] = useState<{ tokenNo: number; cancelled: boolean } | null>(null);
   useEffect(() => { setFlash(null); }, [selectedDoctorId]); // Dr Rao's flash does not follow the picker to Dr Toppo's board
 
-  const form = useForm<OpenVisitForm>({
-    defaultValues: { doctorId: "", intendedPayer: "self", referralSource: "", referrerName: "" },
-  });
-
-  /**
-   * "Next patient" refocuses the picker's search box. The `data-search-input` tag that `/` focuses
-   * (keyboard.tsx) now lives ON the picker's own input — Plan 08 T13 absorbed that debt — so this
-   * effect no longer stamps it from outside and only the refocus remains.
-   */
-  useEffect(() => {
-    const input = pickerRef.current?.querySelector("input");
-    if (!input) return;
-    if (pickerKey > 0) input.focus();
-  }, [pickerKey]);
-
   const departments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, refetchInterval: POLL_MS });
-  const rooms = useQuery({ queryKey: ["opd", "rooms"], queryFn: listRooms, refetchInterval: POLL_MS });
   const summary = useQuery({
     queryKey: ["opd", "queues", "summary", departmentId, today],
     queryFn: () => api<{ items: WireDoctorSummary[] }>(
@@ -279,19 +126,6 @@ export function OpdDesk(): React.ReactElement {
     ),
     enabled: departmentId !== "",
     refetchInterval: POLL_MS,
-  });
-  const arrivals = useQuery({
-    queryKey: ["opd", "appointments", "arrivals", patient?.id ?? "", today],
-    queryFn: () => api<{ items: WireAppointment[] }>(
-      "GET", `/opd/appointments?patientId=${patient?.id ?? ""}&serviceDate=${today}`,
-    ),
-    enabled: patient !== null,
-    refetchInterval: POLL_MS,
-  });
-  const timeline = useQuery({
-    queryKey: ["opd", "timeline", patient?.id ?? ""],
-    queryFn: () => api<{ items: WireTimelineItem[] }>("GET", `/opd/patients/${patient?.id ?? ""}/timeline`),
-    enabled: patient !== null,
   });
   const queue = useQuery({
     queryKey: ["opd", "queue", selectedDoctorId, today],
@@ -313,374 +147,480 @@ export function OpdDesk(): React.ReactElement {
   });
 
   const departmentItems: WireDepartment[] = departments.data?.items ?? [];
-  const roomItems: WireRoom[] = rooms.data?.items ?? [];
   const summaryItems: WireDoctorSummary[] = summary.data?.items ?? [];
   const department = departmentItems.find((d) => d.id === departmentId) ?? null;
-  const roomCodeOf = (roomId: string | null): string | null => roomItems.find((r) => r.id === roomId)?.code ?? null;
+  const doctorRow = summaryItems.find((s) => s.doctor.id === selectedDoctorId) ?? null;
   const doctorNameOf = (id: string): string => summaryItems.find((s) => s.doctor.id === id)?.doctor.displayName ?? "";
   const queueView: WireQueueView | null =
     queue.data !== undefined && queue.data.session !== null ? queue.data : null;
   const orderedEntries = queueView?.ordered ?? [];
+  const inHand = orderedEntries.find((e) => e.id === inHandId) ?? null;
 
-  const slipFor = (result: WireOpenVisitResult, qr: QrCardData, doctorId: string): Opened => ({
-    slip: {
-      tokenNo: result.tokenNo,
-      visitNo: result.encounter.visitNo,
-      roomCode: roomCodeOf(result.roomId),
-      doctorName: doctorNameOf(doctorId),
-      departmentCode: department?.code ?? "",
-      departmentName: department?.name ?? "",
-      serviceDate: today,
-      patient: { uhid: qr.uhid, name: qr.name },
-      qrPayload: qr.payload,
-      visitType: result.visitType,
-    },
-    visitType: result.visitType,
-    encounterId: result.encounter.id,
-  });
+  const clearAct = (): void => {
+    setAct(null); setReason(""); setToDoctorId(""); setConsented(false); setEntryIds([]); setError(null); setMoved(null);
+  };
+  const putDown = (): void => { setInHandId(null); clearAct(); };
 
-  const openVisit = async (doctorId: string): Promise<void> => {
-    if (patient === null || departmentId === "" || doctorId === "") {
-      setOpenError(t("opdDesk.pickPatientHint"));
+  /* Esc puts the token down — the lane's promise, the same key every counter uses. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") return;
+      setInHandId(null); setAct(null); setReason(""); setError(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  /* Through the router when there is one (the app), a plain link when there is not (this suite). */
+  const toDeskOne = (e: React.MouseEvent): void => {
+    if (router === undefined) return;
+    e.preventDefault();
+    void router.navigate({ to: "/counter" });
+  };
+
+  const pickDoctor = (id: string): void => {
+    setSelectedDoctorId(id);
+    setInHandId(null);
+    clearAct();
+    if (id !== "") setListRequest((r) => ({ open: true, seq: r.seq + 1 }));
+  };
+  const take = (e: WireQueueEntryView): void => {
+    setInHandId(e.id);
+    clearAct();
+    setListRequest((r) => ({ open: false, seq: r.seq + 1 }));
+  };
+  const startTransfer = (ids: string[]): void => {
+    clearAct();
+    setAct("transfer");
+    setEntryIds(ids);
+  };
+
+  // ——— abandon: the reason is the rule (K45), mirrored from the server's `reason_required` ———
+  const submitAbandon = async (): Promise<void> => {
+    if (inHand === null) return;
+    // K45. This guard is the ONLY thing standing between an empty reason and a request: the button
+    // is deliberately NOT disabled, so "no request was sent" can mean exactly one thing.
+    if (reason.trim() === "") {
+      setError(t("opdDesk.reasonRequired"));
       return;
     }
-    setOpenError(null);
-    const values = form.getValues();
-    const body: Record<string, unknown> = {
-      patientId: patient.id, departmentId, doctorId, intendedPayer: values.intendedPayer,
-    };
-    // The referral pair travels ONLY when the clerk chose one — a blank select is not "self".
-    if (values.referralSource !== "") {
-      body.referralSource = values.referralSource;
-      if (values.referrerName.trim() !== "") body.referrerName = values.referrerName.trim();
-    }
+    setError(null);
     try {
-      const result = await api<WireOpenVisitResult>("POST", "/opd/visits", body);
-      const qr = await api<QrCardData>("GET", `/patients/${patient.id}/qr`);
-      setOpened(slipFor(result, qr, doctorId));
-      await queryClient.invalidateQueries({ queryKey: ["opd", "queues", "summary"] });
+      await api("POST", `/opd/visits/${inHand.encounter.id}/abandon`, { reason: reason.trim() });
+      putDown();
       await queryClient.invalidateQueries({ queryKey: ["opd", "queue"] });
-    } catch (e) {
-      setOpenError(opdErrorMessage(e));
-    }
-  };
-
-  const checkIn = async (appointment: WireAppointment): Promise<void> => {
-    if (patient === null) return;
-    setCheckInError(null);
-    try {
-      const result = await api<WireOpenVisitResult>("POST", `/opd/appointments/${appointment.id}/check-in`);
-      const qr = await api<QrCardData>("GET", `/patients/${patient.id}/qr`);
-      setOpened(slipFor(result, qr, appointment.doctorId));
-      await queryClient.invalidateQueries({ queryKey: ["opd", "appointments"] });
       await queryClient.invalidateQueries({ queryKey: ["opd", "queues", "summary"] });
     } catch (e) {
-      setCheckInError(opdErrorMessage(e));
+      setError(opdErrorMessage(e));
     }
   };
 
-  const nextPatient = (): void => {
-    setOpened(null);
-    setPatient(null);
-    setOpenError(null);
-    setCheckInError(null);
-    form.reset({ doctorId: "", intendedPayer: "self", referralSource: "", referrerName: "" });
-    setPickerKey((k) => k + 1);
+  // ——— the E2 bulk transfer: §11.1 says consent, so consent is a precondition of the REQUEST (K44) ———
+  const submitTransfer = async (): Promise<void> => {
+    // K44. Consent gates the REQUEST, not just the message: without the tick nothing leaves the
+    // browser. As with abandon the button is not disabled, so the refusal has a single cause.
+    if (!consented) {
+      setError(t("opdDesk.consentRequired"));
+      return;
+    }
+    if (selectedDoctorId === "" || toDoctorId === "") {
+      setError(t("opdDesk.pickDoctorFirst"));
+      return;
+    }
+    setError(null);
+    setMoved(null);
+    try {
+      const res = await api<{ transferred: number; toSessionId: string }>("POST", "/opd/queues/transfer", {
+        fromDoctorId: selectedDoctorId,
+        toDoctorId,
+        serviceDate: today,
+        ...(entryIds.length > 0 ? { entryIds } : {}),
+        consented: true,
+        reason,
+      });
+      setMoved(res.transferred);
+      setInHandId(null);
+      await queryClient.invalidateQueries({ queryKey: ["opd", "queue"] });
+      await queryClient.invalidateQueries({ queryKey: ["opd", "queues", "summary"] });
+    } catch (e) {
+      // A 403 from `opd.queue.transfer` lands here like any other refusal and is READ BY THE CLERK.
+      setError(opdErrorMessage(e));
+    }
   };
 
-  // The slip REPLACES the desk: exactly one `.print-doc` can ever be mounted (print isolation).
-  if (opened !== null) {
-    return (
-      <div className="space-y-4 p-6">
-        <div className="no-print flex items-center gap-3">
-          <Badge data-testid="visit-type-badge" variant={opened.visitType === "revisit" ? "default" : "outline"}>
-            {t(`opd.visitType.${opened.visitType}`)}
-          </Badge>
-          {opened.visitType === "revisit" && (
-            <span className="text-sm text-emerald-700">{t("opdDesk.freeFollowUp")}</span>
-          )}
-        </div>
-        <TokenSlip {...opened.slip} />
-        {/*
-          * PLAN 07b T2 — THE HANDOFF THAT WAS BUILT AND NEVER SENT.
-          *
-          * `router.tsx` has documented since Plan 08 that "the OPD desk hands a walk-in straight to
-          * the counter as `/billing?encounterId=…`", `billing-counter.tsx` reads that search param,
-          * and its own suite covers the deep link. NOTHING IN THE APP EVER CONSTRUCTED IT: every
-          * reference to `/billing` was bare, so the cashier re-found the patient and typed the visit
-          * id by hand — the comment's fallback clause was the only path there was.
-          *
-          * A REVISIT MUST NOT SAY "TAKE PAYMENT". Inside the follow-up window the consultation is
-          * free (spec:224, and `feeServiceFor` returns null for it), so the counter has nothing to
-          * collect and the honest next step is the vitals desk. Sending a free follow-up to billing
-          * would either bill them or waste a queue place, and the clerk cannot tell which from a
-          * screen that says the same thing for both.
-          */}
-        <div className="no-print flex flex-wrap items-center gap-2">
-          {opened.visitType === "revisit"
-            ? (
-              <span data-testid="slip-next-step" className="text-sm font-medium text-emerald-700">
-                {t("opdDesk.noFeeToVitals")}
-              </span>
-            )
-            : (
-              <Button
-                data-testid="take-payment"
-                onClick={() => { void navigate({ to: "/billing", search: { encounterId: opened.encounterId } }); }}
-              >
-                {t("opdDesk.takePayment")}
-              </Button>
-            )}
-          <Button variant="outline" onClick={nextPatient}>{t("opdDesk.nextPatient")}</Button>
+  /* ══════════ the floor's day — the lane while nobody is in hand ══════════ */
+  const waitingTotal = summaryItems.reduce((n, s) => n + s.waitingCount, 0);
+  const sessionsOpen = summaryItems.filter((s) => s.status === "in" || s.status === "out").length;
+  const onLeave = summaryItems.filter((s) => s.onLeaveToday).length;
+  const stats = departmentId === "" ? [] : [
+    { label: t("opdDesk.statWaiting"), value: waitingTotal, tone: waitingTotal > 0 ? "waiting" as const : "plain" as const },
+    { label: t("opdDesk.statSessions"), value: `${String(sessionsOpen)} / ${String(summaryItems.length)}`, tone: "live" as const },
+    { label: t("opdDesk.statOnLeave"), value: onLeave, tone: onLeave > 0 ? "danger" as const : "plain" as const },
+  ];
+
+  /* ══════════ the clocks: what is running out in the chosen doctor's line ══════════ */
+  const longest = orderedEntries.reduce((m, e) => Math.max(m, minutesSince(e.createdAt, now)), 0);
+  const over = longest > WAIT_TARGET_MIN;
+  const held = queueView?.heldForPayment?.length ?? queueView?.counts.heldForPayment ?? 0;
+
+  const lane = inHand !== null ? (
+    <section className="od-hand" data-testid="in-hand" aria-label={t("opdDesk.inHand")}>
+      <span className="tag">{t("opdDesk.inHand")}</span>
+      <div className="od-hand-top">
+        {inHand.patient !== null && !inHand.patient.restricted
+          ? <PatientPhoto patientId={inHand.patient.id} className="h-14 w-11 rounded" />
+          : null}
+        <div style={{ minWidth: 0 }}>
+          <div className="od-hand-tok">{inHand.tokenNo}</div>
+          <div className="od-hand-n">{patientLabel(inHand.patient)}</div>
+          <div className="od-hand-u">
+            {inHand.patient?.uhid ?? "—"} · {sexAge(inHand.patient?.administrativeGender, inHand.patient?.dob, now)}
+          </div>
         </div>
       </div>
-    );
-  }
+      <div className="od-hand-chips">
+        {inHand.queueClass !== null && (
+          <span className="od-chip" data-class={inHand.queueClass}>{t(`opd.queueClass.${inHand.queueClass}`)}</span>
+        )}
+        {inHand.feeStatus !== null && (
+          <span className="od-stamp" data-fee={inHand.feeStatus}>{t(`opd.feeStatus.${inHand.feeStatus}`)}</span>
+        )}
+      </div>
+      <ul className="od-hand-rows">
+        <li><span>{t("opd.labels.doctor")}</span><b>{doctorRow?.doctor.displayName ?? "—"}</b></li>
+        <li><span>{t("opd.labels.room")}</span><b className="mo">{doctorRow?.roomCode ?? "—"}</b></li>
+        <li><span>{t("opd.labels.status")}</span><b>{t(`opd.queueStatus.${inHand.status}`)}</b></li>
+        <li><span>{t("opdDesk.inLine")}</span><b className="mo">#{inHand.position ?? "—"}</b></li>
+        <li><span>{t("opdDesk.waited")}</span><b className="mo">{t("opdDesk.minutes", { n: minutesSince(inHand.createdAt, now) })}</b></li>
+      </ul>
+      <button type="button" className="od-sec" style={{ marginTop: 14 }} onClick={putDown}>
+        {t("opdDesk.putDown")} <span className="kb">Esc</span>
+      </button>
+    </section>
+  ) : (
+    <section className="od-hand" data-testid="in-hand-empty">
+      <span className="tag">{t("opdDesk.inHand")}</span>
+      <p className="od-hint" style={{ marginTop: 8 }}>{t("opdDesk.nobodyInHand")}</p>
+      <a className="od-link" href="/counter" data-testid="open-visit-desk-one" onClick={toDeskOne}>{t("opdDesk.openVisitAtDeskOne")} →</a>
+    </section>
+  );
 
-  const lastVisit = timeline.data?.items[0];
+  /* ══════════ the right column: the chosen doctor's line, in the server's order ══════════ */
+  const list = (
+    <>
+      {flash !== null && (
+        <p role="status" className="od-flash" data-testid="escalation-flash" data-cancelled={flash.cancelled ? "true" : "false"}>
+          {t(flash.cancelled ? "opdDesk.escalationCancelled" : "opdDesk.escalationFlash", { tokenNo: flash.tokenNo })}
+          <button type="button" onClick={() => setFlash(null)}>{t("opdDesk.flashDismiss")}</button>
+        </p>
+      )}
+      <section className="od-lh" data-testid="queue-head">
+        <div className="od-lh-top">
+          <span className="od-lh-t">{doctorRow === null ? t("opdDesk.queue") : doctorRow.doctor.displayName}</span>
+          <span className="od-live"><i />{t("opdDesk.live")}</span>
+        </div>
+        {doctorRow !== null && (
+          <div className="od-lh-s">
+            {t("opd.labels.room")} {doctorRow.roomCode ?? "—"} · {t(`opd.sessionStatus.${doctorRow.status}`)}
+            {doctorRow.nowServing !== null && <> · {t("opdDesk.nowServing")} #{doctorRow.nowServing}</>}
+          </div>
+        )}
+        {queueView !== null && (
+          <div className="od-big">
+            <b>{orderedEntries.length}</b>
+            <span>{t("opdDesk.inLineNow")}</span>
+          </div>
+        )}
+      </section>
+      {selectedDoctorId === "" && <p className="od-empty">{t("opdDesk.pickDoctorHint")}</p>}
+      {selectedDoctorId !== "" && queue.data !== undefined && queueView === null && (
+        <p className="od-empty">{t("opdDesk.noSession")}</p>
+      )}
+      {queueView !== null && orderedEntries.length === 0 && <p className="od-empty">{t("opdDesk.emptyQueue")}</p>}
+      {orderedEntries.length > 0 && (
+        <div className="od-list" data-testid="queue-list">
+          {orderedEntries.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              className="od-qrow"
+              data-testid={`queue-row-${e.id}`}
+              data-class={e.queueClass ?? undefined}
+              aria-pressed={e.id === inHandId}
+              onClick={() => take(e)}
+            >
+              <span className="od-tok">{e.tokenNo}</span>
+              <span className="od-qb">
+                <span className="od-qn">{patientLabel(e.patient)}</span>
+                <span className="od-qm">
+                  <span>{sexAge(e.patient?.administrativeGender, e.patient?.dob, now)}</span>
+                  {e.queueClass !== null && (
+                    <span className="od-chip" data-class={e.queueClass}>{t(`opd.queueClass.${e.queueClass}`)}</span>
+                  )}
+                  {e.status !== "waiting" && <span>· {t(`opd.queueStatus.${e.status}`)}</span>}
+                </span>
+              </span>
+              <span className="od-qr">
+                {/*
+                  RC-4 T3 / D7 — THE PAID STAMP. `null` IS RENDERED AS NOTHING, deliberately: it means
+                  the server declined to characterise this encounter's fee, which is NOT "unpaid".
+                  `free` keeps its own stamp so a ₹0 review visit is not read as a paid one.
+                */}
+                {e.feeStatus !== null && (
+                  <span className="od-stamp" data-fee={e.feeStatus} data-testid={`fee-status-${e.id}`}>
+                    {t(`opd.feeStatus.${e.feeStatus}`)}
+                  </span>
+                )}
+                <span className="od-qw">{t("opdDesk.minutes", { n: minutesSince(e.createdAt, now) })}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  const clocks = (
+    <div data-testid="clocks">
+      <div className="od-clk"><span>{t("opdDesk.clockLongest")}</span><b data-over={over ? "true" : "false"}>{t("opdDesk.minutes", { n: longest })}</b></div>
+      <div className="od-clk"><span>{t("opdDesk.clockVitals")}</span><b>{queueView?.waitingVitals ?? 0}</b></div>
+      <div className="od-clk"><span>{t("opdDesk.clockHeld")}</span><b>{held}</b></div>
+      <div className="od-clk"><span>{t("opdDesk.clockLeft")}</span><b>{queueView?.counts.left ?? 0}</b></div>
+    </div>
+  );
+
+  /* ══════════ the pinned bar: ONE next act, named by where the flow stands ══════════ */
+  const strandedLeave = doctorRow !== null && doctorRow.onLeaveToday && doctorRow.waitingCount > 0;
+  let barSentence: React.ReactNode;
+  let primary: React.ReactNode = null;
+  if (act === "abandon" && inHand !== null) {
+    barSentence = <>{t("opdDesk.barAbandon", { tokenNo: inHand.tokenNo })}</>;
+    primary = <button type="button" className="od-pri danger" onClick={() => void submitAbandon()}>{t("opdDesk.confirmAbandon")}</button>;
+  } else if (act === "transfer") {
+    barSentence = <>{t("opdDesk.barTransfer", { from: doctorRow?.doctor.displayName ?? "—" })}</>;
+    primary = <button type="button" className="od-pri" onClick={() => void submitTransfer()}>{t("opdDesk.confirmTransfer")}</button>;
+  } else if (departmentId === "") {
+    barSentence = t("opdDesk.pickDepartmentHint");
+  } else if (selectedDoctorId === "") {
+    barSentence = t("opdDesk.barPickDoctor");
+  } else if (inHand !== null) {
+    barSentence = <>{t("opdDesk.barInHand", { tokenNo: inHand.tokenNo })}</>;
+  } else {
+    barSentence = strandedLeave
+      ? t("opdDesk.onLeaveWithWaiting", { count: doctorRow?.waitingCount ?? 0 })
+      : t("opdDesk.barPickToken");
+  }
+  /*
+    K44 — "Transfer queue" is rendered ONCE and ALWAYS, before any department, doctor or role is
+    known: the desk holds no permission model. It is the primary act when a doctor on leave still
+    has people waiting, and a secondary one otherwise.
+  */
+  const transferIsNext = act === null && strandedLeave && inHand === null;
+  const transferButton = act === "transfer" ? null : (
+    <button
+      type="button"
+      className={transferIsNext ? "od-pri" : "od-sec"}
+      data-testid="transfer-queue"
+      onClick={() => startTransfer([])}
+    >
+      {t("opdDesk.transfer")}
+    </button>
+  );
 
   return (
-    <div className="space-y-4 p-6">
-      <h1 className="text-xl font-semibold">{t("opdDesk.title")}</h1>
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* (a) who is at the desk: picker, today's arrivals, the last-visit hint */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold">{t("opdDesk.pickPatient")}</h2>
-          <div ref={pickerRef}>
-            <PatientPicker autoFocus key={pickerKey} onPick={setPatient} />
+    <StationShell
+      seat="opd-desk"
+      listRequest={listRequest}
+      brand={t("opdDesk.brand")}
+      stations={OPD_STATIONS.map((s) => ({ key: s.key, to: s.to, permission: s.permission, label: t(s.labelKey) }))}
+      current="desk"
+      title={t("opdDesk.title")}
+      place={department === null ? t("opdDesk.place") : `${department.name} · ${today}`}
+      stats={stats}
+      statsLabel={t("opdDesk.statsLabel")}
+      lane={lane}
+      list={list}
+      clocks={clocks}
+      clocksSummary={selectedDoctorId === "" ? t("opdDesk.clocksIdle") : t("opdDesk.clocksSummary", { n: longest, vitals: queueView?.waitingVitals ?? 0 })}
+      clocksAlert={over}
+    >
+      <div className="od-flow">
+        {/* ① department */}
+        <section className="od-step" data-state={departmentId === "" ? "now" : "done"}>
+          <div className="od-step-h">
+            <span className="od-n">1</span>
+            <span className="od-step-t">{t("opd.labels.department")}</span>
           </div>
-          {patient !== null && (
-            <div className="flex items-center gap-3 rounded border p-2">
-              <PatientPhoto patientId={patient.id} className="h-12 w-10 rounded" />
-              <div className="min-w-0">
-                <p className="text-sm">{t("opdDesk.selectedPatient")}: {patient.name ?? "—"}</p>
-                <p className="font-mono text-xs text-neutral-600">{patient.uhid}</p>
-              </div>
-            </div>
-          )}
-          {patient !== null && (
-            <p className="text-sm text-neutral-600">
-              {lastVisit === undefined
-                ? t("opdDesk.noHistory")
-                : t("opdDesk.lastSeen", { date: lastVisit.serviceDate, department: lastVisit.departmentName ?? "—" })}
-            </p>
-          )}
-          <h2 className="pt-2 text-sm font-semibold">{t("opdDesk.arrivals")}</h2>
-          <div data-testid="arrivals" className="space-y-2">
-            {patient === null && <p className="text-sm text-neutral-500">{t("opdDesk.pickPatientHint")}</p>}
-            {patient !== null && (arrivals.data?.items ?? []).length === 0 && (
-              <p className="text-sm text-neutral-500">{t("opdDesk.noArrivals")}</p>
-            )}
-            {(arrivals.data?.items ?? []).map((apt) => (
-              <div key={apt.id} className="flex items-center gap-2 rounded border p-2 text-sm">
-                <span>{fmtIst(apt.slotStart)}</span>
-                <Badge variant="outline">{t(`opdAppt.status.${apt.status}`)}</Badge>
-                {apt.status === "booked" && (
-                  <Button size="sm" data-testid={`checkin-${apt.id}`} onClick={() => void checkIn(apt)}>
-                    {t("opdDesk.checkIn")}
-                  </Button>
-                )}
-              </div>
-            ))}
-            <ErrorLine message={checkInError} />
-          </div>
-        </div>
-
-        {/* (b) the department's doctor board + the walk-in details the open posts */}
-        <div className="space-y-3">
-          <label className="block text-sm font-medium" htmlFor="desk-department">{t("opd.labels.department")}</label>
+          <label className="od-lbl" htmlFor="desk-department">{t("opd.labels.department")}</label>
           <select
             id="desk-department"
+            className="od-in"
             value={departmentId}
             onChange={(e) => {
               setDepartmentId(e.target.value);
-              setSelectedDoctorId("");
+              pickDoctor("");
             }}
-            className="w-full rounded border px-2 py-1"
           >
             <option value="">{t("opdDesk.pickDepartment")}</option>
             {departmentItems.map((d) => (
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
+        </section>
 
-          <FormProvider {...form}>
-            <FormKit onSubmit={() => openVisit(form.getValues().doctorId)}>
-              <SelectField
-                name="doctorId"
-                label={t("opd.labels.doctor")}
-                options={[
-                  { value: "", label: t("opdDesk.pickDoctor") },
-                  ...summaryItems.map((s) => ({ value: s.doctor.id, label: s.doctor.displayName })),
-                ]}
-              />
-              <SelectField
-                name="intendedPayer"
-                label={t("opdDesk.intendedPayer")}
-                options={[
-                  { value: "self", label: t("opdDesk.payer.self") },
-                  { value: "tpa", label: t("opdDesk.payer.tpa") },
-                  { value: "pmjay", label: t("opdDesk.payer.pmjay") },
-                  { value: "corporate", label: t("opdDesk.payer.corporate") },
-                ]}
-              />
-              <SelectField
-                name="referralSource"
-                label={t("opdDesk.referralSource")}
-                options={[
-                  { value: "", label: t("opdDesk.referral.none") },
-                  { value: "internal_doctor", label: t("opdDesk.referral.internal_doctor") },
-                  { value: "external_rmp", label: t("opdDesk.referral.external_rmp") },
-                  { value: "camp", label: t("opdDesk.referral.camp") },
-                  { value: "other", label: t("opdDesk.referral.other") },
-                ]}
-              />
-              <TextField name="referrerName" label={t("opdDesk.referrerName")} />
-            </FormKit>
-          </FormProvider>
-          <ErrorLine message={openError} />
-
-          <h2 className="pt-2 text-sm font-semibold">{t("opdDesk.board")}</h2>
-          {departmentId === "" && <p className="text-sm text-neutral-500">{t("opdDesk.pickDepartmentHint")}</p>}
-          <div className="space-y-2">
-            {summaryItems.map((s) => (
-              <div key={s.doctor.id} data-testid={`board-row-${s.doctor.id}`} className="rounded border p-2">
-                <div className="flex flex-wrap items-center gap-2">
+        {/* ② doctor — the Routing board's "everyone on today"; choosing a row is the ONE way to choose */}
+        <section className="od-step" data-state={departmentId === "" ? "todo" : selectedDoctorId === "" ? "now" : "done"}>
+          <div className="od-step-h">
+            <span className="od-n">2</span>
+            <span className="od-step-t">{t("opdDesk.board")}</span>
+            {department !== null && <span className="od-step-s tag">{department.name} — {t("opdDesk.everyoneToday")}</span>}
+          </div>
+          {departmentId === "" && <p className="od-hint">{t("opdDesk.pickDepartmentHint")}</p>}
+          <div>
+            {summaryItems.map((s) => {
+              const bar = barOf(s.waitingCount);
+              const mins = Number.isFinite(s.avgConsultMinutes) ? s.waitingCount * s.avgConsultMinutes : null;
+              return (
+                <div key={s.doctor.id} data-testid={`board-row-${s.doctor.id}`}>
                   <button
                     type="button"
+                    className="od-drow"
                     data-testid={`board-pick-${s.doctor.id}`}
-                    onClick={() => setSelectedDoctorId(s.doctor.id)}
-                    className="text-sm font-medium hover:underline"
+                    aria-pressed={s.doctor.id === selectedDoctorId}
+                    onClick={() => pickDoctor(s.doctor.id)}
                   >
-                    {s.doctor.displayName}
+                    <span className="od-dot" style={{ background: dotOf(s) }} />
+                    <span className="od-dname">{s.doctor.displayName}</span>
+                    <span className="od-room">{t("opd.labels.room")}: {s.roomCode ?? "—"}</span>
+                    <span className="od-bar"><i style={{ width: bar.pct, background: bar.ink }} /></span>
+                    <span className="od-wait">
+                      <span data-testid={`board-waiting-${s.doctor.id}`}>{s.waitingCount}</span> {t("opdDesk.waitingShort")}
+                      {mins !== null && mins > 0 && <> · ~{mins}m</>}
+                    </span>
+                    <span className={`od-pill${s.status === "in" ? " on" : s.status === "out" ? " gd" : ""}`}>
+                      {t(`opd.sessionStatus.${s.status}`)}
+                    </span>
                   </button>
-                  <Badge variant="outline">{t(`opd.sessionStatus.${s.status}`)}</Badge>
-                  <span className="text-xs text-neutral-600">{t("opd.labels.room")}: {s.roomCode ?? "—"}</span>
-                  <span className="text-xs text-neutral-600">
-                    {t("opdDesk.waiting")}: <span data-testid={`board-waiting-${s.doctor.id}`}>{s.waitingCount}</span>
-                  </span>
-                  {s.nowServing !== null && (
-                    <span className="text-xs text-neutral-600">{t("opdDesk.nowServing")}: {s.nowServing}</span>
-                  )}
-                  <Button
-                    size="sm"
-                    data-testid={`open-visit-${s.doctor.id}`}
-                    onClick={() => void openVisit(s.doctor.id)}
-                  >
-                    {t("opdDesk.openVisit")}
-                  </Button>
+                  <div className="od-dmeta">
+                    {s.nowServing !== null && <span>{t("opdDesk.nowServing")}: {s.nowServing}</span>}
+                    {/*
+                      ═══ FD-7 T8 — "NOT SCHEDULED TODAY" WAS THE WRONG SENTENCE FOR A DOCTOR ON LEAVE ═══
+                      `scheduledToday` means "working today"; without the split every absent doctor would
+                      read "not scheduled today" — a shrug, where "on leave today" is an answer a clerk can
+                      give. With people already waiting the count is the point: they hold a token and, in a
+                      bill-first hospital, have paid. The transfer that re-seats them is the bar's next act.
+                    */}
+                    {s.onLeaveToday ? (
+                      <span className="away" data-testid={`on-leave-${s.doctor.id}`}>
+                        {s.waitingCount > 0
+                          ? t("opdDesk.onLeaveWithWaiting", { count: s.waitingCount })
+                          : t("opdDesk.onLeaveToday")}
+                      </span>
+                    ) : !s.scheduledToday && (
+                      <span className="warn">{t("opdDesk.notScheduledToday")}</span>
+                    )}
+                  </div>
                 </div>
-                {/*
-                  ═══ FD-7 T8 — "NOT SCHEDULED TODAY" WAS THE WRONG SENTENCE FOR A DOCTOR ON LEAVE ═══
+              );
+            })}
+          </div>
+        </section>
 
-                  Until T8 the summary never consulted `opd_doctor_leaves`, so a doctor on approved
-                  leave read as SCHEDULED and this line never appeared at all. Now `scheduledToday`
-                  means "working today", and without the split below every absent doctor would read
-                  "not scheduled today" — which is a shrug, where "on leave today" is an answer a
-                  clerk can give the patient standing in front of them.
+        {/* ③ act — on the token in hand, or on the doctor's whole line */}
+        <section className="od-step" data-testid="od-act" data-state={act !== null || inHand !== null ? "now" : "todo"}>
+          <div className="od-step-h">
+            <span className="od-n">3</span>
+            <span className="od-step-t">{t("opdDesk.actTitle")}</span>
+            {inHand !== null && <span className="od-step-s">{t("opdDesk.token", { tokenNo: inHand.tokenNo })}</span>}
+          </div>
 
-                  And when he has people already waiting, the count is the whole point: those
-                  patients are in the building holding a token, and in a bill-first hospital they
-                  have paid. The transfer control that re-seats them is on this same screen.
-                */}
-                {s.onLeaveToday ? (
-                  <p data-testid={`on-leave-${s.doctor.id}`} className="pt-1 text-xs text-amber-700">
-                    {s.waitingCount > 0
-                      ? t("opdDesk.onLeaveWithWaiting", { count: s.waitingCount })
-                      : t("opdDesk.onLeaveToday")}
-                  </p>
-                ) : !s.scheduledToday && (
-                  <p className="pt-1 text-xs text-amber-700">{t("opdDesk.notScheduledToday")}</p>
-                )}
+          {act === null && inHand === null && <p className="od-hint">{t("opdDesk.actHint")}</p>}
+
+          {act === null && inHand !== null && (
+            <div className="od-choices">
+              <button type="button" className="od-choice" data-testid={`abandon-${inHand.id}`} onClick={() => { clearAct(); setAct("abandon"); }}>
+                <b>{t("opdDesk.abandon")}</b>
+                <span>{t("opdDesk.abandonWhy")}</span>
+              </button>
+              <button type="button" className="od-choice" data-testid={`move-${inHand.id}`} onClick={() => startTransfer([inHand.id])}>
+                <b>{t("opdDesk.moveOne")}</b>
+                <span>{t("opdDesk.moveOneWhy")}</span>
+              </button>
+            </div>
+          )}
+
+          {act === "abandon" && inHand !== null && (
+            <div className="od-form">
+              <div>
+                <label className="od-lbl" htmlFor={`abandon-reason-${inHand.id}`}>{t("opd.labels.reason")}</label>
+                <input
+                  id={`abandon-reason-${inHand.id}`}
+                  className="od-in"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
               </div>
-            ))}
-          </div>
-        </div>
+              {error !== null && <p role="alert" className="od-alert">{error}</p>}
+            </div>
+          )}
 
-        {/* (c) the picked doctor's queue + the two desk actions */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">{t("opdDesk.queue")}</h2>
-            <TransferDialog
-              fromDoctorId={selectedDoctorId}
-              fromDoctorName={doctorNameOf(selectedDoctorId)}
-              candidates={summaryItems}
-              entries={orderedEntries}
-              serviceDate={today}
-              queryClient={queryClient}
-            />
-          </div>
-          {selectedDoctorId === "" && <p className="text-sm text-neutral-500">{t("opdDesk.pickDoctorHint")}</p>}
-          {selectedDoctorId !== "" && queue.data !== undefined && queueView === null && (
-            <p className="text-sm text-neutral-500">{t("opdDesk.noSession")}</p>
+          {act === "transfer" && (
+            <div className="od-form">
+              <p className="od-hint">{t("opdDesk.fromDoctor")}: <b>{doctorNameOf(selectedDoctorId) === "" ? "—" : doctorNameOf(selectedDoctorId)}</b></p>
+              <div>
+                <label className="od-lbl" htmlFor="transfer-to">{t("opdDesk.toDoctor")}</label>
+                <select id="transfer-to" className="od-in" value={toDoctorId} onChange={(e) => setToDoctorId(e.target.value)}>
+                  <option value="">{t("opdDesk.pickToDoctor")}</option>
+                  {summaryItems.filter((c) => c.doctor.id !== selectedDoctorId).map((c) => (
+                    <option key={c.doctor.id} value={c.doctor.id}>{c.doctor.displayName}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="od-lbl" htmlFor="transfer-reason">{t("opd.labels.reason")}</label>
+                <input id="transfer-reason" className="od-in" value={reason} onChange={(e) => setReason(e.target.value)} />
+              </div>
+              {orderedEntries.length > 0 && (
+                <fieldset className="od-entries">
+                  <legend>{t("opdDesk.entries")}</legend>
+                  {orderedEntries.map((e) => (
+                    <label key={e.id} className="od-check">
+                      <input
+                        type="checkbox"
+                        data-testid={`transfer-entry-${e.id}`}
+                        checked={entryIds.includes(e.id)}
+                        onChange={() => setEntryIds((ids) => (ids.includes(e.id) ? ids.filter((x) => x !== e.id) : [...ids, e.id]))}
+                      />
+                      <span className="mo">{e.tokenNo}</span> · {patientLabel(e.patient)}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              <div className="od-check">
+                <input id="transfer-consent" type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} />
+                <label htmlFor="transfer-consent">{t("opdDesk.consentGiven")}</label>
+              </div>
+              {error !== null && <p role="alert" className="od-alert">{error}</p>}
+              {moved !== null && <p className="od-ok">{t("opdDesk.transferred", { n: moved })}</p>}
+            </div>
           )}
-          {flash !== null && (
-            <p
-              role="status" data-testid="escalation-flash" data-cancelled={flash.cancelled ? "true" : "false"}
-              className={`rounded border px-3 py-2 text-sm font-semibold ${flash.cancelled ? "border-neutral-300" : "border-[var(--state-danger)]"}`}
-            >
-              {t(flash.cancelled ? "opdDesk.escalationCancelled" : "opdDesk.escalationFlash", { tokenNo: flash.tokenNo })}
-              <button type="button" className="ml-2 text-xs underline" onClick={() => setFlash(null)}>{t("opdDesk.flashDismiss")}</button>
-            </p>
-          )}
-          {queueView !== null && orderedEntries.length === 0 && (
-            <p className="text-sm text-neutral-500">{t("opdDesk.emptyQueue")}</p>
-          )}
-          {queueView !== null && orderedEntries.length > 0 && (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("opd.labels.token")}</TableHead>
-                  <TableHead>{t("opd.labels.patient")}</TableHead>
-                  <TableHead>{t("opd.labels.status")}</TableHead>
-                  <TableHead>{t("opd.labels.actions")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orderedEntries.map((e) => (
-                  <TableRow key={e.id} data-testid={`queue-row-${e.id}`}>
-                    <TableCell className="tabular-nums">{e.tokenNo}</TableCell>
-                    <TableCell>
-                      <span className="block">{patientLabel(e.patient)}</span>
-                      <span className="block font-mono text-xs text-neutral-600">{e.patient?.uhid ?? "—"}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{t(`opd.queueStatus.${e.status}`)}</Badge>
-                      {e.queueClass !== null && (
-                        <Badge variant="secondary">{t(`opd.queueClass.${e.queueClass}`)}</Badge>
-                      )}
-                      {/*
-                        RC-4 T3 / D7 — THE PAID STAMP. This is "the board" the acceptance demo means
-                        by *"watches the token flip UNPAID → PAID on the board"*, and this screen
-                        has been reading `feeStatus` off the wire since RC-1 T3 without a type that
-                        declared it.
+        </section>
 
-                        `null` IS RENDERED AS NOTHING, deliberately. It means the server declined to
-                        characterise this encounter's fee, which is NOT the same as "unpaid" —
-                        stamping UNPAID on it would assert something nobody said. `free` gets its
-                        own stamp rather than being folded into `settled`: a ₹0 review visit and a
-                        paid one look identical on a board that only knows paid/unpaid, and the
-                        whole point of the free branch is that the clerk can defend it.
-                      */}
-                      {e.feeStatus !== null && (
-                        <Badge
-                          data-testid={`fee-status-${e.id}`}
-                          variant={e.feeStatus === "unsettled" ? "destructive" : "default"}
-                        >
-                          {t(`opd.feeStatus.${e.feeStatus}`)}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <AbandonDialog entry={e} queryClient={queryClient} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+        {/* The Main board's ladder legend, as the Routing board writes its rule down: under the flow. */}
+        <section className="od-step od-ladder" aria-label={t("opdDesk.ladder")}>
+          <span className="tag">{t("opdDesk.ladder")}</span>
+          {[0, 1, 2, 3].map((c) => (
+            <span key={c}><i style={{ background: CLASS_INK[c] }} />{t(`opdDesk.ladderRule.${c}`)}</span>
+          ))}
+        </section>
+
+        <div className="od-bar-wrap" data-testid="action-bar">
+          <span className="od-bar-s">{barSentence}</span>
+          {act !== null && <button type="button" className="od-sec" onClick={clearAct}>{t("opdDesk.cancel")}</button>}
+          {transferButton}
+          {primary}
         </div>
       </div>
-    </div>
+    </StationShell>
   );
 }

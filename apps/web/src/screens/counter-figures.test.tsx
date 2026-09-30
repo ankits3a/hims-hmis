@@ -93,6 +93,7 @@ describe("FD-1 T4 — your figures", () => {
     expect(screen.getByTestId("sentence-amended").textContent).toContain("8 were amended within a week");
     expect(screen.getByTestId("figure-desk.billing.float").textContent).toContain("₹2,250.00");
     expect(screen.getByTestId("figure-desk.billing.expectedCash").textContent).toContain("₹3,800.00");
+    expect(screen.queryByTestId("drawer-blind")).toBeNull();   // a supervisor-read card carries the figure, so the variance line stands
     await waitFor(() => expect(screen.getByText("UH-23-04417")).toBeInTheDocument());
     expect(document.querySelectorAll(".print-doc")).toHaveLength(1);
     expect(screen.getAllByText("Provisional").length).toBeGreaterThan(0);
@@ -270,4 +271,28 @@ describe("FD-1 T5 (pass 1) — the round trip: figures → Escape → the seat, 
     expect(screen.queryByTestId("counter-figures")).not.toBeInTheDocument();
     expect(sessionStorage.getItem("hmis.inHand")).toContain("P-A");     // the session survived the trip
   });
+});
+
+/**
+ * OWNER RULING 2026-09-28 — BLIND COUNT. Before her count the server leaves `desk.billing.expectedCash`
+ * off her card; the drawer section then says the count is blind instead of "counted against this".
+ */
+it("blind count: a card without the expected figure shows the float and the blind-count line, no expected figure", async () => {
+  const blindCards = cardsA.map((c) => c.key !== "billing.myCollections" ? c : { ...c, stats: c.stats!.filter((s) => s.key !== "desk.billing.expectedCash") });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.pathname + input.search : input.url;
+    const path = url.split("?")[0]!;
+    const json = (b: unknown): Response => new Response(JSON.stringify(b), { status: 200, headers: { "Content-Type": "application/json" } });
+    if (path === "/api/auth/me") return json({ actor: { type: "user", id: "ramesh" }, permissions: { hospital: ["patients.register"], scoped: { department: {}, floor: {} } } });
+    if (path === "/api/me/desk") return json({ date: "2026-09-02", cards: blindCards });
+    if (path === "/api/me/brief") return json({ period: "day", from: "2026-08-24", to: "2026-08-29", clauses: [], totals: {}, daysWithActivity: 5 });
+    if (path === "/api/me/report") return json({ date: "2026-09-02", provisional: true, sections: [] });
+    if (path === "/api/opd/config" || path === "/api/opd/queues/summary" || path === "/api/billing/sessions/current") return json({ items: [], session: null, counterSequence: "queue_first", tokenLane: "token_first" });
+    return new Response("{}", { status: 404 });
+  }));
+  renderWithProviders(<CounterFigures onBack={() => {}} onGo={() => {}} />);
+  await waitFor(() => expect(screen.getByTestId("figure-desk.billing.float").textContent).toContain("₹2,250.00"));
+  expect(screen.queryByTestId("figure-desk.billing.expectedCash")).toBeNull();
+  expect(screen.getByTestId("drawer-blind").textContent).toContain("shown after you submit your count");
+  expect(screen.queryByText(/Counted at close, against this/)).toBeNull();
 });

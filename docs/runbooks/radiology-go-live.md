@@ -630,11 +630,125 @@ one `imaging_report_handovers` row, one `imaging.report_handed_over` event (coll
 the media row carries the hand-over id. `GET /radiology/north-star` shows the study with an
 order → acted time.
 
+### 15a. Release — the patient's copy held for dues, the owner's unpaid release, the late "ready" message (18-S RS9b)
+
+**Migration `0153_radiology_release_unpaid`** (additive): `imaging_report_handovers.release_approval_id`
+(nullable text) and a unique partial index on it. **One new approval type,
+`imaging_release_unpaid_owner`** (approver **owner**, urgent, 60 minutes, no act-first) — it is
+registered by `pnpm seed:radiology` (`registerRadiologyApprovalTypes`, idempotent — types already
+registered are left alone), so re-run that seed once after deploy. No permission or role change. **One new worker consumer,
+`radiology.report_ready_on_payment`** (on `payment.received` and `credit_note.issued`): restart the
+worker after deploy; its cursor is seeded at the current event, so it does not replay old payments.
+
+**The rule (DECIDED under the owner's delegation, the lab's rule 12 as the owner superseded it on 28 Sep).**
+- **The doctor's copy is never held for money** — the consult's results list, the full report, the
+  read-back and the reading room are untouched.
+- **The patient's copy is held while the study's bill has dues:** the hand-over at the window, and any
+  film or CD collected with it. Held means **self-pay, a billed line, the invoice not settled**. Not
+  held: ER/STAT (the bill follows), day-care and ward bedside studies (the running bill), TPA /
+  corporate / PMJAY (the payer is billed), and a study with no line at all (the counter's
+  *acquired, unbilled* bill decision owns that one).
+- **Released unpaid only by the owner.** Releasing a report before the money is credit, and the
+  owner's credit ruling of 28 Sep reserves every credit to him. The billing manager cannot release it.
+  **The dues stay on the account** — nothing is written off.
+
+**At the desk (`/radiology/reports`).** A held row reads **"Held for dues ₹N"**; opening it shows the
+bill number, *Collect at billing* (→ `/billing/dues`) and "the doctor's copy is not held". *Hand over*
+waits. When the patient pays at billing, reload — the hold is gone. If the patient cannot pay today:
+*Ask the owner to release unpaid*, write why (4+ characters) → `POST /radiology/reports/:id/release-unpaid`
+files the approval (the amount and the reason travel with it; asking twice returns the same request).
+The owner decides in **Approvals** (`/approvals`, "Hand over an unpaid imaging report"). The row then
+reads *Asked the owner at HH:MM* (waiting — the hand-over refuses `release_not_authorised`),
+*The owner did not release it unpaid: …* (collect at billing), or *The owner released this report
+unpaid — hand it over*. The hand-over **spends** the grant (`release_approval_id`, unique) and appends
+`imaging.report_released_unpaid` (hand-over, report, approval, the amount still due). A second
+hand-over of the same study (an amended version, say) needs a second decision.
+
+**The "report ready" message when the bill is paid later.** Publishing still queues
+`imaging_report_ready` only when the bill is settled (or the report is RED). When the patient pays
+after release, the worker's `radiology.report_ready_on_payment` re-reads the invoice; once it is
+**settled** it queues the message for the current released version of each imaging study on that
+bill. The dedupe key is per report version (`imaging_report_ready:<reportId>`), so it is queued
+**exactly once** whichever path runs first; a part-payment queues nothing; a STOP or a deceased
+patient is suppressed at send, as on the publish path. Rows are queued, never claimed sent, until
+the WhatsApp/SMS provider is live.
+
+**A relative's ID (type + last four) recorded at hand-over is part of the medical record** and is
+kept for the record's retention period — no separate deletion schedule (DECIDED; masked last-four
+is the lawful minimum, and the hand-over row is the hospital's evidence of who took the report).
+
+**Verify once.** Bill a routine self-pay study on the counter without taking the money; publish its
+report. At the desk the row reads *Held for dues ₹N*; *Hand over* refuses `report_held_for_dues`
+naming the amount; the doctor still opens the report from the consult. Ask the owner; as the owner,
+grant it in Approvals; hand over → `imaging_report_handovers.release_approval_id` is the approval,
+one `imaging.report_released_unpaid` event, the invoice is still unpaid. On a second such study,
+take the full payment at billing after publishing → within one worker cycle, one
+`notifications` row with `dedupe_key = 'imaging_report_ready:<reportId>'`; take nothing else and
+nothing more is queued.
+
+## 16. The Supervisor & HOD station (18-S RS10)
+
+**No migration, no new permission, no seed-roles change.** The station is `/radiology/hod` (menu
+*Supervisor & HOD*), reached by `radiology.definitions.manage` — the department head's books grant,
+held by `radiologist` only (a resident does not hold it). Eight header views: Floor · Escalated ·
+Approvals · Quality · Equipment · Roster · Money · Access log.
+
+**Step 1 — switch the escalations on (once per deployment).** Re-run the radiology seed:
+
+```
+pnpm seed:radiology      # idempotent: what exists is left alone (§2)
+```
+
+It now also activates eight class-C workflow definitions, `imaging_esc_stat_unread`,
+`_held_study`, `_red_critical`, `_machine_down`, `_licence_gap`, `_bill_decision_stale`,
+`_abnormal_unopened`, `_unmatched_pacs` (class C needs no governance approval — the approval-flow precedent). Until they
+are active the station still LISTS each cause but tells nobody, and says so in a gold banner
+("Escalations are not switched on for …"). Check: `select def_key from workflow_definitions where
+def_key like 'imaging_esc_%' and status = 'active'` → eight rows.
+
+**Step 2 — the worker job.** `sweepImagingEscalations` runs every minute in the worker (job 24;
+Prometheus leg 1a + an `absent()` term). Each cycle: a cause with no open obligation → start one; an
+obligation whose cause cleared → `resolved`, timers cancelled. Nothing else writes these instances.
+
+| Cause | Raised when | First told (rung 0, 1 %) | Budget → medical superintendent | Closed by |
+|---|---|---|---|---|
+| STAT unread | STAT, images in > 15 min, no prelim or signed report | radiologists | 15 min | a prelim or signature |
+| Held at a gate | checked in > 30 min with a gate open | radiologists | 30 min | the gates closed / study moves on |
+| Red critical | red, not read back, past the `critical_categories` red window (no book: once the chaser marked it) | radiologists | 15 min | the read-back |
+| Machine out of service | `down` or `qa_blocked` | radiologists | 60 min | back to `available` |
+| Licence gap | no AERB licence covering today AND a study booked on the machine | RSO (50 %: radiologists) | 60 min | licence filed / bookings moved |
+| Bill decision stale | open > 24 h | billing manager | 4 h → radiologists | resolved at the desk |
+| Abnormal unopened | a critical-category report released > 24 h, first read not stamped | radiologists | 60 min | the treating doctor opens it (or the hand-over, for an outside study) |
+| Unmatched images | an archive study (RS12 inbox) open > 24 h | technologists | 4 h → radiologists | attached or rejected in *Unmatched images* |
+
+Who "radiologists" are is the roster's answer: a `roster_escalation_targets` row for
+`workflow.timer_rung` narrows it to whoever is on; without one it is every holder of the role. Nobody
+holding a rung → the duty managers → the owners (the spine's own fallback).
+
+**Acting on one (the HOD).** Escalated view → the item in hand → *Seen*, *Take it on* (15 min – 4 h),
+or *Hand over to* a named person. These are the kernel alert acts: seen / take-it-on stop the
+reminder clock, never the ladder; hand-over stops nothing. The docked act (Enter) opens the seat
+that fixes the cause. The escalation closes itself at the next sweep after the seat's act.
+
+**Approvals.** Pending `imaging_gate_override` requests are granted or refused here with a reason
+(the same route as the study console). **A grant made in the hospital's `/approvals` inbox now
+applies the override by itself** (the worker's `radiology.approval_granted` consumer): no second
+press at radiology. A never-override kind (Form F, the side) stays refused; a reason containing a
+PCPNDT term is not applied — the gate stays open and the bay sees it. `imaging_definition_publish`
+is the medical superintendent's (link to the inbox). Bill decisions are listed read-only — the desk
+and billing manager resolve them.
+
+**Verify once.** (1) Mark a machine `down` in Setup → within a minute the HOD's Escalated view shows
+it, and every radiologist's bell has an *Escalation: imaging_esc_machine_down · open · rung 0*
+alert; put the machine back → the row goes at the next minute. (2) File an override request from the
+prep bay, grant it from `/approvals` → the gate is overridden without opening radiology.
+(3) Open any study's images → the Access log shows who, their role, the patient and the accession.
+
 ---
 
-## 16. The reading room, part 2 — co-sign, prelim, amend, the critical-call ladder (18-S RS8b)
+## 17. The reading room, part 2 — co-sign, prelim, amend, the critical-call ladder (18-S RS8b)
 
-**Migration** `0152_radiology_cosign_ladder` (number taken at rebase): two report statuses
+**Migration** `0156_radiology_cosign_ladder` (number taken at rebase): two report statuses
 (`awaiting_cosign`, `cosigned`) with one-waiting-per-study as an index, `ladder_rung` and
 `chase_windows` on `imaging_critical_findings`, and the insert-only `imaging_critical_call_attempts`
 (one row per telephone call). Nothing to seed.
@@ -696,9 +810,85 @@ a "pneumothorax" impression flagged red: the dock said **Sign for co-sign**, and
 publish**. Back on Critical calls, **Answered** → type "noted" → refused `read_back_mismatch`; type
 "left pneumothorax" → the call moves to the 48-hour log.
 
-## 17. The reading room, part 3 — follow-ups, peer review, night & outside reads (18-S RS8c)
+## 18. The IR suite — image-guided procedures (18-S RS12b)
 
-Migration `0153_radiology_reading_room_3` (numbered at rebase — the number moves if another lane
+**What it is.** A PCN, PTBD, CT-guided biopsy or angiography is an ordinary imaging study whose
+**study type** says `"interventional": true`. It is booked, checked in, gated (identity, side,
+pregnancy, contrast, kidney) and billed exactly like a scan; the IR suite adds the WHO surgical
+safety checklist, the coagulation rule, the sedation chart, reference air kerma (Ka,r) with the
+skin-dose alerts, the procedure note and the recovery hand-off. Screen: **Modality rooms → IR suite**
+(`/radiology/room?view=ir`). Who: `radiographer`, `radiologist` (`radiology.acquire`); the
+**coagulation override is the radiologist's** (`radiology.gates.override`). No new permission, no
+new role.
+
+**1. The machine.** The IR unit (C-arm / DSA) is a `device` like any other: Setup → Machines, modality
+**`xray`** (the IR study types book onto it by that modality), code **`IR-1`** (the seed creates it on
+a fresh database), status `available`, AE title if it pulls the worklist. **It is licensed
+equipment**: no AERB licence is seeded — until the RSO files the unit's licence (Radiation safety →
+Licences) Start is refused `device_not_licensed`, and the unit sits in `/aerb/licences/gaps`. A
+CT-guided biopsy runs on the CT and needs nothing new.
+
+**2. The procedure book.** Four IR study types are seeded on a fresh database (`IR-PCN`, `IR-PTBD`,
+`IR-CT-BIOPSY`, `IR-DSA`) with services and **no price**. On a database whose `study_types` book is
+already published (production), add them through Setup → Books → `study_types` (draft → MS approves
+→ publish): each carries `"interventional": true` and `"bleeding_risk": "high"` (PCN, PTBD,
+solid-organ / lung core biopsy) or `"low"` (diagnostic angiography). The prices go through the
+tariff revision (§6) — none is ruled, none is seeded.
+
+**3. The checklist, as the screen asks it.**
+- **Sign in (before sedation)** — who is present; identity said and the wristband read (the room
+  gates must be closed first); the **consent** for this procedure, the form version, the language it
+  was explained in, the signer (a minor's is the guardian's, who must hold consent authority) and a
+  **named witness — required on every IR consent**; site/side marked; allergy and contrast history
+  read aloud; anticoagulants (none / held / continued with the operator's note); the sedation plan
+  (local / moderate / deep) and who gives it; **fasting 6 h solids / 2 h clear fluids** for moderate
+  or deep sedation (a STAT procedure records the times and proceeds); IV access, crash cart and
+  reversal agents.
+- **Coagulation (high-bleeding-risk procedures)** — the latest **signed** INR and platelet count
+  from the lab, drawn within **7 days**: **INR ≤ 1.5, platelets ≥ 50,000/µL** (SIR 2019). Missing,
+  stale or out of range → Sign in is refused `coagulation_out_of_range`; correct and recheck, or the
+  operating radiologist overrides **in writing** on the IR suite (reason kept on the case, event
+  `imaging.ir_coagulation_overridden`). The lab's catalogue codes read are `INR` and `PLT`.
+- **Time out (before the needle)** — at least **two different people**; team introduced; patient,
+  procedure and side confirmed aloud; images displayed; antibiotic prophylaxis given or not
+  indicated; critical events said aloud. **Start is refused `ir_checklist_incomplete` until Sign in
+  and Time out are both recorded.**
+- **During** — the sedation chart: BP, HR, SpO₂, RASS and the drug, **every 5 minutes** under
+  moderate/deep sedation (the dock turns into *Record sedation reading* when one is due), then
+  **every 15 minutes** after Send until the hand-off. The dose tiles take fluoro time (min:s), DAP
+  (Gy·cm²) and **Ka,r (mGy)** from the unit's display, or fill themselves from the unit's dose SR
+  (DICOM 113725 Dose (RP) Total).
+- **Sign out (before the patient leaves the table)** — procedure done, counts correct, specimens
+  labelled or none, devices/catheters left in, dose recorded, recovery plan given. **Send is refused
+  `ir_checklist_incomplete` until Sign out is recorded.**
+
+**4. Dose thresholds.**
+- **Ka,r ≥ 3 Gy** — the tile turns red; the operator is told; the patient is told and a **skin check
+  is booked 2–4 weeks out** (*Book the skin check*). **Send is refused `skin_followup_required`
+  until it is documented.** At Send the event `imaging.ir_skin_dose_alert` (`skin_followup`) is
+  written.
+- **Ka,r ≥ 5 Gy** — the substantial radiation dose level (NCRP 168): a second event
+  (`substantial_radiation_dose_level`) for the RSO's review. The RSO's obligation that consumes these
+  events is the HOD/RSO spine (RS10); until it lands, the RSO reads them from the dose register
+  (`radiation_dose_register.dose_ka_r`).
+
+**5. After Send.** The procedure note (procedure and findings, approach, devices, specimens,
+complications, estimated blood loss) — editable until the hand-off; then the **recovery hand-off**:
+vitals, bed-rest hours (drafted 6 h for high bleeding risk, 4 h otherwise), drain/catheter care, the
+instructions **in English and Hindi** (drafted by rule, edited by the operator) and who received the
+patient. Once handed over, the case leaves the IR list.
+
+**Verify once.** On a dev database: book `IR-PCN` on IR-1 for a patient with a signed INR 1.8 →
+Sign in refused `coagulation_out_of_range`; override as the radiologist → Sign in, Time out (two
+people), Start; two sedation readings; type Ka,r 3200 → *Book the skin check* → Sign out → Send →
+`radiation_dose_register.dose_ka_r = 3200`, one `imaging.ir_skin_dose_alert`; note → hand-off → the
+list is empty.
+
+---
+
+## 19. The reading room, part 3 — follow-ups, peer review, night & outside reads (18-S RS8c)
+
+Migration `0162_radiology_reading_room_3` (numbered at rebase — the number moves if another lane
 merges a migration first; check `apps/core/drizzle/meta/_journal.json`). Three tables and one book;
 no permission, no role, no seed, no notify template.
 

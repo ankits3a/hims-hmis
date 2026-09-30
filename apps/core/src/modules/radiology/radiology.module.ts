@@ -19,8 +19,10 @@ import { RadiologySetupController } from "./radiology-setup.controller";
 import { RadiologyPrepController } from "./radiology-prep.controller";
 import { RadiologyRoomController } from "./radiology-room.controller";
 import { RadiologyPacsController } from "./radiology-pacs.controller";
+import { RadiologyIrController } from "./radiology-ir.controller";
 import { RadiologyReadingController } from "./radiology-reading.controller";
 import { RadiologyReleaseController } from "./radiology-release.controller";
+import { RadiologySupervisorController } from "./radiology-supervisor.controller";
 import { RadiologyReadingRoomController } from "./radiology-reading-room.controller";
 
 /**
@@ -72,6 +74,10 @@ import { RadiologyReadingRoomController } from "./radiology-reading-room.control
     RadiologyPacsController,
     // 18-S RS9 — release and the closed loop: the doctor's inbox and acted-upon, the north star, the hand-over desk.
     RadiologyReleaseController,
+    // 18-S RS12b — the IR suite: the WHO phases, coagulation, sedation chart, skin dose, note, hand-off.
+    RadiologyIrController,
+    // 18-S RS10 — the Supervisor & HOD station's reads: floor, escalations, approvals, quality, equipment, roster, money, access log.
+    RadiologySupervisorController,
     // 18-S RS8c — the reading room, part 3: follow-ups, peer review, night & outside reads.
     RadiologyReadingRoomController,
   ],

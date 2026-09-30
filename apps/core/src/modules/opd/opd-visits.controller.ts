@@ -1,11 +1,13 @@
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Query } from "@nestjs/common";
 import { asc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdQueueEntries } from "../../kernel/db/schema";
-import { getPatientSummaries } from "../patients";
+import { getPatientSummaries, PatientError } from "../patients";
+import { findTodaysVisits, requestSlipRetake, slipDay, slipReadback } from "./slips";
+import type { SlipDay, SlipReadback } from "./slips";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import {
   abandonVisit, counterState, deskComplaintFor, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
@@ -44,6 +46,9 @@ import type { Slot } from "./slots";
 import type { PatientSummary } from "../patients";
 import type { Db } from "../../kernel/db/client";
 
+/* UX-AUDIT 2026-09-28 · BOARD — the slip desk's torn-QR search and the doctor's retake request. */
+const slipFindQuery = z.object({ q: z.string().trim().min(2).max(120) });
+const slipRetakeBody = z.object({ reason: z.string().max(300).nullable().optional() });
 const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(10).optional() });
 /**
  * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
@@ -471,21 +476,68 @@ export class OpdVisitsController {
    * `opd.visits.read` and no new permission: the front office, its supervisor, the vitals bay and
    * the doctor all hold it, which is exactly the set of seats that might hold the paper.
    */
+  /*
+    UX-AUDIT 2026-09-28 · BOARD — the read-back grew the Doctor ID, the department, the room and
+    what is already filed against the visit (`slips.ts`). ADDITIVE: the five fields every existing
+    caller reads are unchanged and still come first.
+  */
   @RequirePermission("opd.visits.read", "hospital")
   @Get("visits/by-number/:visitNo")
   async visitByNumber(
     @CurrentActor() actor: Actor, @Param("visitNo") visitNo: string,
-  ): Promise<{ encounterId: string; patientId: string; visitNo: string; serviceDate: string; patient: unknown }> {
+  ): Promise<SlipReadback> {
     const encounter = await getEncounterByVisitNo(this.db, visitNo.trim());
     if (!encounter) toHttp(new OpdError("unknown_encounter", `no visit numbered ${visitNo}`));
-    const [summary] = await getPatientSummaries(this.db, actor, [encounter.patientId]);
+    const back = await slipReadback(this.db, actor, encounter);
     /* A sealed patient the caller may not see answers exactly as a visit that does not exist: a
        visit number must not be a way to learn that a record exists. */
-    if (summary === undefined) toHttp(new OpdError("unknown_encounter", `no visit numbered ${visitNo}`));
-    return {
-      encounterId: encounter.id, patientId: encounter.patientId, visitNo: encounter.visitNo,
-      serviceDate: encounter.serviceDate, patient: summary,
-    };
+    if (back === null) toHttp(new OpdError("unknown_encounter", `no visit numbered ${visitNo}`));
+    return back;
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — the slip desk's right column: every consultation finished today,
+   * waiting / retake / filed, with the day's three counts. `opd.visits.read`, the grant the
+   * read-back above already needs, so the desk that can scan a slip can see the day's slips.
+   */
+  @RequirePermission("opd.visits.read", "hospital")
+  @Get("slips/today")
+  async slipsToday(@CurrentActor() actor: Actor): Promise<SlipDay> {
+    return slipDay(this.db, actor);
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD / owner ruling 28-Sep-2026 — the QR is torn: find TODAY's visit by
+   * name, UHID or mobile, and get the same read-back the scan gets, so the person is still checked.
+   */
+  @RequirePermission("opd.visits.read", "hospital")
+  @Get("slips/find")
+  async slipsFind(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: SlipReadback[] }> {
+    const q = parsed(slipFindQuery, query);
+    try {
+      return { items: await findTodaysVisits(this.db, actor, q.q) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — the doctor could not read a line and asks the desk to photograph
+   * the page again. `opd.consult`, the doctor's own grant: a desk cannot ask itself for a retake.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("slips/:documentId/retake")
+  @HttpCode(200)
+  async slipRetake(
+    @CurrentActor() actor: Actor, @Param("documentId") documentId: string, @Body() body: unknown,
+  ): Promise<{ documentId: string; encounterId: string; alreadyRequested: boolean }> {
+    const b = parsed(slipRetakeBody, body ?? {});
+    try {
+      return await requestSlipRetake(this.db, actor, documentId, b.reason ?? null);
+    } catch (e) {
+      if (e instanceof PatientError && e.code === "document_not_found") throw new NotFoundException(e.message);
+      toHttp(e);
+    }
   }
 
   @RequirePermission("opd.visits.read", "hospital")

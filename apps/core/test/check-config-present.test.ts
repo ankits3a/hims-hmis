@@ -75,8 +75,9 @@ describe("check:config-present (Plan 11g / DD2)", () => {
     expect(codes).toContain("gst_config_empty");
     // Six billing types + tariff_revision + the two lab release types (11i T1; GAP A3, owner ruling
     // 2026-09-28: credit is the owner's, added `billing_credit_owner` and `lab_release_unpaid_owner`),
-    // every one unregistered on an empty database.
-    expect(codes.filter((c) => c === "approval_type_unregistered")).toHaveLength(9);
+    // every one unregistered on an empty database. OWNER RULINGS 2026-09-28 (money): +2 billing owner
+    // types, `billing_refund_owner` and `billing_recon_charge_owner` — measured: `Received length: 11`.
+    expect(codes.filter((c) => c === "approval_type_unregistered")).toHaveLength(11);
     // 11i T1 — the row that would have caught production: the lab is deployed and BOTH of its
     // definitions are inactive, so every order throws `no_active_definition`.
     expect(codes.filter((c) => c === "lab_definition_inactive")).toHaveLength(LAB_DEF_KEYS.length);

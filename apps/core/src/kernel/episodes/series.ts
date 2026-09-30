@@ -101,6 +101,11 @@ export const EPISODE_SERIES = {
   supplier_credit: "MCN",
   stock_write_off: "MWO",
   stock_recall: "MRC",
+  /**
+   * PHARMACY GAP A6b — the materials indent (`MIN`): a sub-store's request to a supplying store,
+   * answered by a transfer. Three letters for the GRN's reason; not a prefix of any `M…` above.
+   */
+  store_indent: "MIN",
 } as const;
 
 export type EpisodeSeriesKey = keyof typeof EPISODE_SERIES;

@@ -106,6 +106,12 @@ const CENSUS: Record<string, string[]> = {
   transfer_lines: [
     "batch_id", "discrepancy_reason", "id", "qty_issued", "qty_received", "transfer_id",
   ],
+  /** PHARMACY GAP A6b — a sub-store's indent, answered by a transfer (`modules/materials/indents.ts`). */
+  store_indents: [
+    "cancel_reason", "decided_at", "decided_by", "from_resource_id", "id", "indent_no", "note", "reject_reason",
+    "requested_at", "requested_by", "status", "to_resource_id", "transfer_id",
+  ],
+  store_indent_lines: ["id", "indent_id", "item_id", "line_idx", "qty_base", "qty_issued"],
   grns: [
     "approval_id", "captured_by", "challan_date", "challan_no", "created_at", "created_by", "grn_no",
     "id", "invoice_no", "po_ref", "posted_at", "purchase_order_id", "qc_by", "source", "status",
@@ -168,7 +174,7 @@ const CENSUS: Record<string, string[]> = {
     "taxable_paise", "total_paise", "updated_at", "updated_by", "vendor_gstin", "vendor_id",
   ],
   supplier_return_lines: [
-    "batch_id", "cgst_paise", "gst_rate_bps", "hsn_code", "id", "igst_paise", "item_id", "ledger_entry_id", "qty_base",
+    "batch_id", "cgst_paise", "gst_rate_bps", "hsn_code", "id", "igst_paise", "item_id", "ledger_entry_id", "note", "qty_base",
     "rate_paise", "reason", "return_id", "sgst_paise", "store_resource_id", "taxable_paise",
   ],
   supplier_credit_notes: [
@@ -222,8 +228,8 @@ describe("the materials tables (Plan 14 T1)", () => {
    * each, and the prose count followed the bullets rather than the tables. Recorded here as a
    * number rather than only in CLOSE, so the next phase that reads this family counts what exists.
    */
-  it("there are exactly THIRTY-ONE of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(31);
+  it("there are exactly THIRTY-THREE of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one, A6b's indent two", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(33);
   });
 
   // ───────────────────── the five semantic CHECKs, read out BY NAME ─────────────────────

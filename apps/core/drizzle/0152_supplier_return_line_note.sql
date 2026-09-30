@@ -1,0 +1,1 @@
+ALTER TABLE "supplier_return_lines" ADD COLUMN "note" text;

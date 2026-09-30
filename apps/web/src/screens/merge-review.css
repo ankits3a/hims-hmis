@@ -1,0 +1,158 @@
+/*
+ * UX-AUDIT 2026-09-28 · BOARD — MERGE REVIEW (/merge), ported from the owner-approved board
+ * (`docs/design/2026-09-28-ux-audit/merge-review.html`). The palette and the shared primitives
+ * (`.box`, `.pri`, `.sec`, `.pill`, `.tag`, `.mo`, `.kb`) come from `paper-pine.css` and
+ * `desk-one.css` through `<PaperScreen>`; this file carries only what the board draws for this
+ * screen, scoped under `.mrg` so nothing here leaks into another seat.
+ *
+ * THE BREAKPOINTS ARE THE BOARD'S NOTES: at 1280 and above, three columns (the pair in hand 296px,
+ * the flow, the requests list 352px). Below 1280 the list becomes a drawer behind "Requests · N".
+ * Below 900 the left lane folds under the flow and the comparison stacks A over B per field.
+ */
+/* `.mst`, not `.st`: `.st` is the station shell's root class (`paper-pine.css`, `station.css`) and a
+   step title wearing it became a full-screen fixed station. Found by the Chromium walk. */
+.mrg { --lane-w: 296px; --list-w: 352px; --gold-ink: #9a6208; }
+.mrg .pill.gd { color: var(--gold-ink); }
+.mrg .tag { color: var(--dim); }
+.mrg .hi { font-family: "IBM Plex Sans Devanagari", "IBM Plex Sans", sans-serif; }
+
+.mrg .cols { display: flex; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
+.mrg .lane {
+  width: var(--lane-w); flex-shrink: 0; border-right: 1px solid var(--line); background: var(--card);
+  display: flex; flex-direction: column;
+}
+.mrg .centre { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mrg .flow { flex: 1; padding: 18px 20px 20px; }
+.mrg .list {
+  width: var(--list-w); flex-shrink: 0; border-left: 1px solid var(--line); padding: 18px 16px;
+  display: flex; flex-direction: column; gap: 14px; background: var(--paper);
+}
+.mrg .drawer-btn { display: none; }
+
+.mrg .fact {
+  display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line2);
+  font-size: 12.5px;
+}
+.mrg .fact > span:last-child { text-align: right; }
+
+.mrg .step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+.mrg .num {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700; background: var(--green); color: #f2faf6;
+}
+.mrg .num.o { background: var(--card); border: 1px solid var(--line); color: var(--dim); }
+.mrg .mst { font-size: 14px; font-weight: 600; margin: 2px 0 8px; }
+.mrg .pair { display: flex; gap: 12px; }
+.mrg .pick { flex: 1; min-width: 0; padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start; }
+.mrg .ph {
+  width: 44px; height: 52px; border-radius: 5px; background: linear-gradient(160deg, #dfe7e1, #c7d5cb); flex-shrink: 0;
+  display: flex; align-items: flex-end; justify-content: center; font-size: 9px; color: var(--dim); padding-bottom: 3px;
+}
+.mrg .link { font-size: 12px; color: var(--green); font-weight: 600; }
+.mrg .hit {
+  display: block; width: 100%; padding: 8px 10px; border-top: 1px solid var(--line2); font-size: 13px;
+}
+.mrg .hit:hover:not(:disabled) { background: var(--wash); }
+.mrg .hit:disabled { opacity: .6; }
+.mrg .sub { display: block; font-size: 11.5px; color: var(--dim); }
+
+/* the comparison */
+.mrg .cmp { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mrg .cmp th { text-align: left; font-weight: 600; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--wash); }
+.mrg .cmp td { padding: 9px 12px; border-top: 1px solid var(--line2); vertical-align: top; overflow-wrap: anywhere; }
+.mrg .cmp td.k { color: var(--dim); width: 120px; }
+.mrg .cmp tr.df td { background: var(--gold-soft); }
+.mrg .cmp td.keep, .mrg .cmp th.keep { box-shadow: inset 2px 0 0 var(--green); }
+.mrg .cmp th.keep { background: var(--green-soft); color: var(--green); }
+.mrg .dfm {
+  font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 700; letter-spacing: .1em; color: var(--gold-ink, #9a6208);
+  text-transform: uppercase; width: 80px;
+}
+.mrg .cap { display: none; }
+.mrg .al { display: block; line-height: 17px; }
+.mrg .sev { font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); color: var(--dim); margin-left: 4px; }
+.mrg .sev.s { border-color: var(--red-line); color: var(--red); background: var(--red-soft); }
+.mrg .mv { font-size: 10px; font-weight: 700; color: var(--green); margin-left: 4px; }
+.mrg .more { display: block; width: 100%; padding: 9px 12px; border-top: 1px solid var(--line2); color: var(--dim); font-size: 12.5px; }
+
+/* which survives */
+.mrg .radio { flex: 1; min-width: 0; padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.mrg .radio.on { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); background: var(--green-soft); }
+.mrg .radio input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.mrg .dot { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--faint); flex-shrink: 0; margin-top: 2px; }
+.mrg .radio.on .dot { border: 5px solid var(--green); }
+.mrg .radio:focus-within { outline: 2px solid var(--green); outline-offset: 2px; }
+
+/* reason */
+.mrg .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.mrg .chip {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line);
+  background: var(--card); font-size: 11.5px; color: var(--dim);
+}
+.mrg .chip.on { border-color: var(--green-line); color: var(--green); background: var(--green-soft); }
+.mrg .ta {
+  display: block; width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--card); padding: 10px 12px;
+  font-size: 13px; line-height: 19px; min-height: 62px; resize: vertical;
+}
+.mrg .ta:focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.mrg .search {
+  height: 36px; width: 100%; border-radius: 6px; border: 1px solid var(--line); background: var(--card); padding: 0 10px; font-size: 13px;
+}
+.mrg .search:focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+
+/* the pinned act */
+.mrg .dock {
+  position: sticky; bottom: 0; border-top: 1px solid var(--line); background: var(--card); padding: 12px 20px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+}
+.mrg .dock .say { flex: 1; min-width: 200px; font-size: 12.5px; color: var(--dim); }
+.mrg .sec.rd { border-color: var(--red-line); color: var(--red); height: 40px; }
+
+/* refusals — brick red only here */
+.mrg .refuse { border: 1px solid var(--red-line); background: var(--red-soft); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; line-height: 18px; }
+.mrg .refuse b { color: var(--red); }
+.mrg .note { border: 1px solid var(--gold-line); background: var(--gold-soft); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; line-height: 18px; }
+
+/* the requests list */
+.mrg .row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line2); width: 100%; text-align: left;
+}
+.mrg .row:hover { background: var(--wash); }
+.mrg .row.sel { background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); }
+.mrg details > summary { list-style: none; cursor: pointer; }
+.mrg details > summary::-webkit-details-marker { display: none; }
+
+/* ═══ below 1280: the list is a drawer ═══ */
+@media (max-width: 1279px) {
+  .mrg .drawer-btn { display: inline-flex; }
+  .mrg .list { display: none; }
+  .mrg .list.open {
+    display: flex; position: fixed; top: 0; right: 0; bottom: 0; z-index: 40; width: min(var(--list-w), 100vw);
+    overflow-y: auto; box-shadow: -8px 0 24px rgba(19, 36, 32, .18);
+  }
+}
+/* ═══ below 900: one column, the lane under the flow ═══ */
+@media (max-width: 899px) {
+  .mrg .cols { flex-direction: column; }
+  .mrg .lane { width: auto; border-right: none; border-top: 1px solid var(--line); order: 2; }
+  .mrg .centre { order: 1; }
+  .mrg .flow { padding: 14px 16px; }
+  .mrg .dock { padding: 10px 16px; }
+}
+/* ═══ phones: A and B stack per field, the differs marker on the label line ═══ */
+@media (max-width: 639px) {
+  .mrg .pair { flex-direction: column; }
+  .mrg .cmp thead { display: none; }
+  .mrg .cmp tr { display: grid; grid-template-columns: 1fr auto; }
+  .mrg .cmp td { border-top: none; padding: 3px 12px; }
+  .mrg .cmp tr { border-top: 1px solid var(--line2); padding: 6px 0; }
+  .mrg .cmp td.k { order: 1; width: auto; font-weight: 600; color: var(--ink); }
+  .mrg .cmp td.dfm { order: 2; width: auto; text-align: right; }
+  .mrg .cmp td.va { order: 3; grid-column: span 2; }
+  .mrg .cmp td.vb { order: 4; grid-column: span 2; }
+  .mrg .cmp td.keep { box-shadow: none; }
+  .mrg .cmp tr.df { background: var(--gold-soft); }
+  .mrg .cap { display: inline; margin-right: 6px; }
+  .mrg .dock .say { display: none; }
+  .mrg .dock .pri { flex: 1; }
+}

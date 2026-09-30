@@ -40,23 +40,64 @@ export function dosesPerDay(frequency: string): number | null {
   return null;
 }
 
-/** The leading number of a dose — "1 tab", "2 tabs", "½ tab", "5 ml", "10 mg" → 1, 2, 0.5, 5, 10. */
-export function doseUnits(dose: string): number | null {
-  const d = dose.trim().toLowerCase();
-  const m = /^(\d+(?:\.\d+)?|½|1\/2)(?=\s|$)/.exec(d);
+/**
+ * A mass or an activity is not a count of anything on a shelf (the walk of 2026-09-30: "650 mg" of
+ * Dolo 650 read as 650 TABLETS, so a fifteen-tablet line prefilled 9,750). It is converted to a count
+ * only against the medicine's own strength, and only when both sides are one plain amount of the
+ * same kind. The factor puts every mass in micrograms and IU in IU, so the ratio needs no rounding.
+ */
+const MASS_OR_ACTIVITY: Readonly<Record<string, { kind: "mass" | "iu"; factor: number }>> = {
+  mcg: { kind: "mass", factor: 1 }, "µg": { kind: "mass", factor: 1 }, ug: { kind: "mass", factor: 1 },
+  mg: { kind: "mass", factor: 1_000 },
+  g: { kind: "mass", factor: 1_000_000 }, gm: { kind: "mass", factor: 1_000_000 }, gms: { kind: "mass", factor: 1_000_000 },
+  gram: { kind: "mass", factor: 1_000_000 }, grams: { kind: "mass", factor: 1_000_000 },
+  iu: { kind: "iu", factor: 1 },
+};
+const NUMBER = String.raw`(\d+(?:\.\d+)?|½|1\/2)`;
+const numberOf = (s: string): number => (s === "½" || s === "1/2" ? 0.5 : Number(s));
+
+/** `"650 mg"` → 650 000 µg of mass; anything else — a count, a combination, a per-volume strength — is null. */
+function amountOf(text: string): { kind: "mass" | "iu"; value: number } | null {
+  const m = new RegExp(String.raw`^${NUMBER}\s*([a-zµ]+)$`).exec(text.trim().toLowerCase());
   if (m === null) return null;
-  const n = m[1] === "½" || m[1] === "1/2" ? 0.5 : Number(m[1]);
+  const unit = MASS_OR_ACTIVITY[m[2]!];
+  const n = numberOf(m[1]!);
+  return unit === undefined || !(n > 0) ? null : { kind: unit.kind, value: n * unit.factor };
+}
+
+/**
+ * The count of shelf units one dose is — "1 tab", "2 tabs", "½ tab", "5 ml" → 1, 2, 0.5, 5. A dose
+ * written as a mass ("650 mg", "1 g", "60000 IU") is a count only against the medicine's `strength`
+ * ("650 mg" of a 650 mg tablet is 1, "1 g" of a 500 mg tablet is 2), and only in whole or half units;
+ * without a usable strength it is null, never the milligrams.
+ */
+export function doseUnits(dose: string, strength?: string | null): number | null {
+  const d = dose.trim().toLowerCase();
+  const withUnit = new RegExp(String.raw`^${NUMBER}\s*([a-zµ]+)`).exec(d);
+  if (withUnit !== null && MASS_OR_ACTIVITY[withUnit[2]!] !== undefined) {
+    const want = amountOf(`${withUnit[1]!} ${withUnit[2]!}`);
+    const each = strength === null || strength === undefined ? null : amountOf(strength);
+    if (want === null || each === null || want.kind !== each.kind) return null;
+    const ratio = want.value / each.value;
+    return ratio > 0 && Number.isInteger(ratio * 2) ? ratio : null;
+  }
+  const m = new RegExp(String.raw`^${NUMBER}(?=\s|$)`).exec(d);
+  if (m === null) return null;
+  const n = numberOf(m[1]!);
   return n > 0 ? n : null;
 }
 
 /**
  * Base units to dispense, or `null`. Units follow the dose ("5 ml" × 2 × 5 = 50 ml; "1 tab" × 3 × 5
- * = 15 tablets); a half-tablet dose rounds UP because a strip cannot be cut at the counter.
+ * = 15 tablets; "650 mg" of a 650 mg tablet × 3 × 5 = 15); a half-tablet dose rounds UP because a
+ * strip cannot be cut at the counter. `strength` is the prescribed medicine's strength label.
  */
-export function prefillQtyBase(line: Pick<RxLine, "dose" | "frequency" | "durationDays">): number | null {
+export function prefillQtyBase(
+  line: Pick<RxLine, "dose" | "frequency" | "durationDays">, strength?: string | null,
+): number | null {
   if (line.durationDays === null || !Number.isSafeInteger(line.durationDays) || line.durationDays <= 0) return null;
   const perDay = dosesPerDay(line.frequency);
-  const units = doseUnits(line.dose);
+  const units = doseUnits(line.dose, strength);
   if (perDay === null || units === null) return null;
   // A triplet like 1-0-1 already carries the per-dose count when the dose is "1 tab"; "2 tab 1-0-1" means 2 each time.
   const qty = Math.ceil(units * perDay * line.durationDays);
