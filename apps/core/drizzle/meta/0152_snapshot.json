@@ -1,5 +1,5 @@
 {
-  "id": "732903a8-f0af-404d-8504-7f7d9aae93cb",
+  "id": "975b80dc-469e-4b05-a71d-58e0db3fa508",
   "prevId": "b89d4419-6b32-419f-b61f-914f47d93382",
   "version": "7",
   "dialect": "postgresql",
@@ -21496,6 +21496,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -29645,12 +29651,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "dose_ka_r": {
-          "name": "dose_ka_r",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "outcome": {
           "name": "outcome",
           "type": "text",
@@ -29884,391 +29884,6 @@
         "imaging_image_views_via_ck": {
           "name": "imaging_image_views_via_ck",
           "value": "\"imaging_image_views\".\"via\" in ('external_pacs')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.imaging_ir_cases": {
-      "name": "imaging_ir_cases",
-      "schema": "",
-      "columns": {
-        "study_id": {
-          "name": "study_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "coag_override_verdict": {
-          "name": "coag_override_verdict",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "coag_override_reason": {
-          "name": "coag_override_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "coag_override_by": {
-          "name": "coag_override_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "coag_override_at": {
-          "name": "coag_override_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "skin_follow_up_on": {
-          "name": "skin_follow_up_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "skin_follow_up_note": {
-          "name": "skin_follow_up_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "skin_follow_up_by": {
-          "name": "skin_follow_up_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "skin_follow_up_at": {
-          "name": "skin_follow_up_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note_procedure": {
-          "name": "note_procedure",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note_approach": {
-          "name": "note_approach",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note_devices": {
-          "name": "note_devices",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note_specimens": {
-          "name": "note_specimens",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note_complications": {
-          "name": "note_complications",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note_blood_loss_ml": {
-          "name": "note_blood_loss_ml",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note_by": {
-          "name": "note_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note_at": {
-          "name": "note_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "handoff": {
-          "name": "handoff",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "handoff_by": {
-          "name": "handoff_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "handoff_at": {
-          "name": "handoff_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "imaging_ir_cases_study_id_imaging_studies_id_fk": {
-          "name": "imaging_ir_cases_study_id_imaging_studies_id_fk",
-          "tableFrom": "imaging_ir_cases",
-          "tableTo": "imaging_studies",
-          "columnsFrom": [
-            "study_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "imaging_ir_cases_coag_override_ck": {
-          "name": "imaging_ir_cases_coag_override_ck",
-          "value": "(\"imaging_ir_cases\".\"coag_override_verdict\" is null and \"imaging_ir_cases\".\"coag_override_reason\" is null and \"imaging_ir_cases\".\"coag_override_by\" is null and \"imaging_ir_cases\".\"coag_override_at\" is null)\n          or (\"imaging_ir_cases\".\"coag_override_verdict\" is not null and char_length(btrim(\"imaging_ir_cases\".\"coag_override_reason\")) >= 5\n              and \"imaging_ir_cases\".\"coag_override_by\" is not null and \"imaging_ir_cases\".\"coag_override_at\" is not null)"
-        },
-        "imaging_ir_cases_skin_ck": {
-          "name": "imaging_ir_cases_skin_ck",
-          "value": "(\"imaging_ir_cases\".\"skin_follow_up_on\" is null) = (\"imaging_ir_cases\".\"skin_follow_up_by\" is null) and (\"imaging_ir_cases\".\"skin_follow_up_by\" is null) = (\"imaging_ir_cases\".\"skin_follow_up_at\" is null)"
-        },
-        "imaging_ir_cases_note_ck": {
-          "name": "imaging_ir_cases_note_ck",
-          "value": "(\"imaging_ir_cases\".\"note_procedure\" is null and \"imaging_ir_cases\".\"note_by\" is null and \"imaging_ir_cases\".\"note_at\" is null)\n          or (char_length(btrim(\"imaging_ir_cases\".\"note_procedure\")) >= 3 and \"imaging_ir_cases\".\"note_by\" is not null and \"imaging_ir_cases\".\"note_at\" is not null)"
-        },
-        "imaging_ir_cases_blood_loss_ck": {
-          "name": "imaging_ir_cases_blood_loss_ck",
-          "value": "\"imaging_ir_cases\".\"note_blood_loss_ml\" is null or \"imaging_ir_cases\".\"note_blood_loss_ml\" between 0 and 10000"
-        },
-        "imaging_ir_cases_handoff_ck": {
-          "name": "imaging_ir_cases_handoff_ck",
-          "value": "(\"imaging_ir_cases\".\"handoff\" is null and \"imaging_ir_cases\".\"handoff_by\" is null and \"imaging_ir_cases\".\"handoff_at\" is null)\n          or (\"imaging_ir_cases\".\"handoff\" is not null and \"imaging_ir_cases\".\"handoff_by\" is not null and \"imaging_ir_cases\".\"handoff_at\" is not null and \"imaging_ir_cases\".\"note_at\" is not null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.imaging_ir_checklists": {
-      "name": "imaging_ir_checklists",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "study_id": {
-          "name": "study_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "phase": {
-          "name": "phase",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "items": {
-          "name": "items",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "participants": {
-          "name": "participants",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recorded_by": {
-          "name": "recorded_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recorded_at": {
-          "name": "recorded_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "imaging_ir_checklists_phase_ux": {
-          "name": "imaging_ir_checklists_phase_ux",
-          "columns": [
-            {
-              "expression": "study_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "phase",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "imaging_ir_checklists_study_id_imaging_studies_id_fk": {
-          "name": "imaging_ir_checklists_study_id_imaging_studies_id_fk",
-          "tableFrom": "imaging_ir_checklists",
-          "tableTo": "imaging_studies",
-          "columnsFrom": [
-            "study_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "imaging_ir_checklists_phase_ck": {
-          "name": "imaging_ir_checklists_phase_ck",
-          "value": "\"imaging_ir_checklists\".\"phase\" in ('sign_in', 'time_out', 'sign_out')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.imaging_ir_sedation_vitals": {
-      "name": "imaging_ir_sedation_vitals",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "study_id": {
-          "name": "study_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "bp_systolic": {
-          "name": "bp_systolic",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "bp_diastolic": {
-          "name": "bp_diastolic",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "heart_rate": {
-          "name": "heart_rate",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "spo2": {
-          "name": "spo2",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rass": {
-          "name": "rass",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "drug": {
-          "name": "drug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "recorded_by": {
-          "name": "recorded_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recorded_at": {
-          "name": "recorded_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "imaging_ir_sedation_vitals_study_idx": {
-          "name": "imaging_ir_sedation_vitals_study_idx",
-          "columns": [
-            {
-              "expression": "study_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "recorded_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "imaging_ir_sedation_vitals_study_id_imaging_studies_id_fk": {
-          "name": "imaging_ir_sedation_vitals_study_id_imaging_studies_id_fk",
-          "tableFrom": "imaging_ir_sedation_vitals",
-          "tableTo": "imaging_studies",
-          "columnsFrom": [
-            "study_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "imaging_ir_sedation_vitals_range_ck": {
-          "name": "imaging_ir_sedation_vitals_range_ck",
-          "value": "\"imaging_ir_sedation_vitals\".\"bp_systolic\" between 40 and 300 and \"imaging_ir_sedation_vitals\".\"bp_diastolic\" between 20 and 200\n          and \"imaging_ir_sedation_vitals\".\"bp_diastolic\" < \"imaging_ir_sedation_vitals\".\"bp_systolic\" and \"imaging_ir_sedation_vitals\".\"heart_rate\" between 20 and 250\n          and \"imaging_ir_sedation_vitals\".\"spo2\" between 50 and 100 and \"imaging_ir_sedation_vitals\".\"rass\" between -5 and 4"
         }
       },
       "isRLSEnabled": false
@@ -31399,12 +31014,6 @@
         },
         "dose_agd": {
           "name": "dose_agd",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dose_ka_r": {
-          "name": "dose_ka_r",
           "type": "numeric(10, 3)",
           "primaryKey": false,
           "notNull": false
@@ -39029,12 +38638,6 @@
         },
         "dose_agd": {
           "name": "dose_agd",
-          "type": "numeric(10, 3)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dose_ka_r": {
-          "name": "dose_ka_r",
           "type": "numeric(10, 3)",
           "primaryKey": false,
           "notNull": false

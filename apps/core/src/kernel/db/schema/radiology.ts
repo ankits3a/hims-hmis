@@ -1160,10 +1160,18 @@ export const imagingReportHandovers = pgTable(
     note: text("note"),
     handedBy: text("handed_by").notNull(),
     handedAt: timestamp("handed_at", { withTimezone: true }).notNull(),
+    /**
+     * 18-S RS9b — the GRANTED `imaging_release_unpaid_owner` approval this hand-over spent, when the
+     * patient's copy was held for dues and the owner released it unpaid. Plain text — approvals are
+     * another module. UNIQUE: one grant releases one hand-over (the lab's M8 rule), so a second
+     * hand-over under the same grant fails at the database as well as in `handOverReport`.
+     */
+    releaseApprovalId: text("release_approval_id"),
   },
   (t) => [
     index("imaging_report_handovers_study_idx").on(t.studyId, t.handedAt),
     index("imaging_report_handovers_report_idx").on(t.reportId),
+    uniqueIndex("imaging_report_handovers_release_ux").on(t.releaseApprovalId).where(sql`${t.releaseApprovalId} is not null`),
     check("imaging_report_handovers_kind_ck", inList(t.collectorKind, IMAGING_COLLECTOR_KINDS)),
     check(
       "imaging_report_handovers_id_type_ck",

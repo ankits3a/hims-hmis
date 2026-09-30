@@ -288,6 +288,16 @@ export const imagingIrSkinDoseAlert = defineEvent("imaging.ir_skin_dose_alert", 
   level: z.enum(IR_SKIN_DOSE_LEVELS), thresholdMgy: z.number().positive(),
 }));
 
+/**
+ * 18-S RS9b — a HELD patient copy left the window on the owner's granted release. The audit of the
+ * decision itself is the approval (requester, reason, the owner's note); this is the fact that the
+ * grant was USED, and how much was still due when it was. The dues stay on the account.
+ */
+export const imagingReportReleasedUnpaid = defineEvent("imaging.report_released_unpaid", MODULE, z.object({
+  handoverId: id, reportId: id, studyId: id, approvalId: id,
+  outstandingPaise: z.number().int().nonnegative(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -313,4 +323,5 @@ export const RADIOLOGY_EVENTS = [
   imagingMediaRequested,
   imagingIrCoagulationOverridden,
   imagingIrSkinDoseAlert,
+  imagingReportReleasedUnpaid,
 ] as const;

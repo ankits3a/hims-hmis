@@ -6,7 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { idSchema, parsed, toHttp } from "./pharmacy-http";
 import { listSaleItems, registerSaleItem, saleItemCandidates, setSaleItemActive } from "./sale-items";
 import { setShelfLocation } from "./shelf-locations";
-import { applyGstSlabPlan, gstSlabPlan } from "./gst-slab";
+import { applyGstSlabPlan, gstSlabPlan, setItemGstSlab } from "./gst-slab";
 import type { GstSlabPlanRow } from "./gst-slab";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -81,6 +81,22 @@ export class PharmacyItemsController {
     const input = parsed(z.object({ storeResourceId: idSchema, location: z.string().max(200) }), body);
     try {
       return await setShelfLocation(this.db, actor, { storeResourceId: input.storeResourceId, itemId, location: input.location }, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * One drug's GST slab, set from the item's edit sheet (stock entry, 2026-09-29): the item's rate and, when it
+   * is sold, its service's GST category in the same transaction (`setItemGstSlab`) — so the bill follows the
+   * slab. The same permission as the slab plan above, which does this for every drug at once.
+   */
+  @RequirePermission("pharmacy.sale_items.manage", "hospital")
+  @Put(":itemId/gst-slab")
+  async setGstSlab(@CurrentActor() actor: Actor, @Param("itemId") itemId: string, @Body() body: unknown): Promise<{ categoryChanged: boolean }> {
+    const { rateBps } = parsed(z.object({ rateBps: z.number().int().min(0).max(2800) }), body);
+    try {
+      return await withTx(this.db, (tx) => setItemGstSlab(tx, actor, itemId, rateBps));
     } catch (e) {
       return toHttp(e);
     }

@@ -48,7 +48,13 @@ describe("PharmacyRetailLicence (P19)", () => {
     renderWithProviders(<PharmacyRetailLicence />);
     expect(await screen.findByTestId("licence-state")).toHaveTextContent("Walk-in sales are closed: no retail drug licence");
     expect(screen.getByText("No licence recorded yet.")).toBeInTheDocument();
-    const save = screen.getByRole("button", { name: "Record licence" });
+    // B5 — the refusal names the act on this page; it no longer sends the reader to the page they are on.
+    expect(screen.getByTestId("licence-state")).toHaveTextContent("Record it here with “Record a licence”.");
+    expect(screen.getByTestId("licence-state")).not.toHaveTextContent("records it at Retail licence");
+    // Recording is a sheet over the entries.
+    expect(screen.queryByRole("textbox", { name: "Form 20 no." })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Record a licence" }));
+    const save = await screen.findByRole("button", { name: "Record licence" });
     expect(save).toBeDisabled();
 
     await userEvent.type(screen.getByRole("textbox", { name: "Form 20 no." }), " RLF20-1 ");
@@ -64,7 +70,8 @@ describe("PharmacyRetailLicence (P19)", () => {
     const posted = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST").map(([, init]) => JSON.parse(String(init?.body)) as unknown);
     expect(posted).toEqual([{ form20No: "RLF20-1", form21No: "RLF21-1", validFrom: "2026-01-01", validTo: "2030-12-31", pharmacistInCharge: "A. Kulkarni" }]);
 
-    await userEvent.type(screen.getByRole("textbox", { name: "Form 20 no." }), "X");
+    await userEvent.click(screen.getByRole("button", { name: "Record a licence" }));
+    await userEvent.type(await screen.findByRole("textbox", { name: "Form 20 no." }), "X");
     await userEvent.type(screen.getByRole("textbox", { name: "Form 21 no." }), "Y");
     await userEvent.type(screen.getByLabelText("Valid from"), "2031-01-01");
     await userEvent.type(screen.getByLabelText("Valid until"), "2030-01-01");

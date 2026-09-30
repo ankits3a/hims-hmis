@@ -49,4 +49,13 @@ describe("GstSlabPanel (P16)", () => {
     expect(await screen.findByText("All 1 drug items have a slab that matches, and every sale item follows it.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
   });
+
+  /** B5 — the copy fix: with no drug item at all the panel never says "All 0 drug items…". */
+  it("says there are no drug items yet instead of \"All 0 drug items\"", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ items: [] }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    renderWithProviders(<GstSlabPanel />);
+    expect(await screen.findByTestId("gst-no-drugs")).toHaveTextContent("No drug items on the item master yet");
+    expect(screen.queryByText(/All 0 drug items/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
+  });
 });

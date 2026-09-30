@@ -68,7 +68,33 @@ export const RADIOLOGY_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: 
     actFirstAllowed: false,
     closureSlaMinutes: 30,
   },
+  /**
+   * ═══ 18-S RS9b T1 — A HELD PATIENT COPY, RELEASED UNPAID: ONLY THE OWNER DECIDES ═══
+   *
+   * The patient's copy of an imaging report (the hand-over at the window, film, CD) is held while
+   * the study's self-pay bill has dues. Releasing it anyway lets a document leave without the money,
+   * which the owner's credit ruling of 28 Sep ("nobody can issue credit except owner", whole
+   * hospital) makes the OWNER's decision — the lab's `lab_release_unpaid_owner` in the same shape
+   * (17-F ruling 12, superseded 28 Sep from `billing_manager` to the owner).
+   *
+   *   · **Approver `owner`**, urgent, 60 minutes, **no act-first** — act-first would be the desk
+   *     releasing, which is the thing this request exists not to be.
+   *   · **The subject is the STUDY** (`imaging_study`), and a grant is SPENT by the one hand-over
+   *     that carries it (`imaging_report_handovers.release_approval_id`, unique).
+   *   · It writes no credit note and moves no dues: the balance stays on the account.
+   */
+  {
+    typeKey: "imaging_release_unpaid_owner",
+    title: "Release a held imaging report unpaid — only the owner approves",
+    approverRole: "owner",
+    urgencyClass: "urgent",
+    actFirstAllowed: false,
+    closureSlaMinutes: 60,
+  },
 ];
+
+/** 18-S RS9b — the type key the imaging desk files a held report's release under. */
+export const IMAGING_RELEASE_UNPAID_APPROVAL_TYPE = "imaging_release_unpaid_owner";
 
 /** 18-S RS5 T2 — the type key the prep bay files under. */
 export const IMAGING_GATE_OVERRIDE_APPROVAL_TYPE = "imaging_gate_override";

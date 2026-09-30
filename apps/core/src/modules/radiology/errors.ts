@@ -211,6 +211,12 @@ export const RADIOLOGY_ERROR_CODES = [
    * `report_not_published`: nothing is acted on, handed over or printed before release.
    * `collector_details_required`: a hand-over that does not name its collector as the type needs.
    * `unknown_media_request`: a stale film/CD row.
+   *
+   * 18-S RS9b — the patient's copy and the bill. `report_held_for_dues`: the patient's copy is held
+   * while the study's self-pay bill has dues (402 — the refusal a desk resolves by sending the
+   * patient to billing; the message names the amount). `release_not_authorised`: a held copy asked
+   * to leave without the owner's granted release (pending, refused, or already spent).
+   * `release_not_needed`: an unpaid release asked for a report nothing holds.
    */
   "not_treating_doctor",
   "acted_note_required",
@@ -237,6 +243,9 @@ export const RADIOLOGY_ERROR_CODES = [
   "coagulation_in_range",
   "skin_followup_required",
   "ir_handoff_recorded",
+  "report_held_for_dues",
+  "release_not_authorised",
+  "release_not_needed",
 ] as const;
 
 export type RadiologyErrorCode = (typeof RADIOLOGY_ERROR_CODES)[number];
@@ -342,6 +351,9 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   coagulation_in_range: 409,
   skin_followup_required: 422,
   ir_handoff_recorded: 409,
+  report_held_for_dues: 402,
+  release_not_authorised: 403,
+  release_not_needed: 409,
 };
 
 export function radiologyHttpStatus(code: RadiologyErrorCode): number {

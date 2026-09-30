@@ -254,6 +254,27 @@ export async function decideGateOverride(
     await approveRequest(db, actor, { approvalId: approval.id, note: reason });
   }
 
+  return applyGrantedGateOverride(db, actor, approval.id, reason);
+}
+
+/**
+ * 18-S RS10 T3 — **the apply half, shared by the radiologist's own decide route and the
+ * `approval.granted` consumer** (a grant given in the kernel's `/approvals` inbox). It re-reads the
+ * approval ON EXECUTE — granted, this type, an `imaging_gate` subject — and a gate already terminal
+ * is left alone (the answer says so), which is what makes a redelivered event, or the route and the
+ * consumer both arriving, a no-op rather than a second override. The override itself is the EXISTING
+ * `overrideGate` with the approver as the actor and the decision note as the reason.
+ */
+export async function applyGrantedGateOverride(
+  db: Db, actor: Actor, approvalId: string, reason: string,
+): Promise<GateOverrideDecision> {
+  const approval = await getApproval(db, approvalId);
+  if (!approval || approval.typeKey !== IMAGING_GATE_OVERRIDE_APPROVAL_TYPE
+    || approval.subjectType !== GATE_OVERRIDE_SUBJECT) {
+    throw new RadiologyError(
+      "unknown_override_request", `${approvalId} is not an imaging gate override request`, { approvalId },
+    );
+  }
   return withTx(db, async (tx) => {
     /** On EXECUTE, never trusted from the caller: granted, this type, this gate. */
     const granted = await getApproval(tx as unknown as Db, approval.id);

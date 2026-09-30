@@ -6,7 +6,8 @@ import { withTx } from "../src/kernel/db/client";
 import { aerbLicences, imagingDefinitions, resourceStatusHistory, resources, services, tariffItems } from "../src/kernel/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE } from "../src/modules/radiology";
+import { IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, IMAGING_ESCALATION_CAUSES, ensureEscalationDefinitions } from "../src/modules/radiology";
+import { getActiveDefinition } from "../src/kernel/workflow/definitions";
 import { registrarFromEnv, seedRadiology } from "../scripts/seed-radiology";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
@@ -53,6 +54,12 @@ describe("seed:radiology — the department can be stood up on a fresh deploymen
 
     const type = await withTx(db, (tx) => getApprovalType(tx, IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE));
     expect(type).toBeTruthy();
+
+    /** 18-S RS10 T2 — every escalation cause's obligation definition is active after the seed, and a re-run activates nothing new. */
+    for (const cause of IMAGING_ESCALATION_CAUSES) {
+      expect(await withTx(db, (tx) => getActiveDefinition(tx, `imaging_esc_${cause}`))).toBeTruthy();
+    }
+    expect(await ensureEscalationDefinitions(db, admin)).toEqual([]);
 
     /** The eight machines (RS12b: +IR-1) the scheduler books onto, each carrying the modality it matches by. */
     const devices = await db.select({ code: resources.code, attributes: resources.attributes })

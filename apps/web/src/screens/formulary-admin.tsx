@@ -8,6 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { MappingWorklist } from "../components/mapping-worklist";
 import { FormularyStewardship } from "./formulary-stewardship";
+import { OfficeHead, fieldCls } from "./pharmacy-office/office-page";
+import { Sheet } from "./pharmacy-office/sheet";
 import type { AdmitInput, WireSalt, WireStagingRow } from "../lib/formulary-api";
 
 /** Two letters before the first request: one letter over 3,283 moieties is not a search, it is a
@@ -214,9 +216,8 @@ export function FormularyAdmin(): React.ReactElement {
   };
 
   return (
-    <div className="space-y-4 p-4" data-testid="formulary-admin">
-      <h1 className="text-xl font-semibold">{t("formularyAdmin.title")}</h1>
-      <p className="text-sm text-neutral-600">{t("formularyAdmin.intro")}</p>
+    <div className="space-y-4" data-testid="formulary-admin">
+      <OfficeHead title={t("formularyAdmin.title")} lead={t("formularyAdmin.intro")} />
 
       {/*
         ——— HOW BIG THE CATALOGUE IS, AND HOW MUCH OF IT IS BLIND TO EVERY SAFETY CHECK ———
@@ -228,7 +229,7 @@ export function FormularyAdmin(): React.ReactElement {
         plainly and coloured only when it is non-zero.
       */}
       {census.data !== undefined && (
-        <dl data-testid="formulary-census" className="flex flex-wrap gap-x-8 gap-y-2 rounded border p-3">
+        <dl data-testid="formulary-census" className="ofp-card flex flex-wrap gap-x-8 gap-y-2">
           <div>
             <dt className="text-xs text-neutral-600">{t("formularyAdmin.census.moieties")}</dt>
             <dd data-testid="census-salts" className="text-sm">
@@ -302,13 +303,15 @@ export function FormularyAdmin(): React.ReactElement {
           value={query}
           placeholder={t("formularyAdmin.searchPlaceholder")}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full max-w-md rounded border px-2 py-1"
+          className={`${fieldCls} max-w-md`}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runSearch(); } }}
         />
         <Button type="button" onClick={runSearch}>{t("formularyAdmin.search")}</Button>
       </div>
 
       {done !== null && <p data-testid="formulary-done" className="text-sm text-emerald-700">{done}</p>}
-      {error !== null && <p data-testid="formulary-error" className="text-sm text-red-700">{error}</p>}
+      {/* While the admission sheet is open its refusal is shown in the sheet, where the person is looking. */}
+      {picked === null && error !== null && <p data-testid="formulary-error" className="text-sm text-red-700">{error}</p>}
 
       {submitted.trim() !== "" && (staging.data ?? []).length === 0 && !staging.isLoading && (
         <p data-testid="formulary-no-hits" className="text-sm text-neutral-600">
@@ -333,9 +336,11 @@ export function FormularyAdmin(): React.ReactElement {
       )}
 
       {/* ——— the admission form: pre-filled by the crawl, decided by the pharmacist ——— */}
+      {/* B5 — admitting a medicine is a sheet over the page, as every master-data form in the office is. */}
       {picked !== null && (
-        <div data-testid="formulary-entry" className="space-y-3 rounded border p-3">
-          <h2 className="font-medium">{t("formularyAdmin.entryTitle")}</h2>
+        <Sheet title={t("formularyAdmin.entryTitle")} testId="formulary-entry-sheet" onClose={() => setPicked(null)}>
+        <div data-testid="formulary-entry" className="space-y-3">
+          {error !== null && <p data-testid="formulary-error" className="text-sm text-red-700">{error}</p>}
 
           {/*
             THE SCRAPED RECORD, rendered as TEXT. `JSON.stringify` and React's text path: a payload
@@ -515,6 +520,7 @@ export function FormularyAdmin(): React.ReactElement {
             </Button>
           </div>
         </div>
+        </Sheet>
       )}
 
       {/*
@@ -527,7 +533,7 @@ export function FormularyAdmin(): React.ReactElement {
 
       {/* ——— T8: the curation worklist — the prescribing stream IS the queue ——— */}
       {coverage.data !== null && coverage.data !== undefined && (
-        <div data-testid="formulary-coverage" className="space-y-2 rounded border p-3">
+        <div data-testid="formulary-coverage" className="ofp-card space-y-2">
           <h2 className="font-medium">{t("formularyAdmin.coverageTitle")}</h2>
           <p className="text-sm" data-testid="formulary-coverage-figure">
             {t("formularyAdmin.coverageFigure", { pct: Math.round(coverage.data.coverage * 100) })}
@@ -567,7 +573,7 @@ export function FormularyAdmin(): React.ReactElement {
 
       {/* ——— T8: which warnings are being clicked through (spec §1.4) ——— */}
       {(pairRates.data ?? []).length > 0 && (
-        <div data-testid="formulary-pairs" className="space-y-2 rounded border p-3">
+        <div data-testid="formulary-pairs" className="ofp-card space-y-2">
           <h2 className="font-medium">{t("formularyAdmin.pairsTitle")}</h2>
           <p className="text-xs text-neutral-600">{t("formularyAdmin.pairsCaveat")}</p>
           <ul className="space-y-1 text-sm">
@@ -609,7 +615,7 @@ export function FormularyAdmin(): React.ReactElement {
         answer that question, and second-guessing it here is how a full last page becomes an infinite
         list, or a short middle page becomes a truncated catalogue.
       */}
-      <div>
+      <div className="ofp-card space-y-2">
         <h2 className="font-medium">{t("formularyAdmin.stocked")}</h2>
         <Button
           type="button" variant="outline" size="sm"

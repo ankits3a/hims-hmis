@@ -301,7 +301,17 @@ export type MaterialsErrorCode =
   /** The merge's approval is not granted yet: nothing moves before it is. */
   | "item_merge_unapproved"
   /** A new use of an item that was merged into another — order, receive, level or edit the survivor instead. */
-  | "item_merged";
+  | "item_merged"
+  // ── GAP-CLOSURE A5 — the stock ledger statement ──
+  /** The statement's range or filter out of shape: a date not YYYY-MM-DD, from after to, a batch of another item. */
+  | "ledger_invalid"
+  // ── PHARMACY GAP A6b — indents (`indents.ts`) ──
+  /** No such indent. */
+  | "unknown_indent"
+  /** An indent or its issue out of shape: no lines, an item twice, a quantity not a positive whole number, one store asking itself, more issued than asked, nothing issued at all. */
+  | "invalid_indent"
+  /** The indent was already issued, rejected or cancelled — only a requested one is acted on. */
+  | "indent_closed";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
@@ -319,6 +329,7 @@ const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([
   "unknown_document", "unknown_count", "unknown_adjustment", "unknown_purchase_order",
   "unknown_supplier_bill", "unknown_payment_run",
   "unknown_supplier_return", "unknown_write_off", "unknown_recall", "unknown_item_merge",
+  "unknown_indent",
 ]);
 
 export function materialsHttpStatus(code: MaterialsErrorCode): number {
