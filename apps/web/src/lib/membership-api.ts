@@ -176,13 +176,33 @@ export function retryAfterSec(e: unknown): number | null {
 // its own: `resolveMatch` names a queue item and one of ITS OWN candidates, and the server refuses
 // any other patient. There is deliberately no "link this card to whoever I typed" call to make.
 
+/** UX-AUDIT 2026-09-28 · BOARD — one field of the card-vs-patient comparison, as the server marked it. */
+export type WireFieldMark = "agrees" | "differs" | "not_on_card" | "not_on_record";
+export type WireMatchStrength = "strong" | "possible" | "weak";
+
 export type WireMatchCandidate = {
   patientId: string;
-  /** 0..1, the server's own `similarity()` — rendered as a number a human can weigh, never a band. */
+  /**
+   * 0..1, the server's own `similarity()`. UX-AUDIT 2026-09-28 · BOARD: the owner ruled the screen
+   * shows strength in WORDS (`comparison.strength`), never this decimal; it stays on the wire because
+   * the server's band reads it.
+   */
   score: number;
   why: string;
   patientName: string;
   uhid: string;
+  dob: string | null;
+  dobEstimated: boolean;
+  sex: string | null;
+  /** `98••• ••127` — the full number never leaves the server. */
+  mobileMasked: string | null;
+  district: string | null;
+  lastVisit: { on: string; department: string | null } | null;
+  comparison: {
+    name: WireFieldMark; dob: WireFieldMark; sex: WireFieldMark; mobile: WireFieldMark;
+    agrees: number;
+    strength: WireMatchStrength;
+  };
 };
 
 export type WireMatchQueueItem = {
@@ -198,6 +218,21 @@ export type WireMatchQueueItem = {
   candidates: WireMatchCandidate[];
   note: string | null;
   at: string;
+  /** UX-AUDIT 2026-09-28 · BOARD — the card's side of the comparison. */
+  holder: {
+    subjectName: string;
+    relation: string | null;
+    mobileMasked: string | null;
+    dob: string | null;
+    sex: string | null;
+    validFrom: string;
+    validTo: string;
+    partnerName: string | null;
+    cameIn: { fileName: string; on: string } | null;
+    familyCap: number;
+    members: { memberNo: number; name: string; relation: string | null; honoured: boolean }[];
+  };
+  dismissReason: string | null;
 };
 
 /** DD9/C5 — a restore against a counter whose validity had lapsed. A FLAG, never a queue row. */
@@ -209,6 +244,12 @@ export type WireLapsedRestore = {
   benefitKey: string;
   invoiceId: string | null;
   at: string;
+  /** UX-AUDIT 2026-09-28 · BOARD — the restore in words and dates. */
+  benefitTitle: string;
+  invoiceNo: string | null;
+  cardEndedOn: string;
+  givenBackBy: string;
+  givenBackReason: string | null;
 };
 
 export type WireReconcileQueue = { items: WireMatchQueueItem[]; lapsedRestores: WireLapsedRestore[] };
@@ -217,14 +258,27 @@ export function fetchReconcileQueue(): Promise<WireReconcileQueue> {
   return api("GET", "/membership/reconcile/queue");
 }
 
-export function resolveMatchItem(body: { queueItemId: string; patientId: string; note?: string }): Promise<{
+export function resolveMatchItem(body: {
+  queueItemId: string; patientId: string; note?: string; confirmWeak?: boolean;
+}): Promise<{
   queueItemId: string; instanceId: string; patientId: string;
 }> {
   return api("POST", "/membership/reconcile/resolve", body);
 }
 
-export function dismissMatchItem(body: { queueItemId: string; note: string }): Promise<{ queueItemId: string }> {
+/** UX-AUDIT 2026-09-28 · BOARD — "None of these…"'s four answers; the server holds the same list. */
+export const DISMISS_REASONS = ["different_people", "not_registered", "partner_file_wrong", "other"] as const;
+export type WireDismissReason = (typeof DISMISS_REASONS)[number];
+
+export function dismissMatchItem(body: {
+  queueItemId: string; note?: string; reason?: WireDismissReason;
+}): Promise<{ queueItemId: string }> {
   return api("POST", "/membership/reconcile/dismiss", body);
+}
+
+/** UX-AUDIT 2026-09-28 · BOARD — "Mark checked" on a lapsed restore. */
+export function markLapsedRestoreChecked(body: { movementId: string }): Promise<{ movementId: string; checkedAt: string }> {
+  return api("POST", "/membership/reconcile/lapsed/checked", body);
 }
 
 export type WireHolderBookImport = {
