@@ -21,8 +21,9 @@ import { IMAGES_READ } from "./views";
 import { ageInYearsOn } from "./applicability";
 import type { CodedSystem } from "@hmis/contracts";
 import type { GovernedReportTemplate } from "./definitions";
-import type { SignerBlock } from "./signer";
-import type { Db } from "../../kernel/db/client";
+import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
+import type { ResidentSignature, SignerBlock } from "./signer";
+import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
 /**
@@ -85,8 +86,11 @@ export type ReadingRow = {
   targetMinutes: number;
   /** `acquired_at` + the class's target; null while the images are not in. */
   dueAt: Date | null;
-  /** The newest version's state: none, draft, prelim or signed (signed and not yet published). */
-  reportState: "none" | "draft" | "prelim" | "signed";
+  /**
+   * The newest version's state: none, draft, prelim, signed (signed and not yet published), or
+   * 18-S RS8b `awaiting_cosign` — a resident signed it and a consultant has not yet co-signed.
+   */
+  reportState: "none" | "draft" | "prelim" | "signed" | "awaiting_cosign";
   /** Derived from the image-view log (see the header); null when nobody has the study open. */
   readingBy: { userId: string; name: string; since: Date } | null;
 };
@@ -128,6 +132,7 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
   for (const v of versions) {
     if (stateOf.has(v.studyId)) continue;
     if (v.status === "signed" || v.status === "superseded" || v.status === "amended") stateOf.set(v.studyId, "signed");
+    else if (v.status === "awaiting_cosign") stateOf.set(v.studyId, "awaiting_cosign");
     else if (v.status === "prelim") stateOf.set(v.studyId, "prelim");
     else if (v.provenance === null) stateOf.set(v.studyId, "draft");
   }
@@ -149,6 +154,8 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
     if (readers.get(v.viewerId) === true) readingBy.set(v.studyId, { userId: v.viewerId, name: v.name, since: v.viewedAt });
   }
 
+  /** 18-S RS8b — a consultant sees the residents' reports waiting for them at the TOP of the one list. */
+  const consultant = await actorHoldsAnyRole(db as unknown as Tx, actor.id, ["radiologist"]);
   const out: ReadingRow[] = rows.map((r) => {
     const type = types.get(r.study.studyTypeCode);
     const tatClass = tatClassOf(r.study.priority, r.study.bedsideLocation);
@@ -173,7 +180,7 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
    * THE ONE ORDER (board: "One list, sorted — never filtered"): studies still on the table last,
    * signed-not-published after the unread, then priority, then the clock.
    */
-  out.sort((a, b) => sortKey(a) - sortKey(b) || (PRIORITY_RANK[a.priority] ?? 2) - (PRIORITY_RANK[b.priority] ?? 2)
+  out.sort((a, b) => sortKey(a, consultant) - sortKey(b, consultant) || (PRIORITY_RANK[a.priority] ?? 2) - (PRIORITY_RANK[b.priority] ?? 2)
     || (a.dueAt?.getTime() ?? Infinity) - (b.dueAt?.getTime() ?? Infinity));
 
   const reason = `reading worklist, ${String(out.length)} rows`;
@@ -183,8 +190,9 @@ export async function readingWorklist(db: Db, actor: Actor, now: Date = new Date
   return out;
 }
 
-function sortKey(r: ReadingRow): number {
+function sortKey(r: ReadingRow, consultant: boolean): number {
   if (r.acquiredAt === null) return 2;
+  if (r.reportState === "awaiting_cosign") return consultant ? -1 : 1;
   return r.reportState === "signed" ? 1 : 0;
 }
 
@@ -226,8 +234,27 @@ export type ReadingContext = {
   defaultTemplateKey: string;
   /** The newest human draft or prelim, to seed the editor; null when there is none. */
   working: { reportId: string; version: number; status: string; templateKey: string; body: Record<string, unknown>; impression: string | null; criticalCategory: string | null } | null;
-  /** The current signed version, if any, and whether it is published. */
-  signed: { reportId: string; version: number; publishedAt: Date | null } | null;
+  /**
+   * The current signed version, if any, and whether it is published. 18-S RS8b: its text too, so the
+   * Amend panel starts from what was signed.
+   */
+  signed: {
+    reportId: string; version: number; publishedAt: Date | null;
+    templateKey: string; body: Record<string, unknown>; impression: string | null; laterality: string | null;
+    criticalCategory: string | null;
+  } | null;
+  /** 18-S RS8b — a resident's signed text waiting for a consultant's co-sign. */
+  awaitingCosign: {
+    reportId: string; version: number; residentId: string | null; residentName: string; signedAt: Date | null;
+    templateKey: string; body: Record<string, unknown>; impression: string | null; criticalCategory: string | null;
+  } | null;
+  /**
+   * 18-S RS8b — who is reading, for the dock: a resident's Sign is "Sign for co-sign"; a consultant
+   * co-signs; Prelim is offered on STAT and ER (urgent) studies only (DECIDED: the prelim is the
+   * night/ER read the treating doctor acts on before the consultant's final).
+   */
+  viewer: { consultant: boolean; resident: boolean };
+  prelimAllowed: boolean;
   readingBy: ReadingRow["readingBy"];
 };
 
@@ -319,6 +346,9 @@ export async function readingContext(db: Db, actor: Actor, studyId: string, now:
     .where(eq(imagingReports.studyId, study.id)).orderBy(desc(imagingReports.version));
   const workingRow = versions.find((v) => (v.status === "draft" || v.status === "prelim") && v.provenance === null);
   const signedRow = versions.find((v) => v.status === "signed");
+  const awaitingRow = signedRow === undefined ? versions.find((v) => v.status === "awaiting_cosign") : undefined;
+  const consultant = await actorHoldsAnyRole(db as unknown as Tx, actor.id, ["radiologist"]);
+  const resident = !consultant && await actorHoldsAnyRole(db as unknown as Tx, actor.id, ["radiology_resident"]);
 
   const views = await db
     .select({ viewerId: imagingImageViews.viewerId, viewedAt: imagingImageViews.viewedAt, name: users.fullName })
@@ -363,7 +393,20 @@ export async function readingContext(db: Db, actor: Actor, studyId: string, now:
       reportId: workingRow.id, version: workingRow.version, status: workingRow.status, templateKey: workingRow.templateKey,
       body: workingRow.body as Record<string, unknown>, impression: workingRow.impression, criticalCategory: workingRow.criticalCategory,
     },
-    signed: signedRow === undefined ? null : { reportId: signedRow.id, version: signedRow.version, publishedAt: signedRow.publishedAt },
+    signed: signedRow === undefined ? null : {
+      reportId: signedRow.id, version: signedRow.version, publishedAt: signedRow.publishedAt,
+      templateKey: signedRow.templateKey, body: signedRow.body as Record<string, unknown>, impression: signedRow.impression,
+      laterality: signedRow.laterality, criticalCategory: signedRow.criticalCategory,
+    },
+    awaitingCosign: awaitingRow === undefined ? null : {
+      reportId: awaitingRow.id, version: awaitingRow.version, residentId: awaitingRow.signerId,
+      residentName: (awaitingRow.signer as ResidentSignature | null)?.name ?? "",
+      signedAt: awaitingRow.signedAt, templateKey: awaitingRow.templateKey,
+      body: awaitingRow.body as Record<string, unknown>, impression: awaitingRow.impression,
+      criticalCategory: awaitingRow.criticalCategory,
+    },
+    viewer: { consultant, resident },
+    prelimAllowed: study.priority === "stat" || study.priority === "urgent",
     readingBy,
   };
 }

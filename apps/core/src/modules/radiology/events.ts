@@ -164,6 +164,8 @@ export const imagingOutsideStudyRegistered = defineEvent("imaging.outside_study_
 export const imagingCriticalOverdue = defineEvent("imaging.critical_overdue", MODULE, z.object({
   criticalId: id, reportId: id, studyId: id,
   category: z.enum(["red", "orange", "yellow"]), overdueMin: z.number().int().positive(),
+  /** 18-S RS8b — the ladder rung the call escalated to (treating_doctor · unit_head · duty_rmo · hod). */
+  rung: z.enum(["treating_doctor", "unit_head", "duty_rmo", "hod"]).optional(),
 }));
 
 export const imagingReportUnread = defineEvent("imaging.report_unread", MODULE, z.object({

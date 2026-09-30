@@ -190,6 +190,18 @@ export const RADIOLOGY_ERROR_CODES = [
   "foetal_sex_disclosure",
   "invalid_biometry",
   /**
+   * PLAN 18-S RS8b — co-sign and the critical ladder. `cosign_required`: the study has only a
+   * resident's signature, and nothing leaves the department until a consultant co-signs it.
+   * `cosign_not_consultant` and `cosign_own_report` are about WHO is co-signing (403): only a
+   * consultant (`radiologist`) co-signs, and never a report they signed as the resident.
+   * `read_back_mismatch`: the clinician's read-back does not name the finding, so the call is not
+   * closed — the clinician repeats it again.
+   */
+  "cosign_required",
+  "cosign_not_consultant",
+  "cosign_own_report",
+  "read_back_mismatch",
+  /**
    * PLAN 18-S RS12 — the archive's inbox. `invalid_pacs_notice` is a notice the bridge sent that
    * names no Study Instance UID (or no dose, for a dose report) — the bridge's defect, not a
    * patient's. `unknown_unmatched` is a stale inbox row. `not_acquired` is an attach to a study the
@@ -313,6 +325,11 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   unknown_override_request: 404,
   foetal_sex_disclosure: 422,
   invalid_biometry: 422,
+  cosign_required: 422,
+  cosign_not_consultant: 403,
+  cosign_own_report: 403,
+  read_back_mismatch: 422,
+
   invalid_pacs_notice: 422,
   unknown_unmatched: 404,
   not_acquired: 409,

@@ -395,8 +395,13 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
 
   it("a RED critical demands a READ-BACK; an orange one is satisfied by an acknowledgement", async () => {
     const study = await acquired();
-    const { reportId } = await draft(study.studyId);
-    const signed = await sign(study.studyId, reportId);
+    /**
+     * 18-S RS8b — the read-back must NAME the finding the report states (`read_back_mismatch`), so
+     * the report this critical hangs off now states the haematoma the read-back below repeats. It
+     * used to say "No abnormality." and any words closed the call.
+     */
+    const { reportId } = await draft(study.studyId, { impression: "Large left extradural haematoma." });
+    const signed = await sign(study.studyId, reportId, { acknowledgedWarnings: ["critical_term"] });
 
     const red = await withTx(db, (tx) => flagCritical(tx, fx.radiologist, {
       reportId: signed.reportId, category: "red", communicatedTo: "dr.ward",

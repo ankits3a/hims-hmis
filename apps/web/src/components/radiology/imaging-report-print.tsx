@@ -108,6 +108,11 @@ export function ImagingReportPrint({ report }: { report: WireReportPrint }): Rea
                 {s.signature.keyId !== null ? ` · ${s.signature.keyId}` : ""}
                 {` · SHA-256 ${s.signature.contentSha256.slice(0, 12)}`}
               </p>
+              {s.draftedBy != null && (
+                <p className="text-neutral-700" data-testid="print-drafted-by">
+                  {t("radiology.read.print.draftedBy", { name: s.draftedBy.name, at: fmtIstDateTime(s.draftedBy.signedAt) })}
+                </p>
+              )}
             </>
           )}
       </footer>
