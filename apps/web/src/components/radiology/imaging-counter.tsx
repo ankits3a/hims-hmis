@@ -55,6 +55,9 @@ const REMEDY: Record<string, { to: string; key: string } | undefined> = {
   device_not_licensed: { to: "/radiology/radiation-safety", key: "radiology.counter.fix.licence" },
   device_unavailable: { to: "/radiology/diary", key: "radiology.counter.fix.down" },
   slot_taken: { to: "/radiology/diary", key: "radiology.counter.fix.diary" },
+  /** 18-S RS9b — a patient's copy held for dues is cleared at billing. */
+  report_held_for_dues: { to: "/billing/dues", key: "radiology.counter.fix.dues" },
+  release_not_authorised: { to: "/billing/dues", key: "radiology.counter.fix.dues" },
 };
 
 export function Refusal({ code, message, children, warn = false }: {

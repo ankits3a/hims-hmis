@@ -1237,38 +1237,50 @@ self-verify a statutory declaration is a single point of failure with a criminal
 it is a different decision — DD7 makes the radiologist the second clinical opinion on a gate the
 floor raised, and the override demands a reason and is evented.
 
-| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge | radiation_safety_officer | radiology_nurse |
-|---|---|---|---|---|---|---|---|
-| `radiology.orders.place` | | | ✓ | | | | |
-| `radiology.worklist.read` | ✓ | ✓ | ✓ | | | | ✓ |
-| `radiology.schedule` | | | ✓ | | | | |
-| `radiology.checkin` | | ✓ | ✓ | | | | |
-| `radiology.gates.satisfy` | | ✓ | | | | | ✓ |
-| `radiology.gates.override` | ✓ | | | | | | |
-| `radiology.acquire` | ✓ | ✓ | | | | | |
-| `radiology.reports.write` | ✓ | | | | | | |
-| `radiology.reports.sign` | ✓ | | | | | | |
-| `radiology.reports.amend` | ✓ | | | | | | |
-| `radiology.reports.read` | ✓ | ✓ | | | | | |
-| `radiology.definitions.read` | ✓ | ✓ | ✓ | | | | |
-| `radiology.definitions.manage` | ✓ | | | | | | |
-| `radiology.devices.manage` | ✓ | | | | | | |
-| `radiology.bill_decisions.manage` | | | ✓ | | | | |
-| `radiology.criticals.ack` | ✓ | | | | | | |
-| `radiology.mwl.read` | | ✓ | | | ✓ | | |
-| `radiology.display.read` | | | ✓ | | | | |
-| `radiology.pacs.interface` | | | | | ✓ | | |
-| `radiology.pacs.reconcile` | ✓ | ✓ | | | | | |
-| `radiology.contrast.record` | ✓ | ✓ | | | | | ✓ |
-| `pcpndt.registrations.manage` | | | | ✓ | | | |
-| `pcpndt.registrations.read` | ✓ | | | ✓ | | | |
-| `pcpndt.form_f.write` | ✓ | | | | | | |
-| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | | | |
-| `pcpndt.form_f.verify` | | | | ✓ | | | |
-| `aerb.registers.manage` | | | | | | ✓ | |
-| `aerb.registers.read` | | | | | | ✓ | |
-| `aerb.doses.read` | ✓ | ✓ | | | | ✓ | |
-| `aerb.incidents.read` | ✓ | | | | | ✓ | |
+| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge | radiation_safety_officer | radiology_nurse | radiology_resident |
+|---|---|---|---|---|---|---|---|---|
+| `radiology.orders.place` | | | ✓ | | | | | |
+| `radiology.worklist.read` | ✓ | ✓ | ✓ | | | | ✓ | ✓ |
+| `radiology.schedule` | | | ✓ | | | | | |
+| `radiology.checkin` | | ✓ | ✓ | | | | | |
+| `radiology.gates.satisfy` | | ✓ | | | | | ✓ | |
+| `radiology.gates.override` | ✓ | | | | | | | |
+| `radiology.acquire` | ✓ | ✓ | | | | | | |
+| `radiology.reports.write` | ✓ | | | | | | | ✓ |
+| `radiology.reports.sign` | ✓ | | | | | | | ✓ |
+| `radiology.reports.amend` | ✓ | | | | | | | |
+| `radiology.reports.read` | ✓ | ✓ | | | | | | ✓ |
+| `radiology.definitions.read` | ✓ | ✓ | ✓ | | | | | ✓ |
+| `radiology.definitions.manage` | ✓ | | | | | | | |
+| `radiology.devices.manage` | ✓ | | | | | | | |
+| `radiology.bill_decisions.manage` | | | ✓ | | | | | |
+| `radiology.criticals.ack` | ✓ | | | | | | | ✓ |
+| `radiology.mwl.read` | | ✓ | | | ✓ | | | |
+| `radiology.display.read` | | | ✓ | | | | | |
+| `radiology.pacs.interface` | | | | | ✓ | | | |
+| `radiology.pacs.reconcile` | ✓ | ✓ | | | | | | |
+| `radiology.contrast.record` | ✓ | ✓ | | | | | ✓ | |
+| `pcpndt.registrations.manage` | | | | ✓ | | | | |
+| `pcpndt.registrations.read` | ✓ | | | ✓ | | | | |
+| `pcpndt.form_f.write` | ✓ | | | | | | | |
+| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | | | | |
+| `pcpndt.form_f.verify` | | | | ✓ | | | | |
+| `aerb.registers.manage` | | | | | | ✓ | | |
+| `aerb.registers.read` | | | | | | ✓ | | |
+| `aerb.doses.read` | ✓ | ✓ | | | | ✓ | | |
+| `aerb.incidents.read` | ✓ | | | | | ✓ | | |
+
+**Plan 18-S RS8b adds the eighth column, `radiology_resident` (RS5 took the seventh), and no permission.** A DNB/MD
+resident drafts, may issue a PRELIM to the treating doctor for ER/STAT work, and telephones and closes
+a critical call, so the role holds `radiology.reports.write`, `.read`, `.sign`, `radiology.criticals.ack`,
+`radiology.worklist.read` and `radiology.definitions.read`. It holds `.sign` so that it can reach the
+signature at all — **a resident's signature is `awaiting_cosign`, never `signed`**, and
+`publishReport` refuses `cosign_required` until a `radiologist` co-signs under their own second factor
+(`cosignReport`, which also refuses the resident co-signing their own). That separation is enforced on
+ROLE KEYS in `reports.ts`, the way the workflow engine separates the gate: withholding a permission
+could not have expressed "may sign, but not finally". The resident holds NO `radiology.reports.amend`
+(an amendment is a consultant's signed correction), NO `radiology.gates.override` and NO
+`pcpndt.form_f.write`.
 
 **Plan 18c T1 adds the sixth column and the last three rows.** The AERB registers are their own
 module (`aerb`) for the reason `pcpndt` is: the cath lab and radiation oncology owe an equipment

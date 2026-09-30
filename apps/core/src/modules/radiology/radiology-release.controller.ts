@@ -8,6 +8,7 @@ import { IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_ID_TYPES, IMAGING_COLLECTOR_K
 import { doctorReadBack, doctorResultsInbox, markActedUpon } from "./closed-loop";
 import { northStar } from "./north-star";
 import { handOverReport, markMediaPrinted, releaseRegister, requestMedia } from "./release";
+import { requestUnpaidRelease } from "./held";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -29,7 +30,10 @@ import type { Db } from "../../kernel/db/client";
  *
  * The desk's release register, on `radiology.schedule` — the imaging desk's own grant:
  *   · `GET  /radiology/release`, `POST /radiology/studies/:id/media`,
- *     `POST /radiology/media/:id/printed`, `POST /radiology/reports/:id/handover`.
+ *     `POST /radiology/media/:id/printed`, `POST /radiology/reports/:id/handover`;
+ *   · 18-S RS9b: `POST /radiology/reports/:id/release-unpaid` — the desk ASKS the owner to release a
+ *     copy held for dues (reason required). The owner decides in the approvals inbox; the hand-over
+ *     that follows spends the grant. Only the owner releases (credit ruling 28 Sep).
  */
 const actedBody = z.object({
   outcome: z.enum(IMAGING_ACTED_OUTCOMES),
@@ -46,6 +50,7 @@ const handoverBody = z.object({
   mediaRequestIds: z.array(idSchema).max(20).optional(),
   note: z.string().max(300).nullable().optional(),
 }).strict();
+const releaseUnpaidBody = z.object({ reason: z.string().max(500) }).strict();
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 @Controller("radiology")
@@ -117,6 +122,16 @@ export class RadiologyReleaseController {
     parsed(idSchema, requestId);
     try {
       return await withTx(this.db, (tx) => markMediaPrinted(tx, actor, { requestId }));
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("reports/:reportId/release-unpaid")
+  @RequirePermission("radiology.schedule", "hospital")
+  async releaseUnpaid(@CurrentActor() actor: Actor, @Param("reportId") reportId: string, @Body() body: unknown): Promise<unknown> {
+    parsed(idSchema, reportId);
+    const input = parsed(releaseUnpaidBody, body);
+    try {
+      return await withTx(this.db, (tx) => requestUnpaidRelease(tx, actor, { reportId, reason: input.reason }));
     } catch (e) { toHttp(e); }
   }
 

@@ -248,7 +248,7 @@ describe("walk-in retail sales (P19)", () => {
     });
     await grantPermissionToRole(db, fx.registry, "pharmacy", "pharmacy.register.read");
     const register = await h1Register(db, fx.pharmacist.actor, { from: "2026-08-17", to: "2026-08-17" });
-    expect(register.rows).toEqual([expect.objectContaining({ source: "walk_in", prescriberAddress: RX.prescriberAddress, drugName: "Azee 500 500 mg tablet" })]);
+    expect(register.rows).toEqual([expect.objectContaining({ source: "walk_in", prescriberAddress: RX.prescriberAddress, drugName: "Azee 500 tablet" })]);
   });
 
   it("never sells Schedule X, an expired batch, more than the batch holds, or to a customer recorded allergic", async () => {

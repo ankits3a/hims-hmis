@@ -56,6 +56,7 @@ describe("MaterialsTransfers", () => {
     mockRoutes({
       "GET /api/auth/me": me(["materials.stock.read", "materials.stock.issue", "materials.items.read"]),
       "GET /api/materials/stores": { stores: STORES },
+      "GET /api/materials/indents": { indents: [] },
       "GET /api/materials/transfers/worklist": { awaiting: [], recent: [] },
       "GET /api/materials/items": { items: [CROCIN] },
       "GET /api/materials/stock/balances": { balances: [
@@ -65,6 +66,8 @@ describe("MaterialsTransfers", () => {
       "POST /api/materials/transfers": { transferId: "01TRANSFER0000000000NEW001", lines: [{ transferLineId: "l9", batchId: "b1", qtyIssued: 100 }] },
     });
     renderWithProviders(<MaterialsTransfers />);
+    // B5 — sending is a sheet over the lists, opened by the page's one "new" act.
+    await userEvent.click(await screen.findByRole("button", { name: "Send stock" }));
     const send = await screen.findByTestId("transfer-send");
     await userEvent.selectOptions(within(send).getByRole("combobox", { name: "From" }), "s-main");
     await userEvent.selectOptions(within(send).getByRole("combobox", { name: "To" }), "s-retail");
@@ -92,6 +95,7 @@ describe("MaterialsTransfers", () => {
     mockRoutes({
       "GET /api/auth/me": me(["materials.stock.read", "materials.stock.receive"]),
       "GET /api/materials/stores": { stores: STORES },
+      "GET /api/materials/indents": { indents: [] },
       "GET /api/materials/transfers/worklist": { awaiting: [INBOUND], recent: [INBOUND, SHORT] },
       "POST /api/materials/transfers/01TRANSFER0000000000ABC123/receive": () => {
         tries += 1;
@@ -128,6 +132,7 @@ describe("MaterialsTransfers", () => {
     mockRoutes({
       "GET /api/auth/me": me(["materials.stock.read"]),
       "GET /api/materials/stores": { stores: STORES },
+      "GET /api/materials/indents": { indents: [] },
       "GET /api/materials/transfers/worklist": { awaiting: [], recent: [] },
     });
     renderWithProviders(<MaterialsTransfers />);

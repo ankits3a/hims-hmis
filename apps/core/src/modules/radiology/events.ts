@@ -164,6 +164,8 @@ export const imagingOutsideStudyRegistered = defineEvent("imaging.outside_study_
 export const imagingCriticalOverdue = defineEvent("imaging.critical_overdue", MODULE, z.object({
   criticalId: id, reportId: id, studyId: id,
   category: z.enum(["red", "orange", "yellow"]), overdueMin: z.number().int().positive(),
+  /** 18-S RS8b — the ladder rung the call escalated to (treating_doctor · unit_head · duty_rmo · hod). */
+  rung: z.enum(["treating_doctor", "unit_head", "duty_rmo", "hod"]).optional(),
 }));
 
 export const imagingReportUnread = defineEvent("imaging.report_unread", MODULE, z.object({
@@ -268,6 +270,16 @@ export const imagingMediaRequested = defineEvent("imaging.media_requested", MODU
   requestId: id, studyId: id, kind: z.enum(IMAGING_MEDIA_KINDS), quantity: z.number().int().positive(), included: z.boolean(),
 }));
 
+/**
+ * 18-S RS9b — a HELD patient copy left the window on the owner's granted release. The audit of the
+ * decision itself is the approval (requester, reason, the owner's note); this is the fact that the
+ * grant was USED, and how much was still due when it was. The dues stay on the account.
+ */
+export const imagingReportReleasedUnpaid = defineEvent("imaging.report_released_unpaid", MODULE, z.object({
+  handoverId: id, reportId: id, studyId: id, approvalId: id,
+  outstandingPaise: z.number().int().nonnegative(),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -291,4 +303,5 @@ export const RADIOLOGY_EVENTS = [
   imagingReportActedUpon,
   imagingReportHandedOver,
   imagingMediaRequested,
+  imagingReportReleasedUnpaid,
 ] as const;

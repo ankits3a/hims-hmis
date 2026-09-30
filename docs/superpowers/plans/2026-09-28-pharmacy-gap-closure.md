@@ -142,6 +142,75 @@ nothing is the owner setting `creditCapPaise` to 0 in `/billing/config`. Then ev
 though still from the billing manager until step 1 lands. The lab reflex path, which passes no approval, would
 then refuse. So this stop is NOT applied until step 2 is in.
 
+## A6b — indents (as built)
+
+Lane `pharmacy-a6-indent`. Migration **0155** (generated as 0152; renumbered at merge after A5 0152, radiology 0153 and the desk split 0154) (`store_indents`, `store_indent_lines`, plus hand-carried guard
+triggers). No new permission: `seed-roles` pins do not move.
+
+DECIDED (standard Indian-corporate-hospital answer):
+- An indent is a sub-store (ward, OT, pharmacy counter) asking a supplying store for stock, in base units. It moves
+  nothing. The supplying store **issues** it as one ordinary transfer (`issueStock`: FEFO, through `IN-TRANSIT`),
+  which the indent records, or **rejects** it with a reason. The requester may **cancel** it, with a reason, while it
+  is still requested. The receiving side receives the transfer through the existing receipt, unchanged.
+- States: `requested → issued | rejected | cancelled`, once. `issued` ⇔ a transfer is linked. A rejection and a
+  cancellation each carry their reason. The header and lines are immutable apart from that one decision, and a line's
+  `qty_issued` is set once (DB triggers). Neither is ever deleted.
+- Issue quantities: a line defaults to the asked quantity capped at what the supplying store has available now. The
+  keeper may lower any line, even to 0, but may not raise it above what was asked. The indent must carry at least one
+  unit. More than the shelf holds is the transfer's own refusal (`insufficient_stock`).
+- One item appears once per indent, whole quantities above zero, and the two stores must differ.
+- Numbering: `EPISODE_SERIES.store_indent` = `MIN` (`MIN2609290001`).
+- Who may: raise and cancel need `materials.stock.receive`, and issue and reject need `materials.stock.issue`. Reads
+  need `materials.stock.read`. A store that names `custodianRoles` is acted for only by holders of one of those roles:
+  the requesting store's keepers raise and cancel, and the supplying store's keepers issue and reject. This is the same
+  rule as `receiveStock` and the tray restock.
+- Errors: `unknown_indent` (404), `invalid_indent` (409, not 400: `errors.test.ts` pins the module to 403/404/409, and
+  every other `*_invalid` code in the module is a 409), `indent_closed` (409). An empty reason is the module's
+  existing `reason_required`, and a non-keeper is the existing `not_store_keeper`.
+- Events: `material.indent_raised`, `material.indent_issued`, `material.indent_rejected` and
+  `material.indent_cancelled`, one per act, each in the act's transaction.
+- HTTP (`materials-indents.controller.ts`): `GET /materials/indents`, `GET /materials/indents/:id`,
+  `POST /materials/indents`, and `POST /materials/indents/:id/{issue,reject,cancel}`.
+- Screen: an **Indents** section at the top of Transfers & indents (`/materials/transfers`). It shows open indents
+  with Issue and Reject for the supplying side and Cancel for the requester. Raise, Issue, Reject and Cancel each open
+  as a sheet. The issue sheet starts each line at the asked quantity and shows the shelf. Answered indents are listed
+  with their transfer or their reason. There are no filter tabs.
+
+## A6a — rack and strip labels (as built 2026-09-29, lane `pharmacy-a6-labels`)
+
+DECIDED (standard Indian-corporate-hospital answer; the owner may overturn):
+
+- **One sticker size, 50 × 25 mm**, on the pharmacy's own barcode label printer (TSC / Zebra / TVS class). It is a
+  new logical print destination, `pharmacy_label`, next to the 72 mm `pharmacy_thermal` bill roll. Each sticker is
+  one 50 × 25 mm page. A relay operator maps the destination to the printer's queue
+  (`tools/print-relay/README.md`).
+- **Two documents**:
+  - `pharmacy_rack_label`, for the shelf edge: the rack location large, the item name, and the code with the store.
+  - `pharmacy_strip_label`, for a loose strip cut from its box: the item name (up to three lines so the strength
+    survives), the batch, **EXP MM/YYYY** in bold, and the MRP per pack from the books.
+  - Both carry an 18 mm QR.
+- **The QR is an in-house payload**, not GS1, because there is no GTIN to encode:
+  - a rack label says `HMIS1|<itemCode>`;
+  - a strip label says `HMIS1|<itemCode>|<batchNo>|<packUom>`.
+  - The desk's pick scan (`scan.ts`) reads it as that item and batch. The expiry comes from the books, so there is
+    no printed-expiry cross-check.
+- **Refused before anything prints** (`invalid_label`):
+  - a rack label for an item with no rack in that store;
+  - a strip label without a batch of that item;
+  - a strip label for a batch with no MRP on the books (a loose strip is sold at its MRP);
+  - a pack the item does not have;
+  - more than 500 stickers in one print.
+- **Permission**: `pharmacy.sale_items.manage`, the same one that sets the rack (`PUT /pharmacy/items/:id/location`).
+  No new permission.
+- **Screen**: Office → Items → "Rack & strip labels" (the Menu artboard's "new (A6)" entry).
+  - One list per store: item, rack, rack-label copies, and each held batch with its strip-label copies.
+  - Two print buttons, and no tabs.
+  - With no relay serving the label printer, the stickers print from the browser.
+- **No migration**: `print_jobs.document` is plain text.
+
+A6b (indent: a sub-store or OT asks the central store; issued as a transfer) is still to come. It is a separate PR
+and carries the migration.
+
 ## Stage D — pharmacy safety (added 2026-09-28 from hmis-10's Healthray re-review; built in lane `pharmacy-safety` by hmis-10)
 
 **Owner ruling, 2026-09-28, verbatim:** "IPD, Emergency, Insurance/TPA, Blood Bank, Dailysis, Immunisation, Ambulance,
@@ -165,3 +234,30 @@ answer, DECIDED.
 - **Standard numbers:** confirm the NABH 5th edition MOM numbers from the text before quoting them in any screen or print.
 - **Migrations:** each D PR takes the next free number at rebase, and pharmacy-safety tells this lane before each rebase.
 - **"Needs you" rows:** D rows join `GET /pharmacy/office/needs` (`pharmacy/office-needs.ts`, B2 #349) as new sources, after #349 merges.
+
+## Desk fixes (2026-09-30)
+
+Lane `pharmacy-desk-fixes`, from the end-to-end walk of 2026-09-29 (the owner dispenses to real patients from 2026-09-30).
+
+- **DECIDED — a pick splits a line FEFO across batches.** Standard Indian hospital practice: when the first-to-expire
+  batch cannot cover a line, the pick takes the rest from the next batches of the same item in the counter's store
+  (for a controlled drug, the cabinet), earliest expiry first, as many as it takes. Every per-batch guard is the one the
+  single-batch pick had (`fefoPick` → `sellableBatchRows`: held here, not recalled, not expired, net of reservations and
+  cold-chain/recall freezes; `handOverDispense` re-asks expiry per line at the act). Only more than all the batches hold
+  is `short_stock` (a partial with a reason). A NAMED batch (`batchId`, or a GS1 scan's batch) is still one batch.
+- **How: one extra dispense line per extra batch, made at the pick.** The prescription's line keeps the first batch; each
+  further batch is a NEW `pharmacy_dispense_lines` row with the same rx line, medicine, schedule, NDPS class and
+  substitution/consent, its own reservation, no order item, and `split_from_line_idx` = the line it came from (migration
+  `0154_pharmacy_split_pick`, one nullable column, additive). Chosen over a child "line batches" table because every
+  downstream reader — reservation release/expiry sweep, bill (`priceLines`), hand-over (consume, H1 and controlled
+  registers), label, returns, refund, closing — already works one row per line, so each gets one row per batch with no
+  change. What had to know: `dispense.picked` carries `splitFrom`; the day summary does not count a split row as a
+  picked line; closing counts prescription lines; the desk draws a split inside its prescription line (`parts`), the
+  ticket header counts prescription lines, and the tick-time advice says `split` / `short_all` instead of "one batch per line".
+- **Bill rail follows a quantity edit before the tick; a paid ticket shows what was taken plus the rounding** (read off
+  the invoice through `/closing`, `roundingPaise` added). Rounding is not recomputed — that is an open owner money ruling.
+- **Near-expiry approval card** names the GRN, supplier, invoice/challan and each short-dated line (batch, expiry, days
+  left, quantity) via `GET /materials/grns/:id/near-expiry`; the supplier bank-change card names the supplier and the
+  masked old → new account.
+- **H1 register drug name** no longer repeats a strength the brand carries ("Azee 500 tablet"). Rows already written keep
+  their text (the register copies at write time).

@@ -22,13 +22,20 @@ export {
   imagingStudyDefinition, imagingGateDefinition,
 } from "./workflow-def";
 export {
-  IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, IMAGING_GATE_OVERRIDE_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES,
+  IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, IMAGING_GATE_OVERRIDE_APPROVAL_TYPE, IMAGING_RELEASE_UNPAID_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES,
   registerRadiologyApprovalTypes,
 } from "./approval-types";
 export {
   RADIOLOGY_ORDER_PLACED_CONSUMER, handleOrderPlaced, orderPlacedConsumer,
 } from "./consumers";
 export type { CreatedStudy, OrderPlacedPayload } from "./consumers";
+/** 18-S RS9b T2 — the "report ready" message for a bill paid after release. */
+export {
+  RADIOLOGY_READY_ON_PAYMENT_CONSUMER, READY_ON_PAYMENT_EVENTS, handleSettlementEvent, readyOnPaymentConsumer,
+} from "./ready-on-payment";
+/** 18-S RS9b T1 — the patient's copy held for dues; the owner's unpaid release. */
+export { assertPatientCopyReleasable, patientCopyHold, requestUnpaidRelease } from "./held";
+export type { HoldRelease, PatientCopyHold } from "./held";
 export {
   COMPLETED_VISIT_GRACE_DAYS, DUPLICATE_WINDOW_HOURS, addImagingViews, placeImagingOrder,
 } from "./place";
@@ -77,7 +84,7 @@ export {
 export type { EgfrAssessment, RenalBand } from "./egfr";
 export { ROOM_GATE_KINDS, isRoomGate, prepBayList, prepStudyView } from "./prep-bay";
 export type { PrepBayRow, PrepGate, PrepStudyView } from "./prep-bay";
-export { decideGateOverride, gateOverrideRequests, requestGateOverride } from "./override-requests";
+export { applyGrantedGateOverride, decideGateOverride, gateOverrideRequests, requestGateOverride } from "./override-requests";
 export type { GateOverrideDecision, GateOverrideRequest } from "./override-requests";
 export {
   LATE_ENTRY_MINUTES, abortAcquisition, recordAcquired, resolveStudyInstanceUid, startAcquisition,
@@ -122,6 +129,13 @@ export { dryRunPreSign } from "./reports";
 export type { SignChecksRecord } from "./reports";
 export { signedContentDigest, signerSnapshot } from "./signer";
 export type { SignerBlock } from "./signer";
+// 18-S RS8b — co-sign (the resident signs, the consultant co-signs) and the critical-call ladder.
+export { CONSULTANT_ROLE, RESIDENT_ROLE, cosignReport, signsAsResident } from "./reports";
+export {
+  ACKNOWLEDGED_LOG_HOURS, CRITICAL_RUNG_ROLES, criticalCallBoard, readBackNamesFinding, recordCallAttempt,
+} from "./critical-ladder";
+export type { CriticalCallView, LadderRungView } from "./critical-ladder";
+export type { ResidentSignature } from "./signer";
 export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
 export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
 export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
@@ -170,3 +184,15 @@ export { isTreatingDoctor, treatingDoctorsOf } from "./closed-loop";
 export type { InboxRow, TreatingDoctors } from "./closed-loop";
 export { NORTH_STAR_SOURCES, northStar } from "./north-star";
 export type { NorthStar, NorthStarRow, NorthStarSource } from "./north-star";
+// 18-S RS10 — the HOD's escalations on the kernel obligation spine, and the inbox-grant consumer.
+export {
+  ESCALATION_SPECS, IMAGING_ESCALATION_CAUSES, RADIOLOGY_ESCALATION_DEFINITIONS, ensureEscalationDefinitions,
+  escalationCauses, escalationList, sweepImagingEscalations,
+} from "./escalations";
+export type { EscalationCauseRow, EscalationListRow, ImagingEscalationCause } from "./escalations";
+export { RADIOLOGY_APPROVAL_GRANTED_CONSUMER, approvalGrantedConsumer } from "./approval-consumer";
+export {
+  supervisorAccessLog, supervisorApprovals, supervisorEquipment, supervisorFloor, supervisorMoney, supervisorQuality,
+  supervisorRoster,
+} from "./supervisor";
+export type { SupervisorFloor } from "./supervisor";

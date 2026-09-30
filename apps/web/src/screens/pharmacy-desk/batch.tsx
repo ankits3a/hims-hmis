@@ -22,15 +22,30 @@ function Shelf({ where, testId }: { where: string; testId?: string }): React.Rea
   );
 }
 
-export function BatchChip({ line, tick, onOpen }: { line: WireDispenseLine; tick: Tick | undefined; onOpen: (() => void) | null }): React.ReactElement | null {
+export function BatchChip({ line, parts = [], tick, onOpen }: {
+  line: WireDispenseLine;
+  /** DESK FIXES 2026-09-30 — the further batches the pick split this line into. */
+  parts?: readonly WireDispenseLine[];
+  tick: Tick | undefined;
+  onOpen: (() => void) | null;
+}): React.ReactElement | null {
   const { t } = useTranslation();
   const id = `desk-line-${String(line.lineIdx)}`;
-  /* Collected: the batch it was GIVEN from, as a fact, not a choice. */
+  /* Collected: the batch it was GIVEN from, as a fact, not a choice — every batch, when the pick split it. */
   if (line.pickedBatch != null) {
+    const split = parts.filter((p) => p.pickedBatch != null);
     return (
-      <span className="bchip static" data-testid={`${id}-batch`}>
+      <span className="bchip static" data-testid={`${id}-batch`} style={split.length === 0 ? undefined : { flexWrap: "wrap" }}>
         <span className={line.fefoOverride ? "pill gd" : "pill on"}>{line.fefoOverride ? t("pharmacyDesk.batch.later") : t("pharmacyDesk.batch.given")}</span>
-        <span className="mo">{t("pharmacyDesk.givenFrom", { batch: line.pickedBatch.batchNo, expiry: expiryLabel(line.pickedBatch.expiryDate) })}</span>
+        <span className="mo">
+          {t("pharmacyDesk.givenFrom", { batch: line.pickedBatch.batchNo, expiry: expiryLabel(line.pickedBatch.expiryDate) })}
+          {split.length === 0 || line.qtyBase === null ? null : ` × ${String(line.qtyBase)}`}
+        </span>
+        {split.map((p) => (
+          <span key={p.lineIdx} className="mo" data-testid={`${id}-batch-part`}>
+            {t("pharmacyDesk.givenAlsoFrom", { batch: p.pickedBatch!.batchNo, expiry: expiryLabel(p.pickedBatch!.expiryDate), n: p.qtyBase ?? 0 })}
+          </span>
+        ))}
         {line.location == null ? null : <Shelf where={line.location} testId={`${id}-where`} />}
       </span>
     );

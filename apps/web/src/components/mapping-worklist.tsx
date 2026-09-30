@@ -60,80 +60,112 @@ function useDebounced(value: string): string {
   return settled;
 }
 
+/**
+ * ═══ GAP-CLOSURE B5 — ONE LIST, GROUPED; NO STATUS TABS ═══
+ *
+ * The three decision states were tabs. The owner's rule for every list in the office is one list with
+ * no filter tabs (`lab-screens-layout-rule`), so they are now three groups of one list: what is
+ * waiting for a decision, open, first — that is the sitting's work — and the decided ones, mapped
+ * and not a moiety, folded under it and fetched only when opened (a decided substance is looked at
+ * to correct it, which is rare). The search runs over every group. The server is still asked for one
+ * state at a time, exactly as before; nothing about a decision changed.
+ */
 export function MappingWorklist(): React.ReactElement {
   const { t } = useTranslation();
-  const [status, setStatus] = useState<WireSubstanceStatus>("pending");
   const [query, setQuery] = useState("");
   const asked = useDebounced(query);
   const [done, setDone] = useState<string | null>(null);
+  const [opened, setOpened] = useState<Record<"mapped" | "unmappable", boolean>>({ mapped: false, unmappable: false });
 
   const q = asked.length >= MIN_QUERY ? asked : "";
-  const list = useInfiniteQuery({
-    queryKey: ["formulary", "substances", status, q],
-    queryFn: ({ pageParam }) => fetchWorklistPage({ status, q, limit: PAGE, cursor: pageParam }),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => last.nextCursor,
-  });
-  const items = (list.data?.pages ?? []).flatMap((p) => p.items);
+  const find = (name: string): void => { setQuery(name); setDone(null); };
 
-  const statuses: WireSubstanceStatus[] = ["pending", "mapped", "unmappable"];
   return (
     <section data-testid="mapping-worklist" className="space-y-3 rounded border p-3">
       <h2 className="font-medium">{t("formularyAdmin.mapping.title")}</h2>
       <p className="max-w-3xl text-sm text-neutral-600">{t("formularyAdmin.mapping.intro")}</p>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label={t("formularyAdmin.mapping.statusLabel")} className="flex gap-1">
-          {statuses.map((s) => (
-            <Button
-              key={s} type="button" size="sm" role="tab"
-              variant={s === status ? "default" : "outline"}
-              aria-selected={s === status}
-              data-testid={`mapping-status-${s}`}
-              onClick={() => { setStatus(s); setDone(null); }}
-            >
-              {t(`formularyAdmin.mapping.status.${s}`)}
-            </Button>
-          ))}
-        </div>
-        <label className="sr-only" htmlFor="mapping-search">{t("formularyAdmin.mapping.searchLabel")}</label>
-        <input
-          id="mapping-search" data-testid="mapping-search" value={query} autoComplete="off"
-          placeholder={t("formularyAdmin.mapping.searchPlaceholder")}
-          onChange={(e) => { setQuery(e.target.value); }}
-          className="w-full max-w-xs rounded border px-2 py-1 text-sm"
-        />
-      </div>
+      <label className="sr-only" htmlFor="mapping-search">{t("formularyAdmin.mapping.searchLabel")}</label>
+      <input
+        id="mapping-search" data-testid="mapping-search" value={query} autoComplete="off"
+        placeholder={t("formularyAdmin.mapping.searchPlaceholder")}
+        onChange={(e) => { setQuery(e.target.value); }}
+        className="w-full max-w-xs rounded border px-2 py-1 text-sm"
+      />
 
       {done !== null && <p data-testid="mapping-done" role="status" className="text-sm text-emerald-700">{done}</p>}
 
-      {list.isPending
+      <StatusGroup status="pending" q={q} open onDecided={setDone} onFind={find} />
+      {(["mapped", "unmappable"] as const).map((st) => (
+        <StatusGroup
+          key={st} status={st} q={q} open={opened[st]} onDecided={setDone} onFind={find}
+          onToggle={() => { setOpened((o) => ({ ...o, [st]: !o[st] })); setDone(null); }}
+        />
+      ))}
+    </section>
+  );
+}
+
+/**
+ * One decision state of the one list. The waiting group is always open; a decided group has a
+ * disclosure, and its rows are not fetched until it is opened. The waiting group keeps the
+ * worklist's original test ids; the decided ones carry their state in theirs.
+ */
+function StatusGroup({ status, q, open, onToggle, onDecided, onFind }: {
+  status: WireSubstanceStatus; q: string; open: boolean; onToggle?: () => void;
+  onDecided: (text: string) => void; onFind: (name: string) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const suffix = status === "pending" ? "" : `-${status}`;
+  const list = useInfiniteQuery({
+    queryKey: ["formulary", "substances", status, q],
+    queryFn: ({ pageParam }) => fetchWorklistPage({ status, q, limit: PAGE, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    enabled: open,
+  });
+  const items = (list.data?.pages ?? []).flatMap((p) => p.items);
+  const label = t(`formularyAdmin.mapping.status.${status}`);
+
+  return (
+    <div className="space-y-2 border-t pt-3" data-testid={`mapping-group-${status}`}>
+      {onToggle === undefined
+        ? <h3 className="text-sm font-medium">{label}</h3>
+        : (
+          <button
+            type="button" className="text-sm font-medium" aria-expanded={open}
+            data-testid={`mapping-open-${status}`} onClick={onToggle}
+          >
+            {open ? "▾" : "▸"} {label}
+          </button>
+        )}
+      {open && (list.isPending
         ? <p className="text-sm text-neutral-600">{t("formularyAdmin.mapping.loading")}</p>
         : list.isError
           /* A failed load must not read as "nothing to do". */
-          ? <p data-testid="mapping-load-error" role="alert" className="text-sm text-red-700">{formularyErrorMessage(list.error)}</p>
+          ? <p data-testid={`mapping-load-error${suffix}`} role="alert" className="text-sm text-red-700">{formularyErrorMessage(list.error)}</p>
           : items.length === 0
-            ? <p data-testid="mapping-empty" className="text-sm text-neutral-600">{t(`formularyAdmin.mapping.empty.${status}`)}</p>
+            ? <p data-testid={`mapping-empty${suffix}`} className="text-sm text-neutral-600">{t(`formularyAdmin.mapping.empty.${status}`)}</p>
             : (
               <ul className="space-y-3">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <SubstanceCard item={item} onDecided={setDone} onFind={(name) => { setQuery(name); setDone(null); }} />
+                    <SubstanceCard item={item} onDecided={onDecided} onFind={onFind} />
                   </li>
                 ))}
               </ul>
-            )}
+            ))}
 
-      {list.hasNextPage && (
+      {open && list.hasNextPage && (
         <Button
-          type="button" variant="outline" size="sm" data-testid="mapping-more"
+          type="button" variant="outline" size="sm" data-testid={`mapping-more${suffix}`}
           disabled={list.isFetchingNextPage}
           onClick={() => { void list.fetchNextPage(); }}
         >
           {list.isFetchingNextPage ? t("formularyAdmin.mapping.loading") : t("formularyAdmin.mapping.more")}
         </Button>
       )}
-    </section>
+    </div>
   );
 }
 

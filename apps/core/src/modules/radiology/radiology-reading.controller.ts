@@ -2,6 +2,7 @@ import { Controller, Get, Inject, Param } from "@nestjs/common";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { readingContext, readingWorklist, reportPrintView } from "./reading";
+import { criticalCallBoard } from "./critical-ladder";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -28,6 +29,18 @@ export class RadiologyReadingController {
   async study(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
     try {
       return { study: await readingContext(this.db, actor, parsed(idSchema, studyId)) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 18-S RS8b — the Critical calls view: open calls with their ladder, and the last 48 hours'
+   * acknowledged log. `radiology.criticals.ack` — the people who make and close the calls.
+   */
+  @Get("reading/criticals")
+  @RequirePermission("radiology.criticals.ack", "hospital")
+  async criticals(@CurrentActor() actor: Actor): Promise<unknown> {
+    try {
+      return await criticalCallBoard(this.db, actor);
     } catch (e) { toHttp(e); }
   }
 

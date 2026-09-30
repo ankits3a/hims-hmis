@@ -1788,6 +1788,32 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.antimicrobial.approve",
     ],
   },
+  /**
+   * PLAN 18-S RS8b — THE RADIOLOGY RESIDENT (DNB/MD trainee), appended. DECIDED, the Indian
+   * teaching-hospital standard: a resident drafts, may issue a PRELIM to the treating doctor for
+   * ER/STAT work, telephones and closes a critical call — and a FINAL report needs a consultant's
+   * co-sign. So the role holds `radiology.reports.sign`, and `signReport` turns a resident's
+   * signature into `awaiting_cosign` (never `signed`), which `publishReport` refuses with
+   * `cosign_required` until a `radiologist` co-signs under their own second factor. The separation
+   * is enforced on ROLE KEYS in `reports.ts` (`signsAsResident`, `cosignReport`), not on this
+   * list — the resident needs `.sign` to reach the route at all.
+   *
+   * **NOT `radiology.reports.amend`** (an amendment is a consultant's signed correction), **NOT
+   * `radiology.gates.override`** (the second clinical opinion on a gate is the consultant's) and
+   * **NOT `radiology.definitions.manage` or `pcpndt.form_f.write`** (the books and the statutory
+   * declaration are the consultant's). No holders at seed time: residents are rostered by the HOD.
+   */
+  {
+    roleKey: "radiology_resident",
+    permissions: [
+      "radiology.worklist.read",
+      "radiology.reports.write",
+      "radiology.reports.sign",
+      "radiology.reports.read",
+      "radiology.criticals.ack",
+      "radiology.definitions.read",
+    ],
+  },
 ];
 
 /**
@@ -2041,6 +2067,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   pharmacy_incharge: "Pharmacist in Charge (held with pharmacy; the unredacted H1 register for the inspector)",
   // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
   antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
+  // 18-S RS8b — the title names the separation: the resident's signature is not a final report.
+  radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

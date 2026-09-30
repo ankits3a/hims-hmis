@@ -629,3 +629,183 @@ ask for a film on an X-ray (first sheet `included = true`), mark printed, hand o
 one `imaging_report_handovers` row, one `imaging.report_handed_over` event (collector type only),
 the media row carries the hand-over id. `GET /radiology/north-star` shows the study with an
 order → acted time.
+
+### 15a. Release — the patient's copy held for dues, the owner's unpaid release, the late "ready" message (18-S RS9b)
+
+**Migration `0153_radiology_release_unpaid`** (additive): `imaging_report_handovers.release_approval_id`
+(nullable text) and a unique partial index on it. **One new approval type,
+`imaging_release_unpaid_owner`** (approver **owner**, urgent, 60 minutes, no act-first) — it is
+registered by `pnpm seed:radiology` (`registerRadiologyApprovalTypes`, idempotent — types already
+registered are left alone), so re-run that seed once after deploy. No permission or role change. **One new worker consumer,
+`radiology.report_ready_on_payment`** (on `payment.received` and `credit_note.issued`): restart the
+worker after deploy; its cursor is seeded at the current event, so it does not replay old payments.
+
+**The rule (DECIDED under the owner's delegation, the lab's rule 12 as the owner superseded it on 28 Sep).**
+- **The doctor's copy is never held for money** — the consult's results list, the full report, the
+  read-back and the reading room are untouched.
+- **The patient's copy is held while the study's bill has dues:** the hand-over at the window, and any
+  film or CD collected with it. Held means **self-pay, a billed line, the invoice not settled**. Not
+  held: ER/STAT (the bill follows), day-care and ward bedside studies (the running bill), TPA /
+  corporate / PMJAY (the payer is billed), and a study with no line at all (the counter's
+  *acquired, unbilled* bill decision owns that one).
+- **Released unpaid only by the owner.** Releasing a report before the money is credit, and the
+  owner's credit ruling of 28 Sep reserves every credit to him. The billing manager cannot release it.
+  **The dues stay on the account** — nothing is written off.
+
+**At the desk (`/radiology/reports`).** A held row reads **"Held for dues ₹N"**; opening it shows the
+bill number, *Collect at billing* (→ `/billing/dues`) and "the doctor's copy is not held". *Hand over*
+waits. When the patient pays at billing, reload — the hold is gone. If the patient cannot pay today:
+*Ask the owner to release unpaid*, write why (4+ characters) → `POST /radiology/reports/:id/release-unpaid`
+files the approval (the amount and the reason travel with it; asking twice returns the same request).
+The owner decides in **Approvals** (`/approvals`, "Hand over an unpaid imaging report"). The row then
+reads *Asked the owner at HH:MM* (waiting — the hand-over refuses `release_not_authorised`),
+*The owner did not release it unpaid: …* (collect at billing), or *The owner released this report
+unpaid — hand it over*. The hand-over **spends** the grant (`release_approval_id`, unique) and appends
+`imaging.report_released_unpaid` (hand-over, report, approval, the amount still due). A second
+hand-over of the same study (an amended version, say) needs a second decision.
+
+**The "report ready" message when the bill is paid later.** Publishing still queues
+`imaging_report_ready` only when the bill is settled (or the report is RED). When the patient pays
+after release, the worker's `radiology.report_ready_on_payment` re-reads the invoice; once it is
+**settled** it queues the message for the current released version of each imaging study on that
+bill. The dedupe key is per report version (`imaging_report_ready:<reportId>`), so it is queued
+**exactly once** whichever path runs first; a part-payment queues nothing; a STOP or a deceased
+patient is suppressed at send, as on the publish path. Rows are queued, never claimed sent, until
+the WhatsApp/SMS provider is live.
+
+**A relative's ID (type + last four) recorded at hand-over is part of the medical record** and is
+kept for the record's retention period — no separate deletion schedule (DECIDED; masked last-four
+is the lawful minimum, and the hand-over row is the hospital's evidence of who took the report).
+
+**Verify once.** Bill a routine self-pay study on the counter without taking the money; publish its
+report. At the desk the row reads *Held for dues ₹N*; *Hand over* refuses `report_held_for_dues`
+naming the amount; the doctor still opens the report from the consult. Ask the owner; as the owner,
+grant it in Approvals; hand over → `imaging_report_handovers.release_approval_id` is the approval,
+one `imaging.report_released_unpaid` event, the invoice is still unpaid. On a second such study,
+take the full payment at billing after publishing → within one worker cycle, one
+`notifications` row with `dedupe_key = 'imaging_report_ready:<reportId>'`; take nothing else and
+nothing more is queued.
+
+## 16. The Supervisor & HOD station (18-S RS10)
+
+**No migration, no new permission, no seed-roles change.** The station is `/radiology/hod` (menu
+*Supervisor & HOD*), reached by `radiology.definitions.manage` — the department head's books grant,
+held by `radiologist` only (a resident does not hold it). Eight header views: Floor · Escalated ·
+Approvals · Quality · Equipment · Roster · Money · Access log.
+
+**Step 1 — switch the escalations on (once per deployment).** Re-run the radiology seed:
+
+```
+pnpm seed:radiology      # idempotent: what exists is left alone (§2)
+```
+
+It now also activates eight class-C workflow definitions, `imaging_esc_stat_unread`,
+`_held_study`, `_red_critical`, `_machine_down`, `_licence_gap`, `_bill_decision_stale`,
+`_abnormal_unopened`, `_unmatched_pacs` (class C needs no governance approval — the approval-flow precedent). Until they
+are active the station still LISTS each cause but tells nobody, and says so in a gold banner
+("Escalations are not switched on for …"). Check: `select def_key from workflow_definitions where
+def_key like 'imaging_esc_%' and status = 'active'` → eight rows.
+
+**Step 2 — the worker job.** `sweepImagingEscalations` runs every minute in the worker (job 24;
+Prometheus leg 1a + an `absent()` term). Each cycle: a cause with no open obligation → start one; an
+obligation whose cause cleared → `resolved`, timers cancelled. Nothing else writes these instances.
+
+| Cause | Raised when | First told (rung 0, 1 %) | Budget → medical superintendent | Closed by |
+|---|---|---|---|---|
+| STAT unread | STAT, images in > 15 min, no prelim or signed report | radiologists | 15 min | a prelim or signature |
+| Held at a gate | checked in > 30 min with a gate open | radiologists | 30 min | the gates closed / study moves on |
+| Red critical | red, not read back, past the `critical_categories` red window (no book: once the chaser marked it) | radiologists | 15 min | the read-back |
+| Machine out of service | `down` or `qa_blocked` | radiologists | 60 min | back to `available` |
+| Licence gap | no AERB licence covering today AND a study booked on the machine | RSO (50 %: radiologists) | 60 min | licence filed / bookings moved |
+| Bill decision stale | open > 24 h | billing manager | 4 h → radiologists | resolved at the desk |
+| Abnormal unopened | a critical-category report released > 24 h, first read not stamped | radiologists | 60 min | the treating doctor opens it (or the hand-over, for an outside study) |
+| Unmatched images | an archive study (RS12 inbox) open > 24 h | technologists | 4 h → radiologists | attached or rejected in *Unmatched images* |
+
+Who "radiologists" are is the roster's answer: a `roster_escalation_targets` row for
+`workflow.timer_rung` narrows it to whoever is on; without one it is every holder of the role. Nobody
+holding a rung → the duty managers → the owners (the spine's own fallback).
+
+**Acting on one (the HOD).** Escalated view → the item in hand → *Seen*, *Take it on* (15 min – 4 h),
+or *Hand over to* a named person. These are the kernel alert acts: seen / take-it-on stop the
+reminder clock, never the ladder; hand-over stops nothing. The docked act (Enter) opens the seat
+that fixes the cause. The escalation closes itself at the next sweep after the seat's act.
+
+**Approvals.** Pending `imaging_gate_override` requests are granted or refused here with a reason
+(the same route as the study console). **A grant made in the hospital's `/approvals` inbox now
+applies the override by itself** (the worker's `radiology.approval_granted` consumer): no second
+press at radiology. A never-override kind (Form F, the side) stays refused; a reason containing a
+PCPNDT term is not applied — the gate stays open and the bay sees it. `imaging_definition_publish`
+is the medical superintendent's (link to the inbox). Bill decisions are listed read-only — the desk
+and billing manager resolve them.
+
+**Verify once.** (1) Mark a machine `down` in Setup → within a minute the HOD's Escalated view shows
+it, and every radiologist's bell has an *Escalation: imaging_esc_machine_down · open · rung 0*
+alert; put the machine back → the row goes at the next minute. (2) File an override request from the
+prep bay, grant it from `/approvals` → the gate is overridden without opening radiology.
+(3) Open any study's images → the Access log shows who, their role, the patient and the accession.
+
+---
+
+## 17. The reading room, part 2 — co-sign, prelim, amend, the critical-call ladder (18-S RS8b)
+
+**Migration** `0156_radiology_cosign_ladder` (number taken at rebase): two report statuses
+(`awaiting_cosign`, `cosigned`) with one-waiting-per-study as an index, `ladder_rung` and
+`chase_windows` on `imaging_critical_findings`, and the insert-only `imaging_critical_call_attempts`
+(one row per telephone call). Nothing to seed.
+
+**Residents (co-sign).** `seed:roles` creates `radiology_resident` with no holders. Assign it at
+`/admin/users` to each DNB/MD resident — **not** together with `radiologist` (a user holding both is
+a consultant, and signs final reports). A resident:
+- drafts, and may **Issue prelim** on STAT and ER (urgent) studies — the treating doctor reads it
+  with the banner "PRELIMINARY — final report follows"; a prelim is never published;
+- signs with **Sign for co-sign**: the checks run and the resident's second factor is taken, and the
+  version is stored `awaiting_cosign`. **Nothing is released.** Publishing it is refused
+  `cosign_required`;
+- telephones and closes critical calls (a red finding the resident signs is raised at once — the
+  call does not wait for the co-sign).
+
+A consultant (`radiologist`) sees the study at the TOP of the reading list as **Awaiting
+consultant**; opening it shows the resident's text, the checks (the consultant ticks any warning in
+their own name) and the dock **Co-sign and publish**, under the consultant's own second factor. The
+signed version's signer block is the consultant's, and carries `draftedBy` (the resident, their
+signature instant and content hash); the print adds "Drafted by … (resident); co-signed by the
+consultant above". Refusals: `cosign_not_consultant` (a non-consultant), `cosign_own_report` (the
+resident, later made a consultant, co-signing their own), `stale_state` (another consultant
+co-signed first). To change the text, the consultant writes and signs their own version instead —
+that supersedes the resident's.
+
+**Amend.** Reading room → a signed study → **Amend**: a reason code (Addendum · Correction of
+laterality · Correction of measurement · Clinical information received · Other), one line saying
+what changed, the corrected findings and impression, then **Sign the amendment** under the second
+factor. The checks run as at Sign. The stored reason reads "<reason>: <note>". If the report had
+been published, the amendment is published at once and the patient's "report ready" message is
+re-sent (the existing path — settlement still gates the message, a red critical does not wait).
+Residents hold no amendment.
+
+**The critical-call ladder** (Reading room → header **Critical calls**, `?view=criticals`;
+`radiology.criticals.ack`). Rungs, in order: **treating doctor** (the order's clinician, by name) →
+**unit head** (roster position `unit_head`) → **duty RMO** (roster position `casualty_mo`) → **HOD**
+(the `medical_superintendent` role's holders). The two roster rungs show names only when a roster is
+PUBLISHED and `ROSTER_RESOLVER_ENABLED=true`; otherwise they show the role and the radiologist types
+who they rang. Per call: **Call the <rung>** opens two outcomes — **No answer** (moves the call one
+rung up; the HOD is the top) or **Answered** (opens the read-back). The call closes ONLY on
+**Close with read-back**, naming the clinician (a person with an HMIS account) and what they said;
+a read-back that does not name the finding (no word of the impression, or the critical term
+negated — "no pneumothorax") is refused `read_back_mismatch`, and the doctor's own read-back from
+their results inbox meets the same rule. The **chaser** (every 60 s) escalates one rung per tier
+window from the `critical_categories` book — red 15 min → unit head, 30 → duty RMO, 45 → HOD, at
+most three `imaging.critical_overdue` events per call, each naming the rung. Closed calls stay in
+the **Closed in the last 48 hours** log.
+
+**Form F before the scan (PCPNDT).** `startAcquisition` now refuses a PCPNDT-applicable study whose
+Form F is only OPEN (`form_f_missing`): record the form (the woman's declaration and the doctor's)
+before pressing Start. The USG room already does this in that order; the general room console and
+the portable round now meet the same refusal.
+
+**Verify once.** Assign `radiology_resident` to a test user. As them, sign a STAT chest film with
+a "pneumothorax" impression flagged red: the dock said **Sign for co-sign**, and
+`select status from imaging_reports where study_id = '<id>' order by version desc limit 1` is
+`awaiting_cosign`; the Critical calls view lists the call at "Treating doctor". Record **No answer**
+— the call moves to "Unit head". As a radiologist, the study is first in the list; **Co-sign and
+publish**. Back on Critical calls, **Answered** → type "noted" → refused `read_back_mismatch`; type
+"left pneumothorax" → the call moves to the 48-hour log.

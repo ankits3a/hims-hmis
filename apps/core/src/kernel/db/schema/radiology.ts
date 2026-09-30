@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, jsonb, numeric, pgTable, smallint, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { invoiceLines } from "./billing";
 import { orderItems, orders } from "./orders";
@@ -109,8 +109,27 @@ export const IMAGING_GATE_KIND_VALUES = [
  */
 export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels", "imaging_protocols", "report_templates", "report_signatories"] as const;
 
-/** DD15 — the report version chain's five states. `prelim` is O-11's UNVERIFIED draft. */
-export const IMAGING_REPORT_STATUSES = ["prelim", "draft", "signed", "amended", "superseded"] as const;
+/**
+ * DD15 — the report version chain's states. `prelim` is O-11's UNVERIFIED draft.
+ *
+ * 18-S RS8b — `awaiting_cosign` is a RESIDENT's signature: the checks ran and the text is final in
+ * the resident's hands, but it is not the hospital's report until a consultant co-signs. It is
+ * never publishable (`cosign_required`). When the consultant co-signs, a `signed` version is
+ * inserted and the resident's row flips to `cosigned` (status is the one column the append-only
+ * trigger lets change).
+ */
+export const IMAGING_REPORT_STATUSES = [
+  "prelim", "draft", "signed", "amended", "superseded", "awaiting_cosign", "cosigned",
+] as const;
+
+/**
+ * 18-S RS8b — the critical-call ladder's four rungs, in order (board: treating doctor → unit head →
+ * duty RMO → HOD). Index = `imaging_critical_findings.ladder_rung`.
+ */
+export const IMAGING_CRITICAL_RUNGS = ["treating_doctor", "unit_head", "duty_rmo", "hod"] as const;
+
+/** 18-S RS8b — what one call on the ladder came to. `read_back_ok` is written by `acknowledgeCritical`. */
+export const IMAGING_CALL_OUTCOMES = ["no_answer", "answered", "read_back_ok"] as const;
 
 /** The three-tier criticality the radiologist assigns. `red` is the one that pages a human. */
 export const IMAGING_CRITICAL_CATEGORIES = ["red", "orange", "yellow"] as const;
@@ -128,6 +147,8 @@ export type ImagingGateKind = (typeof IMAGING_GATE_KIND_VALUES)[number];
 export type ImagingDefinitionKind = (typeof IMAGING_DEFINITION_KIND_VALUES)[number];
 export type ImagingReportStatus = (typeof IMAGING_REPORT_STATUSES)[number];
 export type ImagingCriticalCategory = (typeof IMAGING_CRITICAL_CATEGORIES)[number];
+export type ImagingCriticalRung = (typeof IMAGING_CRITICAL_RUNGS)[number];
+export type ImagingCallOutcome = (typeof IMAGING_CALL_OUTCOMES)[number];
 export type ImagingBillDecisionKind = (typeof IMAGING_BILL_DECISION_KINDS)[number];
 
 /**
@@ -482,6 +503,8 @@ export const imagingReports = pgTable(
     uniqueIndex("imaging_reports_study_version_ux").on(t.studyId, t.version),
     /** B10, as an index. See the table header. */
     uniqueIndex("imaging_reports_one_signed_ux").on(t.studyId).where(sql`${t.status} = 'signed'`),
+    /** 18-S RS8b — one resident signature waiting for a consultant per study, as an index. */
+    uniqueIndex("imaging_reports_one_awaiting_ux").on(t.studyId).where(sql`${t.status} = 'awaiting_cosign'`),
     index("imaging_reports_study_idx").on(t.studyId),
     check("imaging_reports_status_ck", inList(t.status, IMAGING_REPORT_STATUSES)),
     check("imaging_reports_version_ck", sql`${t.version} > 0`),
@@ -561,9 +584,19 @@ export const imagingCriticalFindings = pgTable(
      * chased finding is exactly as unacknowledged as it was a minute earlier.
      */
     chasedAt: timestamp("chased_at", { withTimezone: true }),
+    /**
+     * 18-S RS8b — THE RUNG THE CALL HAS REACHED (0 treating doctor · 1 unit head · 2 duty RMO ·
+     * 3 HOD, `IMAGING_CRITICAL_RUNGS`). It only climbs: a "no answer" on the current rung moves it
+     * one up, and the chaser moves it to the number of the tier's windows that have passed. It is
+     * WHO TO CALL NEXT, never whether the call is closed — `acknowledged_at` alone says that.
+     */
+    ladderRung: smallint("ladder_rung").notNull().default(0),
+    /** 18-S RS8b — how many of the tier's windows the chaser has already escalated (0–3). */
+    chaseWindows: smallint("chase_windows").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    check("imaging_critical_findings_rung_ck", sql`${t.ladderRung} between 0 and 3 and ${t.chaseWindows} between 0 and 3`),
     index("imaging_critical_findings_report_idx").on(t.reportId),
     /** The chaser's own query: everything unacknowledged and unchased, oldest first. */
     index("imaging_critical_findings_chase_idx")
@@ -574,6 +607,36 @@ export const imagingCriticalFindings = pgTable(
       "imaging_critical_findings_ack_ck",
       sql`(${t.acknowledgedBy} is null) = (${t.acknowledgedAt} is null)`,
     ),
+  ],
+);
+
+/**
+ * ═══ 18-S RS8b — THE CALLS MADE ON A CRITICAL, ONE ROW PER CALL ═══
+ *
+ * The board's ladder: the radiologist rings the treating doctor; no answer moves the call to the
+ * unit head, then the duty RMO, then the HOD; the call closes only on a read-back that names the
+ * finding. Each ring is a row — who was rung (a user where the roster names one, else the name the
+ * radiologist typed), on which rung, what came of it, who recorded it and when. Insert-only: the
+ * history of a critical call is what an incident review reads, so nothing here is ever updated.
+ */
+export const imagingCriticalCallAttempts = pgTable(
+  "imaging_critical_call_attempts",
+  {
+    id: text("id").primaryKey(),
+    criticalId: text("critical_id").notNull().references(() => imagingCriticalFindings.id),
+    rung: smallint("rung").notNull(),
+    calledUserId: text("called_user_id"),
+    calledName: text("called_name"),
+    outcome: text("outcome").notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("imaging_critical_call_attempts_critical_idx").on(t.criticalId, t.at),
+    check("imaging_critical_call_attempts_rung_ck", sql`${t.rung} between 0 and 3`),
+    check("imaging_critical_call_attempts_outcome_ck", inList(t.outcome, IMAGING_CALL_OUTCOMES)),
+    /** A call is to somebody: a user, or a name typed off the phone. */
+    check("imaging_critical_call_attempts_callee_ck", sql`${t.calledUserId} is not null or ${t.calledName} is not null`),
   ],
 );
 
@@ -1150,10 +1213,18 @@ export const imagingReportHandovers = pgTable(
     note: text("note"),
     handedBy: text("handed_by").notNull(),
     handedAt: timestamp("handed_at", { withTimezone: true }).notNull(),
+    /**
+     * 18-S RS9b — the GRANTED `imaging_release_unpaid_owner` approval this hand-over spent, when the
+     * patient's copy was held for dues and the owner released it unpaid. Plain text — approvals are
+     * another module. UNIQUE: one grant releases one hand-over (the lab's M8 rule), so a second
+     * hand-over under the same grant fails at the database as well as in `handOverReport`.
+     */
+    releaseApprovalId: text("release_approval_id"),
   },
   (t) => [
     index("imaging_report_handovers_study_idx").on(t.studyId, t.handedAt),
     index("imaging_report_handovers_report_idx").on(t.reportId),
+    uniqueIndex("imaging_report_handovers_release_ux").on(t.releaseApprovalId).where(sql`${t.releaseApprovalId} is not null`),
     check("imaging_report_handovers_kind_ck", inList(t.collectorKind, IMAGING_COLLECTOR_KINDS)),
     check(
       "imaging_report_handovers_id_type_ck",

@@ -38,6 +38,7 @@ import type { Db } from "../../kernel/db/client";
 import type { DocumentStore } from "../../kernel/documents/store";
 import type { KitSheet } from "../../kernel/ops/downtime-kit";
 import type { MedicineWithSalts } from "../formulary";
+import { registerDrugName } from "./drug-name";
 import type { StoreRow } from "../materials";
 import type { RxCheckOutcome, RxLine } from "../opd";
 import type { RegisterPatientInput } from "../patients";
@@ -412,9 +413,9 @@ async function planLines(db: Db, storeId: string, lines: readonly RetailLineInpu
   return plan;
 }
 
-/** "Azee 500 500 mg tablet": what the register and the bill call a medicine. */
+/** "Azee 500 tablet": what the register and the bill call a medicine — the strength once (`drug-name.ts`). */
 function drugNameOf(m: MedicineWithSalts | undefined): string | undefined {
-  return m === undefined ? undefined : `${m.brandName}${m.strengthLabel === null ? "" : ` ${m.strengthLabel}`} ${m.form}`;
+  return m === undefined ? undefined : registerDrugName(m, m.brandName);
 }
 
 function checkLinesOf(plan: readonly PlannedLine[]): RxLine[] {

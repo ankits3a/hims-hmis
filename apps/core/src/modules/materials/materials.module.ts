@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { MaterialsController } from "./materials.controller";
+import { MaterialsIndentsController } from "./materials-indents.controller";
 
 /**
  * The materials module.
@@ -11,7 +12,8 @@ import { MaterialsController } from "./materials.controller";
  *
  * T2 shipped the module SEAM — the manifest, the kind, the permissions, the events, the errors and
  * the seed — with NO controller, deliberately: the routes land when there are functions behind
- * them. **T8 mounts the controller**, and it is the only change this file has ever needed.
+ * them. **T8 mounts the controller**, and it is the only change this file has ever needed — until
+ * pharmacy gap A6b mounted the indent's own (`materials-indents.controller.ts`) beside it.
  */
-@Module({ controllers: [MaterialsController] })
+@Module({ controllers: [MaterialsController, MaterialsIndentsController] })
 export class MaterialsModule {}

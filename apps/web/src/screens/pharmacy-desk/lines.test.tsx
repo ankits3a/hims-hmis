@@ -89,15 +89,55 @@ describe("the line rules, pure (PD-4)", () => {
     const soon = { batchId: "soon", batchNo: "PAN-NEAR", expiryDate: addDays(TODAY, 12), available: 20 };
     const late = { batchId: "late", batchNo: "PAN-FRESH", expiryDate: "2028-09-19", available: 200 };
     const l = lineOf(0, { drug: "Pan 40", qtyBase: 30, batches: [soon, late], rxLine: { drug: "Pan 40", dose: "1 tab", route: "oral", frequency: "1-0-0", durationDays: 30, instructions: null, noSubstitution: false } });
-    expect(adviceFor(l, 30, TODAY, null)).toEqual({ kind: "first_short", batch: soon, better: late });
+    // DESK FIXES 2026-09-30 — 30 is split across both batches now, and the first still dies inside the course
+    expect(adviceFor(l, 30, TODAY, null)).toEqual({ kind: "dies_in_course", batch: soon, better: late });
+    expect(adviceFor(l, 30, TODAY, "soon")).toEqual({ kind: "first_short", batch: soon, better: late }); // a NAMED batch is one batch
     expect(adviceFor(l, 10, TODAY, null)).toEqual({ kind: "dies_in_course", batch: soon, better: late });
     expect(adviceFor(l, 10, TODAY, "late")).toEqual({ kind: "ok", batch: late });
+  });
+  it("DESK FIXES 2026-09-30 — a quantity the first batch cannot cover is split FEFO across the batches; only more than all of them is short", () => {
+    const a = { batchId: "a", batchNo: "AZ-1", expiryDate: "2028-01-31", available: 6 };
+    const b = { batchId: "b", batchNo: "AZ-2", expiryDate: "2028-06-30", available: 10 };
+    const l = lineOf(0, { drug: "Azee 500", qtyBase: 10, batches: [a, b] });
+    expect(adviceFor(l, 10, TODAY, null)).toEqual({ kind: "split", parts: [{ batch: a, qty: 6 }, { batch: b, qty: 4 }] });
+    expect(adviceFor(l, 20, TODAY, null)).toEqual({ kind: "short_all", batch: a, available: 16 });
+    expect(adviceFor(l, 5, TODAY, null)).toEqual({ kind: "ok", batch: a });
   });
 });
 
 describe("the line list at the window (PD-4)", () => {
   beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); });
   afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("DESK FIXES 2026-09-30 — a line the shelf fills from two batches says so before the tick, and after the pick shows ONE row with both batches", async () => {
+    const a = { batchId: "a", batchNo: "AZ-1", expiryDate: "2028-01-31", available: 6 };
+    const b = { batchId: "b", batchNo: "AZ-2", expiryDate: "2028-06-30", available: 10 };
+    const open = [lineOf(0, { drug: "Azee 500", qtyBase: 10, batches: [a, b], available: 16 })];
+    let current = dispense("claimed", open);
+    mockRoutes(base(() => current, {
+      "POST /api/pharmacy/dispenses/d1/verify": () => { current = dispense("verified", open); return { status: 201, body: current }; },
+      "POST /api/pharmacy/dispenses/d1/pick": () => {
+        current = dispense("picked", [
+          { ...open[0]!, batches: [], batchId: "a", qtyBase: 6, pickedBatch: { batchNo: "AZ-1", expiryDate: "2028-01-31" } },
+          { ...open[0]!, lineIdx: 1, splitFromLineIdx: 0, batches: [], batchId: "b", qtyBase: 4, pickedBatch: { batchNo: "AZ-2", expiryDate: "2028-06-30" } },
+        ]);
+        return { status: 201, body: current };
+      },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const row = await screen.findByTestId("desk-line-0");
+    expect(within(row).getByTestId("desk-line-0-advice")).toHaveTextContent("from 2 batches: AZ-1 × 6 · AZ-2 × 4");
+    const tick = within(row).getByRole("checkbox");
+    expect(tick).toBeEnabled(); // no partial, no reason: the next batch holds the rest
+    await userEvent.click(tick);
+    await waitFor(() => expect(posted("/pick")).toEqual([{ lines: [{ lineIdx: 0 }] }]));
+    const batch = await screen.findByTestId("desk-line-0-batch");
+    expect(batch).toHaveTextContent("AZ-1");
+    expect(batch).toHaveTextContent("AZ-2");
+    expect(screen.queryByTestId("desk-line-1")).toBeNull(); // the split is the same prescription line, not a second one
+    expect(screen.getByTestId("desk-line-0-qty")).toHaveTextContent("10");
+    expect(screen.getByTestId("desk-settled")).toHaveTextContent("1 of 1 settled");
+  });
 
   it("the LAST tick checks and collects — verify at the prescribed quantities, then pick — and there is no verify button", async () => {
     const lines = [lineOf(0, { drug: "Mox 500" }), lineOf(1, { drug: "Cetzine 10", qtyBase: 5 })];
