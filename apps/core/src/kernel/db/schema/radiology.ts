@@ -106,8 +106,11 @@ export const IMAGING_GATE_KIND_VALUES = [
  * their coded categories) and `report_signatories` (who may sign an imaging report, with the
  * qualification and council number the print carries — ruling 4). Both are authored by the HOD and
  * approved by the medical superintendent; neither is seeded active.
+ *
+ * 18-S RS8c adds `teleradiology` — the contracted night-read provider (ruling 7): its DPA, and the
+ * NMC-registered radiologists who read for it, each a named HMIS user whose reports are PRELIM only.
  */
-export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels", "imaging_protocols", "report_templates", "report_signatories"] as const;
+export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings", "dose_reference_levels", "imaging_protocols", "report_templates", "report_signatories", "teleradiology"] as const;
 
 /**
  * DD15 — the report version chain's states. `prelim` is O-11's UNVERIFIED draft.
@@ -1407,5 +1410,209 @@ export const imagingIrCases = pgTable(
       sql`(${t.handoff} is null and ${t.handoffBy} is null and ${t.handoffAt} is null)
           or (${t.handoff} is not null and ${t.handoffBy} is not null and ${t.handoffAt} is not null and ${t.noteAt} is not null)`,
     ),
+  ],
+);
+
+/* ═══════════════════════════════ 18-S RS8c — the reading room, part 3 ═══════════════════════════════ */
+
+/**
+ * Where a follow-up recommendation came from: a coded category whose system carries an imaging
+ * interval (BI-RADS 3, ACR TI-RADS "follow up", LI-RADS 3/4, Lung-RADS 3/4A, Fleischner 2017), or the
+ * radiologist's own "recommend follow-up" (`other`).
+ */
+export const IMAGING_FOLLOWUP_SOURCES = ["birads", "tirads", "lirads", "lungrads", "fleischner", "other"] as const;
+export const IMAGING_FOLLOWUP_STATES = ["open", "notified", "booked", "closed"] as const;
+/** How the treating doctor / patient was told (the WhatsApp adapter is not on main: nothing is SENT from here). */
+export const IMAGING_FOLLOWUP_CHANNELS = ["letter", "phone", "in_person"] as const;
+/** A row closes with a reason — never by being forgotten (the board's six). */
+export const IMAGING_FOLLOWUP_CLOSE_REASONS = [
+  "done_here", "done_elsewhere", "clinician_declines", "patient_declines", "patient_died", "withdrawn_by_amendment",
+] as const;
+
+/**
+ * ═══ 18-S RS8c T1 — THE FOLLOW-UP TRACKER (plan gap 5) ═══
+ *
+ * A recommendation in a signed report ("BI-RADS 3 — short-interval follow-up at 6 months",
+ * "Fleischner: CT at 6–12 months") used to end at the print. Each one now becomes a row with a due
+ * day and a state: open → notified (the doctor/patient told, by letter, phone or in person) → booked
+ * (a NEW imaging order placed through `placeImagingOrder` under the treating doctor) → closed with a
+ * reason. The row is opened AT THE SIGNATURE, in its transaction, from the signed body — the report
+ * is the record of what was recommended; this is what happened to it.
+ *
+ * `overdue_at` is a record that the daily sweep escalated the row once (the chasers' mark rule), not
+ * a state: an overdue row is exactly as open as it was the day before.
+ */
+export const imagingFollowups = pgTable(
+  "imaging_followups",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    /** The signed version that carried the recommendation. */
+    reportId: text("report_id").notNull().references(() => imagingReports.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    source: text("source").notNull(),
+    /** What the report recommends, in its words ("CT at 6–12 months, then CT at 18–24 months."). */
+    recommendation: text("recommendation").notNull(),
+    /** The interval the due day was counted from, as words ("6 months", "6 weeks"). */
+    intervalLabel: text("interval_label").notNull(),
+    /** The IST calendar day it is due (the signed day + the interval's EARLIEST bound). */
+    dueOn: date("due_on").notNull(),
+    state: text("state").notNull().default("open"),
+    overdueAt: timestamp("overdue_at", { withTimezone: true }),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    notifiedBy: text("notified_by"),
+    notifiedChannel: text("notified_channel"),
+    notifiedNote: text("notified_note"),
+    bookedOrderId: text("booked_order_id").references(() => orders.id),
+    bookedOrderNo: text("booked_order_no"),
+    bookedAt: timestamp("booked_at", { withTimezone: true }),
+    bookedBy: text("booked_by"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedBy: text("closed_by"),
+    closeReason: text("close_reason"),
+    closeNote: text("close_note"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /** One row per recommendation source per signed version: a re-run of the hook opens nothing twice. */
+    uniqueIndex("imaging_followups_report_source_ux").on(t.reportId, t.source),
+    index("imaging_followups_state_due_idx").on(t.state, t.dueOn),
+    index("imaging_followups_patient_idx").on(t.patientId),
+    index("imaging_followups_booked_order_idx").on(t.bookedOrderId),
+    check("imaging_followups_source_ck", inList(t.source, IMAGING_FOLLOWUP_SOURCES)),
+    check("imaging_followups_state_ck", inList(t.state, IMAGING_FOLLOWUP_STATES)),
+    check("imaging_followups_recommendation_ck", sql`char_length(btrim(${t.recommendation})) >= 3`),
+    /** A notice is a person, an instant and a channel — all or none. */
+    check(
+      "imaging_followups_notified_ck",
+      sql`(${t.notifiedAt} is null) = (${t.notifiedBy} is null) and (${t.notifiedAt} is null) = (${t.notifiedChannel} is null)
+          and (${t.notifiedChannel} is null or ${inList(t.notifiedChannel, IMAGING_FOLLOWUP_CHANNELS)})`,
+    ),
+    /** A booking names its order, who booked and when — all or none; `booked` has one. */
+    check(
+      "imaging_followups_booked_ck",
+      sql`(${t.bookedOrderId} is null) = (${t.bookedAt} is null) and (${t.bookedOrderId} is null) = (${t.bookedBy} is null)
+          and (${t.state} <> 'booked' or ${t.bookedOrderId} is not null)`,
+    ),
+    /** Closed ⇔ a person, an instant and a reason from the six. */
+    check(
+      "imaging_followups_closed_ck",
+      sql`(${t.state} = 'closed') = (${t.closedAt} is not null) and (${t.closedAt} is null) = (${t.closedBy} is null)
+          and (${t.closedAt} is null) = (${t.closeReason} is null)
+          and (${t.closeReason} is null or ${inList(t.closeReason, IMAGING_FOLLOWUP_CLOSE_REASONS)})`,
+    ),
+    check("imaging_followups_notified_state_ck", sql`${t.state} <> 'notified' or ${t.notifiedAt} is not null`),
+  ],
+);
+
+/** RADPEER (ACR): 1 concur; 2–4 discrepancy, a = unlikely / b = likely clinically significant. */
+export const IMAGING_PEER_SCORES = ["1", "2a", "2b", "3a", "3b", "4a", "4b"] as const;
+/** Why a report is in the review pool: the monthly random sample, an amendment, a night over-read discrepancy. */
+export const IMAGING_PEER_TRIGGERS = ["random", "amendment", "overread_discrepancy"] as const;
+export const IMAGING_PEER_STATES = ["open", "scored"] as const;
+
+/**
+ * ═══ 18-S RS8c T2 — PEER REVIEW (RADPEER), BLIND ═══
+ *
+ * A random 3 % of each reader's first signatures per IST month (at least one), plus every amended
+ * version and every night prelim a consultant over-read as discrepant. `reader_id` is the person
+ * whose words are scored; it is stored so the aggregate can be per reader and the reviewer can be
+ * refused their own — and it is NEVER sent to the reviewer (the case read carries no name). The
+ * CHECK repeats the rule the code enforces: nobody scores their own report.
+ */
+export const imagingPeerReviews = pgTable(
+  "imaging_peer_reviews",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    /** The version under review (a signed/superseded version, or a night prelim). */
+    reportId: text("report_id").notNull().references(() => imagingReports.id),
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    readerId: text("reader_id").notNull(),
+    trigger: text("trigger").notNull(),
+    /** `YYYY-MM` (IST) for the random sample; null for a triggered case. */
+    sampleMonth: text("sample_month"),
+    state: text("state").notNull().default("open"),
+    reviewerId: text("reviewer_id"),
+    score: text("score"),
+    learningCase: boolean("learning_case").notNull().default(false),
+    note: text("note"),
+    scoredAt: timestamp("scored_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("imaging_peer_reviews_report_trigger_ux").on(t.reportId, t.trigger),
+    index("imaging_peer_reviews_state_idx").on(t.state, t.createdAt),
+    index("imaging_peer_reviews_reader_idx").on(t.readerId, t.scoredAt),
+    check("imaging_peer_reviews_trigger_ck", inList(t.trigger, IMAGING_PEER_TRIGGERS)),
+    check("imaging_peer_reviews_state_ck", inList(t.state, IMAGING_PEER_STATES)),
+    /** `inList` admits snake_case only; RADPEER's scores start with a digit, so the list is literal (and pinned to the const by a test). */
+    check("imaging_peer_reviews_score_ck", sql`${t.score} is null or ${t.score} in ('1', '2a', '2b', '3a', '3b', '4a', '4b')`),
+    check("imaging_peer_reviews_month_ck", sql`(${t.trigger} = 'random') = (${t.sampleMonth} is not null) and (${t.sampleMonth} is null or ${t.sampleMonth} ~ '^[0-9]{4}-[0-9]{2}$')`),
+    /** Scored ⇔ a reviewer, a score and an instant. */
+    check(
+      "imaging_peer_reviews_scored_ck",
+      sql`(${t.state} = 'scored') = (${t.reviewerId} is not null) and (${t.state} = 'scored') = (${t.score} is not null)
+          and (${t.state} = 'scored') = (${t.scoredAt} is not null)`,
+    ),
+    /** Nobody scores their own report. */
+    check("imaging_peer_reviews_not_own_ck", sql`${t.reviewerId} is null or ${t.reviewerId} <> ${t.readerId}`),
+    /** A discrepancy says what it was. */
+    check("imaging_peer_reviews_note_ck", sql`${t.score} is null or ${t.score} = '1' or char_length(btrim(coalesce(${t.note}, ''))) >= 4`),
+  ],
+);
+
+export const IMAGING_TELE_STATES = ["awaiting", "concur", "minor", "major"] as const;
+
+/**
+ * ═══ 18-S RS8c T3 — NIGHT READS: THE OVER-READ QUEUE AND THE DISCREPANCY LOG (ruling 7) ═══
+ *
+ * One row per PRELIM saved by a teleradiology reader (a person the active `teleradiology` book
+ * lists, with their NMC number, under a provider with a DPA). The provider, the reader's name and
+ * NMC number are SNAPSHOTS: the log answers "who read this at 02:10" even after the book changes.
+ * The morning consultant's over-read closes it — concur, minor or major discrepancy — and names the
+ * signed version that became the hospital's report. The reader never signs (`tele_reader_prelim_only`).
+ * No money: the provider's per-read fee is a payable under the contract (RS12 note), not built.
+ */
+export const imagingTeleReads = pgTable(
+  "imaging_tele_reads",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    prelimReportId: text("prelim_report_id").notNull().references(() => imagingReports.id),
+    providerKey: text("provider_key").notNull(),
+    providerName: text("provider_name").notNull(),
+    readerId: text("reader_id").notNull(),
+    readerName: text("reader_name").notNull(),
+    readerNmcNo: text("reader_nmc_no").notNull(),
+    priority: text("priority").notNull(),
+    /** Ruling 7: 30 minutes for STAT, 60 for urgent; null (no clock) for a routine study. */
+    targetMinutes: integer("target_minutes"),
+    /** The clock's start: the images (the study's `acquired_at`). */
+    imagesAt: timestamp("images_at", { withTimezone: true }),
+    prelimAt: timestamp("prelim_at", { withTimezone: true }).notNull(),
+    state: text("state").notNull().default("awaiting"),
+    overreadBy: text("overread_by"),
+    overreadAt: timestamp("overread_at", { withTimezone: true }),
+    overreadNote: text("overread_note"),
+    finalReportId: text("final_report_id").references(() => imagingReports.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("imaging_tele_reads_prelim_ux").on(t.prelimReportId),
+    index("imaging_tele_reads_state_idx").on(t.state, t.prelimAt),
+    index("imaging_tele_reads_study_idx").on(t.studyId),
+    check("imaging_tele_reads_state_ck", inList(t.state, IMAGING_TELE_STATES)),
+    check("imaging_tele_reads_priority_ck", sql`${t.priority} in ('routine', 'urgent', 'stat')`),
+    check("imaging_tele_reads_nmc_ck", sql`char_length(btrim(${t.readerNmcNo})) >= 3`),
+    /** Over-read ⇔ a consultant, an instant and the signed version that became the report. */
+    check(
+      "imaging_tele_reads_overread_ck",
+      sql`(${t.state} = 'awaiting') = (${t.overreadBy} is null) and (${t.state} = 'awaiting') = (${t.overreadAt} is null)
+          and (${t.state} = 'awaiting') = (${t.finalReportId} is null)`,
+    ),
+    /** A discrepancy says what it was; the reader never over-reads their own prelim. */
+    check("imaging_tele_reads_note_ck", sql`${t.state} not in ('minor', 'major') or char_length(btrim(coalesce(${t.overreadNote}, ''))) >= 4`),
+    check("imaging_tele_reads_not_own_ck", sql`${t.overreadBy} is null or ${t.overreadBy} <> ${t.readerId}`),
   ],
 );

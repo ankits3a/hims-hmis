@@ -23,6 +23,7 @@ import { RadiologyIrController } from "./radiology-ir.controller";
 import { RadiologyReadingController } from "./radiology-reading.controller";
 import { RadiologyReleaseController } from "./radiology-release.controller";
 import { RadiologySupervisorController } from "./radiology-supervisor.controller";
+import { RadiologyReadingRoomController } from "./radiology-reading-room.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -77,6 +78,8 @@ import { RadiologySupervisorController } from "./radiology-supervisor.controller
     RadiologyIrController,
     // 18-S RS10 — the Supervisor & HOD station's reads: floor, escalations, approvals, quality, equipment, roster, money, access log.
     RadiologySupervisorController,
+    // 18-S RS8c — the reading room, part 3: follow-ups, peer review, night & outside reads.
+    RadiologyReadingRoomController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {

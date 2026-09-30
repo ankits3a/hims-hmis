@@ -1,5 +1,5 @@
 {
-  "id": "37f5815a-7ac0-4d41-b2df-dd657a4f32d3",
+  "id": "374aeed9-04cb-48cf-a9cb-4dc9c308c95d",
   "prevId": "f9d994d1-8b8d-4121-9d84-49980761d443",
   "version": "7",
   "dialect": "postgresql",
@@ -8669,13 +8669,6 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
-        },
-        "rounding_rule": {
-          "name": "rounding_rule",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'half_up'"
         },
         "net_payable_paise": {
           "name": "net_payable_paise",
@@ -30218,7 +30211,7 @@
       "checkConstraints": {
         "imaging_definitions_kind_ck": {
           "name": "imaging_definitions_kind_ck",
-          "value": "\"imaging_definitions\".\"kind\" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels', 'imaging_protocols', 'report_templates', 'report_signatories')"
+          "value": "\"imaging_definitions\".\"kind\" in ('study_types', 'pregnancy_policy', 'critical_categories', 'pacs_settings', 'dose_reference_levels', 'imaging_protocols', 'report_templates', 'report_signatories', 'teleradiology')"
         },
         "imaging_definitions_status_ck": {
           "name": "imaging_definitions_status_ck",
@@ -30432,6 +30425,320 @@
         "imaging_dose_sr_receipts_conflict_ck": {
           "name": "imaging_dose_sr_receipts_conflict_ck",
           "value": "(\"imaging_dose_sr_receipts\".\"outcome\" = 'conflict') = (\"imaging_dose_sr_receipts\".\"conflict\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.imaging_followups": {
+      "name": "imaging_followups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "study_id": {
+          "name": "study_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "report_id": {
+          "name": "report_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recommendation": {
+          "name": "recommendation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "interval_label": {
+          "name": "interval_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "due_on": {
+          "name": "due_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "overdue_at": {
+          "name": "overdue_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notified_at": {
+          "name": "notified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notified_by": {
+          "name": "notified_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notified_channel": {
+          "name": "notified_channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notified_note": {
+          "name": "notified_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "booked_order_id": {
+          "name": "booked_order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "booked_order_no": {
+          "name": "booked_order_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "booked_at": {
+          "name": "booked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "booked_by": {
+          "name": "booked_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "close_reason": {
+          "name": "close_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "close_note": {
+          "name": "close_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "imaging_followups_report_source_ux": {
+          "name": "imaging_followups_report_source_ux",
+          "columns": [
+            {
+              "expression": "report_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_followups_state_due_idx": {
+          "name": "imaging_followups_state_due_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_on",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_followups_patient_idx": {
+          "name": "imaging_followups_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_followups_booked_order_idx": {
+          "name": "imaging_followups_booked_order_idx",
+          "columns": [
+            {
+              "expression": "booked_order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "imaging_followups_study_id_imaging_studies_id_fk": {
+          "name": "imaging_followups_study_id_imaging_studies_id_fk",
+          "tableFrom": "imaging_followups",
+          "tableTo": "imaging_studies",
+          "columnsFrom": [
+            "study_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "imaging_followups_report_id_imaging_reports_id_fk": {
+          "name": "imaging_followups_report_id_imaging_reports_id_fk",
+          "tableFrom": "imaging_followups",
+          "tableTo": "imaging_reports",
+          "columnsFrom": [
+            "report_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "imaging_followups_patient_id_patients_id_fk": {
+          "name": "imaging_followups_patient_id_patients_id_fk",
+          "tableFrom": "imaging_followups",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "imaging_followups_booked_order_id_orders_id_fk": {
+          "name": "imaging_followups_booked_order_id_orders_id_fk",
+          "tableFrom": "imaging_followups",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "booked_order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "imaging_followups_source_ck": {
+          "name": "imaging_followups_source_ck",
+          "value": "\"imaging_followups\".\"source\" in ('birads', 'tirads', 'lirads', 'lungrads', 'fleischner', 'other')"
+        },
+        "imaging_followups_state_ck": {
+          "name": "imaging_followups_state_ck",
+          "value": "\"imaging_followups\".\"state\" in ('open', 'notified', 'booked', 'closed')"
+        },
+        "imaging_followups_recommendation_ck": {
+          "name": "imaging_followups_recommendation_ck",
+          "value": "char_length(btrim(\"imaging_followups\".\"recommendation\")) >= 3"
+        },
+        "imaging_followups_notified_ck": {
+          "name": "imaging_followups_notified_ck",
+          "value": "(\"imaging_followups\".\"notified_at\" is null) = (\"imaging_followups\".\"notified_by\" is null) and (\"imaging_followups\".\"notified_at\" is null) = (\"imaging_followups\".\"notified_channel\" is null)\n          and (\"imaging_followups\".\"notified_channel\" is null or \"imaging_followups\".\"notified_channel\" in ('letter', 'phone', 'in_person'))"
+        },
+        "imaging_followups_booked_ck": {
+          "name": "imaging_followups_booked_ck",
+          "value": "(\"imaging_followups\".\"booked_order_id\" is null) = (\"imaging_followups\".\"booked_at\" is null) and (\"imaging_followups\".\"booked_order_id\" is null) = (\"imaging_followups\".\"booked_by\" is null)\n          and (\"imaging_followups\".\"state\" <> 'booked' or \"imaging_followups\".\"booked_order_id\" is not null)"
+        },
+        "imaging_followups_closed_ck": {
+          "name": "imaging_followups_closed_ck",
+          "value": "(\"imaging_followups\".\"state\" = 'closed') = (\"imaging_followups\".\"closed_at\" is not null) and (\"imaging_followups\".\"closed_at\" is null) = (\"imaging_followups\".\"closed_by\" is null)\n          and (\"imaging_followups\".\"closed_at\" is null) = (\"imaging_followups\".\"close_reason\" is null)\n          and (\"imaging_followups\".\"close_reason\" is null or \"imaging_followups\".\"close_reason\" in ('done_here', 'done_elsewhere', 'clinician_declines', 'patient_declines', 'patient_died', 'withdrawn_by_amendment'))"
+        },
+        "imaging_followups_notified_state_ck": {
+          "name": "imaging_followups_notified_state_ck",
+          "value": "\"imaging_followups\".\"state\" <> 'notified' or \"imaging_followups\".\"notified_at\" is not null"
         }
       },
       "isRLSEnabled": false
@@ -31194,6 +31501,220 @@
         "imaging_outside_studies_arrival_ck": {
           "name": "imaging_outside_studies_arrival_ck",
           "value": "\"imaging_outside_studies\".\"arrival\" in ('film', 'cd', 'link', 'none')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.imaging_peer_reviews": {
+      "name": "imaging_peer_reviews",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "report_id": {
+          "name": "report_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "study_id": {
+          "name": "study_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reader_id": {
+          "name": "reader_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sample_month": {
+          "name": "sample_month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "reviewer_id": {
+          "name": "reviewer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "score": {
+          "name": "score",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "learning_case": {
+          "name": "learning_case",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scored_at": {
+          "name": "scored_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "imaging_peer_reviews_report_trigger_ux": {
+          "name": "imaging_peer_reviews_report_trigger_ux",
+          "columns": [
+            {
+              "expression": "report_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "trigger",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_peer_reviews_state_idx": {
+          "name": "imaging_peer_reviews_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_peer_reviews_reader_idx": {
+          "name": "imaging_peer_reviews_reader_idx",
+          "columns": [
+            {
+              "expression": "reader_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scored_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "imaging_peer_reviews_report_id_imaging_reports_id_fk": {
+          "name": "imaging_peer_reviews_report_id_imaging_reports_id_fk",
+          "tableFrom": "imaging_peer_reviews",
+          "tableTo": "imaging_reports",
+          "columnsFrom": [
+            "report_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "imaging_peer_reviews_study_id_imaging_studies_id_fk": {
+          "name": "imaging_peer_reviews_study_id_imaging_studies_id_fk",
+          "tableFrom": "imaging_peer_reviews",
+          "tableTo": "imaging_studies",
+          "columnsFrom": [
+            "study_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "imaging_peer_reviews_trigger_ck": {
+          "name": "imaging_peer_reviews_trigger_ck",
+          "value": "\"imaging_peer_reviews\".\"trigger\" in ('random', 'amendment', 'overread_discrepancy')"
+        },
+        "imaging_peer_reviews_state_ck": {
+          "name": "imaging_peer_reviews_state_ck",
+          "value": "\"imaging_peer_reviews\".\"state\" in ('open', 'scored')"
+        },
+        "imaging_peer_reviews_score_ck": {
+          "name": "imaging_peer_reviews_score_ck",
+          "value": "\"imaging_peer_reviews\".\"score\" is null or \"imaging_peer_reviews\".\"score\" in ('1', '2a', '2b', '3a', '3b', '4a', '4b')"
+        },
+        "imaging_peer_reviews_month_ck": {
+          "name": "imaging_peer_reviews_month_ck",
+          "value": "(\"imaging_peer_reviews\".\"trigger\" = 'random') = (\"imaging_peer_reviews\".\"sample_month\" is not null) and (\"imaging_peer_reviews\".\"sample_month\" is null or \"imaging_peer_reviews\".\"sample_month\" ~ '^[0-9]{4}-[0-9]{2}$')"
+        },
+        "imaging_peer_reviews_scored_ck": {
+          "name": "imaging_peer_reviews_scored_ck",
+          "value": "(\"imaging_peer_reviews\".\"state\" = 'scored') = (\"imaging_peer_reviews\".\"reviewer_id\" is not null) and (\"imaging_peer_reviews\".\"state\" = 'scored') = (\"imaging_peer_reviews\".\"score\" is not null)\n          and (\"imaging_peer_reviews\".\"state\" = 'scored') = (\"imaging_peer_reviews\".\"scored_at\" is not null)"
+        },
+        "imaging_peer_reviews_not_own_ck": {
+          "name": "imaging_peer_reviews_not_own_ck",
+          "value": "\"imaging_peer_reviews\".\"reviewer_id\" is null or \"imaging_peer_reviews\".\"reviewer_id\" <> \"imaging_peer_reviews\".\"reader_id\""
+        },
+        "imaging_peer_reviews_note_ck": {
+          "name": "imaging_peer_reviews_note_ck",
+          "value": "\"imaging_peer_reviews\".\"score\" is null or \"imaging_peer_reviews\".\"score\" = '1' or char_length(btrim(coalesce(\"imaging_peer_reviews\".\"note\", ''))) >= 4"
         }
       },
       "isRLSEnabled": false
@@ -32433,6 +32954,246 @@
         "imaging_studies_image_source_required_ck": {
           "name": "imaging_studies_image_source_required_ck",
           "value": "\"imaging_studies\".\"acquired_at\" is null or \"imaging_studies\".\"image_source\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.imaging_tele_reads": {
+      "name": "imaging_tele_reads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "study_id": {
+          "name": "study_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prelim_report_id": {
+          "name": "prelim_report_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_key": {
+          "name": "provider_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_name": {
+          "name": "provider_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reader_id": {
+          "name": "reader_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reader_name": {
+          "name": "reader_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reader_nmc_no": {
+          "name": "reader_nmc_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "priority": {
+          "name": "priority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_minutes": {
+          "name": "target_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "images_at": {
+          "name": "images_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prelim_at": {
+          "name": "prelim_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'awaiting'"
+        },
+        "overread_by": {
+          "name": "overread_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "overread_at": {
+          "name": "overread_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "overread_note": {
+          "name": "overread_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "final_report_id": {
+          "name": "final_report_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "imaging_tele_reads_prelim_ux": {
+          "name": "imaging_tele_reads_prelim_ux",
+          "columns": [
+            {
+              "expression": "prelim_report_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_tele_reads_state_idx": {
+          "name": "imaging_tele_reads_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "prelim_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "imaging_tele_reads_study_idx": {
+          "name": "imaging_tele_reads_study_idx",
+          "columns": [
+            {
+              "expression": "study_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "imaging_tele_reads_study_id_imaging_studies_id_fk": {
+          "name": "imaging_tele_reads_study_id_imaging_studies_id_fk",
+          "tableFrom": "imaging_tele_reads",
+          "tableTo": "imaging_studies",
+          "columnsFrom": [
+            "study_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "imaging_tele_reads_prelim_report_id_imaging_reports_id_fk": {
+          "name": "imaging_tele_reads_prelim_report_id_imaging_reports_id_fk",
+          "tableFrom": "imaging_tele_reads",
+          "tableTo": "imaging_reports",
+          "columnsFrom": [
+            "prelim_report_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "imaging_tele_reads_final_report_id_imaging_reports_id_fk": {
+          "name": "imaging_tele_reads_final_report_id_imaging_reports_id_fk",
+          "tableFrom": "imaging_tele_reads",
+          "tableTo": "imaging_reports",
+          "columnsFrom": [
+            "final_report_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "imaging_tele_reads_state_ck": {
+          "name": "imaging_tele_reads_state_ck",
+          "value": "\"imaging_tele_reads\".\"state\" in ('awaiting', 'concur', 'minor', 'major')"
+        },
+        "imaging_tele_reads_priority_ck": {
+          "name": "imaging_tele_reads_priority_ck",
+          "value": "\"imaging_tele_reads\".\"priority\" in ('routine', 'urgent', 'stat')"
+        },
+        "imaging_tele_reads_nmc_ck": {
+          "name": "imaging_tele_reads_nmc_ck",
+          "value": "char_length(btrim(\"imaging_tele_reads\".\"reader_nmc_no\")) >= 3"
+        },
+        "imaging_tele_reads_overread_ck": {
+          "name": "imaging_tele_reads_overread_ck",
+          "value": "(\"imaging_tele_reads\".\"state\" = 'awaiting') = (\"imaging_tele_reads\".\"overread_by\" is null) and (\"imaging_tele_reads\".\"state\" = 'awaiting') = (\"imaging_tele_reads\".\"overread_at\" is null)\n          and (\"imaging_tele_reads\".\"state\" = 'awaiting') = (\"imaging_tele_reads\".\"final_report_id\" is null)"
+        },
+        "imaging_tele_reads_note_ck": {
+          "name": "imaging_tele_reads_note_ck",
+          "value": "\"imaging_tele_reads\".\"state\" not in ('minor', 'major') or char_length(btrim(coalesce(\"imaging_tele_reads\".\"overread_note\", ''))) >= 4"
+        },
+        "imaging_tele_reads_not_own_ck": {
+          "name": "imaging_tele_reads_not_own_ck",
+          "value": "\"imaging_tele_reads\".\"overread_by\" is null or \"imaging_tele_reads\".\"overread_by\" <> \"imaging_tele_reads\".\"reader_id\""
         }
       },
       "isRLSEnabled": false

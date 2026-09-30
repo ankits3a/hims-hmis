@@ -47,6 +47,12 @@ export function SectionTable({ section }: { section: WireReportSection }): React
     */
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <h2 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{t(section.titleKey)}</h2>
+      {/*
+        The table scrolls inside its own box. Its mono columns (visit no., UHID) cannot break, so at a
+        390px phone it was 452px wide and took the whole page 84px sideways (measured 2026-09-30).
+        On paper the page is wide enough and this box never scrolls.
+      */}
+      <div style={{ overflowX: "auto", maxWidth: "100%" }}>
       <table className="mo" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
         <thead>
           <tr>
@@ -83,6 +89,7 @@ export function SectionTable({ section }: { section: WireReportSection }): React
           </tfoot>
         )}
       </table>
+      </div>
     </div>
   );
 }

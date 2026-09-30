@@ -3,7 +3,7 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { invoiceSearchProvider } from "./search-provider";
 
 /**
- * The billing module's declared surface (spec §4): the fourteen `billing.*` permissions the
+ * The billing module's declared surface (spec §4): the fifteen `billing.*` permissions the
  * controller's routes guard on, and the four menu entries Plan 08's pipeline-C screens mount.
  * `syncPermissions` mirrors this at boot — no new boot-time DB call. Role grants (cashier vs
  * billing_manager) are a go-live data step (README runbook, T12).
@@ -30,6 +30,10 @@ export const billingManifest: ModuleManifest = {
     "billing.refund.request", "billing.refund.pay",
     "billing.session.own", "billing.session.read",
     "billing.recon.upload", "billing.reports.read", "billing.config.write", "billing.eie.mark",
+    // OWNER RULING 2026-09-30 — one patient's dues on the profile, for the front desk. It admits
+    // `GET /billing/patients/:patientId/dues` ALONGSIDE `billing.invoice.read` (the guard's
+    // `alsoAdmits`) and opens nothing else.
+    "billing.dues.patient.read",
   ],
   // PLAN 11h T4 — invoices by number or by patient, on `billing.invoice.read`.
   search: [invoiceSearchProvider],

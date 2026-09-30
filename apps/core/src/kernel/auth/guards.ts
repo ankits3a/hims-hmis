@@ -104,9 +104,15 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException("agents hold no permissions yet");
     }
 
-    const allowed = await hasPermission(
+    let allowed = await hasPermission(
       this.db, actor.id, requirement.permission, requirement.scope, scopeCtxFromRequest(req),
     );
+    // OWNER RULING 2026-09-30 — any-of: a narrower string may ALSO admit (see `alsoAdmits`). The
+    // primary is asked first and the refusal below still names it.
+    for (const alt of requirement.alsoAdmits ?? []) {
+      if (allowed) break;
+      allowed = await hasPermission(this.db, actor.id, alt, requirement.scope, scopeCtxFromRequest(req));
+    }
     if (!allowed) {
       const bypass =
         requirement.breakGlassBypass === true &&

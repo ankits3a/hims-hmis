@@ -883,3 +883,68 @@ Sign in refused `coagulation_out_of_range`; override as the radiologist → Sign
 people), Start; two sedation readings; type Ka,r 3200 → *Book the skin check* → Sign out → Send →
 `radiation_dose_register.dose_ka_r = 3200`, one `imaging.ir_skin_dose_alert`; note → hand-off → the
 list is empty.
+
+---
+
+## 19. The reading room, part 3 — follow-ups, peer review, night & outside reads (18-S RS8c)
+
+Migration `0162_radiology_reading_room_3` (numbered at rebase — the number moves if another lane
+merges a migration first; check `apps/core/drizzle/meta/_journal.json`). Three tables and one book;
+no permission, no role, no seed, no notify template.
+
+**1. The night-read partner (ruling 7) — the `teleradiology` book.** Setup → Books → *Night-read
+partner (teleradiology)*. The HOD drafts, the medical superintendent approves. Per provider: a short
+key, the legal name, the DPA's signing date under the DPDP Act (`dpa_signed_on`), `data_in_india:
+true` (the book refuses anything else) and each radiologist as `{user_id, name, nmc_reg_no}`. Each
+reader is an ordinary HMIS user; give them `radiology_resident` (drafts and prelims — the book then
+forbids every signature, co-signature and amendment by that person, whatever roles they hold:
+`tele_reader_prelim_only`). Optional: `night_from`/`night_to` (shown as coverage, 21:00–08:00 by
+default, not enforced), `prelim_minutes` (30 STAT / 60 urgent — ruling 7's maxima), `overread_by`
+(10:00). **Access:** the provider reads over the site-to-site VPN into the reading room and the same
+logged "Open images" door; data stays in India (the contract, not this system, guarantees the
+provider's side). **Money:** the per-read fee is a payable under the contract; nothing here bills it.
+
+Nothing to publish = no partner: the Night & outside view says so and links Setup → Books.
+
+**2. The worker.** Nothing new to schedule. The existing 08:00 IST Unread Watchman job now also runs
+`sweepOverdueFollowups` (one `imaging.followup_overdue` per row that passed its due day, once) and
+`sweepPeerSample` (draws the month just closed; a no-op every day after the first).
+
+**3. Who does what (existing grants).**
+- *Follow-ups* (Reading room → Follow-ups, `radiology.reports.write`): the radiologist or resident
+  records **how the doctor/patient was told** (letter, phone, in person — nothing is SENT) and
+  **closes with a reason** (done here · done elsewhere · the doctor declines · the patient declines ·
+  the patient died) and a line. **Booking** places an ORDER, so it needs `radiology.orders.place` +
+  `orders.place`: the treating doctor from the results inbox (*Follow-ups to book → Book it*) or the
+  imaging desk. The order is placed under the original order's clinician on the patient's latest
+  OPD visit; a visit older than the 7-day grace is refused `encounter_closed` — the front desk opens
+  a visit. The booked study's own signed report closes the row `done_here`.
+- *Peer review* and *Night & outside* (`radiology.reports.amend` — consultants only; a resident
+  does not see them).
+
+**4. What opens a follow-up.** At the signature (sign, co-sign; an amendment reconciles): BI-RADS 3
+→ 6 months; ACR TI-RADS whose size rule says "follow up" → 1 year (an FNA advice opens nothing);
+LI-RADS LR-3 / LR-4 → 3 months; Lung-RADS 3 → 6 months, 4A → 3 months; Fleischner 2017 (from the
+calculator's inputs) → the first interval's earliest month; the radiologist's own tick
+(`body.followup = {text, weeks | months}`). Due day = the signed IST day + the interval.
+
+**5. Verify once.**
+1. Publish a `teleradiology` book naming a test user (NMC number filled). As that user, save a
+   **prelim** on a STAT study: `select external_reporter_id from imaging_reports where id = '<id>'`
+   is the provider key; `imaging_tele_reads` has one `awaiting` row with the NMC number. Try **Sign**
+   as them → refused `tele_reader_prelim_only`.
+2. As a consultant: Reading room → **Night & outside** → the row, **Major discrepancy**, a line and
+   a corrected impression → your authenticator code → **Sign the correction**. The study is
+   published; `imaging_tele_reads.state = 'major'`; `imaging_peer_reviews` has an
+   `overread_discrepancy` case; the treating doctor's inbox shows the report unread with
+   "Night read corrected — MAJOR".
+3. Sign a USG breast with BI-RADS **3**: Reading room → **Follow-ups** lists it due six months out.
+   As the treating doctor, *Book it* from the results inbox → the row shows **Booked** with the new
+   R number.
+4. **Peer review**: `select count(*) from imaging_peer_reviews where trigger = 'random'` is non-zero
+   the morning after the 1st (or call `drawPeerSample(db, 'YYYY-MM')` from a script for a past
+   month). Open a case as a consultant who did not sign it: no name is shown; score **2b** without
+   a note → the button stays shut.
+
+**6. Rollback.** The three tables are additive and read by nothing else; the book kind is one more
+CHECK value. Disabling = do not publish the book, and ignore the two views.

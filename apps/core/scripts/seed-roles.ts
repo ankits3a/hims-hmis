@@ -110,6 +110,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "membership.instrument.read",
       "membership.instrument.recognise",
       "membership.grace_honor.request",
+      /*
+        OWNER RULING 2026-09-30 — the desk reads ONE patient's dues on the profile's Today band
+        (amount, bill number, date), and does NOT get `billing.invoice.read`, which opens the whole
+        invoice list. This string admits `GET /billing/patients/:patientId/dues` and nothing else.
+      */
+      "billing.dues.patient.read",
     ],
   },
   {
@@ -148,6 +154,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        */
       "membership.instrument.enrol",
       "membership.grace_honor.request",
+      // OWNER RULING 2026-09-30 — the same one-patient dues read as `front_office`: a supervisor who
+      // cannot see what the desk sees cannot cover it. Still NOT `billing.invoice.read`.
+      "billing.dues.patient.read",
       /**
        * PLAN 07c T9 / DD14 — the supervisor's named-staff view, and this is the role the phrase
        * "the supervisor" in that ruling actually means. It buys the FIGURES: what a named person

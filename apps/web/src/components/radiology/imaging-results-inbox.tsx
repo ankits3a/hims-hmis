@@ -7,6 +7,8 @@ import { istDay } from "./desk-time";
 import { fetchReport, openImages, radiologyErrorCode, radiologyErrorText } from "../../lib/radiology-api";
 import { ACTED_OUTCOMES, fetchImagingResults, markReportActed, readBackCritical } from "../../lib/radiology-release-api";
 import type { ActedOutcome, WireInboxRow } from "../../lib/radiology-release-api";
+import { bookFollowup, fetchMyFollowups } from "../../lib/radiology-reading-room-api";
+import type { WireFollowup } from "../../lib/radiology-reading-room-api";
 
 /**
  * PLAN 18-S RS9 T3 — **THE DOCTOR'S IMAGING RESULTS** (board: "Doctor's door → Results / Report").
@@ -110,6 +112,9 @@ export function ImagingResultsInbox(): React.ReactElement | null {
           )}
           {statePill(r)}
           {r.amended && <Pill tone="gd">{t("radiology.results.amended", { v: r.version })}</Pill>}
+          {r.overread != null && r.overread.grade !== "concur" && (
+            <Pill tone={r.overread.grade === "major" ? "rd" : "gd"}>{t(`radiology.results.overread.${r.overread.grade}`, { who: r.overread.providerName })}</Pill>
+          )}
         </div>
         {r.impression !== null && <div style={{ fontSize: 12.5 }}>{r.impression}</div>}
         <div style={{ fontSize: 11, color: "var(--dim)" }} className="mo">
@@ -248,6 +253,54 @@ export function ImagingResultsInbox(): React.ReactElement | null {
       )}
       {q.isSuccess && rows.length === 0 && <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("radiology.results.empty")}</p>}
       <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>{rows.map(row)}</ul>
+      <FollowupsToBook />
     </section>
+  );
+}
+
+/**
+ * ═══ 18-S RS8c T5 — FOLLOW-UPS TO BOOK (the board's J9 doctor hop) ═══
+ *
+ * The radiologist recommended a follow-up; the treating doctor books it. "Book it" places a new
+ * imaging order under this doctor through the ordering door (`POST /radiology/followups/:id/book`) —
+ * the patient's current visit, or the refusal says the front desk opens one. A doctor with no
+ * follow-ups (or no grant) sees nothing here.
+ */
+function FollowupsToBook(): React.ReactElement | null {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["radiology", "results", "followups"], queryFn: fetchMyFollowups, retry: false });
+  const [msg, setMsg] = useState<{ id: string; text: string; bad: boolean } | null>(null);
+  const book = useMutation({
+    mutationFn: (f: WireFollowup) => bookFollowup(f.followupId),
+    onSuccess: (r, f) => { setMsg({ id: f.followupId, text: t("radiology.results.fuBooked", { orderNo: r.orderNo }), bad: false }); void qc.invalidateQueries({ queryKey: ["radiology", "results", "followups"] }); },
+    onError: (e, f) => setMsg({ id: f.followupId, text: radiologyErrorText(e), bad: true }),
+  });
+  const rows = q.data?.rows ?? [];
+  if (rows.length === 0 && msg === null) return null;
+  return (
+    <div data-testid="followups-to-book" style={{ borderTop: "1px solid var(--line)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+      <h3 className="tag" style={{ margin: 0 }}>{t("radiology.results.fuTitle", { count: rows.length })}</h3>
+      {msg !== null && !rows.some((r) => r.followupId === msg.id) && <p role="status" style={{ margin: 0, fontSize: 12, color: "var(--green)" }}>{msg.text}</p>}
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((f) => (
+          <li key={f.followupId} data-fu={f.followupId} data-state={f.overdue ? "overdue" : f.state} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            <span style={{ flex: "1 1 16rem", minWidth: 0, fontSize: 12.5 }}>
+              <b>{f.patientName}</b> <span style={{ color: "var(--dim)" }}>{f.uhid}</span>
+              <span style={{ display: "block" }}>{f.recommendation}</span>
+              <span className="mo" style={{ fontSize: 11, color: f.overdue ? "var(--red)" : "var(--dim)" }}>
+                {f.overdue ? t("radiology.results.fuOverdue", { day: f.dueOn }) : t("radiology.results.fuDue", { day: f.dueOn })} · {f.accessionNo}
+              </span>
+            </span>
+            <button type="button" className="pri" style={{ padding: "3px 10px", fontSize: 12, height: 30 }} disabled={book.isPending} onClick={() => { setMsg(null); book.mutate(f); }}>
+              {t("radiology.results.fuBook")}
+            </button>
+            {msg !== null && msg.id === f.followupId && (
+              <p role={msg.bad ? "alert" : "status"} style={{ margin: 0, flexBasis: "100%", fontSize: 11.5, color: msg.bad ? "var(--red)" : "var(--green)" }}>{msg.text}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

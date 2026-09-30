@@ -20,6 +20,7 @@ import type { CodedSystem, FleischnerInputs, TiradsInputs } from "../lib/imaging
 import { SeatLink } from "../components/radiology/imaging-counter";
 import { ImagingReportPrint } from "../components/radiology/imaging-report-print";
 import { RadiologyStation } from "./radiology-station";
+import { FollowupsView, PeerView, TeleView } from "./radiology-reading-room";
 
 /**
  * PLAN 18-S RS8a T4 — **THE READING ROOM: one urgency-sorted list, and the study in hand.**
@@ -64,7 +65,9 @@ import { RadiologyStation } from "./radiology-station";
  *   one call in hand with its one next act in the dock, and the last 48 hours' acknowledged log.
  */
 
-export type ReadView = "list" | "criticals";
+export type ReadView = "list" | "criticals" | "followups" | "peer" | "tele";
+/** 18-S RS8c — the header's views after the critical calls: follow-ups, peer review, night & outside. */
+export const READ_VIEWS: readonly ReadView[] = ["list", "criticals", "followups", "peer", "tele"];
 
 type SortKey = "priority" | "due" | "modality";
 type CodedEntry = { value: string | number; inputs?: unknown };
@@ -164,15 +167,24 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
   };
   const goView = (v: ReadView): void => {
     setView(v);
-    if (router !== undefined) void router.navigate({ to: "/radiology/read", search: v === "criticals" ? { view: v } : {} } as never);
+    if (router !== undefined) void router.navigate({ to: "/radiology/read", search: v === "list" ? {} : { view: v } } as never);
   };
-  const views = (["list", "criticals"] as const).filter((v) => v === "list" || canCalls).map((v) => (
+  /**
+   * 18-S RS8c — Follow-ups is the whole reading room's (`radiology.reports.write`, the route's own
+   * grant); peer review and the night over-read are a consultant's (`radiology.reports.amend`).
+   */
+  const allowed = (v: ReadView): boolean =>
+    v === "list" || v === "followups" || (v === "criticals" ? canCalls : consultant);
+  const viewLabel = (v: ReadView): string =>
+    v === "criticals" ? t("radiology.calls.view", { count: openCalls.length })
+      : v === "list" ? t("radiology.read.viewList") : t(`radiology.read.view.${v}`);
+  const views = READ_VIEWS.filter(allowed).map((v) => (
     <a
-      key={v} href={v === "criticals" ? "/radiology/read?view=criticals" : "/radiology/read"} className="st-nv"
+      key={v} href={v === "list" ? "/radiology/read" : `/radiology/read?view=${v}`} className="st-nv"
       data-testid={`read-view-${v}`} aria-current={v === view ? "page" : undefined}
       onClick={(e) => { e.preventDefault(); goView(v); }}
     >
-      {v === "criticals" ? t("radiology.calls.view", { count: openCalls.length }) : t("radiology.read.viewList")}
+      {viewLabel(v)}
     </a>
   ));
 
@@ -269,6 +281,9 @@ export function RadiologyReading({ studyId: initialStudy, view: initialView = "l
     ...(canCalls ? [{ label: t("radiology.calls.stat"), value: openCalls.length, tone: "danger" as const }] : []),
   ];
 
+  if (view === "followups") return <FollowupsView views={views} />;
+  if (view === "peer" && consultant) return <PeerView views={views} />;
+  if (view === "tele" && consultant) return <TeleView views={views} />;
   if (view === "criticals" && canCalls) {
     return <CriticalCallsView views={views} calls={openCalls} log={callsQ.data?.acknowledged ?? []} now={now}
       loading={callsQ.isPending} error={callsQ.isError ? radiologyErrorText(callsQ.error) : null} />;
