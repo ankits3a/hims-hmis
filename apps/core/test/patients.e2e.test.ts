@@ -445,6 +445,23 @@ describe("patients e2e", () => {
       return reg.body.patient.id as string;
     }
 
+    /* OWNER RULING 2026-09-29 (law) — the wire half: a date of death without the certificate number
+       is a 400 whose body names the code and says what is missing in a sentence the screen can show. */
+    it("REFUSES recording a death without the death certificate number, and accepts it with one", async () => {
+      const id = await registerAsha();
+      const res = await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ deceasedAt: "2026-09-28T10:00:00.000Z" })
+        .expect(400);
+      expect(res.body).toMatchObject({ code: "death_certificate_required" });
+      expect(String(res.body.message)).toMatch(/death certificate number/);
+      const ok = await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ deceasedAt: "2026-09-28T10:00:00.000Z", deathCertificateNo: "MCCD/2026/0412" })
+        .expect(200);
+      expect(ok.body.patient).toMatchObject({ deathCertificateNo: "MCCD/2026/0412" });
+    });
+
     it("REFUSES a Class I amendment that does not say why", async () => {
       const id = await registerAsha();
       const res = await request(app.getHttpServer())

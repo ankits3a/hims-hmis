@@ -169,6 +169,10 @@ export const patients = pgTable(
     // death-recording flow, so it is set on the patient-master edit surface and audited through
     // patient.updated's field diff; IPD's death cascade will write it later.
     deceasedAt: timestamp("deceased_at", { withTimezone: true }),
+    // OWNER RULING 2026-09-29 (law) — the death certificate number that MUST accompany a date of
+    // death: for a death in this hospital, the MCCD certificate (Form 4 / 4A) number. NULL while
+    // `deceased_at` is NULL; `updatePatient` refuses a date without it (`death_certificate_required`).
+    deathCertificateNo: text("death_certificate_no"),
     status: text("status").notNull().default("active"), // 'active' | 'merged'
     mergedIntoPatientId: text("merged_into_patient_id"), // set when status='merged'; resolution follows the chain
     createdBy: text("created_by").notNull(),

@@ -82,7 +82,7 @@ function toHttp(e: unknown): never {
     }
     /* ABDM S0 — a 400 the client must be able to tell apart from a malformed body, so the code is a
        field and not only the message's prefix. */
-    if (e.code === "abha_verified_only_by_abdm" || e.code === "age_or_dob_required") {
+    if (e.code === "abha_verified_only_by_abdm" || e.code === "age_or_dob_required" || e.code === "death_certificate_required") {
       throw new HttpException({ statusCode: 400, message: e.message, code: e.code, error: "Bad Request" }, 400);
     }
     /* ABDM S1 — two refusals a client must tell apart, so both carry the code; the duplicate carries
@@ -241,6 +241,9 @@ const patchBody = registerBody
     // Strict ISO-8601 (not z.coerce.date()): the deceased hard stop is CRITICAL machinery and
     // the wire contract should reject a loosely-parsed date rather than silently accept one.
     deceasedAt: z.string().datetime().nullable().optional(),
+    // OWNER RULING 2026-09-29 (law) — the death certificate number (MCCD Form 4 / 4A for a death in
+    // this hospital). Optional on the wire; `updatePatient` refuses a date of death without it.
+    deathCertificateNo: z.string().max(60).nullable().optional(),
     /**
      * PLAN 22c-A — CLOSE REVIEW C1 (CRITICAL). **THIS LINE WAS MISSING AND IT MADE THE WHOLE
      * PHASE UNREACHABLE THROUGH ITS OWN ROUTE.**
