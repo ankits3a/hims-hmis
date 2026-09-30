@@ -142,6 +142,40 @@ nothing is the owner setting `creditCapPaise` to 0 in `/billing/config`. Then ev
 though still from the billing manager until step 1 lands. The lab reflex path, which passes no approval, would
 then refuse. So this stop is NOT applied until step 2 is in.
 
+## A6b — indents (as built)
+
+Lane `pharmacy-a6-indent`. Migration **0155** (generated as 0152; renumbered at merge after A5 0152, radiology 0153 and the desk split 0154) (`store_indents`, `store_indent_lines`, plus hand-carried guard
+triggers). No new permission: `seed-roles` pins do not move.
+
+DECIDED (standard Indian-corporate-hospital answer):
+- An indent is a sub-store (ward, OT, pharmacy counter) asking a supplying store for stock, in base units. It moves
+  nothing. The supplying store **issues** it as one ordinary transfer (`issueStock`: FEFO, through `IN-TRANSIT`),
+  which the indent records, or **rejects** it with a reason. The requester may **cancel** it, with a reason, while it
+  is still requested. The receiving side receives the transfer through the existing receipt, unchanged.
+- States: `requested → issued | rejected | cancelled`, once. `issued` ⇔ a transfer is linked. A rejection and a
+  cancellation each carry their reason. The header and lines are immutable apart from that one decision, and a line's
+  `qty_issued` is set once (DB triggers). Neither is ever deleted.
+- Issue quantities: a line defaults to the asked quantity capped at what the supplying store has available now. The
+  keeper may lower any line, even to 0, but may not raise it above what was asked. The indent must carry at least one
+  unit. More than the shelf holds is the transfer's own refusal (`insufficient_stock`).
+- One item appears once per indent, whole quantities above zero, and the two stores must differ.
+- Numbering: `EPISODE_SERIES.store_indent` = `MIN` (`MIN2609290001`).
+- Who may: raise and cancel need `materials.stock.receive`, and issue and reject need `materials.stock.issue`. Reads
+  need `materials.stock.read`. A store that names `custodianRoles` is acted for only by holders of one of those roles:
+  the requesting store's keepers raise and cancel, and the supplying store's keepers issue and reject. This is the same
+  rule as `receiveStock` and the tray restock.
+- Errors: `unknown_indent` (404), `invalid_indent` (409, not 400: `errors.test.ts` pins the module to 403/404/409, and
+  every other `*_invalid` code in the module is a 409), `indent_closed` (409). An empty reason is the module's
+  existing `reason_required`, and a non-keeper is the existing `not_store_keeper`.
+- Events: `material.indent_raised`, `material.indent_issued`, `material.indent_rejected` and
+  `material.indent_cancelled`, one per act, each in the act's transaction.
+- HTTP (`materials-indents.controller.ts`): `GET /materials/indents`, `GET /materials/indents/:id`,
+  `POST /materials/indents`, and `POST /materials/indents/:id/{issue,reject,cancel}`.
+- Screen: an **Indents** section at the top of Transfers & indents (`/materials/transfers`). It shows open indents
+  with Issue and Reject for the supplying side and Cancel for the requester. Raise, Issue, Reject and Cancel each open
+  as a sheet. The issue sheet starts each line at the asked quantity and shows the shelf. Answered indents are listed
+  with their transfer or their reason. There are no filter tabs.
+
 ## A6a — rack and strip labels (as built 2026-09-29, lane `pharmacy-a6-labels`)
 
 DECIDED (standard Indian-corporate-hospital answer; the owner may overturn):
