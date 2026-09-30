@@ -242,6 +242,10 @@ export const PHARMACY_ERROR_CODES = [
   "opening_stock_unreadable",
   /** A row was refused (not on the shelf, expired, a bad MRP…): the sheet is received whole or not at all. */
   "opening_stock_refused",
+  /** 2026-09-30 — a Schedule X or NDPS line on a paper prescription at the desk: it needs the doctor's e-prescription. */
+  "paper_rx_controlled",
+  /** 2026-09-30 — no hospital visit on the paper's date that is free of an e-prescription. */
+  "paper_rx_no_visit",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -386,6 +390,8 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invalid_message_setting: 400,
   opening_stock_unreadable: 400,
   opening_stock_refused: 409,
+  paper_rx_controlled: 409,
+  paper_rx_no_visit: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

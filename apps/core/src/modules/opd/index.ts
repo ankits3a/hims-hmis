@@ -29,6 +29,9 @@ export type { AdvisedTest } from "./consultation";
 // `verifyPrescriptionQr` is the scanner's door; `runRxChecks` re-runs the issue-time checks on the
 // RESOLVED medicines at dispense time (16c D9) — it is bound to a patient, not to a consult.
 export { getPrescription, listPrescriptions, matchAllergies, runRxChecks, verifyPrescriptionQr } from "./prescriptions";
+// 2026-09-30 — the pharmacy desk's paper-prescription door (a transcription with the pharmacist at the keyboard).
+export { issuePharmacyPaperPrescription } from "./prescriptions";
+export type { IssuedPrescription } from "./prescriptions";
 /* `isCurrent` under its telling name: the pharmacy asks the same question about a prior course
    ("is the patient still on this?") that the duplicate check asks (`patient-rail.ts`). */
 export { isCurrent as isCurrentDose } from "./rx-checks";
