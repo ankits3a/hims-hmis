@@ -318,12 +318,13 @@ if [ "$TARGET" = "uat" ]; then
   grep -q '^HMIS_UAT_BASIC_AUTH_HASH=' "$ENV_FILE" \
     || die "$ENV_FILE carries no HMIS_UAT_BASIC_AUTH_HASH. Mint one and keep the password out of
     git:  docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'"
-  if port_in_use 8443; then
-    our_caddy_running || die "port 8443 is in use and it is not this project's caddy.
-    The retired preview stack used it: docker stop hmis-preview-caddy"
-    note "port 8443 is held by this project's own caddy — re-deploy, continuing"
+  # The port docker-compose.uat.yml publishes on docker0 and production's staging block proxies to.
+  if port_in_use 8444; then
+    our_caddy_running || die "port 8444 is in use and it is not this project's caddy.
+    UAT's caddy publishes 172.17.0.1:8444 for the staging site; find the holder with: ss -lntp"
+    note "port 8444 is held by this project's own caddy — re-deploy, continuing"
   else
-    note "port 8443 free"
+    note "port 8444 free"
   fi
 else
 # D8/GC2. The object-store credentials are a SEPARATE root-only file: merging them into .env would

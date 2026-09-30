@@ -862,6 +862,9 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       // "8444:8080" would put an unauthenticated-TLS UAT on the public IP. Production's caddy
       // reaches it through host-gateway for https://stagehmis.crkmch.com.
       expect(uatCompose).toMatch(/ports: !override \["172\.17\.0\.1:8444:8080"\]/);
+      // ...and the UAT pre-flight checks THAT port, not the retired 8443.
+      expect(deploySource).toMatch(/if port_in_use 8444; then/);
+      expect(deploySource).not.toMatch(/port_in_use 8443/);
       expect(uatCompose).toMatch(/ports: !override \["127\.0\.0\.1:5435:5432"\]/);
       expect(uatCompose).not.toMatch(/"80:80"|"443:443"|5434/);
     });
