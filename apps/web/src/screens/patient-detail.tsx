@@ -1066,6 +1066,9 @@ export function PatientDetail(): React.ReactElement {
    * never draws what the server would refuse (board §3 table): visits `opd.visits.read`; values
    * `lab.results.read`, else counter report rows `lab.reports.print`; imaging `radiology.reports.read`;
    * bills and dues `billing.invoice.read`; pharmacy hand-overs `opd.consult`; documents `patients.read`.
+   * OWNER RULING 2026-09-30 (money): the DUES alone also ride `billing.dues.patient.read`, the front
+   * desk's narrow string — the Today band's "₹X due · from <date> · bill <no>". The invoice history
+   * (the timeline's BILL rows) stays on `billing.invoice.read` and is never asked with the narrow one.
    */
   const on = (perm: string): boolean => pid !== null && can(perm);
   const visits = useQuery({ queryKey: ["opd-timeline", pid], queryFn: () => patientTimeline(pid!), enabled: on("opd.visits.read"), retry: false });
@@ -1073,7 +1076,7 @@ export function PatientDetail(): React.ReactElement {
   const labReports = useQuery({ queryKey: ["pf-lab-reports", pid], queryFn: () => reportsForPatient(pid!), enabled: on("lab.reports.print"), retry: false });
   const imaging = useQuery({ queryKey: ["pf-imaging", pid], queryFn: () => fetchPatientImaging(pid!), enabled: on("radiology.reports.read"), retry: false });
   const invoices = useQuery({ queryKey: ["pf-invoices", pid], queryFn: () => listInvoicesFor({ patientId: pid! }), enabled: on("billing.invoice.read"), retry: false });
-  const dues = useQuery({ queryKey: ["pf-dues", pid], queryFn: () => listDues(pid!), enabled: on("billing.invoice.read"), retry: false });
+  const dues = useQuery({ queryKey: ["pf-dues", pid], queryFn: () => listDues(pid!), enabled: on("billing.invoice.read") || on("billing.dues.patient.read"), retry: false });
   const dispenses = useQuery({ queryKey: ["pf-dispenses", pid], queryFn: () => fetchPatientDispenses(pid!), enabled: on("opd.consult"), retry: false });
   const documents = useQuery({ queryKey: ["pf-documents", pid], queryFn: () => listPatientDocuments(pid!), enabled: on("patients.read"), retry: false });
   const guardians = useGuardians(pid ?? "", pid !== null && !restricted);

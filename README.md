@@ -565,7 +565,7 @@ missed — nothing auto-charges.
 | POST | `/billing/allocations/:id/reverse` | append the mirror `reverse` row |
 | POST | `/billing/eie` | mark a receipt entered-in-error; reverses its live allocations |
 | GET | `/billing/patients/:patientId/balance` | advance + outstanding + dues |
-| GET | `/billing/patients/:patientId/dues` | unsettled invoices, oldest first |
+| GET | `/billing/patients/:patientId/dues` | unsettled invoices, oldest first; also admits `billing.dues.patient.read` (owner ruling 2026-09-30) |
 | POST | `/billing/refunds/request` | files the mandatory `billing_refund` approval |
 | POST | `/billing/refunds` | issue the voucher (check-on-execute) |
 | POST | `/billing/refunds/:id/pay` | disburse; payee identity required, every method |
@@ -625,6 +625,14 @@ the counter can act under the cap without waiting on a supervisor. Reversing an 
 voiding a document (EIE) and reconciling statements are back-office corrections, not counter
 actions, so they sit with `billing_manager` alone; `billing_manager` is also the `approverRole` on
 all five billing approval types (below), so it needs the generic approvals permissions too.
+
+Owner ruling of 2026-09-30 gives `billing.dues.patient.read` to the `front_office` and
+`front_office_supervisor` roles and to no other role in the model. It is the front desk's view of
+ONE patient's dues on the patient profile — amount due, bill number, date — and it admits exactly
+one route, `GET /billing/patients/:patientId/dues`, which also still answers `billing.invoice.read`.
+The desk does NOT get `billing.invoice.read`: that string opens the whole invoice list, every
+receipt and the dues worklist, and the ruling withholds it. It appears in neither table above
+because it guards no route of its own; the guard admits it beside the primary (`alsoAdmits`).
 
 Plan 09's four `membership.*` strings appear in neither table above, and are assigned by that
 plan's DD18. Reading and recognising an instrument (`membership.instrument.read`,

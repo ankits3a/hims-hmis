@@ -969,7 +969,14 @@ export class BillingController {
     }
   }
 
-  @RequirePermission("billing.invoice.read", "hospital")
+  /**
+   * OWNER RULING 2026-09-30 (money) — the front desk reads ONE patient's dues on the profile, through
+   * `billing.dues.patient.read`, and does NOT get `billing.invoice.read` (which opens the whole
+   * invoice list, every receipt and the worklist). This route is already scoped to the one patient
+   * in its path and answers only the unsettled bills — number, service day, what is still owed —
+   * so the narrow string admits exactly this response and nothing else in the module.
+   */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["billing.dues.patient.read"] })
   @Get("patients/:patientId/dues")
   async dues(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ items: DueRow[] }> {
     try {
