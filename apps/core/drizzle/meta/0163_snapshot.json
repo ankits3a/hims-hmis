@@ -1,6 +1,6 @@
 {
-  "id": "374aeed9-04cb-48cf-a9cb-4dc9c308c95d",
-  "prevId": "f9d994d1-8b8d-4121-9d84-49980761d443",
+  "id": "000b60a3-e97d-404f-895f-2043b3338c82",
+  "prevId": "374aeed9-04cb-48cf-a9cb-4dc9c308c95d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -17991,6 +17991,49 @@
         "items_class_formulary_ck": {
           "name": "items_class_formulary_ck",
           "value": "(\"items\".\"class\" = 'drug') = (\"items\".\"formulary_medicine_id\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.materials_settings": {
+      "name": "materials_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "grn_qc_needs_second_person": {
+          "name": "grn_qc_needs_second_person",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "materials_settings_one_row_ck": {
+          "name": "materials_settings_one_row_ck",
+          "value": "\"materials_settings\".\"id\" = 'main'"
         }
       },
       "isRLSEnabled": false

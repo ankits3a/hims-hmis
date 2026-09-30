@@ -818,6 +818,20 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
+  it("OWNER RULING 2026-09-30 · front desk with the narrow dues string: the Today band shows what is owed; no invoice history is asked", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/dues": DUES }, [...FRONT_DESK, "billing.dues.patient.read"]);
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByTestId("today-dues")).toHaveTextContent("₹650.00 due");
+    expect(screen.getByTestId("today-dues")).toHaveTextContent("from 02-Aug-2026 · bill OP/26/003982");
+    const tl = within(await screen.findByTestId("timeline"));
+    expect(await tl.findByText("18-Sep-2026")).toBeInTheDocument();
+    // The BILL rows are the invoice list's, and the ruling withholds it: never asked, never drawn.
+    expect(fetchCalls().some((c) => c.url.includes("/billing/invoices"))).toBe(false);
+    expect(fetchCalls().filter((c) => c.url.includes("/billing/")).map((c) => c.url)).toEqual([expect.stringContaining("/billing/patients/p-1/dues")]);
+    expect(tl.queryByText("OP/26/004411")).toBeNull();
+    expect(screen.queryByTestId("onward-bill")).toBeNull();
+  });
+
   it("doctor seat: full clinical line, no money, no Edit details, no Record a death, no Take payment", async () => {
     stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, DOCTOR);
     renderWithProviders(<PatientDetail />);

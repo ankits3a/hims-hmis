@@ -3861,6 +3861,207 @@
     }
   },
   "radiology": {
+    "tele": {
+      "fixReader": "Night & outside reads",
+      "listTitle": "Waiting for the over-read",
+      "late": "late",
+      "none": "No night prelim waiting for an over-read.",
+      "title": "Night & outside reads",
+      "place": "Reading room · the night partner's prelims, over-read by a consultant",
+      "tile": {
+        "awaiting": "To over-read",
+        "major": "Major · 30 days"
+      },
+      "nobody": "No night read in hand.",
+      "inHand": "In hand",
+      "readBy": "Night prelim by",
+      "noClock": "No images time — no clock",
+      "tat": "Prelim {{min}} min after the images · target {{target}} min",
+      "listSummary_one": "{{count}} night read to over-read",
+      "listSummary_other": "{{count}} night reads to over-read",
+      "clocksQuiet": "Every prelim inside its target.",
+      "clockLine": "{{name}} · prelim took {{min}} min against {{target}}",
+      "clocksSummary_one": "{{count}} prelim late",
+      "clocksSummary_other": "{{count}} prelims late",
+      "notConfigured": "No night-read partner is set up: the teleradiology book (provider, DPA, NMC-registered readers) is not published.",
+      "fixBook": "Setup → Books",
+      "coverage": "{{who}} reads {{from}}–{{to}} · prelim within {{stat}} min STAT, {{urgent}} min urgent · over-read by {{by}}",
+      "logTitle": "Discrepancy log · last 30 days",
+      "summary": "{{n}} prelims · median {{median}} min · {{late}} late · {{minor}} minor · {{major}} major",
+      "logEmpty": "Nothing over-read in the last 30 days.",
+      "col": {
+        "patient": "Patient · study",
+        "prelim": "Partner's prelim",
+        "grade": "Over-read",
+        "note": "What differed"
+      },
+      "grade": {
+        "concur": "Concur",
+        "minor": "Minor discrepancy",
+        "major": "Major discrepancy",
+        "awaiting": "Waiting"
+      },
+      "outsideTitle": "Outside studies · second opinion",
+      "outsideNone": "No outside film waiting to be read.",
+      "from": "from {{centre}}, {{day}}",
+      "read": "Read",
+      "done": {
+        "concur": "Signed and released as read at night.",
+        "minor": "Corrected, signed and released; logged as minor.",
+        "major": "Corrected, signed and released; logged as major — the treating doctor's inbox shows it unread."
+      },
+      "prelimBadge": "PRELIMINARY · night partner",
+      "findings": "Findings",
+      "gradeTitle": "Over-read",
+      "noteLabel": "What the night read got wrong (goes to the discrepancy log)",
+      "notePh": "e.g. missed a 4 mm right frontal contusion",
+      "majorHint": "A major discrepancy changes care: the corrected report is released now and a blind peer-review case opens.",
+      "dockCorrect": "Sign the correction",
+      "dockConcur": "Concur and sign",
+      "dockCorrectHint": "Your words are signed under your second factor and released.",
+      "dockConcurHint": "The partner's words become the hospital's report under your signature."
+    },
+    "peer": {
+      "listTitle": "My review queue",
+      "caseNo": "Case {{n}}",
+      "age_one": "{{count}} day",
+      "age_other": "{{count}} days",
+      "trigger": {
+        "random": "Random sample",
+        "amendment": "Amended report",
+        "overread_discrepancy": "Night-read discrepancy"
+      },
+      "none": "No case waiting for you.",
+      "title": "Peer review",
+      "blindCase": "Blind case",
+      "place": "Reading room · RADPEER, scored blind by a colleague",
+      "tile": {
+        "queue": "In my queue",
+        "overdue": "Over 14 days",
+        "sampled": "Sampled + triggered · this month",
+        "agreement": "Agreement (score 1) · 90 days",
+        "significant": "Score 3–4 · this month"
+      },
+      "nobody": "No case in hand.",
+      "inHand": "In hand",
+      "blindNote": "Blind: who read it is not shown. Your own reports never come to you.",
+      "listSummary_one": "{{count}} case to score",
+      "listSummary_other": "{{count}} cases to score",
+      "clocksQuiet": "No case older than 14 days.",
+      "clockLine": "{{study}} · waiting {{days}} days",
+      "clocksSummary_one": "{{count}} case over 14 days",
+      "clocksSummary_other": "{{count}} cases over 14 days",
+      "why": "A random 3% of each reader's reports every month, plus every amended report and every night-read discrepancy. Learning, never blame.",
+      "agreementTitle": "Agreement by reader · 90 days",
+      "agreementNote": "The bar starts at 80%. Target 97% or more.",
+      "recentTitle": "Recent reviews",
+      "col": {
+        "study": "Study",
+        "why": "Why",
+        "score": "Score",
+        "note": "Note"
+      },
+      "recentNote": "No names: the reader and the reviewer are not shown on a case.",
+      "prelim": "night prelim",
+      "question": "Question asked",
+      "scoreTitle": "RADPEER score",
+      "score": {
+        "1": "Concur with the interpretation",
+        "2a": "Discrepancy, not ordinarily expected to be made — unlikely significant",
+        "2b": "Discrepancy, not ordinarily expected to be made — likely significant",
+        "3a": "Should be made most of the time — unlikely significant",
+        "3b": "Should be made most of the time — likely significant",
+        "4a": "Should be made almost every time — unlikely significant",
+        "4b": "Should be made almost every time — likely significant"
+      },
+      "learning": "Take it to the Friday learning conference",
+      "notePhRequired": "What was missed or misread (required)",
+      "notePh": "A note (optional)",
+      "noteLabel": "Note",
+      "dock": "Save score {{score}}",
+      "dockHintNote": "A discrepancy says what it was — write one line.",
+      "dockHint": "Saves the score; the next case comes up."
+    },
+    "fu": {
+      "fixVisit": "Open a visit at the front desk",
+      "listTitle": "Follow-ups",
+      "overdue": "Overdue",
+      "state": {
+        "open": "Not acted",
+        "notified": "Told",
+        "booked": "Booked",
+        "closed": "Closed"
+      },
+      "source": {
+        "birads": "BI-RADS 3",
+        "tirads": "ACR TI-RADS",
+        "lirads": "LI-RADS",
+        "lungrads": "Lung-RADS",
+        "fleischner": "Fleischner",
+        "other": "Radiologist's advice"
+      },
+      "dueOn": "due {{day}}",
+      "none": "No follow-up recommended yet — a signed report that recommends one opens a row here.",
+      "clockLine": "{{name}} · {{what}} · was due {{day}}",
+      "clocksQuiet": "Nothing overdue.",
+      "clocksSummary_one": "{{count}} follow-up overdue",
+      "clocksSummary_other": "{{count}} follow-ups overdue",
+      "title": "Follow-ups",
+      "place": "Reading room · every recommendation has a due day and an owner",
+      "tile": {
+        "open": "Open",
+        "overdue": "Overdue",
+        "notActed": "Overdue / not acted",
+        "onTime": "Closed on time · 90 days",
+        "month": "Recommended this month"
+      },
+      "nobody": "No follow-up in hand.",
+      "inHand": "In hand",
+      "signedAt": "Report signed {{at}}",
+      "doctor": "Treating doctor: {{name}}",
+      "noDoctor": "none here (outside prescription)",
+      "listSummary_one": "{{count}} open · {{over}} overdue",
+      "listSummary_other": "{{count}} open · {{over}} overdue",
+      "why": "Every recommendation in a signed report becomes a row with a due day. It closes with a reason — never by being forgotten.",
+      "booked": "Booked as {{orderNo}} — the front desk schedules it.",
+      "toldDone": "Recorded: the doctor or patient was told.",
+      "closedDone": "Closed with the reason.",
+      "dock": {
+        "nothing": "Nothing to do",
+        "bookedHint": "Booked as {{orderNo}}; the booked study's report closes this row.",
+        "closedHint": "This follow-up is closed.",
+        "book": "Book {{name}}'s follow-up",
+        "bookHint": "Places a new imaging order under the treating doctor; the row shows booked.",
+        "told": "Record that they were told",
+        "toldHint": "The treating doctor books it; first record how the doctor or patient was told.",
+        "close": "Close with the reason",
+        "closeHint": "Choose why it closes and write one line."
+      },
+      "rule": "Rule",
+      "due": "Due",
+      "told": "Told",
+      "channel": {
+        "letter": "Letter",
+        "phone": "Phone call",
+        "in_person": "In person"
+      },
+      "bookedAs": "Booked",
+      "closedAs": "Closed",
+      "reason": {
+        "done_here": "Done here — study performed",
+        "done_elsewhere": "Done elsewhere — result seen",
+        "clinician_declines": "The doctor declines, reason written",
+        "patient_declines": "The patient declines, informed refusal on file",
+        "patient_died": "The patient died",
+        "withdrawn_by_amendment": "Withdrawn by an amendment"
+      },
+      "whoBooks": "The treating doctor books it from their results inbox ({{name}}), or the front desk does.",
+      "tellTitle": "Record how they were told",
+      "tellNote": "Who was told, e.g. Dr Mehra on the ward phone",
+      "noSend": "Nothing is sent from here — record the letter or call you made.",
+      "closeTitle": "Close with a reason",
+      "closeNote": "One line: who said so, or where it was done"
+    },
     "bay": {
       "title": "Prep & safety bay",
       "place": "Prep bay · the gates before the room",
@@ -4470,6 +4671,16 @@
       }
     },
     "results": {
+      "overread": {
+        "minor": "Night read corrected (minor) · {{who}}",
+        "major": "Night read corrected — MAJOR · {{who}}"
+      },
+      "fuBooked": "Booked as {{orderNo}} — the front desk schedules it.",
+      "fuTitle_one": "Follow-up to book · {{count}}",
+      "fuTitle_other": "Follow-ups to book · {{count}}",
+      "fuOverdue": "Overdue since {{day}}",
+      "fuDue": "Due {{day}}",
+      "fuBook": "Book it",
       "title": "Imaging results",
       "counts": "{{crit}} critical to read back · {{unread}} unread · {{read}} read, not acted on",
       "why": "Reports for your patients, what needs you first. Opening a report marks it read; the department's clock stops when you record what it changed.",
@@ -5830,6 +6041,11 @@
       "ipdNote": "Ordering a portable study from the ward arrives with the IPD plan. Until then a study reaches this round when the imaging desk books it on a portable machine with a ward and bed."
     },
     "read": {
+      "view": {
+        "followups": "Follow-ups",
+        "peer": "Peer review",
+        "tele": "Night & outside"
+      },
       "title": "Reading room",
       "place": "Reading room · report and sign",
       "nobody": "No study in hand. Open one from the list — opening the images claims it.",
@@ -6155,6 +6371,7 @@
         "cancel": "Cancel",
         "readOnly": "Drafting a book needs the radiology definitions grant (the radiologist).",
         "kind": {
+          "teleradiology": "Night-read partner (teleradiology)",
           "study_types": "Study types",
           "pregnancy_policy": "Pregnancy policy",
           "critical_categories": "Critical categories",
