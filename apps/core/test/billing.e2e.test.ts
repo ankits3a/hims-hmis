@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, mkCashier, seedBillingBase } from "./helpers/billing";
-import { billingConfig, events, invoices, opdConfig, patients, receipts, refundVouchers } from "../src/kernel/db/schema";
+import { billingConfig, events, invoices, opdConfig, patients, receipts, reconResolutions, refundVouchers } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { DEFAULT_LETTERHEAD } from "../src/modules/opd/config";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -1168,6 +1168,33 @@ describe("billing e2e", () => {
     expect(mismatches.body.items).toHaveLength(1);
     expect(mismatches.body.items[0].expectedNetPaise).toBe(49_250);
     expect(mismatches.body.items[0].settledPaise).toBe(48_000);
+  });
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — deciding a mismatch is a money act on the office screen, so it rides the
+   * same Idempotency-Key discipline as the other money writes: a replayed decision returns the ORIGINAL
+   * answer and writes ONE decision row, not a second (or a spurious "already disputed" refusal).
+   */
+  it("IDEMPOTENCY: replaying POST /billing/recon/mismatches/:id/resolve with the same key decides ONCE and returns the original body", async () => {
+    const patientId = await registerPatient("Salma Begum", "9876543230");
+    await openSession(cashier.token);
+    await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-resolve-1", patientId, lines: [{ lineId: "l1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "card", amountPaise: 50_000, refText: "TXN-RES-1" }] },
+    }).expect(201);
+    await http().post("/billing/recon/upload").set(...auth(cashier.token))
+      .send({ source: "card", csv: "ref,settledPaise,settledOn\nTXN-RES-1,48000,2026-08-20" }).expect(201);
+    const [m] = (await http().get("/billing/recon/mismatches").set(...auth(cashier.token)).expect(200)).body.items as [{ tenderId: string }];
+
+    const body = { outcome: "dispute", reason: "raised with the bank" };
+    const key = `resolve-${m.tenderId}`;
+    const first = await http().post(`/billing/recon/mismatches/${m.tenderId}/resolve`)
+      .set(...auth(cashier.token)).set("Idempotency-Key", key).send(body).expect(201);
+    const replay = await http().post(`/billing/recon/mismatches/${m.tenderId}/resolve`)
+      .set(...auth(cashier.token)).set("Idempotency-Key", key).send(body).expect(201);
+    expect(first.body).toMatchObject({ status: "resolved", outcome: "dispute", shortPaise: 1_250 });
+    expect(replay.body).toEqual(first.body);
+    expect(await db.select().from(reconResolutions).where(eq(reconResolutions.tenderId, m.tenderId))).toHaveLength(1);
   });
 
   it("reports: the day book and the GSTR-1 summary serve the T10 shapes over HTTP", async () => {

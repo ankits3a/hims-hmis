@@ -179,11 +179,11 @@ function usePayShape(p: HandProps): Shape {
   const flags = Array.isArray(pr.guardFlags) ? pr.guardFlags : [];
   const ownerApproved = num(pr.amountPaise) > (p.limits?.refundOwnerAbovePaise ?? Number.POSITIVE_INFINITY);
 
-  const pay = async (key: string): Promise<void> => {
+  const pay = async (idemKey: string): Promise<void> => {
     if (payee.trim() === "" || idType === "") { setError(t("billingOffice.board.pay.required")); return; }
     setError(null);
     try {
-      const done = await payVoucher(str(pr.voucherId), { payeeName: payee.trim(), payeeIdType: idType }, key);
+      const done = await payVoucher(str(pr.voucherId), { payeeName: payee.trim(), payeeIdType: idType }, idemKey);
       await qc.invalidateQueries({ queryKey: ["billing-office"] });
       p.onDone(t("billingOffice.board.pay.done", { voucherNo: done.voucherNo }));
     } catch (e) {
@@ -292,11 +292,11 @@ function useReconShape(p: HandProps): Shape {
   const mode = methodWord(str(pr.mode), t);
   const tolerance = fmtPaise(p.limits?.reconTolerancePaise ?? 100);
 
-  const act = async (): Promise<void> => {
+  const act = async (idemKey: string): Promise<void> => {
     if (reason.trim() === "") { setError(t("billingOffice.board.recon.reasonNeeded")); return; }
     setError(null);
     try {
-      const r = await resolveMismatch(str(pr.tenderId), { outcome: choice, reason: reason.trim() });
+      const r = await resolveMismatch(str(pr.tenderId), { outcome: choice, reason: reason.trim() }, idemKey);
       await qc.invalidateQueries({ queryKey: ["billing-office"] });
       // Asked of the owner: the item stays in hand, its act waiting, and moves to the clocks on the next read.
       if (r.status === "awaiting_owner") { setAsked(true); return; }
@@ -373,7 +373,7 @@ function useReconShape(p: HandProps): Shape {
             : waitingOnOwner ? <span data-testid="hand-owner">{t("billingOffice.board.recon.pendingOwner", { amount: diff })}</span> : whyLine}
         </div>
         <button type="button" className="sec" onClick={p.onBack} data-testid="hand-not-now">{t("billingOffice.board.today.notNow")}</button>
-        <SubmitButton plain className="pri" data-testid="hand-act" disabled={waitingOnOwner} onClick={() => act()}>
+        <SubmitButton plain className="pri" data-testid="hand-act" disabled={waitingOnOwner} onClick={(k) => act(k)}>
           {actLabel}
           <span className="kb" style={{ background: "transparent", color: "#cfe8dc", borderColor: "#3f8a70" }}>A</span>
         </SubmitButton>

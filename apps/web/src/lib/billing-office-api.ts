@@ -48,8 +48,8 @@ export type WireResolveResult =
   | { status: "resolved"; tenderId: string; outcome: ReconOutcome; shortPaise: number; state: string; resolutionId: string }
   | { status: "awaiting_owner"; tenderId: string; outcome: "bank_charge"; shortPaise: number; approvalId: string };
 
-export function resolveMismatch(tenderId: string, body: { outcome: ReconOutcome; reason: string }): Promise<WireResolveResult> {
-  return api<WireResolveResult>("POST", `/billing/recon/mismatches/${encodeURIComponent(tenderId)}/resolve`, body);
+export function resolveMismatch(tenderId: string, body: { outcome: ReconOutcome; reason: string }, idemKey?: string): Promise<WireResolveResult> {
+  return api<WireResolveResult>("POST", `/billing/recon/mismatches/${encodeURIComponent(tenderId)}/resolve`, body, idemKey);
 }
 
 /**

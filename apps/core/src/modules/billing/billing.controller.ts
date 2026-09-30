@@ -1225,10 +1225,17 @@ export class BillingController {
   @Post("recon/mismatches/:tenderId/resolve")
   async reconResolve(
     @CurrentActor() actor: Actor, @Param("tenderId") tenderId: string, @Body() body: unknown,
+    @Headers("idempotency-key") idemKey?: string,
   ): Promise<ResolveMismatchResult> {
     const b = parsed(resolveMismatchBody, body);
     try {
-      return await resolveMismatch(this.db, actor, { tenderId, ...b });
+      // A money act on the office screen: a replayed decision returns the original answer (the refunds' shape).
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: `POST /billing/recon/mismatches/${tenderId}/resolve`, key: idemKey },
+        b,
+        () => resolveMismatch(this.db, actor, { tenderId, ...b }),
+      );
     } catch (e) {
       toHttp(e);
     }
