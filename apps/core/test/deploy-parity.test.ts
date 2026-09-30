@@ -827,13 +827,15 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       expect(uat.stderr).toMatch(/deploy directory .* does not exist/);
     });
 
-    it("skips the stanza, the cron and the real-hostname edge check on uat, and nothing else", () => {
-      // Each of the three is production-only BY NATURE (no repository, no backup to schedule, no
-      // public hostname). Everything else — build, config, migrate, seeds, gate, census, service
+    it("skips the stanza and the cron on uat, walks the edge gate on the staging hostname, and nothing else", () => {
+      // The two skips are production-only BY NATURE (no repository, no backup to schedule); the
+      // edge gate only changes address, to the staging site production's caddy fronts. Everything else — build, config, migrate, seeds, gate, census, service
       // census, restarts — must be the same code, or the rehearsal proves nothing about the deploy.
       expect(deploySource).toMatch(/if \[ "\$TARGET" = "uat" \]; then\n {2}# 11i T3 \/ D1 — UAT has no backup repository/);
       expect(deploySource).toMatch(/note "target uat — no backup or restore-drill cron installed"/);
-      expect(deploySource).toMatch(/SITE_BASE="https:\/\/\$UAT_SITE:8443"/);
+      expect(deploySource).toMatch(/SITE_BASE="https:\/\/\$UAT_SITE"$/m);
+      // Production's caddy terminates TLS for the staging hostname over ACME, so no --insecure.
+      expect(deploySource).not.toMatch(/--insecure/);
       // and the migrate/seed/gate block is NOT behind a target branch
       expect(deploySource).not.toMatch(/if \[ "\$TARGET" = "uat" \]; then[\s\S]{0,200}migrate\.js/);
     });
@@ -854,11 +856,12 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       expect(uatCompose).not.toMatch(/external:\s*true/);
       expect(uatCompose).not.toMatch(/^\s+name:\s/m);
       // The two ports production holds, replaced rather than merged — compose APPENDS port lists.
-      // 8443 ON BOTH SIDES: this assertion used to pin `8443:443`, which is the inverted map that
-      // kept UAT from ever answering — `Caddyfile.uat`'s site address is `:8443`, so caddy binds
-      // 8443 INSIDE the container and publishing host 8443 to container 443 pointed at nothing.
-      // The test agreed with the bug, which is why nothing was red.
-      expect(uatCompose).toMatch(/ports: !override \["8443:8443"\]/);
+      // Container side 8080 matches `Caddyfile.uat`'s site address: this assertion once pinned
+      // `8443:443`, the inverted map that kept UAT from ever answering while the test agreed.
+      // Host side is docker0's address ONLY: docker's published ports bypass ufw, so a bare
+      // "8444:8080" would put an unauthenticated-TLS UAT on the public IP. Production's caddy
+      // reaches it through host-gateway for https://stagehmis.crkmch.com.
+      expect(uatCompose).toMatch(/ports: !override \["172\.17\.0\.1:8444:8080"\]/);
       expect(uatCompose).toMatch(/ports: !override \["127\.0\.0\.1:5435:5432"\]/);
       expect(uatCompose).not.toMatch(/"80:80"|"443:443"|5434/);
     });

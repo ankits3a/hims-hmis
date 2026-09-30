@@ -219,7 +219,8 @@ describe("WASA L-09 — the edge does not name its software", () => {
   it("the site header block deletes Server and Via, on production and UAT alike", () => {
     for (const [name, tree, site] of [
       ["prod", prod, /^hmis\.crkmch\.com$/],
-      ["uat", uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/],
+      ["staging", prod, /^stagehmis\.crkmch\.com$/],
+      ["uat", uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/],
     ] as const) {
       const header = only(only(tree, site, `${name} site`), /^header$/, `${name} header block`);
       expect([name, header.lines]).toEqual([name, expect.arrayContaining(["-Server", "-Via"])]);
@@ -265,7 +266,7 @@ describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
 
   for (const [name, tree, site] of [
     ["prod", prod, /^hmis\.crkmch\.com$/],
-    ["uat", uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/],
+    ["uat", uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/],
   ] as const) {
     it(`${name}: no framing, no plugins, and scripts only from this origin`, () => {
       const p = policyOf(tree, site, name);
@@ -284,7 +285,7 @@ describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
       only(only(tree, site, "site"), /^header$/, "header block").lines.find((l) => l.startsWith("Content-Security-Policy"));
     const prodPolicy = text(prod, /^hmis\.crkmch\.com$/);
     expect(prodPolicy).toMatch(/^Content-Security-Policy/); // not two absences agreeing
-    expect(text(uat, /^https:\/\/\{\$HMIS_UAT_SITE\}:8443$/)).toBe(prodPolicy);
+    expect(text(uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/)).toBe(prodPolicy);
   });
 });
 
@@ -301,5 +302,37 @@ describe("Owner 2026-09-27 — the site's own pages may use the camera", () => {
     const header = only(only(prod, /^hmis\.crkmch\.com$/, "prod site"), /^header$/, "prod header block");
     const policy = header.lines.filter((l) => l.startsWith("Permissions-Policy "));
     expect(policy).toEqual(['Permissions-Policy "geolocation=(), microphone=(), camera=(self)"']);
+  });
+});
+
+/**
+ * OWNER 2026-09-30 — THE STAGING SITE. https://stagehmis.crkmch.com is served by PRODUCTION'S caddy
+ * (80 and 443 are production's) and proxied to UAT's caddy on docker0, where basic auth, the
+ * headers and the /api split are applied. Each assertion below is a way the hop breaks quietly:
+ * the block moved ahead of production's (deploy.sh's edge gate reads the FIRST hostname site as
+ * production's), the upstream re-pointed at a port UAT does not publish, or the hosts entry that
+ * makes `host.docker.internal` resolve inside production's container dropped.
+ */
+describe("Owner 2026-09-30 — production's caddy fronts the staging site", () => {
+  const source = readFileSync(CADDYFILE, "utf8");
+  const prod = parseCaddyfile(source);
+  const prodCompose = readFileSync(resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml"), "utf8");
+  const uatCompose = readFileSync(resolve(REPO_ROOT, "docker", "prod", "docker-compose.uat.yml"), "utf8");
+
+  it("proxies to UAT's docker0 port, which is the port UAT publishes", () => {
+    const site = only(prod, /^stagehmis\.crkmch\.com$/, "staging site");
+    expect(site.lines).toContain("reverse_proxy host.docker.internal:8444");
+    expect(uatCompose).toMatch(/ports: !override \["172\.17\.0\.1:8444:8080"\]/);
+  });
+
+  it("comes AFTER production's own site, which deploy.sh reads as the first hostname block", () => {
+    const prodAt = source.search(/^hmis\.crkmch\.com \{$/m);
+    const stagingAt = source.search(/^stagehmis\.crkmch\.com \{$/m);
+    expect(prodAt).toBeGreaterThanOrEqual(0);
+    expect(stagingAt).toBeGreaterThan(prodAt);
+  });
+
+  it("production's caddy container can resolve host.docker.internal", () => {
+    expect(prodCompose).toMatch(/extra_hosts:\n\s+- "host\.docker\.internal:host-gateway"/);
   });
 });
