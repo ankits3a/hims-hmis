@@ -177,3 +177,16 @@ describe("TabStrip — the ARIA tabs pattern, focus included", () => {
     expect(document.activeElement).toBe(screen.getByTestId("jump"));
   });
 });
+
+/**
+ * UX 2026-09-30 — /opd/admin's six tabs are ~600px of pills in a row that could not wrap, so at a
+ * 390px phone the page scrolled sideways by 236px (measured in Chromium). jsdom has no layout, so
+ * this pins the decision where it is made: the strip's own style lets a row too long for its width
+ * wrap onto a second line instead of pushing the page wider.
+ */
+describe("TabStrip — a strip wider than the screen wraps, it never widens the page", () => {
+  it("lets its tabs wrap", () => {
+    render(<Harness />);
+    expect(screen.getByTestId("strip").style.flexWrap).toBe("wrap");
+  });
+});
