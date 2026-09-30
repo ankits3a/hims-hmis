@@ -121,6 +121,32 @@ describe("me (desk / report / export) e2e — 07c", () => {
   const get = (path: string, token: string) =>
     request(app.getHttpServer()).get(path).set("Authorization", `Bearer ${token}`);
 
+  type Stat = { key: string; value: string };
+  type Card = { key: string; stats?: Stat[] };
+  /**
+   * ═══ A CARD'S CONTENT, READ PAST THE BUDGET THAT MAY DROP IT (CI run 36676093591) ═══
+   *
+   * `runOne` races each provider against `DESK_PROVIDER_BUDGET_MS` and resolves `[]` when it loses,
+   * so under load a whole card can be missing from one poll. The supervisor case went red that way on
+   * a 1417 s shard: `cards.find(...)` was `undefined` and `.stats` threw — not a wrong figure, NO
+   * card. Her path is the longest one the billing provider has (`cashierDay`, the drawer, the
+   * `billing.session.read` check, three cash sums), so it is the first to lose the race.
+   *
+   * The race is ALL-OR-NOTHING per provider: a card either arrives exactly as `load()` built it or
+   * not at all. So re-polling until it arrives changes no claim about its CONTENT — the blind-count
+   * absences and the supervisor's figure are asserted on a card the provider really returned — and
+   * a card that never arrives (a permission or gate defect) still fails, after `tries` polls, with
+   * the key named instead of a TypeError. Every response keeps its `200` check.
+   */
+  const deskCard = async (path: string, token: string, key: string, tries = 5): Promise<{ body: { cards: Card[] }; card: Card }> => {
+    for (let i = 0; i < tries; i++) {
+      const res = await get(path, token).expect(200);
+      const card = (res.body.cards as Card[]).find((c) => c.key === key);
+      if (card !== undefined) return { body: res.body as { cards: Card[] }, card };
+    }
+    throw new Error(`${path}: card "${key}" absent from ${tries} consecutive polls — not the budget, a missing card`);
+  };
+
   /**
    * ═══ THE DESK PROMISES "UP TO N, BEST EFFORT" — SO N IS NOT ASSERTABLE AT RUNTIME ═══
    *
@@ -351,19 +377,16 @@ describe("me (desk / report / export) e2e — 07c", () => {
     await grantPermissionToRole(db, registry, "cashier_t", "billing.session.own");
     const asha = await mkUser(db, "asha", ["cashier_t"]);
     await openSessionFor(db, asha, 225000);
-    const res = await get(`/me/desk?date=${DATE}`, asha.token).expect(200);
-    const cards = res.body.cards as { key: string; stats?: { key: string; value: string }[] }[];
-    /** Subset for the budget, and the presence of the drawer asserted on its own: `cards[0]!` would
-     *  have thrown a TypeError on an empty desk rather than failing an assertion, which reads as a
-     *  harness fault instead of the degradation it is. The negative — no registration tile — is
-     *  carried by the subset exactly as it was by the equality. */
-    expect(cards.map((c) => c.key).filter((k) => k !== "billing.myCollections")).toEqual([]);
-    expect(cards.map((c) => c.key)).toContain("billing.myCollections");
-    const stats = cards[0]!.stats!;
+    const { body, card } = await deskCard(`/me/desk?date=${DATE}`, asha.token, "billing.myCollections");
+    /** Subset for the budget, and the drawer read through `deskCard`, which re-polls a card the
+     *  budget dropped. The negative — no registration tile — is carried by the subset exactly as it
+     *  was by the equality. */
+    expect(body.cards.map((c) => c.key).filter((k) => k !== "billing.myCollections")).toEqual([]);
+    const stats = card.stats!;
     // OWNER RULING 2026-09-28 — BLIND COUNT: her drawer is open and uncounted, so the /me/desk
     // response carries NO expected-cash figure for her — absent from the JSON, not just the screen.
     expect(stats.find((s) => s.key === "desk.billing.expectedCash")).toBeUndefined();
-    expect(JSON.stringify(res.body)).not.toContain("expectedCash");
+    expect(JSON.stringify(body)).not.toContain("expectedCash");
     expect(stats.find((s) => s.key === "desk.billing.float")!.value).toContain("2,250");
     expect(stats.find((s) => s.key === "desk.billing.noDrawer")).toBeUndefined();
   });
@@ -373,8 +396,7 @@ describe("me (desk / report / export) e2e — 07c", () => {
     await grantPermissionToRole(db, registry, "cashier_t", "billing.session.own");
     const asha = await mkUser(db, "asha", ["cashier_t"]);
     await openSessionFor(db, asha, 225000);
-    const desk = await get("/me/desk", asha.token).expect(200);
-    const stats = (desk.body.cards as { key: string; stats?: { key: string }[] }[]).find((c) => c.key === "billing.myCollections")!.stats!;
+    const stats = (await deskCard("/me/desk", asha.token, "billing.myCollections")).card.stats!;
     expect(stats.map((s) => s.key)).toEqual(["desk.billing.receipts", "desk.billing.float"]);
     const report = await get("/me/report", asha.token).expect(200);
     expect((report.body.sections as { key: string }[]).map((x) => x.key)).not.toContain("billing.myCollections");
@@ -386,12 +408,9 @@ describe("me (desk / report / export) e2e — 07c", () => {
     await grantPermissionToRole(db, registry, "supervisor_t", "billing.session.read");
     const meera = await mkUser(db, "meera", ["supervisor_t"]);
     await openSessionFor(db, meera, 225000);
-    const res = await get(`/me/desk?date=${DATE}`, meera.token).expect(200);
-    const cards = res.body.cards as { key: string; stats?: { key: string; value: string }[] }[];
-    const stats = cards.find((c) => c.key === "billing.myCollections")!.stats!;
+    const stats = (await deskCard(`/me/desk?date=${DATE}`, meera.token, "billing.myCollections")).card.stats!;
     expect(stats.find((s) => s.key === "desk.billing.expectedCash")!.value).toBe(stats.find((s) => s.key === "desk.billing.float")!.value);   // nothing taken yet: the float
-    const today = await get("/me/desk", meera.token).expect(200);
-    const todayStats = (today.body.cards as { key: string; stats?: { key: string }[] }[]).find((c) => c.key === "billing.myCollections")!.stats!;
+    const todayStats = (await deskCard("/me/desk", meera.token, "billing.myCollections")).card.stats!;
     expect(todayStats.map((x) => x.key)).toContain("desk.billing.collected");   // collected today, still hers to see
   });
 });
