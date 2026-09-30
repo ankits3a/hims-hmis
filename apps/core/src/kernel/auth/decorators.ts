@@ -14,12 +14,20 @@ export type PermissionRequirement = {
   scope: PermissionScope;
   secondFactor?: boolean;
   breakGlassBypass?: boolean;
+  /**
+   * OWNER RULING 2026-09-30 — ANY-OF, ADDITIVE. A route may name further permissions that ALSO
+   * admit, at the same scope. `permission` stays the primary: it is what every route census reads
+   * and what the refusal names, so a holder of NEITHER is refused exactly as before. Use it only for
+   * a narrow string that opens a strict subset of what the primary opens (the front desk's one
+   * patient's dues, not the invoice list) — never to widen a route.
+   */
+  alsoAdmits?: readonly string[];
 };
 export const PERMISSION_KEY = "hmis:permission";
 export const RequirePermission = (
   permission: string,
   scope: PermissionScope,
-  opts: { secondFactor?: boolean; breakGlassBypass?: boolean } = {},
+  opts: { secondFactor?: boolean; breakGlassBypass?: boolean; alsoAdmits?: readonly string[] } = {},
 ): MethodDecorator & ClassDecorator =>
   SetMetadata(PERMISSION_KEY, { permission, scope, ...opts } satisfies PermissionRequirement);
 
