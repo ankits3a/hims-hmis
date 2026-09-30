@@ -239,6 +239,74 @@ describe("materials over HTTP (Plan 14 T8)", () => {
   });
 
   /**
+   * OWNER RULING 2026-09-30 — the two-person GRN rule is a SETTING, off by default. Read by anyone who
+   * reads the GRN worklist, changed only under `materials.stores.manage`; when it is on, the capturer's
+   * QC and post are refused over HTTP with `grn_same_person`, and a second person's go through.
+   */
+  it("OWNER RULING 2026-09-30: the two-person GRN setting over HTTP — who may change it, and what it refuses", async () => {
+    const head = await userWith([...ALL_PERMISSIONS]);
+    const asHead = (r: request.Test): request.Test => r.set("Authorization", `Bearer ${head.token}`);
+    const keeper = await userWith(["materials.stock.read", "materials.grn.capture"]);
+    const asKeeper = (r: request.Test): request.Test => r.set("Authorization", `Bearer ${keeper.token}`);
+    const pharm = await userWith(["materials.items.read", "materials.stock.read", "materials.grn.qc"]);
+    const asPharmacist = (r: request.Test): request.Test => r.set("Authorization", `Bearer ${pharm.token}`);
+
+    await request(server()).get("/materials/settings").expect(401);
+    const off = await asKeeper(request(server()).get("/materials/settings")).expect(200);
+    expect(off.body).toEqual({ settings: { grnQcNeedsSecondPerson: false, updatedBy: null, updatedAt: null } });
+    // The storekeeper reads it and may not change it; neither may the pharmacist.
+    await asKeeper(request(server()).put("/materials/settings").send({ grnQcNeedsSecondPerson: true })).expect(403);
+    await asPharmacist(request(server()).put("/materials/settings").send({ grnQcNeedsSecondPerson: true })).expect(403);
+    await asHead(request(server()).put("/materials/settings").send({ grnQcNeedsSecondPerson: "yes" })).expect(400);
+
+    const medicineId = newId();
+    await db.insert(formularyMedicines).values({
+      id: medicineId, brandName: "Crocin 500 two", nameNormalized: normalizeDrugName("Crocin 500 two"),
+      form: "tablet", createdBy: "t", updatedBy: "t",
+    });
+    const itemId = ((await asHead(request(server()).post("/materials/items").send({
+      code: "CROC-TWO", name: "Crocin 500mg tablet", class: "drug",
+      formularyMedicineId: medicineId, baseUom: "tablet", batchTracked: true, shelfLifeDays: 1095,
+      uoms: [{ uom: "strip", toBaseMultiplier: 10 }],
+    })).expect(201)).body as { itemId: string }).itemId;
+    const vendorId = ((await asHead(request(server()).post("/materials/vendors").send({
+      code: "ACME-TWO", legalName: "Acme Pharma Pvt Ltd",
+    })).expect(201)).body as { vendorId: string }).vendorId;
+    for (const doc of [{ type: "gst_certificate", number: "09AAACA1234A1Z5" }, { type: "pan", number: "AAACA1234A" }]) {
+      await asHead(request(server()).post(`/materials/vendors/${vendorId}/documents`).send(doc)).expect(201);
+    }
+    await asHead(request(server()).post(`/materials/vendors/${vendorId}/activate`).send({})).expect(201);
+    const storeResourceId = ((await asHead(request(server()).post("/materials/stores").send({
+      code: "MAIN-TWO", name: "Main store",
+    })).expect(201)).body as { resourceId: string }).resourceId;
+    const capture = async (challanNo: string, batchNo: string): Promise<string> => ((await asHead(request(server()).post("/materials/grns").send({
+      vendorId, source: "challan", storeResourceId, challanNo, challanDate: "2026-08-27",
+      lines: [{
+        itemId, uom: "strip", qtyInUom: 10, batchNo, mfgDate: "2026-01-01", expiryDate: "2028-06-30",
+        mrpPaise: 8500, mrpUom: "strip", unitCostPaise: 700,
+      }],
+    })).expect(201)).body as { grnId: string }).grnId;
+
+    // OFF — today's behaviour: the head captures, QCs and posts his own delivery.
+    const own = await capture("CH/TWO/1", "B-TWO-1");
+    await asHead(request(server()).post(`/materials/grns/${own}/qc`).send({})).expect(201);
+    await asHead(request(server()).post(`/materials/grns/${own}/post`).send({})).expect(201);
+
+    // The head turns it ON.
+    const on = await asHead(request(server()).put("/materials/settings").send({ grnQcNeedsSecondPerson: true })).expect(200);
+    expect(on.body).toMatchObject({ settings: { grnQcNeedsSecondPerson: true, updatedBy: head.id } });
+
+    // ON — the capturer's QC is refused with the code; the pharmacist's goes through; the capturer's post is refused too.
+    const next = await capture("CH/TWO/2", "B-TWO-2");
+    await asHead(request(server()).post(`/materials/grns/${next}/qc`).send({}))
+      .expect(409).expect((r) => { expect(r.body.code).toBe("grn_same_person"); });
+    await asPharmacist(request(server()).post(`/materials/grns/${next}/qc`).send({})).expect(201);
+    await asHead(request(server()).post(`/materials/grns/${next}/post`).send({}))
+      .expect(409).expect((r) => { expect(r.body.code).toBe("grn_same_person"); });
+    await asPharmacist(request(server()).post(`/materials/grns/${next}/post`).send({})).expect(201);
+  });
+
+  /**
    * CLOSE REVIEW M1 — `POST /materials/stores` reaches `createResource`, which raises
    * `ResourceError`: not a `MaterialsError`, not an `ApprovalError`, and there is no global
    * exception filter. Every one of them answered **500**. The leg below the header walks six

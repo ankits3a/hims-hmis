@@ -34,6 +34,8 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   // Stage D3 / D4 — the fridge log and the emergency trays.
   { side: "stock", key: "cold", perms: ["pharmacy.coldchain.record", "pharmacy.coldchain.manage"], was: null },
   { side: "stock", key: "trays", perms: ["pharmacy.trays.check", "pharmacy.trays.manage"], was: null },
+  // Owner ruling 2026-09-30 — the stores' settings (the two-person GRN rule), for whoever may change them.
+  { side: "stock", key: "settings", perms: ["materials.stores.manage"], was: null },
   { side: "items", key: "master", perms: ["materials.items.manage"], was: "/materials/items" },
   { side: "items", key: "sells", perms: ["pharmacy.sale_items.manage"], was: "/pharmacy/items" },
   { side: "items", key: "formulary", perms: ["formulary.manage"], was: "/formulary/admin" },

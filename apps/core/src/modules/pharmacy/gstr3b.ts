@@ -1,5 +1,6 @@
 import { gstr1Summary } from "../billing";
 import { purchaseRegister } from "../materials";
+import { pharmacySalesPeriod } from "./sales-register";
 import { REPORTS_READ, reportRange, reportToday, requireReportPermission } from "./report-range";
 import type { ReportInput } from "./sales-register";
 import type { Actor } from "@hmis/contracts";
@@ -36,7 +37,15 @@ export type Gstr3bHeads = { taxablePaise: number; igstPaise: number; cgstPaise: 
 export type Gstr3b = {
   from: string; to: string; preset: string;
   /** 3.1(a) and 3.1(c). */
-  outward: { taxable: Gstr3bHeads; nilExempt: { taxablePaise: number }; byRate: { rateBps: number; taxablePaise: number; cgstPaise: number; sgstPaise: number }[] };
+  outward: {
+    taxable: Gstr3bHeads; nilExempt: { taxablePaise: number }; byRate: { rateBps: number; taxablePaise: number; cgstPaise: number; sgstPaise: number }[];
+    /**
+     * OWNER RULING 2026-09-30 — the sale discount given on the period's pharmacy bills, and their rounding. Both are
+     * ALREADY OUT of the taxable value above: a discount on the invoice reduces the value of supply (CGST Act
+     * s.15(3)(a)), and rounding is not a supply at all. Shown so the summary reconciles to the register.
+     */
+    discountPaise: number; roundingPaise: number;
+  };
   /** 4(A)(5), 4(B)(2) and the net. */
   itc: { available: Gstr3bHeads; reversed: Gstr3bHeads; net: { igstPaise: number; cgstPaise: number; sgstPaise: number }; bills: number; debitNotes: number };
   /** Vendor credit notes of the period — no tax split in the books, so not reversed here. */
@@ -91,6 +100,10 @@ export async function gstr3bReport(db: Db, actor: Actor, input: ReportInput, now
     byRate.set(r.rateBps, b);
   }
 
+  let discountPaise = 0;
+  let roundingPaise = 0;
+  for (const sale of (await pharmacySalesPeriod(db, range.from, range.to)).sales) { discountPaise += sale.discountPaise; roundingPaise += sale.roundingPaise; }
+
   const book = await purchaseRegister(db, range.from, range.to);
   const heads = (m: { taxablePaise: number; igstPaise: number; cgstPaise: number; sgstPaise: number }): Gstr3bHeads =>
     ({ taxablePaise: m.taxablePaise, igstPaise: m.igstPaise, cgstPaise: m.cgstPaise, sgstPaise: m.sgstPaise });
@@ -104,7 +117,7 @@ export async function gstr3bReport(db: Db, actor: Actor, input: ReportInput, now
 
   return {
     from: range.from, to: range.to, preset: range.preset,
-    outward: { taxable, nilExempt: { taxablePaise: nil }, byRate: [...byRate.values()].sort((a, b) => a.rateBps - b.rateBps) },
+    outward: { taxable, nilExempt: { taxablePaise: nil }, byRate: [...byRate.values()].sort((a, b) => a.rateBps - b.rateBps), discountPaise, roundingPaise },
     itc: { available, reversed, net, bills: book.totals.bills.count, debitNotes: book.totals.debitNotes.count },
     creditNotesUnsplitPaise: book.totals.creditNotes.totalPaise,
     payable: setOff(

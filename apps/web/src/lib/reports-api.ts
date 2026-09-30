@@ -183,7 +183,11 @@ export type WireGstr3bHeads = { taxablePaise: number; igstPaise: number; cgstPai
 export type WireSetOff = { liabilityPaise: number; byIgstPaise: number; byOwnPaise: number; cashPaise: number; carryForwardPaise: number };
 export type WireGstr3b = {
   from: string; to: string; preset: string;
-  outward: { taxable: WireGstr3bHeads; nilExempt: { taxablePaise: number }; byRate: { rateBps: number; taxablePaise: number; cgstPaise: number; sgstPaise: number }[] };
+  outward: {
+    taxable: WireGstr3bHeads; nilExempt: { taxablePaise: number }; byRate: { rateBps: number; taxablePaise: number; cgstPaise: number; sgstPaise: number }[];
+    /** OWNER RULINGS 2026-09-30 — the pharmacy bills' discount and rounding, both already out of the taxable value. Absent from an older server. */
+    discountPaise?: number; roundingPaise?: number;
+  };
   itc: { available: WireGstr3bHeads; reversed: WireGstr3bHeads; net: { igstPaise: number; cgstPaise: number; sgstPaise: number }; bills: number; debitNotes: number };
   creditNotesUnsplitPaise: number;
   payable: { igst: WireSetOff; cgst: WireSetOff; sgst: WireSetOff; cashPaise: number };

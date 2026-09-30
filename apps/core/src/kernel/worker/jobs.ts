@@ -22,7 +22,9 @@ import { collectDeskProviders } from "../desk/registry";
 import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
 import { runRefillReminders, sweepExpiredPicks } from "../../modules/pharmacy";
-import { sweepCriticalChaser, sweepImagingEscalations, sweepUnreadWatchman } from "../../modules/radiology";
+import {
+  sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
+} from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
@@ -499,7 +501,17 @@ export function registerAllJobs(
   scheduler.register({
     name: "sweepUnreadWatchman",
     dailyIst: RADIOLOGY_UNREAD_WATCHMAN_IST,
-    run: async (now) => { await sweepUnreadWatchman(db, now); },
+    /**
+     * 18-S RS8c — two more daily radiology chases ride this 08:00 IST job rather than two new jobs
+     * (each new job is a seven-site census, and all three are the same shape: a mark, one event): the
+     * follow-up that passed its due day (`imaging.followup_overdue`, once per row) and the month-just-
+     * closed's random peer-review sample (idempotent; a no-op every day after the first).
+     */
+    run: async (now) => {
+      await sweepUnreadWatchman(db, now);
+      await sweepOverdueFollowups(db, now);
+      await sweepPeerSample(db, now);
+    },
   });
   /**
    * PHASE R (R7) — the NINETEENTH, and the roster's first scheduled job.

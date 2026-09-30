@@ -411,9 +411,21 @@ async function assertGrantedApproval(
  * so the guard flags ride the one field an approver actually reads — the request note. The voucher
  * row carries them structurally in `guard_flags`.
  */
-function refundRequestNote(input: RequestRefundInput, guardFlags: GuardFlag[]): string {
+function refundRequestNote(input: RequestRefundInput, guardFlags: GuardFlag[], paper: string | null): string {
   const flags = guardFlags.length === 0 ? "none" : guardFlags.join(", ");
-  return `${input.kind} (${input.reasonClass}): ${input.reason} [guard flags: ${flags}]`;
+  // OWNER RULING 2026-09-30 — the approver (the owner, above ₹25,000.00) sees WHICH bill the money leaves
+  // from, not only the patient and the amount: the bill and credit-note numbers lead the note.
+  return `${paper === null ? "" : `${paper} — `}${input.kind} (${input.reasonClass}): ${input.reason} [guard flags: ${flags}]`;
+}
+
+/** "Bill INV-… · credit note CN-…" for an invoice refund; "Advance balance" for an advance refund. */
+async function refundPaperOf(db: Db, target: RefundTarget): Promise<string | null> {
+  if (target.invoiceId === null) return "Advance balance";
+  const [inv] = await db.select({ no: invoices.invoiceNo }).from(invoices).where(eq(invoices.id, target.invoiceId));
+  const cn = target.creditNoteId === null ? undefined
+    : (await db.select({ no: creditNotes.creditNoteNo }).from(creditNotes).where(eq(creditNotes.id, target.creditNoteId)))[0];
+  if (inv === undefined) return null;
+  return `Bill ${inv.no}${cn === undefined ? "" : ` · credit note ${cn.no}`}`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -434,6 +446,7 @@ export async function requestRefund(db: Db, actor: Actor, rawInput: RequestRefun
 
   const target = await resolveTarget(db, input);
   const guardFlags = await guardFlagsFor(db, { invoiceId: target.invoiceId, creditNoteId: target.creditNoteId });
+  const paper = await refundPaperOf(db, target);
 
   const filed = await withTx(db, (tx) =>
     requestApproval(tx, actor, {
@@ -443,7 +456,7 @@ export async function requestRefund(db: Db, actor: Actor, rawInput: RequestRefun
       patientId: target.patientId,
       encounterId: target.encounterId ?? undefined,
       amountPaise: input.amountPaise,
-      requestNote: refundRequestNote(input, guardFlags),
+      requestNote: refundRequestNote(input, guardFlags, paper),
     }),
   );
 

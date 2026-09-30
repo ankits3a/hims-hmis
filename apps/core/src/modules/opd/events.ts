@@ -409,7 +409,8 @@ export const consultationResumed = defineEvent("consultation.resumed", MODULE, z
 }));
 
 export const prescriptionIssued = defineEvent("prescription.issued", MODULE, z.object({
-  prescriptionId: id, encounterId: id, patientId: id, doctorId: id,
+  // null only for an OUTSIDE doctor's paper prescription entered at the pharmacy desk (2026-09-30).
+  prescriptionId: id, encounterId: id, patientId: id, doctorId: id.nullable(),
   version: z.number().int().positive(), lineCount: z.number().int().positive(),
   allergyOverrideCount: z.number().int().nonnegative(), // the S10 override-rate KPI numerator
   /**

@@ -112,6 +112,8 @@ const CENSUS: Record<string, string[]> = {
     "requested_at", "requested_by", "status", "to_resource_id", "transfer_id",
   ],
   store_indent_lines: ["id", "indent_id", "item_id", "line_idx", "qty_base", "qty_issued"],
+  /** OWNER RULING 2026-09-30 — the stores' settings, one row; the two-person GRN rule is its first (`modules/materials/settings.ts`). */
+  materials_settings: ["grn_qc_needs_second_person", "id", "updated_at", "updated_by"],
   grns: [
     "approval_id", "captured_by", "challan_date", "challan_no", "created_at", "created_by", "grn_no",
     "id", "invoice_no", "po_ref", "posted_at", "purchase_order_id", "qc_by", "source", "status",
@@ -228,8 +230,8 @@ describe("the materials tables (Plan 14 T1)", () => {
    * each, and the prose count followed the bullets rather than the tables. Recorded here as a
    * number rather than only in CLOSE, so the next phase that reads this family counts what exists.
    */
-  it("there are exactly THIRTY-THREE of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one, A6b's indent two", () => {
-    expect(Object.keys(CENSUS)).toHaveLength(33);
+  it("there are exactly THIRTY-FOUR of them — the plan's prose said fifteen (F2); parity P2 added three, P3 five, P4 six, P6's item merge one, A6b's indent two, the 2026-09-30 settings row one", () => {
+    expect(Object.keys(CENSUS)).toHaveLength(34);
   });
 
   // ───────────────────── the five semantic CHECKs, read out BY NAME ─────────────────────

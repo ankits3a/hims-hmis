@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
-import { IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_KINDS, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
+import {
+  IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_KINDS, IMAGING_FOLLOWUP_SOURCES, IMAGING_MEDIA_KINDS,
+} from "../../kernel/db/schema/radiology";
 import { BEDSIDE_LOCATION_MAX_LENGTH } from "./kinds";
 
 /**
@@ -300,6 +302,26 @@ export const imagingReportReleasedUnpaid = defineEvent("imaging.report_released_
   outstandingPaise: z.number().int().nonnegative(),
 }));
 
+/**
+ * ═══ 18-S RS8c — THE FOLLOW-UP AND THE NIGHT READ ═══
+ *
+ * `followup_overdue` is the daily sweep's voice (once per row): the source code and the due day,
+ * never the recommendation text (a clinical sentence). `followup_booked` names the NEW order the
+ * booking placed. `overread_recorded` is the morning consultant's grade of a night prelim — the
+ * discrepancy log's spine event; the note stays on the row.
+ */
+export const imagingFollowupOverdue = defineEvent("imaging.followup_overdue", MODULE, z.object({
+  followupId: id, studyId: id, source: z.enum(IMAGING_FOLLOWUP_SOURCES),
+  dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), overdueDays: z.number().int().nonnegative(),
+}));
+export const imagingFollowupBooked = defineEvent("imaging.followup_booked", MODULE, z.object({
+  followupId: id, studyId: id, orderId: id, source: z.enum(IMAGING_FOLLOWUP_SOURCES),
+}));
+export const imagingOverreadRecorded = defineEvent("imaging.overread_recorded", MODULE, z.object({
+  teleReadId: id, studyId: id, grade: z.enum(["concur", "minor", "major"]), finalReportId: id,
+  providerKey: z.string().min(1),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -326,4 +348,7 @@ export const RADIOLOGY_EVENTS = [
   imagingIrCoagulationOverridden,
   imagingIrSkinDoseAlert,
   imagingReportReleasedUnpaid,
+  imagingFollowupOverdue,
+  imagingFollowupBooked,
+  imagingOverreadRecorded,
 ] as const;

@@ -159,7 +159,11 @@ export type WireShelfCheck = { lines: number; onShelf: number; short: string[]; 
 export type WireFindResult =
   | { kind: "dispense"; door: string; dispense: WireDispense }
   | { kind: "patients"; door: "uhid"; patients: WirePatientSummary[] }
-  | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
+  | {
+    kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted";
+    /** 2026-09-30 — on `no_prescription_today`, who was found: the desk offers the paper-prescription door. */
+    patient?: { id: string; uhid: string; name: string | null; alias: string | null };
+  };
 /** `about` is what the line says; `key` is the hit's identity, which a PD-9 authorisation names. */
 export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string; key: string };
 /** PD-9 — one request to the prescriber about one refusal on one line. */
@@ -320,14 +324,41 @@ export async function pickDispense(id: string, lines: PickLine[], idempotencyKey
 }
 /** `pack`: the server folded a pack residue into this drug's line and says how its quantity reads (loose-MRP ruling). Absent from an older server. */
 export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean }; pack?: WireBillRowPack | null };
-export type WirePricedDraft = { lines: WirePricedLine[]; totals: { grossPaise: number; discountPaise: number; cgstPaise: number; sgstPaise: number; rawTotalPaise: number; netPayablePaise: number; roundingPaise: number } };
-export async function previewBill(id: string): Promise<WirePricedDraft> {
-  return api<WirePricedDraft>("GET", `/pharmacy/dispenses/${id}/bill/preview`);
+/**
+ * OWNER RULINGS 2026-09-30 (money). `byTender`: the payable under each rounding rule — `cash` (any cash, a split,
+ * or the owner's credit: the nearest rupee, halves up) and `digital` (UPI or card alone: to the paisa). `discount`:
+ * the discount priced on this bill and who must approve it. Both absent from an older server.
+ */
+export type TenderPayable = { netPayablePaise: number; roundingPaise: number };
+export type DiscountKind = "percent_bps" | "flat_paise";
+export type DiscountTier = "pharmacist" | "pharmacy_incharge" | "owner";
+export type DiscountAsk = { kind: DiscountKind; value: number; reason: string };
+export type WireDiscountQuote = { kind: DiscountKind; value: number; amountPaise: number; tier: DiscountTier; approverRole: "pharmacy_incharge" | "owner" | null };
+export type WirePricedDraft = {
+  lines: WirePricedLine[];
+  totals: { grossPaise: number; discountPaise: number; cgstPaise: number; sgstPaise: number; rawTotalPaise: number; netPayablePaise: number; roundingPaise: number };
+  byTender?: { cash: TenderPayable; digital: TenderPayable };
+  discount?: WireDiscountQuote | null;
+};
+export async function previewBill(id: string, discount?: DiscountAsk | null): Promise<WirePricedDraft> {
+  const q = discount == null ? "" : qs({ discountKind: discount.kind, discountValue: String(discount.value), discountReason: discount.reason });
+  return api<WirePricedDraft>("GET", `/pharmacy/dispenses/${id}/bill/preview${q}`);
 }
 export type Tender = { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string };
+/** A sale discount on the bill; above 10% with the granted approval for THIS bill and discount. */
+export type BillDiscount = DiscountAsk & { approvalId?: string };
 /** GAP A3b — `credit`: the whole bill on the OWNER's granted `billing_credit_owner` approval (tenders empty). */
-export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string } }, idempotencyKey: string): Promise<WireDispense> {
+export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string }; discount?: BillDiscount }, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/bill`, input, idempotencyKey);
+}
+export type DiscountAskResult = { approvalId: string; tier: DiscountTier; amountPaise: number };
+/** OWNER RULING 2026-09-30 — ask the in-charge (or the owner) for a discount above 10% on this dispense. */
+export async function askDispenseDiscount(id: string, ask: DiscountAsk): Promise<DiscountAskResult> {
+  return api<DiscountAskResult>("POST", `/pharmacy/dispenses/${id}/discount-requests`, ask);
+}
+export type WireDiscountRequest = { approvalId: string; status: string; amountPaise: number | null; tier: DiscountTier; decisionNote: string | null };
+export async function fetchDiscountRequest(approvalId: string): Promise<WireDiscountRequest> {
+  return api<WireDiscountRequest>("GET", `/pharmacy/discount-requests/${approvalId}`);
 }
 export async function handOverDispense(
   id: string, identity: { via: "token" | "phone_last4"; value: string } | null, idempotencyKey: string, controlled?: ControlledHandover,
@@ -497,7 +528,11 @@ export type WireRetailPreview = {
     /** UX-AUDIT 2026-09-28 — the line's rate, GST (inside the MRP) and amount. Absent from an older server. */
     price?: { unitPaise: number; grossPaise: number; discountPaise: number; taxPaise: number; gstRateBps: number; amountPaise: number };
   }[];
-  totals: { grossPaise: number; discountPaise: number; taxPaise: number; netPayablePaise: number };
+  /** `roundingPaise`: absent from an older server. */
+  totals: { grossPaise: number; discountPaise: number; taxPaise: number; roundingPaise?: number; netPayablePaise: number };
+  /** OWNER RULINGS 2026-09-30 — as on the desk's preview. Absent from an older server. */
+  byTender?: { cash: TenderPayable; digital: TenderPayable };
+  discount?: WireDiscountQuote | null;
   checks: {
     allergies: { lineIdx: number; substance: string }[];
     interactions: { lineIdx: number; severity: string; note: string }[];
@@ -515,6 +550,9 @@ export type RetailSaleBody = {
   customer: RetailCustomer; lines: RetailLine[]; prescription?: RetailPrescription;
   tenders: { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string }[];
   changeGivenPaise?: number;
+  /** OWNER RULING 2026-09-30 — the discount; above 10% with its approval, asked for the cart `draftId`. */
+  discount?: BillDiscount;
+  draftId?: string;
 };
 export type WireRetailSale = {
   id: string; soldAt: string; soldBy: string; soldByName: string;
@@ -533,6 +571,8 @@ export type WireRetailSale = {
   }[];
   /** The bill, one row per drug (loose-MRP ruling). Absent from an older server. */
   billRows?: WireBillRow[] | null;
+  /** OWNER RULINGS 2026-09-30 — MRP total, discount and why, GST inside, rounding, collected. Absent from an older server. */
+  money?: { grossPaise: number; discountPaise: number; discountReason: string | null; taxPaise: number; roundingPaise: number; netPaise: number } | null;
 };
 export type WireRetailSaleRow = {
   id: string; soldAt: string; soldBy: string; invoiceId: string; invoiceNo: string; netPaise: number;
@@ -552,8 +592,12 @@ export async function searchRetailShelf(q: string): Promise<WireRetailShelfEntry
   const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/retail/shelf${qs({ q })}`);
   return items;
 }
-export async function previewRetailSale(body: { patientId?: string; lines: RetailLine[] }): Promise<WireRetailPreview> {
+export async function previewRetailSale(body: { patientId?: string; lines: RetailLine[]; discount?: DiscountAsk }): Promise<WireRetailPreview> {
   return api<WireRetailPreview>("POST", "/pharmacy/retail/preview", body);
+}
+/** OWNER RULING 2026-09-30 — ask for a walk-in discount above 10% on the cart `draftId` (the customer named first). */
+export async function askRetailDiscount(body: { draftId: string; patientId?: string; lines: RetailLine[]; discount: DiscountAsk }): Promise<DiscountAskResult> {
+  return api<DiscountAskResult>("POST", "/pharmacy/retail/discount-requests", body);
 }
 export async function sellRetail(body: RetailSaleBody, idempotencyKey: string): Promise<WireRetailSale> {
   return api<WireRetailSale>("POST", "/pharmacy/retail/sales", body, idempotencyKey);
@@ -672,4 +716,31 @@ export async function fetchMyShift(): Promise<WireMyShift> {
 /** PHARMACY P6 — the pharmacy's copy of a controlled prescription, filed on the patient's record; the hand-over names it. */
 export async function captureRetainedPrescription(id: string, photo: { mimeType: string; imageBase64: string }): Promise<{ documentId: string }> {
   return api("POST", `/pharmacy/dispenses/${id}/retained-prescription`, { photo });
+}
+
+// ── 2026-09-30 — dispense from a paper prescription at the desk (`paper-rx.ts`) ──
+export type WirePaperRxContext = {
+  patient: { id: string; uhid: string; name: string | null };
+  rxDate: string;
+  /** `pharmacy`: the desk's own no-fee visit (2026-09-30), not a consultation. */
+  visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean; pharmacy?: boolean }[];
+  doctors: { id: string; displayName: string; registrationNo: string | null }[];
+};
+export type PaperRxLine = { itemId: string; qtyBase: number; dose?: string; frequency?: string; durationDays?: number | null };
+export type PaperRxBody = {
+  patientId: string; doctorId?: string; rxDate: string;
+  /** 2026-09-30 (owner) — an OUTSIDE doctor's paper: name; registration number and address for H/H1. */
+  outside?: { name: string; registrationNo: string | null; address: string | null };
+  photo?: { mimeType: string; imageBase64: string };
+  lines: PaperRxLine[];
+};
+export async function fetchPaperRxContext(patientId: string, rxDate: string): Promise<WirePaperRxContext> {
+  return api<WirePaperRxContext>("GET", `/pharmacy/paper-rx/context${qs({ patientId, rxDate })}`);
+}
+export async function searchPaperRxShelf(q: string): Promise<WireRetailShelfEntry[]> {
+  const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/paper-rx/shelf${qs({ q })}`);
+  return items;
+}
+export async function enterPaperRx(body: PaperRxBody, idempotencyKey: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", "/pharmacy/paper-rx", body, idempotencyKey);
 }

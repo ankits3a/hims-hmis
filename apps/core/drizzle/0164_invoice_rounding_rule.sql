@@ -1,0 +1,1 @@
+ALTER TABLE "invoices" ADD COLUMN "rounding_rule" text DEFAULT 'half_up' NOT NULL;

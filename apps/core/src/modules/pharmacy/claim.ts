@@ -28,7 +28,21 @@ export type CounterDoor = "rx_qr" | "patient_qr" | "token" | "uhid";
 export type FindResult =
   | { kind: "dispense"; door: CounterDoor; dispense: DispenseView }
   | { kind: "patients"; door: "uhid"; patients: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean }[] }
-  | { kind: "none"; door: CounterDoor; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
+  | {
+    kind: "none"; door: CounterDoor; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted";
+    /**
+     * 2026-09-30 — on `no_prescription_today`, WHO was found: the desk offers "Dispense from a paper
+     * prescription" for this person (`paper-rx.ts`) instead of a dead end.
+     */
+    patient?: FoundPatient | undefined;
+  };
+
+export type FoundPatient = { id: string; uhid: string; name: string | null; alias: string | null };
+
+async function foundPatient(db: Db, actor: Actor, patientId: string): Promise<FoundPatient | undefined> {
+  const [s] = await getPatientSummaries(db, actor, [patientId]);
+  return s === undefined ? undefined : { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias };
+}
 
 /**
  * PLAN 16c D4 — ONE FIELD, THREE DOORS (17c D4's shape). What the pharmacist types or scans decides
@@ -70,7 +84,7 @@ export async function findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: str
     const visit = await findVisitByToken(db, { serviceDate: istDateOf(now), tokenNo: Number(token[1]) });
     if (visit === null) return { kind: "none", door: "token", reason: "not_found" };
     const rx = await activePrescriptionOf(db, actor, visit.id);
-    if (rx === null) return { kind: "none", door: "token", reason: "no_prescription_today" };
+    if (rx === null) return { kind: "none", door: "token", reason: "no_prescription_today", patient: await foundPatient(db, actor, visit.patientId) };
     return { kind: "dispense", door: "token", dispense: await ensureQueued(db, actor, rx, now) };
   }
 
@@ -85,12 +99,13 @@ export async function findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: str
 
 /** The patient's prescription of today, through the visit read (which logs the PHI access). */
 async function todaysDispense(db: Db, actor: Actor, patientId: string, door: CounterDoor, now: Date): Promise<FindResult> {
-  const visits = (await listVisits(db, { serviceDate: istDateOf(now) })).filter((v) => v.patientId === patientId);
+  // `type: "any"` — a paper prescription on the desk's own no-fee pharmacy visit (2026-09-30) is found again by name.
+  const visits = await listVisits(db, { serviceDate: istDateOf(now), patientId, type: "any" });
   for (const visit of visits.reverse()) {
     const rx = await activePrescriptionOf(db, actor, visit.id);
     if (rx !== null) return { kind: "dispense", door, dispense: await ensureQueued(db, actor, rx, now) };
   }
-  return { kind: "none", door, reason: "no_prescription_today" };
+  return { kind: "none", door, reason: "no_prescription_today", patient: await foundPatient(db, actor, patientId) };
 }
 
 async function activePrescriptionOf(db: Db, actor: Actor, encounterId: string): Promise<PrescriptionRow | null> {

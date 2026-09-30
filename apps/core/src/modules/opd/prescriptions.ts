@@ -488,17 +488,55 @@ export type IssuedPrescription = {
  * re-reads. A caller that reaches this function with `"paper_slip"` and without the grant is
  * refused here, whatever the route did.
  */
-export type PrescriptionAuthority = "doctor" | "paper_slip";
+/**
+ * ═══ 2026-09-30 — `"pharmacy_paper"`: THE PHARMACIST ENTERS A PAPER PRESCRIPTION AT THE DESK ═══
+ *
+ * Owner, at the live counter: a registered patient arrives with a hospital doctor's PAPER
+ * prescription and nobody typed it in. The pharmacist types it — the FD-31 transcription with the
+ * pharmacist at the keyboard (`transcribedBy` is the pharmacist, so the desk's slip cross-confirm
+ * still applies). Differences from `"paper_slip"`, each deliberate:
+ *   - the grant is `pharmacy.dispense.place` (asserted here, the same reason as above);
+ *   - the prescriber is the hospital doctor WRITTEN ON THE PAPER (`opts.doctorId`), defaulting to the
+ *     visit's doctor — the pharmacist is reading a signed paper, not choosing a doctor;
+ *   - the visit's state is not asked (the doctor who writes on paper never moved it in the system),
+ *     but a visit that already carries an ACTIVE prescription is refused: this door never
+ *     supersedes the doctor's own e-prescription;
+ *   - NO override is accepted from this door: every hard warning refuses.
+ */
+export type PrescriptionAuthority = "doctor" | "paper_slip" | "pharmacy_paper";
 
 export async function issuePrescription(
   db: Db, actor: Actor, cfg: AppConfig, encounterId: string, input: IssuePrescriptionInput, now: Date = new Date(),
   authority: PrescriptionAuthority = "doctor",
+  opts: { doctorId?: string; outsidePrescriber?: OutsidePrescriber } = {},
 ): Promise<IssuedPrescription> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   let transcribedBy: string | null = null;
   let doctor;
-  if (authority === "paper_slip") {
+  if (authority === "pharmacy_paper") {
+    if (actor.type !== "user") throw new OpdError("user_actor_required", "a transcription is a user action");
+    if (!(await hasPermission(db, actor.id, "pharmacy.dispense.place", "hospital"))) {
+      throw new OpdError("transcription_not_permitted", "this account may not enter a paper prescription at the pharmacy");
+    }
+    transcribedBy = actor.id;
+    if (opts.outsidePrescriber !== undefined) {
+      // 2026-09-30 — an OUTSIDE doctor's paper: no hospital prescriber; the row records who wrote it.
+      if (opts.doctorId !== undefined) throw new OpdError("not_a_doctor", "a paper prescription names a hospital doctor OR an outside doctor, not both");
+      if (opts.outsidePrescriber.name.trim() === "") throw new OpdError("not_a_doctor", "an outside prescription names its doctor");
+      doctor = null;
+    } else {
+      const doctorId = opts.doctorId ?? encounter.doctorId;
+      if (doctorId === null) throw new OpdError("not_a_doctor", `encounter ${encounter.id} names no doctor`);
+      const signing = await getDoctor(db, doctorId);
+      if (!signing) throw new OpdError("unknown_doctor", `unknown doctor ${doctorId}`);
+      if (!signing.active) throw new OpdError("doctor_inactive", `doctor ${doctorId} is inactive`);
+      doctor = signing;
+    }
+    if (input.overrides?.length || input.interactionOverrides?.length || input.duplicateOverrides?.length || input.drugDiseaseOverrides?.length) {
+      throw new OpdError("override_reason_required", "a paper prescription entered at the pharmacy carries no override");
+    }
+  } else if (authority === "paper_slip") {
     if (actor.type !== "user") throw new OpdError("user_actor_required", "a transcription is a user action");
     if (!(await hasPermission(db, actor.id, "opd.prescription.transcribe", "hospital"))) {
       throw new OpdError("transcription_not_permitted", "this account may not type a prescription from a paper slip");
@@ -513,7 +551,7 @@ export async function issuePrescription(
   } else {
     doctor = await requireTreatingDoctor(db, actor, encounter);
   }
-  if (encounter.status !== "in_consultation") {
+  if (authority !== "pharmacy_paper" && encounter.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a prescription is issued in consultation, not ${encounter.status}`);
   }
 
@@ -616,6 +654,13 @@ export async function issuePrescription(
       .from(opdPrescriptions)
       .where(eq(opdPrescriptions.encounterId, encounterId));
     const version = (highest[0]?.version ?? 0) + 1;
+    if (authority === "pharmacy_paper") {
+      const active = await tx.select({ id: opdPrescriptions.id }).from(opdPrescriptions)
+        .where(and(eq(opdPrescriptions.encounterId, encounterId), eq(opdPrescriptions.status, "active")));
+      if (active.length > 0) {
+        throw new OpdError("encounter_state_conflict", `visit ${encounter.visitNo} already carries the doctor's prescription — dispense that one`);
+      }
+    }
 
     await tx
       .update(opdPrescriptions)
@@ -625,12 +670,17 @@ export async function issuePrescription(
     const prescriptionId = newId();
     /* The Condition carries the PRIMARY code (`encounter.icd10Code`), so its eye is that row's eye. */
     const primary = (await visitDiagnoses(tx, encounterId)).find((d) => d.icd10Code !== null && d.icd10Code === encounter.icd10Code);
+    const outside = opts.outsidePrescriber;
     const document = toFhirBundle({
-      prescriptionId, version, encounterId, patientId: encounter.patientId, doctorId: doctor.id,
+      prescriptionId, version, encounterId, patientId: encounter.patientId, doctorId: doctor?.id ?? null,
+      outsidePrescriber: outside === undefined ? undefined : { name: outside.name.trim(), registrationNo: outside.registrationNo },
       issuedAt: now, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code, laterality: primary?.laterality ?? null, lines,
     });
     await tx.insert(opdPrescriptions).values({
-      id: prescriptionId, encounterId, patientId: encounter.patientId, doctorId: doctor.id, version,
+      id: prescriptionId, encounterId, patientId: encounter.patientId, doctorId: doctor?.id ?? null, version,
+      ...(outside === undefined ? {} : {
+        outsidePrescriberName: outside.name.trim(), outsidePrescriberRegNo: outside.registrationNo, outsidePrescriberAddress: outside.address,
+      }),
       lines, document, allergyOverrides: matchedOverrides,
       // C4 — the justification for prescribing through a severe interaction is a medico-legal
       // record, not a transient. It used to be validated, counted, and dropped.
@@ -642,7 +692,7 @@ export async function issuePrescription(
     await appendEvent(tx, prescriptionIssued.make({
       actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
       payload: {
-        prescriptionId, encounterId, patientId: encounter.patientId, doctorId: doctor.id,
+        prescriptionId, encounterId, patientId: encounter.patientId, doctorId: doctor?.id ?? null,
         version, lineCount: lines.length, allergyOverrideCount: matchedOverrides.length,
         interactionOverrideCount: matchedInteractionOverrides.length,
         duplicateOverrideCount: matchedDuplicateOverrides.length,
@@ -658,6 +708,22 @@ export async function issuePrescription(
       notices,
       unreviewedLineIndexes: checks.unreviewedLineIndexes,
     };
+  });
+}
+
+/**
+ * 2026-09-30 — the pharmacy's ONE door into issuing: a paper prescription the pharmacist types at the
+ * desk (`"pharmacy_paper"` above). Exported narrowly so no other module gains the doctor's road.
+ */
+export type OutsidePrescriber = { name: string; registrationNo: string | null; address: string | null };
+
+export async function issuePharmacyPaperPrescription(
+  db: Db, actor: Actor, cfg: AppConfig, encounterId: string,
+  input: { lines: RxLine[]; doctorId?: string; outsidePrescriber?: OutsidePrescriber }, now: Date = new Date(),
+): Promise<IssuedPrescription> {
+  return issuePrescription(db, actor, cfg, encounterId, { lines: input.lines }, now, "pharmacy_paper", {
+    ...(input.doctorId === undefined ? {} : { doctorId: input.doctorId }),
+    ...(input.outsidePrescriber === undefined ? {} : { outsidePrescriber: input.outsidePrescriber }),
   });
 }
 
@@ -736,7 +802,10 @@ export async function verifyPrescriptionQr(db: Db, cfg: AppConfig, actor: Actor,
   }
 
   const [summary] = await getPatientSummaries(db, actor, [row.patientId]);
-  const doctor = await getDoctor(db, row.doctorId);
+  // 2026-09-30 — an OUTSIDE doctor's paper prescription names its prescriber on the row itself.
+  const doctor = row.doctorId === null
+    ? { displayName: `${row.outsidePrescriberName ?? "outside prescriber"} (outside)`, registrationNo: row.outsidePrescriberRegNo }
+    : await getDoctor(db, row.doctorId);
   return {
     ok: true,
     prescription: { id: row.id, version: row.version, issuedAt: row.issuedAt, lines: row.lines as RxLine[] },
@@ -786,6 +855,8 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
   const encounter = (await getEncounter(db, row.encounterId))!;
   const opdCfg = await loadOpdConfig(db);
 
+  // 2026-09-30 — an OUTSIDE doctor's paper prescription is his own paper; the hospital prints none for it.
+  if (row.doctorId === null) throw new OpdError("unknown_prescription", `prescription ${prescriptionId} is an outside doctor's paper — the hospital prints no prescription for it`);
   const [summary] = await getPatientSummaries(db, actor, [row.patientId]);
   const doctor = await getDoctor(db, row.doctorId);
   const department = encounter.departmentId === null

@@ -77,7 +77,9 @@ export type FhirDocumentInput = {
   version: number;
   encounterId: string;
   patientId: string;
-  doctorId: string;
+  /** null: an OUTSIDE doctor's paper prescription entered at the pharmacy (2026-09-30) — `outsidePrescriber` names them. */
+  doctorId: string | null;
+  outsidePrescriber?: { name: string; registrationNo: string | null } | undefined;
   issuedAt: Date;
   diagnosis: string | null;
   icd10Code: string | null;
@@ -160,7 +162,9 @@ export function toFhirBundle(input: FhirDocumentInput): FhirBundle {
   const issued = input.issuedAt.toISOString();
   const subject = { reference: `Patient/${input.patientId}` };
   const encounter = { reference: `Encounter/${input.encounterId}` };
-  const requester = { reference: `Practitioner/${input.doctorId}` };
+  const requester = input.doctorId === null
+    ? { display: [input.outsidePrescriber?.name ?? "outside prescriber", input.outsidePrescriber?.registrationNo].filter((x) => x != null && x !== "").join(", ") }
+    : { reference: `Practitioner/${input.doctorId}` };
 
   const entry: { resource: Record<string, unknown> }[] = [
     {

@@ -9,14 +9,16 @@ import { duplicateCandidates } from "../lib/patients-api";
 import { todayIst } from "../lib/opd-api";
 import {
   acceptRetailReturn, fetchMyRegistration, fetchRetailSale, fetchRetailSaleByBill, fetchRetailSales, fetchRetailState, pharmacyErrorText,
-  previewRetailSale, searchRetailShelf, sellRetail,
+  askRetailDiscount, previewRetailSale, searchRetailShelf, sellRetail,
 } from "../lib/pharmacy-api";
 import { InvoicePrint } from "../components/invoice-print";
 import { parseRupees } from "../components/money-input";
 import { PatientPicker } from "../components/patient-picker";
 import { PharmacyBillAnnex } from "../components/pharmacy-bill-annex";
 import { istClock, istDateLabel } from "./desk-one/model";
-import { rupees } from "./pharmacy-desk/bill";
+import { rupees, signedRupees } from "./pharmacy-desk/bill";
+import { DiscountSheet, DiscountWait, discountLabel, useDiscountApproval } from "./pharmacy-desk/discount";
+import type { AppliedDiscount } from "./pharmacy-desk/discount";
 import { expiryLabel } from "./pharmacy-desk/work";
 import { downscaleToJpeg } from "./slip-capture";
 import type { WirePatientHit } from "../lib/patients-api";
@@ -321,6 +323,15 @@ export function PharmacyRetail(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [returning, setReturning] = useState(false);
+  /*
+    OWNER RULING 2026-09-30 — the walk-in discount, from the bill's ⋯ sheet. `cartId` is the cart's own id: an
+    ask above 10% is filed against it, and the sale is made under it, so one approval sells one cart once.
+  */
+  const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
+  const [cartId, setCartId] = useState(newIdempotencyKey);
+  const [billMenu, setBillMenu] = useState(false);
+  const [discountSheet, setDiscountSheet] = useState(false);
+  const approval = useDiscountApproval(discount);
   const [clock, setClock] = useState(() => istClock());
   useEffect(() => {
     const id = setInterval(() => { setClock(istClock()); }, 15_000);
@@ -348,18 +359,20 @@ export function PharmacyRetail(): React.ReactElement {
     ...(c.entry.scannedBatchId === null ? {} : { batchId: c.entry.scannedBatchId }),
   }));
   const cartValid = cart.length > 0 && cart.every((c) => /^\d+$/.test(c.qty) && Number(c.qty) > 0);
-  const invalidate = (): void => { setPreview(null); };
+  /* A changed cart is a different bill: its preview, and any discount priced on the old one, go. */
+  const invalidate = (): void => { setPreview(null); setDiscount(null); setCartId(newIdempotencyKey()); };
 
   const add = (entry: WireRetailShelfEntry): void => {
     setCart((c) => [...c, { entry, qty: "" }]);
     invalidate();
   };
 
-  const runPreview = async (): Promise<void> => {
+  const runPreview = async (withDiscount: AppliedDiscount | null = discount): Promise<void> => {
     setError(null); setBusy(true);
     try {
       const p = await previewRetailSale({
         ...(customer?.kind === "existing" ? { patientId: customer.id } : {}), lines: cartLines(),
+        ...(withDiscount === null ? {} : { discount: { kind: withDiscount.kind, value: withDiscount.value, reason: withDiscount.reason } }),
       });
       setPreview(p);
       /* UX-AUDIT 2026-09-28 — nothing is prefilled: the cash box waits for what the customer hands over. */
@@ -403,7 +416,11 @@ export function PharmacyRetail(): React.ReactElement {
     };
   };
 
-  const payable = preview?.totals.netPayablePaise ?? 0;
+  /* OWNER RULING 2026-09-30 — (amended) cash rounds to the nearest rupee, UPI and card are collected to the paisa. */
+  const due = preview === null ? null
+    : preview.byTender === undefined ? { netPayablePaise: preview.totals.netPayablePaise, roundingPaise: preview.totals.roundingPaise ?? 0 }
+      : mode === "cash" ? preview.byTender.cash : preview.byTender.digital;
+  const payable = due?.netPayablePaise ?? 0;
   const cashParse = parseRupees(tendered);
   const cashPaise = cashParse.ok ? cashParse.paise : undefined;
   /* A UPI or card payment is the bill's amount exactly; only cash is counted, and its change given. */
@@ -424,6 +441,10 @@ export function PharmacyRetail(): React.ReactElement {
         customer: who, lines: cartLines(), ...(prescription === undefined ? {} : { prescription }),
         tenders: [{ mode, amountPaise, ...(ref.trim() === "" ? {} : { refText: ref.trim() }) }],
         ...(mode === "cash" && amountPaise > payable ? { changeGivenPaise: amountPaise - payable } : {}),
+        ...(discount === null ? {} : {
+          discount: { kind: discount.kind, value: discount.value, reason: discount.reason, ...(discount.approvalId === null ? {} : { approvalId: discount.approvalId }) },
+          ...(discount.approvalId === null ? {} : { draftId: cartId }),
+        }),
       }, saleKey);
       setSold(sale); setMatches(null);
       await qc.invalidateQueries({ queryKey: ["pharmacy", "retail", "sales"] });
@@ -439,6 +460,7 @@ export function PharmacyRetail(): React.ReactElement {
   const reset = (): void => {
     setCustomer(null); setNewDraft(EMPTY_NEW); setRegistering(false); setMatches(null); setCart([]); setPreview(null);
     setRx(EMPTY_RX); setMode("cash"); setTendered(""); setRef(""); setError(null); setSold(null); setSaleKey(newIdempotencyKey());
+    setDiscount(null); setCartId(newIdempotencyKey()); setBillMenu(false); setDiscountSheet(false);
   };
 
   if (printing !== null) {
@@ -476,7 +498,8 @@ export function PharmacyRetail(): React.ReactElement {
   const blocked = preview?.checks !== null && preview?.checks !== undefined
     && (preview.checks.allergies.length > 0 || preview.checks.interactions.some((i) => i.severity === "severe"));
   const moneyOk = preview !== null && (mode === "cash" ? cashPaise !== undefined && cashPaise >= payable : ref.trim() !== "");
-  const canSell = !shut && !busy && customer !== null && preview !== null && (!preview.prescriptionRequired || rxComplete) && moneyOk && !blocked;
+  const discountReady = discount === null || approval.status === "none" || approval.status === "granted";
+  const canSell = !shut && !busy && customer !== null && preview !== null && (!preview.prescriptionRequired || rxComplete) && moneyOk && !blocked && discountReady;
   const byIdx = new Map((preview?.lines ?? []).map((l) => [l.lineIdx, l] as const));
   const rxNeeded = preview?.prescriptionRequired ?? cart.some((c) => scheduled(c.entry.scheduleFlag));
   const rows = today.data ?? [];
@@ -683,9 +706,10 @@ export function PharmacyRetail(): React.ReactElement {
                     {preview !== null && (
                       <dl className="rt-totals" data-testid="retail-totals">
                         <dt>{t("pharmacyRetail.gross")}</dt><dd className="mo">{rupees(preview.totals.grossPaise)}</dd>
-                        {preview.totals.discountPaise > 0 && <><dt>{t("pharmacyRetail.discount")}</dt><dd className="mo">− {rupees(preview.totals.discountPaise)}</dd></>}
+                        {preview.totals.discountPaise > 0 && <><dt data-testid="retail-discount">{discount === null ? t("pharmacyRetail.discount") : `${t("pharmacyRetail.discount")} ${discountLabel(discount)} · ${discount.reason}`}</dt><dd className="mo">− {rupees(preview.totals.discountPaise)}</dd></>}
                         <dt>{t("pharmacyRetail.gstInside")}</dt><dd className="mo">{rupees(preview.totals.taxPaise)}</dd>
-                        <dt className="rt-pay">{t("pharmacyRetail.payable")}</dt><dd className="mo rt-pay" data-testid="retail-total">{rupees(preview.totals.netPayablePaise)}</dd>
+                        {due !== null && due.roundingPaise !== 0 && <><dt>{t("pharmacyDiscount.rounding")}</dt><dd className="mo" data-testid="retail-rounding">{signedRupees(due.roundingPaise)}</dd></>}
+                        <dt className="rt-pay">{t("pharmacyRetail.payable")}</dt><dd className="mo rt-pay" data-testid="retail-total">{rupees(payable)}</dd>
                       </dl>
                     )}
                     {preview !== null && <p className="rt-note">{t("pharmacyRetail.mrpNote")}</p>}
@@ -726,7 +750,32 @@ export function PharmacyRetail(): React.ReactElement {
 
                   {preview !== null && (
                     <section className="box rt-card" aria-labelledby="rt-s3">
-                      <h2 id="rt-s3" className="rt-h2"><span className="rt-dot">3</span>{t("pharmacyRetail.step.bill")}</h2>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <h2 id="rt-s3" className="rt-h2" style={{ flexGrow: 1 }}><span className="rt-dot">3</span>{t("pharmacyRetail.step.bill")}</h2>
+                        {/* OWNER RULING 2026-09-30 — the discount lives behind ⋯, never in the line rows. */}
+                        {sold === null ? (
+                          <span style={{ position: "relative" }}>
+                            <button
+                              type="button" aria-label={t("pharmacyDiscount.menu")} aria-expanded={billMenu} aria-haspopup="true" data-testid="retail-bill-menu"
+                              onClick={() => setBillMenu((m) => !m)}
+                              style={{ width: 30, height: 30, borderRadius: 6, border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dim)" }}
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg>
+                            </button>
+                            {billMenu ? (
+                              <span className="lmenu" style={{ display: "block", minWidth: 200 }}>
+                                <button type="button" data-testid="retail-discount-open" onClick={() => { setBillMenu(false); setDiscountSheet(true); }}>
+                                  {discount === null ? t("pharmacyDiscount.open") : t("pharmacyDiscount.change")}
+                                </button>
+                                {discount !== null ? (
+                                  <button type="button" onClick={() => { setBillMenu(false); setDiscount(null); void runPreview(null); }}>{t("pharmacyDiscount.remove")}</button>
+                                ) : null}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : null}
+                      </div>
+                      <DiscountWait discount={discount} />
                       <div className="rt-seg" role="radiogroup" aria-label={t("pharmacyRetail.mode")}>
                         {(["cash", "upi", "card"] as const).map((m) => (
                           <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "rt-segb on" : "rt-segb"} onClick={() => setMode(m)}>
@@ -760,6 +809,20 @@ export function PharmacyRetail(): React.ReactElement {
               )}
             </div>
 
+            {discountSheet && preview !== null ? (
+              <DiscountSheet
+                scopeKey={`cart:${cartId}`}
+                initial={discount}
+                price={async (d) => {
+                  const p = await previewRetailSale({ ...(customer?.kind === "existing" ? { patientId: customer.id } : {}), lines: cartLines(), discount: d });
+                  return { quote: p.discount ?? null, cash: p.byTender?.cash ?? null, digital: p.byTender?.digital ?? null, taxPaise: p.totals.taxPaise };
+                }}
+                ask={(d) => askRetailDiscount({ draftId: cartId, ...(customer?.kind === "existing" ? { patientId: customer.id } : {}), lines: cartLines(), discount: d })}
+                onApply={(d) => { setDiscountSheet(false); setDiscount(d); void runPreview(d); }}
+                onRemove={discount === null ? null : () => { setDiscountSheet(false); setDiscount(null); void runPreview(null); }}
+                onClose={() => setDiscountSheet(false)}
+              />
+            ) : null}
             <div className="rt-bar" data-testid="retail-bar">
               <div className="rt-grow">
                 <p className="tag">{t("pharmacyRetail.stepOf", { n: step, label: stepLabel[step - 1] })}</p>

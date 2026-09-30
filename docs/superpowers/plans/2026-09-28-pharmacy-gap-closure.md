@@ -32,10 +32,69 @@ spot-checks by hand. This phase answers them.
 
 - **No role editor.** Roles stay code-owned (`admin-users.tsx` says so), and the admin screen gets a read-only
   permission grid. An in-app role editor is a privilege-escalation surface. Copy-from-role is dropped with it.
-- **No manual or bulk discount at the counter** until the owner rules on money. Only membership discounts exist today.
+- ~~No manual or bulk discount at the counter until the owner rules on money.~~ **Superseded: the owner ruled on
+  2026-09-30** — see "Owner rulings 2026-09-30 (money)" below (a sale discount with a reason, tiered approval).
 - **PO dispatch to the vendor waits** for an email/WhatsApp sender, which is a procurement decision. Print and PDF
   are what exist.
 - **The ABDM MedicationDispense push waits** for ABDM going live.
+
+## Owner rulings 2026-09-30 (money)
+
+Memory note `owner-rulings-2026-09-30-pharmacy-money`. Built in lane `pharmacy-discount-rounding` (one PR, migration
+`0164_invoice_rounding_rule` (renumbered at merge), additive: `invoices.rounding_rule text not null default 'half_up'`).
+
+**1 — Rounding by tender.** First ruling: *"If patient is paying using cash then keep whole-rupee rounding, round down.
+If paying via UPI or Card then we can collect to the paisa."* **AMENDED by the owner the same day, on PR #424:** *"If the
+amount is 33.60, the collection should be 34. If it's 30.91 then collection should be Rs 31. If it is Rs 30.49 then
+collection can be Rs 30. But if it's 30.51 then collection in cash should be 31."* So cash rounds to the NEAREST rupee,
+halves up (₹30.50 → ₹31), and may collect up to 49 paise above MRP — the owner's decision.
+- Pharmacy bills only — the desk's dispense bill, the walk-in sale and the paper (downtime) dispense. Any cash tender
+  (a split included) → `half_up`: ₹33.60 → ₹34.00 (+₹0.40), ₹30.91 → ₹31.00, ₹30.49 → ₹30.00, ₹30.50 → ₹31.00,
+  ₹30.51 → ₹31.00. Only UPI and/or card → `exact`: ₹33.60 → ₹33.60. The rule is chosen from the tenders by
+  `pharmacy/discount.ts` `pharmacyRoundingRule` and passed to billing as an internal `roundingRule`; billing refuses
+  `exact` on a bill that is not wholly pharmacy lines (`pharmacy_bill_only`), so OPD, lab and radiology keep §170
+  half-up exactly as before.
+- **DECIDED:** a bill with no tender (the owner's credit) takes the cash rule (nearest rupee): the dues are most often
+  paid in cash.
+- **DECIDED:** a credit note rounds by its invoice's stored rule. A full cancel of a ₹34.00 cash bill credits ₹34.00;
+  a full cancel of a ₹33.60 UPI bill credits ₹33.60 — a half-up credit note would free ₹34.00 there, and the refund
+  voucher would refuse it as more than was received.
+- The desk's preview carries both payables (`byTender.cash`, `byTender.digital`); the rail shows the one for the
+  tender under the cashier's finger (Cash/Split vs UPI/Card) with its rounding line. The walk-in counter does the same.
+- Register: MRP and Rounding columns (MRP − discount = taxable + CGST + SGST; + rounding = total). GSTR-3B: rounding is
+  not a supply and stays out of the taxable value; the summary states the period's pharmacy rounding beside it.
+  Tally: the Round Off ledger takes it, as before.
+
+**2 — Sale-side discount.** *"The pharmacist may give up to 10% off MRP on a bill, with a reason. Above 10% needs the
+pharmacy in-charge's approval. Above 25% goes to the owner. A discount worth more than ₹25,000 on one bill also goes to
+the owner."*
+- A % off MRP (basis points) or ₹ off the bill, with a reason, on the desk bill and the walk-in cart, from a sheet
+  behind the bill's ⋯. Up to 10% inclusive: the pharmacist gives it. Above 10% up to 25% inclusive:
+  `pharmacy_discount_incharge` (approver `pharmacy_incharge`). Above 25%, or more than ₹25,000.00 of discount on one
+  bill: `pharmacy_discount_owner` (approver `owner`). Exactly ₹25,000.00 is not "more than". Comparisons are exact
+  (cross-multiplied); a ₹ discount is judged by its share of the bill's MRP total.
+- The approval binds the bill (the dispense id, or the walk-in cart's own id, which the sale then takes as its id so
+  one approval sells once), the kind and value asked, the patient and the rupee amount. The bill waits while it is
+  pending. The kernel refuses a decision by whoever asked. An in-charge's grant never covers an owner-tier discount.
+- It prices through the SAME contest as membership benefits (`billing/sale-discount.ts`, one more `AdjustmentSource`),
+  so GST is carved out of each discounted line (`inclusiveTaxHead(charged)`): the taxable value and CGST/SGST fall
+  with the price. Rounding (ruling 1) applies after the discount. Admitted only on a pharmacy bill.
+- **DECIDED:** best single benefit per line, as the contest already rules — a member benefit that is bigger on a line
+  wins that line; the two never stack. The approval amount is the sale discount's own share.
+- Worked examples (15 Crocin, ₹33.60 of MRP): **8%** is ₹2.69 off → ₹30.91: cash ₹31.00 (+₹0.09), UPI/card ₹30.91;
+  the pharmacist's own. **15%** is ₹5.04 off → ₹28.56: cash ₹29.00 (+₹0.44), UPI/card ₹28.56; the in-charge approves.
+- **DECIDED:** a ₹ discount is spread over the lines in proportion to their MRP (largest remainder), so the shares sum
+  to the rupees asked; a % is taken off each line, half-up, as every other percentage benefit is.
+- **DECIDED:** a walk-in discount that needs an approval needs a named customer first (`discount_needs_customer`): an
+  approval of money is filed against a patient.
+- **DECIDED:** the approver role of each type is fixed, so the owner does not approve an in-charge-tier ask, and an
+  in-charge who is also billing needs a second in-charge. If the hospital has one in-charge on duty, a 10–25% discount
+  that they themselves ask for waits for the next one.
+- Shown on the bill rail, the printed desk bill (Discount (reason) −₹x), the walk-in memo (billing's invoice print),
+  the sales register (Discount column), the GSTR-3B summary (a note: already out of the taxable value, CGST Act
+  s.15(3)(a)) and the Tally sale voucher's narration (MRP less discount).
+- Permissions: no new permission string. `pharmacy_incharge` gains `approvals.requests.read` and `.decide` (an
+  approver role must be able to open its queue). Two approval types, registered by `seed:pharmacy` on deploy.
 
 ## Owed by the owner (money / law)
 
@@ -261,3 +320,141 @@ Lane `pharmacy-desk-fixes`, from the end-to-end walk of 2026-09-29 (the owner di
   masked old → new account.
 - **H1 register drug name** no longer repeats a strength the brand carries ("Azee 500 tablet"). Rows already written keep
   their text (the register copies at write time).
+
+## Owner rulings 2026-09-30 (refunds and GRN)
+
+Lane `pharmacy-refund-grn-setting`. The owner's answers to the go-live night's questions 3 and 4
+(memory note `owner-rulings-2026-09-30-pharmacy-money`). Rounding and the sale-side discount are a
+sibling lane's (`pharmacy-discount-rounding`).
+
+**4 — Refunds: every refund goes to the billing manager; one ABOVE ₹25,000.00 goes to the owner.** As built:
+
+- The tier was already on `main` from the 28 Sep board ruling (#380): `requestRefund` files
+  `billing_refund` (approver `billing_manager`) at or under 2,500,000 paise and `billing_refund_owner`
+  (approver `owner`) above it (`refundApprovalTypeFor`, strictly greater). The approval carries the exact
+  amount, patient and subject; `issueRefundVoucher` accepts only a granted approval of the type the
+  amount needs, bound to the same amount, patient and subject.
+- ₹20,000.00 → the billing manager decides. ₹25,000.00 exactly → the billing manager. ₹25,000.01 and
+  ₹30,000.00 → the owner; a billing manager's approve or reject is refused by the engine's role check
+  (`role_denied`), and a manager-type grant cannot issue the voucher (`approval_subject_mismatch`).
+- Nobody decides their own: the kernel's `requester_approver` SoD pair refuses the requester (cashier,
+  manager or owner) deciding their own ask, and records `sod.violation_blocked`.
+- NEW in this lane: the request note now leads with the paper — `Bill <invoice no> · credit note <cn no>`
+  for a refund against a bill, `Advance balance` for an advance — so the owner's approvals card shows
+  patient, amount and bill.
+- Hospital-wide: every caller goes through `requestRefund` — pharmacy returns (`pharmacy/returns.ts`),
+  pharmacy bill refunds (`pharmacy/refund.ts`), OT (`ot/bill.ts`) and the billing counter/office
+  (`POST /billing/refunds/request`). No signature changed.
+- The line is the owner's number in code (`REFUND_OWNER_ABOVE_PAISE`), not a config row: a row a manager
+  could edit would let the manager move the line that decides whether the manager decides.
+
+**3 — Two-person GRN is a SETTING, OFF by default, recommended ON.** As built:
+
+- `materials_settings` (one row, `id = 'main'`; migration `0163_materials_settings` (renumbered at merge; radiology took 0162), additive). No row =
+  every setting off. Column `grn_qc_needs_second_person`.
+- `GET /materials/settings` (`materials.stock.read`) and `PUT /materials/settings`
+  (`materials.stores.manage` — the materials head and the admin/owner role; reused, not minted). Each
+  change appends `store_settings.changed` `{ setting, from, to }` with the actor; a save that changes
+  nothing writes nothing.
+- ON: `runGateQc` and `postGrn` refuse the GRN's capturer with `grn_same_person` (409). Because the check
+  sits in those two functions, every door obeys it — the GRN screen, `applyOpeningStock` / the
+  `import-opening-stock` script, the controlled-cabinet receipt, the seed and trial-stock scripts. A GRN
+  QC'd by its capturer before the setting was turned on still needs a second person to POST it.
+- OFF: today's behaviour, nothing blocked. The GRN worklist marks a GRN checked by its capturer
+  ("Checked by the same person who captured it") — already checked, or open in the capturer's hands.
+- Screen: pharmacy office → Stock → **Stores settings**, a switch with the line "Recommended: turn this on
+  once a second trained person (pharmacist or storekeeper) is on every shift." With the setting ON, the
+  capturer's GRN sheet says somebody else checks it and its QC/Post buttons are off.
+- DECIDED: the post is guarded as well as the QC (the ruling says "QC and post"); the near-expiry request
+  is not guarded (it decides nothing and the materials head approves it).
+
+## Paper prescription at the desk (2026-09-30)
+
+Owner, at the live counter: *"If any registered patient comes to the counter then I am unable find the patient and
+dispense any medicine … I should be able to find the patient and bill him after looking at the physical prescription
+even if no other desk has uploaded prescription on behalf of the doctor."* `findAtCounter` found the patient, but a
+ticket opened only on an active e-prescription of today, so the desk said `no_prescription_today` and stopped.
+
+DECIDED (standard Indian hospital pharmacy practice):
+
+1. **The door.** When the desk finds a registered patient with no e-prescription today, the find answer carries the
+   patient and the desk offers **Dispense from a paper prescription**. Finding the patient (UHID, name, phone, QR,
+   token) is the start; there is no second entry to learn.
+2. **The sheet** (one sheet, keyboard-first, `Ctrl ⏎` saves): the hospital doctor written on the paper (defaults to the
+   visit's doctor), the date on the paper (today or earlier), the photo (REQUIRED when any line is Schedule H/H1,
+   optional otherwise; filed on the patient's record as `consult_prescription` against the visit, so the desk's `S`
+   sheet shows it at the slip cross-confirm), and the medicines off the OPD shelf (the same shelf search the counter
+   uses, brand or salt) with the quantity in base units and optional dose / frequency / days for the label. Save
+   issues the prescription, queues the ticket, claims it for this pharmacist and opens it.
+3. **Model (a).** The paper becomes a REAL `opd_prescriptions` row on the patient's visit on that date, transcribed by
+   the pharmacist (`transcribed_by`, the FD-31 column), prescriber of record the hospital doctor on the paper. Chosen
+   over (b) because a dispense needs a prescription AND an encounter by FK, the medication order needs the encounter's
+   `V` number and an ordering clinician, and nine readers (`verify`, `handover` → H1 register, `authorisations`,
+   `antimicrobial` steward, `claim`, labels, returns) read the prescription: (a) leaves every one of them unchanged.
+   No migration. OPD gains one narrow export, `issuePharmacyPaperPrescription`, the `"pharmacy_paper"` authority of
+   `issuePrescription`: grant `pharmacy.dispense.place` asserted in the service; the visit's state is not asked (the
+   doctor who writes on paper never moved it); a visit that already carries an active e-prescription is refused (this
+   door never supersedes the doctor's own); no override is accepted.
+4. **Safety.** Schedule X and NDPS narcotic/psychotropic lines are refused (`paper_rx_controlled`) — the two-key cabinet
+   needs the doctor's e-prescription. H1 needs the photo (`prescription_required`) and the prescriber's registration
+   number on the doctor master (`invalid_prescription`); the H1 register row is written at hand-over as for any ticket.
+   Allergy, severe interaction, hard duplicate and severe drug-disease hits refuse (`allergy_block`, `interaction_block`,
+   `duplicate_block`, `drug_disease_block`) because no prescriber is present to override. The slip cross-confirm
+   (FD-31) still gates the bill.
+5. **Audit.** `pharmacy.paper_rx.entered`: who typed it, the prescriber and registration number, the date on the paper,
+   the photo's document id, the lines. `dispense.queued` carries `source: "paper"`.
+6. **Permissions.** `pharmacy.dispense.place` only; no new permission.
+7. **Not this door.** An OUTSIDE doctor's prescription is a walk-in sale (P19 R-1, `/pharmacy/retail`); the sheet links
+   there. A registered patient with NO hospital visit on the paper's date is refused (`paper_rx_no_visit`) with the way
+   forward: the front desk opens the visit. A pharmacy-only attendance (a visit with no consultation fee, the lab
+   walk-in's pattern) is the follow-up if the owner wants the counter to open one itself.
+
+## Paper prescription for anyone (2026-09-30, owner)
+
+Owner, at the live counter: *"let the patient buy medicine on physical prescription too, even if there's no record of
+prescribed medicine in the system by the doctor, emergency, IPD but just using physical prescription"* and *"Yes, the
+pharmacy counter [should] open a no-fee visit itself for a patient who has no hospital visit that day."* The door above
+refused three real cases: a person not registered here ("Nobody found for that."), a registered patient with no visit on
+the paper's date (`paper_rx_no_visit`), and an outside doctor's paper.
+
+DECIDED (standard Indian hospital pharmacy practice):
+
+1. **Nobody found → register at the counter.** The find's "Nobody found" note (a typed name or number, not a QR or token)
+   gains **Register and dispense from a paper prescription**. A compact sheet (`register-sheet.tsx`): name, mobile, age or
+   date of birth, sex, prefilled from what was typed (digits → mobile, anything else → name). It posts to the registration
+   desk's own route `POST /patients` (`patients.register`, which the `pharmacy` role already holds for the P19 walk-in
+   counter — verified in `seed-roles.ts`, no grant, no census change). The route's rules stand: age or DOB is required, a
+   near match (same mobile, FD-34's family link, or a close name) is listed first and the pharmacist picks that person or
+   confirms someone new (`acknowledgedDuplicates`). Then the paper sheet opens on the person. Audit: `patient.registered`.
+2. **No visit that day → a no-fee pharmacy visit.** When the patient has no visit on the paper's date that is free of a
+   prescription, the server opens one itself (`opd/encounters.ts` `openPharmacyVisitInTx`, the lab walk-in's reasoning: a
+   `V` visit is the shape every FK and reader already accepts). It is `opd_encounters.type = 'pharmacy'` (the column has
+   existed since 0001; only `'opd'` was ever written), with NO doctor and NO department: no consultation charge, no queue
+   entry, no token (a visit with no doctor cannot join a queue; the fee hook returns for a non-OPD visit). It is never an
+   OPD consultation: `listVisits` lists `'opd'` only by default (the front desk list, the charge-orphan scan, the copilot,
+   the token door), and the OPD reports and range counts read `type = 'opd'` (the cashier's worklist already did). It is
+   opened only after every refusal has been asked, so a refused paper leaves nothing behind. Audit:
+   `pharmacy.paper_rx.visit_opened`. `paper_rx_no_visit` is retired (runbook 133 → 132 codes).
+3. **Outside doctor → allowed.** The sheet's prescriber is **Hospital doctor** (the master list, as before) or **Outside
+   doctor**: name always; registration number AND address when any line is Schedule H/H1 (Rule 65(3)); the photo stays
+   required for H/H1. Migration **0165** (additive): `opd_prescriptions.doctor_id` may be null, three columns
+   `outside_prescriber_name / _reg_no / _address`, and two checks — exactly one of doctor or outside prescriber, and an
+   outside prescriber only on a transcription (`transcribed_by` not null). An outside paper never lands on a hospital
+   doctor's OPD visit (it would be superseded by, or supersede, that doctor's own e-Rx); it takes a free pharmacy visit or
+   opens one. **Model:** the orders envelope's `ordering_clinician_id` is nullable text with no FK, so no hospital doctor
+   is needed: the dispensing pharmacist is the ordering clinician of record (`verify.ts`), and the outside prescriber stays
+   the prescriber on the prescription row. The H1 register writes the outside name, registration number and address
+   (`handover.ts`). The FHIR bundle's requester is a `display` for an outside doctor; the hospital prints no prescription
+   for an outside paper (`prescriptionPrintData` refuses). A PD-9 authorisation cannot be asked of an outside doctor
+   (there is no login to ask) — the refusal stands, as every hard warning on a paper does.
+4. **Unchanged safety:** Schedule X / NDPS refused on paper (`paper_rx_controlled`); allergy, severe interaction, hard
+   duplicate and severe drug-disease refuse; photo required for H/H1; the FD-31 slip cross-confirm still gates the bill;
+   `pharmacy.paper_rx.entered` now carries `outside`, a nullable `doctorId` and the prescriber's address.
+5. **The desk search.** Checked on the dev DB `hmis_walk_pharmacy` (migrated to 0165) through `findAtCounter`: a full name,
+   a first name, a partial ("rames"), a surname, a two-word name, a two-word name in the wrong order ("arun jha"), and a
+   name with extra spaces all find the patient; "Devi" lists four. No search defect: the owner's "Nobody found" was a
+   person not registered here. (Side fix: the find's today's-visit read now filters by patient in the database instead of
+   reading the whole day's first 200 visits and filtering in memory.)
+
+Deferred: the pharmacy visit stays `registered` (the pharmacy has no transition to move it through); an IPD/ER
+patient's paper is entered the same way until those departments exist.

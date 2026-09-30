@@ -5,17 +5,22 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter } from "./claim";
+import { enterPaperPrescription, paperRxContext } from "./paper-rx";
+import type { PaperRxContext } from "./paper-rx";
+import { searchShelfAt } from "./retail";
+import { findStoreByCode } from "../materials";
 import { cachedShelfIndex, matchOpenLines } from "./auto-match";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
-import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
+import { PHARMACY_IDEMPOTENT_ROUTES, billPreviewQuery, discountAskSchema, discountFromQuery, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { closingFor } from "./closing";
 import type { Closing } from "./closing";
 import { patientRail } from "./patient-rail";
 import type { PatientRail } from "./patient-rail";
 import { confirmSlip, getDispense, listQueue } from "./queue";
 import type { Quote } from "./quote";
-import { billDispense, previewDispenseBill } from "./bill";
-import type { DisplayDraft } from "./bill";
+import { askDispenseDiscount, billDispense, previewDispenseBill } from "./bill";
+import type { BillPreview } from "./bill";
+import { discountRequestStatus } from "./discount";
 import { handOverDispense } from "./handover";
 import { captureRetainedPrescription } from "./controlled-dispense";
 import { labelFor } from "./label";
@@ -57,6 +62,26 @@ import { myShift } from "./shift";
 import type { MyShift } from "./shift";
 import type { RenderedDocument } from "../../kernel/printing/render";
 
+const paperRxBody = z.object({
+  patientId: idSchema,
+  doctorId: idSchema.optional(),
+  /** 2026-09-30 (owner) — an OUTSIDE doctor's paper: name; registration number and address for H/H1 (checked in the service). */
+  outside: z.object({
+    name: z.string().trim().min(1).max(120),
+    registrationNo: z.string().max(60).nullable().optional(),
+    address: z.string().max(300).nullable().optional(),
+  }).optional(),
+  rxDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  photo: z.object({ mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]), imageBase64: z.string().min(1) }).optional(),
+  lines: z.array(z.object({
+    itemId: idSchema,
+    qtyBase: z.number().int().positive().max(100_000),
+    dose: z.string().max(60).optional(),
+    frequency: z.string().max(60).optional(),
+    durationDays: z.number().int().positive().max(365).nullable().optional(),
+    instructions: z.string().max(200).nullable().optional(),
+  })).min(1).max(30),
+});
 const claimBody = z.object({ dispenseId: idSchema, door: z.enum(["rx_qr", "patient_qr", "token", "uhid"]) });
 const verifyBody = z.object({
   lines: z.array(z.object({
@@ -92,6 +117,8 @@ const billBody = z.object({
   tags: z.array(z.string().min(1)).optional(),
   /** GAP A3b — on credit, on the owner's granted approval; billing checks the grant against the dispense and amount. */
   credit: z.object({ reason: z.string().trim().min(1).max(500), approvalId: z.string().min(1).max(64) }).optional(),
+  /** OWNER RULING 2026-09-30 — the sale discount, and above 10% its granted approval (`discount.ts`). */
+  discount: discountOnBillSchema.optional(),
 }).refine((b) => b.tenders.length > 0 || b.credit !== undefined, { message: "a bill is paid by a tender, or on the owner's credit", path: ["tenders"] });
 /** P1 — the short book. `itemId` when the counter knows the drug; the name as said otherwise. */
 const shortBookBody = z.object({
@@ -383,9 +410,40 @@ export class PharmacyCounterController {
 
   @RequirePermission("pharmacy.dispense.place", "hospital")
   @Get("dispenses/:id/bill/preview")
-  async preview(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<DisplayDraft> {
+  async preview(@CurrentActor() actor: Actor, @Param("id") id: string, @Query() query: unknown): Promise<BillPreview> {
+    const q = parsed(billPreviewQuery, query);
+    const discount = discountFromQuery(q);
     try {
-      return await previewDispenseBill(this.db, actor, id, new Date());
+      return await previewDispenseBill(this.db, actor, id, new Date(), {
+        ...(q.tender === undefined ? {} : { tender: q.tender }), ...(discount === undefined ? {} : { discount }),
+      });
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * OWNER RULING 2026-09-30 — ask for a discount above the pharmacist's 10% on THIS dispense. The server
+   * prices it, reads the tier (the in-charge up to 25%, the owner above it or over ₹25,000) and files it
+   * with that approver. The same key as the bill: whoever may take the money may ask.
+   */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Post("dispenses/:id/discount-requests")
+  async askDiscount(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ approvalId: string; tier: string; amountPaise: number }> {
+    const ask = parsed(discountAskSchema, body);
+    try {
+      return await askDispenseDiscount(this.db, actor, id, ask, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** Where a discount ask stands — the desk polls it and bills the moment it reads `granted`. */
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Get("discount-requests/:approvalId")
+  async discountRequest(@Param("approvalId") approvalId: string): Promise<Awaited<ReturnType<typeof discountRequestStatus>>> {
+    try {
+      return await discountRequestStatus(this.db, approvalId);
     } catch (e) {
       return toHttp(e);
     }
@@ -629,6 +687,50 @@ export class PharmacyCounterController {
     const { reason } = parsed(reasonBody, body);
     try {
       return await cancelDispense(this.db, actor, this.decls(), id, reason, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * 2026-09-30 — DISPENSE FROM A PAPER PRESCRIPTION (`paper-rx.ts`). The sheet's context (the
+   * patient's visits that day, the hospital's doctors), the OPD shelf to choose medicines from, and
+   * the entry itself, which answers with the ticket already claimed by this pharmacist.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("paper-rx/context")
+  async paperRxContext(@CurrentActor() actor: Actor, @Query("patientId") patientId?: string, @Query("rxDate") rxDate?: string): Promise<PaperRxContext> {
+    const id = parsed(idSchema, patientId);
+    try {
+      return await paperRxContext(this.db, actor, id, rxDate ?? istDateOf(new Date()), new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("paper-rx/shelf")
+  async paperRxShelf(@Query("q") q?: string): Promise<{ items: RetailShelfEntry[] }> {
+    try {
+      const store = await findStoreByCode(this.db, OPD_PHARMACY_STORE_CODE);
+      if (store === undefined) return { items: [] };
+      return { items: await searchShelfAt(this.db, store.id, (q ?? "").slice(0, 200), new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("paper-rx")
+  async paperRx(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DispenseView> {
+    const input = parsed(paperRxBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.paperRx, key }, input,
+        () => enterPaperPrescription(this.db, this.cfg, this.documents, actor, {
+          patientId: input.patientId, doctorId: input.doctorId, outside: input.outside, rxDate: input.rxDate,
+          photo: input.photo === undefined ? undefined : { mimeType: input.photo.mimeType, bytes: Buffer.from(input.photo.imageBase64, "base64") },
+          lines: input.lines,
+        }, new Date()));
     } catch (e) {
       return toHttp(e);
     }

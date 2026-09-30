@@ -336,3 +336,67 @@ describe("PharmacyRetail — returns (P19b)", () => {
     expect(screen.queryByTestId("retail-return")).toBeNull();
   });
 });
+
+/**
+ * OWNER RULINGS 2026-09-30 (money) at the walk-in counter: cash rounds DOWN, UPI/card to the paisa; the discount
+ * lives behind the bill's ⋯ and rides on the sale.
+ */
+describe("PharmacyRetail — the 2026-09-30 money rulings", () => {
+  beforeEach(() => { setToken("t"); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const at3360 = (over: Partial<WireRetailPreview> = {}): WireRetailPreview => previewOf({
+    lines: [{ ...previewOf().lines[0]!, qtyBase: 15, price: { unitPaise: 224, grossPaise: 3360, discountPaise: 0, taxPaise: 360, gstRateBps: 1200, amountPaise: 3360 } }],
+    totals: { grossPaise: 3360, discountPaise: 0, taxPaise: 360, roundingPaise: 40, netPayablePaise: 3400 },
+    byTender: { cash: { netPayablePaise: 3400, roundingPaise: 40 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } },
+    discount: null, ...over,
+  });
+  const eight = at3360({
+    totals: { grossPaise: 3360, discountPaise: 269, taxPaise: 332, roundingPaise: 9, netPayablePaise: 3100 },
+    byTender: { cash: { netPayablePaise: 3100, roundingPaise: 9 }, digital: { netPayablePaise: 3091, roundingPaise: 0 } },
+    discount: { kind: "percent_bps", value: 800, amountPaise: 269, tier: "pharmacist", approverRole: null },
+  });
+
+  it("₹33.60 is ₹34.00 in cash (+₹0.40) and ₹33.60 by UPI; 8% from the ⋯ sheet is priced by the server and sold with the bill", async () => {
+    mockRoutes({
+      "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
+      "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
+      "GET /api/pharmacy/retail/shelf": { status: 200, body: { items: [CROCIN] } },
+      "POST /api/pharmacy/retail/preview": () => {
+        const last = bodiesOf("POST", "/pharmacy/retail/preview").at(-1) as { discount?: unknown } | undefined;
+        return { status: 201, body: last?.discount === undefined ? at3360() : eight };
+      },
+      "POST /api/pharmacy/retail/sales": { status: 201, body: SALE },
+    });
+    renderWithProviders(<PharmacyRetail />);
+    await screen.findByRole("button", { name: "New customer" });
+    await newCustomer();
+    await addToCart(CROCIN, "15");
+    await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
+    expect(await screen.findByTestId("retail-total")).toHaveTextContent("₹34.00");
+    expect(screen.getByTestId("retail-rounding")).toHaveTextContent("+₹0.40");
+    await userEvent.click(screen.getByRole("radio", { name: "UPI" }));
+    expect(screen.getByTestId("retail-total")).toHaveTextContent("₹33.60");
+    expect(screen.queryByTestId("retail-rounding")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("retail-bill-menu"));
+    await userEvent.click(screen.getByTestId("retail-discount-open"));
+    const sheet = await screen.findByTestId("discount-sheet");
+    await userEvent.type(within(sheet).getByTestId("discount-value"), "8");
+    expect(await within(sheet).findByTestId("discount-tier")).toHaveTextContent("you can give this yourself");
+    await userEvent.type(within(sheet).getByTestId("discount-reason"), "regular customer");
+    await userEvent.click(within(sheet).getByTestId("discount-apply"));
+    expect(await screen.findByTestId("retail-discount")).toHaveTextContent("Discount 8% · regular customer");
+    expect(screen.getByTestId("retail-total")).toHaveTextContent("₹30.91");
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Reference" }), "UTR-1");
+    await userEvent.click(screen.getByRole("button", { name: "Take payment and sell" }));
+    await screen.findByTestId("retail-sold");
+    expect(bodiesOf("POST", "/pharmacy/retail/sales")).toEqual([{
+      customer: { register: { name: "Ramesh Patil", sex: "male", ageYears: 52, phone: "9822001122" } },
+      lines: [{ medicineId: "m-croc", qtyBase: 15 }],
+      tenders: [{ mode: "upi", amountPaise: 3091, refText: "UTR-1" }],
+      discount: { kind: "percent_bps", value: 800, reason: "regular customer" },
+    }]);
+  });
+});

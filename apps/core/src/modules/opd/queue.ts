@@ -683,7 +683,8 @@ export async function queueFeeStatusHook(
   now: Date,
 ): Promise<void> {
   const encounter = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, info.encounterId)))[0];
-  if (!encounter) return;
+  // 2026-09-30 — a pharmacy visit (`openPharmacyVisitInTx`) has no fee and no queue: its bill settling moves nothing.
+  if (!encounter || encounter.type !== "opd") return;
   /**
    * RC-3 T3 — THE BAIL ON `unsettled` IS GONE, AND THAT IS THE WHOLE OF M3's FIX HERE.
    *

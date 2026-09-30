@@ -415,6 +415,8 @@ describe("the words behind the screen", () => {
     "imaging_release_unpaid_owner", // 18-S RS9b — a held imaging report released unpaid (the owner's)
     "ot_definition_publish", "ot_deposit_exception", "tariff_revision", "membership_grace_honor",
     "pharmacy_restricted_antimicrobial", // pharmacy stage D5 — the antimicrobial steward's
+    // OWNER RULINGS 2026-09-30 (money) — a sale discount above 10% (the in-charge's) and above 25% or ₹25,000 (the owner's).
+    "pharmacy_discount_incharge", "pharmacy_discount_owner",
   ];
 
   it("knows every type the server registers", () => {

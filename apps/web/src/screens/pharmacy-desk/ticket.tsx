@@ -27,7 +27,7 @@ function rxLinesOf(d: WireDispense): WireDispense["lines"] {
 
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty,
+  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null,
 }: {
   inHand: WireDispense | null;
   loading: boolean;
@@ -57,6 +57,10 @@ export function TicketPanel({
   onFocusDrug?: (drug: ShortDrug | null) => void;
   /** The quantities being given as typed, for the bill rail (`LineList`). */
   onLiveQty?: (dispenseId: string, qty: Readonly<Record<number, number | null>>) => void;
+  /** 2026-09-30 — a patient found with no e-prescription today: dispense from their paper prescription. */
+  paperDoor?: { who: string; onOpen: () => void } | null;
+  /** 2026-09-30 (owner) — nobody found: register the person here and dispense from their paper prescription. */
+  registerDoor?: { onOpen: () => void } | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const alerts = (
@@ -81,6 +85,18 @@ export function TicketPanel({
       <div style={{ maxWidth: 660 }}>
         <FindField onFind={onFind} />
         {alerts}
+        {paperDoor === null ? null : (
+          <div className="box paper-rx-door" data-testid="desk-paper-door">
+            <span style={{ flexGrow: 1, minWidth: 200, fontSize: 12.5 }}>{t("pharmacyDesk.paperRx.doorHint", { who: paperDoor.who })}</span>
+            <button type="button" className="pri" onClick={paperDoor.onOpen}>{t("pharmacyDesk.paperRx.door")}</button>
+          </div>
+        )}
+        {registerDoor === null ? null : (
+          <div className="box paper-rx-door" data-testid="desk-register-door">
+            <span style={{ flexGrow: 1, minWidth: 200, fontSize: 12.5 }}>{t("pharmacyDesk.register.doorHint")}</span>
+            <button type="button" className="pri" onClick={registerDoor.onOpen}>{t("pharmacyDesk.register.door")}</button>
+          </div>
+        )}
         <LineVerdict queue={queue} onShowLine={onShowLine} />
         {candidates !== null ? (
           <div className="box" style={{ marginTop: 18 }} data-testid="desk-candidates">

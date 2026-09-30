@@ -21,6 +21,8 @@ export type { ConsultStartGuard } from "./consultation";
 export { counterState, getEncounter, getVisit, listVisits, patientTimeline } from "./encounters";
 export type { EncounterRow, QueueEntryRow, TimelineItem } from "./encounters";
 // ── PLAN 17a T4 / DD15 — the lab walk-in, opened by the module that owns visits (spec §4) ──
+export { PHARMACY_VISIT_TYPE, openPharmacyVisitInTx } from "./encounters";
+export type { OutsidePrescriber } from "./prescriptions";
 export { LAB_DEPARTMENT_CODE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
 export type { JoinQueueResult, OpenLabWalkinInput, OpenVisitResult, ReviewAnchor } from "./encounters";
 export type { AdvisedTest } from "./consultation";
@@ -29,6 +31,9 @@ export type { AdvisedTest } from "./consultation";
 // `verifyPrescriptionQr` is the scanner's door; `runRxChecks` re-runs the issue-time checks on the
 // RESOLVED medicines at dispense time (16c D9) — it is bound to a patient, not to a consult.
 export { getPrescription, listPrescriptions, matchAllergies, runRxChecks, verifyPrescriptionQr } from "./prescriptions";
+// 2026-09-30 — the pharmacy desk's paper-prescription door (a transcription with the pharmacist at the keyboard).
+export { issuePharmacyPaperPrescription } from "./prescriptions";
+export type { IssuedPrescription } from "./prescriptions";
 /* `isCurrent` under its telling name: the pharmacy asks the same question about a prior course
    ("is the patient still on this?") that the duplicate check asks (`patient-rail.ts`). */
 export { isCurrent as isCurrentDose } from "./rx-checks";

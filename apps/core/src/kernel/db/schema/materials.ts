@@ -1720,3 +1720,23 @@ export const itemMerges = pgTable(
     check("item_merges_refused_ck", sql`(${t.status} = 'refused') = (${t.refusedAt} is not null)`),
   ],
 );
+
+/**
+ * OWNER RULING 2026-09-30 (two-person GRN) — the stores' own settings. ONE ROW (`id = 'main'`, the
+ * `pharmacy_tally_config` shape), and its ABSENCE is the default: no row means every setting is off.
+ *
+ * `grn_qc_needs_second_person` — when true, the person who CAPTURED a goods receipt may not run its
+ * gate QC or post it (`grn.ts` `assertSecondPersonForGrn`). The owner ruled it a setting, OFF until he
+ * turns it on: "currently admin login can do both". Changed only by a holder of
+ * `materials.stores.manage`, and every change is the `store_settings.changed` event.
+ */
+export const materialsSettings = pgTable(
+  "materials_settings",
+  {
+    id: text("id").primaryKey(),
+    grnQcNeedsSecondPerson: boolean("grn_qc_needs_second_person").notNull().default(false),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [check("materials_settings_one_row_ck", sql`${t.id} = 'main'`)],
+);

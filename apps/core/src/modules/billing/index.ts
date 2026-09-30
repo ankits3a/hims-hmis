@@ -50,8 +50,10 @@ export type { RefundKind, RefundMethod, RefundVoucherRow } from "./refunds";
  */
 export { invoiceAccrualView } from "./accrual-view";
 export type { InvoiceAccrualLine, InvoiceAccrualView } from "./accrual-view";
-export { totalInvoice } from "./totals";
-export type { InvoiceTotals, TaxSummaryRow } from "./totals";
+export { ROUNDING_RULES, roundTotalBy, totalInvoice } from "./totals";
+export type { InvoiceTotals, RoundingRule, TaxSummaryRow } from "./totals";
+export { SALE_DISCOUNT_SOURCE_KEY } from "./sale-discount";
+export type { SaleDiscountInput } from "./sale-discount";
 export { creditShare } from "./credit-share";
 export { settlementState } from "./settlement";
 export type { Settlement, SettlementState } from "./settlement";
