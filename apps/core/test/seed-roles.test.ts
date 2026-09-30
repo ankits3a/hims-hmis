@@ -2321,10 +2321,13 @@ describe("approvals — every approver role can answer what is routed to it", ()
   ];
 
   /** The pin that makes an empty sweep visible: a zero-length list would pass every loop below. */
-  it("the tree registers twenty-two approval types across eight modules", () => {
+  it("the tree registers twenty-six approval types across eight modules", () => {
     // GAP A3 (owner ruling 2026-09-28: credit is the owner's): +2, `billing_credit_owner` and `lab_release_unpaid_owner`, both approver owner.
-    expect(ALL_APPROVAL_TYPES).toHaveLength(24); // 18-S RS9b: +1, imaging_release_unpaid_owner (approver owner — a held imaging report released unpaid is credit); 18-S RS5: +1, imaging_gate_override (approver radiologist); pharmacy stage D5: +1, the restricted antimicrobial; pharmacy parity P3: +1, the supplier payment run; P2: +2, the purchase order's two tiers
-    expect(new Set(ALL_APPROVAL_TYPES.map((t) => t.typeKey)).size).toBe(24);
+    // OWNER RULINGS 2026-09-28 (money): +2, `billing_refund_owner` (a refund above ₹25,000.00) and
+    // `billing_recon_charge_owner` (a short-settlement above ₹50.00 written off), both approver owner.
+    // Measured from the failing run after merging main: `Received length: 26`.
+    expect(ALL_APPROVAL_TYPES).toHaveLength(26); // 18-S RS9b: +1, imaging_release_unpaid_owner (approver owner — a held imaging report released unpaid is credit); 18-S RS5: +1, imaging_gate_override (approver radiologist); pharmacy stage D5: +1, the restricted antimicrobial; pharmacy parity P3: +1, the supplier payment run; P2: +2, the purchase order's two tiers
+    expect(new Set(ALL_APPROVAL_TYPES.map((t) => t.typeKey)).size).toBe(26);
   });
 
   it("every approverRole is a role the model defines", () => {

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
+  bigint, bigserial, boolean, check, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 
@@ -338,6 +338,29 @@ export const reconBatches = pgTable("recon_batches", {
   rowsMismatched: integer("rows_mismatched").notNull(),
   rowsUnmatched: integer("rows_unmatched").notNull(), // reported, never guessed
 });
+
+/**
+ * UX-AUDIT 2026-09-28 · BOARD — what the billing office DECIDED about a settlement mismatch, one row per
+ * decision, never updated: `disputed` (the bank is asked; the tender stays mismatched), `bank_charge`
+ * (the shortfall is written off as the bank's charge; the tender reconciles — above ₹50.00 only on the
+ * owner's granted `billing_recon_charge_owner`, OWNER RULING 2026-09-28) or `reupload` (a wrong
+ * statement row: the tender goes back to captured so the corrected statement matches it). `shortPaise`
+ * and `settledPaise` are the tender's figures at the moment of the decision.
+ */
+export const reconResolutions = pgTable("recon_resolutions", {
+  id: text("id").primaryKey(),
+  tenderId: text("tender_id").notNull().references(() => receiptTenders.id),
+  outcome: text("outcome").notNull(), // 'disputed'|'bank_charge'|'reupload'
+  shortPaise: bigint("short_paise", { mode: "number" }).notNull(),
+  settledPaise: bigint("settled_paise", { mode: "number" }).notNull(),
+  reason: text("reason").notNull(),
+  approvalId: text("approval_id"),
+  actorId: text("actor_id").notNull(),
+  at: timestamp("at", { withTimezone: true }).notNull(),
+}, (t) => [
+  index("recon_resolutions_tender_idx").on(t.tenderId),
+  check("recon_resolutions_outcome_ck", sql`${t.outcome} in ('disputed', 'bank_charge', 'reupload')`),
+]);
 
 /** The daily-close claim row: `ON CONFLICT DO NOTHING` makes a second run a no-op (D9). */
 export const dailyCloses = pgTable("daily_closes", {

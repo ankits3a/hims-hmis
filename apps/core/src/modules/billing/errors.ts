@@ -24,7 +24,14 @@ export type BillingErrorCode =
   // FD-11 — the audited re-count of a mistyped closing count.
   | "unknown_session" | "not_your_session" | "recount_reason_required"
   /** GAP A3 — no credit request (a `billing_credit_owner` approval) with that id. */
-  | "unknown_credit_request";
+  | "unknown_credit_request"
+  /**
+   * OWNER RULING 2026-09-28 — Aadhaar is never stored: a refund payee's ID is recorded by TYPE only,
+   * and a pay call that carries an Aadhaar number (or any 12-digit number) is refused.
+   */
+  | "aadhaar_not_stored"
+  /** UX-AUDIT 2026-09-28 · BOARD — resolving a settlement mismatch (`recon-resolve.ts`). */
+  | "unknown_tender" | "tender_not_mismatched" | "not_short_settled" | "recon_already_disputed";
 
 export class BillingError extends Error {
   constructor(
@@ -57,7 +64,7 @@ export class BillingError extends Error {
  */
 const NOT_FOUND_CODES = new Set<BillingErrorCode>([
   "unknown_invoice", "unknown_receipt", "unknown_line", "unknown_encounter", "unknown_series",
-  "unknown_session", "unknown_credit_request",
+  "unknown_session", "unknown_credit_request", "unknown_tender",
 ]);
 const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required", "not_your_session"]);
 /** Client-input refusals. Everything else is a state/ledger conflict and answers 409. */
@@ -70,6 +77,8 @@ const VALIDATION_CODES = new Set<BillingErrorCode>([
     screen can still tell it apart from a malformed payload and say which two people it was handed.
   */
   "patient_encounter_mismatch",
+  // OWNER RULING 2026-09-28 — the request itself carries what the hospital may not keep.
+  "aadhaar_not_stored",
 ]);
 
 export function billingHttpStatus(code: BillingErrorCode): number {

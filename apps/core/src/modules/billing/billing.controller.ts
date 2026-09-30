@@ -98,6 +98,10 @@ import {
 } from "./receipts";
 import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
+import { resolveMismatch } from "./recon-resolve";
+import type { ResolveMismatchResult } from "./recon-resolve";
+import { billingOfficeNeeds } from "./office-needs";
+import type { BillingOfficeNeeds } from "./office-needs";
 import { beginClose, confirmClose, isDrawerSupervisor, listSessions, openSession, recountSession } from "./sessions";
 import { drawerOpenItems } from "./drawer-open-items";
 import type { DrawerOpenItems, PartPaidItem } from "./drawer-open-items";
@@ -414,8 +418,16 @@ const issueRefundBody = z.discriminatedUnion("kind", [
     approvalId: z.string().min(1), method: refundMethodSchema,
   }),
 ]);
+// OWNER RULING 2026-09-28 — Aadhaar is never stored: the ID is recorded by TYPE; a reference is optional
+// and `payRefundVoucher` refuses an Aadhaar number in it.
 const payRefundBody = z.object({
-  payeeName: z.string().min(1), payeeIdType: z.string().min(1), payeeIdRef: z.string().min(1),
+  payeeName: z.string().min(1), payeeIdType: z.string().min(1), payeeIdRef: z.string().min(1).optional(),
+});
+// UX-AUDIT 2026-09-28 · BOARD — what the office decided about a settlement mismatch (`recon-resolve.ts`).
+const resolveMismatchBody = z.object({
+  outcome: z.enum(["dispute", "bank_charge", "reupload"]),
+  reason: z.string().min(1).max(500),
+  approvalId: z.string().min(1).optional(),
 });
 const refundsQuery = z.object({
   patientId: z.string().min(1).optional(),
@@ -1197,6 +1209,44 @@ export class BillingController {
   async reconMismatches(@CurrentActor() actor: Actor): Promise<{ items: MismatchRow[] }> {
     try {
       return { items: await listMismatches(this.db, actor) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 · BOARD — decide a settlement mismatch: dispute it with the bank, accept it as a
+   * bank charge (OWNER RULING 2026-09-28: up to ₹50.00 per receipt here; above that the first call asks
+   * the owner and the call carrying the granted approval applies it), or send it back for a corrected
+   * statement. On the upload permission: the person who reconciles statements decides what a statement
+   * row that did not reconcile means.
+   */
+  @RequirePermission("billing.recon.upload", "hospital")
+  @Post("recon/mismatches/:tenderId/resolve")
+  async reconResolve(
+    @CurrentActor() actor: Actor, @Param("tenderId") tenderId: string, @Body() body: unknown,
+    @Headers("idempotency-key") idemKey?: string,
+  ): Promise<ResolveMismatchResult> {
+    const b = parsed(resolveMismatchBody, body);
+    try {
+      // A money act on the office screen: a replayed decision returns the original answer (the refunds' shape).
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: `POST /billing/recon/mismatches/${tenderId}/resolve`, key: idemKey },
+        b,
+        () => resolveMismatch(this.db, actor, { tenderId, ...b }),
+      );
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** UX-AUDIT 2026-09-28 · BOARD — the back office's one ranked "needs you today" list (`office-needs.ts`). */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("office/needs")
+  async officeNeeds(@CurrentActor() actor: Actor): Promise<BillingOfficeNeeds> {
+    try {
+      return await billingOfficeNeeds(this.db, actor);
     } catch (e) {
       toHttp(e);
     }

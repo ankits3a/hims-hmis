@@ -59,6 +59,19 @@ import type { Db, Tx } from "../../kernel/db/client";
 export const REFUND_APPROVAL_TYPE = "billing_refund";
 export const REFUND_APPROVAL_SUBJECT = "billing_refund";
 
+/**
+ * OWNER RULING 2026-09-28 (money) — "refunds above ₹25,000.00 are approved by the OWNER instead of
+ * the billing manager; at or under it, unchanged". The line is the owner's number, not configuration:
+ * a config row a manager can edit would let the manager move the line that decides whether the
+ * manager decides. Both the request (which type it files) and the issue (which type it accepts) read
+ * `refundApprovalTypeFor`, so the two can never disagree about who had to say yes.
+ */
+export const REFUND_OWNER_APPROVAL_TYPE = "billing_refund_owner";
+export const REFUND_OWNER_ABOVE_PAISE = 2_500_000;
+export function refundApprovalTypeFor(amountPaise: number): string {
+  return amountPaise > REFUND_OWNER_ABOVE_PAISE ? REFUND_OWNER_APPROVAL_TYPE : REFUND_APPROVAL_TYPE;
+}
+
 export type RefundVoucherRow = typeof refundVouchers.$inferSelect;
 export type RefundKind = "invoice_refund" | "advance_refund";
 export type RefundMethod = "cash" | "bank_transfer";
@@ -123,8 +136,32 @@ const payRefundVoucherSchema = z.object({
   voucherId: z.string().min(1),
   payeeName: z.string().min(1),
   payeeIdType: z.string().min(1),
-  payeeIdRef: z.string().min(1),
+  /**
+   * OWNER RULING 2026-09-28 — Aadhaar is never stored, not even its last four digits. The office
+   * records WHICH document was shown (`payeeIdType`) and the name on it; the number is looked at on
+   * the card and never typed. The field stays in the schema so an older caller that still sends a
+   * non-Aadhaar reference keeps working; `assertNoAadhaar` below refuses the ones the hospital may not keep.
+   */
+  payeeIdRef: z.string().min(1).optional(),
 });
+
+/** Twelve digits, with or without the usual spaces/hyphens — the shape of an Aadhaar number. */
+const AADHAAR_SHAPE = /^\d{4}[\s-]?\d{4}[\s-]?\d{4}$/;
+
+/**
+ * OWNER RULING 2026-09-28 — refuse, before any read or write, a pay call that would store an Aadhaar
+ * number: any reference at all when the document shown is Aadhaar (a masked "XXXX-XXXX-1234" is still
+ * a piece of it), and a twelve-digit number under any other type.
+ */
+function assertNoAadhaar(input: { payeeIdType: string; payeeIdRef?: string | undefined }): void {
+  const ref = input.payeeIdRef?.trim() ?? "";
+  if (ref === "") return;
+  if (input.payeeIdType.trim().toLowerCase() === "aadhaar" || AADHAAR_SHAPE.test(ref)) {
+    throw new BillingError("aadhaar_not_stored", "an Aadhaar number is never stored — record the ID type only", {
+      payeeIdType: input.payeeIdType,
+    });
+  }
+}
 
 export type RequestRefundInput = z.infer<typeof requestRefundSchema>;
 export type IssueRefundVoucherInput = z.infer<typeof issueRefundVoucherSchema>;
@@ -349,15 +386,18 @@ async function assertGrantedApproval(
   if (!approval || approval.status !== "granted") {
     throw new BillingError("approval_not_granted", `approval ${approvalId} is not granted`);
   }
+  // OWNER RULING 2026-09-28 — the TYPE the amount requires, so a billing manager's grant cannot issue
+  // a voucher above ₹25,000.00 (and an owner's grant for a small refund is not the manager's type either).
+  const typeKey = refundApprovalTypeFor(expected.amountPaise);
   const bound =
-    approval.typeKey === REFUND_APPROVAL_TYPE &&
+    approval.typeKey === typeKey &&
     approval.subjectType === REFUND_APPROVAL_SUBJECT &&
     approval.subjectId === expected.subjectId &&
     approval.patientId === expected.patientId &&
     approval.amountPaise === expected.amountPaise;
   if (!bound) {
     throw new BillingError("approval_subject_mismatch", `approval ${approvalId} does not bind to this refund`, {
-      expected: { typeKey: REFUND_APPROVAL_TYPE, subjectType: REFUND_APPROVAL_SUBJECT, ...expected },
+      expected: { typeKey, subjectType: REFUND_APPROVAL_SUBJECT, ...expected },
       got: {
         typeKey: approval.typeKey, subjectType: approval.subjectType, subjectId: approval.subjectId,
         patientId: approval.patientId, amountPaise: approval.amountPaise,
@@ -397,7 +437,8 @@ export async function requestRefund(db: Db, actor: Actor, rawInput: RequestRefun
 
   const filed = await withTx(db, (tx) =>
     requestApproval(tx, actor, {
-      typeKey: REFUND_APPROVAL_TYPE,
+      // OWNER RULING 2026-09-28 — above ₹25,000.00 the question goes to the owner, not the manager.
+      typeKey: refundApprovalTypeFor(input.amountPaise),
       subject: { type: REFUND_APPROVAL_SUBJECT, id: target.subjectId },
       patientId: target.patientId,
       encounterId: target.encounterId ?? undefined,
@@ -558,6 +599,7 @@ export async function payRefundVoucher(
   now: Date = new Date(),
 ): Promise<PayRefundVoucherResult> {
   const input = payRefundVoucherSchema.parse(rawInput);
+  assertNoAadhaar(input); // OWNER RULING 2026-09-28 — before any read or write
   const cfg = await loadBillingConfig(db);
 
   return withTx(db, async (tx) => {
@@ -593,7 +635,7 @@ export async function payRefundVoucher(
         cashierSessionId,
         payeeName: input.payeeName,
         payeeIdType: input.payeeIdType,
-        payeeIdRef: input.payeeIdRef,
+        payeeIdRef: input.payeeIdRef === undefined || input.payeeIdRef.trim() === "" ? null : input.payeeIdRef.trim(),
       })
       .where(and(eq(refundVouchers.id, voucher.id), eq(refundVouchers.status, "issued")))
       .returning();

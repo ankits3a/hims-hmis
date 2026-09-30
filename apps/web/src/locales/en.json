@@ -613,6 +613,16 @@
         "ask": "Release {{patient}}'s report with {{amount}} still unpaid",
         "explain": "The report leaves before the money — that is credit, and only you approve it. The amount stays owed."
       },
+      "billing_refund_owner": {
+        "label": "Refund above ₹25,000 (only you approve)",
+        "ask": "Refund {{amount}} to {{patient}}",
+        "explain": "Money goes back to the patient. Your ruling: a refund above ₹25,000.00 is yours to approve, not the billing manager's."
+      },
+      "billing_recon_charge_owner": {
+        "label": "Bank short-payment write-off (only you approve)",
+        "ask": "Write off {{amount}} the bank did not pay on {{patient}}'s receipt",
+        "explain": "The shortfall is recorded as the bank's charge and the receipt reconciles. Your ruling: the billing manager writes off up to ₹50.00 per receipt; above that it is yours."
+      },
       "pharmacy_restricted_antimicrobial": {
         "label": "Restricted antimicrobial",
         "ask": "Approve a restricted antimicrobial for {{patient}}",
@@ -1704,13 +1714,6 @@
   "billingOffice": {
     "title": "Back office",
     "cancel": "Cancel",
-    "tabs": {
-      "refunds": "Refunds",
-      "recon": "Reconciliation",
-      "dayBook": "Day book",
-      "gstr1": "GSTR-1",
-      "orphans": "Unbilled visits"
-    },
     "status": {
       "issued": "ISSUED",
       "paid": "PAID"
@@ -1754,20 +1757,7 @@
       "done": "Voucher {{voucherNo}} is issued and waiting to be paid."
     },
     "pay": {
-      "open": "Pay",
-      "title": "Pay this voucher",
-      "serverIsAuthority": "The payee's identity is checked at the server; this form only spares you a round trip.",
-      "payeeName": "Payee name",
-      "payeeIdType": "Payee ID type",
-      "payeeIdTypePlaceholder": "Choose a document type",
-      "aadhaar": "Aadhaar",
-      "pan": "PAN",
-      "voterId": "Voter ID",
-      "drivingLicence": "Driving licence",
-      "payeeIdRef": "Payee ID reference",
-      "required": "The payee's name, identity document type and reference are all required",
-      "submit": "Pay refund",
-      "done": "Voucher {{voucherNo}} is paid."
+      "open": "Pay"
     },
     "worklist": {
       "title": "Refund vouchers",
@@ -1845,7 +1835,288 @@
       "date": "Date",
       "typeUnknown": "Not recorded"
     },
-    "change": "Change"
+    "change": "Change",
+    "board": {
+      "wordmark": "BILLING OFFICE",
+      "phoneWordmark": "BILLING · {{view}}",
+      "menuLabel": "Billing office pages",
+      "menuButton": "Menu",
+      "menuAria": "Open the page menu",
+      "uhid": "UHID {{uhid}}",
+      "paperNote": "Paper receipts taken during downtime show in the day book's degraded figure; check them against the slips.",
+      "menu": {
+        "today": "Today",
+        "refunds": "Refunds",
+        "receipts": "Receipts",
+        "recon": "Reconciliation",
+        "daybook": "Day book",
+        "gstr1": "GSTR-1",
+        "unbilled": "Unbilled visits"
+      },
+      "page": {
+        "pay": "Vouchers to pay",
+        "request": "Request a refund",
+        "waiting": "Waiting for approval",
+        "all": "All vouchers",
+        "void": "Void a receipt (entered in error)",
+        "paper": "Paper receipts from downtime",
+        "upload": "Upload a UPI / card statement",
+        "mismatches": "Mismatches",
+        "daybook": "Day book — any date",
+        "gstr1": "Summary by GSTIN, SAC and rate",
+        "unbilled": "Visits with no bill — any date"
+      },
+      "was": {
+        "pay": "was: Refunds tab, below two forms",
+        "request": "was: Refunds tab · patient picker",
+        "waiting": "new",
+        "all": "was: Refunds tab",
+        "void": "was: Refunds tab · receipt lookup",
+        "paper": "was: day book · degraded count",
+        "upload": "was: Recon tab",
+        "mismatches": "was: Recon tab",
+        "daybook": "was: Day book tab",
+        "gstr1": "was: GSTR-1 tab",
+        "unbilled": "was: Unbilled visits tab"
+      },
+      "pill": {
+        "toPay_one": "{{count}} voucher to pay · {{amount}}",
+        "toPay_other": "{{count}} vouchers to pay · {{amount}}",
+        "short": "{{amount}} short-settled",
+        "needs_one": "Needs you · {{count}}",
+        "needs_other": "Needs you · {{count}}"
+      },
+      "src": {
+        "pay": "PAY",
+        "approve": "APPROVE",
+        "recon": "RECON",
+        "unbilled": "UNBILLED",
+        "daybook": "DAY BOOK",
+        "gstr1": "GSTR-1"
+      },
+      "clock": {
+        "d": "{{n}} d",
+        "h": "{{n}} h",
+        "m": "{{n}} m",
+        "now": "now",
+        "today": "today",
+        "due": "due today"
+      },
+      "today": {
+        "title": "Needs you today",
+        "titleOther": "आज आपके लिए",
+        "sub_one": "{{count}} · most urgent first",
+        "sub_other": "{{count}} · most urgent first",
+        "empty": "Nothing needs the billing office right now.",
+        "clocks_one": "Clocks running · {{count}}",
+        "clocks_other": "Clocks running · {{count}}",
+        "oldest": "oldest: {{clock}}",
+        "noClocks": "No clock is running.",
+        "noTabs": "No filter tabs. The list is the whole office; pages for browsing everything live in the header menu.",
+        "idle": "Open a row from “Needs you today” — its steps come here, with the one act pinned at the bottom.",
+        "inHandAria": "The item in hand",
+        "why": "Why it is here",
+        "notNow": "Not now",
+        "back": "Back",
+        "close": "Close",
+        "nothing": {
+          "tag": "Nothing in hand",
+          "body": "Pick a row from the list. Its facts come here; its steps and its act open in the middle.",
+          "keys": "Keys",
+          "move": "move through the list",
+          "open": "open a row",
+          "act": "the pinned act",
+          "clear": "put it back"
+        }
+      },
+      "need": {
+        "pay_voucher": {
+          "title": "Pay {{voucherNo}} · {{amount}} {{method}}",
+          "sub": "{{patient}} · approved {{at}}"
+        },
+        "approve_refund": {
+          "title": "Refund {{amount}} waits for approval"
+        },
+        "refund_owner": {
+          "title": "Refund {{amount}} is with the owner"
+        },
+        "recon": {
+          "short": "{{mode}} settled {{amount}} short on {{receiptNo}}",
+          "over": "{{mode}} settled {{amount}} over on {{receiptNo}}",
+          "owner": "{{amount}} write-off on {{receiptNo}} is with the owner",
+          "disputed": "Disputed with the bank: {{amount}} on {{receiptNo}}",
+          "sub": "{{patient}} · statement of {{at}}"
+        },
+        "recon_missing": {
+          "title": "{{mode}} statement for {{day}} not uploaded",
+          "sub_one": "{{count}} tender · {{amount}}",
+          "sub_other": "{{count}} tenders · {{amount}}"
+        },
+        "unbilled_visit": {
+          "title": "Visit {{visitNo}} has no bill"
+        },
+        "daybook_paper": {
+          "title_one": "{{count}} paper receipt from downtime, {{day}}",
+          "title_other": "{{count}} paper receipts from downtime, {{day}}",
+          "sub": "{{amount}} taken on paper · check against the slips"
+        },
+        "gstr1_due": {
+          "title": "{{month}} GSTR-1 due {{due}}",
+          "sub": "Summary by GSTIN, SAC and rate"
+        }
+      },
+      "pay": {
+        "head": "Pay a refund — {{patient}}",
+        "h1": "Pay voucher {{voucherNo}}",
+        "lead": "{{amount}} {{method}} to {{patient}} · steps 1–3 are done",
+        "fact": {
+          "amount": "Amount",
+          "kind": "Kind",
+          "bill": "Bill",
+          "creditNote": "Credit note",
+          "payBy": "Pay by",
+          "reason": "Reason",
+          "approved": "Approved",
+          "issued": "Voucher issued"
+        },
+        "why": "{{reason}}. The voucher is approved and issued; nobody has handed the money over yet.",
+        "flags": "Flag the approver saw",
+        "noFlags": "None.",
+        "footer": "Paid by whoever holds billing.refund.pay — cash from their own open drawer. Esc puts it back.",
+        "requested": "Refund requested",
+        "requestedM": "{{at}} by {{by}} · reason: “{{reason}}”",
+        "approved": "Approved",
+        "approvedM": "{{at}} by {{by}} · every refund is approved before a voucher exists",
+        "approvedOwnerM": "{{at}} by {{by}} · above ₹25,000.00 only the owner approves a refund",
+        "issued": "Voucher issued",
+        "issuedM": "{{voucherNo}} · {{amount}} · {{method}} · capped at what the hospital actually received",
+        "who": "Who takes the money",
+        "whoM": "The name as on the ID shown at the counter. Look at the ID; its number is not written down — Aadhaar is never stored (owner ruling 28-Sep-2026).",
+        "payeeName": "Payee name",
+        "idShown": "ID shown",
+        "choose": "Choose",
+        "idType": {
+          "aadhaar": "Aadhaar",
+          "pan": "PAN",
+          "voter_id": "Voter ID",
+          "driving_licence": "Driving licence",
+          "passport": "Passport",
+          "other": "Other photo ID"
+        },
+        "drawer": "From which drawer",
+        "drawerOpen": "Your drawer · open since {{time}}. The payout is written to this drawer’s close; its expected cash stays hidden until you count (blind count, owner ruling 28-Sep-2026).",
+        "drawerNone": "You have no drawer open. Open your cashier session before paying cash.",
+        "drawerBank": "No drawer: this refund leaves by bank transfer.",
+        "drawerPill": "drawer open",
+        "sign": "Take the payee’s signature",
+        "signM": "The payee signs for the money in the refund register. A printed voucher is not available on this screen yet.",
+        "whyCash": "The drawer shortens by {{amount}} the moment you pay.",
+        "whyBank": "Record it only after the transfer has left the bank.",
+        "act": "Pay {{amount}} in cash",
+        "actBank": "Record {{amount}} paid by bank transfer",
+        "required": "Type the payee’s name and choose the ID shown.",
+        "done": "{{voucherNo}} is paid."
+      },
+      "recon": {
+        "decide": "Decide",
+        "seeMismatches": "See the mismatches",
+        "headShort": "{{mode}} settled short — {{patient}}",
+        "headOver": "{{mode}} settled over — {{patient}}",
+        "h1": "Settle the difference on {{receiptNo}}",
+        "lead": "{{amount}} beyond the {{tolerance}} tolerance",
+        "fact": {
+          "taken": "Taken",
+          "receipt": "Receipt",
+          "uploaded": "Statement uploaded",
+          "disputed": "Disputed"
+        },
+        "whyHere": "The bank’s statement did not settle what it owed after its fee. Until someone decides, the difference is money nobody has accounted for.",
+        "whyDisputed": "Raised with the bank. It stays on the clocks until the credit arrives on a later statement — or you decide otherwise.",
+        "owed": "What the bank owed and paid",
+        "k": {
+          "taken": "Taken at counter",
+          "expected": "Expected after fee",
+          "settled": "Settled",
+          "short": "Short",
+          "over": "Over"
+        },
+        "owedM": "Expected is fixed when the money was taken, from the fee rate on that day — a later fee change never rewrites it.",
+        "what": "What happened",
+        "disputeB": "The bank short-paid.",
+        "disputeT": "Raise a dispute with the bank; the row stays open until the credit arrives on a later statement.",
+        "chargeB": "Accept it as a bank charge.",
+        "chargeT": "Written off with your reason. Up to {{limit}} per receipt you decide; above it the owner does (owner ruling 28-Sep-2026).",
+        "notShort": "Only a short settlement can be a bank charge — the bank paid more than expected.",
+        "reuploadB": "Wrong statement row.",
+        "reuploadT": "The row goes back to waiting; upload the corrected statement and it matches again.",
+        "reason": "Reason (kept with the decision)",
+        "reasonNeeded": "Write the reason first.",
+        "actDispute": "Raise a dispute with the bank",
+        "actCharge": "Accept {{amount}} as a bank charge",
+        "actOwner": "Ask the owner to accept {{amount}}",
+        "actApply": "Write off {{amount}} — the owner approved",
+        "actReupload": "Send back for the corrected statement",
+        "whyDispute": "A dispute keeps the {{amount}} on the clock list until it is credited.",
+        "whyCharge": "The receipt reconciles and the difference is recorded as the bank’s charge, with your reason.",
+        "whyOwner": "{{amount}} is above {{limit}}: the owner decides. Nothing changes until the owner says yes.",
+        "whyApply": "The owner said yes to this write-off; applying it reconciles the receipt.",
+        "whyReupload": "The settled figure is cleared; the corrected statement settles it afresh.",
+        "pendingOwner": "The owner has been asked to accept {{amount}}. It waits on the clocks until the owner decides.",
+        "done": {
+          "dispute": "{{receiptNo}} is disputed with the bank.",
+          "bank_charge": "{{amount}} on {{receiptNo}} is recorded as a bank charge.",
+          "reupload": "{{receiptNo}} waits for the corrected statement."
+        }
+      },
+      "simple": {
+        "asked": "Asked",
+        "approve_refund": {
+          "step": "A billing manager decides",
+          "stepM": "Every refund is approved before a voucher exists. Above {{limit}} the owner decides instead.",
+          "act": "Open in approvals"
+        },
+        "refund_owner": {
+          "step": "The owner decides",
+          "stepM": "Above {{limit}} only the owner approves a refund (owner ruling 28-Sep-2026).",
+          "act": "With the owner"
+        },
+        "unbilled_visit": {
+          "visit": "Visit",
+          "day": "Date",
+          "type": "Visit type",
+          "why": "This visit owed a consultation fee and no bill was raised against it.",
+          "step1": "The visit",
+          "step1M": "{{visitNo}} on {{day}} · {{patient}}",
+          "step2": "Raise the missing bill",
+          "step2M": "The billing counter opens on this visit, with its fee.",
+          "act": "Raise the missing bill"
+        },
+        "recon_missing": {
+          "tenders": "Tenders",
+          "why": "UPI and card money from a finished day is still waiting for the bank’s statement.",
+          "step": "Upload the statement",
+          "stepM": "Each row is matched by its reference; what does not match is reported, never guessed.",
+          "act": "Upload the statement"
+        },
+        "daybook_paper": {
+          "receipts": "Paper receipts",
+          "why": "Receipts were written on paper while the system was down.",
+          "step": "Check them against the slips",
+          "stepM": "The day book shows the paper receipts in its degraded figure.",
+          "act": "Open the day book"
+        },
+        "gstr1_due": {
+          "due": "Due",
+          "why": "Outward supplies are filed on GSTR-1 by the 11th of the next month.",
+          "step": "Read the summary",
+          "stepM": "By buyer GSTIN, SAC and rate — the stored head sums, never re-derived.",
+          "act": "Open GSTR-1"
+        }
+      },
+      "waiting": {
+        "empty": "No refund is waiting for a decision."
+      }
+    }
   },
   "alerts": {
     "title": "Alerts",
