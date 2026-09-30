@@ -2839,7 +2839,22 @@
     "ledger_invalid": "The ledger's dates or filter do not fit: dates are YYYY-MM-DD, the from date comes first, and a batch belongs to the item.",
     "unknown_indent": "That indent was not found.",
     "invalid_indent": "The indent is incomplete — ask for each item once, in whole numbers above zero, from another store; issue no more than was asked and at least one unit.",
-    "indent_closed": "This indent was already issued, rejected or cancelled — refresh and look at it again."
+    "indent_closed": "This indent was already issued, rejected or cancelled — refresh and look at it again.",
+    "grn_same_person": "You captured this delivery. The hospital's setting needs a different person to check and post it."
+  },
+  "storeSettings": {
+    "title": "Stores settings",
+    "lead": "Rules for how goods come into the stores. Every change is recorded with who made it and when.",
+    "on": "On",
+    "off": "Off",
+    "savedOn": "Saved — a different person must now check each goods receipt.",
+    "savedOff": "Saved — the person who captured a goods receipt may check it too.",
+    "grnTwoPerson": {
+      "label": "Require a different person to QC a goods receipt than the one who captured it",
+      "whenOff": "Off: the person who captured a delivery may also check and post it. The goods receipt list marks each one checked by its own capturer.",
+      "whenOn": "On: the person who captured a delivery cannot check or post it. Somebody else with the right to check goods must do it.",
+      "recommend": "Recommended: turn this on once a second trained person (pharmacist or storekeeper) is on every shift."
+    }
   },
   "materialsGrn": {
     "title": "Goods receipt",
@@ -2847,6 +2862,8 @@
     "tabGate": "Gate",
     "tabWorklists": "Worklists",
     "newGrn": "Receive a delivery",
+    "sameCapturer": "Checked by the same person who captured it",
+    "capturerMayNotCheck": "You captured this delivery. The hospital's setting needs somebody else to check and post it.",
     "vendor": "Vendor",
     "source": "Source",
     "source_challan": "Purchase challan",
@@ -10138,6 +10155,7 @@
         "downtime": "Paper dispenses after downtime",
         "cold": "Fridge temperature log",
         "trays": "Crash cart & emergency trays",
+        "settings": "Stores settings",
         "master": "Item master",
         "sells": "What the counter sells · GST slab",
         "formulary": "Formulary",

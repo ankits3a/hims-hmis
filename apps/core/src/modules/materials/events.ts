@@ -491,6 +491,16 @@ export const materialIndentRejected = defineEvent("material.indent_rejected", MO
 /** The requester withdrew it before it was answered. */
 export const materialIndentCancelled = defineEvent("material.indent_cancelled", MODULE, z.object({ ...indentHeader, reason: z.string().min(1) }));
 
+// ═══ OWNER RULING 2026-09-30 — the stores' settings (`settings.ts`) ═══
+
+/**
+ * A stores setting changed: which one, what it was, what it is now, and (on the envelope) who changed it.
+ * The audit of the two-person GRN rule — "who turned the second check off, and when" is the question.
+ */
+export const storeSettingsChanged = defineEvent("store_settings.changed", MODULE, z.object({
+  setting: z.enum(["grn_qc_needs_second_person"]), from: z.boolean(), to: z.boolean(),
+}));
+
 export const MATERIALS_EVENTS = [
   itemRegistered, itemUpdated,
   vendorRegistered, vendorUpdated, vendorStatusChanged,
@@ -511,4 +521,5 @@ export const MATERIALS_EVENTS = [
   stockWriteOffRequested, stockWriteOffRefused, stockWriteOffPosted, stockRecallClosed,
   itemMergeRequested, itemMergeRefused, itemMerged,
   materialIndentRaised, materialIndentIssued, materialIndentRejected, materialIndentCancelled,
+  storeSettingsChanged,
 ] as const;

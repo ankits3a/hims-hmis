@@ -311,7 +311,10 @@ export type MaterialsErrorCode =
   /** An indent or its issue out of shape: no lines, an item twice, a quantity not a positive whole number, one store asking itself, more issued than asked, nothing issued at all. */
   | "invalid_indent"
   /** The indent was already issued, rejected or cancelled — only a requested one is acted on. */
-  | "indent_closed";
+  | "indent_closed"
+  // ── OWNER RULING 2026-09-30 — the two-person GRN setting (`settings.ts`, `grn.ts`) ──
+  /** The setting is on and the person who captured this GRN tries to QC or post it: somebody else must. */
+  | "grn_same_person";
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.

@@ -21,6 +21,7 @@ import { IncidentRegisterView } from "./incidents";
 import { ItemsView } from "./items";
 import { StockLedgerPage } from "./ledger";
 import { MessagesView } from "./messages";
+import { StoreSettingsView } from "./store-settings";
 import { PayView } from "./pay";
 import { ReportsView } from "./reports";
 import { ReturnsView } from "./returns";
@@ -137,6 +138,7 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "downtime": return <PharmacyDowntime />;
     case "cold": return <ColdChainView />;
     case "trays": return <TrayChecksView />;
+    case "settings": return <StoreSettingsView />;
     case "master": return <MaterialsItems />;
     case "sells": return <PharmacyItems />;
     case "formulary": return <FormularyAdmin />;
