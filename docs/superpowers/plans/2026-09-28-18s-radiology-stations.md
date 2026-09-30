@@ -1713,7 +1713,7 @@ workflow instances, the consumer writes nothing new.
 - **(f) Where it lives on screen.** The Rooms station's header views (`console · dose · rejects ·
   downtime · unmatched`); `?view=ir` is a sixth, so no new route, nav row or caddyfile entry.
 
-#### RS12b as built (this PR; lane `radiology-ir`, on main `9e387f23`; one migration, `0152_radiology_ir_suite` — to be renumbered at rebase after #403 / #401 / #369)
+#### RS12b as built (this PR; lane `radiology-ir`, on main `9e387f23`; one migration, `0159_radiology_ir_suite` — to be renumbered at rebase after #403 / #401 / #369)
 - **T1 · the IR case (core).** An IR case is the `imaging_studies` row whose study type says
   `interventional: true` (DECIDED — no parallel table, 18a-iii's portable reasoning). `study_types`
   gains optional `interventional` and `bleeding_risk` (`low | high`, SIR 2019) — every earlier book
