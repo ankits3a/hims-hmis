@@ -291,7 +291,7 @@ sibling lane's (`pharmacy-discount-rounding`).
 
 **3 — Two-person GRN is a SETTING, OFF by default, recommended ON.** As built:
 
-- `materials_settings` (one row, `id = 'main'`; migration `0162_materials_settings`, additive). No row =
+- `materials_settings` (one row, `id = 'main'`; migration `0163_materials_settings` (renumbered at merge; radiology took 0162), additive). No row =
   every setting off. Column `grn_qc_needs_second_person`.
 - `GET /materials/settings` (`materials.stock.read`) and `PUT /materials/settings`
   (`materials.stores.manage` — the materials head and the admin/owner role; reused, not minted). Each
