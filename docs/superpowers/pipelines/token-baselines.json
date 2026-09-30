@@ -257,6 +257,22 @@
       "agents": 9,
       "subagentTokens": null,
       "note": "2026-09-30, deployed 107b3447 (154 migrations); #419/#409 follow. Nine subagents: A6b indents 230k, stock entry 377k, E2E walk 378k, B5 restyle 433k, returns UI 231k, desk fixes 397k, plus 3 read-only mappers. The script's --since window (22,642 turns x 154k = 3.49B) includes OTHER sessions' agents on the box and is NOT this phase's cost; main-session cost unmeasured (LIGHT). Bought: the E2E walk found a mg-read-as-tablets prefill (9,750 tablets for Dolo 650 TDS x5d) and three defects no test had; the stock-entry builder found free goods valuing a whole batch at 0. Waste: two serial renumbers of D4 from uncoordinated radiology merges; a 90-min stall from a watcher piped into head (ledger 2.173). Saved: six PRs trained into one CI cycle (2.172)."
+    },
+    {
+      "phase": "ux-audit-2026-09-28 (11 screens + shell + 5 boards + patient profile)",
+      "lane": "LIGHT (in-session orchestration + ~35 Agent subagents)",
+      "tasks": 20,
+      "agents": 35,
+      "subagentTokens": 5250000,
+      "note": "2026-09-28..30, deployed eb032c05. Subagent tokens are summed from each agent's completion notice. The box-wide `token-audit.js --since` total mixes three sessions (ledger 2.167). Breakdown: audit 477k; step-2 fixes 529k; 3 board rebuilds 750k; blind count 241k; 5 draft boards 523k; 5 board builds 1.68M; profile audit and build 536k; merge, train and shepherd agents ~375k; MS break-glass 137k. That is ~262k per task. Main-session cost unmeasured (LIGHT). Bought: 20 PRs across 17 screens. Three serious finds no gate had caught: a refused merge locked the record forever; expected cash leaked to cashiers on 7 surfaces; resolve-mismatch had no idempotency. Also the D5 deploy hazard, caught before deploy (2.170). Waste: about a day of serial CI turns for no-migration PRs before trains (2.172); four watcher kills under memory pressure (2.173)."
+    },
+    {
+      "phase": "ux-audit follow-ups 2026-09-30 (dues permission, 390 overflows, desk-card flake)",
+      "lane": "LIGHT (in-session + 3 Agent subagents)",
+      "tasks": 3,
+      "agents": 3,
+      "subagentTokens": 436000,
+      "note": "2026-09-30, deployed b67e92ec. Agents: front-desk dues permission 172.5k (#421); station check and 390 overflows 169.9k (#422); me.e2e flake 93.7k (#425). Main-session cost unmeasured (LIGHT). Waste: the station agent's first ~130k chased an overlap that a full-page screenshot invented (2.175); it refused to ship and found the real overflows. Bought: a narrow dues read for the front desk without billing.invoice.read; 0 px sideways scroll on /opd/admin and /my-day at 390; a flake root-caused to the desk-card budget instead of retried away (2.176)."
     }
   ]
 }

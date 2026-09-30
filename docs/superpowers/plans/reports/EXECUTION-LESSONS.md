@@ -2747,3 +2747,38 @@ was started with `&` inside a foreground call; it lived, but its exit notified n
 - Its output goes to a log file, and only `tail` of the log after it exits.
 - Never `| head` and never `&` on a loop you need to hear from.
 - Start it with a `sleep 90` after a push, so it does not read the previous run's failed check.
+
+
+### 2.174 A TEST THAT FAILS ON THE PR'S OWN HEAD IS THE PR'S, NOT A FLAKE — even when a flake shares its file
+
+**What happened, 2026-09-30.** #380's CI went red on `partners/accrual.test.ts` F8. The same file holds a known timing flake (F11a, see the memory note "Partners accrual lock-timing flake"), so the first reading was "flake".
+- F8 also failed on the PR's own head, before main was merged in, so the PR itself caused it.
+- The cause: F8's fixture paid a refund with an Aadhaar reference. The Aadhaar ruling that this same PR implemented now refuses that before any write, so F8 never reached its money assertions.
+- The PR's second red test, the SubmitButton census (5→4), led to a real gap: the new resolve-mismatch route had no idempotency protection. The fix gave it `withIdempotency`, with a replay e2e test.
+
+**Mechanical form.**
+- Before calling any red test a flake, run it on the PR's own head: `git checkout <pr-head> && <run the one test>`.
+- Red on the head means the PR caused it, and the fix belongs in the PR. Only green-on-head / red-after-merge is a merge or flake question.
+- A census that drops is checked by reading every act it counts, never by lowering the number.
+
+### 2.175 A FULL-PAGE SCREENSHOT PAINTS A STICKY BAR MID-PAGE — MEASURE THE SCROLLED VIEWPORT BEFORE CALLING IT AN OVERLAP
+
+**What happened, 2026-09-30.** A `fullPage: true` capture of /patients/:id showed the desk-agent dock lying across the left lane.
+- I read it as an overlap, asked for padding on the profile, then ordered a fix across every station screen.
+- The station agent measured all 8 dock screens at 1440 and 390, scrolled to the bottom. On every one, the last content line ended at or above the dock. The capture had drawn the `position: sticky` bar at its viewport position, which lands mid-image.
+- The agent shipped nothing, because a red-first test could not go red on main. It went on to find the two real 390 px overflows (#422).
+
+**Mechanical form.**
+- Judge a sticky or fixed-bar claim with `window.scrollTo(0, document.body.scrollHeight)`, then compare `bar.getBoundingClientRect().top` against the last line's `.bottom`, or use a viewport-only screenshot. Never use `fullPage: true` for this.
+- A fix whose red-first test cannot fail on main is fixing an imagined bug.
+
+### 2.176 A DESK CARD CAN MISS ITS 250 ms BUDGET UNDER LOAD — A TEST THAT `find()`s A CARD MUST RE-POLL
+
+**What happened, 2026-09-30.** `test/me.e2e.test.ts:391` failed once in CI with a TypeError on `.stats`.
+- It looked like a blind-count regression, but it was not. `runOne` (kernel/desk/registry.ts) drops any card that overruns its 250 ms budget.
+- The supervisor's billing card makes the most database round trips. The failing shard ran 1,417 s; on an idle box the card takes 10–26 ms.
+- #425 added a `deskCard()` helper that re-reads the desk up to 5 times, and still fails, naming the card, if it never arrives.
+
+**Mechanical form.**
+- Run `grep -rn "cards.find(" apps/core/test/`. Every hit that asserts on a best-effort desk card must go through the re-poll helper.
+- Red-first for this class is a delay injected at one budget + 50 ms.
