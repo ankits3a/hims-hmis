@@ -42,6 +42,14 @@ you run, because a peer starts in between. The lock is the only thing that close
 memory looks nothing like a suite that failed, so the lane that skips the lock spends somebody
 else's afternoon on a red nobody can reproduce.
 
+## Show the owner on staging — https://stagehmis.crkmch.com
+
+Commit on the lane, then `/opt/hmis/tools/stage.sh <lane>` (~5 min; user `uat`). Staging holds that
+lane until its PR merges or closes, then follows main again by itself; `tools/stage.sh main`
+releases it early, `--status` says what is on it. Only one lane at a time: check `--status` and
+ask before replacing another lane's staging. Merged work reaches production and staging by itself
+(cron `tools/auto-deploy.sh`, every 10 min, CI-green main only) — never run `deploy.sh` by hand.
+
 ## Files that belong to everyone — coordinate before editing
 
 `kernel/**`, `kernel/db/schema/index.ts`, `app.module.ts`, `worker.module.ts`,
