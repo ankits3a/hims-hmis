@@ -30,6 +30,11 @@ export type MembershipErrorCode =
   | "import_columns_unknown" | "import_row_quarantined" | "import_duplicate_key"
   | "import_already_applied" | "import_range_inverted"
   | "match_already_resolved" | "match_candidate_unknown"
+  // ── UX-AUDIT 2026-09-28 · BOARD — the reconcile board's three server rules ─────────────────
+  // (widened after Plan 09 closed, with the owner-approved board as the reason, not smuggled
+  // through a neighbouring code): a Weak link needs a stated proof and a confirm; a dismiss needs
+  // a reason; "Mark checked" names a lapsed restore that exists.
+  | "match_weak_needs_proof" | "match_dismiss_needs_reason" | "lapsed_restore_unknown"
   // ── the structural-OFF lanes (DD14) ─────────────────────────────────────────────────────────
   | "sales_disabled" | "benefits_disabled" | "coupon_issuance_disabled";
 
@@ -61,9 +66,11 @@ export function membershipHttpStatus(code: MembershipErrorCode): number {
 
 const NOT_FOUND_CODES = new Set<MembershipErrorCode>([
   "unknown_instrument", "unknown_plan", "unknown_member", "unknown_counter", "unknown_coupon",
-  "redemption_not_found", "match_candidate_unknown",
+  "redemption_not_found", "match_candidate_unknown", "lapsed_restore_unknown",
 ]);
-const VALIDATION_CODES = new Set<MembershipErrorCode>(["import_columns_unknown", "import_range_inverted"]);
+const VALIDATION_CODES = new Set<MembershipErrorCode>([
+  "import_columns_unknown", "import_range_inverted", "match_weak_needs_proof", "match_dismiss_needs_reason",
+]);
 
 export class MembershipError extends Error {
   constructor(

@@ -9,6 +9,7 @@ import {
   activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, openOpdVisit, seedOpdBase, seedOpdMasters,
 } from "./helpers/opd";
 import { grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
+import { openSessionFor } from "./helpers/billing";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { events, users } from "../src/kernel/db/schema";
@@ -439,4 +440,27 @@ describe("staff reports e2e — 07c T9 (DD14: what, not whom)", () => {
     });
   });
 
+  /**
+   * OWNER RULING 2026-09-28 — BLIND COUNT. A cashier's collected-today is hidden from HER until her
+   * count, but a supervisor holding `billing.session.read` still reads it — and the staff brief's
+   * live today used to be computed with the SUBJECT as the reader, so the supervisor lost it too.
+   * The blind check is the VIEWER's.
+   */
+  it("BLIND COUNT: a drawer supervisor's staff brief of a cashier with an open drawer still carries today's collected money", async () => {
+    await ensureRole(db, "cashier_t");
+    await grantPermissionToRole(db, registry, "cashier_t", "billing.session.own");
+    const asha = await mkUser(db, "asha_cashier", ["cashier_t"]);
+    await openSessionFor(db, asha, 100_000);
+    await ensureRole(db, "drawer_supervisor_t");
+    await grantPermissionToRole(db, registry, "drawer_supervisor_t", "staff.reports.read");
+    await grantPermissionToRole(db, registry, "drawer_supervisor_t", "billing.session.read");
+    const meera = await mkUser(db, "meera_sup", ["drawer_supervisor_t"]);
+
+    const res = await get(`/staff/${asha.id}/brief?period=day`, meera.token).expect(200);
+    expect(res.body.totalsToday["billing.collectedPaise"]).toBe(0);
+    expect(res.body.totalsToday["billing.receipts"]).toBe(0);
+    // and her own brief, the same today, stays blind
+    const own = await get("/me/brief?period=day", asha.token).expect(200);
+    expect(JSON.stringify(own.body)).not.toContain("collectedPaise");
+  });
 });

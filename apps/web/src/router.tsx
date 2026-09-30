@@ -795,6 +795,8 @@ const slipCaptureRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/slips",
   component: SlipCapture,
+  // UX-AUDIT 2026-09-28 · BOARD — the slip desk wears the station shell, which owns the viewport.
+  staticData: { fullViewport: true },
 });
 
 const vitalsBayRoute = createRoute({
@@ -1319,6 +1321,11 @@ const opdDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/desk",
   component: OpdDesk,
+  /*
+    UX-AUDIT 2026-09-28 — the OPD QUEUE desk now draws the station shell (header, lane, list), like
+    the lab's stations; opening a visit is Desk One's. See docs/superpowers/decisions/2026-09-28-opd-desk.md.
+  */
+  staticData: { fullViewport: true },
 });
 
 const opdConsultRoute = createRoute({
@@ -1468,6 +1475,8 @@ const instrumentReconcileRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter/reconcile",
   component: InstrumentReconcile,
+  // UX-AUDIT 2026-09-28 · BOARD — the screen wears the station shell, which owns the viewport.
+  staticData: { fullViewport: true },
 });
 
 /**

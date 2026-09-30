@@ -6,8 +6,10 @@ import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { assertPaise } from "../tariff";
 import { BillingError } from "./errors";
+import { istDay } from "./time";
 import { expectedCash, sumDenominations } from "./cash-math";
 import { cashierSessionClosed, cashierSessionOpened, cashierSessionRecounted, varianceFlagged } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -162,6 +164,64 @@ export async function liveExpectedCashPaise(exec: Db | Tx, session: Pick<Cashier
   const cashVouchers = await sumCashVouchersPaidPaise(exec, session.id);
   const changeGiven = await sumChangeGivenPaise(exec, session.id);
   return expectedCash(session.openingFloatPaise, cashTenders, cashVouchers, changeGiven);
+}
+
+/**
+ * ═══ OWNER RULING 2026-09-28 — BLIND COUNT ═══
+ *
+ * *"The cashier must never see her own drawer's EXPECTED cash before she has submitted her count —
+ * on any screen, card, API response or copilot answer. A supervisor / billing manager may still see
+ * it."* A count taken against a figure on the screen is not a count, it is a copy: the cashier who
+ * can read what the drawer should hold types that number, and a short drawer closes clean.
+ *
+ * So every surface that carries a LIVE expected figure asks THIS function first, and a `false`
+ * means the figure is not sent at all — hiding it in the UI would leave it readable in the JSON.
+ * Only WHO receives it and WHEN changes; `liveExpectedCashPaise` above is untouched.
+ *
+ *   - `open` is BEFORE the count. The figure goes only to a holder of `billing.session.read` — the
+ *     existing "oversight of cashier sessions somebody else owns" grant (`billing_manager`, `owner`),
+ *     which is what supervisor means here. No new permission.
+ *   - anything else (`closing`, `closed`) is AFTER the count was submitted; the close screen already
+ *     shows counted vs expected there, and so may everybody else.
+ *
+ * `viewer` is the person LOOKING (a desk's `reader`), never the drawer's owner as such.
+ */
+export const DRAWER_SUPERVISOR_PERMISSION = "billing.session.read";
+
+/** Does `viewer` supervise drawers (`billing.session.read`)? The one question every blind-count gate asks. */
+export async function isDrawerSupervisor(db: Db, viewer: Actor): Promise<boolean> {
+  if (viewer.type !== "user") return false;
+  return hasPermission(db, viewer.id, DRAWER_SUPERVISOR_PERMISSION, "hospital");
+}
+
+export async function mayReadExpectedCash(db: Db, viewer: Actor, session: Pick<CashierSessionRow, "status">): Promise<boolean> {
+  if (session.status !== "open") return true;
+  return isDrawerSupervisor(db, viewer);
+}
+
+/**
+ * ═══ OWNER RULING 2026-09-28 — BLIND COUNT, SECOND HALF: "COLLECTED TODAY" ═══
+ *
+ * *"The cashier's 'collected today', and a pharmacist's at their own counter, must also be hidden
+ * until their count is submitted, because float plus collected reveals the expected cash. The
+ * receipt count may still show."* Hiding `expectedCash` alone left the sum on the same card.
+ *
+ * `true` means: `subject` holds an `open` (uncounted) drawer whose cash includes `day`'s takings
+ * (it was opened on or before `day`, IST), and `viewer` is not a drawer supervisor
+ * (`billing.session.read`). Callers then leave every money figure of that person's collections
+ * OUT of the response — the amounts, by tender and in total — and keep the counts.
+ *
+ * A day BEFORE the open drawer's opening day was counted in an earlier session, so it shows. Once the
+ * count is submitted (`closing`) there is no `open` drawer and everything shows, as before.
+ */
+export async function collectionsBlind(db: Db, subject: Actor, viewer: Actor, day: string): Promise<boolean> {
+  const open = await db
+    .select({ openedAt: cashierSessions.openedAt })
+    .from(cashierSessions)
+    .where(and(eq(cashierSessions.cashierUserId, subject.id), eq(cashierSessions.status, "open")));
+  const session = open[0];
+  if (session === undefined || istDay(session.openedAt) > day) return false;
+  return !(await isDrawerSupervisor(db, viewer));
 }
 
 /**

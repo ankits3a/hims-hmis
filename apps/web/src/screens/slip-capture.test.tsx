@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders, stubFetch } from "../test-utils";
@@ -153,7 +153,7 @@ describe("SlipCapture", () => {
     await user.upload(screen.getByTestId("slip-file"), png);
 
     await waitFor(() => { expect(screen.getByTestId("slip-preview")).toBeInTheDocument(); });
-    await user.type(screen.getByLabelText("Note"), "two pages, this is the first");
+    await user.type(screen.getByLabelText(/Note for the doctor/), "two pages, this is the first");
     await user.click(screen.getByTestId("slip-file-it"));
 
     await waitFor(() => { expect(callsTo("POST", "/api/patients/p-1/documents")).toHaveLength(1); });
@@ -276,5 +276,190 @@ describe("SlipCapture", () => {
     /* Back to the capture step, with the SAME patient still resolved — a retake is not a rescan. */
     expect(screen.getByTestId("slip-readback")).toHaveTextContent("Asha Devi");
     expect(screen.getByTestId("slip-file")).toBeInTheDocument();
+  });
+});
+
+/**
+ * ═══ UX-AUDIT 2026-09-28 · BOARD — THE SLIP DESK IN THE HOUSE STATION ═══
+ *
+ * The approved board adds what the desk could not see before: the Doctor ID, department and what
+ * is already on file in the lane; today's slips on the right with the day's counts; the torn-QR
+ * search (owner ruling 28-Sep-2026); one numbered flow whose dock Enter is the next act; kind as
+ * three cards; and "Add a page" after filing. jsdom has no layout — the columns and the six widths
+ * are walked in Chromium; these rows pin what a CSS change cannot fake.
+ */
+describe("SlipCapture — the board", () => {
+  const RICH = {
+    ...VISIT,
+    patient: { ...VISIT.patient, administrativeGender: "female", dob: "1980-03-01T00:00:00.000Z" },
+    doctorCode: "DR-0412", departmentName: "General Medicine", roomName: "Room 4", filed: [],
+  };
+  const DAY = {
+    serviceDate: "2026-09-14",
+    counts: { waiting: 2, retake: 1, filed: 1 },
+    items: [
+      { encounterId: "e-2", patientId: "p-2", visitNo: "V2609140002", patient: { uhid: "HMS0000000002", name: "Mohammed Irfan", alias: null }, doctorCode: "DR-0412", roomName: "Room 4", state: "waiting", consultDoneAt: new Date(Date.now() - 18 * 60_000).toISOString(), filedAt: null, pages: 0, kinds: [], retakeRequestedAt: null, retakeReason: null },
+      { encounterId: "enc-1", patientId: "p-1", visitNo: "V2609140007", patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null }, doctorCode: "DR-0412", roomName: "Room 2", state: "waiting", consultDoneAt: new Date(Date.now() - 2 * 60_000).toISOString(), filedAt: null, pages: 0, kinds: [], retakeRequestedAt: null, retakeReason: null },
+      { encounterId: "e-3", patientId: "p-3", visitNo: "V2609140003", patient: { uhid: "HMS0000000003", name: "Harpreet Kaur", alias: null }, doctorCode: "DR-0412", roomName: "Room 4", state: "retake", consultDoneAt: null, filedAt: "2026-09-14T05:40:00.000Z", pages: 1, kinds: ["consult_prescription"], retakeRequestedAt: "2026-09-14T05:50:00.000Z", retakeReason: null },
+      { encounterId: "e-4", patientId: "p-4", visitNo: "V2609140004", patient: { uhid: "HMS0000000004", name: "Suresh Pillai", alias: null }, doctorCode: "DR-0412", roomName: "Room 2", state: "filed", consultDoneAt: null, filedAt: "2026-09-14T06:06:00.000Z", pages: 1, kinds: ["consult_prescription"], retakeRequestedAt: null, retakeReason: null },
+    ],
+  };
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:slip", revokeObjectURL: () => undefined });
+    vi.stubGlobal("Image", class {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      naturalWidth = 3024;
+      naturalHeight = 4032;
+      set src(_v: string) { setTimeout(() => { this.onload?.(); }, 0); }
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage: () => undefined } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/jpeg;base64,/9j/4AAQSkZJRg==");
+  });
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it("B1: the lane reads back the Doctor ID, department and room — and says this is the first page", async () => {
+    stubFetch({ "GET /api/opd/visits/by-number/V2609140007": RICH });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+
+    const back = await screen.findByTestId("slip-readback");
+    expect(back).toHaveTextContent("In hand · matched by the slip's QR");
+    expect(back).toHaveTextContent("Female · 46 y");
+    expect(back).toHaveTextContent("DR-0412");
+    expect(back).toHaveTextContent("General Medicine");
+    expect(back).toHaveTextContent("Room 4");
+    expect(back).toHaveTextContent("14-Sep-2026");
+    expect(screen.getByTestId("slip-onfile")).toHaveTextContent("Nothing yet — this will be the first page.");
+  });
+
+  it("B2: a visit with a page on file says so, and the dock files the NEXT page", async () => {
+    stubFetch({
+      "GET /api/opd/visits/by-number/V2609140007": {
+        ...RICH, filed: [{ id: "d-1", kind: "consult_prescription", capturedAt: "2026-09-14T05:35:00.000Z", retakeRequestedAt: null }],
+      },
+    });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    expect(await screen.findByTestId("slip-onfile")).toHaveTextContent("filed at 11:05. This adds page 2.");
+
+    await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
+    await waitFor(() => { expect(screen.getByTestId("slip-preview")).toBeInTheDocument(); });
+    expect(screen.getByTestId("slip-dock")).toHaveTextContent("page 2");
+  });
+
+  it("B3: today's slips — waiting first, the day's counts, and a waiting row picks that visit", async () => {
+    stubFetch({ "GET /api/opd/slips/today": DAY, "GET /api/opd/visits/by-number/V2609140002": { ...RICH, encounterId: "e-2", patientId: "p-2", visitNo: "V2609140002", patient: { uhid: "HMS0000000002", name: "Mohammed Irfan", alias: null } } });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+
+    const list = await screen.findByTestId("slip-list");
+    await waitFor(() => { expect(list).toHaveTextContent("Today's slips · 4"); });
+    const names = [...list.querySelectorAll(".row .t b")].map((b) => b.textContent);
+    expect(names).toEqual(["Mohammed Irfan", "Asha Devi", "Harpreet Kaur", "Suresh Pillai"]);
+    expect(list).toHaveTextContent("18 min");
+    expect(list).toHaveTextContent("doctor asked for a clearer photo");
+    expect(list).toHaveTextContent("1 filed today");
+    expect(screen.getByTestId("slip-status")).toHaveTextContent("2 slips not yet photographed");
+    expect(screen.getByTestId("slip-day")).toHaveTextContent(/Filed\s*1/);
+    /* A missing slip SHOWS; it does not escalate (owner ruling 28-Sep-2026). */
+    expect(screen.getByTestId("station-clocks-toggle")).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(screen.getByTestId("slip-row-V2609140002"));
+    expect(await screen.findByTestId("slip-readback")).toHaveTextContent("Mohammed Irfan");
+  });
+
+  it("B4: a torn QR — today's visit found by name, and the person is still checked before the camera", async () => {
+    const find = vi.fn(() => ({ items: [RICH] }));
+    stubFetch({ "GET /api/opd/slips/find": (_i?: RequestInit, url?: string) => { find(); return url?.includes("q=Asha") ? { items: [RICH] } : { items: [] }; } });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText("Visit number"), "V2609140417{Enter}");
+    expect(await screen.findByTestId("slip-error")).toHaveTextContent("No visit numbered V2609140417.");
+    expect(screen.getByTestId("slip-error")).toHaveTextContent("Two digits swapped is the usual cause.");
+    expect(screen.queryByTestId("slip-camera")).toBeNull();
+
+    await user.type(screen.getByLabelText("QR torn or unreadable?"), "Asha");
+    const hits = await screen.findByTestId("slip-find-hits");
+    await user.click(within(hits).getByRole("button", { name: /Asha Devi/ }));
+
+    const back = await screen.findByTestId("slip-readback");
+    expect(back).toHaveTextContent("found by name — check the person");
+    expect(screen.getByTestId("slip-camera")).toBeInTheDocument();
+    expect(find).toHaveBeenCalled();
+  });
+
+  it("B5: the kind is three cards, and the one chosen is the one posted", async () => {
+    stubFetch({ "GET /api/opd/visits/by-number/V2609140007": RICH, "POST /api/patients/p-1/documents": { documentId: "doc-9" } });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    await screen.findByTestId("slip-readback");
+    await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
+    await screen.findByTestId("slip-preview");
+
+    expect(screen.getByRole("radio", { name: /Prescription from this visit/ })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: /Outside report/ }));
+    await user.click(screen.getByTestId("slip-file-it"));
+    await waitFor(() => { expect(callsTo("POST", "/api/patients/p-1/documents")).toHaveLength(1); });
+    expect(JSON.parse(callsTo("POST", "/api/patients/p-1/documents")[0]!.body)).toMatchObject({ kind: "outside_report" });
+    expect(await screen.findByTestId("slip-filed")).toHaveTextContent("Doctor ID DR-0412");
+  });
+
+  it("B6: the keys — Enter is the dock's act, R retakes, Esc clears the wrong person", async () => {
+    const stream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia } });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined) });
+    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", { configurable: true, writable: true, value: null });
+    stubFetch({ "GET /api/opd/visits/by-number/V2609140007": RICH });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    await screen.findByTestId("slip-readback");
+
+    /* Step 2 — Enter opens the camera: the dock's one act. */
+    (document.activeElement as HTMLElement | null)?.blur();
+    await user.keyboard("{Enter}");
+    await screen.findByTestId("slip-video");
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+    /* Esc — the wrong person: nothing in hand, the scan box empty. */
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("slip-readback")).toBeNull();
+    expect(screen.queryByTestId("slip-video")).toBeNull();
+    expect(screen.getByLabelText("Visit number")).toHaveValue("");
+
+    /* R — retake discards the shot. */
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    await screen.findByTestId("slip-readback");
+    await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
+    await screen.findByTestId("slip-preview");
+    (document.activeElement as HTMLElement | null)?.blur();
+    await user.keyboard("r");
+    expect(screen.queryByTestId("slip-preview")).toBeNull();
+    expect(screen.getByTestId("slip-readback")).toHaveTextContent("Asha Devi");
+  });
+
+  it("B7: after filing, Add a page puts the SAME visit back in hand without scanning again", async () => {
+    stubFetch({ "GET /api/opd/visits/by-number/V2609140007": RICH, "POST /api/patients/p-1/documents": { documentId: "doc-9" } });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    await screen.findByTestId("slip-readback");
+    await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
+    await screen.findByTestId("slip-preview");
+    await user.click(screen.getByTestId("slip-file-it"));
+    await screen.findByTestId("slip-filed");
+    expect(screen.getByTestId("slip-dock")).toHaveTextContent("Another page for Asha Devi?");
+
+    await user.click(screen.getByTestId("slip-add-page"));
+    expect(await screen.findByTestId("slip-readback")).toHaveTextContent("Asha Devi");
+    expect(callsTo("GET", "/api/opd/visits/by-number/V2609140007")).toHaveLength(2);
   });
 });
