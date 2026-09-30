@@ -748,7 +748,7 @@ prep bay, grant it from `/approvals` → the gate is overridden without opening 
 
 ## 17. The reading room, part 2 — co-sign, prelim, amend, the critical-call ladder (18-S RS8b)
 
-**Migration** `0152_radiology_cosign_ladder` (number taken at rebase): two report statuses
+**Migration** `0156_radiology_cosign_ladder` (number taken at rebase): two report statuses
 (`awaiting_cosign`, `cosigned`) with one-waiting-per-study as an index, `ladder_rung` and
 `chase_windows` on `imaging_critical_findings`, and the insert-only `imaging_critical_call_attempts`
 (one row per telephone call). Nothing to seed.
