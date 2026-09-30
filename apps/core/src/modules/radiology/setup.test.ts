@@ -70,6 +70,8 @@ describe("the Setup station's reads (18-S RS4)", () => {
         "imaging_protocols", // 18-S RS6 — the protocol book the room console reads
         // 18-S RS8a — the reading room's two books.
         "report_templates", "report_signatories",
+        // 18-S RS8c — the night-read provider register (ruling 7).
+        "teleradiology",
       ]);
       const studyTypes = books[0]!;
       expect(studyTypes.active).toMatchObject({ version: active!.version, status: "active" });

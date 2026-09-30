@@ -30,6 +30,8 @@ export type WireInboxRow = {
   chasedAt: string | null;
   acted: { at: string; outcome: string; note: string } | null;
   orderedByMe: boolean;
+  /** 18-S RS8c — the morning over-read of a night partner's prelim on this study (absent from older servers). */
+  overread?: { grade: string; providerName: string } | null;
 };
 
 export const fetchImagingResults = () => api<{ rows: WireInboxRow[] }>("GET", "/radiology/results");
