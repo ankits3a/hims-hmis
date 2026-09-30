@@ -238,7 +238,8 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       // PHARMACY P6: the item merge's own grant check (raise, merge, the duplicates list) — the same meaning.
       // PHARMACY GAP A6b: the indent's own grant checks (raise, issue, reject, cancel) — the same meaning.
       // A5: the stock ledger statement's own `materials.stock.read` check — the same meaning.
-      permission_denied: ["adjustments.ts", "counts.ts", "indents.ts", "item-merge.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "stock-ledger-view.ts", "supplier-bills.ts", "supplier-returns.ts", "write-offs.ts"],
+      // OWNER RULING 2026-09-30: only a person changes a stores setting (`settings.ts`) — the same meaning.
+      permission_denied: ["adjustments.ts", "counts.ts", "indents.ts", "item-merge.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "settings.ts", "stock-ledger-view.ts", "supplier-bills.ts", "supplier-returns.ts", "write-offs.ts"],
       // "say why": a count closed, an order, a bill or a run cancelled, a bill's difference accepted —
       // every one is a free-text reason the act refuses to take empty. One meaning, one remedy.
       // Parity P4: a return cancelled or closed, a credit note cancelled, a recall raised — the same.

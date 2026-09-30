@@ -10,10 +10,10 @@ import {
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
 import { assignRole } from "../../kernel/auth/permissions";
 import { SodViolationError } from "../../kernel/auth/sod";
-import { approveRequest } from "../../kernel/approvals/decisions";
+import { approveRequest, rejectRequest } from "../../kernel/approvals/decisions";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { withTx } from "../../kernel/db/client";
-import { approvals, events, opdEncounters, refundVouchers, registrationConfig } from "../../kernel/db/schema";
+import { approvals, creditNotes, events, opdEncounters, refundVouchers, registrationConfig } from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
 import { issueCreditNote } from "./credit-notes";
 import { getInvoice, outstandingOf } from "./invoices";
@@ -684,6 +684,75 @@ describe("refund vouchers: the four guards, approval-gated always, refund-to-pay
     const voucher = await issue(asked.approvalId);
     expect(voucher).toMatchObject({ status: "issued", amountPaise: 2_600_000, method: "bank_transfer" });
     expect(await db.select().from(refundVouchers)).toHaveLength(1);
+  });
+
+  // ===========================================================================================
+  // OWNER RULINGS 2026-09-30 (pharmacy money, point 4) — every refund to the billing manager, above
+  // ₹25,000.00 to the owner; the approval binds the amount and names the paper; nobody decides their own
+  // ===========================================================================================
+
+  test("OWNER RULING 2026-09-30: a ₹20,000 refund is the billing manager's, a ₹30,000 one the owner's — each bound to its exact amount, the note naming the paper", async () => {
+    const cashier = await cashierWithSession("cashier-0930-tier");
+    const patientId = await mkTestPatient();
+    await advanceOfCash(cashier, patientId, 3_000_000);
+    const ask = (amountPaise: number) => ({
+      kind: "advance_refund", patientId, amountPaise, reasonClass: "genuine", reason: "advance returned",
+    } as const);
+
+    const twenty = await requestRefund(db, cashier.actor, ask(2_000_000));
+    const thirty = await requestRefund(db, cashier.actor, ask(3_000_000));
+    const [twentyRow] = await db.select().from(approvals).where(eq(approvals.id, twenty.approvalId));
+    const [thirtyRow] = await db.select().from(approvals).where(eq(approvals.id, thirty.approvalId));
+    expect(twentyRow!).toMatchObject({ typeKey: "billing_refund", approverRole: "billing_manager", amountPaise: 2_000_000, patientId });
+    expect(thirtyRow!).toMatchObject({ typeKey: "billing_refund_owner", approverRole: "owner", amountPaise: 3_000_000, patientId });
+    // An advance is a balance, not a document — the note says so rather than leaving the paper blank.
+    expect(thirtyRow!.requestNote).toMatch(/^Advance balance — advance_refund \(genuine\): advance returned/);
+  });
+
+  test("OWNER RULING 2026-09-30: a refund against a bill names the bill and the credit note on the approval the approver reads", async () => {
+    const cashier = await cashierWithSession("cashier-0930-bill");
+    const patientId = await mkTestPatient();
+    const invoice = await issuePaidInvoice(db, cashier, { patientId, serviceId: base.consultNewServiceId });
+    const creditNoteId = await creditNoteOver(cashier.actor, invoice.invoiceId, 1);
+    const found = await getInvoice(db, invoice.invoiceId);
+    const asked = await requestRefund(db, cashier.actor, {
+      kind: "invoice_refund", creditNoteId, amountPaise: 50_000, reasonClass: "genuine", reason: "consult not given",
+    });
+    const [row] = await db.select().from(approvals).where(eq(approvals.id, asked.approvalId));
+    const [cn] = await db.select().from(creditNotes).where(eq(creditNotes.id, creditNoteId));
+    expect(row!.requestNote).toContain(`Bill ${found!.invoice.invoiceNo} · credit note ${cn!.creditNoteNo} — invoice_refund`);
+  });
+
+  test("OWNER RULING 2026-09-30: a billing manager cannot decide an owner-tier refund, and the owner cannot decide one they asked for", async () => {
+    const cashier = await cashierWithSession("cashier-0930-role");
+    const manager = await mkBillingManager(db, "manager-0930-role");
+    const patientId = await mkTestPatient();
+    await advanceOfCash(cashier, patientId, 3_000_000);
+    const asked = await requestRefund(db, cashier.actor, {
+      kind: "advance_refund", patientId, amountPaise: 2_500_001, reasonClass: "genuine", reason: "advance returned",
+    });
+
+    // ₹25,000.01 — one paisa over the line — and the manager's decision is refused by the engine's role check.
+    await expect(approveRequest(db, manager.actor, { approvalId: asked.approvalId, note: "manager tries" }))
+      .rejects.toMatchObject({ code: "role_denied" });
+    await expect(rejectRequest(db, manager.actor, { approvalId: asked.approvalId, note: "manager tries to refuse" }))
+      .rejects.toMatchObject({ code: "role_denied" });
+    const [still] = await db.select().from(approvals).where(eq(approvals.id, asked.approvalId));
+    expect(still!).toMatchObject({ status: "pending", typeKey: "billing_refund_owner", decidedBy: null });
+
+    // The owner asking for a large refund and then approving it himself: the requester_approver pair refuses.
+    const own = await requestRefund(db, base.owner, {
+      kind: "advance_refund", patientId, amountPaise: 2_600_000, reasonClass: "genuine", reason: "owner's own ask",
+    });
+    await expect(approveRequest(db, base.owner, { approvalId: own.approvalId, note: "approving my own" }))
+      .rejects.toBeInstanceOf(SodViolationError);
+    const [ownRow] = await db.select().from(approvals).where(eq(approvals.id, own.approvalId));
+    expect(ownRow!).toMatchObject({ status: "pending", typeKey: "billing_refund_owner" });
+
+    // The owner deciding the cashier's ask is the one path that works.
+    await approveRequest(db, base.owner, { approvalId: asked.approvalId, note: "owner approves" });
+    const [granted] = await db.select().from(approvals).where(eq(approvals.id, asked.approvalId));
+    expect(granted!).toMatchObject({ status: "granted", decidedBy: base.owner.id, amountPaise: 2_500_001 });
   });
 
   test("OWNER RULING 2026-09-28: paying a voucher never stores an Aadhaar number — not under Aadhaar, not as twelve digits under another type", async () => {

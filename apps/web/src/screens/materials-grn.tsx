@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItem, fetchItems, fetchStores,
+  captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItem, fetchItems, fetchMaterialsSettings, fetchStores,
   fetchVendors, materialsErrorText, postGrn, requestNearExpiry, runGrnQc,
 } from "../lib/materials-api";
+import { useAuth } from "../lib/auth";
 import { fetchPurchaseOrders, fetchReceivable } from "../lib/purchase-api";
 import { Button } from "@/components/ui/button";
 import { OpeningStockSheet } from "./materials-grn-opening";
@@ -92,6 +93,19 @@ export function MaterialsGrn(): React.ReactElement {
   const stores = useQuery({ queryKey: ["materials", "stores"], queryFn: fetchStores });
   const items = useQuery({ queryKey: ["materials", "items"], queryFn: () => fetchItems({}) });
   const grns = useQuery({ queryKey: ["materials", "grns"], queryFn: fetchGrns });
+  /*
+   * OWNER RULING 2026-09-30 — the two-person GRN setting (Stock → Stores settings). OFF (the default):
+   * nothing is blocked, and a GRN checked by the person who captured it says so. ON: the server refuses
+   * the capturer, so the sheet says who must act instead of offering buttons that will be refused.
+   */
+  const settings = useQuery({ queryKey: ["materials", "settings"], queryFn: fetchMaterialsSettings });
+  const me = useAuth().actor?.id ?? null;
+  const twoPerson = settings.data?.grnQcNeedsSecondPerson === true;
+  const waitingOnQc = (g: WireGrn): boolean => g.status === "gate_qc" || g.status === "draft";
+  /** Checked by its capturer — already (qcBy), or about to be (the capturer has it open, the setting off). */
+  const selfChecked = (g: WireGrn): boolean =>
+    g.qcBy !== null ? g.qcBy === g.capturedBy : !twoPerson && waitingOnQc(g) && me !== null && me === g.capturedBy;
+  const capturerBlocked = (g: WireGrn): boolean => twoPerson && me !== null && me === g.capturedBy && g.status !== "posted" && g.status !== "rejected";
   const orders = useQuery({
     queryKey: ["materials", "purchase-orders", "receivable", vendorId],
     queryFn: () => fetchPurchaseOrders({ vendorId, status: ["approved", "sent", "part_received"] }),
@@ -232,6 +246,9 @@ export function MaterialsGrn(): React.ReactElement {
                     {g.grnNo}
                   </button>
                   <span className={grnPill(g.status)}>{t(`materialsGrn.status_${g.status}`, { defaultValue: g.status })}</span>
+                  {selfChecked(g) && (
+                    <span className="text-xs text-amber-800" data-testid={`grn-self-checked-${g.id}`}>{t("materialsGrn.sameCapturer")}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -418,7 +435,11 @@ export function MaterialsGrn(): React.ReactElement {
         <Sheet title={grn.grnNo} testId="grn-sheet" onClose={() => { setOpenGrnId(null); }}>
             <div className="space-y-3" data-testid="grn-open">
               {feedback}
-              <p><span className={grnPill(grn.status)}>{t(`materialsGrn.status_${grn.status}`, { defaultValue: grn.status })}</span></p>
+              <p className="flex flex-wrap items-center gap-2">
+                <span className={grnPill(grn.status)}>{t(`materialsGrn.status_${grn.status}`, { defaultValue: grn.status })}</span>
+                {selfChecked(grn) && <span className="text-xs text-amber-800" data-testid="grn-open-self-checked">{t("materialsGrn.sameCapturer")}</span>}
+              </p>
+              {capturerBlocked(grn) && <p role="note" className="text-sm text-amber-800" data-testid="grn-capturer-blocked">{t("materialsGrn.capturerMayNotCheck")}</p>}
               <div className="ofp-box ofp-scroll">
               <table className="ofp-table min-w-[48rem]">
                 <thead>
@@ -459,7 +480,7 @@ export function MaterialsGrn(): React.ReactElement {
               </table>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void run(
+                <Button disabled={capturerBlocked(grn)} onClick={() => void run(
                   async () => { await runGrnQc(grn.id); }, t("materialsGrn.qcDone"),
                 )}>
                   {t("materialsGrn.runQc")}
@@ -471,7 +492,7 @@ export function MaterialsGrn(): React.ReactElement {
                     {t("materialsGrn.requestNearExpiry")}
                   </Button>
                 )}
-                <Button onClick={() => void run(
+                <Button disabled={capturerBlocked(grn)} onClick={() => void run(
                   async () => { await postGrn(grn.id); }, t("materialsGrn.posted"),
                 )}>
                   {t("materialsGrn.post")}

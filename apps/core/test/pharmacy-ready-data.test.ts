@@ -3,7 +3,7 @@ import { withTx } from "../src/kernel/db/client";
 import { formularyMedicines, stockBatches, vendors } from "../src/kernel/db/schema";
 import { grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { addMedicine, saltIdsByNames } from "../src/modules/formulary";
-import { availableQty, balances, getGrn, listItems, releaseReservation, reserveStock } from "../src/modules/materials";
+import { availableQty, balances, getGrn, listItems, releaseReservation, reserveStock, updateMaterialsSettings } from "../src/modules/materials";
 import { getSaleItem, shelfLocationsFor } from "../src/modules/pharmacy";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { issueRx, line, seedPharmacyBase } from "./helpers/pharmacy";
@@ -287,6 +287,33 @@ describe("pharmacy-ready scripts", () => {
     expect(again.grns.every((g) => g.state === "posted")).toBe(true);
     expect((await applyOpeningStock(db, { storekeeper: head, qc: pharmacist, head }, again, now)).posted).toBe(0);
     expect(await availableQty(db, fx.storeId, fx.item.crocin, now)).toBe(30);
+  });
+
+  it("OWNER RULING 2026-09-30: opening stock obeys the two-person GRN setting — OFF one person loads a sheet, ON the same person is refused and nothing is written", async () => {
+    await loadShelf();
+    const now = new Date();
+    const y = now.getUTCFullYear() + 1;
+    const sheet = (rows: string[]): string => `brand,batch,expiry,mrp_per_pack,pack_size,packs,rack,supplier_name,purchase_rate_per_pack\n${rows.join("\n")}\n`;
+
+    // OFF (the default): the head captures, checks and posts his own sheet — "currently admin login can do both".
+    const first = sheet([`Crocin 500,C1,08/${String(y)},40.00,10,3,,,28.00`]);
+    const solo = await applyOpeningStock(db, { storekeeper: head, qc: head, head }, await planOpeningStock(db, parseCsv(first), first, now), now);
+    expect(solo).toMatchObject({ posted: 1, unitsPosted: 30 });
+    expect(await availableQty(db, fx.storeId, fx.item.crocin, now)).toBe(30);
+
+    // ON: the same person is refused at QC, and the one transaction writes nothing — no GRN, no stock.
+    await withTx(db, (tx) => updateMaterialsSettings(tx, head, { grnQcNeedsSecondPerson: true }, now));
+    const before = await availableQty(db, fx.storeId, fx.item.calpol, now);
+    const second = sheet([`Calpol 500,K1,08/${String(y)},45.00,10,2,,,`]);
+    await expect(applyOpeningStock(db, { storekeeper: head, qc: head, head }, await planOpeningStock(db, parseCsv(second), second, now), now))
+      .rejects.toMatchObject({ code: "grn_same_person" });
+    expect(await availableQty(db, fx.storeId, fx.item.calpol, now)).toBe(before);
+    expect((await planOpeningStock(db, parseCsv(second), second, now)).grns.map((g) => g.state)).not.toContain("captured");
+
+    // A second person — the pharmacist — checks and posts what the head captured.
+    const two = await applyOpeningStock(db, { storekeeper: head, qc: pharmacist, head }, await planOpeningStock(db, parseCsv(second), second, now), now);
+    expect(two).toMatchObject({ posted: 1, unitsPosted: 20 });
+    expect(await availableQty(db, fx.storeId, fx.item.calpol, now)).toBe(before + 20);
   });
 
   it("opening stock from the SCREEN: the sheet is judged whole, captured as GRNs by the uploader and left for the pharmacist's QC; the script picks them up without capturing twice", async () => {

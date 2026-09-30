@@ -205,6 +205,22 @@ export async function fetchGrn(id: string): Promise<WireGrn> {
   return grn;
 }
 
+/**
+ * OWNER RULING 2026-09-30 — the stores' settings. `grnQcNeedsSecondPerson` off (the default) lets the
+ * person who captured a GRN check and post it; on, the server refuses them (`grn_same_person`).
+ */
+export type WireMaterialsSettings = { grnQcNeedsSecondPerson: boolean; updatedBy: string | null; updatedAt: string | null };
+
+export async function fetchMaterialsSettings(): Promise<WireMaterialsSettings> {
+  const { settings } = await api<{ settings: WireMaterialsSettings }>("GET", "/materials/settings");
+  return settings;
+}
+
+export async function saveMaterialsSettings(patch: { grnQcNeedsSecondPerson: boolean }): Promise<WireMaterialsSettings> {
+  const { settings } = await api<{ settings: WireMaterialsSettings }>("PUT", "/materials/settings", patch);
+  return settings;
+}
+
 export async function captureGrn(input: {
   vendorId: string; source: string; storeResourceId: string;
   challanNo: string; challanDate: string; invoiceNo?: string | null;
