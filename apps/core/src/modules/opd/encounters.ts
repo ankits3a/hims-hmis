@@ -609,6 +609,46 @@ export async function openLabWalkinInTx(
   }, now);
 }
 
+/**
+ * ═══ 2026-09-30 — THE PHARMACY VISIT: A NO-FEE ATTENDANCE THE PHARMACY DESK OPENS ITSELF (OWNER) ═══
+ *
+ * Owner, at the live counter: *"the pharmacy counter [should] open a no-fee visit itself for a patient
+ * who has no hospital visit that day."* A paper prescription becomes a real `opd_prescriptions` row, and
+ * that row (and the dispense, and the medication order's `V` number) needs an encounter by FK — the
+ * lab walk-in's reasoning (`openLabWalkinInTx` above): a `V` visit is the shape that needs no new
+ * concept. What differs from the lab walk-in, each deliberately:
+ *
+ *   - `type = 'pharmacy'`, not `'opd'`. The column has existed since 0001 with only `'opd'` written;
+ *     the cashier's collection worklist already reads `type = 'opd'`, and so now do `listVisits` (by
+ *     default), the OPD reports and the range counts — so this visit is never an OPD consultation on
+ *     any doctor's list, any OPD report, or the day's charge-orphan scan;
+ *   - NO doctor and NO department. There is no consultation: the prescriber (hospital or outside) is
+ *     on the prescription row. With `doctor_id` null the visit can join no queue (`joinQueueInTx`
+ *     refuses a visit with no responsible doctor, and the fee hook returns for a non-OPD visit), gets
+ *     no token, and no doctor-keyed read can find it;
+ *   - NO fee. Nothing quotes it: every fee reader above is scoped to `type = 'opd'`.
+ *
+ * The workflow instance is still started (`workflow_instance_id` is NOT NULL and every visit read
+ * joins it); the visit stays `registered` — the pharmacy has nothing to move it through.
+ * `serviceDate` is the date on the paper, which is how the paper door has always found its visit.
+ */
+export const PHARMACY_VISIT_TYPE = "pharmacy";
+
+export async function openPharmacyVisitInTx(
+  tx: Tx, actor: Actor, input: { patientId: string; serviceDate: string }, now: Date,
+): Promise<EncounterRow> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required");
+  const encounterId = newId();
+  const visitNo = await nextEpisodeNo(tx, "visit", input.serviceDate);
+  const { instanceId } = await startInstance(tx, OPD_VISIT_DEF_KEY, { type: "opd_encounter", id: encounterId, patientId: input.patientId, encounterId });
+  const [encounter] = await tx.insert(opdEncounters).values({
+    id: encounterId, visitNo, patientId: input.patientId, type: PHARMACY_VISIT_TYPE, workflowInstanceId: instanceId,
+    departmentId: null, doctorId: null, serviceDate: input.serviceDate, visitType: "new", intendedPayer: "self",
+    openedBy: actor.id, openedAt: now, updatedBy: actor.id, updatedAt: now,
+  }).returning();
+  return encounter!;
+}
+
 /** Db-first: resolves the merge chain, then runs the walk-in on its own transaction. */
 export async function openLabWalkin(
   db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date(),
@@ -1120,10 +1160,17 @@ export async function listVisits(
    * about somebody sitting in the waiting room. A filter the database can apply is the difference
    * between a right answer and a plausible one.
    */
-  filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string },
+  /**
+   * `type` added 2026-09-30: the pharmacy desk's no-fee visit (`openPharmacyVisitInTx`) is not an OPD
+   * consultation, so by DEFAULT this lists `'opd'` visits only — the front desk's list, the day's
+   * charge-orphan scan, the copilot and the token door never see a pharmacy visit. `"any"` is for the
+   * pharmacy's own readers, which must find the paper prescription they wrote.
+   */
+  filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string; type?: "opd" | "any" },
   limit = 200,
 ): Promise<EncounterRow[]> {
   const clauses = [
+    filter.type === "any" ? undefined : eq(opdEncounters.type, "opd"),
     filter.status === undefined ? undefined : eq(opdEncounters.status, filter.status),
     filter.departmentId === undefined ? undefined : eq(opdEncounters.departmentId, filter.departmentId),
     filter.doctorId === undefined ? undefined : eq(opdEncounters.doctorId, filter.doctorId),

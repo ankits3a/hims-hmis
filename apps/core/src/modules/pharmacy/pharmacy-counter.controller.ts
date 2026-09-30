@@ -65,6 +65,12 @@ import type { RenderedDocument } from "../../kernel/printing/render";
 const paperRxBody = z.object({
   patientId: idSchema,
   doctorId: idSchema.optional(),
+  /** 2026-09-30 (owner) — an OUTSIDE doctor's paper: name; registration number and address for H/H1 (checked in the service). */
+  outside: z.object({
+    name: z.string().trim().min(1).max(120),
+    registrationNo: z.string().max(60).nullable().optional(),
+    address: z.string().max(300).nullable().optional(),
+  }).optional(),
   rxDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   photo: z.object({ mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]), imageBase64: z.string().min(1) }).optional(),
   lines: z.array(z.object({
@@ -721,7 +727,7 @@ export class PharmacyCounterController {
     try {
       return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.paperRx, key }, input,
         () => enterPaperPrescription(this.db, this.cfg, this.documents, actor, {
-          patientId: input.patientId, doctorId: input.doctorId, rxDate: input.rxDate,
+          patientId: input.patientId, doctorId: input.doctorId, outside: input.outside, rxDate: input.rxDate,
           photo: input.photo === undefined ? undefined : { mimeType: input.photo.mimeType, bytes: Buffer.from(input.photo.imageBase64, "base64") },
           lines: input.lines,
         }, new Date()));

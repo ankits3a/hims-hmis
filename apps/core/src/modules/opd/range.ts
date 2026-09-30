@@ -103,6 +103,7 @@ export async function opdRange(ctx: RangeCtx): Promise<RangeBucket[]> {
     const cols = dims.map((d) => ({ d, col: encounterColumn(d)! }));
 
     const where = and(
+      eq(opdEncounters.type, "opd"), // 2026-09-30 — a pharmacy visit (`openPharmacyVisitInTx`) is no OPD consultation
       gte(opdEncounters.serviceDate, filters.from),
       lte(opdEncounters.serviceDate, filters.to),
       ...(filters.userIds !== undefined ? [inArray(opdEncounters.openedBy, filters.userIds)] : []),

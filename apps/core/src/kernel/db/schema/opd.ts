@@ -1036,7 +1036,23 @@ export const opdPrescriptions = pgTable(
     id: text("id").primaryKey(),
     encounterId: text("encounter_id").notNull().references(() => opdEncounters.id),
     patientId: text("patient_id").notNull().references(() => patients.id),
-    doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
+    /**
+     * The HOSPITAL prescriber of record. NULL only for a paper prescription an OUTSIDE doctor wrote,
+     * entered at the pharmacy desk (owner, 2026-09-30): then the three `outside_prescriber_*` columns
+     * below carry who wrote it, and `opd_prescriptions_prescriber_ck` makes one of the two mandatory.
+     */
+    doctorId: text("doctor_id").references(() => opdDoctors.id),
+    /**
+     * ═══ 2026-09-30 — AN OUTSIDE DOCTOR'S PAPER PRESCRIPTION, AT THE PHARMACY DESK (OWNER) ═══
+     *
+     * Rule 65(3) asks the H1 register for the prescriber's name, registration number and address;
+     * an outside doctor is on no master of ours, so the prescription row is where they are recorded.
+     * Set only by `issuePharmacyPaperPrescription` with an outside prescriber; always with
+     * `transcribed_by` (the pharmacist typed it).
+     */
+    outsidePrescriberName: text("outside_prescriber_name"),
+    outsidePrescriberRegNo: text("outside_prescriber_reg_no"),
+    outsidePrescriberAddress: text("outside_prescriber_address"),
     version: integer("version").notNull(), // 1, 2, … per encounter (allocated under a FOR UPDATE of the encounter row)
     lines: jsonb("lines").notNull(), // RxLine[]
     document: jsonb("document").notNull(), // FHIR Bundle
@@ -1092,6 +1108,8 @@ export const opdPrescriptions = pgTable(
     index("opd_prescriptions_issued_by_at_idx").on(t.issuedBy, t.issuedAt),
     uniqueIndex("opd_prescriptions_encounter_version_ux").on(t.encounterId, t.version),
     index("opd_prescriptions_patient_idx").on(t.patientId),
+    check("opd_prescriptions_prescriber_ck", sql`(${t.doctorId} is not null) <> (${t.outsidePrescriberName} is not null)`),
+    check("opd_prescriptions_outside_transcribed_ck", sql`${t.outsidePrescriberName} is null or ${t.transcribedBy} is not null`),
   ],
 );
 

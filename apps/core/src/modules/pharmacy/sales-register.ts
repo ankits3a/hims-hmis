@@ -72,11 +72,12 @@ async function saleDocsOf(db: Db, invoiceIds: readonly string[]): Promise<Map<st
     id: pharmacyDispenseLines.id, dispenseId: pharmacyDispenseLines.dispenseId, invoiceLineId: pharmacyDispenseLines.invoiceLineId,
     itemId: pharmacyDispenseLines.itemId, batchId: pharmacyDispenseLines.batchId, qtyBase: pharmacyDispenseLines.qtyBase,
   }).from(pharmacyDispenseLines).where(inArray(pharmacyDispenseLines.dispenseId, chunk)));
-  const rx = await inChunks(dispenses.map((d) => d.prescriptionId), (chunk) => db.select({ id: opdPrescriptions.id, doctorId: opdPrescriptions.doctorId })
+  const rx = await inChunks(dispenses.map((d) => d.prescriptionId), (chunk) => db.select({ id: opdPrescriptions.id, doctorId: opdPrescriptions.doctorId, outside: opdPrescriptions.outsidePrescriberName })
     .from(opdPrescriptions).where(inArray(opdPrescriptions.id, chunk)));
   const doctorOf = new Map(rx.map((r) => [r.id, r.doctorId] as const));
+  const outsideOf = new Map(rx.map((r) => [r.id, r.outside] as const));
   const doctorNames = new Map<string, string>();
-  for (const id of new Set(rx.map((r) => r.doctorId))) doctorNames.set(id, (await getDoctor(db, id))?.displayName ?? id);
+  for (const id of new Set(rx.map((r) => r.doctorId))) if (id !== null) doctorNames.set(id, (await getDoctor(db, id))?.displayName ?? id);
   const sales = await inChunks(invoiceIds, (chunk) => db.select({
     id: pharmacyRetailSales.id, invoiceId: pharmacyRetailSales.invoiceId, channel: pharmacyRetailSales.channel,
     storeResourceId: pharmacyRetailSales.storeResourceId, patientId: pharmacyRetailSales.patientId, soldBy: pharmacyRetailSales.soldBy,
@@ -93,7 +94,7 @@ async function saleDocsOf(db: Db, invoiceIds: readonly string[]): Promise<Map<st
     out.set(d.invoiceId, {
       invoiceId: d.invoiceId, source: "dispense", ref: d.dispenseNo, storeResourceId: d.storeResourceId, patientId: d.patientId,
       operatorId: "", // the invoice's issuer — filled from the head
-      prescriber: doctorId === undefined ? null : (doctorNames.get(doctorId) ?? doctorId),
+      prescriber: doctorId === undefined ? null : doctorId === null ? (outsideOf.get(d.prescriptionId) ?? null) : (doctorNames.get(doctorId) ?? doctorId),
       lines: dLines.filter((l) => l.dispenseId === d.id && l.invoiceLineId !== null && l.itemId !== null && l.batchId !== null && l.qtyBase !== null)
         .map((l) => ({ saleLineId: l.id, invoiceLineId: l.invoiceLineId!, itemId: l.itemId!, batchId: l.batchId!, qtyBase: l.qtyBase! })),
     });

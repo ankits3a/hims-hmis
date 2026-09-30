@@ -408,3 +408,53 @@ DECIDED (standard Indian hospital pharmacy practice):
    there. A registered patient with NO hospital visit on the paper's date is refused (`paper_rx_no_visit`) with the way
    forward: the front desk opens the visit. A pharmacy-only attendance (a visit with no consultation fee, the lab
    walk-in's pattern) is the follow-up if the owner wants the counter to open one itself.
+
+## Paper prescription for anyone (2026-09-30, owner)
+
+Owner, at the live counter: *"let the patient buy medicine on physical prescription too, even if there's no record of
+prescribed medicine in the system by the doctor, emergency, IPD but just using physical prescription"* and *"Yes, the
+pharmacy counter [should] open a no-fee visit itself for a patient who has no hospital visit that day."* The door above
+refused three real cases: a person not registered here ("Nobody found for that."), a registered patient with no visit on
+the paper's date (`paper_rx_no_visit`), and an outside doctor's paper.
+
+DECIDED (standard Indian hospital pharmacy practice):
+
+1. **Nobody found → register at the counter.** The find's "Nobody found" note (a typed name or number, not a QR or token)
+   gains **Register and dispense from a paper prescription**. A compact sheet (`register-sheet.tsx`): name, mobile, age or
+   date of birth, sex, prefilled from what was typed (digits → mobile, anything else → name). It posts to the registration
+   desk's own route `POST /patients` (`patients.register`, which the `pharmacy` role already holds for the P19 walk-in
+   counter — verified in `seed-roles.ts`, no grant, no census change). The route's rules stand: age or DOB is required, a
+   near match (same mobile, FD-34's family link, or a close name) is listed first and the pharmacist picks that person or
+   confirms someone new (`acknowledgedDuplicates`). Then the paper sheet opens on the person. Audit: `patient.registered`.
+2. **No visit that day → a no-fee pharmacy visit.** When the patient has no visit on the paper's date that is free of a
+   prescription, the server opens one itself (`opd/encounters.ts` `openPharmacyVisitInTx`, the lab walk-in's reasoning: a
+   `V` visit is the shape every FK and reader already accepts). It is `opd_encounters.type = 'pharmacy'` (the column has
+   existed since 0001; only `'opd'` was ever written), with NO doctor and NO department: no consultation charge, no queue
+   entry, no token (a visit with no doctor cannot join a queue; the fee hook returns for a non-OPD visit). It is never an
+   OPD consultation: `listVisits` lists `'opd'` only by default (the front desk list, the charge-orphan scan, the copilot,
+   the token door), and the OPD reports and range counts read `type = 'opd'` (the cashier's worklist already did). It is
+   opened only after every refusal has been asked, so a refused paper leaves nothing behind. Audit:
+   `pharmacy.paper_rx.visit_opened`. `paper_rx_no_visit` is retired (runbook 133 → 132 codes).
+3. **Outside doctor → allowed.** The sheet's prescriber is **Hospital doctor** (the master list, as before) or **Outside
+   doctor**: name always; registration number AND address when any line is Schedule H/H1 (Rule 65(3)); the photo stays
+   required for H/H1. Migration **0165** (additive): `opd_prescriptions.doctor_id` may be null, three columns
+   `outside_prescriber_name / _reg_no / _address`, and two checks — exactly one of doctor or outside prescriber, and an
+   outside prescriber only on a transcription (`transcribed_by` not null). An outside paper never lands on a hospital
+   doctor's OPD visit (it would be superseded by, or supersede, that doctor's own e-Rx); it takes a free pharmacy visit or
+   opens one. **Model:** the orders envelope's `ordering_clinician_id` is nullable text with no FK, so no hospital doctor
+   is needed: the dispensing pharmacist is the ordering clinician of record (`verify.ts`), and the outside prescriber stays
+   the prescriber on the prescription row. The H1 register writes the outside name, registration number and address
+   (`handover.ts`). The FHIR bundle's requester is a `display` for an outside doctor; the hospital prints no prescription
+   for an outside paper (`prescriptionPrintData` refuses). A PD-9 authorisation cannot be asked of an outside doctor
+   (there is no login to ask) — the refusal stands, as every hard warning on a paper does.
+4. **Unchanged safety:** Schedule X / NDPS refused on paper (`paper_rx_controlled`); allergy, severe interaction, hard
+   duplicate and severe drug-disease refuse; photo required for H/H1; the FD-31 slip cross-confirm still gates the bill;
+   `pharmacy.paper_rx.entered` now carries `outside`, a nullable `doctorId` and the prescriber's address.
+5. **The desk search.** Checked on the dev DB `hmis_walk_pharmacy` (migrated to 0165) through `findAtCounter`: a full name,
+   a first name, a partial ("rames"), a surname, a two-word name, a two-word name in the wrong order ("arun jha"), and a
+   name with extra spaces all find the patient; "Devi" lists four. No search defect: the owner's "Nobody found" was a
+   person not registered here. (Side fix: the find's today's-visit read now filters by patient in the database instead of
+   reading the whole day's first 200 visits and filtering in memory.)
+
+Deferred: the pharmacy visit stays `registered` (the pharmacy has no transition to move it through); an IPD/ER
+patient's paper is entered the same way until those departments exist.

@@ -19,6 +19,10 @@ import "./paper-rx.css";
  *
  * Everything the law or the clinic refuses is refused by the SERVER (`paper-rx.ts`), and said here in
  * the pharmacist's words: X/NDPS, an H1 without the prescriber's registration, an allergy.
+ *
+ * 2026-09-30 (owner) — FOR ANYONE: the doctor on the paper is a hospital doctor OR an outside one (name;
+ * registration number and address when a line is Schedule H/H1), and with no free visit that day the
+ * server opens a NO-FEE pharmacy visit itself — the sheet says so instead of refusing.
  */
 type Line = { entry: WireRetailShelfEntry; qty: string; dose: string; frequency: string; days: string };
 type Photo = { mimeType: string; imageBase64: string; name: string };
@@ -46,6 +50,10 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
   const today = istToday();
   const [rxDate, setRxDate] = useState(today);
   const [doctorId, setDoctorId] = useState<string>("");
+  const [mode, setMode] = useState<"hospital" | "outside">("hospital");
+  const [outName, setOutName] = useState("");
+  const [outReg, setOutReg] = useState("");
+  const [outAddress, setOutAddress] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [q, setQ] = useState("");
@@ -66,9 +74,10 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
     enabled: typed.length >= 2,
     retry: false,
   });
-  /* The visit the paper attaches to: the doctor's own that day, else the last free one — the server's rule. */
-  const free = (ctx.data?.visits ?? []).filter((v) => !v.hasPrescription);
-  const visit = free.find((v) => v.doctorId === doctorId) ?? free[free.length - 1];
+  /* The visit the paper attaches to: the doctor's own that day, else the last free one — the server's rule.
+     An outside doctor's paper only ever takes the desk's own pharmacy visit; none free → the server opens one. */
+  const free = (ctx.data?.visits ?? []).filter((v) => !v.hasPrescription && (mode === "hospital" || v.pharmacy === true));
+  const visit = free.find((v) => mode === "hospital" && v.doctorId === doctorId) ?? free.filter((v) => v.pharmacy !== true).at(-1) ?? free.at(-1);
   useEffect(() => {
     if (doctorId === "" && visit?.doctorId != null) setDoctorId(visit.doctorId);
   }, [doctorId, visit?.doctorId]);
@@ -85,7 +94,8 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
 
   const needsPhoto = lines.some((l) => l.entry.scheduleFlag !== null && SCHEDULED.has(l.entry.scheduleFlag));
   const qtyOk = lines.every((l) => /^\d+$/.test(l.qty) && Number(l.qty) > 0);
-  const canSave = !busy && lines.length > 0 && qtyOk && doctorId !== "" && visit !== undefined && (!needsPhoto || photo !== null);
+  const outsideOk = outName.trim() !== "" && (!needsPhoto || (outReg.trim() !== "" && outAddress.trim() !== ""));
+  const canSave = !busy && lines.length > 0 && qtyOk && (mode === "hospital" ? doctorId !== "" : outsideOk) && (!needsPhoto || photo !== null);
 
   const add = (entry: WireRetailShelfEntry): void => {
     setLines((ls) => (ls.some((l) => l.entry.itemId === entry.itemId) ? ls : [...ls, { entry, qty: "", dose: "", frequency: "", days: "" }]));
@@ -98,7 +108,10 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
     setBusy(true); setError(null);
     try {
       const d = await enterPaperRx({
-        patientId: patient.id, doctorId, rxDate,
+        patientId: patient.id, rxDate,
+        ...(mode === "hospital"
+          ? { doctorId }
+          : { outside: { name: outName.trim(), registrationNo: outReg.trim() === "" ? null : outReg.trim(), address: outAddress.trim() === "" ? null : outAddress.trim() } }),
         ...(photo === null ? {} : { photo: { mimeType: photo.mimeType, imageBase64: photo.imageBase64 } }),
         lines: lines.map((l) => ({
           itemId: l.entry.itemId, qtyBase: Number(l.qty),
@@ -133,20 +146,41 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
           <p style={{ margin: "0 0 14px 0", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.paperRx.sub")}</p>
 
           <div className="paper-rx-grid">
-            <label className="paper-rx-field">
+            <div className="paper-rx-field">
               <span className="tag">{t("pharmacyDesk.paperRx.prescriber")}</span>
-              <select className="in" value={doctorId} onChange={(e) => setDoctorId(e.target.value)} data-testid="paper-rx-doctor">
-                <option value="">{t("pharmacyDesk.paperRx.chooseDoctor")}</option>
-                {(ctx.data?.doctors ?? []).map((d) => (
-                  <option key={d.id} value={d.id}>{d.displayName}{d.registrationNo === null ? "" : ` · ${d.registrationNo}`}</option>
+              <div role="radiogroup" aria-label={t("pharmacyDesk.paperRx.prescriber")} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(["hospital", "outside"] as const).map((m) => (
+                  <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "pri" : "sec"}
+                    data-testid={`paper-rx-mode-${m}`} onClick={() => setMode(m)}>
+                    {t(`pharmacyDesk.paperRx.mode_${m}`)}
+                  </button>
                 ))}
-              </select>
-              <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("pharmacyDesk.paperRx.prescriberHint")}</span>
-            </label>
+              </div>
+              {mode === "hospital" ? (
+                <select className="in" value={doctorId} onChange={(e) => setDoctorId(e.target.value)} data-testid="paper-rx-doctor" aria-label={t("pharmacyDesk.paperRx.chooseDoctor")}>
+                  <option value="">{t("pharmacyDesk.paperRx.chooseDoctor")}</option>
+                  {(ctx.data?.doctors ?? []).map((d) => (
+                    <option key={d.id} value={d.id}>{d.displayName}{d.registrationNo === null ? "" : ` · ${d.registrationNo}`}</option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  <input className="in" value={outName} onChange={(e) => setOutName(e.target.value)} placeholder={t("pharmacyDesk.paperRx.outsideName")}
+                    aria-label={t("pharmacyDesk.paperRx.outsideName")} data-testid="paper-rx-outside-name" />
+                  <input className="in" value={outReg} onChange={(e) => setOutReg(e.target.value)} placeholder={t("pharmacyDesk.paperRx.outsideReg")}
+                    aria-label={t("pharmacyDesk.paperRx.outsideReg")} data-testid="paper-rx-outside-reg" />
+                  <input className="in" value={outAddress} onChange={(e) => setOutAddress(e.target.value)} placeholder={t("pharmacyDesk.paperRx.outsideAddress")}
+                    aria-label={t("pharmacyDesk.paperRx.outsideAddress")} data-testid="paper-rx-outside-address" />
+                </>
+              )}
+              <span style={{ fontSize: 11.5, color: mode === "outside" && needsPhoto && !outsideOk ? "var(--red)" : "var(--dim)" }} data-testid="paper-rx-prescriber-hint">
+                {mode === "hospital" ? t("pharmacyDesk.paperRx.prescriberHint") : needsPhoto ? t("pharmacyDesk.paperRx.outsideH1") : t("pharmacyDesk.paperRx.outsideHint")}
+              </span>
+            </div>
             <label className="paper-rx-field">
               <span className="tag">{t("pharmacyDesk.paperRx.rxDate")}</span>
               <input className="in" type="date" max={today} value={rxDate} onChange={(e) => setRxDate(e.target.value)} data-testid="paper-rx-date" />
-              <span style={{ fontSize: 11.5, color: visit === undefined && ctx.data !== undefined ? "var(--red)" : "var(--dim)" }} data-testid="paper-rx-visit">
+              <span style={{ fontSize: 11.5, color: "var(--dim)" }} data-testid="paper-rx-visit">
                 {ctx.data === undefined ? " " : visit === undefined ? t("pharmacyDesk.paperRx.noVisit") : t("pharmacyDesk.paperRx.visit", { visitNo: visit.visitNo })}
               </span>
             </label>
@@ -222,8 +256,7 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
           {error !== null ? <p role="alert" style={{ margin: "12px 0 0 0", fontSize: 12.5, color: "var(--red)" }}>{error}</p> : null}
         </div>
         <div className="paper-rx-foot">
-          <a href="/pharmacy/retail" style={{ fontSize: 12, color: "var(--dim)", marginRight: "auto" }}>{t("pharmacyDesk.paperRx.walkIn")}</a>
-          <button type="button" className="sec" onClick={onClose}>{t("pharmacyDesk.paperRx.cancel")}</button>
+          <button type="button" className="sec" style={{ marginLeft: "auto" }} onClick={onClose}>{t("pharmacyDesk.paperRx.cancel")}</button>
           <button type="button" className="pri" disabled={!canSave} onClick={() => void save()} data-testid="paper-rx-save">
             {busy ? t("pharmacyDesk.paperRx.saving") : t("pharmacyDesk.paperRx.save")} <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>Ctrl ⏎</span>
           </button>

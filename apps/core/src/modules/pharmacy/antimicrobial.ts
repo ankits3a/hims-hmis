@@ -93,8 +93,9 @@ export function judgeSteward(
 }
 
 /** The prescribing doctor's user, for the self-approval rule; null when the prescription names none on file. */
-export async function prescriberUserOf(db: Db, doctorId: string): Promise<string | null> {
-  return (await getDoctor(db, doctorId))?.userId ?? null;
+export async function prescriberUserOf(db: Db, doctorId: string | null): Promise<string | null> {
+  // null: an OUTSIDE doctor's paper prescription (2026-09-30) — no login of ours wrote it.
+  return doctorId === null ? null : (await getDoctor(db, doctorId))?.userId ?? null;
 }
 
 export type StewardLine = { lineIdx: number; drug: string; medicine: MedicineWithSalts | undefined };

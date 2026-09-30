@@ -19,6 +19,7 @@ import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { SlipSheet } from "./slip";
 import { PaperRxSheet } from "./paper-rx";
+import { RegisterSheet } from "./register-sheet";
 import { DraftCard, DuplicateItemsCard, PaymentRunCard, PurchasePlanCard, ReturnPlanCard, ShortBookSheet, duplicateItemsOf, paymentRunPlanOf, purchasePlanOf, returnPlanOf, shortBookDraftOf } from "./short-book";
 import type { DuplicateItemsCardData, PaymentRunCardData, PurchasePlanCardData, ReturnPlanCardData, ShortBookDraft, ShortDrug } from "./short-book";
 import { TicketPanel } from "./ticket";
@@ -85,7 +86,9 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [inHandId, setInHandId] = useState<string | null>(ticketId);
   useEffect(() => { setInHandId(ticketId); }, [ticketId]);
   const [candidates, setCandidates] = useState<WirePatientSummary[] | null>(null);
-  const [overlay, setOverlay] = useState<"queue" | "slip" | "short" | "paper" | null>(null);
+  const [overlay, setOverlay] = useState<"queue" | "slip" | "short" | "paper" | "register" | null>(null);
+  /* 2026-09-30 (owner) — nobody found for a typed name or number: register them here, then the paper sheet. */
+  const [registerFrom, setRegisterFrom] = useState<string | null>(null);
   /* 2026-09-30 — the patient found with no e-prescription today: the desk offers the paper-prescription door. */
   const [paperFor, setPaperFor] = useState<{ id: string; uhid: string; label: string } | null>(null);
   /* PARITY P1 — the hand-over that just happened HERE prints by itself; reopening an old ticket does not. */
@@ -219,6 +222,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     setError(null);
     setNote(null);
     setPaperFor(null);
+    setRegisterFrom(null);
     void navigate({ to: "/pharmacy/desk" });
   }, [navigate]);
 
@@ -243,7 +247,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   }, [qc, t]);
 
   const find = useCallback(async (q: string): Promise<void> => {
-    setError(null); setNote(null); setCandidates(null); setPaperFor(null);
+    setError(null); setNote(null); setCandidates(null); setPaperFor(null); setRegisterFrom(null);
     let r: WireFindResult;
     try { r = await findAtCounter(q); } catch (e) { setError(pharmacyErrorText(e, t)); return; }
     if (r.kind === "patients") { setCandidates(r.patients); return; }
@@ -252,6 +256,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       const key = r.reason === "qr_invalid" ? "qrInvalid" : r.reason === "no_prescription_today" ? "noRx" : "notFound";
       setNote(t(`pharmacyDesk.find.${key}`));
       if (r.reason === "no_prescription_today" && r.patient !== undefined) setPaperFor({ id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }) });
+      if (r.reason === "not_found" && r.door === "uhid") setRegisterFrom(q.trim());
       return;
     }
     const d = r.dispense;
@@ -525,6 +530,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onConfirmSlip={() => void confirmSlip()}
               onFind={(q) => void find(q)}
               paperDoor={paperFor === null ? null : { who: paperFor.label, onOpen: () => setOverlay("paper") }}
+              registerDoor={registerFrom === null ? null : { onOpen: () => setOverlay("register") }}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
               autoPrint={inHand !== null && justHandedOver === inHand.id}
@@ -563,6 +569,19 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
         <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} plan={purchasePlanOf(copilot.payload)} payPlan={paymentRunPlanOf(copilot.payload)} returnPlan={returnPlanOf(copilot.payload)} duplicates={duplicateItemsOf(copilot.payload)} onDraftDone={copilot.clearPayload} />
       </div>
 
+      {overlay === "register" && registerFrom !== null ? (
+        <RegisterSheet
+          typed={registerFrom}
+          onClose={() => setOverlay(null)}
+          onDone={(p) => {
+            setRegisterFrom(null);
+            setNote(null);
+            setPaperFor(p);
+            say(t("pharmacyDesk.register.done", { who: p.label, uhid: p.uhid }));
+            setOverlay("paper");
+          }}
+        />
+      ) : null}
       {overlay === "paper" && paperFor !== null ? (
         <PaperRxSheet
           patient={paperFor}
