@@ -301,8 +301,8 @@ describe("imaging definitions (18a T4 / DD13)", () => {
    * The twenty seeds must themselves satisfy the schema they will be published under. A seed set
    * that could not be published is a runbook step that fails at go-live, in front of the owner.
    */
-  it("the TWENTY seeds parse under the published body's own schema", async () => {
-    expect(STUDY_TYPE_SEEDS).toHaveLength(20);
+  it("the TWENTY-FOUR seeds (20 + RS12b's four IR procedures) parse under the published body's own schema", async () => {
+    expect(STUDY_TYPE_SEEDS).toHaveLength(24);
     const withIds = STUDY_TYPE_SEEDS.map(({ service_code, ...rest }, i) => ({
       ...rest, service_id: `01SERVICE${String(i).padStart(17, "0")}`,
     }));
@@ -311,8 +311,8 @@ describe("imaging definitions (18a T4 / DD13)", () => {
   });
 
   it("the seeds' codes and service codes are each unique", async () => {
-    expect(new Set(STUDY_TYPE_SEEDS.map((t) => t.code)).size).toBe(20);
-    expect(new Set(STUDY_TYPE_SEEDS.map((t) => t.service_code)).size).toBe(20);
+    expect(new Set(STUDY_TYPE_SEEDS.map((t) => t.code)).size).toBe(24);
+    expect(new Set(STUDY_TYPE_SEEDS.map((t) => t.service_code)).size).toBe(24);
   });
 
   it("exactly THREE seeds are PCPNDT-applicable, and all three are ultrasound", async () => {

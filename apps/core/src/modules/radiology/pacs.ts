@@ -138,6 +138,7 @@ export function parseOrthancStudy(body: unknown): ArrivalNotice {
  *   · 113722 Dose Area Product Total (in 113702 Accumulated X-Ray Dose Data)         → DAP
  *   · 113730 Total Fluoro Time                                                        → seconds
  *   · 111637 Accumulated Average Glandular Dose (one per breast, TID 10005)          → AGD, mGy
+ *   · 113725 Dose (RP) Total — reference-point air kerma Ka,r (18-S RS12b)           → Ka,r, mGy
  *
  * DECIDED (RS12): the register holds ONE row per examination, so a CT's CTDIvol is the HIGHEST
  * Mean CTDIvol of its acquisitions (the value a DRL is compared with and the conservative one),
@@ -156,17 +157,20 @@ export const SR_CODES = {
   dapTotal: "113722",
   fluoroTime: "113730",
   agdAccumulated: "111637",
+  /** 18-S RS12b — Dose (RP) Total: the interventional unit's cumulative reference-point air kerma. */
+  karTotal: "113725",
   ctAccumulated: "113811",
   projectionAccumulated: "113702",
 } as const;
 
 /** UCUM unit → factor to the register's unit, per quantity. */
-const UNIT_FACTORS: Record<"ctdivol" | "dlp" | "dap" | "fluoro" | "agd", Record<string, number>> = {
+const UNIT_FACTORS: Record<"ctdivol" | "dlp" | "dap" | "fluoro" | "agd" | "kar", Record<string, number>> = {
   ctdivol: { "mGy": 1, "Gy": 1000, "uGy": 0.001 },
   dlp: { "mGy.cm": 1, "Gy.cm": 1000, "mGy.mm": 0.1 },
   dap: { "Gy.m2": 10_000, "dGy.cm2": 0.1, "cGy.cm2": 0.01, "mGy.cm2": 0.001, "uGy.m2": 0.01, "Gy.cm2": 1, "mGy.m2": 10 },
   fluoro: { "s": 1, "min": 60, "ms": 0.001 },
   agd: { "mGy": 1, "dGy": 100, "uGy": 0.001, "Gy": 1000 },
+  kar: { "Gy": 1000, "mGy": 1, "dGy": 100, "cGy": 10, "uGy": 0.001 },
 };
 
 type SrItem = {
@@ -211,6 +215,8 @@ export type DoseSrNotice = {
   dap: number | null;
   fluoroSeconds: number | null;
   agd: number | null;
+  /** 18-S RS12b — Ka,r, mGy. Kept with the others, never enough on its own to make a receipt. */
+  kar: number | null;
 };
 
 export const doseSrBodySchema = z.object({
@@ -243,6 +249,7 @@ export function parseDoseSr(body: unknown): DoseSrNotice {
   let dap: number | null = null;
   let fluoro: number | null = null;
   let agd: number | null = null;
+  let kar: number | null = null;
   let sawCt = false;
   let sawProjection = false;
   const max = (a: number | null, b: number | null): number | null => (b === null ? a : a === null ? b : Math.max(a, b));
@@ -261,6 +268,7 @@ export function parseDoseSr(body: unknown): DoseSrNotice {
       case SR_CODES.dapTotal: dap = measured(item, "dap") ?? dap; break;
       case SR_CODES.fluoroTime: fluoro = measured(item, "fluoro") ?? fluoro; break;
       case SR_CODES.agdAccumulated: agd = max(agd, measured(item, "agd")); break;
+      case SR_CODES.karTotal: kar = measured(item, "kar") ?? kar; break;
       default: break;
     }
   });
@@ -280,6 +288,7 @@ export function parseDoseSr(body: unknown): DoseSrNotice {
     // The register keeps whole seconds (an integer column), as the console does.
     fluoroSeconds: fluoro === null ? null : Math.round(fluoro),
     agd: round3(agd),
+    kar: round3(kar),
   };
   if ([out.ctdivol, out.dlp, out.dap, out.fluoroSeconds, out.agd].every((v) => v === null)) {
     throw new RadiologyError("invalid_pacs_notice", "the dose report carries no dose this register records (CTDIvol, DLP, DAP, fluoro time or AGD in a known unit)");
@@ -470,8 +479,8 @@ export async function attachHeldAtSend(
 
 /* ─────────────────────────────── T2 — the dose report ─────────────────────────────── */
 
-type DoseNumbers = { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null };
-export const DOSE_KEYS = ["ctdivol", "dlp", "dap", "fluoroSeconds", "agd"] as const;
+type DoseNumbers = { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null; kar: number | null };
+export const DOSE_KEYS = ["ctdivol", "dlp", "dap", "fluoroSeconds", "agd", "kar"] as const;
 
 /**
  * DECIDED (RS12): a typed number and the SR's AGREE when they differ by no more than 2 % of the
@@ -492,8 +501,8 @@ export function doseDisagreement(typed: DoseNumbers, sr: DoseNumbers): Record<st
 
 const numOrNull = (v: string | number | null): number | null => (v === null ? null : Number(v));
 
-function receiptNumbers(r: { doseCtdivol: string | null; doseDlp: string | null; doseDap: string | null; fluoroSeconds: number | null; doseAgd: string | null }): DoseNumbers {
-  return { ctdivol: numOrNull(r.doseCtdivol), dlp: numOrNull(r.doseDlp), dap: numOrNull(r.doseDap), fluoroSeconds: r.fluoroSeconds, agd: numOrNull(r.doseAgd) };
+function receiptNumbers(r: { doseCtdivol: string | null; doseDlp: string | null; doseDap: string | null; fluoroSeconds: number | null; doseAgd: string | null; doseKar: string | null }): DoseNumbers {
+  return { ctdivol: numOrNull(r.doseCtdivol), dlp: numOrNull(r.doseDlp), dap: numOrNull(r.doseDap), fluoroSeconds: r.fluoroSeconds, agd: numOrNull(r.doseAgd), kar: numOrNull(r.doseKar) };
 }
 
 /** Where a receipt for this (now known) study stands: compared with the register, pending, or not applicable. */
@@ -504,7 +513,7 @@ async function settleReceipt(tx: Tx, studyId: string, sr: DoseNumbers): Promise<
   if (BEFORE_ACQUISITION.has(study.status)) return { outcome: "pending", conflict: null };
   const [reg] = await tx.select({
     doseCtdivol: doseRegister.doseCtdivol, doseDlp: doseRegister.doseDlp, doseDap: doseRegister.doseDap,
-    fluoroSeconds: doseRegister.fluoroSeconds, doseAgd: doseRegister.doseAgd,
+    fluoroSeconds: doseRegister.fluoroSeconds, doseAgd: doseRegister.doseAgd, doseKar: doseRegister.doseKar,
   }).from(doseRegister).where(and(eq(doseRegister.source, "imaging"), eq(doseRegister.sourceRef, studyId)));
   if (reg === undefined) return { outcome: "not_applicable", conflict: null };
   const conflict = doseDisagreement(receiptNumbers(reg), sr);
@@ -531,7 +540,7 @@ export async function ingestDoseSr(tx: Tx, actor: Actor, n: DoseSrNotice, now = 
     id: receiptId, sopInstanceUid: n.sopInstanceUid, studyInstanceUid: n.studyInstanceUid,
     accessionNumber: n.accessionNumber, studyId: study?.id ?? null, template: n.template,
     doseCtdivol: n.ctdivol?.toString() ?? null, doseDlp: n.dlp?.toString() ?? null, doseDap: n.dap?.toString() ?? null,
-    fluoroSeconds: n.fluoroSeconds, doseAgd: n.agd?.toString() ?? null,
+    fluoroSeconds: n.fluoroSeconds, doseAgd: n.agd?.toString() ?? null, doseKar: n.kar?.toString() ?? null,
     outcome: settled.outcome, conflict: settled.conflict, receivedAt: now,
     resolvedAt: settled.outcome === "pending" || settled.outcome === "unmatched" ? null : now,
   });

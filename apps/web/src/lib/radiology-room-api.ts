@@ -22,7 +22,7 @@ export type WireProtocol = {
 };
 export type WireDrl = { study_type_code?: string; modality?: string; quantity: "ctdivol" | "dlp" | "dap" | "fluoro_seconds" | "agd"; value: number; source?: string };
 /** 18-S RS12 — the machine's Radiation Dose SR waiting for Send (`room.ts` `doseReport`). */
-export type WireDoseReport = { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null };
+export type WireDoseReport = { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null; /** 18-S RS12b — Ka,r, mGy. */ kar?: number | null };
 
 /** `room.ts`'s `RoomView`. */
 export type WireRoomView = {
@@ -84,6 +84,8 @@ export type AcquiredBody = {
   studyInstanceUid?: string | null;
   doseCtdivol?: number | null; doseDlp?: number | null; doseDap?: number | null; fluoroSeconds?: number | null;
   doseAgd?: number | null;
+  /** 18-S RS12b — reference-point air kerma Ka,r, mGy (the IR suite). */
+  doseKar?: number | null;
   doseManual?: boolean;
   contrastGiven?: boolean; contrastAgent?: string | null; contrastVolumeMl?: number | null;
   drlReason?: string | null; contrastNotGivenReason?: string | null;

@@ -82,7 +82,7 @@ export type RoomView = {
    * 18-S RS12 — the machine's Radiation Dose SR, when the archive forwarded one before Send. The
    * console then shows it and asks for no typing: Send records these numbers (`dose_sr`).
    */
-  doseReport: { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null } | null;
+  doseReport: { ctdivol: number | null; dlp: number | null; dap: number | null; fluoroSeconds: number | null; agd: number | null; kar?: number | null } | null;
 };
 
 /** Whole years between a date of birth and `now`, or null when the master holds no DOB. */

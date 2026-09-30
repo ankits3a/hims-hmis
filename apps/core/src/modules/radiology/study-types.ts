@@ -4,7 +4,7 @@ import type { DoseReferenceLevel, StudyType, StudyTypesBody } from "./definition
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
- * PLAN 18a T4 / DD13 — **THE STUDY-TYPE BOOK: the twenty seeds, and the ONE reader of them.**
+ * PLAN 18a T4 / DD13 — **THE STUDY-TYPE BOOK: the twenty-four seeds (twenty + RS12b's four IR procedures), and the ONE reader of them.**
  *
  * ═══ THIS FILE CLOSES FINDING F13 ═══
  *
@@ -27,7 +27,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  *
  * DD7 evaluates the gate SET at check-in from the patient's sex and age and the type's own FLAGS —
  * `ionising`, `contrast_option`, `modality === 'mri'`, `pcpndt_applicable`, `chaperone_required`,
- * `laterality_applicable`. Every gate these twenty types need is derivable from those, so listing
+ * `laterality_applicable`. Every gate these types need is derivable from those, so listing
  * them again here would be a second source of truth for the same fact, and the two would disagree
  * the first time somebody edited one.
  *
@@ -43,11 +43,17 @@ const usg = { modality: "usg", ionising: false, contrast_option: "none" } as con
 const ct = { modality: "ct", ionising: true, pcpndt_applicable: false } as const;
 const mri = { modality: "mri", ionising: false, pcpndt_applicable: false } as const;
 
+/**
+ * 18-S RS12b — an image-guided procedure: ionising, worked in the IR suite (`ir.ts`). The modality is
+ * the machine it runs on (the C-arm is `xray`; a CT-guided biopsy is `ct`).
+ */
+const ir = { modality: "xray", ionising: true, pcpndt_applicable: false, interventional: true } as const;
+
 /** The three flags most types share. `gates` is a fresh array per row — see the header. */
 const plain = () => ({ chaperone_required: false, laterality_applicable: false, gates: [] });
 
 /**
- * **TWENTY STUDY TYPES**, across the five modalities the seed script provisions. The set is chosen
+ * **TWENTY-FOUR STUDY TYPES** (twenty since 18a, + four IR procedures in 18-S RS12b), across the five modalities the seed script provisions. The set is chosen
  * to exercise every flag the evaluator branches on rather than to be a catalogue: an ionising type
  * with no contrast, one with required contrast, a lateralised type, three PCPNDT-applicable types,
  * an MRI with and without gadolinium, and a mammography.
@@ -97,6 +103,18 @@ export const STUDY_TYPE_SEEDS: readonly StudyTypeSeed[] = [
 
   /* ── Mammography ───────────────────────────────────────────────────────────── */
   { ...usg, ...plain(), code: "MMG-BILATERAL", name: "Mammography, bilateral", body_part: "breast", service_code: "RAD-MMG-BILATERAL", duration_min: 20, modality: "mammography", ionising: true, pcpndt_applicable: false, chaperone_required: true },
+
+  /**
+   * ── 18-S RS12b — interventional radiology: the four procedures of the board's IR suite ──
+   *
+   * `bleeding_risk` is the SIR 2019 class: PCN, PTBD and a solid-organ / lung core biopsy are HIGH
+   * (INR ≤ 1.5, platelets ≥ 50,000/µL within 7 days at Sign in); diagnostic angiography is LOW.
+   * No price is seeded (ruling-free money is never invented; the Setup Prices view enters it).
+   */
+  { ...ir, ...plain(), code: "IR-PCN", name: "Percutaneous nephrostomy (PCN)", body_part: "kidney", service_code: "RAD-IR-PCN", duration_min: 60, contrast_option: "optional", laterality_applicable: true, bleeding_risk: "high" },
+  { ...ir, ...plain(), code: "IR-PTBD", name: "Percutaneous transhepatic biliary drainage (PTBD)", body_part: "liver", service_code: "RAD-IR-PTBD", duration_min: 90, contrast_option: "optional", bleeding_risk: "high" },
+  { ...ir, ...plain(), modality: "ct", code: "IR-CT-BIOPSY", name: "CT-guided core biopsy", body_part: "as marked", service_code: "RAD-IR-CT-BIOPSY", duration_min: 45, contrast_option: "none", laterality_applicable: true, bleeding_risk: "high" },
+  { ...ir, ...plain(), code: "IR-DSA", name: "Diagnostic angiography (DSA)", body_part: "vascular", service_code: "RAD-IR-DSA", duration_min: 60, contrast_option: "required", bleeding_risk: "low" },
 ];
 
 /** A pure lookup over a body already in hand — no I/O, so callers holding a body do not re-read. */
