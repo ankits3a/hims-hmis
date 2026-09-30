@@ -205,3 +205,9 @@ export async function stockIn(
   }));
   return batchId;
 }
+
+/** 2026-09-30 — a visit the doctor saw on PAPER: opened at the front desk, no e-prescription (the desk's paper door). */
+export async function openVisitWithoutRx(db: Db, fx: PharmacyFixture, at: Date = MON): Promise<EncounterRow> {
+  const opened = await openVisit(db, fx.clerk.actor, { patientId: fx.patient.id, departmentId: fx.deptId, doctorId: fx.doctor.doctorId }, at);
+  return opened.encounter;
+}

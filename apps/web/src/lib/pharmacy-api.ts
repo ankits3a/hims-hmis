@@ -159,7 +159,11 @@ export type WireShelfCheck = { lines: number; onShelf: number; short: string[]; 
 export type WireFindResult =
   | { kind: "dispense"; door: string; dispense: WireDispense }
   | { kind: "patients"; door: "uhid"; patients: WirePatientSummary[] }
-  | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted" };
+  | {
+    kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted";
+    /** 2026-09-30 — on `no_prescription_today`, who was found: the desk offers the paper-prescription door. */
+    patient?: { id: string; uhid: string; name: string | null; alias: string | null };
+  };
 /** `about` is what the line says; `key` is the hit's identity, which a PD-9 authorisation names. */
 export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string; key: string };
 /** PD-9 — one request to the prescriber about one refusal on one line. */
@@ -712,4 +716,28 @@ export async function fetchMyShift(): Promise<WireMyShift> {
 /** PHARMACY P6 — the pharmacy's copy of a controlled prescription, filed on the patient's record; the hand-over names it. */
 export async function captureRetainedPrescription(id: string, photo: { mimeType: string; imageBase64: string }): Promise<{ documentId: string }> {
   return api("POST", `/pharmacy/dispenses/${id}/retained-prescription`, { photo });
+}
+
+// ── 2026-09-30 — dispense from a paper prescription at the desk (`paper-rx.ts`) ──
+export type WirePaperRxContext = {
+  patient: { id: string; uhid: string; name: string | null };
+  rxDate: string;
+  visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean }[];
+  doctors: { id: string; displayName: string; registrationNo: string | null }[];
+};
+export type PaperRxLine = { itemId: string; qtyBase: number; dose?: string; frequency?: string; durationDays?: number | null };
+export type PaperRxBody = {
+  patientId: string; doctorId?: string; rxDate: string;
+  photo?: { mimeType: string; imageBase64: string };
+  lines: PaperRxLine[];
+};
+export async function fetchPaperRxContext(patientId: string, rxDate: string): Promise<WirePaperRxContext> {
+  return api<WirePaperRxContext>("GET", `/pharmacy/paper-rx/context${qs({ patientId, rxDate })}`);
+}
+export async function searchPaperRxShelf(q: string): Promise<WireRetailShelfEntry[]> {
+  const { items } = await api<{ items: WireRetailShelfEntry[] }>("GET", `/pharmacy/paper-rx/shelf${qs({ q })}`);
+  return items;
+}
+export async function enterPaperRx(body: PaperRxBody, idempotencyKey: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", "/pharmacy/paper-rx", body, idempotencyKey);
 }

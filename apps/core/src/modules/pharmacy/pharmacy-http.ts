@@ -74,6 +74,8 @@ export const PHARMACY_IDEMPOTENT_ROUTES = {
   coldReading: "POST /pharmacy/cold-chain/readings",
   /** STAGE D4 — a retried click must not record one tray check twice (an after-use check posts consumption). */
   trayCheck: "POST /pharmacy/trays/checks",
+  /** 2026-09-30 — a paper prescription entered at the desk: a retried click must not issue it twice. */
+  paperRx: "POST /pharmacy/paper-rx",
 } as const;
 
 /**

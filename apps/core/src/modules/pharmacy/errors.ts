@@ -249,6 +249,10 @@ export const PHARMACY_ERROR_CODES = [
   "discount_not_bound",
   /** A walk-in discount that needs an approval names the customer first: an approval of money binds a patient. */
   "discount_needs_customer",
+  /** 2026-09-30 — a Schedule X or NDPS line on a paper prescription at the desk: it needs the doctor's e-prescription. */
+  "paper_rx_controlled",
+  /** 2026-09-30 — no hospital visit on the paper's date that is free of an e-prescription. */
+  "paper_rx_no_visit",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -396,6 +400,8 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   discount_approval_required: 409,
   discount_not_bound: 409,
   discount_needs_customer: 409,
+  paper_rx_controlled: 409,
+  paper_rx_no_visit: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

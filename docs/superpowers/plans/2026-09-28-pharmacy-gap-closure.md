@@ -367,3 +367,44 @@ sibling lane's (`pharmacy-discount-rounding`).
   capturer's GRN sheet says somebody else checks it and its QC/Post buttons are off.
 - DECIDED: the post is guarded as well as the QC (the ruling says "QC and post"); the near-expiry request
   is not guarded (it decides nothing and the materials head approves it).
+
+## Paper prescription at the desk (2026-09-30)
+
+Owner, at the live counter: *"If any registered patient comes to the counter then I am unable find the patient and
+dispense any medicine … I should be able to find the patient and bill him after looking at the physical prescription
+even if no other desk has uploaded prescription on behalf of the doctor."* `findAtCounter` found the patient, but a
+ticket opened only on an active e-prescription of today, so the desk said `no_prescription_today` and stopped.
+
+DECIDED (standard Indian hospital pharmacy practice):
+
+1. **The door.** When the desk finds a registered patient with no e-prescription today, the find answer carries the
+   patient and the desk offers **Dispense from a paper prescription**. Finding the patient (UHID, name, phone, QR,
+   token) is the start; there is no second entry to learn.
+2. **The sheet** (one sheet, keyboard-first, `Ctrl ⏎` saves): the hospital doctor written on the paper (defaults to the
+   visit's doctor), the date on the paper (today or earlier), the photo (REQUIRED when any line is Schedule H/H1,
+   optional otherwise; filed on the patient's record as `consult_prescription` against the visit, so the desk's `S`
+   sheet shows it at the slip cross-confirm), and the medicines off the OPD shelf (the same shelf search the counter
+   uses, brand or salt) with the quantity in base units and optional dose / frequency / days for the label. Save
+   issues the prescription, queues the ticket, claims it for this pharmacist and opens it.
+3. **Model (a).** The paper becomes a REAL `opd_prescriptions` row on the patient's visit on that date, transcribed by
+   the pharmacist (`transcribed_by`, the FD-31 column), prescriber of record the hospital doctor on the paper. Chosen
+   over (b) because a dispense needs a prescription AND an encounter by FK, the medication order needs the encounter's
+   `V` number and an ordering clinician, and nine readers (`verify`, `handover` → H1 register, `authorisations`,
+   `antimicrobial` steward, `claim`, labels, returns) read the prescription: (a) leaves every one of them unchanged.
+   No migration. OPD gains one narrow export, `issuePharmacyPaperPrescription`, the `"pharmacy_paper"` authority of
+   `issuePrescription`: grant `pharmacy.dispense.place` asserted in the service; the visit's state is not asked (the
+   doctor who writes on paper never moved it); a visit that already carries an active e-prescription is refused (this
+   door never supersedes the doctor's own); no override is accepted.
+4. **Safety.** Schedule X and NDPS narcotic/psychotropic lines are refused (`paper_rx_controlled`) — the two-key cabinet
+   needs the doctor's e-prescription. H1 needs the photo (`prescription_required`) and the prescriber's registration
+   number on the doctor master (`invalid_prescription`); the H1 register row is written at hand-over as for any ticket.
+   Allergy, severe interaction, hard duplicate and severe drug-disease hits refuse (`allergy_block`, `interaction_block`,
+   `duplicate_block`, `drug_disease_block`) because no prescriber is present to override. The slip cross-confirm
+   (FD-31) still gates the bill.
+5. **Audit.** `pharmacy.paper_rx.entered`: who typed it, the prescriber and registration number, the date on the paper,
+   the photo's document id, the lines. `dispense.queued` carries `source: "paper"`.
+6. **Permissions.** `pharmacy.dispense.place` only; no new permission.
+7. **Not this door.** An OUTSIDE doctor's prescription is a walk-in sale (P19 R-1, `/pharmacy/retail`); the sheet links
+   there. A registered patient with NO hospital visit on the paper's date is refused (`paper_rx_no_visit`) with the way
+   forward: the front desk opens the visit. A pharmacy-only attendance (a visit with no consultation fee, the lab
+   walk-in's pattern) is the follow-up if the owner wants the counter to open one itself.
