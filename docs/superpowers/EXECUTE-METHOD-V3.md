@@ -749,6 +749,13 @@ what you registered.
 - **Watch.** A merge watcher is the `run_in_background` command itself. It writes to a log and is read with `tail`
   after it exits. Never pipe it into `head` and never background it with `&` inside a foreground call. After a push,
   start it with `sleep 90`.
+### 9.6e RED ON THE PR'S OWN HEAD IS THE PR'S; LOOK AT THE VIEWPORT, NOT THE FULL PAGE — added 2026-09-30 (UX audit, ledger §2.174–2.176)
+
+- **Diagnosing a red check.** Before any retry or flake verdict, re-run the red test on the PR's own head (§2.174).
+  - On 2026-09-30 that turned a "flake" into a fixture defect, and turned a lowered census into a missing idempotency guard.
+- **Visual defects.** Measure them in the scrolled viewport. A full-page capture is not what a user sees (§2.175).
+- **Desk-card tests.** A test that reads a best-effort desk card re-polls the desk (§2.176).
+
 ### 9.7 BRIEF THE CLOSE REVIEWER AT THE OPERANDS, NOT THE BRANCHES — added 2026-08-28 (Plan 15 close, ledger §2.128)
 
 Three phases running, the close reviewer has returned more than the phase's own instruments found,
