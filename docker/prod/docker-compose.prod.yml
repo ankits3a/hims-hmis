@@ -176,6 +176,11 @@ services:
       - "443:443"
       # HTTP/3 (443/udp) is deliberately NOT published: the host firewall admits 80/tcp and
       # 443/tcp only, and clients negotiate HTTP/2 over TCP with no loss of function.
+    # The staging site (https://stagehmis.crkmch.com, owner 2026-09-30) is served by THIS caddy
+    # and proxied to UAT's caddy on docker0 (172.17.0.1:8444, see docker-compose.uat.yml).
+    # `host-gateway` resolves to that address; it adds a hosts entry and joins no UAT network.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # A DIRECTORY, not the Caddyfile itself, and that is load-bearing. A single-file bind mount
       # is bound to the file's INODE: deploy.sh replacing the file (install(1) unlinks and

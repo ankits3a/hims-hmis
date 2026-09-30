@@ -87,15 +87,18 @@ services:
 
   caddy:
     image: hmis-uat/web:latest
-    # 8443 ON BOTH SIDES. 80 and 443 belong to production and taking either would be an outage, not
-    # a collision — this is the single most dangerous line in the file and it is an `!override`
-    # precisely because compose MERGES port lists by default.
+    # 80 and 443 belong to production and taking either would be an outage, not a collision — this
+    # is the single most dangerous line in the file and it is an `!override` precisely because
+    # compose MERGES port lists by default.
     #
-    # IT READ `8443:443` AND NOTHING LISTENED ON 443. `Caddyfile.uat`'s site address is
-    # `https://{$HMIS_UAT_SITE}:8443`, so caddy binds 8443 INSIDE the container; publishing host
-    # 8443 to container 443 pointed at a port nothing was on. Container-side 8443 also keeps the
-    # site address honest for URL generation, because it is the port a client actually connects to.
-    ports: !override ["8443:8443"]
+    # 2026-09-30: staging is https://stagehmis.crkmch.com. Production's caddy terminates TLS for it
+    # and proxies to `host.docker.internal:8444`, which is THIS binding. 172.17.0.1 is docker0's
+    # address: a container on any bridge reaches it through `host-gateway`, and the internet does
+    # not (measured with throwaway containers before this line was written). A bare "8444:8080"
+    # would publish on every interface, and docker's published ports bypass ufw.
+    # Container side is 8080 because `Caddyfile.uat`'s site address is `http://{$HMIS_UAT_SITE}:8080`
+    # — the earlier `8443:443` bug was exactly these two numbers disagreeing.
+    ports: !override ["172.17.0.1:8444:8080"]
     # WITHOUT THIS, `Caddyfile.uat`'s `{$HMIS_UAT_SITE}` AND `{$HMIS_UAT_BASIC_AUTH_HASH}` EXPAND TO
     # EMPTY — caddy reads them from its own process environment and neither the base file nor this
     # one gave it any. The `:?` form makes compose refuse with the variable's name rather than

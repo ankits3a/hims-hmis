@@ -225,6 +225,34 @@ hmis.crkmch.com {
 # catch-all and the banner stayed on exactly the request that matters. `http://` with no host
 # answers every Host, as the automatic catch-all did, and `{host}{uri}` is the same Location.
 # ACME HTTP-01 challenges are still answered by Caddy itself before this route runs.
+# ═══ STAGING — https://stagehmis.crkmch.com (owner 2026-09-30) ═══
+#
+# The UAT stack (`HMIS_TARGET=uat deploy.sh`) cannot take 80 or 443, so THIS caddy terminates TLS
+# for the staging hostname and hands every request to UAT's own caddy, which applies basic auth,
+# the security headers and the /api split exactly as it would stand alone. The upstream is UAT's
+# port on docker0 (172.17.0.1:8444, see docker-compose.uat.yml), reached through the
+# `host.docker.internal:host-gateway` entry in docker-compose.prod.yml. Production and UAT share no
+# network: this is a host port, not a shared bridge.
+#
+# If UAT is down this site answers 502 and production's own site is untouched.
+#
+# This block comes AFTER `hmis.crkmch.com` on purpose: deploy.sh reads the FIRST hostname site as
+# production's own for its edge gate.
+stagehmis.crkmch.com {
+	encode zstd gzip
+	import access_log
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+		-Via
+	}
+	handle_errors {
+		header -Server
+		respond "" {err.status_code}
+	}
+	reverse_proxy host.docker.internal:8444
+}
+
 http:// {
 	import access_log
 	header -Server

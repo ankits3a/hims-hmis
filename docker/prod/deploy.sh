@@ -52,8 +52,8 @@ SRC_DIR="$REPO_DIR/docker/prod"
 # if it is the same build, brought up the same way. A second script would be a second thing to
 # keep in step, and the first divergence would be invisible until the rehearsal proved something
 # about a stack nobody runs. So the target parameterises PROJECT, the image namespace, the deploy
-# directory, the cron file and the compose overlay, and NOTHING ELSE branches except the three
-# steps that are production-only by nature.
+# directory, the cron file and the compose overlay, and NOTHING ELSE branches except the two
+# steps that are production-only by nature and the address the edge gate walks.
 #
 # ═══ WHAT UAT DOES NOT DO, AND WHY EACH IS SKIPPED RATHER THAN FAKED ═══
 #
@@ -63,8 +63,9 @@ SRC_DIR="$REPO_DIR/docker/prod"
 #           incident wearing a training label.
 #   step 7  the backup and drill cron. Same reason, plus: two crons writing one log file is how a
 #           drill's verdict gets attributed to the wrong cluster.
-#   step 8  the real-hostname half of the edge gate. UAT has no public hostname and no ACME
-#           certificate; it answers on this box's IP over `tls internal`, behind basic auth.
+#   step 8  NOT skipped since 2026-09-30. UAT is the staging site: production's caddy terminates
+#           TLS for `$HMIS_UAT_SITE` and proxies it to UAT's caddy, so the gate walks the same
+#           https path a browser does (see the branch at step 8).
 #
 # Everything else — the build, the config copy, the migrate, the seeds, the gate, the census, the
 # service census, the restarts — is the same code on both targets, which is the only way the
@@ -317,12 +318,13 @@ if [ "$TARGET" = "uat" ]; then
   grep -q '^HMIS_UAT_BASIC_AUTH_HASH=' "$ENV_FILE" \
     || die "$ENV_FILE carries no HMIS_UAT_BASIC_AUTH_HASH. Mint one and keep the password out of
     git:  docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'"
-  if port_in_use 8443; then
-    our_caddy_running || die "port 8443 is in use and it is not this project's caddy.
-    The retired preview stack used it: docker stop hmis-preview-caddy"
-    note "port 8443 is held by this project's own caddy — re-deploy, continuing"
+  # The port docker-compose.uat.yml publishes on docker0 and production's staging block proxies to.
+  if port_in_use 8444; then
+    our_caddy_running || die "port 8444 is in use and it is not this project's caddy.
+    UAT's caddy publishes 172.17.0.1:8444 for the staging site; find the holder with: ss -lntp"
+    note "port 8444 is held by this project's own caddy — re-deploy, continuing"
   else
-    note "port 8443 free"
+    note "port 8444 free"
   fi
 else
 # D8/GC2. The object-store credentials are a SEPARATE root-only file: merging them into .env would
@@ -1096,14 +1098,14 @@ step "8/8 the edge gate: /api/health as JSON, and a screen path as HTML"
 # The hostname is read out of the Caddyfile rather than configured twice — one source of truth,
 # and re-pointing the stack at another name stays a one-file change (GC1).
 if [ "$TARGET" = "uat" ]; then
-  # UAT's site address is `https://{$HMIS_UAT_SITE}:8443` — an env placeholder Caddy expands at
-  # load time, so there is no hostname in the file to read. It comes from the same .env the
-  # pre-flight already validated, which keeps ONE source of truth exactly as the awk below does
-  # for production.
-  SITE_BASE="https://$UAT_SITE:8443"
-  # `tls internal` means a certificate this box signed for itself, so curl is told to accept it —
-  # for UAT only, named here rather than hidden in a variable.
-  CURL_TLS="--insecure"
+  # UAT's site address is `{$HMIS_UAT_SITE}` — an env placeholder Caddy expands at load time, so
+  # there is no hostname in the file to read. It comes from the same .env the pre-flight already
+  # validated, which keeps ONE source of truth exactly as the awk below does for production.
+  # 2026-09-30: UAT is the staging site. PRODUCTION'S caddy terminates TLS for this hostname over
+  # ACME and proxies it to UAT's caddy (the staging block in docker/prod/Caddyfile), so this gate
+  # walks the whole path a browser takes — and production must carry that block before UAT deploys.
+  SITE_BASE="https://$UAT_SITE"
+  CURL_TLS=""
 else
 SITE_HOST="$(awk 'NF == 2 && $2 == "{" && $1 ~ /^[A-Za-z0-9][A-Za-z0-9.-]*$/ && $1 ~ /\./ { print $1; exit }' \
   "$DEPLOY_DIR/caddy/Caddyfile")"
