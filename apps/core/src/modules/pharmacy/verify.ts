@@ -158,7 +158,7 @@ type DispenseLineRow = Awaited<ReturnType<typeof linesOf>>[number];
  */
 export async function ticketRefusals(
   db: Db, actor: Actor, dispenseId: string, now: Date, instead: { lineIdx: number; medicineId: string } | null = null,
-): Promise<{ d: DispenseRow; doctorId: string; open: DispenseLineRow[]; outcome: RxCheckOutcome; refused: Refusals }> {
+): Promise<{ d: DispenseRow; doctorId: string | null; open: DispenseLineRow[]; outcome: RxCheckOutcome; refused: Refusals }> {
   const d = await getDispenseRow(db, dispenseId);
   const rx = await getPrescription(db, actor, d.prescriptionId);
   if (rx === null) {
@@ -430,7 +430,9 @@ export async function verifyDispense(
   await withTx(db, async (tx) => {
     const placed = await placeOrder(tx, actor, decls, {
       kind: "medication", patientId: d.patientId, encounterNo: encounter.visitNo, serviceDate: istDateOf(now),
-      orderingClinicianId: rx.doctorId, priority: "routine", placedAt: now,
+      /* 2026-09-30 — an OUTSIDE doctor's paper prescription names no hospital doctor: the dispensing
+         pharmacist is the ordering clinician of record, the outside prescriber stays on the prescription row. */
+      orderingClinicianId: rx.doctorId ?? actor.id, priority: "routine", placedAt: now,
       /* PD-2 — the number the ticket was queued with; a ticket queued before PD-2 has none and is numbered here. */
       ...(d.dispenseNo === null ? {} : { preallocatedOrderNo: d.dispenseNo }),
       items: settled.map((s) => ({ serviceId: s.serviceId })),

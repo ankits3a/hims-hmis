@@ -99,7 +99,8 @@ export async function findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: str
 
 /** The patient's prescription of today, through the visit read (which logs the PHI access). */
 async function todaysDispense(db: Db, actor: Actor, patientId: string, door: CounterDoor, now: Date): Promise<FindResult> {
-  const visits = (await listVisits(db, { serviceDate: istDateOf(now) })).filter((v) => v.patientId === patientId);
+  // `type: "any"` — a paper prescription on the desk's own no-fee pharmacy visit (2026-09-30) is found again by name.
+  const visits = await listVisits(db, { serviceDate: istDateOf(now), patientId, type: "any" });
   for (const visit of visits.reverse()) {
     const rx = await activePrescriptionOf(db, actor, visit.id);
     if (rx !== null) return { kind: "dispense", door, dispense: await ensureQueued(db, actor, rx, now) };

@@ -23,11 +23,21 @@ export const dispenseQueued = defineEvent("dispense.queued", MODULE, z.object({
  */
 export const paperRxEntered = defineEvent("paper_rx.entered", MODULE, z.object({
   dispenseId: id, prescriptionId: id, patientId: id, encounterId: id, source: z.literal("paper"),
-  enteredBy: id, doctorId: id, prescriberName: z.string().min(1), prescriberRegNo: z.string().nullable(),
+  // 2026-09-30 (owner) — an OUTSIDE doctor's paper: `doctorId` null, `outside` true, the address as written.
+  enteredBy: id, doctorId: id.nullable(), outside: z.boolean().default(false),
+  prescriberName: z.string().min(1), prescriberRegNo: z.string().nullable(), prescriberAddress: z.string().nullable().default(null),
   rxDate: z.string(), documentId: id.nullable(),
   lines: z.array(z.object({
     lineIdx: z.number().int().nonnegative(), itemId: id, medicineId: id, qtyBase: z.number().int().positive(), scheduleFlag: z.string().nullable(),
   })).min(1),
+}));
+
+/**
+ * 2026-09-30 (owner) — the desk opened a NO-FEE pharmacy visit (`openPharmacyVisitInTx`) because the patient
+ * had no free hospital visit on the paper's date. Appended in the same transaction as the visit.
+ */
+export const paperRxVisitOpened = defineEvent("paper_rx.visit_opened", MODULE, z.object({
+  encounterId: id, visitNo: z.string().min(1), patientId: id, rxDate: z.string(), openedBy: id,
 }));
 
 /** The counter took the Rx: through which door, and how many lines it carries. The order comes at verify. */
@@ -329,7 +339,7 @@ export const trayRestocked = defineEvent("trays.restocked", MODULE, z.object({
 
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
-  dispenseQueued, paperRxEntered, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
+  dispenseQueued, paperRxEntered, paperRxVisitOpened, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
   authorisationRequested, authorisationDecided,
   dispensePicked, dispenseBilled, dispenseHandedOver, dispenseCancelled,
   pharmacistRegistered, pharmacistRegistrationEnded, dispenseLineReturned,

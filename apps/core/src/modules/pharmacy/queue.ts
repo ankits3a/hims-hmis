@@ -420,8 +420,10 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
   const allergies = await listAllergies(db, d.patientId);
-  const [rxRow] = await db.select({ transcribedBy: opdPrescriptions.transcribedBy, doctorId: opdPrescriptions.doctorId }).from(opdPrescriptions).where(eq(opdPrescriptions.id, d.prescriptionId));
-  const prescriber = rxRow === undefined ? null : await getDoctor(db, rxRow.doctorId);
+  const [rxRow] = await db.select({
+    transcribedBy: opdPrescriptions.transcribedBy, doctorId: opdPrescriptions.doctorId, outsidePrescriberName: opdPrescriptions.outsidePrescriberName,
+  }).from(opdPrescriptions).where(eq(opdPrescriptions.id, d.prescriptionId));
+  const prescriber = rxRow === undefined || rxRow.doctorId === null ? null : await getDoctor(db, rxRow.doctorId);
   const asked = await authorisationsOf(db, d.id);
   const transcribedBy = rxRow?.transcribedBy ?? null;
   const names = await userNames(db, [d.claimedBy, transcribedBy]);
@@ -524,7 +526,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
     transcribedBy,
     transcribedByName: names.get(transcribedBy ?? "") ?? null,
     slipConfirmedBy: d.slipConfirmedBy,
-    prescriberName: prescriber?.displayName ?? null,
+    prescriberName: prescriber?.displayName ?? (rxRow?.outsidePrescriberName == null ? null : `${rxRow.outsidePrescriberName} (outside)`),
     cancelReason: d.cancelReason,
     patient: { id: summary.id, uhid: summary.uhid, name: summary.name, alias: summary.alias, restricted: summary.restricted },
     allergies: allergies.map((a) => ({ substance: a.substance, severity: (a as { severity?: string | null }).severity ?? null })),

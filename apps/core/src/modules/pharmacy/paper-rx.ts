@@ -4,13 +4,15 @@ import { appendEvent } from "../../kernel/events/append";
 import { pharmacyDispenseLines } from "../../kernel/db/schema";
 import { medicinesByIds, ndpsClassByMedicine } from "../formulary";
 import { itemsByIds } from "../materials";
-import { getDoctor, getVisit, issuePharmacyPaperPrescription, listDoctors, listVisits, runRxChecks } from "../opd";
+import {
+  PHARMACY_VISIT_TYPE, getDoctor, getVisit, issuePharmacyPaperPrescription, listDoctors, listVisits, openPharmacyVisitInTx, runRxChecks,
+} from "../opd";
 import { captureDocument, getPatientSummaries, resolvePatientId } from "../patients";
 import { claimDispense } from "./claim";
 import { REGISTER_FLAGS, SCHEDULED_FLAGS, isIsoDate, istDateOf } from "./config";
 import { controlOf } from "./controlled";
 import { PharmacyError } from "./errors";
-import { paperRxEntered } from "./events";
+import { paperRxEntered, paperRxVisitOpened } from "./events";
 import { enqueueDispense, getDispense } from "./queue";
 import { requirePermission } from "./retail";
 import type { Actor } from "@hmis/contracts";
@@ -43,8 +45,20 @@ import type { DispenseView } from "./queue";
  *     Rule 65(3) asks for it on the register;
  *   - an allergy, a severe interaction, a hard duplicate or a severe drug-disease hit — the desk would
  *     need the doctor's override, and a paper cannot give one (retail R-7's grammar);
- *   - a patient with no hospital visit on the prescription's date that is still free of an
- *     e-prescription (`paper_rx_no_visit`). An OUTSIDE doctor's prescription is a walk-in sale (P19 R-1).
+ *
+ * ═══ 2026-09-30 (owner) — PAPER PRESCRIPTION FOR ANYONE ═══
+ *
+ * *"let the patient buy medicine on physical prescription too, even if there's no record of prescribed
+ * medicine in the system by the doctor, emergency, IPD but just using physical prescription."*
+ *   - NO VISIT that day (or only visits that already carry a prescription): the desk opens a NO-FEE
+ *     pharmacy visit itself (`openPharmacyVisitInTx`: `type = 'pharmacy'`, no doctor, no department,
+ *     no queue, no token, no fee, on no OPD list or report), audited `paper_rx.visit_opened`. It is
+ *     opened only AFTER every refusal below has been asked, so a refused paper leaves nothing behind.
+ *   - an OUTSIDE doctor: the prescription row carries `outside_prescriber_*` with `doctor_id` null;
+ *     name always, registration number AND address when any line is Schedule H/H1 (Rule 65(3) — the
+ *     H1 register writes all three). An outside paper never lands on a hospital doctor's OPD visit.
+ *   - NOBODY FOUND: the desk registers the person through `POST /patients` (`patients.register`,
+ *     which the pharmacy role holds for P19) and opens this sheet on the new record.
  */
 const PLACE = "pharmacy.dispense.place";
 
@@ -61,6 +75,8 @@ export type PaperRxInput = {
   patientId: string;
   /** The hospital doctor written on the paper; the visit's doctor when absent. */
   doctorId?: string | undefined;
+  /** 2026-09-30 — an OUTSIDE doctor wrote the paper: name always; registration number and address for H/H1. */
+  outside?: { name: string; registrationNo?: string | null | undefined; address?: string | null | undefined } | undefined;
   rxDate: string;
   photo?: { mimeType: string; bytes: Buffer } | undefined;
   lines: PaperRxLineInput[];
@@ -70,14 +86,15 @@ export type PaperRxContext = {
   patient: { id: string; uhid: string; name: string | null };
   rxDate: string;
   /** The patient's visits on `rxDate`; a paper attaches to one with no e-prescription. */
-  visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean }[];
+  /** `pharmacy`: the desk's own no-fee visit (2026-09-30), not a consultation. */
+  visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean; pharmacy: boolean }[];
   doctors: { id: string; displayName: string; registrationNo: string | null }[];
 };
 
 type Visit = PaperRxContext["visits"][number];
 
 async function visitsOn(db: Db, actor: Actor, patientId: string, rxDate: string): Promise<Visit[]> {
-  const rows = await listVisits(db, { serviceDate: rxDate, patientId });
+  const rows = await listVisits(db, { serviceDate: rxDate, patientId, type: "any" });
   const out: Visit[] = [];
   for (const row of rows) {
     const v = await getVisit(db, actor, row.id);
@@ -85,6 +102,7 @@ async function visitsOn(db: Db, actor: Actor, patientId: string, rxDate: string)
     const doctor = row.doctorId === null ? null : await getDoctor(db, row.doctorId);
     out.push({
       encounterId: row.id, visitNo: row.visitNo, doctorId: row.doctorId, doctorName: doctor?.displayName ?? null,
+      pharmacy: row.type === PHARMACY_VISIT_TYPE,
       hasPrescription: v.prescriptions.some((p) => p.status === "active"),
     });
   }
@@ -112,6 +130,12 @@ export async function paperRxContext(db: Db, actor: Actor, patientId: string, rx
   const doctors = (await listDoctors(db, { activeOnly: true })).map((d) => ({ id: d.id, displayName: d.displayName, registrationNo: d.registrationNo }));
   return { patient, rxDate, visits: await visitsOn(db, actor, patient.id, rxDate), doctors };
 }
+
+type Prescriber =
+  | { kind: "hospital"; id: string; name: string; regNo: string | null }
+  | { kind: "outside"; name: string; regNo: string | null; address: string | null };
+
+const trimmed = (s: string | null | undefined): string | null => (s === undefined || s === null || s.trim() === "" ? null : s.trim());
 
 /** R-7's grammar: every hard warning refuses, because no prescriber is here to override it. */
 function refuseOnChecks(outcome: RxCheckOutcome): void {
@@ -168,24 +192,41 @@ export async function enterPaperPrescription(
     throw new PharmacyError("prescription_required", "a Schedule H or H1 medicine needs the photo of the paper prescription");
   }
 
+  // ── who wrote it: a hospital doctor, or an outside one ──
+  const h1 = flags.some((f) => f !== null && (REGISTER_FLAGS as readonly string[]).includes(f));
+  const outside = input.outside;
+  if (outside !== undefined && input.doctorId !== undefined) {
+    throw new PharmacyError("invalid_prescription", "a paper names a hospital doctor OR an outside doctor, not both");
+  }
+  let prescriber: Prescriber | null = null;
+  if (outside !== undefined) {
+    const name = trimmed(outside.name);
+    if (name === null) throw new PharmacyError("invalid_prescription", "write the outside doctor's name as it is on the paper");
+    const regNo = trimmed(outside.registrationNo);
+    const address = trimmed(outside.address);
+    if (scheduled && (regNo === null || address === null)) {
+      throw new PharmacyError("invalid_prescription",
+        "a Schedule H or H1 medicine on an outside doctor's paper needs the doctor's registration number and address, as written on it",
+        { missing: [...(regNo === null ? ["registrationNo"] : []), ...(address === null ? ["address"] : [])] });
+    }
+    prescriber = { kind: "outside", name, regNo, address };
+  }
+
   // ── the visit the paper was written at ──
   const visits = await visitsOn(db, actor, patient.id, input.rxDate);
-  const free = visits.filter((v) => !v.hasPrescription);
-  const visit = free.find((v) => input.doctorId !== undefined && v.doctorId === input.doctorId) ?? free[free.length - 1];
-  if (visit === undefined) {
-    throw new PharmacyError("paper_rx_no_visit",
-      visits.length === 0
-        ? `no hospital visit for this patient on ${input.rxDate} — the front desk opens the visit; an outside doctor's prescription is a walk-in sale`
-        : `this patient's visit on ${input.rxDate} already carries the doctor's e-prescription — find it by its QR or token`,
-      { rxDate: input.rxDate, visits: visits.length });
-  }
-  const doctorId = input.doctorId ?? visit.doctorId;
-  const doctor = doctorId === null ? null : await getDoctor(db, doctorId);
-  if (doctor === null || !doctor.active) throw new PharmacyError("not_found", "choose the hospital doctor written on the prescription");
-  const h1 = flags.some((f) => f !== null && (REGISTER_FLAGS as readonly string[]).includes(f));
-  if (h1 && (doctor.registrationNo ?? "").trim() === "") {
-    throw new PharmacyError("invalid_prescription",
-      `a Schedule H1 medicine needs the prescriber's registration number — ${doctor.displayName} has none on the doctor master`);
+  // An outside paper never lands on a hospital doctor's OPD visit: only a free pharmacy visit takes it.
+  const free = visits.filter((v) => !v.hasPrescription && (outside === undefined || v.pharmacy));
+  const visit: Visit | undefined = free.find((v) => input.doctorId !== undefined && v.doctorId === input.doctorId)
+    ?? free.filter((v) => !v.pharmacy).at(-1) ?? free.at(-1);
+  if (prescriber === null) {
+    const doctorId = input.doctorId ?? visit?.doctorId ?? null;
+    const doctor = doctorId === null ? null : await getDoctor(db, doctorId);
+    if (doctor === null || !doctor.active) throw new PharmacyError("not_found", "choose the hospital doctor written on the prescription — or enter an outside doctor");
+    if (h1 && (doctor.registrationNo ?? "").trim() === "") {
+      throw new PharmacyError("invalid_prescription",
+        `a Schedule H1 medicine needs the prescriber's registration number — ${doctor.displayName} has none on the doctor master`);
+    }
+    prescriber = { kind: "hospital", id: doctor.id, name: doctor.displayName, regNo: doctor.registrationNo };
   }
 
   // ── the lines as the doctor wrote them ──
@@ -203,30 +244,44 @@ export async function enterPaperPrescription(
       noSubstitution: false,
     };
   });
-  refuseOnChecks(await runRxChecks(db, patient.id, rxLines, now, { excludeEncounterId: visit.encounterId }));
+  refuseOnChecks(await runRxChecks(db, patient.id, rxLines, now, visit === undefined ? {} : { excludeEncounterId: visit.encounterId }));
+
+  // ── no free visit that day: the desk opens a NO-FEE pharmacy visit, after every refusal has been asked ──
+  const encounterId = visit?.encounterId ?? await withTx(db, async (tx) => {
+    const opened = await openPharmacyVisitInTx(tx, actor, { patientId: patient.id, serviceDate: input.rxDate }, now);
+    await appendEvent(tx, paperRxVisitOpened.make({
+      occurredAt: now, actor, patientId: patient.id, encounterId: opened.id, correlationId: opened.id,
+      payload: { encounterId: opened.id, visitNo: opened.visitNo, patientId: patient.id, rxDate: input.rxDate, openedBy: actor.id },
+    }));
+    return opened.id;
+  });
+  const who = prescriber.kind === "hospital" ? prescriber.name : `${prescriber.name} (outside)`;
 
   // ── the photo, on the patient's record ──
   let documentId: string | null = null;
   if (input.photo !== undefined) {
     const photo = input.photo;
     documentId = (await withTx(db, (tx) => captureDocument(tx, documents, actor, patient.id, {
-      encounterId: visit.encounterId, kind: "consult_prescription", mimeType: photo.mimeType, bytes: photo.bytes,
-      note: `paper prescription entered at the pharmacy: ${doctor.displayName}, ${input.rxDate}`,
+      encounterId: encounterId, kind: "consult_prescription", mimeType: photo.mimeType, bytes: photo.bytes,
+      note: `paper prescription entered at the pharmacy: ${who}, ${input.rxDate}`,
     }, now))).documentId;
   }
 
   // ── the prescription, then the ticket ──
-  const issued = await issuePharmacyPaperPrescription(db, actor, cfg, visit.encounterId, { lines: rxLines, doctorId: doctor.id }, now);
+  const issued = await issuePharmacyPaperPrescription(db, actor, cfg, encounterId, prescriber.kind === "hospital"
+    ? { lines: rxLines, doctorId: prescriber.id }
+    : { lines: rxLines, outsidePrescriber: { name: prescriber.name, registrationNo: prescriber.regNo, address: prescriber.address } }, now);
   const dispenseId = await withTx(db, async (tx) => {
     const { dispenseId: id } = await enqueueDispense(tx, actor, {
-      prescriptionId: issued.prescriptionId, prescriptionVersion: issued.version, patientId: patient.id, encounterId: visit.encounterId, source: "paper",
+      prescriptionId: issued.prescriptionId, prescriptionVersion: issued.version, patientId: patient.id, encounterId: encounterId, source: "paper",
     }, now);
     await appendEvent(tx, paperRxEntered.make({
-      occurredAt: now, actor, patientId: patient.id, encounterId: visit.encounterId, correlationId: id,
+      occurredAt: now, actor, patientId: patient.id, encounterId: encounterId, correlationId: id,
       payload: {
-        dispenseId: id, prescriptionId: issued.prescriptionId, patientId: patient.id, encounterId: visit.encounterId,
-        source: "paper", enteredBy: actor.id, doctorId: doctor.id, prescriberName: doctor.displayName,
-        prescriberRegNo: doctor.registrationNo, rxDate: input.rxDate, documentId,
+        dispenseId: id, prescriptionId: issued.prescriptionId, patientId: patient.id, encounterId: encounterId,
+        source: "paper", enteredBy: actor.id, doctorId: prescriber.kind === "hospital" ? prescriber.id : null,
+        outside: prescriber.kind === "outside", prescriberName: prescriber.name, prescriberRegNo: prescriber.regNo,
+        prescriberAddress: prescriber.kind === "outside" ? prescriber.address : null, rxDate: input.rxDate, documentId,
         lines: input.lines.map((l, i) => ({ lineIdx: i, itemId: l.itemId, medicineId: medicineIds[i]!, qtyBase: l.qtyBase, scheduleFlag: flags[i] ?? null })),
       },
     }));

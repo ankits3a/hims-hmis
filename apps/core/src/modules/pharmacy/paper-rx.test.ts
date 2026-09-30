@@ -3,9 +3,12 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, MON3, addAllergy, openVisitWithoutRx, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
-import { events, opdDoctors, opdPrescriptions, patientDocuments, pharmacyRegH1, stockBalances } from "../../kernel/db/schema";
+import { events, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, orders, patientDocuments, pharmacyRegH1, stockBalances } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { registerItem } from "../materials";
+import { chargeOrphans } from "../billing";
+import { listVisits } from "../opd";
+import { registerPatient } from "../patients";
 import { billDispense, previewDispenseBill } from "./bill";
 import { findAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
@@ -148,13 +151,119 @@ describe("dispense from a paper prescription at the desk (2026-09-30)", () => {
     expect(await db.select().from(opdPrescriptions)).toHaveLength(0);
   });
 
-  it("no visit on the paper's date is refused by name; a future date is refused", async () => {
-    await expect(enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
-      patientId: fx.patient.id, rxDate: RX_DATE, lines: [{ itemId: fx.item.crocin, qtyBase: 10 }],
-    }, MON2)).rejects.toThrow(expect.objectContaining({ code: "paper_rx_no_visit" }));
+  it("a future date is refused", async () => {
     await expect(enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
       patientId: fx.patient.id, rxDate: "2026-08-18", lines: [{ itemId: fx.item.crocin, qtyBase: 10 }],
     }, MON2)).rejects.toThrow(expect.objectContaining({ code: "invalid_prescription" }));
+  });
+
+  /** Hand a claimed ticket over the ordinary road and return it. */
+  async function throughTheCounter(dispenseId: string, qtyBase: number, identity?: { via: "phone_last4"; value: string }): Promise<void> {
+    await verifyDispense(db, fx.pharmacist.actor, fx.decls, dispenseId, { lines: [{ lineIdx: 0, qtyBase }] }, MON2);
+    await pickDispense(db, fx.pharmacist.actor, fx.decls, dispenseId, {}, MON2);
+    await confirmSlip(db, fx.pharmacist.actor, dispenseId, MON2);
+    const preview = await previewDispenseBill(db, fx.pharmacist.actor, dispenseId, MON2);
+    await billDispense(db, fx.pharmacist.actor, dispenseId, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+    await handOverDispense(db, fx.pharmacist.actor, fx.decls, dispenseId, identity === undefined ? {} : { identity }, MON3);
+  }
+
+  const OUTSIDE = { name: "Dr Suresh Rao", registrationNo: "KMC/55555", address: "12 MG Road, Bengaluru" };
+
+  describe("paper prescription for anyone (2026-09-30, owner)", () => {
+    it("nobody found → registered at the counter → paper → a NO-FEE pharmacy visit → ticket → bill → stock falls", async () => {
+      expect(await findAtCounter(db, testCfg, fx.pharmacist.actor, "Ramesh Kulkarni", MON2)).toMatchObject({ kind: "none", reason: "not_found" });
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, fx.pharmacist.actor, { name: "Ramesh Kulkarni", phone: "9811122233", ageYears: 54, sex: "male" }));
+
+      const d = await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+        patientId: patient.id, rxDate: RX_DATE, doctorId: fx.doctor.doctorId,
+        lines: [{ itemId: fx.item.crocin, qtyBase: 10, frequency: "TDS" }],
+      }, MON2);
+      expect(d.status).toBe("claimed");
+      const [visit] = await db.select().from(opdEncounters).where(eq(opdEncounters.id, d.encounterId));
+      // no consultation: no doctor, no department, no queue entry, no token; not an OPD visit
+      expect(visit).toMatchObject({ type: "pharmacy", doctorId: null, departmentId: null, serviceDate: RX_DATE, patientId: patient.id });
+      expect(await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, d.encounterId))).toHaveLength(0);
+      // never an OPD consultation: not on the visit list, not an uncharged consult in the day's orphan scan
+      expect((await listVisits(db, { serviceDate: RX_DATE })).map((v) => v.id)).not.toContain(d.encounterId);
+      expect((await chargeOrphans(db, RX_DATE)).map((o) => o.encounterId)).not.toContain(d.encounterId);
+      const [rx] = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, d.encounterId));
+      expect(rx).toMatchObject({ doctorId: fx.doctor.doctorId, transcribedBy: fx.pharmacist.id });
+
+      await throughTheCounter(d.id, 10);
+      const bal = await db.select().from(stockBalances).where(eq(stockBalances.itemId, fx.item.crocin));
+      expect(bal.reduce((s, b) => s + b.qtyOnHand, 0)).toBe(90);
+      // the desk finds the paper ticket again by name
+      expect(await findAtCounter(db, testCfg, fx.pharmacist.actor, "Ramesh Kulkarni", MON3)).toMatchObject({ kind: "dispense", dispense: { id: d.id } });
+    });
+
+    it("a visit that already carries a prescription is left alone: the next paper gets its own pharmacy visit", async () => {
+      const opd = await visitWithoutRx(); // the first paper lands on it, so it now carries an active prescription
+      await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+        patientId: fx.patient.id, rxDate: RX_DATE, lines: [{ itemId: fx.item.crocin, qtyBase: 10 }],
+      }, MON2);
+      const d2 = await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+        patientId: fx.patient.id, rxDate: RX_DATE, doctorId: fx.doctor.doctorId, lines: [{ itemId: fx.item.crocin, qtyBase: 6 }],
+      }, MON2);
+      expect(d2.encounterId).not.toBe(opd);
+      const [v] = await db.select().from(opdEncounters).where(eq(opdEncounters.id, d2.encounterId));
+      expect(v?.type).toBe("pharmacy");
+    });
+
+    it("the audit trail: the registration, the pharmacy visit, the paper entry", async () => {
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, fx.pharmacist.actor, { name: "Sunita Devi", phone: "9822233344", ageYears: 40, sex: "female" }));
+      const d = await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+        patientId: patient.id, rxDate: RX_DATE, outside: OUTSIDE, lines: [{ itemId: fx.item.crocin, qtyBase: 10 }],
+      }, MON2);
+      const names = (await db.select().from(events)).filter((e) => e.patientId === patient.id).map((e) => e.name);
+      expect(names).toEqual(expect.arrayContaining(["patient.registered", "paper_rx.visit_opened", "paper_rx.entered"]));
+      const [opened] = await db.select().from(events).where(eq(events.name, "paper_rx.visit_opened"));
+      expect(opened?.payload).toMatchObject({ encounterId: d.encounterId, patientId: patient.id, rxDate: RX_DATE, openedBy: fx.pharmacist.id });
+      const [entered] = await db.select().from(events).where(eq(events.name, "paper_rx.entered"));
+      expect(entered?.payload).toMatchObject({
+        doctorId: null, outside: true, prescriberName: OUTSIDE.name, prescriberRegNo: OUTSIDE.registrationNo, prescriberAddress: OUTSIDE.address,
+      });
+    });
+
+    it("an OUTSIDE doctor on H1: refused without the registration number (or address); with them, written to the H1 register", async () => {
+      const h1 = { patientId: fx.patient.id, rxDate: RX_DATE, photo: JPEG, lines: [{ itemId: fx.item.azithro, qtyBase: 3 }] };
+      await expect(enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, { ...h1, outside: { ...OUTSIDE, registrationNo: "" } }, MON2))
+        .rejects.toThrow(expect.objectContaining({ code: "invalid_prescription" }));
+      await expect(enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, { ...h1, outside: { ...OUTSIDE, address: " " } }, MON2))
+        .rejects.toThrow(expect.objectContaining({ code: "invalid_prescription" }));
+      await expect(enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, { ...h1, photo: undefined, outside: OUTSIDE }, MON2))
+        .rejects.toThrow(expect.objectContaining({ code: "prescription_required" }));
+      expect(await db.select().from(opdPrescriptions)).toHaveLength(0);
+      expect(await db.select().from(opdEncounters).where(eq(opdEncounters.type, "pharmacy"))).toHaveLength(0);
+
+      const d = await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, { ...h1, outside: OUTSIDE }, MON2);
+      const [rx] = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, d.encounterId));
+      expect(rx).toMatchObject({
+        doctorId: null, outsidePrescriberName: OUTSIDE.name, outsidePrescriberRegNo: OUTSIDE.registrationNo,
+        outsidePrescriberAddress: OUTSIDE.address, transcribedBy: fx.pharmacist.id,
+      });
+      await throughTheCounter(d.id, 3, { via: "phone_last4", value: "3210" });
+      const reg = await db.select().from(pharmacyRegH1);
+      expect(reg.map((r) => [r.prescriberName, r.prescriberRegNo, r.prescriberAddress, r.qtyBase])).toEqual([[OUTSIDE.name, OUTSIDE.registrationNo, OUTSIDE.address, 3]]);
+      // the ordering clinician of record is the dispensing pharmacist
+      const [order] = await db.select().from(orders).where(eq(orders.patientId, fx.patient.id));
+      expect(order?.orderingClinicianId).toBe(fx.pharmacist.id);
+    });
+
+    it("an OUTSIDE doctor: Schedule X refused, a recorded allergy refused — nothing written", async () => {
+      const { itemId } = await withTx(db, async (tx) => registerItem(tx, fx.pharmacist.actor, {
+        code: "ALPX05", name: "Alprax 0.5 tablet", class: "drug", baseUom: "tablet", batchTracked: true, formularyMedicineId: fx.med.alprax, gstRateBps: 1200,
+        uoms: [{ uom: "strip", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
+      }));
+      await expect(enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+        patientId: fx.patient.id, rxDate: RX_DATE, photo: JPEG, outside: OUTSIDE, lines: [{ itemId, qtyBase: 10 }],
+      }, MON2)).rejects.toThrow(expect.objectContaining({ code: "paper_rx_controlled" }));
+      await addAllergy(db, fx.patient.id, "Paracetamol");
+      await expect(enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+        patientId: fx.patient.id, rxDate: RX_DATE, outside: OUTSIDE, lines: [{ itemId: fx.item.crocin, qtyBase: 10 }],
+      }, MON2)).rejects.toThrow(expect.objectContaining({ code: "allergy_block" }));
+      expect(await db.select().from(opdPrescriptions)).toHaveLength(0);
+      expect(await db.select().from(opdEncounters).where(eq(opdEncounters.type, "pharmacy"))).toHaveLength(0);
+    });
   });
 
   it("an account without pharmacy.dispense.place is refused", async () => {

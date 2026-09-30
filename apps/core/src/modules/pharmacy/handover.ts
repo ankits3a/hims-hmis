@@ -129,7 +129,7 @@ export async function handOverDispense(
 
   const rx = await getPrescription(db, actor, d.prescriptionId);
   if (rx === null) throw new PharmacyError("unknown_prescription", `prescription ${d.prescriptionId} not found`);
-  const doctor = await getDoctor(db, rx.doctorId);
+  const doctor = rx.doctorId === null ? null : await getDoctor(db, rx.doctorId);
   const medicines = await medicinesByIds(db, lines.map((l) => l.dispensedMedicineId).filter((x): x is string => x !== null));
   const items = await itemsByIds(db, lines.map((l) => l.itemId).filter((x): x is string => x !== null));
   // STAGE D5 — a restricted antimicrobial leaves only with the steward's grant bound to this dispense, asked again at
@@ -252,7 +252,11 @@ export async function handOverDispense(
         await tx.insert(pharmacyRegH1).values({
           id: newId(), dispenseLineId: line.id, dispensedAt: now, patientId: d.patientId,
           patientName: patient.name, patientAddress: patient.addressLine ?? null,
-          prescriberName: doctor?.displayName ?? rx.doctorId, prescriberRegNo: doctor?.registrationNo ?? null,
+          /* 2026-09-30 — an OUTSIDE doctor's paper prescription: Rule 65(3)'s name, registration number and
+             address come off the prescription row, where the desk recorded them (all three required for H1). */
+          ...(rx.doctorId === null
+            ? { prescriberName: rx.outsidePrescriberName ?? "outside prescriber", prescriberRegNo: rx.outsidePrescriberRegNo, prescriberAddress: rx.outsidePrescriberAddress }
+            : { prescriberName: doctor?.displayName ?? rx.doctorId, prescriberRegNo: doctor?.registrationNo ?? null }),
           drugName: medicineName(med, (line.rxLine as RxLine).drug),
           medicineId: line.dispensedMedicineId, batchNo: batch.batchNo, qtyBase: line.qtyBase, unit: item?.baseUom ?? "unit", recordedBy: actor.id,
           pharmacistRegNo,

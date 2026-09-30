@@ -722,12 +722,15 @@ export async function captureRetainedPrescription(id: string, photo: { mimeType:
 export type WirePaperRxContext = {
   patient: { id: string; uhid: string; name: string | null };
   rxDate: string;
-  visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean }[];
+  /** `pharmacy`: the desk's own no-fee visit (2026-09-30), not a consultation. */
+  visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean; pharmacy?: boolean }[];
   doctors: { id: string; displayName: string; registrationNo: string | null }[];
 };
 export type PaperRxLine = { itemId: string; qtyBase: number; dose?: string; frequency?: string; durationDays?: number | null };
 export type PaperRxBody = {
   patientId: string; doctorId?: string; rxDate: string;
+  /** 2026-09-30 (owner) — an OUTSIDE doctor's paper: name; registration number and address for H/H1. */
+  outside?: { name: string; registrationNo: string | null; address: string | null };
   photo?: { mimeType: string; imageBase64: string };
   lines: PaperRxLine[];
 };

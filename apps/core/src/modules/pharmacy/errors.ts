@@ -251,8 +251,7 @@ export const PHARMACY_ERROR_CODES = [
   "discount_needs_customer",
   /** 2026-09-30 — a Schedule X or NDPS line on a paper prescription at the desk: it needs the doctor's e-prescription. */
   "paper_rx_controlled",
-  /** 2026-09-30 — no hospital visit on the paper's date that is free of an e-prescription. */
-  "paper_rx_no_visit",
+  /* 2026-09-30 (owner) — `paper_rx_no_visit` is RETIRED: the desk now opens a no-fee pharmacy visit itself. */
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -401,7 +400,6 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   discount_not_bound: 409,
   discount_needs_customer: 409,
   paper_rx_controlled: 409,
-  paper_rx_no_visit: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {

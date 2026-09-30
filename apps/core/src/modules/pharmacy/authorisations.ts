@@ -71,7 +71,8 @@ export async function requestAuthorisation(db: Db, actor: Actor, input: Authoris
     eq(pharmacyAuthorisations.book, input.book), eq(pharmacyAuthorisations.about, input.about), eq(pharmacyAuthorisations.status, "pending"),
   ));
   if (open[0] !== undefined) return open[0];
-  const doctor = await getDoctor(db, doctorId);
+  // An OUTSIDE doctor's paper prescription (2026-09-30) has no hospital prescriber to ask.
+  const doctor = doctorId === null ? null : await getDoctor(db, doctorId);
   if (doctor === null) throw new PharmacyError("not_found", "the prescriber of this prescription is not on record");
   const id = newId();
   const note = (input.note ?? "").trim();

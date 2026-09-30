@@ -258,6 +258,8 @@ async function loadRange(db: Db, range: ReportRange) {
     }).from(opdEncounters).where(and(
       gte(opdEncounters.serviceDate, range.from), lte(opdEncounters.serviceDate, range.to),
       ne(opdEncounters.status, "abandoned"),
+      eq(opdEncounters.type, "opd"), // 2026-09-30 — a pharmacy visit is no OPD consultation
+
     )),
     db.select({ departmentId: opdAppointments.departmentId, status: opdAppointments.status }).from(opdAppointments)
       .where(and(
