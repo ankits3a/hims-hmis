@@ -17,6 +17,7 @@ import { BillRail, heldUntil, holdEnded, rupees } from "./bill";
 import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { SlipSheet } from "./slip";
+import { PaperRxSheet } from "./paper-rx";
 import { DraftCard, DuplicateItemsCard, PaymentRunCard, PurchasePlanCard, ReturnPlanCard, ShortBookSheet, duplicateItemsOf, paymentRunPlanOf, purchasePlanOf, returnPlanOf, shortBookDraftOf } from "./short-book";
 import type { DuplicateItemsCardData, PaymentRunCardData, PurchasePlanCardData, ReturnPlanCardData, ShortBookDraft, ShortDrug } from "./short-book";
 import { TicketPanel } from "./ticket";
@@ -74,7 +75,9 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [inHandId, setInHandId] = useState<string | null>(ticketId);
   useEffect(() => { setInHandId(ticketId); }, [ticketId]);
   const [candidates, setCandidates] = useState<WirePatientSummary[] | null>(null);
-  const [overlay, setOverlay] = useState<"queue" | "slip" | "short" | null>(null);
+  const [overlay, setOverlay] = useState<"queue" | "slip" | "short" | "paper" | null>(null);
+  /* 2026-09-30 — the patient found with no e-prescription today: the desk offers the paper-prescription door. */
+  const [paperFor, setPaperFor] = useState<{ id: string; uhid: string; label: string } | null>(null);
   /* PARITY P1 — the hand-over that just happened HERE prints by itself; reopening an old ticket does not. */
   const [justHandedOver, setJustHandedOver] = useState<string | null>(null);
   /* PARITY P1 — the line the pharmacist is on, so `N` opens the short book prefilled with its drug. */
@@ -187,6 +190,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     setCandidates(null);
     setError(null);
     setNote(null);
+    setPaperFor(null);
     void navigate({ to: "/pharmacy/desk" });
   }, [navigate]);
 
@@ -211,7 +215,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   }, [qc, t]);
 
   const find = useCallback(async (q: string): Promise<void> => {
-    setError(null); setNote(null); setCandidates(null);
+    setError(null); setNote(null); setCandidates(null); setPaperFor(null);
     let r: WireFindResult;
     try { r = await findAtCounter(q); } catch (e) { setError(pharmacyErrorText(e, t)); return; }
     if (r.kind === "patients") { setCandidates(r.patients); return; }
@@ -219,6 +223,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       if (r.reason === "restricted") { setError(t("pharmacyDesk.sealedRefused")); return; }
       const key = r.reason === "qr_invalid" ? "qrInvalid" : r.reason === "no_prescription_today" ? "noRx" : "notFound";
       setNote(t(`pharmacyDesk.find.${key}`));
+      if (r.reason === "no_prescription_today" && r.patient !== undefined) setPaperFor({ id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }) });
       return;
     }
     const d = r.dispense;
@@ -491,6 +496,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onShowLine={() => setOverlay("queue")}
               onConfirmSlip={() => void confirmSlip()}
               onFind={(q) => void find(q)}
+              paperDoor={paperFor === null ? null : { who: paperFor.label, onOpen: () => setOverlay("paper") }}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}
               autoPrint={inHand !== null && justHandedOver === inHand.id}
@@ -527,6 +533,19 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
         <DeskDock log={log} said={said} busy={copilot.busy} onAsk={ask} onDismiss={() => setSaid(null)} draft={shortBookDraftOf(copilot.payload)} plan={purchasePlanOf(copilot.payload)} payPlan={paymentRunPlanOf(copilot.payload)} returnPlan={returnPlanOf(copilot.payload)} duplicates={duplicateItemsOf(copilot.payload)} onDraftDone={copilot.clearPayload} />
       </div>
 
+      {overlay === "paper" && paperFor !== null ? (
+        <PaperRxSheet
+          patient={paperFor}
+          onClose={() => setOverlay(null)}
+          onDone={(d) => {
+            setOverlay(null);
+            setPaperFor(null);
+            say(t("pharmacyDesk.log.claimed", { who: paperFor.label }));
+            void qc.invalidateQueries({ queryKey: ["pharmacy"] });
+            hold(d.id);
+          }}
+        />
+      ) : null}
       {overlay === "slip" && inHand !== null ? <SlipSheet dispense={inHand} onClose={() => setOverlay(null)} /> : null}
       {overlay === "short" ? <ShortBookSheet prefill={inHand === null ? null : focusedDrug} dispenseId={inHandId} onClose={() => setOverlay(null)} /> : null}
       {overlay === "queue" ? (
