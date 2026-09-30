@@ -4,7 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { breakGlassGrants } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { withTx } from "../db/client";
-import { breakGlassUsed } from "./events";
+import { breakGlassUsed, sodViolationBlocked } from "./events";
+import { SodViolationError } from "./sod";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -85,7 +86,41 @@ export async function pendingReviews(db: Db): Promise<BreakGlassReviewItem[]> {
     .orderBy(breakGlassGrants.createdAt);
 }
 
+/**
+ * DECIDED 2026-09-28 (standard separation of duties) — nobody reviews their own break-glass. Since
+ * the owner ruling of the same day the Medical Superintendent holds both `auth.break_glass.use`
+ * and `.review`, so without this the person who opened a sealed record could also clear the review.
+ *
+ * `assertNotSodPair` is NOT used: it refuses unless the pair is a seeded `sod_pairs` row, and a
+ * review route must not start failing on a deployment whose SoD seed has not been re-run. The
+ * refusal takes the same shape instead — the `sod.violation_blocked` event in its own transaction,
+ * then `SodViolationError` — so every controller that already maps that error maps this one.
+ */
+const BREAK_GLASS_SOD_PAIR = "break_glass_user_reviewer";
+
 export async function recordReview(db: Db, grantId: string, reviewer: Actor, note: string): Promise<void> {
+  const [grant] = await db
+    .select({ userId: breakGlassGrants.userId })
+    .from(breakGlassGrants)
+    .where(eq(breakGlassGrants.id, grantId));
+  if (grant !== undefined && reviewer.type === "user" && grant.userId === reviewer.id) {
+    await withTx(db, (tx) =>
+      appendEvent(
+        tx,
+        sodViolationBlocked.make({
+          actor: reviewer,
+          payload: {
+            pairKey: BREAK_GLASS_SOD_PAIR,
+            actorAType: "user",
+            actorAId: grant.userId,
+            actorBType: reviewer.type,
+            actorBId: reviewer.id,
+          },
+        }),
+      ),
+    );
+    throw new SodViolationError(BREAK_GLASS_SOD_PAIR);
+  }
   await db
     .update(breakGlassGrants)
     .set({ reviewedAt: new Date(), reviewedBy: reviewer.id, reviewNote: note })
