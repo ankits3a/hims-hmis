@@ -41,7 +41,7 @@ spot-checks by hand. This phase answers them.
 ## Owner rulings 2026-09-30 (money)
 
 Memory note `owner-rulings-2026-09-30-pharmacy-money`. Built in lane `pharmacy-discount-rounding` (one PR, migration
-`0162_invoice_rounding_rule`, additive: `invoices.rounding_rule text not null default 'half_up'`).
+`0164_invoice_rounding_rule` (renumbered at merge), additive: `invoices.rounding_rule text not null default 'half_up'`).
 
 **1 — Rounding by tender.** First ruling: *"If patient is paying using cash then keep whole-rupee rounding, round down.
 If paying via UPI or Card then we can collect to the paisa."* **AMENDED by the owner the same day, on PR #424:** *"If the
