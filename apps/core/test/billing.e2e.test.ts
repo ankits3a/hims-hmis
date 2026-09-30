@@ -82,6 +82,15 @@ const ROUTES: [method: "get" | "post" | "put", path: string, permission: string]
   ["put", "/billing/degraded", "billing.config.write"],
 ];
 
+/**
+ * OWNER RULING 2026-09-30 (money) — the ONE route a narrower string ALSO admits, beside the primary
+ * the sweep asserts. The front desk reads one patient's dues through `billing.dues.patient.read`
+ * and never holds `billing.invoice.read`.
+ */
+const ALSO_ADMITS: Record<string, readonly string[]> = {
+  "get /billing/patients/X/dues": ["billing.dues.patient.read"],
+};
+
 /** A complete, in-range adult reading — the opd.e2e fixture, so vitals move the encounter to `waiting`. */
 const adultOk = { heightCm: 165, weightKg: 62, sbp: 118, dbp: 76, pulse: 72, rr: 16, spo2: 98, tempC: 36.8 };
 
@@ -948,7 +957,8 @@ describe("billing e2e", () => {
    * MANIFEST and against a real grant set, which are two independent sources.
    */
   it("the guarded set closes over the manifest: every demanded permission is declared, and exactly one declared permission guards no route", () => {
-    const guarded = [...new Set(ROUTES.map(([, , permission]) => permission))].sort();
+    // OWNER RULING 2026-09-30 — a string a route ALSO admits (`alsoAdmits`) guards that route too.
+    const guarded = [...new Set([...ROUTES.map(([, , permission]) => permission), ...Object.values(ALSO_ADMITS).flat()])].sort();
     const declared = [...billingManifest.permissions].sort();
     // A route demanding a permission the manifest never declares is a route `syncPermissions`
     // leaves unreachable by EVERY role, forever — and the role-less sweep above answers 403 for it
@@ -1032,6 +1042,60 @@ describe("billing e2e", () => {
     expect(counterOnRefunds.body.message).toBe("missing permission billing.reports.read");
     const counterOnSessions = await http().get("/billing/sessions").set(...auth(counter.token)).expect(403);
     expect(counterOnSessions.body.message).toBe("missing permission billing.session.read");
+  });
+
+  /**
+   * OWNER RULING 2026-09-30 (money) — THE FRONT DESK SEES ONE PATIENT'S DUES, AND NOTHING ELSE OF
+   * BILLING. A seat holding the desk's own strings plus `billing.dues.patient.read` reads
+   * `GET /billing/patients/:id/dues` (200, the real unsettled row) and is refused, by the primary's
+   * name, on every other billing read — the invoice list with and without a patient filter above all,
+   * because that is the grant the ruling withholds.
+   */
+  it("OWNER RULING 2026-09-30: the front desk reads one patient's dues and is refused every other billing read", async () => {
+    await createRole(db, "fd_dues_seat", "front desk with dues");
+    for (const p of ["patients.register", "patients.read", "patients.update", "opd.visits.read", "opd.visits.open", "billing.dues.patient.read"]) {
+      await grantPermissionToRole(db, registry, "fd_dues_seat", p);
+    }
+    const desk = await mkUser(db, "fd_dues_clerk", ["fd_dues_seat"]);
+    const patientId = await registerPatient("Kamla Devi", "9876543231");
+    await openSession(cashier.token);
+    const approvalId = await ownerCredit("draft-fd-dues", patientId, 56_000, "settles at the next visit");
+    const issued = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-fd-dues", patientId,
+      lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
+      credit: { reason: "settles at the next visit", approvalId },
+    }).expect(201);
+
+    const dues = await http().get(`/billing/patients/${patientId}/dues`).set(...auth(desk.token)).expect(200);
+    expect(dues.body.items).toHaveLength(1);
+    expect(dues.body.items[0]).toMatchObject({
+      invoiceId: issued.body.invoiceId, invoiceNo: issued.body.invoiceNo, patientId, outstandingPaise: 56_000,
+    });
+
+    const refused: [path: string, permission: string][] = [
+      ["/billing/invoices", "billing.invoice.read"],
+      [`/billing/invoices?patientId=${patientId}`, "billing.invoice.read"],
+      [`/billing/invoices/${issued.body.invoiceId as string}`, "billing.invoice.read"],
+      [`/billing/invoices/${issued.body.invoiceId as string}/print`, "billing.invoice.read"],
+      [`/billing/patients/${patientId}/balance`, "billing.invoice.read"],
+      ["/billing/receipts", "billing.invoice.read"],
+      ["/billing/worklist", "billing.invoice.read"],
+      ["/billing/refunds", "billing.reports.read"],
+      ["/billing/day-book", "billing.reports.read"],
+      ["/billing/sessions", "billing.session.read"],
+    ];
+    for (const [path, permission] of refused) {
+      const res = await http().get(path).set(...auth(desk.token));
+      expect({ path, status: res.status, message: res.body.message }).toEqual({ path, status: 403, message: `missing permission ${permission}` });
+    }
+
+    // A seat with NEITHER string is still refused the dues read, by the primary's name — the any-of
+    // widened nobody who did not hold the narrow grant.
+    const bare = await http().get(`/billing/patients/${patientId}/dues`).set(...auth(rando.token)).expect(403);
+    expect(bare.body.message).toBe("missing permission billing.invoice.read");
+    // …and the billing seat is unchanged: the cashier still reads the same row on the primary.
+    const cashierDues = await http().get(`/billing/patients/${patientId}/dues`).set(...auth(cashier.token)).expect(200);
+    expect(cashierDues.body.items).toEqual(dues.body.items);
   });
 
   it("refusal bodies: the OPD convention, a fractional paise 400, a readable message, and a bad config patch is 400 not 500", async () => {
