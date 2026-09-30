@@ -26,7 +26,7 @@ import {
  * columns are a later slice and are not drawn.
  */
 
-export type LayoutKey = "vitals" | "eye" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
+export type LayoutKey = "vitals" | "eye" | "paeds" | "complaints" | "exam" | "dx" | "inv" | "rx" | "treat" | "advice" | "notes";
 export type WireVisitLayout = { sections: { key: LayoutKey; mandatory: boolean }[]; defaultVersion: number | null; overlayVersion: number | null };
 export type WireLayoutChange =
   | { kind: "hidden" | "shown" | "mandatory" | "optional"; key: LayoutKey }
@@ -75,7 +75,7 @@ export function orderRows<R extends { id: string }>(rows: readonly R[], layout: 
 /** A section's name — the consult tab's own label, so the builder and the screen never disagree. */
 export function sectionLabel(t: TFunction, key: string): string {
   const k: Record<string, string> = {
-    vitals: "opdConsultV2.tabs.vitals", eye: "opdEye.tab", complaints: "opdConsultV2.tabs.complaints",
+    vitals: "opdConsultV2.tabs.vitals", eye: "opdEye.tab", paeds: "opdPaeds.tab", complaints: "opdConsultV2.tabs.complaints",
     exam: "opdConsultV2.tabs.exam", dx: "opdConsultV2.tabs.dx", inv: "opdConsultV2.tabs.inv", rx: "opdConsult.tabs.rx",
     treat: "opdConsultV2.tabs.treat", advice: "opdConsultV2.tabs.advice", notes: "opdConsultV2.tabs.notes",
   };

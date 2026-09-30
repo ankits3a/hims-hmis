@@ -1,12 +1,14 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { openSessionFor } from "../../../test/helpers/billing";
+import { grantDrawerSupervisor, openSessionFor, submitCountFor } from "../../../test/helpers/billing";
 import { MON, MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
-import { testCfg } from "../../../test/helpers/opd";
+import { ensureRole, testCfg } from "../../../test/helpers/opd";
+import { assignRole } from "../../kernel/auth/permissions";
+import { istDateOf } from "./config";
 import { billDispense, previewDispenseBill } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
 import { pickDispense } from "./pick";
-import { counterSummary } from "./summary";
+import { counterSummary, counterSummaryFor } from "./summary";
 import { withTx } from "../../kernel/db/client";
 import { addBarcode } from "../materials";
 import { declineLine, verifyDispense } from "./verify";
@@ -94,5 +96,48 @@ describe("the counter's day (pharmacy P7)", () => {
     await expect(counterSummary(db, "17/08/2026")).rejects.toMatchObject({ code: "invalid_day" });
     // V8's Date.parse reads this as 2 March; it is not a date.
     await expect(counterSummary(db, "2026-02-30")).rejects.toMatchObject({ code: "invalid_day" });
+  });
+});
+
+/**
+ * ═══ OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen") ═══
+ *
+ * The counter's billed total is one pharmacist's takings on a one-person counter, and float +
+ * takings is her drawer's expected cash. While HER drawer is uncounted the total is left off
+ * `GET /pharmacy/summary` for her; the counts stay; a drawer supervisor and anyone with no open
+ * drawer still read it. `TODAY` is the real-clock day because `openSession` stamps the real clock.
+ */
+describe("the counter's day — blind count (owner ruling 2026-09-28)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: PharmacyFixture;
+  const TODAY = istDateOf(new Date());
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => {
+    await truncateAll(db);
+    fx = await seedPharmacyBase(db);
+    await openSessionFor(db, { id: fx.pharmacist.id }, 0);
+  });
+  afterEach(() => { fx.unregister(); });
+
+  it("a pharmacist with an uncounted drawer gets the counts but NOT the billed total", async () => {
+    const s = await counterSummaryFor(db, fx.pharmacist.actor, TODAY);
+    expect(s).not.toHaveProperty("billedPaise");
+    expect(s).toMatchObject({ day: TODAY, handedOver: 0 });
+  });
+
+  it("a colleague with no open drawer, the same pharmacist after her count, and a drawer supervisor all read it", async () => {
+    expect(await counterSummaryFor(db, fx.aide.actor, TODAY)).toHaveProperty("billedPaise", 0);
+    await ensureRole(db, "blind_supervisor_t");
+    await grantDrawerSupervisor(db, "blind_supervisor_t");
+    await assignRole(db, { userId: fx.pharmacist.id, roleKey: "blind_supervisor_t", scopeType: "hospital" });
+    expect(await counterSummaryFor(db, fx.pharmacist.actor, TODAY)).toHaveProperty("billedPaise", 0);
+  });
+
+  it("after her count is submitted the pharmacist reads the billed total again", async () => {
+    expect(await submitCountFor(db, fx.pharmacist, { "100": 1 })).toEqual({ status: "closing" });
+    expect(await counterSummaryFor(db, fx.pharmacist.actor, TODAY)).toHaveProperty("billedPaise", 0);
   });
 });

@@ -264,6 +264,51 @@ brainstorms, where most use happens.
 - a tray deficient and not restocked;
 - a tray item expiring in 30 days or less.
 
+**As built (2026-09-28, migration 0151 — generated as 0145, regenerated at the 2026-09-29 merges of main (0149, 0150, then 0151 as radiology RS9 and RS12 took each serial)):**
+- Three tables. `pharmacy_tray_templates` (the list: tray, item, par, optional expiry margin in days, active) is a
+  master row edited in place under `manage`, every save a `trays.template_saved` event with the before and the after;
+  the trigger refuses DELETE and any change of tray, item or creator (D3's fridge shape). `pharmacy_tray_checks`
+  (`TC-000001`) and `pharmacy_tray_check_lines` are append-only by trigger; a check's ONE change is its restock
+  (`restock_transfer_id`, `restocked_by`, `restocked_at`), once, from null, all three together (the shared rules'
+  status-column exception).
+- A tray is created through `materials.createStore` as a child of `PHARM-OPD`, `attributes` `{ tray: true, location,
+  custodianRoles, setUpAt }`, code `TRAY-<NAME>`. Routes under `/pharmacy/trays`: list (either grant, inside), set up
+  (`manage`), keepers (`manage`), template line (`manage`), item picker (`manage`), a tray's checks (either), record a
+  check (`check`, idempotent), restock (`check`), receive (`check`).
+- DECIDED — who sets up a tray: `pharmacy.trays.manage` (the in-charge) creates the child store through the
+  materials service, NOT `materials.stores.manage`, which the in-charge does not hold. This door makes only one shape of
+  store (a tray under PHARM-OPD). No grant was widened; the owner may prefer the materials head to create it.
+- DECIDED — who restocks: `pharmacy.trays.check` AND a keeper of `PHARM-OPD` (its `custodianRoles`, `pharmacy` and
+  `pharmacy_assistant` via `seed:pharmacy`). The nurse who keeps the tray cannot issue from the pharmacy's shelf. The
+  restock calls `materials.issueStock` inside the pharmacy transaction without `materials.stock.issue` (which the
+  pharmacist does not hold) — the same shape as the dispense posting `consume` without a materials grant.
+- DECIDED — who receives: the tray's keepers (`custodianRoles`, chosen from the seven `check` roles), through
+  `POST /pharmacy/trays/checks/:id/receive` under `check`, which calls `materials.receiveStock`; that refuses the
+  issuer and anyone not keeping the tray. The OT nurse and the radiographer hold no `materials.stock.receive`, so the
+  materials route alone would have left them unable to sign.
+- DECIDED — the result is the server's. A line is `short` below par; `expiring` when its earliest expiry is on or
+  before today (IST) + the margin (30 unless the template says otherwise) — `qty_expiring` defaults to all present,
+  and a count that contradicts the date is refused. A daily check is `seal_mismatch` when the seal seen is not the one
+  the tray's latest check recorded (new seal, else seal seen); after a restock the tray was opened, so the next check
+  starts the chain again. A seal mismatch is not restocked: it asks for a full check.
+- DECIDED — restock = per line `max(par − present, 0) + qty_expiring`, stored on the line (`qty_restock`), issued as
+  one transfer FEFO from PHARM-OPD. Only the tray's LATEST check may be restocked (a later count supersedes).
+- DECIDED — the consumption path: an after-use check posts `consume` ledger rows at the tray (ref_type
+  `pharmacy_tray_check`, the patient when named) for the tray's on-hand less what is present, earliest expiry first
+  (`qty_used` on the line). The same movement the dispense hand-over and the walk-in sale post; not an adjustment,
+  because the stock was used, not lost. A monthly or daily discrepancy with the ledger posts nothing: it is a count
+  variance for 14c's counts.
+- DECIDED — schedule: the daily check is met by ANY check that IST day and missed after 10:00 IST; the monthly is met
+  by a `monthly_full` or `after_use` check (both are full open counts) in the IST month and missed after the 7th. A
+  tray set up after a deadline did not miss it. A check may be entered up to 24 h late, never from the future.
+- Office STOCK (read under `check` OR `manage`): `tray_deficient` red tier 0 (latest check deficient, no restock
+  transfer), `tray_daily_missed` and `tray_monthly_missed` amber tier 4, `tray_expiring` amber tier 6 (tray ledger
+  batches expiring within 30 days).
+- The screen is `screens/pharmacy-office/trays.tsx` (`TrayChecksView`), unrouted; the lead wires it under Stock.
+- Deferred: a patient picker on the after-use sheet (the API takes `patientId`; the sheet sends the event text only);
+  returning the expiring units the restock replaced (the tray's keeper transfers them back); renaming, moving or
+  retiring a tray (a tray that moves is a new tray); charging the patient (ER / IPD brainstorms); the office menu entry.
+
 ## D5 — Reserve/restricted antimicrobial approval gate
 
 **Basis:**
@@ -297,6 +342,65 @@ The role is held in addition to the person's clinical role. A steward may not ap
 
 **Census row:** RED until at least one user holds `antimicrobial_steward`. Until then a restricted line cannot leave,
 and the refusal says who to appoint.
+
+**As built (2026-09-28, migration 0144):**
+- Two columns on `formulary_medicines`: `aware_category` (null / Access / Watch / Reserve, CHECK) and
+  `antimicrobial_restricted` (boolean, default false). On the PRODUCT, not the moiety: AWaRe classifies combinations
+  as their own entries (ceftazidime is Watch, ceftazidime-avibactam Reserve) and some moieties by route (fosfomycin
+  and minocycline IV Reserve, oral Watch).
+- DECIDED: no binding table. The approval is the kernel's row: type `pharmacy_restricted_antimicrobial`, subject
+  `{ pharmacy_dispense_moieties, "<dispenseId>|<sorted salt ids>" }`, the patient. The gate re-reads the rows at the
+  act and checks type, subject and patient on each (the `assertGrantedApproval` shape). The kernel row already holds
+  requester, requested-at, decider and note, and a decided row is never edited. Bound to the MOIETY SET, so a generic
+  substitution needs no second approval.
+- The cited list is `modules/formulary/aware.ts` (WHO/MHP/HPS/EML/2023.04): 23 Access, 32 Watch (the 4 carbapenems among
+  them), 28 Reserve entries by moiety set and route; `aware:classify` (`scripts/classify-aware.ts`, run by hand AFTER a steward is appointed — never `seed:pharmacy`, which deploy.sh runs on every deploy; corrected 2026-09-29 after hmis-b7 caught it before a deploy) writes it onto every systemic product whose
+  class is still null, and only ever raises `antimicrobial_restricted`. The Indian market's irrational FDCs stay null.
+- DECIDED: the type is `urgent`, 240 min SLA (the other urgent types'), no act-first; approver `antimicrobial_steward`.
+- DECIDED — self-approval: the kernel's `requester_approver` pair refuses the requester (the pharmacist), not the
+  prescriber, and the approval knows no prescriber. So the gate refuses at execute a grant whose decider is the
+  prescribing doctor's user (`antimicrobial_self_approval`); the counter asks again and another steward decides.
+  `kernel/**` untouched. The inbox card tells a steward who wrote the prescription.
+- The gate `assertStewardApprovals` in `verifyDispense` (after the four books) and `handOverDispense` (a product
+  restricted after verify is caught at the window). Codes `antimicrobial_steward_approval_required` (names the drug
+  and the authorisation sheet), `antimicrobial_steward_not_appointed`, `antimicrobial_self_approval`.
+- DECIDED — retail: a restricted antimicrobial is REFUSED at the walk-in counter (`restricted_antimicrobial_walk_in`),
+  not gated: the steward reviews an indication this hospital's doctor wrote, and an outside paper prescription has
+  neither — the Schedule X / NDPS reasoning. A paper dispense (P20) is recorded, as for the cold-chain hold.
+- Desk: the line says where it stands with the steward; ⋯ "Ask the antimicrobial steward" (indication, culture
+  sent, planned days — pre-filled from the prescription's course) files the approval
+  (`POST /pharmacy/dispenses/:id/lines/:idx/steward`, `pharmacy.dispense.place`, a registered pharmacist); the state is
+  `GET /pharmacy/dispenses/:id/steward`. The decision is made in /approvals; the card shows the prescription line
+  from `GET /pharmacy/steward-requests/:approvalId` under `pharmacy.antimicrobial.approve`.
+- Role `antimicrobial_steward` (held with a clinical role): `pharmacy.antimicrobial.approve`, `approvals.requests.read`,
+  `approvals.requests.decide`. README prose, not a fifth table.
+- `/formulary/admin` gains the stewardship editor (AWaRe class, "Restricted — needs steward approval") through the
+  medicine PATCH under `formulary.manage`; `GET /formulary/medicines/:id/stewardship` reads one product.
+- Census `antimicrobial_steward_appointed` (G4, RED until an active holder). Office LAW (read under
+  `pharmacy.licences.manage`): `steward_not_appointed` red tier 0 while restricted products exist; `steward_approval_waiting`
+  amber per ask pending over 4 h.
+- Deferred: pre-filling the ask from the CDS AMSP card's `micro_order`/`max_days` (the desk has no CDS payload today);
+  an ask from a line that is no longer editable (verified, billed) has a server path but no desk control; an HTTP e2e
+  of the three routes.
+
+## Wiring — the menu entries, the desk's reaction report, the D5 e2e (lane `pharmacy-safety-wire`)
+
+- Office menu (B3's `pages.ts`, all `was: null`): Law → `adr` (`pharmacy.adr.record` | `.manage`), `incidents`
+  (`pharmacy.incidents.record` | `.review`); Stock → `cold` (`pharmacy.coldchain.record` | `.manage`), `trays`
+  (`pharmacy.trays.check` | `.manage`). The Today rows of D1–D4 (`routeOf`) now open their page
+  (`?view=law&page=adr` …), not only the side. Closes the D1–D4 "office menu entry" deferrals.
+- DECIDED: D5's stewardship editor stays where D5 mounted it — inside `/formulary/admin`, i.e. the office's
+  Items → Formulary page (`formulary.manage`), beside the product it edits. No separate `stewardship` page.
+- Steward reach: `antimicrobial_steward` holds `approvals.requests.read` + `.decide` (the `/approvals` nav row is
+  `approvals.requests.read`), and the inbox renders `pharmacy_restricted_antimicrobial`. No gap; no seed change.
+- Desk "Report a reaction" (D1 deferral closed): a button under the ticket's lines opens D1's `AdrRecordForm` for
+  the patient in hand; the line's ⋯ entry also puts that line's medicine (and its picked batch) as the first
+  suspect. Under `pharmacy.adr.record` only. The patient and suspect stay editable on the sheet.
+- D5 HTTP e2e (deferral closed): `test/pharmacy-antimicrobial.e2e.test.ts` — the three routes' refusals, ask →
+  steward reads → `/approvals` grant → verify, and the self-approval refusal over HTTP.
+- Browser walk (stub API, Chromium, 1920/1440/1280/1024/768/390): the four pages and the stewardship editor show no
+  document overflow at any width. The ADR register at 390 scrolled sideways inside `.pof-page` (431 > 390): the grid's
+  single column below `lg` was `auto`, so a truncated suspect line set its width. Fixed with `grid-cols-[minmax(0,1fr)]`.
 
 ## Order
 

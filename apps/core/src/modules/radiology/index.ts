@@ -14,7 +14,7 @@ export { RadiologyError, RADIOLOGY_ERROR_CODES, radiologyHttpStatus } from "./er
 export type { RadiologyErrorCode } from "./errors";
 export {
   RADIOLOGY_RESOURCE_KINDS, SCHEDULABLE_DEVICE_STATUSES, DEVICE_MODALITY_ATTRIBUTE,
-  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES,
+  DEVICE_PORTABLE_ATTRIBUTE, IMAGING_MODALITIES, BEDSIDE_LOCATION_MAX_LENGTH,
 } from "./kinds";
 export type { ImagingModality } from "./kinds";
 export {
@@ -22,18 +22,31 @@ export {
   imagingStudyDefinition, imagingGateDefinition,
 } from "./workflow-def";
 export {
-  IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES, registerRadiologyApprovalTypes,
+  IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, IMAGING_GATE_OVERRIDE_APPROVAL_TYPE, IMAGING_RELEASE_UNPAID_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES,
+  registerRadiologyApprovalTypes,
 } from "./approval-types";
 export {
   RADIOLOGY_ORDER_PLACED_CONSUMER, handleOrderPlaced, orderPlacedConsumer,
 } from "./consumers";
 export type { CreatedStudy, OrderPlacedPayload } from "./consumers";
+/** 18-S RS9b T2 — the "report ready" message for a bill paid after release. */
+export {
+  RADIOLOGY_READY_ON_PAYMENT_CONSUMER, READY_ON_PAYMENT_EVENTS, handleSettlementEvent, readyOnPaymentConsumer,
+} from "./ready-on-payment";
+/** 18-S RS9b T1 — the patient's copy held for dues; the owner's unpaid release. */
+export { assertPatientCopyReleasable, patientCopyHold, requestUnpaidRelease } from "./held";
+export type { HoldRelease, PatientCopyHold } from "./held";
 export {
   COMPLETED_VISIT_GRACE_DAYS, DUPLICATE_WINDOW_HOURS, addImagingViews, placeImagingOrder,
 } from "./place";
 export type {
-  PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
+  ExternalReferrerInput, PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
 } from "./place";
+/** 18-S RS2 — the ordering door's read (the consult and the imaging desk). */
+export { ADVISORY_DUPLICATE_DAYS, imagingDoorFor } from "./advised";
+export type {
+  AdvisedImagingLine, ImagingBookEntry, ImagingDoorView, ImagingOrderable, ImagingRecentItem, ImagingVisitOrder,
+} from "./advised";
 export {
   IMAGING_DEFINITION_KINDS, VIEWER_URL_PLACEHOLDERS, activateSeededDefinition, activeDefinition, activeDefinitionRow, draftDefinition,
   parseDefinitionBody, publishDefinition, requestDefinitionPublish,
@@ -63,6 +76,16 @@ export {
   studyGates, studyState, waiveGate,
 } from "./gates";
 export type { GateRow, StudyGate, StudyRow } from "./gates";
+// ── 18-S RS5 — eGFR in the kidney gate, the prep bay's reads, the override request ──
+export {
+  CREATININE_UMOL_PER_MG_DL, EGFR_HOLD_BELOW, EGFR_HYDRATE_BELOW, EGFR_METFORMIN_BELOW,
+  IV_HYDRATION_INSTRUCTION, METFORMIN_NOTE, assessEgfr, ckdEpi2021, renalBand,
+} from "./egfr";
+export type { EgfrAssessment, RenalBand } from "./egfr";
+export { ROOM_GATE_KINDS, isRoomGate, prepBayList, prepStudyView } from "./prep-bay";
+export type { PrepBayRow, PrepGate, PrepStudyView } from "./prep-bay";
+export { applyGrantedGateOverride, decideGateOverride, gateOverrideRequests, requestGateOverride } from "./override-requests";
+export type { GateOverrideDecision, GateOverrideRequest } from "./override-requests";
 export {
   LATE_ENTRY_MINUTES, abortAcquisition, recordAcquired, resolveStudyInstanceUid, startAcquisition,
 } from "./acquisition";
@@ -98,7 +121,42 @@ export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
 export type { ReportContent, ReportRow } from "./reports";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
 export type { ReportTemplate } from "./templates";
+// 18-S RS8a — the reading room: the pre-sign pipeline (a later guard joins PRE_SIGN_CHECKS), the
+// signer block (ruling 4), the governed templates/signatories books and the reading reads.
+export { CRITICAL_TERMS, PRE_SIGN_CHECKS, criticalTermsIn, runPreSignChecks } from "./checks";
+export type { PreSignCheck, PreSignContext, PreSignFinding, PreSignLevel } from "./checks";
+export { dryRunPreSign } from "./reports";
+export type { SignChecksRecord } from "./reports";
+export { signedContentDigest, signerSnapshot } from "./signer";
+export type { SignerBlock } from "./signer";
+// 18-S RS8b — co-sign (the resident signs, the consultant co-signs) and the critical-call ladder.
+export { CONSULTANT_ROLE, RESIDENT_ROLE, cosignReport, signsAsResident } from "./reports";
+export {
+  ACKNOWLEDGED_LOG_HOURS, CRITICAL_RUNG_ROLES, criticalCallBoard, readBackNamesFinding, recordCallAttempt,
+} from "./critical-ladder";
+export type { CriticalCallView, LadderRungView } from "./critical-ladder";
+export type { ResidentSignature } from "./signer";
+export { REPORT_SECTION_KEYS, templatesFor } from "./definitions";
+export type { GovernedReportTemplate, ReportSignatoriesBody, ReportTemplatesBody } from "./definitions";
+export { TAT_MINUTES, readingContext, readingWorklist, reportPrintView, tatClassOf } from "./reading";
+export type { ReadingContext, ReadingRow, ReadingTemplate, ReportPrintView, TatClass } from "./reading";
 export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
+// 18-S RS2b — the machine list, the portable round, and `bedsideStudiesFor`: THE IPD SEAM. The ward
+// screen the IPD plan builds imports it from here; it has no route of its own until then.
+export { imagingDevices } from "./devices";
+export type { ImagingDeviceRow } from "./devices";
+export { bedsideStudiesFor, portableRound } from "./bedside";
+// 18-S RS4 — the machine register's write door and the Setup station's reads.
+export {
+  BOOKED_STUDY_STATUSES, DEVICE_AE_TITLE_RE, RADIOLOGY_DEVICES_MANAGE, SETTABLE_DEVICE_STATUSES,
+  bookedStudiesOn, createImagingDevice, editImagingDevice, isIonisingModality, setImagingDeviceStatus,
+} from "./machines";
+export type { BookedStudyRow, CreateImagingDeviceInput, EditImagingDevicePatch, SettableDeviceStatus } from "./machines";
+export {
+  INVESTIGATION_GST_CATEGORY, RADIOLOGY_RULED_SERVICES, setupBooks, setupPrices, setupRooms,
+} from "./setup";
+export type { BookRow, BookVersionRow, SetupPriceRow, SetupRoomRow } from "./setup";
+export type { BedsideStudyRow } from "./bedside";
 export { DICOM_UID_MAX_LENGTH, STUDY_UID_ROOT, isValidDicomUid, mintStudyInstanceUid } from "./uid";
 export {
   DEVICE_AE_TITLE_ATTRIBUTE, DICOM_MODALITY, MWL_READ, MWL_STATUSES, istDayWindow, mwlExport,
@@ -107,6 +165,12 @@ export {
 export type { MwlExport, MwlRow } from "./mwl";
 export { IMAGES_READ, openImages, renderViewerUrl, studyImageViews } from "./views";
 export type { ImageViewRow } from "./views";
+// 18-S RS12 — the archive's doors in and the PACS inbox.
+export {
+  PACS_INTERFACE, PACS_RECONCILE, attachUnmatched, doseDisagreement, ingestArrival, ingestDoseSr, matchVerdict,
+  openUnmatchedCount, pacsArchiveConfigured, pacsInbox, parseDoseSr, parseOrthancStudy, rejectUnmatched,
+} from "./pacs";
+export type { ArrivalNotice, ArrivalOutcome, DoseConflictRow, DoseSrNotice, InboxRow as PacsInboxRow } from "./pacs"; // RS9 exports its own InboxRow (the doctor's results); the archive's is re-exported by this name
 export type { ReportView, StudyView, WorklistRow, WorklistView } from "./read";
 export type {
   PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,
@@ -115,3 +179,20 @@ export * from "./events";
 // ── ABDM S2 — what radiology releases to the national network (modules/abdm reads only this) ──
 export { signedImagingReportsForRelease } from "./abdm-release";
 export type { ImagingReleaseReport } from "./abdm-release";
+// ── 18-S RS9 — the closed loop: who the treating doctor is, acted-upon, and the north star RS10's floor reads ──
+export { isTreatingDoctor, treatingDoctorsOf } from "./closed-loop";
+export type { InboxRow, TreatingDoctors } from "./closed-loop";
+export { NORTH_STAR_SOURCES, northStar } from "./north-star";
+export type { NorthStar, NorthStarRow, NorthStarSource } from "./north-star";
+// 18-S RS10 — the HOD's escalations on the kernel obligation spine, and the inbox-grant consumer.
+export {
+  ESCALATION_SPECS, IMAGING_ESCALATION_CAUSES, RADIOLOGY_ESCALATION_DEFINITIONS, ensureEscalationDefinitions,
+  escalationCauses, escalationList, sweepImagingEscalations,
+} from "./escalations";
+export type { EscalationCauseRow, EscalationListRow, ImagingEscalationCause } from "./escalations";
+export { RADIOLOGY_APPROVAL_GRANTED_CONSUMER, approvalGrantedConsumer } from "./approval-consumer";
+export {
+  supervisorAccessLog, supervisorApprovals, supervisorEquipment, supervisorFloor, supervisorMoney, supervisorQuality,
+  supervisorRoster,
+} from "./supervisor";
+export type { SupervisorFloor } from "./supervisor";

@@ -3,7 +3,7 @@ import type { WirePatientHit, WireRegisterBody } from "../../lib/patients-api";
 import type { WireDepartment, WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import type { WireFeeQuote, WireIssueInvoiceResult, TenderMode } from "../../lib/billing-api";
 import type { WireRecognition } from "../../lib/membership-api";
-import type { BillLine, DeptQueue, Lane, LogLine, Seat, Stage } from "./model";
+import type { BillLine, DeptQueue, Lane, LogLine, OpenVisit, Seat, Stage } from "./model";
 
 /**
  * ═══ THE PERSON IN HAND ═══
@@ -300,8 +300,16 @@ export type DeskApi = {
   duesPaise: number;
   duesCount: number;
 
-  /** THE MONEY IS TAKEN — settled, credit-extended, or a free visit with nothing to collect. */
+  /** THE MONEY IS TAKEN — settled, credit-extended, a free visit, or a fee already on a live invoice. */
   moneyTaken: boolean;
+
+  /**
+   * DESK-FIXES A/B — today's un-ended visits for the person in hand, each with its fee quote on the
+   * seats that take money (null while loading, and always null on a seat that does not).
+   */
+  openVisits: { visit: OpenVisit; quote: WireFeeQuote | null }[];
+  /** Put one of `openVisits` in hand and go to its bill — opens nothing on the server. */
+  adoptVisit: (encounterId: string) => void;
 
   note: (text: string, kind?: LogLine["kind"]) => void;
   hold: (person: Person) => void;

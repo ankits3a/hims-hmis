@@ -213,7 +213,8 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       batch_mismatch: ["consumption.ts", "grn.ts", "transfers.ts"],
       // "no such batch". The id is wrong, wherever it came from. Parity P4: a return's, a write-off's
       // or a recall's batch — the same wrong id.
-      unknown_batch: ["consumption.ts", "ledger.ts", "recalls.ts", "supplier-returns.ts", "transfers.ts", "write-offs.ts"],
+      // A5: the stock ledger statement's batch filter — the same wrong id.
+      unknown_batch: ["consumption.ts", "ledger.ts", "recalls.ts", "stock-ledger-view.ts", "supplier-returns.ts", "transfers.ts", "write-offs.ts"],
       // Parity P4 — "the store cannot give this much": the ledger's own refusal, and the same number
       // asked before a return or a write-off is written (on hand less reserved, frozen and what other
       // live documents hold), so the person learns it at the draft rather than at dispatch.
@@ -227,17 +228,22 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
       unknown_document: ["consumption.ts", "grn.ts", "ledger.ts", "materials.controller.ts", "supplier-bills.ts", "transfers.ts", "vendors.ts"],
       // "no such item".
       // PHARMACY P6: either item of a merge not found — the same "no such item".
-      unknown_item: ["grn.ts", "item-merge.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts", "supplier-bills.ts"],
+      // PHARMACY GAP A6b: an item on an indent that is not there — the same "no such item".
+      // A5: the item the stock ledger statement is asked for — the same "no such item".
+      unknown_item: ["grn.ts", "indents.ts", "item-merge.ts", "items.ts", "materials.controller.ts", "purchase-orders.ts", "stock-ledger-view.ts", "supplier-bills.ts"],
       // Parity P2 — the act's own grant check, answered as the route guard would (403): counts,
       // adjustments, and the purchase order's raise/read. One meaning: you do not hold the grant.
       // Parity P3: the supplier bill's and the payment run's own grant checks — the same meaning.
       // Parity P4: the return's, the write-off's and the recall's own grant checks — the same meaning.
       // PHARMACY P6: the item merge's own grant check (raise, merge, the duplicates list) — the same meaning.
-      permission_denied: ["adjustments.ts", "counts.ts", "item-merge.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts", "write-offs.ts"],
+      // PHARMACY GAP A6b: the indent's own grant checks (raise, issue, reject, cancel) — the same meaning.
+      // A5: the stock ledger statement's own `materials.stock.read` check — the same meaning.
+      permission_denied: ["adjustments.ts", "counts.ts", "indents.ts", "item-merge.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "stock-ledger-view.ts", "supplier-bills.ts", "supplier-returns.ts", "write-offs.ts"],
       // "say why": a count closed, an order, a bill or a run cancelled, a bill's difference accepted —
       // every one is a free-text reason the act refuses to take empty. One meaning, one remedy.
       // Parity P4: a return cancelled or closed, a credit note cancelled, a recall raised — the same.
-      reason_required: ["counts.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts"],
+      // PHARMACY GAP A6b: an indent rejected or cancelled — the same.
+      reason_required: ["counts.ts", "indents.ts", "payments.ts", "purchase-orders.ts", "recalls.ts", "supplier-bills.ts", "supplier-returns.ts"],
       // "no such vendor": the master's own 404, reached from a bill, a payment and a ledger.
       // Parity P4: the vendor a return is drafted to — the same master's 404.
       unknown_vendor: ["materials.controller.ts", "payments.ts", "supplier-bills.ts", "supplier-returns.ts", "vendors.ts"],

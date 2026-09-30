@@ -78,7 +78,8 @@ export function AdrRegisterView(): React.ReactElement {
       {notice !== null && <p role="status" className="text-sm text-green-700" data-testid="adr-notice">{notice}</p>}
       {q.data !== undefined && items.length === 0 && <p className="text-sm text-muted-foreground" data-testid="adr-empty">{t("pharmacyOffice.adr.empty")}</p>}
       {items.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          {/* One column below lg is minmax(0,1fr), not `auto`: a truncated suspect line must not size the page wider than a phone. */}
           <ul className="divide-y rounded border" data-testid="adr-list">
             {items.map((r) => {
               const pill = statePill(r, t);
@@ -235,14 +236,25 @@ type SuspectDraft = { saltId: string | null; saltName: string | null; name: stri
 const blankSuspect = (): SuspectDraft => ({ saltId: null, saltName: null, name: "", batchNo: "", dose: "", route: "", frequency: "", startDate: "", stopDate: "" });
 const orNull = (s: string): string | null => (s.trim() === "" ? null : s.trim());
 
-export function AdrRecordForm({ onDone }: { onDone: (no: string, id: string) => void }): React.ReactElement {
+/**
+ * Stage D1 deferral — the pharmacy desk opens this sheet for the patient in hand, and, from a line, with
+ * that line's medicine (and its batch, once picked) as the first suspect. Everything stays editable.
+ */
+export type AdrPrefill = {
+  patient: Pick<WirePatientHit, "id" | "uhid" | "name">;
+  suspect?: { name: string; batchNo: string | null };
+};
+
+export function AdrRecordForm({ prefill, onDone }: { prefill?: AdrPrefill; onDone: (no: string, id: string) => void }): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [key] = useState(() => newIdempotencyKey());
   const [patientQ, setPatientQ] = useState("");
   const [hits, setHits] = useState<WirePatientHit[]>([]);
-  const [patient, setPatient] = useState<WirePatientHit | null>(null);
-  const [suspects, setSuspects] = useState<SuspectDraft[]>([blankSuspect()]);
+  const [patient, setPatient] = useState<Pick<WirePatientHit, "id" | "uhid" | "name"> | null>(prefill?.patient ?? null);
+  const [suspects, setSuspects] = useState<SuspectDraft[]>(() => [
+    prefill?.suspect === undefined ? blankSuspect() : { ...blankSuspect(), name: prefill.suspect.name, batchNo: prefill.suspect.batchNo ?? "" },
+  ]);
   const [reaction, setReaction] = useState("");
   const [onsetDate, setOnset] = useState(todayIso());
   const [recoveryDate, setRecovery] = useState("");

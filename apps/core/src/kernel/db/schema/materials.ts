@@ -710,6 +710,65 @@ export const transferLines = pgTable(
   ],
 );
 
+/**
+ * PHARMACY GAP A6b — AN INDENT: a sub-store (a ward, the OT, a pharmacy counter) asking a supplying
+ * store for stock. It moves nothing. The supplying store answers it by ISSUING an ordinary transfer
+ * (`issueStock`, FEFO, through `IN-TRANSIT`) whose id it records here, or by rejecting it with a
+ * reason; the requester may cancel it while it is still asked. The receipt is the transfer's own.
+ *
+ *   requested → issued (transfer_id) | rejected (reject_reason) | cancelled (cancel_reason)
+ *
+ * `indent_no` from `EPISODE_SERIES.store_indent` (`MIN2609290001`). The header is immutable but for
+ * that one transition, and a line only takes its `qty_issued`, once (a trigger in the migration).
+ */
+export const storeIndents = pgTable(
+  "store_indents",
+  {
+    id: text("id").primaryKey(),
+    indentNo: text("indent_no").notNull(),
+    fromResourceId: text("from_resource_id").notNull().references(() => resources.id),
+    toResourceId: text("to_resource_id").notNull().references(() => resources.id),
+    status: text("status").notNull().default("requested"),
+    note: text("note"),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    rejectReason: text("reject_reason"),
+    cancelReason: text("cancel_reason"),
+    transferId: text("transfer_id").references(() => transfers.id),
+  },
+  (t) => [
+    uniqueIndex("store_indents_indent_no_ux").on(t.indentNo),
+    index("store_indents_to_idx").on(t.toResourceId, t.status),
+    index("store_indents_from_idx").on(t.fromResourceId, t.status),
+    check("store_indents_status_ck", sql`${t.status} in ('requested', 'issued', 'rejected', 'cancelled')`),
+    check("store_indents_stores_ck", sql`${t.fromResourceId} <> ${t.toResourceId}`),
+    check("store_indents_issued_ck", sql`(${t.status} = 'issued') = (${t.transferId} is not null)`),
+    check("store_indents_rejected_ck", sql`${t.status} <> 'rejected' or ${t.rejectReason} is not null`),
+    check("store_indents_cancelled_ck", sql`${t.status} <> 'cancelled' or ${t.cancelReason} is not null`),
+    check("store_indents_decided_ck", sql`(${t.status} = 'requested') = (${t.decidedAt} is null) and (${t.decidedAt} is null) = (${t.decidedBy} is null)`),
+  ],
+);
+
+/** One item asked for on an indent, in base units. `qty_issued` is NULL until the issue, and may be short or 0. */
+export const storeIndentLines = pgTable(
+  "store_indent_lines",
+  {
+    id: text("id").primaryKey(),
+    indentId: text("indent_id").notNull().references(() => storeIndents.id),
+    lineIdx: integer("line_idx").notNull(),
+    itemId: text("item_id").notNull().references(() => items.id),
+    qtyBase: integer("qty_base").notNull(),
+    qtyIssued: integer("qty_issued"),
+  },
+  (t) => [
+    uniqueIndex("store_indent_lines_idx_ux").on(t.indentId, t.lineIdx),
+    uniqueIndex("store_indent_lines_item_ux").on(t.indentId, t.itemId),
+    check("store_indent_lines_qty_ck", sql`${t.qtyBase} > 0 and (${t.qtyIssued} is null or ${t.qtyIssued} >= 0)`),
+  ],
+);
+
 // ═══════════════════════════ BUYING (PHARMACY PARITY P2) ═══════════════════════════
 
 /**
@@ -1382,7 +1441,8 @@ export const supplierReturns = pgTable(
  * One batch leaving one store on a return. `rate_paise` is PER BASE UNIT before GST — the GRN's cost
  * for that batch (`stock_batches.landed_cost_paise`) unless a person changed it on the draft;
  * `taxable = qty_base × rate`, GST half-up per line, split as the header says. `reason`: `expired`,
- * `near_expiry`, `damaged`, `recalled`. `ledger_entry_id` is the `return` row dispatch wrote.
+ * `near_expiry`, `damaged`, `recalled`. `ledger_entry_id` is the `return` row dispatch wrote. `note`
+ * (gap-closure A5) is the person's words for the line on a manual return — what was damaged and how.
  */
 export const supplierReturnLines = pgTable(
   "supplier_return_lines",
@@ -1402,6 +1462,8 @@ export const supplierReturnLines = pgTable(
     igstPaise: bigint("igst_paise", { mode: "number" }).notNull().default(0),
     hsnCode: text("hsn_code"),
     ledgerEntryId: text("ledger_entry_id"),
+    /** A5 — the person's words for this line (why it goes back). Nullable: the agent's and the recall's drafts carry none. */
+    note: text("note"),
   },
   (t) => [
     uniqueIndex("supplier_return_lines_batch_ux").on(t.returnId, t.batchId, t.storeResourceId),

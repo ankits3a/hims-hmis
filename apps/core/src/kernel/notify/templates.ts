@@ -66,6 +66,32 @@ function formatSlotTime(params: Record<string, unknown>): string {
 
 const expiresAtSlotStart = (params: Record<string, unknown>): Date => new Date(paramStr(params, "slotStart"));
 
+// 18-S RS3 T4 — the imaging slot's DAY, from the full instant (the OPD templates carry a separate
+// `serviceDate`; an imaging booking carries only its instant).
+function formatSlotDay(params: Record<string, unknown>): string {
+  const d = new Date(paramStr(params, "slotStart"));
+  return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: IST_TIME_ZONE }).format(d);
+}
+
+// 18-S RS3 T4 — the prep keys `modules/radiology/prep.ts` derives, as instructions. Kept here rather
+// than imported (GC12: this module imports no module); an unknown key renders nothing.
+const IMAGING_PREP_TEXT: Record<string, Record<"en" | "hi", string>> = {
+  nil_by_mouth_4h: { en: "nothing to eat for 4 hours (water is fine until 2 hours before).", hi: "4 घंटे पहले से कुछ न खाएँ (2 घंटे पहले तक पानी पी सकते हैं)।" },
+  creatinine_report: { en: "bring a creatinine report from the last 30 days, if you have one.", hi: "पिछले 30 दिनों की क्रिएटिनिन रिपोर्ट हो तो साथ लाएँ।" },
+  fasting_6h: { en: "nothing to eat for 6 hours.", hi: "6 घंटे पहले से कुछ न खाएँ।" },
+  full_bladder: { en: "drink 4-5 glasses of water an hour before and do not pass urine.", hi: "एक घंटा पहले 4-5 गिलास पानी पिएँ और पेशाब न करें।" },
+  metal_and_implants: { en: "tell the desk about any pacemaker, implant or metal in the body.", hi: "पेसमेकर, इम्प्लांट या शरीर में किसी धातु के बारे में डेस्क को बताएँ।" },
+  id_and_referral: { en: "bring a photo ID and the doctor's referral slip.", hi: "फोटो पहचान पत्र और डॉक्टर की पर्ची साथ लाएँ।" },
+};
+
+function imagingPrepLines(params: Record<string, unknown>, lang: "en" | "hi"): string {
+  const keys = Array.isArray(params.prep) ? params.prep : [];
+  return keys
+    .map((k) => (typeof k === "string" ? IMAGING_PREP_TEXT[k]?.[lang] : undefined))
+    .filter((line): line is string => line !== undefined)
+    .join(" ");
+}
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
  * PHARMACY P6 — THE PHARMACY'S TWO PATIENT MESSAGES, AND WHAT THEY MAY NOT SAY
@@ -321,6 +347,45 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
         `Your imaging report for ${paramStr(params, "orderNo")} is ready. Please collect it from the hospital reception. Bring this message and a photo ID.`,
       hi: (params) =>
         `${paramStr(params, "orderNo")} की आपकी इमेजिंग रिपोर्ट तैयार है। कृपया इसे अस्पताल के रिसेप्शन से प्राप्त करें। यह संदेश और एक फोटो पहचान पत्र साथ लाएँ।`,
+    },
+  },
+
+  /**
+   * 18-S RS3 T4 — THE IMAGING DESK'S APPOINTMENT AND PREP MESSAGE. Producer: `scheduleStudy` and
+   * `rescheduleStudy` (modules/radiology/schedule.ts), in the booking's own transaction; a move,
+   * a no-show or a cancel expires the queued one by ref (`imaging_study`, the study id).
+   *
+   * It names the ACCESSION (the token on the slip), the day and the time, and the prep as
+   * instructions — never the study, for `imaging_report_ready`'s reason: "your obstetric
+   * ultrasound" on a household phone is a notice about a pregnancy. The producer sends NO prep for
+   * a PCPNDT study, because "a full bladder" would say what the scan is. Prep arrives as KEYS
+   * (`modules/radiology/prep.ts`); an unknown key renders nothing rather than a guess. Dies at the
+   * slot, like the OPD confirmation. `not_submitted` at Meta: this row is RECORDED, and the
+   * WhatsApp provider that would send it is not on main.
+   */
+  imaging_appointment_booked: {
+    key: "imaging_appointment_booked",
+    version: 1,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    waApprovalStatus: "not_submitted",
+    /** The patient left the counter holding the slip with the same slot and prep on it. */
+    deskFlagOnFailure: false,
+    expiresAt: (params) => expiresAtSlotStart(params),
+    render: {
+      en: (params) => {
+        const prep = imagingPrepLines(params, "en");
+        return `Your imaging appointment ${paramStr(params, "accessionNo")} is on ${formatSlotDay(params)} at ${formatSlotTime(params)}.`
+          + (prep === "" ? "" : ` Before you come: ${prep}`)
+          + " Please bring this message and a photo ID.";
+      },
+      hi: (params) => {
+        const prep = imagingPrepLines(params, "hi");
+        return `आपकी इमेजिंग जांच ${paramStr(params, "accessionNo")} ${formatSlotDay(params)} को ${formatSlotTime(params)} बजे है।`
+          + (prep === "" ? "" : ` आने से पहले: ${prep}`)
+          + " कृपया यह संदेश और एक फोटो पहचान पत्र साथ लाएँ।";
+      },
     },
   },
 

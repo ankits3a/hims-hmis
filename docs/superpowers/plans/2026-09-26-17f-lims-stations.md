@@ -40,8 +40,10 @@ Quoted as given, 25–26 Sep 2026. Industry exceptions marked DECIDED follow the
     - the signing pathologist is named in full: name, MD (Pathology), designation, Doctor ID, e-signature time, QR;
     - the referring doctor prints as Doctor ID + department (the 06 Sep ruling);
     - no auto-verification; batch signing of all-normal reports is allowed, logged per report.
-12. **A held patient copy is released unpaid ONLY by the billing manager, and the dues stay on the account**
-    (26 Sep). The doctor's copy is never held.
+12. ~~A held patient copy is released unpaid ONLY by the billing manager~~ **SUPERSEDED 28 Sep** by the owner's
+    credit ruling (gap A3, #347): "nobody can issue credit except owner". Releasing a report unpaid is credit, so
+    the **owner** approves (`lab_release_unpaid_owner`). The dues stay on the account, and the doctor's copy is
+    never held.
 13. **The signing pathologist's council registration number stays on the printed lab report** (26 Sep, on this plan's
     PR), alongside the ruling-11 fields. This is the lab-report exception to the 06 Sep "Doctor ID only" print rule,
     which still governs the referring doctor.
@@ -335,6 +337,28 @@ not on main. Nothing there supersedes ROADMAP v2 until it merges. Every fact bel
     and data, or ship behind a kill switch and stay off in production until v0.2.
 - **Later, not 17-F:** the consult room as a sixth ordering seat (17c-ii, `lab_specimens.room_id`) and microbiology
   (17-M). Both wait for the lab's G6 per ROADMAP v2.
+
+## Findings from the §13 walk (28 Sep, synthetic database)
+
+The walk is recorded in `docs/runbooks/lab-go-live.md` under "The §13 walk on the same database". Each finding
+belongs to a phase. The first two are too dangerous to wait for their phase.
+
+| # | Finding | Where it goes |
+|---|---|---|
+| 1 | **SAFETY:** a critical call closes on a wrong read-back (`criticals.ts` checks non-empty, not the value) | **fix now**, ahead of F6. The read-back must carry the result's number, else `readback_mismatch` |
+| 2 | **A held report cannot be released by anyone:** the counter lacks `lab.reports.release_unpaid`, and the billing manager lacks the screen | **fix now**. The owner's approval is the control; whoever acts at the counter with a granted, order-bound approval id must be able to complete it |
+| 3 | Save & complete never lights on a panel with a formula analyte; a typed formula value is refused and aborts the batch | F4 (bench) |
+| 4 | The wristband scan is held only in the browser; reopening mid-draw downgrades the draw | F3 (collection) |
+| 5 | A pathologist cannot start a result (workflow roles `lab_technician`, `lab_bridge`), so the night statement in §13 3b fails | F4, with F6's night cover |
+| 6 | Verify cannot move a rerun choice before signing | F7 |
+| 7 | The lab desk's registration has no near-duplicate override | F2, which removes the door (ruling 6) |
+| 8 | Raw UTC timestamps on the critical call and on the printed report | F7 (print), F6 (call) |
+| 9 | The report prints an invented exact date of birth for an age-only registration | F7 (print ruling 11 work) |
+| 10 | A patient with no phone gets notices queued for ever; the register says "notice queued" | F8 |
+| 11 | Four decimals on the bench and verify screens | F4, F7 |
+| 12 | The station shell has no language switch | F1 follow-up |
+| 13 | The environment banner covers full-viewport headers on non-production | F1 follow-up (Desk One shares it) |
+| 14 | "KFT" does not find RFT | F2 (catalogue synonyms) |
 
 ## DECIDED (open to owner objection)
 

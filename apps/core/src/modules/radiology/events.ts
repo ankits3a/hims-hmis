@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
+import { IMAGING_ACTED_OUTCOMES, IMAGING_COLLECTOR_KINDS, IMAGING_MEDIA_KINDS } from "../../kernel/db/schema/radiology";
+import { BEDSIDE_LOCATION_MAX_LENGTH } from "./kinds";
 
 /**
  * PLAN 18a T2 / §4.2 — the radiology module's event surface. `entity.verb_past`, module carried
@@ -162,10 +164,120 @@ export const imagingOutsideStudyRegistered = defineEvent("imaging.outside_study_
 export const imagingCriticalOverdue = defineEvent("imaging.critical_overdue", MODULE, z.object({
   criticalId: id, reportId: id, studyId: id,
   category: z.enum(["red", "orange", "yellow"]), overdueMin: z.number().int().positive(),
+  /** 18-S RS8b — the ladder rung the call escalated to (treating_doctor · unit_head · duty_rmo · hod). */
+  rung: z.enum(["treating_doctor", "unit_head", "duty_rmo", "hod"]).optional(),
 }));
 
 export const imagingReportUnread = defineEvent("imaging.report_unread", MODULE, z.object({
   reportId: id, studyId: id, unreadHours: z.number().int().nonnegative(),
+}));
+
+/**
+ * ═══ 18-S RS2b — THE ORDER ASKED FOR THE MACHINE TO COME TO THE BED ═══
+ *
+ * The ward door's core half, built ahead of IPD. `placeImagingOrder` appends this, in the ORDER's
+ * transaction, when an item carries a `bedsideLocation`; the `radiology.order_placed` consumer reads
+ * it back by the order id and copies each place onto the study it creates.
+ *
+ * **Why an event rather than a column.** The study does not exist at placement — the consumer makes
+ * it — and `order_items` is the kernel's envelope, with no field a department may write its own
+ * facts into. A radiology side table would be a migration for one string per item. The event log
+ * is already this module's to append to, is visible to the consumer because it commits with the
+ * order (`order.placed` is dispatched after the same commit), and is itself the record a later
+ * question needs: *who asked for the trolley to go to bed 12, and when*.
+ *
+ * The payload carries the place, which is a ward and a bed and not a finding; no name.
+ */
+export const imagingBedsideRequested = defineEvent("imaging.bedside_requested", MODULE, z.object({
+  orderId: id,
+  items: z.array(z.object({ orderItemId: id, bedsideLocation: z.string().min(1).max(BEDSIDE_LOCATION_MAX_LENGTH) })).min(1),
+}));
+
+/**
+ * 18-S RS3 — a booking was moved, marked a no-show or cancelled at the desk, and WHY.
+ *
+ * `imaging.study_scheduled` stays the MWL's feed and its payload stays frozen; this is the audit
+ * answer to "who changed this booking, from what, to what, and for what reason". `reason` is the
+ * desk's own words and never a finding; `to*` is present only on a move.
+ */
+export const imagingBookingChanged = defineEvent("imaging.booking_changed", MODULE, z.object({
+  studyId: id,
+  act: z.enum(["rescheduled", "no_show", "cancelled"]),
+  reason: z.string().min(1).max(400),
+  fromDeviceResourceId: id.nullable(),
+  fromScheduledAt: z.string().min(1).nullable(),
+  toDeviceResourceId: id.optional(),
+  toScheduledAt: z.string().min(1).optional(),
+}));
+
+/**
+ * 18-S RS6 — an exposure was REPEATED at the console, and why. The reject analysis the Rooms station
+ * reads (repeat rate per machine and technologist, reasons) is this event's projection; the money
+ * half is the `repeat_no_charge` bill decision raised beside it. The reason is a CODE from a closed
+ * list — never free text, never a finding.
+ */
+export const REPEAT_REASON_CODES = ["positioning", "motion", "exposure", "artefact", "equipment"] as const;
+export type RepeatReasonCode = (typeof REPEAT_REASON_CODES)[number];
+
+export const imagingExposureRepeated = defineEvent("imaging.exposure_repeated", MODULE, z.object({
+  studyId: id,
+  deviceResourceId: id,
+  studyTypeCode: z.string().min(1),
+  reason: z.enum(REPEAT_REASON_CODES),
+}));
+
+/**
+ * 18-S RS12 — the archive holds this study's images: matched by accession (or UID) AND the UHID,
+ * or attached at Send from a held notice. Emitted ONCE per study, on the first arrival — a later
+ * notice for the same UID refreshes the counts and emits nothing. Ids and counts only.
+ */
+export const imagingImagesArrived = defineEvent("imaging.images_arrived", MODULE, z.object({
+  studyId: id,
+  studyInstanceUid: z.string().min(1),
+  instanceCount: z.number().int().min(0),
+  via: z.enum(["notice", "send", "reconciled"]),
+}));
+
+/**
+ * 18-S RS12 — a human resolved an archive study no order could claim: attached to a study (the
+ * patient is the study's) or rejected (a phantom, a test, a duplicate). The reason is typed and
+ * kept on the inbox row, not here — it may name a patient.
+ */
+export const imagingImagesReconciled = defineEvent("imaging.images_reconciled", MODULE, z.object({
+  unmatchedId: id,
+  outcome: z.enum(["attached", "rejected"]),
+  studyId: id.nullable(),
+  unmatchedReason: z.string().min(1),
+}));
+
+/**
+ * ═══ 18-S RS9 — THE LOOP CLOSES, AND THE REPORT LEAVES THE BUILDING ═══
+ *
+ * `report_acted_upon` is the north-star's stop: the treating doctor said what the report changed.
+ * The payload carries the OUTCOME CODE and never the doctor's line (a free-text clinical sentence,
+ * the header's rule). `report_handed_over` carries the collector's TYPE, never the name or the ID
+ * digits. `media_requested` is a film or CD asked for at the window (ruling 1).
+ */
+export const imagingReportActedUpon = defineEvent("imaging.report_acted_upon", MODULE, z.object({
+  reportId: id, studyId: id, version: z.number().int().positive(), outcome: z.enum(IMAGING_ACTED_OUTCOMES),
+}));
+export const imagingReportHandedOver = defineEvent("imaging.report_handed_over", MODULE, z.object({
+  handoverId: id, reportId: id, studyId: id,
+  collectorKind: z.enum(IMAGING_COLLECTOR_KINDS),
+  filmSheets: z.number().int().nonnegative(), cd: z.boolean(),
+}));
+export const imagingMediaRequested = defineEvent("imaging.media_requested", MODULE, z.object({
+  requestId: id, studyId: id, kind: z.enum(IMAGING_MEDIA_KINDS), quantity: z.number().int().positive(), included: z.boolean(),
+}));
+
+/**
+ * 18-S RS9b — a HELD patient copy left the window on the owner's granted release. The audit of the
+ * decision itself is the approval (requester, reason, the owner's note); this is the fact that the
+ * grant was USED, and how much was still due when it was. The dues stay on the account.
+ */
+export const imagingReportReleasedUnpaid = defineEvent("imaging.report_released_unpaid", MODULE, z.object({
+  handoverId: id, reportId: id, studyId: id, approvalId: id,
+  outstandingPaise: z.number().int().nonnegative(),
 }));
 
 /** Every event this module declares, for the catalogue parity test. */
@@ -183,4 +295,13 @@ export const RADIOLOGY_EVENTS = [
   imagingOutsideStudyRegistered,
   imagingCriticalOverdue,
   imagingReportUnread,
+  imagingBedsideRequested,
+  imagingBookingChanged,
+  imagingExposureRepeated,
+  imagingImagesArrived,
+  imagingImagesReconciled,
+  imagingReportActedUpon,
+  imagingReportHandedOver,
+  imagingMediaRequested,
+  imagingReportReleasedUnpaid,
 ] as const;

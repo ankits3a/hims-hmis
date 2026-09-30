@@ -79,6 +79,16 @@ beforeEach(() => { navigate.mockReset(); });
 afterEach(() => { setToken(null); localStorage.clear(); vi.unstubAllGlobals(); });
 
 describe("the waiting list says what is asked, in plain words", () => {
+  // UX-AUDIT 2026-09-28 · BOARD (merge review) — a merge card opens the two records on /merge.
+  it("BOARD: a patient-merge card links to Merge review for that request; other cards do not", async () => {
+    const MERGE = { ...REFUND, id: "ap-9", typeKey: "patient_merge", subjectType: "patient_merge_request", subjectId: "mr-9", amountPaise: null, cumulativePatientPaise: null };
+    mount({ "GET /api/approvals": list([MERGE, DISCOUNT]) });
+    const link = await screen.findByTestId("open-merge-review");
+    expect(link).toHaveAttribute("href", "/merge?request=mr-9");
+    expect(link).toHaveTextContent("Compare the two records on Merge review");
+    expect(screen.getAllByTestId("open-merge-review")).toHaveLength(1);
+  });
+
   it("amount in rupees, the patient, who asked, how long ago — and no machine key or id", async () => {
     mount({ "GET /api/approvals": list([REFUND]) });
 
@@ -95,6 +105,55 @@ describe("the waiting list says what is asked, in plain words", () => {
     expect(screen.queryByText(/inv-1/)).not.toBeInTheDocument();
     // The waiting count is on the tab.
     expect(screen.getByRole("tab", { name: /Waiting for you\s*1/ })).toBeInTheDocument();
+  });
+
+  it("WALK FINDING 2026-09-29 — a near-expiry request names the GRN, the supplier and each short-dated line: batch, expiry, days left, quantity", async () => {
+    const NEAR = {
+      ...REFUND, id: "ap-ne", typeKey: "materials_near_expiry_acceptance", urgencyClass: "routine", requesterName: "Ravi Pharm Two",
+      subjectType: "grn", subjectId: "grn-1", patientId: null, patient: null, amountPaise: null, cumulativePatientPaise: null, requestNote: null,
+    };
+    mount({
+      "GET /api/approvals": list([NEAR]),
+      "GET /api/materials/grns/grn-1/near-expiry": { status: 200, body: {
+        grnId: "grn-1", grnNo: "GRN-2609-0012", vendorName: "Acme Pharma Pvt Ltd", challanNo: "CH/88", invoiceNo: "INV/77",
+        lines: [
+          { itemCode: "AZEE500", itemName: "Azee 500 tablet", batchNo: "AZ-9", expiryDate: "2026-12-05", daysLeft: 67, qtyBase: 300, baseUom: "tablet" },
+          { itemCode: "DOLO650", itemName: "Dolo 650 tablet", batchNo: "DL-2", expiryDate: "2027-01-31", daysLeft: 124, qtyBase: 150, baseUom: "tablet" },
+        ],
+      } },
+    });
+    const card = await screen.findByRole("article", { name: "Accept a delivery of items that expire soon" });
+    const what = await within(card).findByTestId("near-expiry-ap-ne");
+    expect(what).toHaveTextContent("GRN-2609-0012");
+    expect(what).toHaveTextContent("Acme Pharma Pvt Ltd");
+    expect(what).toHaveTextContent("INV/77");
+    const rows = within(what).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Azee 500 tablet");
+    expect(rows[0]).toHaveTextContent("AZ-9");
+    expect(rows[0]).toHaveTextContent("5 Dec 2026");
+    expect(rows[0]).toHaveTextContent("67 days left");
+    expect(rows[0]).toHaveTextContent("300 tablet");
+    expect(rows[1]).toHaveTextContent("Dolo 650 tablet");
+  });
+
+  it("WALK FINDING 2026-09-29 — a supplier bank change names the supplier and the masked account it moves from and to", async () => {
+    const BANK = {
+      ...REFUND, id: "ap-bk", typeKey: "materials_vendor_bank_change", urgencyClass: "routine",
+      subjectType: "vendor_bank_change", subjectId: "bc-1", payeeId: "v-1", patientId: null, patient: null, amountPaise: null, cumulativePatientPaise: null, requestNote: null,
+    };
+    mount({
+      "GET /api/approvals": list([BANK]),
+      "GET /api/materials/vendors/v-1": { status: 200, body: { vendor: { id: "v-1", code: "ACME", legalName: "Acme Pharma Pvt Ltd" }, documents: [] } },
+      "GET /api/materials/vendors/v-1/bank-changes": { status: 200, body: { changes: [
+        { id: "bc-0", vendorId: "v-1", oldMasked: null, newMasked: "••••1234", status: "applied" },
+        { id: "bc-1", vendorId: "v-1", oldMasked: "••••1234", newMasked: "••••9876", status: "pending" },
+      ] } },
+    });
+    const card = await screen.findByRole("article", { name: "Change the bank account a supplier is paid into" });
+    const what = await within(card).findByTestId("bank-change-ap-bk");
+    expect(what).toHaveTextContent("Acme Pharma Pvt Ltd");
+    expect(what).toHaveTextContent("••••1234 → ••••9876");
   });
 
   it("a routine request carries no urgency badge — urgency is shown only when it matters", async () => {
@@ -351,7 +410,9 @@ describe("the words behind the screen", () => {
     "lab_release_unpaid", "patient_merge", "patient_unmerge", "materials_stock_adjustment",
     "materials_near_expiry_acceptance", "materials_vendor_bank_change", "materials_po_approval", "materials_po_approval_owner", "materials_payment_run_approval",
     "imaging_definition_publish",
+    "imaging_release_unpaid_owner", // 18-S RS9b — a held imaging report released unpaid (the owner's)
     "ot_definition_publish", "ot_deposit_exception", "tariff_revision", "membership_grace_honor",
+    "pharmacy_restricted_antimicrobial", // pharmacy stage D5 — the antimicrobial steward's
   ];
 
   it("knows every type the server registers", () => {

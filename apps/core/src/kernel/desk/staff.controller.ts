@@ -264,10 +264,11 @@ export class StaffController {
     /* T0 — read the baseline only where it is consumed; see `needsBaseline` and `DeskController`. */
     const b = needsBaseline(period) ? baselineWindowFor(period, today) : null;
     const [days, baseline] = await Promise.all([
-      factsForWindow(this.db, providers, subject, w.from, w.to, today, now),
+      // the live today is read AS the supervisor (blind count, owner ruling 2026-09-28 — `factsForWindow`)
+      factsForWindow(this.db, providers, subject, w.from, w.to, today, now, reader),
       b === null
         ? Promise.resolve([])
-        : factsForWindow(this.db, providers, subject, b.from, b.to, today, now),
+        : factsForWindow(this.db, providers, subject, b.from, b.to, today, now, reader),
     ]);
     const todayFacts = days.find((d) => d.day === today);
     return {

@@ -932,13 +932,14 @@ function OnwardActions({ patientId }: { patientId: string }): React.ReactElement
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { takePatient } = usePatientInHand();
-  const go = (to: "/opd/desk" | "/opd/appointments" | "/billing"): void => {
+  const go = (to: "/counter" | "/opd/appointments" | "/billing"): void => {
     takePatient(patientId);
     void navigate({ to });
   };
   return (
     <div className="no-print flex flex-wrap gap-2" data-testid="onward-actions">
-      <button className="pri" data-testid="onward-open-visit" onClick={() => { go("/opd/desk"); }}>
+      {/* UX-AUDIT 2026-09-28 — visits open at Desk One; `/opd/desk` is the floor's queue desk now. */}
+      <button className="pri" data-testid="onward-open-visit" onClick={() => { go("/counter"); }}>
         {t("patientDetail.onward.openVisit")}
       </button>
       <button className="sec" data-testid="onward-book" onClick={() => { go("/opd/appointments"); }}>

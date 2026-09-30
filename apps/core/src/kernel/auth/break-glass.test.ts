@@ -43,4 +43,22 @@ describe("break-glass", () => {
     await recordReview(db, grantId, { type: "user", id: "reviewer-1" }, "justified");
     expect(await pendingReviews(db)).toHaveLength(0);
   });
+
+  // DECIDED 2026-09-28 (standard separation of duties): nobody reviews their own break-glass. The
+  // Medical Superintendent now holds both `auth.break_glass.use` and `.review`, so the one person
+  // who can open the sealed-merge door could otherwise close its review too.
+  it("refuses a self-review as an SoD violation, audits the attempt, and leaves the grant pending", async () => {
+    const { grantId } = await useBreakGlass(db, cfg, er, { patientId: "P1", reason: "r" });
+    await expect(recordReview(db, grantId, er, "fine by me")).rejects.toMatchObject({
+      name: "SodViolationError", pairKey: "break_glass_user_reviewer",
+    });
+    expect(await pendingReviews(db)).toHaveLength(1);
+    const blocked = await db.select().from(events).where(eq(events.name, "sod.violation_blocked"));
+    expect(blocked).toHaveLength(1);
+    expect((blocked[0]!.payload as { pairKey: string; actorAId: string }).pairKey).toBe("break_glass_user_reviewer");
+    expect((blocked[0]!.payload as { actorAId: string }).actorAId).toBe(er.id);
+    // A different person may still review it.
+    await recordReview(db, grantId, { type: "user", id: "reviewer-1" }, "justified");
+    expect(await pendingReviews(db)).toHaveLength(0);
+  });
 });

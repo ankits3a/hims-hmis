@@ -75,7 +75,7 @@ describe("the Schedule H1 register (pharmacy P9)", () => {
       // P19 — a counter row: the prescriber practises here, so no address is copied.
       prescriberAddress: null,
       source: "counter",
-      drugName: "Azee 500 500 mg tablet",
+      drugName: "Azee 500 tablet",
       batchNo: "AZ-1",
       qtyBase: 3,
       unit: "tablet",
@@ -96,7 +96,7 @@ describe("the Schedule H1 register (pharmacy P9)", () => {
 
     const [row] = (await h1Register(db, fx.pharmacist.actor, { from: "2026-08-01", to: "2026-08-31" })).rows;
 
-    expect(row).toMatchObject({ patientName: "Patient R-17", patientAddress: null, restricted: true, drugName: "Azee 500 500 mg tablet" });
+    expect(row).toMatchObject({ patientName: "Patient R-17", patientAddress: null, restricted: true, drugName: "Azee 500 tablet" });
     const [logged] = await accessRows();
     expect(logged?.sealed).toBe(true);
 

@@ -22,7 +22,9 @@ import { collectDeskProviders } from "../desk/registry";
 import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
 import { runRefillReminders, sweepExpiredPicks } from "../../modules/pharmacy";
-import { sweepCriticalChaser, sweepUnreadWatchman } from "../../modules/radiology";
+import { sweepCriticalChaser, sweepImagingEscalations, sweepUnreadWatchman } from "../../modules/radiology";
+import { sweepOverdueQa } from "../../modules/aerb";
+import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 import { runMonthlyProposals, sweepRosterWindows } from "../../modules/roster";
@@ -539,5 +541,30 @@ export function registerAllJobs(
     name: "runRefillReminders",
     dailyIst: REFILL_REMINDERS_IST,
     run: async (now) => { await runRefillReminders(db, now); },
+  });
+  /**
+   * 18-S RS11 T3 — THE OVERDUE-QA SWEEP. A machine whose QA is past due (the record's next-due
+   * date, or performed + 2 years — owner ruling 5) goes to `qa_blocked` through the same writer a
+   * failed QA uses; only a passing QA lifts it (`aerb/qa.ts`). HOURLY rather than daily, because it
+   * blocks only an `available` machine — one with a patient on the table at 00:00 is caught the
+   * next hour it is free, not the next day. Idempotent: a blocked machine is not touched again.
+   * The device kind's vocabulary comes from the installed registry, the controller's own source.
+   */
+  const resourceKinds = collectResourceKinds(registry);
+  scheduler.register({
+    name: "sweepOverdueQa",
+    every: 3_600_000,
+    run: async (now) => { await sweepOverdueQa(db, resourceKinds, now); },
+  });
+  /**
+   * 18-S RS10 T2 — THE HOD'S ESCALATIONS, ON THE OBLIGATION SPINE. Every minute (the shortest cause
+   * is a 15-minute STAT clock), recompute the radiology causes, start a kernel obligation for a new
+   * one and resolve one whose cause cleared; the kernel's own timers, ladder and alerts do the rest.
+   * Idempotent and serialised by an advisory lock (`modules/radiology/escalations.ts`).
+   */
+  scheduler.register({
+    name: "sweepImagingEscalations",
+    every: 60_000,
+    run: async (now) => { await sweepImagingEscalations(db, now); },
   });
 }

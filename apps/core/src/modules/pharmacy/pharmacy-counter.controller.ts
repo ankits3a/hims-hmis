@@ -24,6 +24,8 @@ import { checkPickScan } from "./scan";
 import { cancelDispense, checkedAlternativesFor, declineLine, placementsFor, precheckTicket, verifyDispense, writtenQuoteFor } from "./verify";
 import { cancelBilledDispense } from "./refund";
 import { authorisationDetail, decideAuthorisation, requestAuthorisation } from "./authorisations";
+import { askSteward, stewardRequestDetail, stewardStates } from "./antimicrobial";
+import type { StewardLineState, StewardRequestDetail, StewardVerdict } from "./antimicrobial";
 import type { AuthorisationDetail } from "./authorisations";
 import type { AuthorisationRow } from "./authorisation-reads";
 import { reorderAdvice } from "./replenishment";
@@ -31,8 +33,8 @@ import { acceptReturn } from "./returns";
 import { h1Register } from "./registers";
 import { LEAKAGE_STORE_CODES, pharmacyLeakage } from "./leakage";
 import type { LeakageReport } from "./leakage";
-import { counterSummary } from "./summary";
-import type { CounterSummary } from "./summary";
+import { counterSummaryFor } from "./summary";
+import type { CounterSummaryView } from "./summary";
 import type { H1Register } from "./registers";
 import type { ReturnResult } from "./returns";
 import type { ReorderAdvice } from "./replenishment";
@@ -248,6 +250,47 @@ export class PharmacyCounterController {
     const input = parsed(z.object({ authorise: z.boolean(), reason: z.string().max(500) }), body);
     try {
       return await decideAuthorisation(this.db, actor, id, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /**
+   * STAGE D5 — ask the ANTIMICROBIAL STEWARD to approve one restricted line (its moiety set on this dispense). The
+   * counter's permission to ask, as for the prescriber; the Act's registration inside (`askSteward`). The decision is
+   * made in /approvals.
+   */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/lines/:idx/steward")
+  async askSteward(@CurrentActor() actor: Actor, @Param("id") id: string, @Param("idx") idx: string, @Body() body: unknown): Promise<StewardVerdict> {
+    const lineIdx = parsed(z.object({ idx: z.coerce.number().int().nonnegative() }), { idx }).idx;
+    const input = parsed(z.object({
+      indication: z.string().min(1).max(300), cultureSent: z.boolean(), plannedDays: z.number().int().min(1).max(90), note: z.string().max(500).optional(),
+    }), body);
+    try {
+      return await askSteward(this.db, actor, id, lineIdx, input, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** STAGE D5 — where each restricted line of this ticket stands with the steward (the desk's line note and its ⋯ ask). */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/steward")
+  async stewardLines(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ lines: StewardLineState[] }> {
+    try {
+      return { lines: await stewardStates(this.db, actor, id) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** STAGE D5 — the steward reads the prescription line the request is about, and whose it is, beside the inbox card. */
+  @RequirePermission("pharmacy.antimicrobial.approve", "hospital")
+  @Get("steward-requests/:approvalId")
+  async stewardRequest(@CurrentActor() actor: Actor, @Param("approvalId") approvalId: string): Promise<StewardRequestDetail> {
+    try {
+      return await stewardRequestDetail(this.db, actor, approvalId);
     } catch (e) {
       return toHttp(e);
     }
@@ -513,9 +556,10 @@ export class PharmacyCounterController {
   /** P7 — the counter's day. `day` is an IST date; today when absent. Read-only. */
   @RequirePermission("pharmacy.dispense.read", "hospital")
   @Get("summary")
-  async summary(@Query("day") day?: string): Promise<CounterSummary> {
+  async summary(@CurrentActor() actor: Actor, @Query("day") day?: string): Promise<CounterSummaryView> {
     try {
-      return await counterSummary(this.db, day ?? istDateOf(new Date()));
+      /* OWNER RULING 2026-09-28 — BLIND COUNT: `counterSummaryFor` leaves the billed total off for an uncounted drawer's holder. */
+      return await counterSummaryFor(this.db, actor, day ?? istDateOf(new Date()));
     } catch (e) {
       return toHttp(e);
     }

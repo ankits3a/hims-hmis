@@ -100,6 +100,8 @@ export const dispensePicked = defineEvent("dispense.picked", MODULE, z.object({
     lineIdx: z.number().int().nonnegative(), batchId: id, qtyBase: z.number().int().positive(), fefoOverride: z.boolean(),
     /** P13 — the pack was scanned and matched the line's item. Absent on older events. */
     scanned: z.boolean().default(false),
+    /** DESK FIXES 2026-09-30 — a further batch of the prescription line at this index (the pick split it). Absent on older events. */
+    splitFrom: z.number().int().nonnegative().nullable().default(null),
   })).min(1),
 }));
 
@@ -288,6 +290,29 @@ export const coldExcursionClosed = defineEvent("coldchain.excursion_closed", MOD
   excursionId: id, unitId: id, released: z.number().int().nonnegative(), writtenOff: z.number().int().nonnegative(), writeOffId: id.nullable(),
 }));
 
+/** STAGE D4 — an emergency tray was set up or its keepers changed: the before (null when new) and the after. */
+const trayState = z.object({ name: z.string().min(1), location: z.string().min(1), custodianRoles: z.array(z.string().min(1)) });
+export const traySaved = defineEvent("trays.tray_saved", MODULE, z.object({
+  trayId: id, code: z.string().min(1), before: trayState.nullable(), after: trayState,
+}));
+
+/** STAGE D4 — a tray's template line was added or edited (par, expiry margin, active): the before and the after. */
+const trayLineState = z.object({ parQty: z.number().int().positive(), minExpiryDays: z.number().int().nonnegative().nullable(), active: z.boolean() });
+export const trayTemplateSaved = defineEvent("trays.template_saved", MODULE, z.object({
+  templateId: id, trayId: id, itemId: id, before: trayLineState.nullable(), after: trayLineState,
+}));
+
+/** STAGE D4 — a tray was checked; the result is the server's, `consumed` the units an after-use check took off the ledger. */
+export const trayChecked = defineEvent("trays.checked", MODULE, z.object({
+  checkId: id, trayId: id, kind: z.enum(["daily_seal", "monthly_full", "after_use"]), result: z.enum(["ok", "deficient"]),
+  findings: z.array(z.string().min(1)), consumed: z.number().int().nonnegative(), patientId: id.nullable(),
+}));
+
+/** STAGE D4 — a deficient check was restocked from PHARM-OPD: the transfer that carries exactly the deficit. */
+export const trayRestocked = defineEvent("trays.restocked", MODULE, z.object({
+  checkId: id, trayId: id, transferId: id, units: z.number().int().positive(),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -299,4 +324,5 @@ export const PHARMACY_EVENTS = [
   controlledLicenceRecorded, endPrescriberRecorded, endPrescriberEnded, controlledChecked, controlledActWitnessed,
   adrReported, adrEventRecorded, incidentRecorded, incidentEventRecorded,
   coldUnitSaved, coldReadingRecorded, coldExcursionClosed,
+  traySaved, trayTemplateSaved, trayChecked, trayRestocked,
 ] as const;

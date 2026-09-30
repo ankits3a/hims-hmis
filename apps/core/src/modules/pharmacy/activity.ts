@@ -42,8 +42,18 @@ export type ActivityEntry = {
   changes: ActivityChange[];
   /** The payload's scalar facts worth a line on the timeline (numbers, references, reasons). */
   facts: Record<string, string | number | boolean | null>;
+  /**
+   * STAGE C — THE DOCUMENT AS IT STOOD after this event: every field the timeline has seen so far, at
+   * its latest value (an edit's own before/after fields included). The version before an entry is the
+   * previous entry's `state` with this entry's `changes[].before` laid over it — the side-by-side view.
+   */
+  state: Record<string, string | number | boolean | null>;
 };
-export type ActivityTimeline = { kind: ActivityKind; id: string; no: string; label: string; entries: ActivityEntry[] };
+export type ActivityTimeline = {
+  kind: ActivityKind; id: string; no: string; label: string; entries: ActivityEntry[];
+  /** STAGE C — the label of every field a `state` carries (a line's field names its item). */
+  labels: Record<string, string>;
+};
 
 /** Every event name the view reads, and the status each one leaves its document in (null: none). */
 const STATUS_AFTER: Record<string, string | null> = {
@@ -157,7 +167,7 @@ export async function documentActivity(db: Db, actor: Actor, typed: string): Pro
     const status = mine?.status ?? (r.name === "supplier_bill.matched" ? String(p.outcome) : STATUS_AFTER[r.name] ?? null);
     const explicit = Array.isArray(p.changes) ? (p.changes as { field: string; before: Scalar; after: Scalar }[]) : null;
     if (explicit !== null) {
-      for (const c of explicit) changes.push({ field: c.field, label: labelOf(c.field), before: c.before, after: c.after });
+      for (const c of explicit) { changes.push({ field: c.field, label: labelOf(c.field), before: c.before, after: c.after }); state.set(c.field, c.after); }
       for (const f of STATE_FIELDS) if (isScalar(p[f])) state.set(f, p[f]);
     } else {
       for (const f of STATE_FIELDS) if (isScalar(p[f]) && !(mine !== undefined && f === "amountPaise")) moved(f, p[f]);
@@ -166,9 +176,9 @@ export async function documentActivity(db: Db, actor: Actor, typed: string): Pro
     const facts: Record<string, Scalar> = {};
     for (const f of FACT_FIELDS) if (isScalar(p[f]) && p[f] !== null) facts[f] = p[f];
     if (mine !== undefined) { facts.paidPaise = mine.paidPaise; if (mine.creditPaise !== undefined) facts.creditPaise = mine.creditPaise; }
-    entries.push({ at: r.occurredAt.toISOString(), name: r.name, actorId: r.actorId, actorName: names.get(r.actorId) ?? r.actorId, status, changes, facts });
+    entries.push({ at: r.occurredAt.toISOString(), name: r.name, actorId: r.actorId, actorName: names.get(r.actorId) ?? r.actorId, status, changes, facts, state: Object.fromEntries(state) });
   }
-  return { kind: doc.kind, id: doc.id, no: doc.no, label: doc.label, entries };
+  return { kind: doc.kind, id: doc.id, no: doc.no, label: doc.label, entries, labels: Object.fromEntries([...state.keys()].map((f) => [f, labelOf(f)])) };
 }
 
 export type ActivityFeedRow = { at: string; name: string; actorName: string; docNo: string | null; amountPaise: number | null };

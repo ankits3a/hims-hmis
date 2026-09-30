@@ -34,7 +34,10 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * not because radiology owns it. The tabs — Licences, QA, Dose, Badges, Calendar — are the five
  * registers an AERB inspector asks for, in the order they ask.
  *
- * ═══ NO SUBSCRIPTION, NO JOB, NO RESOURCE KIND, NO ORDER KIND ═══
+ * ═══ NO SUBSCRIPTION, NO RESOURCE KIND, NO ORDER KIND — AND, SINCE 18-S RS11, ONE JOB ═══
+ *
+ * RS11 T3 adds `sweepOverdueQa` to the worker's job list (`kernel/worker/jobs.ts`, hourly): a
+ * machine whose QA is past due goes to `qa_blocked`. The rest of this paragraph is 18c's.
  *
  * This module owns tables and rules and nothing asynchronous. T2 puts a device into `qa_blocked`
  * synchronously, inside the transaction that records the failed QA; T4's investigation ladder is
@@ -51,6 +54,12 @@ export const aerbManifest: ModuleManifest = {
     "aerb.registers.manage",
     "aerb.registers.read",
     "aerb.doses.read",
+    /**
+     * 18-S RS11 — the radiation incident register, read. The RSO and the radiologist (the
+     * department's HOD, RS4): an incident is the HOD's to know about; the licence file is not, so
+     * this is not `aerb.registers.read`. Writing stays `aerb.registers.manage`, the RSO's pen.
+     */
+    "aerb.incidents.read",
   ],
   subscriptions: [],
 };

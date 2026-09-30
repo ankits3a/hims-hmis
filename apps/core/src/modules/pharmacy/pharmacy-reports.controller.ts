@@ -7,14 +7,16 @@ import { documentActivity, recentActivity } from "./activity";
 import { gstr2bReconcile } from "./gstr2b";
 import { gstr3bReport } from "./gstr3b";
 import { officeNonMoving, officePurchaseRegister, officeStockValuation } from "./office-reports";
+import { dailyStock, itemCatalogueReport, lossRegister, topSellingItems } from "./office-stock-reports";
 import { parsed, toHttp } from "./pharmacy-http";
 import { REPORTS_MARGIN, REPORTS_READ, requireReportPermission } from "./report-range";
 import { hsnReport, marginReport, salesRegister } from "./sales-register";
 import type { ActivityFeedRow, ActivityTimeline } from "./activity";
 import type { Gstr2bRecon } from "./gstr2b";
 import type { Gstr3b } from "./gstr3b";
+import type { ItemCatalogueReport, LossRegister, TopSelling } from "./office-stock-reports";
 import type { HsnReport, MarginReport, ReportInput, SalesRegister } from "./sales-register";
-import type { NonMovingReport, PurchaseRegister, StockValuation } from "../materials";
+import type { NonMovingReport, PurchaseRegister, StockMovementSummary, StockValuation } from "../materials";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -87,6 +89,34 @@ export class PharmacyReportsController {
   @Get("non-moving")
   async nonMoving(@CurrentActor() actor: Actor, @Query("days") days?: string, @Query("store") store?: string): Promise<NonMovingReport> {
     try { return await officeNonMoving(this.db, actor, { days: days ?? null, storeCode: store ?? null }, new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** STAGE C — the period's items ranked by units and by value (net of refunds), with share and ABC class. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("top-selling")
+  async topSelling(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<TopSelling> {
+    try { return await topSellingItems(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** STAGE C — every loss booked in the period: destruction write-offs and count variances written off. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("losses")
+  async losses(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<LossRegister> {
+    try { return await lossRegister(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** STAGE C — per item: opening + in − out = closing over the range, from the ledger. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("daily-stock")
+  async daily(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<StockMovementSummary & { preset: string; storeCode: string | null }> {
+    try { return await dailyStock(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** STAGE C — the item master as one sheet (for an inspection, or the CA). */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("catalogue")
+  async catalogue(@CurrentActor() actor: Actor, @Query("store") store?: string): Promise<ItemCatalogueReport> {
+    try { return await itemCatalogueReport(this.db, actor, { storeCode: store ?? null }); } catch (e) { toHttp(e); }
   }
 
   /** GAP A4 — the period's GSTR-3B figures from the books: outward tax, ITC, and rule 88A's set-off. */

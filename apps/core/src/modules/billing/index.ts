@@ -64,7 +64,7 @@ export { runDailyClose, dayBook, gstr1Summary, chargeOrphans } from "./daily-clo
  */
 export { cashierDay } from "./desk-provider";
 export type { CashierDay } from "./desk-provider";
-export { liveExpectedCashPaise, listSessions } from "./sessions";
+export { collectionsBlind, isDrawerSupervisor, liveExpectedCashPaise, listSessions, mayReadExpectedCash } from "./sessions";
 export type { ChargeOrphanRow } from "./daily-close";
 /**
  * PHARMACY PARITY P5 — the office's registers read billing's money through these, never its tables:

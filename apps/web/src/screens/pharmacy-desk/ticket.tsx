@@ -5,6 +5,7 @@ import { ControlledStep } from "./controlled";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
 import { LineList } from "./lines";
 import { DonePaper } from "./paper";
+import { TicketMenu } from "./returns";
 import type { ShortDrug } from "./short-book";
 import { hindiRefusal, hindiSig } from "./phrasebook";
 import { istToday, sigOf } from "./work";
@@ -19,9 +20,14 @@ import type { ControlledHandover, PickLine, VerifyLine, WireDispense, WirePatien
  * The lines are `lines.tsx` (PD-4): ticked, scanned, declined, and collected by the last settle.
  * Substituting is PD-5.
  */
+/** DESK FIXES 2026-09-30 — the prescription's lines: a split's further batches are the same line, not another. */
+function rxLinesOf(d: WireDispense): WireDispense["lines"] {
+  return d.lines.filter((l) => l.splitFromLineIdx == null);
+}
+
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug,
+  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty,
 }: {
   inHand: WireDispense | null;
   loading: boolean;
@@ -49,6 +55,8 @@ export function TicketPanel({
   autoPrint?: boolean;
   /** PARITY P1 — the line the pharmacist is on, for the desk's `N`. */
   onFocusDrug?: (drug: ShortDrug | null) => void;
+  /** The quantities being given as typed, for the bill rail (`LineList`). */
+  onLiveQty?: (dispenseId: string, qty: Readonly<Record<number, number | null>>) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const alerts = (
@@ -105,7 +113,7 @@ export function TicketPanel({
         </h1>
         <p style={{ margin: "6px 0 0 0", fontSize: 12.5, color: "var(--dim)" }}>
           {theirs !== null ? t("pharmacyDesk.theirsHint", { name: theirs })
-            : cancelled ? inHand.cancelReason ?? "" : t("pharmacyDesk.notYoursHint", { count: inHand.lines.length })}
+            : cancelled ? inHand.cancelReason ?? "" : t("pharmacyDesk.notYoursHint", { count: rxLinesOf(inHand).length })}
         </p>
         {cancelled || theirs !== null ? null : (
           <button className="pri" style={{ marginTop: 16 }} onClick={() => onTake(inHand.id, who)}>{t("pharmacyDesk.takeIt")}</button>
@@ -118,9 +126,12 @@ export function TicketPanel({
   if (stage === "done") {
     return (
       <div style={{ maxWidth: 720 }}>
-        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700 }} data-testid="desk-done">{t("pharmacyDesk.doneTitle", { who })}</h1>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, flexGrow: 1 }} data-testid="desk-done">{t("pharmacyDesk.doneTitle", { who })}</h1>
+          <TicketMenu dispense={inHand} />
+        </div>
         <p className="mo" style={{ margin: "3px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
-          {[label, takenLabel, t("pharmacyDesk.lines", { count: inHand.lines.length })].filter((x) => x !== null).join(" · ")}
+          {[label, takenLabel, t("pharmacyDesk.lines", { count: rxLinesOf(inHand).length })].filter((x) => x !== null).join(" · ")}
         </p>
         <DonePaper dispenseId={inHand.id} autoPrint={autoPrint} />
         <Closed dispenseId={inHand.id} />
@@ -131,7 +142,7 @@ export function TicketPanel({
     );
   }
 
-  const h1Lines = inHand.lines.filter((l) => l.scheduleFlag === "H1").map((l) => l.lineIdx + 1);
+  const h1Lines = rxLinesOf(inHand).filter((l) => l.scheduleFlag === "H1").map((l) => l.lineIdx + 1);
   /* PD-7 C11 / PD-D13 — a line the books could read only in part raised no warning, and silence there is not a result. */
   const partlyRead = inHand.lines.filter((l) => l.status === "open" && l.partlyChecked === true).length;
   /* E28 — typed from paper and not yet confirmed: the attestation is asked for FIRST, not at the till. */
@@ -148,6 +159,8 @@ export function TicketPanel({
         <span style={{ flexGrow: 1 }} />
         {/* While the cross-check is owed the banner carries this control; one control, not two. */}
         {typed && !slipOwed ? <button className="sec" onClick={onOpenSlip}>{t("pharmacyDesk.slip.see")} <span className="kb">S</span></button> : null}
+        {/* Return / cancel — the ticket's exceptions behind ⋯ (`returns.tsx`). */}
+        <TicketMenu dispense={inHand} />
       </div>
       <p style={{ margin: "5px 0 0 0", fontSize: 12.5, color: "var(--dim)" }}>
         {t("pharmacyDesk.rxVersion", { version: inHand.prescriptionVersion })}
@@ -172,6 +185,7 @@ export function TicketPanel({
         onCollect={onCollect}
         onDecline={onDecline}
         onFocusDrug={onFocusDrug}
+        onLiveQty={onLiveQty}
       />
       {inHand.status === "billed" ? <HandOver dispense={inHand} busy={busy} error={handOverError} onHandOver={onHandOver} /> : null}
       {error !== null || note !== null ? alerts : null}
@@ -238,7 +252,7 @@ export function HandOver({
     return () => window.removeEventListener("keydown", onKey);
   });
   /* PD-7 C10 — what to say, line by line, for what is actually being handed over. */
-  const given = dispense.lines.filter((l) => l.status === "open" && l.pickedBatch != null);
+  const given = rxLinesOf(dispense).filter((l) => l.status === "open" && l.pickedBatch != null);
   const refused = dispense.lines.filter((l) => l.status === "declined");
   return (
     <div className="box" data-testid="desk-handover" style={{ marginTop: 16, padding: "14px 16px" }}>

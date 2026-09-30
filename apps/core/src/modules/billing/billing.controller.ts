@@ -98,7 +98,9 @@ import {
 } from "./receipts";
 import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
-import { beginClose, confirmClose, listSessions, openSession, recountSession } from "./sessions";
+import { beginClose, confirmClose, isDrawerSupervisor, listSessions, openSession, recountSession } from "./sessions";
+import { drawerOpenItems } from "./drawer-open-items";
+import type { DrawerOpenItems, PartPaidItem } from "./drawer-open-items";
 import { istDay } from "./time";
 import type { FeeQuote } from "./charge-rules";
 import type { BillingConfig } from "./config";
@@ -486,7 +488,18 @@ type ReceiptListRow = Omit<ReceiptRowSelect, "panNumber"> & { panCaptured: boole
  * who is being paid and against what KIND of document, and the reference number is verified
  * against the physical document at pay time, never read off a list.
  */
-type RefundVoucherListRow = Omit<RefundVoucherRow, "payeeIdRef">;
+type RefundVoucherListRow = Omit<RefundVoucherRow, "payeeIdRef"> & {
+  /**
+   * ═══ UX-AUDIT 2026-09-28 — THE WORKLIST SAID "Patient: p-1" ═══
+   *
+   * The office read a raw internal id off every voucher. The id stays (it is the key), and beside
+   * it rides the SAME alias-safe summary `listMismatches` and `listDues` carry: `getPatientSummaries`
+   * applies the confidential gate (§14), so a restricted patient arrives with `name: null` and the
+   * alias, never the name. ONE batched call for the whole page — the N+1 the old "no name lookup"
+   * note was avoiding was a per-row CLIENT round trip, and a server-side batch has no such cost.
+   */
+  uhid: string; name: string | null; alias: string | null; restricted: boolean;
+};
 
 type InvoiceDetail = { invoice: InvoiceRow; lines: InvoiceLineRow[]; settlement: Settlement };
 type InvoicePrint = {
@@ -849,8 +862,18 @@ export class BillingController {
    */
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("receipts")
-  async receiptList(@Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
+  async receiptList(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
     const q = parsed(receiptsQuery, query);
+    /*
+     * OWNER RULING 2026-09-28 — BLIND COUNT ("on any screen"). The UNFILTERED list is every receipt
+     * with its amount, receiver and drawer: a cashier could add up her own open session and read
+     * what her drawer should hold before she counts it. So without a `patientId` it is a drawer
+     * supervisor's list (`billing.session.read`); a cashier's lookup and reprint flows — every web
+     * caller of this route — always name the patient, and those still answer.
+     */
+    if (q.patientId === undefined && !(await isDrawerSupervisor(this.db, actor))) {
+      throw httpError(403, "the unfiltered receipt list is a drawer supervisor's (billing.session.read); name a patient", "receipt_filter_required");
+    }
     const where = q.patientId === undefined ? undefined : eq(receipts.patientId, q.patientId);
     return {
       items: await this.db
@@ -1002,38 +1025,48 @@ export class BillingController {
    * `listCreditNotes` precedent). */
   @RequirePermission("billing.reports.read", "hospital")
   @Get("refunds")
-  async refundList(@Query() query: unknown): Promise<{ items: RefundVoucherListRow[] }> {
+  async refundList(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: RefundVoucherListRow[] }> {
     const q = parsed(refundsQuery, query);
     const conditions = [];
     if (q.patientId !== undefined) conditions.push(eq(refundVouchers.patientId, q.patientId));
     if (q.status !== undefined) conditions.push(eq(refundVouchers.status, q.status));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const rows = await this.db
+      .select({
+        id: refundVouchers.id,
+        voucherNo: refundVouchers.voucherNo,
+        patientId: refundVouchers.patientId,
+        kind: refundVouchers.kind,
+        creditNoteId: refundVouchers.creditNoteId,
+        invoiceId: refundVouchers.invoiceId,
+        amountPaise: refundVouchers.amountPaise,
+        method: refundVouchers.method,
+        payeeName: refundVouchers.payeeName,
+        payeeIdType: refundVouchers.payeeIdType,
+        reasonClass: refundVouchers.reasonClass,
+        reason: refundVouchers.reason,
+        guardFlags: refundVouchers.guardFlags,
+        approvalId: refundVouchers.approvalId,
+        status: refundVouchers.status,
+        requestedBy: refundVouchers.requestedBy,
+        issuedAt: refundVouchers.issuedAt,
+        paidBy: refundVouchers.paidBy,
+        paidAt: refundVouchers.paidAt,
+        cashierSessionId: refundVouchers.cashierSessionId,
+      })
+      .from(refundVouchers).where(where)
+      .orderBy(desc(refundVouchers.issuedAt), desc(refundVouchers.voucherNo));
+    const summaries = await getPatientSummaries(this.db, actor, rows.map((r) => r.patientId));
+    const byPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
     return {
-      items: await this.db
-        .select({
-          id: refundVouchers.id,
-          voucherNo: refundVouchers.voucherNo,
-          patientId: refundVouchers.patientId,
-          kind: refundVouchers.kind,
-          creditNoteId: refundVouchers.creditNoteId,
-          invoiceId: refundVouchers.invoiceId,
-          amountPaise: refundVouchers.amountPaise,
-          method: refundVouchers.method,
-          payeeName: refundVouchers.payeeName,
-          payeeIdType: refundVouchers.payeeIdType,
-          reasonClass: refundVouchers.reasonClass,
-          reason: refundVouchers.reason,
-          guardFlags: refundVouchers.guardFlags,
-          approvalId: refundVouchers.approvalId,
-          status: refundVouchers.status,
-          requestedBy: refundVouchers.requestedBy,
-          issuedAt: refundVouchers.issuedAt,
-          paidBy: refundVouchers.paidBy,
-          paidAt: refundVouchers.paidAt,
-          cashierSessionId: refundVouchers.cashierSessionId,
-        })
-        .from(refundVouchers).where(where)
-        .orderBy(desc(refundVouchers.issuedAt), desc(refundVouchers.voucherNo)),
+      items: rows.map((row) => {
+        const summary = byPatient.get(row.patientId);
+        return {
+          ...row,
+          uhid: summary?.uhid ?? "", name: summary?.name ?? null, alias: summary?.alias ?? null,
+          restricted: summary?.restricted ?? false,
+        };
+      }),
     };
   }
 
@@ -1056,6 +1089,41 @@ export class BillingController {
   async sessionCurrent(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
     const own = await listSessions(this.db, { cashierUserId: actor.id });
     return { session: own.find((s) => s.status === "open" || s.status === "closing") ?? null };
+  }
+
+  /**
+   * UX-AUDIT 2026-09-28 — "OPEN ON THIS DRAWER": the acting cashier's own live drawer's open items
+   * (unconfirmed UPI/card, queued cash refunds, part-paid bills). On `billing.session.own` because
+   * it reads only the caller's own drawer, found here and never taken from the URL. Carries NO cash
+   * figure — the close is a blind count (`drawer-open-items.ts`). `null` when no drawer is live.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Get("sessions/current/open-items")
+  async sessionOpenItems(@CurrentActor() actor: Actor): Promise<{
+    items: (Omit<DrawerOpenItems, "partPaid"> & {
+      partPaid: { count: number; paise: number; items: (PartPaidItem & { patientName: string | null; uhid: string | null })[] };
+    }) | null;
+  }> {
+    const own = await listSessions(this.db, { cashierUserId: actor.id });
+    const live = own.find((s) => s.status === "open" || s.status === "closing");
+    if (live === undefined) return { items: null };
+    const found = await drawerOpenItems(this.db, live.id);
+    // The patient's NAME through the one summary helper every billing print uses — so a
+    // confidential patient shows by alias here exactly as everywhere else.
+    const people = await getPatientSummaries(this.db, actor, found.partPaid.items.map((i) => i.patientId));
+    const byId = new Map(people.map((p) => [p.requestedId, p] as const));
+    return {
+      items: {
+        ...found,
+        partPaid: {
+          ...found.partPaid,
+          items: found.partPaid.items.map((i) => {
+            const p = byId.get(i.patientId);
+            return { ...i, patientName: p === undefined ? null : p.restricted ? p.alias : p.name, uhid: p?.uhid ?? null };
+          }),
+        },
+      },
+    };
   }
 
   /**
