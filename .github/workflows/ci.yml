@@ -1,10 +1,17 @@
 name: ci
 # 2026-09-02: four jobs in parallel instead of one `pnpm verify`. The one-job form took 35–51 min
 # because core's jest ran alone after typecheck+lint; now static checks, two core shards and web
-# run side by side, and a newer push to the same ref cancels the older run. These job names are
-# the required checks on `main`'s branch protection — rename them there too if you rename here.
+# run side by side, and a newer push to the same ref cancels the older run. The check names
+# `static`, `core` (the gate job, not the shards) and `web` are the required checks on `main`'s
+# branch protection — rename them there too if you rename here.
+# 2026-09-30 (owner: "CI is taking too much time"): `push` fires on `main` only. It used to fire on
+# every branch, so every PR commit ran twice — once as `push` (ref refs/heads/…) and once as
+# `pull_request` (ref refs/pull/…). Those refs sit in different concurrency groups, so neither twin
+# could cancel the other: double the load on the runner pool, and either roll could block a merge.
+# A lane that wants a verdict before its PR exists opens the PR as a draft.
 on:
-  push:            # every branch: a lane gets its verdict before the PR exists
+  push:
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -68,11 +75,11 @@ jobs:
   #
   # A timed-out job does not pass, so the PR still needs a new commit for a green check: this turns a
   # six-hour block into a thirty-minute one, it does not make the twin-run problem go away. The twins
-  # are the deeper defect — this file fires on both `push` and `pull_request` while `concurrency`
+  # were the deeper defect — this file fired on both `push` and `pull_request` while `concurrency`
   # keys on `github.ref`, and those events produce different refs (`refs/heads/…` vs `refs/pull/…`),
-  # so the two runs sit in different groups and NEITHER CAN EVER CANCEL THE OTHER. Every PR rolls the
-  # dice twice and either roll blocks the merge. Changing the trigger is a separate decision and the
-  # owner's, because these four job names are the required status checks in branch protection.
+  # so the two runs sit in different groups and NEITHER CAN EVER CANCEL THE OTHER. Every PR rolled the
+  # dice twice and either roll blocked the merge. FIXED 2026-09-30 by the owner's go-ahead: `push`
+  # now fires on `main` only (see `on:` above).
   # ════════════════════════════════════════════════════════════════════════════════════════════════
   static:
     timeout-minutes: 10
@@ -130,7 +137,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        # 2026-09-30: 2 -> 8 shards. Two shards took 19-21 min each while every other job finished
+        # inside 5; the repo is public, so extra runners cost nothing. `-w 2` per shard is kept —
+        # run 33436302396 went red on setupTestDb hook timeouts with more workers per runner, and
+        # the gain here comes from more runners, not more workers per runner.
+        # Branch protection requires the `core` GATE below, not these shard names, so this number
+        # can change without touching the protection settings.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     services:
       postgres:
         image: postgres:16
@@ -152,7 +165,21 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @hmis/contracts test
         if: matrix.shard == 1
-      - run: pnpm --filter @hmis/core exec jest -w 2 --shard=${{ matrix.shard }}/2
+      - run: pnpm --filter @hmis/core exec jest -w 2 --shard=${{ matrix.shard }}/8
+
+  # THE REQUIRED CHECK FOR CORE. A matrix job reports one check per shard ("core (1)" …), so a
+  # branch protection that names shards must be edited every time the shard count changes. This
+  # job carries the stable name `core` and is green only when every shard is green — `if: always()`
+  # so a failed or cancelled shard turns it RED instead of SKIPPED (a skipped required check counts
+  # as passing).
+  core-gate:
+    name: core
+    if: always()
+    needs: core
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.core.result }}" = success
 
   web:
     # 10: this job's observed maximum is 2 minutes. See the block above `static`.
