@@ -8,17 +8,18 @@ import type { PricedLine } from "../tariff";
  * radiology and front-desk invoice stays on it — it is the default, and nothing but an in-process
  * caller can ask for another (no HTTP body declares the field).
  *
- * The pharmacy's two, owner 2026-09-30: *"If patient is paying using cash then keep whole-rupee
- * rounding, round down. If paying via UPI or Card then we can collect to the paisa."* A medicine is
- * never sold above its printed MRP, and ₹33.60 collected as ₹34.00 was.
- *   · `down`  — the whole rupee, always DOWN (₹33.60 → ₹33.00; the rounding line reads −₹0.60).
+ * The pharmacy's, owner 2026-09-30, AMENDED the same day on PR #424: *"If the amount is 33.60, the
+ * collection should be 34. If it's 30.91 then collection should be Rs 31. If it is Rs 30.49 then
+ * collection can be Rs 30. But if it's 30.51 then collection in cash should be 31."* So cash (and any
+ * tender that includes cash, and the owner's credit) is `half_up` — the nearest rupee, up to 49 paise
+ * above MRP by his decision — and UPI or card alone is:
  *   · `exact` — no rounding at all (₹33.60 → ₹33.60).
  *
  * The rule is stored on the invoice (`invoices.rounding_rule`) because a credit note against it must
- * round the same way: a `down` bill paid ₹33.00, and a credit note rounded half-up would free ₹34.00
- * for a refund the voucher guard then refuses as more than was received.
+ * round the same way: an `exact` bill paid ₹33.60, and a half-up credit note would free ₹34.00 for a
+ * refund the voucher guard then refuses as more than was received.
  */
-export const ROUNDING_RULES = ["half_up", "down", "exact"] as const;
+export const ROUNDING_RULES = ["half_up", "exact"] as const;
 export type RoundingRule = (typeof ROUNDING_RULES)[number];
 
 /** A stored `rounding_rule`, read back. A value this code does not know is refused, never guessed. */
@@ -30,10 +31,9 @@ export function roundingRuleOf(stored: string): RoundingRule {
 
 export function roundTotalBy(rule: RoundingRule, totalPaise: number): { roundedPaise: number; roundingPaise: number } {
   if (rule === "half_up") return roundTotalToRupee(totalPaise);
-  // `roundTotalToRupee` owns the paise guard; reuse it so the three rules refuse the same inputs.
+  // `roundTotalToRupee` owns the paise guard; reuse it so both rules refuse the same inputs.
   roundTotalToRupee(totalPaise);
-  const roundedPaise = rule === "down" ? Math.floor(totalPaise / 100) * 100 : totalPaise;
-  return { roundedPaise, roundingPaise: roundedPaise - totalPaise };
+  return { roundedPaise: totalPaise, roundingPaise: 0 };
 }
 
 /** One GSTR-1 row: the invoice's lines folded by (sacCode, rateBps, exempt). */

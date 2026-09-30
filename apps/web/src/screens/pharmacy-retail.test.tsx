@@ -347,17 +347,17 @@ describe("PharmacyRetail — the 2026-09-30 money rulings", () => {
 
   const at3360 = (over: Partial<WireRetailPreview> = {}): WireRetailPreview => previewOf({
     lines: [{ ...previewOf().lines[0]!, qtyBase: 15, price: { unitPaise: 224, grossPaise: 3360, discountPaise: 0, taxPaise: 360, gstRateBps: 1200, amountPaise: 3360 } }],
-    totals: { grossPaise: 3360, discountPaise: 0, taxPaise: 360, roundingPaise: -60, netPayablePaise: 3300 },
-    byTender: { cash: { netPayablePaise: 3300, roundingPaise: -60 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } },
+    totals: { grossPaise: 3360, discountPaise: 0, taxPaise: 360, roundingPaise: 40, netPayablePaise: 3400 },
+    byTender: { cash: { netPayablePaise: 3400, roundingPaise: 40 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } },
     discount: null, ...over,
   });
   const eight = at3360({
-    totals: { grossPaise: 3360, discountPaise: 269, taxPaise: 332, roundingPaise: -91, netPayablePaise: 3000 },
-    byTender: { cash: { netPayablePaise: 3000, roundingPaise: -91 }, digital: { netPayablePaise: 3091, roundingPaise: 0 } },
+    totals: { grossPaise: 3360, discountPaise: 269, taxPaise: 332, roundingPaise: 9, netPayablePaise: 3100 },
+    byTender: { cash: { netPayablePaise: 3100, roundingPaise: 9 }, digital: { netPayablePaise: 3091, roundingPaise: 0 } },
     discount: { kind: "percent_bps", value: 800, amountPaise: 269, tier: "pharmacist", approverRole: null },
   });
 
-  it("₹33.60 is ₹33.00 in cash (−₹0.60) and ₹33.60 by UPI; 8% from the ⋯ sheet is priced by the server and sold with the bill", async () => {
+  it("₹33.60 is ₹34.00 in cash (+₹0.40) and ₹33.60 by UPI; 8% from the ⋯ sheet is priced by the server and sold with the bill", async () => {
     mockRoutes({
       "GET /api/pharmacy/retail/state": { status: 200, body: CURRENT },
       "GET /api/pharmacy/retail/sales": { status: 200, body: { items: [] } },
@@ -373,8 +373,8 @@ describe("PharmacyRetail — the 2026-09-30 money rulings", () => {
     await newCustomer();
     await addToCart(CROCIN, "15");
     await userEvent.click(screen.getByRole("button", { name: "Price the cart" }));
-    expect(await screen.findByTestId("retail-total")).toHaveTextContent("₹33.00");
-    expect(screen.getByTestId("retail-rounding")).toHaveTextContent("−₹0.60");
+    expect(await screen.findByTestId("retail-total")).toHaveTextContent("₹34.00");
+    expect(screen.getByTestId("retail-rounding")).toHaveTextContent("+₹0.40");
     await userEvent.click(screen.getByRole("radio", { name: "UPI" }));
     expect(screen.getByTestId("retail-total")).toHaveTextContent("₹33.60");
     expect(screen.queryByTestId("retail-rounding")).toBeNull();

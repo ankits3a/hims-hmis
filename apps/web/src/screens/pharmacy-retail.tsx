@@ -416,7 +416,7 @@ export function PharmacyRetail(): React.ReactElement {
     };
   };
 
-  /* OWNER RULING 2026-09-30 — cash rounds DOWN to the rupee, UPI and card are collected to the paisa. */
+  /* OWNER RULING 2026-09-30 — (amended) cash rounds to the nearest rupee, UPI and card are collected to the paisa. */
   const due = preview === null ? null
     : preview.byTender === undefined ? { netPayablePaise: preview.totals.netPayablePaise, roundingPaise: preview.totals.roundingPaise ?? 0 }
       : mode === "cash" ? preview.byTender.cash : preview.byTender.digital;

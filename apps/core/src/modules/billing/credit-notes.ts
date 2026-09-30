@@ -470,9 +470,9 @@ export async function issueCreditNote(
     }
 
     // §170, applied ONCE to THIS document's own raw total — never to the shares (D3/D4). OWNER RULING
-    // 2026-09-30: by the INVOICE's own rule. A pharmacy bill rounded DOWN (cash) credits down too, so
-    // a full return frees exactly what was paid (₹33.60 billed, ₹33.00 paid, ₹33.00 credited) and
-    // partial returns never sum past it (Σ floor ≤ floor Σ); an `exact` bill credits to the paisa.
+    // 2026-09-30: by the INVOICE's own rule. A cash pharmacy bill (half-up) credits half-up, so a full
+    // return frees exactly what was paid (₹33.60 billed, ₹34.00 paid, ₹34.00 credited); an `exact`
+    // (UPI/card) bill credits to the paisa, never a rounded-up rupee it did not take.
     const rawTotalPaise = totals.taxableBasePaise + totals.cgstPaise + totals.sgstPaise;
     const { roundedPaise, roundingPaise } = roundTotalBy(roundingRuleOf(invoice.roundingRule), rawTotalPaise);
 

@@ -458,14 +458,14 @@ describe("the sales register adds up (owner rulings 2026-09-30)", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
   it("shows MRP, discount, taxable, CGST, SGST, rounding and total for each bill, and totals the rounding", async () => {
-    const row = sale({ grossPaise: 3_360, discountPaise: 269, taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, roundingPaise: -91, netPaise: 3_000, lines: [] });
+    const row = sale({ grossPaise: 3_360, discountPaise: 269, taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, roundingPaise: 9, netPaise: 3_100, lines: [] });
     const reg: WireSalesRegister = {
       ...register(false),
       rows: [row],
       totals: {
-        sales: { count: 1, grossPaise: 3_360, discountPaise: 269, taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, roundingPaise: -91, netPaise: 3_000 },
+        sales: { count: 1, grossPaise: 3_360, discountPaise: 269, taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, roundingPaise: 9, netPaise: 3_100 },
         refunds: { count: 0, grossPaise: 0, discountPaise: 0, taxablePaise: 0, cgstPaise: 0, sgstPaise: 0, roundingPaise: 0, netPaise: 0 },
-        net: { taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, netPaise: 3_000 },
+        net: { taxablePaise: 2_760, cgstPaise: 166, sgstPaise: 165, netPaise: 3_100 },
         costPaise: null, profitPaise: null, marginBps: null,
       },
     };
@@ -478,9 +478,9 @@ describe("the sales register adds up (owner rulings 2026-09-30)", () => {
     expect(within(table).getByText("MRP")).toBeTruthy();
     expect(within(table).getByText("Rounding")).toBeTruthy();
     const cells = [...within(table).getByTestId("sales-table-row-inv-1").querySelectorAll("td")].map((td) => td.textContent ?? "");
-    // 33.60 − 2.69 = 27.60 + 1.66 + 1.65; + (−0.91) = 30.00
-    expect(cells.join("|")).toContain("33.60|2.69|27.60|1.66|1.65|-0.91|30.00");
+    // 33.60 − 2.69 = 27.60 + 1.66 + 1.65 = 30.91; + 0.09 rounding (cash, the nearest rupee) = 31.00
+    expect(cells.join("|")).toContain("33.60|2.69|27.60|1.66|1.65|0.09|31.00");
     const totals = [...within(table).getByTestId("sales-table-totals").querySelectorAll("td")].map((td) => td.textContent ?? "").join("|");
-    expect(totals).toContain("33.60|2.69|27.60|1.66|1.65|-0.91|30.00");
+    expect(totals).toContain("33.60|2.69|27.60|1.66|1.65|0.09|31.00");
   });
 });

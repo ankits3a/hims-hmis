@@ -54,21 +54,21 @@ function dispense(status: string): WireDispense {
 /** The go-live day's bill: 15 Crocin at ₹22.40 a strip — ₹33.60 of MRP. */
 const PLAIN: WirePricedDraft = {
   lines: [{ lineId: "l", serviceId: "s", serviceName: "Crocin 500 tablet", qty: 15, unitPaise: 224, grossPaise: 3360, discountPaise: 0, netPaise: 3360, gst: { rateBps: 1200, exempt: false } }],
-  totals: { grossPaise: 3360, discountPaise: 0, cgstPaise: 180, sgstPaise: 180, rawTotalPaise: 3360, netPayablePaise: 3300, roundingPaise: -60 },
-  byTender: { cash: { netPayablePaise: 3300, roundingPaise: -60 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } },
+  totals: { grossPaise: 3360, discountPaise: 0, cgstPaise: 180, sgstPaise: 180, rawTotalPaise: 3360, netPayablePaise: 3400, roundingPaise: 40 },
+  byTender: { cash: { netPayablePaise: 3400, roundingPaise: 40 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } },
   discount: null,
 };
 /** 15% off: ₹5.04, ₹28.56 left — the in-charge's to approve. */
 const FIFTEEN: WirePricedDraft = {
   lines: [{ ...PLAIN.lines[0]!, discountPaise: 504, netPaise: 2856 }],
-  totals: { grossPaise: 3360, discountPaise: 504, cgstPaise: 153, sgstPaise: 153, rawTotalPaise: 2856, netPayablePaise: 2800, roundingPaise: -56 },
-  byTender: { cash: { netPayablePaise: 2800, roundingPaise: -56 }, digital: { netPayablePaise: 2856, roundingPaise: 0 } },
+  totals: { grossPaise: 3360, discountPaise: 504, cgstPaise: 153, sgstPaise: 153, rawTotalPaise: 2856, netPayablePaise: 2900, roundingPaise: 44 },
+  byTender: { cash: { netPayablePaise: 2900, roundingPaise: 44 }, digital: { netPayablePaise: 2856, roundingPaise: 0 } },
   discount: { kind: "percent_bps", value: 1500, amountPaise: 504, tier: "pharmacy_incharge", approverRole: "pharmacy_incharge" },
 };
 const EIGHT: WirePricedDraft = {
   lines: [{ ...PLAIN.lines[0]!, discountPaise: 269, netPaise: 3091 }],
-  totals: { grossPaise: 3360, discountPaise: 269, cgstPaise: 166, sgstPaise: 166, rawTotalPaise: 3091, netPayablePaise: 3000, roundingPaise: -91 },
-  byTender: { cash: { netPayablePaise: 3000, roundingPaise: -91 }, digital: { netPayablePaise: 3091, roundingPaise: 0 } },
+  totals: { grossPaise: 3360, discountPaise: 269, cgstPaise: 166, sgstPaise: 166, rawTotalPaise: 3091, netPayablePaise: 3100, roundingPaise: 9 },
+  byTender: { cash: { netPayablePaise: 3100, roundingPaise: 9 }, digital: { netPayablePaise: 3091, roundingPaise: 0 } },
   discount: { kind: "percent_bps", value: 800, amountPaise: 269, tier: "pharmacist", approverRole: null },
 };
 
@@ -87,11 +87,11 @@ const base = (current: () => WireDispense, extra: Record<string, Handler> = {}):
 
 describe("ruling 1 — the payable follows the tender (pure)", () => {
   it("cash and a split take the rounded-down figure; UPI and card the exact one; an older server's totals stand", () => {
-    expect(payableFor("cash", PLAIN)).toEqual({ netPayablePaise: 3300, roundingPaise: -60 });
-    expect(payableFor("split", PLAIN)).toEqual({ netPayablePaise: 3300, roundingPaise: -60 });
+    expect(payableFor("cash", PLAIN)).toEqual({ netPayablePaise: 3400, roundingPaise: 40 });
+    expect(payableFor("split", PLAIN)).toEqual({ netPayablePaise: 3400, roundingPaise: 40 });
     expect(payableFor("upi", PLAIN)).toEqual({ netPayablePaise: 3360, roundingPaise: 0 });
     expect(payableFor("card", PLAIN)).toEqual({ netPayablePaise: 3360, roundingPaise: 0 });
-    expect(payableFor("upi", { totals: PLAIN.totals })).toEqual({ netPayablePaise: 3300, roundingPaise: -60 });
+    expect(payableFor("upi", { totals: PLAIN.totals })).toEqual({ netPayablePaise: 3400, roundingPaise: 40 });
   });
   it("a percentage is read to basis points, at most 100% and two decimals", () => {
     expect(percentToBps("8")).toBe(800);
@@ -107,7 +107,7 @@ describe("the desk's bill under the 2026-09-30 money rulings", () => {
   beforeEach(() => { setToken("t"); navigate.mockReset(); resetDeskLog(); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it("₹33.60 reads ₹33.60 on UPI and ₹33.00 on Cash, with the −₹0.60 rounding line — and UPI posts the exact amount", async () => {
+  it("₹33.60 reads ₹33.60 on UPI and ₹34.00 on Cash, with the +₹0.40 rounding line — and UPI posts the exact amount", async () => {
     let current = dispense("picked");
     mockRoutes(base(() => current, { "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("billed"); return { status: 201, body: current }; } }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
@@ -115,9 +115,9 @@ describe("the desk's bill under the 2026-09-30 money rulings", () => {
     expect(await within(rail).findByTestId("desk-payable")).toHaveTextContent("₹33.60");
     expect(within(rail).queryByTestId("desk-rounding")).toBeNull();
     await userEvent.click(within(rail).getByRole("radio", { name: /Cash/ }));
-    expect(within(rail).getByTestId("desk-payable")).toHaveTextContent("₹33.00");
-    expect(within(rail).getByTestId("desk-rounding")).toHaveTextContent("−₹0.60");
-    expect(rail).not.toHaveTextContent("₹34.00");
+    expect(within(rail).getByTestId("desk-payable")).toHaveTextContent("₹34.00");
+    expect(within(rail).getByTestId("desk-rounding")).toHaveTextContent("+₹0.40");
+    expect(rail).not.toHaveTextContent("₹33.00"); // the first ruling's round-down is gone (owner's amendment)
     await userEvent.click(within(rail).getByRole("radio", { name: /UPI/ }));
     await userEvent.type(within(rail).getByRole("textbox", { name: /UTR/i }), "425512345678");
     await userEvent.click(within(rail).getByRole("button", { name: /Received ₹33.60/ }));
@@ -135,7 +135,7 @@ describe("the desk's bill under the 2026-09-30 money rulings", () => {
     const sheet = await screen.findByTestId("discount-sheet");
     await userEvent.type(within(sheet).getByTestId("discount-value"), "8");
     expect(await within(sheet).findByTestId("discount-tier")).toHaveTextContent("Up to 10% — you can give this yourself.");
-    expect(within(sheet).getByTestId("discount-preview")).toHaveTextContent("To collect in cash₹30.00");
+    expect(within(sheet).getByTestId("discount-preview")).toHaveTextContent("To collect in cash₹31.00");
     expect(within(sheet).getByTestId("discount-preview")).toHaveTextContent("To collect by UPI or card₹30.91");
     expect(within(sheet).getByTestId("discount-apply")).toBeDisabled(); // a reason first
     await userEvent.type(within(sheet).getByTestId("discount-reason"), "senior citizen");
@@ -143,11 +143,11 @@ describe("the desk's bill under the 2026-09-30 money rulings", () => {
     expect(await within(rail).findByTestId("desk-discount-row")).toHaveTextContent("discount 8% · senior citizen−₹2.69");
     expect(within(rail).getByTestId("desk-payable")).toHaveTextContent("₹30.91");
     await userEvent.click(within(rail).getByRole("radio", { name: /Cash/ }));
-    expect(within(rail).getByTestId("desk-payable")).toHaveTextContent("₹30.00");
-    await userEvent.type(within(rail).getByRole("textbox", { name: /tendered/ }), "30");
-    await userEvent.click(within(rail).getByRole("button", { name: /Received ₹30.00/ }));
+    expect(within(rail).getByTestId("desk-payable")).toHaveTextContent("₹31.00");
+    await userEvent.type(within(rail).getByRole("textbox", { name: /tendered/ }), "31");
+    await userEvent.click(within(rail).getByRole("button", { name: /Received ₹31.00/ }));
     await waitFor(() => expect(bodies("POST", "/d1/bill")).toEqual([{
-      tenders: [{ mode: "cash", amountPaise: 3000 }], discount: { kind: "percent_bps", value: 800, reason: "senior citizen" },
+      tenders: [{ mode: "cash", amountPaise: 3100 }], discount: { kind: "percent_bps", value: 800, reason: "senior citizen" },
     }]));
   });
 

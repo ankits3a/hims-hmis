@@ -12,8 +12,11 @@ import type { RoundingRule, SaleDiscountInput } from "../billing";
  *
  * Owner, 2026-09-30 (memory `owner-rulings-2026-09-30-pharmacy-money`):
  *
- * 1. *"If patient is paying using cash then keep whole-rupee rounding, round down. If paying via UPI or
- *    Card then we can collect to the paisa."* Never above MRP. A mixed tender that includes cash is cash.
+ * 1. *"If patient is paying using cash then keep whole-rupee rounding … If paying via UPI or Card then we can
+ *    collect to the paisa."* AMENDED the same day on PR #424: *"If the amount is 33.60, the collection should be
+ *    34. If it's 30.91 then collection should be Rs 31. If it is Rs 30.49 then collection can be Rs 30. But if
+ *    it's 30.51 then collection in cash should be 31."* Cash rounds to the NEAREST rupee (halves up). A mixed
+ *    tender that includes cash is cash.
  * 2. *"The pharmacist may give up to 10% off MRP on a bill, with a reason. Above 10% needs the pharmacy
  *    in-charge's approval. Above 25% goes to the owner. A discount worth more than ₹25,000 on one bill
  *    also goes to the owner."*
@@ -22,9 +25,9 @@ import type { RoundingRule, SaleDiscountInput } from "../billing";
  * non-default rounding or a sale discount only on a bill whose every line is priced at its MRP.
  */
 
-/** Ruling 1. Any cash → DOWN. Only UPI and card → to the paisa. No tender at all (the owner's credit) → DOWN (DECIDED: never above MRP, and the dues may be paid in cash). */
+/** Ruling 1 (as amended). Any cash → the nearest rupee, halves up. Only UPI and card → to the paisa. No tender at all (the owner's credit) → the cash rule (DECIDED: the dues are most often paid in cash). */
 export function pharmacyRoundingRule(tenders: readonly { mode: string }[]): RoundingRule {
-  if (tenders.length === 0 || tenders.some((t) => t.mode === "cash")) return "down";
+  if (tenders.length === 0 || tenders.some((t) => t.mode === "cash")) return "half_up";
   return "exact";
 }
 

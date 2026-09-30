@@ -213,10 +213,10 @@ export function roundingRuleForTender(tender: TenderKind) {
 export type TenderPayables = { cash: { netPayablePaise: number; roundingPaise: number }; digital: { netPayablePaise: number; roundingPaise: number } };
 
 export function tenderPayables(rawTotalPaise: number): TenderPayables {
-  const down = roundTotalBy("down", rawTotalPaise);
+  const cash = roundTotalBy("half_up", rawTotalPaise);
   const exact = roundTotalBy("exact", rawTotalPaise);
   return {
-    cash: { netPayablePaise: down.roundedPaise, roundingPaise: down.roundingPaise },
+    cash: { netPayablePaise: cash.roundedPaise, roundingPaise: cash.roundingPaise },
     digital: { netPayablePaise: exact.roundedPaise, roundingPaise: exact.roundingPaise },
   };
 }
@@ -336,7 +336,7 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
     patientId: d.patientId,
     encounterId: encounter.id,
     lines,
-    // OWNER RULING 2026-09-30 — any cash (or no tender: the owner's credit) rounds DOWN; UPI/card alone to the paisa.
+    // OWNER RULING 2026-09-30 (as amended) — any cash (or no tender: the owner's credit) rounds to the nearest rupee; UPI/card alone to the paisa.
     roundingRule: pharmacyRoundingRule(input.tenders),
     ...(judged === null ? {} : { saleDiscount: judged.ask }),
     ...(input.tags === undefined ? {} : { tags: input.tags }),

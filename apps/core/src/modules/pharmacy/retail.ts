@@ -764,7 +764,7 @@ async function recordSale(
         // key, never a tax invoice number (kernel/ops/downtime-kit.ts).
         const result = await issueInvoice(tx as unknown as Db, actor, {
           draftId: id, patientId, lines,
-          // OWNER RULING 2026-09-30 — any cash rounds DOWN; UPI/card alone to the paisa.
+          // OWNER RULING 2026-09-30 (as amended) — any cash rounds to the nearest rupee; UPI/card alone to the paisa.
           roundingRule: pharmacyRoundingRule(input.tenders),
           ...(judged === null ? {} : { saleDiscount: judged.ask }),
           receipt: {
@@ -1004,7 +1004,7 @@ export type RetailSaleView = {
   billRows: BillRow[] | null;
   /**
    * OWNER RULINGS 2026-09-30 — the bill's money as the memo prints it: the MRP total, the sale discount and why,
-   * the GST inside, the rounding (DOWN on cash, none on UPI/card) and what was collected. Read off the invoice.
+   * the GST inside, the rounding (nearest rupee on cash, none on UPI/card) and what was collected. Read off the invoice.
    */
   money: { grossPaise: number; discountPaise: number; discountReason: string | null; taxPaise: number; roundingPaise: number; netPaise: number } | null;
 };

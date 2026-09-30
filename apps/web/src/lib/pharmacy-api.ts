@@ -322,7 +322,7 @@ export async function pickDispense(id: string, lines: PickLine[], idempotencyKey
 export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean }; pack?: WireBillRowPack | null };
 /**
  * OWNER RULINGS 2026-09-30 (money). `byTender`: the payable under each rounding rule — `cash` (any cash, a split,
- * or the owner's credit: rounded DOWN to the rupee) and `digital` (UPI or card alone: to the paisa). `discount`:
+ * or the owner's credit: the nearest rupee, halves up) and `digital` (UPI or card alone: to the paisa). `discount`:
  * the discount priced on this bill and who must approve it. Both absent from an older server.
  */
 export type TenderPayable = { netPayablePaise: number; roundingPaise: number };

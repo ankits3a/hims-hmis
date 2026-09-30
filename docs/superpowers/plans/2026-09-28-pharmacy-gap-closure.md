@@ -43,17 +43,22 @@ spot-checks by hand. This phase answers them.
 Memory note `owner-rulings-2026-09-30-pharmacy-money`. Built in lane `pharmacy-discount-rounding` (one PR, migration
 `0162_invoice_rounding_rule`, additive: `invoices.rounding_rule text not null default 'half_up'`).
 
-**1 — Rounding by tender.** *"If patient is paying using cash then keep whole-rupee rounding, round down. If paying via
-UPI or Card then we can collect to the paisa."* Never above MRP.
+**1 — Rounding by tender.** First ruling: *"If patient is paying using cash then keep whole-rupee rounding, round down.
+If paying via UPI or Card then we can collect to the paisa."* **AMENDED by the owner the same day, on PR #424:** *"If the
+amount is 33.60, the collection should be 34. If it's 30.91 then collection should be Rs 31. If it is Rs 30.49 then
+collection can be Rs 30. But if it's 30.51 then collection in cash should be 31."* So cash rounds to the NEAREST rupee,
+halves up (₹30.50 → ₹31), and may collect up to 49 paise above MRP — the owner's decision.
 - Pharmacy bills only — the desk's dispense bill, the walk-in sale and the paper (downtime) dispense. Any cash tender
-  (a split included) → `down`: ₹33.60 is collected as ₹33.00 with a −₹0.60 rounding line. Only UPI and/or card →
-  `exact`: ₹33.60. The rule is chosen from the tenders by `pharmacy/discount.ts` `pharmacyRoundingRule` and passed to
-  billing as an internal `roundingRule`; billing refuses any rule but `half_up` on a bill that is not wholly
-  pharmacy lines (`pharmacy_bill_only`), so OPD, lab and radiology keep §170 half-up exactly as before.
-- **DECIDED:** a bill with no tender (the owner's credit) rounds `down` — never above MRP, and the dues may be paid in cash.
-- **DECIDED:** a credit note rounds by its invoice's stored rule. A `down` bill paid ₹33.00; a half-up credit note
-  would free ₹34.00 and the refund voucher would refuse it as more than was received. Partial returns floor too, so
-  their sum never passes what was paid.
+  (a split included) → `half_up`: ₹33.60 → ₹34.00 (+₹0.40), ₹30.91 → ₹31.00, ₹30.49 → ₹30.00, ₹30.50 → ₹31.00,
+  ₹30.51 → ₹31.00. Only UPI and/or card → `exact`: ₹33.60 → ₹33.60. The rule is chosen from the tenders by
+  `pharmacy/discount.ts` `pharmacyRoundingRule` and passed to billing as an internal `roundingRule`; billing refuses
+  `exact` on a bill that is not wholly pharmacy lines (`pharmacy_bill_only`), so OPD, lab and radiology keep §170
+  half-up exactly as before.
+- **DECIDED:** a bill with no tender (the owner's credit) takes the cash rule (nearest rupee): the dues are most often
+  paid in cash.
+- **DECIDED:** a credit note rounds by its invoice's stored rule. A full cancel of a ₹34.00 cash bill credits ₹34.00;
+  a full cancel of a ₹33.60 UPI bill credits ₹33.60 — a half-up credit note would free ₹34.00 there, and the refund
+  voucher would refuse it as more than was received.
 - The desk's preview carries both payables (`byTender.cash`, `byTender.digital`); the rail shows the one for the
   tender under the cashier's finger (Cash/Split vs UPI/Card) with its rounding line. The walk-in counter does the same.
 - Register: MRP and Rounding columns (MRP − discount = taxable + CGST + SGST; + rounding = total). GSTR-3B: rounding is
@@ -76,6 +81,8 @@ the owner."*
   with the price. Rounding (ruling 1) applies after the discount. Admitted only on a pharmacy bill.
 - **DECIDED:** best single benefit per line, as the contest already rules — a member benefit that is bigger on a line
   wins that line; the two never stack. The approval amount is the sale discount's own share.
+- Worked examples (15 Crocin, ₹33.60 of MRP): **8%** is ₹2.69 off → ₹30.91: cash ₹31.00 (+₹0.09), UPI/card ₹30.91;
+  the pharmacist's own. **15%** is ₹5.04 off → ₹28.56: cash ₹29.00 (+₹0.44), UPI/card ₹28.56; the in-charge approves.
 - **DECIDED:** a ₹ discount is spread over the lines in proportion to their MRP (largest remainder), so the shares sum
   to the rupees asked; a % is taken off each line, half-up, as every other percentage benefit is.
 - **DECIDED:** a walk-in discount that needs an approval needs a named customer first (`discount_needs_customer`): an

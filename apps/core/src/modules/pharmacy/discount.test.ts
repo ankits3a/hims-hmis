@@ -8,22 +8,25 @@ import { tenderPayables } from "./bill";
  * ₹33.60, and who may give a discount — pinned at the exact boundaries the owner named.
  */
 describe("ruling 1 — the rounding follows the tender", () => {
-  it("any cash rounds DOWN; UPI or card alone collects to the paisa; no tender (the owner's credit) rounds down", () => {
-    expect(pharmacyRoundingRule([{ mode: "cash" }])).toBe("down");
+  it("any cash rounds to the nearest rupee; UPI or card alone collects to the paisa; no tender (the owner's credit) is cash", () => {
+    expect(pharmacyRoundingRule([{ mode: "cash" }])).toBe("half_up");
     expect(pharmacyRoundingRule([{ mode: "upi" }])).toBe("exact");
     expect(pharmacyRoundingRule([{ mode: "card" }])).toBe("exact");
     expect(pharmacyRoundingRule([{ mode: "upi" }, { mode: "card" }])).toBe("exact");
-    expect(pharmacyRoundingRule([{ mode: "cash" }, { mode: "upi" }])).toBe("down");
-    expect(pharmacyRoundingRule([])).toBe("down");
+    expect(pharmacyRoundingRule([{ mode: "cash" }, { mode: "upi" }])).toBe("half_up");
+    expect(pharmacyRoundingRule([])).toBe("half_up");
   });
 
-  it("₹33.60 is ₹33.00 in cash (a −₹0.60 rounding line) and ₹33.60 by UPI — never ₹34.00", () => {
-    expect(roundTotalBy("down", 3360)).toEqual({ roundedPaise: 3300, roundingPaise: -60 });
-    expect(roundTotalBy("exact", 3360)).toEqual({ roundedPaise: 3360, roundingPaise: 0 });
-    expect(tenderPayables(3360)).toEqual({ cash: { netPayablePaise: 3300, roundingPaise: -60 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } });
-    // Down never rounds a whole rupee away, and never goes up.
-    expect(roundTotalBy("down", 3300)).toEqual({ roundedPaise: 3300, roundingPaise: 0 });
-    expect(roundTotalBy("down", 3399)).toEqual({ roundedPaise: 3300, roundingPaise: -99 });
+  /*
+    The owner's amendment on PR #424, verbatim: "If the amount is 33.60, the collection should be 34. If it's 30.91
+    then collection should be Rs 31. If it is Rs 30.49 then collection can be Rs 30. But if it's 30.51 then
+    collection in cash should be 31." Each of his figures, and the half itself (30.50 → 31), in cash and by UPI.
+  */
+  it.each([
+    [3360, 3400, 40], [3091, 3100, 9], [3049, 3000, -49], [3051, 3100, 49], [3050, 3100, 50], [3000, 3000, 0],
+  ])("₹%s paise: cash collects %s (rounding %s); UPI and card collect it to the paisa", (raw, cash, rounding) => {
+    expect(tenderPayables(raw)).toEqual({ cash: { netPayablePaise: cash, roundingPaise: rounding }, digital: { netPayablePaise: raw, roundingPaise: 0 } });
+    expect(roundTotalBy("exact", raw)).toEqual({ roundedPaise: raw, roundingPaise: 0 });
   });
 
   it("every other bill keeps §170 exactly as it was: half-up to the rupee, and it is the default", () => {
@@ -38,7 +41,7 @@ describe("ruling 1 — the rounding follows the tender", () => {
       gst: { sacCode: "999312", rateBps: 0, exempt: true, exemptReason: "category_exempt" as const, cgstPaise: 0, sgstPaise: 0 }, netPaise: 3360,
     };
     expect(totalInvoice([line])).toMatchObject({ rawTotalPaise: 3360, netPayablePaise: 3400, roundingPaise: 40 });
-    expect(totalInvoice([line], "down")).toMatchObject({ netPayablePaise: 3300, roundingPaise: -60 });
+    expect(totalInvoice([line], "exact")).toMatchObject({ netPayablePaise: 3360, roundingPaise: 0 });
   });
 });
 

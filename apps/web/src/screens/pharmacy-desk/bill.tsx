@@ -70,9 +70,10 @@ export function tendersFor(mode: TenderMode, payable: number, cashText: string, 
 /**
  * ═══ OWNER RULING 2026-09-30 — THE PAYABLE FOLLOWS THE TENDER BEING CHOSEN ═══
  *
- * *"If patient is paying using cash then keep whole-rupee rounding, round down. If paying via UPI or Card
+ * *"If patient is paying using cash then keep whole-rupee rounding, … If paying via UPI or Card
  * then we can collect to the paisa."* The server quotes both (`byTender`); the rail shows the one for the
- * tender under the cashier's finger, so ₹33.60 reads ₹33.00 on Cash and Split and ₹33.60 on UPI and Card.
+ * tender under the cashier's finger, so ₹33.60 reads ₹34.00 on Cash and Split and ₹33.60 on UPI and Card (owner's amendment: cash
+ * to the NEAREST rupee — "30.49 … Rs 30 … 30.51 … 31").
  * An older server without `byTender` is read as it always was.
  */
 export function payableFor(mode: TenderMode, preview: Pick<WirePricedDraft, "totals" | "byTender">): TenderPayable {
@@ -147,7 +148,7 @@ export function BillRail({
   const paid = status === "billed" || status === "handed_over";
   const due = preview === null ? null : payableFor(mode, preview);
   const payable = due?.netPayablePaise ?? null;
-  /* The owner's credit carries no tender: it is billed on the cash rule (rounded down, never above MRP). */
+  /* The owner's credit carries no tender: it is billed on the cash rule (the nearest rupee). */
   const creditPayable = preview === null ? null : payableFor("cash", preview).netPayablePaise;
   const plan = payable === null ? null : tendersFor(mode, payable, cash, upi, ref);
   /* A discount above the pharmacist's 10% waits for its approval; the money keys wait with it. */

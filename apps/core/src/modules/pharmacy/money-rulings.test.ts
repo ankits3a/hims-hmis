@@ -36,8 +36,8 @@ class NoDocs implements DocumentStore {
 /**
  * ═══ OWNER RULINGS 2026-09-30 (money) — THE PHARMACY BILL, END TO END ═══
  *
- * 1. Cash rounds DOWN to the rupee; UPI or card alone is collected to the paisa; a mixed tender with cash is cash.
- *    The go-live day's bill: 15 Crocin at ₹22.40 a strip of 10 = ₹33.60, collected as ₹34.00 — above MRP.
+ * 1. Cash rounds to the NEAREST rupee (owner's amendment: "33.60 … 34 … 30.49 … Rs 30 … 30.51 … 31"); UPI or card
+ *    alone is collected to the paisa; a mixed tender with cash is cash. 15 Crocin at ₹22.40 a strip of 10 = ₹33.60.
  * 2. A sale discount off MRP, with a reason: the pharmacist up to 10%, the in-charge above 10% up to 25%, the
  *    owner above 25% or over ₹25,000 on one bill — each approval bound to the bill and the discount, never
  *    granted by whoever asked.
@@ -88,23 +88,23 @@ describe("pharmacy money rulings 2026-09-30", () => {
   const invoiceOf = async (invoiceId: string) => (await db.select().from(invoices).where(eq(invoices.id, invoiceId)))[0]!;
 
   describe("ruling 1 — rounding by tender", () => {
-    it("the preview quotes both: ₹33.00 in cash (−₹0.60), ₹33.60 by UPI or card, and follows the tender asked", async () => {
+    it("the preview quotes both: ₹34.00 in cash (+₹0.40), ₹33.60 by UPI or card, and follows the tender asked", async () => {
       const id = await picked();
       const cash = await previewDispenseBill(db, fx.pharmacist.actor, id, MON2);
-      expect(cash.totals).toMatchObject({ rawTotalPaise: 3360, netPayablePaise: 3300, roundingPaise: -60 });
-      expect(cash.byTender).toEqual({ cash: { netPayablePaise: 3300, roundingPaise: -60 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } });
+      expect(cash.totals).toMatchObject({ rawTotalPaise: 3360, netPayablePaise: 3400, roundingPaise: 40 });
+      expect(cash.byTender).toEqual({ cash: { netPayablePaise: 3400, roundingPaise: 40 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } });
       expect((await previewDispenseBill(db, fx.pharmacist.actor, id, MON2, { tender: "upi" })).totals).toMatchObject({ netPayablePaise: 3360, roundingPaise: 0 });
       expect((await previewDispenseBill(db, fx.pharmacist.actor, id, MON2, { tender: "card" })).totals.netPayablePaise).toBe(3360);
-      expect((await previewDispenseBill(db, fx.pharmacist.actor, id, MON2, { tender: "split" })).totals.netPayablePaise).toBe(3300);
+      expect((await previewDispenseBill(db, fx.pharmacist.actor, id, MON2, { tender: "split" })).totals.netPayablePaise).toBe(3400);
     });
 
-    it("cash: ₹33.60 is collected as ₹33.00, with a −₹0.60 rounding line — never ₹34.00", async () => {
+    it("cash: ₹33.60 is collected as ₹34.00, the nearest rupee, with a +₹0.40 rounding line", async () => {
       const id = await picked();
-      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 5000 }], changeGivenPaise: 1700 }, MON2);
+      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 5000 }], changeGivenPaise: 1600 }, MON2);
       const inv = await invoiceOf(billed.invoiceId!);
-      expect(inv).toMatchObject({ rawTotalPaise: 3360, roundingPaise: -60, netPayablePaise: 3300, roundingRule: "down" });
+      expect(inv).toMatchObject({ rawTotalPaise: 3360, roundingPaise: 40, netPayablePaise: 3400, roundingRule: "half_up" });
       const [alloc] = await db.select().from(allocations).where(eq(allocations.invoiceId, inv.id));
-      expect(alloc!.amountPaise).toBe(3300);
+      expect(alloc!.amountPaise).toBe(3400);
     });
 
     it("UPI and card: collected to the paisa, no rounding line", async () => {
@@ -115,20 +115,28 @@ describe("pharmacy money rulings 2026-09-30", () => {
       }
     });
 
-    it("a split of cash and UPI is cash: rounded down", async () => {
+    it("a split of cash and UPI is cash: the nearest rupee", async () => {
       const id = await picked();
-      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 1000 }, { mode: "upi", amountPaise: 2300, refText: "UTR-9" }] }, MON2);
-      expect(await invoiceOf(billed.invoiceId!)).toMatchObject({ netPayablePaise: 3300, roundingPaise: -60, roundingRule: "down" });
+      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 1000 }, { mode: "upi", amountPaise: 2400, refText: "UTR-9" }] }, MON2);
+      expect(await invoiceOf(billed.invoiceId!)).toMatchObject({ netPayablePaise: 3400, roundingPaise: 40, roundingRule: "half_up" });
     });
 
-    it("a full cancel of a cash bill credits exactly what was paid (₹33.00), so the refund can be paid", async () => {
+    it("a full cancel of a cash bill credits exactly what was paid (₹34.00), so the refund can be paid", async () => {
       const id = await picked();
-      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3300 }] }, MON2);
+      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3400 }] }, MON2);
       const cancelled = await cancelBilledDispense(db, fx.pharmacist.actor, fx.decls, id, { reason: "patient bought it outside", reasonClass: "genuine" }, MON3);
       const [note] = await db.select().from(creditNotes).where(eq(creditNotes.id, cancelled.creditNoteId));
-      expect(note).toMatchObject({ invoiceId: billed.invoiceId, netPaise: 3300, roundingPaise: -60 });
+      expect(note).toMatchObject({ invoiceId: billed.invoiceId, netPaise: 3400, roundingPaise: 40 });
       const [ask] = await db.select().from(approvals).where(eq(approvals.id, cancelled.refundApprovalId));
-      expect(ask!.amountPaise).toBe(3300);
+      expect(ask!.amountPaise).toBe(3400);
+    });
+
+    it("a full cancel of a UPI bill credits the ₹33.60 taken, never a rounded-up ₹34.00", async () => {
+      const id = await picked();
+      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "upi", amountPaise: 3360, refText: "UTR-2" }] }, MON2);
+      const cancelled = await cancelBilledDispense(db, fx.pharmacist.actor, fx.decls, id, { reason: "patient bought it outside", reasonClass: "genuine" }, MON3);
+      const [note] = await db.select().from(creditNotes).where(eq(creditNotes.id, cancelled.creditNoteId));
+      expect(note).toMatchObject({ invoiceId: billed.invoiceId, netPaise: 3360, roundingPaise: 0 });
     });
 
     it("OPD is untouched: a consultation bill stays half-up, and a pharmacy rounding or discount on it is refused", async () => {
@@ -138,7 +146,7 @@ describe("pharmacy money rulings 2026-09-30", () => {
       }, MON2);
       expect(await invoiceOf(opd.invoiceId)).toMatchObject({ roundingRule: "half_up" });
       const lines = [{ lineId: newId(), serviceId: fx.base.consultNewServiceId, qty: 1 }];
-      expect(await refusal(issueInvoice(db, fx.pharmacist.actor, { draftId: newId(), patientId: fx.patient.id, lines, roundingRule: "down", receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] } }, MON2)))
+      expect(await refusal(issueInvoice(db, fx.pharmacist.actor, { draftId: newId(), patientId: fx.patient.id, lines, roundingRule: "exact", receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] } }, MON2)))
         .toBe("pharmacy_bill_only");
       expect(await refusal(issueInvoice(db, fx.pharmacist.actor, {
         draftId: newId(), patientId: fx.patient.id, lines, saleDiscount: { kind: "percent_bps", value: 500, reason: "x" }, receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
@@ -147,18 +155,18 @@ describe("pharmacy money rulings 2026-09-30", () => {
   });
 
   describe("ruling 2 — the sale discount", () => {
-    it("8% is the pharmacist's own: billed at once, tax carved out of the DISCOUNTED amount per line, then rounded down for cash", async () => {
+    it("8% is the pharmacist's own: billed at once, tax carved out of the DISCOUNTED amount per line, then rounded to the nearest rupee for cash", async () => {
       const id = await picked();
       const discount = { kind: "percent_bps" as const, value: 800, reason: "senior citizen" };
       const quote = await previewDispenseBill(db, fx.pharmacist.actor, id, MON2, { discount });
-      // 8% of ₹33.60 = ₹2.688 → ₹2.69 (half-up, per line); ₹30.91 left: ₹30.00 cash, ₹30.91 UPI.
+      // 8% of ₹33.60 = ₹2.688 → ₹2.69 (half-up, per line); ₹30.91 left: ₹31.00 cash (the owner's own example), ₹30.91 UPI.
       expect(quote.discount).toMatchObject({ amountPaise: 269, tier: "pharmacist", approverRole: null });
-      expect(quote.totals).toMatchObject({ grossPaise: 3360, discountPaise: 269, rawTotalPaise: 3091, netPayablePaise: 3000, roundingPaise: -91 });
+      expect(quote.totals).toMatchObject({ grossPaise: 3360, discountPaise: 269, rawTotalPaise: 3091, netPayablePaise: 3100, roundingPaise: 9 });
       expect(quote.byTender.digital.netPayablePaise).toBe(3091);
 
-      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3000 }], discount }, MON2);
+      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3100 }], discount }, MON2);
       const inv = await invoiceOf(billed.invoiceId!);
-      expect(inv).toMatchObject({ grossPaise: 3360, discountPaise: 269, netPayablePaise: 3000, roundingPaise: -91 });
+      expect(inv).toMatchObject({ grossPaise: 3360, discountPaise: 269, netPayablePaise: 3100, roundingPaise: 9 });
       for (const l of await db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, inv.id))) {
         const charged = l.grossPaise - l.discountPaise;
         const head = l.exempt || l.rateBps === 0 ? 0 : inclusiveTaxHead(charged, l.rateBps);
@@ -178,14 +186,14 @@ describe("pharmacy money rulings 2026-09-30", () => {
       expect((await previewDispenseBill(db, fx.pharmacist.actor, id, MON2, { discount: { kind: "percent_bps", value: 1001, reason: "r" } })).discount?.tier).toBe("pharmacy_incharge");
       expect((await previewDispenseBill(db, fx.pharmacist.actor, id, MON2, { discount: { kind: "percent_bps", value: 2500, reason: "r" } })).discount?.tier).toBe("pharmacy_incharge");
       expect((await previewDispenseBill(db, fx.pharmacist.actor, id, MON2, { discount: { kind: "percent_bps", value: 2501, reason: "r" } })).discount?.tier).toBe("owner");
-      expect(await refusal(billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3300 }], discount: { kind: "percent_bps", value: 1001, reason: "r" } }, MON2)))
+      expect(await refusal(billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3400 }], discount: { kind: "percent_bps", value: 1001, reason: "r" } }, MON2)))
         .toBe("discount_approval_required");
     });
 
     it("15%: the in-charge approves, never the one who asked; the bill binds the approval and carries the discount", async () => {
       const id = await picked();
       const discount = { kind: "percent_bps" as const, value: 1500, reason: "staff family" };
-      expect(await refusal(billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3300 }], discount }, MON2))).toBe("discount_approval_required");
+      expect(await refusal(billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3400 }], discount }, MON2))).toBe("discount_approval_required");
 
       // The in-charge who is also at the counter asks — and may not grant their own ask.
       const asked = await askDispenseDiscount(db, incharge.actor, id, discount, MON2);
@@ -194,13 +202,13 @@ describe("pharmacy money rulings 2026-09-30", () => {
       expect(row).toMatchObject({ typeKey: "pharmacy_discount_incharge", subjectType: "pharmacy_sale_discount", subjectId: `${id}:percent_bps:1500`, amountPaise: 504, patientId: fx.patient.id });
       expect(await refusal(approveRequest(db, incharge.actor, { approvalId: asked.approvalId, note: "ok" }))).not.toBe("no refusal");
       // Pending is not granted.
-      expect(await refusal(billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 2800 }], discount: { ...discount, approvalId: asked.approvalId } }, MON2)))
+      expect(await refusal(billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 2900 }], discount: { ...discount, approvalId: asked.approvalId } }, MON2)))
         .toBe("discount_approval_required");
 
       await approveRequest(db, incharge2.actor, { approvalId: asked.approvalId, note: "agreed" });
-      // ₹33.60 − ₹5.04 = ₹28.56 → ₹28.00 in cash.
-      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 2800 }], discount: { ...discount, approvalId: asked.approvalId } }, MON2);
-      expect(await invoiceOf(billed.invoiceId!)).toMatchObject({ discountPaise: 504, netPayablePaise: 2800, roundingPaise: -56 });
+      // ₹33.60 − ₹5.04 = ₹28.56 → ₹29.00 in cash (the nearest rupee).
+      const billed = await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 2900 }], discount: { ...discount, approvalId: asked.approvalId } }, MON2);
+      expect(await invoiceOf(billed.invoiceId!)).toMatchObject({ discountPaise: 504, netPayablePaise: 2900, roundingPaise: 44 });
     });
 
     it("the approval binds THIS bill and THIS discount: another %, another dispense or an in-charge's grant above 25% is refused", async () => {
@@ -253,58 +261,58 @@ describe("pharmacy money rulings 2026-09-30", () => {
     });
     const cart = () => [{ medicineId: fx.med.crocin, qtyBase: 15 }];
 
-    it("cash rounds down, UPI is exact, and 8% is the pharmacist's — the memo shows discount and rounding", async () => {
+    it("cash rounds to the nearest rupee, UPI is exact, and 8% is the pharmacist's — the memo shows discount and rounding", async () => {
       const p = await previewRetailSale(db, fx.pharmacist.actor, { patientId: fx.patient.id, lines: cart() }, MON2);
-      expect(p.byTender).toEqual({ cash: { netPayablePaise: 3300, roundingPaise: -60 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } });
+      expect(p.byTender).toEqual({ cash: { netPayablePaise: 3400, roundingPaise: 40 }, digital: { netPayablePaise: 3360, roundingPaise: 0 } });
       const upi = await sellRetail(db, new NoDocs(), fx.pharmacist.actor, { customer: { existingId: fx.patient.id }, lines: cart(), tenders: [{ mode: "upi", amountPaise: 3360, refText: "UTR" }] }, undefined, MON2);
       expect(await invoiceOf(upi.invoiceId)).toMatchObject({ netPayablePaise: 3360, roundingPaise: 0 });
 
       const discount = { kind: "percent_bps" as const, value: 800, reason: "regular customer" };
       const q = await previewRetailSale(db, fx.pharmacist.actor, { patientId: fx.patient.id, lines: cart(), discount }, MON2);
       expect(q.discount).toMatchObject({ amountPaise: 269, tier: "pharmacist" });
-      expect(q.totals).toMatchObject({ discountPaise: 269, netPayablePaise: 3000, roundingPaise: -91 });
-      const sold = await sellRetail(db, new NoDocs(), fx.pharmacist.actor, { customer: { existingId: fx.patient.id }, lines: cart(), tenders: [{ mode: "cash", amountPaise: 3000 }], discount }, undefined, MON2);
-      expect(sold.money).toMatchObject({ grossPaise: 3360, discountPaise: 269, discountReason: "regular customer", roundingPaise: -91, netPaise: 3000 });
+      expect(q.totals).toMatchObject({ discountPaise: 269, netPayablePaise: 3100, roundingPaise: 9 });
+      const sold = await sellRetail(db, new NoDocs(), fx.pharmacist.actor, { customer: { existingId: fx.patient.id }, lines: cart(), tenders: [{ mode: "cash", amountPaise: 3100 }], discount }, undefined, MON2);
+      expect(sold.money).toMatchObject({ grossPaise: 3360, discountPaise: 269, discountReason: "regular customer", roundingPaise: 9, netPaise: 3100 });
     });
 
     it("15% waits for the in-charge, bound to the cart's own id — and that approval sells the cart once", async () => {
       const draftId = newId();
       const discount = { kind: "percent_bps" as const, value: 1500, reason: "staff" };
-      expect(await refusal(sellRetail(db, new NoDocs(), fx.pharmacist.actor, { customer: { existingId: fx.patient.id }, lines: cart(), tenders: [{ mode: "cash", amountPaise: 2800 }], discount, draftId }, undefined, MON2)))
+      expect(await refusal(sellRetail(db, new NoDocs(), fx.pharmacist.actor, { customer: { existingId: fx.patient.id }, lines: cart(), tenders: [{ mode: "cash", amountPaise: 2900 }], discount, draftId }, undefined, MON2)))
         .toBe("discount_approval_required");
       expect(await refusal(askRetailDiscount(db, fx.pharmacist.actor, { draftId, lines: cart(), discount }, MON2))).toBe("discount_needs_customer");
       const asked = await askRetailDiscount(db, fx.pharmacist.actor, { draftId, patientId: fx.patient.id, lines: cart(), discount }, MON2);
       await approveRequest(db, incharge2.actor, { approvalId: asked.approvalId, note: "ok" });
-      const input = { customer: { existingId: fx.patient.id }, lines: cart(), tenders: [{ mode: "cash" as const, amountPaise: 2800 }], discount: { ...discount, approvalId: asked.approvalId }, draftId };
+      const input = { customer: { existingId: fx.patient.id }, lines: cart(), tenders: [{ mode: "cash" as const, amountPaise: 2900 }], discount: { ...discount, approvalId: asked.approvalId }, draftId };
       const sold = await sellRetail(db, new NoDocs(), fx.pharmacist.actor, input, undefined, MON2);
       expect(sold.id).toBe(draftId);
-      expect(await invoiceOf(sold.invoiceId)).toMatchObject({ discountPaise: 504, netPayablePaise: 2800 });
+      expect(await invoiceOf(sold.invoiceId)).toMatchObject({ discountPaise: 504, netPayablePaise: 2900 });
       expect(await refusal(sellRetail(db, new NoDocs(), fx.pharmacist.actor, input, undefined, MON3))).toBe("discount_not_bound");
     });
   });
 
   it("the register, GSTR-3B and Tally all carry the discount and the rounding, and every total adds up", async () => {
     const id = await picked();
-    await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3000 }], discount: { kind: "percent_bps", value: 800, reason: "senior citizen" } }, MON2);
+    await billDispense(db, fx.pharmacist.actor, id, { tenders: [{ mode: "cash", amountPaise: 3100 }], discount: { kind: "percent_bps", value: 800, reason: "senior citizen" } }, MON2);
     const upi = await picked();
     await billDispense(db, fx.pharmacist.actor, upi, { tenders: [{ mode: "upi", amountPaise: 3360, refText: "UTR" }] }, MON2);
 
     const range = { preset: "custom", from: DAY, to: DAY };
     const reg = await salesRegister(db, incharge.actor, range, MON3);
     expect(reg.rows.map((r) => ({ d: r.discountPaise, r: r.roundingPaise, n: r.netPaise })).sort((a, b) => a.n - b.n))
-      .toEqual([{ d: 269, r: -91, n: 3000 }, { d: 0, r: 0, n: 3360 }]);
+      .toEqual([{ d: 269, r: 9, n: 3100 }, { d: 0, r: 0, n: 3360 }]);
     for (const r of reg.rows) {
       expect(r.grossPaise - r.discountPaise).toBe(r.taxablePaise + r.cgstPaise + r.sgstPaise);
       expect(r.taxablePaise + r.cgstPaise + r.sgstPaise + r.roundingPaise).toBe(r.netPaise);
     }
     const t = reg.totals.sales;
-    expect(t).toMatchObject({ grossPaise: 6720, discountPaise: 269, roundingPaise: -91, netPaise: 6360 });
+    expect(t).toMatchObject({ grossPaise: 6720, discountPaise: 269, roundingPaise: 9, netPaise: 6460 });
     expect(t.taxablePaise + t.cgstPaise + t.sgstPaise + t.roundingPaise).toBe(t.netPaise);
 
     const g = await gstr3bReport(db, incharge.actor, range, MON3);
     // Rounding is not a supply and the discount is already off the value: the taxable value is the register's.
     expect(g.outward.taxable).toMatchObject({ taxablePaise: t.taxablePaise, cgstPaise: t.cgstPaise, sgstPaise: t.sgstPaise });
-    expect(g.outward).toMatchObject({ discountPaise: 269, roundingPaise: -91 });
+    expect(g.outward).toMatchObject({ discountPaise: 269, roundingPaise: 9 });
 
     const tally = await tallyPreview(db, incharge.actor, range, MON3);
     const sales = tally.sample.filter((v) => v.kind === "sale");
@@ -312,8 +320,8 @@ describe("pharmacy money rulings 2026-09-30", () => {
     for (const v of sales) expect(v.entries.reduce((s, e) => s + e.amountPaise, 0)).toBe(0);
     const discounted = sales.find((v) => v.narration.includes("discount"))!;
     expect(discounted.narration).toContain("MRP Rs 33.60 less discount Rs 2.69");
-    // The round-off ledger takes the −₹0.91 (an expense: a debit), the Sales ledger only the taxable value.
-    expect(discounted.entries.find((e) => e.ledger === tally.ledgers.roundOff)?.amountPaise).toBe(91);
+    // The round-off ledger takes the +₹0.09 (income: a credit), the Sales ledger only the taxable value.
+    expect(discounted.entries.find((e) => e.ledger === tally.ledgers.roundOff)?.amountPaise).toBe(-9);
     const sold = discounted.entries.find((e) => e.ledger === tally.ledgers.sales)?.amountPaise ?? 0;
     const cgst = discounted.entries.find((e) => e.ledger === tally.ledgers.outputCgst)?.amountPaise ?? 0;
     expect(-sold - 2 * cgst).toBe(3091); // taxable + both heads = the discounted amount, before rounding

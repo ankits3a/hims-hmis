@@ -91,7 +91,7 @@ export const invoices = pgTable("invoices", {
   roundingPaise: bigint("rounding_paise", { mode: "number" }).notNull(), // §170, owner ruling 2026-08-14
   /**
    * OWNER RULING 2026-09-30 (money) — how `rounding_paise` was computed: `half_up` (§170, every bill
-   * before the ruling and every non-pharmacy bill), `down` (a pharmacy bill with any cash) or `exact`
+   * before the ruling, every non-pharmacy bill, and a pharmacy bill with any cash — owner amendment 2026-09-30) or `exact`
    * (a pharmacy bill paid wholly by UPI or card). A credit note against the invoice rounds the same way.
    */
   roundingRule: text("rounding_rule").notNull().default("half_up"),
