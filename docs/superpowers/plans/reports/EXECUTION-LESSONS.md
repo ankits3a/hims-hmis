@@ -2679,3 +2679,62 @@ Neither lives in the module that changed. Each ENUMERATES what the module regist
     grep -rln "<old_key>\|<CONSTANT_NAME>\|register<Module>ApprovalTypes\|<MODULE>_APPROVAL_TYPES" apps/*/src apps/*/test --include=*.test.ts --include=*.test.tsx
 
 Then run every hit, under the lock. For #347 this returns the two files that failed in CI.
+
+
+### 2.170 A DEPLOY RUNS EVERY SEED IT NAMES — DIFF THE SEEDS YOU MERGED AGAINST deploy.sh BEFORE YOU RUN IT
+
+**What happened, 2026-09-29.** Pharmacy stage D5 added a WHO AWaRe classification step to `seed-pharmacy.ts`.
+- The step would have marked 1,857 products restricted, including meropenem and colistin. With no antimicrobial steward appointed yet, all of them would have been refused at the counter and at walk-in sales.
+- The author session believed deploy.sh did not run that seed. It does (`compose run --rm api node dist/scripts/seed-pharmacy.js`).
+- A session about to deploy caught it only because it grepped the seed list. The fix was #387, which moved the step into `aware:classify`: deploy.sh never calls it, and it refuses while no steward exists.
+
+**Mechanical form.** Run this before every `deploy.sh`:
+```
+git diff --name-only <deployed-sha>..origin/main -- apps/core/scripts/seed-*.ts
+grep -n "compose run --rm api node dist/scripts/seed-" docker/prod/deploy.sh
+```
+- For every seed in BOTH lists, read what it now writes.
+- Any step that changes behaviour at a counter (restricts, refuses, reprices) must not be in a deploy seed. It needs its own command and the owner's go.
+
+### 2.171 ONLY MIGRATION PRs NEED SERIAL TURNS; NO-MIGRATION PRs RIDE ONE TRAIN
+
+**What happened, 2026-09-28/29.** Three sessions (the UX audit, pharmacy and radiology) shared a strict-up-to-date `main`.
+- At first every PR took a turn. Each merge made every other PR BEHIND, so each turn cost a 20–30 minute CI re-run.
+- Six already-reviewed no-migration UX PRs sat for most of a day.
+- Two changes fixed it:
+  - Only PRs carrying a drizzle migration queue serially, because the serial number is the only true conflict.
+  - The six no-migration PRs merged into one train branch (#418). They took one CI slot and landed in one run.
+- Pharmacy did the same with #417.
+
+**Mechanical form.**
+- `git diff --name-only origin/main...<branch> -- apps/core/drizzle/` — empty means the PR joins the next train.
+- Non-empty means it takes a serial turn, and renumbers to the next free migration at that turn.
+- A train is `git merge --no-ff` of each branch onto a fresh lane from main, resolved keep-both, with the union of their touched tests.
+
+### 2.172 A TEST THAT FAILS ON THE PR'S OWN HEAD IS THE PR'S, NOT A FLAKE — even when a flake shares its file
+
+**What happened, 2026-09-30.** #380's CI was red on `partners/accrual.test.ts` F8. The file has a known timing flake (F11a), and the first reading was "flake".
+- But F8 also failed on the PR's own head, before main was merged in.
+- The cause: F8's fixture paid a refund with an Aadhaar reference. The owner's Aadhaar ruling, which this PR implemented, now refuses that before any write, so F8 never reached its money checks.
+- A second red test on the same PR (the SubmitButton census) led to a real gap: the new resolve-mismatch route had no idempotency protection.
+
+**Mechanical form.** When CI is red, re-run the failing test on the PR's own head:
+```
+git stash
+git checkout <pr-head>
+<run the test>
+```
+- Red there means the PR caused it; fix it in the PR.
+- Only a test that is green on the head and red after merging main is a merge or flake question.
+- A census test that drops (for example SubmitButton 5→4) is checked by reading every act, never by lowering the number.
+
+### 2.173 BACKGROUND WATCHERS DIE UNDER MEMORY PRESSURE ON THE SHARED BOX — POLL IN THE FOREGROUND OF THE AGENT THAT OWNS THE TURN
+
+**What happened, 2026-09-28/29.** On the 15 GB box, Claude Code killed a session's background merge watcher four times, because the whole box went low on memory while that session sat idle.
+- Nothing was lost, since GitHub's own auto-merge survived each kill.
+- But turns that depended on the watcher (arm the next PR, update-branch when BEHIND) silently stopped.
+
+**Mechanical form.**
+- A merge turn is owned by an agent that polls in its own foreground (a `sleep` of ≤ 5 minutes between `gh pr view` calls), never by a detached background shell.
+- Before any restart, run `free -m`. If less than 2,500 MB is available, wait.
+- Keep one watcher per session, never a chain of them.

@@ -241,6 +241,14 @@
       "agents": 3,
       "subagentTokens": 879000,
       "note": "2026-09-28, deployed 2194011e. Agents: A3 test fixtures 192.4k (1,992 tests green), B2 office build 384.8k, B3 fold 302.0k. Each builder was briefed with the approved board file and CLAUDE.md, not the ledger, and verified in Chromium at 6 widths. Main-session cost unmeasured (LIGHT) — only the owner's /cost sees it. Waste: two red CI rounds on #347 (lab-reports.test.tsx and seed-lab.test.ts enumerate registered approval types outside the changed module) — ledger 2.169, method 9.6b. Bought: owner-only credit hospital-wide, GSTR-3B, the approved office in production."
+    },
+    {
+      "phase": "ux-audit-2026-09-28 (11 screens + shell + 5 boards + patient profile)",
+      "lane": "LIGHT (in-session orchestration + ~35 Agent subagents)",
+      "tasks": 20,
+      "agents": 35,
+      "subagentTokens": 5250000,
+      "note": "2026-09-28..30, deployed eb032c05. Subagent tokens summed from each agent's completion notice (the box-wide token-audit.js --since window mixes three sessions, ledger 2.167): audit 477k, step-2 fixes 529k, 3 board rebuilds 750k, blind count 241k, 5 draft boards 523k, 5 board builds 1.68M, profile audit+build 536k, merge/train/shepherd agents ~375k, MS break-glass 137k. ~262k per task. Main-session cost unmeasured (LIGHT). Bought: 20 PRs across 17 screens incl. 3 CRITICAL-grade finds no gate caught (refused merge locked the record forever; the expected-cash leak on 7 surfaces; no idempotency on resolve-mismatch) and the D5 deploy hazard caught before deploy (ledger 2.170). Waste: ~a day of serial CI turns for no-migration PRs before trains (2.171); four watcher kills under memory pressure (2.173)."
     }
   ]
 }

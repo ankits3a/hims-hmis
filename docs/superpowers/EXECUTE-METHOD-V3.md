@@ -730,6 +730,15 @@ what you registered.
   must include the output of §2.169's grep, and the run must cover every hit.
 - On 2026-09-28 skipping it cost two red CI rounds (about 45 minutes) on a PR whose own 194 suites were green.
 
+### 9.6c SHARED `main`: MIGRATIONS QUEUE, EVERYTHING ELSE TRAINS; A DEPLOY DIFFS ITS SEEDS FIRST — added 2026-09-30 (UX audit, ledger §2.170–2.173)
+
+- When several sessions share a strict-up-to-date `main`, agree a serial queue for migration PRs only.
+  - Batch every other reviewed PR into one train PR per session (§2.171).
+  - This took the UX audit's six no-migration PRs from six CI slots to one.
+- The session that runs `deploy.sh` first diffs the merged seeds against the seeds deploy.sh runs (§2.170).
+  - Any seed step that changes counter behaviour leaves the deploy path before the deploy runs.
+- Merge turns are polled in the foreground by the agent that owns them (§2.173). A red test on the PR's own head is fixed in the PR (§2.172).
+
 ### 9.7 BRIEF THE CLOSE REVIEWER AT THE OPERANDS, NOT THE BRANCHES — added 2026-08-28 (Plan 15 close, ledger §2.128)
 
 Three phases running, the close reviewer has returned more than the phase's own instruments found,
