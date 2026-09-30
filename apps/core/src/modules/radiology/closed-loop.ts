@@ -15,6 +15,7 @@ import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
 import { imagingReportActedUpon } from "./events";
 import { acknowledgeCritical } from "./reports";
+import { overreadsForStudies } from "./tele";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -278,6 +279,11 @@ export type InboxRow = {
   acted: { at: string; outcome: string; note: string } | null;
   /** The ordering clinician is this doctor (else: the visit's doctor). */
   orderedByMe: boolean;
+  /**
+   * 18-S RS8c — the morning consultant's grade of a night-read prelim on this study (null when no
+   * night partner read it). A MAJOR discrepancy is why this version is back as unread.
+   */
+  overread: { grade: string; providerName: string } | null;
 };
 
 /** Acted reports stay in the inbox this long, so the doctor sees what they closed this fortnight. */
@@ -332,6 +338,7 @@ export async function doctorResultsInbox(db: Db, actor: Actor, now: Date = new D
   const crits = reportIds.length === 0 ? [] : await db.select().from(imagingCriticalFindings)
     .where(inArray(imagingCriticalFindings.reportId, reportIds));
   const critBy = new Map(crits.map((c) => [c.reportId, c]));
+  const overreads = await overreadsForStudies(db, [...new Set(visible.map((r) => r.study.id))]);
 
   const seen = new Set<string>();
   for (const r of visible) {
@@ -367,6 +374,10 @@ export async function doctorResultsInbox(db: Db, actor: Actor, now: Date = new D
       acted: d?.actedAt && d.actedOutcome && d.actedNote
         ? { at: d.actedAt.toISOString(), outcome: d.actedOutcome, note: d.actedNote } : null,
       orderedByMe: r.orderingClinicianId === actor.id,
+      overread: (() => {
+        const o = overreads.get(r.study.id);
+        return o === undefined ? null : { grade: o.grade, providerName: o.providerName };
+      })(),
     };
   });
 
