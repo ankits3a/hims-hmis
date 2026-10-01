@@ -193,6 +193,12 @@ export async function fetchQueue(): Promise<WireQueueRow[]> {
 export async function findAtCounter(q: string): Promise<WireFindResult> {
   return api<WireFindResult>("GET", `/pharmacy/find${qs({ q })}`);
 }
+/** `GET /pharmacy/find/suggest` — who the typed words could be; a tap runs `findAtCounter` on the UHID. */
+export type WireCounterSuggestion = WirePatientSummary & { hint: string | null };
+export async function suggestAtCounter(q: string): Promise<WireCounterSuggestion[]> {
+  const { items } = await api<{ items: WireCounterSuggestion[] }>("GET", `/pharmacy/find/suggest${qs({ q })}`);
+  return items;
+}
 export async function fetchDispense(id: string): Promise<WireDispense> {
   return api<WireDispense>("GET", `/pharmacy/dispenses/${id}`);
 }

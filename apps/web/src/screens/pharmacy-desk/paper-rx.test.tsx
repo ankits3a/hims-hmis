@@ -102,6 +102,23 @@ describe("the desk's paper-prescription door (2026-09-30)", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  /* Owner, staging 2026-10-01: "I am not seeing any suggested patient name as I type." */
+  it("suggests registered patients as the name is typed; a tap finds that patient and offers the paper door", async () => {
+    mockRoutes(base({
+      "GET /api/pharmacy/find/suggest": { status: 200, body: { items: [{ ...PATIENT, restricted: false, hint: "female · 40y · ••3344" }] } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    await userEvent.type(screen.getByRole("textbox", { name: /slip QR/ }), "sun");
+    const row = await screen.findByTestId("desk-suggest-U0011");
+    expect(row).toHaveTextContent("Sunita Devi");
+    expect(row).toHaveTextContent("••3344");
+    await userEvent.click(row);
+    const asked = vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter((u) => u.includes("/pharmacy/find?"));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("q=U0011");
+    expect(await screen.findByTestId("desk-paper-door")).toHaveTextContent("Sunita Devi");
+  });
+
   it("nobody found → Register (prefilled with the typed name) → the paper sheet opens on the new patient, with a no-fee visit", async () => {
     mockRoutes(base({
       "GET /api/pharmacy/find": { status: 200, body: { kind: "none", door: "uhid", reason: "not_found" } },
