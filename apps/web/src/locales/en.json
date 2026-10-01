@@ -6637,6 +6637,13 @@
         "divorced": "Divorced",
         "separated": "Separated"
       },
+      "allergy": {
+        "title": "Allergies",
+        "substance": "allergic to",
+        "placeholder": "medicine, food or other — type 3 letters",
+        "add": "Add",
+        "remove": "Remove {{name}}"
+      },
       "where": {
         "title": "Where they live",
         "area": "house, street, area",
