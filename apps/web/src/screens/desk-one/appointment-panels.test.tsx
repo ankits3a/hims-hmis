@@ -697,3 +697,45 @@ describe("FD-22: refusals land inline, cancelling confirms, and every doctor is 
     expect(screen.getAllByTestId("slot-free").length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * OWNER, 2026-10-01 (and 2026-09-14 before it): *"I just booked a future appointment. But I can't see
+ * the booked future appointment in the patient profile."* The left lane read visits, and a booking has
+ * no visit until check-in.
+ */
+describe("the left lane shows the appointments the patient still holds", () => {
+  const held = (id: string, time: string): Record<string, unknown> => ({
+    id, patientId: "p-1", doctorId: "doc-1", departmentId: "d-1", serviceDate: tomorrowIst(),
+    slotStart: `${tomorrowIst()}T${time}:00.000Z`, slotEnd: `${tomorrowIst()}T${time}:00.000Z`,
+    status: "booked", source: "desk", note: null, encounterId: null, rescheduledToId: null,
+    rescheduledFromId: null, cancelReason: null, leaveId: null, bookedBy: "u1",
+    bookedAt: "2026-09-04T00:00:00.000Z", updatedBy: "u1", updatedAt: "2026-09-04T00:00:00.000Z",
+  });
+
+  it("says so in words when nothing is booked ahead — the heading does not vanish", async () => {
+    mount({ slots: [] });
+    await holdPatient();
+    expect(await screen.findByTestId("upcoming-none")).toHaveTextContent("none booked ahead");
+  });
+
+  it("lists a held slot with its day and its clock", async () => {
+    mount({ slots: [], theirs: [held("11", "09:15")] });
+    await holdPatient();
+    const row = await screen.findByTestId("upcoming-row");
+    expect(row).toHaveTextContent("14:45"); // 09:15Z is 14:45 IST
+  });
+
+  it("a slot booked a moment ago appears in the lane without waiting out the cache", async () => {
+    const theirs: unknown[] = [];
+    const booked: { body: unknown }[] = [];
+    mount({ slots: [slot("10:30")], theirs, booked });
+    await openFutureTab();
+    expect(await screen.findByTestId("upcoming-none")).toBeInTheDocument();
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getAllByTestId("slot-free")[0]!);
+    theirs.push(held("12", "10:30")); // what the server will answer once the booking lands
+    await user.click(screen.getByTestId("confirm-slot"));
+    await waitFor(() => expect(booked).toHaveLength(1));
+    expect(await screen.findByTestId("upcoming-row")).toHaveTextContent("16:00");
+  });
+});

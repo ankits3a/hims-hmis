@@ -24,7 +24,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AbdmVerifyPanel } from "../components/abdm-verify";
 import { abhaCapability, getPatientDocument, listPatientDocuments } from "../lib/patients-api";
-import { patientTimeline } from "../lib/opd-api";
+import { listDepartments, listDoctors, listPatientAppointments, patientTimeline } from "../lib/opd-api";
+import { slotClock, upcomingOf } from "../lib/appointment-view";
 import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
 import { reportsForPatient } from "../lib/lab-api";
@@ -1072,6 +1073,12 @@ export function PatientDetail(): React.ReactElement {
    */
   const on = (perm: string): boolean => pid !== null && can(perm);
   const visits = useQuery({ queryKey: ["opd-timeline", pid], queryFn: () => patientTimeline(pid!), enabled: on("opd.visits.read"), retry: false });
+  // The slots this patient still holds. A booking has no visit until check-in, so `visits` above
+  // cannot show one; the names come from the masters, read only when there is a booking to name.
+  const bookings = useQuery({ queryKey: ["pf-appointments", pid], queryFn: () => listPatientAppointments(pid!), enabled: on("opd.appointments.read"), retry: false });
+  const hasBookings = (bookings.data?.items.length ?? 0) > 0;
+  const bookDoctors = useQuery({ queryKey: ["opd", "doctors", "all"], queryFn: listDoctors, enabled: hasBookings, staleTime: 300_000, retry: false });
+  const bookDepartments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, enabled: hasBookings, staleTime: 300_000, retry: false });
   const labResults = useQuery({ queryKey: ["pf-lab-results", pid], queryFn: () => fetchPatientResults(pid!), enabled: on("lab.results.read"), retry: false });
   const labReports = useQuery({ queryKey: ["pf-lab-reports", pid], queryFn: () => reportsForPatient(pid!), enabled: on("lab.reports.print"), retry: false });
   const imaging = useQuery({ queryKey: ["pf-imaging", pid], queryFn: () => fetchPatientImaging(pid!), enabled: on("radiology.reports.read"), retry: false });
@@ -1197,6 +1204,7 @@ export function PatientDetail(): React.ReactElement {
 
   const owed = duesSummary(dues.data?.items);
   const openToday = openVisitsToday(visits.data?.items, today);
+  const upcoming = upcomingOf(bookings.data?.items, today);
   const pending = labReports.data?.pending ?? [];
   const visitCount = visits.data?.items.length;
   const rep = (guardians ?? []).find((g) => g.guardian.status === "active");
@@ -1328,6 +1336,30 @@ export function PatientDetail(): React.ReactElement {
                     </div>
                   )}
                 </div>
+              </>
+            )}
+
+            {can("opd.appointments.read") && (
+              <>
+                <h3 style={{ margin: "18px 0 6px", fontSize: 15, fontWeight: 600 }}>{t("profile.upcoming")}</h3>
+                {upcoming.length === 0 ? (
+                  <p style={{ fontSize: 12.5, color: "var(--dim)", margin: 0 }} data-testid="upcoming-empty">{t(bookings.isPending ? "profile.upcomingReading" : "profile.upcomingNone")}</p>
+                ) : (
+                  <div className="today" data-testid="upcoming-band">
+                    {upcoming.map((a) => (
+                      <div key={a.id} data-testid="upcoming-row">
+                        <b>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b>
+                        <div className="s">
+                          {[
+                            bookDoctors.data?.items.find((x) => x.id === a.doctorId)?.displayName,
+                            bookDepartments.data?.items.find((x) => x.id === a.departmentId)?.name,
+                            a.status === "needs_rebooking" ? t("profile.upcomingRebook") : null,
+                          ].filter(Boolean).join(" · ")}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 

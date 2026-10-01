@@ -6802,6 +6802,11 @@
         "cancelled": "cancelled"
       }
     },
+    "upcoming": {
+      "title": "upcoming appointments",
+      "none": "none booked ahead",
+      "rebook": "needs rebooking"
+    },
     "history": {
       "fullCount": "{{count}} visit on file",
       "fullCount_other": "{{count}} visits on file",
@@ -12903,6 +12908,10 @@
       "ask": "ask"
     },
     "today": "Today · {{date}}",
+    "upcoming": "Upcoming appointments",
+    "upcomingNone": "No appointment booked ahead",
+    "upcomingReading": "Reading the appointment book…",
+    "upcomingRebook": "needs rebooking — doctor on leave",
     "todayVisit": "In the {{dept}} queue",
     "visitStatus": {
       "registered": "registered",

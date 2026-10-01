@@ -952,6 +952,9 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     patch({ busy: "future", error: null });
     try {
       const { appointment } = await bookAppointment({ patientId: person.id, doctorId, slotStart: slot.start });
+      // The left lane's "upcoming" and the stage's "their bookings" share this key; without the
+      // invalidate both answer from a 30 s cache and contradict the booking made a second ago.
+      void qc.invalidateQueries({ queryKey: ["d1", "their-appointments", person.id] });
       setS((prev) => ({
         ...prev,
         busy: null,
@@ -965,7 +968,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, `slot REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.person, patch]);
+  }, [s.person, patch, qc]);
 
   const presentCoupon = useCallback((code: string) => {
     const clean = code.trim().toUpperCase();
