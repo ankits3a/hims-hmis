@@ -397,6 +397,56 @@ export function formAgeYears(f: Pick<Form, "age" | "dob" | "ageMode">): number |
   return years >= 0 && years <= 130 ? years : null;
 }
 
+/**
+ * ═══ ONE BOX, AGE OR DATE OF BIRTH — THE BOX WORKS OUT WHICH (owner, 2026-10-01) ═══
+ *
+ * *"In the Age field, we should allow the field to capture exact date of birth instead of just plain
+ * number as Age. Our system should be smart enough to understand if it's date of birth or simple age
+ * in number."* The old form made the clerk pick a mode first. Now what is typed decides:
+ *
+ *   · one to three digits                         → an AGE in years (0–130)
+ *   · day, month, year with / - . or a space      → a DATE OF BIRTH, day first, as India writes it
+ *   · eight digits, `14031986`                    → the same date with no separators
+ *   · `1986-03-14`                                → the same date, year first
+ *
+ * A two-digit year is this century when that is not in the future, otherwise the last one. A date
+ * that does not exist, lies in the future, or is more than 130 years back is NOT a date of birth,
+ * and anything half-typed is nothing yet — null, so nothing travels until the box is readable.
+ */
+export type AgeOrDob = { kind: "age"; years: number } | { kind: "dob"; iso: string };
+export function parseAgeOrDob(raw: string, today: Date = new Date()): AgeOrDob | null {
+  const text = raw.trim();
+  if (/^\d{1,3}$/.test(text)) {
+    const years = Number.parseInt(text, 10);
+    return years <= 130 ? { kind: "age", years } : null;
+  }
+  let parts: [string, string, string] | null = null; // day, month, year
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  const dmy = /^(\d{1,2})[/\-. ](\d{1,2})[/\-. ](\d{2}|\d{4})$/.exec(text);
+  const packed = /^(\d{2})(\d{2})(\d{4})$/.exec(text);
+  if (iso !== null) parts = [iso[3]!, iso[2]!, iso[1]!];
+  else if (dmy !== null) parts = [dmy[1]!, dmy[2]!, dmy[3]!];
+  else if (packed !== null) parts = [packed[1]!, packed[2]!, packed[3]!];
+  if (parts === null) return null;
+  const day = Number.parseInt(parts[0], 10);
+  const month = Number.parseInt(parts[1], 10);
+  let year = Number.parseInt(parts[2], 10);
+  const thisYear = today.getFullYear();
+  if (parts[2].length === 2) year += year <= thisYear % 100 ? Math.floor(thisYear / 100) * 100 : (Math.floor(thisYear / 100) - 1) * 100;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  if (date.getTime() > todayUtc || year < thisYear - 130) return null;
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return { kind: "dob", iso: `${String(year)}-${pad(month)}-${pad(day)}` };
+}
+/** The box's text for a form that already holds an age or a date of birth (a prefill, an ABHA). */
+export function ageOrDobText(f: Pick<Form, "age" | "dob" | "ageMode">): string {
+  if (f.ageMode !== "dob") return f.age;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f.dob);
+  return m === null ? "" : `${m[3]!}/${m[2]!}/${m[1]!}`;
+}
+
 /** MAJORITY_AGE_YEARS on the server. A known minor needs a guardian; an unknown age does not. */
 export const MAJORITY_AGE = 18;
 

@@ -6582,6 +6582,10 @@
       "age": "age",
       "dob": "date of birth",
       "address": "address",
+      "ageOrDob": "age or date of birth",
+      "ageOrDobHint": "34 or 14/03/1986",
+      "ageOrDobUnread": "type an age (34) or a date of birth (14/03/1986)",
+      "ageOrDobBorn": "born {{date}} · {{years}} y",
       "addressHint": "street, area, district — the field 11 files a night are missing",
       "optional": "optional",
       "guardian": {
