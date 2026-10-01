@@ -434,4 +434,54 @@ describe("OpdAppointments", () => {
       expect(cells[timeCol]).toHaveTextContent(/^\d\d:\d\d$/);
     }
   });
+
+  /**
+   * OWNER, 2026-10-01: *"I can see a future appointment for U00110020 in the profile screen but I
+   * can't see any appointments for the same patient at /opd/appointments. Why so?"* The screen listed
+   * one doctor's book for one day; with nothing chosen it listed nothing.
+   */
+  it("picking a patient shows the slots they still hold — with no department, doctor or date chosen", async () => {
+    stubFetch({
+      ...DAY_STUBS,
+      "GET /api/opd/appointments": (_init?: RequestInit, url?: string) => (String(url ?? "").includes("patientId=p-1")
+        ? { items: [apt({ id: "ap-7", doctorId: "doc-1", serviceDate: "2026-08-21", slotStart: "2026-08-21T06:30:00.000Z" })] }
+        : { items: [] }),
+    });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    await pickPatient(user);
+
+    const row = await screen.findByTestId("patient-booking-row");
+    expect(row).toHaveTextContent("2026-08-21");
+    expect(row).toHaveTextContent("12:00"); // 06:30Z is 12:00 IST
+    expect(within(row).getByRole("button", { name: /Reschedule/ })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /Cancel/ })).toBeInTheDocument();
+    expect(callsTo("GET", "/api/opd/slots")).toHaveLength(0); // no doctor was ever chosen
+  });
+
+  it("a patient with nothing booked ahead is told so", async () => {
+    stubFetch({ ...DAY_STUBS, "GET /api/opd/appointments": { items: [] } });
+    renderWithProviders(<OpdAppointments />);
+    await pickPatient(userEvent.setup());
+    expect(await screen.findByTestId("patient-bookings-none")).toBeInTheDocument();
+  });
+
+  it("a link from the profile opens that doctor's day with the patient already in the card", async () => {
+    window.history.pushState({}, "", "/opd/appointments?patientId=p-1&departmentId=dep-1&doctorId=doc-1&date=2026-08-21");
+    try {
+      stubFetch({
+        ...DAY_STUBS,
+        "GET /api/patients/p-1": { patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", administrativeGender: "female", dob: null } },
+        "GET /api/opd/appointments": { items: [apt({ id: "ap-7", serviceDate: "2026-08-21", slotStart: "2026-08-21T06:30:00.000Z" })] },
+      });
+      renderWithProviders(<OpdAppointments />);
+      await waitFor(() => expect(screen.getByTestId("booking-for")).toHaveTextContent("HMS0000001234"));
+      expect(await screen.findByTestId("patient-booking-row")).toHaveTextContent("2026-08-21");
+      expect(screen.getByTestId("filter-date")).toHaveValue("2026-08-21");
+      // The linked doctor survives the department arriving with it, and that doctor's day is read.
+      await waitFor(() => expect(callsTo("GET", "/api/opd/slots")[0]?.url).toBe("/api/opd/slots?doctorId=doc-1&date=2026-08-21"));
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
 });

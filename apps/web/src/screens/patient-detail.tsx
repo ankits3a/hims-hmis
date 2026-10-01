@@ -24,7 +24,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AbdmVerifyPanel } from "../components/abdm-verify";
 import { abhaCapability, getPatientDocument, listPatientDocuments } from "../lib/patients-api";
-import { listDepartments, listDoctors, listPatientAppointments, patientTimeline } from "../lib/opd-api";
+import { listDepartments, listDoctors, listPatientAppointmentsAll, patientTimeline } from "../lib/opd-api";
+import type { WireAppointment } from "../lib/opd-api";
 import { slotClock, upcomingOf } from "../lib/appointment-view";
 import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
@@ -615,6 +616,43 @@ function useAllergies(patientId: string): AllergyRow[] | undefined {
   }).data?.items;
 }
 
+/** The appointment history shows this many before "show all" — the list is long for a regular. */
+const APPT_HISTORY_ROWS = 5;
+
+/**
+ * THE BILLS OF ONE APPOINTMENT (owner, 2026-10-01: *"clicking the appointment should show related
+ * bills"*). An appointment reaches money through the VISIT it became at check-in, so one that was
+ * cancelled or missed has no visit and can have no bill — said in words, not left blank. The read is
+ * `billing.invoice.read`'s; a seat without it is told so rather than shown an empty list that looks
+ * like "no bill".
+ */
+function AppointmentBills({ appointment, mayRead }: { appointment: WireAppointment; mayRead: boolean }): React.ReactElement {
+  const { t } = useTranslation();
+  const encounterId = appointment.encounterId;
+  const bills = useQuery({
+    queryKey: ["pf-appt-bills", encounterId],
+    queryFn: () => listInvoicesFor({ encounterId: encounterId! }),
+    enabled: mayRead && encounterId !== null,
+    retry: false,
+  });
+  const line = (text: string): React.ReactElement => <p data-testid="appt-bills-note" style={{ fontSize: 12, color: "var(--dim)", margin: "0 0 9px" }}>{text}</p>;
+  if (encounterId === null) return line(t("profile.apptNoVisit"));
+  if (!mayRead) return line(t("profile.apptBillsHidden"));
+  if (bills.isPending) return line(t("app.loading"));
+  const items = bills.data?.items ?? [];
+  if (items.length === 0) return line(t("profile.apptNoBill"));
+  return (
+    <div data-testid="appt-bills" style={{ margin: "0 0 9px" }}>
+      {items.map((inv) => (
+        <div key={inv.id} data-testid="appt-bill" style={{ display: "flex", gap: 10, fontSize: 12.5, padding: "2px 0" }}>
+          <span className="mo" style={{ fontWeight: 600 }}>{inv.invoiceNo}</span>
+          <span style={{ color: "var(--dim)", flexGrow: 1 }}>{dmy(inv.serviceDay)}</span>
+          <span className="mo">{fmtPaise(inv.netPayablePaise)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 /** The lane's red band: active allergies only, severe in brick red; corrections live under Edit details. */
 function AllergyBand({ patientId, canEdit, compact }: { patientId: string; canEdit: boolean; compact: boolean }): React.ReactElement {
   const { t } = useTranslation();
@@ -1075,7 +1113,9 @@ export function PatientDetail(): React.ReactElement {
   const visits = useQuery({ queryKey: ["opd-timeline", pid], queryFn: () => patientTimeline(pid!), enabled: on("opd.visits.read"), retry: false });
   // The slots this patient still holds. A booking has no visit until check-in, so `visits` above
   // cannot show one; the names come from the masters, read only when there is a booking to name.
-  const bookings = useQuery({ queryKey: ["pf-appointments", pid], queryFn: () => listPatientAppointments(pid!), enabled: on("opd.appointments.read"), retry: false });
+  const bookings = useQuery({ queryKey: ["pf-appointments", pid], queryFn: () => listPatientAppointmentsAll(pid!), enabled: on("opd.appointments.read"), retry: false });
+  const [openAppt, setOpenAppt] = useState<string | null>(null);
+  const [showAllAppts, setShowAllAppts] = useState(false);
   const hasBookings = (bookings.data?.items.length ?? 0) > 0;
   const bookDoctors = useQuery({ queryKey: ["opd", "doctors", "all"], queryFn: listDoctors, enabled: hasBookings, staleTime: 300_000, retry: false });
   const bookDepartments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, enabled: hasBookings, staleTime: 300_000, retry: false });
@@ -1205,6 +1245,18 @@ export function PatientDetail(): React.ReactElement {
   const owed = duesSummary(dues.data?.items);
   const openToday = openVisitsToday(visits.data?.items, today);
   const upcoming = upcomingOf(bookings.data?.items, today);
+  // Everything that is not still ahead: kept, cancelled, missed, moved. Newest first.
+  const earlier = (bookings.data?.items ?? [])
+    .filter((a) => !upcoming.some((u) => u.id === a.id))
+    .sort((a, b) => b.slotStart.localeCompare(a.slotStart));
+  const doctorNameOf = (id: string): string | undefined => bookDoctors.data?.items.find((x) => x.id === id)?.displayName;
+  const departmentNameOf = (id: string): string | undefined => bookDepartments.data?.items.find((x) => x.id === id)?.name;
+  /** Edit opens the appointment book on that doctor's day with this patient in the card. */
+  const editBooking = (a: WireAppointment): void => {
+    if (pid === null) return;
+    takePatient(pid);
+    void navigate({ to: "/opd/appointments", search: { patientId: pid, departmentId: a.departmentId, doctorId: a.doctorId, date: a.serviceDate.slice(0, 10) } as never });
+  };
   const pending = labReports.data?.pending ?? [];
   const visitCount = visits.data?.items.length;
   const rep = (guardians ?? []).find((g) => g.guardian.status === "active");
@@ -1347,18 +1399,46 @@ export function PatientDetail(): React.ReactElement {
                 ) : (
                   <div className="today" data-testid="upcoming-band">
                     {upcoming.map((a) => (
-                      <div key={a.id} data-testid="upcoming-row">
-                        <b>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b>
-                        <div className="s">
-                          {[
-                            bookDoctors.data?.items.find((x) => x.id === a.doctorId)?.displayName,
-                            bookDepartments.data?.items.find((x) => x.id === a.departmentId)?.name,
-                            a.status === "needs_rebooking" ? t("profile.upcomingRebook") : null,
-                          ].filter(Boolean).join(" · ")}
+                      <div key={a.id} data-testid="upcoming-row" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ flexGrow: 1, minWidth: 0 }}>
+                          <b>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b>
+                          <div className="s">
+                            {[doctorNameOf(a.doctorId), departmentNameOf(a.departmentId), a.status === "needs_rebooking" ? t("profile.upcomingRebook") : null].filter(Boolean).join(" · ")}
+                          </div>
                         </div>
+                        {canBook && (
+                          <button type="button" className="sec" data-testid={`upcoming-edit-${a.id}`} onClick={() => { editBooking(a); }}>{t("profile.upcomingEdit")}</button>
+                        )}
                       </div>
                     ))}
                   </div>
+                )}
+                {earlier.length > 0 && (
+                  <>
+                    <h3 style={{ margin: "18px 0 6px", fontSize: 15, fontWeight: 600 }}>{t("profile.apptHistory", { count: earlier.length })}</h3>
+                    <div data-testid="appt-history">
+                      {(showAllAppts ? earlier : earlier.slice(0, APPT_HISTORY_ROWS)).map((a) => (
+                        <div key={a.id} style={{ borderBottom: "1px solid var(--line2)" }}>
+                          <button
+                            type="button" data-testid="appt-history-row" aria-expanded={openAppt === a.id}
+                            onClick={() => { setOpenAppt((cur) => (cur === a.id ? null : a.id)); }}
+                            style={{ display: "flex", alignItems: "baseline", gap: 10, width: "100%", padding: "8px 0", background: "none", border: 0, textAlign: "left", cursor: "pointer" }}
+                          >
+                            <b className="mo" style={{ fontSize: 12.5 }}>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b>
+                            <span style={{ fontSize: 12.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>{[doctorNameOf(a.doctorId), departmentNameOf(a.departmentId)].filter(Boolean).join(" · ")}</span>
+                            <span className={a.status === "cancelled" || a.status === "no_show" ? "pill rd" : a.status === "checked_in" ? "pill on" : "pill"} style={{ height: 20 }}>{t(`opdAppt.status.${a.status}`)}</span>
+                            <span aria-hidden style={{ color: "var(--faint)", fontSize: 11 }}>{openAppt === a.id ? "▴" : "▾"}</span>
+                          </button>
+                          {openAppt === a.id && <AppointmentBills appointment={a} mayRead={can("billing.invoice.read")} />}
+                        </div>
+                      ))}
+                    </div>
+                    {earlier.length > APPT_HISTORY_ROWS && (
+                      <button type="button" className="sec" data-testid="appt-history-more" style={{ marginTop: 8 }} onClick={() => { setShowAllAppts((v) => !v); }}>
+                        {showAllAppts ? t("profile.apptHistoryLess") : t("profile.apptHistoryAll", { count: earlier.length })}
+                      </button>
+                    )}
+                  </>
                 )}
               </>
             )}
