@@ -1,3 +1,6 @@
+import { feeSwitchesView, setFeeSwitch } from "./fee-switches";
+import type { FeeSwitchesView } from "./fee-switches";
+import { FEE_KINDS } from "./config";
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -472,6 +475,7 @@ const configPatchBody = z
     caSigned: z.boolean(),
   })
   .partial();
+const feeSwitchBody = z.object({ kind: z.enum(FEE_KINDS), off: z.boolean() }).strict();
 const degradedBody = z.object({ on: z.boolean(), reason: z.string().min(1) });
 
 type ReceiptRowSelect = typeof receipts.$inferSelect;
@@ -1301,6 +1305,29 @@ export class BillingController {
     const b = parsed(configPatchBody, body, "invalid_config");
     try {
       return await withTx(this.db, (tx) => updateBillingConfig(tx, b));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— the fee switches (owner, 2026-10-01) ————————————————————————————————————————————————————
+
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("fee-switches")
+  async feeSwitches(): Promise<FeeSwitchesView> {
+    try {
+      return await feeSwitchesView(this.db);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("billing.config.write", "hospital")
+  @Put("fee-switches")
+  async feeSwitchPut(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<FeeSwitchesView> {
+    const b = parsed(feeSwitchBody, body);
+    try {
+      return await setFeeSwitch(this.db, actor, b.kind, b.off);
     } catch (e) {
       toHttp(e);
     }
