@@ -24,6 +24,8 @@ import { ScanSharePanel } from "../../components/abdm-scan-share";
 import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
 import { EMPTY_COVERAGE, EMPTY_FORM, ageOrDobText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
+import { RegAllergies } from "./reg-allergies";
+import { useAuth } from "../../lib/auth";
 import type { CoverageDraft, Person } from "./session";
 
 /**
@@ -320,6 +322,7 @@ function StageRegister(): React.ReactElement {
   const { s } = d;
   const f = s.form;
   const set = (next: Partial<typeof f>): void => d.patch({ form: { ...f, ...next }, duplicates: null });
+  const canRecordAllergy = useAuth().can("patients.update");
 
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (k: string): void => { setOpen((p) => ({ ...p, [k]: p[k] !== true })); };
@@ -517,6 +520,14 @@ function StageRegister(): React.ReactElement {
           <Field label={t("registrationCounter.register.where.pincode")} testId="reg-pincode" mono value={f.pincode} onChange={(v) => set({ pincode: v })} />
         </div>
       </div>
+
+      {/* Allergies — only for a seat that may record one (`patients.update`, the POST's own gate). */}
+      {canRecordAllergy && (
+        <RegAllergies
+          list={f.allergies} pending={f.allergyPending}
+          onChange={(next) => { set(next); }}
+        />
+      )}
 
       {/* ═══ THE GUARDIAN — opened by the age, not by the clerk remembering ═══ */}
       <Fold

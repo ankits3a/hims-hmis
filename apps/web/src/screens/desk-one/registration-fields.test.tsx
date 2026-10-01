@@ -639,3 +639,63 @@ describe("FD-12: the registration counter's full record", () => {
     expect(body.alias).toBeUndefined();
   });
 });
+
+/*
+  Owner, staging 2026-10-01: "add allergy input and selection in registration screen as well."
+  A patient does not exist until the UHID does, so the allergies ride on the form and are posted to
+  the new patient once the registration answers — a pick coded, free text as written.
+*/
+describe("allergies at registration", () => {
+  const ME = (perms: string[]): unknown => ({
+    actor: { type: "user", id: "u1" },
+    permissions: { hospital: perms, scoped: { department: {}, floor: {} } },
+  });
+  const DESK = ["opd.visits.open", "patients.register", "billing.invoice.issue"];
+
+  it("suggests as the clerk types; picked, added and still-in-the-box allergies all reach the new patient", async () => {
+    const posted: { body: unknown }[] = [];
+    const allergies: unknown[] = [];
+    mountDesk(posted, {
+      routes: {
+        "GET /api/auth/me": ME([...DESK, "patients.update"]),
+        "GET /api/opd/cds/complete/allergen": (_init?: RequestInit, url?: string) =>
+          (url ?? "").includes("q=penic")
+            ? { items: [{ term: "Penicillins / Beta-Lactams", kind: "class", allergenClass: "penicillin", saltId: null, blocks: ["Amoxicillin"] }], known: true }
+            : { items: [], known: false },
+        "POST /api/patients/p-new/allergies": (init?: RequestInit) => { allergies.push(JSON.parse(String(init?.body))); return { id: "al-1" }; },
+      },
+    });
+    await openEnrolment();
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByTestId("reg-name"), "Walk In");
+    await user.type(screen.getByTestId("reg-age"), "44");
+    await user.click(screen.getByTestId("reg-sex-male"));
+
+    await user.type(screen.getByTestId("reg-allergy-substance"), "penic");
+    await user.click(await screen.findByTestId("reg-allergy-hit-Penicillins / Beta-Lactams"));
+    expect(screen.getByTestId("reg-allergy-substance")).toHaveValue("Penicillins / Beta-Lactams");
+    await user.selectOptions(screen.getByTestId("reg-allergy-severity"), "severe");
+    await user.click(screen.getByTestId("reg-allergy-add"));
+    expect(screen.getByTestId("reg-allergy-list")).toHaveTextContent("Penicillins / Beta-Lactams");
+    expect(screen.getByTestId("reg-allergy-substance")).toHaveValue("");
+
+    /* Typed, never added: free text, and the line under the box says the guard knows no rule. */
+    await user.type(screen.getByTestId("reg-allergy-substance"), "red syrup");
+    await waitFor(() => expect(screen.getByTestId("reg-allergy-unknown")).toBeInTheDocument());
+
+    await user.click(screen.getByTestId("reg-submit"));
+    await waitFor(() => expect(allergies).toHaveLength(2));
+    /* The registration body itself is unchanged — allergies are not part of `POST /patients`. */
+    expect(posted[0]!.body).toEqual({ name: "Walk In", sex: "male", ageYears: 44 });
+    expect(allergies).toEqual([
+      { substance: "Penicillins / Beta-Lactams", severity: "severe", source: "registration", saltId: null, allergenClass: "penicillin" },
+      { substance: "red syrup", severity: "mild", source: "registration" },
+    ]);
+  });
+
+  it("a seat that cannot record an allergy is not shown the box", async () => {
+    mountDesk([], { routes: { "GET /api/auth/me": ME(DESK) } });
+    await openEnrolment();
+    expect(screen.queryByTestId("reg-allergies")).not.toBeInTheDocument();
+  });
+});

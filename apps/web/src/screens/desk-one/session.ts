@@ -164,7 +164,28 @@ export type Form = {
   guardianAuthorityRecords: boolean;
   // how it gets paid for
   coverages: CoverageDraft[];
+  /*
+    Allergies told at the counter (owner, 2026-10-01). NOT part of `POST /patients`: `enrol` posts
+    each to `/patients/:id/allergies` once the UHID exists. `allergyPending` is the row still in the
+    box — typed, not yet added — and it is saved too, so Register never drops an allergen.
+  */
+  allergies: AllergyDraft[];
+  allergyPending: AllergyDraft;
 };
+
+/** `saltId` / `allergenClass` are set only when the clerk PICKED a suggestion; free text carries neither. */
+export type AllergyDraft = {
+  substance: string; severity: "mild" | "moderate" | "severe";
+  saltId: string | null; allergenClass: string | null;
+};
+export const EMPTY_ALLERGY: AllergyDraft = { substance: "", severity: "mild", saltId: null, allergenClass: null };
+
+/** Every allergy the form holds, the one still in the box included. */
+export function allergiesOf(f: Pick<Form, "allergies" | "allergyPending">): AllergyDraft[] {
+  const p = f.allergyPending.substance.trim();
+  if (p === "") return f.allergies;
+  return [...f.allergies.filter((a) => a.substance.toLowerCase() !== p.toLowerCase()), { ...f.allergyPending, substance: p }];
+}
 
 export const EMPTY_FORM: Form = {
   name: "", phone: "", age: "", sex: "", address: "",
@@ -181,6 +202,7 @@ export const EMPTY_FORM: Form = {
   guardianAuthorityMessages: true, guardianAuthorityBills: true,
   guardianAuthorityConsents: false, guardianAuthorityRecords: false,
   coverages: [],
+  allergies: [], allergyPending: { substance: "", severity: "mild", saltId: null, allergenClass: null },
 };
 
 export type Session = {
