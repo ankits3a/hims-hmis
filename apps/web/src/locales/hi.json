@@ -46,6 +46,10 @@
       "desk": "डेस्क",
       "patients": "मरीज़",
       "opd": "ओपीडी",
+      "imaging": "इमेजिंग",
+      "lab": "लैब",
+      "theatre": "ओटी",
+      "pharmacy": "फार्मेसी",
       "billing": "बिलिंग",
       "stores": "स्टोर",
       "admin": "प्रशासन"

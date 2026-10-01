@@ -518,3 +518,26 @@ it("a front desk's seven places are a flat row with no group buttons", async () 
   expect(screen.queryByRole("button", { name: "OPD" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Desk" })).not.toBeInTheDocument();
 });
+
+/**
+ * 2026-10-01 — OPD IS OPD. Imaging, the laboratory, the theatre and the pharmacy each have their own
+ * group; under one word an owner-shaped grant read thirty-two places in a single panel.
+ */
+it("imaging, lab, theatre and pharmacy places sit in their own groups, not under OPD", async () => {
+  renderShell([
+    "opd.visits.open", "opd.vitals.record", "radiology.schedule", "radiology.worklist.read", "lab.desk.operate",
+    "lab.collection.operate", "ot.cases.read", "ot.cases.book", "pharmacy.dispense.read", "materials.po.raise",
+  ]);
+  await act(async () => { await router.navigate({ to: "/merge" }); });
+  await waitFor(() => expect(screen.getByRole("link", { name: "Lab desk" })).toBeInTheDocument());
+  const groupOf = (name: string): string | undefined => screen.getByRole("link", { name }).parentElement?.id;
+  expect(groupOf("Vitals")).toBe("shell-nav-opd");
+  expect(groupOf("Imaging reception")).toBe("shell-nav-imaging");
+  expect(groupOf("Lab desk")).toBe("shell-nav-lab");
+  expect(groupOf("Theatre list")).toBe("shell-nav-theatre");
+  expect(groupOf("Pharmacy desk")).toBe("shell-nav-pharmacy");
+  // The office sits beside the desk it serves; the one-place "Stores" group is gone.
+  expect(groupOf("Pharmacy office")).toBe("shell-nav-pharmacy");
+  const order = ["OPD", "Imaging", "Lab", "Theatre", "Pharmacy"].map((n) => (screen.getByRole("navigation").textContent ?? "").indexOf(n));
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+});
