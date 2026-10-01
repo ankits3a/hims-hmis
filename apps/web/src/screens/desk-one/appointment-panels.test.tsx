@@ -224,12 +224,26 @@ async function holdPatient(): Promise<void> {
  * granularity — a fix aimed at the one assertion that happened to lose would leave the other nine.
  * No assertion is weakened: they assert exactly what they asserted before, on a settled grid.
  */
-async function openFutureTab(): Promise<void> {
+async function openFutureTab(pick = true): Promise<void> {
   await holdPatient();
   const user = userEvent.setup({ delay: null });
   await user.click(screen.getByRole("button", { name: /future appointment/i }));
   await waitFor(() => expect(screen.getByText("The day's book")).toBeInTheDocument());
   await waitFor(() => { expect(screen.queryByText("reading the diary…")).not.toBeInTheDocument(); });
+  if (pick) await pickDayPart();
+}
+
+/**
+ * Owner, 2026-10-01 — the board asks morning, noon or evening before it draws a time. Every test
+ * below is about the slots, so it taps the first part that has a session; a day with none has
+ * nothing to tap and the helper returns.
+ */
+async function pickDayPart(): Promise<void> {
+  const open = (): HTMLElement | undefined => screen.queryAllByTestId(/^daypart-(morning|noon|evening)$/).find((b) => !(b as HTMLButtonElement).disabled);
+  try {
+    await waitFor(() => { expect(open()).toBeDefined(); }, { timeout: 400 });
+  } catch { return; }
+  await userEvent.setup({ delay: null }).click(open()!);
 }
 
 afterEach(() => { setToken(null); });
@@ -276,6 +290,50 @@ describe("FD-16: Their history, in the left rail", () => {
     mount({ timeline: [] });
     await holdPatient();
     expect(await screen.findByTestId("history-none")).toBeInTheDocument();
+  });
+});
+
+describe("morning, noon or evening is asked before any slot is drawn (owner, 2026-10-01)", () => {
+  // The fixture's clock strings are UTC: 03:00Z is 08:30 IST, 09:00Z is 14:30 IST, 13:00Z is 18:30 IST.
+  const DAY = [slot("03:00"), slot("03:15", { booked: true }), slot("09:00"), slot("13:00", { booked: true })];
+
+  it("shows three parts with what is free in each, and no time until one is tapped", async () => {
+    mount({ slots: DAY });
+    await openFutureTab(false);
+    expect(screen.getByTestId("daypart-ask")).toBeInTheDocument();
+    expect(screen.queryByTestId("slot-free")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("slot-taken")).not.toBeInTheDocument();
+    expect(screen.getByTestId("daypart-morning")).toHaveTextContent("Morning");
+    expect(screen.getByTestId("daypart-morning-count")).toHaveTextContent("1 free");
+    expect(screen.getByTestId("daypart-noon-count")).toHaveTextContent("1 free");
+    expect(screen.getByTestId("daypart-evening-count")).toHaveTextContent("full");
+    expect(screen.getByTestId("daypart-morning").querySelector("svg")).not.toBeNull();
+  });
+
+  it("a tap shows that part's slots only, and moving to another part drops the slot picked in the first", async () => {
+    mount({ slots: DAY });
+    await openFutureTab(false);
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId("daypart-morning"));
+    expect(screen.getByTestId("daypart-morning")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByTestId("daypart-ask")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("slot-free").map((b) => b.textContent)).toEqual(["08:30"]);
+    expect(screen.getAllByTestId("slot-taken").map((b) => b.textContent)).toEqual(["08:45"]);
+    await user.click(screen.getByTestId("slot-free"));
+    expect(screen.getByTestId("slot-picked")).toHaveTextContent("08:30");
+
+    await user.click(screen.getByTestId("daypart-noon"));
+    expect(screen.queryByTestId("slot-picked")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-slot")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("slot-free").map((b) => b.textContent)).toEqual(["14:30"]);
+  });
+
+  it("a part with no session cannot be tapped", async () => {
+    mount({ slots: [slot("09:00")] });
+    await openFutureTab(false);
+    expect(screen.getByTestId("daypart-morning")).toBeDisabled();
+    expect(screen.getByTestId("daypart-morning-count")).toHaveTextContent("no session");
+    expect(screen.getByTestId("daypart-noon")).toBeEnabled();
   });
 });
 

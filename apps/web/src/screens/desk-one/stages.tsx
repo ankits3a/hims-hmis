@@ -1499,6 +1499,56 @@ function slotClock(iso: string): string {
   });
 }
 
+/**
+ * ═══ MORNING, NOON OR EVENING FIRST — THEN THE SLOTS (owner, 2026-10-01) ═══
+ *
+ * *"Instead of showing all the slots, we should first ask user if they want to book slot of the
+ * morning or noon or evening, having beautiful icon showing sunset, sunrise and sun on top. Once
+ * user taps any one of the three, the slots should be visible accordingly."* A full day is forty
+ * times on one board, and the patient's answer to "when?" is never a time — it is "morning".
+ *
+ * The parts are cut on the IST clock the slot buttons print: morning before 12:00, noon from 12:00,
+ * evening from 17:00. Each card says how many of its slots are free, so a full morning is seen
+ * before it is opened, and a part with no session cannot be tapped.
+ */
+type DayPart = "morning" | "noon" | "evening";
+const DAY_PARTS: readonly { part: DayPart; label: string; hours: string }[] = [
+  { part: "morning", label: "Morning", hours: "before 12:00" },
+  { part: "noon", label: "Noon", hours: "12:00 – 17:00" },
+  { part: "evening", label: "Evening", hours: "after 17:00" },
+];
+function dayPartOf(iso: string): DayPart {
+  const hour = Number.parseInt(slotClock(iso).slice(0, 2), 10);
+  return hour < 12 ? "morning" : hour < 17 ? "noon" : "evening";
+}
+/** Sunrise, the sun overhead, sunset: one sun, a horizon and which way it is going. */
+function DayPartIcon({ part }: { part: DayPart }): React.ReactElement {
+  const sun = part === "evening" ? "#e0662d" : part === "morning" ? "#f0a321" : "#f2b705";
+  const rays = [0, 45, 90, 135, 180, 225, 270, 315];
+  if (part === "noon") {
+    return (
+      <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="9" fill={sun} />
+        {rays.map((deg) => (
+          <line key={deg} x1="24" y1="6" x2="24" y2="11" stroke={sun} strokeWidth="2.6" strokeLinecap="round" transform={`rotate(${String(deg)} 24 24)`} />
+        ))}
+      </svg>
+    );
+  }
+  return (
+    <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
+      {/* the half sun on the horizon, its upper rays, and the arrow that says rising or setting */}
+      <path d="M13 32a11 11 0 0 1 22 0Z" fill={sun} />
+      {[-60, -30, 30, 60].map((deg) => (
+        <line key={deg} x1="24" y1="14" x2="24" y2="18" stroke={sun} strokeWidth="2.4" strokeLinecap="round" transform={`rotate(${String(deg)} 24 32)`} />
+      ))}
+      <line x1="6" y1="32" x2="42" y2="32" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <line x1="13" y1="38" x2="35" y2="38" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" opacity=".45" />
+      <path d={part === "morning" ? "M24 15V5M20 9l4-4 4 4" : "M24 5v10M20 11l4 4 4-4"} fill="none" stroke={sun} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function FutureTab(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
@@ -1555,6 +1605,8 @@ function FutureTab(): React.ReactElement {
   });
   /** The slot the clerk has SELECTED and not yet committed — the artboard's "yours". */
   const [picked, setPicked] = useState<string | null>(null);
+  /** Morning, noon or evening — asked before any slot is drawn. Null until the clerk taps one. */
+  const [part, setPart] = useState<DayPart | null>(null);
 
   /**
    * ═══ FD-17 — WHAT THIS PATIENT ALREADY HAS BOOKED ═══
@@ -1922,8 +1974,45 @@ function FutureTab(): React.ReactElement {
           </span>
         ) : null}
 
+        <div data-testid="dayparts" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, margin: "4px 0 12px" }}>
+          {DAY_PARTS.map(({ part: p, label, hours }) => {
+            const inPart = all.filter((x) => dayPartOf(x.start) === p);
+            const freeInPart = inPart.filter((x) => !x.booked && !x.past).length;
+            const on = part === p;
+            const none = inPart.length === 0;
+            return (
+              <button
+                key={p}
+                type="button"
+                data-testid={`daypart-${p}`}
+                aria-pressed={on}
+                disabled={none}
+                onClick={() => { setPart(p); if (picked !== null && dayPartOf(picked) !== p) setPicked(null); }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "12px 8px 11px", borderRadius: 10,
+                  border: `1.5px solid ${on ? "var(--green)" : "var(--line)"}`,
+                  background: on ? "var(--green-soft)" : "var(--card)",
+                  color: none ? "var(--faint)" : "var(--ink)", opacity: none ? 0.55 : 1,
+                  cursor: none ? "not-allowed" : "pointer",
+                }}
+              >
+                <DayPartIcon part={p} />
+                <span style={{ fontSize: 14.5, fontWeight: 700 }}>{label}</span>
+                <span className="mo" style={{ fontSize: 10.5, color: "var(--dim)" }}>{hours}</span>
+                <span data-testid={`daypart-${p}-count`} style={{ fontSize: 11.5, fontWeight: 600, color: none ? "var(--faint)" : freeInPart === 0 ? "var(--gold)" : "var(--green)" }}>
+                  {none ? "no session" : freeInPart === 0 ? "full" : `${String(freeInPart)} free`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {part === null && all.length > 0 ? (
+          <span data-testid="daypart-ask" style={{ fontSize: 12, color: "var(--dim)" }}>Morning, noon or evening? Tap one to see its times.</span>
+        ) : null}
+
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {all.map((slot: WireSlot) => {
+          {all.filter((slot) => part !== null && dayPartOf(slot.start) === part).map((slot: WireSlot) => {
             const unavailable = slot.booked || slot.past;
             const isPicked = picked === slot.start;
             return (
