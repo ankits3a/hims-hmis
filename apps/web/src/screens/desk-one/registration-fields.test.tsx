@@ -216,7 +216,7 @@ describe("FD-12: the registration counter's full record", () => {
     The server refuses `dob` AND `ageYears` together outright. The toggle is what decides, so that
     a stale value in the box the clerk switched away from cannot travel beside the one they meant.
   */
-  it("age or date of birth — never both, whichever the toggle says", async () => {
+  it("age or date of birth — never both, whichever the one box reads", async () => {
     const posted: { body: unknown }[] = [];
     mountDesk(posted);
     await openEnrolment();
@@ -225,9 +225,12 @@ describe("FD-12: the registration counter's full record", () => {
     await user.type(screen.getByTestId("reg-name"), "Sita Devi");
     await user.click(screen.getByTestId("reg-sex-female"));
     await user.type(screen.getByTestId("reg-age"), "40");
-    // switch to the date box and give it a date; the age typed a moment ago must NOT travel too
-    await user.click(screen.getByTestId("reg-agemode-dob"));
-    await user.type(screen.getByTestId("reg-dob"), "1986-03-14");
+    // Owner, 2026-10-01 — ONE box. A date typed over the age is read as a date of birth, and the
+    // age typed a moment ago must NOT travel too.
+    expect(screen.queryByTestId("reg-agemode-dob")).not.toBeInTheDocument();
+    await user.clear(screen.getByTestId("reg-age"));
+    await user.type(screen.getByTestId("reg-age"), "14/03/1986");
+    expect(screen.getByTestId("reg-age-read")).toHaveTextContent("born 14 Mar 1986");
     await user.click(screen.getByTestId("reg-submit"));
 
     await waitFor(() => expect(posted).toHaveLength(1));
@@ -454,7 +457,7 @@ describe("FD-12: the registration counter's full record", () => {
     expect(screen.getByTestId("abha-number")).toHaveValue("91-2345-6789-0123");
     expect(screen.getByTestId("abdm-pending-link")).toBeInTheDocument();
     // the age box was blank, so ABDM's date of birth filled it; the typed name and mobile were kept
-    expect(screen.getByTestId("reg-dob")).toHaveValue("1986-03-14");
+    expect(screen.getByTestId("reg-age")).toHaveValue("14/03/1986");
     await user.click(screen.getByTestId("reg-submit"));
 
     await waitFor(() => expect(posted).toHaveLength(1));

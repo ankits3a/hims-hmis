@@ -22,7 +22,7 @@ import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components
 import { AbdmVerifyPanel } from "../../components/abdm-verify";
 import { ScanSharePanel } from "../../components/abdm-scan-share";
 import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
-import { EMPTY_COVERAGE, EMPTY_FORM, formAgeYears, formNeedsGuardian, useDesk } from "./session";
+import { EMPTY_COVERAGE, EMPTY_FORM, ageOrDobText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
 import type { CoverageDraft, Person } from "./session";
 
@@ -398,6 +398,21 @@ function StageRegister(): React.ReactElement {
     phone: f.phone.trim() === "" ? null : f.phone,
   };
 
+  /*
+    The age box's own text. The form holds what the text MEANS (`age` or `dob`); the text itself is
+    kept here so a half-typed date is not wiped on each keystroke. When the form's meaning changes
+    from outside the box — an ABHA or a pre-registration filling it — the text follows.
+  */
+  const [ageText, setAgeText] = useState(() => ageOrDobText(f));
+  const ageRead = parseAgeOrDob(ageText);
+  const formText = ageOrDobText(f);
+  useEffect(() => {
+    const read = parseAgeOrDob(ageText);
+    const same = read === null ? formText === "" : read.kind === "age" ? f.ageMode === "age" && f.age === String(read.years) : f.ageMode === "dob" && f.dob.slice(0, 10) === read.iso;
+    if (!same) setAgeText(formText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- follows the FORM; the text changing is not a reason to run
+  }, [formText, f.ageMode]);
+
   const addCoverage = (): void => { set({ coverages: [...f.coverages, { ...EMPTY_COVERAGE }] }); };
   const setCoverage = (i: number, next: Partial<CoverageDraft>): void => {
     set({ coverages: f.coverages.map((c, idx) => (idx === i ? { ...c, ...next } : c)) });
@@ -426,43 +441,37 @@ function StageRegister(): React.ReactElement {
         </div>
         <div>
           {/*
-            AGE OR DATE OF BIRTH, and the toggle decides which travels. Nobody at a window knows
-            their date of birth and the counter has always taken an age; a planned admission has the
-            card in hand and can give the date. The server refuses BOTH together (`dob_or_age`), so
-            the screen must pick one rather than send whatever is filled in.
+            AGE OR DATE OF BIRTH IN ONE BOX (owner, 2026-10-01) — `parseAgeOrDob` reads what was typed
+            and decides which travels; the server still refuses both together (`dob_or_age`), and
+            only one is ever set. The line under the box says back what was understood, so a clerk
+            who typed 14/03/1986 sees "born 14 Mar 1986 · 40 y" before pressing register.
           */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 5, alignItems: "baseline" }}>
-            {(["age", "dob"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                data-testid={`reg-agemode-${mode}`}
-                onClick={() => { set({ ageMode: mode }); }}
-                className="tag"
-                style={{
-                  background: "none", border: 0, cursor: "pointer", padding: 0,
-                  color: f.ageMode === mode ? "var(--green)" : "var(--faint)",
-                  fontWeight: f.ageMode === mode ? 700 : 400,
-                }}
-              >
-                {t(mode === "age" ? "registrationCounter.register.age" : "registrationCounter.register.dob")}
-              </button>
-            ))}
-          </div>
-          {/*
-            KEYED, AND THE KEY IS LOAD-BEARING. Both branches render an `<input className="in mo">`
-            in the same slot, so React reconciles them as the SAME element and only patches the
-            attributes that changed — which leaves the DOM node's own value untouched. Without the
-            keys a clerk types an age, switches to date of birth, and finds "40" still sitting in
-            the date box; the first version of this did exactly that and a test caught it posting
-            `dob: "401986-03-14"`. Distinct keys force a fresh node, so the box the clerk switched
-            away from cannot leak into the one they switched to.
-          */}
-          {f.ageMode === "age" ? (
-            <input key="age" className="in mo" data-testid="reg-age" inputMode="numeric" value={f.age} onChange={(e) => set({ age: e.target.value })} />
-          ) : (
-            <input key="dob" className="in mo" data-testid="reg-dob" type="date" value={f.dob} onChange={(e) => set({ dob: e.target.value })} />
-          )}
+          <div className="tag" style={{ marginBottom: 5 }}>{t("registrationCounter.register.ageOrDob")}</div>
+          <input
+            className="in mo" data-testid="reg-age" inputMode="text" autoComplete="off"
+            placeholder={t("registrationCounter.register.ageOrDobHint")}
+            value={ageText}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setAgeText(raw);
+              const read = parseAgeOrDob(raw);
+              set(read === null ? { ageMode: "age", age: "", dob: "" }
+                : read.kind === "age" ? { ageMode: "age", age: String(read.years), dob: "" }
+                : { ageMode: "dob", age: "", dob: read.iso });
+            }}
+          />
+          {ageRead === null ? (
+            ageText.trim() === "" ? null : (
+              <div data-testid="reg-age-unread" style={{ fontSize: 11, color: "var(--gold)", marginTop: 4 }}>{t("registrationCounter.register.ageOrDobUnread")}</div>
+            )
+          ) : ageRead.kind === "dob" ? (
+            <div data-testid="reg-age-read" style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
+              {t("registrationCounter.register.ageOrDobBorn", {
+                date: new Date(`${ageRead.iso}T00:00:00Z`).toLocaleDateString("en-IN", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
+                years: formAgeYears(f) ?? 0,
+              })}
+            </div>
+          ) : null}
         </div>
         <div>
           <div className="tag" style={{ marginBottom: 5 }}>{t("registrationCounter.register.sex")}</div>
