@@ -114,6 +114,13 @@ const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "billing", "
  */
 type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[] };
 const navVisible = (e: NavEntry, can: (p: string) => boolean): boolean => can(e.permission) || (e.anyOf ?? []).some((p) => can(p));
+/**
+ * Past this many places the bar stops being a row and becomes a wall: an owner-shaped grant drew
+ * fifty links over seven lines, 250 px of menu above every screen (measured at 1280 px, 2026-10-01).
+ * So a person holding more than this gets one button per group, each opening its places beneath the
+ * bar. A front desk holds seven and keeps the flat row — no click between a clerk and their screen.
+ */
+const NAV_FOLD_AT = 10;
 const NAV: readonly NavEntry[] = [
   // PLAN 07b T3 — the counter, first in the row for the reason `otManifest`-style menus give: it is
   // the screen a one-person desk lives on. Path and permission match `opdManifest.menu` exactly,
@@ -126,6 +133,7 @@ const NAV: readonly NavEntry[] = [
   // on the wrong one — a nav is a list of places, and a place should appear in it once.
   /*
     ═══ FD-25 — DESK ONE IS OFF THE NAV, AND STILL SERVES. OWNER RULING, 2026-09-05 ═══
+    (SUPERSEDED 2026-10-01 — see the block below this one. Kept because it says why the row left.)
 
     The handoff's §3.2 asked whether `/counter` should be deleted now that the three seats it used
     to combine exist separately. The owner ruled: keep it working, keep it out of the nav.
@@ -142,6 +150,21 @@ const NAV: readonly NavEntry[] = [
     person who knows they want Desk One finds it by asking for it, and a person who does not is
     never offered a fourth door they did not need.
   */
+  /*
+    ═══ THE ROW IS BACK. OWNER, 2026-10-01, ON STAGING ═══
+
+    *"On the dashboard screen of Front Desk staff, I can't see any menu items that would open
+    /counter."* Read the paragraph above as history. Its bet was that a person who wants Desk One
+    asks the palette for it; the front desk's own owner looked at the menu instead and found no
+    door. A screen the hospital's one-person desk works on all day cannot be reachable only by
+    people who already know its name.
+
+    So Desk One leads the desk group, on `opd.visits.open` — `opdManifest.menu`'s own pairing, which
+    never left. It reads "Desk One", not "Counter": `nav.billing` is already "Counter", and two rows
+    with one word is the FD-1 defect `shell-nav.test.tsx` guards. A registration-only clerk still is
+    not offered it; they would 403 on arrival.
+  */
+  { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
   /*
     FD-25 — AND THE SECOND DESK ROW, WHICH IS NOT THE TWO-DOORS DEFECT ABOVE.
 
@@ -362,7 +385,18 @@ function ShellChrome(): React.ReactElement {
    * list never sits over the screen the person just asked for.
    */
   const [menuOpen, setMenuOpen] = useState(false);
-  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  /* The one folded group whose places are showing (`NAV_FOLD_AT`); a navigation or a click elsewhere closes it. */
+  const [openGroup, setOpenGroup] = useState<NavGroup | null>(null);
+  useEffect(() => { setMenuOpen(false); setOpenGroup(null); }, [pathname]);
+  useEffect(() => {
+    if (openGroup === null) return;
+    const close = (e: MouseEvent): void => {
+      if (!(e.target instanceof Element) || e.target.closest("#shell-nav") === null) setOpenGroup(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => { document.removeEventListener("mousedown", close); };
+  }, [openGroup]);
+  const folded = NAV.filter((e) => navVisible(e, can)).length > NAV_FOLD_AT;
   /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -451,23 +485,46 @@ function ShellChrome(): React.ReactElement {
       <nav
         id="shell-nav"
         className={menuOpen ? "nav open" : "nav"}
-        onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { e.stopPropagation(); setMenuOpen(false); } }}
+        onKeyDown={(e) => {
+          if (e.key !== "Escape" || (!menuOpen && openGroup === null)) return;
+          e.stopPropagation();
+          setMenuOpen(false);
+          setOpenGroup(null);
+        }}
       >
         {NAV_GROUPS.map((group) => {
           const entries = NAV.filter((e) => e.group === group && navVisible(e, can));
           if (entries.length === 0) return null;
+          /* A group of one is a place, not a list: it stays a link even when the bar folds. */
+          const fold = folded && entries.length > 1;
+          const here = entries.find((e) => e.to === pathname);
           return (
-            <span key={group} className="grp">
-              <span className="tag">{t(`nav.group.${group}`)}</span>
-              {entries.map((entry) => (
-                <Link
-                  key={entry.to}
-                  to={entry.to}
-                  className={pathname === entry.to ? "here" : undefined}
+            <span key={group} className={fold ? (openGroup === group ? "grp fold open" : "grp fold") : folded ? "grp solo" : "grp"}>
+              {fold ? (
+                <button
+                  type="button"
+                  className={here === undefined ? "tag" : "tag here"}
+                  aria-expanded={openGroup === group}
+                  aria-controls={`shell-nav-${group}`}
+                  onClick={() => { setOpenGroup((g) => (g === group ? null : group)); }}
                 >
-                  {t(entry.label)}
-                </Link>
-              ))}
+                  {t(`nav.group.${group}`)}
+                  {here === undefined ? null : <span className="at">{t(here.label)}</span>}
+                </button>
+              ) : (
+                <span className="tag">{t(`nav.group.${group}`)}</span>
+              )}
+              <span className="items" id={`shell-nav-${group}`}>
+                {entries.map((entry) => (
+                  <Link
+                    key={entry.to}
+                    to={entry.to}
+                    className={pathname === entry.to ? "here" : undefined}
+                  >
+                    {t(entry.label)}
+                  </Link>
+                ))}
+              </span>
             </span>
           );
         })}

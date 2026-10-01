@@ -147,7 +147,7 @@ it("FD-25: no two nav rows a person can see read the same", async () => {
   expect(duplicated, `these nav labels appear more than once, so a clerk cannot tell the places apart: ${duplicated.join(", ")}`).toEqual([]);
 });
 
-it("FD-25: a clerk holding all three seat grants is offered each seat exactly once, and Desk One is not a fourth", async () => {
+it("a clerk holding all three seat grants is offered each seat exactly once, and Desk One once, leading them", async () => {
   /*
     ALL THREE GRANTS, and the third one is the point of the fixture: `/appointment` rides
     `opd.appointments.manage`, which is a DIFFERENT key from the other two. The first version of
@@ -164,8 +164,13 @@ it("FD-25: a clerk holding all three seat grants is offered each seat exactly on
     four front-desk entries to a clerk who works at one is how a nav stops being read. The ROUTE
     still serves — a one-person desk wants exactly that screen — and the command palette still
     offers it by name, which is a search rather than a menu.
+
+    2026-10-01 — AND THE OWNER REVERSED IT, from staging: the front desk's dashboard had no menu
+    item that opened `/counter`. The paragraph above is history. Desk One is a row again, once, and
+    it leads the desk group; this assertion read `not.toContain("/counter")` until then.
   */
-  expect(hrefs).not.toContain("/counter");
+  expect(hrefs.filter((h) => h === "/counter")).toHaveLength(1);
+  expect(hrefs.indexOf("/counter")).toBeLessThan(hrefs.indexOf("/registration"));
   expect(hrefs.filter((h) => h === "/registration")).toHaveLength(1);
   /*
     FD-25 — and `/appointment` too, now that its screen exists. THREE SEATS, EACH OFFERED ONCE, is
@@ -316,8 +321,12 @@ it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before th
     unchanged — the group a front desk works in reads before the patient-record rows. The absence is
     asserted below rather than left implied, because "the row quietly came back" is exactly the
     regression a ruling like this suffers.
+
+    2026-10-01 — the owner reversed that ruling (see `router.tsx`'s NAV). Desk One leads the group
+    again, which is this test's original claim: the counter first, not the ninth similar word.
   */
-  expect(hrefs).not.toContain("/counter");
+  expect(hrefs.indexOf("/counter")).toBeGreaterThanOrEqual(0);
+  expect(hrefs.indexOf("/counter")).toBeLessThan(hrefs.indexOf("/registration"));
   expect(hrefs.indexOf("/registration")).toBeGreaterThanOrEqual(0);
   expect(hrefs.indexOf("/registration")).toBeLessThan(hrefs.indexOf("/merge"));
   /*
@@ -470,4 +479,42 @@ it("SHELL-UX: the registration clerk who holds the book still sees F4 and F7", a
   const legend = screen.getByRole("contentinfo");
   expect(legend).toHaveTextContent("F4 New patient");
   expect(legend).toHaveTextContent("F7 Appointments");
+});
+
+/**
+ * 2026-10-01 — THE BAR FOLDS FOR A PERSON HOLDING MANY PLACES, AND NOT FOR A FRONT DESK.
+ *
+ * An owner-shaped grant drew fifty links over seven lines above every screen. Past `NAV_FOLD_AT` each
+ * group is one button that opens its places; a clerk's seven stay a flat row, one click from each.
+ */
+it("the bar folds into group buttons past ten places, and a front desk's row stays flat", async () => {
+  renderShell([
+    "opd.visits.open", "patients.register", "opd.appointments.manage", "opd.appointments.read", "patients.update",
+    "opd.masters.manage", "opd.vitals.record", "opd.consult", "billing.invoice.issue", "billing.invoice.read", "billing.session.own",
+    "patients.merge",
+  ]);
+  await act(async () => { await router.navigate({ to: "/merge" }); });
+  const opd = await screen.findByRole("button", { name: "OPD" });
+  expect(opd).toHaveAttribute("aria-expanded", "false");
+  act(() => { opd.click(); });
+  expect(opd).toHaveAttribute("aria-expanded", "true");
+  expect(document.getElementById(opd.getAttribute("aria-controls") ?? "")).toContainElement(screen.getByRole("link", { name: "Vitals" }));
+  // One group open at a time: opening Billing closes OPD.
+  const billing = screen.getByRole("button", { name: "Billing" });
+  act(() => { billing.click(); });
+  expect(opd).toHaveAttribute("aria-expanded", "false");
+  // A group of one is a place, not a list — Merge review stays a link with no button over it.
+  expect(screen.queryByRole("button", { name: /Patients/ })).not.toBeInTheDocument();
+  // A navigation closes whatever was open.
+  await act(async () => { await router.navigate({ to: "/approvals" }); });
+  await waitFor(() => { expect(billing).toHaveAttribute("aria-expanded", "false"); });
+});
+
+it("a front desk's seven places are a flat row with no group buttons", async () => {
+  renderShell(["opd.visits.open", "patients.register", "opd.appointments.manage", "opd.appointments.read", "patients.update", "membership.instrument.read"]);
+  await act(async () => { await router.navigate({ to: "/merge" }); });
+  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  expect(screen.getAllByRole("link").map((a) => a.getAttribute("href")).filter((h) => h !== "/")).toHaveLength(7);
+  expect(screen.queryByRole("button", { name: "OPD" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Desk" })).not.toBeInTheDocument();
 });
