@@ -800,6 +800,38 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(text).not.toMatch(/self_declared|id_verified/);
   });
 
+  /** Owner, 2026-10-01 — a booked future appointment was on no part of the profile: it has no visit yet. */
+  it("front desk: an appointment booked ahead shows above the history, with its day, time, doctor and department", async () => {
+    const ahead = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    stubSeat({
+      ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE,
+      "GET /api/opd/appointments": { items: [
+        { id: "a-9", patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: ahead, slotStart: `${ahead}T05:00:00.000Z`, slotEnd: `${ahead}T05:15:00.000Z`, status: "booked" },
+        { id: "a-old", patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: "2020-01-01", slotStart: "2020-01-01T05:00:00.000Z", slotEnd: "2020-01-01T05:15:00.000Z", status: "booked" },
+      ] },
+      "GET /api/opd/doctors": { items: [{ id: "doc-7", displayName: "Dr. Meera Nair", departmentId: "d-7" }] },
+      "GET /api/opd/departments": { items: [{ id: "d-7", name: "Ophthalmology" }] },
+    }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    const rows = await screen.findAllByTestId("upcoming-row");
+    expect(rows).toHaveLength(1); // the 2020 booking is not "upcoming"
+    expect(rows[0]).toHaveTextContent("10:30"); // 05:00Z is 10:30 IST
+    await waitFor(() => expect(rows[0]).toHaveTextContent("Dr. Meera Nair · Ophthalmology"));
+    expect(fetchCalls().some((c) => c.url.includes("/opd/appointments?patientId=p-1"))).toBe(true);
+  });
+
+  it("front desk: with nothing booked ahead the profile says so; a seat without the appointment book is not shown the heading", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/opd/appointments": { items: [] } }, FRONT_DESK);
+    const first = renderWithProviders(<PatientDetail />);
+    await waitFor(() => expect(screen.getByTestId("upcoming-empty")).toHaveTextContent("No appointment booked ahead"));
+    first.unmount();
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK.filter((p) => p !== "opd.appointments.read"));
+    renderWithProviders(<PatientDetail />);
+    await screen.findByTestId("timeline");
+    expect(screen.queryByText("Upcoming appointments")).toBeNull();
+    expect(fetchCalls().some((c) => c.url.includes("/opd/appointments"))).toBe(false);
+  });
+
   it("front desk: one dated timeline with source chips, the diagnosis line only; no money reads; no Record a death", async () => {
     stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK);
     renderWithProviders(<PatientDetail />);

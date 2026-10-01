@@ -6844,6 +6844,11 @@
         "cancelled": "रद्द"
       }
     },
+    "upcoming": {
+      "title": "आगामी अपॉइंटमेंट",
+      "none": "आगे कोई बुकिंग नहीं",
+      "rebook": "दोबारा बुक करना है"
+    },
     "history": {
       "fullCount": "{{count}} विज़िट दर्ज",
       "fullCount_other": "{{count}} विज़िट दर्ज",
@@ -12945,6 +12950,10 @@
       "ask": "पूछें"
     },
     "today": "आज · {{date}}",
+    "upcoming": "आगामी अपॉइंटमेंट",
+    "upcomingNone": "आगे कोई अपॉइंटमेंट बुक नहीं है",
+    "upcomingReading": "अपॉइंटमेंट बुक पढ़ी जा रही है…",
+    "upcomingRebook": "दोबारा बुक करना है — डॉक्टर छुट्टी पर",
     "todayVisit": "{{dept}} की कतार में",
     "visitStatus": {
       "registered": "पंजीकृत",

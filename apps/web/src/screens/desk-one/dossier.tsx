@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import { useQuery } from "@tanstack/react-query";
-import { patientTimeline } from "../../lib/opd-api";
+import { listPatientAppointments, patientTimeline, todayIst } from "../../lib/opd-api";
+import { slotClock, upcomingOf } from "../../lib/appointment-view";
 import { dayMonthIst } from "../../lib/format";
 import { ageOf, initialsOf, rs, SEAT_STEPS, seatStepIndex, sexLetter, tokenLabel, tokenStateOf } from "./model";
 import { useDesk } from "./session";
@@ -33,6 +34,54 @@ import { PhotoPanel } from "./photo";
  */
 /** The rail shows three. The owner's number, and the rest is behind `See more`. */
 const HISTORY_ROWS = 3;
+
+/**
+ * The slots this patient still holds, above their history. The SAME query key as the appointment
+ * stage's "their bookings" list, so the two are one cached read and cannot disagree; booking a slot
+ * invalidates it (`holdFutureSlot`). The section is drawn even when empty — a heading that vanishes
+ * is indistinguishable from one that is broken, which is how this was reported twice.
+ */
+function Upcoming({ patientId }: { patientId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const d = useDesk();
+  const { can } = useAuth();
+  const mayRead = can("opd.appointments.read");
+  const theirs = useQuery({
+    queryKey: ["d1", "their-appointments", patientId],
+    queryFn: () => listPatientAppointments(patientId),
+    enabled: mayRead,
+    staleTime: 30_000,
+    retry: false,
+  });
+  if (!mayRead) return null;
+  const items = upcomingOf(theirs.data?.items, todayIst());
+  return (
+    <>
+      <div className="tag" style={{ marginTop: 20 }}>{t("registrationCounter.upcoming.title")}</div>
+      {theirs.isPending ? (
+        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 7 }}>{t("registrationCounter.history.reading")}</div>
+      ) : items.length === 0 ? (
+        <div data-testid="upcoming-none" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 7 }}>{t("registrationCounter.upcoming.none")}</div>
+      ) : (
+        <div data-testid="upcoming-list" style={{ marginTop: 7 }}>
+          {items.map((a) => {
+            const doc = d.summaries.find((x) => x.doctor.id === a.doctorId)?.doctor;
+            const dept = d.departments.find((x) => x.id === a.departmentId)?.name ?? "";
+            return (
+              <div key={a.id} data-testid="upcoming-row" style={{ padding: "7px 0", borderBottom: "1px solid var(--line2)" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span className="mo" style={{ fontSize: 12, fontWeight: 700, color: "var(--green)" }}>{dayMonthIst(a.serviceDate)} · {slotClock(a.slotStart)}</span>
+                  {a.status === "needs_rebooking" ? <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--gold)" }}>{t("registrationCounter.upcoming.rebook")}</span> : null}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{[doc?.displayName, dept].filter((x) => x !== undefined && x !== "").join(" · ")}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
 
 function History({ patientId }: { patientId: string }): React.ReactElement | null {
   const { t } = useTranslation();
@@ -380,6 +429,7 @@ export function Dossier(): React.ReactElement {
         of `opd.visits.read`. So the rail says WHEN, WHERE and HOW IT ENDED, which is what a booking
         decision actually needs, and the clinical detail stays on the clinical screens.
       */}
+      {p === null ? null : <Upcoming patientId={p.id} />}
       {p === null ? null : <History patientId={p.id} />}
 
       {/* ── benefits & links, as the SERVER recognises them ── */}
