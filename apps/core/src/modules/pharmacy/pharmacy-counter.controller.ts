@@ -4,7 +4,8 @@ import { CONFIG, DB, DOCUMENT_STORE, MODULE_REGISTRY } from "../../kernel/tokens
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
-import { claimDispense, findAtCounter } from "./claim";
+import { claimDispense, findAtCounter, suggestAtCounter } from "./claim";
+import type { CounterSuggestion } from "./claim";
 import { enterPaperPrescription, paperRxContext } from "./paper-rx";
 import type { PaperRxContext } from "./paper-rx";
 import { searchShelfAt } from "./retail";
@@ -172,6 +173,17 @@ export class PharmacyCounterController {
   async find(@CurrentActor() actor: Actor, @Query("q") q?: string): Promise<FindResult> {
     try {
       return await findAtCounter(this.db, this.cfg, actor, q ?? "", new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** As the pharmacist types: who the words could be. Same gate as `find`, which the tap then runs. */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("find/suggest")
+  async suggest(@CurrentActor() actor: Actor, @Query("q") q?: string): Promise<{ items: CounterSuggestion[] }> {
+    try {
+      return { items: await suggestAtCounter(this.db, actor, (q ?? "").slice(0, 100), new Date()) };
     } catch (e) {
       return toHttp(e);
     }

@@ -10,7 +10,7 @@ import { chargeOrphans } from "../billing";
 import { listVisits } from "../opd";
 import { registerPatient } from "../patients";
 import { billDispense, previewDispenseBill } from "./bill";
-import { findAtCounter } from "./claim";
+import { findAtCounter, suggestAtCounter } from "./claim";
 import { handOverDispense } from "./handover";
 import { enterPaperPrescription } from "./paper-rx";
 import { pickDispense } from "./pick";
@@ -60,6 +60,17 @@ describe("dispense from a paper prescription at the desk (2026-09-30)", () => {
   async function visitWithoutRx(): Promise<string> {
     return (await openVisitWithoutRx(db, fx)).id;
   }
+
+  /* Owner, staging 2026-10-01: a registered patient must show as the pharmacist types the name. */
+  it("as the pharmacist types: a registered patient is suggested by part of the name; a token or a QR is never a name", async () => {
+    const { patient } = await withTx(db, (tx) => registerPatient(tx, fx.pharmacist.actor, { name: "Abhishek Kumar", phone: "9811122233", ageYears: 54, sex: "male" }));
+    const typed = "abhi";
+    const hits = await suggestAtCounter(db, fx.pharmacist.actor, typed, MON2);
+    expect(hits.find((h) => h.uhid === patient.uhid)).toMatchObject({ id: patient.id, name: "Abhishek Kumar", restricted: false, hint: expect.stringContaining("••2233") });
+    expect(await suggestAtCounter(db, fx.pharmacist.actor, typed.slice(0, 1), MON2)).toEqual([]);
+    expect(await suggestAtCounter(db, fx.pharmacist.actor, "T-14", MON2)).toEqual([]);
+    expect(await suggestAtCounter(db, fx.pharmacist.actor, "rx1.abc", MON2)).toEqual([]);
+  });
 
   it("found patient with no e-Rx → the paper door → an ordinary ticket → verify → pick → bill → hand over → stock falls", async () => {
     const encounterId = await visitWithoutRx();

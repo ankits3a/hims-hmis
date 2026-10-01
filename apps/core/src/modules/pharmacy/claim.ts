@@ -97,6 +97,38 @@ export async function findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: str
   return todaysDispense(db, actor, hits[0]!.id, "uhid", now);
 }
 
+export type CounterSuggestion = {
+  id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean;
+  /** Sex, age and the phone's last four — what tells two people of one name apart. Null on a sealed record. */
+  hint: string | null;
+};
+
+/**
+ * 2026-10-01 (owner, staging) — AS THE PHARMACIST TYPES. *"I am not seeing any suggested patient
+ * name as I type."* The find field answered only on Enter, so a registered patient looked absent.
+ *
+ * A NAME STILL NEVER SELECTS (D4): this only LISTS who the typed words could be. The pharmacist
+ * taps one and the ordinary `findAtCounter` runs on that UHID — the e-prescription if there is one
+ * today, the paper-prescription door if there is not. A QR payload or a token is not a name and is
+ * never suggested on; two characters is the floor.
+ */
+export async function suggestAtCounter(db: Db, actor: Actor, q: string, now: Date, limit = 8): Promise<CounterSuggestion[]> {
+  const text = q.trim();
+  if (text.length < 2 || text.startsWith("rx1.") || text.startsWith("q1.") || /^t-?\s*\d{1,5}$/i.test(text)) return [];
+  const hits = await searchPatients(db, actor, text, limit);
+  if (hits.length === 0) return [];
+  const byId = new Map(hits.map((h) => [h.id, h] as const));
+  const summaries = await getPatientSummaries(db, actor, hits.map((h) => h.id));
+  return summaries.map((s) => {
+    const h = byId.get(s.id);
+    const age = h?.dob == null ? null : Math.floor((now.getTime() - h.dob.getTime()) / (365.25 * 86_400_000));
+    const hint = s.restricted || h === undefined ? null : [
+      h.administrativeGender, age === null ? null : `${age}y`, h.phone === null ? null : `••${h.phone.slice(-4)}`,
+    ].filter((x) => x !== null && x !== "").join(" · ");
+    return { id: s.id, uhid: s.uhid, name: s.name, alias: s.alias, restricted: s.restricted, hint: hint === "" ? null : hint };
+  });
+}
+
 /** The patient's prescription of today, through the visit read (which logs the PHI access). */
 async function todaysDispense(db: Db, actor: Actor, patientId: string, door: CounterDoor, now: Date): Promise<FindResult> {
   // `type: "any"` — a paper prescription on the desk's own no-fee pharmacy visit (2026-09-30) is found again by name.

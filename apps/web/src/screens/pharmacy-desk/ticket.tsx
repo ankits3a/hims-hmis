@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useDebounced } from "../../lib/format";
+import { suggestAtCounter } from "../../lib/pharmacy-api";
 import { Closed } from "./closed";
 import { ControlledStep } from "./controlled";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
@@ -212,8 +215,21 @@ export function TicketPanel({
 function FindField({ onFind }: { onFind: (q: string) => void }): React.ReactElement {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
+  /*
+    2026-10-01 (owner) — WHO THE WORDS COULD BE, AS THEY ARE TYPED. The field answered only on Enter,
+    so a registered patient looked absent. A tap runs the ordinary find on that UHID; a QR or a token
+    is not a name and the server suggests nothing for it. Enter still finds what was typed.
+  */
+  const typed = useDebounced(q.trim(), 200);
+  const suggest = useQuery({
+    queryKey: ["pharmacy", "find-suggest", typed],
+    queryFn: () => suggestAtCounter(typed),
+    enabled: typed.length >= 2,
+    retry: false,
+  });
+  const hits = q.trim().length >= 2 && typed === q.trim() ? suggest.data ?? null : null;
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") { onFind(q.trim()); setQ(""); } }}>
+    <form style={{ position: "relative" }} onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") { onFind(q.trim()); setQ(""); } }}>
       <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{t("pharmacyDesk.idleTitle")}</h1>
       <p style={{ margin: "6px 0 16px 0", fontSize: 12.5, color: "var(--dim)" }}>{t("pharmacyDesk.idleHint")}</p>
       <label htmlFor="desk-find" className="tag">{t("pharmacyDesk.findLabel")}</label>
@@ -232,6 +248,24 @@ function FindField({ onFind }: { onFind: (q: string) => void }): React.ReactElem
           {t("pharmacyDesk.find.button")} <span className="kb" style={{ borderColor: "rgba(255,255,255,.35)", background: "rgba(255,255,255,.12)", color: "#d6ece1" }}>⏎</span>
         </button>
       </div>
+      {hits === null ? null : hits.length === 0 ? (
+        <p role="status" data-testid="desk-suggest-none" style={{ margin: "8px 0 0 0", fontSize: 12, color: "var(--dim)" }}>
+          {t("pharmacyDesk.find.suggestNone")}
+        </p>
+      ) : (
+        <div className="box" data-testid="desk-suggest" style={{ marginTop: 6 }}>
+          {hits.map((p) => (
+            <button
+              key={p.id} type="button" className="drow" style={{ width: "100%" }} data-testid={`desk-suggest-${p.uhid}`}
+              onClick={() => { onFind(p.uhid); setQ(""); }}
+            >
+              <span style={{ flexGrow: 1, textAlign: "left", fontSize: 13, fontWeight: 500 }}>{whoLabel(p)}</span>
+              {p.hint === null ? null : <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.hint}</span>}
+              <span className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.uhid}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </form>
   );
 }

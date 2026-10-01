@@ -7809,6 +7809,7 @@
       "button": "Find",
       "qrInvalid": "That code is not a prescription this hospital signed.",
       "noRx": "No prescription today for that patient.",
+      "suggestNone": "Nobody registered matches that yet. Press Enter to search, then register them here.",
       "notFound": "Nobody found for that."
     },
     "paperRx": {
