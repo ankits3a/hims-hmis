@@ -6522,7 +6522,7 @@
       "name": "Name",
       "phone": "Mobile",
       "ageYears": "Age (years)",
-      "sex": "sex",
+      "sex": "gender",
       "sexUnknown": "Not stated",
       "sexMale": "Male",
       "sexFemale": "Female",
@@ -6595,7 +6595,7 @@
       },
       "where": {
         "title": "Where they live",
-        "area": "area / landmark",
+        "area": "house, street, area",
         "district": "city / district",
         "state": "state",
         "pincode": "PIN code"

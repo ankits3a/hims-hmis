@@ -252,7 +252,11 @@ describe("FD-12: the registration counter's full record", () => {
     await user.selectOptions(screen.getByTestId("reg-blood"), "B+");
     await user.type(screen.getByTestId("reg-occupation"), "Anganwadi worker");
 
-    await user.click(screen.getByTestId("fold-where"));
+    // Owner, 2026-10-01 — "Where they live" is open in the address box's place: no fold to click.
+    expect(screen.queryByTestId("fold-where")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reg-where")).toHaveTextContent("Where they live");
+    expect(screen.getByText("gender")).toBeInTheDocument();
+    await user.type(screen.getByTestId("reg-address"), "12 Gandhi Nagar");
     await user.type(screen.getByTestId("reg-district"), "Kanpur Nagar");
     await user.type(screen.getByTestId("reg-pincode"), "208001");
 
@@ -270,6 +274,7 @@ describe("FD-12: the registration counter's full record", () => {
     await waitFor(() => expect(posted).toHaveLength(1));
     const body = posted[0]!.body as Record<string, unknown>;
 
+    expect(body["addressLine"]).toBe("12 Gandhi Nagar");
     expect(body["fatherHusbandName"]).toBe("Ram Prasad");
     expect(body["bloodGroup"]).toBe("B+");
     expect(body["occupation"]).toBe("Anganwadi worker");
