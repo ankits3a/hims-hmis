@@ -129,6 +129,8 @@ export type WireQuoteVisit = {
 
 export type WireFeeQuote = {
   encounterId: string; visitType: string; free: boolean;
+  /** Owner, 2026-10-01 — free because the consultation fee is switched off, not because of a review window. */
+  feesOff?: boolean;
   feeServiceId: string | null; draft: WirePricedDraft | null;
   patient?: WireQuotePatient | null;
   visit?: WireQuoteVisit | null;
@@ -469,3 +471,16 @@ export const requestOwnerCredit = (body: { draftId: string; patientId: string; a
 /** Where the owner's decision stands: `pending`, `granted` or `rejected`. */
 export const fetchCreditRequest = (approvalId: string): Promise<WireCreditRequest> =>
   api<WireCreditRequest>("GET", `/billing/credit-requests/${encodeURIComponent(approvalId)}`);
+
+/** Owner, 2026-10-01 — the fee switches (`GET`/`PUT /billing/fee-switches`). Off means free. */
+export type FeeKind = "opdConsult" | "lab";
+export type WireFeeSwitches = {
+  switches: { kind: FeeKind; off: boolean; changedAt: string | null; changedBy: string | null }[];
+  consultPaise: { new: number | null; renewal: number | null };
+};
+export function fetchFeeSwitches(): Promise<WireFeeSwitches> {
+  return api<WireFeeSwitches>("GET", "/billing/fee-switches");
+}
+export function saveFeeSwitch(body: { kind: FeeKind; off: boolean }): Promise<WireFeeSwitches> {
+  return api<WireFeeSwitches>("PUT", "/billing/fee-switches", body);
+}

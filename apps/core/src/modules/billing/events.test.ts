@@ -23,11 +23,13 @@ const EXPECTED_NAMES = [
   // UX-AUDIT 2026-09-28 · BOARD — the office decided a settlement mismatch (recon-resolve.ts). Last,
   // so the plan's order above is untouched.
   "tender.resolved",
+  // Owner, 2026-10-01 — the fee switches (fee-switches.ts).
+  "fee_switch.changed",
 ];
 
 describe("billing event catalog (D-Events, Global Constraints: catalog discipline)", () => {
-  test("exactly twenty-two defineEvent exports, every one carrying module \"billing\"", () => {
-    expect(BILLING_EVENTS).toHaveLength(22);
+  test("exactly twenty-three defineEvent exports, every one carrying module \"billing\"", () => {
+    expect(BILLING_EVENTS).toHaveLength(23);
     for (const ev of BILLING_EVENTS) expect(ev.module).toBe("billing");
   });
 

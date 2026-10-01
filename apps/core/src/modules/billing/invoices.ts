@@ -24,6 +24,7 @@ import { allocateOnTx } from "./receipts";
 import { emitFeeStatusChanged } from "./settle-hooks";
 import { resolveRegisteredSources } from "./benefit-sources";
 import { assertCashAccepted } from "./cash-law";
+import { withFeeSwitches } from "./fee-switches";
 import { loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import { nextDocNo } from "./series";
@@ -797,7 +798,8 @@ async function priceDraftWithBenefits(
   await assertOneSubject(db, draft.patientId, encounter.patientId);
   // `loadPricingContext` takes Db, NOT Tx (§14.5) and runs OUTSIDE any transaction; the engine
   // itself is pure and synchronous, so pricing holds no connection and no lock.
-  const base = await loadPricingContext(db, { at: now, tags: draft.tags ?? [] });
+  // The fee switches (owner, 2026-10-01): a laboratory test prices at ₹0 while the lab's fee is off.
+  const base = await withFeeSwitches(db, await loadPricingContext(db, { at: now, tags: draft.tags ?? [] }), draft.lines.map((l) => l.serviceId));
   assertBoundaryPaise(draft);
   // D1 — THE FLAG IS LOAD-BEARING. With it off nothing above is called at all: no membership table
   // is read, no source is appended, and every pre-existing billing test prices exactly as before.

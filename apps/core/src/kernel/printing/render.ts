@@ -552,6 +552,9 @@ export async function subjectOf(
   };
 }
 
+/** Owner, 2026-10-01 — how a fee waived as the hospital's social service prints, on every paper. */
+export const SAMAJ_SEVA_AMOUNT = "₹0 (समाज सेवा छूट)";
+
 /**
  * ═══ THE OPD TOKEN SLIP — `TokenSlip72.dc.html` ═══
  *
@@ -647,15 +650,24 @@ export async function renderTokenSlip(
   let moneyLine: string;
   if (status === "free") {
     let until: string | null = null;
+    let feesOff = false;
     try {
       const quote = await feeQuote(db, encounterId, now);
       until = quote.freeReason === null ? null : formatCalendarDay(quote.freeReason.windowEndsOn);
+      feesOff = quote.feesOff;
     } catch {
       /* An unconfigured or unpriceable visit still prints the TYPE; it simply cannot name a window.
          A slip that failed to render because the fee policy moved would be far worse than one
          missing a date. */
     }
-    moneyLine = until === null
+    /*
+      OWNER, 2026-10-01: *"On the bill and receipt, clearly mention amount ₹0 (Samaj Seva Chhoot) in
+      Hindi."* A visit that is free because the consultation fee is switched off has no bill and no
+      receipt — this slip is the only paper it prints — so the amount and its reason are said here.
+    */
+    moneyLine = feesOff
+      ? SAMAJ_SEVA_AMOUNT
+      : until === null
       ? "FREE — review visit, no consultation fee"
       : `FREE — review visit, no fee until ${until}`;
   } else if (status === "settled") moneyLine = "PAID";
@@ -748,12 +760,14 @@ export async function renderPaymentReceipt(
   const paise = typeof params.amountPaise === "number" ? params.amountPaise : 0;
   const rupees = `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  // Owner, 2026-10-01 — a ₹0 receipt says why it is ₹0, in Hindi, under the amount.
+  const sevaHtml = paise === 0 ? `<div class="hi" style="font-size:11pt;font-weight:700">${SAMAJ_SEVA_AMOUNT}</div>` : "";
   const body = `
     <div class="hd">
       <div class="nm">${HOSPITAL.name}</div>
       <div class="ad">${HOSPITAL.address}<br>${HOSPITAL.contact}</div>
     </div>
-    <div class="tok"><div class="lbl">Payment received</div><div class="no mo" style="font-size:20pt">${esc(rupees)}</div></div>
+    <div class="tok"><div class="lbl">Payment received</div><div class="no mo" style="font-size:20pt">${esc(rupees)}</div>${sevaHtml}</div>
     <div class="sec">
       <div class="row"><span class="k">Patient</span><span class="v">${esc(s.patientName)}</span></div>
       <div class="row"><span class="k">UHID</span><span class="v mo">${esc(s.uhid)}</span></div>
