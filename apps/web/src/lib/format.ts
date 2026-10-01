@@ -108,3 +108,10 @@ export function useDebounced(value: string, ms: number): string {
   }, [value, ms]);
   return debounced;
 }
+
+/**
+ * Owner, 2026-10-01: *"On the bill and receipt, clearly mention amount ₹0 (Samaj Seva Chhoot) in
+ * Hindi."* A service whose PRICE is zero — a fee switched off — prints its amount this way, in Hindi
+ * whatever language the screen is in. A discounted line is not this: its price was not zero.
+ */
+export const SAMAJ_SEVA_AMOUNT = "₹0 (समाज सेवा छूट)";

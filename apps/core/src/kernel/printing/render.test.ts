@@ -4,6 +4,7 @@ import {
 } from "../../../test/helpers/opd";
 import { openVisit } from "../../modules/opd/encounters";
 import { issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
+import { setFeeSwitch } from "../../modules/billing/fee-switches";
 import { renderDocument, renderPaymentReceipt, renderPrescriptionSheet, renderTokenSlip } from "./render";
 /* FD-29 — the redesigned sheet reads allergies and a carried height, and inlines a crest and a QR.
    The two WRITERS are deep-imported rather than added to the patients barrel: `patients` is
@@ -124,6 +125,20 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       const doc = await renderTokenSlip(db, { encounterId }, MON);
       expect(doc!.html).toContain("NEW");
       expect(doc!.html).toContain("UNPAID — pay at the billing counter");
+    });
+
+    /**
+     * OWNER, 2026-10-01: *"On the bill and receipt, clearly mention amount ₹0 (Samaj Seva Chhoot) in
+     * Hindi."* With the consultation fee switched off the visit has no bill; the slip carries it.
+     */
+    it("with the consultation fee SWITCHED OFF the slip says ₹0 (समाज सेवा छूट), no UNPAID stamp, no billing counter", async () => {
+      await seedBillingBase(db);
+      await setFeeSwitch(db, clerk.actor, "opdConsult", true, MON);
+      const doc = await renderTokenSlip(db, { encounterId }, MON);
+      expect(doc!.html).toContain(`<span class="k">Fee</span><span class="v">₹0 (समाज सेवा छूट)</span>`);
+      expect(doc!.html).not.toContain("UNPAID");
+      expect(doc!.html).not.toContain("FREE — review visit");
+      expect(doc!.html).not.toContain("Billing counter — ground floor");
     });
 
     /**
@@ -685,6 +700,13 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).toContain("₹300.00");
       // consultation is GST-exempt: a document that looks like a tax invoice and is not one is worse than a plain one
       expect(doc!.html).toContain("not a tax invoice");
+    });
+
+    it("a ₹0 receipt says why, in Hindi, and a paid one does not", async () => {
+      const free = await renderPaymentReceipt(db, { encounterId, amountPaise: 0, mode: "cash" }, MON);
+      expect(free!.html).toContain("₹0 (समाज सेवा छूट)");
+      const paid = await renderPaymentReceipt(db, { encounterId, amountPaise: 30_000, mode: "cash" }, MON);
+      expect(paid!.html).not.toContain("समाज सेवा छूट");
     });
   });
   /**

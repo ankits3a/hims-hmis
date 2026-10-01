@@ -1,3 +1,4 @@
+import { SAMAJ_SEVA_AMOUNT } from "../../lib/format";
 import type { CounterSequence, TokenLane, WireDoctorSummary, WireCounterFlow, WireTimelineItem } from "../../lib/opd-api";
 import type { WireFeeQuote, WirePricedLine } from "../../lib/billing-api";
 
@@ -340,7 +341,7 @@ export function billOf(quote: WireFeeQuote | null): { lines: BillLine[]; totalPa
   if (quote.free || quote.draft === null) {
     const why = quote.freeReason;
     const label = quote.feesOff === true
-      ? "OPD consultation — free today, nothing to collect"
+      ? `OPD consultation — ${SAMAJ_SEVA_AMOUNT}`
       : why === null
       ? "review visit — nothing to collect"
       : `${why.kind === "referral_window" ? "referral visit" : "review visit"} — free till ${why.windowEndsOn}${why.doctorName === null ? "" : ` (${why.doctorName})`}`;
