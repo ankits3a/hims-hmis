@@ -500,6 +500,8 @@ function Shell(): React.ReactElement {
     select: (s) => s.matches.some((m) => m.staticData.fullViewport === true),
   });
   const { can } = useAuth();
+  /* The strip stands down on the profile of the patient it names (see `PatientStrip`). */
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
 
   /*
     The chrome is built inside the ternary and not above it, so a route that owns the viewport never
@@ -513,7 +515,7 @@ function Shell(): React.ReactElement {
           PLAN 07b T1 — the patient in hand, directly under the chrome and above every screen, so a
           clerk never has to find the same person twice. It renders nothing when nobody is in hand.
         */}
-        <PatientStrip />
+        <PatientStrip path={pathname} />
         <div className="flex-1">
           <Outlet />
         </div>

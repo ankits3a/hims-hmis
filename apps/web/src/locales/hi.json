@@ -12903,6 +12903,8 @@
       "ask": "पूछें"
     },
     "today": "आज · {{date}}",
+    "inHand": "यह मरीज़ हाथ में है",
+    "inHandVisit": "यह मरीज़ हाथ में है · विज़िट खुली है",
     "todayVisit": "{{dept}} की कतार में",
     "visitStatus": {
       "registered": "पंजीकृत",

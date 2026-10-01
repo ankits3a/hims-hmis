@@ -12903,6 +12903,8 @@
       "ask": "ask"
     },
     "today": "Today · {{date}}",
+    "inHand": "This patient is in hand",
+    "inHandVisit": "This patient is in hand · visit open",
     "todayVisit": "In the {{dept}} queue",
     "visitStatus": {
       "registered": "registered",

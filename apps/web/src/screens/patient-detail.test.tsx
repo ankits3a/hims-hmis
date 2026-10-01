@@ -422,6 +422,37 @@ describe("PatientDetail", () => {
    * PLAN 07b T2 — THE DEAD END, ENDED. The action must ALSO take the patient in hand, or the
    * destination is just another empty screen and nothing has been gained.
    */
+  /**
+   * Owner, 2026-10-01 — the shell's "in hand" strip is not drawn over this patient's own profile, so
+   * the lane carries Release, at its foot, and only for the patient who is in hand.
+   */
+  it("the lane's foot offers Release while this patient is in hand, and releasing empties the hand", async () => {
+    sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-1", encounterId: null }));
+    stubSeat({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+    });
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByTestId("lane-in-hand")).toHaveTextContent("This patient is in hand");
+    await userEvent.setup().click(screen.getByTestId("lane-release"));
+    expect(sessionStorage.getItem("hmis.inHand")).toBeNull();
+    expect(screen.queryByTestId("lane-release")).toBeNull();
+  });
+
+  it("no Release in the lane when nobody, or somebody else, is in hand", async () => {
+    sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-other", encounterId: null }));
+    stubSeat({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+    });
+    renderWithProviders(<PatientDetail />);
+    await screen.findByTestId("onward-actions");
+    expect(screen.queryByTestId("lane-release")).toBeNull();
+    sessionStorage.clear();
+  });
+
   it("an onward action takes the patient in hand and then navigates", async () => {
     sessionStorage.clear();
     stubSeat({

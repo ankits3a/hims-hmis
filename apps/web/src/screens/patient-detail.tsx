@@ -1040,7 +1040,7 @@ export function PatientDetail(): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
   const navigate = useNavigate();
-  const { takePatient } = usePatientInHand();
+  const { takePatient, inHand, release } = usePatientInHand();
   const genderWord = useGenderWord();
 
   const [log] = useState<AgentLine[]>([]);
@@ -1286,7 +1286,18 @@ export function PatientDetail(): React.ReactElement {
                 </div>
               )}
             </div>
-            <div className="keys">
+            {/*
+              RELEASE, AT THE FOOT OF THE LANE (owner, 2026-10-01). The shell's "in hand" strip is not
+              drawn over this patient's own profile — the lane already says who they are — so the one
+              act that strip carried lives here, and only while THIS patient is the one in hand.
+            */}
+            {inHand !== null && inHand.patientId === pid && (
+              <div data-testid="lane-in-hand" style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 12, color: "var(--dim)", flexGrow: 1 }}>{t(inHand.encounterId !== null ? "profile.inHandVisit" : "profile.inHand")}</span>
+                <button type="button" className="sec" data-testid="lane-release" onClick={release}>{t("patientStrip.release")}</button>
+              </div>
+            )}
+            <div className="keys" style={inHand !== null && inHand.patientId === pid ? { marginTop: 0 } : undefined}>
               {canOpenVisit && <span><span className="kb">⏎</span> {t("profile.keys.open")}</span>}
               {canEdit && <span><span className="kb">E</span> {t("profile.keys.edit")}</span>}
               <span><span className="kb">P</span> {t("profile.keys.print")}</span>
