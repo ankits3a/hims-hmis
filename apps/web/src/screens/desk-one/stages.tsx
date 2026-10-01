@@ -487,16 +487,26 @@ function StageRegister(): React.ReactElement {
         </div>
       </div>
 
-      <div className="box" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12, padding: "10px 13px", background: "var(--wash)" }}>
-        <span className="tag" style={{ flexShrink: 0 }}>{t("registrationCounter.register.address")}</span>
-        <input
-          className="in"
-          data-testid="reg-address"
-          style={{ height: 32, background: "var(--card)" }}
-          placeholder={t("registrationCounter.register.addressHint")}
-          value={f.address}
-          onChange={(e) => set({ address: e.target.value })}
-        />
+      {/*
+        ═══ WHERE THEY LIVE — OPEN, IN THE ADDRESS BOX'S PLACE (owner, 2026-10-01) ═══
+
+        *"Instead of putting Address text box under Full Name, Mobile, Age, Sex … unhide the 'Where
+        they live' and show it there as a replacement of one text box for Address."* The one box asked
+        for "street, area, district" in a single line and the four fields that take them apart sat
+        folded shut further down, so district, state and PIN were almost never filled.
+
+        The first field IS the address line (`addressLine`, still `reg-address`). The fold's own
+        "area / landmark" box was bound to `area`, which no request ever carried — what a clerk typed
+        there was dropped. It is gone with the fold.
+      */}
+      <div className="box" data-testid="reg-where" style={{ marginTop: 12, padding: "10px 13px 12px", background: "var(--wash)" }}>
+        <div className="tag">{t("registrationCounter.register.where.title")}</div>
+        <div style={{ ...GRID4, gridTemplateColumns: "1.9fr 1.1fr 1fr .7fr" }}>
+          <Field label={t("registrationCounter.register.where.area")} testId="reg-address" value={f.address} onChange={(v) => set({ address: v })} />
+          <Field label={t("registrationCounter.register.where.district")} testId="reg-district" value={f.district} onChange={(v) => set({ district: v })} />
+          <Field label={t("registrationCounter.register.where.state")} testId="reg-state" value={f.stateName} onChange={(v) => set({ stateName: v })} />
+          <Field label={t("registrationCounter.register.where.pincode")} testId="reg-pincode" mono value={f.pincode} onChange={(v) => set({ pincode: v })} />
+        </div>
       </div>
 
       {/* ═══ THE GUARDIAN — opened by the age, not by the clerk remembering ═══ */}
@@ -684,21 +694,6 @@ function StageRegister(): React.ReactElement {
         </div>
       </Fold>
 
-      {/* ═══ WHERE THEY LIVE ═══ */}
-      <Fold
-        title={t("registrationCounter.register.where.title")}
-        hint={t("registrationCounter.register.optional")}
-        open={open["where"] === true}
-        onToggle={() => { toggle("where"); }}
-        testId="fold-where"
-      >
-        <div style={GRID4}>
-          <Field label={t("registrationCounter.register.where.area")} testId="reg-area" value={f.area} onChange={(v) => set({ area: v })} />
-          <Field label={t("registrationCounter.register.where.district")} testId="reg-district" value={f.district} onChange={(v) => set({ district: v })} />
-          <Field label={t("registrationCounter.register.where.state")} testId="reg-state" value={f.stateName} onChange={(v) => set({ stateName: v })} />
-          <Field label={t("registrationCounter.register.where.pincode")} testId="reg-pincode" mono value={f.pincode} onChange={(v) => set({ pincode: v })} />
-        </div>
-      </Fold>
 
       {/* ═══ THE DOCUMENT THE CLERK WAS HANDED ═══ */}
       <Fold
