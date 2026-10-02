@@ -45,6 +45,8 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "law", key: "controlled", perms: ["pharmacy.ndps.custody", "pharmacy.licences.manage", "pharmacy.register.read"], was: null },
   { side: "law", key: "retail", perms: ["pharmacy.retail.manage"], was: "/pharmacy/retail-licence" },
   { side: "law", key: "pharmacists", perms: ["pharmacy.pharmacists.manage"], was: "/pharmacy/pharmacists" },
+  // Owner ruling 2026-10-02 — the desk's settings (quick desk mode), for whoever may change them.
+  { side: "law", key: "desk", perms: ["pharmacy.licences.manage"], was: null },
   { side: "law", key: "messages", perms: ["pharmacy.messages.manage"], was: null },
   // Stage D1 / D2 — the ADR register (PvPI) and the medication error and near-miss log.
   { side: "law", key: "adr", perms: ["pharmacy.adr.record", "pharmacy.adr.manage"], was: null },

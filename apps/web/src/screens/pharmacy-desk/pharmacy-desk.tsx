@@ -8,7 +8,7 @@ import { fetchCurrentSession } from "../../lib/billing-api";
 import { usePaletteOptional } from "../../components/command-palette";
 import { useCopilot } from "../../lib/use-copilot";
 import {
-  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchQueue, findAtCounter, handOverDispense,
+  billDispense, claimDispense, fetchClosing, confirmDispenseSlip, declineLine, fetchCounterSummary, fetchDispense, fetchMyRegistration, fetchMyShift, fetchPharmacySettings, fetchQueue, findAtCounter, handOverDispense,
   pharmacyErrorCode, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../../lib/pharmacy-api";
 import { istClock, istDateLabel } from "../desk-one/model";
@@ -182,6 +182,9 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const drawer = useQuery({ queryKey: ["billing", "session", "current"], queryFn: fetchCurrentSession, refetchInterval: 60_000, retry: false });
   /* The header's other precondition: may this login verify (Pharmacy Act 1948 §42)? A 404 (older server) says nothing. */
   const registration = useQuery({ queryKey: ["pharmacy", "pharmacists", "me"], queryFn: fetchMyRegistration, staleTime: 5 * 60_000, retry: false });
+  /* Owner ruling 2026-10-02 — quick desk mode. Unread or failed reads as OFF: the desk as it was. */
+  const settings = useQuery({ queryKey: ["pharmacy", "settings"], queryFn: fetchPharmacySettings, staleTime: 60_000, retry: false });
+  const quick = settings.data?.quickDesk === true;
   /*
     OWNER RULING 2026-09-30 — the sale discount on the ticket in hand, from the bill's ⋯ sheet. It belongs to ONE
     dispense (a different ticket starts with none), prices the preview, and rides on the bill with its approval.
@@ -255,7 +258,11 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       if (r.reason === "restricted") { setError(t("pharmacyDesk.sealedRefused")); return; }
       const key = r.reason === "qr_invalid" ? "qrInvalid" : r.reason === "no_prescription_today" ? "noRx" : "notFound";
       setNote(t(`pharmacyDesk.find.${key}`));
-      if (r.reason === "no_prescription_today" && r.patient !== undefined) setPaperFor({ id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }) });
+      if (r.reason === "no_prescription_today" && r.patient !== undefined) {
+        setPaperFor({ id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }) });
+        /* Quick desk mode: found with nothing in the system → straight to the medicines, no door to press. */
+        if (quick) { setNote(null); setOverlay("paper"); }
+      }
       if (r.reason === "not_found" && r.door === "uhid") setRegisterFrom(q.trim());
       return;
     }
@@ -264,7 +271,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       if (!(await take(d.id, r.door, d.patient.alias ?? d.patient.name ?? d.patient.uhid))) return;
     }
     hold(d.id);
-  }, [hold, t, take]);
+  }, [hold, quick, t, take]);
 
   /* A ticket already yours opens without a second claim — the server would refuse it, naming you. */
   const openInTab = useCallback(async (dispenseId: string, who: string, mine: boolean): Promise<void> => {
@@ -442,11 +449,11 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       /* PARITY P1 — `N`: note a shortage. One field, prefilled with the drug of the line in hand. */
       if ((e.key === "n" || e.key === "N") && document.querySelector("[role=dialog]") === null) { e.preventDefault(); setOverlay("short"); return; }
       /* `S` exists only where there is paper to see: a ticket typed from the doctor's slip. */
-      if ((e.key === "s" || e.key === "S") && ticket.data?.transcribedBy != null) { e.preventDefault(); setOverlay("slip"); }
+      if ((e.key === "s" || e.key === "S") && ticket.data?.transcribedBy != null && !quick) { e.preventDefault(); setOverlay("slip"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [candidates, clearDesk, inHandId, overlay, palette, ticket.data?.transcribedBy]);
+  }, [candidates, clearDesk, inHandId, overlay, palette, quick, ticket.data?.transcribedBy]);
 
   const rows = queue.data ?? [];
   const waiting = rows.filter((r) => r.status === "queued" && holdOf(r, me).kind === "free").length;
@@ -464,7 +471,8 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
           <span style={{ fontSize: 12.5, color: "var(--dim)" }}>
             {t("pharmacyDesk.where")} · <strong style={{ color: "var(--ink)", fontWeight: 600 }}>{username ?? t("pharmacyDesk.thisDesk")}</strong>
           </span>
-          {registration.data === undefined ? null : registration.data.registration === null ? (
+          {quick ? <span className="pill gd" style={{ height: 22 }} data-testid="desk-quick-mode">{t("pharmacyDesk.header.quickMode")}</span> : null}
+          {registration.data === undefined || (quick && registration.data.registration === null) ? null : registration.data.registration === null ? (
             <span className="pill rd" style={{ height: 22 }} data-testid="desk-registered">{t("pharmacyDesk.header.notRegistered")}</span>
           ) : (
             <span className="pill on" style={{ height: 22 }} data-testid="desk-registered" title={registration.data.registration.council}>
@@ -524,6 +532,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               handOverError={handOverError}
               takenLabel={takenPaise === null ? null : rupees(takenPaise)}
               onHandOver={(identity, controlled) => void handOver(identity, controlled)}
+              quick={quick}
               onOpenSlip={() => setOverlay("slip")}
               queue={rows}
               onShowLine={() => setOverlay("queue")}
@@ -585,6 +594,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
       {overlay === "paper" && paperFor !== null ? (
         <PaperRxSheet
           patient={paperFor}
+          quick={quick}
           onClose={() => setOverlay(null)}
           onDone={(d) => {
             setOverlay(null);

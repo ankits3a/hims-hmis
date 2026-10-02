@@ -2852,6 +2852,24 @@
     "indent_closed": "This indent was already issued, rejected or cancelled — refresh and look at it again.",
     "grn_same_person": "You captured this delivery. The hospital's setting needs a different person to check and post it."
   },
+  "deskSettings": {
+    "title": "Desk mode",
+    "lead": "How the pharmacy desk bills a paper prescription. Every change is recorded with who made it and when.",
+    "savedOn": "Saved — quick desk mode is on.",
+    "savedOff": "Saved — quick desk mode is off. All desk checks apply again.",
+    "quickDesk": {
+      "label": "Quick desk mode",
+      "whenOff": "Off: the desk runs every check below.",
+      "whenOn": "On: the desk skips the three checks below. Staff find the patient, choose the doctor, add medicines and bill.",
+      "skips": {
+        "photo": "No photo of the paper prescription is asked for, even for a Schedule H or H1 medicine.",
+        "registration": "The person at the counter does not need a state council registration on file to verify or hand over.",
+        "slip": "No “See the slip” or “Confirmed against the slip” step before the bill."
+      },
+      "stays": "Still applies: staff need the desk’s billing and Schedule H permissions; Schedule X and narcotic medicines are refused on paper; allergy and severe-interaction blocks; the H1 register is written at hand-over.",
+      "law": "The Pharmacy Act (section 42) asks that a registered pharmacist dispenses prescription medicines, and Schedule H1 sales need the prescriber on the register. With this on, the system no longer enforces the first — the hospital answers for it."
+    }
+  },
   "storeSettings": {
     "title": "Stores settings",
     "lead": "Rules for how goods come into the stores. Every change is recorded with who made it and when.",
@@ -7770,6 +7788,7 @@
       "outsideAddress": "Clinic / hospital address",
       "outsideHint": "Name as written. Registration number and address are needed for Schedule H/H1.",
       "outsideH1": "Schedule H/H1 on this paper — the name, registration number and address are all required.",
+      "chooseUnit": "Any department / unit",
       "chooseDoctor": "Choose the doctor",
       "rxDate": "Date on the prescription",
       "visit": "Visit {{visitNo}}",
@@ -8100,6 +8119,7 @@
     "declineTitle": "Decline {{line}}",
     "header": {
       "registered": "registered · {{no}}",
+      "quickMode": "Quick desk mode",
       "notRegistered": "not registered — cannot verify",
       "drawerOpen": "drawer open · float {{float}}",
       "noDrawer": "no drawer — open one to take money"
@@ -10240,6 +10260,7 @@
         "controlled": "Narcotics & Schedule X",
         "retail": "Retail licence (Form 20/21)",
         "pharmacists": "Pharmacists & registrations",
+        "desk": "Desk mode",
         "messages": "Patient messages & consent",
         "adr": "Adverse drug reactions (PvPI)",
         "incidents": "Medication errors & near misses",

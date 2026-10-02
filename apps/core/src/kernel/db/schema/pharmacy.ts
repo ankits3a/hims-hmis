@@ -1177,3 +1177,24 @@ export const pharmacyTrayCheckLines = pgTable(
       sql.raw(`par_qty > 0 and qty_present >= 0 and qty_expiring >= 0 and qty_expiring <= qty_present and qty_used >= 0 and qty_restock >= 0`)),
   ],
 );
+
+/**
+ * OWNER RULING 2026-10-02 (quick desk mode) — the pharmacy desk's own settings. ONE ROW (`id = 'main'`,
+ * the `materials_settings` shape), and its ABSENCE is the default: no row means every setting is off.
+ *
+ * `quick_desk` — when true, the desk bills a paper prescription without three of its checks: the photo
+ * of a Schedule H/H1 paper, the state-council registration of the person at the counter (verify and a
+ * scheduled hand-over), and the slip cross-confirm before the bill (`settings.ts`). OFF until the owner
+ * turns it on. Changed only by a holder of `pharmacy.licences.manage`; every change is the
+ * `pharmacy_settings.changed` event.
+ */
+export const pharmacySettings = pgTable(
+  "pharmacy_settings",
+  {
+    id: text("id").primaryKey(),
+    quickDesk: boolean("quick_desk").notNull().default(false),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [check("pharmacy_settings_one_row_ck", sql`${t.id} = 'main'`)],
+);
