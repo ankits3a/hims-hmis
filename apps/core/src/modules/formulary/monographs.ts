@@ -25,12 +25,13 @@
  * null. A SECOND person reviews it (`monograph_same_actor` refuses the writer), and any later edit makes it a
  * draft again. The second pair of eyes is the only thing that makes this text safe to show.
  */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { formularyGenerics, formularyMonographs, formularyRenalDoses } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
 import { monographReviewed, monographSaved } from "./events";
+import { normalizeDrugName } from "./resolve";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { MonographSection } from "../../kernel/db/schema";
@@ -165,4 +166,29 @@ export async function renalDoseFor(db: Db | Tx, genericId: string, crclMlMin: nu
     }
   }
   return null;
+}
+
+export type GenericHit = { id: string; sctid: string; name: string; doseForm: string; monographStatus: "none" | "draft" | "reviewed" };
+
+/**
+ * The curation door's typeahead: active generics whose name contains what was typed (a name that STARTS with
+ * it first), each with where its monograph stands. Fewer than two characters asks nothing. The 10,303
+ * generics are scanned, not indexed, for the contains-match: this is one pharmacist's screen, not the consult.
+ */
+export async function searchGenerics(db: Db | Tx, q: string, limit = 10): Promise<GenericHit[]> {
+  const norm = normalizeDrugName(q);
+  if (norm.length < 2) return [];
+  const escaped = norm.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const rows = await db.select({
+    id: formularyGenerics.id, sctid: formularyGenerics.sctid, name: formularyGenerics.name, doseForm: formularyGenerics.doseForm,
+    status: formularyMonographs.status,
+  }).from(formularyGenerics)
+    .leftJoin(formularyMonographs, eq(formularyMonographs.genericId, formularyGenerics.id))
+    .where(and(eq(formularyGenerics.active, true), sql`${formularyGenerics.nameNormalized} like ${`%${escaped}%`}`))
+    .orderBy(desc(sql`${formularyGenerics.nameNormalized} like ${`${escaped}%`}`), asc(formularyGenerics.name), asc(formularyGenerics.id))
+    .limit(Math.min(Math.max(limit, 1), 25));
+  return rows.map((r) => ({
+    id: r.id, sctid: r.sctid, name: r.name, doseForm: r.doseForm,
+    monographStatus: r.status === "reviewed" ? "reviewed" : r.status === null ? "none" : "draft",
+  }));
 }

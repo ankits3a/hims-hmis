@@ -1116,6 +1116,49 @@
       "restricted": "Restricted — needs steward approval",
       "save": "Save",
       "saved": "Saved {{name}}"
+    },
+    "monograph": {
+      "title": "Drug monograph",
+      "intro": "What a generic is for, told to the patient, the prescriber and the ward nurse, with its Jan Aushadhi benchmark and renal dose bands. Saving writes a draft, and a draft is shown to nobody. A second person reviews it.",
+      "searchLabel": "Find a generic",
+      "searchPlaceholder": "Type a generic name, e.g. acyclovir",
+      "hit": {
+        "none": "no monograph",
+        "draft": "draft",
+        "reviewed": "reviewed"
+      },
+      "statusNone": "No monograph yet. Nothing is shown to anyone.",
+      "statusDraft": "Draft. Not shown to anyone until a second person reviews it.",
+      "statusReviewed": "Reviewed on {{date}}. Shown to readers. Saving an edit makes it a draft again.",
+      "document": "Paste the whole specification document (JSON)",
+      "split": "Split into sections",
+      "invalidDocument": "The pasted document is not valid JSON.",
+      "version": "Source version",
+      "versionNeeded": "Enter the source version of this text.",
+      "section": {
+        "patient": "For the patient",
+        "prescriber": "For the prescriber",
+        "nursing": "For the ward nurse",
+        "affordability": "Jan Aushadhi benchmark"
+      },
+      "invalidJson": "{{section}} is not valid JSON",
+      "renal": "Renal dose bands",
+      "renalHelp": "Creatinine clearance in mL/min. \"From\" is inside the band, \"below\" is not: 10 to 25 reads 10 and does not read 25. Leave one side empty for an open band.",
+      "bandMin": "From",
+      "bandMax": "Below",
+      "bandDose": "Dose",
+      "bandSeverity": "Severity",
+      "severity": {
+        "normal": "Normal dose",
+        "reduce": "Reduce",
+        "avoid": "Avoid"
+      },
+      "bandAdd": "Add a band",
+      "bandRemove": "Remove",
+      "save": "Save as draft",
+      "savedDraft": "Saved as a draft. Ask a second person to review it.",
+      "review": "Review and publish",
+      "reviewedNow": "Reviewed. It is now shown to readers."
     }
   },
   "opdConsult": {

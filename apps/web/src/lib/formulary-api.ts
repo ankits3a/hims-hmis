@@ -342,3 +342,43 @@ export const fetchStewardship = (medicineId: string): Promise<WireStewardship> =
 export async function setStewardship(medicineId: string, patch: { awareCategory: WireStewardship["awareCategory"]; antimicrobialRestricted: boolean }): Promise<void> {
   await api<{ ok: true }>("PATCH", `/formulary/medicines/${medicineId}`, patch);
 }
+
+/**
+ * ═══ THE DRUG MONOGRAPH (owner 2026-10-02) ═══
+ *
+ * Four tellings of one generic (patient, prescriber, nursing, affordability) and its renal dose bands. Every
+ * save is a draft; nothing outside the curation door reads a draft; a second person reviews it.
+ */
+export type WireGenericHit = { id: string; sctid: string; name: string; doseForm: string; monographStatus: "none" | "draft" | "reviewed" };
+export type RenalSeverity = "normal" | "reduce" | "avoid";
+export type WireRenalDose = { crclMin: number | null; crclMax: number | null; dose: string; severity: RenalSeverity };
+export type MonographSection = Record<string, unknown>;
+export type WireMonograph = {
+  id: string; genericId: string; sourceVersion: string; status: "draft" | "reviewed";
+  patient: MonographSection | null; prescriber: MonographSection | null; nursing: MonographSection | null; affordability: MonographSection | null;
+  reviewedBy: string | null; reviewedAt: string | null; updatedBy: string; updatedAt: string;
+  renalDoses: (WireRenalDose & { id: string; position: number })[];
+};
+export type MonographSave = {
+  genericSctid: string; sourceVersion: string;
+  patient: MonographSection | null; prescriber: MonographSection | null; nursing: MonographSection | null; affordability: MonographSection | null;
+  renalDoses: WireRenalDose[];
+};
+
+export async function searchMonographGenerics(q: string): Promise<WireGenericHit[]> {
+  return (await api<{ items: WireGenericHit[] }>("GET", `/formulary/monographs/generics?q=${encodeURIComponent(q)}`)).items;
+}
+/** The monograph as it stands, draft or reviewed; `null` when the generic has none yet. */
+export async function fetchMonographDraft(sctid: string): Promise<WireMonograph | null> {
+  try {
+    return await api<WireMonograph>("GET", `/formulary/monographs/${encodeURIComponent(sctid)}/draft`);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
+export const saveMonograph = (input: MonographSave): Promise<{ monographId: string }> =>
+  api<{ monographId: string }>("POST", "/formulary/monographs", input);
+export async function reviewMonograph(monographId: string): Promise<void> {
+  await api<{ ok: true }>("POST", `/formulary/monographs/${monographId}/review`);
+}
