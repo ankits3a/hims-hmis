@@ -304,9 +304,9 @@ export async function cancelBilledDispense(
 /** P6 — a sealed pack comes back after the hand-over. */
 export async function acceptReturn(
   id: string,
-  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine" },
+  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine"; /** Owner ruling 2026-10-02 — keep the amount as pharmacy credit instead of a refund request. */ settle?: "refund" | "credit" },
   idempotencyKey: string,
-): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string | null; creditNotePaise?: number; creditKeptPaise?: number }> {
   return api("POST", `/pharmacy/dispenses/${id}/returns`, body, idempotencyKey);
 }
 export async function cancelDispense(id: string, reason: string): Promise<WireDispense> {
@@ -338,6 +338,8 @@ export type WirePricedDraft = {
   lines: WirePricedLine[];
   totals: { grossPaise: number; discountPaise: number; cgstPaise: number; sgstPaise: number; rawTotalPaise: number; netPayablePaise: number; roundingPaise: number };
   byTender?: { cash: TenderPayable; digital: TenderPayable };
+  /** Owner ruling 2026-10-02 — pharmacy credit this patient holds (absent from an older server). */
+  creditAvailablePaise?: number;
   discount?: WireDiscountQuote | null;
 };
 export async function previewBill(id: string, discount?: DiscountAsk | null): Promise<WirePricedDraft> {
@@ -348,7 +350,7 @@ export type Tender = { mode: "cash" | "upi" | "card"; amountPaise: number; refTe
 /** A sale discount on the bill; above 10% with the granted approval for THIS bill and discount. */
 export type BillDiscount = DiscountAsk & { approvalId?: string };
 /** GAP A3b — `credit`: the whole bill on the OWNER's granted `billing_credit_owner` approval (tenders empty). */
-export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string }; discount?: BillDiscount }, idempotencyKey: string): Promise<WireDispense> {
+export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number; credit?: { reason: string; approvalId: string }; discount?: BillDiscount; /** Owner ruling 2026-10-02 — pharmacy credit kept at a return, spent first. */ useCreditPaise?: number }, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/bill`, input, idempotencyKey);
 }
 export type DiscountAskResult = { approvalId: string; tier: DiscountTier; amountPaise: number };
@@ -532,6 +534,8 @@ export type WireRetailPreview = {
   totals: { grossPaise: number; discountPaise: number; taxPaise: number; roundingPaise?: number; netPayablePaise: number };
   /** OWNER RULINGS 2026-09-30 — as on the desk's preview. Absent from an older server. */
   byTender?: { cash: TenderPayable; digital: TenderPayable };
+  /** Owner ruling 2026-10-02 — pharmacy credit this patient holds (absent from an older server). */
+  creditAvailablePaise?: number;
   discount?: WireDiscountQuote | null;
   checks: {
     allergies: { lineIdx: number; substance: string }[];

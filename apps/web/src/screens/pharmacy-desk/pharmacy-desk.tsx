@@ -339,16 +339,18 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     }
   }, [discount, inHandId, qc, settle, t]);
 
-  const takeMoney = useCallback(async (tenders: Tender[], changePaise: number): Promise<void> => {
+  const takeMoney = useCallback(async (tenders: Tender[], changePaise: number, creditPaise = 0): Promise<void> => {
     if (inHandId === null) return;
     setBusy(true); setBillError(null);
     try {
-      const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}), ...discountBody(discount) }, keyFor("bill", inHandId));
+      const d = await billDispense(inHandId, { tenders, ...(changePaise > 0 ? { changeGivenPaise: changePaise } : {}), ...(creditPaise > 0 ? { useCreditPaise: creditPaise } : {}), ...discountBody(discount) }, keyFor("bill", inHandId));
       moneyKeys.current.delete(`bill:${inHandId}`);
       settle(d);
       /* what was BILLED: a cash tender is the note handed over, so the change comes off it */
       const total = tenders.reduce((n, x) => n + x.amountPaise, 0) - changePaise;
-      say(t("pharmacyDesk.log.billed", { amount: rupees(total), modes: tenders.map((x) => x.mode).join(" + ") }));
+      say(creditPaise > 0
+        ? t("pharmacyDesk.log.billedWithCredit", { credit: rupees(creditPaise), amount: rupees(total), modes: tenders.length === 0 ? "—" : tenders.map((x) => x.mode).join(" + ") })
+        : t("pharmacyDesk.log.billed", { amount: rupees(total), modes: tenders.map((x) => x.mode).join(" + ") }));
     } catch (e) {
       answered("bill", inHandId, e);
       const text = e instanceof ApiError ? pharmacyErrorText(e, t) : t("pharmacyDesk.bill.networkRetry");
@@ -559,7 +561,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               busy={busy}
               error={billError}
               now={now}
-              onTake={(tenders, change) => void takeMoney(tenders, change)}
+              onTake={(tenders, change, credit) => void takeMoney(tenders, change, credit)}
               onCredit={(credit) => void billOnCredit(credit)}
               onDraft={draft}
               onOpenDrawer={() => void navigate({ to: "/billing/session" })}

@@ -612,6 +612,83 @@ export async function reverseAllocation(
   });
 }
 
+export type ReleaseSurplusResult = { releasedPaise: number; moves: { receiptId: string; amountPaise: number }[] };
+
+/**
+ * ═══ OWNER RULING 2026-10-02 — A CREDIT NOTE'S SURPLUS KEPT AS THE PATIENT'S CREDIT ═══
+ *
+ * *"Do we have any mechanism to let the patient utilise the credit note to buy other medicine?"* A
+ * credit note never touches allocations (D4): the money stays allocated to the credited invoice as a
+ * SURPLUS, and until now the only way out was a refund voucher. This frees part of that surplus back
+ * onto the RECEIPTS it came from, where it is the patient's advance (D1) and `settleFromReceipts` can
+ * spend it on the next bill. No money leaves, so nothing here is approval-gated.
+ *
+ * THE CAP IS GUARD 1's, restated: `min(money RECEIVED, refundable surplus) − Σ refund vouchers already
+ * issued or paid against this invoice`. A surplus a voucher has already paid back cannot also be kept.
+ *
+ * THE LEDGER IS APPENDED, NEVER REWRITTEN. An allocation is reversed whole (the only reversal the
+ * ledger has), and what must stay on the invoice is applied again as a new row — each with its own
+ * event, so a consumer that follows `allocation.reversed` / `payment.received` sees the net move.
+ * Newest allocation first: the money that arrived last is the money that goes back first.
+ *
+ * Lock order is the file's own: INVOICE, then every receipt of the patient in id order.
+ */
+export async function releaseInvoiceSurplusOnTx(
+  tx: Tx, actor: Actor, input: { invoiceId: string; amountPaise: number; reason: string }, now: Date = new Date(),
+): Promise<ReleaseSurplusResult> {
+  assertPaise(input.amountPaise, "credit amount");
+  if (input.amountPaise === 0) throw new BillingError("invalid_paise", "a credit must move a positive amount of money");
+  const invoice = await lockInvoice(tx, input.invoiceId);
+  await tx.execute(sql`select id from receipts where patient_id = ${invoice.patientId} order by id for update`);
+
+  const allocatedPaise = (await allocatedByInvoice(tx, [invoice.id])).get(invoice.id) ?? 0;
+  const creditedPaise = (await creditedByInvoice(tx, [invoice.id])).get(invoice.id) ?? 0;
+  const surplusPaise = Math.max(0, creditedPaise + allocatedPaise - invoice.netPayablePaise);
+  const voucherRows = await tx
+    .select({ total: sql<string>`coalesce(sum(${refundVouchers.amountPaise}), 0)` })
+    .from(refundVouchers)
+    .where(and(eq(refundVouchers.invoiceId, invoice.id), inArray(refundVouchers.status, ["issued", "paid"])));
+  const voucheredPaise = Number(voucherRows[0]!.total);
+  const freePaise = Math.max(0, Math.min(allocatedPaise, surplusPaise) - voucheredPaise);
+  if (input.amountPaise > freePaise) {
+    throw new BillingError(
+      "over_allocation",
+      `${String(input.amountPaise)}p exceeds the ${String(freePaise)}p this invoice's credit notes have freed and no refund voucher has claimed`,
+      { askedPaise: input.amountPaise, freePaise, surplusPaise, voucheredPaise },
+    );
+  }
+
+  const rows = await tx.select().from(allocations).where(eq(allocations.invoiceId, invoice.id)).orderBy(asc(allocations.at), asc(allocations.id));
+  const reversed = new Set(rows.filter((r) => r.kind === "reverse").map((r) => r.reversalOfId));
+  const live = rows.filter((r) => r.kind === "apply" && !reversed.has(r.id)).reverse();
+  const moves: { receiptId: string; amountPaise: number }[] = [];
+  let remaining = input.amountPaise;
+  for (const original of live) {
+    if (remaining === 0) break;
+    const take = Math.min(original.amountPaise, remaining);
+    await appendReversal(tx, actor, original, invoice.patientId, input.reason, now);
+    const stays = original.amountPaise - take;
+    if (stays > 0) {
+      await tx.insert(allocations).values({
+        id: newId(), receiptId: original.receiptId, invoiceId: invoice.id, amountPaise: stays,
+        kind: "apply", reversalOfId: null, reason: input.reason, actorId: actor.id, at: now,
+      });
+      await appendEvent(tx, paymentReceived.make({
+        actor,
+        payload: { receiptId: original.receiptId, invoiceId: invoice.id, patientId: invoice.patientId, amountPaise: stays },
+        patientId: invoice.patientId, correlationId: invoice.id,
+      }));
+    }
+    moves.push({ receiptId: original.receiptId, amountPaise: take });
+    remaining -= take;
+  }
+  // The invoice is exactly as covered as before minus a surplus it did not need; the fee stamp is re-derived anyway.
+  if (invoice.encounterId !== null) {
+    await emitFeeStatusChanged(tx, actor, { encounterId: invoice.encounterId, invoiceId: invoice.id, via: "allocation_reversed" }, now);
+  }
+  return { releasedPaise: input.amountPaise - remaining, moves };
+}
+
 /** The one place a `reverse` row is written, so its event can never drift from its row. */
 async function appendReversal(
   tx: Tx,

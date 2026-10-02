@@ -71,7 +71,7 @@ describe("sales returns at the counter (pharmacy P6)", () => {
     expect(await availableQty(db, fx.storeId, fx.item.crocin, later(2))).toBe(90);
     const notes = await listCreditNotes(db);
     expect(notes.map((n) => [n.id, n.kind, n.netPaise])).toEqual([[first.creditNoteId, "refund", paid / 2]]);
-    const [approval] = await db.select().from(approvals).where(eq(approvals.id, first.refundApprovalId));
+    const [approval] = await db.select().from(approvals).where(eq(approvals.id, first.refundApprovalId ?? ""));
     expect(approval).toMatchObject({ typeKey: "billing_refund", amountPaise: paid / 2 });
     const [ev] = await db.select().from(events).where(eq(events.name, "dispense.line_returned"));
     expect(ev?.payload).toMatchObject({

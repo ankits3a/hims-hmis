@@ -7404,6 +7404,7 @@
     "invoice_not_settled": "This dispense carries no settled invoice yet — it cannot be handed over until billing is done.",
     "identity_mismatch": "Those four digits do not end the phone number on the record.",
     "batch_expired": "That batch has expired and cannot be dispensed. Choose another batch.",
+    "credit_not_available": "The patient does not hold that much pharmacy credit, or this bill has no paid money free to keep as credit.",
     "slip_not_confirmed": "This prescription was typed from the doctor’s paper slip. Check the slip — the photo on the visit, or the paper the patient is holding — against these lines, then confirm it before billing.",
     "batch_expired_before_collection": "This batch was in date when it was picked and expired before the patient collected it, so it cannot be handed over. Quarantine the strip, then cancel this dispense with a refund below; scan the prescription again to dispense from a batch in date.",
     "pharmacist_not_registered": "Only a pharmacist with a current state council registration on file may do this",
@@ -7855,6 +7856,7 @@
       "draftClaimOnly": "saved as a draft — your claim stays",
       "draftHeld": "saved as a draft — the strips are held until {{time}}",
       "slipConfirmed": "confirmed the slip against the paper",
+      "billedWithCredit": "Billed: {{credit}} from pharmacy credit + {{amount}} ({{modes}})",
       "billedOnCredit": "billed on the owner's credit"
     },
     "status": {
@@ -7942,6 +7944,11 @@
       "cardRefHint": "on the terminal's slip",
       "creditOpen": "On credit — only the owner approves",
       "creditReason": "Why on credit (the owner reads this)",
+      "storeCredit": "Pharmacy credit {{amount}} — use on this bill",
+      "storeCreditUsed": "Credit used",
+      "storeCreditRest": "Balance to collect",
+      "storeCreditLeft": "{{amount}} stays as credit for the next bill.",
+      "settleFromCredit": "Settle from credit",
       "creditBill": "Bill {{amount}} on the owner's credit"
     },
     "handover": {
@@ -8177,6 +8184,7 @@
       "money": {
         "return": "Billing works out the refund from the bill when you accept; the amount is shown here after.",
         "refund": "The whole bill is credited; the refund amount is shown here after.",
+        "credit": "The amount stays with the hospital as this patient’s pharmacy credit. The next pharmacy bill uses it first; the patient pays only the difference.",
         "cancel": "No money has been taken on this ticket."
       },
       "submit": {
@@ -8198,6 +8206,8 @@
       "left": "{{n}} can still come back on line {{line}}",
       "logReturned": "Medicine taken back. Credit note {{no}}; the refund waits for a billing manager.",
       "logRefunded": "Paid ticket cancelled. Credit note {{no}}; the refund waits for a billing manager.",
+      "creditKept": "{{amount}} kept as pharmacy credit. It is used first on this patient’s next pharmacy bill. No refund was requested.",
+      "settle": {"title": "The money", "refund": "Refund the money (needs approval)", "credit": "Keep as pharmacy credit for the next purchase (no approval)"},
       "logCancelled": "Ticket cancelled; its stock is back on the shelf."
     },
     "short": {

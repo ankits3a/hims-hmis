@@ -1,5 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { allocations, invoices, pharmacyRegH1, receiptTenders, receipts } from "../../kernel/db/schema";
+import { creditUsedOn } from "./store-credit";
 import { PharmacyError } from "./errors";
 import { getDispenseRow, linesOf, userNames } from "./queue";
 import type { Actor } from "@hmis/contracts";
@@ -28,6 +29,8 @@ export type Closing = {
     roundingPaise: number;
     cgstPaise: number; sgstPaise: number;
     receiptNo: string | null; changeGivenPaise: number; tenders: { mode: string; amountPaise: number; refText: string | null }[];
+    /** Owner ruling 2026-10-02 — the part of this bill settled from pharmacy credit kept at a return. */
+    creditUsedPaise: number;
   } | null;
   registers: { h1Rows: number; batches: number };
 };
@@ -48,15 +51,19 @@ export async function closingFor(db: Db, actor: Actor, dispenseId: string): Prom
     }).from(invoices).where(eq(invoices.id, d.invoiceId));
     if (inv !== undefined) {
       /* The receipt that paid THIS invoice, through the `apply` allocation that ties the two together. */
-      const [paid] = await db.select({ receiptId: receipts.id, receiptNo: receipts.receiptNo, changeGivenPaise: receipts.changeGivenPaise })
+      // The credit's allocations name OLDER receipts; the receipt of THIS bill is the one that is not among them.
+      const credit = await creditUsedOn(db, d.invoiceId);
+      const [paid] = (await db.select({ receiptId: receipts.id, receiptNo: receipts.receiptNo, changeGivenPaise: receipts.changeGivenPaise })
         .from(allocations).innerJoin(receipts, eq(receipts.id, allocations.receiptId))
-        .where(and(eq(allocations.invoiceId, d.invoiceId), eq(allocations.kind, "apply")));
+        .where(and(eq(allocations.invoiceId, d.invoiceId), eq(allocations.kind, "apply"))))
+        .filter((r) => !credit.receiptIds.includes(r.receiptId));
       const tenders = paid === undefined ? [] : await db
         .select({ mode: receiptTenders.mode, amountPaise: receiptTenders.amountPaise, refText: receiptTenders.refText })
         .from(receiptTenders).where(eq(receiptTenders.receiptId, paid.receiptId));
       money = {
         invoiceNo: inv.invoiceNo, netPayablePaise: inv.netPayablePaise, roundingPaise: inv.roundingPaise, cgstPaise: inv.cgstPaise, sgstPaise: inv.sgstPaise,
         receiptNo: paid?.receiptNo ?? null, changeGivenPaise: paid?.changeGivenPaise ?? 0, tenders,
+        creditUsedPaise: credit.usedPaise,
       };
     }
   }
