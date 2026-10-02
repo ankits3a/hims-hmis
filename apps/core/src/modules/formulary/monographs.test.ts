@@ -4,7 +4,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import { events, formularyGenerics, formularyMonographs, formularyRenalDoses } from "../../kernel/db/schema";
 import { FormularyError } from "./errors";
-import { getMonograph, renalDoseFor, reviewMonograph, saveMonograph } from "./monographs";
+import { getMonograph, renalDoseFor, reviewMonograph, saveMonograph, searchGenerics } from "./monographs";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { MonographInput } from "./monographs";
@@ -117,6 +117,24 @@ describe("the drug monograph: written as a draft, shown only once a second perso
     expect(await bands([{ crclMin: null, crclMax: 10, dose: "a", severity: "avoid" }, { crclMin: null, crclMax: 5, dose: "b", severity: "avoid" }])).toBe("invalid_monograph");
     expect(await db.select().from(formularyMonographs)).toHaveLength(0);
     expect(await db.select().from(formularyRenalDoses)).toHaveLength(0);
+  });
+
+  it("the curation door finds a generic by any part of its name and says where its monograph stands: none, draft or reviewed", async () => {
+    const other = newId();
+    await db.insert(formularyGenerics).values([
+      { id: other, sctid: "777000111", name: "Valacyclovir 500 mg oral tablet", nameNormalized: "valacyclovir 500 mg oral tablet", doseForm: "oral tablet", routeOfAdministration: "oral", source: "nrces-2026-09", createdBy: PHARMACIST.id, updatedBy: PHARMACIST.id },
+      { id: newId(), sctid: "777000222", name: "Acyclovir 5% cream (withdrawn)", nameNormalized: "acyclovir 5% cream withdrawn", doseForm: "cream", routeOfAdministration: "topical", source: "nrces-2026-09", active: false, createdBy: PHARMACIST.id, updatedBy: PHARMACIST.id },
+    ]);
+    const found = async (q: string) => (await searchGenerics(db, q)).map((h) => [h.sctid, h.monographStatus]);
+    // A name that STARTS with what was typed comes first; an inactive generic is not offered; one letter asks nothing.
+    expect(await found("Acyclo")).toEqual([[SCTID, "none"], ["777000111", "none"]]);
+    expect(await found("a")).toEqual([]);
+    expect(await found("100%")).toEqual([]);
+    const { monographId } = await save();
+    expect(await found("acyclovir 800")).toEqual([[SCTID, "draft"]]);
+    await review(monographId, PHYSICIAN);
+    expect(await searchGenerics(db, "ACYCLOVIR 800")).toEqual([{ id: genericId, sctid: SCTID, name: "Acyclovir 800 mg dispersible oral tablet", doseForm: "dispersible oral tablet", monographStatus: "reviewed" }]);
+    expect(await searchGenerics(db, "cyclovir", 1)).toHaveLength(1);
   });
 
   it("the database itself refuses a reviewed row with no reviewer, and a second monograph for one generic", async () => {

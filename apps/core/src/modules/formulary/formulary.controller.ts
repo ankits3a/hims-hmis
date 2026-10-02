@@ -20,8 +20,8 @@ import type { DrugSuggestion } from "./suggest";
 import { getCoverage, getPairOverrideRates } from "./curation";
 import { attestSubstance, pageMappingWorklist, ruleSubstanceUnmappable } from "./mapping";
 import type { MappingDecision, WorklistItem } from "./mapping";
-import { getMonograph, RENAL_SEVERITIES, reviewMonograph, saveMonograph } from "./monographs";
-import type { Monograph } from "./monographs";
+import { getMonograph, RENAL_SEVERITIES, reviewMonograph, saveMonograph, searchGenerics } from "./monographs";
+import type { GenericHit, Monograph } from "./monographs";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
 import type { StagingRow } from "./staging";
 import type { Coverage, PairUsage } from "./curation";
@@ -500,6 +500,14 @@ export class FormularyController {
   }
 
   // ─────────────────── the drug monograph (owner 2026-10-02) ───────────────────
+
+  /** The curation door's typeahead. ABOVE `monographs/:sctid`, or "generics" would be read as an id. */
+  @RequirePermission("formulary.manage", "hospital")
+  @Get("monographs/generics")
+  async monographGenerics(@Query() query: unknown): Promise<{ items: GenericHit[] }> {
+    const q = parsed(medicineSearchQuery, query);
+    return { items: await searchGenerics(this.db, q.q, q.limit === undefined ? 10 : Number(q.limit)) };
+  }
 
   /** What every reader gets: the REVIEWED monograph of a generic, or 404 while there is none. */
   @RequirePermission("formulary.read", "hospital")

@@ -102,6 +102,7 @@ const SURFACE = [
   "saltIdsByNames",
   "saltsByIds",
   "saveMonograph",
+  "searchGenerics", // the monograph curation door's typeahead
   "searchMedicines",
   "searchStaging",
   "suggestDrugs",
