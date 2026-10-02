@@ -20,14 +20,20 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   · OFF by default — no row in `pharmacy_settings` reads as off, which is the desk as it was.
  *   · ON — exactly three checks stand down, and nothing else:
  *       1. the photo of a Schedule H/H1 paper prescription (`paper-rx.ts`, `prescription_required`);
- *       2. the state-council registration of the acting person at verify and at a scheduled hand-over
- *          (`pharmacist_not_registered`). The PERMISSIONS stay: `pharmacy.dispense.place` to verify,
+ *       2. the state-council registration of the acting person at verify, at a scheduled hand-over, and
+ *          at a return and the cancel-with-refund of a paid ticket (`pharmacist_not_registered`). The
+ *          last two by a second ruling the same day: "Quick desk mode must disable that state council
+ *          registration requirement and enable refunds when admin approved the refund request by the
+ *          counter staff." The PERMISSIONS stay: `pharmacy.dispense.place` to verify,
  *          `pharmacy.dispense.scheduled` to hand a Schedule H/H1 line over;
  *       3. the slip cross-confirm before the bill (`bill.ts`, `slip_not_confirmed`).
  *
  * WHAT STAYS, ON OR OFF: Schedule X and narcotic lines are refused at the paper door; an allergy, a
  * severe interaction, a hard duplicate and a drug-disease hit refuse; the H1 register is written at
  * hand-over (its pharmacist number is blank when the person has none on file); the prescriber is named.
+ * A return still needs `billing.credit_note.issue` and `billing.refund.request`, and the refund is
+ * still only REQUESTED — nothing is paid out until billing's approval is granted. Authorisations, the
+ * antimicrobial steward's act and the walk-in retail counter still ask for the registration.
  *
  * WHO MAY CHANGE IT: a holder of `pharmacy.licences.manage` (the owner's admin role, the medical
  * superintendent, the pharmacist in charge) — the grant over the pharmacy's legal standing. Reused, not

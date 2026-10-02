@@ -10,6 +10,7 @@ import { releaseReservation } from "../materials";
 import { dispenseCancelled } from "./events";
 import { PharmacyError } from "./errors";
 import { requireRegisteredPharmacist } from "./pharmacists";
+import { quickDeskOn } from "./settings";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -49,7 +50,9 @@ export async function cancelBilledDispense(
   if (d.status !== "billed") {
     throw new PharmacyError("dispense_not_in_state", `dispense ${d.id} is ${d.status}: only a billed dispense is cancelled with a refund`, { status: d.status });
   }
-  await requireRegisteredPharmacist(db, actor, now);
+  // Owner ruling 2026-10-02 — quick desk mode (`settings.ts`) does not ask for the registration. The billing
+  // permissions below stay, and the refund is still only REQUESTED: billing's approval pays it.
+  if (!(await quickDeskOn(db))) await requireRegisteredPharmacist(db, actor, now);
   for (const permission of BILLING_STRINGS) {
     if (actor.type !== "user" || !(await hasPermission(db, actor.id, permission, "hospital"))) {
       throw new PharmacyError("permission_denied", `cancelling a paid dispense raises a credit note and a refund request, which needs ${permission}`);

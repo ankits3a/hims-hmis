@@ -4,12 +4,13 @@ import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, MON3, openVisitWithoutRx, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
-import { events, pharmacyRegH1 } from "../../kernel/db/schema";
+import { approvals, events, pharmacyRegH1 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { billDispense, previewDispenseBill } from "./bill";
 import { handOverDispense } from "./handover";
 import { enterPaperPrescription } from "./paper-rx";
 import { pickDispense } from "./pick";
+import { cancelBilledDispense } from "./refund";
 import { loadPharmacySettings, updatePharmacySettings } from "./settings";
 import { verifyDispense } from "./verify";
 import type { PharmacyFixture } from "../../../test/helpers/pharmacy";
@@ -85,6 +86,25 @@ describe("quick desk mode (owner ruling 2026-10-02)", () => {
     expect(h.status).toBe("handed_over");
     const reg = await db.select().from(pharmacyRegH1);
     expect(reg.map((r) => [r.prescriberRegNo, r.qtyBase, r.batchNo])).toEqual([["BMC/12345", 3, "AZ-1"]]);
+  });
+
+  /* Owner, same day: "Quick desk mode must disable that state council registration requirement and enable refunds when admin approved the refund request by the counter staff." */
+  it("cancel-with-refund of a paid ticket: OFF refuses an unregistered person; ON lets them REQUEST the refund, which still waits for approval", async () => {
+    await turn(true);
+    const d = await enterPaperPrescription(db, testCfg, store, fx.incharge.actor, h1(), MON2);
+    await verifyDispense(db, fx.incharge.actor, fx.decls, d.id, { lines: [{ lineIdx: 0, qtyBase: 3 }] }, MON2);
+    await pickDispense(db, fx.incharge.actor, fx.decls, d.id, {}, MON2);
+    const preview = await previewDispenseBill(db, fx.incharge.actor, d.id, MON2);
+    await billDispense(db, fx.incharge.actor, d.id, { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] }, MON2);
+
+    await turn(false, MON3);
+    await expect(cancelBilledDispense(db, fx.incharge.actor, fx.decls, d.id, { reason: "patient bought it outside", reasonClass: "genuine" }, MON3))
+      .rejects.toThrow(expect.objectContaining({ code: "pharmacist_not_registered" }));
+    await turn(true, MON3);
+    const out = await cancelBilledDispense(db, fx.incharge.actor, fx.decls, d.id, { reason: "patient bought it outside", reasonClass: "genuine" }, MON3);
+    expect(out.dispense.status).toBe("cancelled");
+    const [ask] = await db.select().from(approvals).where(eq(approvals.id, out.refundApprovalId));
+    expect(ask).toMatchObject({ typeKey: "billing_refund", status: "pending" }); // requested, not paid: the approval is still to come
   });
 
   it("ON: the permission still decides — a login without pharmacy.dispense.scheduled does not hand a Schedule H1 line over", async () => {
