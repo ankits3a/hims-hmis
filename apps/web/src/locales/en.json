@@ -8375,6 +8375,9 @@
       "lasa": "LASA",
       "lasaTitle": "Look-alike / sound-alike: read the strip against the prescription twice."
     },
+    "counselling": {
+      "label": "Tell the patient:"
+    },
     "nearMiss": {
       "title": "Near miss — {{drug}}",
       "lead": "{{drug}}, line {{line}}. The patient and the item are taken from this line.",

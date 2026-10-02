@@ -82,7 +82,9 @@ export type WireDispenseLine = {
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
   /** GAP CLOSURE A2 — `lasa` / `highAlert`: the item master's NABH safety flags. Absent from an older server. */
-  item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number }[]; lasa?: boolean; highAlert?: boolean } | null;
+  item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number }[]; lasa?: boolean; highAlert?: boolean; lasaNote?: string | null } | null;
+  /** What to tell the patient about the medicine being given: from its generic's reviewed monograph. Absent from an older server. */
+  counselling?: { en: string; hi: string | null } | null;
   saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; ledgerEntryId: string | null;
   /** PD-D18 — where the item sits in the counter's store ("R-12"). Absent from an older server. */
   location?: string | null;

@@ -107,5 +107,5 @@ export type { NdpsClass, NdpsClassificationReport, NdpsEntry } from "./ndps";
 export { getMonograph, renalDoseFor, reviewMonograph, saveMonograph, searchGenerics } from "./monographs";
 export type { GenericHit, Monograph, MonographInput, RenalDose, RenalDoseInput, RenalSeverity } from "./monographs";
 
-export { linkMedicinesToGenerics, monographForMedicine } from "./generic-link";
-export type { GenericLinkReport } from "./generic-link";
+export { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine } from "./generic-link";
+export type { Counselling, GenericLinkReport } from "./generic-link";

@@ -14,10 +14,11 @@
  * `linkMedicinesToGenerics` only ever fills an EMPTY link: a link a person set is never overwritten by a
  * bundle, and a second run does nothing.
  */
-import { eq, sql } from "drizzle-orm";
-import { formularyMedicines } from "../../kernel/db/schema";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { formularyGenerics, formularyMedicines, formularyMonographs } from "../../kernel/db/schema";
 import { getMonograph } from "./monographs";
 import type { Db, Tx } from "../../kernel/db/client";
+import type { MonographSection } from "../../kernel/db/schema";
 import type { Monograph } from "./monographs";
 
 export type GenericLinkReport = {
@@ -70,4 +71,50 @@ export async function monographForMedicine(db: Db | Tx, medicineId: string): Pro
   const row = (await db.select({ genericSctid: formularyMedicines.genericSctid }).from(formularyMedicines).where(eq(formularyMedicines.id, medicineId)))[0];
   if (row === undefined || row.genericSctid === null) return undefined;
   return getMonograph(db, row.genericSctid);
+}
+
+/** What the counter tells the patient about a medicine: one or two sentences, in English and, when written, Hindi. */
+export type Counselling = { en: string; hi: string | null };
+
+const text = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * The counselling line inside a monograph's patient section. The section is kept as the specification wrote
+ * it, so this reads the two places the specification puts the sentence, in order: the section's own
+ * `counselling: { en, hi }`, then the FAQ whose `intent` is `how_to_take` (`answer_en`, `answer_hi`). Anything
+ * else — a missing key, a wrong type, an empty string — is "nothing to say", never a guess.
+ */
+export function counsellingOf(patient: MonographSection | null): Counselling | null {
+  if (patient === null) return null;
+  const own = patient["counselling"];
+  if (isRecord(own)) {
+    const en = text(own["en"]);
+    if (en !== null) return { en, hi: text(own["hi"]) };
+  }
+  const faqs = patient["plain_language_faqs"];
+  if (Array.isArray(faqs)) {
+    for (const f of faqs) {
+      if (!isRecord(f) || f["intent"] !== "how_to_take") continue;
+      const en = text(f["answer_en"]);
+      if (en !== null) return { en, hi: text(f["answer_hi"]) };
+    }
+  }
+  return null;
+}
+
+/** The counselling line of each of these products, from the REVIEWED monograph of the generic it is linked to. A product with none is absent from the map. */
+export async function counsellingByMedicine(db: Db | Tx, medicineIds: string[]): Promise<Map<string, Counselling>> {
+  if (medicineIds.length === 0) return new Map();
+  const rows = await db.select({ medicineId: formularyMedicines.id, patient: formularyMonographs.patient })
+    .from(formularyMedicines)
+    .innerJoin(formularyGenerics, eq(formularyGenerics.sctid, formularyMedicines.genericSctid))
+    .innerJoin(formularyMonographs, eq(formularyMonographs.genericId, formularyGenerics.id))
+    .where(and(inArray(formularyMedicines.id, medicineIds), eq(formularyMonographs.status, "reviewed")));
+  const out = new Map<string, Counselling>();
+  for (const r of rows) {
+    const c = counsellingOf(r.patient);
+    if (c !== null) out.set(r.medicineId, c);
+  }
+  return out;
 }

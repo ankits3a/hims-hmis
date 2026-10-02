@@ -69,6 +69,8 @@ const SURFACE = [
   "catalogueCensus",
   "classifyAwareMedicines", // PHARMACY STAGE D5 — the list written onto products whose class is null (aware:classify, the go-live act; never seed:pharmacy)
   "classifyNdpsSalts", // PHARMACY P6 — the cited list written onto the catalogue (a script's door)
+  "counsellingByMedicine", // the counter's reader: what to tell the patient, from reviewed monographs only
+  "counsellingOf",
   "countSalts",
   "equivalentMedicines",
   "formularyHttpStatus",
