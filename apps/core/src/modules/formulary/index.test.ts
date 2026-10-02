@@ -76,12 +76,14 @@ const SURFACE = [
   "getMonograph", // the drug monograph (owner 2026-10-02): reviewed text only, unless the curation door asks
   "getStagingRow",
   "isEquivalentMedicine",
+  "linkMedicinesToGenerics", // owner 2026-10-02: fills a product's empty generic link from the bundle's pairs
   "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
   "listInteractionsAmong",
   "matchProducts", // the CDS regimen fill: a composition to one stocked-or-generic product, exact
   "medicineExists",
   "medicineIdsByBrandNames",
   "medicinesByIds",
+  "monographForMedicine", // the reviewed monograph a stocked product reaches through its generic link
   "ndpsClassByMedicine", // PHARMACY P6 — bounded by MAX_IDS, the strictest class of each medicine's moieties
   "normalizeDrugName",
   "pageInteractions",

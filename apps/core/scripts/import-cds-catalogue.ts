@@ -133,7 +133,7 @@ function splitSqlValues(row: string): string[] {
  * column this importer names and the bundle stops shipping becomes `undefined` here rather than
  * whatever value happens to sit at that index.
  */
-function rowsOf(sqlText: string, table: string): Record<string, string>[] {
+export function rowsOf(sqlText: string, table: string): Record<string, string>[] {
   const out: Record<string, string>[] = [];
   const head = new RegExp(`^INSERT (?:OR REPLACE )?INTO ${table} \\(([^)]*)\\) VALUES`, "i");
   for (const line of sqlText.split("\n")) {

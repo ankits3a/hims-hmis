@@ -37,7 +37,7 @@ const AUDIT = { createdBy: "t", updatedBy: "t" };
 const CENSUS: Record<string, string[]> = {
   // Formulary P22 (0104): `allergy_classes`, the allergy classes the prescribing check reads.
   formulary_salts: ["active", "aliases", "allergy_classes", "atc_code", "created_at", "created_by", "drug_class", "id", "name", "ndps_class", "product_count", "source_ref", "updated_at", "updated_by"],
-  formulary_medicines: ["active", "antimicrobial_restricted", "aware_category", "brand_name", "code", "created_at", "created_by", "form", "id", "name_normalized", "route_class", "salt_rank", "schedule_flag", "source_ref", "staging_id", "strength_label", "updated_at", "updated_by"],
+  formulary_medicines: ["active", "antimicrobial_restricted", "aware_category", "brand_name", "code", "created_at", "created_by", "form", "generic_sctid", "id", "name_normalized", "route_class", "salt_rank", "schedule_flag", "source_ref", "staging_id", "strength_label", "updated_at", "updated_by"],
   formulary_medicine_salts: ["derived_from", "medicine_id", "salt_id", "source", "strength"],
   formulary_interactions: ["active", "created_at", "created_by", "id", "note", "route_scope", "salt_a_id", "salt_b_id", "severity", "source", "updated_at", "updated_by"],
   formulary_staging: ["id", "kind", "medicine_id", "mined_at", "name", "payload", "reviewed_at", "reviewed_by", "source_url", "status"],
