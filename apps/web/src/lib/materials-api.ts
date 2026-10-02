@@ -29,6 +29,7 @@ export type WireItem = {
   abcClass: string | null; vedClass: string | null; active: boolean;
   /** GAP CLOSURE A2 — the marketer, the usual lead time, and the NABH safety flags. Absent from an older server. */
   manufacturer?: string | null; marketedBy?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
+  mfgLicenceNo?: string | null; pharmacopoeia?: string | null; lasaNote?: string | null; storageMaxC?: number | null;
   /** PHARMACY P6 — set once the item was merged into another (it is then inactive for ever). */
   mergedIntoItemId?: string | null;
 };
@@ -119,6 +120,7 @@ export type CreateItemInput = {
   formularyMedicineId?: string | null; hsnCode?: string | null; gstRateBps?: number | null;
   shelfLifeDays?: number | null; storageClass?: string;
   manufacturer?: string | null; marketedBy?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
+  mfgLicenceNo?: string | null; pharmacopoeia?: string | null; lasaNote?: string | null; storageMaxC?: number | null;
   uoms?: { uom: string; toBaseMultiplier: number }[];
 };
 

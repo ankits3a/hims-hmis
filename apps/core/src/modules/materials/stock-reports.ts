@@ -188,7 +188,8 @@ export async function lossBookings(
 
 export type CatalogueItem = {
   id: string; code: string; name: string; class: string; hsnCode: string | null; gstRateBps: number | null; baseUom: string;
-  storageClass: string; manufacturer: string | null; marketedBy: string | null; leadTimeDays: number | null; lasa: boolean; highAlert: boolean;
+  storageClass: string; manufacturer: string | null; marketedBy: string | null;
+  mfgLicenceNo: string | null; pharmacopoeia: string | null; lasaNote: string | null; storageMaxC: number | null; leadTimeDays: number | null; lasa: boolean; highAlert: boolean;
   formularyMedicineId: string | null;
   packs: { uom: string; toBase: number }[];
   levels: { storeResourceId: string; storeCode: string; minBase: number; reorderBase: number; maxBase: number }[];
@@ -198,7 +199,8 @@ export type CatalogueItem = {
 export async function itemCatalogue(db: Db | Tx, opts: { storeResourceId?: string | null } = {}): Promise<{ rows: CatalogueItem[]; truncated: boolean }> {
   const all = await db.select({
     id: items.id, code: items.code, name: items.name, class: items.class, hsnCode: items.hsnCode, gstRateBps: items.gstRateBps, baseUom: items.baseUom,
-    storageClass: items.storageClass, manufacturer: items.manufacturer, marketedBy: items.marketedBy, leadTimeDays: items.leadTimeDays, lasa: items.lasa, highAlert: items.highAlert,
+    storageClass: items.storageClass, manufacturer: items.manufacturer, marketedBy: items.marketedBy,
+    mfgLicenceNo: items.mfgLicenceNo, pharmacopoeia: items.pharmacopoeia, lasaNote: items.lasaNote, storageMaxC: items.storageMaxC, leadTimeDays: items.leadTimeDays, lasa: items.lasa, highAlert: items.highAlert,
     formularyMedicineId: items.formularyMedicineId,
   }).from(items).where(and(eq(items.active, true), isNull(items.mergedIntoItemId))).orderBy(asc(items.name), asc(items.code)).limit(ROW_LIMIT + 1);
   const shown = all.slice(0, ROW_LIMIT);

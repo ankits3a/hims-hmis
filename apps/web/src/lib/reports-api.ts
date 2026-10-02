@@ -155,7 +155,8 @@ export type WireDailyStock = {
 };
 export type WireCatalogueRow = {
   id: string; code: string; name: string; class: string; hsnCode: string | null; gstRateBps: number | null; baseUom: string; storageClass: string;
-  manufacturer: string | null; marketedBy?: string | null; leadTimeDays: number | null; lasa: boolean; highAlert: boolean; schedule: string | null;
+  manufacturer: string | null; marketedBy?: string | null;
+  mfgLicenceNo?: string | null; pharmacopoeia?: string | null; lasaNote?: string | null; storageMaxC?: number | null; leadTimeDays: number | null; lasa: boolean; highAlert: boolean; schedule: string | null;
   packs: { uom: string; toBase: number }[];
   levels: { storeResourceId: string; storeCode: string; minBase: number; reorderBase: number; maxBase: number }[];
   racks: { storeCode: string; location: string }[];

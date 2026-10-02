@@ -47,9 +47,9 @@ const AUDIT = { createdBy: "t", updatedBy: "t" };
 const CENSUS: Record<string, string[]> = {
   items: [
     "abc_class", "active", "base_uom", "batch_tracked", "class", "code", "created_at", "created_by",
-    "formulary_medicine_id", "gst_rate_bps", "high_alert", "hsn_code", "id", "lasa", "lead_time_days", "manufacturer",
-    "marketed_by", "merged_at", "merged_into_item_id", "name", "serial_tracked",
-    "shelf_life_days", "storage_class", "updated_at", "updated_by", "ved_class",
+    "formulary_medicine_id", "gst_rate_bps", "high_alert", "hsn_code", "id", "lasa", "lasa_note", "lead_time_days", "manufacturer",
+    "marketed_by", "merged_at", "merged_into_item_id", "mfg_licence_no", "name", "pharmacopoeia", "serial_tracked",
+    "shelf_life_days", "storage_class", "storage_max_c", "updated_at", "updated_by", "ved_class",
   ],
   /** PHARMACY P6 (hygiene) — one row per governed "merge item B into item A" (`modules/materials/item-merge.ts`). */
   item_merges: [

@@ -180,7 +180,11 @@ const itemCreateBody = z.object({
   shelfLifeDays: z.number().int().positive().nullish(),
   abcClass: z.string().max(4).nullish(), vedClass: z.string().max(4).nullish(),
   manufacturer: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)),
-  marketedBy: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)), leadTimeDays: z.number().int().min(1).max(365).nullish(),
+  marketedBy: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)),
+  mfgLicenceNo: z.string().trim().max(64).nullish().transform((v) => (v === "" ? null : v)),
+  pharmacopoeia: z.string().trim().max(16).nullish().transform((v) => (v === "" ? null : v)),
+  lasaNote: z.string().trim().max(200).nullish().transform((v) => (v === "" ? null : v)),
+  storageMaxC: z.number().int().min(-80).max(60).nullish(), leadTimeDays: z.number().int().min(1).max(365).nullish(),
   lasa: z.boolean().optional(), highAlert: z.boolean().optional(),
   uoms: z.array(uomInput).max(20).optional(), barcodes: z.array(barcodeInput).max(20).optional(),
 });
@@ -192,7 +196,11 @@ const itemPatchBody = z.object({
   abcClass: z.string().max(4).nullish(), vedClass: z.string().max(4).nullish(),
   active: z.boolean().optional(),
   manufacturer: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)),
-  marketedBy: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)), leadTimeDays: z.number().int().min(1).max(365).nullish(),
+  marketedBy: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)),
+  mfgLicenceNo: z.string().trim().max(64).nullish().transform((v) => (v === "" ? null : v)),
+  pharmacopoeia: z.string().trim().max(16).nullish().transform((v) => (v === "" ? null : v)),
+  lasaNote: z.string().trim().max(200).nullish().transform((v) => (v === "" ? null : v)),
+  storageMaxC: z.number().int().min(-80).max(60).nullish(), leadTimeDays: z.number().int().min(1).max(365).nullish(),
   lasa: z.boolean().optional(), highAlert: z.boolean().optional(),
 });
 const regulationBody = z.object({

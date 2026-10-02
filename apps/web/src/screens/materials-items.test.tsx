@@ -194,6 +194,10 @@ describe("MaterialsItems", () => {
     await user.selectOptions(screen.getByLabelText("Storage"), "cold_2_8");
     await user.type(screen.getByLabelText("Manufacturer"), "Cipla Ltd");
     await user.type(screen.getByLabelText("Marketed by"), "Cipla Health Ltd");
+    await user.type(screen.getByLabelText("Manufacturing licence no."), "M/563/2010");
+    await user.type(screen.getByLabelText("Pharmacopoeia"), "IP");
+    await user.type(screen.getByLabelText("Store below (°C)"), "25");
+    await user.type(screen.getByLabelText("LASA warning (the names it is confused with)"), "aciCLOVIR vs ganCICLOVIR");
     await user.type(screen.getByLabelText("Supplier lead time (days)"), "5");
     await user.click(screen.getByLabelText("Look-alike / sound-alike (LASA)"));
     await user.click(screen.getByLabelText("High-alert medicine"));
@@ -201,7 +205,8 @@ describe("MaterialsItems", () => {
 
     expect(await screen.findByText("CROC500 saved.")).toBeInTheDocument();
     expect(bodiesOf("PATCH", "/materials/items/it-1")).toEqual([{
-      hsnCode: "30049011", storageClass: "cold_2_8", shelfLifeDays: 1095, manufacturer: "Cipla Ltd", marketedBy: "Cipla Health Ltd", leadTimeDays: 5, lasa: true, highAlert: true,
+      hsnCode: "30049011", storageClass: "cold_2_8", shelfLifeDays: 1095, manufacturer: "Cipla Ltd", marketedBy: "Cipla Health Ltd",
+      mfgLicenceNo: "M/563/2010", pharmacopoeia: "IP", storageMaxC: 25, lasaNote: "aciCLOVIR vs ganCICLOVIR", leadTimeDays: 5, lasa: true, highAlert: true,
     }]);
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/formulary/medicines/"))).toBe(false);
   });
