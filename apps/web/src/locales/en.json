@@ -11018,6 +11018,7 @@
       "qty": "Qty",
       "free": "Free",
       "rate": "Rate ₹",
+      "disc": "Disc %",
       "gst": "GST %",
       "mrp": "MRP ₹",
       "amount": "Amount",

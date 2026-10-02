@@ -261,6 +261,7 @@ const grnCaptureBody = z.object({
 const poLineBody = z.object({
   itemId: id, uom: z.string().min(1).max(32).nullish(), qtyPacks: z.number().int().positive(),
   freePacks: z.number().int().nonnegative().optional(), ratePaise: paise.nonnegative(),
+  discountBps: z.number().int().min(0).max(10_000).optional(),
   gstRateBps: z.number().int().nonnegative().nullish(), mrpPaise: paise.positive().nullish(),
 });
 const poBody = z.object({

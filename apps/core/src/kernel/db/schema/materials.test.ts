@@ -135,7 +135,7 @@ const CENSUS: Record<string, string[]> = {
     "total_paise", "updated_at", "updated_by", "vendor_id",
   ],
   purchase_order_lines: [
-    "free_packs", "free_received_base", "gst_rate_bps", "id", "item_id", "line_total_paise", "mrp_paise", "multiplier",
+    "discount_bps", "free_packs", "free_received_base", "gst_rate_bps", "id", "item_id", "line_total_paise", "list_rate_paise", "mrp_paise", "multiplier",
     "purchase_order_id", "qty_packs", "rate_paise", "received_base", "uom",
   ],
   // PHARMACY PARITY P3 — the supplier's bill and its lines, the payment run, its lines and the payment.
