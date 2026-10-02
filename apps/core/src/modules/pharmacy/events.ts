@@ -179,7 +179,9 @@ export const dispenseLineReturned = defineEvent("dispense.line_returned", MODULE
   dispenseId: id, patientId: id,
   lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
   sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
-  creditNoteId: id, refundApprovalId: id,
+  /** Null when the patient KEPT the amount as pharmacy credit (owner ruling 2026-10-02): nothing to approve. */
+  creditNoteId: id, refundApprovalId: id.nullable(),
+  creditKeptPaise: z.number().int().nonnegative().optional(),
 }));
 
 /**

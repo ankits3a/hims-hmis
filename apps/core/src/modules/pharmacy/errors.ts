@@ -89,6 +89,7 @@ export const PHARMACY_ERROR_CODES = [
    * by doing the thing, not an authority they lack.
    */
   "slip_not_confirmed",
+  "credit_not_available",
   /**
    * THE SAME FACT AS `batch_expired`, A DIFFERENT REMEDY — which is why it is a different code.
    *
@@ -321,6 +322,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   invoice_not_settled: 409,
   batch_expired: 409,
   slip_not_confirmed: 409,
+  credit_not_available: 409,
   batch_expired_before_collection: 409,
   pharmacist_not_registered: 403,
   self_registration: 403,

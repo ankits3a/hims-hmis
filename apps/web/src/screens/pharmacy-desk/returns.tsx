@@ -93,13 +93,15 @@ export function TicketMenu({ dispense }: { dispense: WireDispense }): React.Reac
   );
 }
 
-type Done = { creditNoteId: string; creditNoteNo: string; invoiceId: string | null };
+type Done = { creditNoteId: string; creditNoteNo: string; invoiceId: string | null; /** Kept as pharmacy credit instead of refunded (owner ruling 2026-10-02). */ keptPaise: number };
 
 export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense; act: TicketAct; onClose: () => void }): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [key, setKey] = useState(newIdempotencyKey);
   const [qty, setQty] = useState<Record<number, string>>({});
+  /* Owner ruling 2026-10-02 — the money of a return: asked back (approval), or kept as credit for the next bill. */
+  const [settleAs, setSettleAs] = useState<"refund" | "credit">("refund");
   const [reasonClass, setReasonClass] = useState<"genuine" | "mistake" | "">("");
   const [reason, setReason] = useState("");
   const [sealed, setSealed] = useState(false);
@@ -161,9 +163,10 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
       }
       const why = { reason: reason.trim(), reasonClass: reasonClass as "genuine" | "mistake" };
       const r = act === "return"
-        ? await acceptReturn(dispense.id, { lines: wanted.map((l) => ({ lineIdx: l.lineIdx, qtyBase: Number(qty[l.lineIdx]) })), sealedIntact: true, ...why }, key)
+        ? await acceptReturn(dispense.id, { lines: wanted.map((l) => ({ lineIdx: l.lineIdx, qtyBase: Number(qty[l.lineIdx]) })), sealedIntact: true, ...why, ...(settleAs === "credit" ? { settle: "credit" as const } : {}) }, key)
         : await cancelBilledDispense(dispense.id, why, key);
-      setDone({ creditNoteId: r.creditNoteId, creditNoteNo: r.creditNoteNo, invoiceId: dispense.invoiceId });
+      setDone({ creditNoteId: r.creditNoteId, creditNoteNo: r.creditNoteNo, invoiceId: dispense.invoiceId, keptPaise: "creditKeptPaise" in r ? r.creditKeptPaise ?? 0 : 0 });
+      void qc.invalidateQueries({ queryKey: ["pharmacy", "patient-rail"] });
       setKey(newIdempotencyKey());
       say(t(act === "return" ? "pharmacyDesk.returns.logReturned" : "pharmacyDesk.returns.logRefunded", { no: r.creditNoteNo }));
       setNext(r.dispense);
@@ -248,7 +251,20 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
                     {t("pharmacyDesk.returns.sealed")}
                   </label>
                 ) : null}
-                <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)", lineHeight: "16px" }}>{t(`pharmacyDesk.returns.money.${act}`)}</p>
+                {act !== "return" ? null : (
+                  <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+                    <legend className="tag">{t("pharmacyDesk.returns.settle.title")}</legend>
+                    <div style={{ display: "grid", gap: 4, marginTop: 5, fontSize: 12.5 }}>
+                      {(["refund", "credit"] as const).map((c) => (
+                        <label key={c} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input type="radio" name="return-settle" data-testid={`return-settle-${c}`} checked={settleAs === c} onChange={() => setSettleAs(c)} style={{ accentColor: "#0e6b4e" }} />
+                          {t(`pharmacyDesk.returns.settle.${c}`)}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                )}
+                <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)", lineHeight: "16px" }}>{t(act === "return" && settleAs === "credit" ? "pharmacyDesk.returns.money.credit" : `pharmacyDesk.returns.money.${act}`)}</p>
                 {error !== null ? <p role="alert" data-testid="return-error" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{error}</p> : null}
               </div>
             </>
@@ -288,9 +304,15 @@ function RefundDone({ done, act }: { done: Done; act: TicketAct }): React.ReactE
           ? t("pharmacyDesk.returns.refundOf", { amount: rupees(note.netPaise), no: done.creditNoteNo })
           : t("pharmacyDesk.returns.refundNoAmount", { no: done.creditNoteNo })}
       </p>
-      <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--gold-soft)", border: "1px solid var(--gold-line)", fontSize: 12.5, lineHeight: "18px" }} data-testid="desk-return-approval">
-        {t("pharmacyDesk.returns.approval")}
-      </div>
+      {done.keptPaise > 0 ? (
+        <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--green-soft)", border: "1px solid var(--green-line)", fontSize: 12.5, lineHeight: "18px" }} data-testid="desk-return-credit">
+          {t("pharmacyDesk.returns.creditKept", { amount: rupees(done.keptPaise) })}
+        </div>
+      ) : (
+        <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--gold-soft)", border: "1px solid var(--gold-line)", fontSize: 12.5, lineHeight: "18px" }} data-testid="desk-return-approval">
+          {t("pharmacyDesk.returns.approval")}
+        </div>
+      )}
     </div>
   );
 }

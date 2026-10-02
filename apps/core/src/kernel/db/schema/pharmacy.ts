@@ -1198,3 +1198,39 @@ export const pharmacySettings = pgTable(
   },
   (t) => [check("pharmacy_settings_one_row_ck", sql`${t.id} = 'main'`)],
 );
+
+/**
+ * OWNER RULING 2026-10-02 (pharmacy credit) — the pharmacy's own book of the credit a patient KEPT from
+ * a return instead of taking a refund, and of where it was USED. Billing's ledger holds the money (the
+ * surplus goes back onto the receipt it came from, where it is the patient's advance); this table is
+ * what says WHICH unallocated money is pharmacy credit, so a deposit held for something else — or the
+ * change-due remainder of a cash receipt — is never spent at this counter.
+ *
+ *   `kept` — a return's credit note freed `amount_paise` on `receipt_id`; `invoice_id` is the bill
+ *            returned against, `credit_note_id` its credit note.
+ *   `used` — `amount_paise` of `receipt_id` settled `invoice_id`, the NEW bill.
+ *
+ * Append-only: a balance is Σ kept − Σ used per receipt, never a column anybody updates.
+ */
+export const pharmacyCreditMoves = pgTable(
+  "pharmacy_credit_moves",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    kind: text("kind").notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    receiptId: text("receipt_id").notNull(),
+    invoiceId: text("invoice_id").notNull().references(() => invoices.id),
+    creditNoteId: text("credit_note_id"),
+    dispenseId: text("dispense_id").references(() => pharmacyDispenses.id),
+    actorId: text("actor_id").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("pharmacy_credit_moves_kind_ck", sql`${t.kind} in ('kept', 'used')`),
+    check("pharmacy_credit_moves_amount_ck", sql`${t.amountPaise} > 0`),
+    check("pharmacy_credit_moves_kept_ck", sql`${t.kind} <> 'kept' or ${t.creditNoteId} is not null`),
+    index("pharmacy_credit_moves_patient_idx").on(t.patientId),
+    index("pharmacy_credit_moves_invoice_idx").on(t.invoiceId),
+  ],
+);

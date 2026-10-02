@@ -13,6 +13,7 @@ import { residueLinesOf } from "./bill-rows";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { quickDeskOn } from "./settings";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
+import { keepReturnAsCredit } from "./store-credit";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -45,8 +46,20 @@ export type ReturnInput = {
   sealedIntact: boolean;
   reason: string;
   reasonClass: "mistake" | "genuine";
+  /**
+   * OWNER RULING 2026-10-02 — what happens to the money: `refund` (the default) REQUESTS it back through
+   * billing's approval; `credit` keeps it as the patient's pharmacy credit for the next bill
+   * (`store-credit.ts`), with no approval because no money leaves.
+   */
+  settle?: "refund" | "credit";
 };
-export type ReturnResult = { dispense: DispenseView; creditNoteId: string; creditNoteNo: string; refundApprovalId: string };
+export type ReturnResult = {
+  dispense: DispenseView; creditNoteId: string; creditNoteNo: string;
+  /** Null on a return kept as credit. */
+  refundApprovalId: string | null;
+  /** What the credit note was worth, and how much of it was kept as pharmacy credit (0 on a refund). */
+  creditNotePaise: number; creditKeptPaise: number;
+};
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const dayNumber = (isoDate: string): number => Math.floor(Date.parse(`${isoDate}T00:00:00Z`) / DAY_MS);
@@ -197,6 +210,22 @@ export async function restockAndRefund(
     plan: readonly ReturnPlanLine[]; reason: string; reasonClass: ReturnInput["reasonClass"]; now: Date;
   },
 ): Promise<{ returned: ReturnedLine[]; creditNoteId: string; creditNoteNo: string; refundApprovalId: string }> {
+  const done = await restockAndCredit(tx, actor, args);
+  const refund = await requestRefund(tx as unknown as Db, actor, {
+    kind: "invoice_refund", creditNoteId: done.creditNoteId, amountPaise: done.creditNotePaise,
+    reasonClass: args.reasonClass, reason: `pharmacy return: ${args.reason}`,
+  });
+  return { returned: done.returned, creditNoteId: done.creditNoteId, creditNoteNo: done.creditNoteNo, refundApprovalId: refund.approvalId };
+}
+
+/** The half both endings share: the packs back on their batches, and the credit note. No money decision yet. */
+export async function restockAndCredit(
+  tx: Tx, actor: Actor,
+  args: {
+    storeId: string; refType: string; patientId: string; encounterId: string | null; invoiceId: string;
+    plan: readonly ReturnPlanLine[]; reason: string; now: Date;
+  },
+): Promise<{ returned: ReturnedLine[]; creditNoteId: string; creditNoteNo: string; creditNotePaise: number }> {
   const { plan, now } = args;
   const returned: ReturnedLine[] = [];
   for (const p of plan) {
@@ -214,11 +243,7 @@ export async function restockAndRefund(
       ...(p.residue === null ? [] : [{ invoiceLineId: p.residue.invoiceLineId, qty: p.residue.qty }]),
     ]),
   }, now);
-  const refund = await requestRefund(tx as unknown as Db, actor, {
-    kind: "invoice_refund", creditNoteId: credit.creditNoteId, amountPaise: credit.netPaise,
-    reasonClass: args.reasonClass, reason: `pharmacy return: ${args.reason}`,
-  });
-  return { returned, creditNoteId: credit.creditNoteId, creditNoteNo: credit.creditNoteNo, refundApprovalId: refund.approvalId };
+  return { returned, creditNoteId: credit.creditNoteId, creditNoteNo: credit.creditNoteNo, creditNotePaise: credit.netPaise };
 }
 
 export async function acceptReturn(
@@ -241,18 +266,32 @@ export async function acceptReturn(
   const plan = await judgeReturnLines(db, returnable, input.lines, RETURN_REF_TYPE, now, { invoiceId, pricedAt: d.billedAt ?? d.handedOverAt });
 
   const result = await withTx(db, async (tx) => {
-    const done = await restockAndRefund(tx, actor, {
-      storeId, refType: RETURN_REF_TYPE, patientId: d.patientId, encounterId: d.encounterId, invoiceId, plan,
-      reason, reasonClass: input.reasonClass, now,
+    const done = await restockAndCredit(tx, actor, {
+      storeId, refType: RETURN_REF_TYPE, patientId: d.patientId, encounterId: d.encounterId, invoiceId, plan, reason, now,
     });
+    // Owner ruling 2026-10-02 — the money: asked back through the approval, or kept as pharmacy credit.
+    let refundApprovalId: string | null = null;
+    let creditKeptPaise = 0;
+    if (input.settle === "credit") {
+      creditKeptPaise = await keepReturnAsCredit(tx, actor, {
+        patientId: d.patientId, invoiceId, creditNoteId: done.creditNoteId, amountPaise: done.creditNotePaise,
+        dispenseId: d.id, reason: `pharmacy credit kept: ${done.creditNoteNo}`, now,
+      });
+    } else {
+      refundApprovalId = (await requestRefund(tx as unknown as Db, actor, {
+        kind: "invoice_refund", creditNoteId: done.creditNoteId, amountPaise: done.creditNotePaise,
+        reasonClass: input.reasonClass, reason: `pharmacy return: ${reason}`,
+      })).approvalId;
+    }
     await appendEvent(tx, dispenseLineReturned.make({
       occurredAt: now, actor, patientId: d.patientId, encounterId: d.encounterId, correlationId: d.id,
       payload: {
         dispenseId: d.id, patientId: d.patientId, lines: done.returned, sealedIntact: true, reason,
-        reasonClass: input.reasonClass, creditNoteId: done.creditNoteId, refundApprovalId: done.refundApprovalId,
+        reasonClass: input.reasonClass, creditNoteId: done.creditNoteId, refundApprovalId,
+        ...(creditKeptPaise > 0 ? { creditKeptPaise } : {}),
       },
     }));
-    return { creditNoteId: done.creditNoteId, creditNoteNo: done.creditNoteNo, refundApprovalId: done.refundApprovalId };
+    return { creditNoteId: done.creditNoteId, creditNoteNo: done.creditNoteNo, refundApprovalId, creditNotePaise: done.creditNotePaise, creditKeptPaise };
   });
   return { dispense: await getDispense(db, actor, d.id, now), ...result };
 }

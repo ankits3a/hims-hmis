@@ -165,7 +165,8 @@ async function billPart(db: Db, requester: Actor | null, dispenseId: string, lab
       <tbody>${gst}</tbody>
     </table></div>
     ${money === null ? "" : `<div class="sec">
-      <div class="row"><span class="k">Paid</span><span class="v">${esc(tenders)}</span></div>
+      ${money.creditUsedPaise === 0 ? "" : `<div class="row"><span class="k">Credit from earlier return</span><span class="v">${esc(rupees(money.creditUsedPaise))}</span></div>`}
+      ${tenders === "" ? "" : `<div class="row"><span class="k">${money.creditUsedPaise === 0 ? "Paid" : "Balance paid"}</span><span class="v">${esc(tenders)}</span></div>`}
       ${money.receiptNo === null ? "" : `<div class="row"><span class="k">Receipt</span><span class="v mo">${esc(money.receiptNo)}</span></div>`}
       ${money.changeGivenPaise === 0 ? "" : `<div class="row"><span class="k">Change</span><span class="v">${esc(rupees(money.changeGivenPaise))}</span></div>`}
     </div>`}
