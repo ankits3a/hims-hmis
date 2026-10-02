@@ -11,6 +11,8 @@ import type { Eye, TaperStep } from "./eye-line";
 export type WireSaleItem = {
   itemId: string; code: string; name: string; baseUom: string; gstRateBps: number | null;
   serviceId: string; serviceCode: string; category: string; active: boolean; itemActive: boolean;
+  /** The standing discount to the patient on this medicine, in basis points (0 = none). Absent from an older server. */
+  discountBps?: number;
 };
 
 export type WireSaleCandidate = { id: string; code: string; name: string; baseUom: string; gstRateBps: number | null };
@@ -34,6 +36,11 @@ export async function fetchSaleCandidates(q: { search?: string } = {}): Promise<
 
 export async function registerSaleItem(itemId: string): Promise<{ itemId: string; serviceId: string; serviceCode: string; category: string }> {
   return api("POST", "/pharmacy/sale-items", { itemId });
+}
+
+/** OWNER 2026-10-02 — the in-charge's act: the standing discount to the patient on one medicine, 0 to 25%. */
+export async function setSaleItemDiscount(itemId: string, discountBps: number): Promise<void> {
+  await api<{ ok: true }>("PUT", `/pharmacy/sale-items/${itemId}/discount`, { discountBps });
 }
 
 export async function patchSaleItem(itemId: string, patch: { active: boolean }): Promise<void> {

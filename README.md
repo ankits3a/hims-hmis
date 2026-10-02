@@ -1463,6 +1463,7 @@ owner. Nobody approves a discount they asked for.
 | `pharmacy.dispense.read` | ✓ | ✓ | |
 | `pharmacy.dispense.scheduled` | ✓ | | |
 | `pharmacy.sale_items.manage` | ✓ | | |
+| `pharmacy.sale_items.discount` | | | ✓ |
 | `pharmacy.pharmacists.manage` | ✓ | | |
 | `pharmacy.register.read` | ✓ | | ✓ |
 | `pharmacy.register.read_sealed` | | | ✓ |

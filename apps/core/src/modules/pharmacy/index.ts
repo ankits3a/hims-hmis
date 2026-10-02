@@ -34,6 +34,7 @@ export type { BatchPrice, BatchPriceInput, BatchPriceWinner } from "./price";
 export {
   SALE_SERVICE_PREFIX, getSaleItem, listSaleItems, registerSaleItem, requireActiveSaleItem, saleItemCandidates,
   setSaleItemActive,
+  setSaleItemDiscount,
 } from "./sale-items";
 export type { SaleItemRow, SaleItemView } from "./sale-items";
 export { PHARMACY_IDEMPOTENT_ROUTES, toHttp as pharmacyToHttp } from "./pharmacy-http";

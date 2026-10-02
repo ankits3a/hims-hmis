@@ -1,0 +1,2 @@
+ALTER TABLE "pharmacy_sale_items" ADD COLUMN "discount_bps" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "pharmacy_sale_items" ADD CONSTRAINT "pharmacy_sale_items_discount_ck" CHECK ("pharmacy_sale_items"."discount_bps" between 0 and 2500);

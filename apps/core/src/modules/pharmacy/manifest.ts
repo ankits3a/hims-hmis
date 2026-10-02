@@ -53,6 +53,8 @@ export const pharmacyManifest: ModuleManifest = {
     "pharmacy.dispense.scheduled",
     /** D3 — bridge a drug item to its tariff service. */
     "pharmacy.sale_items.manage",
+    // OWNER 2026-10-02 — setting an item's standing discount to the patient (0 to 25%): the in-charge's, not the counter's.
+    "pharmacy.sale_items.discount",
     /**
      * P2 — file and end a pharmacist's state council registration (Pharmacy Act 1948 §42). Never
      * one's own: the act refuses `self_registration` whatever this grant says.

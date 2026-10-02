@@ -1739,6 +1739,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "pharmacy_incharge",
     permissions: [
+      // OWNER 2026-10-02 — an item's standing discount to the patient (0 to 25%) is set by the in-charge,
+      // whose own discount limit under the 2026-09-30 ruling is 25%. The counter does not hold it.
+      "pharmacy.sale_items.discount",
       "pharmacy.register.read",
       "pharmacy.register.read_sealed",
       // P19 — the pharmacist named on the Form 20/21 licence records it.

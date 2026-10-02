@@ -32,7 +32,7 @@ import { settlementState } from "./settlement";
 import { istDay } from "./time";
 import { totalInvoice } from "./totals";
 import type { RoundingRule } from "./totals";
-import { assertPharmacyOnly, saleDiscountShares, saleDiscountSource } from "./sale-discount";
+import { assertPharmacyOnly, assertStandingDiscounts, itemDiscountSource, saleDiscountShares, saleDiscountSource } from "./sale-discount";
 import type { SaleDiscountInput } from "./sale-discount";
 import {
   advanceReceived, cashThresholdBlocked, cashThresholdWarned, invoiceCreditExtended, invoiceIssued,
@@ -793,6 +793,8 @@ async function priceDraftWithBenefits(
   const roundingRule = draft.roundingRule ?? "half_up";
   if (roundingRule !== "half_up") assertPharmacyOnly(draft.lines, `rounding "${roundingRule}"`);
   if (draft.saleDiscount !== undefined) assertPharmacyOnly(draft.lines, "a sale discount");
+  const standing = assertStandingDiscounts(draft.lines);
+  if (standing) assertPharmacyOnly(draft.lines, "a standing discount");
   const encounter = await resolveEncounter(db, draft.encounterId);
   await assertOneSubject(db, draft.patientId, encounter.patientId);
   // `loadPricingContext` takes Db, NOT Tx (§14.5) and runs OUTSIDE any transaction; the engine
@@ -836,6 +838,9 @@ async function priceDraftWithBenefits(
   // appends a member's source: shares are fixed from each line's gross (pass one, pure), then the
   // engine carves the tax out of what is left.
   let ctx = composed.ctx;
+  // OWNER 2026-10-02 — an item's standing discount is one more candidate on its own line; it joins before the
+  // counter's sale discount, and the contest keeps the larger of the two on each line.
+  if (standing) ctx = { ...ctx, sources: [...ctx.sources, itemDiscountSource()] };
   if (draft.saleDiscount !== undefined) {
     const grossByLine = priceInvoiceLines(base, draft.lines).map((l) => ({ lineId: l.lineId, grossPaise: l.grossPaise }));
     const shares = saleDiscountShares(draft.saleDiscount, grossByLine);
