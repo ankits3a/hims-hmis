@@ -9,6 +9,7 @@ import { listGstCategories, serviceCategoriesByIds } from "../tariff";
 import { effectiveRegulation, getBatch, itemUomRows } from "../materials";
 import { getEncounter } from "../opd";
 import { dispenseBilled } from "./events";
+import { quickDeskOn } from "./settings";
 import { PharmacyError } from "./errors";
 import type { DispenseRow } from "./queue";
 import { counterPacks, mergeBillRows } from "./bill-rows";
@@ -312,6 +313,7 @@ async function requireSlipConfirmed(db: Db, d: DispenseRow): Promise<void> {
     .where(eq(opdPrescriptions.id, d.prescriptionId));
   const transcribedBy = rows[0]?.transcribedBy ?? null;
   if (transcribedBy === null) return; // the doctor keyed it; there is no slip to cross-confirm
+  if (await quickDeskOn(db)) return; // owner ruling 2026-10-02 — quick desk mode (`settings.ts`)
   if (d.slipConfirmedBy === null) {
     throw new PharmacyError(
       "slip_not_confirmed",

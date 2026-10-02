@@ -41,8 +41,10 @@ function readPhoto(file: File): Promise<Photo> {
   });
 }
 
-export function PaperRxSheet({ patient, onClose, onDone }: {
+export function PaperRxSheet({ patient, onClose, onDone, quick = false }: {
   patient: { id: string; uhid: string; label: string };
+  /** Owner ruling 2026-10-02 — quick desk mode: the photo of a Schedule H/H1 paper is not asked for. */
+  quick?: boolean;
   onClose: () => void;
   onDone: (d: WireDispense) => void;
 }): React.ReactElement {
@@ -50,6 +52,8 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
   const today = istToday();
   const [rxDate, setRxDate] = useState(today);
   const [doctorId, setDoctorId] = useState<string>("");
+  /* Owner 2026-10-02 — "chooses the doctor / department unit from the filter": the unit narrows the doctor list. */
+  const [unitId, setUnitId] = useState<string>("");
   const [mode, setMode] = useState<"hospital" | "outside">("hospital");
   const [outName, setOutName] = useState("");
   const [outReg, setOutReg] = useState("");
@@ -92,9 +96,13 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
-  const needsPhoto = lines.some((l) => l.entry.scheduleFlag !== null && SCHEDULED.has(l.entry.scheduleFlag));
+  const scheduled = lines.some((l) => l.entry.scheduleFlag !== null && SCHEDULED.has(l.entry.scheduleFlag));
+  const needsPhoto = scheduled && !quick;
+  const units = [...new Map((ctx.data?.doctors ?? []).filter((d) => d.departmentId != null && d.departmentName != null)
+    .map((d) => [d.departmentId as string, d.departmentName as string] as const)).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const doctorsShown = (ctx.data?.doctors ?? []).filter((d) => unitId === "" || d.departmentId === unitId || d.id === doctorId);
   const qtyOk = lines.every((l) => /^\d+$/.test(l.qty) && Number(l.qty) > 0);
-  const outsideOk = outName.trim() !== "" && (!needsPhoto || (outReg.trim() !== "" && outAddress.trim() !== ""));
+  const outsideOk = outName.trim() !== "" && (!scheduled || (outReg.trim() !== "" && outAddress.trim() !== ""));
   const canSave = !busy && lines.length > 0 && qtyOk && (mode === "hospital" ? doctorId !== "" : outsideOk) && (!needsPhoto || photo !== null);
 
   const add = (entry: WireRetailShelfEntry): void => {
@@ -157,12 +165,20 @@ export function PaperRxSheet({ patient, onClose, onDone }: {
                 ))}
               </div>
               {mode === "hospital" ? (
+                <>
+                {units.length < 2 ? null : (
+                  <select className="in" value={unitId} onChange={(e) => { setUnitId(e.target.value); setDoctorId(""); }} data-testid="paper-rx-unit" aria-label={t("pharmacyDesk.paperRx.chooseUnit")}>
+                    <option value="">{t("pharmacyDesk.paperRx.chooseUnit")}</option>
+                    {units.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                  </select>
+                )}
                 <select className="in" value={doctorId} onChange={(e) => setDoctorId(e.target.value)} data-testid="paper-rx-doctor" aria-label={t("pharmacyDesk.paperRx.chooseDoctor")}>
                   <option value="">{t("pharmacyDesk.paperRx.chooseDoctor")}</option>
-                  {(ctx.data?.doctors ?? []).map((d) => (
+                  {doctorsShown.map((d) => (
                     <option key={d.id} value={d.id}>{d.displayName}{d.registrationNo === null ? "" : ` · ${d.registrationNo}`}</option>
                   ))}
                 </select>
+                </>
               ) : (
                 <>
                   <input className="in" value={outName} onChange={(e) => setOutName(e.target.value)} placeholder={t("pharmacyDesk.paperRx.outsideName")}

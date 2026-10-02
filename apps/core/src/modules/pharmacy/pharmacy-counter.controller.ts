@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { z } from "zod";
 import { CONFIG, DB, DOCUMENT_STORE, MODULE_REGISTRY } from "../../kernel/tokens";
+import { withTx } from "../../kernel/db/client";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
@@ -13,6 +14,8 @@ import { cachedShelfIndex, matchOpenLines } from "./auto-match";
 import { OPD_PHARMACY_STORE_CODE, istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, billPreviewQuery, discountAskSchema, discountFromQuery, discountOnBillSchema, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { closingFor } from "./closing";
+import { loadPharmacySettings, updatePharmacySettings } from "./settings";
+import type { PharmacySettings } from "./settings";
 import type { Closing } from "./closing";
 import { patientRail } from "./patient-rail";
 import type { PatientRail } from "./patient-rail";
@@ -165,6 +168,27 @@ export class PharmacyCounterController {
   @Get("queue")
   async queue(@CurrentActor() actor: Actor, @Query("serviceDate") serviceDate?: string): Promise<{ items: QueueRow[] }> {
     return { items: await listQueue(this.db, actor, { serviceDate: serviceDate ?? istDateOf(new Date()) }) };
+  }
+
+  /**
+   * OWNER RULING 2026-10-02 — the desk's settings (quick desk mode). Read by anyone at the desk, because
+   * the desk draws itself by it; changed under `pharmacy.licences.manage`, audited in `settings.ts`.
+   */
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("settings")
+  async settings(): Promise<{ settings: PharmacySettings }> {
+    return { settings: await loadPharmacySettings(this.db) };
+  }
+
+  @RequirePermission("pharmacy.licences.manage", "hospital")
+  @Put("settings")
+  async changeSettings(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ settings: PharmacySettings }> {
+    const b = parsed(z.object({ quickDesk: z.boolean() }).strict(), body);
+    try {
+      return { settings: await withTx(this.db, (tx) => updatePharmacySettings(tx, actor, b, new Date())) };
+    } catch (e) {
+      return toHttp(e);
+    }
   }
 
   @RequirePermission("pharmacy.dispense.read", "hospital")

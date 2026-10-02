@@ -724,8 +724,19 @@ export type WirePaperRxContext = {
   rxDate: string;
   /** `pharmacy`: the desk's own no-fee visit (2026-09-30), not a consultation. */
   visits: { encounterId: string; visitNo: string; doctorId: string | null; doctorName: string | null; hasPrescription: boolean; pharmacy?: boolean }[];
-  doctors: { id: string; displayName: string; registrationNo: string | null }[];
+  doctors: { id: string; displayName: string; registrationNo: string | null; departmentId?: string | null; departmentName?: string | null }[];
 };
+
+/** Owner ruling 2026-10-02 — the desk's settings (`GET/PUT /pharmacy/settings`): quick desk mode. */
+export type WirePharmacySettings = { quickDesk: boolean; updatedBy: string | null; updatedAt: string | null };
+export async function fetchPharmacySettings(): Promise<WirePharmacySettings> {
+  const { settings } = await api<{ settings: WirePharmacySettings }>("GET", "/pharmacy/settings");
+  return settings;
+}
+export async function savePharmacySettings(patch: { quickDesk: boolean }): Promise<WirePharmacySettings> {
+  const { settings } = await api<{ settings: WirePharmacySettings }>("PUT", "/pharmacy/settings", patch);
+  return settings;
+}
 export type PaperRxLine = { itemId: string; qtyBase: number; dose?: string; frequency?: string; durationDays?: number | null };
 export type PaperRxBody = {
   patientId: string; doctorId?: string; rxDate: string;

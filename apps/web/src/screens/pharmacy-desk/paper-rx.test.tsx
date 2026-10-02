@@ -102,6 +102,36 @@ describe("the desk's paper-prescription door (2026-09-30)", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  /* Owner ruling 2026-10-02 — quick desk mode: found → medicines → bill, with no photo asked for. */
+  it("quick desk mode: a found patient opens the sheet at once, the unit filter narrows the doctors, and an H1 line saves with no photo", async () => {
+    mockRoutes(base({
+      "GET /api/pharmacy/settings": { status: 200, body: { settings: { quickDesk: true, updatedBy: "u-admin", updatedAt: "2026-10-02T05:00:00.000Z" } } },
+      "GET /api/pharmacy/paper-rx/context": { status: 200, body: { ...CONTEXT, visits: [], doctors: [
+        { id: "doc1", displayName: "Dr Sen", registrationNo: "BMC/12345", departmentId: "dep-med", departmentName: "Medicine" },
+        { id: "doc2", displayName: "Dr Rao", registrationNo: "BMC/777", departmentId: "dep-ent", departmentName: "ENT" },
+      ] } },
+      "POST /api/pharmacy/paper-rx": { status: 201, body: TICKET },
+      "GET /api/pharmacy/dispenses/d9": { status: 200, body: TICKET },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    expect(await screen.findByTestId("desk-quick-mode")).toHaveTextContent("Quick desk mode");
+    await userEvent.type(screen.getByRole("textbox", { name: /slip QR/ }), "U0011{enter}");
+    const sheet = await screen.findByTestId("paper-rx-sheet"); // no door to press
+    await userEvent.selectOptions(await within(sheet).findByTestId("paper-rx-unit"), "dep-ent");
+    const doctor = within(sheet).getByTestId("paper-rx-doctor");
+    expect(within(doctor).queryByRole("option", { name: /Dr Sen/ })).toBeNull();
+    await userEvent.selectOptions(doctor, "doc2");
+    await userEvent.type(within(sheet).getByPlaceholderText(/Search the shelf/), "aze");
+    await userEvent.click(await within(sheet).findByRole("button", { name: /Azee/ }));
+    await userEvent.type(within(sheet).getByRole("textbox", { name: "Qty Azee" }), "3");
+    expect(within(sheet).queryByText("required — a Schedule H or H1 medicine")).toBeNull();
+    await userEvent.click(within(sheet).getByTestId("paper-rx-save"));
+    await waitFor(() => expect(posted("/pharmacy/paper-rx")).toEqual([{
+      patientId: "p1", doctorId: "doc2", rxDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) as unknown,
+      lines: [{ itemId: "i-azee", qtyBase: 3 }],
+    }]));
+  });
+
   it("nobody found → Register (prefilled with the typed name) → the paper sheet opens on the new patient, with a no-fee visit", async () => {
     mockRoutes(base({
       "GET /api/pharmacy/find": { status: 200, body: { kind: "none", door: "uhid", reason: "not_found" } },
