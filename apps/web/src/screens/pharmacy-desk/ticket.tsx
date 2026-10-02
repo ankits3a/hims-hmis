@@ -63,7 +63,7 @@ export function TicketPanel({
   /** The quantities being given as typed, for the bill rail (`LineList`). */
   onLiveQty?: (dispenseId: string, qty: Readonly<Record<number, number | null>>) => void;
   /** 2026-09-30 — a patient found with no e-prescription today: dispense from their paper prescription. */
-  paperDoor?: { who: string; onOpen: () => void } | null;
+  paperDoor?: { who: string; onOpen: () => void; /** 2026-10-02 — today's finished ticket, when there is one. */ onSeeLast?: () => void } | null;
   /** 2026-09-30 (owner) — nobody found: register the person here and dispense from their paper prescription. */
   registerDoor?: { onOpen: () => void } | null;
 }): React.ReactElement {
@@ -92,7 +92,8 @@ export function TicketPanel({
         {alerts}
         {paperDoor === null ? null : (
           <div className="box paper-rx-door" data-testid="desk-paper-door">
-            <span style={{ flexGrow: 1, minWidth: 200, fontSize: 12.5 }}>{t("pharmacyDesk.paperRx.doorHint", { who: paperDoor.who })}</span>
+            <span style={{ flexGrow: 1, minWidth: 200, fontSize: 12.5 }}>{t(paperDoor.onSeeLast === undefined ? "pharmacyDesk.paperRx.doorHint" : "pharmacyDesk.paperRx.doorHintAgain", { who: paperDoor.who })}</span>
+            {paperDoor.onSeeLast === undefined ? null : <button type="button" className="sec" data-testid="desk-see-last" onClick={paperDoor.onSeeLast}>{t("pharmacyDesk.paperRx.seeLast")}</button>}
             <button type="button" className="pri" onClick={paperDoor.onOpen}>{t("pharmacyDesk.paperRx.door")}</button>
           </div>
         )}

@@ -149,6 +149,21 @@ describe("the desk's paper-prescription door (2026-09-30)", () => {
     }]));
   });
 
+  /* Owner, staging 2026-10-02: a billed patient kept opening the finished ticket — "no way to restart a fresh billing cycle". */
+  it("a patient already handed over today: the desk says so, offers a new paper bill, and can still open the last ticket", async () => {
+    mockRoutes(base({
+      "GET /api/pharmacy/find": { status: 200, body: { kind: "none", door: "uhid", reason: "no_prescription_today", patient: PATIENT, lastDispenseId: "d-old" } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId={null} />);
+    await userEvent.type(screen.getByRole("textbox", { name: /slip QR/ }), "U0011{enter}");
+    expect(await screen.findByText("Today's medicines for that patient are already handed over.")).toBeInTheDocument();
+    const door = await screen.findByTestId("desk-paper-door");
+    expect(door).toHaveTextContent("Sunita Devi already collected today's medicines");
+    expect(within(door).getByRole("button", { name: "Dispense from a paper prescription" })).toBeEnabled();
+    await userEvent.click(within(door).getByTestId("desk-see-last"));
+    expect(navigate).toHaveBeenCalledWith({ to: "/pharmacy/desk/$ticketId", params: { ticketId: "d-old" } });
+  });
+
   it("nobody found → Register (prefilled with the typed name) → the paper sheet opens on the new patient, with a no-fee visit", async () => {
     mockRoutes(base({
       "GET /api/pharmacy/find": { status: 200, body: { kind: "none", door: "uhid", reason: "not_found" } },

@@ -7826,12 +7826,15 @@
     "find": {
       "button": "Find",
       "qrInvalid": "That code is not a prescription this hospital signed.",
+      "doneToday": "Today's medicines for that patient are already handed over.",
       "noRx": "No prescription today for that patient.",
       "suggestNone": "Nobody registered matches that yet. Press Enter to search, then register them here.",
       "notFound": "Nobody found for that."
     },
     "paperRx": {
       "door": "Dispense from a paper prescription",
+      "doorHintAgain": "{{who}} already collected today's medicines. Start a new bill from another paper prescription.",
+      "seeLast": "See the last ticket",
       "doorHint": "No e-prescription today for {{who}} — enter the doctor's paper and dispense.",
       "title": "Paper prescription",
       "sub": "What the doctor wrote on paper, entered by you. It becomes an ordinary ticket: verify, pick, bill.",
