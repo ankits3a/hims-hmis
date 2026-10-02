@@ -3,8 +3,8 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { MON2, addAllergy, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { events, formularyMedicines, formularySalts, pharmacyDispenses } from "../../kernel/db/schema";
-import { addMedicine, addSalt } from "../formulary";
+import { events, formularyGenerics, formularyMedicines, formularySalts, pharmacyDispenses } from "../../kernel/db/schema";
+import { addMedicine, addSalt, linkMedicinesToGenerics, reviewMonograph, saveMonograph } from "../formulary";
 import { registerItem, updateItem } from "../materials";
 import { amountsIn, matchOpenLines, moietyKey, parseDrugText } from "./auto-match";
 import { claimDispense, findAtCounter } from "./claim";
@@ -190,6 +190,27 @@ describe("a generic prescription opens already matched to the stocked brand (202
     await withTx(db, (tx) => updateItem(tx, fx.incharge.actor, shelf.item.dolo, { lasa: true }));
     const v = await claimDispense(db, fx.pharmacist.actor, { dispenseId: await queued([line({ drug: "Paracetamol 650mg tablet" })]), door: "rx_qr" }, MON2);
     expect(v.lines[0]!.item).toMatchObject({ code: "DOLO650", lasa: true, highAlert: false });
+  });
+
+  it("the counter is told what to tell the patient: the REVIEWED monograph's how-to-take text of the generic behind the brand it is giving, and the item's LASA warning (owner 2026-10-02)", async () => {
+    const SCTID = "322236009";
+    const patient = { plain_language_faqs: [{ intent: "missed_dose", answer_en: "Skip it." }, { intent: "how_to_take", answer_en: "Swallow whole with water, after food.", answer_hi: "खाने के बाद पानी के साथ पूरी गोली निगलें।" }] };
+    const monographId = await withTx(db, async (tx) => {
+      await tx.insert(formularyGenerics).values({ id: "01HGENERICPARA6500000000001", sctid: SCTID, name: "Paracetamol 650 mg oral tablet", nameNormalized: "paracetamol 650 mg oral tablet", doseForm: "oral tablet", routeOfAdministration: "oral", source: "nrces-2026-09", createdBy: HEAD.id, updatedBy: HEAD.id });
+      await tx.update(formularyMedicines).set({ sourceRef: "B-DOLO650" }).where(eq(formularyMedicines.id, shelf.dolo));
+      await linkMedicinesToGenerics(tx, [{ medicineSctid: "B-DOLO650", genericSctid: SCTID }]);
+      await updateItem(tx, fx.incharge.actor, shelf.item.dolo, { lasa: true, lasaNote: "DOLO vs DOLONEX" });
+      return (await saveMonograph(tx, fx.incharge.actor, { genericSctid: SCTID, sourceVersion: "1.25", patient })).monographId;
+    });
+    const id = await queued([line({ drug: "Paracetamol 650mg tablet" }), line({ drug: "Pantoprazole 40mg" })]);
+    const draft = await claimDispense(db, fx.pharmacist.actor, { dispenseId: id, door: "rx_qr" }, MON2);
+    // A draft is shown to nobody, the counter included. The item's own warning needs no review: it is the item master's.
+    expect(draft.lines[0]).toMatchObject({ counselling: null, item: { code: "DOLO650", lasaNote: "DOLO vs DOLONEX" } });
+
+    await withTx(db, (tx) => reviewMonograph(tx, fx.pharmacist.actor, monographId));
+    const v = await getDispense(db, fx.pharmacist.actor, id, MON2);
+    expect(v.lines[0]!.counselling).toEqual({ en: "Swallow whole with water, after food.", hi: "खाने के बाद पानी के साथ पूरी गोली निगलें।" });
+    expect(v.lines[1]!.counselling).toBeNull(); // a product with no generic link, or no reviewed monograph, says nothing
   });
 
   it("several brands of one composition: the one with stock, then the batch that expires first, then the lowest MRP", async () => {

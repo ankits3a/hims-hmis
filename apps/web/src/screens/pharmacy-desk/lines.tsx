@@ -680,6 +680,14 @@ function LineRow({
             <span className="pill" data-testid={`${id}-where`} style={{ marginTop: 5 }}>{line.location}</span>
           ) : null}
 
+          {/* OWNER 2026-10-02 — what to tell the patient, from the generic's REVIEWED monograph. Absent when there is none. */}
+          {line.counselling == null ? null : (
+            <span data-testid={`${id}-counselling`} style={{ display: "block", marginTop: 5, fontSize: 12, color: "var(--dim)" }}>
+              <b>{t("pharmacyDesk.counselling.label")}</b> {line.counselling.en}
+              {line.counselling.hi == null ? null : <span lang="hi" style={{ display: "block" }}>{line.counselling.hi}</span>}
+            </span>
+          )}
+
           {note === null ? null : (
             <span role={note.alert === true ? "alert" : undefined} data-testid={note.testId === undefined ? undefined : `${id}-${note.testId}`} style={tone(note)}>{note.text}</span>
           )}
@@ -935,7 +943,7 @@ function safetyPills(line: WireDispenseLine, id: string, t: (key: string) => str
   return (
     <>
       {high ? <span className="pill rd" data-testid={`${id}-high-alert`} title={t("pharmacyDesk.safety.highAlertTitle")}>{t("pharmacyDesk.safety.highAlert")}</span> : null}
-      {lasa ? <span className="pill gd" data-testid={`${id}-lasa`} title={t("pharmacyDesk.safety.lasaTitle")}>{t("pharmacyDesk.safety.lasa")}</span> : null}
+      {lasa ? <span className="pill gd" data-testid={`${id}-lasa`} title={line.item?.lasaNote == null ? t("pharmacyDesk.safety.lasaTitle") : `${t("pharmacyDesk.safety.lasaTitle")} ${line.item.lasaNote}`}>{t("pharmacyDesk.safety.lasa")}</span> : null}
     </>
   );
 }
