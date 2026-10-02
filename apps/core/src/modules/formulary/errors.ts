@@ -81,15 +81,22 @@ export type FormularyErrorCode =
    */
   | "invalid_adoption"
   /** FORMULARY P22 — an allergy class the prescribing check does not know (`allergy-classes.ts`). */
-  | "invalid_allergy_class";
+  | "invalid_allergy_class"
+  // The drug monograph (owner 2026-10-02): written as a draft, reviewed by a second person.
+  | "unknown_generic"
+  | "unknown_monograph"
+  | "invalid_monograph"
+  | "monograph_same_actor"
+  | "monograph_already_reviewed";
 
 const NOT_FOUND_CODES = new Set<FormularyErrorCode>([
   "unknown_salt", "unknown_medicine", "unknown_interaction", "unknown_substance", "unknown_proposal",
+  "unknown_generic", "unknown_monograph",
 ]);
 /** A request this module could not have served whatever the database held. */
-const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids", "invalid_adoption", "invalid_allergy_class"]);
+const BAD_REQUEST_CODES = new Set<FormularyErrorCode>(["too_many_ids", "invalid_adoption", "invalid_allergy_class", "invalid_monograph"]);
 /** The caller is the wrong KIND of actor for the act, whatever it holds. */
-const FORBIDDEN_CODES = new Set<FormularyErrorCode>(["attester_not_user"]);
+const FORBIDDEN_CODES = new Set<FormularyErrorCode>(["attester_not_user", "monograph_same_actor"]);
 
 /**
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on,

@@ -103,3 +103,6 @@ export type { DrugDiseaseAlternative } from "../../kernel/db/schema";
  */
 export { NDPS_CLASSES, NDPS_LIST, classifyNdpsSalts, ndpsClassByMedicine } from "./ndps";
 export type { NdpsClass, NdpsClassificationReport, NdpsEntry } from "./ndps";
+
+export { getMonograph, renalDoseFor, reviewMonograph, saveMonograph } from "./monographs";
+export type { Monograph, MonographInput, RenalDose, RenalDoseInput, RenalSeverity } from "./monographs";
