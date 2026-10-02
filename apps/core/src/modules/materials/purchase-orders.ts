@@ -66,8 +66,10 @@ export type PoLineInput = {
   uom?: string | null;
   qtyPacks: number;
   freePacks?: number;
-  /** PTR per pack, before GST. */
+  /** PTR per pack, before GST — the LIST rate when `discountBps` is given, the rate itself otherwise. */
   ratePaise: number;
+  /** The vendor's trade discount off `ratePaise`, in basis points (1250 = 12.5%). The line is priced at the net rate. */
+  discountBps?: number;
   /** Defaults to the item's own GST rate. */
   gstRateBps?: number | null;
   mrpPaise?: number | null;
@@ -92,7 +94,11 @@ export type PoLineView = {
   multiplier: number;
   qtyPacks: number;
   freePacks: number;
+  /** The NET rate per pack: what the line is priced at. */
   ratePaise: number;
+  /** The rate per pack before the vendor's discount; equals `ratePaise` when no discount was named. */
+  listRatePaise: number;
+  discountBps: number;
   gstRateBps: number;
   gstPaise: number;
   mrpPaise: number | null;
@@ -197,7 +203,13 @@ async function requireReader(db: Db, actor: Actor): Promise<void> {
 type ResolvedLine = {
   itemId: string; uom: string; multiplier: number; qtyPacks: number; freePacks: number;
   ratePaise: number; gstRateBps: number; mrpPaise: number | null; lineTotalPaise: number; gstPaise: number;
+  listRatePaise: number | null; discountBps: number;
 };
+
+/** The net rate per pack after the vendor's trade discount, half-up to the paisa. */
+export function netRatePaise(listRatePaise: number, discountBps: number): number {
+  return Math.floor((listRatePaise * (10_000 - discountBps) + 5_000) / 10_000);
+}
 
 const MAX_LINES = 200;
 const MAX_PACKS = 1_000_000;
@@ -234,10 +246,17 @@ async function resolveLines(tx: Tx, lines: readonly PoLineInput[]): Promise<Reso
       || !okInt(gst, 0, 2_800) || (mrp !== null && !okInt(mrp, 1, MAX_RATE_PAISE))) {
       throw new MaterialsError("po_invalid", `line for ${item.code}: quantity, free quantity, rate, GST or MRP is out of range`, { itemId: l.itemId });
     }
-    const lineTotalPaise = l.qtyPacks * l.ratePaise;
+    const discountBps = l.discountBps ?? 0;
+    if (!okInt(discountBps, 0, 10_000)) {
+      throw new MaterialsError("po_invalid", `line for ${item.code}: the vendor's discount must be between 0% and 100%`, { itemId: l.itemId });
+    }
+    // The line is priced at the NET rate; the list rate and the discount are kept beside it (owner 2026-10-02).
+    const ratePaise = discountBps === 0 ? l.ratePaise : netRatePaise(l.ratePaise, discountBps);
+    const lineTotalPaise = l.qtyPacks * ratePaise;
     return {
       itemId: l.itemId, uom: pack.uom, multiplier: pack.toBaseMultiplier, qtyPacks: l.qtyPacks, freePacks: free,
-      ratePaise: l.ratePaise, gstRateBps: gst, mrpPaise: mrp, lineTotalPaise, gstPaise: lineGstPaise(lineTotalPaise, gst),
+      ratePaise, gstRateBps: gst, mrpPaise: mrp, lineTotalPaise, gstPaise: lineGstPaise(lineTotalPaise, gst),
+      listRatePaise: discountBps === 0 ? null : l.ratePaise, discountBps,
     };
   });
 }
@@ -264,7 +283,7 @@ async function insertLines(tx: Tx, poId: string, lines: readonly ResolvedLine[])
   await tx.insert(purchaseOrderLines).values(lines.map((l) => ({
     id: newId(), purchaseOrderId: poId, itemId: l.itemId, uom: l.uom, multiplier: l.multiplier,
     qtyPacks: l.qtyPacks, freePacks: l.freePacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
-    mrpPaise: l.mrpPaise, lineTotalPaise: l.lineTotalPaise,
+    mrpPaise: l.mrpPaise, lineTotalPaise: l.lineTotalPaise, listRatePaise: l.listRatePaise, discountBps: l.discountBps,
   })));
 }
 
@@ -691,6 +710,7 @@ async function readPurchaseOrder(db: Db, poId: string): Promise<PoView | undefin
       return {
         id: l.id, itemId: l.itemId, itemCode: code, itemName: name, baseUom, uom: l.uom, multiplier: l.multiplier,
         qtyPacks: l.qtyPacks, freePacks: l.freePacks, ratePaise: l.ratePaise, gstRateBps: l.gstRateBps,
+        listRatePaise: l.listRatePaise ?? l.ratePaise, discountBps: l.discountBps,
         gstPaise: lineGstPaise(l.lineTotalPaise, l.gstRateBps), mrpPaise: l.mrpPaise, lineTotalPaise: l.lineTotalPaise,
         orderedBase, receivedBase: l.receivedBase, freeReceivedBase: l.freeReceivedBase,
         remainingBase: Math.max(0, orderedBase - l.receivedBase),

@@ -518,7 +518,10 @@ function BuyView({ onOpen, onPlan }: { onOpen: (id: string, decide: boolean) => 
 }
 
 
-type EditLine = { itemId: string; name: string; code: string; uom: string; multiplier: number; qty: string; free: string; rate: string; gst: string; mrp: string };
+/** The vendor's trade discount typed as a percentage, in basis points; and the net rate the server will price the line at (half-up to the paisa). */
+const discBps = (disc: string): number => Math.round(Number(disc || "0") * 100);
+const netRate = (l: { rate: string; disc: string }): number => Math.floor((toPaise(l.rate) * (10_000 - discBps(l.disc)) + 5_000) / 10_000);
+type EditLine = { itemId: string; name: string; code: string; uom: string; multiplier: number; qty: string; free: string; rate: string; disc: string; gst: string; mrp: string };
 
 const toPaise = (rupeesText: string): number => Math.round(Number(rupeesText || "0") * 100);
 const toRupees = (paise: number | null): string => paise === null ? "" : (paise / 100).toFixed(2);
@@ -526,7 +529,8 @@ const toRupees = (paise: number | null): string => paise === null ? "" : (paise 
 function editable(po: WirePo): EditLine[] {
   return po.lines.map((l) => ({
     itemId: l.itemId, name: l.itemName, code: l.itemCode, uom: l.uom, multiplier: l.multiplier,
-    qty: String(l.qtyPacks), free: String(l.freePacks), rate: toRupees(l.ratePaise), gst: String(l.gstRateBps / 100), mrp: toRupees(l.mrpPaise),
+    qty: String(l.qtyPacks), free: String(l.freePacks), rate: toRupees(l.listRatePaise ?? l.ratePaise),
+    disc: (l.discountBps ?? 0) === 0 ? "" : String((l.discountBps ?? 0) / 100), gst: String(l.gstRateBps / 100), mrp: toRupees(l.mrpPaise),
   }));
 }
 
@@ -577,7 +581,7 @@ function PoSheet({ id, canDecide, startRejecting = false, onClose, onDone }: {
     expectedDate: expected === "" ? null : expected,
     lines: (lines ?? []).map((l) => ({
       itemId: l.itemId, uom: l.uom, qtyPacks: Number(l.qty || "0"), freePacks: Number(l.free || "0"),
-      ratePaise: toPaise(l.rate), gstRateBps: Math.round(Number(l.gst || "0") * 100), mrpPaise: l.mrp === "" ? null : toPaise(l.mrp),
+      ratePaise: toPaise(l.rate), ...(discBps(l.disc) === 0 ? {} : { discountBps: discBps(l.disc) }), gstRateBps: Math.round(Number(l.gst || "0") * 100), mrpPaise: l.mrp === "" ? null : toPaise(l.mrp),
     })),
   });
   const approve = (): void => void act(() => decidePurchaseOrder(id, "approve", note.trim() === "" ? t("pharmacyOffice.sheet.approvedNote") : note.trim()), t("pharmacyOffice.sheet.approved"), true);
@@ -603,7 +607,7 @@ function PoSheet({ id, canDecide, startRejecting = false, onClose, onDone }: {
 
   const set = (i: number, patch: Partial<EditLine>): void => setLines((prev) => (prev ?? []).map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const liveTotal = (lines ?? []).reduce((s, l) => {
-    const line = Number(l.qty || "0") * toPaise(l.rate);
+    const line = Number(l.qty || "0") * netRate(l);
     return s + line + Math.floor((line * Math.round(Number(l.gst || "0") * 100) + 5_000) / 10_000);
   }, 0);
 
@@ -639,6 +643,7 @@ function PoSheet({ id, canDecide, startRejecting = false, onClose, onDone }: {
                     <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.qty")}</th>
                     <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.free")}</th>
                     <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.rate")}</th>
+                    <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.disc")}</th>
                     <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.gst")}</th>
                     <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.mrp")}</th>
                     <th className="py-1 pr-2 text-right">{t("pharmacyOffice.sheet.amount")}</th>
@@ -648,7 +653,7 @@ function PoSheet({ id, canDecide, startRejecting = false, onClose, onDone }: {
                 <tbody>
                   {lines.map((l, i) => {
                     const src = p.lines[i];
-                    const cell = (k: "qty" | "free" | "rate" | "gst" | "mrp", w = "w-16"): React.ReactElement => isDraft
+                    const cell = (k: "qty" | "free" | "rate" | "disc" | "gst" | "mrp", w = "w-16"): React.ReactElement => isDraft
                       ? <input aria-label={`${t(`pharmacyOffice.sheet.${k}`)} ${l.code}`} className={`${w} rounded border px-1 text-right`} inputMode="decimal" value={l[k]} onChange={(e) => set(i, { [k]: e.target.value })} />
                       : <span>{l[k]}</span>;
                     return (
@@ -658,9 +663,10 @@ function PoSheet({ id, canDecide, startRejecting = false, onClose, onDone }: {
                         <td className="py-1 pr-2 text-right">{cell("qty", "w-14")}</td>
                         <td className="py-1 pr-2 text-right">{cell("free", "w-12")}</td>
                         <td className="py-1 pr-2 text-right">{cell("rate", "w-20")}</td>
+                        <td className="py-1 pr-2 text-right">{cell("disc", "w-12")}</td>
                         <td className="py-1 pr-2 text-right">{cell("gst", "w-12")}</td>
                         <td className="py-1 pr-2 text-right">{cell("mrp", "w-20")}</td>
-                        <td className="py-1 pr-2 text-right tabular-nums">{rupees(Number(l.qty || "0") * toPaise(l.rate))}</td>
+                        <td className="py-1 pr-2 text-right tabular-nums">{rupees(Number(l.qty || "0") * netRate(l))}</td>
                         {!isDraft && src !== undefined && (
                           <td className="py-1 pr-2 text-right text-xs">{src.receivedBase}/{src.orderedBase} {src.baseUom}</td>
                         )}

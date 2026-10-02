@@ -902,6 +902,16 @@ export const purchaseOrderLines = pgTable(
     qtyPacks: integer("qty_packs").notNull(),
     freePacks: integer("free_packs").notNull().default(0),
     ratePaise: bigint("rate_paise", { mode: "number" }).notNull(),
+    /**
+     * OWNER 2026-10-02 — THE VENDOR'S TRADE DISCOUNT AS ITS OWN FIGURE. `list_rate_paise` is the rate per pack
+     * before the discount and `discount_bps` the discount (1250 = 12.5%). `rate_paise` STAYS the NET rate per
+     * pack — `round(list × (10000 − bps) / 10000)` — and it is the only rate anything downstream reads: the
+     * line total, the order's approval tier, the GRN's unit cost, the three-way match, Tally. So recording a
+     * discount changes no money path; it only keeps what the net rate was made of. A row written before this
+     * column, or with no discount named, has a null list rate and a zero discount: its list rate is its rate.
+     */
+    listRatePaise: bigint("list_rate_paise", { mode: "number" }),
+    discountBps: integer("discount_bps").notNull().default(0),
     gstRateBps: integer("gst_rate_bps").notNull(),
     mrpPaise: bigint("mrp_paise", { mode: "number" }),
     lineTotalPaise: bigint("line_total_paise", { mode: "number" }).notNull(),
@@ -912,6 +922,7 @@ export const purchaseOrderLines = pgTable(
     uniqueIndex("purchase_order_lines_item_ux").on(t.purchaseOrderId, t.itemId),
     check("purchase_order_lines_qty_ck", sql`${t.qtyPacks} > 0 and ${t.freePacks} >= 0 and ${t.multiplier} > 0`),
     check("purchase_order_lines_money_ck", sql`${t.ratePaise} >= 0 and ${t.gstRateBps} >= 0 and ${t.lineTotalPaise} = ${t.qtyPacks} * ${t.ratePaise}`),
+    check("purchase_order_lines_discount_ck", sql`${t.discountBps} between 0 and 10000 and (${t.discountBps} = 0 or ${t.listRatePaise} is not null) and (${t.listRatePaise} is null or ${t.listRatePaise} >= ${t.ratePaise})`),
     check("purchase_order_lines_received_ck", sql`${t.receivedBase} >= 0 and ${t.freeReceivedBase} >= 0`),
   ],
 );
