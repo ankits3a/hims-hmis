@@ -73,6 +73,7 @@ const SURFACE = [
   "equivalentMedicines",
   "formularyHttpStatus",
   "formularyManifest",
+  "getMonograph", // the drug monograph (owner 2026-10-02): reviewed text only, unless the curation door asks
   "getStagingRow",
   "isEquivalentMedicine",
   "listDrugDiseaseFor", // P24 — the rules that reach these moieties and these diagnosis codes
@@ -90,12 +91,15 @@ const SURFACE = [
   "projectSubstances",
   "refreshRankSignals",
   "rejectStaging",
+  "renalDoseFor",
   "resolveDrugTexts",
   "resolveMedicines",
   "restrictedAntimicrobialExists", // PHARMACY STAGE D5 — the office's "no steward appointed" row asks it
+  "reviewMonograph",
   "ruleSubstanceUnmappable",
   "saltIdsByNames",
   "saltsByIds",
+  "saveMonograph",
   "searchMedicines",
   "searchStaging",
   "suggestDrugs",

@@ -20,6 +20,8 @@ import type { DrugSuggestion } from "./suggest";
 import { getCoverage, getPairOverrideRates } from "./curation";
 import { attestSubstance, pageMappingWorklist, ruleSubstanceUnmappable } from "./mapping";
 import type { MappingDecision, WorklistItem } from "./mapping";
+import { getMonograph, RENAL_SEVERITIES, reviewMonograph, saveMonograph } from "./monographs";
+import type { Monograph } from "./monographs";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
 import type { StagingRow } from "./staging";
 import type { Coverage, PairUsage } from "./curation";
@@ -64,6 +66,19 @@ function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
   if (!r.success) throw new BadRequestException(r.error.issues);
   return r.data;
 }
+
+/** One section of a monograph: an object, kept as written, at most 64 KB as JSON. */
+const monographSection = z.record(z.string(), z.unknown())
+  .refine((v) => JSON.stringify(v).length <= 64_000, "a monograph section is at most 64 KB")
+  .nullish();
+const monographBody = z.object({
+  genericSctid: z.string().regex(/^\d{6,18}$/), sourceVersion: z.string().trim().min(1).max(32),
+  patient: monographSection, prescriber: monographSection, nursing: monographSection, affordability: monographSection,
+  renalDoses: z.array(z.object({
+    crclMin: z.number().int().min(0).max(300).nullable(), crclMax: z.number().int().min(1).max(300).nullable(),
+    dose: z.string().trim().min(1).max(300), severity: z.enum(RENAL_SEVERITIES),
+  })).max(12).optional(),
+});
 
 /** Query flags arrive as strings; never z.coerce.boolean() — it reads "false" as true (§3.19). */
 const flagQuery = z.enum(["true", "false"]).optional();
@@ -482,5 +497,43 @@ export class FormularyController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  // ─────────────────── the drug monograph (owner 2026-10-02) ───────────────────
+
+  /** What every reader gets: the REVIEWED monograph of a generic, or 404 while there is none. */
+  @RequirePermission("formulary.read", "hospital")
+  @Get("monographs/:sctid")
+  async monograph(@Param("sctid") sctid: string): Promise<Monograph> {
+    const row = await getMonograph(this.db, sctid);
+    if (row === undefined) throw httpError(404, `no reviewed monograph for ${sctid}`, "unknown_monograph");
+    return row;
+  }
+
+  /** The curation door: the monograph as it stands, draft or reviewed. */
+  @RequirePermission("formulary.manage", "hospital")
+  @Get("monographs/:sctid/draft")
+  async monographDraft(@Param("sctid") sctid: string): Promise<Monograph> {
+    const row = await getMonograph(this.db, sctid, { includeDraft: true });
+    if (row === undefined) throw httpError(404, `no monograph for ${sctid}`, "unknown_monograph");
+    return row;
+  }
+
+  @RequirePermission("formulary.manage", "hospital")
+  @Post("monographs")
+  async saveMonograph(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ monographId: string }> {
+    const b = parsed(monographBody, body);
+    try {
+      return await withTx(this.db, (tx) => saveMonograph(tx, actor, b));
+    } catch (e) { toHttp(e); }
+  }
+
+  @RequirePermission("formulary.manage", "hospital")
+  @Post("monographs/:id/review")
+  async reviewMonograph(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ ok: true }> {
+    try {
+      await withTx(this.db, (tx) => reviewMonograph(tx, actor, id));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
   }
 }

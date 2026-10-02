@@ -49,6 +49,9 @@ const CENSUS: Record<string, string[]> = {
   formulary_mapping_proposals: ["basis", "created_at", "drafted_by", "evidence", "id", "moiety_name", "substance_id"],
   // Formulary P24 (0105): what the patient's DIAGNOSIS forbids, keyed on an ICD-10 code PREFIX.
   formulary_drug_disease: ["active", "alternatives", "created_at", "created_by", "icd10_prefix", "icd10_title", "id", "note", "route_scope", "salt_id", "severity", "source", "updated_at", "updated_by"],
+  // The drug monograph (owner 2026-10-02): four JSON sections per generic, read only once reviewed; renal bands as rows.
+  formulary_monographs: ["affordability", "created_at", "created_by", "generic_id", "id", "nursing", "patient", "prescriber", "reviewed_at", "reviewed_by", "source_version", "status", "updated_at", "updated_by"],
+  formulary_renal_doses: ["crcl_max", "crcl_min", "dose", "id", "monograph_id", "position", "severity"],
 };
 
 describe("the formulary tables (Plan 16a T1)", () => {
