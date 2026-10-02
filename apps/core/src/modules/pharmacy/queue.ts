@@ -6,7 +6,8 @@ import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { events, opdPrescriptions, pharmacyDispenseLines, pharmacyDispenses, users } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { withTx } from "../../kernel/db/client";
-import { medicinesByIds, saltsByIds, unreviewedSaltIds } from "../formulary";
+import { counsellingByMedicine, medicinesByIds, saltsByIds, unreviewedSaltIds } from "../formulary";
+import type { Counselling } from "../formulary";
 import { availableQty, getBatch, itemsByIds, itemUomRows, sellableBatchesByItem } from "../materials";
 import { getPatient, getPatientSummaries, listAllergies } from "../patients";
 import { istDateOf } from "./config";
@@ -246,8 +247,14 @@ export type DispenseLineView = {
   controlled: boolean;
   orderedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string } | null;
   dispensedMedicine: { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag: string | null } | null;
-  /** GAP CLOSURE A2 — `lasa` and `highAlert` are the item master's NABH safety flags, shown on the line. */
-  item: { id: string; code: string; name: string; baseUom: string; uoms: UomRow[]; lasa: boolean; highAlert: boolean } | null;
+  /** GAP CLOSURE A2 — `lasa` and `highAlert` are the item master's NABH safety flags, shown on the line. `lasaNote` names the look-alikes. */
+  item: { id: string; code: string; name: string; baseUom: string; uoms: UomRow[]; lasa: boolean; highAlert: boolean; lasaNote: string | null } | null;
+  /**
+   * OWNER 2026-10-02 — what to tell the patient about the medicine the counter is GIVING (the substitute's, not
+   * the ordered brand's): the how-to-take line of its generic's REVIEWED monograph. Null when the product has
+   * no generic link or its generic has no reviewed monograph — a draft is shown to nobody.
+   */
+  counselling: Counselling | null;
   saleable: boolean;
   /** PD-D18 — where this item sits in the counter's store ("R-12"), or null when nobody has said. */
   location: string | null;
@@ -411,6 +418,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
    * lines) scan to keep two rows, on the hottest path the module has. It asks for the two now.
    */
   const medicines = await medicinesByIds(db, medicineIds);
+  const counselling = await counsellingByMedicine(db, medicineIds);
   const unreviewed = await unreviewedSaltIds(db, [...medicines.values()].flatMap((m) => m.salts.map((s) => s.saltId)));
   const saltNames = await saltsByIds(db, [...new Set([...medicines.values()].flatMap((m) => m.salts.map((s) => s.saltId)))]);
   const saltOf = (m: { salts: { saltId: string }[] } | undefined): string | null => {
@@ -498,7 +506,8 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       ndpsClass: l.ndpsClass, controlled: isControlled(l),
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
       dispensedMedicine: dm === undefined ? null : { id: dm.id, brandName: dm.brandName, strengthLabel: dm.strengthLabel, form: dm.form, scheduleFlag: dm.scheduleFlag },
-      item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms, lasa: item.lasa, highAlert: item.highAlert },
+      item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms, lasa: item.lasa, highAlert: item.highAlert, lasaNote: item.lasaNote ?? null },
+      counselling: counselling.get(l.dispensedMedicineId ?? l.orderedMedicineId ?? "") ?? null,
       saleable, location: l.itemId === null ? null : (locations.get(l.itemId) ?? null), available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
       orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
       quote: item === undefined ? null : (quotes.get(item.id) ?? null),

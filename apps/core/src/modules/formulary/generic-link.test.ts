@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import { formularyGenerics, formularyMedicines } from "../../kernel/db/schema";
-import { linkMedicinesToGenerics, monographForMedicine } from "./generic-link";
+import { counsellingByMedicine, counsellingOf, linkMedicinesToGenerics, monographForMedicine } from "./generic-link";
 import { reviewMonograph, saveMonograph } from "./monographs";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -60,6 +60,29 @@ describe("a product knows its generic: the link the bundle carries and the catal
     // A second run finds nothing left to do.
     expect(await link([{ medicineSctid: "B-HERPEX", genericSctid: VAL }])).toEqual({ pairs: 1, linkedBrands: 0, linkedOwnRows: 0, unknownGeneric: 0 });
     expect(await linkOf(herpex)).toBe(ACV);
+  });
+
+  it("the counselling line is the patient section's own `counselling`, else its how-to-take answer, else nothing", () => {
+    expect(counsellingOf({ counselling: { en: " Dissolve in 25 ml water. ", hi: "25 मिली पानी में घोलें।" }, plain_language_faqs: [{ intent: "how_to_take", answer_en: "ignored" }] }))
+      .toEqual({ en: "Dissolve in 25 ml water.", hi: "25 मिली पानी में घोलें।" });
+    expect(counsellingOf({ plain_language_faqs: [{ intent: "alcohol", answer_en: "Avoid." }, { intent: "how_to_take", answer_en: "With food." }] })).toEqual({ en: "With food.", hi: null });
+    expect(counsellingOf({ counselling: { en: "   " } })).toBeNull();
+    expect(counsellingOf({ counselling: "take it", plain_language_faqs: "none" })).toBeNull();
+    expect(counsellingOf({ plain_language_faqs: [{ intent: "how_to_take", answer_en: 5 }] })).toBeNull();
+    expect(counsellingOf(null)).toBeNull();
+  });
+
+  it("counselling for many products at once comes only from reviewed monographs of linked products", async () => {
+    await generic(ACV, "Acyclovir 800 mg dispersible oral tablet");
+    await generic(VAL, "Valacyclovir 500 mg oral tablet");
+    const herpex = await medicine("Herpex 800 DT", "B-HERPEX", ACV);
+    const valcivir = await medicine("Valcivir 500", "B-VALCIVIR", VAL);
+    const tonic = await medicine("Some Tonic", "B-TONIC");
+    const reviewed = await withTx(db, (tx) => saveMonograph(tx, PHARMACIST, { genericSctid: ACV, sourceVersion: "1.25", patient: { counselling: { en: "Dissolve in 25 ml water." } } }));
+    await withTx(db, (tx) => reviewMonograph(tx, PHYSICIAN, reviewed.monographId));
+    await withTx(db, (tx) => saveMonograph(tx, PHARMACIST, { genericSctid: VAL, sourceVersion: "1.25", patient: { counselling: { en: "A draft nobody reviewed." } } }));
+    expect(await counsellingByMedicine(db, [herpex, valcivir, tonic])).toEqual(new Map([[herpex, { en: "Dissolve in 25 ml water.", hi: null }]]));
+    expect(await counsellingByMedicine(db, [])).toEqual(new Map());
   });
 
   it("a brand reads its generic's monograph only once that is reviewed; an unlinked product reads none", async () => {

@@ -316,4 +316,22 @@ describe("the line list at the window (PD-4)", () => {
     expect(screen.queryByTestId("desk-line-2-lasa")).toBeNull();
     expect(screen.queryByTestId("desk-line-2-high-alert")).toBeNull();
   });
+
+  it("the line says what to tell the patient, in English and Hindi, when a reviewed monograph has it; the LASA pill names the look-alikes", async () => {
+    const lines = [
+      { ...lineOf(0, { drug: "Herpex 800 DT", item: { id: "it0", code: "C0", name: "Herpex 800 DT", baseUom: "tablet", uoms: [], lasa: true, lasaNote: "aciCLOVIR vs ganCICLOVIR" } }), counselling: { en: "Dissolve in 25 ml water before taking.", hi: "लेने से पहले 25 मिली पानी में घोलें।" } },
+      { ...lineOf(1, { drug: "Losar 50", item: { id: "it1", code: "C1", name: "Losar 50", baseUom: "tablet", uoms: [], lasa: true } }), counselling: { en: "Take in the morning.", hi: null } },
+      lineOf(2, { drug: "Cetzine 10" }),
+    ];
+    mockRoutes(base(() => dispense("claimed", lines)));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const told = await screen.findByTestId("desk-line-0-counselling");
+    expect(told).toHaveTextContent("Tell the patient");
+    expect(told).toHaveTextContent("Dissolve in 25 ml water before taking.");
+    expect(told).toHaveTextContent("लेने से पहले 25 मिली पानी में घोलें।");
+    expect(screen.getByTestId("desk-line-1-counselling")).toHaveTextContent("Take in the morning.");
+    expect(screen.queryByTestId("desk-line-2-counselling")).toBeNull();
+    expect(screen.getByTestId("desk-line-0-lasa")).toHaveAttribute("title", expect.stringMatching(/aciCLOVIR vs ganCICLOVIR/));
+    expect(screen.getByTestId("desk-line-1-lasa")).toHaveAttribute("title", expect.stringMatching(/read the strip against the prescription twice\.$/));
+  });
 });
