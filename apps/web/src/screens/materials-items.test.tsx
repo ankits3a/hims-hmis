@@ -192,6 +192,8 @@ describe("MaterialsItems", () => {
     await user.clear(hsn);
     await user.type(hsn, "30049011");
     await user.selectOptions(screen.getByLabelText("Storage"), "cold_2_8");
+    await user.type(screen.getByLabelText("Manufacturer"), "Cipla Ltd");
+    await user.type(screen.getByLabelText("Marketed by"), "Cipla Health Ltd");
     await user.type(screen.getByLabelText("Supplier lead time (days)"), "5");
     await user.click(screen.getByLabelText("Look-alike / sound-alike (LASA)"));
     await user.click(screen.getByLabelText("High-alert medicine"));
@@ -199,7 +201,7 @@ describe("MaterialsItems", () => {
 
     expect(await screen.findByText("CROC500 saved.")).toBeInTheDocument();
     expect(bodiesOf("PATCH", "/materials/items/it-1")).toEqual([{
-      hsnCode: "30049011", storageClass: "cold_2_8", shelfLifeDays: 1095, manufacturer: null, leadTimeDays: 5, lasa: true, highAlert: true,
+      hsnCode: "30049011", storageClass: "cold_2_8", shelfLifeDays: 1095, manufacturer: "Cipla Ltd", marketedBy: "Cipla Health Ltd", leadTimeDays: 5, lasa: true, highAlert: true,
     }]);
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/formulary/medicines/"))).toBe(false);
   });
