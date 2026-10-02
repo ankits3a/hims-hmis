@@ -1119,7 +1119,7 @@
     },
     "monograph": {
       "title": "Drug monograph",
-      "intro": "What a generic is for, told to the patient, the prescriber and the ward nurse, with its Jan Aushadhi benchmark and renal dose bands. Saving writes a draft, and a draft is shown to nobody. A second person reviews it.",
+      "intro": "What a generic is for, told to the patient, the prescriber and the ward nurse, with its Jan Aushadhi benchmark and renal dose bands. The pharmacy writes a draft, and a draft is shown to nobody. A physician reviews it.",
       "searchLabel": "Find a generic",
       "searchPlaceholder": "Type a generic name, e.g. acyclovir",
       "hit": {
@@ -1128,7 +1128,7 @@
         "reviewed": "reviewed"
       },
       "statusNone": "No monograph yet. Nothing is shown to anyone.",
-      "statusDraft": "Draft. Not shown to anyone until a second person reviews it.",
+      "statusDraft": "Draft. Not shown to anyone until a physician reviews it.",
       "statusReviewed": "Reviewed on {{date}}. Shown to readers. Saving an edit makes it a draft again.",
       "document": "Paste the whole specification document (JSON)",
       "split": "Split into sections",
@@ -1156,7 +1156,7 @@
       "bandAdd": "Add a band",
       "bandRemove": "Remove",
       "save": "Save as draft",
-      "savedDraft": "Saved as a draft. Ask a second person to review it.",
+      "savedDraft": "Saved as a draft. Ask the reviewing physician to review it.",
       "review": "Review and publish",
       "reviewedNow": "Reviewed. It is now shown to readers."
     }
@@ -10312,6 +10312,7 @@
         "master": "Item master",
         "sells": "What the counter sells · GST slab",
         "formulary": "Formulary",
+        "monographs": "Drug monographs",
         "duplicates": "Duplicates & merge",
         "labels": "Rack & strip labels",
         "h1": "H1 register",

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "../lib/auth";
 import {
   fetchMonographDraft, formularyErrorMessage, reviewMonograph, saveMonograph, searchMonographGenerics,
 } from "../lib/formulary-api";
@@ -24,11 +25,16 @@ const bound = (v: string): number | null => (v.trim() === "" ? null : Number(v))
  * JSON object, so this door takes them as JSON: paste the whole document and split it, or paste a section into
  * its own box. The renal dose bands are typed as rows, because a check will compute on them.
  *
- * Saving writes a DRAFT, and a draft is shown to nobody. A second person opens it here and reviews it; the
- * server refuses the person who wrote it. Saving an edit to a reviewed monograph makes it a draft again.
+ * Saving writes a DRAFT, and a draft is shown to nobody. The pharmacy writes; a physician holding
+ * `formulary.monograph.review` opens it here and reviews it (Drugs and Therapeutics Committee practice), and
+ * the server still refuses the person who wrote it. Saving an edit to a reviewed monograph makes it a draft again.
  */
 export function FormularyMonograph(): React.ReactElement {
   const { t } = useTranslation();
+  // The pharmacy writes (`formulary.manage`); a physician reviews (`formulary.monograph.review`). The server holds both rules.
+  const { can } = useAuth();
+  const canWrite = can("formulary.manage");
+  const canReview = can("formulary.monograph.review");
   const [q, setQ] = useState("");
   const [ask, setAsk] = useState("");
   const [picked, setPicked] = useState<WireGenericHit | null>(null);
@@ -180,8 +186,8 @@ export function FormularyMonograph(): React.ReactElement {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" data-testid="monograph-save" onClick={() => void save()}>{t("formularyAdmin.monograph.save")}</Button>
-            {held != null && held.status === "draft" && (
+            {canWrite && <Button type="button" size="sm" data-testid="monograph-save" onClick={() => void save()}>{t("formularyAdmin.monograph.save")}</Button>}
+            {canReview && held != null && held.status === "draft" && (
               <Button type="button" size="sm" variant="outline" data-testid="monograph-review" onClick={() => void review()}>{t("formularyAdmin.monograph.review")}</Button>
             )}
           </div>
