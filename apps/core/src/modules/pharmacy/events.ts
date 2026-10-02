@@ -337,6 +337,14 @@ export const trayRestocked = defineEvent("trays.restocked", MODULE, z.object({
   checkId: id, trayId: id, transferId: id, units: z.number().int().positive(),
 }));
 
+/**
+ * OWNER RULING 2026-10-02 — a pharmacy desk setting changed: which one, what it was, what it is now,
+ * and (on the envelope) who changed it. "Who switched quick desk mode on, and when" is the question.
+ */
+export const pharmacySettingsChanged = defineEvent("pharmacy_settings.changed", MODULE, z.object({
+  setting: z.enum(["quick_desk"]), from: z.boolean(), to: z.boolean(),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, paperRxEntered, paperRxVisitOpened, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -349,4 +357,5 @@ export const PHARMACY_EVENTS = [
   adrReported, adrEventRecorded, incidentRecorded, incidentEventRecorded,
   coldUnitSaved, coldReadingRecorded, coldExcursionClosed,
   traySaved, trayTemplateSaved, trayChecked, trayRestocked,
+  pharmacySettingsChanged,
 ] as const;

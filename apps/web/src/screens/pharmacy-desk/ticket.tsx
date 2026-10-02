@@ -30,8 +30,10 @@ function rxLinesOf(d: WireDispense): WireDispense["lines"] {
 
 export function TicketPanel({
   inHand, loading, loadError, me, candidates, error, note, busy, handOverError, takenLabel, onFind, onTake, onClear, onCollect, onDecline, onHandOver,
-  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null,
+  onOpenSlip, onConfirmSlip, queue, onShowLine, autoPrint = false, onFocusDrug, onLiveQty, paperDoor = null, registerDoor = null, quick = false,
 }: {
+  /** Owner ruling 2026-10-02 — quick desk mode: no slip to see, none to confirm (`settings.ts` on the server). */
+  quick?: boolean;
   inHand: WireDispense | null;
   loading: boolean;
   loadError: string | null;
@@ -166,7 +168,7 @@ export function TicketPanel({
   const partlyRead = inHand.lines.filter((l) => l.status === "open" && l.partlyChecked === true).length;
   /* E28 — typed from paper and not yet confirmed: the attestation is asked for FIRST, not at the till. */
   const typed = inHand.transcribedBy != null;
-  const slipOwed = typed && inHand.slipConfirmedBy == null;
+  const slipOwed = !quick && typed && inHand.slipConfirmedBy == null;
   return (
     <div data-testid="desk-ticket">
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -177,7 +179,7 @@ export function TicketPanel({
         {h1Lines.length > 0 ? <span className="pill rd">{t("pharmacyDesk.h1On", { lines: h1Lines.join(", ") })}</span> : null}
         <span style={{ flexGrow: 1 }} />
         {/* While the cross-check is owed the banner carries this control; one control, not two. */}
-        {typed && !slipOwed ? <button className="sec" onClick={onOpenSlip}>{t("pharmacyDesk.slip.see")} <span className="kb">S</span></button> : null}
+        {typed && !slipOwed && !quick ? <button className="sec" onClick={onOpenSlip}>{t("pharmacyDesk.slip.see")} <span className="kb">S</span></button> : null}
         {/* Return / cancel — the ticket's exceptions behind ⋯ (`returns.tsx`). */}
         <TicketMenu dispense={inHand} />
       </div>

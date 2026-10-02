@@ -13,7 +13,8 @@ import { assertStewardApprovals, prescriberUserOf } from "./antimicrobial";
 import { assertControlledLinesAllowed, controlOf } from "./controlled";
 import { dispenseCancelled, dispenseLineDeclined, dispenseVerified, lineResolved, substitutionRecorded } from "./events";
 import { PharmacyError } from "./errors";
-import { requireRegisteredPharmacist } from "./pharmacists";
+import { currentRegistration, requireRegisteredPharmacist } from "./pharmacists";
+import { quickDeskOn } from "./settings";
 import { authorisedKeysFor } from "./authorisation-reads";
 import { gstCategoryMap } from "./bill";
 import { lastKnownQuote, quoteItem } from "./quote";
@@ -443,7 +444,10 @@ export async function verifyDispense(
       asks whether the person holds a current state council registration. A refusal rolls the
       order back with everything else in this transaction.
     */
-    const registration = await requireRegisteredPharmacist(tx, actor, now);
+    // Owner ruling 2026-10-02 — quick desk mode (`settings.ts`): the number is recorded when there is one, never demanded.
+    const registration = (await quickDeskOn(tx))
+      ? (actor.type === "user" ? await currentRegistration(tx, actor.id, istDateOf(now)) : null)
+      : await requireRegisteredPharmacist(tx, actor, now);
     for (const [i, s] of settled.entries()) {
       await tx.update(pharmacyDispenseLines).set({
         qtyBase: s.qtyBase, dispensedMedicineId: s.dispensedMedicineId, itemId: s.itemId, orderItemId: placed.itemIds[i]!,
@@ -478,7 +482,7 @@ export async function verifyDispense(
         allergyHits: outcome.allergyMatches.length, interactionHits: outcome.interactions.length, substitutions,
         // P3: "0 hits" is only as good as what the checks could see.
         partlyCheckedLineIdxs: outcome.unreviewedLineIndexes.map(origIdx),
-        pharmacistRegNo: registration.registrationNo,
+        pharmacistRegNo: registration?.registrationNo ?? null,
       },
     }));
   });
