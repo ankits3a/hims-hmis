@@ -11,6 +11,7 @@ import { PharmacyError } from "./errors";
 import { gstCategoryMap, priceBatchLine } from "./bill";
 import { residueLinesOf } from "./bill-rows";
 import { requireRegisteredPharmacist } from "./pharmacists";
+import { quickDeskOn } from "./settings";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -66,7 +67,9 @@ export type ReturnedLine = { lineIdx: number; qtyBase: number; batchId: string; 
  * uses. P19b shares it.
  */
 export async function requireReturnTaker(db: Db, actor: Actor, now: Date): Promise<void> {
-  await requireRegisteredPharmacist(db, actor, now);
+  // Owner ruling 2026-10-02 — quick desk mode (`settings.ts`) does not ask for the registration. The billing
+  // permissions below stay, and the refund is still only REQUESTED: billing's approval pays it.
+  if (!(await quickDeskOn(db))) await requireRegisteredPharmacist(db, actor, now);
   for (const permission of ["billing.credit_note.issue", "billing.refund.request"] as const) {
     if (actor.type !== "user" || !(await hasPermission(db, actor.id, permission, "hospital"))) {
       throw new PharmacyError("permission_denied", `a return raises a credit note and a refund request, which needs ${permission}`);

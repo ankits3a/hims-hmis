@@ -2903,7 +2903,7 @@
       "whenOn": "On: the desk skips the three checks below. Staff find the patient, choose the doctor, add medicines and bill.",
       "skips": {
         "photo": "No photo of the paper prescription is asked for, even for a Schedule H or H1 medicine.",
-        "registration": "The person at the counter does not need a state council registration on file to verify or hand over.",
+        "registration": "The person at the counter does not need a state council registration on file to verify, hand over, take medicine back or ask for a refund. A refund is paid only after it is approved.",
         "slip": "No “See the slip” or “Confirmed against the slip” step before the bill."
       },
       "stays": "Still applies: staff need the desk’s billing and Schedule H permissions; Schedule X and narcotic medicines are refused on paper; allergy and severe-interaction blocks; the H1 register is written at hand-over.",

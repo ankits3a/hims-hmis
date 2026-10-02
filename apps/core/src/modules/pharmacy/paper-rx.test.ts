@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON2, MON3, addAllergy, openVisitWithoutRx, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
-import { events, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, orders, patientDocuments, pharmacyRegH1, stockBalances } from "../../kernel/db/schema";
+import { events, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, orders, patientAllergies, patientDocuments, pharmacyRegH1, stockBalances } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { registerItem } from "../materials";
 import { chargeOrphans } from "../billing";
@@ -60,6 +60,18 @@ describe("dispense from a paper prescription at the desk (2026-09-30)", () => {
   async function visitWithoutRx(): Promise<string> {
     return (await openVisitWithoutRx(db, fx)).id;
   }
+
+  /* Owner, staging 2026-10-02: "why am I seeing even the crossed (deleted) allergies … in pharmacy desk screen?" */
+  it("the ticket's allergy pills are the ACTIVE allergies — one marked entered in error is not shown", async () => {
+    await visitWithoutRx();
+    await addAllergy(db, fx.patient.id, "Peanuts");
+    await addAllergy(db, fx.patient.id, "Dust");
+    await db.update(patientAllergies).set({ status: "entered_in_error" }).where(eq(patientAllergies.substance, "Dust"));
+    const d = await enterPaperPrescription(db, testCfg, store, fx.pharmacist.actor, {
+      patientId: fx.patient.id, rxDate: RX_DATE, lines: [{ itemId: fx.item.crocin, qtyBase: 5 }],
+    }, MON2);
+    expect(d.allergies.map((a) => a.substance)).toEqual(["Peanuts"]);
+  });
 
   /* Owner, staging 2026-10-01: a registered patient must show as the pharmacist types the name. */
   it("as the pharmacist types: a registered patient is suggested by part of the name; a token or a QR is never a name", async () => {
