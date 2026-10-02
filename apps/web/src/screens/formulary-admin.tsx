@@ -7,7 +7,6 @@ import {
 } from "../lib/formulary-api";
 import { Button } from "@/components/ui/button";
 import { MappingWorklist } from "../components/mapping-worklist";
-import { FormularyMonograph } from "./formulary-monograph";
 import { FormularyStewardship } from "./formulary-stewardship";
 import { OfficeHead, fieldCls } from "./pharmacy-office/office-page";
 import { Sheet } from "./pharmacy-office/sheet";
@@ -602,9 +601,6 @@ export function FormularyAdmin(): React.ReactElement {
 
       {/* STAGE D5 — a product's WHO AWaRe class and whether it needs the antimicrobial steward's approval. */}
       <FormularyStewardship />
-
-      {/* The drug monograph (owner 2026-10-02): four tellings of a generic and its renal bands, written as a draft and reviewed by a second person. */}
-      <FormularyMonograph />
 
       {/*
         ——— WHAT IS ALREADY STOCKED: COLLAPSED, PAGED, AND FREE UNTIL SOMEBODY OPENS IT ———
