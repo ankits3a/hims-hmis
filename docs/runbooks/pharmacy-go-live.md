@@ -249,9 +249,9 @@ A blank slab still bills as exempt.
 >   - a batch with under 30 days to expiry, or recalled. Quarantine that one instead.
 >   - more than was dispensed, net of earlier returns.
 
-## 4. What refuses, and why — all 133 codes
+## 4. What refuses, and why — all 134 codes
 
-`errors.ts` declares 133, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
+`errors.ts` declares 134, and `modules/pharmacy/runbook-parity.test.ts` fails if this heading or the
 table falls behind it. The table used to name 13, and the drill above provokes several of the
 missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/en.json` under
 `pharmacyErrors.*`; that file and `errors.ts` are pinned against each other in BOTH directions by
@@ -310,6 +310,7 @@ missing ones. Every code's patient-facing sentence is in `apps/web/src/locales/e
 | `fefo_override_unavailable` | a named batch is the wrong item, is recalled, or cannot cover the quantity | check the carton, or let FEFO choose |
 | `slip_not_confirmed` | the prescription was typed from the doctor's paper slip and nobody has checked it against the slip | check the lines against the slip (the photo on the visit, or the patient's paper), confirm, then bill |
 | `credit_not_available` | the bill asked to use more pharmacy credit than the patient holds, or a return was to be kept as credit on a bill with no paid money free (unpaid, or a refund already claimed it) | use the credit the bill rail shows, or take the return as a refund request instead |
+| `standing_discount_refused` | a standing discount on a sale item was set above 25% (the in-charge's limit), below zero, or with a fraction of a basis point | set it between 0% and 25%; a larger discount is the owner's and is asked on the bill |
 | `invalid_day` · `invalid_range` | the counter's day (P7) or the H1 register's period (P9) is not a real date, runs backwards, or covers more than 31 days | choose the date or the month again |
 | `scan_unknown` · `scan_wrong_item` · `scan_batch_unknown` · `scan_batch_mismatch` | a pack scanned at the pick (P13): a code no item carries, another medicine's pack, a batch the counter does not hold, or a printed expiry that disagrees with the books | register the barcode at `/materials/items`, or pick without scanning; put the wrong pack back; check the GRN |
 | `invoice_not_settled` | the money moved BACK after billing — a reversed allocation or a credit note | send the patient to the billing desk; the drug does not leave unpaid |

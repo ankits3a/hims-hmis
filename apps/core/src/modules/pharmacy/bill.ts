@@ -119,17 +119,20 @@ export async function priceBatchLine(
     regulation: regulation === undefined ? null : { ceilingPaise: regulation.ceilingPaise, mrpUom: regulation.mrpUom },
     taxRateBps: gst.exempt ? 0 : gst.rateBps,
   }, line.qtyBase);
+  // OWNER 2026-10-02 — the sale item's standing discount rides on both invoice lines of the pick (the whole
+  // packs and the loose-tablet residue), so the preview, the judged discount and the issued bill all see it.
+  const standing = sale.discountBps > 0 ? { standingDiscountBps: sale.discountBps } : {};
   return {
     winner: price.saleWinner,
     amountPaise: price.amountPaise,
     // P1: an MRP includes its GST (L1), so the bill carves the tax out of the price, never adds it.
     input: {
       lineId: newId(), serviceId: sale.serviceId, qty: line.qtyBase,
-      batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise, taxInclusive: true,
+      batchUnitPaise: price.batchUnitPaise, capUnitPaise: price.capUnitPaise, taxInclusive: true, ...standing,
     },
     residual: price.residue === null ? null : {
       lineId: newId(), serviceId: sale.serviceId, qty: price.residue.qty,
-      batchUnitPaise: price.residue.unitPaise, capUnitPaise: price.residue.unitPaise, taxInclusive: true,
+      batchUnitPaise: price.residue.unitPaise, capUnitPaise: price.residue.unitPaise, taxInclusive: true, ...standing,
     },
   };
 }

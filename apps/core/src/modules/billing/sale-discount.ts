@@ -71,6 +71,44 @@ export function saleDiscountShares(input: SaleDiscountInput, grossByLine: readon
   return out;
 }
 
+/** OWNER 2026-10-02 — the source key of an item's STANDING discount (`pharmacy_sale_items.discount_bps`). */
+export const ITEM_DISCOUNT_SOURCE_KEY = "item";
+
+/** Refuses a standing discount that is not a whole number of basis points between 0 and 100%. True when any line carries one. */
+export function assertStandingDiscounts(lines: readonly InvoiceLineInput[]): boolean {
+  let any = false;
+  for (const l of lines) {
+    const bps = l.standingDiscountBps;
+    if (bps === undefined || bps === 0) continue;
+    if (!Number.isSafeInteger(bps) || bps < 0 || bps > 10000) {
+      throw new BillingError("sale_discount_refused", `a standing discount of ${String(bps)} bps is not between 0% and 100%`);
+    }
+    any = true;
+  }
+  return any;
+}
+
+/**
+ * The standing discount as a contest candidate: the line's own share of its gross. It asks for no approval
+ * here — whoever SET it on the sale item needed the authority — and it carries the fixed reason the bill and
+ * the registers print. It competes with the counter's sale discount and a member's benefit; the largest wins.
+ */
+export function itemDiscountSource(): AdjustmentSource {
+  return {
+    key: ITEM_DISCOUNT_SOURCE_KEY,
+    propose(_ctx, line, grossPaise): AdjustmentCandidate[] {
+      const bps = line.standingDiscountBps ?? 0;
+      if (bps <= 0) return [];
+      const amount = Math.min(percentAmount(grossPaise, bps), grossPaise);
+      if (amount <= 0) return [];
+      return [{
+        sourceKey: ITEM_DISCOUNT_SOURCE_KEY, ruleKey: null, kind: "percent_bps", discountCategory: null,
+        amountPaise: amount, reason: "Standing discount on this medicine", requiresApproval: false, rejected: null,
+      }];
+    },
+  };
+}
+
 export function saleDiscountSource(input: SaleDiscountInput, shares: ReadonlyMap<string, number>): AdjustmentSource {
   return {
     key: SALE_DISCOUNT_SOURCE_KEY,

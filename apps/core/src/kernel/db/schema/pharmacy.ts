@@ -61,12 +61,23 @@ export const pharmacySaleItems = pgTable(
     itemId: text("item_id").primaryKey().references(() => items.id),
     serviceId: text("service_id").notNull().references(() => services.id),
     active: boolean("active").notNull().default(true),
+    /**
+     * OWNER 2026-10-02 — THE STANDING DISCOUNT TO THE PATIENT on this medicine, in basis points off the price
+     * the counter charges (1500 = 15%). Zero is "none". It is set by the pharmacy in-charge
+     * (`pharmacy.sale_items.discount`) and capped at 25% — the in-charge's own limit under the 2026-09-30
+     * ruling; above that a discount is the owner's and is asked bill by bill. Every bill line of this item
+     * carries it as its own discount; a larger discount on the same line (the counter's, a member's) wins instead.
+     */
+    discountBps: integer("discount_bps").notNull().default(0),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("pharmacy_sale_items_service_ux").on(t.serviceId)],
+  (t) => [
+    uniqueIndex("pharmacy_sale_items_service_ux").on(t.serviceId),
+    check("pharmacy_sale_items_discount_ck", sql`${t.discountBps} between 0 and 2500`),
+  ],
 );
 
 export const pharmacyDispenses = pgTable(

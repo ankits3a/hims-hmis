@@ -75,6 +75,12 @@ export type InvoiceLineInput = {
    * `docs/superpowers/plans/2026-09-16-phase-pharmacy-p1-gst-inclusive-mrp.md`.
    */
   taxInclusive?: boolean;
+  /**
+   * OWNER 2026-10-02 — THE ITEM'S STANDING DISCOUNT, in basis points of this line's gross, set on the pharmacy
+   * sale item by the in-charge. The caller hands it down; `itemDiscountSource` (billing) turns it into one more
+   * candidate in the line's contest, so the largest benefit still wins and nothing stacks. Pharmacy lines only.
+   */
+  standingDiscountBps?: number;
 };
 
 export type AdjustmentCandidate = {

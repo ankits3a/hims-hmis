@@ -90,6 +90,8 @@ export const PHARMACY_ERROR_CODES = [
    */
   "slip_not_confirmed",
   "credit_not_available",
+  /** OWNER 2026-10-02 — a standing item discount above 25% (the in-charge's limit), below zero, or not a whole number of basis points. */
+  "standing_discount_refused",
   /**
    * THE SAME FACT AS `batch_expired`, A DIFFERENT REMEDY — which is why it is a different code.
    *
@@ -323,6 +325,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   batch_expired: 409,
   slip_not_confirmed: 409,
   credit_not_available: 409,
+  standing_discount_refused: 400,
   batch_expired_before_collection: 409,
   pharmacist_not_registered: 403,
   self_registration: 403,

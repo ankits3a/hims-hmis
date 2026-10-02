@@ -61,6 +61,35 @@ describe("PharmacyItems (16c T2)", () => {
     expect(screen.getByText("Every active drug is registered.")).toBeInTheDocument();
   });
 
+  it("the in-charge sets a standing discount to the patient; without that grant the discount is read, not typed (owner 2026-10-02)", async () => {
+    let registered = [{ ...REGISTERED[0]!, discountBps: 0 }];
+    const me = (grants: string[]): Reply => ({ status: 200, body: { actor: { type: "user", id: "u-1" }, permissions: { hospital: grants, scoped: {} } } });
+    let grants = ["pharmacy.sale_items.manage", "pharmacy.sale_items.discount"];
+    mockRoutes({
+      "GET /api/auth/me": () => me(grants),
+      "GET /api/pharmacy/sale-items": () => ({ status: 200, body: { items: registered } }),
+      "GET /api/pharmacy/sale-items/candidates": { status: 200, body: { items: [] } },
+      "PUT /api/pharmacy/sale-items/it-1/discount": () => { registered = [{ ...REGISTERED[0]!, discountBps: 1250 }]; return { status: 200, body: { ok: true } }; },
+    });
+    const first = renderWithProviders(<PharmacyItems />);
+    const box = await screen.findByLabelText("Discount % for AZI500");
+    await userEvent.type(box, "30");
+    await userEvent.click(screen.getByRole("button", { name: "Set" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("between 0% and 25%");
+    expect(bodiesOf("PUT", "/pharmacy/sale-items/it-1/discount")).toEqual([]);
+    await userEvent.clear(box);
+    await userEvent.type(box, "12.5");
+    await userEvent.click(screen.getByRole("button", { name: "Set" }));
+    await waitFor(() => expect(bodiesOf("PUT", "/pharmacy/sale-items/it-1/discount")).toEqual([{ discountBps: 1250 }]));
+    expect(await screen.findByRole("status")).toHaveTextContent("AZI500: discount to patient set to 12.5%.");
+    first.unmount();
+
+    grants = ["pharmacy.sale_items.manage"];
+    renderWithProviders(<PharmacyItems />);
+    expect(await screen.findByTestId("sale-discount-AZI500")).toHaveTextContent("12.5%");
+    expect(screen.queryByLabelText("Discount % for AZI500")).toBeNull();
+  });
+
   it("renders a refusal code as the locale's sentence, and withdraws with active:false", async () => {
     mockRoutes({
       "GET /api/pharmacy/sale-items": { status: 200, body: { items: REGISTERED } },

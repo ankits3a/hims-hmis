@@ -1212,6 +1212,13 @@
       "when": 1790965226634,
       "tag": "0172_po_line_vendor_discount",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1790966283457,
+      "tag": "0173_sale_item_standing_discount",
+      "breakpoints": true
     }
   ]
 }

@@ -347,6 +347,11 @@ export const pharmacySettingsChanged = defineEvent("pharmacy_settings.changed", 
   setting: z.enum(["quick_desk"]), from: z.boolean(), to: z.boolean(),
 }));
 
+/** OWNER 2026-10-02 — an item's standing discount to the patient was set, changed or removed (`toBps` 0). */
+export const saleItemDiscountSet = defineEvent("sale_item.discount_set", MODULE, z.object({
+  itemId: id, fromBps: z.number().int().min(0).max(2500), toBps: z.number().int().min(0).max(2500),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, paperRxEntered, paperRxVisitOpened, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -360,4 +365,5 @@ export const PHARMACY_EVENTS = [
   coldUnitSaved, coldReadingRecorded, coldExcursionClosed,
   traySaved, trayTemplateSaved, trayChecked, trayRestocked,
   pharmacySettingsChanged,
+  saleItemDiscountSet,
 ] as const;

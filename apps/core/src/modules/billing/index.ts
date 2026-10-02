@@ -52,7 +52,7 @@ export { invoiceAccrualView } from "./accrual-view";
 export type { InvoiceAccrualLine, InvoiceAccrualView } from "./accrual-view";
 export { ROUNDING_RULES, roundTotalBy, totalInvoice } from "./totals";
 export type { InvoiceTotals, RoundingRule, TaxSummaryRow } from "./totals";
-export { SALE_DISCOUNT_SOURCE_KEY } from "./sale-discount";
+export { ITEM_DISCOUNT_SOURCE_KEY, SALE_DISCOUNT_SOURCE_KEY } from "./sale-discount";
 export type { SaleDiscountInput } from "./sale-discount";
 export { creditShare } from "./credit-share";
 export { settlementState } from "./settlement";
