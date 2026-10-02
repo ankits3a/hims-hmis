@@ -101,6 +101,8 @@ const returnBody = z.object({
   sealedIntact: z.literal(true),
   reason: z.string().min(3).max(500),
   reasonClass: z.enum(["mistake", "genuine"]),
+  /** Owner ruling 2026-10-02 — `credit` keeps the amount as pharmacy credit instead of asking for a refund. */
+  settle: z.enum(["refund", "credit"]).optional(),
 });
 const pickBody = z.object({
   lines: z.array(z.object({
@@ -122,7 +124,9 @@ const billBody = z.object({
   credit: z.object({ reason: z.string().trim().min(1).max(500), approvalId: z.string().min(1).max(64) }).optional(),
   /** OWNER RULING 2026-09-30 — the sale discount, and above 10% its granted approval (`discount.ts`). */
   discount: discountOnBillSchema.optional(),
-}).refine((b) => b.tenders.length > 0 || b.credit !== undefined, { message: "a bill is paid by a tender, or on the owner's credit", path: ["tenders"] });
+  /** Owner ruling 2026-10-02 — pharmacy credit kept at a return, spent on this bill first. */
+  useCreditPaise: z.number().int().positive().optional(),
+}).refine((b) => b.tenders.length > 0 || b.credit !== undefined || b.useCreditPaise !== undefined, { message: "a bill is paid by a tender, by pharmacy credit, or on the owner's credit", path: ["tenders"] });
 /** P1 — the short book. `itemId` when the counter knows the drug; the name as said otherwise. */
 const shortBookBody = z.object({
   itemId: idSchema.optional(),

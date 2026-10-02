@@ -118,6 +118,29 @@ describe("take medicine back from a handed-over ticket", () => {
     expect(within(done).getByTestId("desk-return-approval")).toHaveTextContent("A billing manager must approve this refund");
   });
 
+  /* Owner ruling 2026-10-02 — the return's money kept as pharmacy credit: no refund request, and the sheet says so. */
+  it("keep as credit: the sheet sends settle=credit and says the amount is kept, with no approval notice", async () => {
+    mock(PERMS, handedOver, {
+      "POST /api/pharmacy/dispenses/d1/returns": { status: 200, body: { dispense: handedOver, creditNoteId: "cn9", creditNoteNo: "CN-2609-0009", refundApprovalId: null, creditNotePaise: 47_200, creditKeptPaise: 47_200 } },
+      "GET /api/billing/invoices/inv1/credit-notes": creditNotes,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-return"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    expect(within(sheet).getByTestId("return-settle-refund")).toBeChecked(); // the default is the refund
+    await user.type(within(sheet).getByTestId("return-qty-0"), "10");
+    await user.click(within(sheet).getByTestId("return-class-genuine"));
+    await user.type(within(sheet).getByTestId("return-reason"), "doctor changed it");
+    await user.click(within(sheet).getByTestId("return-sealed"));
+    await user.click(within(sheet).getByTestId("return-settle-credit"));
+    await user.click(within(sheet).getByTestId("return-submit"));
+    expect(await screen.findByTestId("desk-return-credit")).toHaveTextContent("₹472.00 kept as pharmacy credit");
+    expect(screen.queryByTestId("desk-return-approval")).toBeNull();
+    expect(posted("/d1/returns").map((c) => c.body)).toEqual([expect.objectContaining({ settle: "credit", lines: [{ lineIdx: 0, qtyBase: 10 }] })]);
+  });
+
   it("says the server's refusal in its own sentence, and how many can still come back", async () => {
     mock(PERMS, handedOver, {
       "POST /api/pharmacy/dispenses/d1/returns": { status: 409, body: { statusCode: 409, code: "return_exceeds_dispensed", message: "line 1: 5 can still come back, not 10", detail: { lineIdx: 0, left: 5 } } },
