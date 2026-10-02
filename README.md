@@ -962,6 +962,11 @@ consumes the master that dispensing curates. Note that `pharmacy` is one of the 
 creates with grants and no holders, so this mints live authority to nobody until a pharmacist
 account exists.
 
+**Permissions (owner ruling, 2026-10-02): a drug monograph is written at the pharmacy and reviewed by a physician.**
+`formulary.monograph.review` goes to `medical_superintendent` and not to `pharmacy`: the Drugs and
+Therapeutics Committee's rule is that the reviewer is not the department that wrote the text. Saving a
+monograph stays under `formulary.manage`; nothing reads a monograph until it is reviewed.
+
 **Mined data is never authority.** `formulary_staging` is a lookup dictionary, not a review queue:
 the pharmacist types a name, gets the mined record pre-filling composition and schedule, verifies,
 and admits. Nothing is bulk-approved, staging rows are invisible to every resolution path, and the

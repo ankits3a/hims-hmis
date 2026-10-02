@@ -863,6 +863,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // OWNER 2026-10-02 — the physician's review of a drug monograph the pharmacy wrote (Drugs and
+      // Therapeutics Committee practice). The pharmacy holds `formulary.manage` and NOT this: the
+      // reviewer is never the department that wrote the text.
+      "formulary.monograph.review",
       // The clinical half of Class A. CHANGE_CLASS_POLICY.A requires an approval from THIS role
       // as well as from `owner`, so a patient-journey flow cannot be activated on the strength of
       // administrative sign-off alone. No `.activate`: approving and activating stay separate.

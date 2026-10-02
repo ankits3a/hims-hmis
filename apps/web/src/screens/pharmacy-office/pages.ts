@@ -39,6 +39,8 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "items", key: "master", perms: ["materials.items.manage"], was: "/materials/items" },
   { side: "items", key: "sells", perms: ["pharmacy.sale_items.manage"], was: "/pharmacy/items" },
   { side: "items", key: "formulary", perms: ["formulary.manage"], was: "/formulary/admin" },
+  // OWNER 2026-10-02 — the pharmacy writes a drug monograph and a physician reviews it: both reach this page.
+  { side: "items", key: "monographs", perms: ["formulary.manage", "formulary.monograph.review"], was: null },
   { side: "items", key: "duplicates", perms: ["materials.items.merge"], was: null },
   { side: "items", key: "labels", perms: ["pharmacy.sale_items.manage"], was: null },
   { side: "law", key: "h1", perms: ["pharmacy.register.read"], was: "/pharmacy/registers/h1" },

@@ -7,7 +7,10 @@ import { FormularyMonograph } from "./formulary-monograph";
 type Reply = { status: number; body: unknown };
 type Handler = Reply | ((init?: RequestInit) => Reply);
 
-function mockRoutes(handlers: Record<string, Handler>): void {
+/** Who is at the screen: the pharmacy writes (`formulary.manage`), a physician reviews (`formulary.monograph.review`). */
+let grants: string[] = [];
+function mockRoutes(routes: Record<string, Handler>): void {
+  const handlers: Record<string, Handler> = { "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" }, permissions: { hospital: grants, scoped: {} } } }, ...routes };
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const handler = handlers[`${init?.method ?? "GET"} ${new URL(raw, "http://localhost").pathname}`];
@@ -52,7 +55,7 @@ async function paste(testId: string, text: string): Promise<void> {
 }
 
 describe("the drug monograph editor (owner 2026-10-02)", () => {
-  beforeEach(() => { setToken("t"); });
+  beforeEach(() => { setToken("t"); grants = ["formulary.manage"]; });
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it("a generic with no monograph: the whole document is pasted, split into its four sections, a renal band is added, and it is saved as a draft", async () => {
@@ -66,6 +69,7 @@ describe("the drug monograph editor (owner 2026-10-02)", () => {
     await pick();
     expect(await screen.findByTestId("monograph-status")).toHaveTextContent("No monograph yet");
     expect(screen.queryByTestId("monograph-review")).not.toBeInTheDocument();
+    await screen.findByTestId("monograph-save");
 
     await paste("monograph-document", JSON.stringify(DOCUMENT));
     await userEvent.click(screen.getByTestId("monograph-split"));
@@ -77,7 +81,7 @@ describe("the drug monograph editor (owner 2026-10-02)", () => {
     await userEvent.type(screen.getByTestId("monograph-band-0-max"), "10");
     await userEvent.type(screen.getByTestId("monograph-band-0-dose"), "800 mg every 12 hours");
     await userEvent.selectOptions(screen.getByTestId("monograph-band-0-severity"), "reduce");
-    await userEvent.click(screen.getByTestId("monograph-save"));
+    await userEvent.click(await screen.findByTestId("monograph-save"));
 
     await waitFor(() => expect(posted("/formulary/monographs")).toEqual([{
       genericSctid: SCTID, sourceVersion: "1.25",
@@ -87,6 +91,8 @@ describe("the drug monograph editor (owner 2026-10-02)", () => {
     }]));
     expect(await screen.findByTestId("monograph-said")).toHaveTextContent("Saved as a draft");
     await waitFor(() => expect(screen.getByTestId("monograph-status")).toHaveTextContent("Draft"));
+    // The pharmacy wrote it, and the pharmacy does not review it: no review button for `formulary.manage` alone.
+    expect(screen.queryByTestId("monograph-review")).not.toBeInTheDocument();
   });
 
   it("a section that is not valid JSON is named and nothing is sent", async () => {
@@ -99,12 +105,13 @@ describe("the drug monograph editor (owner 2026-10-02)", () => {
     await screen.findByTestId("monograph-status");
     await userEvent.type(screen.getByTestId("monograph-version"), "1.25");
     await paste("monograph-section-prescriber", "{ not json");
-    await userEvent.click(screen.getByTestId("monograph-save"));
+    await userEvent.click(await screen.findByTestId("monograph-save"));
     expect(await screen.findByRole("alert")).toHaveTextContent("For the prescriber is not valid JSON");
     expect(posted("/formulary/monographs")).toEqual([]);
   });
 
-  it("a draft is loaded into the form and reviewed; the server's refusal of the writer is shown as it was sent", async () => {
+  it("the reviewing physician reads a draft and reviews it but cannot save one; the server's refusal of the writer is shown as it was sent", async () => {
+    grants = ["formulary.monograph.review"];
     let stored: Record<string, unknown> = { ...DRAFT };
     let refuse = true;
     mockRoutes({
@@ -124,7 +131,8 @@ describe("the drug monograph editor (owner 2026-10-02)", () => {
     expect(screen.getByTestId("monograph-band-0-dose")).toHaveValue("800 mg every 12 hours");
     expect(JSON.parse((screen.getByTestId("monograph-section-patient") as HTMLTextAreaElement).value)).toEqual(DRAFT.patient);
 
-    await userEvent.click(screen.getByTestId("monograph-review"));
+    expect(screen.queryByTestId("monograph-save")).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByTestId("monograph-review"));
     expect(await screen.findByRole("alert")).toHaveTextContent("the person who wrote a monograph cannot review it");
     refuse = false;
     await userEvent.click(screen.getByTestId("monograph-review"));

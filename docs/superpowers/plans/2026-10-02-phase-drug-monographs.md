@@ -32,8 +32,13 @@ database holds what the specification lists, then "do the needful".
 - **DECIDED — nothing reads a draft.** Every save writes a draft. A second person reviews it
   (`monograph_same_actor` refuses the writer). An edit after review is a draft again. This is the answer to
   the September clinical master, whose columns were filled by drug class and held dangerous text (plan P21).
-- **DECIDED — no new permission.** Saving and reviewing both need `formulary.manage`; the two-person rule is
-  what separates them. Reading the reviewed text needs `formulary.read`.
+- **DECIDED 2026-10-02 (owner: "whatever is practised in top hospitals") — the pharmacy writes, a physician
+  reviews.** In an NABH hospital the formulary and its drug information belong to the Drugs and Therapeutics
+  Committee: a clinical pharmacist drafts, a physician member approves, and the text is looked at again every
+  year. So saving needs `formulary.manage` (pharmacy) and reviewing needs `formulary.monograph.review`, held by
+  `medical_superintendent` and not by `pharmacy`. The two-person rule stays underneath it. Reading the reviewed
+  text needs `formulary.read`. This supersedes the first build's "no new permission". The yearly re-review is
+  not built: `reviewed_at` is stored, and a "reviewed more than a year ago" list is a later reader of it.
 - **DECIDED — keyed by the generic's SNOMED CT id,** the specification's own key (`med_master_<sctid>`).
 
 ## Built
