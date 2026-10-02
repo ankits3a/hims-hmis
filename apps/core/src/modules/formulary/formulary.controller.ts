@@ -502,7 +502,7 @@ export class FormularyController {
   // ─────────────────── the drug monograph (owner 2026-10-02) ───────────────────
 
   /** The curation door's typeahead. ABOVE `monographs/:sctid`, or "generics" would be read as an id. */
-  @RequirePermission("formulary.manage", "hospital")
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
   @Get("monographs/generics")
   async monographGenerics(@Query() query: unknown): Promise<{ items: GenericHit[] }> {
     const q = parsed(medicineSearchQuery, query);
@@ -510,7 +510,7 @@ export class FormularyController {
   }
 
   /** What every reader gets: the REVIEWED monograph of a generic, or 404 while there is none. */
-  @RequirePermission("formulary.read", "hospital")
+  @RequirePermission("formulary.read", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
   @Get("monographs/:sctid")
   async monograph(@Param("sctid") sctid: string): Promise<Monograph> {
     const row = await getMonograph(this.db, sctid);
@@ -518,8 +518,8 @@ export class FormularyController {
     return row;
   }
 
-  /** The curation door: the monograph as it stands, draft or reviewed. */
-  @RequirePermission("formulary.manage", "hospital")
+  /** The curation door: the monograph as it stands, draft or reviewed. The reviewer reads the draft too. */
+  @RequirePermission("formulary.manage", "hospital", { alsoAdmits: ["formulary.monograph.review"] })
   @Get("monographs/:sctid/draft")
   async monographDraft(@Param("sctid") sctid: string): Promise<Monograph> {
     const row = await getMonograph(this.db, sctid, { includeDraft: true });
@@ -536,7 +536,8 @@ export class FormularyController {
     } catch (e) { toHttp(e); }
   }
 
-  @RequirePermission("formulary.manage", "hospital")
+  /** The physician's act (owner 2026-10-02): the pharmacy writes, `formulary.monograph.review` reviews. */
+  @RequirePermission("formulary.monograph.review", "hospital")
   @Post("monographs/:id/review")
   async reviewMonograph(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ ok: true }> {
     try {
