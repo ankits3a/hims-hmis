@@ -261,6 +261,37 @@ export function thermalPage(title: string, body: string, extraCss = ""): Rendere
   };
 }
 
+/**
+ * ═══ THE 4 × 6 INCH BILL PAGE (owner, 2026-10-02) ═══
+ *
+ * *"The invoice bill should be in 4 x 6 inch print page. I will be using dot matrix printer."* A cut
+ * sheet, not a roll: 101.6 × 152.4 mm, and BOTH dimensions are explicit, so Chromium honours the
+ * `@page` rule and paginates a long bill onto further 4 × 6 pages by itself — the relay has nothing
+ * to measure.
+ *
+ * It keeps the roll's classes (`.hd`, `.row`, `.sec`, `.ft`) so a module's body prints on either
+ * stock, and overrides what a dot-matrix head needs: pure black, no hairline thinner than 1px, a
+ * larger body size than the roll's, and no row split across a page.
+ */
+export const BILL_PAGE_MM = { widthMm: 101.6, heightMm: 152.4 } as const;
+const BILL_4X6_CSS = `
+  @page { size: 4in 6in; margin: 0; }
+  body { width: 4in; padding: 4mm 4.5mm 5mm; font-size: 10pt; line-height: 1.3; }
+  .hd .nm { font-size: 12pt; }
+  .hd .ad { font-size: 8.5pt; }
+  .row { font-size: 9.5pt; }
+  .ft { font-size: 8pt; }
+  tr, .row, .lab { break-inside: avoid; page-break-inside: avoid; }
+  .newpage { break-before: page; page-break-before: always; }
+`;
+export function billPage(title: string, body: string, extraCss = ""): RenderedDocument {
+  return {
+    title,
+    page: { ...BILL_PAGE_MM },
+    html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${THERMAL_CSS}${extraCss}${BILL_4X6_CSS}</style></head><body>${body}</body></html>`,
+  };
+}
+
 /** The identity every document repeats, because a slip that cannot be matched to a person is litter. */
 export type SlipSubject = {
   /**
