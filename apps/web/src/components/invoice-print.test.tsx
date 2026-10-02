@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test-utils";
-import { InvoicePrint } from "./invoice-print";
+import { INVOICE_4X6_PRINT_CSS, InvoicePrint } from "./invoice-print";
 import type { WireInvoice, WireInvoiceLine, WireInvoicePrint } from "../lib/billing-api";
 
 const ISSUED = "2026-08-20T05:12:00.000Z";
@@ -155,6 +155,17 @@ describe("InvoicePrint", () => {
       />,
     );
     expect(screen.getByTestId("invoice-patient")).toHaveTextContent("Asha Devi");
+  });
+
+  /* Owner, 2026-10-02: "the invoice bill should be in 4 x 6 inch print page. I will be using dot matrix printer." */
+  it("prints on a 4 × 6 inch page: its own @page rule, in flow so a long bill reaches a second page, pure black", () => {
+    expect(INVOICE_4X6_PRINT_CSS).toContain("@page { size: 4in 6in; margin: 4mm; }");
+    expect(INVOICE_4X6_PRINT_CSS).toContain("position: absolute");
+    expect(INVOICE_4X6_PRINT_CSS).toContain("color: #000 !important");
+    expect(INVOICE_4X6_PRINT_CSS).not.toMatch(/A5|148mm/);
+    const { container } = renderWithProviders(<InvoicePrint data={DATA} />);
+    expect(container.querySelector(".print-doc.invoice-4x6")).not.toBeNull();
+    expect(container.querySelector("style")?.textContent).toBe(INVOICE_4X6_PRINT_CSS);
   });
 
   it("print isolation: the root carries .print-doc, exactly one document is mounted, and the print button is chrome", async () => {
