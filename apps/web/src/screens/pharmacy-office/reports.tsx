@@ -1065,6 +1065,7 @@ function CatalogueReport({ sheet }: Bind): React.ReactElement {
     { key: "schedule", label: L("schedule"), value: (r) => r.schedule ?? "—" },
     { key: "storage", label: L("storage"), cell: "whitespace-nowrap", value: (r) => t(`pharmacyOffice.reports.storage.${r.storageClass}`, { defaultValue: r.storageClass }) },
     { key: "manufacturer", label: L("manufacturer"), value: (r) => r.manufacturer ?? "—" },
+    { key: "marketedBy", label: L("marketedBy"), value: (r) => r.marketedBy ?? "—" },
     { key: "lead", label: L("leadDays"), num: true, value: (r) => r.leadTimeDays },
     { key: "lasa", label: L("lasa"), value: (r) => yes(r.lasa) },
     { key: "highAlert", label: L("highAlert"), value: (r) => yes(r.highAlert) },

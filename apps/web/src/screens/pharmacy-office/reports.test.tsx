@@ -301,7 +301,7 @@ const catalogue = (store: string): WireCatalogue => ({
   storeCode: store === "" ? null : store, truncated: false,
   rows: [{
     id: "i-cr", code: "CROC", name: "Crocin 500", class: "consumable", hsnCode: "30049099", gstRateBps: 1200, baseUom: "tablet", storageClass: "cold_2_8",
-    manufacturer: "GSK", leadTimeDays: 3, lasa: true, highAlert: false, schedule: "OTC", packs: [{ uom: "strip", toBase: 10 }],
+    manufacturer: "GSK", marketedBy: "Haleon", leadTimeDays: 3, lasa: true, highAlert: false, schedule: "OTC", packs: [{ uom: "strip", toBase: 10 }],
     levels: store === "" ? [{ storeResourceId: "s-1", storeCode: "PHARM-OPD", minBase: 20, reorderBase: 50, maxBase: 200 }, { storeResourceId: "s-2", storeCode: "WARD-3", minBase: 5, reorderBase: 10, maxBase: 40 }]
       : [{ storeResourceId: "s-1", storeCode: "PHARM-OPD", minBase: 20, reorderBase: 50, maxBase: 200 }],
     racks: [{ storeCode: "PHARM-OPD", location: "R-12" }],
@@ -370,7 +370,7 @@ describe("the office's reports — stage C", () => {
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-catalogue"));
     const row = await screen.findByTestId("catalogue-table-row-i-cr");
-    for (const text of ["CROC", "30049099", "12%", "OTC", "Cold 2–8 °C", "GSK", "Yes"]) expect(row).toHaveTextContent(text);
+    for (const text of ["CROC", "30049099", "12%", "OTC", "Cold 2–8 °C", "GSK", "Haleon", "Yes"]) expect(row).toHaveTextContent(text);
     // Packs, levels and racks are one entry to a line, each unbroken — joined with " · " they wrapped
     // mid-entry at 1440 ("PHARM-OPD R-" / "12-B"). The export still carries the joined text.
     expect(Array.from(row.querySelectorAll("td > div.whitespace-nowrap"), (d) => d.textContent))

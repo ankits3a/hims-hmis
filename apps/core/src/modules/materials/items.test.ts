@@ -353,6 +353,19 @@ describe("the item master (Plan 14 T3)", () => {
     expect((await getItem(db, itemId))?.leadTimeDays).toBe(7);
   });
 
+  it("the maker and the marketer are two fields: each is saved and read on its own, at registration and at edit (owner 2026-10-02)", async () => {
+    const { itemId } = await withTx(db, (tx) => registerItem(tx, HEAD, {
+      code: "GLOVE-MKT", name: "Nitrile glove M", class: "consumable", baseUom: "each", batchTracked: false,
+      manufacturer: "Cipla Ltd", marketedBy: "Cipla Health Ltd",
+    }));
+    expect(await getItem(db, itemId)).toMatchObject({ manufacturer: "Cipla Ltd", marketedBy: "Cipla Health Ltd" });
+    await withTx(db, (tx) => updateItem(tx, HEAD, itemId, { marketedBy: "Torrent Pharmaceuticals Ltd." }));
+    expect(await getItem(db, itemId)).toMatchObject({ manufacturer: "Cipla Ltd", marketedBy: "Torrent Pharmaceuticals Ltd." });
+    await withTx(db, (tx) => updateItem(tx, HEAD, itemId, { marketedBy: null }));
+    expect(await getItem(db, itemId)).toMatchObject({ manufacturer: "Cipla Ltd", marketedBy: null });
+    expect(await getItem(db, await paracetamol())).toMatchObject({ marketedBy: null });
+  });
+
   it("a duplicate item code is refused case-insensitively, with a code", async () => {
     await paracetamol();
     const medicineId = await medicine("Calpol 500");

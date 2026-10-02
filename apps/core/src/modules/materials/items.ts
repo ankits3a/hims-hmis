@@ -208,6 +208,8 @@ export type RegisterItemInput = {
   vedClass?: string | null;
   /** GAP CLOSURE A2 — the marketer on the pack, the usual supplier's lead time, and the NABH safety flags. */
   manufacturer?: string | null;
+  /** The marketer on the pack, when it is not the maker (owner 2026-10-02). */
+  marketedBy?: string | null;
   leadTimeDays?: number | null;
   lasa?: boolean;
   highAlert?: boolean;
@@ -248,7 +250,7 @@ export async function registerItem(
       storageClass: input.storageClass ?? "ambient",
       shelfLifeDays: input.shelfLifeDays ?? null,
       abcClass: input.abcClass ?? null, vedClass: input.vedClass ?? null,
-      manufacturer: input.manufacturer ?? null, leadTimeDays: input.leadTimeDays ?? null,
+      manufacturer: input.manufacturer ?? null, marketedBy: input.marketedBy ?? null, leadTimeDays: input.leadTimeDays ?? null,
       lasa: input.lasa ?? false, highAlert: input.highAlert ?? false,
       createdBy: actor.id, updatedBy: actor.id,
     });
@@ -302,7 +304,7 @@ export async function updateItem(
     hsnCode?: string | null; gstRateBps?: number | null; serialTracked?: boolean;
     storageClass?: string; shelfLifeDays?: number | null;
     abcClass?: string | null; vedClass?: string | null; active?: boolean;
-    manufacturer?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
+    manufacturer?: string | null; marketedBy?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
   },
 ): Promise<void> {
   const existing = await requireItem(tx, itemId);

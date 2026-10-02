@@ -201,6 +201,13 @@ export const items = pgTable(
      * flag is "nobody has said so", never "safe".
      */
     manufacturer: text("manufacturer"),
+    /**
+     * OWNER 2026-10-02 — the maker and the marketer are two companies on a pack ("Mfd. by Cipla Ltd",
+     * "Mktd. by Cipla Health Ltd"), so they are two fields. `manufacturer` is the maker; this is the marketer.
+     * Free text, null when nobody has entered it. Rows written before this column hold whatever one name
+     * was on file in `manufacturer`, and nothing moves them.
+     */
+    marketedBy: text("marketed_by"),
     leadTimeDays: integer("lead_time_days"),
     lasa: boolean("lasa").notNull().default(false),
     highAlert: boolean("high_alert").notNull().default(false),

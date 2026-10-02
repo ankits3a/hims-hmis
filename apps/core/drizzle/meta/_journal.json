@@ -1177,6 +1177,13 @@
       "when": 1790945061580,
       "tag": "0167_pharmacy_credit_moves",
       "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1790952414757,
+      "tag": "0168_item_marketed_by",
+      "breakpoints": true
     }
   ]
 }

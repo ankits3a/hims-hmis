@@ -179,7 +179,8 @@ const itemCreateBody = z.object({
   serialTracked: z.boolean().optional(), storageClass: z.string().max(32).optional(),
   shelfLifeDays: z.number().int().positive().nullish(),
   abcClass: z.string().max(4).nullish(), vedClass: z.string().max(4).nullish(),
-  manufacturer: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)), leadTimeDays: z.number().int().min(1).max(365).nullish(),
+  manufacturer: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)),
+  marketedBy: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)), leadTimeDays: z.number().int().min(1).max(365).nullish(),
   lasa: z.boolean().optional(), highAlert: z.boolean().optional(),
   uoms: z.array(uomInput).max(20).optional(), barcodes: z.array(barcodeInput).max(20).optional(),
 });
@@ -190,7 +191,8 @@ const itemPatchBody = z.object({
   storageClass: z.string().max(32).optional(), shelfLifeDays: z.number().int().positive().nullish(),
   abcClass: z.string().max(4).nullish(), vedClass: z.string().max(4).nullish(),
   active: z.boolean().optional(),
-  manufacturer: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)), leadTimeDays: z.number().int().min(1).max(365).nullish(),
+  manufacturer: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)),
+  marketedBy: z.string().trim().max(120).nullish().transform((v) => (v === "" ? null : v)), leadTimeDays: z.number().int().min(1).max(365).nullish(),
   lasa: z.boolean().optional(), highAlert: z.boolean().optional(),
 });
 const regulationBody = z.object({
