@@ -203,6 +203,13 @@ export const formularyMedicines = pgTable(
      * a human entered through the masters screen, which is the honest answer for those.
      */
     sourceRef: text("source_ref"),
+    /**
+     * OWNER 2026-10-02 — WHICH GENERIC THIS PRODUCT IS: the generic's SNOMED CT id. A generic's own row names
+     * itself; a brand names the generic the bundle gave it. Null when nobody has said (a hand-entered product,
+     * a brand whose generic the formulary does not hold). It is how a stocked brand reaches its generic's
+     * monograph — see `modules/formulary/generic-link.ts` for why it is the release id and not a foreign key.
+     */
+    genericSctid: text("generic_sctid"),
     /** Provenance back-link, not a foreign key — see the header. */
     stagingId: text("staging_id"),
     /**
@@ -237,6 +244,7 @@ export const formularyMedicines = pgTable(
     */
     index("formulary_medicines_brand_trgm_idx").using("gin", sql`lower(${t.brandName}) gin_trgm_ops`),
     index("formulary_medicines_code_idx").using("btree", sql`lower(${t.code})`),
+    index("formulary_medicines_generic_sctid_idx").on(t.genericSctid),
     /* The free-text resolver's lane: `resolveDrugTexts` asks for a SET of normalized names. */
     index("formulary_medicines_name_norm_idx").using("btree", t.nameNormalized),
     check("formulary_medicines_route_class_ck", sql`${t.routeClass} in ('systemic', 'topical')`),
