@@ -210,6 +210,11 @@ export type RegisterItemInput = {
   manufacturer?: string | null;
   /** The marketer on the pack, when it is not the maker (owner 2026-10-02). */
   marketedBy?: string | null;
+  /** What the pack prints (owner 2026-10-02): the maker's licence, the pharmacopoeia, the LASA warning text, "store below" in °C. */
+  mfgLicenceNo?: string | null;
+  pharmacopoeia?: string | null;
+  lasaNote?: string | null;
+  storageMaxC?: number | null;
   leadTimeDays?: number | null;
   lasa?: boolean;
   highAlert?: boolean;
@@ -250,7 +255,9 @@ export async function registerItem(
       storageClass: input.storageClass ?? "ambient",
       shelfLifeDays: input.shelfLifeDays ?? null,
       abcClass: input.abcClass ?? null, vedClass: input.vedClass ?? null,
-      manufacturer: input.manufacturer ?? null, marketedBy: input.marketedBy ?? null, leadTimeDays: input.leadTimeDays ?? null,
+      manufacturer: input.manufacturer ?? null, marketedBy: input.marketedBy ?? null,
+      mfgLicenceNo: input.mfgLicenceNo ?? null, pharmacopoeia: input.pharmacopoeia ?? null,
+      lasaNote: input.lasaNote ?? null, storageMaxC: input.storageMaxC ?? null, leadTimeDays: input.leadTimeDays ?? null,
       lasa: input.lasa ?? false, highAlert: input.highAlert ?? false,
       createdBy: actor.id, updatedBy: actor.id,
     });
@@ -305,6 +312,7 @@ export async function updateItem(
     storageClass?: string; shelfLifeDays?: number | null;
     abcClass?: string | null; vedClass?: string | null; active?: boolean;
     manufacturer?: string | null; marketedBy?: string | null; leadTimeDays?: number | null; lasa?: boolean; highAlert?: boolean;
+    mfgLicenceNo?: string | null; pharmacopoeia?: string | null; lasaNote?: string | null; storageMaxC?: number | null;
   },
 ): Promise<void> {
   const existing = await requireItem(tx, itemId);

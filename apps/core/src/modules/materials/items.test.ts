@@ -366,6 +366,21 @@ describe("the item master (Plan 14 T3)", () => {
     expect(await getItem(db, await paracetamol())).toMatchObject({ marketedBy: null });
   });
 
+  it("the pack's own facts are saved and read: the maker's licence number, the pharmacopoeia, the LASA warning and the storage ceiling; the DB refuses a ceiling outside -80 to 60 °C (owner 2026-10-02)", async () => {
+    const itemId = await paracetamol();
+    expect(await getItem(db, itemId)).toMatchObject({ mfgLicenceNo: null, pharmacopoeia: null, lasaNote: null, storageMaxC: null });
+    await withTx(db, (tx) => updateItem(tx, HEAD, itemId, { mfgLicenceNo: "M/563/2010", pharmacopoeia: "IP", lasaNote: "aciCLOVIR vs ganCICLOVIR", storageMaxC: 25 }));
+    expect(await getItem(db, itemId)).toMatchObject({ mfgLicenceNo: "M/563/2010", pharmacopoeia: "IP", lasaNote: "aciCLOVIR vs ganCICLOVIR", storageMaxC: 25 });
+    await expect(withTx(db, (tx) => updateItem(tx, HEAD, itemId, { storageMaxC: 61 }))).rejects.toThrow();
+    await expect(withTx(db, (tx) => updateItem(tx, HEAD, itemId, { storageMaxC: -81 }))).rejects.toThrow();
+    expect((await getItem(db, itemId))?.storageMaxC).toBe(25);
+    const { itemId: glove } = await withTx(db, (tx) => registerItem(tx, HEAD, {
+      code: "GLOVE-FACTS", name: "Nitrile glove L", class: "consumable", baseUom: "each", batchTracked: false,
+      mfgLicenceNo: "MFG/1", pharmacopoeia: "BP", lasaNote: null, storageMaxC: 30,
+    }));
+    expect(await getItem(db, glove)).toMatchObject({ mfgLicenceNo: "MFG/1", pharmacopoeia: "BP", lasaNote: null, storageMaxC: 30 });
+  });
+
   it("a duplicate item code is refused case-insensitively, with a code", async () => {
     await paracetamol();
     const medicineId = await medicine("Calpol 500");

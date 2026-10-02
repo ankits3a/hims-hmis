@@ -1184,6 +1184,13 @@
       "when": 1790952414757,
       "tag": "0168_item_marketed_by",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1790953354583,
+      "tag": "0169_item_pack_facts",
+      "breakpoints": true
     }
   ]
 }

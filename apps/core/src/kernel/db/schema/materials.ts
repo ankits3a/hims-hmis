@@ -208,6 +208,20 @@ export const items = pgTable(
      * was on file in `manufacturer`, and nothing moves them.
      */
     marketedBy: text("marketed_by"),
+    /**
+     * OWNER 2026-10-02 — what the pack itself prints, kept on the item so a recall notice, an inspector and the
+     * counter read it without the strip in hand. All four are null until somebody enters them: an unset value
+     * is "nobody has said so".
+     *   - `mfg_licence_no`: the maker's manufacturing licence ("Mfg. Lic. No. M/563/2010").
+     *   - `pharmacopoeia`: the standard the label claims — IP, BP, USP … Free text: the set is the label's, not ours.
+     *   - `lasa_note`: WHICH names this one is confused with, in tall-man letters ("aciCLOVIR vs ganCICLOVIR").
+     *     `lasa` stays the flag; this is the sentence a pharmacist reads beside it.
+     *   - `storage_max_c`: "store below 25 °C" as a number. `storage_class` stays the category the cold chain keys on.
+     */
+    mfgLicenceNo: text("mfg_licence_no"),
+    pharmacopoeia: text("pharmacopoeia"),
+    lasaNote: text("lasa_note"),
+    storageMaxC: integer("storage_max_c"),
     leadTimeDays: integer("lead_time_days"),
     lasa: boolean("lasa").notNull().default(false),
     highAlert: boolean("high_alert").notNull().default(false),
@@ -236,6 +250,7 @@ export const items = pgTable(
      */
     check("items_merged_ck", sql`(${t.mergedIntoItemId} is null) = (${t.mergedAt} is null) and (${t.mergedIntoItemId} is null or (${t.mergedIntoItemId} <> ${t.id} and not ${t.active}))`),
     check("items_class_ck", sql`${t.class} in ('drug', 'consumable', 'consumable_dated', 'reagent', 'implant', 'stationery', 'linen', 'gas', 'asset', 'service')`),
+    check("items_storage_max_c_ck", sql`${t.storageMaxC} is null or ${t.storageMaxC} between -80 and 60`),
     check("items_lead_time_ck", sql`${t.leadTimeDays} is null or ${t.leadTimeDays} between 1 and 365`),
     check("items_storage_class_ck", sql`${t.storageClass} in ('ambient', 'cold_2_8', 'frozen', 'narcotic', 'flammable')`),
     /**
