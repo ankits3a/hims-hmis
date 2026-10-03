@@ -4,7 +4,7 @@ import { openSessionFor } from "../../../test/helpers/billing";
 import { MON, MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
 import { approvals, events, pharmacyCreditMoves } from "../../kernel/db/schema";
-import { advanceOf, invoiceSettlement, listCreditNotes } from "../billing";
+import { advanceOf, getInvoice, invoiceSettlement, listCreditNotes } from "../billing";
 import { billDispense, previewDispenseBill } from "./bill";
 import { claimDispense, findAtCounter } from "./claim";
 import { closingFor } from "./closing";
@@ -114,6 +114,38 @@ describe("pharmacy credit kept from a return (owner ruling 2026-10-02)", () => {
     const paper = await dispensePaper(db, fx.pharmacist.actor, next.id, later(2));
     expect(paper.html).toContain("Credit from earlier return");
     expect(paper.html).toContain("Balance paid");
+  });
+
+  /*
+   * Owner 2026-10-03 — "in case of use of credit note, the hospital is double charging the GST". The owner's
+   * case: ₹100 + 5% = ₹105 sold, returned as credit; next day ₹200 + 5% = ₹210, ₹105 of it from the credit.
+   * The credit note REVERSES the first bill's GST; the credit is spent as MONEY (a payment), not as a
+   * discount, so the second bill's GST is on what is supplied that day; over both days the hospital owes
+   * GST once, on what the patient kept.
+   */
+  it("GST is not charged twice: the credit note reverses the first bill's tax, and the credit pays the second bill as money", async () => {
+    const first = await picked(10);
+    const firstBill = await billDispense(db, fx.pharmacist.actor, first.id, { tenders: [{ mode: "cash", amountPaise: first.net }] }, MON2);
+    await handOverDispense(db, fx.pharmacist.actor, fx.decls, first.id, {}, MON3);
+    const ret = await takeBack(first.id, 10, "credit");
+    const inv1 = (await getInvoice(db, firstBill.invoiceId!))!.invoice;
+    const [note] = await listCreditNotes(db);
+    const tax1 = inv1.cgstPaise + inv1.sgstPaise;
+    expect(tax1).toBeGreaterThan(0);
+    expect(ret.creditKeptPaise).toBe(first.net); // all ₹105 kept as credit
+    expect(note!.cgstPaise + note!.sgstPaise).toBe(tax1); // the first bill's ₹5 GST is reversed in full
+
+    const next = await picked(20, later(2));
+    const nextBill = await billDispense(db, fx.pharmacist.actor, next.id, { useCreditPaise: first.net, tenders: [{ mode: "cash", amountPaise: next.net - first.net }] }, later(2));
+    const inv2 = (await getInvoice(db, nextBill.invoiceId!))!.invoice;
+    const tax2 = inv2.cgstPaise + inv2.sgstPaise;
+    // the second bill is priced on its own supply — the credit is not a discount that would shrink its tax base
+    expect(inv2.netPayablePaise).toBe(next.net);
+    expect(tax2).toBe(tax1 * 2);
+    // the patient hands over only the difference, and that cash carries no GST of its own
+    expect(await invoiceSettlement(db, inv2.id)).toMatchObject({ state: "settled", outstandingPaise: 0 });
+    // over both days: GST owed once, on the 20 tablets the patient kept (₹5 − ₹5 + ₹10 = ₹10)
+    expect(tax1 - (note!.cgstPaise + note!.sgstPaise) + tax2).toBe(tax2);
   });
 
   it("a smaller purchase is paid wholly from credit with no tender, and what is left stays as credit", async () => {
