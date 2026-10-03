@@ -38,4 +38,15 @@ describe("tools/stage.sh can only ever deploy UAT", () => {
     // auto-deploy no longer runs a uat deploy of its own that would overwrite a staged lane
     expect(auto).not.toMatch(/HMIS_TARGET=uat/);
   });
+
+  /* 2026-10-03 — an automatic reset wiped the owner's working copy of staging (every user). Never again by itself. */
+  it("never resets UAT's database unless the caller asks with STAGE_ALLOW_RESET=1", () => {
+    const calls = stage.split("\n").filter((l) => /\breset_uat\b/.test(l) && !/^\s*reset_uat\(\)/.test(l) && !/^\s*#/.test(l));
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [i, l] of calls.entries()) {
+      const at = stage.split("\n").indexOf(l);
+      const before = stage.split("\n").slice(Math.max(0, at - 2), at + 1).join("\n");
+      expect({ i, guarded: /STAGE_ALLOW_RESET:-0\}" = "1"/.test(before) }).toEqual({ i, guarded: true });
+    }
+  });
 });
