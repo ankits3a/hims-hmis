@@ -121,6 +121,31 @@ describe("billing office — Today (UX-AUDIT 2026-09-28 · BOARD)", () => {
     expect(bodiesOf("POST", "/api/billing/refunds/rv-4/pay")[0]).toEqual({ payeeName: "Sunita Verma", payeeIdType: "aadhaar" });
   });
 
+  /* Owner 2026-10-03 — an approved refund with no voucher was listed nowhere; now the office issues it here. */
+  it("an approved refund with no voucher: the office chooses how it is paid and issues the voucher", async () => {
+    const ISSUE = {
+      id: "issue:ap-7", kind: "issue_voucher", source: "PAY", state: "open", tier: 1, since: "2026-09-28T05:00:00.000Z", ageMinutes: 70, daysLeft: null, tone: "no",
+      patient: P("Abhishek Kumar", "U00110020"),
+      params: { approvalId: "ap-7", amountPaise: 77_000, note: "Bill INV-1 · credit note CN-2 — invoice_refund (mistake): wrong medicine [guard flags: none]",
+        requestedBy: "abhay.kumar", approvedBy: "admin", approvedAt: "2026-09-28T05:00:00.000Z", bankAbovePaise: 1_000_000 },
+    };
+    mockRoutes({
+      "GET /api/billing/office/needs": { status: 200, body: { ...NEEDS, rows: [ISSUE, ...NEEDS.rows] } },
+      "POST /api/billing/refunds/approved/ap-7/voucher": { status: 201, body: { voucherId: "rv-9", voucherNo: "RFV/26-27/000009" } },
+    });
+    renderWithRouter(<BillingOffice />, "/billing/office");
+    const user = userEvent.setup();
+    const row = await screen.findByTestId("need-issue:ap-7");
+    expect(row).toHaveTextContent("Issue the refund voucher · ₹770.00");
+    await user.click(row);
+    const steps = await screen.findByTestId("hand-steps");
+    expect(within(steps).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Refund requested", "Approved", "Issue the voucher", "The cashier pays it"]);
+    expect(screen.getByTestId("hand-act")).toHaveTextContent("Issue voucher · ₹770.00");
+    await user.click(screen.getByTestId("issue-method-bank_transfer"));
+    await user.click(screen.getByTestId("hand-act"));
+    await waitFor(() => expect(bodiesOf("POST", "/api/billing/refunds/approved/ap-7/voucher")).toEqual([{ method: "bank_transfer" }]));
+  });
+
   it("a mismatch: what the bank owed and paid in rupees, three outcomes, and the act says what it will do", async () => {
     mockRoutes({
       "GET /api/billing/office/needs": { status: 200, body: NEEDS },

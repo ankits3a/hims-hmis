@@ -472,6 +472,30 @@ export async function requestRefund(db: Db, actor: Actor, rawInput: RequestRefun
 }
 
 /**
+ * ═══ OWNER 2026-10-03 — THE VOUCHER FOR A REFUND ALREADY APPROVED, FROM THE WORKLIST ═══
+ *
+ * A refund asked from the pharmacy desk (or anywhere but the office's own request form) was approved and then
+ * sat: the office could issue its voucher only on the screen that had filed it, in the same sitting. The
+ * office's worklist now lists every granted refund approval with no voucher (`issue_voucher`), and this
+ * issues the voucher from the approval alone. The approval carries the subject, patient and amount; the
+ * kind, reason class and reason are read back off the request note `refundRequestNote` wrote. Every guard of
+ * `issueRefundVoucher` runs unchanged — this only fills in its input.
+ */
+export async function issueVoucherForApproval(db: Db, actor: Actor, approvalId: string, method: RefundMethod, now: Date = new Date()): Promise<IssueRefundVoucherResult> {
+  const a = await getApproval(db, approvalId);
+  if (a === null || a.subjectType !== REFUND_APPROVAL_SUBJECT) throw new BillingError("approval_subject_mismatch", `approval ${approvalId} is not a refund approval`);
+  const note = a.requestNote ?? "";
+  const m = /(invoice_refund|advance_refund) \((mistake|genuine)\): (.*) \[guard flags: [^\]]*\]$/.exec(note);
+  const kind = (m?.[1] ?? "invoice_refund") as RefundKind;
+  const reasonClass = (m?.[2] ?? "genuine") as RefundReasonClass;
+  const reason = (m?.[3] ?? note).trim() || "refund";
+  const common = { amountPaise: a.amountPaise ?? 0, reasonClass, reason, approvalId, method };
+  return issueRefundVoucher(db, actor, kind === "advance_refund"
+    ? { kind, patientId: a.subjectId, ...common }
+    : { kind, creditNoteId: a.subjectId, ...common }, now);
+}
+
+/**
  * D6 — the voucher. Check-on-execute against the GRANTED approval, and this STAYS
  * check-on-execute BY DESIGN even though Plan 08.5 puts the dispatcher on a clock (Global
  * Constraint 1, roadmap trap 1: the loop existing does not change it) — then GUARD 1 under a row
@@ -511,6 +535,17 @@ export async function issueRefundVoucher(
   const guardFlags = await guardFlagsFor(db, { invoiceId: target.invoiceId, creditNoteId: target.creditNoteId });
 
   return withTx(db, async (tx) => {
+    /*
+     * ONE APPROVAL, ONE VOUCHER (found 2026-10-03, building the office's issue-from-worklist door): the same
+     * granted approval issued twice made two vouchers — the same approved refund payable twice, held back
+     * only by guard 1's cap. The approval row is locked first, so two issuers queue and the second reads
+     * the first's voucher.
+     */
+    await tx.execute(sql`select id from approvals where id = ${input.approvalId} for update`);
+    const [already] = await tx.select({ voucherNo: refundVouchers.voucherNo }).from(refundVouchers).where(eq(refundVouchers.approvalId, input.approvalId));
+    if (already !== undefined) {
+      throw new BillingError("voucher_state_conflict", `this approval already issued voucher ${already.voucherNo}`, { voucherNo: already.voucherNo });
+    }
     if (input.kind === "invoice_refund") {
       const invoiceId = target.invoiceId!; // an invoice_refund always resolves one (resolveTarget)
       await lockInvoice(tx, invoiceId);

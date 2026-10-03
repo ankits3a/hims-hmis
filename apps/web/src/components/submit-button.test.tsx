@@ -171,7 +171,7 @@ const WRITE_LANES: Record<string, number> = {
   "screens/billing-session": 4, // open-submit, close-submit, confirm-close, recount-submit
   "screens/billing-office": 4, // refund-request-submit, issue-submit, recon-submit, eie-confirm-submit
   // UX-AUDIT 2026-09-28 · BOARD — pay-submit MOVED (not dropped) into the office's item-in-hand flow, which also gained the mismatch decision.
-  "screens/billing-office/hand": 2, // hand-act on a voucher (pay), hand-act on a mismatch (resolve)
+  "screens/billing-office/hand": 3, // hand-act on a voucher (pay), a mismatch (resolve), an approved refund (issue the voucher, owner 2026-10-03)
   // PHASE O T3 (2026-09-21) — 1 -> 4, read off the red run. The bell gained the three ANSWERS
   // beside the read: seen, own-30m, hand-over. Each posts to `/alerts/:id/ack`, and an ack is
   // exactly the class this convention exists for — a double-tap on "Own" would burn one of the
@@ -215,7 +215,7 @@ describe("the single-submit convention across the billing screens", () => {
     "screens/billing-dues": 5, // receipt ×2, allocation ×2, credit-note
     "screens/billing-office": 3, // refund request, issue, eie
     // UX-AUDIT 2026-09-28 · BOARD — the pay write moved here from billing-office; the mismatch decision is keyed too.
-    "screens/billing-office/hand": 2, // pay voucher, resolve mismatch
+    "screens/billing-office/hand": 3, // pay voucher, resolve mismatch, issue an approved voucher (owner 2026-10-03)
   };
 
   it("every write to an idempotency-protected route threads the attempt key through to api()", () => {

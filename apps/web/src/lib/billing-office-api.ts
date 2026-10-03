@@ -11,7 +11,7 @@ export type NeedSource = "PAY" | "APPROVE" | "RECON" | "UNBILLED" | "DAY BOOK" |
 export type NeedTone = "rd" | "gd" | "no";
 export type NeedKind =
   | "recon_mismatch" | "recon_disputed" | "recon_missing"
-  | "pay_voucher" | "approve_refund" | "refund_owner"
+  | "pay_voucher" | "issue_voucher" | "approve_refund" | "refund_owner"
   | "unbilled_visit" | "daybook_paper" | "gstr1_due";
 
 export type NeedPatient = { patientId: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
@@ -62,6 +62,10 @@ export type WirePayResult = {
   method: "cash" | "bank_transfer"; cashierSessionId: string | null; paidAt: string; status: "paid";
 };
 
+/** Owner 2026-10-03 — issue the voucher for a refund already approved (the worklist's "issue_voucher"). */
+export function issueApprovedVoucher(approvalId: string, method: "cash" | "bank_transfer", idemKey?: string): Promise<{ voucherId: string; voucherNo: string }> {
+  return api<{ voucherId: string; voucherNo: string }>("POST", `/billing/refunds/approved/${encodeURIComponent(approvalId)}/voucher`, { method }, idemKey);
+}
 export function payVoucher(voucherId: string, body: PayVoucherBody, idemKey?: string): Promise<WirePayResult> {
   return api<WirePayResult>("POST", `/billing/refunds/${encodeURIComponent(voucherId)}/pay`, body, idemKey);
 }

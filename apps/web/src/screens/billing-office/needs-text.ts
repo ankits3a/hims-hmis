@@ -36,6 +36,8 @@ export function needTitle(row: WireNeedRow, t: TFunction, locale = "en"): string
   switch (row.kind) {
     case "pay_voucher":
       return t("billingOffice.board.need.pay_voucher.title", { voucherNo: str(p.voucherNo), amount: fmtPaise(num(p.amountPaise)), method: methodWord(str(p.method), t).toLowerCase() });
+    case "issue_voucher":
+      return t("billingOffice.board.need.issue_voucher.title", { amount: fmtPaise(num(p.amountPaise)) });
     case "approve_refund":
       return t("billingOffice.board.need.approve_refund.title", { amount: fmtPaise(num(p.amountPaise)) });
     case "refund_owner":
@@ -65,6 +67,8 @@ export function needSub(row: WireNeedRow, t: TFunction): string {
   switch (row.kind) {
     case "pay_voucher":
       return p.approvedAt === null ? who : t("billingOffice.board.need.pay_voucher.sub", { patient: who, at: instantWords(str(p.approvedAt), false) });
+    case "issue_voucher":
+      return p.approvedAt === null ? who : t("billingOffice.board.need.issue_voucher.sub", { patient: who, at: instantWords(str(p.approvedAt), false), by: str(p.approvedBy) || "—" });
     case "approve_refund": case "refund_owner":
       return str(p.note) === "" ? who : `${who} · ${str(p.note)}`;
     case "recon_mismatch": case "recon_disputed":
