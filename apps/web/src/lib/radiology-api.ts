@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { messageText } from "./materials-api";
 
 /**
  * PLAN 18a T9 — the imaging department's wire contract, transcribed from the five
@@ -334,8 +335,9 @@ export function radiologyErrorDetail(e: unknown): Record<string, unknown> | null
 }
 
 export function radiologyErrorText(e: unknown): string {
-  const body = (e as { body?: { message?: string; code?: string } } | undefined)?.body;
-  if (body?.message !== undefined) return body.code === undefined ? body.message : `${body.message} (${body.code})`;
+  const body = (e as { body?: { message?: unknown; code?: string } } | undefined)?.body;
+  const text = messageText(body?.message);
+  if (text !== null) return body?.code === undefined ? text : `${text} (${body.code})`;
   return e instanceof Error ? e.message : String(e);
 }
 

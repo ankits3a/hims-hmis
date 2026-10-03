@@ -301,10 +301,32 @@ export async function fetchDiscrepancies(): Promise<WireTransfer[]> {
  */
 export function materialsErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
-    const body = e.body as { message?: string; code?: string } | null;
-    return body?.message ?? body?.code ?? e.message;
+    const body = e.body as { message?: unknown; code?: string } | null;
+    return messageText(body?.message) ?? body?.code ?? e.message;
   }
   return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * 2026-10-03 — a field the server refuses (a 400 from zod) carries `message` as a LIST of issues
+ * ({ path, message, … }), not a sentence. Handed to React as it was, that list crashed the whole vendor
+ * sheet (React error #31) and took its buttons with it. Whatever the server sends, a screen gets a string.
+ */
+export function messageText(message: unknown): string | null {
+  if (typeof message === "string") return message;
+  if (Array.isArray(message)) {
+    const parts = message.map((m) => {
+      if (typeof m === "string") return m;
+      if (m !== null && typeof m === "object") {
+        const issue = m as { path?: unknown; message?: unknown };
+        const where = Array.isArray(issue.path) && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+        return `${where}${typeof issue.message === "string" ? issue.message : JSON.stringify(m)}`;
+      }
+      return String(m);
+    });
+    return parts.length === 0 ? null : parts.join("; ");
+  }
+  return null;
 }
 
 /** The refusal's CODE, for a screen that needs to render a locale string rather than the message. */

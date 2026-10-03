@@ -2763,6 +2763,9 @@
     }
   },
   "materialsVendors": {
+    "dateBad": "तारीख़ DD-MM-YYYY में लिखें, जैसे 31-03-2027।",
+    "dateHint": "वैध तक: DD-MM-YYYY, लाइसेंस के लिए। PAN या GST प्रमाणपत्र के लिए ख़ाली छोड़ें।",
+    "validToLabel": "वैध तक",
     "missingDocs": "अभी सक्रिय नहीं हो सकता — पहले नीचे Documents में ये दस्तावेज़ जोड़ें: {{docs}}। हर एक का नंबर चाहिए; लाइसेंस की वैधता तिथि भी।",
     "docType": {"gst_certificate": "GST प्रमाणपत्र", "pan": "PAN कार्ड", "drug_licence_20b": "ड्रग लाइसेंस 20B (एलोपैथिक)", "drug_licence_21b": "ड्रग लाइसेंस 21B (प्रतिबंधित सूची)", "consignment_agreement": "कंसाइनमेंट अनुबंध", "udyam": "उद्यम (MSME) प्रमाणपत्र", "cancelled_cheque": "रद्द चेक"},
     "title": "विक्रेता मास्टर",
@@ -2799,7 +2802,7 @@
     "documentNumber": "संख्या",
     "validTo": "{{date}} तक वैध",
     "validToPlaceholder": "वैधता (YYYY-MM-DD)",
-    "addDocument": "दस्तावेज़ जोड़ें",
+    "addDocument": "दस्तावेज़ सहेजें",
     "documentAdded": "दस्तावेज़ जोड़ा गया",
     "blacklist": "काली सूची",
     "blacklistHint": "तीन वर्ष, और इसे पहले हटाया नहीं जा सकता। कारण चार में से एक होता है।",

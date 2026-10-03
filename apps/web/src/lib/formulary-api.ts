@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import { messageText } from "./materials-api";
 
 /**
  * PLAN 16a T7 — the formulary wire contract, transcribed from `formulary.controller.ts` exactly as
@@ -270,8 +271,8 @@ export async function fetchPairRates(): Promise<WirePairUsage[]> {
 /** The module's refusals, rendered as the message the server sent rather than re-worded here. */
 export function formularyErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
-    const body = e.body as { message?: string; code?: string } | null;
-    return body?.message ?? body?.code ?? e.message;
+    const body = e.body as { message?: unknown; code?: string } | null;
+    return messageText(body?.message) ?? body?.code ?? e.message;
   }
   return e instanceof Error ? e.message : String(e);
 }
