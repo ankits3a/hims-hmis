@@ -90,6 +90,23 @@ export function rebookingToday(rows: readonly WireAppointment[], todayIsoDate: s
 }
 
 /**
+ * ═══ WHAT THIS PATIENT STILL HAS BOOKED (owner, 2026-10-01 — and 2026-09-14 before it) ═══
+ *
+ * *"I just booked a future appointment. But I can't see the booked future appointment in the patient
+ * profile. I can see today's walk-in appointment, history but no future appointment."* The profile
+ * and the desk's left lane read VISITS, and a booking has no visit until the patient is checked in —
+ * so a held slot was invisible to both by construction.
+ *
+ * Bound on the CALENDAR day, not the clock: today's slot whose hour has passed is still the patient's
+ * appointment until somebody checks them in, cancels it or marks the no-show. Soonest first.
+ */
+export function upcomingOf(rows: readonly WireAppointment[] | undefined, todayIsoDate: string): WireAppointment[] {
+  return (rows ?? [])
+    .filter((a) => (a.status === "booked" || a.status === "needs_rebooking") && a.serviceDate.slice(0, 10) >= todayIsoDate)
+    .sort((a, b) => a.slotStart.localeCompare(b.slotStart));
+}
+
+/**
  * A slot's clock face in IST. ONE helper for the chips, the confirm button and the day's book, so
  * the three cannot disagree — a slot offered as 10:20 and confirmed as 10:50 is a booking nobody
  * can defend. Lifted out of `desk-one/stages.tsx`, where it served the same purpose for one screen.

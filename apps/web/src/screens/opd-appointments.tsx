@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
-import { listDepartments, listDoctors, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { listDepartments, listDoctors, listPatientAppointments, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { upcomingOf } from "../lib/appointment-view";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
 import { useCopilot } from "../lib/use-copilot";
@@ -252,11 +253,59 @@ function CheckInCell({
 
 // ——— the Day tab: slot grid + patient picker (left), this day's bookings (right) ———
 
+/**
+ * ═══ THIS PATIENT'S OWN BOOKINGS, WHATEVER THE FILTERS SAY (owner, 2026-10-01) ═══
+ *
+ * *"I can see a future appointment for U00110020 in the profile screen but I can't see any
+ * appointments for the same patient at /opd/appointments. Why so?"* Because this screen listed ONE
+ * doctor's book for ONE day, and with no doctor chosen it listed nothing: a booking for tomorrow with
+ * another doctor could not be reached without already knowing whose book and which day it was in.
+ *
+ * So the patient in the "Booking for" card brings their own bookings with them — every slot they
+ * still hold, any doctor, any day — each with the same Reschedule and Cancel the day list offers.
+ * The query key starts `["opd", "appointments"]`, which both dialogs already invalidate.
+ */
+function PatientBookings({
+  patient, doctors, queryClient, onNote,
+}: {
+  patient: PatientPickerHit; doctors: WireDoctor[]; queryClient: QueryClient;
+  onNote: (text: string, kind?: AgentLine["kind"]) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const theirs = useQuery({
+    queryKey: ["opd", "appointments", "patient", patient.id],
+    queryFn: () => listPatientAppointments(patient.id),
+    refetchInterval: POLL_MS,
+  });
+  const items = upcomingOf(theirs.data?.items, todayIst());
+  return (
+    <div data-testid="patient-bookings" style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line2)" }}>
+      <span className="tag">{t("opdAppt.theirBookings")}</span>
+      {theirs.data !== undefined && items.length === 0 && (
+        <p data-testid="patient-bookings-none" style={{ fontSize: 12, color: "var(--dim)", margin: "6px 0 0" }}>{t("opdAppt.theirBookingsNone")}</p>
+      )}
+      {items.map((apt) => (
+        <div key={apt.id} data-testid="patient-booking-row" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 8 }}>
+          <span className="mo" style={{ fontSize: 13, fontWeight: 700 }}>{apt.serviceDate.slice(0, 10)} · {fmtIst(apt.slotStart)}</span>
+          <span style={{ fontSize: 12.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>{doctors.find((d) => d.id === apt.doctorId)?.displayName ?? ""}</span>
+          <StatusBadge status={apt.status} />
+          <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
+          {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DayTab({
-  departmentId, doctorId, date, departments, doctors, rooms, queryClient, onNote,
+  departmentId, doctorId, date, departments, doctors, allDoctors, initialPatientId, rooms, queryClient, onNote,
 }: {
   departmentId: string; doctorId: string; date: string;
   departments: WireDepartment[]; doctors: WireDoctor[]; rooms: WireRoom[]; queryClient: QueryClient;
+  /** Every doctor, for naming a booking held with one outside the chosen department. */
+  allDoctors: WireDoctor[];
+  /** The patient a link from their profile arrived for (`?patientId=`); null on an ordinary visit. */
+  initialPatientId: string | null;
   /** Every SERVER ANSWER this tab gets lands in the agent's log — never an intention, only a result. */
   onNote: (text: string, kind?: AgentLine["kind"]) => void;
 }): React.ReactElement {
@@ -264,6 +313,19 @@ function DayTab({
   const [patient, setPatient] = useState<PatientPickerHit | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
   const [slip, setSlip] = useState<TokenSlipProps | null>(null);
+
+  // A link from the profile names the patient; put them in the card so their bookings show at once.
+  useEffect(() => {
+    if (initialPatientId === null) return;
+    let live = true;
+    void api<{ patient: { id: string; uhid: string; name: string | null; administrativeGender: string; dob: string | null } }>(
+      "GET", `/patients/${encodeURIComponent(initialPatientId)}`,
+    ).then(
+      ({ patient: p }) => { if (live) setPatient((cur) => cur ?? { id: p.id, uhid: p.uhid, name: p.name, administrativeGender: p.administrativeGender, dob: p.dob }); },
+      () => { /* an unreadable patient leaves the picker empty; the clerk searches as usual */ },
+    );
+    return () => { live = false; };
+  }, [initialPatientId]);
 
   const slots = useQuery({
     queryKey: ["opd", "slots", doctorId, date],
@@ -356,6 +418,7 @@ function DayTab({
               <button type="button" className="sec" onClick={() => { setPatient(null); }}>{t("opdAppt.changePatient")}</button>
             </div>
           )}
+          {patient !== null && <PatientBookings patient={patient} doctors={allDoctors} queryClient={queryClient} onNote={onNote} />}
         </div>
         <h2 style={{ fontSize: 13, fontWeight: 700 }}>{t("opdAppt.slots")}</h2>
         {doctorId === "" && <p style={{ fontSize: 12, color: "var(--dim)" }}>{t("opdAppt.pickDoctorHint")}</p>}
@@ -510,8 +573,22 @@ function NeedsRebookingTab(
 export function OpdAppointments(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  /*
+    A LINK MAY NAME THE BOOK TO OPEN (owner, 2026-10-01): the profile's Edit sends
+    `?patientId=&departmentId=&doctorId=&date=`, so the screen opens on that doctor's day with the
+    patient already in the card. Read once from the address, not through the router: the address is
+    the whole of the state, and this screen is mounted in tests with no router at all.
+  */
+  const linked = useMemo(() => {
+    const q = new URLSearchParams(window.location.search);
+    const day = q.get("date") ?? "";
+    return {
+      patientId: q.get("patientId"), departmentId: q.get("departmentId") ?? "", doctorId: q.get("doctorId") ?? "",
+      date: /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : todayIst(),
+    };
+  }, []);
   const filters = useForm<{ departmentId: string; doctorId: string; date: string }>({
-    defaultValues: { departmentId: "", doctorId: "", date: todayIst() },
+    defaultValues: { departmentId: linked.departmentId, doctorId: linked.doctorId, date: linked.date },
   });
   const departmentId = filters.watch("departmentId");
   const doctorId = filters.watch("doctorId");
@@ -520,7 +597,13 @@ export function OpdAppointments(): React.ReactElement {
 
   // Switching department invalidates the previously selected doctor — a stale id from the OLD
   // department's list must not silently keep driving the slot/day-list queries below.
+  // …and only when the department has actually CHANGED: a linked doctor arrives WITH their
+  // department and must survive the first render. Compared by value rather than by a "first run"
+  // flag, which a development double-mount flips before the screen has drawn — found in the browser.
+  const departmentWas = useRef(departmentId);
   useEffect(() => {
+    if (departmentWas.current === departmentId) return;
+    departmentWas.current = departmentId;
     setValue("doctorId", "");
   }, [departmentId, setValue]);
 
@@ -705,6 +788,7 @@ export function OpdAppointments(): React.ReactElement {
             <DayTab
               departmentId={departmentId} doctorId={doctorId} date={date}
               departments={departmentItems} doctors={doctorItems} rooms={roomItems} queryClient={queryClient}
+              allDoctors={allDoctorItems} initialPatientId={linked.patientId}
               onNote={note}
             />
           ) : (

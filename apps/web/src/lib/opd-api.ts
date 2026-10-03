@@ -660,6 +660,10 @@ export function bookAppointment(
 }
 
 /** What this patient already has booked — the seat's third door, and its duplicate-booking guard. */
+/** Every appointment this patient has ever held, whatever became of it — the profile's appointment history. */
+export function listPatientAppointmentsAll(patientId: string): Promise<{ items: WireAppointment[] }> {
+  return api("GET", `/opd/appointments?patientId=${encodeURIComponent(patientId)}`);
+}
 export function listPatientAppointments(patientId: string): Promise<{ items: WireAppointment[] }> {
   return api("GET", `/opd/appointments?patientId=${encodeURIComponent(patientId)}&status=booked`);
 }

@@ -856,6 +856,8 @@
     "backToList": "सूची पर वापस जाएँ",
     "bookingFor": "किसके लिए बुकिंग",
     "changePatient": "बदलें",
+    "theirBookings": "इस मरीज़ के अपॉइंटमेंट",
+    "theirBookingsNone": "इस मरीज़ का आगे कोई अपॉइंटमेंट बुक नहीं है।",
     "choosePatientFirst": "पहले मरीज़ चुनें — मरीज़ तय होते ही समय खुल जाएँगे।",
     "slotBooked": "बुक",
     "confirmTitle": "यह बुकिंग पक्की करें",
@@ -6882,6 +6884,11 @@
         "suspended": "स्थगित",
         "cancelled": "रद्द"
       }
+    },
+    "upcoming": {
+      "title": "आगामी अपॉइंटमेंट",
+      "none": "आगे कोई बुकिंग नहीं",
+      "rebook": "दोबारा बुक करना है"
     },
     "history": {
       "fullCount": "{{count}} विज़िट दर्ज",
@@ -13018,6 +13025,17 @@
       "ask": "पूछें"
     },
     "today": "आज · {{date}}",
+    "upcoming": "आगामी अपॉइंटमेंट",
+    "upcomingNone": "आगे कोई अपॉइंटमेंट बुक नहीं है",
+    "upcomingReading": "अपॉइंटमेंट बुक पढ़ी जा रही है…",
+    "upcomingRebook": "दोबारा बुक करना है — डॉक्टर छुट्टी पर",
+    "upcomingEdit": "बदलें",
+    "apptHistory": "अपॉइंटमेंट इतिहास · {{count}}",
+    "apptHistoryAll": "सभी {{count}} दिखाएँ",
+    "apptHistoryLess": "कम दिखाएँ",
+    "apptNoVisit": "इस अपॉइंटमेंट पर मरीज़ का चेक-इन नहीं हुआ, इसलिए न विज़िट है न बिल।",
+    "apptNoBill": "इस अपॉइंटमेंट की विज़िट का कोई बिल नहीं बना।",
+    "apptBillsHidden": "बिल केवल बिलिंग स्टाफ़ को दिखते हैं।",
     "todayVisit": "{{dept}} की कतार में",
     "visitStatus": {
       "registered": "पंजीकृत",
