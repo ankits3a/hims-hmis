@@ -32,6 +32,7 @@ import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from 
 import { reportsForPatient } from "../lib/lab-api";
 import { fmtPaise } from "../lib/format";
 import { CREDIT_READERS, CreditTile } from "../components/patient-credit";
+import { PharmacyBillsTile } from "../components/patient-pharmacy-bills";
 import {
   buildTimeline, dmy, dmyIst, duesSummary, groupByDay, istDay, maskMobile, openVisitsToday, type Labels,
 } from "./patient-profile-model";
@@ -1378,6 +1379,7 @@ export function PatientDetail(): React.ReactElement {
               <AllergyBand patientId={patient.id} canEdit={canEdit} compact={restricted} />
               {/* Owner 2026-10-03 — the patient's credit with the hospital, every department; a click opens the account. */}
               {!restricted && CREDIT_READERS.some((p) => can(p)) && <CreditTile patientId={patient.id} />}
+              {!restricted && <PharmacyBillsTile patientId={patient.id} />}
               {restricted ? (
                 <>
                   <div className="fact" style={{ marginTop: 10 }}><span>{t("profile.mobile")}</span><span>{t("profile.hiddenWord")}</span></div>
