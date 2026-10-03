@@ -5,6 +5,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { listStores } from "../materials";
 import { documentActivity, recentActivity } from "./activity";
 import { creditNoteRegister } from "./credit-notes";
+import { gstBook, ticketInvoices } from "./ticket-books";
+import type { GstBook, TicketInvoices } from "./ticket-books";
 import type { CreditNoteRegister } from "./credit-notes";
 import { gstr2bReconcile } from "./gstr2b";
 import { gstr3bReport } from "./gstr3b";
@@ -55,6 +57,20 @@ export class PharmacyReportsController {
       await requireReportPermission(this.db, actor, REPORTS_READ, "the report filters");
       return { stores: (await listStores(this.db)).map((s) => ({ code: s.code, name: s.name })) };
     } catch (e) { toHttp(e); }
+  }
+
+  /** Owner 2026-10-03 — every bill in the range with its ticket, GST, credit notes against it and credit spent. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("ticket-invoices")
+  async ticketInvoices(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<TicketInvoices> {
+    try { return await ticketInvoices(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
+  }
+
+  /** Owner 2026-10-03 — the GST book for the CA: rate-wise sales, returns and net; credit notes with their bills; the money check. */
+  @RequirePermission(REPORTS_READ, "hospital")
+  @Get("gst-book")
+  async gstBook(@CurrentActor() actor: Actor, @Query() q: RangeQuery): Promise<GstBook> {
+    try { return await gstBook(this.db, actor, rangeOf(q), new Date()); } catch (e) { toHttp(e); }
   }
 
   /** Owner 2026-10-03 — the pharmacy's credit notes in the range: to whom, how much, and what became of the money. */

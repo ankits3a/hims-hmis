@@ -8,6 +8,8 @@ import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter, suggestAtCounter } from "./claim";
 import { takeOverDispense } from "./takeover";
 import { patientCredit } from "./credit-notes";
+import { patientPharmacyBills } from "./ticket-books";
+import type { PatientPharmacyBill } from "./ticket-books";
 import type { PatientCredit } from "./credit-notes";
 import type { CounterSuggestion } from "./claim";
 import { enterPaperPrescription, paperRxContext } from "./paper-rx";
@@ -390,6 +392,18 @@ export class PharmacyCounterController {
     const input = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), q: z.string().max(200).default("") }), { idx, q });
     try {
       return { items: await placementsFor(this.db, id, input.idx, input.q, new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — on the patient's profile: their pharmacy bills, each with its ticket and credit notes. */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["pharmacy.dispense.read", "pharmacy.reports.read", "billing.dues.patient.read"] })
+  @Get("patients/:patientId/pharmacy-bills")
+  async pharmacyBills(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ bills: PatientPharmacyBill[] }> {
+    const id = parsed(z.string().min(1).max(64), patientId);
+    try {
+      return await patientPharmacyBills(this.db, actor, id);
     } catch (e) {
       return toHttp(e);
     }

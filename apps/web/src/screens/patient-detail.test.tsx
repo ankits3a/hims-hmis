@@ -961,6 +961,23 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(within(dialog).getByTestId("pf-credit-refund-v1")).toHaveTextContent("Paid 03-10-2026");
   });
 
+  /* Owner 2026-10-03 — the patient's pharmacy bills in the left lane; a click lists each ticket with its invoice. */
+  it("the left lane counts the pharmacy bills; a click lists each ticket with its invoice, GST and credit notes", async () => {
+    const bills = { bills: [
+      { invoiceId: "i2", invoiceNo: "INV-2", date: "2026-10-03", ticket: "P2610030002", source: "dispense", netPaise: 21000, gstPaise: 1000, creditUsedPaise: 10500, returnedPaise: 0, finalPaise: 21000, creditNotes: [] },
+      { invoiceId: "i1", invoiceNo: "INV-1", date: "2026-10-02", ticket: "P2610020001", source: "dispense", netPaise: 10500, gstPaise: 500, creditUsedPaise: 0, returnedPaise: 10500, finalPaise: 0, creditNotes: [{ id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", netPaise: 10500 }] },
+    ] };
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/dues": DUES, "GET /api/pharmacy/patients/p-1/pharmacy-bills": bills }, [...FRONT_DESK, "billing.dues.patient.read"]);
+    renderWithProviders(<PatientDetail />);
+    const tile = await screen.findByTestId("pf-bills-tile");
+    expect(tile).toHaveTextContent("2 bills");
+    await userEvent.click(tile);
+    const dialog = await screen.findByTestId("pf-bills-dialog");
+    expect(within(dialog).getByTestId("pf-bill-i1")).toHaveTextContent("P2610020001");
+    expect(within(dialog).getByTestId("pf-bill-i1")).toHaveTextContent("CN-1");
+    expect(within(dialog).getByTestId("pf-bill-i2")).toHaveTextContent("₹105.00");
+  });
+
   it("OWNER RULING 2026-09-30 · front desk with the narrow dues string: the Today band shows what is owed; no invoice history is asked", async () => {
     stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/dues": DUES }, [...FRONT_DESK, "billing.dues.patient.read"]);
     renderWithProviders(<PatientDetail />);

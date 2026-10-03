@@ -188,6 +188,29 @@ export type WireCreditNoteRegister = {
   byPatient: { patientId: string; patientName: string; uhid: string; count: number; netPaise: number; keptPaise: number; refundPaise: number }[];
   totals: { count: number; netPaise: number; keptPaise: number; refundRequestedPaise: number; refundPaidPaise: number };
 };
+/** Owner 2026-10-03 — every bill with its ticket, GST, credit notes against it and credit spent. */
+export type WireTicketCreditNote = { id: string; creditNoteNo: string; date: string; taxablePaise: number; gstPaise: number; netPaise: number };
+export type WireTicketInvoiceRow = {
+  invoiceId: string; invoiceNo: string; date: string; ticket: string | null; source: "dispense" | "walk_in" | "downtime";
+  patientId: string; patientName: string; uhid: string; taxablePaise: number; cgstPaise: number; sgstPaise: number; netPaise: number;
+  tender: "cash" | "upi" | "card" | "split" | "unpaid" | null; creditUsedPaise: number; outstandingPaise: number | null;
+  creditNotes: WireTicketCreditNote[]; returnedPaise: number; finalPaise: number;
+};
+export type WireTicketInvoices = {
+  from: string; to: string; preset: string; rows: WireTicketInvoiceRow[];
+  totals: { bills: number; netPaise: number; gstPaise: number; returnedPaise: number; finalPaise: number; creditUsedPaise: number; outstandingPaise: number };
+};
+export const fetchTicketInvoices = (r: RangeInput): Promise<WireTicketInvoices> => api("GET", `${BASE}/ticket-invoices${query(r)}`);
+/** Owner 2026-10-03 — the GST book for the CA. */
+type GMoney = { taxablePaise: number; cgstPaise: number; sgstPaise: number; netPaise: number };
+export type WireGstBook = {
+  from: string; to: string; preset: string;
+  rates: { rateBps: number; sales: GMoney; returns: GMoney; net: GMoney }[];
+  totals: { sales: GMoney; returns: GMoney; net: GMoney };
+  creditNotes: { id: string; creditNoteNo: string; date: string; invoiceNo: string; invoiceDate: string; patientName: string; uhid: string; taxablePaise: number; cgstPaise: number; sgstPaise: number; netPaise: number }[];
+  money: { billedPaise: number; paidFromCreditPaise: number; outstandingPaise: number; collectedPaise: number };
+};
+export const fetchGstBook = (r: RangeInput): Promise<WireGstBook> => api("GET", `${BASE}/gst-book${query(r)}`);
 export const fetchCreditNoteRegister = (r: RangeInput): Promise<WireCreditNoteRegister> => api("GET", `${BASE}/credit-notes${query(r)}`);
 export const fetchMargin = (r: RangeInput, groupBy: MarginGroupBy): Promise<WireMarginReport> => api("GET", `${BASE}/margin${query({ ...r, groupBy })}`);
 export const fetchHsn = (r: RangeInput): Promise<WireHsnReport> => api("GET", `${BASE}/hsn${query(r)}`);

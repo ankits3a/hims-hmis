@@ -313,11 +313,11 @@ describe("the office's reports — stage C", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
   const ALL = [...OWNER, "pharmacy.tally.export"];
 
-  it("fifteen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
+  it("seventeen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
     const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/top-selling": topSelling }, ALL);
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     const list = await screen.findByTestId("reports-view");
-    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H"]);
+    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H", "J", "K"]);
     expect(within(within(list).getByTestId("report-catalogue")).getByText("G")).toBeTruthy();
     list.focus();
     await userEvent.keyboard("a");
@@ -362,6 +362,43 @@ describe("the office's reports — stage C", () => {
     expect(screen.getByTestId("credit-summary")).toHaveTextContent("2 credit notes");
     await userEvent.selectOptions(screen.getByTestId("credit-view"), "patient");
     expect(within(await screen.findByTestId("credit-groups")).getByTestId("credit-groups-row-p1")).toHaveTextContent("572.00");
+  });
+
+  /* Owner 2026-10-03 — the GST book for the CA: payable = GST on sales less GST reversed by credit notes; credit spent is money. */
+  it("GST book: the payable headline, rate by rate, each credit note with its invoice, and the money check", async () => {
+    const m = (taxable: number, gst: number) => ({ taxablePaise: taxable, cgstPaise: gst / 2, sgstPaise: gst / 2, netPaise: taxable + gst });
+    const book = {
+      from: "2026-10-01", to: "2026-10-03", preset: "month",
+      rates: [{ rateBps: 500, sales: m(30000, 1500), returns: m(10000, 500), net: m(20000, 1000) }],
+      totals: { sales: m(30000, 1500), returns: m(10000, 500), net: m(20000, 1000) },
+      creditNotes: [{ id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", invoiceNo: "INV-1", invoiceDate: "2026-10-01", patientName: "Abhishek Kumar", uhid: "U1", taxablePaise: 10000, cgstPaise: 250, sgstPaise: 250, netPaise: 10500 }],
+      money: { billedPaise: 31500, paidFromCreditPaise: 10500, outstandingPaise: 0, collectedPaise: 21000 },
+    };
+    mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/gst-book": book }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-gstBook"));
+    expect(await screen.findByTestId("gst-payable")).toHaveTextContent("10.00");
+    expect(within(screen.getByTestId("gst-book-rates")).getByTestId("gst-book-rates-row-500")).toHaveTextContent("5%");
+    expect(within(screen.getByTestId("gst-book-notes")).getByTestId("gst-book-notes-row-cn1")).toHaveTextContent("INV-1");
+    expect(screen.getByTestId("gst-book-money")).toHaveTextContent("Paid from earlier credit notes");
+    expect(screen.getByTestId("gst-book-money")).toHaveTextContent("210.00");
+  });
+
+  it("tickets & invoices: each bill with its ticket, GST, credit notes against it and the credit spent on it", async () => {
+    const t1 = {
+      from: "2026-10-01", to: "2026-10-03", preset: "today",
+      rows: [{ invoiceId: "i1", invoiceNo: "INV-1", date: "2026-10-01", ticket: "P2610010001", source: "dispense", patientId: "p1", patientName: "Abhishek Kumar", uhid: "U1",
+        taxablePaise: 10000, cgstPaise: 250, sgstPaise: 250, netPaise: 10500, tender: "cash", creditUsedPaise: 0, outstandingPaise: 0,
+        creditNotes: [{ id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", taxablePaise: 10000, gstPaise: 500, netPaise: 10500 }], returnedPaise: 10500, finalPaise: 0 }],
+      totals: { bills: 1, netPaise: 10500, gstPaise: 500, returnedPaise: 10500, finalPaise: 0, creditUsedPaise: 0, outstandingPaise: 0 },
+    };
+    mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/ticket-invoices": t1 }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-ticketInvoices"));
+    const row = within(await screen.findByTestId("tickets-table")).getByTestId("tickets-table-row-i1");
+    expect(row).toHaveTextContent("P2610010001");
+    expect(row).toHaveTextContent("INV-1");
+    expect(row).toHaveTextContent("CN-1");
   });
 
   it("the loss register: each loss with its reason and approver, a count variance named as one, totals by reason", async () => {

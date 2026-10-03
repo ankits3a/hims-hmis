@@ -7,14 +7,14 @@ import { pharmacyErrorText } from "../../lib/pharmacy-api";
 import {
   MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, STOCK_IN_KINDS, STOCK_OUT_KINDS, fetchActivity, fetchActivityFeed,
   fetchCatalogue, fetchDailyStock, fetchGstr3b, fetchHsn, fetchLossRegister, fetchMargin, fetchNonMoving, fetchPurchaseRegister, fetchReportStores,
-  fetchCreditNoteRegister, fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
+  fetchCreditNoteRegister, fetchGstBook, fetchTicketInvoices, fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
 } from "../../lib/reports-api";
 import { downloadXlsx, toXlsx } from "../../lib/xlsx";
 import { Button } from "@/components/ui/button";
 import { TallyReport } from "./tally";
 import type {
   AbcClass, MarginGroupBy, RangeInput, ReconBucket, ReportPreset, SalesGroupBy, WireActivity, WireActivityEntry, WireCatalogueRow, WireDailyStockRow,
-  WireGstr2b, WireLossRow, WireCreditNoteRow, WireSalesRow, WireTopSellingRow,
+  WireGstr2b, WireLossRow, WireCreditNoteRow, WireTicketInvoiceRow, WireSalesRow, WireTopSellingRow,
 } from "../../lib/reports-api";
 
 /**
@@ -32,10 +32,10 @@ import type {
  */
 export type ReportKey =
   | "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally"
-  | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes";
+  | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes" | "ticketInvoices" | "gstBook";
 const ALL_REPORTS: readonly ReportKey[] = [
   "sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally",
-  "topSelling", "losses", "dailyStock", "catalogue", "creditNotes",
+  "topSelling", "losses", "dailyStock", "catalogue", "creditNotes", "ticketInvoices", "gstBook",
 ];
 /**
  * The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten), then letters (stage C made it
@@ -174,6 +174,8 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "dailyStock" && <DailyStockReport {...bind} />}
       {report === "catalogue" && <CatalogueReport {...bind} />}
       {report === "creditNotes" && <CreditNotesReport {...bind} />}
+      {report === "ticketInvoices" && <TicketInvoicesReport {...bind} />}
+      {report === "gstBook" && <GstBookReport {...bind} />}
     </div>
   );
 }
@@ -477,6 +479,131 @@ function CreditNotesReport({ sheet, presetRef }: Bind): React.ReactElement {
           {view === "document"
             ? <Table testId="credit-table" cols={docCols} rows={d.rows} rowKey={(r) => r.id} totals={totals} />
             : <Table testId="credit-groups" cols={groupCols} rows={d.byPatient} rowKey={(g) => g.patientId} totals={totals} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ tickets & invoices (owner 2026-10-03) ═══════════════════════════════════
+
+function TicketInvoicesReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef);
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "ticket-invoices", range], queryFn: () => fetchTicketInvoices(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const B = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.books.${k}`, o);
+  const cols: Col<WireTicketInvoiceRow>[] = [
+    { key: "date", label: L("date"), value: (r) => r.date },
+    { key: "ticket", label: B("ticket"), value: (r) => r.ticket ?? B(`source.${r.source}`) },
+    { key: "invoice", label: B("invoice"), value: (r) => r.invoiceNo },
+    { key: "patient", label: L("patient"), value: (r) => r.patientName },
+    { key: "uhid", label: L("uhid"), value: (r) => r.uhid },
+    { key: "taxable", label: L("taxable"), money: true, value: (r) => r.taxablePaise },
+    { key: "gst", label: B("gst"), money: true, value: (r) => r.cgstPaise + r.sgstPaise },
+    { key: "net", label: B("bill"), money: true, value: (r) => r.netPaise },
+    { key: "notes", label: B("creditNotes"), value: (r) => (r.creditNotes.length === 0 ? "—" : r.creditNotes.map((n) => n.creditNoteNo).join(", ")) },
+    { key: "returned", label: B("returned"), money: true, value: (r) => r.returnedPaise },
+    { key: "final", label: B("final"), money: true, value: (r) => r.finalPaise },
+    { key: "credit", label: B("creditUsed"), money: true, value: (r) => r.creditUsedPaise },
+    { key: "tender", label: L("method"), value: (r) => (r.tender === null ? "—" : t(`pharmacyOffice.reports.tender.${r.tender}`)) },
+    { key: "due", label: L("remaining"), money: true, value: (r) => r.outstandingPaise },
+  ];
+  const totals: Totals | null = d === undefined ? null : {
+    date: B("total"), gst: d.totals.gstPaise, net: d.totals.netPaise, returned: d.totals.returnedPaise, final: d.totals.finalPaise,
+    credit: d.totals.creditUsedPaise, due: d.totals.outstandingPaise,
+  };
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.ticketInvoices"), subtitle: rangeText(d.from, d.to), file: `tickets-invoices-${d.from}-${d.to}`, cols: cols as Col<never>[], rows: d.rows, totals };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} />
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <div className="flex flex-wrap gap-4 text-sm" data-testid="tickets-summary">
+            <span>{B("bills", { count: d.totals.bills })} <b className="tabular-nums">{money(d.totals.netPaise)}</b></span>
+            <span>{B("gst")} <b className="tabular-nums">{money(d.totals.gstPaise)}</b></span>
+            <span>{B("returned")} <b className="tabular-nums">{money(d.totals.returnedPaise)}</b></span>
+            <span>{B("creditUsed")} <b className="tabular-nums">{money(d.totals.creditUsedPaise)}</b></span>
+          </div>
+          <Table testId="tickets-table" cols={cols} rows={d.rows} rowKey={(r) => r.invoiceId} totals={totals}
+            expand={(r) => r.creditNotes.length === 0 ? <span className="text-xs text-muted-foreground">{B("noNotes")}</span> : (
+              <table className="w-full text-xs [&_td]:px-1.5 [&_th]:px-1.5">
+                <thead><tr className="text-left text-muted-foreground"><th>{B("creditNote")}</th><th>{L("date")}</th><th className="text-right">{L("taxable")}</th><th className="text-right">{B("gst")}</th><th className="text-right">{B("value")}</th></tr></thead>
+                <tbody>{r.creditNotes.map((n) => (
+                  <tr key={n.id}><td>{n.creditNoteNo}</td><td>{n.date}</td><td className="text-right">{money(n.taxablePaise)}</td><td className="text-right">{money(n.gstPaise)}</td><td className="text-right">{money(n.netPaise)}</td></tr>
+                ))}</tbody>
+              </table>
+            )} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ the GST book, for the CA (owner 2026-10-03) ═══════════════════════════════════
+
+function GstBookReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "gst-book", range], queryFn: () => fetchGstBook(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const B = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.books.${k}`, o);
+  type Rate = NonNullable<typeof d>["rates"][number];
+  type Note = NonNullable<typeof d>["creditNotes"][number];
+  const cols: Col<Rate>[] = [
+    { key: "rate", label: B("rate"), value: (r) => `${String(r.rateBps / 100)}%` },
+    { key: "sTax", label: B("salesTaxable"), money: true, value: (r) => r.sales.taxablePaise },
+    { key: "sGst", label: B("salesGst"), money: true, value: (r) => r.sales.cgstPaise + r.sales.sgstPaise },
+    { key: "rTax", label: B("returnsTaxable"), money: true, value: (r) => r.returns.taxablePaise },
+    { key: "rGst", label: B("returnsGst"), money: true, value: (r) => r.returns.cgstPaise + r.returns.sgstPaise },
+    { key: "nTax", label: B("netTaxable"), money: true, value: (r) => r.net.taxablePaise },
+    { key: "cgst", label: L("cgst"), money: true, value: (r) => r.net.cgstPaise },
+    { key: "sgst", label: L("sgst"), money: true, value: (r) => r.net.sgstPaise },
+    { key: "nGst", label: B("netGst"), money: true, value: (r) => r.net.cgstPaise + r.net.sgstPaise },
+  ];
+  const noteCols: Col<Note>[] = [
+    { key: "no", label: B("creditNote"), value: (n) => n.creditNoteNo },
+    { key: "date", label: L("date"), value: (n) => n.date },
+    { key: "inv", label: B("againstInvoice"), value: (n) => n.invoiceNo },
+    { key: "invDate", label: B("invoiceDate"), value: (n) => n.invoiceDate },
+    { key: "patient", label: L("patient"), value: (n) => n.patientName },
+    { key: "taxable", label: L("taxable"), money: true, value: (n) => n.taxablePaise },
+    { key: "cgst", label: L("cgst"), money: true, value: (n) => n.cgstPaise },
+    { key: "sgst", label: L("sgst"), money: true, value: (n) => n.sgstPaise },
+    { key: "net", label: B("value"), money: true, value: (n) => n.netPaise },
+  ];
+  const tot = d?.totals;
+  const totals: Totals | null = tot === undefined ? null : {
+    rate: B("total"), sTax: tot.sales.taxablePaise, sGst: tot.sales.cgstPaise + tot.sales.sgstPaise, rTax: tot.returns.taxablePaise,
+    rGst: tot.returns.cgstPaise + tot.returns.sgstPaise, nTax: tot.net.taxablePaise, cgst: tot.net.cgstPaise, sgst: tot.net.sgstPaise, nGst: tot.net.cgstPaise + tot.net.sgstPaise,
+  };
+  if (d !== undefined) sheet.current = { title: t("pharmacyOffice.reports.name.gstBook"), subtitle: rangeText(d.from, d.to), file: `gst-book-${d.from}-${d.to}`, cols: cols as Col<never>[], rows: d.rates, totals };
+  return (
+    <div className="space-y-3">
+      <RangeBar range={range} onChange={setRange} />
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && tot !== undefined && (
+        <>
+          <div className="grid gap-2 text-sm sm:grid-cols-3" data-testid="gst-book-headline">
+            <div className="rounded border p-3"><div className="text-muted-foreground">{B("gstOnSales")}</div><b className="text-lg tabular-nums">{money(tot.sales.cgstPaise + tot.sales.sgstPaise)}</b></div>
+            <div className="rounded border p-3"><div className="text-muted-foreground">{B("lessGstOnReturns")}</div><b className="text-lg tabular-nums">− {money(tot.returns.cgstPaise + tot.returns.sgstPaise)}</b></div>
+            <div className="rounded border p-3 bg-muted/40"><div className="text-muted-foreground">{B("gstPayable")}</div><b className="text-lg tabular-nums" data-testid="gst-payable">{money(tot.net.cgstPaise + tot.net.sgstPaise)}</b></div>
+          </div>
+          <h3 className="text-sm font-semibold">{B("byRate")}</h3>
+          <Table testId="gst-book-rates" cols={cols} rows={d.rates} rowKey={(r) => String(r.rateBps)} totals={totals} />
+          <h3 className="text-sm font-semibold">{B("notesTitle", { count: d.creditNotes.length })}</h3>
+          <Table testId="gst-book-notes" cols={noteCols} rows={d.creditNotes} rowKey={(n) => n.id} totals={null} />
+          <h3 className="text-sm font-semibold">{B("moneyTitle")}</h3>
+          <div className="rounded border p-3 text-sm space-y-1" data-testid="gst-book-money">
+            <div className="flex justify-between"><span>{B("billed")}</span><b className="tabular-nums">{money(d.money.billedPaise)}</b></div>
+            <div className="flex justify-between"><span>{B("paidFromCredit")}</span><b className="tabular-nums">− {money(d.money.paidFromCreditPaise)}</b></div>
+            <div className="flex justify-between"><span>{B("stillOwed")}</span><b className="tabular-nums">− {money(d.money.outstandingPaise)}</b></div>
+            <div className="flex justify-between border-t pt-1"><span>{B("collected")}</span><b className="tabular-nums">{money(d.money.collectedPaise)}</b></div>
+            <p className="m-0 pt-1 text-xs text-muted-foreground">{B("moneyNote")}</p>
+          </div>
         </>
       )}
     </div>
