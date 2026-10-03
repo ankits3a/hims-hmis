@@ -6,6 +6,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter, suggestAtCounter } from "./claim";
+import { takeOverDispense } from "./takeover";
 import type { CounterSuggestion } from "./claim";
 import { enterPaperPrescription, paperRxContext } from "./paper-rx";
 import type { PaperRxContext } from "./paper-rx";
@@ -399,6 +400,18 @@ export class PharmacyCounterController {
     try {
       return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.claim, key }, input,
         () => claimDispense(this.db, actor, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — take over a colleague's held ticket, with a reason (`takeover.ts`). */
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/take-over")
+  async takeOver(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<DispenseView> {
+    const input = parsed(z.object({ reason: z.string().trim().min(3).max(200) }), body);
+    try {
+      return await takeOverDispense(this.db, actor, id, input.reason, new Date());
     } catch (e) {
       return toHttp(e);
     }

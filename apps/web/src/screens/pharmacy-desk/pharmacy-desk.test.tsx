@@ -222,16 +222,24 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(screen.getByTestId("desk-settled")).toHaveTextContent("0 of 2 settled");
   });
 
-  it("WALK FINDING — somebody else's ticket opened by its URL says WHOSE it is and offers nothing to press", async () => {
+  /* WALK FINDING says WHOSE it is; owner 2026-10-03 — and the only thing to press is Take over, with a reason. */
+  it("somebody else's ticket opened by its URL says whose it is, and can be taken over with a reason", async () => {
+    let current = ticket("verified", { id: "d2", patient: person("d2", "Neha Prasad"), claimedBy: "u-vikas", claimedByName: "Vikas Ranjan" });
     mockRoutes(base({
-      "GET /api/pharmacy/dispenses/d2": { status: 200, body: ticket("claimed", { id: "d2", patient: person("d2", "Neha Prasad"), claimedBy: "u-vikas", claimedByName: "Vikas Ranjan" }) },
+      "GET /api/pharmacy/dispenses/d2": () => ({ status: 200, body: current }),
+      "POST /api/pharmacy/dispenses/d2/take-over": () => { current = { ...current, claimedBy: ME, claimedByName: "Anita Verma" }; return { status: 200, body: current }; },
     }));
     renderWithProviders(<PharmacyDesk ticketId="d2" />);
     const found = await screen.findByTestId("desk-found");
     expect(within(found).getByRole("heading")).toHaveTextContent("Vikas Ranjan has Neha Prasad's ticket");
-    expect(within(found).queryByRole("button")).toBeNull();
+    expect(within(found).getAllByRole("button").map((b) => b.textContent)).toEqual(["Take over from Vikas Ranjan"]);
     expect(screen.queryByTestId("desk-ticket")).toBeNull();
-    expect(screen.getByTestId("desk-flow")).toHaveTextContent("check the prescription");
+    await userEvent.click(within(found).getByTestId("desk-take-over"));
+    expect(screen.getByTestId("take-over-submit")).toBeDisabled();
+    await userEvent.click(screen.getByTestId("take-over-chip-left"));
+    await userEvent.click(screen.getByTestId("take-over-submit"));
+    await waitFor(() => expect(posted("/pharmacy/dispenses/d2/take-over")).toEqual([{ reason: "Colleague left the desk" }]));
+    expect(await screen.findByTestId("desk-ticket")).toBeInTheDocument();
   });
 
   it("WALK FINDING — the dock keeps what happened when taking a ticket remounts the desk on its new route", async () => {

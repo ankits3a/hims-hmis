@@ -352,6 +352,12 @@ export const saleItemDiscountSet = defineEvent("sale_item.discount_set", MODULE,
   itemId: id, fromBps: z.number().int().min(0).max(2500), toBps: z.number().int().min(0).max(2500),
 }));
 
+/** Owner 2026-10-03 — a colleague's held ticket was taken over before hand-over (`takeover.ts`). */
+export const dispenseTakenOver = defineEvent("dispense.taken_over", MODULE, z.object({
+  dispenseId: id, patientId: id, fromUserId: id, toUserId: id,
+  status: z.enum(["claimed", "verified", "picked", "billed"]), reason: z.string().min(3).max(200),
+}));
+
 /** The catalog, in source order (`LAB_EVENTS`' discipline). A later task that adds a `defineEvent` above adds it here. */
 export const PHARMACY_EVENTS = [
   dispenseQueued, paperRxEntered, paperRxVisitOpened, dispenseClaimed, dispenseVerified, dispenseLineDeclined, substitutionRecorded, lineResolved, lineMatched, shelfLocationSet,
@@ -366,4 +372,5 @@ export const PHARMACY_EVENTS = [
   traySaved, trayTemplateSaved, trayChecked, trayRestocked,
   pharmacySettingsChanged,
   saleItemDiscountSet,
+  dispenseTakenOver,
 ] as const;

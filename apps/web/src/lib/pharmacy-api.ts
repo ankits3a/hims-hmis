@@ -307,6 +307,10 @@ export async function setShelfLocation(itemId: string, storeResourceId: string, 
 export async function claimDispense(dispenseId: string, door: string, idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", "/pharmacy/dispenses", { dispenseId, door }, idempotencyKey);
 }
+/** Owner 2026-10-03 — take over a colleague's held ticket, with a reason. */
+export async function takeOverDispense(dispenseId: string, reason: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${encodeURIComponent(dispenseId)}/take-over`, { reason });
+}
 export type VerifyLine = { lineIdx: number; qtyBase: number; dispensedMedicineId?: string; patientConsent?: boolean };
 export async function verifyDispense(id: string, lines: VerifyLine[], idempotencyKey: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/verify`, { lines }, idempotencyKey);
