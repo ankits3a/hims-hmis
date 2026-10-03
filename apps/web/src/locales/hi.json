@@ -2763,6 +2763,8 @@
     }
   },
   "materialsVendors": {
+    "missingDocs": "अभी सक्रिय नहीं हो सकता — पहले नीचे Documents में ये दस्तावेज़ जोड़ें: {{docs}}। हर एक का नंबर चाहिए; लाइसेंस की वैधता तिथि भी।",
+    "docType": {"gst_certificate": "GST प्रमाणपत्र", "pan": "PAN कार्ड", "drug_licence_20b": "ड्रग लाइसेंस 20B (एलोपैथिक)", "drug_licence_21b": "ड्रग लाइसेंस 21B (प्रतिबंधित सूची)", "consignment_agreement": "कंसाइनमेंट अनुबंध", "udyam": "उद्यम (MSME) प्रमाणपत्र", "cancelled_cheque": "रद्द चेक"},
     "title": "विक्रेता मास्टर",
     "searchHint": "कोड या नाम से खोजें",
     "newVendor": "विक्रेता पंजीकृत करें",

@@ -3,8 +3,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   activateVendor, addVendorDocument, blacklistVendor, createVendor, fetchVendor, fetchVendors,
-  materialsErrorText, reinstateVendor, suspendVendor,
+  materialsErrorCode, materialsErrorText, reinstateVendor, suspendVendor,
 } from "../lib/materials-api";
+import { ApiError } from "../lib/api";
 import { Button } from "@/components/ui/button";
 import { NewButton, OfficeHead, fieldCls, useNewKey } from "./pharmacy-office/office-page";
 import { Sheet } from "./pharmacy-office/sheet";
@@ -75,7 +76,12 @@ export function MaterialsVendors(): React.ReactElement {
       setDone(message);
       await qc.invalidateQueries({ queryKey: ["materials"] });
     } catch (e) {
-      setError(materialsErrorText(e, t));
+      // 2026-10-03 — the refusal names WHICH documents are missing (`detail.missing`), and where to add them.
+      const missing = materialsErrorCode(e) === "documents_incomplete" && e instanceof ApiError
+        ? (e.body as { detail?: { missing?: unknown } } | undefined)?.detail?.missing : undefined;
+      setError(Array.isArray(missing) && missing.length > 0
+        ? t("materialsVendors.missingDocs", { docs: missing.map((m) => t(`materialsVendors.docType.${String(m)}`, String(m))).join(", ") })
+        : materialsErrorText(e, t));
     }
   };
 
@@ -222,7 +228,7 @@ export function MaterialsVendors(): React.ReactElement {
                 <ul className="text-sm">
                   {detail.data.documents.map((d) => (
                     <li key={d.id}>
-                      {d.type} · {d.number}
+                      {t(`materialsVendors.docType.${d.type}`, d.type)} · {d.number}
                       {d.validTo !== null && ` · ${t("materialsVendors.validTo", { date: d.validTo })}`}
                     </li>
                   ))}
@@ -231,7 +237,7 @@ export function MaterialsVendors(): React.ReactElement {
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
               <select className={fieldCls} value={docType} onChange={(e) => setDocType(e.target.value)}>
                 {["gst_certificate", "pan", "drug_licence_20b", "drug_licence_21b", "consignment_agreement", "udyam", "cancelled_cheque"]
-                  .map((d) => <option key={d} value={d}>{d}</option>)}
+                  .map((d) => <option key={d} value={d}>{t(`materialsVendors.docType.${d}`, d)}</option>)}
               </select>
               <input
                 className={fieldCls} placeholder={t("materialsVendors.documentNumber")}

@@ -74,6 +74,23 @@ describe("MaterialsVendors", () => {
    * locale string is present and **the server's sentence is ABSENT**. The Hindi leg below is the
    * one that could not have passed before, in either direction.
    */
+  /* Owner 2026-10-03 — "statutory documents are incomplete" did not say which, nor where to add them. */
+  it("an activation refused for documents names each missing one and says where to add it", async () => {
+    mockRoutes({
+      "GET /api/materials/vendors": { status: 200, body: { vendors: [{ ...BLACKLISTED, status: "draft", blacklistUntil: null, blacklistReason: null }] } },
+      "POST /api/materials/vendors/v-1/activate": {
+        status: 409,
+        body: { statusCode: 409, code: "documents_incomplete", message: "vendor ACME cannot be activated", detail: { missing: ["gst_certificate", "drug_licence_21b"], onDate: "2026-10-03" } },
+      },
+    });
+    renderWithProviders(<MaterialsVendors />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Activate" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("add these documents below under Documents first: GST certificate, Drug licence 21B (restricted schedule)");
+    expect(alert).not.toHaveTextContent("gst_certificate");
+  });
+
   it("renders the LOCALE string for a refusal — not the server's English sentence, and not the code", async () => {
     mockRoutes({
       "GET /api/materials/vendors": { status: 200, body: { vendors: [BLACKLISTED] } },
