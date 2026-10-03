@@ -90,7 +90,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   /* 2026-09-30 (owner) — nobody found for a typed name or number: register them here, then the paper sheet. */
   const [registerFrom, setRegisterFrom] = useState<string | null>(null);
   /* 2026-09-30 — the patient found with no e-prescription today: the desk offers the paper-prescription door. */
-  const [paperFor, setPaperFor] = useState<{ id: string; uhid: string; label: string } | null>(null);
+  const [paperFor, setPaperFor] = useState<{ id: string; uhid: string; label: string; lastDispenseId?: string } | null>(null);
   /* PARITY P1 — the hand-over that just happened HERE prints by itself; reopening an old ticket does not. */
   const [justHandedOver, setJustHandedOver] = useState<string | null>(null);
   /* PARITY P1 — the line the pharmacist is on, so `N` opens the short book prefilled with its drug. */
@@ -257,9 +257,13 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
     if (r.kind === "none") {
       if (r.reason === "restricted") { setError(t("pharmacyDesk.sealedRefused")); return; }
       const key = r.reason === "qr_invalid" ? "qrInvalid" : r.reason === "no_prescription_today" ? "noRx" : "notFound";
-      setNote(t(`pharmacyDesk.find.${key}`));
+      /* 2026-10-02 — today's ticket already handed over: say THAT, and offer a fresh paper prescription. */
+      setNote(t(`pharmacyDesk.find.${key === "noRx" && r.lastDispenseId !== undefined ? "doneToday" : key}`));
       if (r.reason === "no_prescription_today" && r.patient !== undefined) {
-        setPaperFor({ id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }) });
+        setPaperFor({
+          id: r.patient.id, uhid: r.patient.uhid, label: whoLabel({ ...r.patient, restricted: false }),
+          ...(r.lastDispenseId === undefined ? {} : { lastDispenseId: r.lastDispenseId }),
+        });
         /* Quick desk mode: found with nothing in the system → straight to the medicines, no door to press. */
         if (quick) { setNote(null); setOverlay("paper"); }
       }
@@ -540,7 +544,10 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
               onShowLine={() => setOverlay("queue")}
               onConfirmSlip={() => void confirmSlip()}
               onFind={(q) => void find(q)}
-              paperDoor={paperFor === null ? null : { who: paperFor.label, onOpen: () => setOverlay("paper") }}
+              paperDoor={paperFor === null ? null : {
+                who: paperFor.label, onOpen: () => setOverlay("paper"),
+                ...(paperFor.lastDispenseId === undefined ? {} : { onSeeLast: () => hold(paperFor.lastDispenseId as string) }),
+              }}
               registerDoor={registerFrom === null ? null : { onOpen: () => setOverlay("register") }}
               onTake={(id, who) => void takeHere(id, who, false)}
               onClear={clearDesk}

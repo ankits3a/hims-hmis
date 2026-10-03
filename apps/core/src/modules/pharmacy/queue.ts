@@ -430,7 +430,9 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   };
   const itemIds = [...new Set(lines.map((l) => l.itemId).filter((x): x is string => x !== null))];
   const items = itemIds.length === 0 ? new Map() : await itemsByIds(db, itemIds);
-  const allergies = await listAllergies(db, d.patientId);
+  // ACTIVE only: `patient_allergies` is append-only and a correction is a row marked `entered_in_error` —
+  // history, never a warning (owner, staging 2026-10-02: the desk showed the struck-out ones too).
+  const allergies = (await listAllergies(db, d.patientId)).filter((a) => a.status === "active");
   const [rxRow] = await db.select({
     transcribedBy: opdPrescriptions.transcribedBy, doctorId: opdPrescriptions.doctorId, outsidePrescriberName: opdPrescriptions.outsidePrescriberName,
   }).from(opdPrescriptions).where(eq(opdPrescriptions.id, d.prescriptionId));
