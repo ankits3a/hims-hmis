@@ -6592,7 +6592,7 @@
       "name": "Name",
       "phone": "Mobile",
       "ageYears": "Age (years)",
-      "sex": "sex",
+      "sex": "gender",
       "sexUnknown": "Not stated",
       "sexMale": "Male",
       "sexFemale": "Female",
@@ -6614,6 +6614,10 @@
       "age": "age",
       "dob": "date of birth",
       "address": "address",
+      "ageOrDob": "age or date of birth",
+      "ageOrDobHint": "34 or 14/03/1986",
+      "ageOrDobUnread": "type an age (34) or a date of birth (14/03/1986)",
+      "ageOrDobBorn": "born {{date}} · {{years}} y",
       "addressHint": "street, area, district — the field 11 files a night are missing",
       "optional": "optional",
       "guardian": {
@@ -6663,9 +6667,16 @@
         "divorced": "Divorced",
         "separated": "Separated"
       },
+      "allergy": {
+        "title": "Allergies",
+        "substance": "allergic to",
+        "placeholder": "medicine, food or other — type 3 letters",
+        "add": "Add",
+        "remove": "Remove {{name}}"
+      },
       "where": {
         "title": "Where they live",
-        "area": "area / landmark",
+        "area": "house, street, area",
         "district": "city / district",
         "state": "state",
         "pincode": "PIN code"
