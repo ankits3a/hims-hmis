@@ -2763,6 +2763,8 @@
     }
   },
   "materialsVendors": {
+    "missingDocs": "Cannot activate yet — add these documents below under Documents first: {{docs}}. Each needs its number; a licence also its valid-to date.",
+    "docType": {"gst_certificate": "GST certificate", "pan": "PAN card", "drug_licence_20b": "Drug licence 20B (allopathic)", "drug_licence_21b": "Drug licence 21B (restricted schedule)", "consignment_agreement": "Consignment agreement", "udyam": "Udyam (MSME) certificate", "cancelled_cheque": "Cancelled cheque"},
     "title": "Vendor master",
     "searchHint": "Search by code or name",
     "newVendor": "Register a vendor",
