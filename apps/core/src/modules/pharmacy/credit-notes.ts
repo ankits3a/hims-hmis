@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { approvals, creditNotes, invoices, pharmacyCreditMoves, refundVouchers } from "../../kernel/db/schema";
+import { approvals, creditNotes, invoiceLines, invoices, pharmacyCreditMoves, refundVouchers } from "../../kernel/db/schema";
+import { advanceOf } from "../billing";
 import { getPatientSummaries } from "../patients";
 import { istDateOf } from "./config";
 import { requireReportPermission, REPORTS_READ } from "./report-range";
@@ -21,8 +22,9 @@ import type { ReportInput } from "./sales-register";
  * - What became of it (`settlement`): kept as pharmacy credit (`pharmacy_credit_moves`, owner ruling
  *   2026-10-02), or a refund — requested (approval pending), refused, approved with a voucher not yet
  *   paid, or paid. A credit note can be both kept and refunded only in part; the larger part names it.
- * - The PATIENT's view is every credit note on their bills, newest first, and the pharmacy credit
- *   available now (`pharmacyCreditOf`: what was kept, less what was used, never above their advance).
+ * - The PATIENT's view (the profile's left-lane tile and its dialog, owner 2026-10-03) is the credit
+ *   available with the hospital in every department (`advanceOf`), the pharmacy part of it
+ *   (`pharmacyCreditOf`), every credit note on their bills with its departments, and every refund voucher.
  */
 export type Settlement = "kept_as_credit" | "refund_paid" | "refund_approved" | "refund_requested" | "refund_refused" | "none";
 export type CreditNoteRow = {
@@ -107,33 +109,56 @@ export async function creditNoteRegister(db: Db, actor: Actor, input: ReportInpu
 }
 
 export type PatientCredit = {
-  /** Pharmacy credit the patient can spend at the desk now. */
+  /**
+   * Owner 2026-10-03 — the patient's credit with the hospital, every department: money received and not
+   * set against any bill (advances, and credit-note surpluses kept rather than refunded). `advanceOf`.
+   */
+  totalAvailablePaise: number;
+  /** Of it, the pharmacy credit: spent first at the pharmacy desk (owner ruling 2026-10-02). */
   availablePaise: number;
-  notes: Omit<CreditNoteRow, "patientId" | "patientName" | "uhid">[];
+  notes: (Omit<CreditNoteRow, "patientId" | "patientName" | "uhid"> & { categories: string[] })[];
   totalNetPaise: number;
+  /** Every refund voucher in the patient's name: against a credit note or out of the advance. */
+  refunds: { id: string; voucherNo: string; kind: string; creditNoteNo: string | null; amountPaise: number; method: string; status: string; issuedAt: string; paidAt: string | null; reason: string }[];
 };
 
 /** Every credit note on the patient's bills, newest first, and the pharmacy credit available now. */
 export async function patientCredit(db: Db, actor: Actor, patientId: string): Promise<PatientCredit> {
   // The read is gated at the route; the summary read below also enforces the confidential seal.
   const [who] = await getPatientSummaries(db, actor, [patientId]);
-  if (who === undefined) return { availablePaise: 0, notes: [], totalNetPaise: 0 };
+  if (who === undefined) return { totalAvailablePaise: 0, availablePaise: 0, notes: [], totalNetPaise: 0, refunds: [] };
   const rows = await db.select({
-    id: creditNotes.id, creditNoteNo: creditNotes.creditNoteNo, issuedAt: creditNotes.issuedAt, invoiceNo: invoices.invoiceNo,
+    id: creditNotes.id, creditNoteNo: creditNotes.creditNoteNo, issuedAt: creditNotes.issuedAt, invoiceNo: invoices.invoiceNo, invoiceId: creditNotes.invoiceId,
     kind: creditNotes.kind, reason: creditNotes.reason, netPaise: creditNotes.netPaise, issuedBy: creditNotes.issuedBy,
   }).from(creditNotes).innerJoin(invoices, eq(invoices.id, creditNotes.invoiceId))
     .where(eq(invoices.patientId, patientId)).orderBy(desc(creditNotes.issuedAt)).limit(200);
-  const [money, names, credit] = await Promise.all([
-    settlementsOf(db, rows.map((r) => r.id)), userNames(db, rows.map((r) => r.issuedBy)), pharmacyCreditOf(db, patientId),
+  const invoiceIds = [...new Set(rows.map((r) => r.invoiceId))];
+  const [money, names, credit, advance, cats, vouchers] = await Promise.all([
+    settlementsOf(db, rows.map((r) => r.id)), userNames(db, rows.map((r) => r.issuedBy)), pharmacyCreditOf(db, patientId), advanceOf(db, patientId),
+    invoiceIds.length === 0 ? [] : db.selectDistinct({ invoiceId: invoiceLines.invoiceId, category: invoiceLines.category }).from(invoiceLines).where(inArray(invoiceLines.invoiceId, invoiceIds)),
+    db.select().from(refundVouchers).where(eq(refundVouchers.patientId, patientId)).orderBy(desc(refundVouchers.issuedAt)).limit(200),
   ]);
+  const categoriesOf = (invoiceId: string): string[] => [...new Set(cats.filter((c) => c.invoiceId === invoiceId).map((c) => c.category))].sort();
+  const noteNo = new Map(rows.map((r) => [r.id, r.creditNoteNo] as const));
+  const missing = vouchers.map((v) => v.creditNoteId).filter((id): id is string => id !== null && !noteNo.has(id));
+  if (missing.length > 0) {
+    for (const n of await db.select({ id: creditNotes.id, no: creditNotes.creditNoteNo }).from(creditNotes).where(inArray(creditNotes.id, missing))) noteNo.set(n.id, n.no);
+  }
   const notes = rows.map((r) => {
     const m = money.get(r.id) ?? { keptPaise: 0, refundPaise: 0, settlement: "none" as const };
     const at = r.issuedAt.toISOString();
     return {
       id: r.id, creditNoteNo: r.creditNoteNo, date: istDateOf(r.issuedAt), at, invoiceNo: r.invoiceNo,
       kind: r.kind, reason: r.reason, netPaise: r.netPaise, issuedByName: names.get(r.issuedBy) ?? r.issuedBy,
-      settlement: m.settlement, keptPaise: m.keptPaise, refundPaise: m.refundPaise,
+      settlement: m.settlement, keptPaise: m.keptPaise, refundPaise: m.refundPaise, categories: categoriesOf(r.invoiceId),
     };
   });
-  return { availablePaise: credit.availablePaise, notes, totalNetPaise: notes.reduce((s, n) => s + n.netPaise, 0) };
+  const refunds = vouchers.map((v) => ({
+    id: v.id, voucherNo: v.voucherNo, kind: v.kind, creditNoteNo: v.creditNoteId === null ? null : (noteNo.get(v.creditNoteId) ?? null),
+    amountPaise: v.amountPaise, method: v.method, status: v.status, issuedAt: v.issuedAt.toISOString(), paidAt: v.paidAt?.toISOString() ?? null, reason: v.reason,
+  }));
+  return {
+    totalAvailablePaise: Math.max(0, advance), availablePaise: credit.availablePaise, notes,
+    totalNetPaise: notes.reduce((s, n) => s + n.netPaise, 0), refunds,
+  };
 }
