@@ -7,6 +7,7 @@ import {
 } from "../lib/materials-api";
 import { ApiError } from "../lib/api";
 import { Button } from "@/components/ui/button";
+import { DmyDateInput } from "../components/dmy-date-input";
 import { NewButton, OfficeHead, fieldCls, useNewKey } from "./pharmacy-office/office-page";
 import { Sheet } from "./pharmacy-office/sheet";
 import type { WireVendor } from "../lib/materials-api";
@@ -243,17 +244,22 @@ export function MaterialsVendors(): React.ReactElement {
                 className={fieldCls} placeholder={t("materialsVendors.documentNumber")}
                 value={docNumber} onChange={(e) => setDocNumber(e.target.value)}
               />
-              <input
-                className={fieldCls} placeholder={t("materialsVendors.validToPlaceholder")}
-                value={docValidTo} onChange={(e) => setDocValidTo(e.target.value)}
+              {/* 2026-10-03 — the date in Indian order (DD-MM-YYYY); the API receives YYYY-MM-DD. */}
+              <DmyDateInput
+                className={fieldCls} aria-label={t("materialsVendors.validToLabel")} data-testid="doc-valid-to"
+                value={docValidTo} onChange={setDocValidTo}
               />
             </div>
+            {docValidTo !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(docValidTo)
+              ? <p className="m-0 mt-1 text-xs text-red-600" data-testid="doc-date-bad">{t("materialsVendors.dateBad")}</p>
+              : <p className="m-0 mt-1 text-xs text-slate-500">{t("materialsVendors.dateHint")}</p>}
             <Button
-              className="mt-2" variant="outline"
+              className="mt-2" data-testid="doc-save"
+              disabled={docNumber.trim() === "" || (docValidTo !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(docValidTo))}
               onClick={() => void run(async () => {
                 await addVendorDocument(selected, {
                   type: docType, number: docNumber.trim(),
-                  ...(docValidTo.trim() === "" ? {} : { validTo: docValidTo.trim() }),
+                  ...(docValidTo === "" ? {} : { validTo: docValidTo }),
                 });
                 setDocNumber(""); setDocValidTo("");
               }, t("materialsVendors.documentAdded"))}

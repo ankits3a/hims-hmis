@@ -2763,6 +2763,9 @@
     }
   },
   "materialsVendors": {
+    "dateBad": "Type the date as DD-MM-YYYY, for example 31-03-2027.",
+    "dateHint": "Valid to: DD-MM-YYYY, for a licence. Leave empty for a PAN or GST certificate.",
+    "validToLabel": "Valid to",
     "missingDocs": "Cannot activate yet — add these documents below under Documents first: {{docs}}. Each needs its number; a licence also its valid-to date.",
     "docType": {"gst_certificate": "GST certificate", "pan": "PAN card", "drug_licence_20b": "Drug licence 20B (allopathic)", "drug_licence_21b": "Drug licence 21B (restricted schedule)", "consignment_agreement": "Consignment agreement", "udyam": "Udyam (MSME) certificate", "cancelled_cheque": "Cancelled cheque"},
     "title": "Vendor master",
@@ -2799,7 +2802,7 @@
     "documentNumber": "Number",
     "validTo": "valid to {{date}}",
     "validToPlaceholder": "Valid to (YYYY-MM-DD)",
-    "addDocument": "Add document",
+    "addDocument": "Save document",
     "documentAdded": "Document added",
     "blacklist": "Blacklist",
     "blacklistHint": "Three years, and it cannot be lifted early. The reason is one of four and is counted in the vendor scorecard.",
