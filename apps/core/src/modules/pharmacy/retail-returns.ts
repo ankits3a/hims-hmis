@@ -61,7 +61,7 @@ export async function acceptRetailReturn(
     const lines = await db.select().from(pharmacyRetailSaleLines).where(eq(pharmacyRetailSaleLines.saleId, sale.id));
     const plan = await judgeReturnLines(db, lines.map((l) => ({
       id: l.id, lineIdx: l.lineIdx, qtyBase: l.qtyBase, itemId: l.itemId, batchId: l.batchId, invoiceLineId: l.invoiceLineId,
-    })), input.lines, RETAIL_RETURN_REF_TYPE, now, { invoiceId: sale.invoiceId, pricedAt: sale.soldAt }, input.reasonClass);
+    })), input.lines, RETAIL_RETURN_REF_TYPE, now, { invoiceId: sale.invoiceId, pricedAt: sale.soldAt }, input);
 
     return withTx(db, async (tx) => {
       const result = await restockAndRefund(tx, actor, {

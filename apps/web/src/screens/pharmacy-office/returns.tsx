@@ -654,7 +654,9 @@ function NewWriteOffSheet({ candidates, onClose, onRaised }: { candidates: WireD
   const qc = useQueryClient();
   const stores = [...new Map(candidates.map((c) => [c.storeResourceId, { id: c.storeResourceId, name: c.storeName, code: c.storeCode }])).values()];
   const [store, setStore] = useState(stores[0]?.id ?? "");
-  const [reason, setReason] = useState<WriteOffReason>("expiry");
+  /* Owner ruling 2026-10-03 — a damage tray's loose tablets are written off as damage. */
+  const damageOnly = (id: string): boolean => candidates.some((c) => c.storeResourceId === id) && candidates.filter((c) => c.storeResourceId === id).every((c) => c.why === "damage_tray");
+  const [reason, setReason] = useState<WriteOffReason>(() => (damageOnly(stores[0]?.id ?? "") ? "damage" : "expiry"));
   const [qty, setQty] = useState<Record<string, string>>(() => Object.fromEntries(candidates.map((c) => [`${c.storeResourceId}|${c.batchId}`, String(c.qtyBase)])));
   const [on, setOn] = useState<Record<string, boolean>>({});
   const [disposal, setDisposal] = useState({ agency: "", manifest: "", date: "" });
@@ -688,7 +690,7 @@ function NewWriteOffSheet({ candidates, onClose, onRaised }: { candidates: WireD
           <>
             <div className="flex flex-wrap items-end gap-2">
               <label className="flex flex-col gap-1 text-xs">{t("pharmacyOffice.returns.writeOff.store")}
-                <select className="rounded border px-2 py-1" aria-label={t("pharmacyOffice.returns.writeOff.store")} value={store} onChange={(e) => setStore(e.target.value)}>
+                <select className="rounded border px-2 py-1" aria-label={t("pharmacyOffice.returns.writeOff.store")} value={store} onChange={(e) => { setStore(e.target.value); setReason(damageOnly(e.target.value) ? "damage" : "expiry"); }}>
                   {stores.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
                 </select></label>
               <label className="flex flex-col gap-1 text-xs">{t("pharmacyOffice.returns.col.reason")}

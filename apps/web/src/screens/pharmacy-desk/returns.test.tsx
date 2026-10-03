@@ -292,19 +292,36 @@ describe("reason chips", () => {
   });
 });
 
-/* Owner ruling 2026-10-03 — our mistake takes loose tablets back; the sheet says they are refunded and thrown away. */
-describe("loose tablets on our mistake", () => {
-  it("says loose tablets are taken back only when whose reason is ours", async () => {
-    mock(PERMS, handedOver, {});
+/* Owner ruling 2026-10-03 — loose tablets go to the loose tray (sealed in the pocket) or the damage tray (our mistake only). */
+describe("loose tablets", () => {
+  const stripped: WireDispense = { ...handedOver, lines: handedOver.lines.map((l) => ({ ...l, item: l.item === null ? null : { ...l.item, uoms: [{ uom: "strip", toBaseMultiplier: 10 }] } })) };
+
+  it("asks where loose tablets go, allows the damage tray only for our mistake, and sends the choice", async () => {
+    mock(PERMS, stripped, {
+      "POST /api/pharmacy/dispenses/d1/returns": { status: 200, body: { dispense: stripped, creditNoteId: "cn9", creditNoteNo: "CN-2609-0009", refundApprovalId: "ap1" } },
+      "GET /api/billing/invoices/inv1/credit-notes": creditNotes,
+    });
     const user = userEvent.setup();
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     await user.click(await screen.findByTestId("desk-ticket-menu"));
     await user.click(screen.getByTestId("desk-act-return"));
     const sheet = await screen.findByTestId("desk-return-sheet");
-    expect(within(sheet).queryByTestId("return-loose-mistake")).toBeNull();
-    await user.click(within(sheet).getByTestId("return-class-mistake"));
-    expect(within(sheet).getByTestId("return-loose-mistake")).toHaveTextContent("loose tablets are taken back and refunded too");
+    await user.type(within(sheet).getByTestId("return-qty-0"), "10");
+    expect(within(sheet).queryByTestId("return-loose")).toBeNull(); // a whole strip: nothing to ask
+    await user.clear(within(sheet).getByTestId("return-qty-0"));
+    await user.type(within(sheet).getByTestId("return-qty-0"), "15");
     await user.click(within(sheet).getByTestId("return-class-genuine"));
-    expect(within(sheet).queryByTestId("return-loose-mistake")).toBeNull();
+    await user.type(within(sheet).getByTestId("return-reason"), "no longer needed");
+    await user.click(within(sheet).getByTestId("return-sealed"));
+    expect(within(sheet).getByTestId("return-loose-damage")).toBeDisabled();
+    expect(within(sheet).getByTestId("return-submit")).toBeDisabled(); // loose, and no tray chosen
+    await user.click(within(sheet).getByTestId("return-class-mistake"));
+    expect(within(sheet).getByTestId("return-loose-damage")).toBeEnabled();
+    await user.click(within(sheet).getByTestId("return-loose-damage"));
+    await user.click(within(sheet).getByTestId("return-submit"));
+    await screen.findByTestId("desk-return-done");
+    expect(posted("/pharmacy/dispenses/d1/returns").map((p) => p.body)).toEqual([
+      { lines: [{ lineIdx: 0, qtyBase: 15 }], sealedIntact: true, reason: "no longer needed", reasonClass: "mistake", looseTo: "damage" },
+    ]);
   });
 });

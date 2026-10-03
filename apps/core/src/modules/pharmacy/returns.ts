@@ -4,7 +4,7 @@ import { withTx } from "../../kernel/db/client";
 import { getInvoice, invoiceLineCredits, issueCreditNote, requestRefund } from "../billing";
 import { getBatch, itemsByIds, postMovement, returnedQtyByRef, uomsByItems } from "../materials";
 import {
-  RETURN_DISCARD_REF_TYPE, RETURN_MIN_SHELF_DAYS, RETURN_REF_TYPE, RETURN_REFUSED_STORAGE, RETURN_WINDOW_DAYS, istDateOf,
+  RETURN_MIN_SHELF_DAYS, RETURN_REF_TYPE, RETURN_REFUSED_STORAGE, RETURN_WINDOW_DAYS, istDateOf,
 } from "./config";
 import { dispenseLineReturned } from "./events";
 import { PharmacyError } from "./errors";
@@ -13,6 +13,8 @@ import { residueLinesOf } from "./bill-rows";
 import { requireRegisteredPharmacist } from "./pharmacists";
 import { quickDeskOn } from "./settings";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
+import { ensureLooseTray } from "./loose-trays";
+import type { LooseTrayKind } from "./loose-trays";
 import { keepReturnAsCredit } from "./store-credit";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -26,9 +28,10 @@ import type { DispenseView } from "./queue";
  * the standard Indian retail-pharmacy policy, and each clause is a refusal here:
  *   - within RETURN_WINDOW_DAYS of the hand-over (`return_window_closed`);
  *   - sealed and intact, attested by the registered pharmacist who inspects it (`return_not_sealed`);
- *   - whole issue packs, never a cut strip (`return_cut_strip`) — EXCEPT when the reason is our own
- *     mistake (owner ruling 2026-10-03): then loose units are taken back too, refunded in full, and
- *     discarded rather than restocked (`RETURN_DISCARD_REF_TYPE`); the whole strips still go back;
+ *   - whole issue packs; LOOSE units (owner ruling 2026-10-03) go to a loose tray, not the shelf
+ *     (`loose-trays.ts`): the "can be given" tray when every tablet is still sealed in its pocket —
+ *     for any reason — or the damage tray, for our own mistake only. The patient's own reason with
+ *     loose tablets unfit to give again is still `return_cut_strip`;
  *   - never a cold-chain, frozen or narcotic item (`return_not_accepted`);
  *   - a batch that can still go back on the shelf (`return_short_expiry`);
  *   - never more than was dispensed on the line, net of earlier returns (`return_exceeds_dispensed`).
@@ -48,6 +51,12 @@ export type ReturnInput = {
   sealedIntact: boolean;
   reason: string;
   reasonClass: "mistake" | "genuine";
+  /**
+   * OWNER RULING 2026-10-03 — where LOOSE units go: `loose`, every tablet sealed in its pocket (the tray
+   * the next loose pick takes from first), or `damage`, unfit to give (our mistake only). Absent: our
+   * mistake goes to `damage`; the patient's own reason is refused for loose units.
+   */
+  looseTo?: LooseTrayKind;
   /**
    * OWNER RULING 2026-10-02 — what happens to the money: `refund` (the default) REQUESTS it back through
    * billing's approval; `credit` keeps it as the patient's pharmacy credit for the next bill
@@ -70,8 +79,8 @@ const dayNumber = (isoDate: string): number => Math.floor(Date.parse(`${isoDate}
 export type ReturnableLine = { id: string; lineIdx: number; qtyBase: number; itemId: string; batchId: string; invoiceLineId: string };
 export type ReturnPlanLine = {
   lineId: string; lineIdx: number; qtyBase: number; batchId: string; invoiceLineId: string;
-  /** Of `qtyBase`, the loose units taken back for our mistake: credited, then discarded, never restocked. */
-  discardQty: number;
+  /** Of `qtyBase`, the loose units and the tray they go to (owner ruling 2026-10-03); null when none. */
+  loose: { qty: number; to: LooseTrayKind } | null;
   /** The loose-MRP ruling's pack-residue line to credit alongside, or null (see `residueCredits`). */
   residue: { invoiceLineId: string; qty: number } | null;
 };
@@ -79,8 +88,8 @@ export type ReturnPlanLine = {
 export type ReturnSale = { invoiceId: string; pricedAt: Date };
 export type ReturnedLine = {
   lineIdx: number; qtyBase: number; batchId: string; ledgerEntryId: string;
-  /** Loose units of `qtyBase` discarded instead of restocked (owner ruling 2026-10-03); absent when none. */
-  discardedQty?: number;
+  /** Loose units of `qtyBase` and the tray they went to (owner ruling 2026-10-03); absent when none. */
+  looseQty?: number; looseTo?: LooseTrayKind;
 };
 
 /**
@@ -114,12 +123,12 @@ export function judgeReturnAct(input: ReturnInput, leftAt: Date, now: Date): str
 
 /**
  * O-7's clauses about each line: named, not more than is left after earlier returns (counted from the
- * ledger rows of `refType`), not a refused storage class, whole packs (loose units only for our own
- * mistake, and those are discarded), and a batch that can go back on the shelf.
+ * ledger rows of `refType`), not a refused storage class, whole packs (loose units to a loose tray, see
+ * `ReturnInput.looseTo`), and a batch that can go back on the shelf.
  */
 export async function judgeReturnLines(
   db: Db, lines: readonly ReturnableLine[], wanted: ReturnInput["lines"], refType: string, now: Date, sale: ReturnSale,
-  reasonClass: ReturnInput["reasonClass"],
+  why: Pick<ReturnInput, "reasonClass" | "looseTo">,
 ): Promise<ReturnPlanLine[]> {
   const today = istDateOf(now);
   const already = await returnedQtyByRef(db, refType, lines.map((l) => l.id));
@@ -141,16 +150,17 @@ export async function judgeReturnLines(
       throw new PharmacyError("return_not_accepted", `${item.name} is ${item.storageClass}: its storage after it left the counter cannot be vouched for`, { lineIdx: want.lineIdx, storageClass: item.storageClass });
     }
     const pack = (uoms.get(l.itemId) ?? []).filter((u) => u.isIssueUom && u.toBaseMultiplier > 1).sort((a, b) => a.toBaseMultiplier - b.toBaseMultiplier)[0];
-    const loose = pack === undefined ? 0 : want.qtyBase % pack.toBaseMultiplier;
-    if (loose !== 0 && pack !== undefined && reasonClass !== "mistake") {
-      throw new PharmacyError("return_cut_strip", `line ${String(want.lineIdx + 1)}: returns come back in whole ${pack.uom}s of ${String(pack.toBaseMultiplier)}`, { lineIdx: want.lineIdx, pack: pack.toBaseMultiplier });
+    const looseQty = pack === undefined ? 0 : want.qtyBase % pack.toBaseMultiplier;
+    const looseTo = looseQty === 0 ? null : (why.looseTo ?? (why.reasonClass === "mistake" ? "damage" : null));
+    if (pack !== undefined && looseQty !== 0 && (looseTo === null || (looseTo === "damage" && why.reasonClass !== "mistake"))) {
+      throw new PharmacyError("return_cut_strip", `line ${String(want.lineIdx + 1)}: returns come back in whole ${pack.uom}s of ${String(pack.toBaseMultiplier)}; loose tablets only when each is still sealed in its pocket, or when it was our mistake`, { lineIdx: want.lineIdx, pack: pack.toBaseMultiplier });
     }
     const batch = await getBatch(db, l.batchId);
     if (batch === undefined) throw new PharmacyError("batch_not_saleable", `batch ${l.batchId} not found`);
     if (batch.recallStatus !== "none" || (batch.expiryDate !== null && dayNumber(batch.expiryDate) - dayNumber(today) < RETURN_MIN_SHELF_DAYS)) {
       throw new PharmacyError("return_short_expiry", `batch ${batch.batchNo} cannot go back on the shelf (expiry ${batch.expiryDate ?? "none"}, recall ${batch.recallStatus}) — quarantine it instead`, { lineIdx: want.lineIdx });
     }
-    plan.push({ lineId: l.id, lineIdx: l.lineIdx, qtyBase: want.qtyBase, batchId: l.batchId, invoiceLineId: l.invoiceLineId, discardQty: loose, residue: null });
+    plan.push({ lineId: l.id, lineIdx: l.lineIdx, qtyBase: want.qtyBase, batchId: l.batchId, invoiceLineId: l.invoiceLineId, loose: looseTo === null ? null : { qty: looseQty, to: looseTo }, residue: null });
   }
   return residueCredits(db, lines, plan, already, sale);
 }
@@ -239,18 +249,21 @@ export async function restockAndCredit(
   const { plan, now } = args;
   const returned: ReturnedLine[] = [];
   for (const p of plan) {
-    const moved = await postMovement(tx, actor, {
-      resourceId: args.storeId, batchId: p.batchId, qtyDelta: p.qtyBase, reason: "return",
-      refType: args.refType, refId: p.lineId, patientId: args.patientId, encounterId: args.encounterId, occurredAt: now,
-    });
-    if (p.discardQty > 0) {
-      // Owner ruling 2026-10-03: the loose units of our own mistake leave again at once — discarded, never sold.
-      await postMovement(tx, actor, {
-        resourceId: args.storeId, batchId: p.batchId, qtyDelta: -p.discardQty, reason: "adjust",
-        refType: RETURN_DISCARD_REF_TYPE, refId: p.lineId, patientId: args.patientId, encounterId: args.encounterId, occurredAt: now,
+    // The whole strips back on the shelf; the loose units into their tray (owner ruling 2026-10-03). Both are
+    // `return` rows of `refType` naming the line, which is how "already returned" is counted.
+    const parts: { resourceId: string; qty: number }[] = [];
+    const looseQty = p.loose?.qty ?? 0;
+    if (p.qtyBase - looseQty > 0) parts.push({ resourceId: args.storeId, qty: p.qtyBase - looseQty });
+    if (p.loose !== null) parts.push({ resourceId: await ensureLooseTray(tx, actor, args.storeId, p.loose.to), qty: p.loose.qty });
+    let ledgerEntryId = "";
+    for (const part of parts) {
+      const moved = await postMovement(tx, actor, {
+        resourceId: part.resourceId, batchId: p.batchId, qtyDelta: part.qty, reason: "return",
+        refType: args.refType, refId: p.lineId, patientId: args.patientId, encounterId: args.encounterId, occurredAt: now,
       });
+      if (ledgerEntryId === "") ledgerEntryId = moved.ledgerEntryId;
     }
-    returned.push({ lineIdx: p.lineIdx, qtyBase: p.qtyBase, batchId: p.batchId, ledgerEntryId: moved.ledgerEntryId, ...(p.discardQty > 0 ? { discardedQty: p.discardQty } : {}) });
+    returned.push({ lineIdx: p.lineIdx, qtyBase: p.qtyBase, batchId: p.batchId, ledgerEntryId, ...(p.loose === null ? {} : { looseQty: p.loose.qty, looseTo: p.loose.to }) });
   }
   // Billing's own transactions are savepoints inside this one (the `bill.ts` cast).
   const credit = await issueCreditNote(tx as unknown as Db, actor, {
@@ -280,7 +293,7 @@ export async function acceptReturn(
     returnable.push({ id: l.id, lineIdx: l.lineIdx, qtyBase: l.qtyBase, itemId: l.itemId, batchId: l.batchId, invoiceLineId: l.invoiceLineId });
   }
   const invoiceId = d.invoiceId;
-  const plan = await judgeReturnLines(db, returnable, input.lines, RETURN_REF_TYPE, now, { invoiceId, pricedAt: d.billedAt ?? d.handedOverAt }, input.reasonClass);
+  const plan = await judgeReturnLines(db, returnable, input.lines, RETURN_REF_TYPE, now, { invoiceId, pricedAt: d.billedAt ?? d.handedOverAt }, input);
 
   const result = await withTx(db, async (tx) => {
     const done = await restockAndCredit(tx, actor, {

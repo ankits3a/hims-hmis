@@ -10,6 +10,7 @@ import { PICK_RESERVATION_MINUTES, istDateOf } from "./config";
 import { controlOf, requireControlledStore } from "./controlled";
 import { dispensePicked } from "./events";
 import { PharmacyError } from "./errors";
+import { looseTraysOf, stripSizeOf } from "./loose-trays";
 import { getDispense, getDispenseRow, linesOf } from "./queue";
 import { resolveScan } from "./scan";
 import type { Actor } from "@hmis/contracts";
@@ -128,9 +129,21 @@ export async function pickDispense(
       plan.push({ lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: named, qtyBase: qty, fefoOverride: offered[0]?.batchId !== named, pickNote: partial ? note : null, scanned, store, splitFrom: null });
       continue;
     }
-    const offered = await fefoPick(db, store, line.itemId, qty, now);
-    const covered = offered.reduce((n, o) => n + o.qty, 0);
-    if (offered.length === 0 || covered < qty) {
+    /*
+     * OWNER RULING 2026-10-03 — LOOSE TABLETS FROM THE LOOSE TRAY FIRST. When the quantity is not whole
+     * strips (15 of a strip of 10), the loose part is taken from the store's loose tray, FEFO, before a
+     * fresh strip is cut; whatever the tray cannot cover comes off the shelf as before. Never for a
+     * controlled line (the cabinet has no tray) and never for a named batch (the pharmacist chose a strip).
+     */
+    const fromTray: { batchId: string; qty: number }[] = [];
+    const trayId = store === d.storeResourceId ? (await looseTraysOf(db, store)).loose : undefined;
+    const strip = trayId === undefined ? undefined : await stripSizeOf(db, line.itemId);
+    const looseQty = strip === undefined ? 0 : qty % strip;
+    if (trayId !== undefined && looseQty > 0) fromTray.push(...await fefoPick(db, trayId, line.itemId, looseQty, now));
+    const trayQty = fromTray.reduce((n, o) => n + o.qty, 0);
+    const offered = qty - trayQty > 0 ? await fefoPick(db, store, line.itemId, qty - trayQty, now) : [];
+    const covered = offered.reduce((n, o) => n + o.qty, 0) + trayQty;
+    if ((offered.length === 0 && trayQty === 0) || covered < qty) {
       // The number in a REFUSAL has to mean the same thing as the number on the screen, or the
       // sentence reads as a contradiction: "the shelf holds 0 of 20 (50 across batches)" when all
       // fifty are expired. `availableQty` is the one definition the pick itself obeys.
@@ -141,10 +154,11 @@ export async function pickDispense(
         { lineIdx: line.lineIdx, offered, available },
       );
     }
-    for (const [k, part] of offered.entries()) {
+    const parts = [...fromTray.map((o) => ({ ...o, store: trayId! })), ...offered.map((o) => ({ ...o, store }))];
+    for (const [k, part] of parts.entries()) {
       plan.push(k === 0
-        ? { lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: partial ? note : null, scanned, store, splitFrom: null }
-        : { lineId: newId(), lineIdx: nextIdx++, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: null, scanned: false, store, splitFrom: line.lineIdx });
+        ? { lineId: line.id, lineIdx: line.lineIdx, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: partial ? note : null, scanned, store: part.store, splitFrom: null }
+        : { lineId: newId(), lineIdx: nextIdx++, itemId: line.itemId, batchId: part.batchId, qtyBase: part.qty, fefoOverride: false, pickNote: null, scanned: false, store: part.store, splitFrom: line.lineIdx });
     }
   }
   if (plan.length === 0) throw new PharmacyError("nothing_to_dispense", "no open line to pick");
