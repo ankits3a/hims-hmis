@@ -8,6 +8,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb } from "./helpers/db";
 import { requireEnv } from "../src/kernel/config";
 import { schedulerHeartbeats } from "../src/kernel/db/schema/worker";
+import { healthStatus } from "../src/health/health.controller";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Db } from "../src/kernel/db/client";
 
@@ -42,7 +43,7 @@ describe("GET /health", () => {
 
   it("reports ok with db connectivity", async () => {
     const res = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null });
+    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null, site: "primary" });
   });
 
   /**
@@ -66,7 +67,7 @@ describe("GET /health", () => {
   // positive control — absence must not be purchased by a request that failed.
   it("serves /health with no X-Powered-By banner", async () => {
     const res = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null });
+    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null, site: "primary" });
     expect(res.headers["x-powered-by"]).toBeUndefined();
   });
 
@@ -77,19 +78,19 @@ describe("GET /health", () => {
     // Zero rows is NOT a fault: a deployment without a worker is not something the API can
     // diagnose, so the status stays ok.
     const notRunning = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(notRunning.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null });
+    expect(notRunning.body).toEqual({ status: "ok", db: "ok", worker: "not_running", environment: null, site: "primary" });
 
     await db.insert(schedulerHeartbeats).values({
       job: "runDispatchCycle",
       lastStartedAt: new Date(Date.now() - 10 * 60 * 1000), // 10 min back, against a 60 s window
     });
     const stale = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(stale.body).toEqual({ status: "degraded", db: "ok", worker: "stale", environment: null });
+    expect(stale.body).toEqual({ status: "degraded", db: "ok", worker: "stale", environment: null, site: "primary" });
 
     // A second, FRESH job leaves the aged row in place: the freshest heartbeat decides.
     await db.insert(schedulerHeartbeats).values({ job: "runDueTimers", lastStartedAt: new Date() });
     const ok = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(ok.body).toEqual({ status: "ok", db: "ok", worker: "ok", environment: null });
+    expect(ok.body).toEqual({ status: "ok", db: "ok", worker: "ok", environment: null, site: "primary" });
     expect(await db.select().from(schedulerHeartbeats).where(eq(schedulerHeartbeats.job, "runDispatchCycle")))
       .toHaveLength(1);
 
@@ -97,6 +98,22 @@ describe("GET /health", () => {
     // (Global Constraint 1), so it can only ever degrade this endpoint.
     for (const res of [notRunning, stale, ok]) {
       expect(res.body.status).not.toBe("down");
+    }
+  });
+
+  // PLAN 11b P1. `site` is the node's database role, read from Postgres itself and never from
+  // configuration: a node that was promoted or demoted under a running API must not keep saying
+  // what its .env said at boot. The whole-body compares above are the positive control for
+  // "primary"; the standby half cannot be staged on one cluster, so its rule is pinned on the
+  // pure function the controller calls.
+  it("reports the database role, and an API pointed at a standby is degraded, never ok", async () => {
+    const res = await request(app.getHttpServer()).get("/health").expect(200);
+    expect(res.body.site).toBe("primary");
+    expect(healthStatus("ok", "primary")).toBe("ok");
+    expect(healthStatus("not_running", "primary")).toBe("ok");
+    expect(healthStatus("stale", "primary")).toBe("degraded");
+    for (const worker of ["ok", "stale", "not_running"] as const) {
+      expect(healthStatus(worker, "standby")).toBe("degraded");
     }
   });
 

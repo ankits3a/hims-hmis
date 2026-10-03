@@ -12,6 +12,19 @@ import type { Db } from "../kernel/db/client";
 // purpose — a deployment without a worker is not a fault the API can diagnose.
 export type WorkerHealth = "ok" | "stale" | "not_running";
 
+// PLAN 11b P1 — which side of the replication pair this node's database is. Asked of Postgres on
+// every call (`pg_is_in_recovery()`), never read from configuration: promotion and demotion happen
+// under a running API, and a role remembered from boot would be the one fact about a failover
+// that is guaranteed to be out of date.
+export type SiteRole = "primary" | "standby";
+
+// An API answering from a standby cannot log anyone in or record a single PHI read, so it is
+// never "ok" whatever the worker says. It is still not "down": the endpoint answering at all is
+// what tells the node agent the process is alive and merely pointed at the wrong side.
+export function healthStatus(worker: WorkerHealth, site: SiteRole): "ok" | "degraded" {
+  return worker === "stale" || site === "standby" ? "degraded" : "ok";
+}
+
 @Controller("health")
 export class HealthController {
   constructor(
@@ -34,8 +47,12 @@ export class HealthController {
    */
   @Public()
   @Get()
-  async health(): Promise<{ status: string; db: string; worker: WorkerHealth; environment: string | null }> {
-    await this.db.execute(sql`select 1`);
+  async health(): Promise<{
+    status: string; db: string; worker: WorkerHealth; environment: string | null; site: SiteRole;
+  }> {
+    // One round trip is both the connectivity proof `select 1` used to be and the role.
+    const { rows } = await this.db.execute<{ standby: boolean }>(sql`select pg_is_in_recovery() as standby`);
+    const site: SiteRole = rows[0]?.standby === true ? "standby" : "primary";
     // The FRESHEST heartbeat decides: one aged job among fresh ones is not a stalled worker.
     const [freshest] = await this.db
       .select({ lastStartedAt: schedulerHeartbeats.lastStartedAt })
@@ -48,8 +65,8 @@ export class HealthController {
       worker = ageMs > this.cfg.workerStaleAfterMs ? "stale" : "ok";
     }
     return {
-      status: worker === "stale" ? "degraded" : "ok", db: "ok", worker,
-      environment: this.cfg.environmentLabel,
+      status: healthStatus(worker, site), db: "ok", worker,
+      environment: this.cfg.environmentLabel, site,
     };
   }
 }
