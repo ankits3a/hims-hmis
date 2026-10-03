@@ -961,21 +961,44 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(within(dialog).getByTestId("pf-credit-refund-v1")).toHaveTextContent("Paid 03-10-2026");
   });
 
-  /* Owner 2026-10-03 — the patient's pharmacy bills in the left lane; a click lists each ticket with its invoice. */
-  it("the left lane counts the pharmacy bills; a click lists each ticket with its invoice, GST and credit notes", async () => {
+  /* Owner 2026-10-03 — All bills in the left lane: every bill, a department filter, and one bill opened in full. */
+  it("All bills: every bill in one dialog, filtered by department, and a bill opened to its whole billing", async () => {
+    const st = { state: "settled", outstandingPaise: 0 };
     const bills = { bills: [
-      { invoiceId: "i2", invoiceNo: "INV-2", date: "2026-10-03", ticket: "P2610030002", source: "dispense", netPaise: 21000, gstPaise: 1000, creditUsedPaise: 10500, returnedPaise: 0, finalPaise: 21000, creditNotes: [] },
-      { invoiceId: "i1", invoiceNo: "INV-1", date: "2026-10-02", ticket: "P2610020001", source: "dispense", netPaise: 10500, gstPaise: 500, creditUsedPaise: 0, returnedPaise: 10500, finalPaise: 0, creditNotes: [{ id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", netPaise: 10500 }] },
+      { invoiceId: "i3", invoiceNo: "INV-3", date: "2026-10-03", departments: ["lab"], encounterNo: "V1", lines: 2, summary: "CBC, LFT", netPaise: 90000, gstPaise: 0, creditedPaise: 0, paidPaise: 90000, settlement: st },
+      { invoiceId: "i2", invoiceNo: "INV-2", date: "2026-10-03", departments: ["pharmacy"], encounterNo: null, lines: 1, summary: "Crocin 500", netPaise: 21000, gstPaise: 1000, creditedPaise: 0, paidPaise: 21000, settlement: st },
+      { invoiceId: "i1", invoiceNo: "INV-1", date: "2026-10-02", departments: ["opd"], encounterNo: "V1", lines: 1, summary: "Consultation", netPaise: 50000, gstPaise: 0, creditedPaise: 0, paidPaise: 0, settlement: { state: "unpaid", outstandingPaise: 50000 } },
     ] };
-    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/dues": DUES, "GET /api/pharmacy/patients/p-1/pharmacy-bills": bills }, [...FRONT_DESK, "billing.dues.patient.read"]);
+    const full = {
+      invoiceId: "i2", invoiceNo: "INV-2", issuedAt: "2026-10-03T05:00:00.000Z", issuedByName: "abhay.kumar", departments: ["pharmacy"], encounterNo: null, intendedPayer: "self", buyerGstin: null,
+      lines: [{ lineNo: 1, serviceName: "Crocin 500", sacCode: "3004", qty: 20, unitPaise: 1000, grossPaise: 21000, discountPaise: 0, taxablePaise: 20000, rateBps: 500, cgstPaise: 500, sgstPaise: 500, netPaise: 21000 }],
+      totals: { grossPaise: 21000, discountPaise: 0, taxablePaise: 20000, cgstPaise: 500, sgstPaise: 500, roundingPaise: 0, netPaise: 21000 },
+      payments: [{ receiptNo: "R-9", at: "2026-10-03T05:00:00.000Z", amountPaise: 21000, kind: "apply", modes: ["cash"] }],
+      creditNotes: [], settlement: st, creditedPaise: 0, paidPaise: 21000,
+    };
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/bills": bills, "GET /api/billing/invoices/i2/full": full }, [...FRONT_DESK, "billing.invoice.read"]);
     renderWithProviders(<PatientDetail />);
-    const tile = await screen.findByTestId("pf-bills-tile");
-    expect(tile).toHaveTextContent("2 bills");
+    const tile = await screen.findByTestId("pf-all-bills-tile");
+    expect(within(screen.getByTestId("profile-lane")).getByTestId("pf-all-bills-tile")).toHaveTextContent("All bills3 bills");
     await userEvent.click(tile);
-    const dialog = await screen.findByTestId("pf-bills-dialog");
-    expect(within(dialog).getByTestId("pf-bill-i1")).toHaveTextContent("P2610020001");
-    expect(within(dialog).getByTestId("pf-bill-i1")).toHaveTextContent("CN-1");
-    expect(within(dialog).getByTestId("pf-bill-i2")).toHaveTextContent("₹105.00");
+    const dialog = await screen.findByTestId("pf-all-bills-dialog");
+    expect(within(dialog).getByTestId("bills-filter-lab")).toHaveTextContent("Lab · 1");
+    await userEvent.click(within(dialog).getByTestId("bills-filter-pharmacy"));
+    expect(within(dialog).queryByTestId("pf-all-bill-i3")).toBeNull();
+    expect(within(dialog).getByTestId("pf-all-bills-sum")).toHaveTextContent("1 bill · billed ₹210.00 · GST ₹10.00");
+    await userEvent.click(within(dialog).getByTestId("pf-all-bill-i2"));
+    expect(await within(dialog).findByTestId("pf-bill-lines")).toHaveTextContent("Crocin 500");
+    expect(within(dialog).getByTestId("pf-bill-totals")).toHaveTextContent("₹210.00");
+    expect(within(dialog).getByTestId("pf-bill-payments")).toHaveTextContent("Paid against this bill");
+    await userEvent.click(within(dialog).getByTestId("pf-bill-back"));
+    expect(await within(dialog).findByTestId("pf-all-bills-table")).toBeInTheDocument();
+  });
+
+  it("All bills is not offered to the front desk's narrow dues string (owner ruling 2026-09-30)", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/dues": DUES }, [...FRONT_DESK, "billing.dues.patient.read"]);
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByTestId("today-dues")).toBeInTheDocument();
+    expect(screen.queryByTestId("pf-all-bills-tile")).toBeNull();
   });
 
   it("OWNER RULING 2026-09-30 · front desk with the narrow dues string: the Today band shows what is owed; no invoice history is asked", async () => {
