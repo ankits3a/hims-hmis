@@ -99,7 +99,7 @@ import type { BenefitBalance } from "./invoices";
 import {
   allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
 } from "./receipts";
-import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
+import { issueRefundVoucher, issueVoucherForApproval, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
 import { resolveMismatch } from "./recon-resolve";
 import type { ResolveMismatchResult } from "./recon-resolve";
@@ -1040,6 +1040,25 @@ export class BillingController {
         { actorId: actor.id, route: "POST /billing/refunds", key: idemKey },
         b,
         () => issueRefundVoucher(this.db, actor, b),
+      );
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — the voucher for a refund already approved, from the office's worklist (`issueVoucherForApproval`). */
+  @RequirePermission("billing.refund.request", "hospital")
+  @Post("refunds/approved/:approvalId/voucher")
+  async refundIssueApproved(
+    @CurrentActor() actor: Actor, @Param("approvalId") approvalId: string, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
+  ): Promise<IssueRefundVoucherResult> {
+    const b = parsed(z.object({ method: z.enum(["cash", "bank_transfer"]) }), body);
+    try {
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: `POST /billing/refunds/approved/${approvalId}/voucher`, key: idemKey },
+        b,
+        () => issueVoucherForApproval(this.db, actor, approvalId, b.method),
       );
     } catch (e) {
       toHttp(e);

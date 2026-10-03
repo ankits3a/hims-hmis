@@ -5,13 +5,13 @@ import { issuePaidInvoiceByTender, mkBillingManager, mkCashier, openSessionFor, 
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
 import { approveRequest } from "../../kernel/approvals/decisions";
 import { withTx } from "../../kernel/db/client";
-import { receiptTenders, registrationConfig } from "../../kernel/db/schema";
+import { receiptTenders, refundVouchers, registrationConfig } from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
 import { billingOfficeNeeds, gstr1Due } from "./office-needs";
 import { recordReceipt } from "./receipts";
 import { uploadSettlement } from "./recon";
 import { resolveMismatch } from "./recon-resolve";
-import { issueRefundVoucher, requestRefund } from "./refunds";
+import { issueRefundVoucher, issueVoucherForApproval, requestRefund } from "./refunds";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -109,6 +109,33 @@ describe("office-needs.ts: the billing office's ranked needs feed", () => {
     expect(after.rows.find((r) => r.params.tenderId === tenderId)).toMatchObject({ kind: "recon_disputed", state: "waiting" });
     const [tender] = await db.select().from(receiptTenders).where(eq(receiptTenders.id, tenderId));
     expect(tender!.state).toBe("mismatched");
+  });
+
+  /* Owner 2026-10-03 — an approved refund with no voucher sat nowhere; it is now the office's to issue. */
+  test("an approved refund with no voucher is the office's to issue; issued from the worklist it becomes a voucher to pay", async () => {
+    const cashier = await mkCashier(db, "cashier-issue");
+    await openSessionFor(db, cashier, 100_000);
+    const manager = await mkBillingManager(db, "manager-issue");
+    const sunita = await patient("Sunita Verma");
+    await recordReceipt(db, cashier.actor, { patientId: sunita, tenders: [{ mode: "cash", amountPaise: 300_000 }] }, NOW);
+    const asked = await requestRefund(db, cashier.actor, { kind: "advance_refund", patientId: sunita, amountPaise: 77_000, reasonClass: "mistake", reason: "wrong medicine given" });
+    await approveRequest(db, manager.actor, { approvalId: asked.approvalId, note: "ok" });
+
+    const before = (await billingOfficeNeeds(db, OFFICE, LATER)).rows.filter((r) => r.kind === "issue_voucher");
+    expect(before).toHaveLength(1);
+    expect(before[0]!).toMatchObject({ source: "PAY", state: "open", patient: { name: "Sunita Verma" }, params: { approvalId: asked.approvalId, amountPaise: 77_000 } });
+
+    const v = await issueVoucherForApproval(db, cashier.actor, asked.approvalId, "cash", NOW);
+    const [row] = await db.select().from(refundVouchers).where(eq(refundVouchers.id, v.voucherId));
+    expect(row).toMatchObject({ kind: "advance_refund", amountPaise: 77_000, reasonClass: "mistake", reason: "wrong medicine given", method: "cash", status: "issued" });
+
+    const after = await billingOfficeNeeds(db, OFFICE, LATER);
+    expect(after.rows.filter((r) => r.kind === "issue_voucher")).toHaveLength(0);
+    expect(after.rows.filter((r) => r.kind === "pay_voucher").map((r) => r.params.amountPaise)).toEqual([77_000]);
+    // the same approval cannot be spent twice
+    await expect(issueVoucherForApproval(db, cashier.actor, asked.approvalId, "cash", NOW)).rejects.toMatchObject({ code: "voucher_state_conflict" });
+    await expect(issueRefundVoucher(db, cashier.actor, { kind: "advance_refund", patientId: sunita, amountPaise: 77_000, reasonClass: "mistake", reason: "wrong medicine given", approvalId: asked.approvalId, method: "cash" }, NOW))
+      .rejects.toMatchObject({ code: "voucher_state_conflict" });
   });
 
   test("a finished day's UPI/card money still captured reads as a statement not uploaded", async () => {

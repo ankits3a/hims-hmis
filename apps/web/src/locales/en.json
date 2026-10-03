@@ -1996,6 +1996,7 @@
           "title": "Pay {{voucherNo}} · {{amount}} {{method}}",
           "sub": "{{patient}} · approved {{at}}"
         },
+        "issue_voucher": {"title": "Issue the refund voucher · {{amount}}", "sub": "{{patient}} · approved {{at}} by {{by}}"},
         "approve_refund": {
           "title": "Refund {{amount}} waits for approval"
         },
@@ -2132,6 +2133,7 @@
       },
       "simple": {
         "asked": "Asked",
+        "issue_voucher": {"step": "Issue the voucher", "stepM": "The refund is approved. Choose how it will be paid back, then issue the voucher. It goes to the cashier's list to pay.", "bankOnly": "Above {{limit}} a refund is paid by bank transfer only.", "next": "The cashier pays it", "nextM": "Then it shows as “Pay this voucher”: the cashier records who takes the money and pays it from the drawer (cash) or by bank transfer.", "act": "Issue voucher · {{amount}}", "done": "Voucher {{voucherNo}} issued — it is now on the list to pay."},
         "approve_refund": {
           "step": "A billing manager decides",
           "stepM": "Every refund is approved before a voucher exists. Above {{limit}} the owner decides instead.",

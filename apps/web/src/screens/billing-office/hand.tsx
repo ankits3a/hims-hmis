@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { SubmitButton } from "../../components/submit-button";
 import { billingErrorMessage } from "../../lib/billing-api";
-import { dayWords, fetchOwnDrawer, instantWords, payVoucher, resolveMismatch } from "../../lib/billing-office-api";
+import { dayWords, fetchOwnDrawer, instantWords, issueApprovedVoucher, payVoucher, resolveMismatch } from "../../lib/billing-office-api";
 import { fmtIst, fmtPaise } from "../../lib/format";
 import { SRC_KEY, docOf, methodWord, needTitle, patientOf } from "./needs-text";
 import type { OfficeView } from "./pages";
@@ -392,6 +392,11 @@ function useSimpleShape(p: HandProps): Shape {
   const who = patientOf(row);
   const k = row.kind;
   const amount = fmtPaise(num(pr.amountPaise));
+  const qc = useQueryClient();
+  /* Owner 2026-10-03 — issue_voucher: the method the voucher is paid by; above the cash ceiling only a bank transfer. */
+  const bankOnly = pr.bankAbovePaise !== undefined && pr.bankAbovePaise !== null && num(pr.amountPaise) > num(pr.bankAbovePaise);
+  const [voucherMethod, setVoucherMethod] = useState<"cash" | "bank_transfer">(bankOnly ? "bank_transfer" : "cash");
+  const [issueError, setIssueError] = useState<string | null>(null);
 
   let facts: [string, string, boolean?][] = [];
   let steps: Step[] = [];
@@ -402,7 +407,49 @@ function useSimpleShape(p: HandProps): Shape {
     <button type="button" className="pri" data-testid={testId} onClick={() => p.onGo(go)}>{label}</button>
   );
 
-  if (k === "approve_refund" || k === "refund_owner") {
+  if (k === "issue_voucher") {
+    facts = [
+      [t("billingOffice.board.pay.fact.amount"), amount, true],
+      [t("billingOffice.board.simple.asked"), str(pr.requestedBy) || "—"],
+      [t("billingOffice.board.pay.fact.approved"), [instantWords(str(pr.approvedAt), false), str(pr.approvedBy)].filter((x) => x !== "").join(" · ")],
+    ];
+    why = str(pr.note);
+    const issue = async (idemKey: string): Promise<void> => {
+      setIssueError(null);
+      try {
+        const done = await issueApprovedVoucher(str(pr.approvalId), voucherMethod, idemKey);
+        await qc.invalidateQueries({ queryKey: ["billing-office"] });
+        p.onDone(t("billingOffice.board.simple.issue_voucher.done", { voucherNo: done.voucherNo }));
+      } catch (e) {
+        setIssueError(billingErrorMessage(e));
+      }
+    };
+    steps = [
+      { n: 1, state: "done", title: t("billingOffice.board.pay.requested"), body: <div className="m">{str(pr.note)}</div> },
+      { n: 2, state: "done", title: t("billingOffice.board.pay.approved"), body: <div className="m">{[instantWords(str(pr.approvedAt)), str(pr.approvedBy)].filter((x) => x !== "").join(" · ")}</div> },
+      { n: 3, state: "now", title: t("billingOffice.board.simple.issue_voucher.step"), body: (
+        <>
+          <div className="m">{t("billingOffice.board.simple.issue_voucher.stepM")}</div>
+          <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 12.5 }}>
+            {(["cash", "bank_transfer"] as const).map((m) => (
+              <label key={m} style={{ display: "flex", alignItems: "center", gap: 6, color: m === "cash" && bankOnly ? "var(--faint)" : undefined }}>
+                <input type="radio" name="voucher-method" data-testid={`issue-method-${m}`} checked={voucherMethod === m} disabled={m === "cash" && bankOnly} onChange={() => setVoucherMethod(m)} />
+                {methodWord(m, t)}
+              </label>
+            ))}
+          </div>
+          {bankOnly ? <div className="m" style={{ marginTop: 4 }}>{t("billingOffice.board.simple.issue_voucher.bankOnly", { limit: fmtPaise(num(pr.bankAbovePaise)) })}</div> : null}
+          {issueError !== null ? <p role="alert" style={{ margin: "6px 0 0", color: "var(--red)", fontSize: 12.5 }}>{issueError}</p> : null}
+        </>
+      ) },
+      { n: 4, state: "todo", title: t("billingOffice.board.simple.issue_voucher.next"), body: <div className="m">{t("billingOffice.board.simple.issue_voucher.nextM")}</div> },
+    ];
+    act = (
+      <SubmitButton plain className="pri" data-testid="hand-act" onClick={(key) => issue(key)}>
+        {t("billingOffice.board.simple.issue_voucher.act", { amount })}
+      </SubmitButton>
+    );
+  } else   if (k === "approve_refund" || k === "refund_owner") {
     facts = [
       [t("billingOffice.board.pay.fact.amount"), amount, true],
       [t("billingOffice.board.simple.asked"), [instantWords(row.since), str(pr.requestedBy)].filter((x) => x !== "").join(" · ")],
