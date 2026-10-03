@@ -4,7 +4,7 @@ import { withTx } from "../../kernel/db/client";
 import { getInvoice, invoiceLineCredits, issueCreditNote, requestRefund } from "../billing";
 import { getBatch, itemsByIds, postMovement, returnedQtyByRef, uomsByItems } from "../materials";
 import {
-  RETURN_MIN_SHELF_DAYS, RETURN_REF_TYPE, RETURN_REFUSED_STORAGE, RETURN_WINDOW_DAYS, istDateOf,
+  RETURN_DISCARD_REF_TYPE, RETURN_MIN_SHELF_DAYS, RETURN_REF_TYPE, RETURN_REFUSED_STORAGE, RETURN_WINDOW_DAYS, istDateOf,
 } from "./config";
 import { dispenseLineReturned } from "./events";
 import { PharmacyError } from "./errors";
@@ -26,7 +26,9 @@ import type { DispenseView } from "./queue";
  * the standard Indian retail-pharmacy policy, and each clause is a refusal here:
  *   - within RETURN_WINDOW_DAYS of the hand-over (`return_window_closed`);
  *   - sealed and intact, attested by the registered pharmacist who inspects it (`return_not_sealed`);
- *   - whole issue packs, never a cut strip (`return_cut_strip`);
+ *   - whole issue packs, never a cut strip (`return_cut_strip`) — EXCEPT when the reason is our own
+ *     mistake (owner ruling 2026-10-03): then loose units are taken back too, refunded in full, and
+ *     discarded rather than restocked (`RETURN_DISCARD_REF_TYPE`); the whole strips still go back;
  *   - never a cold-chain, frozen or narcotic item (`return_not_accepted`);
  *   - a batch that can still go back on the shelf (`return_short_expiry`);
  *   - never more than was dispensed on the line, net of earlier returns (`return_exceeds_dispensed`).
@@ -68,12 +70,18 @@ const dayNumber = (isoDate: string): number => Math.floor(Date.parse(`${isoDate}
 export type ReturnableLine = { id: string; lineIdx: number; qtyBase: number; itemId: string; batchId: string; invoiceLineId: string };
 export type ReturnPlanLine = {
   lineId: string; lineIdx: number; qtyBase: number; batchId: string; invoiceLineId: string;
+  /** Of `qtyBase`, the loose units taken back for our mistake: credited, then discarded, never restocked. */
+  discardQty: number;
   /** The loose-MRP ruling's pack-residue line to credit alongside, or null (see `residueCredits`). */
   residue: { invoiceLineId: string; qty: number } | null;
 };
 /** The sale a return is against: its invoice, and when it was priced (the regulation in force then). */
 export type ReturnSale = { invoiceId: string; pricedAt: Date };
-export type ReturnedLine = { lineIdx: number; qtyBase: number; batchId: string; ledgerEntryId: string };
+export type ReturnedLine = {
+  lineIdx: number; qtyBase: number; batchId: string; ledgerEntryId: string;
+  /** Loose units of `qtyBase` discarded instead of restocked (owner ruling 2026-10-03); absent when none. */
+  discardedQty?: number;
+};
 
 /**
  * Who takes a pack back (P6-4): a registered pharmacist, holding the two billing strings the act
@@ -106,11 +114,12 @@ export function judgeReturnAct(input: ReturnInput, leftAt: Date, now: Date): str
 
 /**
  * O-7's clauses about each line: named, not more than is left after earlier returns (counted from the
- * ledger rows of `refType`), not a refused storage class, whole packs, and a batch that can go back
- * on the shelf.
+ * ledger rows of `refType`), not a refused storage class, whole packs (loose units only for our own
+ * mistake, and those are discarded), and a batch that can go back on the shelf.
  */
 export async function judgeReturnLines(
   db: Db, lines: readonly ReturnableLine[], wanted: ReturnInput["lines"], refType: string, now: Date, sale: ReturnSale,
+  reasonClass: ReturnInput["reasonClass"],
 ): Promise<ReturnPlanLine[]> {
   const today = istDateOf(now);
   const already = await returnedQtyByRef(db, refType, lines.map((l) => l.id));
@@ -132,7 +141,8 @@ export async function judgeReturnLines(
       throw new PharmacyError("return_not_accepted", `${item.name} is ${item.storageClass}: its storage after it left the counter cannot be vouched for`, { lineIdx: want.lineIdx, storageClass: item.storageClass });
     }
     const pack = (uoms.get(l.itemId) ?? []).filter((u) => u.isIssueUom && u.toBaseMultiplier > 1).sort((a, b) => a.toBaseMultiplier - b.toBaseMultiplier)[0];
-    if (pack !== undefined && want.qtyBase % pack.toBaseMultiplier !== 0) {
+    const loose = pack === undefined ? 0 : want.qtyBase % pack.toBaseMultiplier;
+    if (loose !== 0 && pack !== undefined && reasonClass !== "mistake") {
       throw new PharmacyError("return_cut_strip", `line ${String(want.lineIdx + 1)}: returns come back in whole ${pack.uom}s of ${String(pack.toBaseMultiplier)}`, { lineIdx: want.lineIdx, pack: pack.toBaseMultiplier });
     }
     const batch = await getBatch(db, l.batchId);
@@ -140,7 +150,7 @@ export async function judgeReturnLines(
     if (batch.recallStatus !== "none" || (batch.expiryDate !== null && dayNumber(batch.expiryDate) - dayNumber(today) < RETURN_MIN_SHELF_DAYS)) {
       throw new PharmacyError("return_short_expiry", `batch ${batch.batchNo} cannot go back on the shelf (expiry ${batch.expiryDate ?? "none"}, recall ${batch.recallStatus}) — quarantine it instead`, { lineIdx: want.lineIdx });
     }
-    plan.push({ lineId: l.id, lineIdx: l.lineIdx, qtyBase: want.qtyBase, batchId: l.batchId, invoiceLineId: l.invoiceLineId, residue: null });
+    plan.push({ lineId: l.id, lineIdx: l.lineIdx, qtyBase: want.qtyBase, batchId: l.batchId, invoiceLineId: l.invoiceLineId, discardQty: loose, residue: null });
   }
   return residueCredits(db, lines, plan, already, sale);
 }
@@ -233,7 +243,14 @@ export async function restockAndCredit(
       resourceId: args.storeId, batchId: p.batchId, qtyDelta: p.qtyBase, reason: "return",
       refType: args.refType, refId: p.lineId, patientId: args.patientId, encounterId: args.encounterId, occurredAt: now,
     });
-    returned.push({ lineIdx: p.lineIdx, qtyBase: p.qtyBase, batchId: p.batchId, ledgerEntryId: moved.ledgerEntryId });
+    if (p.discardQty > 0) {
+      // Owner ruling 2026-10-03: the loose units of our own mistake leave again at once — discarded, never sold.
+      await postMovement(tx, actor, {
+        resourceId: args.storeId, batchId: p.batchId, qtyDelta: -p.discardQty, reason: "adjust",
+        refType: RETURN_DISCARD_REF_TYPE, refId: p.lineId, patientId: args.patientId, encounterId: args.encounterId, occurredAt: now,
+      });
+    }
+    returned.push({ lineIdx: p.lineIdx, qtyBase: p.qtyBase, batchId: p.batchId, ledgerEntryId: moved.ledgerEntryId, ...(p.discardQty > 0 ? { discardedQty: p.discardQty } : {}) });
   }
   // Billing's own transactions are savepoints inside this one (the `bill.ts` cast).
   const credit = await issueCreditNote(tx as unknown as Db, actor, {
@@ -263,7 +280,7 @@ export async function acceptReturn(
     returnable.push({ id: l.id, lineIdx: l.lineIdx, qtyBase: l.qtyBase, itemId: l.itemId, batchId: l.batchId, invoiceLineId: l.invoiceLineId });
   }
   const invoiceId = d.invoiceId;
-  const plan = await judgeReturnLines(db, returnable, input.lines, RETURN_REF_TYPE, now, { invoiceId, pricedAt: d.billedAt ?? d.handedOverAt });
+  const plan = await judgeReturnLines(db, returnable, input.lines, RETURN_REF_TYPE, now, { invoiceId, pricedAt: d.billedAt ?? d.handedOverAt }, input.reasonClass);
 
   const result = await withTx(db, async (tx) => {
     const done = await restockAndCredit(tx, actor, {

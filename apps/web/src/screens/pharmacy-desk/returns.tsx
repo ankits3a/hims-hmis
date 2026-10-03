@@ -294,6 +294,9 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
                     })}
                   </div>
                 </div>
+                {act === "return" && reasonClass === "mistake" ? (
+                  <p data-testid="return-loose-mistake" style={{ margin: 0, fontSize: 11.5, color: "var(--dim)", lineHeight: "16px" }}>{t("pharmacyDesk.returns.looseMistake")}</p>
+                ) : null}
                 {act === "return" ? (
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
                     <input type="checkbox" data-testid="return-sealed" checked={sealed} onChange={(e) => setSealed(e.target.checked)} />

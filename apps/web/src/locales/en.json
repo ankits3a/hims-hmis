@@ -7472,7 +7472,7 @@
     "return_window_closed": "Returns are accepted within 7 days of the hand-over",
     "return_not_sealed": "Only a sealed, intact pack comes back — inspect it and confirm",
     "return_not_accepted": "Cold-chain, frozen and narcotic items are not taken back",
-    "return_cut_strip": "Returns come back in whole strips or packs, never cut",
+    "return_cut_strip": "Loose tablets come back only when it was our mistake — choose “Our mistake”, or return whole strips or packs",
     "return_short_expiry": "This batch is too close to expiry (or recalled) to go back on the shelf — quarantine it",
     "return_exceeds_dispensed": "That is more than was dispensed on this line, less what already came back",
     "invalid_day": "That is not a date",
@@ -8237,6 +8237,7 @@
       "chipsLabel": "Common reasons",
       "chip": {"wrongMedicine": "Wrong medicine given", "wrongQty": "Wrong quantity given", "wrongBill": "Wrong bill or price", "billedTwice": "Billed twice", "outOfStock": "Medicine not in stock", "doctorChanged": "Doctor changed the prescription", "notNeeded": "Patient no longer needs it", "reaction": "Patient had a reaction to it", "patientLeft": "Patient left without the medicine", "duplicate": "Duplicate ticket"},
       "sealed": "I have inspected every pack: sealed and intact",
+      "looseMistake": "Our mistake: loose tablets are taken back and refunded too. They are thrown away, not put back on the shelf.",
       "money": {
         "return": "Billing works out the refund from the bill when you accept; the amount is shown here after.",
         "refund": "The whole bill is credited; the refund amount is shown here after.",

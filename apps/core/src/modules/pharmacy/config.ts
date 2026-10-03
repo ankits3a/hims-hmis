@@ -131,6 +131,12 @@ export const RETURN_REFUSED_STORAGE = ["cold_2_8", "frozen", "narcotic"] as cons
 export const RETURN_REF_TYPE = "pharmacy_return";
 /** P19b — the same for a pack back from a walk-in sale or a paper dispense: `ref_id` is the SALE line. */
 export const RETAIL_RETURN_REF_TYPE = "pharmacy_retail_return";
+/**
+ * Owner ruling 2026-10-03 — loose tablets taken back for OUR mistake come back on the return row and go
+ * straight out again on an `adjust` row of this `ref_type` (`ref_id` is the dispense or sale line): they
+ * are discarded (BMW yellow (d)), never sold again.
+ */
+export const RETURN_DISCARD_REF_TYPE = "pharmacy_return_discard";
 
 /**
  * PARITY P2 — the expected-delivery date the agent's DRAFT orders carry: this many days from today.

@@ -17,6 +17,7 @@ this closes the handed-over half.
   - Not attested sealed and intact by the inspecting pharmacist: `return_not_sealed`. The route
     also requires the literal `true`.
   - Not whole issue packs: `return_cut_strip`.
+    **OWNER RULING 2026-10-03 (money):** when the reason class is `mistake`, loose units are accepted. The whole strips go back on the shelf; the loose units are credited and refunded in full, then leave the store at once on an `adjust` ledger row of `ref_type = pharmacy_return_discard` (BMW yellow (d)), never sold again. The patient's own reason (`genuine`) still needs whole packs.
   - A `cold_2_8`, `frozen` or `narcotic` storage class: `return_not_accepted`.
   - A batch recalled or under 30 days to expiry: `return_short_expiry`. It cannot go back on the
     shelf; quarantine it instead.

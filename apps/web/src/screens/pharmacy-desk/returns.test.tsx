@@ -291,3 +291,20 @@ describe("reason chips", () => {
     expect(posted("/pharmacy/dispenses/d1/cancel").map((p) => p.body)).toEqual([{ reason: "Duplicate ticket" }]);
   });
 });
+
+/* Owner ruling 2026-10-03 — our mistake takes loose tablets back; the sheet says they are refunded and thrown away. */
+describe("loose tablets on our mistake", () => {
+  it("says loose tablets are taken back only when whose reason is ours", async () => {
+    mock(PERMS, handedOver, {});
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-return"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    expect(within(sheet).queryByTestId("return-loose-mistake")).toBeNull();
+    await user.click(within(sheet).getByTestId("return-class-mistake"));
+    expect(within(sheet).getByTestId("return-loose-mistake")).toHaveTextContent("loose tablets are taken back and refunded too");
+    await user.click(within(sheet).getByTestId("return-class-genuine"));
+    expect(within(sheet).queryByTestId("return-loose-mistake")).toBeNull();
+  });
+});

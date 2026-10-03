@@ -4,7 +4,8 @@ import { openSessionFor } from "../../../test/helpers/billing";
 import { MON, MON2, MON3, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
 import { testCfg } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { approvals, events } from "../../kernel/db/schema";
+import { approvals, events, stockLedger } from "../../kernel/db/schema";
+import { RETURN_DISCARD_REF_TYPE } from "./config";
 import { listCreditNotes } from "../billing";
 import { availableQty, updateItem } from "../materials";
 import { billDispense, previewDispenseBill } from "./bill";
@@ -97,6 +98,32 @@ describe("sales returns at the counter (pharmacy P6)", () => {
 
     expect(await listCreditNotes(db)).toHaveLength(0);
     expect(await availableQty(db, fx.storeId, fx.item.crocin, later(2))).toBe(80);
+  });
+
+  /* Owner ruling 2026-10-03 — our own mistake takes loose tablets back: refunded in full, discarded, never restocked. */
+  it("our mistake: loose tablets come back and are refunded, the whole strips are restocked and the loose ones discarded", async () => {
+    await stockIn(db, fx, { itemId: fx.item.crocin, batchNo: "CR-1", qtyBase: 100, expiryDate: "2027-12-31", mrpPaise: 12000, at: MON });
+    const { id, paid } = await handedOver();
+    const mistake = { reasonClass: "mistake" as const, reason: "wrong medicine given" };
+    await expect(ret(id, 5, later(2))).rejects.toMatchObject({ code: "return_cut_strip" }); // the patient's reason still needs whole strips
+
+    const r = await ret(id, 15, later(2), mistake);
+
+    // 10 back on the shelf as a strip; the 5 loose ones came in and went straight out again.
+    expect(await availableQty(db, fx.storeId, fx.item.crocin, later(2))).toBe(90);
+    const [note] = await listCreditNotes(db);
+    expect(note).toMatchObject({ id: r.creditNoteId, netPaise: (paid * 3) / 4 });
+    const [approval] = await db.select().from(approvals).where(eq(approvals.id, r.refundApprovalId ?? ""));
+    expect(approval).toMatchObject({ typeKey: "billing_refund", amountPaise: (paid * 3) / 4 });
+    const discards = await db.select().from(stockLedger).where(eq(stockLedger.refType, RETURN_DISCARD_REF_TYPE));
+    expect(discards.map((x) => [x.reason, x.qtyDelta])).toEqual([["adjust", -5]]);
+    const [ev] = await db.select().from(events).where(eq(events.name, "dispense.line_returned"));
+    expect(ev?.payload).toMatchObject({ reasonClass: "mistake", lines: [{ lineIdx: 0, qtyBase: 15, discardedQty: 5 }] });
+
+    // The discarded five count as returned: only five more can come back.
+    await expect(ret(id, 10, later(3), mistake)).rejects.toMatchObject({ code: "return_exceeds_dispensed" });
+    await ret(id, 5, later(3), mistake);
+    expect(await availableQty(db, fx.storeId, fx.item.crocin, later(3))).toBe(90);
   });
 
   it("does not restock a batch that is about to expire, nor anything not yet handed over", async () => {
