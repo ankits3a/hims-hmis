@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, FormProvider, Controller } from "react-hook-form";
@@ -24,8 +24,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AbdmVerifyPanel } from "../components/abdm-verify";
 import { abhaCapability, getPatientDocument, listPatientDocuments } from "../lib/patients-api";
-import { listDepartments, listDoctors, listPatientAppointmentsAll, patientTimeline } from "../lib/opd-api";
-import type { WireAppointment } from "../lib/opd-api";
+import { completeAllergen, listDepartments, listDoctors, listPatientAppointmentsAll, patientTimeline } from "../lib/opd-api";
+import type { WireAllergenHit, WireAppointment } from "../lib/opd-api";
 import { slotClock, upcomingOf } from "../lib/appointment-view";
 import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
@@ -535,15 +535,52 @@ function AddAllergyDialog({ patientId }: { patientId: string }): React.ReactElem
     defaultValues: { substance: "", reaction: "", severity: "mild" },
   });
 
+  /*
+    THE SAME TYPEAHEAD THE BAY AND THE DOCTOR HAVE (`vitals-bay.tsx`, `opd-consult.tsx`): the
+    prescription guard matches free text on word tokens, so a misspelt allergen typed here never
+    fires its block. A pick carries the class and is CLEARED on the next keystroke. Free text still
+    saves — the line under the box says when the guard will find no rule for it.
+  */
+  const [pick, setPick] = useState<WireAllergenHit | null>(null);
+  const [hits, setHits] = useState<WireAllergenHit[]>([]);
+  const [known, setKnown] = useState(true);
+  const substance = form.watch("substance");
+
+  /* 120 ms debounce, three-character floor, and `asked` so a slow answer to an old prefix loses. */
+  const asked = useRef("");
+  useEffect(() => {
+    const q = substance.trim();
+    asked.current = q;
+    if (!open || q.length < 3 || (pick !== null && pick.term === q)) { setHits([]); setKnown(true); return; }
+    let live = true;
+    const timer = setTimeout(() => {
+      completeAllergen(q)
+        .then((r) => {
+          if (!live || asked.current !== q) return;
+          setHits(r.items);
+          setKnown(r.known);
+        })
+        /* A suggester that is down leaves a plain text box that still saves, and no false warning. */
+        .catch(() => { if (live) { setHits([]); setKnown(true); } });
+    }, 120);
+    return () => { live = false; clearTimeout(timer); };
+  }, [substance, open, pick]);
+
   const submit = form.handleSubmit(async (v) => {
+    const s = v.substance.trim();
     await api("POST", `/patients/${patientId}/allergies`, {
-      substance: v.substance,
+      substance: s,
       ...(v.reaction !== undefined && v.reaction !== "" ? { reaction: v.reaction } : {}),
       severity: v.severity,
       source: "registration",
+      /* The code rides only when it still belongs to these words. */
+      ...(pick !== null && pick.term.toLowerCase() === s.toLowerCase()
+        ? { saltId: pick.saltId, allergenClass: pick.allergenClass }
+        : {}),
     });
     await queryClient.invalidateQueries({ queryKey: ["patient-allergies", patientId] });
     form.reset();
+    setPick(null); setHits([]); setKnown(true);
     setOpen(false);
   });
 
@@ -556,7 +593,45 @@ function AddAllergyDialog({ patientId }: { patientId: string }): React.ReactElem
         <DialogHeader><DialogTitle>{t("patient.addAllergy")}</DialogTitle></DialogHeader>
         <FormProvider {...form}>
           <FormKit onSubmit={submit}>
-            <TextField name="substance" label={t("patient.substance")} autoFocus />
+            <TextField name="substance" label={t("patient.substance")} autoFocus onChange={() => { setPick(null); }} />
+            {hits.length > 0 && (
+              <ul
+                data-testid="profile-allergy-hits"
+                style={{
+                  margin: "-4px 0 8px", padding: 0, listStyle: "none", background: "var(--paper)",
+                  border: "1px solid var(--line)", borderRadius: 5, maxHeight: 200, overflowY: "auto",
+                }}
+              >
+                {hits.map((h) => (
+                  <li key={`${h.kind}-${h.term}`}>
+                    <button
+                      type="button" data-testid={`profile-allergy-hit-${h.term}`}
+                      onMouseDown={(e) => { e.preventDefault(); }}
+                      onClick={() => {
+                        form.setValue("substance", h.term, { shouldDirty: true, shouldValidate: true });
+                        setPick(h); setHits([]); setKnown(true);
+                      }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "6px 9px",
+                        border: "none", background: "none", cursor: "pointer", fontSize: 13,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{h.term}</span>
+                      {h.blocks.length > 0 && (
+                        <span className="mo" style={{ display: "block", fontSize: 11, color: "var(--faint)" }}>
+                          {t("opdConsult.allergyBlocks", { list: h.blocks.slice(0, 4).join(", ") })}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!known && pick === null && substance.trim().length >= 3 && (
+              <p data-testid="profile-allergy-unknown" style={{ margin: "-4px 0 8px", fontSize: 12, color: "var(--gold)" }}>
+                {t("opdConsult.allergyUnknown")}
+              </p>
+            )}
             <TextField name="reaction" label={t("patient.reaction")} />
             <SelectField
               name="severity"

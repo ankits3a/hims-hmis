@@ -997,3 +997,43 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(text()).not.toContain("Asha Devi");
   });
 });
+
+/*
+  Owner, staging 2026-10-01: "while typing allergy name, I got no suggestion". The profile's dialog
+  was a plain text box — the bay and the doctor had the allergen typeahead and this seat did not.
+*/
+describe("Add allergy on the profile suggests as the clerk types", () => {
+  it("offers coded allergens, a pick saves the class, and unknown free text says so", async () => {
+    const posted: unknown[] = [];
+    stubSeat({
+      ...BASE,
+      "GET /api/opd/cds/complete/allergen": (_init?: RequestInit, url?: string) =>
+        (url ?? "").includes("q=penic")
+          ? { items: [{ term: "Penicillins / Beta-Lactams", kind: "class", allergenClass: "penicillin", saltId: null, blocks: ["Amoxicillin"] }], known: true }
+          : { items: [], known: false },
+      "POST /api/patients/p-1/allergies": (init?: RequestInit) => { posted.push(JSON.parse(String(init?.body))); return { id: "al-9" }; },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PatientDetail />);
+    await user.click((await screen.findAllByRole("button", { name: "Add allergy" }))[0]!);
+    const box = await screen.findByLabelText("Substance");
+
+    await user.type(box, "xyz");
+    await waitFor(() => expect(screen.getByTestId("profile-allergy-unknown")).toBeInTheDocument());
+
+    await user.clear(box);
+    await user.type(box, "penic");
+    await waitFor(() => expect(screen.getByTestId("profile-allergy-hits")).toBeInTheDocument());
+    expect(screen.queryByTestId("profile-allergy-unknown")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("profile-allergy-hit-Penicillins / Beta-Lactams"));
+    expect(box).toHaveValue("Penicillins / Beta-Lactams");
+    await waitFor(() => expect(screen.queryByTestId("profile-allergy-hits")).not.toBeInTheDocument());
+
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add allergy" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toEqual({
+      substance: "Penicillins / Beta-Lactams", severity: "mild", source: "registration",
+      saltId: null, allergenClass: "penicillin",
+    });
+  });
+});
