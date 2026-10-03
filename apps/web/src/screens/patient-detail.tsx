@@ -31,7 +31,7 @@ import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
 import { reportsForPatient } from "../lib/lab-api";
 import { fmtPaise } from "../lib/format";
-import { CREDIT_READERS, CreditTile } from "./patient-credit";
+import { CREDIT_READERS, CreditTile } from "../components/patient-credit";
 import {
   buildTimeline, dmy, dmyIst, duesSummary, groupByDay, istDay, maskMobile, openVisitsToday, type Labels,
 } from "./patient-profile-model";

@@ -61,6 +61,7 @@ import { ConsultScribe } from "../components/consult-scribe";
 import { completeComplaint, fetchRegimen, recogniseComplaint, suggestSyndromes } from "../lib/cds-api";
 import type { WireCard, WireIcd11, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * The consultation screen (D5 / Task 15) — the doctor's flagship: the live queue with call / skip /
@@ -2701,6 +2702,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           {activeToken !== null && <> · {t("opdConsultV2.token", { n: activeToken })}</>}
                           {" · "}<span data-testid="panel-uhid" className="mo" style={{ fontSize: 12 }}>{patient.data?.patient.uhid ?? active.summary?.uhid ?? "—"}</span>
                         </small>
+                        {" "}<CreditChip patientId={patientId} testId="consult-credit" />
                       </div>
                       {encounter !== null && (
                         <div className="cx-meaning" data-testid="panel-visit-meaning" style={{ color: encounter.visitType === "renewal" ? "#8a5a10" : encounter.visitType === "new" ? "var(--green)" : "var(--dim)", fontWeight: 600 }}>

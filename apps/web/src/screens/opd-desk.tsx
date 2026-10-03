@@ -10,6 +10,7 @@ import { PatientPhoto } from "../components/patient-photo";
 import { StationShell } from "../components/station/station-shell";
 import type { StationLink } from "../components/station/station-shell";
 import "./opd-desk.css";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * The OPD desk (§11.1 / D2 / D3) — THE QUEUE DESK of the OPD floor: the live doctor board, the picked
@@ -276,6 +277,7 @@ export function OpdDesk(): React.ReactElement {
           <div className="od-hand-u">
             {inHand.patient?.uhid ?? "—"} · {sexAge(inHand.patient?.administrativeGender, inHand.patient?.dob, now)}
           </div>
+          <CreditChip patientId={inHand.patient?.id ?? null} testId="opd-credit" />
         </div>
       </div>
       <div className="od-hand-chips">

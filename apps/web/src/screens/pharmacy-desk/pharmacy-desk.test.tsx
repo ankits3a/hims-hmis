@@ -209,6 +209,21 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(within(ticketView).getByRole("heading")).toHaveTextContent(`Ticket P-4 · ${day}`);
   });
 
+  /* Owner 2026-10-03 — the patient's credit, all departments, on the desk's patient rail; a click opens the account. */
+  it("a ticket in hand shows the patient's credit on the rail, and opens the account on a click", async () => {
+    const t1 = ticket("claimed");
+    mockRoutes(base({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: ME }, permissions: { hospital: ["pharmacy.dispense.read"], scoped: { department: {}, floor: {} } } } },
+      "GET /api/pharmacy/dispenses/d1": { status: 200, body: t1 },
+      [`GET /api/pharmacy/patients/${t1.patient.id}/credit`]: { status: 200, body: { totalAvailablePaise: 25000, availablePaise: 25000, totalNetPaise: 25000, notes: [], refunds: [] } },
+    }));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    const chip = await screen.findByTestId("desk-credit");
+    expect(chip).toHaveTextContent("Credit ₹250.00");
+    await userEvent.click(chip);
+    expect(await screen.findByTestId("pf-credit-dialog")).toBeInTheDocument();
+  });
+
   it("a ticket in hand: the patient and allergy on the left, and each line as WRITTEN → GIVEN, the unplaceable one amber in place", async () => {
     mockRoutes(base({ "GET /api/pharmacy/dispenses/d1": { status: 200, body: ticket("claimed") } }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);

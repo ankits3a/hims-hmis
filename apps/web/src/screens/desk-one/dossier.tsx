@@ -7,6 +7,7 @@ import { dayMonthIst } from "../../lib/format";
 import { ageOf, initialsOf, rs, SEAT_STEPS, seatStepIndex, sexLetter, tokenLabel, tokenStateOf } from "./model";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
+import { CreditChip } from "../../components/patient-credit";
 
 /**
  * ═══ THE DOSSIER — §3: "the left column IS the patient session" ═══
@@ -312,6 +313,7 @@ export function Dossier(): React.ReactElement {
               <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
                 {ageOf(p.dob) === "" ? "" : `${ageOf(p.dob)} `}{sexLetter(p.gender)} · {p.uhid}
               </div>
+              <div style={{ marginTop: 4 }}><CreditChip patientId={p.id} testId="desk-one-credit" /></div>
             </div>
           </div>
           <div className="mo" style={{ fontSize: 11, color: "var(--dim)", marginTop: 9 }}>

@@ -158,6 +158,32 @@ describe("patient in hand (07b T1)", () => {
       expect(await screen.findByTestId("patient-strip")).toBeInTheDocument();
     });
 
+    /* Owner 2026-10-03 — the patient's credit wherever a patient is selected; a click opens the account. */
+    it("shows the credit available to a reader of bills, and opens the account on a click; nothing for a reader without", async () => {
+      sessionStorage.setItem(KEY, JSON.stringify({ patientId: "p-1", encounterId: null }));
+      stubFetch({
+        "GET /api/auth/me": { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["billing.invoice.read"], scoped: { department: {}, floor: {} } } },
+        "GET /api/patients/p-1": { patient: { id: "p-1", uhid: "UH-1", name: "Ramesh Kale", sex: "male", isConfidential: false, alias: null } },
+        "GET /api/pharmacy/patients/p-1/credit": { totalAvailablePaise: 97200, availablePaise: 47200, totalNetPaise: 0, notes: [], refunds: [] },
+      });
+      render(<Harness><PatientStrip /></Harness>);
+      const chip = await screen.findByTestId("strip-credit");
+      expect(chip).toHaveTextContent("Credit ₹972.00");
+      await userEvent.click(chip);
+      expect(await screen.findByTestId("pf-credit-dialog")).toHaveTextContent("₹472.00");
+    });
+
+    it("no credit chip for a reader who may not see bills", async () => {
+      sessionStorage.setItem(KEY, JSON.stringify({ patientId: "p-1", encounterId: null }));
+      stubFetch({
+        "GET /api/auth/me": { actor: { type: "user", id: "u-1" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+        "GET /api/patients/p-1": { patient: { id: "p-1", uhid: "UH-1", name: "Ramesh Kale", sex: "male", isConfidential: false, alias: null } },
+      });
+      render(<Harness><PatientStrip /></Harness>);
+      expect(await screen.findByText("Ramesh Kale")).toBeInTheDocument();
+      expect(screen.queryByTestId("strip-credit")).toBeNull();
+    });
+
     it("renders nothing at all when nobody is in hand", () => {
       sessionStorage.clear();
       render(<Harness><PatientStrip /></Harness>);

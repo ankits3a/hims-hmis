@@ -5,6 +5,7 @@ import { MessagesChip } from "./messages";
 import { FLOW_STEPS, draftsFirst, flowIndex, holdOf, isMyDraft, initialsOf, queuedDay, shelfFlag, stageOf, ticketLabel, waitLabel, waitTone, whoLabel } from "./model";
 import type { WaitTone } from "./model";
 import type { WireCounterSummary, WireDispense, WireMyShift, WireQueueRow } from "../../lib/pharmacy-api";
+import { CreditChip } from "../../components/patient-credit";
 
 const TONE: Record<WaitTone, string> = { calm: "var(--dim)", warm: "var(--gold)", late: "var(--red)" };
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -118,7 +119,7 @@ export function Dossier({
               rail.data?.sex == null ? null : t(`pharmacyDesk.sex.${rail.data.sex}`, { defaultValue: rail.data.sex }),
               p.uhid].filter((x) => x !== null).join(" · ")}
           </div>
-          {p.restricted ? <span className="pill gd" style={{ marginTop: 5 }}>{t("pharmacyDesk.sealedRecord")}</span> : null}
+          {p.restricted ? <span className="pill gd" style={{ marginTop: 5 }}>{t("pharmacyDesk.sealedRecord")}</span> : <div style={{ marginTop: 5 }}><CreditChip patientId={p.id} testId="desk-credit" /></div>}
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }} data-testid="desk-allergies">

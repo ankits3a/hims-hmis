@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { capFor, drawRank, SpecimenLabel } from "../components/specimen-label";
 import { DowntimeNotice, LabStation, useDowntime } from "./lab-seat";
 import type { WireAwaitingRow, WireCollectionRow } from "../lib/lab-api";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * PLAN 17c T2 — **COLLECTION**: Vikas's chair (design board 2).
@@ -200,6 +201,7 @@ export function LabCollection(): React.ReactElement {
             <PatientCard
               display={selected.row.patientDisplay} uhid={selected.row.uhid} encounterNo={selected.row.encounterNo}
               tokenNo={selected.row.tokenNo} fasting={selected.row.requiresFasting} codes={selected.row.orderableCodes}
+              patientId={selected.row.patientId}
             />
             {/*
               17d T6 — THE PRINTER CANNOT PRINT, SO THE KIT DOES. The right-patient scan above is
@@ -250,6 +252,7 @@ export function LabCollection(): React.ReactElement {
                 display={first.patientDisplay} uhid={first.uhid} encounterNo={first.encounterNo}
                 tokenNo={first.tokenNo} fasting={selected.tubes.some((x) => x.requiresFasting)}
                 codes={[...new Set(selected.tubes.flatMap((x) => x.orderableCodes))]}
+                patientId={first.patientId}
               />
               <p className="text-sm">
                 {wristband
@@ -323,7 +326,7 @@ export function LabCollection(): React.ReactElement {
 }
 
 function PatientCard(props: {
-  display: string; uhid: string; encounterNo: string; tokenNo: number | null; fasting: boolean; codes: string[];
+  display: string; uhid: string; encounterNo: string; tokenNo: number | null; fasting: boolean; codes: string[]; patientId?: string;
 }): React.ReactElement {
   const { t } = useTranslation();
   return (
@@ -333,6 +336,7 @@ function PatientCard(props: {
         <span className="text-lg font-semibold">{props.display}</span>
         <span className="text-muted-foreground">{props.uhid}</span>
         <span className="text-muted-foreground">{props.encounterNo}</span>
+        {props.patientId !== undefined && <CreditChip patientId={props.patientId} testId="lab-credit" />}
       </div>
       <p className="text-muted-foreground">
         {props.codes.length > 0 ? props.codes.join(" · ") : t("lab.collection.codesHidden")}

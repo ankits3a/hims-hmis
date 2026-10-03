@@ -17,6 +17,7 @@ import {
 } from "../components/radiology/imaging-counter";
 import type { SlotPick, TenderMode } from "../components/radiology/imaging-counter";
 import { istDay, istInputToIso, minutesSince, nextQuarterIstInput } from "../components/radiology/desk-time";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * PLAN 18-S RS3 — **THE IMAGING COUNTER: Studies → Checks → Bill → Slot & slip.**
@@ -340,6 +341,7 @@ export function RadiologyReception(): React.ReactElement {
           <span className="tag">{t("radiology.counter.inHand")}</span>
           <p className="m-0 mt-1 text-base font-semibold">{first?.patientName ?? mine[0]?.patientName ?? "—"}</p>
           <p className="m-0 mo text-xs">{first?.uhid ?? ""} · {hand.encounterNo}</p>
+          <div className="mt-1"><CreditChip patientId={hand.patientId} testId="imaging-credit" /></div>
         </div>
         <div>
           <span className="tag">{t("radiology.counter.today")}</span>
