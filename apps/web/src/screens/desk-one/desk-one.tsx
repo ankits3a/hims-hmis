@@ -20,7 +20,7 @@ import {
   seatHasStage, stageForSeat, waitMinutes,
 } from "./model";
 import type { Lane, LogLine, Seat } from "./model";
-import { DeskProvider, emptySession, EMPTY_FORM, formAgeYears, registerBodyOf } from "./session";
+import { DeskProvider, emptySession, EMPTY_FORM, formAgeYears, allergiesOf, registerBodyOf } from "./session";
 import type { DeskApi, Person, Session } from "./session";
 import { Dossier } from "./dossier";
 import { Dock } from "./dock";
@@ -597,6 +597,31 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         registration for the photo's reason: a link that fails must not make a successful
         registration look failed — the patient is registered either way, and the log says which.
       */
+      /*
+        ═══ THE ALLERGIES TOLD AT THE COUNTER FOLLOW THE UHID (owner, 2026-10-01) ═══
+
+        Not awaited into the registration for the photo's reason, and STATED when one fails: a clerk
+        who typed an allergen must not believe it is on the record when it is not.
+      */
+      const told = allergiesOf(f);
+      if (told.length > 0) {
+        void (async () => {
+          const { addAllergy } = await import("../../lib/patients-api");
+          for (const a of told) {
+            try {
+              await addAllergy(res.patient.id, {
+                substance: a.substance, severity: a.severity, source: "registration",
+                ...(a.saltId !== null || a.allergenClass !== null ? { saltId: a.saltId, allergenClass: a.allergenClass } : {}),
+              });
+              setS((prev) => ({ ...prev, log: logged(prev.log, `allergy recorded — ${a.substance}`, "ok") }));
+            } catch {
+              setS((prev) => ({ ...prev, log: logged(prev.log, `the allergy "${a.substance}" could not be saved — add it from the patient's profile`, "warn") }));
+            }
+          }
+          void qc.invalidateQueries({ queryKey: ["patient-allergies", res.patient.id] });
+        })();
+      }
+
       const pendingLink = f.abdmLink;
       if (pendingLink !== null) {
         void (async () => {
@@ -952,6 +977,9 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     patch({ busy: "future", error: null });
     try {
       const { appointment } = await bookAppointment({ patientId: person.id, doctorId, slotStart: slot.start });
+      // The left lane's "upcoming" and the stage's "their bookings" share this key; without the
+      // invalidate both answer from a 30 s cache and contradict the booking made a second ago.
+      void qc.invalidateQueries({ queryKey: ["d1", "their-appointments", person.id] });
       setS((prev) => ({
         ...prev,
         busy: null,
@@ -965,7 +993,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, `slot REFUSED — ${opdErrorMessage(e)}`, "err"),
       }));
     }
-  }, [s.person, patch]);
+  }, [s.person, patch, qc]);
 
   const presentCoupon = useCallback((code: string) => {
     const clean = code.trim().toUpperCase();

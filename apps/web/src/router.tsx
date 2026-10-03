@@ -104,9 +104,15 @@ import { LabReports } from "./screens/lab-reports";
  * `desk` comes first and holds exactly one entry. That is the point of it: the counter is where a
  * one-person desk works, and it should not be the ninth thing in a row of similar-looking words.
  */
-type NavGroup = "desk" | "patients" | "opd" | "billing" | "stores" | "admin";
+/*
+ * 2026-10-01 (owner: "yes, split OPD") — `opd` had grown to thirty-two places for an owner-shaped
+ * grant: imaging, the laboratory, the theatre and the pharmacy all sat under a word that names none
+ * of them. Each is its own group now, in the order a patient meets them. `stores` is gone with it:
+ * its one remaining place, the pharmacy office, belongs beside the pharmacy desk.
+ */
+type NavGroup = "desk" | "patients" | "opd" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
-const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "billing", "stores", "admin"];
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
 /**
  * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
@@ -114,6 +120,13 @@ const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "billing", "
  */
 type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[] };
 const navVisible = (e: NavEntry, can: (p: string) => boolean): boolean => can(e.permission) || (e.anyOf ?? []).some((p) => can(p));
+/**
+ * Past this many places the bar stops being a row and becomes a wall: an owner-shaped grant drew
+ * fifty links over seven lines, 250 px of menu above every screen (measured at 1280 px, 2026-10-01).
+ * So a person holding more than this gets one button per group, each opening its places beneath the
+ * bar. A front desk holds seven and keeps the flat row — no click between a clerk and their screen.
+ */
+const NAV_FOLD_AT = 10;
 const NAV: readonly NavEntry[] = [
   // PLAN 07b T3 — the counter, first in the row for the reason `otManifest`-style menus give: it is
   // the screen a one-person desk lives on. Path and permission match `opdManifest.menu` exactly,
@@ -126,6 +139,7 @@ const NAV: readonly NavEntry[] = [
   // on the wrong one — a nav is a list of places, and a place should appear in it once.
   /*
     ═══ FD-25 — DESK ONE IS OFF THE NAV, AND STILL SERVES. OWNER RULING, 2026-09-05 ═══
+    (SUPERSEDED 2026-10-01 — see the block below this one. Kept because it says why the row left.)
 
     The handoff's §3.2 asked whether `/counter` should be deleted now that the three seats it used
     to combine exist separately. The owner ruled: keep it working, keep it out of the nav.
@@ -142,6 +156,21 @@ const NAV: readonly NavEntry[] = [
     person who knows they want Desk One finds it by asking for it, and a person who does not is
     never offered a fourth door they did not need.
   */
+  /*
+    ═══ THE ROW IS BACK. OWNER, 2026-10-01, ON STAGING ═══
+
+    *"On the dashboard screen of Front Desk staff, I can't see any menu items that would open
+    /counter."* Read the paragraph above as history. Its bet was that a person who wants Desk One
+    asks the palette for it; the front desk's own owner looked at the menu instead and found no
+    door. A screen the hospital's one-person desk works on all day cannot be reachable only by
+    people who already know its name.
+
+    So Desk One leads the desk group, on `opd.visits.open` — `opdManifest.menu`'s own pairing, which
+    never left. It reads "Desk One", not "Counter": `nav.billing` is already "Counter", and two rows
+    with one word is the FD-1 defect `shell-nav.test.tsx` guards. A registration-only clerk still is
+    not offered it; they would 403 on arrival.
+  */
+  { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
   /*
     FD-25 — AND THE SECOND DESK ROW, WHICH IS NOT THE TWO-DOORS DEFECT ABOVE.
 
@@ -199,32 +228,32 @@ const NAV: readonly NavEntry[] = [
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
   // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
-  { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "opd" },
-  { to: "/radiology/worklist", label: "nav.radiologyWorklist", permission: "radiology.worklist.read", group: "opd" },
+  { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "imaging" },
+  { to: "/radiology/worklist", label: "nav.radiologyWorklist", permission: "radiology.worklist.read", group: "imaging" },
   // 18-S RS6 — the modality rooms (console, dose log, rejects, downtime); `radiologyManifest.menu` carries the same pair.
-  { to: "/radiology/room", label: "nav.radiologyRoom", permission: "radiology.acquire", group: "opd" },
+  { to: "/radiology/room", label: "nav.radiologyRoom", permission: "radiology.acquire", group: "imaging" },
   // 18-S RS8a — the reading room; `radiologyManifest.menu` carries the same pair.
-  { to: "/radiology/read", label: "nav.radiologyReading", permission: "radiology.reports.write", group: "opd" },
+  { to: "/radiology/read", label: "nav.radiologyReading", permission: "radiology.reports.write", group: "imaging" },
   // 18-S RS2b — the portable round; `radiologyManifest.menu` carries the same pair.
-  { to: "/radiology/portable", label: "nav.radiologyPortable", permission: "radiology.acquire", group: "opd" },
+  { to: "/radiology/portable", label: "nav.radiologyPortable", permission: "radiology.acquire", group: "imaging" },
   // 18-S RS3 — the desk's diary and the waiting-hall display; `radiologyManifest.menu` carries the same pairs.
-  { to: "/radiology/diary", label: "nav.radiologyDiary", permission: "radiology.schedule", group: "opd" },
-  { to: "/radiology/display", label: "nav.radiologyDisplay", permission: "radiology.display.read", group: "opd" },
+  { to: "/radiology/diary", label: "nav.radiologyDiary", permission: "radiology.schedule", group: "imaging" },
+  { to: "/radiology/display", label: "nav.radiologyDisplay", permission: "radiology.display.read", group: "imaging" },
   // 18-S RS9 — the report hand-over desk (release register, film/CD, collector); `radiologyManifest.menu` carries the same pair.
-  { to: "/radiology/reports", label: "nav.radiologyReports", permission: "radiology.schedule", group: "opd" },
-  { to: "/radiology/setup", label: "nav.radiologySetup", permission: "radiology.devices.manage", group: "opd" },
+  { to: "/radiology/reports", label: "nav.radiologyReports", permission: "radiology.schedule", group: "imaging" },
+  { to: "/radiology/setup", label: "nav.radiologySetup", permission: "radiology.devices.manage", group: "imaging" },
   // 18-S RS5 — the prep & safety bay; `radiologyManifest.menu` carries the same pair.
-  { to: "/radiology/prep", label: "nav.radiologyPrep", permission: "radiology.gates.satisfy", group: "opd" },
+  { to: "/radiology/prep", label: "nav.radiologyPrep", permission: "radiology.gates.satisfy", group: "imaging" },
   // 18-S RS10 — the Supervisor & HOD station; `radiologyManifest.menu` carries the same pair.
-  { to: "/radiology/hod", label: "nav.radiologyHod", permission: "radiology.definitions.manage", group: "opd" },
+  { to: "/radiology/hod", label: "nav.radiologyHod", permission: "radiology.definitions.manage", group: "imaging" },
   // 18-S RS7 — the sonologist's room; `anyOf` shows it to the in-charge and technologist for its books.
   {
-    to: "/radiology/usg", label: "nav.radiologyUsg", permission: "pcpndt.form_f.write", group: "opd",
+    to: "/radiology/usg", label: "nav.radiologyUsg", permission: "pcpndt.form_f.write", group: "imaging",
     anyOf: ["pcpndt.registrations.read", "pcpndt.form_f.read"],
   },
   // PLAN 18c T1 — the one entry `aerbManifest.menu` declares. It sits under the imaging group
   // because that is where the RSO works, not because radiology owns the register (D1).
-  { to: "/radiology/radiation-safety", label: "nav.radiationSafety", permission: "aerb.registers.read", group: "opd", anyOf: ["aerb.incidents.read"] }, // 18-S RS11: the HOD reads incidents
+  { to: "/radiology/radiation-safety", label: "nav.radiationSafety", permission: "aerb.registers.read", group: "imaging", anyOf: ["aerb.incidents.read"] }, // 18-S RS11: the HOD reads incidents
   // PLAN 07c T9 — the supervisor's named-staff view. Path and permission match `deskManifest.menu`
   // exactly, which `nav-parity.test.ts` enforces rather than trusts. It sits in `admin` rather than
   // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
@@ -249,6 +278,7 @@ const NAV: readonly NavEntry[] = [
   { to: "/partners/pnl", label: "nav.partnerPnl", permission: "partners.pnl.read", group: "billing" },
   /*
    * ═══ GAP-CLOSURE B3 (2026-09-28) — THE FOURTEEN "STORES" ROWS ARE TWO ═══
+   * (2026-10-01: the `stores` group itself is gone; the two sit in `pharmacy`.)
    *
    * The owner-approved Menu artboard folds the stores leaves into the pharmacy office's header menu:
    * formulary, item master, vendors, goods receipt, counts, transfers, sale items, pharmacists, the
@@ -269,9 +299,9 @@ const NAV: readonly NavEntry[] = [
    * open it on. It is reached from the list, which is where a nurse actually is when they need it.
    * `otManifest.menu` declares the same three, so the two tables agree.
    */
-  { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "opd" },
-  { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "opd" },
-  { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "opd" },
+  { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
+  { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
+  { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
   /**
    * PLAN 17b T8 — THE LABORATORY'S FOUR. Each permission is the one `labManifest.menu` declares,
    * and `nav-parity.test.ts` compares the two lists precisely so this copy cannot drift: the desk
@@ -283,23 +313,23 @@ const NAV: readonly NavEntry[] = [
    * holds `reports.print` reaches the report through the desk rather than through a signing screen
    * they may not act on.
    */
-  { to: "/lab/desk", label: "nav.labDesk", permission: "lab.desk.operate", group: "opd" },
-  { to: "/lab/collection", label: "nav.labCollection", permission: "lab.collection.operate", group: "opd" },
-  { to: "/lab/bench", label: "nav.labBench", permission: "lab.accession.operate", group: "opd" },
-  { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "opd" },
+  { to: "/lab/desk", label: "nav.labDesk", permission: "lab.desk.operate", group: "lab" },
+  { to: "/lab/collection", label: "nav.labCollection", permission: "lab.collection.operate", group: "lab" },
+  { to: "/lab/bench", label: "nav.labBench", permission: "lab.accession.operate", group: "lab" },
+  { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "lab" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
-  { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
+  { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "lab" },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
-  { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "opd" },
+  { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*
    * PARITY P2 → GAP-CLOSURE B3 — the back office, and since B3 the one door to every stores screen.
    * `permission` is still `pharmacyManifest.menu`'s pairing; `anyOf` is every grant that shows the
    * person a side or an entry of the office (`OFFICE_GRANTS`), so a pharmacist whose only reach is the
    * H1 register, or the owner and billing office who hold only reports, still find it.
    */
-  { to: "/pharmacy/office", label: "nav.pharmacyOffice", permission: "materials.po.raise", group: "stores", anyOf: OFFICE_GRANTS },
+  { to: "/pharmacy/office", label: "nav.pharmacyOffice", permission: "materials.po.raise", group: "pharmacy", anyOf: OFFICE_GRANTS },
   // PHARMACY P19 — the walk-in retail counter. Its licence is a page of the office's Law side (B3).
-  { to: "/pharmacy/retail", label: "nav.pharmacyRetail", permission: "pharmacy.retail.sell", group: "opd" },
+  { to: "/pharmacy/retail", label: "nav.pharmacyRetail", permission: "pharmacy.retail.sell", group: "pharmacy" },
 ];
 
 /**
@@ -362,7 +392,18 @@ function ShellChrome(): React.ReactElement {
    * list never sits over the screen the person just asked for.
    */
   const [menuOpen, setMenuOpen] = useState(false);
-  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  /* The one folded group whose places are showing (`NAV_FOLD_AT`); a navigation or a click elsewhere closes it. */
+  const [openGroup, setOpenGroup] = useState<NavGroup | null>(null);
+  useEffect(() => { setMenuOpen(false); setOpenGroup(null); }, [pathname]);
+  useEffect(() => {
+    if (openGroup === null) return;
+    const close = (e: MouseEvent): void => {
+      if (!(e.target instanceof Element) || e.target.closest("#shell-nav") === null) setOpenGroup(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => { document.removeEventListener("mousedown", close); };
+  }, [openGroup]);
+  const folded = NAV.filter((e) => navVisible(e, can)).length > NAV_FOLD_AT;
   /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -451,23 +492,46 @@ function ShellChrome(): React.ReactElement {
       <nav
         id="shell-nav"
         className={menuOpen ? "nav open" : "nav"}
-        onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { e.stopPropagation(); setMenuOpen(false); } }}
+        onKeyDown={(e) => {
+          if (e.key !== "Escape" || (!menuOpen && openGroup === null)) return;
+          e.stopPropagation();
+          setMenuOpen(false);
+          setOpenGroup(null);
+        }}
       >
         {NAV_GROUPS.map((group) => {
           const entries = NAV.filter((e) => e.group === group && navVisible(e, can));
           if (entries.length === 0) return null;
+          /* A group of one is a place, not a list: it stays a link even when the bar folds. */
+          const fold = folded && entries.length > 1;
+          const here = entries.find((e) => e.to === pathname);
           return (
-            <span key={group} className="grp">
-              <span className="tag">{t(`nav.group.${group}`)}</span>
-              {entries.map((entry) => (
-                <Link
-                  key={entry.to}
-                  to={entry.to}
-                  className={pathname === entry.to ? "here" : undefined}
+            <span key={group} className={fold ? (openGroup === group ? "grp fold open" : "grp fold") : folded ? "grp solo" : "grp"}>
+              {fold ? (
+                <button
+                  type="button"
+                  className={here === undefined ? "tag" : "tag here"}
+                  aria-expanded={openGroup === group}
+                  aria-controls={`shell-nav-${group}`}
+                  onClick={() => { setOpenGroup((g) => (g === group ? null : group)); }}
                 >
-                  {t(entry.label)}
-                </Link>
-              ))}
+                  {t(`nav.group.${group}`)}
+                  {here === undefined ? null : <span className="at">{t(here.label)}</span>}
+                </button>
+              ) : (
+                <span className="tag">{t(`nav.group.${group}`)}</span>
+              )}
+              <span className="items" id={`shell-nav-${group}`}>
+                {entries.map((entry) => (
+                  <Link
+                    key={entry.to}
+                    to={entry.to}
+                    className={pathname === entry.to ? "here" : undefined}
+                  >
+                    {t(entry.label)}
+                  </Link>
+                ))}
+              </span>
             </span>
           );
         })}
@@ -500,6 +564,8 @@ function Shell(): React.ReactElement {
     select: (s) => s.matches.some((m) => m.staticData.fullViewport === true),
   });
   const { can } = useAuth();
+  /* The strip stands down on the profile of the patient it names (see `PatientStrip`). */
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
 
   /*
     The chrome is built inside the ternary and not above it, so a route that owns the viewport never
@@ -513,7 +579,7 @@ function Shell(): React.ReactElement {
           PLAN 07b T1 — the patient in hand, directly under the chrome and above every screen, so a
           clerk never has to find the same person twice. It renders nothing when nobody is in hand.
         */}
-        <PatientStrip />
+        <PatientStrip path={pathname} />
         <div className="flex-1">
           <Outlet />
         </div>

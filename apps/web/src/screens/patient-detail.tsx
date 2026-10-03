@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, FormProvider, Controller } from "react-hook-form";
@@ -24,7 +24,9 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AbdmVerifyPanel } from "../components/abdm-verify";
 import { abhaCapability, getPatientDocument, listPatientDocuments } from "../lib/patients-api";
-import { patientTimeline } from "../lib/opd-api";
+import { completeAllergen, listDepartments, listDoctors, listPatientAppointmentsAll, patientTimeline } from "../lib/opd-api";
+import type { WireAllergenHit, WireAppointment } from "../lib/opd-api";
+import { slotClock, upcomingOf } from "../lib/appointment-view";
 import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
 import { reportsForPatient } from "../lib/lab-api";
@@ -533,15 +535,52 @@ function AddAllergyDialog({ patientId }: { patientId: string }): React.ReactElem
     defaultValues: { substance: "", reaction: "", severity: "mild" },
   });
 
+  /*
+    THE SAME TYPEAHEAD THE BAY AND THE DOCTOR HAVE (`vitals-bay.tsx`, `opd-consult.tsx`): the
+    prescription guard matches free text on word tokens, so a misspelt allergen typed here never
+    fires its block. A pick carries the class and is CLEARED on the next keystroke. Free text still
+    saves — the line under the box says when the guard will find no rule for it.
+  */
+  const [pick, setPick] = useState<WireAllergenHit | null>(null);
+  const [hits, setHits] = useState<WireAllergenHit[]>([]);
+  const [known, setKnown] = useState(true);
+  const substance = form.watch("substance");
+
+  /* 120 ms debounce, three-character floor, and `asked` so a slow answer to an old prefix loses. */
+  const asked = useRef("");
+  useEffect(() => {
+    const q = substance.trim();
+    asked.current = q;
+    if (!open || q.length < 3 || (pick !== null && pick.term === q)) { setHits([]); setKnown(true); return; }
+    let live = true;
+    const timer = setTimeout(() => {
+      completeAllergen(q)
+        .then((r) => {
+          if (!live || asked.current !== q) return;
+          setHits(r.items);
+          setKnown(r.known);
+        })
+        /* A suggester that is down leaves a plain text box that still saves, and no false warning. */
+        .catch(() => { if (live) { setHits([]); setKnown(true); } });
+    }, 120);
+    return () => { live = false; clearTimeout(timer); };
+  }, [substance, open, pick]);
+
   const submit = form.handleSubmit(async (v) => {
+    const s = v.substance.trim();
     await api("POST", `/patients/${patientId}/allergies`, {
-      substance: v.substance,
+      substance: s,
       ...(v.reaction !== undefined && v.reaction !== "" ? { reaction: v.reaction } : {}),
       severity: v.severity,
       source: "registration",
+      /* The code rides only when it still belongs to these words. */
+      ...(pick !== null && pick.term.toLowerCase() === s.toLowerCase()
+        ? { saltId: pick.saltId, allergenClass: pick.allergenClass }
+        : {}),
     });
     await queryClient.invalidateQueries({ queryKey: ["patient-allergies", patientId] });
     form.reset();
+    setPick(null); setHits([]); setKnown(true);
     setOpen(false);
   });
 
@@ -554,7 +593,45 @@ function AddAllergyDialog({ patientId }: { patientId: string }): React.ReactElem
         <DialogHeader><DialogTitle>{t("patient.addAllergy")}</DialogTitle></DialogHeader>
         <FormProvider {...form}>
           <FormKit onSubmit={submit}>
-            <TextField name="substance" label={t("patient.substance")} autoFocus />
+            <TextField name="substance" label={t("patient.substance")} autoFocus onChange={() => { setPick(null); }} />
+            {hits.length > 0 && (
+              <ul
+                data-testid="profile-allergy-hits"
+                style={{
+                  margin: "-4px 0 8px", padding: 0, listStyle: "none", background: "var(--paper)",
+                  border: "1px solid var(--line)", borderRadius: 5, maxHeight: 200, overflowY: "auto",
+                }}
+              >
+                {hits.map((h) => (
+                  <li key={`${h.kind}-${h.term}`}>
+                    <button
+                      type="button" data-testid={`profile-allergy-hit-${h.term}`}
+                      onMouseDown={(e) => { e.preventDefault(); }}
+                      onClick={() => {
+                        form.setValue("substance", h.term, { shouldDirty: true, shouldValidate: true });
+                        setPick(h); setHits([]); setKnown(true);
+                      }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "6px 9px",
+                        border: "none", background: "none", cursor: "pointer", fontSize: 13,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{h.term}</span>
+                      {h.blocks.length > 0 && (
+                        <span className="mo" style={{ display: "block", fontSize: 11, color: "var(--faint)" }}>
+                          {t("opdConsult.allergyBlocks", { list: h.blocks.slice(0, 4).join(", ") })}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!known && pick === null && substance.trim().length >= 3 && (
+              <p data-testid="profile-allergy-unknown" style={{ margin: "-4px 0 8px", fontSize: 12, color: "var(--gold)" }}>
+                {t("opdConsult.allergyUnknown")}
+              </p>
+            )}
             <TextField name="reaction" label={t("patient.reaction")} />
             <SelectField
               name="severity"
@@ -614,6 +691,43 @@ function useAllergies(patientId: string): AllergyRow[] | undefined {
   }).data?.items;
 }
 
+/** The appointment history shows this many before "show all" — the list is long for a regular. */
+const APPT_HISTORY_ROWS = 5;
+
+/**
+ * THE BILLS OF ONE APPOINTMENT (owner, 2026-10-01: *"clicking the appointment should show related
+ * bills"*). An appointment reaches money through the VISIT it became at check-in, so one that was
+ * cancelled or missed has no visit and can have no bill — said in words, not left blank. The read is
+ * `billing.invoice.read`'s; a seat without it is told so rather than shown an empty list that looks
+ * like "no bill".
+ */
+function AppointmentBills({ appointment, mayRead }: { appointment: WireAppointment; mayRead: boolean }): React.ReactElement {
+  const { t } = useTranslation();
+  const encounterId = appointment.encounterId;
+  const bills = useQuery({
+    queryKey: ["pf-appt-bills", encounterId],
+    queryFn: () => listInvoicesFor({ encounterId: encounterId! }),
+    enabled: mayRead && encounterId !== null,
+    retry: false,
+  });
+  const line = (text: string): React.ReactElement => <p data-testid="appt-bills-note" style={{ fontSize: 12, color: "var(--dim)", margin: "0 0 9px" }}>{text}</p>;
+  if (encounterId === null) return line(t("profile.apptNoVisit"));
+  if (!mayRead) return line(t("profile.apptBillsHidden"));
+  if (bills.isPending) return line(t("app.loading"));
+  const items = bills.data?.items ?? [];
+  if (items.length === 0) return line(t("profile.apptNoBill"));
+  return (
+    <div data-testid="appt-bills" style={{ margin: "0 0 9px" }}>
+      {items.map((inv) => (
+        <div key={inv.id} data-testid="appt-bill" style={{ display: "flex", gap: 10, fontSize: 12.5, padding: "2px 0" }}>
+          <span className="mo" style={{ fontWeight: 600 }}>{inv.invoiceNo}</span>
+          <span style={{ color: "var(--dim)", flexGrow: 1 }}>{dmy(inv.serviceDay)}</span>
+          <span className="mo">{fmtPaise(inv.netPayablePaise)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 /** The lane's red band: active allergies only, severe in brick red; corrections live under Edit details. */
 function AllergyBand({ patientId, canEdit, compact }: { patientId: string; canEdit: boolean; compact: boolean }): React.ReactElement {
   const { t } = useTranslation();
@@ -1040,7 +1154,7 @@ export function PatientDetail(): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
   const navigate = useNavigate();
-  const { takePatient } = usePatientInHand();
+  const { takePatient, inHand, release } = usePatientInHand();
   const genderWord = useGenderWord();
 
   const [log] = useState<AgentLine[]>([]);
@@ -1072,6 +1186,14 @@ export function PatientDetail(): React.ReactElement {
    */
   const on = (perm: string): boolean => pid !== null && can(perm);
   const visits = useQuery({ queryKey: ["opd-timeline", pid], queryFn: () => patientTimeline(pid!), enabled: on("opd.visits.read"), retry: false });
+  // The slots this patient still holds. A booking has no visit until check-in, so `visits` above
+  // cannot show one; the names come from the masters, read only when there is a booking to name.
+  const bookings = useQuery({ queryKey: ["pf-appointments", pid], queryFn: () => listPatientAppointmentsAll(pid!), enabled: on("opd.appointments.read"), retry: false });
+  const [openAppt, setOpenAppt] = useState<string | null>(null);
+  const [showAllAppts, setShowAllAppts] = useState(false);
+  const hasBookings = (bookings.data?.items.length ?? 0) > 0;
+  const bookDoctors = useQuery({ queryKey: ["opd", "doctors", "all"], queryFn: listDoctors, enabled: hasBookings, staleTime: 300_000, retry: false });
+  const bookDepartments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, enabled: hasBookings, staleTime: 300_000, retry: false });
   const labResults = useQuery({ queryKey: ["pf-lab-results", pid], queryFn: () => fetchPatientResults(pid!), enabled: on("lab.results.read"), retry: false });
   const labReports = useQuery({ queryKey: ["pf-lab-reports", pid], queryFn: () => reportsForPatient(pid!), enabled: on("lab.reports.print"), retry: false });
   const imaging = useQuery({ queryKey: ["pf-imaging", pid], queryFn: () => fetchPatientImaging(pid!), enabled: on("radiology.reports.read"), retry: false });
@@ -1197,6 +1319,19 @@ export function PatientDetail(): React.ReactElement {
 
   const owed = duesSummary(dues.data?.items);
   const openToday = openVisitsToday(visits.data?.items, today);
+  const upcoming = upcomingOf(bookings.data?.items, today);
+  // Everything that is not still ahead: kept, cancelled, missed, moved. Newest first.
+  const earlier = (bookings.data?.items ?? [])
+    .filter((a) => !upcoming.some((u) => u.id === a.id))
+    .sort((a, b) => b.slotStart.localeCompare(a.slotStart));
+  const doctorNameOf = (id: string): string | undefined => bookDoctors.data?.items.find((x) => x.id === id)?.displayName;
+  const departmentNameOf = (id: string): string | undefined => bookDepartments.data?.items.find((x) => x.id === id)?.name;
+  /** Edit opens the appointment book on that doctor's day with this patient in the card. */
+  const editBooking = (a: WireAppointment): void => {
+    if (pid === null) return;
+    takePatient(pid);
+    void navigate({ to: "/opd/appointments", search: { patientId: pid, departmentId: a.departmentId, doctorId: a.doctorId, date: a.serviceDate.slice(0, 10) } as never });
+  };
   const pending = labReports.data?.pending ?? [];
   const visitCount = visits.data?.items.length;
   const rep = (guardians ?? []).find((g) => g.guardian.status === "active");
@@ -1286,7 +1421,18 @@ export function PatientDetail(): React.ReactElement {
                 </div>
               )}
             </div>
-            <div className="keys">
+            {/*
+              RELEASE, AT THE FOOT OF THE LANE (owner, 2026-10-01). The shell's "in hand" strip is not
+              drawn over this patient's own profile — the lane already says who they are — so the one
+              act that strip carried lives here, and only while THIS patient is the one in hand.
+            */}
+            {inHand !== null && inHand.patientId === pid && (
+              <div data-testid="lane-in-hand" style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 12, color: "var(--dim)", flexGrow: 1 }}>{t(inHand.encounterId !== null ? "profile.inHandVisit" : "profile.inHand")}</span>
+                <button type="button" className="sec" data-testid="lane-release" onClick={release}>{t("patientStrip.release")}</button>
+              </div>
+            )}
+            <div className="keys" style={inHand !== null && inHand.patientId === pid ? { marginTop: 0 } : undefined}>
               {canOpenVisit && <span><span className="kb">⏎</span> {t("profile.keys.open")}</span>}
               {canEdit && <span><span className="kb">E</span> {t("profile.keys.edit")}</span>}
               <span><span className="kb">P</span> {t("profile.keys.print")}</span>
@@ -1328,6 +1474,58 @@ export function PatientDetail(): React.ReactElement {
                     </div>
                   )}
                 </div>
+              </>
+            )}
+
+            {can("opd.appointments.read") && (
+              <>
+                <h3 style={{ margin: "18px 0 6px", fontSize: 15, fontWeight: 600 }}>{t("profile.upcoming")}</h3>
+                {upcoming.length === 0 ? (
+                  <p style={{ fontSize: 12.5, color: "var(--dim)", margin: 0 }} data-testid="upcoming-empty">{t(bookings.isPending ? "profile.upcomingReading" : "profile.upcomingNone")}</p>
+                ) : (
+                  <div className="today" data-testid="upcoming-band">
+                    {upcoming.map((a) => (
+                      <div key={a.id} data-testid="upcoming-row" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ flexGrow: 1, minWidth: 0 }}>
+                          <b>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b>
+                          <div className="s">
+                            {[doctorNameOf(a.doctorId), departmentNameOf(a.departmentId), a.status === "needs_rebooking" ? t("profile.upcomingRebook") : null].filter(Boolean).join(" · ")}
+                          </div>
+                        </div>
+                        {canBook && (
+                          <button type="button" className="sec" data-testid={`upcoming-edit-${a.id}`} onClick={() => { editBooking(a); }}>{t("profile.upcomingEdit")}</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {earlier.length > 0 && (
+                  <>
+                    <h3 style={{ margin: "18px 0 6px", fontSize: 15, fontWeight: 600 }}>{t("profile.apptHistory", { count: earlier.length })}</h3>
+                    <div data-testid="appt-history">
+                      {(showAllAppts ? earlier : earlier.slice(0, APPT_HISTORY_ROWS)).map((a) => (
+                        <div key={a.id} style={{ borderBottom: "1px solid var(--line2)" }}>
+                          <button
+                            type="button" data-testid="appt-history-row" aria-expanded={openAppt === a.id}
+                            onClick={() => { setOpenAppt((cur) => (cur === a.id ? null : a.id)); }}
+                            style={{ display: "flex", alignItems: "baseline", gap: 10, width: "100%", padding: "8px 0", background: "none", border: 0, textAlign: "left", cursor: "pointer" }}
+                          >
+                            <b className="mo" style={{ fontSize: 12.5 }}>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b>
+                            <span style={{ fontSize: 12.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>{[doctorNameOf(a.doctorId), departmentNameOf(a.departmentId)].filter(Boolean).join(" · ")}</span>
+                            <span className={a.status === "cancelled" || a.status === "no_show" ? "pill rd" : a.status === "checked_in" ? "pill on" : "pill"} style={{ height: 20 }}>{t(`opdAppt.status.${a.status}`)}</span>
+                            <span aria-hidden style={{ color: "var(--faint)", fontSize: 11 }}>{openAppt === a.id ? "▴" : "▾"}</span>
+                          </button>
+                          {openAppt === a.id && <AppointmentBills appointment={a} mayRead={can("billing.invoice.read")} />}
+                        </div>
+                      ))}
+                    </div>
+                    {earlier.length > APPT_HISTORY_ROWS && (
+                      <button type="button" className="sec" data-testid="appt-history-more" style={{ marginTop: 8 }} onClick={() => { setShowAllAppts((v) => !v); }}>
+                        {showAllAppts ? t("profile.apptHistoryLess") : t("profile.apptHistoryAll", { count: earlier.length })}
+                      </button>
+                    )}
+                  </>
+                )}
               </>
             )}
 

@@ -261,6 +261,37 @@ export function thermalPage(title: string, body: string, extraCss = ""): Rendere
   };
 }
 
+/**
+ * ═══ THE 4 × 6 INCH BILL PAGE (owner, 2026-10-02) ═══
+ *
+ * *"The invoice bill should be in 4 x 6 inch print page. I will be using dot matrix printer."* A cut
+ * sheet, not a roll: 101.6 × 152.4 mm, and BOTH dimensions are explicit, so Chromium honours the
+ * `@page` rule and paginates a long bill onto further 4 × 6 pages by itself — the relay has nothing
+ * to measure.
+ *
+ * It keeps the roll's classes (`.hd`, `.row`, `.sec`, `.ft`) so a module's body prints on either
+ * stock, and overrides what a dot-matrix head needs: pure black, no hairline thinner than 1px, a
+ * larger body size than the roll's, and no row split across a page.
+ */
+export const BILL_PAGE_MM = { widthMm: 101.6, heightMm: 152.4 } as const;
+const BILL_4X6_CSS = `
+  @page { size: 4in 6in; margin: 0; }
+  body { width: 4in; padding: 4mm 4.5mm 5mm; font-size: 10pt; line-height: 1.3; }
+  .hd .nm { font-size: 12pt; }
+  .hd .ad { font-size: 8.5pt; }
+  .row { font-size: 9.5pt; }
+  .ft { font-size: 8pt; }
+  tr, .row, .lab { break-inside: avoid; page-break-inside: avoid; }
+  .newpage { break-before: page; page-break-before: always; }
+`;
+export function billPage(title: string, body: string, extraCss = ""): RenderedDocument {
+  return {
+    title,
+    page: { ...BILL_PAGE_MM },
+    html: `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${THERMAL_CSS}${extraCss}${BILL_4X6_CSS}</style></head><body>${body}</body></html>`,
+  };
+}
+
 /** The identity every document repeats, because a slip that cannot be matched to a person is litter. */
 export type SlipSubject = {
   /**
@@ -552,6 +583,9 @@ export async function subjectOf(
   };
 }
 
+/** Owner, 2026-10-01 — how a fee waived as the hospital's social service prints, on every paper. */
+export const SAMAJ_SEVA_AMOUNT = "₹0 (समाज सेवा छूट)";
+
 /**
  * ═══ THE OPD TOKEN SLIP — `TokenSlip72.dc.html` ═══
  *
@@ -647,15 +681,24 @@ export async function renderTokenSlip(
   let moneyLine: string;
   if (status === "free") {
     let until: string | null = null;
+    let feesOff = false;
     try {
       const quote = await feeQuote(db, encounterId, now);
       until = quote.freeReason === null ? null : formatCalendarDay(quote.freeReason.windowEndsOn);
+      feesOff = quote.feesOff;
     } catch {
       /* An unconfigured or unpriceable visit still prints the TYPE; it simply cannot name a window.
          A slip that failed to render because the fee policy moved would be far worse than one
          missing a date. */
     }
-    moneyLine = until === null
+    /*
+      OWNER, 2026-10-01: *"On the bill and receipt, clearly mention amount ₹0 (Samaj Seva Chhoot) in
+      Hindi."* A visit that is free because the consultation fee is switched off has no bill and no
+      receipt — this slip is the only paper it prints — so the amount and its reason are said here.
+    */
+    moneyLine = feesOff
+      ? SAMAJ_SEVA_AMOUNT
+      : until === null
       ? "FREE — review visit, no consultation fee"
       : `FREE — review visit, no fee until ${until}`;
   } else if (status === "settled") moneyLine = "PAID";
@@ -748,12 +791,14 @@ export async function renderPaymentReceipt(
   const paise = typeof params.amountPaise === "number" ? params.amountPaise : 0;
   const rupees = `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  // Owner, 2026-10-01 — a ₹0 receipt says why it is ₹0, in Hindi, under the amount.
+  const sevaHtml = paise === 0 ? `<div class="hi" style="font-size:11pt;font-weight:700">${SAMAJ_SEVA_AMOUNT}</div>` : "";
   const body = `
     <div class="hd">
       <div class="nm">${HOSPITAL.name}</div>
       <div class="ad">${HOSPITAL.address}<br>${HOSPITAL.contact}</div>
     </div>
-    <div class="tok"><div class="lbl">Payment received</div><div class="no mo" style="font-size:20pt">${esc(rupees)}</div></div>
+    <div class="tok"><div class="lbl">Payment received</div><div class="no mo" style="font-size:20pt">${esc(rupees)}</div>${sevaHtml}</div>
     <div class="sec">
       <div class="row"><span class="k">Patient</span><span class="v">${esc(s.patientName)}</span></div>
       <div class="row"><span class="k">UHID</span><span class="v mo">${esc(s.uhid)}</span></div>

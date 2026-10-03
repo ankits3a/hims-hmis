@@ -145,6 +145,19 @@ describe("patient in hand (07b T1)", () => {
       expect(screen.getByTestId("strip-uhid")).toHaveTextContent("UH-1");
     });
 
+    /** Owner, 2026-10-01 — the strip repeats the profile's own lane, so it stands down there and nowhere else. */
+    it("is not drawn on the profile of the patient it names, and is drawn on any other screen and any other profile", async () => {
+      withPatient({ id: "p-1", uhid: "UH-1", name: "Ramesh Kale", sex: "male", isConfidential: false, alias: null });
+      const own = render(<Harness><PatientStrip path="/patients/p-1" /></Harness>);
+      expect(screen.queryByTestId("patient-strip")).toBeNull();
+      own.unmount();
+      const other = render(<Harness><PatientStrip path="/patients/p-2" /></Harness>);
+      expect(await screen.findByTestId("patient-strip")).toBeInTheDocument();
+      other.unmount();
+      render(<Harness><PatientStrip path="/opd/appointments" /></Harness>);
+      expect(await screen.findByTestId("patient-strip")).toBeInTheDocument();
+    });
+
     it("renders nothing at all when nobody is in hand", () => {
       sessionStorage.clear();
       render(<Harness><PatientStrip /></Harness>);

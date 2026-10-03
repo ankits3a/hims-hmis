@@ -422,6 +422,37 @@ describe("PatientDetail", () => {
    * PLAN 07b T2 — THE DEAD END, ENDED. The action must ALSO take the patient in hand, or the
    * destination is just another empty screen and nothing has been gained.
    */
+  /**
+   * Owner, 2026-10-01 — the shell's "in hand" strip is not drawn over this patient's own profile, so
+   * the lane carries Release, at its foot, and only for the patient who is in hand.
+   */
+  it("the lane's foot offers Release while this patient is in hand, and releasing empties the hand", async () => {
+    sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-1", encounterId: null }));
+    stubSeat({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+    });
+    renderWithProviders(<PatientDetail />);
+    expect(await screen.findByTestId("lane-in-hand")).toHaveTextContent("This patient is in hand");
+    await userEvent.setup().click(screen.getByTestId("lane-release"));
+    expect(sessionStorage.getItem("hmis.inHand")).toBeNull();
+    expect(screen.queryByTestId("lane-release")).toBeNull();
+  });
+
+  it("no Release in the lane when nobody, or somebody else, is in hand", async () => {
+    sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId: "p-other", encounterId: null }));
+    stubSeat({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+    });
+    renderWithProviders(<PatientDetail />);
+    await screen.findByTestId("onward-actions");
+    expect(screen.queryByTestId("lane-release")).toBeNull();
+    sessionStorage.clear();
+  });
+
   it("an onward action takes the patient in hand and then navigates", async () => {
     sessionStorage.clear();
     stubSeat({
@@ -800,6 +831,91 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(text).not.toMatch(/self_declared|id_verified/);
   });
 
+  /** Owner, 2026-10-01 — a booked future appointment was on no part of the profile: it has no visit yet. */
+  it("front desk: an appointment booked ahead shows above the history, with its day, time, doctor and department", async () => {
+    const ahead = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    stubSeat({
+      ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE,
+      "GET /api/opd/appointments": { items: [
+        { id: "a-9", patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: ahead, slotStart: `${ahead}T05:00:00.000Z`, slotEnd: `${ahead}T05:15:00.000Z`, status: "booked" },
+        { id: "a-old", patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: "2020-01-01", slotStart: "2020-01-01T05:00:00.000Z", slotEnd: "2020-01-01T05:15:00.000Z", status: "booked" },
+      ] },
+      "GET /api/opd/doctors": { items: [{ id: "doc-7", displayName: "Dr. Meera Nair", departmentId: "d-7" }] },
+      "GET /api/opd/departments": { items: [{ id: "d-7", name: "Ophthalmology" }] },
+    }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    const rows = await screen.findAllByTestId("upcoming-row");
+    expect(rows).toHaveLength(1); // the 2020 booking is not "upcoming"
+    expect(rows[0]).toHaveTextContent("10:30"); // 05:00Z is 10:30 IST
+    await waitFor(() => expect(rows[0]).toHaveTextContent("Dr. Meera Nair · Ophthalmology"));
+    expect(fetchCalls().some((c) => c.url.includes("/opd/appointments?patientId=p-1"))).toBe(true);
+  });
+
+  /**
+   * Owner, 2026-10-01: an Edit that leads to the appointment book; the appointment history; and a
+   * tap on an appointment showing its bills.
+   */
+  it("an upcoming appointment carries Edit for a seat that may manage the book, and the history opens an appointment's bills", async () => {
+    const ahead = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const row = (id: string, day: string, over: Record<string, unknown>): Record<string, unknown> => ({
+      id, patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: day, slotStart: `${day}T05:00:00.000Z`, slotEnd: `${day}T05:15:00.000Z`, status: "booked", encounterId: null, ...over,
+    });
+    stubSeat({
+      ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE,
+      "GET /api/opd/appointments": { items: [
+        row("a-next", ahead, {}),
+        row("a-kept", "2026-03-10", { status: "checked_in", encounterId: "e-77" }),
+        row("a-missed", "2026-02-02", { status: "no_show" }),
+      ] },
+      "GET /api/opd/doctors": { items: [{ id: "doc-7", displayName: "Dr. Meera Nair", departmentId: "d-7" }] },
+      "GET /api/opd/departments": { items: [{ id: "d-7", name: "Ophthalmology" }] },
+      "GET /api/billing/invoices": (_init?: RequestInit, url?: string) => (String(url ?? "").includes("encounterId=e-77")
+        ? { items: [{ id: "inv-1", invoiceNo: "INV/26/000123", encounterId: "e-77", serviceDay: "2026-03-10", grossPaise: 30000, netPayablePaise: 30000 }] }
+        : { items: [] }),
+    }, [...FRONT_DESK, "billing.invoice.read"]);
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByTestId("upcoming-edit-a-next")).toHaveTextContent("Edit");
+    const history = await screen.findAllByTestId("appt-history-row");
+    expect(history.map((r) => r.textContent)).toEqual([expect.stringContaining("10-Mar-2026"), expect.stringContaining("02-Feb-2026")]); // newest first; the one still ahead is not history
+    expect(history[0]).toHaveTextContent("Checked in");
+    expect(history[1]).toHaveTextContent("No-show");
+
+    await user.click(history[0]!);
+    const bill = await screen.findByTestId("appt-bill");
+    expect(bill).toHaveTextContent("INV/26/000123");
+    expect(bill).toHaveTextContent("₹300");
+
+    // An appointment that never became a visit has no bill, and says why.
+    await user.click(history[1]!);
+    expect(await screen.findByTestId("appt-bills-note")).toHaveTextContent("not checked in");
+  });
+
+  it("a seat without billing.invoice.read is told bills are not shown to it, and asks the bill route nothing", async () => {
+    stubSeat({
+      ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE,
+      "GET /api/opd/appointments": { items: [{ id: "a-kept", patientId: "p-1", doctorId: "doc-7", departmentId: "d-7", serviceDate: "2026-03-10", slotStart: "2026-03-10T05:00:00.000Z", slotEnd: "2026-03-10T05:15:00.000Z", status: "checked_in", encounterId: "e-77" }] },
+      "GET /api/opd/doctors": { items: [] }, "GET /api/opd/departments": { items: [] },
+    }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    await userEvent.setup().click(await screen.findByTestId("appt-history-row"));
+    expect(await screen.findByTestId("appt-bills-note")).toHaveTextContent("Bills are shown to billing staff");
+    expect(fetchCalls().some((c) => c.url.includes("/billing/invoices"))).toBe(false);
+  });
+
+  it("front desk: with nothing booked ahead the profile says so; a seat without the appointment book is not shown the heading", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/opd/appointments": { items: [] } }, FRONT_DESK);
+    const first = renderWithProviders(<PatientDetail />);
+    await waitFor(() => expect(screen.getByTestId("upcoming-empty")).toHaveTextContent("No appointment booked ahead"));
+    first.unmount();
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK.filter((p) => p !== "opd.appointments.read"));
+    renderWithProviders(<PatientDetail />);
+    await screen.findByTestId("timeline");
+    expect(screen.queryByText("Upcoming appointments")).toBeNull();
+    expect(fetchCalls().some((c) => c.url.includes("/opd/appointments"))).toBe(false);
+  });
+
   it("front desk: one dated timeline with source chips, the diagnosis line only; no money reads; no Record a death", async () => {
     stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK);
     renderWithProviders(<PatientDetail />);
@@ -879,5 +995,45 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(document.getElementById("f-phone")).toBeNull();
     expect(document.getElementById("f-addressLine")).toBeNull();
     expect(text()).not.toContain("Asha Devi");
+  });
+});
+
+/*
+  Owner, staging 2026-10-01: "while typing allergy name, I got no suggestion". The profile's dialog
+  was a plain text box — the bay and the doctor had the allergen typeahead and this seat did not.
+*/
+describe("Add allergy on the profile suggests as the clerk types", () => {
+  it("offers coded allergens, a pick saves the class, and unknown free text says so", async () => {
+    const posted: unknown[] = [];
+    stubSeat({
+      ...BASE,
+      "GET /api/opd/cds/complete/allergen": (_init?: RequestInit, url?: string) =>
+        (url ?? "").includes("q=penic")
+          ? { items: [{ term: "Penicillins / Beta-Lactams", kind: "class", allergenClass: "penicillin", saltId: null, blocks: ["Amoxicillin"] }], known: true }
+          : { items: [], known: false },
+      "POST /api/patients/p-1/allergies": (init?: RequestInit) => { posted.push(JSON.parse(String(init?.body))); return { id: "al-9" }; },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PatientDetail />);
+    await user.click((await screen.findAllByRole("button", { name: "Add allergy" }))[0]!);
+    const box = await screen.findByLabelText("Substance");
+
+    await user.type(box, "xyz");
+    await waitFor(() => expect(screen.getByTestId("profile-allergy-unknown")).toBeInTheDocument());
+
+    await user.clear(box);
+    await user.type(box, "penic");
+    await waitFor(() => expect(screen.getByTestId("profile-allergy-hits")).toBeInTheDocument());
+    expect(screen.queryByTestId("profile-allergy-unknown")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("profile-allergy-hit-Penicillins / Beta-Lactams"));
+    expect(box).toHaveValue("Penicillins / Beta-Lactams");
+    await waitFor(() => expect(screen.queryByTestId("profile-allergy-hits")).not.toBeInTheDocument());
+
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add allergy" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toEqual({
+      substance: "Penicillins / Beta-Lactams", severity: "mild", source: "registration",
+      saltId: null, allergenClass: "penicillin",
+    });
   });
 });

@@ -46,6 +46,10 @@
       "desk": "Desk",
       "patients": "Patients",
       "opd": "OPD",
+      "imaging": "Imaging",
+      "lab": "Lab",
+      "theatre": "Theatre",
+      "pharmacy": "Pharmacy",
       "billing": "Billing",
       "stores": "Stores",
       "admin": "Admin"
@@ -852,6 +856,8 @@
     "backToList": "Back to list",
     "bookingFor": "Booking for",
     "changePatient": "Change",
+    "theirBookings": "this patient's appointments",
+    "theirBookingsNone": "No appointment booked ahead for this patient.",
     "choosePatientFirst": "Choose the patient first — the times unlock once the desk knows who the booking is for.",
     "slotBooked": "Booked",
     "confirmTitle": "Confirm this booking",
@@ -1904,7 +1910,8 @@
         "recon": "Reconciliation",
         "daybook": "Day book",
         "gstr1": "GSTR-1",
-        "unbilled": "Unbilled visits"
+        "unbilled": "Unbilled visits",
+        "fees": "Fees"
       },
       "page": {
         "pay": "Vouchers to pay",
@@ -1917,7 +1924,8 @@
         "mismatches": "Mismatches",
         "daybook": "Day book — any date",
         "gstr1": "Summary by GSTIN, SAC and rate",
-        "unbilled": "Visits with no bill — any date"
+        "unbilled": "Visits with no bill — any date",
+        "fees": "Fees — switch on or off"
       },
       "was": {
         "pay": "was: Refunds tab, below two forms",
@@ -1930,7 +1938,8 @@
         "mismatches": "was: Recon tab",
         "daybook": "was: Day book tab",
         "gstr1": "was: GSTR-1 tab",
-        "unbilled": "was: Unbilled visits tab"
+        "unbilled": "was: Unbilled visits tab",
+        "fees": "new: owner, 1 Oct"
       },
       "pill": {
         "toPay_one": "{{count}} voucher to pay · {{amount}}",
@@ -2916,6 +2925,37 @@
       },
       "stays": "Still applies: staff need the desk’s billing and Schedule H permissions; Schedule X and narcotic medicines are refused on paper; allergy and severe-interaction blocks; the H1 register is written at hand-over.",
       "law": "The Pharmacy Act (section 42) asks that a registered pharmacist dispenses prescription medicines, and Schedule H1 sales need the prescriber on the register. With this on, the system no longer enforces the first — the hospital answers for it."
+    }
+  },
+  "feeSwitches": {
+    "lead": "Switch a fee off to make it free, and on to charge it again. Every change is recorded with who made it and when.",
+    "charged": "Charged",
+    "free": "Free",
+    "never": "Never switched — charged since the start.",
+    "since": "{{state}} since {{when}}",
+    "readOnly": "You can see the switches. Changing one needs the billing manager or the owner.",
+    "saved": {
+      "opdConsult": {
+        "off": "Saved — OPD consultation is free from now.",
+        "on": "Saved — OPD consultation is charged from now."
+      },
+      "lab": {
+        "off": "Saved — laboratory tests are free from now.",
+        "on": "Saved — laboratory tests are charged from now."
+      }
+    },
+    "opdConsult": {
+      "label": "OPD consultation fee",
+      "whenOn": "Charged: a new visit pays {{new}}, a renewal pays {{renewal}}. The token is held until the fee is settled.",
+      "whenOff": "Free: no consultation fee is asked and no bill is made. The patient goes straight to vitals and the doctor.",
+      "note": "Patients who walk in while this is free stay free, even if you switch charging on while they wait. The amount comes from the tariff, not from this switch.",
+      "unpriced": "not priced"
+    },
+    "lab": {
+      "label": "Laboratory test fees",
+      "whenOn": "Charged: each test is billed at its tariff price. A test with no price cannot be ordered.",
+      "whenOff": "Free: every laboratory test is billed at ₹0, including tests that have no price yet. The order still gets its bill and its token.",
+      "note": "Imaging, procedures and pharmacy are not affected by this switch."
     }
   },
   "storeSettings": {
@@ -6588,7 +6628,7 @@
       "name": "Name",
       "phone": "Mobile",
       "ageYears": "Age (years)",
-      "sex": "sex",
+      "sex": "gender",
       "sexUnknown": "Not stated",
       "sexMale": "Male",
       "sexFemale": "Female",
@@ -6610,6 +6650,10 @@
       "age": "age",
       "dob": "date of birth",
       "address": "address",
+      "ageOrDob": "age or date of birth",
+      "ageOrDobHint": "34 or 14/03/1986",
+      "ageOrDobUnread": "type an age (34) or a date of birth (14/03/1986)",
+      "ageOrDobBorn": "born {{date}} · {{years}} y",
       "addressHint": "street, area, district — the field 11 files a night are missing",
       "optional": "optional",
       "guardian": {
@@ -6659,9 +6703,16 @@
         "divorced": "Divorced",
         "separated": "Separated"
       },
+      "allergy": {
+        "title": "Allergies",
+        "substance": "allergic to",
+        "placeholder": "medicine, food or other — type 3 letters",
+        "add": "Add",
+        "remove": "Remove {{name}}"
+      },
       "where": {
         "title": "Where they live",
-        "area": "area / landmark",
+        "area": "house, street, area",
         "district": "city / district",
         "state": "state",
         "pincode": "PIN code"
@@ -6867,6 +6918,11 @@
         "suspended": "suspended",
         "cancelled": "cancelled"
       }
+    },
+    "upcoming": {
+      "title": "upcoming appointments",
+      "none": "none booked ahead",
+      "rebook": "needs rebooking"
     },
     "history": {
       "fullCount": "{{count}} visit on file",
@@ -7825,11 +7881,15 @@
     "find": {
       "button": "Find",
       "qrInvalid": "That code is not a prescription this hospital signed.",
+      "doneToday": "Today's medicines for that patient are already handed over.",
       "noRx": "No prescription today for that patient.",
+      "suggestNone": "Nobody registered matches that yet. Press Enter to search, then register them here.",
       "notFound": "Nobody found for that."
     },
     "paperRx": {
       "door": "Dispense from a paper prescription",
+      "doorHintAgain": "{{who}} already collected today's medicines. Start a new bill from another paper prescription.",
+      "seeLast": "See the last ticket",
       "doorHint": "No e-prescription today for {{who}} — enter the doctor's paper and dispense.",
       "title": "Paper prescription",
       "sub": "What the doctor wrote on paper, entered by you. It becomes an ordinary ticket: verify, pick, bill.",
@@ -13003,6 +13063,19 @@
       "ask": "ask"
     },
     "today": "Today · {{date}}",
+    "upcoming": "Upcoming appointments",
+    "upcomingNone": "No appointment booked ahead",
+    "upcomingReading": "Reading the appointment book…",
+    "upcomingRebook": "needs rebooking — doctor on leave",
+    "upcomingEdit": "Edit",
+    "apptHistory": "Appointment history · {{count}}",
+    "apptHistoryAll": "Show all {{count}}",
+    "apptHistoryLess": "Show fewer",
+    "apptNoVisit": "The patient was not checked in for this appointment, so there is no visit and no bill.",
+    "apptNoBill": "No bill was made for this appointment's visit.",
+    "apptBillsHidden": "Bills are shown to billing staff.",
+    "inHand": "This patient is in hand",
+    "inHandVisit": "This patient is in hand · visit open",
     "todayVisit": "In the {{dept}} queue",
     "visitStatus": {
       "registered": "registered",

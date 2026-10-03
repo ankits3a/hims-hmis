@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { invoiceLines, invoices } from "../../kernel/db/schema";
+import { invoiceLines, invoices, opdEncounters } from "../../kernel/db/schema";
 import { feeServiceFor } from "./charge-rules";
 import { loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
@@ -42,11 +42,22 @@ export async function encounterFeeStatuses(
     throw e;
   }
 
+  // THE FEE SWITCH asks when each visit was opened, and most callers hand over `id` and
+  // `visitType` alone. Read once, and only when a switch has ever been flipped.
+  const openedAtById = new Map<string, Date>();
+  if ((rules.feeSwitches?.opdConsult ?? []).length > 0) {
+    const opened = await exec
+      .select({ id: opdEncounters.id, openedAt: opdEncounters.openedAt })
+      .from(opdEncounters)
+      .where(inArray(opdEncounters.id, encounters.map((e) => e.id)));
+    for (const row of opened) openedAtById.set(row.id, row.openedAt);
+  }
+
   const feeById = new Map<string, string | null>();
   for (const enc of encounters) {
     let fee: string | null;
     try {
-      fee = feeServiceFor(enc as EncounterRow, rules); // reads visitType only
+      fee = feeServiceFor({ ...enc, openedAt: openedAtById.get(enc.id) } as EncounterRow, rules); // reads visitType and openedAt
     } catch (e) {
       // CLOSE MINOR-2: a visit type outside the OPD three (a hand-edited or imported row) is
       // UNKNOWN here, never a thrown 500 for the whole queue — and never an aborted settle when

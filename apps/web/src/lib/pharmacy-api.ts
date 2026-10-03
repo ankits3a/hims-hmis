@@ -174,6 +174,8 @@ export type WireFindResult =
     kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" | "restricted";
     /** 2026-09-30 — on `no_prescription_today`, who was found: the desk offers the paper-prescription door. */
     patient?: { id: string; uhid: string; name: string | null; alias: string | null };
+    /** 2026-10-02 — today's ticket for this patient was already handed over: that finished ticket. */
+    lastDispenseId?: string;
   };
 /** `about` is what the line says; `key` is the hit's identity, which a PD-9 authorisation names. */
 export type WireAlternativeBlock = { book: "allergy" | "interaction" | "duplicate" | "drug_disease"; about: string; key: string };
@@ -203,6 +205,12 @@ export async function fetchQueue(): Promise<WireQueueRow[]> {
 }
 export async function findAtCounter(q: string): Promise<WireFindResult> {
   return api<WireFindResult>("GET", `/pharmacy/find${qs({ q })}`);
+}
+/** `GET /pharmacy/find/suggest` — who the typed words could be; a tap runs `findAtCounter` on the UHID. */
+export type WireCounterSuggestion = WirePatientSummary & { hint: string | null };
+export async function suggestAtCounter(q: string): Promise<WireCounterSuggestion[]> {
+  const { items } = await api<{ items: WireCounterSuggestion[] }>("GET", `/pharmacy/find/suggest${qs({ q })}`);
+  return items;
 }
 export async function fetchDispense(id: string): Promise<WireDispense> {
   return api<WireDispense>("GET", `/pharmacy/dispenses/${id}`);

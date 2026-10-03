@@ -22,8 +22,10 @@ import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components
 import { AbdmVerifyPanel } from "../../components/abdm-verify";
 import { ScanSharePanel } from "../../components/abdm-scan-share";
 import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
-import { EMPTY_COVERAGE, EMPTY_FORM, formAgeYears, formNeedsGuardian, useDesk } from "./session";
+import { EMPTY_COVERAGE, EMPTY_FORM, ageOrDobText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
+import { RegAllergies } from "./reg-allergies";
+import { useAuth } from "../../lib/auth";
 import type { CoverageDraft, Person } from "./session";
 
 /**
@@ -320,6 +322,7 @@ function StageRegister(): React.ReactElement {
   const { s } = d;
   const f = s.form;
   const set = (next: Partial<typeof f>): void => d.patch({ form: { ...f, ...next }, duplicates: null });
+  const canRecordAllergy = useAuth().can("patients.update");
 
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (k: string): void => { setOpen((p) => ({ ...p, [k]: p[k] !== true })); };
@@ -398,6 +401,21 @@ function StageRegister(): React.ReactElement {
     phone: f.phone.trim() === "" ? null : f.phone,
   };
 
+  /*
+    The age box's own text. The form holds what the text MEANS (`age` or `dob`); the text itself is
+    kept here so a half-typed date is not wiped on each keystroke. When the form's meaning changes
+    from outside the box — an ABHA or a pre-registration filling it — the text follows.
+  */
+  const [ageText, setAgeText] = useState(() => ageOrDobText(f));
+  const ageRead = parseAgeOrDob(ageText);
+  const formText = ageOrDobText(f);
+  useEffect(() => {
+    const read = parseAgeOrDob(ageText);
+    const same = read === null ? formText === "" : read.kind === "age" ? f.ageMode === "age" && f.age === String(read.years) : f.ageMode === "dob" && f.dob.slice(0, 10) === read.iso;
+    if (!same) setAgeText(formText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- follows the FORM; the text changing is not a reason to run
+  }, [formText, f.ageMode]);
+
   const addCoverage = (): void => { set({ coverages: [...f.coverages, { ...EMPTY_COVERAGE }] }); };
   const setCoverage = (i: number, next: Partial<CoverageDraft>): void => {
     set({ coverages: f.coverages.map((c, idx) => (idx === i ? { ...c, ...next } : c)) });
@@ -426,43 +444,37 @@ function StageRegister(): React.ReactElement {
         </div>
         <div>
           {/*
-            AGE OR DATE OF BIRTH, and the toggle decides which travels. Nobody at a window knows
-            their date of birth and the counter has always taken an age; a planned admission has the
-            card in hand and can give the date. The server refuses BOTH together (`dob_or_age`), so
-            the screen must pick one rather than send whatever is filled in.
+            AGE OR DATE OF BIRTH IN ONE BOX (owner, 2026-10-01) — `parseAgeOrDob` reads what was typed
+            and decides which travels; the server still refuses both together (`dob_or_age`), and
+            only one is ever set. The line under the box says back what was understood, so a clerk
+            who typed 14/03/1986 sees "born 14 Mar 1986 · 40 y" before pressing register.
           */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 5, alignItems: "baseline" }}>
-            {(["age", "dob"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                data-testid={`reg-agemode-${mode}`}
-                onClick={() => { set({ ageMode: mode }); }}
-                className="tag"
-                style={{
-                  background: "none", border: 0, cursor: "pointer", padding: 0,
-                  color: f.ageMode === mode ? "var(--green)" : "var(--faint)",
-                  fontWeight: f.ageMode === mode ? 700 : 400,
-                }}
-              >
-                {t(mode === "age" ? "registrationCounter.register.age" : "registrationCounter.register.dob")}
-              </button>
-            ))}
-          </div>
-          {/*
-            KEYED, AND THE KEY IS LOAD-BEARING. Both branches render an `<input className="in mo">`
-            in the same slot, so React reconciles them as the SAME element and only patches the
-            attributes that changed — which leaves the DOM node's own value untouched. Without the
-            keys a clerk types an age, switches to date of birth, and finds "40" still sitting in
-            the date box; the first version of this did exactly that and a test caught it posting
-            `dob: "401986-03-14"`. Distinct keys force a fresh node, so the box the clerk switched
-            away from cannot leak into the one they switched to.
-          */}
-          {f.ageMode === "age" ? (
-            <input key="age" className="in mo" data-testid="reg-age" inputMode="numeric" value={f.age} onChange={(e) => set({ age: e.target.value })} />
-          ) : (
-            <input key="dob" className="in mo" data-testid="reg-dob" type="date" value={f.dob} onChange={(e) => set({ dob: e.target.value })} />
-          )}
+          <div className="tag" style={{ marginBottom: 5 }}>{t("registrationCounter.register.ageOrDob")}</div>
+          <input
+            className="in mo" data-testid="reg-age" inputMode="text" autoComplete="off"
+            placeholder={t("registrationCounter.register.ageOrDobHint")}
+            value={ageText}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setAgeText(raw);
+              const read = parseAgeOrDob(raw);
+              set(read === null ? { ageMode: "age", age: "", dob: "" }
+                : read.kind === "age" ? { ageMode: "age", age: String(read.years), dob: "" }
+                : { ageMode: "dob", age: "", dob: read.iso });
+            }}
+          />
+          {ageRead === null ? (
+            ageText.trim() === "" ? null : (
+              <div data-testid="reg-age-unread" style={{ fontSize: 11, color: "var(--gold)", marginTop: 4 }}>{t("registrationCounter.register.ageOrDobUnread")}</div>
+            )
+          ) : ageRead.kind === "dob" ? (
+            <div data-testid="reg-age-read" style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
+              {t("registrationCounter.register.ageOrDobBorn", {
+                date: new Date(`${ageRead.iso}T00:00:00Z`).toLocaleDateString("en-IN", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
+                years: formAgeYears(f) ?? 0,
+              })}
+            </div>
+          ) : null}
         </div>
         <div>
           <div className="tag" style={{ marginBottom: 5 }}>{t("registrationCounter.register.sex")}</div>
@@ -487,17 +499,35 @@ function StageRegister(): React.ReactElement {
         </div>
       </div>
 
-      <div className="box" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12, padding: "10px 13px", background: "var(--wash)" }}>
-        <span className="tag" style={{ flexShrink: 0 }}>{t("registrationCounter.register.address")}</span>
-        <input
-          className="in"
-          data-testid="reg-address"
-          style={{ height: 32, background: "var(--card)" }}
-          placeholder={t("registrationCounter.register.addressHint")}
-          value={f.address}
-          onChange={(e) => set({ address: e.target.value })}
-        />
+      {/*
+        ═══ WHERE THEY LIVE — OPEN, IN THE ADDRESS BOX'S PLACE (owner, 2026-10-01) ═══
+
+        *"Instead of putting Address text box under Full Name, Mobile, Age, Sex … unhide the 'Where
+        they live' and show it there as a replacement of one text box for Address."* The one box asked
+        for "street, area, district" in a single line and the four fields that take them apart sat
+        folded shut further down, so district, state and PIN were almost never filled.
+
+        The first field IS the address line (`addressLine`, still `reg-address`). The fold's own
+        "area / landmark" box was bound to `area`, which no request ever carried — what a clerk typed
+        there was dropped. It is gone with the fold.
+      */}
+      <div className="box" data-testid="reg-where" style={{ marginTop: 12, padding: "10px 13px 12px", background: "var(--wash)" }}>
+        <div className="tag">{t("registrationCounter.register.where.title")}</div>
+        <div style={{ ...GRID4, gridTemplateColumns: "1.9fr 1.1fr 1fr .7fr" }}>
+          <Field label={t("registrationCounter.register.where.area")} testId="reg-address" value={f.address} onChange={(v) => set({ address: v })} />
+          <Field label={t("registrationCounter.register.where.district")} testId="reg-district" value={f.district} onChange={(v) => set({ district: v })} />
+          <Field label={t("registrationCounter.register.where.state")} testId="reg-state" value={f.stateName} onChange={(v) => set({ stateName: v })} />
+          <Field label={t("registrationCounter.register.where.pincode")} testId="reg-pincode" mono value={f.pincode} onChange={(v) => set({ pincode: v })} />
+        </div>
       </div>
+
+      {/* Allergies — only for a seat that may record one (`patients.update`, the POST's own gate). */}
+      {canRecordAllergy && (
+        <RegAllergies
+          list={f.allergies} pending={f.allergyPending}
+          onChange={(next) => { set(next); }}
+        />
+      )}
 
       {/* ═══ THE GUARDIAN — opened by the age, not by the clerk remembering ═══ */}
       <Fold
@@ -684,21 +714,6 @@ function StageRegister(): React.ReactElement {
         </div>
       </Fold>
 
-      {/* ═══ WHERE THEY LIVE ═══ */}
-      <Fold
-        title={t("registrationCounter.register.where.title")}
-        hint={t("registrationCounter.register.optional")}
-        open={open["where"] === true}
-        onToggle={() => { toggle("where"); }}
-        testId="fold-where"
-      >
-        <div style={GRID4}>
-          <Field label={t("registrationCounter.register.where.area")} testId="reg-area" value={f.area} onChange={(v) => set({ area: v })} />
-          <Field label={t("registrationCounter.register.where.district")} testId="reg-district" value={f.district} onChange={(v) => set({ district: v })} />
-          <Field label={t("registrationCounter.register.where.state")} testId="reg-state" value={f.stateName} onChange={(v) => set({ stateName: v })} />
-          <Field label={t("registrationCounter.register.where.pincode")} testId="reg-pincode" mono value={f.pincode} onChange={(v) => set({ pincode: v })} />
-        </div>
-      </Fold>
 
       {/* ═══ THE DOCUMENT THE CLERK WAS HANDED ═══ */}
       <Fold
@@ -1499,6 +1514,56 @@ function slotClock(iso: string): string {
   });
 }
 
+/**
+ * ═══ MORNING, NOON OR EVENING FIRST — THEN THE SLOTS (owner, 2026-10-01) ═══
+ *
+ * *"Instead of showing all the slots, we should first ask user if they want to book slot of the
+ * morning or noon or evening, having beautiful icon showing sunset, sunrise and sun on top. Once
+ * user taps any one of the three, the slots should be visible accordingly."* A full day is forty
+ * times on one board, and the patient's answer to "when?" is never a time — it is "morning".
+ *
+ * The parts are cut on the IST clock the slot buttons print: morning before 12:00, noon from 12:00,
+ * evening from 17:00. Each card says how many of its slots are free, so a full morning is seen
+ * before it is opened, and a part with no session cannot be tapped.
+ */
+type DayPart = "morning" | "noon" | "evening";
+const DAY_PARTS: readonly { part: DayPart; label: string; hours: string }[] = [
+  { part: "morning", label: "Morning", hours: "before 12:00" },
+  { part: "noon", label: "Noon", hours: "12:00 – 17:00" },
+  { part: "evening", label: "Evening", hours: "after 17:00" },
+];
+function dayPartOf(iso: string): DayPart {
+  const hour = Number.parseInt(slotClock(iso).slice(0, 2), 10);
+  return hour < 12 ? "morning" : hour < 17 ? "noon" : "evening";
+}
+/** Sunrise, the sun overhead, sunset: one sun, a horizon and which way it is going. */
+function DayPartIcon({ part }: { part: DayPart }): React.ReactElement {
+  const sun = part === "evening" ? "#e0662d" : part === "morning" ? "#f0a321" : "#f2b705";
+  const rays = [0, 45, 90, 135, 180, 225, 270, 315];
+  if (part === "noon") {
+    return (
+      <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="9" fill={sun} />
+        {rays.map((deg) => (
+          <line key={deg} x1="24" y1="6" x2="24" y2="11" stroke={sun} strokeWidth="2.6" strokeLinecap="round" transform={`rotate(${String(deg)} 24 24)`} />
+        ))}
+      </svg>
+    );
+  }
+  return (
+    <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
+      {/* the half sun on the horizon, its upper rays, and the arrow that says rising or setting */}
+      <path d="M13 32a11 11 0 0 1 22 0Z" fill={sun} />
+      {[-60, -30, 30, 60].map((deg) => (
+        <line key={deg} x1="24" y1="14" x2="24" y2="18" stroke={sun} strokeWidth="2.4" strokeLinecap="round" transform={`rotate(${String(deg)} 24 32)`} />
+      ))}
+      <line x1="6" y1="32" x2="42" y2="32" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <line x1="13" y1="38" x2="35" y2="38" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" opacity=".45" />
+      <path d={part === "morning" ? "M24 15V5M20 9l4-4 4 4" : "M24 5v10M20 11l4 4 4-4"} fill="none" stroke={sun} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function FutureTab(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
@@ -1555,6 +1620,8 @@ function FutureTab(): React.ReactElement {
   });
   /** The slot the clerk has SELECTED and not yet committed — the artboard's "yours". */
   const [picked, setPicked] = useState<string | null>(null);
+  /** Morning, noon or evening — asked before any slot is drawn. Null until the clerk taps one. */
+  const [part, setPart] = useState<DayPart | null>(null);
 
   /**
    * ═══ FD-17 — WHAT THIS PATIENT ALREADY HAS BOOKED ═══
@@ -1922,8 +1989,45 @@ function FutureTab(): React.ReactElement {
           </span>
         ) : null}
 
+        <div data-testid="dayparts" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, margin: "4px 0 12px" }}>
+          {DAY_PARTS.map(({ part: p, label, hours }) => {
+            const inPart = all.filter((x) => dayPartOf(x.start) === p);
+            const freeInPart = inPart.filter((x) => !x.booked && !x.past).length;
+            const on = part === p;
+            const none = inPart.length === 0;
+            return (
+              <button
+                key={p}
+                type="button"
+                data-testid={`daypart-${p}`}
+                aria-pressed={on}
+                disabled={none}
+                onClick={() => { setPart(p); if (picked !== null && dayPartOf(picked) !== p) setPicked(null); }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "12px 8px 11px", borderRadius: 10,
+                  border: `1.5px solid ${on ? "var(--green)" : "var(--line)"}`,
+                  background: on ? "var(--green-soft)" : "var(--card)",
+                  color: none ? "var(--faint)" : "var(--ink)", opacity: none ? 0.55 : 1,
+                  cursor: none ? "not-allowed" : "pointer",
+                }}
+              >
+                <DayPartIcon part={p} />
+                <span style={{ fontSize: 14.5, fontWeight: 700 }}>{label}</span>
+                <span className="mo" style={{ fontSize: 10.5, color: "var(--dim)" }}>{hours}</span>
+                <span data-testid={`daypart-${p}-count`} style={{ fontSize: 11.5, fontWeight: 600, color: none ? "var(--faint)" : freeInPart === 0 ? "var(--gold)" : "var(--green)" }}>
+                  {none ? "no session" : freeInPart === 0 ? "full" : `${String(freeInPart)} free`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {part === null && all.length > 0 ? (
+          <span data-testid="daypart-ask" style={{ fontSize: 12, color: "var(--dim)" }}>Morning, noon or evening? Tap one to see its times.</span>
+        ) : null}
+
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {all.map((slot: WireSlot) => {
+          {all.filter((slot) => part !== null && dayPartOf(slot.start) === part).map((slot: WireSlot) => {
             const unavailable = slot.booked || slot.past;
             const isPicked = picked === slot.start;
             return (

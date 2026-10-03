@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { printJobs } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
-import { esc, thermalPage } from "../../kernel/printing/render";
+import { billPage, esc, thermalPage } from "../../kernel/printing/render";
 import { relayServes } from "../../kernel/printing/served";
 import { getInvoice } from "../billing";
 import { saleDiscountReason } from "./discount";
@@ -63,6 +63,14 @@ const PHARMACY_CSS = `
   .lab .drug { font-size: 11pt; font-weight: 700; line-height: 1.2; }
   .lab .how { font-size: 10.5pt; font-weight: 700; margin: 1.2mm 0; }
   .cut { border-top: 1px dashed #000; margin: 3mm 0 0; }
+`;
+
+/** The same rules at the 4 × 6 inch sheet's sizes: a dot-matrix head needs larger, plainer type than the roll. */
+const PHARMACY_BILL_4X6_CSS = `${PHARMACY_CSS}
+  table { font-size: 9.5pt; }
+  th { font-size: 8.5pt; }
+  .sub { font-size: 8pt; }
+  .ttl { font-size: 10pt; }
 `;
 
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -205,7 +213,9 @@ export async function renderPharmacyPaper(
   if (dispenseId === null) return null;
   const label = await labelFor(db, readerOf(requester), dispenseId);
   const part = document === "pharmacy_bill" ? await billPart(db, requester, dispenseId, label) : labelsPart(label, now);
-  return part === null ? null : thermalPage(part.title, part.body, PHARMACY_CSS);
+  if (part === null) return null;
+  // Owner 2026-10-02 — the BILL prints on a 4 × 6 inch sheet (dot matrix); the labels stay on the roll.
+  return document === "pharmacy_bill" ? billPage(part.title, part.body, PHARMACY_BILL_4X6_CSS) : thermalPage(part.title, part.body, PHARMACY_CSS);
 }
 
 /**
@@ -216,7 +226,8 @@ export async function dispensePaper(db: Db, actor: Actor, dispenseId: string, no
   const label = await labelFor(db, actor, dispenseId);
   const parts = [await billPart(db, actor, dispenseId, label), labelsPart(label, now)].filter((p): p is Part => p !== null);
   if (parts.length === 0) throw new PharmacyError("nothing_to_print", "no bill and no picked medicine on this ticket yet");
-  return thermalPage(parts.map((p) => p.title).join(" · "), parts.map((p) => p.body).join('<div class="cut"></div>'), PHARMACY_CSS);
+  // Owner 2026-10-02 — one print dialog on the 4 × 6 inch stock: the bill first, the labels from a new page.
+  return billPage(parts.map((p) => p.title).join(" · "), parts.map((p) => p.body).join('<div class="newpage"></div>'), PHARMACY_BILL_4X6_CSS);
 }
 
 export type PrintJobView = { id: string; document: string; status: string; lastError: string | null; printedAt: Date | null; createdAt: Date };

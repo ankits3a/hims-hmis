@@ -1,7 +1,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "react-i18next";
 import { billingPatientLabel } from "../lib/billing-api";
-import { fmtPaise } from "../lib/format";
+import { fmtPaise, SAMAJ_SEVA_AMOUNT } from "../lib/format";
 import { Button } from "@/components/ui/button";
 import { billQtyText } from "../lib/pharmacy-bill";
 import type { WireInvoicePrint } from "../lib/billing-api";
@@ -45,6 +45,19 @@ import type { WireBillRow } from "../lib/pharmacy-bill";
  * Nothing is printed for a GSTIN the letterhead does not carry; the readiness census reports that
  * gap instead (`supplier_gstin_on_invoice`).
  */
+export const INVOICE_4X6_PRINT_CSS = `@media print {
+  @page { size: 4in 6in; margin: 4mm; }
+  .print-doc.invoice-4x6 { position: absolute; left: 0; top: 0; right: 0; width: auto; min-height: 0; padding: 0; border: 0; border-radius: 0; font-size: 9.5pt; line-height: 1.3; }
+  .invoice-4x6, .invoice-4x6 * { color: #000 !important; }
+  .invoice-4x6 h2 { font-size: 12pt; }
+  .invoice-4x6 table, .invoice-4x6 .text-sm { font-size: 9pt; }
+  .invoice-4x6 .text-xs { font-size: 8pt; }
+  .invoice-4x6 .text-base { font-size: 11pt; }
+  .invoice-4x6 th, .invoice-4x6 td { padding: 0 0 0 1.2mm; vertical-align: top; }
+  .invoice-4x6 th:first-child, .invoice-4x6 td:first-child { padding-left: 0; }
+  .invoice-4x6 tr, .invoice-4x6 section p { break-inside: avoid; page-break-inside: avoid; }
+}`;
+
 export function documentTitleKey(lines: readonly { exempt: boolean }[]): "taxInvoice" | "billOfSupply" | "invoiceCumBill" {
   const exempt = lines.filter((l) => l.exempt).length;
   if (exempt === 0) return "taxInvoice";
@@ -66,7 +79,16 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
 
   return (
     <div className="space-y-3">
-      <div className="print-doc w-[640px] space-y-2 rounded-lg border p-4">
+      {/*
+        ═══ 4 × 6 INCH, FOR A DOT-MATRIX PRINTER (owner, 2026-10-02) ═══
+        NOT the shared A5 `@page` rule (`styles.css`): this rule comes later in the cascade and wins
+        while an invoice is mounted (the lab report's A4 precedent). `.print-doc` is `position: fixed`,
+        which would repeat the first 6 inches on every page and clip the rest, so the invoice is
+        `absolute` instead and a long bill runs onto further 4 × 6 pages. Pure black, no rounded
+        border, no grey: a dot-matrix head prints grey as a faint dither.
+      */}
+      <style>{INVOICE_4X6_PRINT_CSS}</style>
+      <div className="print-doc invoice-4x6 w-[640px] space-y-2 rounded-lg border p-4">
         <header className="space-y-1 border-b pb-2">
           <h2 className="text-lg font-bold">{letterhead.name}</h2>
           {letterhead.legalName !== undefined && (
@@ -143,7 +165,7 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
                 <td className="text-right tabular-nums">{fmtPaise(line.grossPaise)}</td>
                 <td className="text-right tabular-nums">{fmtPaise(line.discountPaise)}</td>
                 <td className="text-right tabular-nums">{fmtPaise(line.cgstPaise + line.sgstPaise)}</td>
-                <td className="text-right tabular-nums">{fmtPaise(line.netPaise)}</td>
+                <td className="text-right tabular-nums">{line.grossPaise === 0 ? SAMAJ_SEVA_AMOUNT : fmtPaise(line.netPaise)}</td>
               </tr>
             ))}
           </tbody>
@@ -160,7 +182,7 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
           {/* §170's single rupee rounding, printed because a bill that does not show it is queried. */}
           <p data-testid="invoice-rounding">{t("billing.print.rounding")}: {fmtPaise(invoice.roundingPaise)}</p>
           <p data-testid="invoice-net" className="text-base font-semibold">
-            {t("billing.print.netPayable")}: {fmtPaise(invoice.netPayablePaise)}
+            {t("billing.print.netPayable")}: {invoice.grossPaise === 0 ? SAMAJ_SEVA_AMOUNT : fmtPaise(invoice.netPayablePaise)}
           </p>
         </section>
 
