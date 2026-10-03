@@ -11626,6 +11626,7 @@
       "docNoHint": "Bill, credit note, MSB, MPR, MRT, MDN, MCN, MWO…",
       "open": "Open",
       "backToFeed": "All activity",
+      "credit": {"no": "Credit note", "bill": "Against bill", "reason": "Reason", "value": "Value", "settled": "Money", "kept": "Kept as credit", "refund": "Refund", "count": "Credit notes", "total": "Total", "byPatient": "by patient", "view": "Show", "views": {"document": "Each credit note", "patient": "By patient"}, "summary_one": "{{count}} credit note", "summary_other": "{{count}} credit notes", "keptTotal": "Kept as pharmacy credit", "refundTotal": "Refund asked", "paidTotal": "Refund paid", "settlement": {"kept_as_credit": "Kept as pharmacy credit", "refund_paid": "Refund paid", "refund_approved": "Refund approved, not paid yet", "refund_requested": "Refund waiting for approval", "refund_refused": "Refund refused", "none": "—"}},
       "name": {
         "sales": "Sales register",
         "purchases": "Purchase register",
@@ -11640,7 +11641,8 @@
         "topSelling": "Top-selling items",
         "losses": "Loss-booking register",
         "dailyStock": "Daily stock",
-        "catalogue": "Item catalogue"
+        "catalogue": "Item catalogue",
+        "creditNotes": "Credit notes to patients"
       },
       "about": {
         "sales": "Every sale and refund, by bill, item, doctor, patient, pharmacist or tender.",
@@ -11656,7 +11658,8 @@
         "topSelling": "The period's best sellers by units and by value, with share and ABC class.",
         "losses": "Every write-off and count shortage: what was lost, its cost, why, and who approved it.",
         "dailyStock": "Opening, in, out and closing stock per item, for a store and a range.",
-        "catalogue": "The item master as one sheet: HSN, GST, schedule, storage, packs, levels, rack."
+        "catalogue": "The item master as one sheet: HSN, GST, schedule, storage, packs, levels, rack.",
+        "creditNotes": "Every credit note given to a patient: to whom, how much, and whether it was refunded or kept as pharmacy credit."
       },
       "preset": {
         "today": "Today",
@@ -13064,6 +13067,7 @@
       "ask": "ask"
     },
     "today": "Today · {{date}}",
+    "credit": {"title": "Credit notes and pharmacy credit", "available": "Pharmacy credit available: {{amount}}", "availableNote": "Kept from returns; used first on the next pharmacy bill.", "notes_one": "{{count}} credit note · {{amount}}", "notes_other": "{{count}} credit notes · {{amount}}", "date": "Date", "no": "Credit note", "bill": "Bill", "value": "Value", "money": "Money", "all": "Show all {{count}}", "fewer": "Show fewer"},
     "upcoming": "Upcoming appointments",
     "upcomingNone": "No appointment booked ahead",
     "upcomingReading": "Reading the appointment book…",

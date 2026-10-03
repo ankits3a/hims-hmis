@@ -31,6 +31,7 @@ import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
 import { reportsForPatient } from "../lib/lab-api";
 import { fmtPaise } from "../lib/format";
+import { CREDIT_READERS, PatientCredit } from "./patient-credit";
 import {
   buildTimeline, dmy, dmyIst, duesSummary, groupByDay, istDay, maskMobile, openVisitsToday, type Labels,
 } from "./patient-profile-model";
@@ -1476,6 +1477,9 @@ export function PatientDetail(): React.ReactElement {
                 </div>
               </>
             )}
+
+            {/* Owner 2026-10-03 — the pharmacy credit in the patient's name, and their credit notes. */}
+            {CREDIT_READERS.some((p) => can(p)) && pid !== null && <PatientCredit patientId={pid} />}
 
             {can("opd.appointments.read") && (
               <>

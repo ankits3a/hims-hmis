@@ -177,6 +177,18 @@ function query(r: Partial<RangeInput> & Record<string, string | number | undefin
 const BASE = "/pharmacy/office/reports";
 export const fetchReportStores = async (): Promise<{ code: string; name: string }[]> => (await api<{ stores: { code: string; name: string }[] }>("GET", `${BASE}/stores`)).stores;
 export const fetchSalesRegister = (r: RangeInput, groupBy: SalesGroupBy): Promise<WireSalesRegister> => api("GET", `${BASE}/sales${query({ ...r, groupBy })}`);
+/** Owner 2026-10-03 — the pharmacy's credit notes in a range: to whom, how much, what became of the money. */
+export type CreditSettlement = "kept_as_credit" | "refund_paid" | "refund_approved" | "refund_requested" | "refund_refused" | "none";
+export type WireCreditNoteRow = {
+  id: string; creditNoteNo: string; date: string; at: string; invoiceNo: string; patientId: string; patientName: string; uhid: string;
+  kind: string; reason: string; netPaise: number; issuedByName: string; settlement: CreditSettlement; keptPaise: number; refundPaise: number;
+};
+export type WireCreditNoteRegister = {
+  from: string; to: string; preset: string; rows: WireCreditNoteRow[];
+  byPatient: { patientId: string; patientName: string; uhid: string; count: number; netPaise: number; keptPaise: number; refundPaise: number }[];
+  totals: { count: number; netPaise: number; keptPaise: number; refundRequestedPaise: number; refundPaidPaise: number };
+};
+export const fetchCreditNoteRegister = (r: RangeInput): Promise<WireCreditNoteRegister> => api("GET", `${BASE}/credit-notes${query(r)}`);
 export const fetchMargin = (r: RangeInput, groupBy: MarginGroupBy): Promise<WireMarginReport> => api("GET", `${BASE}/margin${query({ ...r, groupBy })}`);
 export const fetchHsn = (r: RangeInput): Promise<WireHsnReport> => api("GET", `${BASE}/hsn${query(r)}`);
 /** GAP A4 — the period's GSTR-3B figures from the books (`pharmacy/gstr3b.ts`). */

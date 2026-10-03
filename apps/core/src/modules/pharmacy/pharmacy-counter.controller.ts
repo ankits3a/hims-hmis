@@ -7,6 +7,8 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { claimDispense, findAtCounter, suggestAtCounter } from "./claim";
 import { takeOverDispense } from "./takeover";
+import { patientCredit } from "./credit-notes";
+import type { PatientCredit } from "./credit-notes";
 import type { CounterSuggestion } from "./claim";
 import { enterPaperPrescription, paperRxContext } from "./paper-rx";
 import type { PaperRxContext } from "./paper-rx";
@@ -388,6 +390,18 @@ export class PharmacyCounterController {
     const input = parsed(z.object({ idx: z.coerce.number().int().nonnegative(), q: z.string().max(200).default("") }), { idx, q });
     try {
       return { items: await placementsFor(this.db, id, input.idx, input.q, new Date()) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — on the patient's profile: their credit notes and the pharmacy credit available now. */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["pharmacy.dispense.read", "pharmacy.reports.read", "billing.dues.patient.read"] })
+  @Get("patients/:patientId/credit")
+  async credit(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<PatientCredit> {
+    const id = parsed(z.string().min(1).max(64), patientId);
+    try {
+      return await patientCredit(this.db, actor, id);
     } catch (e) {
       return toHttp(e);
     }
