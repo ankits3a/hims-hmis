@@ -13036,6 +13036,8 @@
     "apptNoVisit": "The patient was not checked in for this appointment, so there is no visit and no bill.",
     "apptNoBill": "No bill was made for this appointment's visit.",
     "apptBillsHidden": "Bills are shown to billing staff.",
+    "inHand": "This patient is in hand",
+    "inHandVisit": "This patient is in hand · visit open",
     "todayVisit": "In the {{dept}} queue",
     "visitStatus": {
       "registered": "registered",

@@ -29,7 +29,13 @@ type StripPatient = {
   isConfidential: boolean; alias: string | null;
 };
 
-export function PatientStrip(): React.ReactElement | null {
+/**
+ * `path` — WHERE THE SHELL IS (owner, 2026-10-01). On that patient's own profile the strip repeats
+ * the lane beside it: *"Why have the horizontal bar showing patient in hand when we already have
+ * patient details showing in left panel?"* So it is not drawn there, and the profile's lane carries
+ * Release instead. On every other screen — and on a DIFFERENT patient's profile — it still shows.
+ */
+export function PatientStrip({ path }: { path?: string } = {}): React.ReactElement | null {
   const { t } = useTranslation();
   const { inHand, release } = usePatientInHand();
   const patientId = inHand?.patientId ?? "";
@@ -42,6 +48,7 @@ export function PatientStrip(): React.ReactElement | null {
   });
 
   if (inHand === null) return null;
+  if (path !== undefined && path === `/patients/${inHand.patientId}`) return null;
 
   const restricted = patient.isError && patient.error instanceof ApiError && patient.error.status === 404;
   const row = patient.data?.patient;
