@@ -55,6 +55,9 @@ export type { InvoiceTotals, RoundingRule, TaxSummaryRow } from "./totals";
 export { ITEM_DISCOUNT_SOURCE_KEY, SALE_DISCOUNT_SOURCE_KEY } from "./sale-discount";
 export type { SaleDiscountInput } from "./sale-discount";
 export { creditShare } from "./credit-share";
+/** Owner 2026-10-03 — the profile's All bills and one bill in full. */
+export { BILL_DEPARTMENTS, patientBillDetail, patientBills } from "./patient-bills";
+export type { BillDepartment, PatientBillDetail, PatientBillRow } from "./patient-bills";
 export { settlementState } from "./settlement";
 export type { Settlement, SettlementState } from "./settlement";
 export { runDailyClose, dayBook, gstr1Summary, chargeOrphans } from "./daily-close";
