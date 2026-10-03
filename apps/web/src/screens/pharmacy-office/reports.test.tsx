@@ -313,11 +313,11 @@ describe("the office's reports — stage C", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
   const ALL = [...OWNER, "pharmacy.tally.export"];
 
-  it("fourteen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
+  it("fifteen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
     const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/top-selling": topSelling }, ALL);
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     const list = await screen.findByTestId("reports-view");
-    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G"]);
+    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H"]);
     expect(within(within(list).getByTestId("report-catalogue")).getByText("G")).toBeTruthy();
     list.focus();
     await userEvent.keyboard("a");
@@ -332,6 +332,36 @@ describe("the office's reports — stage C", () => {
     expect(screen.getByTestId("abc-C")).toHaveTextContent("300.00");
     await userEvent.selectOptions(screen.getByTestId("top-by"), "units");
     expect(within(screen.getByTestId("top-table")).getAllByRole("row")[1]).toHaveTextContent("250");
+  });
+
+  /* Owner 2026-10-03 — which patient got a credit note in a range, the total, and what became of the money. */
+  it("credit notes to patients: each note with its patient, value and money, totals, and the by-patient view", async () => {
+    const reg = {
+      from: "2026-10-01", to: "2026-10-03", preset: "week",
+      rows: [
+        { id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", at: "2026-10-02T05:00:00.000Z", invoiceNo: "INV-9", patientId: "p1", patientName: "Abhishek Kumar", uhid: "U00110020",
+          kind: "refund", reason: "pharmacy return: wrong medicine given", netPaise: 47200, issuedByName: "abhay.kumar", settlement: "kept_as_credit", keptPaise: 47200, refundPaise: 0 },
+        { id: "cn2", creditNoteNo: "CN-2", date: "2026-10-03", at: "2026-10-03T05:00:00.000Z", invoiceNo: "INV-10", patientId: "p1", patientName: "Abhishek Kumar", uhid: "U00110020",
+          kind: "refund", reason: "pharmacy return: no longer needed", netPaise: 10000, issuedByName: "admin", settlement: "refund_requested", keptPaise: 0, refundPaise: 10000 },
+      ],
+      byPatient: [{ patientId: "p1", patientName: "Abhishek Kumar", uhid: "U00110020", count: 2, netPaise: 57200, keptPaise: 47200, refundPaise: 10000 }],
+      totals: { count: 2, netPaise: 57200, keptPaise: 47200, refundRequestedPaise: 10000, refundPaidPaise: 0 },
+    };
+    const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/credit-notes": reg }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-creditNotes"));
+    const table = await screen.findByTestId("credit-table");
+    await waitFor(() => expect(calls.some((c) => c.path.startsWith("/pharmacy/office/reports/credit-notes?preset=today"))).toBe(true));
+    const one = within(table).getByTestId("credit-table-row-cn1");
+    expect(one).toHaveTextContent("Abhishek Kumar");
+    expect(one).toHaveTextContent("wrong medicine given");
+    expect(one).toHaveTextContent("472.00");
+    expect(one).toHaveTextContent("Kept as pharmacy credit");
+    expect(within(table).getByTestId("credit-table-row-cn2")).toHaveTextContent("Refund waiting for approval");
+    expect(within(table).getByTestId("credit-table-totals")).toHaveTextContent("572.00");
+    expect(screen.getByTestId("credit-summary")).toHaveTextContent("2 credit notes");
+    await userEvent.selectOptions(screen.getByTestId("credit-view"), "patient");
+    expect(within(await screen.findByTestId("credit-groups")).getByTestId("credit-groups-row-p1")).toHaveTextContent("572.00");
   });
 
   it("the loss register: each loss with its reason and approver, a count variance named as one, totals by reason", async () => {

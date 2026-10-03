@@ -7,14 +7,14 @@ import { pharmacyErrorText } from "../../lib/pharmacy-api";
 import {
   MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, STOCK_IN_KINDS, STOCK_OUT_KINDS, fetchActivity, fetchActivityFeed,
   fetchCatalogue, fetchDailyStock, fetchGstr3b, fetchHsn, fetchLossRegister, fetchMargin, fetchNonMoving, fetchPurchaseRegister, fetchReportStores,
-  fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
+  fetchCreditNoteRegister, fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
 } from "../../lib/reports-api";
 import { downloadXlsx, toXlsx } from "../../lib/xlsx";
 import { Button } from "@/components/ui/button";
 import { TallyReport } from "./tally";
 import type {
   AbcClass, MarginGroupBy, RangeInput, ReconBucket, ReportPreset, SalesGroupBy, WireActivity, WireActivityEntry, WireCatalogueRow, WireDailyStockRow,
-  WireGstr2b, WireLossRow, WireSalesRow, WireTopSellingRow,
+  WireGstr2b, WireLossRow, WireCreditNoteRow, WireSalesRow, WireTopSellingRow,
 } from "../../lib/reports-api";
 
 /**
@@ -32,10 +32,10 @@ import type {
  */
 export type ReportKey =
   | "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally"
-  | "topSelling" | "losses" | "dailyStock" | "catalogue";
+  | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes";
 const ALL_REPORTS: readonly ReportKey[] = [
   "sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally",
-  "topSelling", "losses", "dailyStock", "catalogue",
+  "topSelling", "losses", "dailyStock", "catalogue", "creditNotes",
 ];
 /**
  * The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten), then letters (stage C made it
@@ -173,6 +173,7 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "losses" && <LossReport {...bind} />}
       {report === "dailyStock" && <DailyStockReport {...bind} />}
       {report === "catalogue" && <CatalogueReport {...bind} />}
+      {report === "creditNotes" && <CreditNotesReport {...bind} />}
     </div>
   );
 }
@@ -407,6 +408,75 @@ function SalesReport({ sheet, presetRef }: Bind): React.ReactElement {
                   </table>
                 )} />
             : <Table testId="sales-groups" cols={groupCols} rows={d.groups} rowKey={(g) => g.key || "—"} totals={totals} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ the credit notes to patients (owner 2026-10-03) ═══════════════════════════════════
+
+const CREDIT_VIEWS = ["document", "patient"] as const;
+type CreditView = (typeof CREDIT_VIEWS)[number];
+
+function CreditNotesReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef);
+  const [view, setView] = useState<CreditView>("document");
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "credit-notes", range], queryFn: () => fetchCreditNoteRegister(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const C = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.credit.${k}`, o);
+  type Row = WireCreditNoteRow;
+  type Group = NonNullable<typeof d>["byPatient"][number];
+  const docCols: Col<Row>[] = [
+    { key: "date", label: L("date"), value: (r) => r.date },
+    { key: "no", label: C("no"), value: (r) => r.creditNoteNo },
+    { key: "patient", label: L("patient"), value: (r) => r.patientName },
+    { key: "uhid", label: L("uhid"), value: (r) => r.uhid },
+    { key: "bill", label: C("bill"), value: (r) => r.invoiceNo },
+    { key: "reason", label: C("reason"), value: (r) => r.reason.replace(/^pharmacy return: /, "") },
+    { key: "net", label: C("value"), money: true, value: (r) => r.netPaise },
+    { key: "settled", label: C("settled"), value: (r) => C(`settlement.${r.settlement}`) },
+    { key: "kept", label: C("kept"), money: true, value: (r) => r.keptPaise },
+    { key: "refund", label: C("refund"), money: true, value: (r) => r.refundPaise },
+    { key: "by", label: L("operator"), value: (r) => r.issuedByName },
+  ];
+  const groupCols: Col<Group>[] = [
+    { key: "patient", label: L("patient"), value: (g) => g.patientName },
+    { key: "uhid", label: L("uhid"), value: (g) => g.uhid },
+    { key: "count", label: C("count"), num: true, value: (g) => g.count },
+    { key: "net", label: C("value"), money: true, value: (g) => g.netPaise },
+    { key: "kept", label: C("kept"), money: true, value: (g) => g.keptPaise },
+    { key: "refund", label: C("refund"), money: true, value: (g) => g.refundPaise },
+  ];
+  const totals: Totals | null = d === undefined ? null : view === "document"
+    ? { date: C("total"), net: d.totals.netPaise, kept: d.totals.keptPaise, refund: d.totals.refundRequestedPaise }
+    : { patient: C("total"), count: d.totals.count, net: d.totals.netPaise, kept: d.totals.keptPaise, refund: d.totals.refundRequestedPaise };
+  if (d !== undefined) {
+    sheet.current = {
+      title: `${t("pharmacyOffice.reports.name.creditNotes")}${view === "patient" ? ` · ${C("byPatient")}` : ""}`, subtitle: rangeText(d.from, d.to),
+      file: `credit-notes-${d.from}-${d.to}`, cols: (view === "document" ? docCols : groupCols) as Col<never>[], rows: view === "document" ? d.rows : d.byPatient, totals,
+    };
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <RangeBar range={range} onChange={setRange} />
+        <Choice label={C("view")} testId="credit-view" value={view} options={CREDIT_VIEWS} onChange={setView} text={(v) => C(`views.${v}`)} />
+      </div>
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <div className="flex flex-wrap gap-4 text-sm" data-testid="credit-summary">
+            <span>{C("summary", { count: d.totals.count })} <b className="tabular-nums">{money(d.totals.netPaise)}</b></span>
+            <span>{C("keptTotal")} <b className="tabular-nums">{money(d.totals.keptPaise)}</b></span>
+            <span>{C("refundTotal")} <b className="tabular-nums">{money(d.totals.refundRequestedPaise)}</b></span>
+            <span>{C("paidTotal")} <b className="tabular-nums">{money(d.totals.refundPaidPaise)}</b></span>
+          </div>
+          {view === "document"
+            ? <Table testId="credit-table" cols={docCols} rows={d.rows} rowKey={(r) => r.id} totals={totals} />
+            : <Table testId="credit-groups" cols={groupCols} rows={d.byPatient} rowKey={(g) => g.patientId} totals={totals} />}
         </>
       )}
     </div>
