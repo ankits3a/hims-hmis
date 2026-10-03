@@ -313,11 +313,11 @@ describe("the office's reports — stage C", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
   const ALL = [...OWNER, "pharmacy.tally.export"];
 
-  it("seventeen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
+  it("eighteen reports: after 0 the list goes on in letters, and A opens top-selling — by value with its ABC classes, then by units", async () => {
     const calls = mock({ "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/top-selling": topSelling }, ALL);
     renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
     const list = await screen.findByTestId("reports-view");
-    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H", "J", "K"]);
+    expect(within(list).getAllByRole("button").map((b) => b.querySelector("kbd")?.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "A", "D", "F", "G", "H", "J", "K", "N"]);
     expect(within(within(list).getByTestId("report-catalogue")).getByText("G")).toBeTruthy();
     list.focus();
     await userEvent.keyboard("a");
@@ -399,6 +399,55 @@ describe("the office's reports — stage C", () => {
     expect(row).toHaveTextContent("P2610010001");
     expect(row).toHaveTextContent("INV-1");
     expect(row).toHaveTextContent("CN-1");
+  });
+
+  /* Owner 2026-10-03 — the accounts for the CA: one period, every money figure, every document, one Export all. */
+  it("accounts: the six sections, every document filterable by kind, and Export all writes one workbook of six sheets", async () => {
+    const side = (count: number, net: number, gst: number) => ({ count, grossPaise: net, discountPaise: 0, taxablePaise: net - gst, cgstPaise: gst / 2, sgstPaise: gst / 2, roundingPaise: 0, netPaise: net });
+    const acc = {
+      from: "2026-10-01", to: "2026-10-03", preset: "month",
+      sales: side(2, 31500, 1500), returns: side(1, 10500, 500), netSalesPaise: 21000,
+      gst: { outputPaise: 1000, inputPaise: 600, netPayablePaise: 400 },
+      moneyIn: { cashPaise: 21000, upiPaise: 0, cardPaise: 0, totalPaise: 21000, fromCreditPaise: 10500, outstandingPaise: 0 },
+      moneyOut: { count: 0, cashPaise: 0, bankPaise: 0, totalPaise: 0 },
+      credit: { keptPaise: 10500, usedPaise: 10500, heldNowPaise: 0 },
+      purchases: { bills: 1, taxablePaise: 12000, gstPaise: 600, totalPaise: 12600, paidPaise: 0, duePaise: 12600, returnsPaise: 0 },
+      documents: [
+        { at: "2026-10-01T05:00:00.000Z", type: "bill", no: "INV-1", party: "Abhishek Kumar (U1)", amountPaise: 10500, gstPaise: 500, mode: "cash", by: "abhay.kumar" },
+        { at: "2026-10-02T05:00:00.000Z", type: "credit_note", no: "CN-1", party: "Abhishek Kumar (U1)", amountPaise: -10500, gstPaise: -500, mode: null, by: "abhay.kumar" },
+        { at: "2026-10-03T05:00:00.000Z", type: "bill", no: "INV-2", party: "Abhishek Kumar (U1)", amountPaise: 21000, gstPaise: 1000, mode: "cash", by: "admin" },
+      ],
+    };
+    const empty = { from: "2026-10-01", to: "2026-10-03", preset: "month" };
+    mock({
+      "GET /pharmacy/office/reports/stores": STORES, "GET /pharmacy/office/reports/accounts": acc,
+      "GET /pharmacy/office/reports/sales": { ...register(true), rows: [] },
+      "GET /pharmacy/office/reports/gst-book": { ...empty, rates: [], totals: {}, creditNotes: [], money: { billedPaise: 0, paidFromCreditPaise: 0, outstandingPaise: 0, collectedPaise: 0 } },
+      "GET /pharmacy/office/reports/purchases": { ...empty, rows: [], totals: {} },
+      "GET /pharmacy/office/reports/credit-notes": { ...empty, rows: [], byPatient: [], totals: {} },
+    }, ALL);
+    renderWithRouter(<PharmacyOfficeReports />, "/pharmacy/office/reports");
+    await userEvent.click(within(await screen.findByTestId("reports-view")).getByTestId("report-accounts"));
+    const summary = await screen.findByTestId("accounts-summary");
+    expect(summary).toHaveTextContent("Net sales");
+    expect(summary).toHaveTextContent("210.00");
+    expect(summary).toHaveTextContent("Of the bills, paid from earlier credit");
+    expect(within(screen.getByTestId("accounts-docs")).getAllByRole("row").length).toBeGreaterThan(3);
+    await userEvent.click(screen.getByTestId("accounts-doc-credit_note"));
+    expect(within(screen.getByTestId("accounts-docs")).getByText("CN-1")).toBeInTheDocument();
+    expect(within(screen.getByTestId("accounts-docs")).queryByText("INV-2")).toBeNull();
+
+    const made: Blob[] = [];
+    const real = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    URL.createObjectURL = vi.fn((b: Blob) => { made.push(b); return "blob:x"; });
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    await userEvent.click(screen.getByTestId("accounts-export-all"));
+    await waitFor(() => expect(made).toHaveLength(1));
+    URL.createObjectURL = real.create; URL.revokeObjectURL = real.revoke; click.mockRestore();
+    const bytes = new Uint8Array(await new Promise<ArrayBuffer>((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result as ArrayBuffer); r.readAsArrayBuffer(made[0]!); }));
+    const names = [...unzipStored(bytes).keys()].filter((n) => n.startsWith("xl/worksheets/"));
+    expect(names).toHaveLength(6);
   });
 
   it("the loss register: each loss with its reason and approver, a count variance named as one, totals by reason", async () => {

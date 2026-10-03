@@ -211,6 +211,22 @@ export type WireGstBook = {
   money: { billedPaise: number; paidFromCreditPaise: number; outstandingPaise: number; collectedPaise: number };
 };
 export const fetchGstBook = (r: RangeInput): Promise<WireGstBook> => api("GET", `${BASE}/gst-book${query(r)}`);
+/** Owner 2026-10-03 — the pharmacy's accounts for the CA, one period on one screen. */
+type ASide = { count: number; grossPaise: number; discountPaise: number; taxablePaise: number; cgstPaise: number; sgstPaise: number; roundingPaise: number; netPaise: number };
+export type WireAccountsDocument = {
+  at: string; type: "bill" | "credit_note" | "refund_paid" | "credit_kept" | "credit_used" | "purchase_bill" | "debit_note";
+  no: string; party: string; amountPaise: number; gstPaise: number | null; mode: string | null; by: string;
+};
+export type WirePharmacyAccounts = {
+  from: string; to: string; preset: string; sales: ASide; returns: ASide; netSalesPaise: number;
+  gst: { outputPaise: number; inputPaise: number; netPayablePaise: number };
+  moneyIn: { cashPaise: number; upiPaise: number; cardPaise: number; totalPaise: number; fromCreditPaise: number; outstandingPaise: number };
+  moneyOut: { count: number; cashPaise: number; bankPaise: number; totalPaise: number };
+  credit: { keptPaise: number; usedPaise: number; heldNowPaise: number };
+  purchases: { bills: number; taxablePaise: number; gstPaise: number; totalPaise: number; paidPaise: number; duePaise: number; returnsPaise: number };
+  documents: WireAccountsDocument[];
+};
+export const fetchPharmacyAccounts = (r: RangeInput): Promise<WirePharmacyAccounts> => api("GET", `${BASE}/accounts${query(r)}`);
 export const fetchCreditNoteRegister = (r: RangeInput): Promise<WireCreditNoteRegister> => api("GET", `${BASE}/credit-notes${query(r)}`);
 export const fetchMargin = (r: RangeInput, groupBy: MarginGroupBy): Promise<WireMarginReport> => api("GET", `${BASE}/margin${query({ ...r, groupBy })}`);
 export const fetchHsn = (r: RangeInput): Promise<WireHsnReport> => api("GET", `${BASE}/hsn${query(r)}`);

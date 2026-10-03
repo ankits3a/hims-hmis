@@ -7,14 +7,15 @@ import { pharmacyErrorText } from "../../lib/pharmacy-api";
 import {
   MARGIN_GROUPS, NON_MOVING_DAYS, RECON_BUCKETS, REPORT_PRESETS, SALES_GROUPS, STOCK_IN_KINDS, STOCK_OUT_KINDS, fetchActivity, fetchActivityFeed,
   fetchCatalogue, fetchDailyStock, fetchGstr3b, fetchHsn, fetchLossRegister, fetchMargin, fetchNonMoving, fetchPurchaseRegister, fetchReportStores,
-  fetchCreditNoteRegister, fetchGstBook, fetchTicketInvoices, fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
+  fetchCreditNoteRegister, fetchPharmacyAccounts, fetchGstBook, fetchTicketInvoices, fetchSalesRegister, fetchTopSelling, fetchValuation, money, pct, printReport, reconcileGstr2b, todayIst, trimGstr2bJson,
 } from "../../lib/reports-api";
-import { downloadXlsx, toXlsx } from "../../lib/xlsx";
+import { downloadXlsx, toXlsx, toXlsxBook } from "../../lib/xlsx";
+import type { XlsxSheet } from "../../lib/xlsx";
 import { Button } from "@/components/ui/button";
 import { TallyReport } from "./tally";
 import type {
   AbcClass, MarginGroupBy, RangeInput, ReconBucket, ReportPreset, SalesGroupBy, WireActivity, WireActivityEntry, WireCatalogueRow, WireDailyStockRow,
-  WireGstr2b, WireLossRow, WireCreditNoteRow, WireTicketInvoiceRow, WireSalesRow, WireTopSellingRow,
+  WireGstr2b, WireLossRow, WireAccountsDocument, WireCreditNoteRow, WireTicketInvoiceRow, WireSalesRow, WireTopSellingRow,
 } from "../../lib/reports-api";
 
 /**
@@ -32,10 +33,10 @@ import type {
  */
 export type ReportKey =
   | "sales" | "purchases" | "margin" | "valuation" | "nonMoving" | "hsn" | "gstr2b" | "gstr3b" | "activity" | "tally"
-  | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes" | "ticketInvoices" | "gstBook";
+  | "topSelling" | "losses" | "dailyStock" | "catalogue" | "creditNotes" | "ticketInvoices" | "gstBook" | "accounts";
 const ALL_REPORTS: readonly ReportKey[] = [
   "sales", "purchases", "margin", "valuation", "nonMoving", "hsn", "gstr2b", "gstr3b", "activity", "tally",
-  "topSelling", "losses", "dailyStock", "catalogue", "creditNotes", "ticketInvoices", "gstBook",
+  "topSelling", "losses", "dailyStock", "catalogue", "creditNotes", "ticketInvoices", "gstBook", "accounts",
 ];
 /**
  * The list's keys: 1–9, then 0 for the tenth (GAP A4 made it ten), then letters (stage C made it
@@ -176,6 +177,7 @@ function ReportScreen({ report, onBack }: { report: ReportKey; onBack: () => voi
       {report === "creditNotes" && <CreditNotesReport {...bind} />}
       {report === "ticketInvoices" && <TicketInvoicesReport {...bind} />}
       {report === "gstBook" && <GstBookReport {...bind} />}
+      {report === "accounts" && <AccountsReport {...bind} />}
     </div>
   );
 }
@@ -604,6 +606,127 @@ function GstBookReport({ sheet, presetRef }: Bind): React.ReactElement {
             <div className="flex justify-between border-t pt-1"><span>{B("collected")}</span><b className="tabular-nums">{money(d.money.collectedPaise)}</b></div>
             <p className="m-0 pt-1 text-xs text-muted-foreground">{B("moneyNote")}</p>
           </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════ the accounts, for the CA (owner 2026-10-03) ═══════════════════════════════════
+
+const DOC_TYPES = ["bill", "credit_note", "refund_paid", "credit_kept", "credit_used", "purchase_bill", "debit_note"] as const;
+
+function AccountsReport({ sheet, presetRef }: Bind): React.ReactElement {
+  const { t } = useTranslation();
+  const [range, setRange] = useRange(presetRef, "month");
+  const [docType, setDocType] = useState<(typeof DOC_TYPES)[number] | "all">("all");
+  const [exporting, setExporting] = useState(false);
+  const q = useQuery({ queryKey: ["pharmacy", "reports", "accounts", range], queryFn: () => fetchPharmacyAccounts(range) });
+  const d = q.data;
+  const L = (k: string): string => t(`pharmacyOffice.reports.col.${k}`);
+  const A = (k: string, o?: Record<string, unknown>): string => t(`pharmacyOffice.reports.accounts.${k}`, o);
+  const docs = d === undefined ? [] : docType === "all" ? d.documents : d.documents.filter((x) => x.type === docType);
+  const docCols: Col<WireAccountsDocument>[] = [
+    { key: "at", label: A("when"), value: (x) => new Date(x.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) },
+    { key: "type", label: A("type"), value: (x) => A(`doc.${x.type}`) },
+    { key: "no", label: A("no"), value: (x) => x.no },
+    { key: "party", label: A("party"), value: (x) => x.party },
+    { key: "amount", label: A("amount"), money: true, value: (x) => x.amountPaise },
+    { key: "gst", label: A("gst"), money: true, value: (x) => x.gstPaise },
+    { key: "mode", label: L("method"), value: (x) => (x.mode === null ? "—" : t(`pharmacyOffice.reports.tender.${x.mode}`, x.mode)) },
+    { key: "by", label: A("by"), value: (x) => x.by },
+  ];
+  type Line = { label: string; paise: number; strong?: boolean };
+  const summary: { title: string; lines: Line[] }[] = d === undefined ? [] : [
+    { title: A("salesTitle"), lines: [
+      { label: A("bills", { count: d.sales.count }), paise: d.sales.netPaise },
+      { label: A("creditNotes", { count: d.returns.count }), paise: -d.returns.netPaise },
+      { label: A("netSales"), paise: d.netSalesPaise, strong: true },
+    ] },
+    { title: A("gstTitle"), lines: [
+      { label: A("gstOutput"), paise: d.gst.outputPaise },
+      { label: A("gstInput"), paise: -d.gst.inputPaise },
+      { label: A("gstNet"), paise: d.gst.netPayablePaise, strong: true },
+    ] },
+    { title: A("inTitle"), lines: [
+      { label: A("cash"), paise: d.moneyIn.cashPaise }, { label: A("upi"), paise: d.moneyIn.upiPaise }, { label: A("card"), paise: d.moneyIn.cardPaise },
+      { label: A("inTotal"), paise: d.moneyIn.totalPaise, strong: true },
+      { label: A("fromCredit"), paise: d.moneyIn.fromCreditPaise }, { label: A("owed"), paise: d.moneyIn.outstandingPaise },
+    ] },
+    { title: A("outTitle"), lines: [
+      { label: A("refundCash"), paise: -d.moneyOut.cashPaise }, { label: A("refundBank"), paise: -d.moneyOut.bankPaise },
+      { label: A("outTotal", { count: d.moneyOut.count }), paise: -d.moneyOut.totalPaise, strong: true },
+    ] },
+    { title: A("creditTitle"), lines: [
+      { label: A("kept"), paise: d.credit.keptPaise }, { label: A("used"), paise: -d.credit.usedPaise },
+      { label: A("heldNow"), paise: d.credit.heldNowPaise, strong: true },
+    ] },
+    { title: A("buyTitle"), lines: [
+      { label: A("buyBills", { count: d.purchases.bills }), paise: d.purchases.totalPaise }, { label: A("buyGst"), paise: d.purchases.gstPaise },
+      { label: A("buyReturns"), paise: -d.purchases.returnsPaise }, { label: A("buyPaid"), paise: d.purchases.paidPaise },
+      { label: A("buyDue"), paise: d.purchases.duePaise, strong: true },
+    ] },
+  ];
+  if (d !== undefined) sheet.current = { title: `${t("pharmacyOffice.reports.name.accounts")} · ${A("docsTitle")}`, subtitle: rangeText(d.from, d.to), file: `pharmacy-accounts-${d.from}-${d.to}`, cols: docCols as Col<never>[], rows: docs, totals: null };
+
+  /** Every section as a sheet of one workbook: the summary, the documents, the GST by rate, the registers. */
+  const exportAll = async (): Promise<void> => {
+    if (d === undefined) return;
+    setExporting(true);
+    try {
+      const [sales, gst, purchases, notes] = await Promise.all([fetchSalesRegister(range, "document"), fetchGstBook(range), fetchPurchaseRegister(range), fetchCreditNoteRegister(range)]);
+      const rs = (p: number): number => p / 100;
+      const sheets: XlsxSheet[] = [
+        { name: A("sheet.summary"), header: [A("section"), A("item"), A("amount")], money: [false, false, true],
+          rows: [[A("period"), rangeText(d.from, d.to), null], ...summary.flatMap((sec) => sec.lines.map((l): (string | number | null)[] => [sec.title, l.label, rs(l.paise)]))] },
+        { name: A("sheet.documents"), header: docCols.map((c) => c.label), money: docCols.map((c) => c.money === true),
+          rows: d.documents.map((x) => docCols.map((c) => { const v = c.value(x); return c.money === true && typeof v === "number" ? rs(v) : v; })) },
+        { name: A("sheet.gst"), header: [A("rate"), A("salesTaxable"), A("salesGst"), A("returnsTaxable"), A("returnsGst"), "CGST", "SGST", A("netGstCol")], money: [false, true, true, true, true, true, true, true],
+          rows: gst.rates.map((r) => [`${String(r.rateBps / 100)}%`, rs(r.sales.taxablePaise), rs(r.sales.cgstPaise + r.sales.sgstPaise), rs(r.returns.taxablePaise), rs(r.returns.cgstPaise + r.returns.sgstPaise), rs(r.net.cgstPaise), rs(r.net.sgstPaise), rs(r.net.cgstPaise + r.net.sgstPaise)]) },
+        { name: A("sheet.notes"), header: [L("date"), A("no"), A("againstInvoice"), A("party"), A("amount"), A("money")], money: [false, false, false, false, true, false],
+          rows: notes.rows.map((n) => [n.date, n.creditNoteNo, n.invoiceNo, `${n.patientName} (${n.uhid})`, rs(n.netPaise), t(`pharmacyOffice.reports.credit.settlement.${n.settlement}`)]) },
+        { name: A("sheet.sales"), header: [L("date"), A("no"), A("type"), A("party"), L("taxable"), "CGST", "SGST", L("rounding"), A("amount"), L("method"), A("by")], money: [false, false, false, false, true, true, true, true, true, false, false],
+          rows: sales.rows.map((r) => [r.date, r.docNo, A(`doc.${r.kind === "sale" ? "bill" : "credit_note"}`), `${r.patientName} (${r.uhid})`, rs(r.taxablePaise), rs(r.cgstPaise), rs(r.sgstPaise), rs(r.roundingPaise), rs(r.netPaise), r.tender === null ? "—" : t(`pharmacyOffice.reports.tender.${r.tender}`), r.operatorName]) },
+        { name: A("sheet.purchases"), header: [L("date"), A("no"), A("vendorNo"), A("party"), L("taxable"), "CGST", "SGST", "IGST", A("amount"), L("paid"), L("due")], money: [false, false, false, false, true, true, true, true, true, true, true],
+          rows: purchases.rows.map((r) => [r.date, r.docNo, r.vendorDocNo ?? "—", r.vendorName, rs(r.taxablePaise), rs(r.cgstPaise), rs(r.sgstPaise), rs(r.igstPaise), rs(r.totalPaise), r.paidPaise === null ? null : rs(r.paidPaise), r.duePaise === null ? null : rs(r.duePaise)]) },
+      ];
+      downloadXlsx(`pharmacy-accounts-${d.from}-${d.to}.xlsx`, toXlsxBook(sheets));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <RangeBar range={range} onChange={setRange} store={false} />
+        <Button type="button" data-testid="accounts-export-all" disabled={d === undefined || exporting} onClick={() => void exportAll()}>{exporting ? A("exporting") : A("exportAll")}</Button>
+      </div>
+      <Status loading={q.isLoading} error={q.error} />
+      {d !== undefined && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="accounts-summary">
+            {summary.map((sec) => (
+              <div key={sec.title} className="rounded border p-3 text-sm" data-testid={`accounts-${sec.title}`}>
+                <div className="mb-1 font-semibold">{sec.title}</div>
+                {sec.lines.map((l) => (
+                  <div key={l.label} className={`flex justify-between ${l.strong === true ? "border-t pt-1 font-semibold" : ""}`}>
+                    <span className="text-muted-foreground">{l.label}</span><span className="tabular-nums">{money(l.paise)}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <p className="m-0 text-xs text-muted-foreground">{A("note")}</p>
+          <h3 className="text-sm font-semibold">{A("docsTitle")} · {d.documents.length}</h3>
+          <div className="flex flex-wrap gap-2" data-testid="accounts-doc-filter">
+            {(["all", ...DOC_TYPES] as const).filter((k) => k === "all" || d.documents.some((x) => x.type === k)).map((k) => (
+              <Button key={k} type="button" size="sm" variant={docType === k ? "default" : "outline"} data-testid={`accounts-doc-${k}`} onClick={() => setDocType(k)}>
+                {k === "all" ? A("all") : A(`doc.${k}`)} · {k === "all" ? d.documents.length : d.documents.filter((x) => x.type === k).length}
+              </Button>
+            ))}
+          </div>
+          <Table testId="accounts-docs" cols={docCols} rows={docs} rowKey={(x) => `${x.type}-${x.no}-${x.at}-${String(x.amountPaise)}`} totals={null} />
         </>
       )}
     </div>
