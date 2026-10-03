@@ -46,6 +46,10 @@
       "desk": "Desk",
       "patients": "Patients",
       "opd": "OPD",
+      "imaging": "Imaging",
+      "lab": "Lab",
+      "theatre": "Theatre",
+      "pharmacy": "Pharmacy",
       "billing": "Billing",
       "stores": "Stores",
       "admin": "Admin"
