@@ -1,7 +1,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "react-i18next";
 import { billingPatientLabel } from "../lib/billing-api";
-import { fmtPaise } from "../lib/format";
+import { fmtPaise, SAMAJ_SEVA_AMOUNT } from "../lib/format";
 import { Button } from "@/components/ui/button";
 import { billQtyText } from "../lib/pharmacy-bill";
 import type { WireInvoicePrint } from "../lib/billing-api";
@@ -165,7 +165,7 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
                 <td className="text-right tabular-nums">{fmtPaise(line.grossPaise)}</td>
                 <td className="text-right tabular-nums">{fmtPaise(line.discountPaise)}</td>
                 <td className="text-right tabular-nums">{fmtPaise(line.cgstPaise + line.sgstPaise)}</td>
-                <td className="text-right tabular-nums">{fmtPaise(line.netPaise)}</td>
+                <td className="text-right tabular-nums">{line.grossPaise === 0 ? SAMAJ_SEVA_AMOUNT : fmtPaise(line.netPaise)}</td>
               </tr>
             ))}
           </tbody>
@@ -182,7 +182,7 @@ export function InvoicePrint({ data, annex, rows }: { data: WireInvoicePrint; an
           {/* §170's single rupee rounding, printed because a bill that does not show it is queried. */}
           <p data-testid="invoice-rounding">{t("billing.print.rounding")}: {fmtPaise(invoice.roundingPaise)}</p>
           <p data-testid="invoice-net" className="text-base font-semibold">
-            {t("billing.print.netPayable")}: {fmtPaise(invoice.netPayablePaise)}
+            {t("billing.print.netPayable")}: {invoice.grossPaise === 0 ? SAMAJ_SEVA_AMOUNT : fmtPaise(invoice.netPayablePaise)}
           </p>
         </section>
 

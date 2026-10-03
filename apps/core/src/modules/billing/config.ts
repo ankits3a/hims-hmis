@@ -26,9 +26,48 @@ const feeBpsSchema = z.object({
 // one. A strict-shape schema here would make the "seriesPrefixes missing a key" break
 // unconstructable through the public API, which defeats the point of the gate that catches it.
 const seriesPrefixesSchema = z.record(z.string(), z.string().min(1));
+/**
+ * ═══ THE FEE SWITCHES (owner, 2026-10-01) ═══
+ *
+ * *"The OPD consultation fee is currently zero, tests are free right now. Add a system (a toggle
+ * option) to enable/disable any fees."* A switch is a LEDGER OF FLIPS and not a boolean, because
+ * the question a visit asks is "was this fee being charged when I was opened?" — a patient who
+ * walked in while consultation was free must not be held at the doctor's door because the owner
+ * switched charging on while they sat in the hall. No flips at all means the fee is charged.
+ *
+ * The flips live inside `charge_rules` because they ARE charge rules, and so that every reader of
+ * the fee branch (`feeServiceFor`'s four callers) sees them with no new argument. They are written
+ * ONLY by `setFeeSwitch` (fee-switches.ts), which names the actor and appends the audit event;
+ * `updateBillingConfig` below carries the stored flips over whatever a patch says.
+ */
+export const FEE_KINDS = ["opdConsult", "lab"] as const;
+export type FeeKind = (typeof FEE_KINDS)[number];
+const feeFlipSchema = z.object({ at: z.string().datetime(), off: z.boolean(), by: z.string().min(1) });
+export type FeeFlip = z.infer<typeof feeFlipSchema>;
+const feeSwitchesSchema = z.object({ opdConsult: z.array(feeFlipSchema), lab: z.array(feeFlipSchema) }).partial();
 const chargeRulesSchema = z.object({
   opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1) }),
+  feeSwitches: feeSwitchesSchema.optional(),
 });
+
+/** The latest flip, or null when the fee has never been switched (it is charged). */
+export function lastFeeFlip(rules: ChargeRules, kind: FeeKind): FeeFlip | null {
+  const flips = rules.feeSwitches?.[kind] ?? [];
+  return flips[flips.length - 1] ?? null;
+}
+/** Is this fee switched off as things stand? Reads no clock: the last flip is the present. */
+export function feeOffNow(rules: ChargeRules, kind: FeeKind): boolean {
+  return lastFeeFlip(rules, kind)?.off ?? false;
+}
+/** Was this fee switched off at `at`? The last flip at or before it decides. */
+export function feeOffAt(rules: ChargeRules, kind: FeeKind, at: Date): boolean {
+  let off = false;
+  for (const flip of rules.feeSwitches?.[kind] ?? []) {
+    if (new Date(flip.at).getTime() > at.getTime()) break;
+    off = flip.off;
+  }
+  return off;
+}
 
 export type FeeBps = z.infer<typeof feeBpsSchema>;
 export type ChargeRules = z.infer<typeof chargeRulesSchema>;
@@ -104,6 +143,13 @@ const configPatchSchema = z
  */
 export async function updateBillingConfig(tx: Tx, patch: BillingConfigPatch, now: Date = new Date()): Promise<BillingConfig> {
   const checked = configPatchSchema.parse(patch);
+  if (checked.chargeRules !== undefined) {
+    // The fee switches have ONE writer, `setFeeSwitch`, which audits. A config patch that names the
+    // fee branch keeps whatever flips are stored: it can neither erase the ledger nor forge a flip.
+    const stored = await tx.select({ chargeRules: billingConfig.chargeRules }).from(billingConfig).where(eq(billingConfig.id, "main")).for("update");
+    const kept = (stored[0]?.chargeRules as ChargeRules | undefined)?.feeSwitches;
+    checked.chargeRules = { opdConsult: checked.chargeRules.opdConsult, ...(kept === undefined ? {} : { feeSwitches: kept }) };
+  }
   const rows = await tx
     .update(billingConfig)
     .set({ ...checked, updatedAt: now })

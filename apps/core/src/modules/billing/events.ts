@@ -160,6 +160,13 @@ export const degradedModeChanged = defineEvent(
   z.object({ on: z.boolean(), reason: z.string().min(1) }),
 );
 
+/** Owner, 2026-10-01 — a fee was switched off (free) or on (charged). The actor is the audit. */
+export const feeSwitchChanged = defineEvent(
+  "fee_switch.changed",
+  MODULE,
+  z.object({ kind: z.enum(["opdConsult", "lab"]), off: z.boolean() }),
+);
+
 export const documentEnteredInError = defineEvent(
   "document.entered_in_error",
   MODULE,
@@ -187,4 +194,5 @@ export const BILLING_EVENTS = [
   degradedModeChanged, documentEnteredInError, chargeOrphanFlagged, dayClosed,
   // UX-AUDIT 2026-09-28 · BOARD — appended last so the plan's D-Events order above stays as it was.
   tenderResolved,
+  feeSwitchChanged,
 ] as const;

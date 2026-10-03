@@ -54,6 +54,17 @@ describe("InvoicePrint", () => {
     vi.unstubAllGlobals();
   });
 
+  /** Owner, 2026-10-01 — a service whose price is zero prints "₹0 (समाज सेवा छूट)", in Hindi, on the bill. */
+  it("a zero-priced line and a wholly free bill print ₹0 (समाज सेवा छूट); a priced one prints its amount", () => {
+    const freeLine = { ...LINES[0]!, id: "l-free", grossPaise: 0, discountPaise: 0, cgstPaise: 0, sgstPaise: 0, netPaise: 0 };
+    const mixed = renderWithProviders(<InvoicePrint data={{ ...DATA, lines: [freeLine, LINES[1]!] }} />);
+    expect(screen.getAllByText("₹0 (समाज सेवा छूट)")).toHaveLength(1);
+    expect(screen.getByTestId("invoice-net")).not.toHaveTextContent("समाज सेवा छूट");
+    mixed.unmount();
+    renderWithProviders(<InvoicePrint data={{ ...DATA, lines: [freeLine], invoice: { ...INVOICE, grossPaise: 0, discountPaise: 0, taxableBasePaise: 0, rawTotalPaise: 0, roundingPaise: 0, netPayablePaise: 0 }, settlement: { state: "settled", outstandingPaise: 0 } }} />);
+    expect(screen.getByTestId("invoice-net")).toHaveTextContent("₹0 (समाज सेवा छूट)");
+  });
+
   it("names the document by its lines, and the supplier by its legal name, GSTIN and state once the letterhead carries them (r.46)", () => {
     const { unmount } = renderWithProviders(<InvoicePrint data={DATA} />);
     // Every line taxable, and no GSTIN on the letterhead yet: a tax invoice, and no GSTIN line.
