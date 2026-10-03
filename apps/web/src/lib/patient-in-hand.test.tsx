@@ -164,7 +164,7 @@ describe("patient in hand (07b T1)", () => {
       stubFetch({
         "GET /api/auth/me": { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["billing.invoice.read"], scoped: { department: {}, floor: {} } } },
         "GET /api/patients/p-1": { patient: { id: "p-1", uhid: "UH-1", name: "Ramesh Kale", sex: "male", isConfidential: false, alias: null } },
-        "GET /api/pharmacy/patients/p-1/credit": { totalAvailablePaise: 97200, availablePaise: 47200, totalNetPaise: 0, notes: [], refunds: [] },
+        "GET /api/pharmacy/patients/p-1/credit": { totalAvailablePaise: 97200, availablePaise: 47200, totalNetPaise: 0, refundAwaitingApprovalPaise: 0, refundApprovedUnpaidPaise: 0, notes: [], refunds: [] },
       });
       render(<Harness><PatientStrip /></Harness>);
       const chip = await screen.findByTestId("strip-credit");

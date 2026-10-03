@@ -25,6 +25,8 @@ export type WirePatientCredit = {
     id: string; creditNoteNo: string; date: string; invoiceNo: string; reason: string; netPaise: number; issuedByName: string;
     settlement: CreditSettlement; keptPaise: number; refundPaise: number; categories: string[];
   }[];
+  refundAwaitingApprovalPaise: number;
+  refundApprovedUnpaidPaise: number;
   refunds: { id: string; voucherNo: string; kind: string; creditNoteNo: string | null; amountPaise: number; method: string; status: string; issuedAt: string; paidAt: string | null; reason: string }[];
 };
 export const CREDIT_READERS = ["billing.invoice.read", "pharmacy.dispense.read", "pharmacy.reports.read", "billing.dues.patient.read"] as const;
@@ -58,6 +60,16 @@ export function CreditDialog({ d, open, setOpen }: { d: WirePatientCredit; open:
           <div><b className="mo">{fmtPaise(d.availablePaise)}</b><div className="s">{t("profile.credit.pharmacy")}</div></div>
           <div><b className="mo">{fmtPaise(Math.max(0, d.totalAvailablePaise - d.availablePaise))}</b><div className="s">{t("profile.credit.other")}</div></div>
         </div>
+        {/* Staging 2026-10-03 — a credit note that went the refund way is money owed back, not credit: said apart. */}
+        {d.refundAwaitingApprovalPaise + d.refundApprovedUnpaidPaise > 0 ? (
+          <div className="today" data-testid="pf-credit-refund-due" style={{ marginTop: 8 }}>
+            <div>
+              <b className="mo" style={{ color: "var(--gold)" }}>{fmtPaise(d.refundAwaitingApprovalPaise + d.refundApprovedUnpaidPaise)}</b>
+              <div className="s">{t("profile.credit.refundDue", { waiting: fmtPaise(d.refundAwaitingApprovalPaise), approved: fmtPaise(d.refundApprovedUnpaidPaise) })}</div>
+            </div>
+          </div>
+        ) : null}
+        <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{t("profile.credit.explain")}</p>
 
         <h4 style={{ margin: "14px 0 4px", fontSize: 13.5, fontWeight: 600 }}>{t("profile.credit.notes", { count: d.notes.length, amount: fmtPaise(d.totalNetPaise) })}</h4>
         {d.notes.length === 0 ? <p style={{ fontSize: 12.5, color: "var(--dim)", margin: 0 }}>{t("profile.credit.noNotes")}</p> : (

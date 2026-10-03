@@ -215,7 +215,7 @@ describe("PharmacyDesk (PD-3)", () => {
     mockRoutes(base({
       "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: ME }, permissions: { hospital: ["pharmacy.dispense.read"], scoped: { department: {}, floor: {} } } } },
       "GET /api/pharmacy/dispenses/d1": { status: 200, body: t1 },
-      [`GET /api/pharmacy/patients/${t1.patient.id}/credit`]: { status: 200, body: { totalAvailablePaise: 25000, availablePaise: 25000, totalNetPaise: 25000, notes: [], refunds: [] } },
+      [`GET /api/pharmacy/patients/${t1.patient.id}/credit`]: { status: 200, body: { totalAvailablePaise: 25000, availablePaise: 25000, totalNetPaise: 25000, refundAwaitingApprovalPaise: 0, refundApprovedUnpaidPaise: 0, notes: [], refunds: [] } },
     }));
     renderWithProviders(<PharmacyDesk ticketId="d1" />);
     const chip = await screen.findByTestId("desk-credit");
