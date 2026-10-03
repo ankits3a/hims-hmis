@@ -61,7 +61,8 @@ async function settlementsOf(db: Db, ids: readonly string[]): Promise<Map<string
     const refundPaise = v.length > 0 ? v.reduce((s, x) => s + x.amount, 0) : a.filter((x) => x.status !== "rejected").reduce((s, x) => s + (x.amount ?? 0), 0);
     let settlement: Settlement = "none";
     if (v.some((x) => x.status === "paid")) settlement = "refund_paid";
-    else if (v.length > 0 || a.some((x) => x.status === "approved")) settlement = "refund_approved";
+    // The approvals' vocabulary is pending | granted | rejected (`kernel/db/schema/approvals.ts`).
+    else if (v.length > 0 || a.some((x) => x.status === "granted")) settlement = "refund_approved";
     else if (a.some((x) => x.status === "pending")) settlement = "refund_requested";
     else if (a.some((x) => x.status === "rejected")) settlement = "refund_refused";
     if (keptPaise > 0 && keptPaise >= refundPaise) settlement = "kept_as_credit";
@@ -118,6 +119,12 @@ export type PatientCredit = {
   availablePaise: number;
   notes: (Omit<CreditNoteRow, "patientId" | "patientName" | "uhid"> & { categories: string[] })[];
   totalNetPaise: number;
+  /**
+   * Money owed back to the patient and not paid yet, from credit notes that went the refund way: waiting
+   * for approval, and approved (the billing office issues and pays the voucher). It is NOT credit.
+   */
+  refundAwaitingApprovalPaise: number;
+  refundApprovedUnpaidPaise: number;
   /** Every refund voucher in the patient's name: against a credit note or out of the advance. */
   refunds: { id: string; voucherNo: string; kind: string; creditNoteNo: string | null; amountPaise: number; method: string; status: string; issuedAt: string; paidAt: string | null; reason: string }[];
 };
@@ -126,7 +133,7 @@ export type PatientCredit = {
 export async function patientCredit(db: Db, actor: Actor, patientId: string): Promise<PatientCredit> {
   // The read is gated at the route; the summary read below also enforces the confidential seal.
   const [who] = await getPatientSummaries(db, actor, [patientId]);
-  if (who === undefined) return { totalAvailablePaise: 0, availablePaise: 0, notes: [], totalNetPaise: 0, refunds: [] };
+  if (who === undefined) return { totalAvailablePaise: 0, availablePaise: 0, notes: [], totalNetPaise: 0, refundAwaitingApprovalPaise: 0, refundApprovedUnpaidPaise: 0, refunds: [] };
   const rows = await db.select({
     id: creditNotes.id, creditNoteNo: creditNotes.creditNoteNo, issuedAt: creditNotes.issuedAt, invoiceNo: invoices.invoiceNo, invoiceId: creditNotes.invoiceId,
     kind: creditNotes.kind, reason: creditNotes.reason, netPaise: creditNotes.netPaise, issuedBy: creditNotes.issuedBy,
@@ -160,5 +167,7 @@ export async function patientCredit(db: Db, actor: Actor, patientId: string): Pr
   return {
     totalAvailablePaise: Math.max(0, advance), availablePaise: credit.availablePaise, notes,
     totalNetPaise: notes.reduce((s, n) => s + n.netPaise, 0), refunds,
+    refundAwaitingApprovalPaise: notes.filter((n) => n.settlement === "refund_requested").reduce((s, n) => s + n.refundPaise, 0),
+    refundApprovedUnpaidPaise: notes.filter((n) => n.settlement === "refund_approved").reduce((s, n) => s + n.refundPaise, 0),
   };
 }

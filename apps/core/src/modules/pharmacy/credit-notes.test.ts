@@ -99,5 +99,22 @@ describe("the credit note register and a patient's credit (owner 2026-10-03)", (
     expect(mine.refunds).toEqual([]); // the other half is only requested: no voucher yet
     expect(mine.totalNetPaise).toBe(paid);
     expect(mine.notes.map((n) => n.settlement).sort()).toEqual(["kept_as_credit", "refund_requested"]);
+    // Owner 2026-10-03 — the refunded half is money owed back, not credit: said apart from the credit available.
+    expect(mine.refundAwaitingApprovalPaise).toBe(paid / 2);
+    expect(mine.refundApprovedUnpaidPaise).toBe(0);
+  });
+
+  /* Staging 2026-10-03: an approved refund read "—" — the approvals' word is "granted", not "approved". */
+  it("a granted refund reads as approved and owed, in the register and on the profile", async () => {
+    const { id, paid } = await sold();
+    const r = await takeBack(id, 10, "refund");
+    // The billing manager's decision, as the approvals kernel records it.
+    await db.update(approvals).set({ status: "granted" }).where(eq(approvals.id, r.refundApprovalId!));
+
+    const mine = await patientCredit(db, reader.actor, fx.patient.id);
+    expect(mine.notes.map((n) => n.settlement)).toEqual(["refund_approved"]);
+    expect(mine.totalAvailablePaise).toBe(0);
+    expect(mine.refundApprovedUnpaidPaise).toBe(paid / 2);
+    expect((await creditNoteRegister(db, reader.actor, { preset: "week" }, later(1))).rows.map((x) => x.settlement)).toEqual(["refund_approved"]);
   });
 });

@@ -937,7 +937,7 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
   /* Owner 2026-10-03 — ONE line in the left lane: the credit available, all departments; a click opens the account. */
   it("the left lane shows the credit available; a click opens credit notes and refunds in a dialog, none of it in the middle", async () => {
     const credit = {
-      totalAvailablePaise: 97200, availablePaise: 47200, totalNetPaise: 57200,
+      totalAvailablePaise: 97200, availablePaise: 47200, totalNetPaise: 57200, refundAwaitingApprovalPaise: 55000, refundApprovedUnpaidPaise: 22000,
       notes: [
         { id: "cn2", creditNoteNo: "CN-2", date: "2026-10-03", invoiceNo: "INV-10", reason: "pharmacy return: no longer needed", netPaise: 10000, issuedByName: "admin", settlement: "refund_paid", keptPaise: 0, refundPaise: 10000, categories: ["pharmacy"] },
         { id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", invoiceNo: "LAB-9", reason: "test cancelled", netPaise: 47200, issuedByName: "abhay.kumar", settlement: "kept_as_credit", keptPaise: 47200, refundPaise: 0, categories: ["investigation"] },
@@ -952,6 +952,9 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     await userEvent.click(tile);
     const dialog = await screen.findByTestId("pf-credit-dialog");
     expect(within(dialog).getByTestId("pf-credit-summary")).toHaveTextContent("₹472.00");
+    // Staging 2026-10-03 — refunds owed are said apart from the credit, so ₹0 credit beside ₹770 of notes is not a riddle.
+    expect(within(dialog).getByTestId("pf-credit-refund-due")).toHaveTextContent("₹770.00");
+    expect(within(dialog).getByTestId("pf-credit-refund-due")).toHaveTextContent("₹550.00 waiting for approval, ₹220.00 approved");
     expect(within(dialog).getByTestId("pf-credit-note-cn1")).toHaveTextContent("Lab and diagnostics");
     expect(within(dialog).getByTestId("pf-credit-note-cn1")).toHaveTextContent("Kept as pharmacy credit");
     expect(within(dialog).getByTestId("pf-credit-refund-v1")).toHaveTextContent("CN-2");
