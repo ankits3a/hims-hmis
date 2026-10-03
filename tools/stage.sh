@@ -28,10 +28,13 @@
 # ═══ MIGRATIONS ═══
 #
 # A lane that adds a migration applies it to UAT's database. When staging later goes back to main,
-# that migration may be renumbered or absent, and the deploy can fail on it. UAT holds synthetic
-# data only, so the answer is to throw the database away: going back to main after such a lane
-# runs uat-reset.sh (drop, migrate, re-seed), and a deploy that fails on top of such a lane is
-# retried once after the same reset. Production is never involved.
+# that migration may be renumbered or absent, and the deploy can fail on it.
+#
+# NEVER RESET BY ITSELF (2026-10-03). Since 2026-09-30 UAT holds the owner's working copy (a
+# restore of production's pre-wipe dump: 59 users), and uat-reset.sh's re-seed creates NO users.
+# An automatic reset on the way back to main wiped it once and locked the owner out. So the reset
+# runs only when the caller says so — STAGE_ALLOW_RESET=1 — and otherwise a failed deploy on top
+# of a migration-carrying lane stops with the instruction. Production is never involved.
 #
 # The same lock as auto-deploy.sh, so a staging deploy and a production deploy never overlap.
 
@@ -142,12 +145,13 @@ reset_uat() {
 }
 if ! run_deploy; then
   [ "$prev_diverged" = "1" ] || die "UAT deploy of $REF @ ${SHA:0:8} failed; staging is not updated"
+  [ "${STAGE_ALLOW_RESET:-0}" = "1" ] || die "UAT deploy of $REF @ ${SHA:0:8} failed on top of a lane that carried migrations. Staging was NOT reset: a reset drops every user. Re-run with STAGE_ALLOW_RESET=1 only if wiping staging is intended."
   reset_uat
   run_deploy || die "UAT deploy of $REF @ ${SHA:0:8} failed again after the reset"
 elif [ "$REF" = "main" ] && [ "$prev_diverged" = "1" ]; then
-  # The deploy went through, but the lane's tables are still in the database, and main may later
-  # add the same migration under another number. Back on main means back to main's schema exactly.
-  reset_uat
+  # The lane's tables may still be in the database. Reset only on request (see MIGRATIONS above).
+  if [ "${STAGE_ALLOW_RESET:-0}" = "1" ]; then reset_uat; DIVERGED=0
+  else say "back on main; the previous lane's migrations may still be in UAT's database (not reset — STAGE_ALLOW_RESET=1 to wipe)"; DIVERGED=1; fi
 fi
 # Stays "diverged" while a lane that carried migrations, or anything staged after one without a
 # reset, is on UAT.
