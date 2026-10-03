@@ -156,6 +156,8 @@ type VisitFacts = {
 import type { OpdConfig } from "../opd";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
+import { patientBillDetail, patientBills } from "./patient-bills";
+import type { PatientBillDetail, PatientBillRow } from "./patient-bills";
 
 /**
  * THE wire contract of the billing module — the 31 routes of Plan 08 Task 11, one controller for
@@ -980,6 +982,26 @@ export class BillingController {
    * in its path and answers only the unsettled bills — number, service day, what is still owed —
    * so the narrow string admits exactly this response and nothing else in the module.
    */
+  /** Owner 2026-10-03 — the profile's All bills: every bill in the patient's name, with its departments and where it stands. */
+  @RequirePermission("billing.invoice.read", "hospital")
+  @Get("patients/:patientId/bills")
+  async patientBills(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ bills: PatientBillRow[] }> {
+    try {
+      return await patientBills(this.db, actor, patientId);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-03 — one bill in full: lines with tax, totals, payments, credit notes, where it stands. */
+  @RequirePermission("billing.invoice.read", "hospital")
+  @Get("invoices/:id/full")
+  async invoiceFull(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PatientBillDetail> {
+    const found = await patientBillDetail(this.db, actor, id);
+    if (found === null) toHttp(new BillingError("unknown_invoice", `unknown invoice ${id}`));
+    return found!;
+  }
+
   @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["billing.dues.patient.read"] })
   @Get("patients/:patientId/dues")
   async dues(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ items: DueRow[] }> {
