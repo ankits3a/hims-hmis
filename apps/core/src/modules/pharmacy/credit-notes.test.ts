@@ -94,6 +94,9 @@ describe("the credit note register and a patient's credit (owner 2026-10-03)", (
     const mine = await patientCredit(db, reader.actor, fx.patient.id);
 
     expect(mine.availablePaise).toBe(paid / 2);
+    expect(mine.totalAvailablePaise).toBe(paid / 2); // the kept half is the patient's credit with the hospital
+    expect(mine.notes.map((n) => n.categories)).toEqual([["pharmacy"], ["pharmacy"]]);
+    expect(mine.refunds).toEqual([]); // the other half is only requested: no voucher yet
     expect(mine.totalNetPaise).toBe(paid);
     expect(mine.notes.map((n) => n.settlement).sort()).toEqual(["kept_as_credit", "refund_requested"]);
   });

@@ -934,20 +934,28 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
-  /* Owner 2026-10-03 — the profile says how much pharmacy credit the patient holds, and lists their credit notes. */
-  it("shows the pharmacy credit available and the patient's credit notes with what became of the money", async () => {
-    const credit = { availablePaise: 47200, totalNetPaise: 57200, notes: [
-      { id: "cn2", creditNoteNo: "CN-2", date: "2026-10-03", invoiceNo: "INV-10", reason: "pharmacy return: no longer needed", netPaise: 10000, settlement: "refund_requested", keptPaise: 0, refundPaise: 10000 },
-      { id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", invoiceNo: "INV-9", reason: "pharmacy return: wrong medicine", netPaise: 47200, settlement: "kept_as_credit", keptPaise: 47200, refundPaise: 0 },
-    ] };
+  /* Owner 2026-10-03 — ONE line in the left lane: the credit available, all departments; a click opens the account. */
+  it("the left lane shows the credit available; a click opens credit notes and refunds in a dialog, none of it in the middle", async () => {
+    const credit = {
+      totalAvailablePaise: 97200, availablePaise: 47200, totalNetPaise: 57200,
+      notes: [
+        { id: "cn2", creditNoteNo: "CN-2", date: "2026-10-03", invoiceNo: "INV-10", reason: "pharmacy return: no longer needed", netPaise: 10000, issuedByName: "admin", settlement: "refund_paid", keptPaise: 0, refundPaise: 10000, categories: ["pharmacy"] },
+        { id: "cn1", creditNoteNo: "CN-1", date: "2026-10-02", invoiceNo: "LAB-9", reason: "test cancelled", netPaise: 47200, issuedByName: "abhay.kumar", settlement: "kept_as_credit", keptPaise: 47200, refundPaise: 0, categories: ["investigation"] },
+      ],
+      refunds: [{ id: "v1", voucherNo: "RV-1", kind: "invoice_refund", creditNoteNo: "CN-2", amountPaise: 10000, method: "cash", status: "paid", issuedAt: "2026-10-03T05:00:00.000Z", paidAt: "2026-10-03T06:00:00.000Z", reason: "no longer needed" }],
+    };
     stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/patients/p-1/dues": DUES, "GET /api/pharmacy/patients/p-1/credit": credit }, [...FRONT_DESK, "billing.dues.patient.read"]);
     renderWithProviders(<PatientDetail />);
-    expect(await screen.findByTestId("pf-credit-available")).toHaveTextContent("Pharmacy credit available: ₹472.00");
-    expect(screen.getByTestId("pf-credit-notes-total")).toHaveTextContent("2 credit notes · ₹572.00");
-    const list = screen.getByTestId("pf-credit-list");
-    expect(list).toHaveTextContent("CN-1");
-    expect(list).toHaveTextContent("Kept as pharmacy credit");
-    expect(list).toHaveTextContent("Refund waiting for approval");
+    const tile = await screen.findByTestId("pf-credit-tile");
+    expect(within(screen.getByTestId("profile-lane")).getByTestId("pf-credit-tile")).toHaveTextContent("Credit available₹972.00");
+    expect(screen.queryByTestId("pf-credit-notes")).toBeNull(); // nothing in the middle column
+    await userEvent.click(tile);
+    const dialog = await screen.findByTestId("pf-credit-dialog");
+    expect(within(dialog).getByTestId("pf-credit-summary")).toHaveTextContent("₹472.00");
+    expect(within(dialog).getByTestId("pf-credit-note-cn1")).toHaveTextContent("Lab and diagnostics");
+    expect(within(dialog).getByTestId("pf-credit-note-cn1")).toHaveTextContent("Kept as pharmacy credit");
+    expect(within(dialog).getByTestId("pf-credit-refund-v1")).toHaveTextContent("CN-2");
+    expect(within(dialog).getByTestId("pf-credit-refund-v1")).toHaveTextContent("Paid 03-10-2026");
   });
 
   it("OWNER RULING 2026-09-30 · front desk with the narrow dues string: the Today band shows what is owed; no invoice history is asked", async () => {

@@ -31,7 +31,7 @@ import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
 import { reportsForPatient } from "../lib/lab-api";
 import { fmtPaise } from "../lib/format";
-import { CREDIT_READERS, PatientCredit } from "./patient-credit";
+import { CREDIT_READERS, CreditTile } from "./patient-credit";
 import {
   buildTimeline, dmy, dmyIst, duesSummary, groupByDay, istDay, maskMobile, openVisitsToday, type Labels,
 } from "./patient-profile-model";
@@ -1376,6 +1376,8 @@ export function PatientDetail(): React.ReactElement {
             </div>
             <div className="pf-body">
               <AllergyBand patientId={patient.id} canEdit={canEdit} compact={restricted} />
+              {/* Owner 2026-10-03 — the patient's credit with the hospital, every department; a click opens the account. */}
+              {!restricted && CREDIT_READERS.some((p) => can(p)) && <CreditTile patientId={patient.id} />}
               {restricted ? (
                 <>
                   <div className="fact" style={{ marginTop: 10 }}><span>{t("profile.mobile")}</span><span>{t("profile.hiddenWord")}</span></div>
@@ -1477,9 +1479,6 @@ export function PatientDetail(): React.ReactElement {
                 </div>
               </>
             )}
-
-            {/* Owner 2026-10-03 — the pharmacy credit in the patient's name, and their credit notes. */}
-            {CREDIT_READERS.some((p) => can(p)) && pid !== null && <PatientCredit patientId={pid} />}
 
             {can("opd.appointments.read") && (
               <>
