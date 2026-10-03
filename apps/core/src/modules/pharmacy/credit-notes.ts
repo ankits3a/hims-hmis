@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { approvals, creditNotes, invoices, pharmacyCreditMoves, refundVouchers } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
+import { istDateOf } from "./config";
 import { requireReportPermission, REPORTS_READ } from "./report-range";
 import { salesRegister } from "./sales-register";
 import { pharmacyCreditOf } from "./store-credit";
@@ -129,7 +130,7 @@ export async function patientCredit(db: Db, actor: Actor, patientId: string): Pr
     const m = money.get(r.id) ?? { keptPaise: 0, refundPaise: 0, settlement: "none" as const };
     const at = r.issuedAt.toISOString();
     return {
-      id: r.id, creditNoteNo: r.creditNoteNo, date: new Date(r.issuedAt.getTime() + 330 * 60_000).toISOString().slice(0, 10), at, invoiceNo: r.invoiceNo,
+      id: r.id, creditNoteNo: r.creditNoteNo, date: istDateOf(r.issuedAt), at, invoiceNo: r.invoiceNo,
       kind: r.kind, reason: r.reason, netPaise: r.netPaise, issuedByName: names.get(r.issuedBy) ?? r.issuedBy,
       settlement: m.settlement, keptPaise: m.keptPaise, refundPaise: m.refundPaise,
     };
