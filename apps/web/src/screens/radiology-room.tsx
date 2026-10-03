@@ -17,6 +17,7 @@ import { istDay } from "../components/radiology/desk-time";
 import { RadiologyStation } from "./radiology-station";
 import { PacsInboxView } from "./radiology-pacs-inbox";
 import { IrSuiteView } from "./radiology-ir";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * PLAN 18-S RS6 — **THE MODALITY ROOMS: the technologist's station.**
@@ -294,6 +295,7 @@ export function PatientLane({ studyId, onClear }: { studyId: string; onClear: ()
         <span className="tag">{t("radiology.room.lane.onTable")}</span>
         <p className="m-0 mt-1 text-base font-semibold">{v.patient.name}</p>
         <p className="m-0 mo text-xs">{v.patient.uhid} · {v.accessionNo}</p>
+        <div className="mt-1"><CreditChip patientId={v.patientId} testId="imaging-credit" /></div>
       </div>
       <div>
         {kv(t("radiology.room.lane.ageSex"), `${v.patient.ageYears ?? "—"} · ${t(`radiology.room.sex.${v.patient.sex}`, { defaultValue: v.patient.sex })}`)}

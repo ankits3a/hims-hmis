@@ -13,6 +13,7 @@ import { LabStation, sexAge } from "./lab-seat";
 import type {
   DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireLabDoctor, WireOrderable, WirePricedDraft,
 } from "../lib/lab-api";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * PLAN 17c T1 — **LAB RECEPTION**: Sanjay's seat (design board 1).
@@ -419,6 +420,7 @@ export function LabDesk(): React.ReactElement {
                 <span className="text-lg font-semibold">{selected.patient.display}</span>
                 <span>{sexAge(selected.patient.administrativeGender, selected.patient.dob)}</span>
                 <span className="text-muted-foreground">{selected.patient.uhid}</span>
+                {!selected.patient.restricted && <CreditChip patientId={selected.patient.id} testId="lab-credit" />}
                 {selected.patient.restricted && <span className="font-semibold">{t("lab.desk.restricted")}</span>}
               </div>
               {selected.visit !== null ? (

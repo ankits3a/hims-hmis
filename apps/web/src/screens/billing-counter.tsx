@@ -34,6 +34,7 @@ import { fetchCurrentSession, fetchPatientBalance } from "../lib/billing-api";
 import type { WireDueRow } from "../lib/billing-api";
 import type { TenderMode } from "../lib/billing-api";
 import { OwnerCreditAsk } from "./owner-credit-ask";
+import { CreditChip } from "../components/patient-credit";
 
 /**
  * THE BILLING COUNTER (Plan 08 §11 / D2 / D3 / D7 / D8) — the cashier's one screen: pick the
@@ -1100,6 +1101,7 @@ export function BillingCounter({ seated = false }: { seated?: boolean } = {}): R
                       {shown.administrativeGender == null ? "" : sexLetter(shown.administrativeGender)}
                       {" · "}{shown.uhid}
                     </span>
+                    <span><CreditChip patientId={resolvedPatientId} testId="billing-credit" /></span>
                     <span className="mo" style={{ fontSize: 11.5, color: shown.phone == null ? "var(--faint)" : "var(--dim)" }} data-testid="paying-phone">
                       {shown.phone ?? t("billingSeat.rail.noPhone")}
                     </span>

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { Button } from "@/components/ui/button";
+import { CreditChip } from "./patient-credit";
 
 /**
  * PLAN 07b T1 — THE PATIENT IN HAND, ON EVERY SCREEN.
@@ -76,6 +77,7 @@ export function PatientStrip({ path }: { path?: string } = {}): React.ReactEleme
         <>
           <span className="text-neutral-600" data-testid="strip-uhid">{row.uhid}</span>
           <span className="text-neutral-600">{t(`sex.${row.administrativeGender}`, row.administrativeGender)}</span>
+          <CreditChip patientId={inHand.patientId} testId="strip-credit" />
         </>
       )}
       {inHand.encounterId !== null && (
