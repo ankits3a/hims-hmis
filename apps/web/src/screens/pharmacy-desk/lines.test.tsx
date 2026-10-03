@@ -139,6 +139,17 @@ describe("the line list at the window (PD-4)", () => {
     expect(screen.getByTestId("desk-settled")).toHaveTextContent("1 of 1 settled");
   });
 
+  /* Owner ruling 2026-10-03 — loose tablets come from the loose tray first: the desk says how many. */
+  it("a line part-filled from the loose tray says so on the batch chip", async () => {
+    const open = [lineOf(0, { drug: "Azee 500", qtyBase: 15 })];
+    mockRoutes(base(() => dispense("picked", [
+      { ...open[0]!, batches: [], batchId: "a", qtyBase: 5, pickedBatch: { batchNo: "AZ-1", expiryDate: "2028-01-31" }, fromLooseTray: true },
+      { ...open[0]!, lineIdx: 1, splitFromLineIdx: 0, batches: [], batchId: "b", qtyBase: 10, pickedBatch: { batchNo: "AZ-2", expiryDate: "2028-06-30" } },
+    ])));
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    expect(await screen.findByTestId("desk-line-0-loose-tray")).toHaveTextContent("Loose tray × 5");
+  });
+
   it("the LAST tick checks and collects — verify at the prescribed quantities, then pick — and there is no verify button", async () => {
     const lines = [lineOf(0, { drug: "Mox 500" }), lineOf(1, { drug: "Cetzine 10", qtyBase: 5 })];
     let current = dispense("claimed", lines);

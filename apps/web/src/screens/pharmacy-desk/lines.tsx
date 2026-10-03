@@ -499,6 +499,7 @@ function LineRow({
 
   /* The line's own money at today's shelf price: quantity × the SERVER's quote, and the rate beside it. */
   /* A split line is given as ONE prescription line: its batches' quantities together. */
+  const trayQty = [line, ...parts].filter((p) => p.fromLooseTray === true).reduce((n, p) => n + (p.qtyBase ?? 0), 0);
   const qtyNow = parts.length > 0 && line.qtyBase !== null ? parts.reduce((n, p) => n + (p.qtyBase ?? 0), line.qtyBase) : (qty ?? line.qtyBase);
   const money = line.quote == null || qtyNow === null || declined
     ? null
@@ -675,7 +676,11 @@ function LineRow({
 
           {/* The board's FEFO batch & shelf chip: the batch that goes out, and where it sits. */}
           {chipShown ? (
-            <span style={{ display: "block" }}><BatchChip line={line} parts={parts} tick={tick} onOpen={onOpenBatch} /></span>
+            <span style={{ display: "block" }}>
+              <BatchChip line={line} parts={parts} tick={tick} onOpen={onOpenBatch} />
+              {/* Owner ruling 2026-10-03 — loose tablets from the loose tray, not a fresh strip. */}
+              {trayQty > 0 ? <span className="pill gd" data-testid={`${id}-loose-tray`} style={{ marginLeft: 6 }}>{t("pharmacyDesk.looseTray")} × {trayQty}</span> : null}
+            </span>
           ) : line.location != null && given !== null ? (
             <span className="pill" data-testid={`${id}-where`} style={{ marginTop: 5 }}>{line.location}</span>
           ) : null}

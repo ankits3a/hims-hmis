@@ -177,7 +177,7 @@ export const pharmacistRegistrationEnded = defineEvent("pharmacist.registration_
  */
 export const dispenseLineReturned = defineEvent("dispense.line_returned", MODULE, z.object({
   dispenseId: id, patientId: id,
-  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id, looseQty: z.number().int().positive().optional(), looseTo: z.enum(["loose", "damage"]).optional() })).min(1),
   sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
   /** Null when the patient KEPT the amount as pharmacy credit (owner ruling 2026-10-02): nothing to approve. */
   creditNoteId: id, refundApprovalId: id.nullable(),
@@ -217,7 +217,7 @@ export const retailSold = defineEvent("retail.sold", MODULE, z.object({
  */
 export const retailLineReturned = defineEvent("retail.line_returned", MODULE, z.object({
   saleId: id, patientId: id, storeResourceId: id, channel: z.enum(["walk_in", "downtime"]),
-  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id })).min(1),
+  lines: z.array(z.object({ lineIdx: z.number().int().nonnegative(), qtyBase: z.number().int().positive(), batchId: id, ledgerEntryId: id, looseQty: z.number().int().positive().optional(), looseTo: z.enum(["loose", "damage"]).optional() })).min(1),
   sealedIntact: z.literal(true), reason: z.string().min(1), reasonClass: z.enum(["mistake", "genuine"]),
   creditNoteId: id, refundApprovalId: id,
 }));

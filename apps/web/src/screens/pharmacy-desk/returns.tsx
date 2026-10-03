@@ -47,6 +47,11 @@ async function fetchCreditNotes(invoiceId: string): Promise<CreditNoteRow[]> {
 
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const drugOf = (l: WireDispenseLine): string => l.dispensedMedicine?.brandName ?? l.item?.name ?? l.rxLine.drug;
+/** The strip size (smallest pack above one tablet), or null when the item has no pack. */
+export const stripOf = (l: WireDispenseLine): number | null => {
+  const packs = (l.item?.uoms ?? []).map((u) => u.toBaseMultiplier).filter((m) => m > 1);
+  return packs.length === 0 ? null : Math.min(...packs);
+};
 const expiryOf = (iso: string | null | undefined): string => (iso == null ? "—" : `${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
 
 /*
@@ -135,6 +140,8 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
   const [settleAs, setSettleAs] = useState<"refund" | "credit">("refund");
   const [reasonClass, setReasonClass] = useState<"genuine" | "mistake" | "">("");
   const [reason, setReason] = useState("");
+  /* Owner ruling 2026-10-03 — loose tablets go to the loose tray (sealed in the pocket) or the damage tray (our mistake). */
+  const [looseTo, setLooseTo] = useState<"loose" | "damage" | "">("");
   const [sealed, setSealed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,8 +176,10 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
     const raw = qty[l.lineIdx] ?? "";
     return /^\d+$/.test(raw) && Number(raw) > 0 && Number(raw) <= (l.qtyBase ?? 0);
   };
+  const hasLoose = act === "return" && wanted.some((l) => { const s = stripOf(l); return s !== null && qtyOk(l) && Number(qty[l.lineIdx]) % s !== 0; });
+  const looseOk = !hasLoose || looseTo === "loose" || (looseTo === "damage" && reasonClass === "mistake");
   const reasonOk = act === "cancel" ? reason.trim() !== "" : reason.trim().length >= 3 && reasonClass !== "";
-  const ready = !busy && done === null && reasonOk && (act !== "return" || (wanted.length > 0 && wanted.every(qtyOk) && sealed));
+  const ready = !busy && done === null && reasonOk && (act !== "return" || (wanted.length > 0 && wanted.every(qtyOk) && sealed && looseOk));
 
   const refreshCounts = async (): Promise<void> => {
     await Promise.all([
@@ -194,7 +203,7 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
       }
       const why = { reason: reason.trim(), reasonClass: reasonClass as "genuine" | "mistake" };
       const r = act === "return"
-        ? await acceptReturn(dispense.id, { lines: wanted.map((l) => ({ lineIdx: l.lineIdx, qtyBase: Number(qty[l.lineIdx]) })), sealedIntact: true, ...why, ...(settleAs === "credit" ? { settle: "credit" as const } : {}) }, key)
+        ? await acceptReturn(dispense.id, { lines: wanted.map((l) => ({ lineIdx: l.lineIdx, qtyBase: Number(qty[l.lineIdx]) })), sealedIntact: true, ...why, ...(settleAs === "credit" ? { settle: "credit" as const } : {}), ...(hasLoose && looseTo !== "" ? { looseTo } : {}) }, key)
         : await cancelBilledDispense(dispense.id, why, key);
       setDone({ creditNoteId: r.creditNoteId, creditNoteNo: r.creditNoteNo, invoiceId: dispense.invoiceId, keptPaise: "creditKeptPaise" in r ? r.creditKeptPaise ?? 0 : 0 });
       void qc.invalidateQueries({ queryKey: ["pharmacy", "patient-rail"] });
@@ -294,6 +303,23 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
                     })}
                   </div>
                 </div>
+                {hasLoose ? (
+                  <fieldset data-testid="return-loose" style={{ border: 0, padding: 0, margin: 0 }}>
+                    <legend className="tag">{t("pharmacyDesk.returns.loose.title")}</legend>
+                    <div style={{ display: "grid", gap: 4, marginTop: 5, fontSize: 12.5 }}>
+                      {(["loose", "damage"] as const).map((c) => {
+                        const off = c === "damage" && reasonClass !== "mistake";
+                        return (
+                          <label key={c} style={{ display: "flex", alignItems: "center", gap: 6, color: off ? "var(--faint)" : undefined }}>
+                            <input type="radio" name="return-loose" data-testid={`return-loose-${c}`} disabled={off} checked={looseTo === c} onChange={() => setLooseTo(c)} style={{ accentColor: "#0e6b4e" }} />
+                            {t(`pharmacyDesk.returns.loose.${c}`)}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {reasonClass !== "mistake" ? <p style={{ margin: "4px 0 0 0", fontSize: 11.5, color: "var(--dim)" }}>{t("pharmacyDesk.returns.loose.patientNote")}</p> : null}
+                  </fieldset>
+                ) : null}
                 {act === "return" ? (
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
                     <input type="checkbox" data-testid="return-sealed" checked={sealed} onChange={(e) => setSealed(e.target.checked)} />

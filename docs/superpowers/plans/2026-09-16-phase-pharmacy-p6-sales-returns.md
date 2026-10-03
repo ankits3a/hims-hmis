@@ -17,6 +17,7 @@ this closes the handed-over half.
   - Not attested sealed and intact by the inspecting pharmacist: `return_not_sealed`. The route
     also requires the literal `true`.
   - Not whole issue packs: `return_cut_strip`.
+    **OWNER RULING 2026-10-03 (money):** loose units come back into one of two child stores of the counter store (`loose-trays.ts`, made on first use): the LOOSE tray (`<STORE>-LOOSE`, "can be given") when every tablet is still sealed in its pocket, for any reason; or the DAMAGE tray (`<STORE>-DAMAGE`, "not to be given") for our own mistake only. The whole strips go back on the shelf; the full quantity is credited. A pick whose quantity is not whole strips takes the loose part from the loose tray first, FEFO, before cutting a strip (`pick.ts`); the desk shows "Loose tray × n". The damage tray is never picked from; its stock is on the office's destruction list (`why = damage_tray`) and leaves by the write-off (medical superintendent's approval, BMW manifest). NOT BUILT: the walk-in sale does not take from its store's loose tray yet.
   - A `cold_2_8`, `frozen` or `narcotic` storage class: `return_not_accepted`.
   - A batch recalled or under 30 days to expiry: `return_short_expiry`. It cannot go back on the
     shelf; quarantine it instead.

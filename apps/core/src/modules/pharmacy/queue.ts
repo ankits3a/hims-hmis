@@ -22,6 +22,7 @@ import { PharmacyError } from "./errors";
 import { shelfChecks } from "./precheck";
 import { getSaleItem } from "./sale-items";
 import { shelfLocationsFor } from "./shelf-locations";
+import { reservationsAtLooseTray } from "./loose-trays";
 import { authorisationsOf } from "./authorisation-reads";
 import { getDoctor } from "../opd";
 import type { ShelfCheck } from "./precheck";
@@ -299,6 +300,8 @@ export type DispenseLineView = {
   batches: { batchId: string; batchNo: string; expiryDate: string | null; available: number }[];
   /** PD-4 — once picked, the batch the line was GIVEN from, which the desk prints beside it. */
   pickedBatch: { batchNo: string; expiryDate: string | null } | null;
+  /** Owner ruling 2026-10-03 — the line's tablets come from the loose tray, not a fresh strip (`loose-trays.ts`). */
+  fromLooseTray: boolean;
   /**
    * 2026-09-23 — "salt" when the counter filled a line the doctor named no brand on with the stocked
    * brand of exactly its composition (`auto-match.ts`, `dispense.line_matched`). The desk shows a quiet
@@ -446,6 +449,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
   const openItems = lines.filter((l) => l.status === "open" && l.itemId !== null).map((l) => l.itemId as string);
   /* PD-D18 — the shelf label for each item, in THIS dispense's store. */
   const locations = d.storeResourceId === null || itemIds.length === 0 ? new Map<string, string>() : await shelfLocationsFor(db, d.storeResourceId, itemIds);
+  const atLooseTray = d.storeResourceId === null ? new Set<string>() : await reservationsAtLooseTray(db, d.storeResourceId, lines.flatMap((l) => (l.reservationId === null ? [] : [l.reservationId])));
   const batchesByItem = new Map<string, DispenseLineView["batches"]>();
   for (const store of new Set(openItems.map(storeOf))) {
     if (store === null) continue;
@@ -517,6 +521,7 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string, now:
       matchedBy: l.dispensedMedicineId !== null && matchedAt.get(l.lineIdx) === l.dispensedMedicineId ? "salt" : null,
       batches: l.status === "open" && l.itemId !== null && l.batchId === null ? (batchesByItem.get(l.itemId) ?? []) : [],
       pickedBatch: picked === undefined ? null : { batchNo: picked.batchNo, expiryDate: picked.expiryDate },
+      fromLooseTray: l.reservationId !== null && atLooseTray.has(l.reservationId),
       authorisations: asked.filter((a) => a.lineIdx === l.lineIdx).map((a) => ({
         id: a.id, book: a.book, about: a.about, status: a.status, requestNote: a.requestNote,
         decisionReason: a.decisionReason, requestedAt: a.requestedAt, decidedAt: a.decidedAt,

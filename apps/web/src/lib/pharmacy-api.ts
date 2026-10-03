@@ -100,6 +100,8 @@ export type WireDispenseLine = {
   batches?: WireBatch[];
   /** PD-4 — once picked, the batch it was given from. Absent from an older server. */
   pickedBatch?: { batchNo: string; expiryDate: string | null } | null;
+  /** Owner ruling 2026-10-03 — this line is taken from the loose tray, not a fresh strip. */
+  fromLooseTray?: boolean;
   /** The salt(s) of the medicine the doctor wrote ("Amoxicillin + Clavulanic acid"). Absent from an older server. */
   salt?: string | null;
   /**
@@ -313,7 +315,7 @@ export async function cancelBilledDispense(
 /** P6 — a sealed pack comes back after the hand-over. */
 export async function acceptReturn(
   id: string,
-  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine"; /** Owner ruling 2026-10-02 — keep the amount as pharmacy credit instead of a refund request. */ settle?: "refund" | "credit" },
+  body: { lines: { lineIdx: number; qtyBase: number }[]; sealedIntact: true; reason: string; reasonClass: "mistake" | "genuine"; /** Owner ruling 2026-10-02 — keep the amount as pharmacy credit instead of a refund request. */ settle?: "refund" | "credit"; /** Owner ruling 2026-10-03 — where loose tablets go. */ looseTo?: "loose" | "damage" },
   idempotencyKey: string,
 ): Promise<{ dispense: WireDispense; creditNoteId: string; creditNoteNo: string; refundApprovalId: string | null; creditNotePaise?: number; creditKeptPaise?: number }> {
   return api("POST", `/pharmacy/dispenses/${id}/returns`, body, idempotencyKey);

@@ -101,6 +101,8 @@ const returnBody = z.object({
   sealedIntact: z.literal(true),
   reason: z.string().min(3).max(500),
   reasonClass: z.enum(["mistake", "genuine"]),
+  /** Owner ruling 2026-10-03 — where loose units go: the loose tray (sealed in the pocket) or the damage tray (our mistake). */
+  looseTo: z.enum(["loose", "damage"]).optional(),
   /** Owner ruling 2026-10-02 — `credit` keeps the amount as pharmacy credit instead of asking for a refund. */
   settle: z.enum(["refund", "credit"]).optional(),
 });
