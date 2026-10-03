@@ -8234,6 +8234,8 @@
       },
       "why": "What happened — the refund approver reads this",
       "whyCancel": "Why is this ticket cancelled",
+      "chipsLabel": "Common reasons",
+      "chip": {"wrongMedicine": "Wrong medicine given", "wrongQty": "Wrong quantity given", "wrongBill": "Wrong bill or price", "billedTwice": "Billed twice", "outOfStock": "Medicine not in stock", "doctorChanged": "Doctor changed the prescription", "notNeeded": "Patient no longer needs it", "reaction": "Patient had a reaction to it", "patientLeft": "Patient left without the medicine", "duplicate": "Duplicate ticket"},
       "sealed": "I have inspected every pack: sealed and intact",
       "money": {
         "return": "Billing works out the refund from the bill when you accept; the amount is shown here after.",

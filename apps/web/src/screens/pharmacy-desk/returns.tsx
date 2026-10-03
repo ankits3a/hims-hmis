@@ -49,6 +49,37 @@ const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en
 const drugOf = (l: WireDispenseLine): string => l.dispensedMedicine?.brandName ?? l.item?.name ?? l.rxLine.drug;
 const expiryOf = (iso: string | null | undefined): string => (iso == null ? "—" : `${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
 
+/*
+ * Common reasons as one-tap chips (owner 2026-10-03): typing the reason was the slowest step of a return.
+ * A chip fills the reason box with its sentence in the desk's language, and on a return or refund it
+ * also picks whose reason it is. The box stays editable; the approver reads whatever is sent.
+ */
+type ReasonChip = { key: string; whose: "mistake" | "genuine" | null };
+export const REASON_CHIPS: Record<TicketAct, ReasonChip[]> = {
+  return: [
+    { key: "wrongMedicine", whose: "mistake" },
+    { key: "wrongQty", whose: "mistake" },
+    { key: "wrongBill", whose: "mistake" },
+    { key: "doctorChanged", whose: "genuine" },
+    { key: "notNeeded", whose: "genuine" },
+    { key: "reaction", whose: "genuine" },
+  ],
+  refund: [
+    { key: "wrongBill", whose: "mistake" },
+    { key: "billedTwice", whose: "mistake" },
+    { key: "outOfStock", whose: "mistake" },
+    { key: "doctorChanged", whose: "genuine" },
+    { key: "patientLeft", whose: "genuine" },
+    { key: "notNeeded", whose: "genuine" },
+  ],
+  cancel: [
+    { key: "patientLeft", whose: null },
+    { key: "doctorChanged", whose: null },
+    { key: "duplicate", whose: null },
+    { key: "outOfStock", whose: null },
+  ],
+};
+
 export function TicketMenu({ dispense }: { dispense: WireDispense }): React.ReactElement | null {
   const { t } = useTranslation();
   const { can } = useAuth();
@@ -244,6 +275,24 @@ export function ReturnSheet({ dispense, act, onClose }: { dispense: WireDispense
                 <div>
                   <label className="tag" htmlFor="return-reason" style={{ display: "block" }}>{t(act === "cancel" ? "pharmacyDesk.returns.whyCancel" : "pharmacyDesk.returns.why")}</label>
                   <input id="return-reason" className="in" data-testid="return-reason" value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: "100%", marginTop: 4, height: 34, fontSize: 13 }} />
+                  <div role="group" aria-label={t("pharmacyDesk.returns.chipsLabel")} data-testid="return-reason-chips" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+                    {REASON_CHIPS[act].filter((c) => reasonClass === "" || c.whose === null || c.whose === reasonClass).map((c) => {
+                      const text = t(`pharmacyDesk.returns.chip.${c.key}`);
+                      const on = reason.trim() === text;
+                      return (
+                        <button
+                          key={c.key}
+                          type="button"
+                          aria-pressed={on}
+                          data-testid={`return-chip-${c.key}`}
+                          onClick={() => { setReason(text); if (c.whose !== null) setReasonClass(c.whose); }}
+                          style={{ height: 26, padding: "0 10px", borderRadius: 13, fontSize: 11.5, border: `1px solid ${on ? "var(--green-line)" : "var(--line)"}`, background: on ? "var(--green-soft)" : "var(--card)", color: on ? "var(--green)" : "var(--dim)", fontWeight: on ? 600 : 400 }}
+                        >
+                          {text}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 {act === "return" ? (
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>

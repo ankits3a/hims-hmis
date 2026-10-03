@@ -229,3 +229,65 @@ describe("cancel a ticket before the bill", () => {
     expect(posted("/pharmacy/dispenses/d1/cancel").map((p) => p.body)).toEqual([{ reason: "doctor revised the prescription" }]);
   });
 });
+
+/* Owner 2026-10-03 — common reasons as one-tap chips, so the desk does not type the usual cases. */
+describe("reason chips", () => {
+  it("a return chip fills the reason, picks whose reason it is, and is what the approver receives", async () => {
+    mock(PERMS, handedOver, {
+      "POST /api/pharmacy/dispenses/d1/returns": { status: 200, body: { dispense: handedOver, creditNoteId: "cn9", creditNoteNo: "CN-2609-0009", refundApprovalId: "ap1" } },
+      "GET /api/billing/invoices/inv1/credit-notes": creditNotes,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-return"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    await user.type(within(sheet).getByTestId("return-qty-0"), "10");
+    await user.click(within(sheet).getByTestId("return-sealed"));
+    expect(within(sheet).getByTestId("return-submit")).toBeDisabled();
+
+    await user.click(within(sheet).getByTestId("return-chip-wrongMedicine"));
+    expect(within(sheet).getByTestId("return-reason")).toHaveValue("Wrong medicine given");
+    expect(within(sheet).getByTestId("return-class-mistake")).toBeChecked();
+    expect(within(sheet).getByTestId("return-chip-wrongMedicine")).toHaveAttribute("aria-pressed", "true");
+    /* Once whose is known, only that side's chips are offered. */
+    expect(within(sheet).queryByTestId("return-chip-doctorChanged")).toBeNull();
+
+    await user.click(within(sheet).getByTestId("return-submit"));
+    await screen.findByTestId("desk-return-done");
+    expect(posted("/pharmacy/dispenses/d1/returns").map((p) => p.body)).toEqual([
+      { lines: [{ lineIdx: 0, qtyBase: 10 }], sealedIntact: true, reason: "Wrong medicine given", reasonClass: "mistake" },
+    ]);
+  });
+
+  it("choosing the patient's reason first offers only the patient's chips, and a chip's text can still be edited", async () => {
+    mock(PERMS, billed, {});
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-refund"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    expect(within(sheet).getByTestId("return-chip-billedTwice")).toBeInTheDocument();
+    await user.click(within(sheet).getByTestId("return-class-genuine"));
+    expect(within(sheet).queryByTestId("return-chip-billedTwice")).toBeNull();
+    await user.click(within(sheet).getByTestId("return-chip-patientLeft"));
+    await user.type(within(sheet).getByTestId("return-reason"), " at 4 pm");
+    expect(within(sheet).getByTestId("return-reason")).toHaveValue("Patient left without the medicine at 4 pm");
+    expect(within(sheet).getByTestId("return-chip-patientLeft")).toHaveAttribute("aria-pressed", "false");
+    expect(within(sheet).getByTestId("return-submit")).toBeEnabled();
+  });
+
+  it("a cancel chip fills the reason and posts it", async () => {
+    const cancelled: WireDispense = { ...picked, status: "cancelled", cancelReason: "Duplicate ticket" };
+    mock(PERMS, picked, { "POST /api/pharmacy/dispenses/d1/cancel": { status: 200, body: cancelled } });
+    const user = userEvent.setup();
+    renderWithProviders(<PharmacyDesk ticketId="d1" />);
+    await user.click(await screen.findByTestId("desk-ticket-menu"));
+    await user.click(screen.getByTestId("desk-act-cancel"));
+    const sheet = await screen.findByTestId("desk-return-sheet");
+    await user.click(within(sheet).getByTestId("return-chip-duplicate"));
+    await user.click(within(sheet).getByTestId("return-submit"));
+    await waitFor(() => expect(screen.queryByTestId("desk-return-sheet")).toBeNull());
+    expect(posted("/pharmacy/dispenses/d1/cancel").map((p) => p.body)).toEqual([{ reason: "Duplicate ticket" }]);
+  });
+});
