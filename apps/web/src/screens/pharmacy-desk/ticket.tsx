@@ -6,6 +6,7 @@ import { suggestAtCounter } from "../../lib/pharmacy-api";
 import { Closed } from "./closed";
 import { ControlledStep } from "./controlled";
 import { heldByAnother, lineVerdict, stageOf, ticketLabel, whoLabel } from "./model";
+import { TakeOver } from "./takeover";
 import { LineList } from "./lines";
 import { DonePaper } from "./paper";
 import { TicketMenu } from "./returns";
@@ -125,7 +126,7 @@ export function TicketPanel({
 
   if (stage === "found") {
     const cancelled = inHand.status === "cancelled";
-    /* PD-1 — somebody else's ticket says whose it is and offers nothing to press. */
+    /* PD-1 — somebody else's ticket says whose it is; owner 2026-10-03 — and offers to take it over, with a reason. */
     const theirs = heldByAnother(inHand, me) ? (inHand.claimedByName ?? t("pharmacyDesk.anotherPharmacist")) : null;
     return (
       <div style={{ maxWidth: 660 }} data-testid="desk-found">
@@ -137,6 +138,7 @@ export function TicketPanel({
           {theirs !== null ? t("pharmacyDesk.theirsHint", { name: theirs })
             : cancelled ? inHand.cancelReason ?? "" : t("pharmacyDesk.notYoursHint", { count: rxLinesOf(inHand).length })}
         </p>
+        {theirs !== null && !cancelled ? <TakeOver dispenseId={inHand.id} holder={theirs} /> : null}
         {cancelled || theirs !== null ? null : (
           <button className="pri" style={{ marginTop: 16 }} onClick={() => onTake(inHand.id, who)}>{t("pharmacyDesk.takeIt")}</button>
         )}
