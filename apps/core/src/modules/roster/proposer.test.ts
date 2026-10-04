@@ -312,4 +312,54 @@ describe("roster — the proposer and the monthly draft (R9)", () => {
     expect(joiner.length).toBeGreaterThan(0);
     expect(joiner.filter((a) => a.startsAt < at("2026-10-15T00:00"))).toEqual([]);
   });
+
+  /* ═══════════ 20-U: a night is always followed by twelve hours' rest — over whole drafted months ═══════════ */
+
+  it.each(["unit_split", "pooled_nights"] as const)(
+    "a three-unit department, %s: nobody has ANY duty within twelve hours of a night's end",
+    async (strategy) => {
+      const TEAM3 = "01ROSTERTEAM00000MEDU4";
+      const JRS3 = Array.from({ length: 4 }, (_, i) => `01USERJZ00000000000000${i}`);
+      await db.insert(rosterTeams).values({
+        id: TEAM3, departmentId: MED, code: "MED-U4", name: "Medicine Unit IV", kind: "clinical_unit",
+        createdBy: "t", updatedBy: "t",
+      });
+      for (const [i, id] of JRS3.entries()) {
+        await db.insert(users).values({ id, username: `jz${i}`, fullName: `Resident Z${i}`, staffCode: `EMP-JZ${i}`, passwordHash: "x" });
+        await db.insert(roleAssignments).values({ id: `RA-${id}`, userId: id, roleKey: "doctor", scopeType: "hospital", scopeId: null });
+        await withTx(db, (tx) => addMembership(tx, ms, {
+          teamId: TEAM3, userId: id, positionKey: "ward_jr", grade: "jr2",
+          roleInTeam: "junior_resident", kind: "parent", startsAt: at("2026-01-01T00:00"),
+        }));
+      }
+
+      const periods: string[] = [];
+      for (const [teamId, title] of [[TEAM, "U2"], [TEAM2, "U3"], [TEAM3, "U4"]] as const) {
+        periods.push((await propose({ teamId, strategy, seed: 5, title: `October — ${title}` })).periodId);
+      }
+      const rows = (await Promise.all(periods.map(rowsOf))).flat()
+        .filter((a) => a.userId !== null && a.kind === "duty" && a.mode === "presence");
+      expect(rows.length).toBeGreaterThan(200); // a green cannot come from an empty month
+
+      const REST_MS = 12 * 3_600_000;
+      const breaks: string[] = [];
+      let nightsSeen = 0;
+      for (const n of rows.filter((a) => istHour(a.startsAt) === 20)) {
+        nightsSeen += 1;
+        for (const s of rows) {
+          if (s.id === n.id || s.userId !== n.userId) continue;
+          // Any duty that runs on past the night's end and begins before twelve hours have passed.
+          if (s.endsAt > n.endsAt && s.startsAt.getTime() < n.endsAt.getTime() + REST_MS && s.startsAt >= n.startsAt) {
+            breaks.push(`${n.userId} ${n.endsAt.toISOString()} → ${s.startsAt.toISOString()}`);
+          }
+        }
+      }
+      expect(nightsSeen).toBeGreaterThanOrEqual(31);
+      expect(breaks).toEqual([]);
+      // …and the validator, which now reads contiguous slots too, agrees for every unit's draft.
+      for (const id of periods) {
+        expect((await validate(db, id)).filter((f) => f.ruleKey === "rest_after_duty")).toEqual([]);
+      }
+    },
+  );
 });
