@@ -2,8 +2,9 @@ import { setupTestDb, truncateAll } from "./helpers/db";
 import { linkCommunityMedicineClinic, seedCrkmchDoctors } from "./fixtures/crkmch-doctors";
 import { loadUnitsData, nameTokens, setupUnits, weeklyEntries } from "../scripts/setup-units";
 import { seedRoster } from "../scripts/seed-roster";
-import { rosterCycles, rosterTeamMemberships, rosterTeams } from "../src/kernel/db/schema";
-import { onNowBoard, opdUnitsOn } from "../src/modules/roster";
+import { opdDoctors, rosterCycles, rosterTeamMemberships, rosterTeams } from "../src/kernel/db/schema";
+import { fixDesignations, splitSpecialty } from "../scripts/fix-designations";
+import { doctorUnitsOn, onNowBoard, opdUnitsOn } from "../src/modules/roster";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -81,6 +82,10 @@ describe("setup:units — the hospital's units from the OPD doctor list", () => 
     const r = await setupUnits(db, { apply: true, from: FROM, now: NOW });
     expect(r.noUnit.join("\n")).toMatch(/Community Medicine has no clinical unit \(NMC gives it none\); sits in its OPD, no unit line/);
     expect([r.unitsConfirmed, r.membershipsAdded, [...r.cyclesPublished].sort()]).toEqual([5, 6, ["ENT", "MED", "OBG", "ORT", "SUR"]]);
+    // Every listed OPD doctor gets the owner's designation (the casualty MO has no OPD profile).
+    expect(r.designationsSet).toBe(10);
+    const tags = Object.fromEntries((await db.select().from(opdDoctors)).map((d) => [d.displayName, d.designation]));
+    expect(tags).toMatchObject({ "Dr. S.I Raza": "Guest Faculty", "Dr. Yash Vardhan": "Senior Resident", "Dr. Chandan": "Assistant Professor & Deputy Superintendent", "Dr. Saurabh Ranjan": "Assistant Professor" });
     expect(r.warnings).toEqual([]);
 
     const active = (await db.select().from(rosterTeams)).filter((t) => t.active).map((t) => t.code).sort();
@@ -111,6 +116,28 @@ describe("setup:units — the hospital's units from the OPD doctor list", () => 
     // Community Medicine has an OPD and a doctor but no unit (NMC): named beside Paediatrics, never a row.
     expect(board.departmentsWithoutUnit.map((d) => d.code)).toEqual(["COMM", "PED"]);
     expect((await opdUnitsOn(db, "2026-10-05")).find((c) => c.opdDepartmentId === "OPD-COMM")).toBeUndefined();
+
+    // 2026-10-04 (owner: only the OPD is live) — no duty roster published, so each row carries who
+    // sits in its OPD: at 11:00 Thursday Medicine has Raza and Yash in; Ortho's 9–11 session is over
+    // and his next is 14:00; Paediatrics and Community Medicine (no unit) carry theirs too.
+    const opd = (rows: { inOpd: { name: string; now: boolean; designation: string | null }[] | null }) => rows.inOpd!.map((p) => `${p.name}${p.now ? "" : " (later)"} [${p.designation ?? "-"}]`);
+    const row = (code: string) => board.departments.find((d) => d.code === code)!;
+    expect(row("MED").source).not.toBe("published");
+    expect(opd(row("MED"))).toEqual(["Dr. S.I Raza [Guest Faculty]", "Dr. Yash Vardhan [Senior Resident]"]);
+    expect(opd(row("ORT"))).toEqual(["Dr. Kishore Kunal (later) [Assistant Professor]"]);
+    expect(opd(row("SUR"))).toEqual([]);
+    expect(board.departmentsWithoutUnit.map((d) => [d.code, opd(d)])).toEqual([
+      ["COMM", ["Dr. Nitish Kumar Jha [Assistant Professor]"]], ["PED", ["Dr. Suryendru Kumar [Guest Faculty]"]],
+    ]);
+
+    // 2026-10-04 (owner) — the unit beside a doctor's name: members only, guests and Community Medicine absent.
+    const units = Object.fromEntries((await doctorUnitsOn(db, "2026-10-05")).map((u) => [u.userId, u.short]));
+    expect(units).toEqual({
+      [userOf.get(4)!]: "Unit I", [userOf.get(5)!]: "Unit I", [userOf.get(6)!]: "Unit I",
+      [userOf.get(8)!]: "Unit I", [userOf.get(9)!]: "Unit I", [userOf.get(11)!]: "Unit I",
+    });
+    // Before the postings began, nobody is in a unit.
+    expect(await doctorUnitsOn(db, "2026-10-01")).toEqual([]);
   });
 
   it("is idempotent: a second --apply changes nothing", async () => {
@@ -119,7 +146,7 @@ describe("setup:units — the hospital's units from the OPD doctor list", () => 
     await setupUnits(db, { apply: true, from: FROM, now: NOW });
     const cycles = (await db.select().from(rosterCycles)).length;
     const again = await setupUnits(db, { apply: true, from: FROM, now: NOW });
-    expect([again.unitsConfirmed, again.membershipsAdded, again.cyclesPublished, again.actions]).toEqual([0, 0, [], []]);
+    expect([again.unitsConfirmed, again.membershipsAdded, again.cyclesPublished, again.designationsSet, again.actions]).toEqual([0, 0, [], 0, []]);
     expect((await db.select().from(rosterCycles)).length).toBe(cycles);
     expect(await db.select().from(rosterTeamMemberships)).toHaveLength(6);
   });
@@ -131,5 +158,30 @@ describe("setup:units — the hospital's units from the OPD doctor list", () => 
     expect(r.matches.filter((m) => m.userId === null)).toEqual([]);
     expect(r.matches.find((m) => m.sl === 5)).toMatchObject({ how: "loose", matchedAs: "Dr. Chandan Kumar" });
     expect(r.warnings).toEqual([expect.stringMatching(/#5 Dr\. Chandan: matched loosely to "Dr\. Chandan Kumar"/)]);
+  });
+
+  it("fix:designations moves a designation typed into the specialty (staging 2026-10-04), keeps a real specialty, and runs once", async () => {
+    expect(splitSpecialty("Guest Faculty")).toEqual({ designation: "Guest Faculty", specialty: null });
+    expect(splitSpecialty("Assistant Professor & Deputy Superintendent")).toEqual({ designation: "Assistant Professor & Deputy Superintendent", specialty: null });
+    expect(splitSpecialty("Assistant Professor (Neurosurgeon)")).toEqual({ designation: "Assistant Professor", specialty: "Neurosurgeon" });
+    expect(splitSpecialty("Cardiology")).toBeNull();
+    expect(splitSpecialty("Neurosurgeon")).toBeNull();
+
+    await seedCrkmchDoctors(db, { designationsInSpecialty: true });
+    await seedRoster(db);
+    const dry = await fixDesignations(db, { apply: false });
+    expect(dry.moves).toHaveLength(10);
+    expect(dry.moved).toBe(0);
+    expect((await db.select().from(opdDoctors)).every((d) => d.designation === null)).toBe(true);
+
+    const r = await fixDesignations(db, { apply: true });
+    expect(r.moved).toBe(10);
+    const by = Object.fromEntries((await db.select().from(opdDoctors)).map((d) => [d.displayName, [d.designation, d.specialty]]));
+    expect(by["Dr. Saurabh Ranjan"]).toEqual(["Assistant Professor", "Neurosurgeon"]);
+    expect(by["Dr. S.I Raza"]).toEqual(["Guest Faculty", null]);
+    expect(by["Dr. Chandan"]).toEqual(["Assistant Professor & Deputy Superintendent", null]);
+    expect((await fixDesignations(db, { apply: true })).moves).toEqual([]);
+    // …and the setup script then finds every designation already on file.
+    expect((await setupUnits(db, { apply: false, from: FROM, now: NOW })).actions.filter((a) => a.includes("designation"))).toEqual([]);
   });
 });

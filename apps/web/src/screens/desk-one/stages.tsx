@@ -1471,7 +1471,11 @@ function DeptCard({ q, first, second }: { q: DeptQueue; first: boolean; second: 
         const away = !bookableToday(doc);
         return (
           <div key={doc.doctor.id} className="drow">
-            <span style={{ fontSize: 12.5, fontWeight: 500, width: 160 }}>{doc.doctor.displayName}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 500, width: 160, lineHeight: "15px" }}>
+              {doc.doctor.displayName}
+              {/* 2026-10-04 (owner) — the unit (or "Guest Faculty") beside the name, one quiet line under it. */}
+              {(() => { const tag = d.doctorLabel(doc.doctor); return tag === null ? null : <span data-testid={`doctor-tag-${doc.doctor.id}`} style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--dim)" }}>{tag}</span>; })()}
+            </span>
             <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)", width: 56 }}>{doc.roomCode ?? "—"}</span>
             {away ? (
               /*
@@ -1816,7 +1820,7 @@ function FutureTab(): React.ReactElement {
           >
             {bookable.length === 0 ? <option value="">nobody in this department</option> : null}
             {bookable.map((x) => (
-              <option key={x.doctor.id} value={x.doctor.id}>{x.doctor.displayName}</option>
+              <option key={x.doctor.id} value={x.doctor.id}>{x.doctor.displayName}{(() => { const tag = d.doctorLabel(x.doctor); return tag === null ? "" : ` · ${tag}`; })()}</option>
             ))}
           </select>
         </div>

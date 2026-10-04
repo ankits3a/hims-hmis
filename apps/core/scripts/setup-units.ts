@@ -11,6 +11,7 @@ import {
   membershipsOf, publishCycle, teamByCode,
 } from "../src/modules/roster";
 import { publisher } from "./seed-roster-demo";
+import { updateDoctor } from "../src/modules/opd/masters";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
 import type { RosterActivity } from "../src/kernel/db/schema/roster";
@@ -28,7 +29,10 @@ import type { RosterActivity } from "../src/kernel/db/schema/roster";
  *   2. posts its faculty and senior residents (`addMembership`) — the only faculty, an Assistant
  *      Professor, as the unit in-charge (`unit_head`, DECIDED in the data file), an SR as `unit_sr`.
  *      **Guest faculty are never members** (owner), nor is the casualty medical officer;
- *   3. publishes a weekly take cycle (`draftCycle` + `publishCycle`): the unit on take every day, and
+ *   3. (2026-10-04) writes each listed OPD doctor's DESIGNATION ("Guest Faculty", "Senior Resident")
+ *      onto their OPD doctor profile where none is on file (`updateDoctor`) — the desk shows it as a tag;
+ *      one already on file that differs is reported, never overwritten;
+ *   4. publishes a weekly take cycle (`draftCycle` + `publishCycle`): the unit on take every day, and
  *      in OPD 09:00–17:00 (the owner's default OPD time) on the weekdays its members sit (the union of their sheet days).
  *
  * ═══ DRY RUN BY DEFAULT ═══
@@ -140,7 +144,7 @@ export interface SetupReport {
   noUnit: string[];
   actions: string[];
   warnings: string[];
-  unitsConfirmed: number; membershipsAdded: number; cyclesPublished: string[];
+  unitsConfirmed: number; membershipsAdded: number; cyclesPublished: string[]; designationsSet: number;
 }
 
 /** A Monday-anchored seven-day cycle: take every day, OPD on the unit's weekdays. dayIndex 0 = Monday. */
@@ -176,7 +180,7 @@ export async function setupUnits(
   const data = opts.data ?? loadUnitsData();
   const report: SetupReport = {
     apply: opts.apply, from, actor: null, preconditions: [], matches: [], units: [], noUnit: [], actions: [], warnings: [],
-    unitsConfirmed: 0, membershipsAdded: 0, cyclesPublished: [],
+    unitsConfirmed: 0, membershipsAdded: 0, cyclesPublished: [], designationsSet: 0,
   };
 
   /* ── preconditions ── */
@@ -274,6 +278,28 @@ export async function setupUnits(
       await withTx(db, async (tx) => { for (const s of steps) await s.run(tx); });
     }
   }
+  /* ── designations onto the OPD doctor profiles ── */
+  const profiles = new Map((await db.select({ id: opdDoctors.id, userId: opdDoctors.userId, designation: opdDoctors.designation })
+    .from(opdDoctors).where(eq(opdDoctors.active, true))).map((p) => [p.userId, p]));
+  const designate: { text: string; doctorId: string; designation: string }[] = [];
+  for (const m of report.matches.filter((x) => x.userId !== null)) {
+    const listed = data.doctors.find((d) => d.sl === m.sl)!;
+    const profile = profiles.get(m.userId!);
+    if (profile === undefined) continue; // not an OPD doctor (the casualty MO): nothing to tag
+    if (profile.designation === listed.designation) continue;
+    if (profile.designation !== null) {
+      report.warnings.push(`#${m.sl} ${m.name}: designation on file is "${profile.designation}", the list says "${listed.designation}" — left as is`);
+      continue;
+    }
+    designate.push({ text: `set ${m.name}'s designation to "${listed.designation}"`, doctorId: profile.id, designation: listed.designation });
+  }
+  for (const d of designate) report.actions.push(`${opts.apply ? "" : "WOULD "}${d.text}`);
+  if (opts.apply && report.preconditions.length === 0 && designate.length > 0) {
+    await withTx(db, async (tx) => {
+      for (const d of designate) { await updateDoctor(tx, actor!, d.doctorId, { designation: d.designation }); report.designationsSet += 1; }
+    });
+  }
+
   // Guest faculty and the casualty MO must not be unit members; say so if somebody already made them one.
   for (const m of report.matches.filter((x) => !UNIT_PLACES.includes(x.place) && x.userId !== null)) {
     const held = await membershipsOf(db, m.userId!, membersAt);
@@ -298,7 +324,7 @@ export function printReport(r: SetupReport, out: (s: string) => void): void {
   out(`\nNo unit:\n${r.noUnit.map((s) => `  · ${s}\n`).join("")}`);
   out(`\n${r.apply ? "Done" : "Plan"}:\n${r.actions.length === 0 ? "  nothing to do — already set up\n" : r.actions.map((a) => `  ${a}\n`).join("")}`);
   if (r.warnings.length > 0) out(`\nWarnings:\n${r.warnings.map((w) => `  ! ${w}\n`).join("")}`);
-  out(`\nunitsConfirmed ${r.unitsConfirmed} · membershipsAdded ${r.membershipsAdded} · cyclesPublished ${r.cyclesPublished.length === 0 ? "—" : r.cyclesPublished.join(", ")}\n`);
+  out(`\nunitsConfirmed ${r.unitsConfirmed} · membershipsAdded ${r.membershipsAdded} · cyclesPublished ${r.cyclesPublished.length === 0 ? "—" : r.cyclesPublished.join(", ")} · designationsSet ${r.designationsSet}\n`);
 }
 
 async function main(): Promise<void> {

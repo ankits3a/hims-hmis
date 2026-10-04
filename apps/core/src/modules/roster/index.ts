@@ -30,7 +30,7 @@ export type {
   RosterAmendmentRow, RosterAssignmentRow, RosterPeriodRow, RosterScopeRef,
 } from "./periods";
 export {
-  UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, confirmTeam, countingUnits, createTeam, listTeams, nightPoolFor,
+  COMBINED_ICU_BEDS, SURPLUS_REASON, UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, retireSurplusUnits, confirmTeam, countingUnits, createTeam, listTeams, nightPoolFor,
   seedUnits, teamByCode, teamMembers, unconfirmedTeams, unitCountsAt,
 } from "./teams";
 export type { CreateTeamInput, RosterTeamRow, TeamMember } from "./teams";
@@ -173,8 +173,11 @@ export {
 } from "./aebas";
 export type { AebasItem, AebasItemState, AebasTodo } from "./aebas";
 // 20-U U7 — OPD reads the unit calendar, read-only: which unit (and doctors) hold a clinic's OPD on a day.
-export { opdUnitsOn, shortUnitName } from "./opd-units";
-export type { OpdDepartmentUnits, OpdUnit, OpdUnitDoctor } from "./opd-units";
+export { opdSittingAt, opdUnitsOn, shortUnitName } from "./opd-units";
+// 2026-10-04 (owner) — the unit beside a doctor's name on the OPD screens.
+export { doctorUnitsOn, prescriberPrint, unitHeadsWithoutRegn } from "./doctor-units";
+export type { DoctorUnit, PrescriberPrint } from "./doctor-units";
+export type { OpdDepartmentUnits, OpdSitting, OpdUnit, OpdUnitDoctor } from "./opd-units";
 // 20-U U9 — the copilot's roster tools (who is on, the unit on take, my duties, a cover DRAFT).
 export { DUTY_LOOKAHEAD_DAYS, departmentOf, rosterCopilotTools, whenOf } from "./copilot-tools";
 export type { AskedWhen, RosterToolOptions } from "./copilot-tools";

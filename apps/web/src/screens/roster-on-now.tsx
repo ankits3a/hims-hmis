@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AskBar, DoctorDeskFrame } from "../components/doctor-desk/frame";
 import { fmtIst } from "../lib/format";
+import { shortDesignation } from "../lib/doctor-label";
 import { sayParams } from "../lib/use-copilot";
 import { todayIst } from "../lib/opd-api";
 import {
@@ -13,7 +14,7 @@ import { openDocumentForPrinting } from "../lib/print-api";
 import { DmyDateInput } from "../components/dmy-date-input";
 import type {
   HolidayKind, HolidayPattern, WireAsItStoodBoard, WireAsItStoodChange, WireBoardDepartment, WireBoardHole, WireBoardService,
-  WireDeclarationsView, WireOnNowBoard, WireRosterFlag, WireRosterSelf,
+  WireDeclarationsView, WireOnNowBoard, WireOpdSitting, WireRosterFlag, WireRosterSelf,
 } from "../lib/roster-api";
 import "./roster.css";
 
@@ -101,6 +102,9 @@ export function RosterOnNow({ at, stood }: Props): React.ReactElement {
   // which carries neither — even if a board as it stood ever came back carrying `flags`. A skeleton
   // day is a live board, so its flags and the button still show.
   const readOnly = stoodAt !== null;
+  const unpublishedLive = b === undefined || history !== undefined ? [] : b.departments.filter((d) => d.source !== "published" && d.inOpd != null);
+  const opdFallback = b === undefined || unpublishedLive.length === 0 ? null
+    : unpublishedLive.length === b.departments.length ? "rosterOnNow.opdFallbackAll" : "rosterOnNow.opdFallbackSome";
 
   return (
     <DoctorDeskFrame
@@ -163,16 +167,18 @@ export function RosterOnNow({ at, stood }: Props): React.ReactElement {
             {b.departments.map((d) => <DepartmentRow key={d.departmentId} d={d} b={b} />)}
             {/*
               2026-10-04 (owner) — DECIDED: a department whose OPD has doctors but which runs no
-              confirmed unit (Paediatrics, sat by guest faculty) is one quiet line under the units,
-              never a row of its own and never a hole: there is no unit to put on take, so nothing is missing.
+              confirmed unit (Paediatrics, sat by guest faculty; Community Medicine, which NMC gives no
+              unit) is a QUIET ROW under the units — "No unit · OPD only" and who is sitting in its OPD —
+              never a hole: there is no unit to put on take, so nothing is missing. A row, not a run-on
+              line, so the desk scans one column for "who is here" whatever the department.
             */}
-            {(b.departmentsWithoutUnit ?? []).length > 0 && (
-              <p className="ro-nounit" data-testid="on-now-without-unit">
-                <span className="ro-nounit-h">{t("rosterOnNow.withoutUnit")}</span>{" "}
-                {(b.departmentsWithoutUnit ?? []).map((x) => t("rosterOnNow.withoutUnitItem", { dept: x.name, count: x.doctors })).join(" · ")}
-                <span className="ro-nounit-note"> — {t("rosterOnNow.withoutUnitNote")}</span>
-              </p>
-            )}
+            {history === undefined && (b.departmentsWithoutUnit ?? []).map((x) => <NoUnitRow key={x.departmentId} x={x} b={b} />)}
+            {/*
+              2026-10-04 (owner: only the OPD is live) — DECIDED: where no duty roster is published the
+              "in the building" column shows who is SITTING IN OPD (the OPD's weekly schedule), and the
+              amber per-row warning becomes this one quiet line. The published path is unchanged.
+            */}
+            {opdFallback !== null && <p className="ro-nounit" data-testid="on-now-opd-fallback">{t(opdFallback)}</p>}
           </section>
           <Services services={b.services} b={b} />
           <PrintSheet b={b} />
@@ -279,6 +285,18 @@ function DepartmentRow({ d, b }: { d: WireBoardDepartment; b: WireOnNowBoard }):
             {d.facultyOnCall.length > 0 && <span className="ro-small">{isDaytime(b.at) ? t("rosterOnNow.facDay") : t("rosterOnNow.facNight")}</span>}
           </div>
         </>
+      ) : d.inOpd != null ? (
+        /* 2026-10-04 (owner: only the OPD is live) — no duty roster: who is sitting in OPD, quietly. */
+        <>
+          <div className="ro-c-here" data-testid={`in-opd-${d.code}`}>
+            <span className="ro-cap-inline">{t("rosterOnNow.col.building")}</span>
+            <OpdList list={d.inOpd} />
+          </div>
+          <div className="ro-c-fac">
+            <span className="ro-cap-inline">{t("rosterOnNow.col.faculty")}</span>
+            <span className="ddf-dim">—</span>
+          </div>
+        </>
       ) : (
         <div className="ro-c-none">
           <p role="note" className="ro-none" data-testid={`unpublished-${d.code}`}>
@@ -290,6 +308,51 @@ function DepartmentRow({ d, b }: { d: WireBoardDepartment; b: WireOnNowBoard }):
         <span className="ro-cap-inline">{t("rosterOnNow.col.backup")}</span>
         <span>{backupLine(d, b, t)}</span>
       </div>
+    </div>
+  );
+}
+
+/** 2026-10-04 — who is sitting in a department's OPD: name, designation, "in OPD till 16:00" / "from 14:00". */
+function OpdList({ list }: { list: readonly WireOpdSitting[] }): React.ReactElement {
+  const { t } = useTranslation();
+  if (list.length === 0) return <span className="ddf-dim">{t("rosterOnNow.opdNobody")}</span>;
+  return (
+    <>
+      {list.map((p) => {
+        const tag = shortDesignation(p.designation);
+        return (
+          <div key={p.userId} className="ro-opd" data-testid={`opd-${p.userId}`}>
+            <span className={p.now ? "ro-name" : "ro-name ro-later"}>{p.name}</span>
+            <span className="ro-small">
+              {tag === null ? "" : `${tag} · `}{p.now ? t("rosterOnNow.opdTill", { time: fmtIst(p.till) }) : t("rosterOnNow.opdFrom", { time: fmtIst(p.from) })}
+            </span>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** 2026-10-04 — a department with OPD doctors and no unit: a quiet row, never a hole. */
+function NoUnitRow({ x, b }: { x: NonNullable<WireOnNowBoard["departmentsWithoutUnit"]>[number]; b: WireOnNowBoard }): React.ReactElement {
+  const { t } = useTranslation();
+  void b;
+  return (
+    <div className="ro-row ro-row-nounit" data-testid={`dept-nounit-${x.code}`}>
+      <div className="ro-c-dept"><span className="ro-dept">{x.name}</span></div>
+      <div className="ro-c-unit">
+        <span className="ro-cap-inline">{t("rosterOnNow.col.unit")}</span>
+        <span className="ro-small">{t("rosterOnNow.noUnitOpdOnly")}</span>
+      </div>
+      <div className="ro-c-here">
+        <span className="ro-cap-inline">{t("rosterOnNow.col.building")}</span>
+        <OpdList list={x.inOpd ?? []} />
+      </div>
+      <div className="ro-c-fac">
+        <span className="ro-cap-inline">{t("rosterOnNow.col.faculty")}</span>
+        <span className="ddf-dim">—</span>
+      </div>
+      <div className="ro-c-backup" />
     </div>
   );
 }

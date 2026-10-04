@@ -43,6 +43,7 @@
     "seed:roster": "tsx scripts/seed-roster.ts",
     "seed:roster-demo": "tsx scripts/seed-roster-demo.ts",
     "setup:units": "tsx scripts/setup-units.ts",
+    "fix:designations": "tsx scripts/fix-designations.ts",
     "backfill:facts": "tsx scripts/backfill-facts.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
     "seed:pharmacy-demo": "tsx scripts/seed-pharmacy-demo.ts",

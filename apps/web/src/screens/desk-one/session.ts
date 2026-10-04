@@ -309,6 +309,8 @@ export type DeskApi = {
   queues: DeptQueue[];
   /** 20-U U7 — the roster unit(s) holding each OPD department's clinic today, by OPD department id. */
   opdUnits: ReadonlyMap<string, readonly WireOpdUnit[]>;
+  /** 2026-10-04 (owner) — "Unit I", "Guest Faculty": what the desk writes beside a doctor's name (`useDoctorLabel`). */
+  doctorLabel: (doctor: { userId: string; designation?: string | null }) => string | null;
   quote: WireFeeQuote | null;
   /** The live bill, folded off the server's own priced draft — never re-added on the client. */
   bill: { lines: BillLine[]; totalPaise: number; free: boolean };

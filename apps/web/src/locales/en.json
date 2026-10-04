@@ -753,6 +753,7 @@
     }
   },
   "opdAdmin": {
+    "headsWithoutRegn": "No registration number on file for these unit heads, so the prescription's Dept. Regn prints blank for their units: {{names}}. Enter it in the Registration number column.",
     "title": "OPD masters",
     "tabs": {
       "departments": "Departments",
@@ -771,6 +772,8 @@
     "displayName": "Display name",
     "registrationNo": "Registration number",
     "specialty": "Specialty",
+    "designation": "Designation",
+    "designationHint": "e.g. Guest Faculty, Senior Resident — shown beside the name at the desk, never printed",
     "pickDepartment": "Choose a department",
     "pickDoctor": "Choose a doctor",
     "pickDoctorHint": "Choose a doctor to edit their weekly schedule and leaves",
@@ -1461,6 +1464,8 @@
     }
   },
   "rx": {
+    "unitNumber": "Unit Number",
+    "deptRegn": "Dept. Regn",
     "doctorId": "Doctor ID",
     "uhid": "UHID",
     "visitNo": "Visit no",
@@ -13289,10 +13294,12 @@
     },
     "noUnit": "No unit on take",
     "singleUnit": "one unit · every day",
-    "withoutUnit": "No unit yet:",
-    "withoutUnitItem_one": "{{dept}} ({{count}} OPD doctor)",
-    "withoutUnitItem_other": "{{dept}} ({{count}} OPD doctors)",
-    "withoutUnitNote": "their OPD runs on each doctor's own days, and no unit is on take",
+    "noUnitOpdOnly": "No unit · OPD only",
+    "opdNobody": "Nobody sitting in OPD now",
+    "opdTill": "in OPD till {{time}}",
+    "opdFrom": "in OPD from {{time}}",
+    "opdFallbackAll": "No duty roster is published yet — the board shows who is sitting in OPD.",
+    "opdFallbackSome": "Where no duty roster is published, the board shows who is sitting in OPD.",
     "singleBackup": "No second unit — the hospital's duty manager decides",
     "tillToday": "till {{time}}",
     "tillTomorrow": "till {{time}} tomorrow",

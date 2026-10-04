@@ -62,10 +62,11 @@ describe("roster board e2e (20-U U5a)", () => {
       .expect(200);
     const body = res.body as { at: string; departments: { code: string; source: string; inTheBuilding: unknown[] }[]; holes: { kind: string }[] };
     expect(body.at).toBe("2026-10-05T21:10:00.000Z");
-    expect(body.departments.map((d) => d.code).sort()).toEqual(["DER", "ENT", "MED", "OBG", "OPH", "ORT", "PED", "PSY", "RESP", "SUR"]);
+    // The owner's table (2026-10-04): nine unit-bearing departments; Respiratory Medicine has no unit.
+    expect(body.departments.map((d) => d.code).sort()).toEqual(["DER", "ENT", "MED", "OBG", "OPH", "ORT", "PED", "PSY", "SUR"]);
     // Nothing is published: every row says so and lists nobody.
     expect(body.departments.every((d) => d.source !== "published" && d.inTheBuilding.length === 0)).toBe(true);
-    expect(body.holes.filter((h) => h.kind === "no_take_cycle")).toHaveLength(10);
+    expect(body.holes.filter((h) => h.kind === "no_take_cycle")).toHaveLength(9);
     // 20-U U5 — the reader, named for the Doctor Desk header; posted nowhere, so no grade.
     expect((res.body as { you: unknown }).you).toEqual({ name: expect.any(String), grade: null, positionKey: null, unitName: null, departmentName: null });
   });

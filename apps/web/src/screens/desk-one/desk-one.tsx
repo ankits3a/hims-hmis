@@ -15,6 +15,7 @@ import type { TenderMode } from "../../lib/billing-api";
 import { fetchRecognition } from "../../lib/membership-api";
 import { fetchDesk } from "../../lib/desk-api";
 import { fetchOpdUnits } from "../../lib/roster-api";
+import { useDoctorLabel } from "../../lib/use-doctor-label";
 import {
   ageYearsOf, billOf, deptQueues, firstFreeDoctor, inHall, invoiceLinesOf, istClock, istDateLabel,
   laneOf, flowOf, LANE_TEXT, logged, openVisitsToday, rs, SEAT_LABEL, SEAT_ROUTE, SEATS, shortestLine, shouldJoinNow,
@@ -161,6 +162,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
    * queue is still doctor-days and nothing here seats anybody. A seat without `roster.read` does not
    * ask; a failed read or a department that runs no units draws nothing on its card.
    */
+  const doctorLabel = useDoctorLabel(serviceDate);
   const opdUnits = useQuery({
     queryKey: ["d1", "opd-units", serviceDate],
     queryFn: () => fetchOpdUnits(serviceDate),
@@ -1383,6 +1385,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     summaries: summaries.data?.items ?? [],
     queues,
     opdUnits: new Map((opdUnits.data ?? []).map((x) => [x.opdDepartmentId, x.units])),
+    doctorLabel,
     quote: quote.data ?? null,
     bill,
     serviceDate,

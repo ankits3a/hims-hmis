@@ -7,6 +7,8 @@ import { calloutList, onDutyNow, resolverEnabled, whoIsOn } from "./resolve";
 import { backupUnit, departmentsWithoutPublishedCycle, istDateOfInstant, takeGaps, unitOnTake } from "./calendar";
 import { skeletonModeOn } from "./modes";
 import { unitCountsAt } from "./teams";
+import { opdSittingAt } from "./opd-units";
+import type { OpdSitting } from "./opd-units";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RosterAnswerSource } from "./resolve";
 import type { OnTakeAnswer } from "./calendar";
@@ -70,6 +72,13 @@ export interface BoardDepartment {
   backupUnit: BoardUnit | null;
   inTheBuilding: BoardPerson[];
   facultyOnCall: BoardRung[];
+  /**
+   * 2026-10-04 (owner: only the OPD is live) — who is sitting in this department's OPD now or later
+   * today, from the OPD weekly schedule (`opdSittingAt`). The screen draws it ONLY where no duty roster
+   * is published (`source !== "published"`); the published path is untouched. Null on the board as it
+   * stood: the schedule then is not kept.
+   */
+  inOpd: OpdSitting[] | null;
 }
 export interface BoardService {
   positionKey: string; positionLabel: string; cadre: string; source: RosterAnswerSource;
@@ -90,7 +99,7 @@ export interface BoardHole {
  * (Paediatrics, sat by guest faculty). Not a unit row and never a hole: one quiet line, so the
  * board does not read as though the department were forgotten. `doctors` counts its active OPD doctors.
  */
-export interface BoardDepartmentWithoutUnit { departmentId: string; code: string; name: string; doctors: number }
+export interface BoardDepartmentWithoutUnit { departmentId: string; code: string; name: string; doctors: number; inOpd: OpdSitting[] }
 export interface OnNowBoard {
   at: Date;
   resolverEnabled: boolean;
@@ -157,6 +166,11 @@ export async function onNowBoard(
   };
 
   const istDate = istDateOfInstant(at);
+  const sitting = await opdSittingAt(exec, at);
+  const opdOf = (departmentId: string): OpdSitting[] => {
+    const clinic = deptById.get(departmentId)?.opdDepartmentId ?? null;
+    return clinic === null ? [] : (sitting.get(clinic) ?? []);
+  };
   const rows: BoardDepartment[] = [];
   for (const departmentId of [...unitCount.keys()]) {
     const dept = deptById.get(departmentId);
@@ -206,7 +220,7 @@ export async function onNowBoard(
       skeleton: await skeletonModeOn(exec, departmentId, istDate),
       unitOnTake: await unitOf(await unitOnTake(exec, departmentId, at)),
       backupUnit: await unitOf(await backupUnit(exec, departmentId, at)),
-      inTheBuilding, facultyOnCall,
+      inTheBuilding, facultyOnCall, inOpd: opdOf(departmentId),
     });
   }
   rows.sort((a, b) => b.units - a.units || a.name.localeCompare(b.name));
@@ -308,7 +322,7 @@ export async function onNowBoard(
   }
   const departmentsWithoutUnit: BoardDepartmentWithoutUnit[] = departments
     .filter((d) => !unitCount.has(d.id) && d.opdDepartmentId !== null && (doctorsByClinic.get(d.opdDepartmentId) ?? 0) > 0)
-    .map((d) => ({ departmentId: d.id, code: d.code, name: d.name, doctors: doctorsByClinic.get(d.opdDepartmentId!) ?? 0 }))
+    .map((d) => ({ departmentId: d.id, code: d.code, name: d.name, doctors: doctorsByClinic.get(d.opdDepartmentId!) ?? 0, inOpd: opdOf(d.id) }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return { at, resolverEnabled: enabled, departments: rows, departmentsWithoutUnit, services, holes };

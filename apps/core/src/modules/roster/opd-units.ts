@@ -3,7 +3,7 @@ import { users } from "../../kernel/db/schema/auth";
 import { opdDoctorLeaves, opdDoctorSchedules, opdDoctors } from "../../kernel/db/schema/opd";
 import { orgDepartments } from "../../kernel/db/schema/org";
 import { rosterDutyWindows, rosterTeams } from "../../kernel/db/schema/roster";
-import { addIstDays, istMidnightUtc, istWeekday } from "./calendar";
+import { addIstDays, istDateOfInstant, istMidnightUtc, istWeekday } from "./calendar";
 import { teamMembers } from "./teams";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -148,4 +148,57 @@ async function sittingThatDay(exec: Db | Tx, istDate: string): Promise<{ hasProf
     return u === undefined ? [] : [u];
   }));
   return { hasProfile, sits };
+}
+
+/**
+ * ═══ 2026-10-04 (owner) — WHO IS SITTING IN OPD, FOR A BOARD WITH NO DUTY ROSTER ═══
+ *
+ * Only the OPD is live in this hospital: no inpatient take, no duty roster published. A who-is-on
+ * board of amber "not published" rows tells the desk nothing, so where a department has no published
+ * duty roster the board shows who is SITTING IN OPD, from the OPD's own weekly schedule (that weekday,
+ * valid that day, less a planned leave). Per clinic, each doctor's NEXT session that has not ended by
+ * `at`: sitting now ("in OPD till 16:00") or later today ("in OPD from 14:00"). A doctor whose last
+ * session has ended is not listed. Read from the kernel schema; the opd module is not imported.
+ */
+export interface OpdSitting {
+  userId: string; name: string; designation: string | null;
+  from: Date; till: Date;
+  /** True when `from <= at < till`. */
+  now: boolean;
+}
+
+export async function opdSittingAt(exec: Db | Tx, at: Date): Promise<Map<string, OpdSitting[]>> {
+  const istDate = istDateOfInstant(at);
+  const midnight = istMidnightUtc(istDate).getTime();
+  const clock = (hhmm: string): Date => new Date(midnight + (Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))) * 60_000);
+  const doctors = await (exec as Db).select({
+    id: opdDoctors.id, userId: opdDoctors.userId, name: opdDoctors.displayName, designation: opdDoctors.designation, clinic: opdDoctors.departmentId,
+  }).from(opdDoctors).innerJoin(users, eq(users.id, opdDoctors.userId))
+    .where(and(eq(opdDoctors.active, true), eq(users.active, true)));
+  if (doctors.length === 0) return new Map();
+  const rows = await (exec as Db).select({ doctorId: opdDoctorSchedules.doctorId, startTime: opdDoctorSchedules.startTime, endTime: opdDoctorSchedules.endTime })
+    .from(opdDoctorSchedules).where(and(
+      eq(opdDoctorSchedules.active, true), eq(opdDoctorSchedules.weekday, istWeekday(istDate)),
+      lte(opdDoctorSchedules.validFrom, istDate),
+      or(isNull(opdDoctorSchedules.validTo), gte(opdDoctorSchedules.validTo, istDate)),
+    ));
+  const away = new Set((await (exec as Db).select({ doctorId: opdDoctorLeaves.doctorId }).from(opdDoctorLeaves).where(and(
+    eq(opdDoctorLeaves.status, "scheduled"), lte(opdDoctorLeaves.fromDate, istDate), gte(opdDoctorLeaves.toDate, istDate),
+  ))).map((l) => l.doctorId));
+  const out = new Map<string, OpdSitting[]>();
+  for (const d of doctors) {
+    if (away.has(d.id)) continue;
+    const next = rows.filter((r) => r.doctorId === d.id)
+      .map((r) => ({ from: clock(r.startTime), till: clock(r.endTime) }))
+      .filter((s) => s.till > at)
+      .sort((a, b) => a.from.getTime() - b.from.getTime())[0];
+    if (next === undefined) continue;
+    const list = out.get(d.clinic) ?? [];
+    list.push({ userId: d.userId, name: d.name, designation: d.designation, from: next.from, till: next.till, now: next.from <= at });
+    out.set(d.clinic, list);
+  }
+  for (const list of out.values()) {
+    list.sort((a, b) => Number(b.now) - Number(a.now) || a.from.getTime() - b.from.getTime() || a.name.localeCompare(b.name));
+  }
+  return out;
 }

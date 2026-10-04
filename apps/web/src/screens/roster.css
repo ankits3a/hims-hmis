@@ -28,6 +28,9 @@
 .ro-row:last-child { border-bottom: none; }
 /* 2026-10-04 — departments with OPD doctors but no confirmed unit: one quiet line under the units. */
 .ro-nounit { margin: 0; padding: 9px 14px; font-size: 12.5px; line-height: 18px; color: var(--dd-ink); }
+.ro-opd { display: flex; flex-direction: column; line-height: 17px; padding: 2px 0; }
+.ro-later { color: var(--dd-dim); }
+.ro-row-nounit .ro-dept { color: var(--dd-dim); }
 .ro-nounit-h { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--dd-dim); }
 .ro-nounit-note { color: var(--dd-dim); }
 .ro-c-dept { grid-area: dept; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }

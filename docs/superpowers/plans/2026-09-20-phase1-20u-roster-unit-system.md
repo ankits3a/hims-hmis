@@ -10,8 +10,13 @@ rulings are RU-1…RU-6 in `brainstorms/2026-09-20-roster-units/00-BRAINSTORM.md
 > `plans/2026-09-20-roster-backbone-IMPLEMENTATION-PLAN.md`** (executed via its EXECUTE-PROMPT). §2,
 > §6 and §8 remain the reference. Owner rulings the same afternoon: office timings **09:00–17:30**;
 > the default night rule is the planner's (pooled at department level — stress test S4); the four
-> boards are approved "as of now"; units **5/5/3/3/4/2/2/1/1 + Respiratory Medicine as its own
-> one-unit department** (DECIDED under "follow the standard protocol of top teaching hospitals");
+> boards are approved "as of now"; units ~~5/5/3/3/4/2/2/1/1 + Respiratory Medicine as its own
+> one-unit department~~ **SUPERSEDED 2026-10-04 by the owner's table ("Department-Wise Unit and Bed
+> Requirements"): MED 5 · SUR 5 · OBG 3 · PED 3 · ORT 2 · OPH 1 · ENT 1 · PSY 1 · DER 1 = 22 units;
+> beds 150/150/75/75/60/20/20/15/10 + combined ICUs 30 = 605 (recorded for the future IPD, not built);
+> Respiratory Medicine: no unit.** Surplus seeded units (OBG-U4, ORT-U3, ENT-U2, OPH-U2, RESP-U1 and the
+> RESP night pool) are CLOSED by `seed:roster` if never confirmed — never deleted, and a confirmed
+> unit is never closed automatically. Only Unit I is active today in MED, SUR, ENT, OBG, ORT;
 > the three messaging providers come later. Two of §2's citations could not be re-confirmed by the
 > legal reviewer and are marked unverified: the AEBAS OM of 03.09.2026 and the PGMSR amendment of
 > 20.02.2026 — nothing in the design rests on either.

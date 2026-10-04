@@ -457,6 +457,10 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       countingUnits: "an `at`; a read — the units that count then",
       departmentsWithoutPublishedCycle: "an `at` (default now) — which departments run a confirmed unit then",
       rosterUnits: "an `at` (default now) — the month picker's confirmed, open units",
+      doctorUnitsOn: "an IST date — each doctor's unit that day, judged at noon IST",
+      prescriberPrint: "an IST date — the visit's day, as `doctorUnitsOn`",
+      unitHeadsWithoutRegn: "an IST date — the heads that day",
+      opdSittingAt: "an `at` — who sits in OPD now or later that IST day",
       // 20-U infra (owner 2026-10-04) — the board's own 20:00/08:00 print.
       boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant a `now` falls after",
       nextBoardSlot: "PURE: the next 08:00/20:00 IST instant after a `now`",

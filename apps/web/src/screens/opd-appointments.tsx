@@ -5,6 +5,7 @@ import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { fetchOpdUnits } from "../lib/roster-api";
+import { useDoctorLabel } from "../lib/use-doctor-label";
 import { listDepartments, listDoctors, listPatientAppointments, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
 import { upcomingOf } from "../lib/appointment-view";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
@@ -629,6 +630,7 @@ export function OpdAppointments(): React.ReactElement {
     department with no confirmed unit, a day its unit holds no OPD, or a reader without `roster.read`
     draws nothing — the doctor list below is still the book.
   */
+  const doctorLabel = useDoctorLabel(date);
   const opdUnits = useQuery({
     queryKey: ["opd", "opd-units", date],
     queryFn: () => fetchOpdUnits(date),
@@ -762,7 +764,11 @@ export function OpdAppointments(): React.ReactElement {
                 onChange={(e) => { setValue("doctorId", e.target.value); }}
               >
                 <option value="">{t("opdAppt.pickDoctor")}</option>
-                {doctorItems.map((doc) => <option key={doc.id} value={doc.id}>{doc.displayName}</option>)}
+                {/* 2026-10-04 (owner) — "Dr. Chandan · Unit I", "Dr. S.I Raza · Guest Faculty". */}
+                {doctorItems.map((doc) => {
+                  const tag = doctorLabel(doc);
+                  return <option key={doc.id} value={doc.id}>{tag === null ? doc.displayName : `${doc.displayName} · ${tag}`}</option>;
+                })}
               </select>
             </div>
             <div style={{ width: 170 }}>

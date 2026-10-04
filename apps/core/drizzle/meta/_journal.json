@@ -1240,6 +1240,13 @@
       "when": 1791127670411,
       "tag": "0176_roster_holiday_aebas",
       "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1791135756053,
+      "tag": "0177_opd_doctor_designation",
+      "breakpoints": true
     }
   ]
 }

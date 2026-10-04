@@ -160,7 +160,7 @@ export async function boardAsItStood(
       // The calendar's windows AS KNOWN at `at` too — not today's re-materialised ones.
       unitOnTake: await unitOf(await windowAsKnownAt(exec, departmentId, "take", at, at)),
       backupUnit: await unitOf(await windowAsKnownAt(exec, departmentId, "backup", at, at)),
-      inTheBuilding, facultyOnCall,
+      inTheBuilding, facultyOnCall, inOpd: null,
     });
   }
   rows.sort((a, b) => b.units - a.units || a.name.localeCompare(b.name));

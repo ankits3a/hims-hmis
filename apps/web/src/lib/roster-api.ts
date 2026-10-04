@@ -16,7 +16,13 @@ export type WireBoardDepartment = {
   departmentId: string; code: string; name: string; units: number; source: RosterSource; skeleton: boolean;
   unitOnTake: WireBoardUnit | null; backupUnit: WireBoardUnit | null;
   inTheBuilding: WireBoardPerson[]; facultyOnCall: WireBoardRung[];
+  /**
+   * 2026-10-04 (owner: only the OPD is live) — who sits in this department's OPD now or later today.
+   * Drawn ONLY where no duty roster is published. Null on the board as it stood; absent from older servers.
+   */
+  inOpd?: WireOpdSitting[] | null;
 };
+export type WireOpdSitting = { userId: string; name: string; designation: string | null; from: string; till: string; now: boolean };
 export type WireBoardService = {
   positionKey: string; positionLabel: string; cadre: string; source: RosterSource;
   people: { userId: string; name: string; departmentId: string | null }[];
@@ -39,7 +45,7 @@ export type WireOnNowBoard = {
    * 2026-10-04 (owner) — departments whose OPD has doctors but which run no CONFIRMED unit yet
    * (Paediatrics, sat by guest faculty). Never a row and never a hole. Optional: older servers send none.
    */
-  departmentsWithoutUnit?: { departmentId: string; code: string; name: string; doctors: number }[];
+  departmentsWithoutUnit?: { departmentId: string; code: string; name: string; doctors: number; inOpd?: WireOpdSitting[] }[];
   /** 20-U U6 (I22) — open "this is wrong" flags. Optional: a board read before U6 carries none. */
   flags?: WireRosterFlag[];
   /** 20-U infra — the RECORD of the last scheduled print (20:00 / 08:00 IST). Optional: older servers send none. */
@@ -288,3 +294,15 @@ export type WireOpdDepartmentUnits = { opdDepartmentId: string; departmentId: st
 
 export const fetchOpdUnits = (date: string) =>
   api<WireOpdDepartmentUnits[]>("GET", `/roster/opd-units?date=${encodeURIComponent(date)}`);
+
+/* ═══ 2026-10-04 (owner) — the unit beside a doctor's name: `GET /roster/doctor-units?date=` ═══ */
+export type WireDoctorUnit = {
+  userId: string; teamId: string; code: string; unitName: string; short: string;
+  departmentId: string; departmentName: string; roleInTeam: string;
+};
+/** 2026-10-04 — unit heads with no council number: the prescription's Dept. Regn prints blank for their units. */
+export type WireHeadWithoutRegn = { teamId: string; unitName: string; userId: string; name: string };
+export const fetchHeadsWithoutRegn = (date: string) =>
+  api<WireHeadWithoutRegn[]>("GET", `/roster/unit-heads-without-regn?date=${encodeURIComponent(date)}`);
+export const fetchDoctorUnits = (date: string) =>
+  api<WireDoctorUnit[]>("GET", `/roster/doctor-units?date=${encodeURIComponent(date)}`);

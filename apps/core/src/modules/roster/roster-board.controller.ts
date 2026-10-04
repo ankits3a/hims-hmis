@@ -33,6 +33,8 @@ import type { AebasTodo } from "./aebas";
 import { markAebasEntered } from "./absences";
 import { istDateOfInstant } from "./calendar";
 import { opdUnitsOn } from "./opd-units";
+import { doctorUnitsOn, unitHeadsWithoutRegn } from "./doctor-units";
+import type { DoctorUnit } from "./doctor-units";
 import type { OpdDepartmentUnits } from "./opd-units";
 
 /**
@@ -452,6 +454,39 @@ export class RosterBoardController {
    * doctors, hold each OPD clinic that day. Desk One's department cards read it; a department that
    * runs no units is absent, so the card draws nothing. The queue is not touched.
    */
+  /* ═══ 2026-10-04 (owner) — THE UNIT BESIDE A DOCTOR'S NAME (read-only) ═══
+   *
+   * `GET /roster/doctor-units?date=YYYY-MM-DD` (IST; today by default): each person's unit that day.
+   * Every staff OPD screen that lists doctors reads it to write "Dr. Chandan · Unit I".
+   */
+  @Get("doctor-units")
+  @RequirePermission("roster.read", "hospital")
+  async doctorUnits(@CurrentActor() actor: Actor, @Query("date") date?: string): Promise<DoctorUnit[]> {
+    try {
+      const day = date === undefined || date === "" ? istDateOfInstant(new Date()) : date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`))) {
+        throw new RosterError("invalid_window", "`date` is an IST day — send YYYY-MM-DD", { date });
+      }
+      await requireRosterAct(this.db, actor, "read");
+      return await doctorUnitsOn(this.db, day);
+    } catch (e) { toHttp(e); }
+  }
+
+  /* 2026-10-04 (owner) — `GET /roster/unit-heads-without-regn?date=`: the heads whose missing council
+   * number leaves the prescription's Dept. Regn blank. The OPD admin screen warns with it. */
+  @Get("unit-heads-without-regn")
+  @RequirePermission("roster.read", "hospital")
+  async headsWithoutRegn(@CurrentActor() actor: Actor, @Query("date") date?: string): Promise<{ teamId: string; unitName: string; userId: string; name: string }[]> {
+    try {
+      const day = date === undefined || date === "" ? istDateOfInstant(new Date()) : date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`))) {
+        throw new RosterError("invalid_window", "`date` is an IST day — send YYYY-MM-DD", { date });
+      }
+      await requireRosterAct(this.db, actor, "read");
+      return await unitHeadsWithoutRegn(this.db, day);
+    } catch (e) { toHttp(e); }
+  }
+
   @Get("opd-units")
   @RequirePermission("roster.read", "hospital")
   async opdUnits(@CurrentActor() actor: Actor, @Query("date") date?: string): Promise<OpdDepartmentUnits[]> {

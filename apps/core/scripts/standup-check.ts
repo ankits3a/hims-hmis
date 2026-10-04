@@ -357,7 +357,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       /**
        * PHASE R (R3) — **the row that stops our arithmetic being presented as the regulator's.**
        *
-       * UG-MSR 2023 dropped the units table altogether. The 27 units `seed:units` writes are one
+       * UG-MSR 2023 dropped the units table altogether. The 22 units `seed:units` writes (the owner's table, 2026-10-04) are
        * unit per sanctioned senior resident — a good default, and NOT a number from the gazette
        * (20-U §2, owner §10.2). So every seeded team lands inactive, and this row stays RED until a
        * head of department has confirmed each one. It is under `hospital` for the reason the masters

@@ -126,25 +126,42 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(asked.some((u) => u.endsWith("/api/roster/on-now"))).toBe(true);
   });
 
-  it("2026-10-04 — departments with OPD doctors but no confirmed unit are one quiet line, never a row or a hole", async () => {
+  it("2026-10-04 — no duty roster: the building column shows who sits in OPD, faculty is a quiet dash, and one line replaces the amber warnings", async () => {
     boardReply = {
       ...BOARD,
+      departments: [{
+        ...BOARD.departments[1]!, code: "MED", departmentId: "d-med", name: "General Medicine", units: 1, skeleton: false,
+        unitOnTake: { teamId: "u1", code: "MED-U1", name: "General Medicine Unit I", startsAt: "2026-10-08T02:30:00.000Z", endsAt: "2026-10-09T02:30:00.000Z" },
+        inOpd: [
+          { userId: "yash", name: "Dr. Yash Vardhan", designation: "Senior Resident", from: "2026-10-08T03:30:00.000Z", till: "2026-10-08T11:30:00.000Z", now: true },
+          { userId: "kk", name: "Dr. Kishore Kunal", designation: "Assistant Professor", from: "2026-10-08T08:30:00.000Z", till: "2026-10-08T11:30:00.000Z", now: false },
+        ],
+      }],
+      holes: [],
       departmentsWithoutUnit: [
-        { departmentId: "d-comm", code: "COMM", name: "Community Medicine", doctors: 1 },
-        { departmentId: "d-ped", code: "PED", name: "Paediatrics", doctors: 2 },
+        { departmentId: "d-ped", code: "PED", name: "Paediatrics", doctors: 1, inOpd: [{ userId: "sk", name: "Dr. Suryendru Kumar", designation: "Guest Faculty", from: "2026-10-08T03:30:00.000Z", till: "2026-10-08T11:30:00.000Z", now: true }] },
+        { departmentId: "d-comm", code: "COMM", name: "Community Medicine", doctors: 1, inOpd: [] },
       ],
     };
     renderWithProviders(<RosterOnNow />);
-    const line = await screen.findByTestId("on-now-without-unit");
-    expect(line).toHaveTextContent("No unit yet: Community Medicine (1 OPD doctor) · Paediatrics (2 OPD doctors) — their OPD runs on each doctor's own days, and no unit is on take");
-    expect(screen.queryByTestId("dept-PED")).toBeNull();
-    expect(screen.queryByTestId("dept-COMM")).toBeNull();
+    const med = await screen.findByTestId("dept-MED");
+    expect(within(med).getByTestId("in-opd-MED")).toHaveTextContent("Dr. Yash VardhanSr. Resident · in OPD till 17:00");
+    expect(within(med).getByTestId("in-opd-MED")).toHaveTextContent("Dr. Kishore KunalAsst. Prof. · in OPD from 14:00");
+    expect(within(med).queryByRole("note")).toBeNull();
+    expect(screen.getByTestId("on-now-opd-fallback")).toHaveTextContent("No duty roster is published yet — the board shows who is sitting in OPD.");
+    // Departments with OPD doctors and no unit are quiet rows, never holes.
+    expect(screen.getByTestId("dept-nounit-PED")).toHaveTextContent("PaediatricsUnit on takeNo unit · OPD only");
+    expect(screen.getByTestId("dept-nounit-PED")).toHaveTextContent("Dr. Suryendru KumarGuest Faculty · in OPD till 17:00");
+    expect(screen.getByTestId("dept-nounit-COMM")).toHaveTextContent("Nobody sitting in OPD now");
   });
 
-  it("no line at all when every department with doctors runs a unit (or the server is older)", async () => {
+  it("a published department keeps its roster path: no OPD list, no fallback line", async () => {
+    boardReply = { ...BOARD, departments: [{ ...BOARD.departments[0]!, inOpd: [{ userId: "x", name: "Dr. Not Shown", designation: null, from: AT, till: AT, now: true }] }] };
     renderWithProviders(<RosterOnNow />);
-    await screen.findByTestId("dept-MED");
-    expect(screen.queryByTestId("on-now-without-unit")).toBeNull();
+    const med = await screen.findByTestId("dept-MED");
+    expect(med).toHaveTextContent("SRDr. Aditi Deshmukh");
+    expect(med).not.toHaveTextContent("Dr. Not Shown");
+    expect(screen.queryByTestId("on-now-opd-fallback")).toBeNull();
   });
 
   it("D6 — a call button for a person in the building with a number on file, and none without one", async () => {

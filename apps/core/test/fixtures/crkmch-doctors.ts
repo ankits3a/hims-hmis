@@ -19,6 +19,8 @@ import type { Actor } from "@hmis/contracts";
  * publishes. Call it on an EMPTY database, BEFORE `seed:roster`, so the org departments link to the clinics.
  *
  * `rename` gives a doctor a different name in the database (the matcher's spelling cases).
+ * `designationsInSpecialty` provisions the way staging was on 2026-10-04, before `designation`
+ * existed: the designation typed into `specialty` ("Assistant Professor (Neurosurgeon)" for #11).
  */
 export const MS_USER = "U-ms";
 const CLINICS = [...DEFAULT_DEPARTMENTS, { code: "COMM", name: "Community Medicine" }];
@@ -26,7 +28,7 @@ export const CLINIC_OF: Record<string, string> = Object.fromEntries(CLINICS.map(
 const WEEKDAY: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 export async function seedCrkmchDoctors(
-  db: Db, opts: { rename?: Record<number, string>; validFrom?: string } = {},
+  db: Db, opts: { rename?: Record<number, string>; validFrom?: string; designationsInSpecialty?: boolean } = {},
 ): Promise<{ userOf: Map<number, string> }> {
   const by = { createdBy: "fixture", updatedBy: "fixture" };
   await db.insert(roles).values(["doctor", "medical_superintendent", "admin", "owner", "duty_manager", "pharmacy", "radiologist", "pathologist", "anaesthetist"]
@@ -52,7 +54,11 @@ export async function seedCrkmchDoctors(
       const clinic = CLINIC_OF[d.department];
       if (clinic === undefined) continue;
       if (!rooms.has(d.department)) rooms.set(d.department, (await createRoom(tx, ms, { code: `${d.department}-1`, name: `${d.department} room 1` })).roomId);
-      const { doctorId } = await createDoctor(tx, ms, { username: `crk${d.sl}`, displayName: name, departmentId: clinic, code: `DR-${String(d.sl).padStart(4, "0")}` });
+      const specialty = opts.designationsInSpecialty === true ? (d.sl === 11 ? "Assistant Professor (Neurosurgeon)" : d.designation) : undefined;
+      const { doctorId } = await createDoctor(tx, ms, {
+        username: `crk${d.sl}`, displayName: name, departmentId: clinic, code: `DR-${String(d.sl).padStart(4, "0")}`,
+        ...(specialty === undefined ? {} : { specialty }),
+      });
       const spans = d.hours.split(",").map((h) => h.split("-") as [string, string]);
       await replaceDoctorSchedules(tx, ms, doctorId, d.days.flatMap((day) => spans.map(([startTime, endTime]) => ({
         weekday: WEEKDAY[day]!, startTime, endTime, roomId: rooms.get(d.department)!, validFrom: opts.validFrom ?? "2026-01-01",

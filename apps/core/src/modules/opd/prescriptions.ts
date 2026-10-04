@@ -1,5 +1,6 @@
 import { and, asc, eq, max } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
+import { prescriberPrint } from "../roster";
 import type { Actor } from "@hmis/contracts";
 import { hmacSign, hmacVerify } from "../../kernel/crypto";
 import { appendEvent } from "../../kernel/events/append";
@@ -817,8 +818,13 @@ export async function verifyPrescriptionQr(db: Db, cfg: AppConfig, actor: Actor,
 export type RxPrintData = {
   letterhead: Letterhead;
   patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; administrativeGender: string };
-  /** The Doctor ID (`opd_doctors.code`) only — never the name or the council number (owner 2026-09-06, 2026-09-28). */
-  doctor: { code: string; departmentName: string | null };
+  /**
+   * Never the name (owner 2026-09-06, 2026-09-28, 2026-10-04). Owner 2026-10-04: `unitNumber` is the
+   * prescriber's unit that day ("Unit I") or — Guest Faculty and (DECIDED) anyone in no unit — their
+   * Doctor ID; `deptRegn` is the DEPARTMENT registration number: that day's unit head's council number
+   * (`prescriberPrint`), null (prints blank) when there is no unit or no number on file.
+   */
+  doctor: { unitNumber: string; deptRegn: string | null; departmentName: string | null };
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
@@ -891,7 +897,10 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
       number are not on this payload at all, so no renderer can print them by accident. (The QR
       VERIFY answer still names the doctor: it is the pharmacist's check, not the patient's paper.)
     */
-    doctor: { code: doctor!.code, departmentName: department?.name ?? null },
+    doctor: await (async () => {
+      const p = await prescriberPrint(db, { userId: doctor!.userId, code: doctor!.code }, { istDate: encounter.serviceDate, opdDepartmentId: encounter.departmentId });
+      return { unitNumber: p.unitNumber, deptRegn: p.deptRegn, departmentName: department?.name ?? null };
+    })(),
     encounter: {
       id: encounter.id, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code,
       advice: encounter.advice, followUpDays: encounter.followUpDays, chiefComplaint: encounter.chiefComplaint,

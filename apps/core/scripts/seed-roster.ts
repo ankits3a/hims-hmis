@@ -1,18 +1,23 @@
 import { createDb } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
-import { seedOrgDepartments, seedRosterPositions, seedRosterRules, seedUnits } from "../src/modules/roster";
+import { SURPLUS_REASON, retireSurplusUnits, seedOrgDepartments, seedRosterPositions, seedRosterRules, seedUnits } from "../src/modules/roster";
 import type { Db } from "../src/kernel/db/client";
 
 type SeedCount = Awaited<ReturnType<typeof seedUnits>>;
-export interface RosterSeedReport { departments: SeedCount; positions: SeedCount; units: SeedCount; rules: SeedCount }
+export interface RosterSeedReport {
+  departments: SeedCount; positions: SeedCount; units: SeedCount; rules: SeedCount;
+  /** 2026-10-04 — surplus seeded teams closed (never confirmed), and confirmed ones left for a human. */
+  surplus: { retired: string[]; keptConfirmed: string[] };
+}
 
 /** The seed as a function, so a test runs exactly what the script runs. */
 export async function seedRoster(db: Db): Promise<RosterSeedReport> {
   const departments = await seedOrgDepartments(db);
   const positions = await seedRosterPositions(db);
   const units = await seedUnits(db);
+  const surplus = await retireSurplusUnits(db, "seed:roster");
   const rules = await seedRosterRules(db);
-  return { departments, positions, units, rules };
+  return { departments, positions, units, rules, surplus };
 }
 
 /**
@@ -42,13 +47,15 @@ export async function seedRoster(db: Db): Promise<RosterSeedReport> {
 async function main(): Promise<void> {
   const { db, pool } = createDb(requireEnv("DATABASE_URL"));
   try {
-    const { departments: d, positions: p, units: u, rules: r } = await seedRoster(db);
+    const { departments: d, positions: p, units: u, rules: r, surplus } = await seedRoster(db);
     console.log(`org_departments: ${d.added} added, ${d.present} already present`);
     console.log(`roster_positions: ${p.added} added, ${p.present} already present`);
     console.log(`roster_teams: ${u.added} added, ${u.present} already present — ALL INACTIVE:`);
-    console.log("  the 27-unit establishment is this hospital's own (UG-MSR 2023 dropped the units");
+    console.log("  the 22-unit establishment is the owner's table of 2026-10-04 (UG-MSR 2023 dropped the units");
     console.log("  table), so each head of department confirms their units before anything rosters");
     console.log("  against them. `pnpm --filter @hmis/core standup:check` lists what is unconfirmed.");
+    console.log(`surplus teams closed (${SURPLUS_REASON}): ${surplus.retired.length === 0 ? "none" : surplus.retired.join(", ")}`);
+    if (surplus.keptConfirmed.length > 0) console.log(`  CONFIRMED surplus left for a human to close: ${surplus.keptConfirmed.join(", ")}`);
     console.log(`roster_rules: ${r.added} added, ${r.present} already present — the publish gate judges by these`);
   } finally {
     await pool.end();

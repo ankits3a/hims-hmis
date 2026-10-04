@@ -16,14 +16,14 @@
       "sl": 1, "name": "Dr. S.I Raza", "sheetName": "Dr. S I Raza", "aliases": [],
       "department": "MED", "sheetDepartment": "General Medicine",
       "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], "hours": "09:00-16:00",
-      "designation": "Visiting / Guest Faculty", "place": "guest_faculty",
-      "notes": "Sheet: \"Mon To Sat (9am-4pm)\". Guest faculty: sits in the Medicine OPD, in no unit."
+      "designation": "Guest Faculty", "place": "guest_faculty",
+      "notes": "Sheet: \"Mon To Sat (9am-4pm)\". Owner: Visiting / Guest Faculty — stored as \"Guest Faculty\", the owner's term. Sits in the Medicine OPD, in no unit."
     },
     {
       "sl": 2, "name": "Dr. Sunny", "sheetName": "Dr. Sunny", "aliases": [],
       "department": "CAS", "sheetDepartment": "EMO",
       "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], "hours": "09:00-17:00",
-      "designation": "Emergency Medical Officer (non-academic JR)", "place": "casualty_mo",
+      "designation": "Emergency Medical Officer", "place": "casualty_mo",
       "notes": "Sheet department \"EMO\" = emergency medical officer, i.e. Casualty (org department CAS). Not a unit member; rostered as position casualty_mo through a Casualty duty roster, which this script does not write. Only a first name on the sheet: matching is on \"Sunny\" alone and is reported if ambiguous."
     },
     {

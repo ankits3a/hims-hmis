@@ -21,11 +21,11 @@ const PATIENT = {
   district: "Kanpur Nagar", registeredOn: "2020-12-01T00:00:00.000Z", matchedOn: ["name"],
 };
 
-function doctor(id: string, name: string, departmentId: string, waitingCount: number): unknown {
+function doctor(id: string, name: string, departmentId: string, waitingCount: number, designation: string | null = null): unknown {
   return {
     doctor: {
       id, userId: `u-${id}`, displayName: name, registrationNo: null, departmentId,
-      specialty: null, active: true,
+      specialty: null, active: true, designation,
       createdBy: "x", createdAt: "2020-01-01T00:00:00.000Z", updatedBy: "x", updatedAt: "2020-01-01T00:00:00.000Z",
     },
     sessionId: `s-${id}`, status: "open",
@@ -60,7 +60,8 @@ function mount(permissions: string[], asked: string[]): void {
     "GET /api/patients/abha/capability": { configured: false, canRecord: true, canCreate: false, canVerify: false, reason: "t" },
     "GET /api/opd/config": { flow: "queue_first_token_first", locked: false },
     "GET /api/opd/departments": { items: [{ id: "d-med", name: "General Medicine", code: "MED" }, { id: "d-ped", name: "Paediatrics", code: "PED" }] },
-    "GET /api/opd/queues/summary": { items: [doctor("doc-rao", "Dr. Rao", "d-med", 2), doctor("doc-sen", "Dr. Sen", "d-ped", 1)] },
+    "GET /api/opd/queues/summary": { items: [doctor("doc-rao", "Dr. Rao", "d-med", 2, "Assistant Professor"), doctor("doc-sen", "Dr. Sen", "d-ped", 1, "Guest Faculty"), doctor("doc-nil", "Dr. Nil", "d-ped", 0)] },
+    "GET /api/roster/doctor-units": [{ userId: "u-doc-rao", teamId: "t-2", code: "MED-U2", unitName: "General Medicine Unit II", short: "Unit II", departmentId: "org-med", departmentName: "General Medicine", roleInTeam: "head" }],
     "GET /api/opd/continuity": { anchor: null },
     "GET /api/billing/session/current": { session: null },
     "GET /api/me/desk": { stats: [] },
@@ -104,6 +105,14 @@ describe("20-U U7: the front desk sees which unit holds today's OPD", () => {
     // Paediatrics runs no units: no line, no "Unit —".
     expect(screen.queryByTestId("opd-unit-d-ped")).toBeNull();
     expect(screen.queryByText(/Unit —/)).toBeNull();
+  });
+
+  it("2026-10-04 (owner) — each doctor row says the doctor's unit, or Guest Faculty; a doctor with neither shows the name alone", async () => {
+    mount(["opd.visits.open", "patients.register", "billing.invoice.issue", "roster.read"], []);
+    await holdPatient();
+    await waitFor(() => expect(screen.getByTestId("doctor-tag-doc-rao")).toHaveTextContent("Unit II · Asst. Prof."));
+    expect(screen.getByTestId("doctor-tag-doc-sen")).toHaveTextContent("Guest Faculty");
+    expect(screen.queryByTestId("doctor-tag-doc-nil")).toBeNull();
   });
 
   it("a seat that does not read the roster does not ask, and the card is as it was", async () => {
