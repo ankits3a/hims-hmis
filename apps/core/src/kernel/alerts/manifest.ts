@@ -65,5 +65,10 @@ export const alertsManifest: ModuleManifest = {
     // The one-edit rule for the seventh time: `handleRespondOverdue` is in `consumer.ts` in THIS
     // commit, or every respond clock lands in the escalation parser and fails the delivery.
     { event: "respond.overdue", consumer: "kernel.alerts" },
+    // 20-U INFRA (owner 2026-10-04) — A "THIS IS WRONG" FLAG ON THE WHO-IS-ON BOARD PAGES THE DUTY
+    // MANAGER ON DUTY (the roster's answer, else the role's holders), never the reader who raised
+    // it. The one-edit rule for the eighth time: `handleRosterFlagRaised` lands in `consumer.ts` in
+    // THIS commit, or every flag lands in the escalation parser and fails the delivery.
+    { event: "roster.flag_raised", consumer: "kernel.alerts" },
   ],
 };

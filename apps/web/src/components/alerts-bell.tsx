@@ -42,6 +42,8 @@ const OWN_MINUTES = 30;
  */
 const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record<string, string> }> = {
   approval: (refId) => ({ to: "/approvals", search: { focus: refId } }),
+  // 20-U infra (owner 2026-10-04) — a "this is wrong" flag is shown and resolved on the board.
+  roster_flag: () => ({ to: "/roster/on-now", search: {} }),
 };
 
 function deepLinkFor(a: WireAlert): { to: string; search: Record<string, string> } | null {

@@ -423,6 +423,7 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       dutiesOf: "a window",
       endMembership: "the date a posting ends",
       endOfficiating: "the date somebody stops standing in",
+      dutyManagersAt: "an `at` — whose duty-manager answer to page for a \"this is wrong\" flag; a read",
       escalationRecipients: "an `at` — who to ring THEN",
       expandCycle: "PURE: dates in, windows out, no database and no clock of its own (V15)",
       expiringCredentials: "a window",

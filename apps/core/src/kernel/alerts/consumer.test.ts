@@ -210,6 +210,10 @@ describe("kernel alerts consumer", () => {
       // other half of the pair — `escalation.triggered` says the work is late, this says nobody
       // has said anything — and its branch lands in `consumer.ts` in the same commit.
       { event: "respond.overdue", consumer: ALERTS_CONSUMER },
+      // 20-U infra (owner 2026-10-04): seven -> EIGHT, read off the red run. A "this is wrong" flag
+      // on the who-is-on board pages the duty manager on duty; its branch and its own suite
+      // (`test/roster-flag-alert.e2e.test.ts`) land in the same commit.
+      { event: "roster.flag_raised", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -242,6 +246,8 @@ describe("kernel alerts consumer", () => {
           "approval.requested",
           // Obligation spine T1 — and this one says nobody has answered yet.
           "respond.overdue",
+          // 20-U infra (owner 2026-10-04) — a "this is wrong" flag pages the duty manager on duty.
+          "roster.flag_raised",
         ],
       },
     ]);
