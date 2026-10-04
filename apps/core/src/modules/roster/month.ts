@@ -1,6 +1,8 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
-import { rosterAssignments, rosterPeriods, rosterTeams } from "../../kernel/db/schema/roster";
+import {
+  rosterAssignments, rosterDutyWindows, rosterHolidays, rosterPeriods, rosterTeamMemberships, rosterTeams, staffAbsences,
+} from "../../kernel/db/schema/roster";
 import { users } from "../../kernel/db/schema/auth";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
@@ -74,11 +76,28 @@ export type UnitMonth = {
     contentHash: string; publishedAt: Date | null;
   };
   positions: { key: string; label: string }[];
-  people: { userId: string; name: string; positionKey: string; grade: string }[];
+  /**
+   * `postedFrom`/`postedTo` — the IST days this person's posting here starts and ends INSIDE the
+   * month (inclusive); null when it began before the 1st or runs past the last day.
+   */
+  people: { userId: string; name: string; positionKey: string; grade: string; postedFrom: string | null; postedTo: string | null }[];
   assignments: MonthAssignment[];
   findings: MonthFinding[];
   counts: { blocking: number; warnings: number; info: number };
   fairness: (FairnessCounters & { name: string })[];
+  /**
+   * THE UNIT'S DAY, one per column: what the published cycle has THIS unit doing (its live
+   * `roster_duty_windows`, by the IST day a window starts), with `take` split out because the board
+   * marks it separately. `overlay` — the day ran the Sunday sequence.
+   */
+  unitDays: { istDate: string; activities: string[]; take: boolean; overlay: boolean }[];
+  /** Holidays declared for days of this month (`roster_holidays`). */
+  holidays: { istDate: string; kind: string; pattern: string }[];
+  /**
+   * APPROVED absences of this month's people, as IST days (inclusive). The kind and never the
+   * reason: D6 keeps a leave reason for the approver alone.
+   */
+  leave: { userId: string; kind: string; from: string; to: string }[];
   /** What THIS actor may do here, probed through `requireRosterAct`. The server still decides. */
   youMay: { draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean };
 };
@@ -153,6 +172,18 @@ export async function unitMonth(exec: Db | Tx, actor: Actor, teamId: string, mon
 
   const period = await currentPeriod(exec, teamId, startsAt);
   const members = await teamMembers(exec, teamId, startsAt);
+  // Everybody posted here at any moment of the month — a posting that starts on the 16th is a row too.
+  const postings = await (exec as Db).select().from(rosterTeamMemberships).where(and(
+    eq(rosterTeamMemberships.teamId, teamId), lt(rosterTeamMemberships.startsAt, endsAt),
+    or(isNull(rosterTeamMemberships.endsAt), gt(rosterTeamMemberships.endsAt, startsAt)),
+  )).orderBy(asc(rosterTeamMemberships.startsAt));
+  const windows = await (exec as Db).select().from(rosterDutyWindows).where(and(
+    eq(rosterDutyWindows.teamId, teamId), isNull(rosterDutyWindows.supersededAt),
+    gte(rosterDutyWindows.startsAt, startsAt), lt(rosterDutyWindows.startsAt, endsAt),
+  )).orderBy(asc(rosterDutyWindows.startsAt));
+  const holidays = await (exec as Db).select().from(rosterHolidays).where(and(
+    gte(rosterHolidays.istDate, days[0]!), lt(rosterHolidays.istDate, addIstDays(days[days.length - 1]!, 1)),
+  )).orderBy(asc(rosterHolidays.istDate));
   const rows = period === undefined ? [] : (await periodWithAssignments(exec, period.id)).assignments.filter((a) => a.liveTo === null);
 
   const computed = period === undefined ? [] : await validate(exec, period.id);
@@ -161,6 +192,7 @@ export async function unitMonth(exec: Db | Tx, actor: Actor, teamId: string, mon
   const blockingKeys = new Set(blockingFindings(computed, new Set(acceptedByKey.keys())).map((f) => findingKey(f)));
 
   const ids = new Set<string>(members.map((m) => m.userId));
+  for (const p of postings) ids.add(p.userId);
   for (const a of rows) if (a.userId !== null) ids.add(a.userId);
   for (const f of computed) if (f.userId !== null) ids.add(f.userId);
   for (const r of acceptedByKey.values()) if (r.acceptedBy !== null) ids.add(r.acceptedBy);
@@ -195,14 +227,53 @@ export async function unitMonth(exec: Db | Tx, actor: Actor, teamId: string, mon
     || severityRank[a.severity] - severityRank[b.severity]
     || (a.istDate ?? "").localeCompare(b.istDate ?? "") || a.ruleKey.localeCompare(b.ruleKey));
 
+  const posted = new Map<string, { postedFrom: string | null; postedTo: string | null }>();
+  for (const p of postings) {
+    const from = p.startsAt <= startsAt ? null : istDateOfInstant(p.startsAt);
+    // `endsAt` is exclusive: a posting ending at 00:00 on the 16th was last here on the 15th.
+    const to = p.endsAt === null || p.endsAt >= endsAt ? null : istDateOfInstant(new Date(p.endsAt.getTime() - 1));
+    const prev = posted.get(p.userId);
+    posted.set(p.userId, prev === undefined ? { postedFrom: from, postedTo: to } : {
+      postedFrom: prev.postedFrom === null || from === null ? null : (from < prev.postedFrom ? from : prev.postedFrom),
+      postedTo: prev.postedTo === null || to === null ? null : (to > prev.postedTo ? to : prev.postedTo),
+    });
+  }
+  const postedOf = (userId: string) => posted.get(userId) ?? { postedFrom: null, postedTo: null };
   const people = members
-    .map((m) => ({ userId: m.userId, name: names.get(m.userId) ?? m.userId, positionKey: m.positionKey, grade: m.grade }));
+    .map((m) => ({ userId: m.userId, name: names.get(m.userId) ?? m.userId, positionKey: m.positionKey, grade: m.grade, ...postedOf(m.userId) }));
+  for (const p of postings) {
+    if (!people.some((x) => x.userId === p.userId)) {
+      people.push({ userId: p.userId, name: names.get(p.userId) ?? p.userId, positionKey: p.positionKey, grade: p.grade, ...postedOf(p.userId) });
+    }
+  }
   for (const a of assignments) {
     if (a.userId !== null && !people.some((p) => p.userId === a.userId)) {
-      people.push({ userId: a.userId, name: a.name ?? a.userId, positionKey: a.positionKey, grade: "" });
+      people.push({ userId: a.userId, name: a.name ?? a.userId, positionKey: a.positionKey, grade: "", postedFrom: null, postedTo: null });
     }
   }
   people.sort((a, b) => a.name.localeCompare(b.name));
+
+  const away = people.length === 0 ? [] : await (exec as Db).select({
+    userId: staffAbsences.userId, kind: staffAbsences.kind, startsAt: staffAbsences.startsAt, endsAt: staffAbsences.endsAt,
+  }).from(staffAbsences).where(and(
+    eq(staffAbsences.status, "approved"), inArray(staffAbsences.userId, people.map((p) => p.userId)),
+    lt(staffAbsences.startsAt, endsAt), gt(staffAbsences.endsAt, startsAt),
+  )).orderBy(asc(staffAbsences.startsAt));
+  const clampDay = (d: string): string => (d < days[0]! ? days[0]! : d > days[days.length - 1]! ? days[days.length - 1]! : d);
+  const leave = away.map((x) => ({
+    userId: x.userId, kind: x.kind,
+    from: clampDay(istDateOfInstant(x.startsAt)), to: clampDay(istDateOfInstant(new Date(x.endsAt.getTime() - 1))),
+  }));
+
+  const unitDays = days.map((istDate) => {
+    const mine = windows.filter((w) => istDateOfInstant(w.startsAt) === istDate);
+    return {
+      istDate,
+      activities: [...new Set(mine.filter((w) => w.activity !== "take").map((w) => w.activity))],
+      take: mine.some((w) => w.activity === "take"),
+      overlay: mine.some((w) => w.source === "overlay"),
+    };
+  });
 
   const positionLabels = new Map((await listRosterPositions(exec)).map((p) => [p.key, p.label]));
   const draft = period?.status === "draft";
@@ -225,6 +296,9 @@ export async function unitMonth(exec: Db | Tx, actor: Actor, teamId: string, mon
       info: findings.filter((f) => f.severity === "info").length,
     },
     fairness: fairnessOf(rows).map((f) => ({ ...f, name: names.get(f.userId) ?? f.userId })),
+    unitDays,
+    holidays: holidays.map((h) => ({ istDate: h.istDate, kind: h.kind, pattern: h.pattern })),
+    leave,
     youMay: {
       draft: period === undefined && await may(exec, actor, "draft_machine_period", team.departmentId),
       edit: draft && await may(exec, actor, editAct, team.departmentId),

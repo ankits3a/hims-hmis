@@ -1,41 +1,165 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { dayMonthIst, fmtIst } from "../lib/format";
+import { AskBar, DoctorDeskFrame } from "../components/doctor-desk/frame";
+import { fmtIst } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
 import {
-  acceptRosterFinding, draftUnitMonth, editRosterSlot, fetchRosterUnits, fetchUnitMonth, publishUnitMonth,
-  rosterErrorText,
+  acceptRosterFinding, draftUnitMonth, editRosterSlot, fetchRosterUnits, fetchUnitMonth, isStaleWrite, publishUnitMonth,
+  rosterErrorCode, rosterErrorText,
 } from "../lib/roster-api";
 import type { WireMonthAssignment, WireMonthFinding, WireUnitMonth } from "../lib/roster-api";
+import { shortUnit } from "./roster-on-now";
+import "./roster.css";
 
 /**
  * ═══ 20-U U5b — ROSTER: THE UNIT'S MONTH ═══
  *
- * The board the owner approved on 2026-09-20 (`docs/design/2026-09-20-roster/Main.dc.html`), for a
- * unit's senior resident and its head. A month the proposer has already drafted, one row per person
- * and one column per day; a *Before you publish* list on the right where every validator finding is
- * a SENTENCE naming the person and the day, with a one-tap fix where the roster supports one
- * (leave that duty vacant — a declared hole is an honest answer) and, for a warning, "it's fine, I'll
- * note why" for whoever holds `accept_warning`. **Publish stays disabled, and says why, while a
- * must-fix item stands** — the server's own gate (`blocked_by_findings`) decides; this only mirrors
- * the count the server computed with the gate's own rule.
+ * The board the owner approved on 2026-09-20 (`docs/design/2026-09-20-roster/Main.dc.html`), ported
+ * 1:1 into the Doctor Desk frame, for a unit's senior resident and its head. A month the proposer has
+ * already drafted, one row per person and one column per day (2 weeks, the month, or one day); the
+ * unit's own day above each column (OPD / theatre / ward, and TAKE) from the published cycle; leave,
+ * holidays, rest after a night and postings drawn in the grid; and on the right *Before you publish*,
+ * where every validator finding is a SENTENCE naming the person and the day, with a one-tap fix where
+ * the roster supports one (leave that duty vacant — a declared hole is an honest answer — with Undo),
+ * "pick someone else", and, for a warning only, "it's fine, I'll note why". **Publish stays disabled,
+ * and says why, while a must-fix item stands** — the server's own gate (`blocked_by_findings`)
+ * decides; this mirrors the count the server computed with the gate's own rule. A must-fix cannot be
+ * accepted here, and nothing on this screen says it can.
  *
- * Write affordances follow `youMay`, which the server probes through the same act check the write
- * will make. Hidden here is a courtesy; refused there is the guard.
+ * NOT DRAWN, because the data does not exist: "Who goes where on an OPD day" (the proposer drafts
+ * day and night slots, not rooms), "Asked of you" (swap requests are U6), and the board's "No spare"
+ * staffing hint. Write affordances follow `youMay`; hidden here is a courtesy, refused there is the
+ * guard. A write refused because the month moved under the reader (409/404) refetches the month and
+ * says so rather than leaving a stale grid.
  */
 
 type Props = { team?: string; month?: string };
+type T = (k: string, o?: Record<string, unknown>) => string;
+type Zoom = "weeks" | "month" | "day";
 
 const thisMonthIst = (): string => todayIst(new Date()).slice(0, 7);
 const weekday = (istDate: string): number => new Date(`${istDate}T12:00:00Z`).getUTCDay();
+const dayNum = (istDate: string): number => Number(istDate.slice(8, 10));
+const VACANT = "__vacant__";
+
+/** Codes that mean "somebody else moved this month" rather than "your edit was refused". */
+const MOVED = new Set([
+  "version_conflict", "stale_base", "draft_changed_since_review", "period_not_draft", "unknown_assignment",
+  "unknown_period", "unknown_finding", "finding_already_accepted",
+]);
+
+function locale(lang: string): string { return lang.startsWith("hi") ? "hi-IN" : "en-GB"; }
+function monthLong(ym: string, lang: string): string {
+  return new Intl.DateTimeFormat(locale(lang), { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 15)));
+}
+/** "Tue 13 Oct" — the board's way of naming a day. */
+function dayName(istDate: string, lang: string): string {
+  return new Intl.DateTimeFormat(locale(lang), { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${istDate}T12:00:00Z`)).replace(",", "");
+}
+function dayShort(istDate: string, lang: string): string {
+  return new Intl.DateTimeFormat(locale(lang), { timeZone: "UTC", weekday: "short", day: "numeric" }).format(new Date(`${istDate}T12:00:00Z`)).replace(",", "");
+}
+
+const GRADE_RANK: Record<string, number> = {
+  professor: 0, associate_professor: 1, assistant_professor: 2, senior_resident: 3, jr3: 4, jr2: 5, jr1: 6, intern: 7, medical_officer: 8,
+};
+
+/** The unit's activity, as the board's one-word column head. */
+function actWord(acts: string[], t: T): string {
+  for (const a of ["opd", "elective_ot", "minor_ot", "ward_teaching", "special_clinic", "post_take", "backup"]) {
+    if (acts.includes(a)) return t(`rosterMonth.act.${a}`);
+  }
+  return "";
+}
+function actClass(acts: string[]): string {
+  if (acts.includes("opd") || acts.includes("special_clinic")) return "rm-k-opd";
+  if (acts.includes("elective_ot") || acts.includes("minor_ot")) return "rm-k-ot";
+  return "rm-k-ward";
+}
+
+/** What one person's box on one day says. Pure: the screen's whole legend in one function. */
+export type Cell = { cls: string; label: string; sub: string; a: WireMonthAssignment | null; title: string };
+export function cellFor(d: WireUnitMonth, userId: string, day: string, t: T): Cell | null {
+  const person = d.people.find((p) => p.userId === userId);
+  if (person !== undefined && ((person.postedFrom !== null && day < person.postedFrom) || (person.postedTo !== null && day > person.postedTo))) {
+    return { cls: "rm-k-none", label: "·", sub: "", a: null, title: t("rosterMonth.legend.notPosted") };
+  }
+  const mine = d.assignments.filter((a) => a.userId === userId && a.istDate === day);
+  const away = d.leave.find((l) => l.userId === userId && l.from <= day && day <= l.to);
+  const unitDay = d.unitDays.find((u) => u.istDate === day);
+  // The duty a must-fix names is the one shown, so the red outline is never hidden under another slot.
+  const flagged = new Set(d.findings.filter((f) => f.blocking && f.assignmentId !== null).map((f) => f.assignmentId));
+  const duty = mine.find((a) => flagged.has(a.assignmentId))
+    ?? mine.find((a) => a.kind === "duty" && a.night) ?? mine.find((a) => a.kind === "duty") ?? mine[0];
+  if (duty !== undefined) {
+    const hours = (Date.parse(duty.endsAt) - Date.parse(duty.startsAt)) / 3_600_000;
+    const span = `${fmtIst(duty.startsAt)}–${fmtIst(duty.endsAt)}`;
+    const onLeave = away !== undefined ? t("rosterMonth.cell.onLeave") : "";
+    const more = mine.length > 1 ? ` +${String(mine.length - 1)}` : "";
+    if (duty.kind === "off") return { cls: "rm-k-off", label: t("rosterMonth.cell.off"), sub: "", a: duty, title: span };
+    if (duty.kind === "teaching") return { cls: "rm-k-teach", label: t("rosterMonth.cell.teach"), sub: onLeave || more.trim(), a: duty, title: span };
+    if (hours >= 20) return { cls: "rm-k-take", label: t("rosterMonth.cell.take24"), sub: onLeave || t("rosterMonth.cell.takeSub"), a: duty, title: span };
+    if (duty.night) {
+      return { cls: "rm-k-night", label: t("rosterMonth.cell.night"), sub: onLeave || (unitDay?.take === true ? t("rosterMonth.cell.takeSub") : more.trim()), a: duty, title: span };
+    }
+    const acts = unitDay?.activities ?? [];
+    const word = actWord(acts, t);
+    if (word === "" && unitDay?.take === true) {
+      return { cls: "rm-k-take", label: t("rosterMonth.act.take"), sub: onLeave || (duty.mode === "call" ? t("rosterMonth.cell.onCall") : more.trim()), a: duty, title: span };
+    }
+    return {
+      cls: word === "" ? "rm-k-day" : actClass(acts), label: word === "" ? t("rosterMonth.cell.day") : word,
+      sub: onLeave || (duty.mode === "call" ? t("rosterMonth.cell.onCall") : more.trim()), a: duty, title: span,
+    };
+  }
+  if (away !== undefined) return { cls: "rm-k-leave", label: t(`rosterMonth.absence.${away.kind}`, { defaultValue: t("rosterMonth.absence.other") }), sub: "", a: null, title: t("rosterMonth.legend.leave") };
+  const prev = d.assignments.find((a) => a.userId === userId && a.night && a.kind === "duty" && todayIst(new Date(a.endsAt)) === day);
+  if (prev !== undefined) return { cls: "rm-k-rest", label: t("rosterMonth.cell.rest"), sub: "", a: null, title: t("rosterMonth.legend.rest") };
+  return null;
+}
+
+/** The "nobody yet" row: each vacant duty, and which position it is. */
+function vacantCell(d: WireUnitMonth, day: string, t: T): Cell | null {
+  const holes = d.assignments.filter((a) => a.userId === null && a.istDate === day && a.kind !== "off");
+  if (holes.length === 0) return null;
+  const a = holes[0]!;
+  const pos = t(`rosterMonth.posShort.${a.positionKey}`, { defaultValue: a.positionKey });
+  return {
+    cls: "rm-k-vacant", label: a.night ? t("rosterMonth.cell.night") : t("rosterMonth.cell.day"),
+    sub: holes.length > 1 ? `${pos} +${String(holes.length - 1)}` : pos, a,
+    title: t("rosterMonth.vacantTitle", { position: t(`rosterOnNow.position.${a.positionKey}`, { defaultValue: a.positionKey }) }),
+  };
+}
+
+/** A finding as a sentence: the rule's own template, the person, the day, and the numbers it carries. */
+function sentence(f: WireMonthFinding, t: T, lang: string): string {
+  const p = f.params;
+  const num = (k: string): string => (typeof p[k] === "number" ? String(p[k]) : "");
+  return t(`rosterMonth.rule.${f.ruleKey}`, {
+    defaultValue: t("rosterMonth.rule.other", { rule: f.ruleKey, name: f.name ?? "" }),
+    name: f.name ?? t("rosterMonth.someone"),
+    day: f.istDate === null ? "" : dayName(f.istDate, lang),
+    restHours: num("restHours"), minHours: num("minHours"), hours: num("hours"), maxHours: num("maxHours"),
+    present: num("present"), minCount: num("minCount"), oneInN: num("oneInN"), gapDays: num("gapDays"),
+  });
+}
+
+type Sorted = { key: string; text: string; when: string | null; assignmentId: string; prevUserId: string | null; prevName: string | null };
 
 export function RosterMonth({ team, month }: Props): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   const qc = useQueryClient();
   const [teamId, setTeamId] = useState<string | undefined>(team);
   const [ym, setYm] = useState<string>(month ?? thisMonthIst());
   const [picked, setPicked] = useState<WireMonthAssignment | null>(null);
+  // A phone opens on one day — a list, one line per person — rather than a grid it must scroll.
+  const [zoom, setZoom] = useState<Zoom>(() => (typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches ? "day" : "weeks"));
+  const [startIdx, setStartIdx] = useState<number | null>(null);
+  const [sorted, setSorted] = useState<Sorted[]>([]);
+  const [moved, setMoved] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   const units = useQuery({ queryKey: ["roster", "units"], queryFn: fetchRosterUnits });
   const firstUnit = units.data?.[0]?.units[0]?.teamId;
@@ -46,44 +170,117 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
     queryFn: () => fetchUnitMonth(unitId!, ym),
     enabled: unitId !== undefined && /^\d{4}-\d{2}$/.test(ym),
   });
+  useEffect(() => { setStartIdx(null); setSorted([]); setMoved(false); setRefusal(null); }, [unitId, ym]);
 
-  const settle = (next: WireUnitMonth): void => { qc.setQueryData(key, next); setPicked(null); };
-  const draft = useMutation({ mutationFn: () => draftUnitMonth(unitId!, ym), onSuccess: settle });
-  const slot = useMutation({ mutationFn: (v: { assignmentId: string; userId: string | null }) => editRosterSlot(v.assignmentId, v.userId), onSuccess: settle });
+  const settle = (next: WireUnitMonth): void => { qc.setQueryData(key, next); setPicked(null); setMoved(false); setRefusal(null); };
+  const onFail = (e: unknown): void => {
+    const code = rosterErrorCode(e);
+    if (isStaleWrite(e)) {
+      void qc.invalidateQueries({ queryKey: key });
+      setPicked(null);
+      setSorted([]);
+      if (code === null || MOVED.has(code)) { setMoved(true); setRefusal(null); return; }
+    }
+    setMoved(false);
+    setRefusal(rosterErrorText(e, t));
+  };
+  const draft = useMutation({ mutationFn: () => draftUnitMonth(unitId!, ym), onSuccess: settle, onError: onFail });
+  const slot = useMutation({
+    mutationFn: (v: { assignmentId: string; userId: string | null; sorted?: Sorted; undo?: string }) => editRosterSlot(v.assignmentId, v.userId),
+    onSuccess: (next, v) => {
+      settle(next);
+      if (v.sorted !== undefined) setSorted((s) => [...s.filter((x) => x.key !== v.sorted!.key), v.sorted!]);
+      if (v.undo !== undefined) setSorted((s) => s.filter((x) => x.key !== v.undo));
+    },
+    onError: onFail,
+  });
   const accept = useMutation({
     mutationFn: (v: { f: WireMonthFinding; reason: string }) =>
       acceptRosterFinding(m.data!.period!.periodId, { ruleKey: v.f.ruleKey, assignmentId: v.f.assignmentId, userId: v.f.userId }, v.reason),
-    onSuccess: settle,
+    onSuccess: settle, onError: onFail,
   });
   const publish = useMutation({
     mutationFn: () => publishUnitMonth(m.data!.period!.periodId, m.data!.period!.contentHash),
-    onSuccess: settle,
+    onSuccess: settle, onError: onFail,
   });
-  const failure = [draft, slot, accept, publish].find((x) => x.isError)?.error;
   const busy = [draft, slot, accept, publish].some((x) => x.isPending);
 
   const d = m.data;
-  const monthName = (x: string): string => t(`rosterMonth.monthName.${String(Number(x.slice(5, 7)))}`, { year: x.slice(0, 4) });
+  const unitShort = d === undefined ? "" : shortUnit(d.unit.name, d.unit.departmentName);
+  const mName = d === undefined ? "" : monthLong(d.month, lang);
+  const today = todayIst(new Date());
+
+  // The days in view: two weeks from this week's Monday (or the 1st), the whole month, or one day.
+  const defaultStart = useMemo(() => {
+    if (d === undefined) return 0;
+    const i = d.days.indexOf(today);
+    if (i < 0) return 0;
+    if (zoom === "day") return i;
+    return Math.max(0, i - ((weekday(today) + 6) % 7));
+  }, [d, today, zoom]);
+  const start = startIdx ?? defaultStart;
+  const span = zoom === "month" ? (d?.days.length ?? 0) : zoom === "day" ? 1 : 14;
+  const first = zoom === "month" ? 0 : Math.min(start, Math.max(0, (d?.days.length ?? 0) - span));
+  const shown = d === undefined ? [] : d.days.slice(first, first + span);
+  const step = zoom === "day" ? 1 : 7;
+
+  const todayDay = d?.unitDays.find((u) => u.istDate === today);
+  const pill = d === undefined || todayDay === undefined ? undefined : {
+    tag: t("doctorDesk.today"),
+    text: [unitShort, actWord(todayDay.activities, t) === "" ? null : t("rosterMonth.pillDay", { act: actWord(todayDay.activities, t) }), todayDay.take ? t("rosterMonth.pillTake") : null]
+      .filter((x) => x !== null).join(" · "),
+  };
+
+  const title = d === undefined ? t("rosterMonth.title") : d.period === null
+    ? t("rosterMonth.titleEmpty", { month: mName, unit: unitShort })
+    : d.period.status === "published"
+      ? t("rosterMonth.titlePublished", { month: mName, unit: unitShort })
+      : t("rosterMonth.titleDraft", { month: mName, unit: unitShort });
 
   return (
-    <div className="space-y-4 p-4" data-testid="roster-month">
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="min-w-0 flex-1 space-y-1">
-          <h1 className="text-xl font-semibold">
-            {d === undefined ? t("rosterMonth.title") : d.period === null
-              ? t("rosterMonth.titleEmpty", { month: monthName(d.month), unit: d.unit.name })
-              : d.period.status === "published"
-                ? t("rosterMonth.titlePublished", { month: monthName(d.month), unit: d.unit.name })
-                : t("rosterMonth.titleDraft", { month: monthName(d.month), unit: d.unit.name })}
-          </h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">{t("rosterMonth.intro")}</p>
-          {d !== undefined && !d.unit.confirmed && (
-            <p role="note" className="max-w-3xl rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm" data-testid="unit-unconfirmed">{t("rosterMonth.unconfirmed")}</p>
-          )}
+    <DoctorDeskFrame
+      active="roster" testId="roster-month"
+      context={d === undefined ? t("doctorDesk.contextBare") : t("doctorDesk.context", { dept: d.unit.departmentName, unit: unitShort })}
+      pill={pill}
+      rail={d === undefined ? undefined : (
+        <Rail
+          d={d} busy={busy} sorted={sorted} mName={mName} unitShort={unitShort}
+          onVacate={(f, a) => slot.mutate({
+            assignmentId: a.assignmentId, userId: null,
+            sorted: { key: `${f.ruleKey}|${a.assignmentId}`, text: sentence(f, t, lang), when: f.istDate, assignmentId: a.assignmentId, prevUserId: a.userId, prevName: a.name },
+          })}
+          onUndo={(s) => slot.mutate({ assignmentId: s.assignmentId, userId: s.prevUserId, undo: s.key })}
+          onPick={(a) => { setPicked(a); setZoom("day"); setStartIdx(d.days.indexOf(a.istDate)); }}
+          onAccept={(f, reason) => accept.mutate({ f, reason })}
+          onPublish={() => publish.mutate()}
+        />
+      )}
+      ask={d === undefined ? undefined : (
+        <AskBar id="ask-roster" placeholder={t("rosterMonth.askPlaceholder")} fallback={(q) => answerFromMonth(q, d, t, lang)} terms={() => d.people.map((p) => p.name)} />
+      )}
+    >
+      <div className="rm-title">
+        <div className="rm-title-text">
+          <h1 className="ddf-h1">{title}</h1>
+          <div className="ddf-dim">{t("rosterMonth.intro")}</div>
         </div>
-        <label className="flex flex-col text-xs text-muted-foreground">
+        {d !== undefined && d.period !== null && (
+          <div className="ddf-seg rm-zoom" role="group" aria-label={t("rosterMonth.zoom")}>
+            {(["weeks", "month", "day"] as const).map((z) => (
+              <button key={z} type="button" aria-pressed={zoom === z} className={zoom === z ? "on" : ""} data-testid={`zoom-${z}`}
+                onClick={() => { setZoom(z); setStartIdx(null); }}>{t(`rosterMonth.zoomTo.${z}`)}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rm-pick">
+        <label>
           {t("rosterMonth.unit")}
-          <select className="h-9 rounded border px-2 text-sm text-foreground" value={unitId ?? ""} onChange={(e) => { setTeamId(e.target.value); setPicked(null); }} data-testid="unit-picker">
+          <select
+            value={d?.unit.teamId ?? unitId ?? ""} data-testid="unit-picker"
+            onChange={(e) => { setTeamId(e.target.value); setPicked(null); }}
+          >
             {(units.data ?? []).map((dep) => (
               <optgroup key={dep.departmentId} label={dep.name}>
                 {dep.units.map((u) => <option key={u.teamId} value={u.teamId}>{u.name}</option>)}
@@ -91,107 +288,141 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
             ))}
           </select>
         </label>
-        <label className="flex flex-col text-xs text-muted-foreground">
+        <label>
           {t("rosterMonth.month")}
-          <input type="month" className="h-9 rounded border px-2 text-sm text-foreground" value={ym} onChange={(e) => { setYm(e.target.value); setPicked(null); }} data-testid="month-picker" />
+          <input type="month" value={ym} onChange={(e) => { setYm(e.target.value); setPicked(null); }} data-testid="month-picker" />
         </label>
+        {d !== undefined && d.period !== null && zoom !== "month" && (
+          <span className="rm-pager">
+            <button type="button" aria-label={t("rosterMonth.earlier")} disabled={first <= 0} onClick={() => setStartIdx(Math.max(0, first - step))}>‹</button>
+            <span data-testid="pager-range">{shown.length === 1 ? dayName(shown[0]!, lang) : shown.length > 0 ? `${dayShort(shown[0]!, lang)} – ${dayName(shown[shown.length - 1]!, lang)}` : ""}</span>
+            <button type="button" aria-label={t("rosterMonth.later")} disabled={first + span >= d.days.length} onClick={() => setStartIdx(Math.min(d.days.length - span, first + step))}>›</button>
+          </span>
+        )}
       </div>
 
-      {(units.isError || m.isError) && <p role="alert" className="text-sm text-red-700">{rosterErrorText(units.error ?? m.error, t)}</p>}
-      {failure !== undefined && failure !== null && <p role="alert" className="text-sm text-red-700" data-testid="month-error">{rosterErrorText(failure, t)}</p>}
-      {units.data !== undefined && units.data.length === 0 && <p className="text-sm text-muted-foreground">{t("rosterMonth.noUnits")}</p>}
-      {m.isPending && unitId !== undefined && <p className="text-sm text-muted-foreground">{t("rosterOnNow.loading")}</p>}
+      {(units.isError || m.isError) && <p role="alert" className="ro-alert">{rosterErrorText(units.error ?? m.error, t)}</p>}
+      {moved && <p role="status" className="rm-moved" data-testid="month-moved">{t("rosterMonth.moved")}</p>}
+      {refusal !== null && <p role="alert" className="ro-alert" data-testid="month-error">{refusal}</p>}
+      {units.data !== undefined && units.data.length === 0 && <p className="ddf-dim">{t("rosterMonth.noUnits")}</p>}
+      {m.isPending && unitId !== undefined && <p className="ddf-dim">{t("rosterOnNow.loading")}</p>}
+      {d !== undefined && !d.unit.confirmed && <p role="note" className="rm-unconfirmed" data-testid="unit-unconfirmed">{t("rosterMonth.unconfirmed")}</p>}
 
       {d !== undefined && d.period === null && (
-        <section className="space-y-2 rounded border p-4" data-testid="no-draft">
-          <p>{t("rosterMonth.notDrafted", { month: monthName(d.month), unit: d.unit.name })}</p>
+        <section className="ddf-card rm-empty" data-testid="no-draft">
+          <p style={{ margin: 0 }}>{t("rosterMonth.notDrafted", { month: mName, unit: unitShort })}</p>
           {d.youMay.draft
-            ? <button type="button" className="rounded bg-emerald-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={busy} onClick={() => draft.mutate()}>{t("rosterMonth.draftIt")}</button>
-            : <p className="text-sm text-muted-foreground">{t("rosterMonth.cannotDraft")}</p>}
+            ? <button type="button" className="ddf-btn ddf-btn-pri" disabled={busy} onClick={() => draft.mutate()}>{t("rosterMonth.draftIt")}</button>
+            : <p className="ddf-dim" style={{ margin: 0 }}>{t("rosterMonth.cannotDraft")}</p>}
         </section>
       )}
 
       {d !== undefined && d.period !== null && (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 space-y-4">
-            <Legend />
-            <Grid d={d} picked={picked} onPick={d.youMay.edit ? setPicked : undefined} />
-            {picked !== null && d.youMay.edit && (
-              <SlotEditor d={d} a={picked} busy={busy} onSave={(userId) => slot.mutate({ assignmentId: picked.assignmentId, userId })} onClose={() => setPicked(null)} />
-            )}
-            <Fairness d={d} />
+        <>
+          <Legend />
+          <Grid d={d} days={shown} zoom={zoom} today={today} picked={picked} onPick={d.youMay.edit ? setPicked : undefined} />
+          {picked !== null && d.youMay.edit && (
+            <SlotEditor key={picked.assignmentId} d={d} a={picked} busy={busy} onSave={(userId) => slot.mutate({ assignmentId: picked.assignmentId, userId })} onClose={() => setPicked(null)} />
+          )}
+          <div className="rm-lower">
+            <Fairness d={d} mName={mName} />
           </div>
-          <BeforeYouPublish
-            d={d} busy={busy}
-            onVacate={(assignmentId) => slot.mutate({ assignmentId, userId: null })}
-            onAccept={(f, reason) => accept.mutate({ f, reason })}
-            onPublish={() => publish.mutate()}
-            monthName={monthName(d.month)}
-          />
-        </div>
+        </>
       )}
-    </div>
+    </DoctorDeskFrame>
   );
 }
 
 function Legend(): React.ReactElement {
   const { t } = useTranslation();
+  const items: [string, string][] = [
+    ["rm-k-opd", "opd"], ["rm-k-ot", "ot"], ["rm-k-ward", "ward"], ["rm-k-take", "take24"], ["rm-k-night", "night"],
+    ["rm-k-rest", "rest"], ["rm-k-teach", "teach"], ["rm-k-off", "off"], ["rm-k-leave", "leave"], ["rm-k-none", "notPosted"],
+    ["rm-k-vacant", "vacant"], ["rm-bad", "needsYou"],
+  ];
   return (
-    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-5 rounded bg-emerald-100" />{t("rosterMonth.legend.day")}</span>
-      <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-5 rounded bg-slate-900" />{t("rosterMonth.legend.night")}</span>
-      <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-5 rounded border border-dashed border-red-700" />{t("rosterMonth.legend.vacant")}</span>
-      <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-5 rounded outline outline-2 outline-red-700" />{t("rosterMonth.legend.needsYou")}</span>
+    <div className="rm-legend" data-testid="month-legend">
+      {items.map(([cls, k]) => (
+        <span key={k}><span className={`rm-sw ${cls}`} style={cls === "rm-k-off" || cls === "rm-bad" ? { background: "#ffffff", border: cls === "rm-k-off" ? "1px solid #dfe7e1" : undefined } : undefined} />{t(`rosterMonth.legend.${k}`)}</span>
+      ))}
     </div>
   );
 }
 
-const VACANT = "__vacant__";
-
-function Grid({ d, picked, onPick }: { d: WireUnitMonth; picked: WireMonthAssignment | null; onPick?: (a: WireMonthAssignment) => void }): React.ReactElement {
-  const { t } = useTranslation();
+function Grid({ d, days, zoom, today, picked, onPick }: {
+  d: WireUnitMonth; days: string[]; zoom: Zoom; today: string; picked: WireMonthAssignment | null; onPick?: (a: WireMonthAssignment) => void;
+}): React.ReactElement {
+  const { t, i18n } = useTranslation();
   const flagged = new Set(d.findings.filter((f) => f.blocking && f.assignmentId !== null).map((f) => f.assignmentId));
-  const rows = [...d.people.map((p) => ({ id: p.userId, name: p.name, grade: p.grade })), { id: VACANT, name: t("rosterMonth.vacantRow"), grade: "" }];
-  const cellOf = (rowId: string, day: string) => d.assignments.filter((a) => a.istDate === day && (rowId === VACANT ? a.userId === null : a.userId === rowId));
+  const holidays = new Set(d.holidays.map((h) => h.istDate));
+  const people = [...d.people].sort((a, b) => (GRADE_RANK[a.grade] ?? 9) - (GRADE_RANK[b.grade] ?? 9) || a.name.localeCompare(b.name));
+  const hasVacant = d.assignments.some((a) => a.userId === null && a.kind !== "off");
+  const gradeLine = (p: WireUnitMonth["people"][number]): string => {
+    const g = p.grade === "" ? "" : t(`rosterMonth.grade.${p.grade}`, { defaultValue: p.grade });
+    const posting = p.postedTo !== null ? t("rosterMonth.postedTill", { day: dayShort(p.postedTo, i18n.language) })
+      : p.postedFrom !== null ? t("rosterMonth.postedFrom", { day: dayShort(p.postedFrom, i18n.language) }) : "";
+    return [g, posting].filter((x) => x !== "").join(" · ");
+  };
+  const dayCls = (day: string): string => [holidays.has(day) ? "rm-hol" : weekday(day) === 0 ? "rm-sun" : "", day === today ? "rm-today" : ""].join(" ");
+  const box = (c: Cell | null, rowKey: string, day: string): React.ReactElement => {
+    if (c === null) return <div key={day} className={`rm-cell ${dayCls(day)}`} />;
+    const mark = c.a !== null && flagged.has(c.a.assignmentId) ? " rm-bad" : c.a !== null && picked?.assignmentId === c.a.assignmentId ? " rm-picked" : "";
+    // One day has room for the hours; a month column has room for the label and one word.
+    const hours = zoom === "day" && c.a !== null ? c.title : "";
+    const sub = [c.sub, hours].filter((x) => x !== "").join(" · ");
+    const inner = (<><span>{c.label}</span>{sub !== "" && <span className="rm-box-sub">{sub}</span>}</>);
+    return (
+      <div key={day} className={`rm-cell ${dayCls(day)}`}>
+        {onPick !== undefined && c.a !== null && c.a.kind !== "off"
+          ? <button type="button" className={`rm-box ${c.cls}${mark}`} title={c.title} onClick={() => onPick(c.a!)} data-testid={`slot-${c.a.assignmentId}`} aria-label={`${c.label} ${c.sub} ${day}`}>{inner}</button>
+          : <div className={`rm-box ${c.cls}${mark}`} title={c.title} data-testid={c.a !== null ? `slot-${c.a.assignmentId}` : `cell-${rowKey}-${day}`}>{inner}</div>}
+      </div>
+    );
+  };
   return (
-    <section className="overflow-x-auto rounded border" data-testid="month-grid">
-      <table className="text-xs">
-        <thead className="bg-muted/50">
-          <tr>
-            <th className="sticky left-0 bg-muted/50 px-2 py-1 text-left">{t("rosterMonth.unitDay")}</th>
-            {d.days.map((day) => (
-              <th key={day} className={`w-11 px-0.5 py-1 text-center ${weekday(day) === 0 ? "bg-muted" : ""}`}>
-                <div className="font-normal text-muted-foreground">{t(`rosterMonth.dow.${String(weekday(day))}`)}</div>
-                <div className="font-mono">{Number(day.slice(8, 10))}</div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className="border-t" data-testid={`row-${r.id}`}>
-              <td className="sticky left-0 whitespace-nowrap bg-background px-2 py-1">
-                <div className="font-semibold">{r.name}</div>
-                {r.grade !== "" && <div className="text-muted-foreground">{t(`rosterMonth.grade.${r.grade}`, { defaultValue: r.grade })}</div>}
-              </td>
-              {d.days.map((day) => (
-                <td key={day} className="h-10 p-0.5 align-middle">
-                  {cellOf(r.id, day).map((a) => {
-                    const cls = a.userId === null ? "border border-dashed border-red-700 text-red-700"
-                      : a.night ? "bg-slate-900 text-white" : "bg-emerald-100 text-emerald-900";
-                    const mark = flagged.has(a.assignmentId) ? " outline outline-2 outline-red-700" : picked?.assignmentId === a.assignmentId ? " outline outline-2 outline-foreground" : "";
-                    const label = a.night ? t("rosterMonth.cell.night") : t("rosterMonth.cell.day");
-                    return onPick === undefined
-                      ? <div key={a.assignmentId} className={`rounded px-0.5 text-center font-semibold ${cls}${mark}`} title={`${fmtIst(a.startsAt)}–${fmtIst(a.endsAt)}`}>{label}</div>
-                      : <button key={a.assignmentId} type="button" className={`w-full rounded px-0.5 text-center font-semibold ${cls}${mark}`} title={`${fmtIst(a.startsAt)}–${fmtIst(a.endsAt)}`} onClick={() => onPick(a)} data-testid={`slot-${a.assignmentId}`}>{label}</button>;
-                  })}
-                </td>
-              ))}
-            </tr>
+    <section className={`ddf-card rm-grid-card${zoom === "day" ? " rm-oneday" : ""}`} data-testid="month-grid">
+      <div className="rm-scroll">
+        <div className="rm-grid" role="table" aria-label={t("rosterMonth.gridLabel")}>
+          <div className="rm-r rm-r-head" role="row">
+            <div className="rm-who" role="columnheader">{t("rosterMonth.unitDay")}</div>
+            {days.map((day) => {
+              const u = d.unitDays.find((x) => x.istDate === day);
+              const acts = u?.activities ?? [];
+              const word = holidays.has(day) && acts.length === 0 ? t("rosterMonth.act.holiday") : actWord(acts, t) || (weekday(day) === 0 ? "—" : "");
+              return (
+                <div key={day} className={`rm-day ${dayCls(day)}`} role="columnheader" data-testid={`day-${day}`}>
+                  <span className="rm-day-dow">{t(`rosterMonth.dow.${String(weekday(day))}`).toUpperCase()}</span>
+                  <span className="rm-day-date">{dayNum(day)}</span>
+                  <span className={`rm-day-act ${acts.includes("opd") ? "rm-act-opd" : ""}`} style={{ color: acts.includes("opd") ? "#0a5039" : acts.some((a) => a.endsWith("_ot")) ? "#23446f" : holidays.has(day) ? "#8a5a0b" : "#5c6f66" }}>{word}</span>
+                  <span className="rm-day-take">{u?.take === true ? t("rosterMonth.takeMark") : ""}</span>
+                </div>
+              );
+            })}
+          </div>
+          {people.map((p) => (
+            <div key={p.userId} className={`rm-r${p.grade === "senior_resident" || p.grade === "intern" ? " rm-r-alt" : ""}`} role="row" data-testid={`row-${p.userId}`}>
+              <div className="rm-who" role="rowheader">
+                <span className="rm-name">{p.name}</span>
+                <span className="rm-grade">{gradeLine(p)}</span>
+              </div>
+              {days.map((day) => box(cellFor(d, p.userId, day, t), p.userId, day))}
+            </div>
           ))}
-        </tbody>
-      </table>
-      <p className="m-0 border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{t("rosterMonth.gridFoot")}</p>
+          {hasVacant && (
+            <div className="rm-r" role="row" data-testid={`row-${VACANT}`}>
+              <div className="rm-who" role="rowheader">
+                <span className="rm-name" style={{ color: "#b23a30" }}>{t("rosterMonth.vacantRow")}</span>
+                <span className="rm-grade">{t("rosterMonth.vacantRowSub")}</span>
+              </div>
+              {days.map((day) => box(vacantCell(d, day, t), VACANT, day))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="rm-foot">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 14A6 6 0 108 2a6 6 0 000 12zM8 7.2v3.6M8 5v.3" /></svg>
+        <span>{t("rosterMonth.gridFoot")}</span>
+      </div>
     </section>
   );
 }
@@ -199,152 +430,193 @@ function Grid({ d, picked, onPick }: { d: WireUnitMonth; picked: WireMonthAssign
 function SlotEditor({ d, a, busy, onSave, onClose }: {
   d: WireUnitMonth; a: WireMonthAssignment; busy: boolean; onSave: (userId: string | null) => void; onClose: () => void;
 }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [who, setWho] = useState<string>(a.userId ?? VACANT);
   return (
-    <section className="flex flex-wrap items-end gap-3 rounded border border-foreground p-3 text-sm" data-testid="slot-editor">
-      <div className="min-w-0 flex-1">
-        <div className="font-semibold">{t(a.night ? "rosterMonth.editNight" : "rosterMonth.editDay", { day: dayMonthIst(a.istDate), from: fmtIst(a.startsAt), to: fmtIst(a.endsAt) })}</div>
-        <div className="text-muted-foreground">{a.name ?? t("rosterMonth.vacantRow")}</div>
+    <section className="ddf-card-strong rm-editor" data-testid="slot-editor">
+      <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+        <div style={{ fontWeight: 600 }}>{t(a.night ? "rosterMonth.editNight" : "rosterMonth.editDay", { day: dayName(a.istDate, i18n.language), from: fmtIst(a.startsAt), to: fmtIst(a.endsAt) })}</div>
+        <div className="ddf-dim">{a.name ?? t("rosterMonth.vacantTitle", { position: t(`rosterOnNow.position.${a.positionKey}`, { defaultValue: a.positionKey }) })}</div>
       </div>
-      <label className="flex flex-col text-xs text-muted-foreground">
+      <label>
         {t("rosterMonth.who")}
-        <select className="h-9 rounded border px-2 text-sm text-foreground" value={who} onChange={(e) => setWho(e.target.value)}>
+        <select value={who} onChange={(e) => setWho(e.target.value)} data-testid="slot-who">
           <option value={VACANT}>{t("rosterMonth.leaveVacant")}</option>
           {d.people.map((p) => <option key={p.userId} value={p.userId}>{p.name}</option>)}
         </select>
       </label>
-      <button type="button" className="h-9 rounded bg-emerald-800 px-3 font-semibold text-white disabled:opacity-50" disabled={busy || who === (a.userId ?? VACANT)} onClick={() => onSave(who === VACANT ? null : who)}>{t("rosterMonth.save")}</button>
-      <button type="button" className="h-9 rounded border px-3" onClick={onClose}>{t("rosterMonth.cancel")}</button>
+      <button type="button" className="ddf-btn ddf-btn-pri" disabled={busy || who === (a.userId ?? VACANT)} onClick={() => onSave(who === VACANT ? null : who)}>{t("rosterMonth.save")}</button>
+      <button type="button" className="ddf-btn" onClick={onClose}>{t("rosterMonth.cancel")}</button>
     </section>
   );
 }
 
-function Fairness({ d }: { d: WireUnitMonth }): React.ReactElement {
+function Fairness({ d, mName }: { d: WireUnitMonth; mName: string }): React.ReactElement {
   const { t } = useTranslation();
+  // Compared within a grade only: a senior resident's nights are not a junior resident's.
+  const gradeOf = (userId: string): string => d.people.find((p) => p.userId === userId)?.positionKey ?? "";
+  const fewestOf = (userId: string): number => Math.min(...d.fairness.filter((f) => gradeOf(f.userId) === gradeOf(userId)).map((f) => f.nights));
   return (
-    <section className="rounded border p-3 text-sm" data-testid="fairness">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("rosterMonth.fairShare")}</h2>
-      {d.fairness.length === 0 ? <p className="m-0 text-muted-foreground">—</p> : (
-        <ul className="m-0 list-none space-y-0.5 p-0">
-          {d.fairness.map((f) => (
-            <li key={f.userId} className="flex gap-3">
-              <span className="w-48 truncate">{f.name}</span>
-              <span className="font-mono text-muted-foreground">{t("rosterMonth.shareLine", { nights: f.nights, sundays: f.sundays })}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+    <section className="ddf-card rm-share" data-testid="fairness">
+      <h2 className="ddf-cap" style={{ margin: 0 }}>{t("rosterMonth.fairShare", { month: mName })}</h2>
+      {d.fairness.length === 0 ? <span className="ddf-dim">—</span> : d.fairness.map((f) => (
+        <div key={f.userId} className="rm-share-row">
+          <span className="rm-share-name">{f.name}</span>
+          <span className="rm-share-line">{t("rosterMonth.shareLine", { nights: f.nights, sundays: f.sundays })}</span>
+          {f.nights > fewestOf(f.userId) && <span className="ddf-dim">{t("rosterMonth.shareMore", { count: f.nights - fewestOf(f.userId) })}</span>}
+        </div>
+      ))}
     </section>
   );
 }
 
-/** A finding as a sentence: the rule's own template, the person, the day, and the numbers it carries. */
-function sentence(f: WireMonthFinding, t: (k: string, o?: Record<string, unknown>) => string): string {
-  const p = f.params;
-  const num = (k: string): string => (typeof p[k] === "number" ? String(p[k]) : "");
-  return t(`rosterMonth.rule.${f.ruleKey}`, {
-    defaultValue: t("rosterMonth.rule.other", { rule: f.ruleKey, name: f.name ?? "" }),
-    name: f.name ?? t("rosterMonth.someone"),
-    day: f.istDate === null ? "" : dayMonthIst(f.istDate),
-    restHours: num("restHours"), minHours: num("minHours"), hours: num("hours"), maxHours: num("maxHours"),
-    present: num("present"), minCount: num("minCount"), oneInN: num("oneInN"), gapDays: num("gapDays"),
-  });
-}
-
-function BeforeYouPublish({ d, busy, onVacate, onAccept, onPublish, monthName }: {
-  d: WireUnitMonth; busy: boolean; monthName: string;
-  onVacate: (assignmentId: string) => void; onAccept: (f: WireMonthFinding, reason: string) => void; onPublish: () => void;
+function Rail({ d, busy, sorted, mName, unitShort, onVacate, onUndo, onPick, onAccept, onPublish }: {
+  d: WireUnitMonth; busy: boolean; sorted: Sorted[]; mName: string; unitShort: string;
+  onVacate: (f: WireMonthFinding, a: WireMonthAssignment) => void; onUndo: (s: Sorted) => void;
+  onPick: (a: WireMonthAssignment) => void; onAccept: (f: WireMonthFinding, reason: string) => void; onPublish: () => void;
 }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   const published = d.period?.status === "published";
   const { blocking, warnings } = d.counts;
   const countLine = blocking > 0
     ? t("rosterMonth.countMustFix", { count: blocking }) + (warnings > 0 ? ` · ${t("rosterMonth.countLook", { count: warnings })}` : "")
     : warnings > 0 ? t("rosterMonth.countLook", { count: warnings }) : t("rosterMonth.allClear");
-  /** Why publish is disabled — one reason, the first that applies, in the order a person can act on. */
-  const why = published ? null
-    : blocking > 0 ? t("rosterMonth.publishBlocked", { count: blocking })
-      : !d.youMay.publish ? t("rosterMonth.publishNotYours")
-        : null;
+  const why = published ? null : blocking > 0 ? t("rosterMonth.publishBlocked", { count: blocking }) : !d.youMay.publish ? t("rosterMonth.publishNotYours") : null;
+  const care = takenCareOf(d, t, lang, unitShort);
   return (
-    <aside className="h-fit space-y-3 rounded border border-foreground p-3" data-testid="before-you-publish">
-      <div className="flex items-baseline gap-2">
-        <h2 className="flex-1 text-base font-semibold">{t("rosterMonth.beforeYouPublish")}</h2>
-        <span className={`font-mono text-xs font-bold ${blocking > 0 ? "text-red-700" : warnings > 0 ? "text-amber-800" : "text-emerald-800"}`} data-testid="count-line">{countLine}</span>
-      </div>
-      {d.findings.length === 0 ? <p className="text-sm text-emerald-800">{t("rosterMonth.noFindings")}</p> : (
-        <ul className="m-0 list-none space-y-2 p-0">
+    <>
+      {d.period !== null && (
+        <section className="ddf-card-strong rm-pub" data-testid="before-you-publish">
+          <div className="rm-pub-head">
+            <h2>{t("rosterMonth.beforeYouPublish")}</h2>
+            <span className="rm-count" style={{ color: blocking > 0 ? "#b23a30" : warnings > 0 ? "#8a5a0b" : "#0e6b4e" }} data-testid="count-line">{countLine}</span>
+          </div>
+          {d.findings.length === 0 && sorted.length === 0 && <p className="rm-f-text" style={{ color: "#0e6b4e" }}>{t("rosterMonth.noFindings")}</p>}
           {d.findings.map((f, i) => (
-            <FindingCard
-              key={`${f.ruleKey}-${f.assignmentId ?? ""}-${f.userId ?? ""}-${String(i)}`}
-              f={f} d={d} busy={busy} published={published}
-              onVacate={onVacate} onAccept={onAccept}
-            />
+            <FindingCard key={`${f.ruleKey}-${f.assignmentId ?? ""}-${f.userId ?? ""}-${String(i)}`} f={f} d={d} busy={busy} published={published}
+              onVacate={onVacate} onPick={onPick} onAccept={onAccept} />
           ))}
-        </ul>
+          {sorted.map((s) => (
+            <div key={s.key} className="rm-f rm-f-done" data-testid="finding-sorted">
+              <div className="rm-f-top">
+                <span className="rm-tag rm-tag-done">{t("rosterMonth.tag.sorted")}</span>
+                {s.when !== null && <span className="rm-f-when">{dayName(s.when, lang)}</span>}
+              </div>
+              <p className="rm-f-text">{s.text}</p>
+              <div className="rm-done">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8.5l3 3 7-7.5" /></svg>
+                <span>{t("rosterMonth.doneVacated", { name: s.prevName ?? t("rosterMonth.someone") })}</span>
+                {!published && d.youMay.edit && <button type="button" className="rm-undo" disabled={busy} onClick={() => onUndo(s)} data-testid="undo">{t("rosterMonth.undo")}</button>}
+              </div>
+            </div>
+          ))}
+          {published ? (
+            <div className="rm-published" data-testid="published">
+              <strong>{t("rosterMonth.publishedLine", { month: mName, unit: unitShort, version: d.period.version })}</strong>
+              <span>{t("rosterMonth.publishedNote")}</span>
+            </div>
+          ) : (
+            <>
+              <button type="button" data-testid="publish" className="rm-publish" disabled={why !== null || busy} aria-describedby="publish-why" onClick={onPublish}>
+                {why === null ? t("rosterMonth.publish", { month: mName, unit: unitShort })
+                  : blocking > 0 ? t("rosterMonth.stopsPublish", { count: blocking }) : t("rosterMonth.cannotPublish")}
+              </button>
+              {why !== null && <p id="publish-why" className="rm-why" data-testid="publish-why">{why}</p>}
+            </>
+          )}
+        </section>
       )}
-      {published ? (
-        <div className="rounded bg-emerald-50 p-3 text-emerald-900" data-testid="published">
-          <div className="font-semibold">{t("rosterMonth.publishedLine", { month: monthName, unit: d.unit.name, version: d.period?.version ?? 1 })}</div>
-          <div className="text-sm">{t("rosterMonth.publishedNote")}</div>
-        </div>
-      ) : (
-        <>
-          <button
-            type="button" data-testid="publish"
-            className={`h-11 w-full rounded font-bold ${why === null ? "bg-emerald-800 text-white" : "cursor-not-allowed bg-muted text-muted-foreground"}`}
-            disabled={why !== null || busy}
-            aria-describedby="publish-why"
-            onClick={onPublish}
-          >
-            {why === null ? t("rosterMonth.publish", { month: monthName, unit: d.unit.name }) : t("rosterMonth.cannotPublish")}
-          </button>
-          {why !== null && <p id="publish-why" className="m-0 text-sm text-muted-foreground" data-testid="publish-why">{why}</p>}
-        </>
+      {care.length > 0 && (
+        <section className="ddf-card rm-care" data-testid="taken-care-of">
+          <h2>{t("rosterMonth.takenCareOf")}</h2>
+          <div className="rm-care-list">{care.map((c) => <span key={c}>{c}</span>)}</div>
+        </section>
       )}
-    </aside>
+    </>
   );
 }
 
-function FindingCard({ f, d, busy, published, onVacate, onAccept }: {
+function FindingCard({ f, d, busy, published, onVacate, onPick, onAccept }: {
   f: WireMonthFinding; d: WireUnitMonth; busy: boolean; published: boolean;
-  onVacate: (assignmentId: string) => void; onAccept: (f: WireMonthFinding, reason: string) => void;
+  onVacate: (f: WireMonthFinding, a: WireMonthAssignment) => void; onPick: (a: WireMonthAssignment) => void;
+  onAccept: (f: WireMonthFinding, reason: string) => void;
 }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [reasoning, setReasoning] = useState(false);
   const [reason, setReason] = useState("");
-  const tone = f.accepted !== null ? "border-emerald-200 bg-emerald-50"
-    : f.blocking ? "border-red-200 bg-red-50" : f.severity === "warn" ? "border-amber-200 bg-amber-50" : "border-slate-200";
-  const tag = f.accepted !== null ? t("rosterMonth.tag.accepted")
-    : f.blocking ? t("rosterMonth.tag.mustFix") : f.severity === "warn" ? t("rosterMonth.tag.look") : t("rosterMonth.tag.note");
-  // The one-tap fix the roster supports for a finding about ONE duty: leave that duty vacant.
-  const canVacate = !published && d.youMay.edit && f.assignmentId !== null && f.accepted === null && f.severity !== "info"
-    && d.assignments.some((a) => a.assignmentId === f.assignmentId && a.userId !== null);
-  const canAccept = !published && d.youMay.acceptWarning && f.severity === "warn" && f.accepted === null;
+  const a = f.assignmentId === null ? undefined : d.assignments.find((x) => x.assignmentId === f.assignmentId);
+  const kind = f.accepted !== null ? "done" : f.blocking ? "stop" : f.severity === "warn" ? "look" : "note";
+  const tag = f.accepted !== null ? t("rosterMonth.tag.accepted") : f.blocking ? t("rosterMonth.tag.mustFix") : f.severity === "warn" ? t("rosterMonth.tag.look") : t("rosterMonth.tag.note");
+  const open = !published && f.accepted === null && f.severity !== "info";
+  const canVacate = open && d.youMay.edit && a !== undefined && a.userId !== null;
+  const canPick = open && d.youMay.edit && a !== undefined;
+  // Only a WARNING is accepted with a reason here; a must-fix is fixed, never signed away on this screen.
+  const canAccept = open && d.youMay.acceptWarning && f.severity === "warn" && !f.blocking;
   return (
-    <li className={`space-y-2 rounded border p-2 text-sm ${tone}`} data-testid={`finding-${f.ruleKey}`}>
-      <div className="flex items-center gap-2 text-xs">
-        <span className="rounded bg-foreground/10 px-1.5 font-bold tracking-wide">{tag}</span>
-        {f.istDate !== null && <span className="text-muted-foreground">{dayMonthIst(f.istDate)}</span>}
+    <div className={`rm-f rm-f-${kind}`} data-testid={`finding-${f.ruleKey}`}>
+      <div className="rm-f-top">
+        <span className={`rm-tag rm-tag-${kind}`}>{tag}</span>
+        {f.istDate !== null && <span className="rm-f-when">{dayName(f.istDate, i18n.language)}</span>}
       </div>
-      <p className="m-0">{sentence(f, t)}</p>
-      {f.accepted !== null && (
-        <p className="m-0 text-xs text-emerald-900">{t("rosterMonth.acceptedBy", { name: f.accepted.byName, reason: f.accepted.reason })}</p>
-      )}
-      {(canVacate || canAccept) && (
-        <div className="flex flex-wrap gap-2">
-          {canVacate && <button type="button" className="min-h-8 rounded bg-emerald-800 px-3 text-xs font-semibold text-white disabled:opacity-50" disabled={busy} onClick={() => onVacate(f.assignmentId!)}>{t("rosterMonth.fixVacate")}</button>}
-          {canAccept && !reasoning && <button type="button" className="min-h-8 rounded border bg-background px-3 text-xs" onClick={() => setReasoning(true)}>{t("rosterMonth.acceptWhy")}</button>}
+      <p className="rm-f-text">{sentence(f, t, i18n.language)}</p>
+      {f.accepted !== null && <p className="rm-f-text" style={{ fontSize: 12, color: "#0a5039" }}>{t("rosterMonth.acceptedBy", { name: f.accepted.byName, reason: f.accepted.reason })}</p>}
+      {(canVacate || canPick || canAccept) && !reasoning && (
+        <div className="rm-f-acts">
+          {canVacate && <button type="button" className="ddf-btn ddf-btn-pri" disabled={busy} onClick={() => onVacate(f, a)}>{t("rosterMonth.fixVacate", { name: a.name ?? "" })}</button>}
+          {canPick && <button type="button" className="ddf-btn" disabled={busy} onClick={() => onPick(a)}>{t("rosterMonth.pickOther")}</button>}
+          {canAccept && <button type="button" className="ddf-btn" onClick={() => setReasoning(true)}>{t("rosterMonth.acceptWhy")}</button>}
         </div>
       )}
       {canAccept && reasoning && (
-        <div className="flex gap-2">
-          <label className="sr-only" htmlFor={`reason-${f.ruleKey}-${f.assignmentId ?? f.userId ?? ""}`}>{t("rosterMonth.reason")}</label>
-          <input id={`reason-${f.ruleKey}-${f.assignmentId ?? f.userId ?? ""}`} className="h-8 min-w-0 flex-1 rounded border px-2 text-xs" placeholder={t("rosterMonth.reason")} value={reason} onChange={(e) => setReason(e.target.value)} />
-          <button type="button" className="h-8 rounded bg-emerald-800 px-3 text-xs font-semibold text-white disabled:opacity-50" disabled={busy || reason.trim() === ""} onClick={() => onAccept(f, reason.trim())}>{t("rosterMonth.accept")}</button>
+        <div className="rm-f-reason">
+          <label className="sr" htmlFor={`reason-${f.ruleKey}-${f.assignmentId ?? f.userId ?? ""}`}>{t("rosterMonth.reason")}</label>
+          <input id={`reason-${f.ruleKey}-${f.assignmentId ?? f.userId ?? ""}`} placeholder={t("rosterMonth.reason")} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <button type="button" className="ddf-btn ddf-btn-pri" disabled={busy || reason.trim() === ""} onClick={() => onAccept(f, reason.trim())}>{t("rosterMonth.accept")}</button>
         </div>
       )}
-    </li>
+    </div>
   );
+}
+
+/** "Already taken care of" — only what the month's own data says: holidays, Sunday takes, postings. */
+export function takenCareOf(d: WireUnitMonth, t: T, lang: string, unitShort: string): string[] {
+  const out: string[] = [];
+  for (const p of d.people) {
+    if (p.postedTo !== null) out.push(t("rosterMonth.care.postingEnds", { name: p.name, day: dayShort(p.postedTo, lang) }));
+    if (p.postedFrom !== null) out.push(t("rosterMonth.care.postingStarts", { name: p.name, day: dayShort(p.postedFrom, lang) }));
+  }
+  for (const h of d.holidays) {
+    out.push(t("rosterMonth.care.holiday", {
+      day: dayName(h.istDate, lang), kind: t(`rosterMonth.holidayKind.${h.kind}`, { defaultValue: h.kind }),
+      pattern: t(`rosterMonth.holidayPattern.${h.pattern}`, { defaultValue: h.pattern }),
+    }));
+  }
+  const sundays = d.unitDays.filter((u) => u.take && weekday(u.istDate) === 0).map((u) => dayShort(u.istDate, lang));
+  if (sundays.length > 0) out.push(t("rosterMonth.care.sundayTake", { unit: unitShort, days: sundays.join(", ") }));
+  return out;
+}
+
+/**
+ * THIS SCREEN'S OWN ANSWERER — "who is free on the 14th?", "kal raat kaun hai": the day named by a
+ * number (or today / tomorrow / kal), answered from the grid on the screen.
+ */
+export function answerFromMonth(question: string, d: WireUnitMonth, t: T, lang: string): string | null {
+  const q = question.toLowerCase();
+  const n = /\b(\d{1,2})(?:st|nd|rd|th)?\b/.exec(q);
+  const today = todayIst(new Date());
+  let day: string | undefined;
+  if (n !== null) day = d.days.find((x) => dayNum(x) === Number(n[1]));
+  else if (/\b(tomorrow|kal)\b/.test(q)) day = todayIst(new Date(Date.now() + 86_400_000));
+  else if (/\b(today|aaj|tonight)\b/.test(q)) day = today;
+  if (day === undefined || !d.days.includes(day)) return null;
+  const on = (night: boolean): string => d.assignments.filter((a) => a.istDate === day && a.kind === "duty" && a.night === night)
+    .map((a) => a.name ?? t("rosterMonth.vacantRow")).join(", ") || "—";
+  const away = d.leave.filter((l) => l.from <= day! && day! <= l.to).map((l) => d.people.find((p) => p.userId === l.userId)?.name ?? l.userId);
+  const busy = new Set(d.assignments.filter((a) => a.istDate === day && a.userId !== null).map((a) => a.userId));
+  const free = d.people.filter((p) => !busy.has(p.userId) && !away.includes(p.name) && cellFor(d, p.userId, day!, t)?.cls !== "rm-k-rest" && cellFor(d, p.userId, day!, t)?.cls !== "rm-k-none").map((p) => p.name);
+  return t("rosterMonth.answerDay", {
+    day: dayName(day, lang), night: on(true), dayDuty: on(false),
+    away: away.length === 0 ? "—" : away.join(", "), free: free.length === 0 ? "—" : free.join(", "),
+  });
 }

@@ -7,6 +7,10 @@ import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
 import { seedRosterPositions } from "./masters";
 import { seedRosterRules } from "./rules";
 import { addMembership } from "./memberships";
+import { recordAbsence } from "./absences";
+import { declareHoliday, publishCycle } from "./calendar";
+import { newId } from "@hmis/contracts";
+import { rosterCycleEntries, rosterCycles } from "../../kernel/db/schema";
 import { RosterError } from "./errors";
 import {
   acceptUnitFinding, draftUnitMonth, editSlot, monthWindow, publishUnitMonth, rosterUnits, unitMonth,
@@ -88,6 +92,49 @@ describe("roster — the unit's month (20-U U5b)", () => {
     expect(morning).toBeDefined();
     return { night, morning };
   };
+
+  it("the month carries the unit's own days, declared holidays, approved leave and posting dates — and no leave reason", async () => {
+    // A two-day cycle for this unit: day 0 is OPD and take, day 1 is theatre.
+    const cycleId = newId();
+    await db.insert(rosterCycles).values({ id: cycleId, departmentId: MED, cycleDays: 2, anchorIstDate: "2026-10-01", version: 1, createdBy: "t", updatedBy: "t" });
+    await db.insert(rosterCycleEntries).values([
+      { id: newId(), cycleId, dayIndex: 0, teamId: TEAM, activity: "take" as const, startMinute: 480, durationMinutes: 1440, createdBy: "t", updatedBy: "t" },
+      { id: newId(), cycleId, dayIndex: 0, teamId: TEAM, activity: "opd" as const, startMinute: 540, durationMinutes: 240, createdBy: "t", updatedBy: "t" },
+      { id: newId(), cycleId, dayIndex: 1, teamId: TEAM, activity: "take" as const, startMinute: 480, durationMinutes: 1440, createdBy: "t", updatedBy: "t" },
+      { id: newId(), cycleId, dayIndex: 1, teamId: TEAM, activity: "elective_ot" as const, startMinute: 540, durationMinutes: 480, createdBy: "t", updatedBy: "t" },
+    ]);
+    await withTx(db, (tx) => publishCycle(tx, ms, cycleId, "2026-10-01"));
+    await withTx(db, (tx) => declareHoliday(tx, ms, { istDate: "2026-10-20", kind: "gazetted", pattern: "opd_off_ot_proceeds" }));
+    await withTx(db, (tx) => recordAbsence(tx, ms, {
+      userId: JRS[0]!, kind: "CL", startsAt: at("2026-10-14T00:00"), endsAt: at("2026-10-17T00:00"), reason: "family wedding",
+    }));
+    const INTERN = "01USERINTERN0000000000001";
+    const LEAVER = "01USERLEAVER0000000000001";
+    await db.insert(users).values([
+      { id: INTERN, username: "intern", fullName: "Dr. Ritu Singh", staffCode: "EMP-IN1", passwordHash: "x" },
+      { id: LEAVER, username: "leaver", fullName: "Dr. Farhan Ali", staffCode: "EMP-LV1", passwordHash: "x" },
+    ]);
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: INTERN, positionKey: "intern", grade: "intern", roleInTeam: "intern", kind: "parent", startsAt: at("2026-10-16T00:00"),
+    }));
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: LEAVER, positionKey: "intern", grade: "intern", roleInTeam: "intern", kind: "parent",
+      startsAt: at("2026-09-01T00:00"), endsAt: at("2026-10-16T00:00"),
+    }));
+
+    const m = await unitMonth(db, ms, TEAM, "2026-10");
+    expect(m.unitDays).toHaveLength(31);
+    expect(m.unitDays[0]).toEqual({ istDate: "2026-10-01", activities: ["opd"], take: true, overlay: false });
+    expect(m.unitDays[1]).toEqual({ istDate: "2026-10-02", activities: ["elective_ot"], take: true, overlay: false });
+    expect(m.holidays).toEqual([{ istDate: "2026-10-20", kind: "gazetted", pattern: "opd_off_ot_proceeds" }]);
+    expect(m.leave).toEqual([{ userId: JRS[0], kind: "CL", from: "2026-10-14", to: "2026-10-16" }]);
+    expect(JSON.stringify(m.leave)).not.toContain("wedding");
+    const ritu = m.people.find((p) => p.userId === INTERN);
+    const farhan = m.people.find((p) => p.userId === LEAVER);
+    expect(ritu).toMatchObject({ grade: "intern", postedFrom: "2026-10-16", postedTo: null });
+    expect(farhan).toMatchObject({ grade: "intern", postedFrom: null, postedTo: "2026-10-15" });
+    expect(m.people.find((p) => p.userId === JRS[1])).toMatchObject({ postedFrom: null, postedTo: null });
+  });
 
   it("an IST month is 1st 00:00 IST to the next 1st, with one column per day", () => {
     const w = monthWindow("2026-10");

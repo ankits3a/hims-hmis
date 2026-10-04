@@ -7,7 +7,8 @@ import { api, ApiError } from "./api";
  */
 export type RosterSource = "published" | "pattern" | "static";
 
-export type WireBoardPerson = { userId: string; name: string; positionKey: string; positionLabel: string; cadre: string };
+/** `phone` — D6: only a person in the building now carries one (null when none is on file). */
+export type WireBoardPerson = { userId: string; name: string; positionKey: string; positionLabel: string; cadre: string; phone: string | null };
 export type WireBoardRung = { userId: string | null; name: string | null; positionKey: string; positionLabel: string; callTier: number | null };
 export type WireBoardUnit = { teamId: string; code: string; name: string; startsAt: string; endsAt: string };
 export type WireBoardDepartment = {
@@ -33,14 +34,29 @@ export type WireOnNowBoard = {
 export const fetchOnNowBoard = (at?: string) =>
   api<WireOnNowBoard>("GET", `/roster/on-now${at === undefined ? "" : `?at=${encodeURIComponent(at)}`}`);
 
-/** A refusal as a sentence: 403 is the locale's own; anything else is the server's message. */
-export function rosterErrorText(e: unknown, t: (key: string) => string): string {
-  if (e instanceof ApiError) {
-    if (e.status === 403) return t("rosterOnNow.forbidden");
-    const body = e.body as { message?: unknown } | undefined;
-    return body !== undefined && typeof body.message === "string" ? body.message : e.message;
-  }
-  return e instanceof Error ? e.message : String(e);
+/** The roster's refusal `code` (`roster-http.ts` ships `{ statusCode, message, code }`), or null. */
+export function rosterErrorCode(e: unknown): string | null {
+  if (!(e instanceof ApiError)) return null;
+  const body = e.body as { code?: unknown } | undefined;
+  return body !== undefined && typeof body.code === "string" ? body.code : null;
+}
+
+/**
+ * A refusal as a sentence IN THE READER'S LANGUAGE, from its `code` (`roster.refusal.<code>`), never
+ * the server's English. 403 without a code is the board's own "closed to you"; a code this screen
+ * has no sentence for falls back to `roster.refusal.other`, naming the code so it can be reported.
+ */
+export function rosterErrorText(e: unknown, t: (key: string, o?: Record<string, unknown>) => string): string {
+  const code = rosterErrorCode(e);
+  if (code !== null) return t(`roster.refusal.${code}`, { defaultValue: t("roster.refusal.other", { code }) });
+  if (e instanceof ApiError && e.status === 403) return t("rosterOnNow.forbidden");
+  if (e instanceof ApiError) return t("roster.refusal.other", { code: String(e.status) });
+  return t("roster.refusal.network");
+}
+
+/** 409 / 404 from a write: the month moved under the reader — refetch it and say so. */
+export function isStaleWrite(e: unknown): boolean {
+  return e instanceof ApiError && (e.status === 409 || e.status === 404);
 }
 
 /* ═══ 20-U U5b — the unit's month: `roster-board.controller.ts`'s `/roster/units…`, `/roster/slots…`,
@@ -66,11 +82,15 @@ export type WireUnitMonth = {
     contentHash: string; publishedAt: string | null;
   };
   positions: { key: string; label: string }[];
-  people: { userId: string; name: string; positionKey: string; grade: string }[];
+  people: { userId: string; name: string; positionKey: string; grade: string; postedFrom: string | null; postedTo: string | null }[];
   assignments: WireMonthAssignment[];
   findings: WireMonthFinding[];
   counts: { blocking: number; warnings: number; info: number };
   fairness: { userId: string; name: string; nights: number; sundays: number; holidays: number }[];
+  unitDays: { istDate: string; activities: string[]; take: boolean; overlay: boolean }[];
+  holidays: { istDate: string; kind: string; pattern: string }[];
+  /** Approved absences, IST days inclusive; the kind, never the reason (D6). */
+  leave: { userId: string; kind: string; from: string; to: string }[];
   youMay: { draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean };
 };
 

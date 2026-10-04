@@ -695,6 +695,8 @@ const staffReportsRoute = createRoute({
 const rosterOnNowRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/roster/on-now",
+  // 20-U U5 — drawn inside the Doctor Desk frame, which owns the viewport (and draws the mode banner).
+  staticData: { fullViewport: true },
   validateSearch: (search: Record<string, unknown>): { at?: string } => ({
     at: typeof search.at === "string" && search.at.length <= 40 && !Number.isNaN(Date.parse(search.at)) ? search.at : undefined,
   }),
@@ -711,6 +713,8 @@ const rosterOnNowRoute = createRoute({
 const rosterMonthRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/roster/month",
+  // 20-U U5 — drawn inside the Doctor Desk frame, which owns the viewport (and draws the mode banner).
+  staticData: { fullViewport: true },
   validateSearch: (search: Record<string, unknown>): { team?: string; month?: string } => ({
     team: typeof search.team === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(search.team) ? search.team : undefined,
     month: typeof search.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? search.month : undefined,

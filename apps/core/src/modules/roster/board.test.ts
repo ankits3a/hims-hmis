@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
@@ -148,6 +149,24 @@ describe("roster — who is on now (20-U U5a)", () => {
     }]);
     // The faculty member is on CALL, not in the building — a separate column.
     expect(med.inTheBuilding.map((p) => p.userId)).not.toContain(FAC);
+  });
+
+  it("D6 — a phone number is on the board for a person in the building now, and for nobody else", async () => {
+    await db.update(users).set({ phone: "9876543210" }).where(eq(users.id, SR));
+    await db.update(users).set({ phone: "9811111111" }).where(eq(users.id, FAC));
+    await db.update(users).set({ phone: "9822222222" }).where(eq(users.id, DM));
+    await publishMedicineCycle();
+    await publishMedicineOctober();
+    const board = await onNowBoard(db, T0240, ON);
+    const med = row(board, MED);
+    expect(med.inTheBuilding.map((p) => [p.name, p.phone])).toEqual([
+      ["Dr. Aditi Deshmukh", "9876543210"], ["Dr. Tanvi Shah", null], ["Dr. Yusuf Qureshi", null],
+    ]);
+    // Not the faculty column, not the services: the board draws a call button only beside the building.
+    expect(JSON.stringify(board)).not.toContain("9811111111");
+    expect(JSON.stringify(board)).not.toContain("9822222222");
+    // Nor once the duty has ended: at 10:00 the SR is off and her number is gone with her.
+    expect(JSON.stringify(await onNowBoard(db, new Date(T0240.getTime() + 8 * 3_600_000), ON))).not.toContain("9876543210");
   });
 
   it("02:40 belongs to the PREVIOUS day's take — Monday's unit, till 08:00 Tuesday", async () => {

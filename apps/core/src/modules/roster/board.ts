@@ -43,10 +43,18 @@ import type { RosterPositionRow } from "./masters";
  * department's faculty). Anything else is reported with the resolver's own non-published source and
  * NO PEOPLE: an unpublished department never lists RBAC role-holders as though they were on.
  *
- * Phone numbers are not on this read (task scope; D6 puts them on this board alone, later).
+ * Phone numbers: D6 — only for the people IN THE BUILDING at `at` (`BoardPerson.phone`), nobody else.
  */
 
-export interface BoardPerson { userId: string; name: string; positionKey: string; positionLabel: string; cadre: string }
+export interface BoardPerson {
+  userId: string; name: string; positionKey: string; positionLabel: string; cadre: string;
+  /**
+   * D6 — the person's number on file (`users.phone`), carried ONLY here: a person in the building
+   * at `at` is on duty at `at`, and that is the one place and time the plan lets a number be shown.
+   * The faculty column and the services carry none (the approved board draws no call button there).
+   */
+  phone: string | null;
+}
 export interface BoardRung { userId: string | null; name: string | null; positionKey: string; positionLabel: string; callTier: number | null }
 export interface BoardUnit { teamId: string; code: string; name: string; startsAt: Date; endsAt: Date }
 export interface BoardDepartment {
@@ -117,11 +125,12 @@ export async function onNowBoard(
   for (const t of unitTeams) unitCount.set(t.departmentId, (unitCount.get(t.departmentId) ?? 0) + 1);
 
   const names = new Map<string, string>();
+  const phones = new Map<string, string | null>();
   const nameOf = async (ids: readonly string[]): Promise<void> => {
     const missing = [...new Set(ids)].filter((i) => !names.has(i));
     if (missing.length === 0) return;
-    const rows = await (exec as Db).select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, missing));
-    for (const r of rows) names.set(r.id, r.fullName);
+    const rows = await (exec as Db).select({ id: users.id, fullName: users.fullName, phone: users.phone }).from(users).where(inArray(users.id, missing));
+    for (const r of rows) { names.set(r.id, r.fullName); phones.set(r.id, r.phone); }
   };
 
   const unitOf = async (answer: OnTakeAnswer): Promise<BoardUnit | null> => {
@@ -154,7 +163,10 @@ export async function onNowBoard(
       for (const p of building) {
         const pos = posByKey.get(p.positionKey)!;
         const here = p.userIds.filter((u) => !seen.has(u))
-          .map((userId) => ({ userId, name: names.get(userId) ?? userId, positionKey: pos.key, positionLabel: pos.label, cadre: pos.cadre }))
+          .map((userId) => ({
+            userId, name: names.get(userId) ?? userId, positionKey: pos.key, positionLabel: pos.label, cadre: pos.cadre,
+            phone: phones.get(userId) ?? null,
+          }))
           .sort((x, y) => x.name.localeCompare(y.name));
         for (const h of here) seen.add(h.userId);
         people.push(...here);
