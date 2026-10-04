@@ -143,8 +143,10 @@ async function matchOne(db: Db, r: PriceListRow, i: number): Promise<MatchedRow>
     ...(words.length > 1 && (words[0] ?? "").length >= 4 ? [words[0]!] : []),
   ].filter((q) => q.trim().length >= 2))];
   const hits = new Map<string, MedicineHit>();
-  for (const q of queries) for (const h of await searchMedicines(db, q, 25)) hits.set(h.id, h);
-  for (const h of await byBrandStem(db, core)) if (!hits.has(h.id)) hits.set(h.id, h);
+  // The exact brand first; only when the catalogue has no such brand does the looser search ladder run.
+  for (const h of await byBrandStem(db, core)) hits.set(h.id, h);
+  if (hits.size === 0 && words.filter((w) => !/^\d/.test(w)).length > 1) for (const h of await byBrandStem(db, words.filter((w) => !/^\d/.test(w)).slice(0, -1).join(" "))) hits.set(h.id, h);
+  if (hits.size === 0) for (const q of queries) for (const h of await searchMedicines(db, q, 25)) hits.set(h.id, h);
   const ranked = [...hits.values()].map((h) => ({ h, s: score({ brand, composition, pack: base.pack }, h) })).sort((a, b) => b.s - a.s).slice(0, 4);
   const meds = await medicinesByIds(db, ranked.map((x) => x.h.id));
   const cands: MatchCandidate[] = ranked.map(({ h, s }) => ({
@@ -167,11 +169,12 @@ async function matchOne(db: Db, r: PriceListRow, i: number): Promise<MatchedRow>
 async function byBrandStem(db: Db, core: string): Promise<MedicineHit[]> {
   const words = core.split(" ").filter((w) => w !== "" && !/^\d/.test(w));
   if (words.length === 0 || words.join("").length < 2) return [];
-  const first = words[0]!.replace(/[^a-z0-9]/g, "");
-  if (first.length < 2) return [];
-  const stem = new RegExp(`^${words.map((w) => w.replace(/[^a-z0-9]/g, "")).join("[- ]?")} \\(`, "i");
-  const rows = await medicinesByBrandPrefix(db, first);
-  return rows.filter((r) => stem.test(r.name)).slice(0, 40).map((r) => ({ ...r, salts: [], prefix: true, reviewed: true }));
+  const clean = words.map((w) => w.replace(/[^a-z0-9]/g, "")).filter((w) => w !== "");
+  if (clean.join("").length < 2) return [];
+  // The catalogue writes "Brand (salt) strength form": read exactly "<brand> (", with a space or a hyphen between words.
+  const prefixes = [...new Set([`${clean.join(" ")} (`, `${clean.join("-")} (`, `${clean.join("")} (`])];
+  const rows = (await Promise.all(prefixes.map((p) => medicinesByBrandPrefix(db, p, 60)))).flat();
+  return [...new Map(rows.map((r) => [r.id, r] as const)).values()].map((r) => ({ ...r, salts: [], prefix: true, reviewed: true }));
 }
 
 function hsnOf(text: string | undefined): string {
