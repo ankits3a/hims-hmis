@@ -8,7 +8,8 @@ export type Grid = string[][];
 
 /** CSV (or TSV) text → rows; quotes, doubled quotes and line breaks inside quotes are honoured. */
 export function parseDelimited(text: string): Grid {
-  const sep = (text.split(/\r?\n/, 1)[0] ?? "").includes("\t") ? "\t" : ",";
+  // Rows pasted from Excel are tab-separated even when a title line above them has no tab at all.
+  const sep = text.slice(0, 20_000).includes("\t") ? "\t" : ",";
   const rows: Grid = [];
   let row: string[] = [];
   let cell = "";
@@ -95,7 +96,7 @@ export async function readXlsx(bytes: Uint8Array): Promise<Grid> {
 export const PRICE_FIELDS = ["brand", "manufacturer", "composition", "pack", "mrp", "gst", "hsn"] as const;
 export type PriceField = (typeof PRICE_FIELDS)[number];
 const HEADING_WORDS: Record<PriceField, RegExp> = {
-  brand: /brand|product|item|drug ?name|^name/i,
+  brand: /brand|product(?! ?(code|id|no))|item(?! ?(code|id|no))|drug ?name|^name/i,
   manufacturer: /manufact|mfg|company|marketed|mkt/i,
   composition: /compos|salt|generic|content|molecule/i,
   pack: /pack/i,
@@ -114,3 +115,28 @@ export function guessColumns(headings: readonly string[]): Partial<Record<PriceF
   }
   return out;
 }
+
+/**
+ * Vendors put a title, an address or a date above the headings. The heading row is the first of the top
+ * fifteen in which the brand column and at least one other field are recognised; else the first row.
+ */
+export function findHeaderRow(grid: Grid): number {
+  for (let i = 0; i < Math.min(15, grid.length); i++) {
+    const g = guessColumns(grid[i]!);
+    if (g.brand !== undefined && Object.keys(g).length >= 2) return i;
+  }
+  return 0;
+}
+
+/** The sample a vendor (or the store) can fill in: the headings the import reads best, and three example rows. */
+export const SAMPLE_PRICE_LIST = [
+  ["Manufacturer", "Brand Name", "Composition", "Packing", "HSN", "GST %", "MRP"],
+  ["Micro Labs", "Dolo 650", "Paracetamol 650 mg", "15 Tab", "3004", "5", "33.60"],
+  ["Mankind", "Moxikind-CV 625", "Amoxicillin 500 mg + Clavulanic Acid 125 mg", "10x6", "3004", "5", "198.50"],
+  ["Zydus", "Deriphyllin Inj", "Etofylline 169 mg + Theophylline 50.6 mg", "2 ml amp", "3004", "5", "12.40"],
+];
+
+export function sampleCsv(): string {
+  return SAMPLE_PRICE_LIST.map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\r\n") + "\r\n";
+}
+

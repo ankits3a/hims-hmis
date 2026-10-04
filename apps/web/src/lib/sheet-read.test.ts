@@ -1,4 +1,4 @@
-import { guessColumns, parseDelimited, readXlsx } from "./sheet-read";
+import { findHeaderRow, guessColumns, parseDelimited, readXlsx, sampleCsv } from "./sheet-read";
 import { toXlsx } from "./xlsx";
 
 /* Owner 2026-10-04 — a vendor's price list read in the browser: CSV, pasted Excel rows, or an .xlsx file. */
@@ -22,4 +22,17 @@ describe("reading a vendor's price list", () => {
     const bytes = toXlsx({ name: "List", header: ["Brand", "Packing", "MRP"], rows: [["Dolo 650", "15", 30.5]] });
     expect(await readXlsx(bytes)).toEqual([["Brand", "Packing", "MRP"], ["Dolo 650", "15", "30.5"]]);
   });
+
+  it("finds the heading row under a vendor's title and address", () => {
+    const g = parseDelimited("Shree Ram Pharma Distributors\nPrice list Oct 2026,,\nSr,Brand Name,Packing,MRP\n1,Dolo 650,15 Tab,33.60\n");
+    expect(findHeaderRow(g)).toBe(2);
+    expect(findHeaderRow(parseDelimited("Brand,Packing\nDolo,15\n"))).toBe(0);
+  });
+
+  it("the sample CSV reads back with every column recognised", () => {
+    const g = parseDelimited(sampleCsv());
+    expect(guessColumns(g[0]!)).toEqual({ brand: 1, manufacturer: 0, composition: 2, pack: 3, hsn: 4, gst: 5, mrp: 6 });
+    expect(g).toHaveLength(4);
+  });
 });
+

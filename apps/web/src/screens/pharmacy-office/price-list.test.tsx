@@ -63,4 +63,45 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
     expect(await screen.findByTestId("price-result-1")).toHaveTextContent("Created · BRUFEN400");
     expect(screen.getByTestId("price-done")).toHaveTextContent("1 created, 0 not created");
   });
+
+  /* Owner 2026-10-04 — the directions on the screen, a sample to download, and a check of every column. */
+  it("shows the directions, downloads a sample CSV, skips a title above the headings, and says what each missing column means", async () => {
+    mockRoutes({});
+    const user = userEvent.setup();
+    const made: Blob[] = [];
+    const names: string[] = [];
+    const real = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    URL.createObjectURL = vi.fn((b: Blob) => { made.push(b); return "blob:x"; });
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { names.push(this.download); });
+    renderWithProviders(<PriceListImport />);
+    expect(screen.getByTestId("price-howto")).toHaveTextContent("How to import a vendor's drug list");
+    expect(screen.getByTestId("price-howto")).toHaveTextContent("Only the brand name is needed");
+    await user.click(screen.getByTestId("price-sample"));
+    URL.createObjectURL = real.create; URL.revokeObjectURL = real.revoke; click.mockRestore();
+    expect(names).toEqual(["price-list-sample.csv"]);
+    const text = await new Promise<string>((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.readAsText(made[0]!); });
+    expect(text).toContain("Manufacturer,Brand Name,Composition,Packing,HSN,GST %,MRP");
+
+    await user.click(screen.getByTestId("price-paste"));
+    await user.paste("Shree Ram Pharma\nBrand Name\tPacking\nDolo 650\t15 Tab");
+    await user.click(screen.getByTestId("price-paste-read"));
+    const check = await screen.findByTestId("price-column-check");
+    expect(check).toHaveTextContent("1 line above the headings was skipped");
+    expect(screen.getByTestId("price-check-col-brand")).toHaveTextContent("✓ Brand name (needed) ← “Brand Name”");
+    expect(screen.getByTestId("price-check-col-mrp")).toHaveTextContent("You type the MRP on each row before creating.");
+    expect(screen.getByTestId("price-match")).toBeEnabled();
+  });
+
+  it("a list with no brand column cannot be matched, and says why", async () => {
+    mockRoutes({});
+    const user = userEvent.setup();
+    renderWithProviders(<PriceListImport />);
+    await user.click(screen.getByTestId("price-paste"));
+    await user.paste("Item Code\tQty\nA1\t10");
+    await user.click(screen.getByTestId("price-paste-read"));
+    expect(await screen.findByTestId("price-check-col-brand")).toHaveTextContent("Cannot import — every row needs a brand.");
+    expect(screen.getByTestId("price-match")).toBeDisabled();
+  });
 });
+

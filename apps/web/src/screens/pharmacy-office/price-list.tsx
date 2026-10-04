@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { api } from "../../lib/api";
 import { materialsErrorText } from "../../lib/materials-api";
-import { PRICE_FIELDS, guessColumns, parseDelimited, readXlsx } from "../../lib/sheet-read";
+import { PRICE_FIELDS, findHeaderRow, guessColumns, parseDelimited, readXlsx, sampleCsv } from "../../lib/sheet-read";
 import type { Grid, PriceField } from "../../lib/sheet-read";
 import { OfficeHead, fieldCls } from "./office-page";
 
@@ -42,9 +42,20 @@ export function PriceListImport(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const take = (g: Grid): void => {
+  const [skipped, setSkipped] = useState(0);
+  const take = (raw: Grid): void => {
+    // A title or address above the headings is skipped: the heading row is found, not assumed.
+    const h = findHeaderRow(raw);
+    const g = raw.slice(h);
     if (g.length < 2) { setError(P("tooShort")); return; }
-    setGrid(g); setCols(guessColumns(g[0]!)); setRows(null); setResults(null); setError(null);
+    setSkipped(h); setGrid(g); setCols(guessColumns(g[0]!)); setRows(null); setResults(null); setError(null);
+  };
+  const downloadSample = (): void => {
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + sampleCsv()], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = "price-list-sample.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
   };
   const onFile = async (f: File | undefined): Promise<void> => {
     if (f === undefined) return;
@@ -99,6 +110,28 @@ export function PriceListImport(): React.ReactElement {
       <OfficeHead title={P("title")} lead={P("lead")} />
       {error !== null && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
+      {/* Owner 2026-10-04 — the directions live on this screen, with a sample file to fill in. */}
+      <section className="rounded border bg-muted/30 p-3 text-sm space-y-2" data-testid="price-howto">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="m-0 text-sm font-semibold">{P("howTitle")}</h3>
+          <Button type="button" variant="outline" size="sm" data-testid="price-sample" onClick={downloadSample}>{P("sample")}</Button>
+        </div>
+        <ol className="m-0 list-decimal space-y-1 pl-5">
+          {(["how1", "how2", "how3", "how4", "how5"] as const).map((k) => <li key={k}>{P(k)}</li>)}
+        </ol>
+        <table className="w-full text-xs [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:px-1.5 [&_th]:text-left">
+          <thead><tr className="text-muted-foreground"><th>{P("colHeading")}</th><th>{P("colNeeded")}</th><th>{P("colExample")}</th><th>{P("colIfMissing")}</th></tr></thead>
+          <tbody>{PRICE_FIELDS.map((f) => (
+            <tr key={f} className="border-t">
+              <td className="font-medium">{P(`field.${f}`)}</td>
+              <td>{f === "brand" ? P("needed") : f === "mrp" || f === "pack" ? P("recommended") : P("optional")}</td>
+              <td className="font-mono">{P(`example.${f}`)}</td>
+              <td className="text-muted-foreground">{P(`ifMissing.${f}`)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </section>
+
       <section className="rounded border p-3 space-y-2">
         <h3 className="text-sm font-semibold">{P("step1")}</h3>
         <input type="file" accept=".csv,.xlsx,.txt" data-testid="price-file" onChange={(e) => void onFile(e.target.files?.[0])} />
@@ -121,6 +154,17 @@ export function PriceListImport(): React.ReactElement {
               </label>
             ))}
           </div>
+          <ul className="m-0 space-y-0.5 pl-0 text-xs" data-testid="price-column-check">
+            {skipped > 0 && <li className="list-none text-muted-foreground">{P("skipped", { count: skipped })}</li>}
+            {PRICE_FIELDS.map((f) => {
+              const found = cols[f] !== undefined;
+              return (
+                <li key={f} className={`list-none ${found ? "text-green-700" : f === "brand" ? "text-red-600 font-medium" : "text-amber-700"}`} data-testid={`price-check-col-${f}`}>
+                  {found ? `✓ ${P(`field.${f}`)} ← “${grid[0]![cols[f]!] ?? ""}”` : `${f === "brand" ? "✗" : "!"} ${P(`field.${f}`)}: ${P(`ifMissing.${f}`)}`}
+                </li>
+              );
+            })}
+          </ul>
           <Button type="button" data-testid="price-match" disabled={busy || cols.brand === undefined} onClick={() => void match()}>{busy ? P("matching", { count: grid.length - 1, seconds: Math.max(5, Math.ceil((grid.length - 1) * 0.3)) }) : P("match")}</Button>
         </section>
       )}
@@ -128,6 +172,13 @@ export function PriceListImport(): React.ReactElement {
       {rows !== null && (
         <section className="space-y-2">
           <h3 className="text-sm font-semibold">{P("step3")}</h3>
+          <ul className="m-0 space-y-0.5 pl-5 text-xs list-disc" data-testid="price-guidance">
+            {rows.some((r) => r.best === null && r.existing === null) && <li>{P("guideNoMatch", { count: rows.filter((r) => r.best === null && r.existing === null).length })}</li>}
+            {rows.some((r) => r.existing === null && r.best !== null && r.best.score < 85) && <li>{P("guideCheck", { count: rows.filter((r) => r.existing === null && r.best !== null && r.best.score < 85).length })}</li>}
+            {rows.some((r) => r.existing === null && r.best !== null && toPaise(r.mrp) === null) && <li>{P("guideMrp", { count: rows.filter((r) => r.existing === null && r.best !== null && toPaise(r.mrp) === null).length })}</li>}
+            {rows.some((r) => r.existing !== null) && <li>{P("guideExisting", { count: rows.filter((r) => r.existing !== null).length })}</li>}
+            <li>{P("guidePack")}</li>
+          </ul>
           <p className="m-0 text-sm" data-testid="price-summary">
             {P("summary", { total: rows.length, matched: rows.filter((r) => r.best !== null).length, existing: rows.filter((r) => r.existing !== null).length, chosen: chosen.length })}
           </p>
