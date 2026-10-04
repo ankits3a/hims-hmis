@@ -6999,6 +6999,15 @@
     "department": "Department",
     "allDepartments": "All departments",
     "clearDesk": "Clear desk",
+    "phone": {
+      "identify": "token no. · UHID · scan",
+      "ask": "ask about the bench or a bump",
+      "bench": "Bench · {{count}}",
+      "due": "{{count}} due",
+      "close": "Close",
+      "show": "Details",
+      "hide": "Hide"
+    },
     "identify": {
       "label": "Who is in front of you?",
       "placeholder": "scan the slip, or type the token no. / UHID",
