@@ -1,3 +1,5 @@
+import { sql } from "drizzle-orm";
+import { formularyMedicines } from "../../kernel/db/schema";
 import { medicinesByIds, searchMedicines } from "../formulary";
 import type { MedicineHit } from "../formulary";
 import { createStockDrug, stockEntryItems } from "./stock-drug";
@@ -100,7 +102,8 @@ function score(row: { brand: string; composition: string; pack: string }, hit: M
   const hitForm = `${hit.form} ${hit.name}`.toLowerCase();
   const injected = FORM_HINT[1]![0].test(raw);
   const said = FORM_HINT.filter(([w], i) => w.test(raw) && !(injected && i === 0)); // "2 ml amp" is an injection, not a syrup
-  for (const [, form] of said) s += form.test(hitForm) ? 15 : -20;
+  const isInjection = /injection|infusion/.test(hitForm);
+  for (const [w, form] of said) s += form.test(hitForm) && !(isInjection && w !== FORM_HINT[1]![0]) ? 15 : -20;
   if (said.length === 0 && /\b(tab|tabs|tablet|strip)\b/.test(raw)) s += /tablet/.test(hitForm) ? 15 : -20;
   const comp = norm(row.composition);
   if (comp !== "" && hit.salts.length > 0) {
@@ -134,6 +137,7 @@ export async function matchPriceList(db: Db, rows: readonly PriceListRow[]): Pro
     ].filter((q) => q.trim().length >= 2))];
     const hits = new Map<string, MedicineHit>();
     for (const q of queries) for (const h of await searchMedicines(db, q, 25)) hits.set(h.id, h);
+    for (const h of await byBrandStem(db, core)) if (!hits.has(h.id)) hits.set(h.id, h);
     const ranked = [...hits.values()].map((h) => ({ h, s: score({ brand, composition, pack: base.pack }, h) })).sort((a, b) => b.s - a.s).slice(0, 4);
     const meds = await medicinesByIds(db, ranked.map((x) => x.h.id));
     const cands: MatchCandidate[] = ranked.map(({ h, s }) => ({
@@ -148,6 +152,20 @@ export async function matchPriceList(db: Db, rows: readonly PriceListRow[]): Pro
     });
   }
   return out;
+}
+
+/**
+ * The catalogue rows whose BRAND is the vendor's brand: "Pan (pantoprazole…)", "Moxikind-CV (…)". The search
+ * ranks generics and short names first, so a short brand ("Pan") can be buried under "Pantoprazole", "Panz",
+ * "Panto"; this reads the brand stem directly — the words before the strength, a hyphen or a space between them.
+ */
+async function byBrandStem(db: Db, core: string): Promise<MedicineHit[]> {
+  const words = core.split(" ").filter((w) => w !== "" && !/^\d/.test(w));
+  if (words.length === 0 || words.join("").length < 2) return [];
+  const pattern = `^${words.map((w) => w.replace(/[^a-z0-9]/g, "")).join("[- ]?")} \\(`;
+  const rows = await db.select({ id: formularyMedicines.id, name: formularyMedicines.brandName, form: formularyMedicines.form, strength: formularyMedicines.strengthLabel, code: formularyMedicines.code, routeClass: formularyMedicines.routeClass })
+    .from(formularyMedicines).where(sql`${formularyMedicines.active} and ${formularyMedicines.brandName} ~* ${pattern}`).limit(40);
+  return rows.map((r) => ({ ...r, salts: [], prefix: true, reviewed: true }));
 }
 
 function hsnOf(text: string | undefined): string {
